@@ -36,7 +36,7 @@ const definitions = [
     summary: 'Send a message as the current user.',
     label: 'Send message',
     parameters: { properties: {}, type: 'object' },
-    personalAssistantOnly: true,
+    requiresExplicitGrant: true,
     safe: false,
   },
 ] satisfies BuiltinToolDefinition[]
@@ -69,25 +69,24 @@ test('resolveAgentTools lets agent policy deny a granted tool', () => {
   assert.deepEqual([...resolved.allowedIds], ['spawn_subtask'])
 })
 
-test('resolveAgentTools withholds personal-assistant-only tools from a shared agent', () => {
+test('resolveAgentTools exposes a granted message send tool to a shared agent', () => {
   const resolved = resolveAgentTools(
     new Set(['web_search', 'send_message']),
     definitions,
-    null,
+    { send_message: true },
     null,
     'shared',
   )
 
-  // The shared agent keeps ordinary tools but never sees the act-as-user tool.
-  assert.deepEqual([...resolved.allowedIds].sort(), ['web_search'])
-  assert.ok(!resolved.descriptors.some((d) => d.toolName === 'send_message'))
+  assert.deepEqual([...resolved.allowedIds].sort(), ['send_message', 'web_search'])
+  assert.ok(resolved.descriptors.some((d) => d.toolName === 'send_message'))
 })
 
 test('resolveAgentTools grants personal-assistant-only tools to the personal assistant', () => {
   const resolved = resolveAgentTools(
     new Set(['web_search', 'send_message']),
     definitions,
-    null,
+    { send_message: true },
     null,
     'personal_assistant',
   )
@@ -147,13 +146,17 @@ test('authorizeToolCall reports structured denial reasons', () => {
   )
 })
 
-test('authorizeToolCall denies act-as-user tools to a shared agent but allows the personal assistant', () => {
+test('authorizeToolCall allows a granted message send tool for a shared agent', () => {
   assert.deepEqual(
-    authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'shared'),
-    { allowed: false, reason: 'personal_assistant_only' },
+    authorizeToolCall(
+      'send_message', new Set(['send_message']), definitions, { send_message: true }, null, 'shared',
+    ),
+    { allowed: true },
   )
   assert.deepEqual(
-    authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'personal_assistant'),
+    authorizeToolCall(
+      'send_message', new Set(['send_message']), definitions, { send_message: true }, null, 'personal_assistant',
+    ),
     { allowed: true },
   )
 })

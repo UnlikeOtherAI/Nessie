@@ -41,12 +41,19 @@ export type WsEventMap = {
     currentToolName?: string
     currentToolStartedAt?: string
   }
-  'agent.tool.start': {
-    agentId: AgentId
-    runId: RunId
-    toolName: string
-    inputSummary: string
-  }
+  'agent.tool.start':
+    | {
+        agentId: AgentId
+        runId: RunId
+        toolName: string
+        inputSummary: string
+      }
+    | {
+        agentId: AgentId
+        runId: RunId
+        /** The tool input was derived from sources this channel cannot all read. */
+        restricted: true
+      }
   'agent.tool.end': {
     agentId: AgentId
     runId: RunId
@@ -201,12 +208,19 @@ export const AgentStatusEventSchema = z.object({
   currentToolStartedAt: TimestampSchema.optional(),
 })
 export type AgentStatusEvent = z.infer<typeof AgentStatusEventSchema>
-export const AgentToolStartEventSchema = z.object({
-  agentId: AgentIdSchema,
-  runId: RunIdSchema,
-  toolName: NonEmptyStringSchema,
-  inputSummary: z.string(),
-})
+export const AgentToolStartEventSchema = z.union([
+  z.object({
+    agentId: AgentIdSchema,
+    runId: RunIdSchema,
+    toolName: NonEmptyStringSchema,
+    inputSummary: z.string(),
+  }),
+  z.object({
+    agentId: AgentIdSchema,
+    runId: RunIdSchema,
+    restricted: z.literal(true),
+  }),
+])
 export type AgentToolStartEvent = z.infer<typeof AgentToolStartEventSchema>
 export const AgentToolEndEventSchema = z.object({
   agentId: AgentIdSchema,

@@ -4,6 +4,7 @@ import test from 'node:test'
 import { parseOrganizationId, parseProjectId, parseTeamId, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { hashJsonValue } from '../tool-util.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 import { authorizeToolExecution } from './tool-authorization.js'
 import type { RunContext } from './types.js'
 
@@ -21,6 +22,7 @@ const ARGS = { subject: 'Receipt', text: 'Private words', to: ['person@example.t
 const context = (): RunContext => ({
   agent: { agentKind: 'shared', id: AGENT, parentAgentId: null },
   boundAgentIds: [],
+  consumedSources: createConsumedSourceSink(),
   channel: { id: CHANNEL, organizationId: ORG, projectId: PROJECT, teamId: TEAM },
   run: { id: CONTINUATION, threadId: THREAD },
   task: { id: TASK },

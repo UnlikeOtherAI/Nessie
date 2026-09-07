@@ -2,6 +2,7 @@ import { Readable } from 'node:stream'
 
 import { attributionFromActorContext, collectStream } from '@nessie/runtime'
 import { fileServiceFor } from '../file-service.js'
+import { markUnknownPrivateConversationChannels } from '../execute/private-conversation-lineage.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildVisibleChannelWhere } from './access.js'
 import { recordMessageChannelRead } from './message-search-basis.js'
@@ -114,6 +115,12 @@ export const runAttachmentListTool = async (
     messages.map((message) => message.thread.channel),
   )
   context.consumedSources?.addAll(messages.flatMap((message) => message.basisScopes))
+  if (context.consumedSources) {
+    markUnknownPrivateConversationChannels(
+      context.consumedSources,
+      messages.map((message) => message.thread.channel),
+    )
+  }
 
   if (messageIds.length === 0) {
     return {
@@ -192,6 +199,12 @@ export const runAttachmentReadTool = async (
   // posted in, plus whatever basis the carrying message already had.
   recordMessageChannelRead(context, [visibleMessage.thread.channel])
   context.consumedSources?.addAll(visibleMessage.basisScopes)
+  if (context.consumedSources) {
+    markUnknownPrivateConversationChannels(
+      context.consumedSources,
+      [visibleMessage.thread.channel],
+    )
+  }
 
   const metadataLines = [
     `id=${attachment.id}`,

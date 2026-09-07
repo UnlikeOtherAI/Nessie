@@ -17,6 +17,7 @@ import {
 } from './tool-output.js'
 import {
   recordMessageChannelRead,
+  recordPrivateConversationMessageRead,
   UNRESTRICTED_MESSAGES_ONLY,
 } from './message-search-basis.js'
 
@@ -163,8 +164,13 @@ export const runTeamSearchTool = async (
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
+        agentId: true,
         content: true,
         createdAt: true,
+        metadata: true,
+        onBehalfOfUserId: true,
+        role: true,
+        disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
         rootMessageId: true,
         thread: {
           select: {
@@ -216,6 +222,16 @@ export const runTeamSearchTool = async (
       visibility: message.thread.channel.visibility,
     })),
   ])
+  recordPrivateConversationMessageRead(context, messages.map((message) => ({
+    agentId: message.agentId,
+    channelId: message.thread.channel.id,
+    channelVisibility: message.thread.channel.visibility,
+    disclosureSources: message.disclosureSources,
+    metadata: message.metadata,
+    onBehalfOfUserId: message.onBehalfOfUserId,
+    role: message.role,
+    userId: message.user?.id ?? null,
+  })))
 
   const lines: string[] = []
 

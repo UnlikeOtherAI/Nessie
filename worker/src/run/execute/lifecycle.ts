@@ -430,6 +430,7 @@ export const loadRunContext = async (
               organizationId: true,
               projectId: true,
               teamId: true,
+              visibility: true,
               systemChannelType: true,
               dmKey: true,
             },

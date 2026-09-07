@@ -14,9 +14,8 @@ import type { RouteDeps } from '../src/routes/types.js'
  * Who hears a card press.
  *
  * The press announces the response message, and that announcement is a
- * disclosure decision the destination owns: a delegated system DM — the
- * Personal Assistant's, or a global agent's home — is announced to its channel
- * alone, while an ordinary channel is announced organization-wide as well
+ * disclosure decision the destination owns: every non-public channel announces
+ * to its channel alone, while a public channel also announces organization-wide
  * (`buildChannelRealtimeScopes`,
  * `docs/standards/disclosure-boundaries.md`). The route used to build that pair
  * by hand and always include the organization scope, so pressing a card inside
@@ -47,7 +46,11 @@ const CARD_SPEC = {
 const seedCard = async (
   prisma: PrismaClient,
   suffix: string,
-  channel: { systemChannelType: ChannelSystemType | null; type: 'dm' | 'standard' },
+  channel: {
+    systemChannelType: ChannelSystemType | null
+    type: 'dm' | 'standard'
+    visibility: 'private' | 'protected' | 'public'
+  },
 ): Promise<Seed> => {
   const organization = await prisma.organization.create({
     data: { name: `card-scope-${suffix}` },
@@ -65,7 +68,7 @@ const seedCard = async (
       teamId: team.id,
       type: channel.type,
       ...(channel.systemChannelType ? { systemChannelType: channel.systemChannelType } : {}),
-      visibility: 'private',
+      visibility: channel.visibility,
     },
   })
   const thread = await prisma.thread.create({
@@ -162,7 +165,11 @@ const pressCard = async (prisma: PrismaClient, seed: Seed): Promise<WsScope[][]>
 
 const withSeed = async (
   t: test.TestContext,
-  channel: { systemChannelType: ChannelSystemType | null; type: 'dm' | 'standard' },
+  channel: {
+    systemChannelType: ChannelSystemType | null
+    type: 'dm' | 'standard'
+    visibility: 'private' | 'protected' | 'public'
+  },
   run: (prisma: PrismaClient, seed: Seed) => Promise<void>,
 ): Promise<void> => {
   const prisma = new PrismaClient()
@@ -180,7 +187,7 @@ runDatabaseTest(
   async (t) => {
     await withSeed(
       t,
-      { systemChannelType: 'personal_assistant', type: 'dm' },
+      { systemChannelType: 'personal_assistant', type: 'dm', visibility: 'private' },
       async (prisma, seed) => {
         const scopeSets = await pressCard(prisma, seed)
         assert.ok(scopeSets.length > 0, 'the press announced something')
@@ -193,9 +200,22 @@ runDatabaseTest(
 )
 
 runDatabaseTest(
-  'a card pressed in an ordinary channel still announces organization-wide',
+  'a card pressed in an ordinary private channel announces to that channel only',
   async (t) => {
-    await withSeed(t, { systemChannelType: null, type: 'standard' }, async (prisma, seed) => {
+    await withSeed(t, { systemChannelType: null, type: 'standard', visibility: 'private' }, async (prisma, seed) => {
+      const scopeSets = await pressCard(prisma, seed)
+      assert.ok(scopeSets.length > 0, 'the press announced something')
+      for (const scopes of scopeSets) {
+        assert.deepEqual(byKind(scopes), [{ channelId: seed.channelId, kind: 'channel' }])
+      }
+    })
+  },
+)
+
+runDatabaseTest(
+  'a card pressed in an ordinary public channel also announces organization-wide',
+  async (t) => {
+    await withSeed(t, { systemChannelType: null, type: 'standard', visibility: 'public' }, async (prisma, seed) => {
       const scopeSets = await pressCard(prisma, seed)
       assert.ok(scopeSets.length > 0, 'the press announced something')
       for (const scopes of scopeSets) {

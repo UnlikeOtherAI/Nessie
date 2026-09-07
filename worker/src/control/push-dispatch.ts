@@ -73,6 +73,7 @@ type PushMessage = {
   agentId: string | null
   agent: { name: string } | null
   basisScopes: BasisScopeRow[]
+  disclosureSources: Array<{ sourceAuthorUserId: string | null; sourceChannelId: string }>
   user: { displayName: string } | null
 }
 
@@ -139,6 +140,7 @@ export const handlePushDispatch = async (
       agentId: true,
       agent: { select: { name: true } },
       basisScopes: { select: { scopeId: true, scopeType: true } },
+      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
       user: { select: { displayName: true } },
     },
   })
@@ -152,6 +154,7 @@ export const handlePushDispatch = async (
         agentId: replyMessage.agentId,
         basis: replyMessage.basisScopes,
         channelId: payload.channelId,
+        disclosureSources: replyMessage.disclosureSources,
         messageId: payload.messageId,
         organizationId: payload.organizationId,
         userId: user.id,

@@ -65,6 +65,7 @@ const runContext = (): RunContext => ({
     projectId: PROJECT_ID,
     teamId: TEAM_ID,
     systemChannelType: null,
+    visibility: 'public',
   },
   consumedSources: createConsumedSourceSink(),
   run: { createdAt: new Date(), id: RUN_ID, replyPlacement: null, threadId: THREAD_ID },
@@ -183,13 +184,20 @@ const fakePrisma = (): FakePrisma => {
   }
 }
 
-const deps = (fake: FakePrisma): ExecutionDependencies => ({
+type PublishedWsEvent = { data: unknown; event: string }
+
+const deps = (
+  fake: FakePrisma,
+  wsEvents: PublishedWsEvent[],
+): ExecutionDependencies => ({
   modelClient: {} as ExecutionDependencies['modelClient'],
   prisma: fake.prisma,
   queueProvider: {} as ExecutionDependencies['queueProvider'],
   realtimeTransport: {
     publishSse: async () => undefined,
-    publishWs: async () => undefined,
+    publishWs: async (_scopes: unknown, event: PublishedWsEvent) => {
+      wsEvents.push(event)
+    },
   } as unknown as ExecutionDependencies['realtimeTransport'],
   searchConfig: {
     modelClient: {} as ExecutionDependencies['modelClient'],
@@ -242,6 +250,7 @@ type LoopHarness = {
   fake: FakePrisma
   invocationSink: InvocationRecord[]
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
+  wsEvents: PublishedWsEvent[]
   subAgentToolResults: Array<{ output: string; toolName: string }>
 }
 
@@ -251,6 +260,7 @@ const runLoop = async (input: {
   mcpTools?: Record<string, AgenticToolResult>
   executorTools?: Record<string, AgenticToolResult>
   reviewer?: 'allow' | 'deny' | 'unavailable' | 'unparseable' | 'require_approval'
+  restricted?: boolean
   resolvedBuiltinToolIds?: Set<string>
   rules?: Array<Record<string, unknown>>
   // Sequence of sub-agent turns used by the delegate path.
@@ -259,6 +269,14 @@ const runLoop = async (input: {
   toolArgs?: Record<string, unknown>
 }): Promise<LoopHarness> => {
   const fake = fakePrisma()
+  const context = runContext()
+  const wsEvents: PublishedWsEvent[] = []
+  if (input.restricted) {
+    context.consumedSources.add({
+      scopeId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      scopeType: 'user',
+    })
+  }
   if (input.rules) {
     fake.setRules(input.rules)
   }
@@ -330,9 +348,9 @@ const runLoop = async (input: {
   }
 
   const result = await runExecutionAgentLoop(
-    deps(fake),
+    deps(fake, wsEvents),
     { actorContext: actorContext(), messageId: 'msg-1' } as never,
-    runContext(),
+    context,
     {
       allowedToolIds: new Set([builtinName, 'delegate']),
       // Main-loop tool calls are exactly one per scenario (the gated tool, or
@@ -385,8 +403,33 @@ const runLoop = async (input: {
       windDownInstruction: null,
     },
   )
-  return { dispatchedExecutor, dispatchedMcp, fake, invocationSink, result, subAgentToolResults }
+  return {
+    dispatchedExecutor,
+    dispatchedMcp,
+    fake,
+    invocationSink,
+    result,
+    subAgentToolResults,
+    wsEvents,
+  }
 }
+
+test('restricted runs never publish tool input summaries', async () => {
+  const privateCanary = 'private-tool-input-canary'
+  const harness = await runLoop({
+    restricted: true,
+    toolArgs: { query: privateCanary },
+    toolName: 'kb_search',
+  })
+
+  const toolStart = harness.wsEvents.find((event) => event.event === 'agent.tool.start')
+  assert.deepEqual(toolStart?.data, {
+    agentId: AGENT_ID,
+    restricted: true,
+    runId: RUN_ID,
+  })
+  assert.doesNotMatch(JSON.stringify(harness.wsEvents), new RegExp(privateCanary))
+})
 
 const denyRule = (toolId: string): Record<string, unknown> => ({
   action: 'invoke',

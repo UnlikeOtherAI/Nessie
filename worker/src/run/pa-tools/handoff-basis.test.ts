@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { computeHandoffBriefBasis } from './agent-handoff.js'
+import { computeHandoffBriefBasis, runAgentHandoffTool } from './agent-handoff.js'
+import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 /**
  * The handoff brief's basis, in both directions.
@@ -69,4 +70,11 @@ test('the destination DM and its own agent imply their scopes, as anywhere else'
     targetAgentId: 'agent-designer',
   })
   assert.deepEqual(basis, [{ scopeId: 'thought-space', scopeType: 'project' }])
+})
+
+test('agent_handoff refuses to pass a brief without provenance', async () => {
+  await assert.rejects(
+    runAgentHandoffTool({} as BuiltinToolRuntimeContext, {}),
+    /disclosure provenance sink/,
+  )
 })

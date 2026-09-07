@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { originalHumanAuthorId } from '../execute/private-conversation-lineage.js'
 
 /**
  * Disclosure rules for the agent-facing conversation searches.
@@ -59,6 +60,43 @@ export const recordMessageChannelRead = (
       continue
     }
     sink.add({ scopeId: channel.id, scopeType: 'channel' })
+  }
+}
+
+/**
+ * A returned private message retains original-author consent lineage.
+ *
+ * A non-human/legacy row can contain private conversation material but cannot
+ * establish a human author. Mark that uncertainty explicitly: a known author
+ * from another result in the same channel must never re-attribute it.
+ */
+export const recordPrivateConversationMessageRead = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  messages: readonly ({
+    agentId: string | null
+    channelId: string
+    channelVisibility: string
+    disclosureSources: readonly { sourceAuthorUserId: string | null; sourceChannelId: string }[]
+    metadata: unknown
+    onBehalfOfUserId: string | null
+    role: string
+    userId: string | null
+  })[],
+): void => {
+  const sink = context.consumedSources
+  if (!sink) return
+  for (const message of messages) {
+    if (message.channelVisibility === 'public') continue
+    if (message.disclosureSources.length > 0) {
+      for (const source of message.disclosureSources) {
+        sink.addPrivateConversationSource(source)
+      }
+      continue
+    }
+    sink.addPrivateConversationSource({
+      sourceAuthorUserId: originalHumanAuthorId(message),
+      sourceChannelId: message.channelId,
+    })
   }
 }
 

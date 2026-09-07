@@ -200,6 +200,94 @@ runDatabaseTest('grantMessageDisclosure accepts an audience the granter can actu
   assert.equal(row?.audienceKind, 'user')
 })
 
+runDatabaseTest('only the recorded private-conversation author can share a derived reply', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  t.after(cleanup(prisma, suffix))
+
+  const s = await seed(prisma, suffix)
+  await prisma.channelMember.createMany({
+    data: [
+      { channelId: s.privateChannelId, userId: s.granterId },
+      { channelId: s.privateChannelId, userId: s.memberId },
+    ],
+  })
+  const message = await createRestrictedMessage(prisma, s, {
+    scopeId: s.privateChannelId,
+    scopeType: 'channel',
+  })
+  await prisma.messageDisclosureSource.create({
+    data: {
+      messageId: message.id,
+      organizationId: s.organizationId,
+      sourceAuthorUserId: s.granterId,
+      sourceChannelId: s.privateChannelId,
+    },
+  })
+
+  await assert.rejects(
+    () => grantMessageDisclosure(prisma, {
+      audienceId: s.channelId,
+      audienceKind: 'channel',
+      messageId: message.id,
+      organizationId: s.organizationId,
+      userId: s.memberId,
+    }),
+    (error: unknown) => error instanceof DisclosureGrantError
+      && error.code === 'DISCLOSURE_ORIGINAL_AUTHOR_REQUIRED',
+  )
+
+  const granted = await grantMessageDisclosure(prisma, {
+    audienceId: s.channelId,
+    audienceKind: 'channel',
+    messageId: message.id,
+    organizationId: s.organizationId,
+    userId: s.granterId,
+  })
+  assert.ok(granted.id)
+})
+
+runDatabaseTest('unknown private lineage never grants a known author export authority', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  t.after(cleanup(prisma, suffix))
+
+  const s = await seed(prisma, suffix)
+  await prisma.channelMember.create({ data: { channelId: s.privateChannelId, userId: s.granterId } })
+  const message = await createRestrictedMessage(prisma, s, {
+    scopeId: s.privateChannelId,
+    scopeType: 'channel',
+  })
+  await prisma.messageDisclosureSource.createMany({
+    data: [
+      {
+        messageId: message.id,
+        organizationId: s.organizationId,
+        sourceAuthorUserId: s.granterId,
+        sourceChannelId: s.privateChannelId,
+      },
+      {
+        messageId: message.id,
+        organizationId: s.organizationId,
+        sourceAuthorUserId: null,
+        sourceChannelId: s.privateChannelId,
+      },
+    ],
+  })
+
+  await assert.rejects(
+    () => grantMessageDisclosure(prisma, {
+      audienceId: s.channelId,
+      audienceKind: 'channel',
+      messageId: message.id,
+      organizationId: s.organizationId,
+      userId: s.granterId,
+    }),
+    (error: unknown) => error instanceof DisclosureGrantError
+      && error.code === 'DISCLOSURE_ORIGINAL_AUTHOR_UNKNOWN',
+  )
+})
+
 runDatabaseTest('grantScopeDisclosure caps the standing-rule duration for private material', async (t) => {
   const prisma = new PrismaClient()
   const suffix = randomUUID()

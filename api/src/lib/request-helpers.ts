@@ -47,8 +47,9 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     channelId: string
     organizationId: string
     systemChannelType?: string | null
+    visibility?: string
   }): WsScope[] =>
-    isDelegatedSystemDmChannelType(input.systemChannelType)
+    input.visibility !== 'public' || isDelegatedSystemDmChannelType(input.systemChannelType)
       ? [{ kind: 'channel', channelId: parseChannelId(input.channelId) }]
       : [
           {

@@ -30,6 +30,9 @@ export const messageInclude = {
   // Loaded with the message so the list can withhold content the caller is not
   // entitled to without a second round trip.
   basisScopes: { select: { scopeType: true, scopeId: true } },
+  // Consent lineage is server-only. The reader needs both author and source
+  // channel to prove a grant did not omit another private source.
+  disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
 } satisfies Prisma.MessageInclude
 
 export type MessageWithReactions = Prisma.MessageGetPayload<{

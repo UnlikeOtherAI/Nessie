@@ -39,7 +39,7 @@ const designerHome: DelegatedRunFacts = {
 }
 
 const IDENTITY_TOOL = 'agent_create'
-const NON_IDENTITY_PA_TOOL = 'send_message'
+const NON_IDENTITY_PA_TOOL = 'authored_message_search'
 
 /** Moved to the Agent Designer in phase 4 — the PA hands off instead. */
 const DESIGNER_RESERVED_TOOLS = [
