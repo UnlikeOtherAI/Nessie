@@ -825,7 +825,9 @@ that agent's explicit `browser_open` allow; `AgentRecord.browserEnabled` is the
 server-decided read model for those doorways. Revoking that allow immediately
 hides active browser state and refuses further control, while the existing
 holder can still release or complete a login handover so revocation cannot
-strand a live session.
+strand a live session. A policy write publishes the existing id-only
+`agent.updated` event: every open client refreshes its entitled agent records,
+so a mounted rail or mobile doorway disappears without a reload.
 
 ### 5e. Live-view recovery and mobile presentation (2026-09-07)
 
