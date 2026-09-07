@@ -153,7 +153,7 @@ export const createRunInference = (
     })
     const capability = await service.getCapabilities(providerConfig.model)
     let ledgerMaxOutputTokens: number | undefined
-    if (isLedgerEndpoint(providerConfig.baseUrl) && providerConfig.model) {
+    if (providerConfig.baseUrl && isLedgerEndpoint(providerConfig.baseUrl) && providerConfig.model) {
       try {
         const requestHeaders = await requestHeadersForProvider(providerConfig)
         ledgerMaxOutputTokens = await findLedgerModelOutputTokenCap({

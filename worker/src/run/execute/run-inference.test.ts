@@ -36,9 +36,9 @@ test('mainOutputTokens uses the selected Ledger catalog cap and keeps static cap
     },
   )
   let url = ''
-  const capped = make(async (input, init) => { url = input.toString(); assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer key'); return new Response(JSON.stringify({ data: [{ id: 'gemini-test', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: 4096 }] })) })
-  assert.equal(await capped.mainOutputTokens?.(), 4096)
+  const capped = make(async (input, init) => { url = input.toString(); assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer key'); return new Response(JSON.stringify({ data: [{ id: 'gemini-test', kind: 'service', service: { id: 'gemini', name: 'Gemini' }, max_output_tokens: 1024 }] })) })
+  assert.equal(await capped.mainOutputTokens?.(), 1024)
   assert.equal(url, 'https://ledger.example/v1/models')
   const failed = make(async () => { throw new Error('offline') })
-  assert.equal(await failed.mainOutputTokens?.(), 9000)
+  assert.equal(await failed.mainOutputTokens?.(), 2048)
 })
