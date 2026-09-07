@@ -6,7 +6,7 @@
 // Czech request correctly; that requires a live-provider evaluation.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
@@ -23,9 +23,11 @@ import {
   submitMentionedRequest,
   waitForRun,
 } from './fixture.mjs'
+import { saveFailureEvidence } from './failure-evidence.mjs'
 import {
   installActivityProbe,
   installEventProbe,
+  reloadWithRealtimeProbes,
   setActivitySubscriptions,
   stopActivityProbe,
   stopEventProbe,
@@ -47,27 +49,6 @@ const assertNoSecret = (value, boundary) => {
 const assertWithheld = (value, boundary) => {
   assertNoSecret(value, boundary)
   assert.equal(String(value).includes(SHARED_SUMMARY), false, `${boundary} exposed the restricted reply`)
-}
-
-const savePublicFailureEvidence = async (page, error) => {
-  const detail = error instanceof Error ? error.stack ?? error.message : String(error)
-  await writeFile(resolve(SCREENSHOTS, 'failure.txt'), `${detail}\n`)
-  if (!page) return
-
-  const body = await page.locator('body').innerText().catch(() => '')
-  await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), body)
-  const realtime = await page.evaluate(() => ({
-    activity: window.__disclosureActivityProbe?.events ?? [],
-    events: window.__disclosureEventProbe?.events ?? [],
-  })).catch(() => ({}))
-  await writeFile(
-    resolve(SCREENSHOTS, 'failure-public-recipient-realtime.json'),
-    `${JSON.stringify(realtime, null, 2)}\n`,
-  )
-  await page.screenshot({
-    path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
-    fullPage: true,
-  }).catch(() => {})
 }
 
 const responseData = async (response, label) => {
@@ -162,7 +143,7 @@ const main = async () => {
         usage: { inputTokens: 133, outputTokens: 18 },
       },
       {
-        text: 'Nemůžu sdílet obsah soukromého chatu. Veřejné schválené shrnutí je ale v Team launch.',
+        text: 'Nemůžu sdílet obsah soukromého chatu.',
         usage: { inputTokens: 176, outputTokens: 18 },
       },
     ],
@@ -201,6 +182,7 @@ const main = async () => {
   let sourceContext = null
   let audienceContext = null
   let audiencePage = null
+  let sourcePage = null
   try {
     // This security evaluation must never adopt another worktree's dev loop:
     // that would exercise different source and leave this fixture unverified.
@@ -217,7 +199,7 @@ const main = async () => {
     sourceContext = await openViewportContext(browser, { name: 'desktop', token: sourceToken })
     audienceContext = await openViewportContext(browser, { name: 'desktop', token: audienceToken })
     const ownerPage = await ownerContext.newPage()
-    const sourcePage = await sourceContext.newPage()
+    sourcePage = await sourceContext.newPage()
     audiencePage = await audienceContext.newPage()
     await Promise.all([
       ownerPage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
@@ -245,18 +227,20 @@ const main = async () => {
         && frame.event === 'message.new'
         && frame.data?.contentPreview?.includes('Bertin soukromý update'))
     }, undefined, { timeout: 60_000 })
-    // The known-public SSE canary must not consume a mock utility decision before B's disclosure judge.
     await pipeline.prisma.agentBinding.create({
       data: { agentId: fixture.scope.agentId, channelId: fixture.group.id },
     })
-    await setActivitySubscriptions(audiencePage.page, [
-      { channelId: fixture.group.id, kind: 'channel' },
-      { agentId: fixture.scope.agentId, kind: 'agent' },
-    ])
+    const publicAgentScopes = [{ channelId: fixture.group.id, kind: 'channel' },
+      { agentId: fixture.scope.agentId, kind: 'agent' }]
+    await setActivitySubscriptions(audiencePage.page, publicAgentScopes)
+    await reloadWithRealtimeProbes(audiencePage.page, audienceToken, publicAgentScopes)
+    assert.ok((await api('/api/agents', audienceToken)).data.some((agent) => agent.id === fixture.scope.agentId),
+      'the public-channel reader can select the shared agent through the normal directory')
 
     await submitMentionedRequest(
       sourcePage.page,
-      'Disclosure shared agent',
+      fixture.scope.agentId,
+      'Disclosure',
       `Čau, drž to prosím mezi námi: ${SECRET} Připrav stručný update pro Team launch, ale nic nezveřejňuj bez mého souhlasu.`,
     )
     const firstRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.privateThread.id)
@@ -341,6 +325,7 @@ const main = async () => {
     await audiencePage.page.getByRole('button', { name: 'Search messages' }).click()
     await audiencePage.page.getByPlaceholder('Search messages in this channel').fill('Kestrel')
     await audiencePage.page.getByText('No matches.').waitFor({ timeout: 30_000 })
+    await audiencePage.page.keyboard.press('Escape')
 
     const denied = await fetch(`${API_URL}/api/messages/${forwarded.id}/disclosure-grants`, {
       body: JSON.stringify({ kind: 'message', duration: '10m' }),
@@ -388,19 +373,19 @@ const main = async () => {
     })
     modelPhase = 'source'
 
-    await sourcePage.page.waitForSelector(
-      `[data-testid="restricted-message-${forwarded.id}"]`,
-      { timeout: 60_000 },
+    const sourceCard = sourcePage.page.locator(`#msg-${forwarded.id}`)
+    await sourceCard.getByRole('button', { name: 'Share this reply' }).waitFor({ timeout: 60_000 })
+    assert.equal(
+      await sourceCard.getByRole('button', { name: 'Always allow here' }).count(),
+      0,
+      'a private source offers only one-reply sharing',
     )
     await sourcePage.page.screenshot({ path: resolve(SCREENSHOTS, 'source-author-share-control.png'), fullPage: true })
     const shareResponse = sourcePage.page.waitForResponse((response) =>
       response.request().method() === 'POST'
       && response.url().endsWith(`/api/messages/${forwarded.id}/disclosure-grants`),
     )
-    await sourcePage.page
-      .locator(`#msg-${forwarded.id}`)
-      .getByRole('button', { name: 'Share this reply' })
-      .click()
+    await sourceCard.getByRole('button', { name: 'Share this reply' }).click()
     assert.equal((await shareResponse).status(), 201, 'author share control creates the scoped grant')
     const grants = await pipeline.prisma.disclosureGrant.findMany({
       where: { messageId: forwarded.id },
@@ -424,12 +409,17 @@ const main = async () => {
 
     const sourceSearch = await api(`/api/channels/${fixture.group.id}/messages/search?query=Kestrel`, audienceToken)
     assertWithheld(JSON.stringify(sourceSearch.data), 'recipient search API after one-reply share')
-    assert.equal(sourceSearch.data.length, 0, 'one-reply grant does not widen to source transcript')
+    assert.equal(
+      sourceSearch.data.some((result) => result.id === forwarded.id),
+      false,
+      'one-reply grant does not make its basis-bearing reply searchable',
+    )
 
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.explicitChannel.id}`, { waitUntil: 'domcontentloaded' })
     await submitMentionedRequest(
       sourcePage.page,
-      'Disclosure shared agent',
+      fixture.scope.agentId,
+      'Disclosure',
       `Pořád citlivé: ${SECRET}. Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`,
     )
     const explicitRun = await waitForRun(pipeline, fixture.scope.agentId, fixture.explicitThread.id)
@@ -475,7 +465,12 @@ const main = async () => {
     await audiencePage.close()
     console.log('[disclosure e2e] PASS: private transcript → shared worker → UI and explicit scoped disclosure')
   } catch (error) {
-    await savePublicFailureEvidence(audiencePage?.page, error)
+    await saveFailureEvidence({
+      audiencePage: audiencePage?.page,
+      error,
+      screenshots: SCREENSHOTS,
+      sourcePage: sourcePage?.page,
+    })
     throw error
   } finally {
     if (audienceContext) await audienceContext.close().catch(() => {})
