@@ -352,6 +352,18 @@ variable "storage_endpoint" {
   default     = "https://storage.googleapis.com"
 }
 
+variable "storage_public_endpoint" {
+  description = "NESSIE_STORAGE_PUBLIC_ENDPOINT. The store's address as a BROWSER sees it, and the single switch for signed-URL downloads (plan row 5.7): above storage.signedDownloadMinBytes the API answers 302 instead of proxying the bytes. Distinct from storage_endpoint, which is where the services reach the store; on GCS interop the two are the same address, which is exactly why this must still be stated rather than inferred. Empty proxies every download, as the API always did. Setting it also opens CORS on the bucket for cors_origins, because the admin follows the redirect from fetch()."
+  type        = string
+  default     = "https://storage.googleapis.com"
+}
+
+variable "storage_signed_download_min_bytes" {
+  description = "NESSIE_STORAGE_SIGNED_DOWNLOAD_MIN_BYTES. The size at which a download stops being proxied. Default 8 MiB: the budget is the drain, not the request timeout, and Cloud Run's SIGTERM-to-SIGKILL grace is a fixed 10 s (see shutdown_timeout_ms)."
+  type        = number
+  default     = 8388608
+}
+
 variable "storage_force_path_style" {
   description = "NESSIE_STORAGE_FORCE_PATH_STYLE. GCS's XML API serves storage.googleapis.com/<bucket>/<object>, so path style is required."
   type        = bool

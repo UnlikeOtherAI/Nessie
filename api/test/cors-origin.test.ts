@@ -21,6 +21,7 @@ const dbStub = [
   '  pruneRateLimitWindows,',
   '  rateLimitKeyHash,',
   '  rateLimitWindowStart,',
+  '  summarizeRateLimitWindows,',
   '  takeRateLimitSlot,',
   `} from ${JSON.stringify(dbRateLimitUrl)}`,
   'export const disconnectPrismaClient = async () => {}',

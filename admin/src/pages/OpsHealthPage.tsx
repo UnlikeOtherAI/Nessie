@@ -31,6 +31,32 @@ type OpsHealth = {
     count: number
     recent: Array<{ id: string; subject: string | null; attempts: number; createdAt: string }>
   }
+  // Optional on purpose. A blue-green swap serves both builds at once, so a
+  // page loaded against a new replica can be refetched from an old one that
+  // has never heard of this block; reading it unguarded would blank the screen
+  // for the minutes the swap takes.
+  rateLimit?: {
+    deploymentWide: {
+      available: boolean
+      buckets: Array<{
+        bucket: string
+        limit: number
+        windowMs: number
+        identities: number
+        hits: number
+        maxCount: number
+        limitedIdentities: number
+        windowStartedAt: string
+      }>
+    }
+    thisInstance: {
+      bootedAt: string
+      checks: number
+      limited: number
+      storeErrors: number
+      limitedByBucket: Record<string, number>
+    }
+  }
 }
 
 const WORKER_TONE: Record<WorkerHealthStatus, PillTone> = {
@@ -157,6 +183,58 @@ export const OpsHealthPage = () => {
                     <div className="py-6 text-center text-[color:var(--tx3)]">No dead-letter messages</div>
                   )}
                 </div>
+
+                {/* Two limiter blocks, never merged into one grid: the first is
+                    read from the shared counter rows and is true for every
+                    replica, the second is this API process's own tally. A
+                    reader who cannot tell them apart reads a fleet number as
+                    one instance's share of it, or the reverse. */}
+                <SectionLabel className="mt-5">Rate limiting (deployment-wide)</SectionLabel>
+                <p className="mt-1 text-xs text-[color:var(--tx3)]">
+                  The current window of every limiter that is counting, summed across all
+                  API instances.
+                </p>
+                {data?.rateLimit && !data.rateLimit.deploymentWide.available && (
+                  <div className="admin-card mt-2 p-3 text-sm text-[color:var(--tx2)]">
+                    Unavailable — the limiter counters could not be read.
+                  </div>
+                )}
+                {data?.rateLimit?.deploymentWide.available && (
+                  <div className="mt-2 grid gap-2">
+                    {data.rateLimit.deploymentWide.buckets.map((entry) => (
+                      <div key={entry.bucket} className="admin-card flex items-center justify-between gap-2 p-3">
+                        <span className="font-mono text-sm text-[color:var(--tx)]">{entry.bucket}</span>
+                        <span className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
+                          {entry.identities} in window · busiest {entry.maxCount}/{entry.limit}
+                          {entry.limitedIdentities > 0 && (
+                            <Pill tone="danger">{entry.limitedIdentities} locked out</Pill>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    {data.rateLimit.deploymentWide.buckets.length === 0 && (
+                      <div className="py-6 text-center text-[color:var(--tx3)]">
+                        No limiter is counting in its current window
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <SectionLabel className="mt-5">Rate limiting (this API instance)</SectionLabel>
+                <p className="mt-1 text-xs text-[color:var(--tx3)]">
+                  This process only, since it booted — one replica&apos;s share, not a fleet
+                  total. Store errors are the exception with no fleet-wide equivalent: a
+                  hit that never reached the database left no row to count.
+                </p>
+                <StatGrid className="mt-2 sm:grid-cols-3">
+                  <StatTile label="Checks" value={data?.rateLimit?.thisInstance.checks ?? 0} />
+                  <StatTile label="Limited" value={data?.rateLimit?.thisInstance.limited ?? 0} />
+                  <StatTile
+                    label="Store errors"
+                    tone={(data?.rateLimit?.thisInstance.storeErrors ?? 0) > 0 ? 'danger' : 'default'}
+                    value={data?.rateLimit?.thisInstance.storeErrors ?? 0}
+                  />
+                </StatGrid>
               </>
             )}
           </QueryState>

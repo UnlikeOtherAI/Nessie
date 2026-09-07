@@ -26,6 +26,31 @@ export type Storage = {
   put(key: string, bytes: Buffer, mime: string): Promise<void>
   get(key: string): Promise<Buffer | null>
   delete(key: string): Promise<void>
+  /**
+   * A URL that fetches this one object directly from the store, bypassing the
+   * API for the life of the signature.
+   *
+   * **Optional on purpose.** A backend that cannot mint one — `filesystem`,
+   * which has no addressable object at all, and `s3` on a deployment that has
+   * not declared a client-reachable `publicEndpoint` — simply does not
+   * implement it, and every caller falls back to proxying the bytes. There is
+   * no failure mode here: an absent method is the same download over a
+   * different route, so the capability can never be a precondition.
+   */
+  signedDownloadUrl?(key: string, request: SignedDownloadRequest): Promise<string>
+}
+
+/**
+ * What the signature is allowed to fetch and how the store must answer it.
+ * `mime` and `disposition` are pinned INTO the signature so the object cannot
+ * be re-served under a type or a filename the API did not choose — the proxy
+ * path sets exactly the same two headers.
+ */
+export type SignedDownloadRequest = {
+  expiresInSeconds: number
+  filename: string
+  mime: string
+  disposition: 'attachment' | 'inline'
 }
 
 export type StorageConfig = {
@@ -38,6 +63,13 @@ export type StorageConfig = {
   forcePathStyle?: boolean
   accessKeyId?: string
   secretAccessKey?: string
+  /**
+   * The store's address as a *client* sees it. Separate from `endpoint`, which
+   * is the address this process reaches the store on, and the switch that
+   * decides whether `signedDownloadUrl` exists at all. See the field's comment
+   * in `packages/config/src/index.ts` for what setting it asserts.
+   */
+  publicEndpoint?: string
 }
 
 /** A pass-through Transform that tallies the bytes flowing through it. */

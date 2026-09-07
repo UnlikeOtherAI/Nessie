@@ -40,7 +40,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/client-s3": "^3.1124.0",
     "@aws-sdk/client-sesv2": "^3.1124.0",
     "@aws-sdk/client-sns": "^3.1124.0",
     "mailparser": "^3.9.20"

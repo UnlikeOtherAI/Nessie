@@ -252,6 +252,7 @@ export const startWorker = async (
     prisma,
     storage: getStorage(config.storage),
     maxUploadBytes: config.storage.maxUploadBytes,
+    signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
   // The shared model client (orchestrator engagement, memory capture/search/
   // consolidation) bills through the same token ledger as the agentic loop when

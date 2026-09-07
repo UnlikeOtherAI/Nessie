@@ -4,6 +4,8 @@ import type { Attachment } from '@prisma/client'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { ATTACHMENT_THUMBNAIL_TOPIC, detectSecrets, MESSAGE_UPLOAD_MAX_BYTES } from '@nessie/schemas'
 import {
+  type AttachmentDownload,
+  attachmentDisposition,
   attributionFromActorContext,
   FileTooLargeError,
   isThumbnailableMime,
@@ -23,13 +25,6 @@ import type { RouteDeps } from './types.js'
 // limit is the (much larger) configured max — large files belong in the KB.
 // Shared with the admin composer's pre-flight check via @nessie/schemas.
 const MESSAGE_UPLOAD_BYTES = MESSAGE_UPLOAD_MAX_BYTES
-
-const INLINE_DISPOSITION_MIMES = new Set(['application/pdf'])
-
-// image/svg+xml is an active-content type (it can carry <script>), so it must
-// never be served inline — only raster images and PDFs preview in-browser.
-const isInlineMime = (mime: string): boolean =>
-  (mime.startsWith('image/') && mime !== 'image/svg+xml') || INLINE_DISPOSITION_MIMES.has(mime)
 
 // Attachment bytes are immutable: an id is minted per stored object and its
 // content never changes (an "edit" is a fresh upload with a fresh id). So the
@@ -65,34 +60,55 @@ export type AttachmentTransferUsage = {
   source: string
 }
 
-// Set download headers (inline preview for images/PDFs, attachment otherwise)
-// and pipe the object stream. Shared by every attachment download route so the
-// disposition/length/caching/accounting behaviour stays identical. Returns a
-// 304 without transferring (or metering) when the client already holds these
-// exact bytes.
-export const streamAttachmentDownload = (
+// Answer one attachment download. Shared by every download route so the
+// disposition/length/caching/accounting behaviour stays identical, and so the
+// choice between proxying the bytes and redirecting to a signed URL is made in
+// exactly one place. Returns a 304 without transferring (or metering) when the
+// client already holds these exact bytes; on that path a signed URL may have
+// been computed upstream and is simply dropped, which costs nothing — signing
+// is a local HMAC with no round trip — and hands the client nothing.
+export const sendAttachmentDownload = (
   request: FastifyRequest,
   reply: FastifyReply,
-  opened: { stream: Readable; attachment: Attachment },
+  download: AttachmentDownload,
   usage: AttachmentTransferUsage,
 ): FastifyReply => {
-  const { attachment, stream } = opened
+  const { attachment } = download
   const etag = attachmentETag(attachment)
-  reply.header('cache-control', ATTACHMENT_CACHE_CONTROL)
   reply.header('etag', etag)
   reply.header('last-modified', attachment.createdAt.toUTCString())
   if (matchesETag(request.headers['if-none-match'], etag)) {
-    stream.destroy()
+    if (download.kind === 'stream') {
+      download.stream.destroy()
+    }
+    reply.header('cache-control', ATTACHMENT_CACHE_CONTROL)
     return reply.code(304).send()
   }
+  // Metered on both arms and for the same bytes: a redirected transfer is still
+  // this tenant's egress, and dropping it would make the ledger read as though
+  // large files were free. `delivery` records which route carried them.
   void recordStorageTransferUsage(usage.prisma, {
     attribution: usage.attribution,
     bytes: Number(attachment.sizeBytes),
     latencyMs: Date.now() - usage.startedAt,
-    metadata: { attachmentId: attachment.id, source: usage.source },
+    metadata: {
+      attachmentId: attachment.id,
+      delivery: download.kind === 'redirect' ? 'signed-url' : 'proxy',
+      source: usage.source,
+    },
     operation: 'download',
   }).catch(() => undefined)
-  const disposition = isInlineMime(attachment.mime) ? 'inline' : 'attachment'
+  if (download.kind === 'redirect') {
+    // The 302 carries a bearer capability in its query string, so it is not
+    // content and must not be treated as any: `no-store` keeps it out of every
+    // cache (the immutable year above would otherwise outlive the signature by
+    // a factor of half a million), and `no-referrer` keeps the URL out of the
+    // Referer header of anything the fetched document goes on to load.
+    reply.header('cache-control', 'private, no-store')
+    reply.header('referrer-policy', 'no-referrer')
+    return reply.redirect(download.url, 302)
+  }
+  reply.header('cache-control', ATTACHMENT_CACHE_CONTROL)
   reply.header('content-type', attachment.mime)
   reply.header('content-length', attachment.sizeBytes.toString())
   // Never let the browser sniff a download into active content.
@@ -104,9 +120,10 @@ export const streamAttachmentDownload = (
   reply.header('content-security-policy', "default-src 'none'; sandbox")
   reply.header(
     'content-disposition',
-    `${disposition}; filename="${attachment.filename.replace(/"/g, '')}"`,
+    `${attachmentDisposition(attachment.mime)}; `
+    + `filename="${attachment.filename.replace(/"/g, '')}"`,
   )
-  return reply.send(stream)
+  return reply.send(download.stream)
 }
 
 // Ask the worker for a preview of what the store chokepoint could not produce
@@ -276,13 +293,15 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const opened = await fileService.openStream(id, actorContext.tenant.organizationId)
-    if (!opened) {
+    // Only now, past the ACL above, does the FileService decide how the bytes
+    // travel — and only then can a signed URL exist for them.
+    const download = await fileService.openDownload(id, actorContext.tenant.organizationId)
+    if (!download) {
       sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'Attachment bytes not found')
       return reply
     }
 
-    return streamAttachmentDownload(request, reply, opened, {
+    return sendAttachmentDownload(request, reply, download, {
       attribution: attributionFromActorContext(actorContext),
       prisma,
       source: 'api.attachments',
@@ -316,6 +335,9 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
+    // Always proxied, and deliberately so: a thumbnail is a few tens of KB by
+    // construction, which is three orders of magnitude below the threshold a
+    // signed URL exists for.
     const opened = await fileService.openThumbnailStream(
       id,
       actorContext.tenant.organizationId,
@@ -325,7 +347,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    return streamAttachmentDownload(request, reply, opened, {
+    return sendAttachmentDownload(request, reply, { kind: 'stream', ...opened }, {
       attribution: attributionFromActorContext(actorContext),
       prisma,
       source: 'api.attachments.thumbnail',

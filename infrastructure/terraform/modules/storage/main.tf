@@ -34,9 +34,25 @@ resource "google_storage_bucket" "attachments" {
     retention_duration_seconds = var.soft_delete_retention_days * 24 * 60 * 60
   }
 
-  # Attachments are served through the API, never from a browser origin
-  # directly, so no CORS rule is configured. Adding one is what the signed-URL
-  # redirect for large downloads would need.
+  # Downloads above storage.signedDownloadMinBytes are answered by the API as a
+  # 302 to a signed URL on this bucket, so the browser's next request is a
+  # cross-origin GET the admin makes from `fetch()` — without CORS it fails
+  # before a byte moves. Read methods only: the signed URL grants a GET, and a
+  # bucket that also advertised PUT to a browser origin would be advertising
+  # more than the capability the API hands out. `dynamic`, because a deployment
+  # that leaves NESSIE_STORAGE_PUBLIC_ENDPOINT unset proxies every download and
+  # has no reason to expose the bucket to any origin at all.
+  dynamic "cors" {
+    for_each = length(var.cors_origins) > 0 ? [1] : []
+
+    content {
+      origin          = var.cors_origins
+      method          = ["GET", "HEAD"]
+      response_header = ["Content-Type", "Content-Disposition", "Content-Length", "ETag"]
+      max_age_seconds = 3600
+    }
+  }
+
   lifecycle_rule {
     condition {
       num_newer_versions = 3

@@ -9,6 +9,21 @@ import {
   storeBlobUrl,
 } from './blob-cache'
 
+/**
+ * **Every download helper below must follow redirects, and none may set
+ * `redirect: 'manual'`.**
+ *
+ * A download past `storage.signedDownloadMinBytes` is answered by the API as a
+ * `302` to a short-lived signed URL on the object store, so the API stops being
+ * the pipe for a multi-GiB transfer (docs/standards/horizontal-scaling/overview.md
+ * invariant 7). `fetch` follows that by default and drops the `Authorization`
+ * header on the cross-origin hop, which is what we want — but it means the
+ * store's response has to carry an `Access-Control-Allow-Origin` covering this
+ * origin. That is the deployment's side of the bargain, asserted by setting
+ * `NESSIE_STORAGE_PUBLIC_ENDPOINT` at all; a deployment that has not set it
+ * proxies every download and none of this applies.
+ */
+
 export type AttachmentRecord = {
   id: string
   organizationId: string
