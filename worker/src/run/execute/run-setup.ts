@@ -160,16 +160,22 @@ export const prepareRunExecution = async (
   const projectDelegation = context.agent.agentKind === 'shared'
     && context.channel.projectId !== null
     && payload.actorContext.actor.actorType === 'user'
-    && (payload.interactive === true
-      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation')
+    && (
+      payload.interactive === true
+      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation'
+    )
     && (await deps.prisma.agentBinding.count({
       where: { agentId: context.agent.id, channelId: context.channel.id },
     })) > 0
   const projectDelegatedToolIds = new Set(
     projectDelegation
       ? BUILTIN_TOOL_DEFINITIONS
-        .filter((tool) => PEER_PROJECT_TOOL_IDS.has(tool.id)
-          && tool.projectDelegatedOnly && toolPolicy?.[tool.id] === true)
+        .filter(
+          (tool) =>
+            PEER_PROJECT_TOOL_IDS.has(tool.id)
+            && tool.projectDelegatedOnly
+            && toolPolicy?.[tool.id] === true,
+        )
         .map((tool) => tool.id)
       : [],
   )
