@@ -30,6 +30,11 @@ const assertNoSecret = (value, boundary) => {
   )
 }
 
+const assertWithheld = (value, boundary) => {
+  assertNoSecret(value, boundary)
+  assert.equal(String(value).includes(SHARED_SUMMARY), false, `${boundary} exposed the restricted reply`)
+}
+
 const responseData = async (response, label) => {
   const text = await response.text()
   assert.ok(response.ok, `${label} failed with ${response.status}: ${text}`)
@@ -170,6 +175,7 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
         { channelId: group.id, role: 'manager', userId: agentOwner.id },
         { channelId: group.id, role: 'member', userId: sourceAuthor.id },
         { channelId: group.id, role: 'member', userId: audience.id },
+        { channelId: privateChannel.id, role: 'member', userId: agentOwner.id },
         { channelId: privateChannel.id, role: 'manager', userId: sourceAuthor.id },
       ],
     }),
@@ -185,6 +191,15 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
     }),
     prisma.agentBinding.create({
       data: { agentId: scope.agentId, channelId: privateChannel.id },
+    }),
+    prisma.toolRegistryEntry.upsert({
+      where: { organizationId_scopeKey_toolId: { organizationId: scope.organizationId, scopeKey: 'builtin', toolId: 'send_message' } },
+      create: {
+        builtin: true, description: 'Send a message to a channel.', enabled: true,
+        handlerKind: 'builtin', label: 'Send message', organizationId: scope.organizationId,
+        overview: 'Send a message to a channel.', safe: false, scopeKey: 'builtin', toolId: 'send_message',
+      },
+      update: { builtin: true, enabled: true },
     }),
   ])
 
@@ -209,18 +224,39 @@ const seedFixture = async (pipeline, seedScope, seedRun, groupId) => {
     prisma,
     { ...scope, channelId: privateChannel.id },
     'Můžeš poslat stručný update do Team launch?',
-    { actorUserId: sourceAuthor.id, replyPlacement: 'channel', threadId: privateThread.id },
+    { actorUserId: agentOwner.id, replyPlacement: 'channel', threadId: privateThread.id },
   )
   return {
     agentOwner,
     group,
     groupThread,
+    privateChannel,
     privateThread,
     audience: { id: audience.id, role: 'member' },
     run,
     scope,
     sourceAuthor: { id: sourceAuthor.id, role: 'member' },
   }
+}
+
+const seedExplicitDisclosureRun = async (pipeline, fixture, seedRun) => {
+  const thread = await pipeline.prisma.thread.create({
+    data: { channelId: fixture.privateChannel.id, title: 'Explicit source chat' },
+  })
+  await pipeline.prisma.message.create({
+    data: {
+      content: `Hele, pořád je to citlivý: ${SECRET}`,
+      role: 'user',
+      threadId: thread.id,
+      userId: fixture.sourceAuthor.id,
+    },
+  })
+  return seedRun(
+    pipeline.prisma,
+    { ...fixture.scope, channelId: fixture.privateChannel.id },
+    `Prosím pošli přesně „${SHARED_SUMMARY}“ do Team launch. Jo, fakt to tam chci hodit, diky!`,
+    { actorUserId: fixture.sourceAuthor.id, replyPlacement: 'channel', threadId: thread.id },
+  )
 }
 
 const main = async () => {
@@ -256,7 +292,7 @@ const main = async () => {
         usage: { inputTokens: 133, outputTokens: 12 },
       },
     ],
-    utility: { text: '{"share":false}' },
+    utility: { text: '{"share":true}' },
   })
   const model = await createMockLlmServer({ scenario })
   // `worker/src/run/agent-loop.ts` reads model configuration at import time.
@@ -270,6 +306,7 @@ const main = async () => {
   const ownerToken = tokenFor(issueSessionToken, fixture.agentOwner, fixture.scope)
   const sourceToken = tokenFor(issueSessionToken, fixture.sourceAuthor, fixture.scope)
   const audienceToken = tokenFor(issueSessionToken, fixture.audience, fixture.scope)
+  const runIds = [fixture.run.runId]
 
   let apiServer = null
   let adminServer = null
@@ -306,7 +343,7 @@ const main = async () => {
     assert.equal(
       await pipeline.prisma.disclosureGrant.count({ where: { messageId: forwarded.id } }),
       0,
-      'a private request without explicit disclosure produces no grant',
+      'an agent owner cannot auto-share a different author’s private source',
     )
 
     await audiencePage.page.waitForFunction((messageId) => {
@@ -314,7 +351,7 @@ const main = async () => {
       return card?.textContent?.includes('isn’t shown') ?? false
     }, forwarded.id, { timeout: 60_000 })
     const recipientBody = await audiencePage.page.locator('body').innerText()
-    assertNoSecret(recipientBody, 'recipient transcript UI')
+    assertWithheld(recipientBody, 'recipient transcript UI')
     assert.equal(recipientBody.includes(SHARED_SUMMARY), false, 'recipient sees no forwarded summary before consent')
     await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'before-source-author-share.png'), fullPage: true })
 
@@ -325,7 +362,7 @@ const main = async () => {
         && frame.data?.message?.restricted === true)
     }, forwarded.id, { timeout: 60_000 })
     const realtime = await audiencePage.page.evaluate(() => window.__disclosureEventProbe?.events ?? [])
-    assertNoSecret(JSON.stringify(realtime), 'recipient realtime frame')
+    assertWithheld(JSON.stringify(realtime), 'recipient realtime frame')
 
     await audiencePage.page.getByRole('button', { name: 'Search messages' }).click()
     await audiencePage.page.getByPlaceholder('Search messages in this channel').fill('Kestrel')
@@ -353,7 +390,7 @@ const main = async () => {
       ]) {
         const response = await fetch(`${API_URL}${path}`, { headers: { authorization: `Bearer ${token}` } })
         assert.ok(response.status < 500, `${label} read route responds safely: ${path}`)
-        assertNoSecret(await response.text(), `${label} ${path}`)
+        assertWithheld(await response.text(), `${label} ${path}`)
       }
     }
 
@@ -375,13 +412,49 @@ const main = async () => {
     await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-source-author-share.png'), fullPage: true })
 
     const sourceSearch = await api(`/api/channels/${fixture.group.id}/messages/search?query=Kestrel`, audienceToken)
-    assertNoSecret(JSON.stringify(sourceSearch.data), 'recipient search API after one-reply share')
+    assertWithheld(JSON.stringify(sourceSearch.data), 'recipient search API after one-reply share')
     assert.equal(sourceSearch.data.length, 0, 'one-reply grant does not widen to source transcript')
+
+    const explicitRun = await seedExplicitDisclosureRun(pipeline, fixture, seedRun)
+    runIds.push(explicitRun.runId)
+    await pipeline.enqueueRun(explicitRun.payload)
+    const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.runId], 60_000)
+    assert.equal(explicitTerminal.get(explicitRun.runId), 'completed', 'author’s explicit private request completes')
+    const automaticallyShared = await pipeline.prisma.message.findFirstOrThrow({
+      where: { metadata: { path: ['delegatedFromRunId'], equals: explicitRun.runId }, threadId: fixture.groupThread.id },
+      select: { id: true },
+    })
+    const automaticGrant = await pipeline.prisma.disclosureGrant.findMany({
+      where: { messageId: automaticallyShared.id },
+      select: { audienceId: true, audienceKind: true, grantedByUserId: true },
+    })
+    assert.deepEqual(automaticGrant, [{
+      audienceId: fixture.group.id,
+      audienceKind: 'channel',
+      grantedByUserId: fixture.sourceAuthor.id,
+    }], 'B’s explicit request auto-grants only the exact group reply')
+    assert.equal(
+      await pipeline.prisma.scopeDisclosureGrant.count({ where: { agentId: fixture.scope.agentId } }),
+      0,
+      'the explicit request creates no standing disclosure grant',
+    )
+    await audiencePage.page.reload({ waitUntil: 'domcontentloaded' })
+    await audiencePage.page.waitForFunction(({ messageId, summary }) => {
+      const row = document.querySelector(`#msg-${messageId}`)
+      return row?.textContent?.includes(summary) ?? false
+    }, { messageId: automaticallyShared.id, summary: SHARED_SUMMARY }, { timeout: 60_000 })
+    await sourcePage.page.reload({ waitUntil: 'domcontentloaded' })
+    assert.equal(
+      await sourcePage.page.locator(`#msg-${automaticallyShared.id}`).getByRole('button', { name: 'Share this reply' }).count(),
+      0,
+      'an explicit author request needs no redundant share click',
+    )
+    await audiencePage.page.screenshot({ path: resolve(SCREENSHOTS, 'after-explicit-author-share.png'), fullPage: true })
 
     await stopEventProbe(audiencePage.page)
     await sourcePage.close()
     await audiencePage.close()
-    console.log('[disclosure e2e] PASS: private transcript → mocked worker → restricted group post → author UI share')
+    console.log('[disclosure e2e] PASS: private transcript → shared worker → UI and explicit scoped disclosure')
   } finally {
     if (audienceContext) await audienceContext.close().catch(() => {})
     if (sourceContext) await sourceContext.close().catch(() => {})
@@ -389,7 +462,7 @@ const main = async () => {
     if (adminServer) await stopProcess(adminServer)
     if (apiServer) await stopProcess(apiServer)
     await pipeline.prisma.user.deleteMany({ where: { email: { startsWith: 'disclosure-' } } }).catch(() => {})
-    await cleanupScope(pipeline.prisma, pipeline.pool, fixture.scope, [fixture.run.runId]).catch(() => {})
+    await cleanupScope(pipeline.prisma, pipeline.pool, fixture.scope, runIds).catch(() => {})
     await pipeline.stop().catch(() => {})
     await model.close().catch(() => {})
   }

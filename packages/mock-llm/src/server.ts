@@ -32,6 +32,7 @@ type OpenAiRequestMessage = {
 type ChatCompletionBody = {
   messages?: OpenAiRequestMessage[]
   stream?: boolean
+  tools?: unknown[]
 }
 
 const sendJson = (response: ServerResponse, status: number, body: unknown): void => {
