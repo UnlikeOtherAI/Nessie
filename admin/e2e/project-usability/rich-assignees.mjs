@@ -180,6 +180,11 @@ export const exerciseRichBoardAssignees = async ({
     await listbox.waitFor()
     const remoteSearch = assigneeSearch(page)
     await remoteSearch.fill(REMOTE_NAME)
+    assert.equal(
+      await remoteSearch.evaluate((input) => document.activeElement === input),
+      true,
+      'a reopened search keeps focus before Enter',
+    )
     await remoteSearch.press('Enter')
     await selectedFilter(page)
     await listbox.waitFor({ state: 'hidden' })
