@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { GmailDraftCardView } from './GmailDraftCard'
 import { useGmailDraft, useSendGmailDraft } from '../../../facades/gmail/hooks'
+import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { Dialog } from '../../shared/Dialog'
 import { QueryState } from '../../shared/QueryState'
 import { ConnectedMailComposeDialog } from '../connected-mail/ConnectedMailComposeDialog'
@@ -194,6 +195,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   // rebuilt the storage key on every parent re-render.
   const doorway = useMemo(() => readMailSurfaceDoorway(metadata), [metadata])
   const navigate = useNavigate()
+  const layout = useNavigationLayout()
   const accounts = useConnectedMailAccounts(Boolean(doorway))
   const [open, setOpen] = useState(false)
   const [account, setAccount] = useState<ConnectedMailAccountRecord | null>(null)
@@ -334,13 +336,12 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
         />
       ) : (
         <Dialog
-          description="Mail access is checked when this opens."
           onClose={close}
           open={open}
-          size="xl"
+          size={layout === 'single' ? 'full' : 'xl'}
           title={title}
         >
-          <div className="min-h-0 p-4" data-testid="mail-surface-doorway-content">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" data-testid="mail-surface-doorway-content">
             {doorway.mode === 'thread' && conversation.data ? <ConnectedMailConversationView conversation={conversation.data} onReply={(message) => { close(); navigate(`${mailPath({ accountId: doorway.accountId, source: doorway.source })}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`) }} /> : null}
             {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} threadIds={doorway.threadIds} /> : null}
             {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
