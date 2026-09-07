@@ -1077,6 +1077,7 @@ model User {
   boardSourceConnections   BoardSourceConnection[]   @relation("BoardSourceConnectionOwner")
   boardSourceIdentityLinks BoardSourceIdentityLink[] @relation("BoardSourceIdentityLinkUser")
   boardWatchers            BoardWatcher[]            @relation("BoardWatcherUser")
+  browserPersonalAccessGrants BrowserPersonalAccessGrant[] @relation("BrowserPersonalAccessGrantUser")
 
   @@map("users")
 }
@@ -1345,6 +1346,8 @@ model Organization {
   scopedSettings          ScopedSetting[]
   cloudBrowserSessions    CloudBrowserSession[]
   agentBrowsers           AgentBrowser[]
+  browserCookieImports    BrowserCookieImport[]
+  browserPersonalAccessGrants BrowserPersonalAccessGrant[]
   agentBrowserTabs        AgentBrowserTab[]
   agentBrowserLogins      AgentBrowserLogin[]
 
@@ -1500,6 +1503,8 @@ model OrganizationMember {
   agentBrowsers      AgentBrowser[]      @relation("AgentBrowserPrincipal")
   /// Personal SMTP/IMAP mailboxes. Tenancy only, exactly as `ownedAgents`.
   mailboxConnections      MailboxConnection[]      @relation("MailboxConnectionOwner")
+  browserCookieImports    BrowserCookieImport[]    @relation("BrowserCookieImportActor")
+  browserPersonalAccessGrants BrowserPersonalAccessGrant[] @relation("BrowserPersonalAccessGrantMember")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -2100,6 +2105,8 @@ model Thread {
   agentCards AgentCard[]
 
   cloudBrowserSessions CloudBrowserSession[]
+  browserPersonalAccessGrants BrowserPersonalAccessGrant[]
+  browserCookieImports BrowserCookieImport[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -2755,6 +2762,8 @@ model Agent {
 
   cloudBrowserSessions     CloudBrowserSession[]
   agentBrowsers            AgentBrowser[]
+  browserCookieImports     BrowserCookieImport[]
+  browserPersonalAccessGrants BrowserPersonalAccessGrant[]
   sendAuthorizationGrants  SendAuthorizationGrant[]
   mailboxAccess            MailboxConnectionAgentAccess[]
   boardSourceIdentityLinks BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
@@ -2995,12 +3004,14 @@ model Run {
   resumedFromAgentCard AgentCard?  @relation("AgentCardResumedByRun")
 
   cloudBrowserSessions CloudBrowserSession[]
+  browserPersonalAccessGrants BrowserPersonalAccessGrant[]
 
   budgetReservation BudgetReservation?
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
+  @@unique([id, agentId, threadId])
   @@index([restartOfRunId])
   @@index([continuationOfRunId])
   @@map("runs")
@@ -4595,8 +4606,10 @@ model Executor {
   continuations          ExecutorContinuation[]
   daemonChallenges       ExecutorDaemonChallenge[]
   availabilityCandidates ExecutorAvailabilityCandidate[]
+  browserCookieImports   BrowserCookieImport[]
 
   @@index([organizationId, scopeKind, status])
+  @@unique([organizationId, id])
   @@index([projectId])
   @@index([pairingOwnerUserId])
   @@map("executors")
@@ -7667,6 +7680,11 @@ model CloudBrowserSession {
   controlledByUserId String?   @map("controlled_by_user_id") @db.Uuid
   controlClaimedAt   DateTime? @map("control_claimed_at")
 
+  /// A one-time private session can be sized without mutating an agent's
+  /// durable browser. NULL remains the shared laptop default for old rows.
+  viewportWidth      Int?      @map("viewport_width")
+  viewportHeight     Int?      @map("viewport_height")
+
   /// Hard TTL, mirrored into Browserbase's own session timeout so a dead
   /// worker cannot run a browser past it.
   expiresAt  DateTime  @map("expires_at")
@@ -7676,6 +7694,9 @@ model CloudBrowserSession {
   /// which writer released it, for diagnosing leaks.
   releasedBy String?   @map("released_by")
   lastError  String?   @map("last_error")
+  /// Legacy rows may have issued a provider viewer URL. Only sessions opened
+  /// after the mediated-input cutover can be controlled through Nessie.
+  interactionTransport CloudBrowserInteractionTransport @default(legacy) @map("interaction_transport")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -7686,6 +7707,7 @@ model CloudBrowserSession {
   thread       Thread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
   agentBrowser AgentBrowser?          @relation(fields: [agentBrowserId], references: [id], onDelete: SetNull)
+  personalAccessGrant BrowserPersonalAccessGrant? @relation("BrowserPersonalAccessGrantSession")
 
   @@index([organizationId, status])
   @@index([threadId, status])
@@ -7707,6 +7729,92 @@ enum AgentBrowserStatus {
   /// fails, so a transient error is retried on the next sweep rather than
   /// stranding the context forever.
   deleting
+}
+
+enum BrowserCookieImportState {
+  pending
+  importing
+  imported
+  failed
+  unknown
+  cancelled
+}
+
+enum BrowserPersonalAccessGrantStatus {
+  pending
+  active
+  revoked
+  expired
+}
+
+enum CloudBrowserInteractionTransport {
+  legacy
+  mediated
+}
+
+/// A one-task personal browser capability. It records scope and lifecycle
+/// facts only: Browserbase owns the ephemeral cookie state and Nessie never
+/// stores it. Origins, user, agent, run and thread are immutable after create.
+model BrowserPersonalAccessGrant {
+  id             String                          @id @default(uuid()) @db.Uuid
+  organizationId String                          @map("organization_id") @db.Uuid
+  userId         String                          @map("user_id") @db.Uuid
+  agentId        String                          @map("agent_id") @db.Uuid
+  runId          String                          @map("run_id") @db.Uuid
+  threadId       String                          @map("thread_id") @db.Uuid
+  origins        String[]
+  status         BrowserPersonalAccessGrantStatus @default(pending)
+  expiresAt      DateTime                        @map("expires_at")
+  sessionId      String?                         @unique @map("session_id") @db.Uuid
+  activatedAt    DateTime?                       @map("activated_at")
+  revokedAt      DateTime?                       @map("revoked_at")
+  createdAt      DateTime                        @default(now()) @map("created_at")
+  updatedAt      DateTime                        @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, map: "browser_personal_access_grants_organization_id_fkey")
+  user         User                 @relation("BrowserPersonalAccessGrantUser", fields: [userId], references: [id], onDelete: Cascade, map: "browser_personal_access_grants_user_id_fkey")
+  membership   OrganizationMember   @relation("BrowserPersonalAccessGrantMember", fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade, onUpdate: NoAction, map: "browser_personal_access_grants_member_fkey")
+  agent        Agent                @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction, map: "browser_personal_access_grants_agent_org_fkey")
+  run          Run                  @relation(fields: [runId, agentId, threadId], references: [id, agentId, threadId], onDelete: Cascade, onUpdate: Cascade, map: "browser_personal_access_grants_run_agent_thread_fkey")
+  thread       Thread               @relation(fields: [threadId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "browser_personal_access_grants_thread_id_fkey")
+  session      CloudBrowserSession? @relation("BrowserPersonalAccessGrantSession", fields: [sessionId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "browser_personal_access_grants_session_id_fkey")
+
+  @@index([organizationId, userId, status, expiresAt], map: "browser_personal_access_grants_org_user_status_expires_idx")
+  @@index([runId, status], map: "browser_personal_access_grants_run_status_idx")
+  @@map("browser_personal_access_grants")
+}
+
+/// A short-lived, one-use request to copy selected Chrome cookies into one
+/// person's existing private agent browser. Cookie values never enter this
+/// row: the dedicated upload route streams them directly to Browserbase.
+model BrowserCookieImport {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  actorId        String                   @map("actor_id") @db.Uuid
+  agentId        String                   @map("agent_id") @db.Uuid
+  /// The owner's private thread where this agent is reachable. This prevents
+  /// a system-managed agent's per-user jar being seeded from a shared channel.
+  threadId       String                   @map("thread_id") @db.Uuid
+  executorId     String                   @map("executor_id") @db.Uuid
+  origins        String[]
+  state          BrowserCookieImportState @default(pending)
+  expiresAt      DateTime                 @map("expires_at")
+  claimedAt      DateTime?                @map("claimed_at")
+  importedAt     DateTime?                @map("imported_at")
+  errorCode      String?                  @map("error_code")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorMembership OrganizationMember @relation("BrowserCookieImportActor", fields: [organizationId, actorId], references: [organizationId, userId], onDelete: Cascade, onUpdate: NoAction)
+  agent        Agent        @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+  thread       Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  executor     Executor     @relation(fields: [organizationId, executorId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([organizationId, actorId, state])
+  @@index([executorId, state, expiresAt])
+  @@index([threadId, state])
+  @@map("browser_cookie_imports")
 }
 
 /// One agent, one durable browser — its own machine. Created lazily on the

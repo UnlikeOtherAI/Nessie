@@ -18,7 +18,9 @@ export type CdpClient = {
   ) => Promise<Record<string, unknown>>
   /** The attached page session; null until `attachToPage` runs. */
   pageSessionId: () => string | null
-  attachToPage: () => Promise<string>
+  attachToPage: (targetId?: string) => Promise<string>
+  /** Focus and attach to an existing page target without exposing CDP ids to a provider URL. */
+  activatePage: (targetId: string) => Promise<void>
   targets: () => Promise<Array<{ targetId: string; type: string; title: string; url: string }>>
   close: () => void
   closed: Promise<void>
@@ -139,9 +141,11 @@ export const connectCdp = async (
     })
   }
 
-  const attachToPage: CdpClient['attachToPage'] = async () => {
+  const attachToPage: CdpClient['attachToPage'] = async (targetId) => {
     const pages = (await targets()).filter((target) => target.type === 'page')
-    const page = pages[0]
+    const page = targetId
+      ? pages.find((target) => target.targetId === targetId)
+      : pages[0]
     if (!page) {
       throw new CloudBrowserError(
         CLOUD_BROWSER_ERROR_CODES.COMMAND_FAILED,
@@ -168,11 +172,25 @@ export const connectCdp = async (
     await call('Accessibility.enable')
     return sessionId
   }
+  const activatePage: CdpClient['activatePage'] = async (targetId) => {
+    const target = (await targets()).find((candidate) =>
+      candidate.targetId === targetId && candidate.type === 'page',
+    )
+    if (!target) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.COMMAND_FAILED,
+        'That browser tab is no longer open.',
+      )
+    }
+    await call('Target.activateTarget', { targetId }, { sessionId: null })
+    await attachToPage(targetId)
+  }
 
   return {
     call,
     pageSessionId: () => attachedSessionId,
     attachToPage,
+    activatePage,
     targets,
     close: () => socket.close(),
     closed: socket.closed,

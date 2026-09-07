@@ -349,6 +349,7 @@ export const buildApp = async (
   // guard — a deploy without this store fails loud at startup.
   registerMcpRoutes(app, {
     prisma,
+    realtimeHub,
     config,
     rateLimiter,
     requireActorContext,
@@ -384,7 +385,10 @@ export const buildApp = async (
   // held for the body's duration, so they need the `pg` pool rather than the
   // Prisma client they write through — the hub's, not a fourth one on the
   // same URL (see the connection-ceiling note above).
-  const stopApiMaintenance = startApiMaintenance(prisma, realtimeHub.pool)
+  const stopApiMaintenance = startApiMaintenance(prisma, realtimeHub.pool, {
+    encryptionSecret: authSecret ?? '',
+    resolveSecret: (ref) => createMcpSecretResolver(prisma, authSecret ?? '').resolve(ref),
+  })
   app.addHook('onClose', () => {
     stopApiMaintenance()
   })

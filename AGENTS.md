@@ -423,6 +423,11 @@ before writing code here.
 
 Agents drive a real Chromium in the cloud (Browserbase) as well as the one the executor runs on a person's machine (phase 1 shipped 2026-09-02). The browser verbs are the executor's own closed grammar reused verbatim under their own `requiresExplicitGrant` key; connection scope follows the surface that accepted the key; and because browser-hours are money, release is fused to `updateRunStatus` while a reaper stops strays by calling Browserbase. Those invariants, their rationale and the as-built deltas (§5a) live in [docs/plans/2026-09-02-browserbase-cloud-browsers.md](docs/plans/2026-09-02-browserbase-cloud-browsers.md) — read it before touching this.
 
+Private browser access, human control, selected-site Chrome import, and their
+explicit grants are a separate contract: read
+[docs/plans/2026-09-07-private-browser-access-and-import.md](docs/plans/2026-09-07-private-browser-access-and-import.md)
+before touching those surfaces.
+
 ## Settings — one cascade, and a lock a person can see
 
 A setting that exists at more than one level resolves through `ScopedSetting`

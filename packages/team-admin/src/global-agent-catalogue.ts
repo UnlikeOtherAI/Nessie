@@ -5,6 +5,7 @@ import {
   AgentVisibilitySchema,
   type AgentModelOption,
 } from '@nessie/schemas'
+import { buildBrowserbaseSetupPrompt } from '@nessie/runtime'
 
 import type {
   AgentToolCatalog,
@@ -174,6 +175,21 @@ const neverSection = (): string[] => [
   ),
 ]
 
+const cloudBrowserSetupSection = (
+  writeSurface: GlobalAgentCatalogueFacts['writeSurface'],
+): string[] => [
+  ...(writeSurface === 'designer_form'
+    ? [bullet(
+        'This page cannot post a masked credential form. If Browserbase setup '
+        + 'is needed, explain it here and use Continue in chat to collect the key '
+        + 'through the Agent Designer conversation.',
+      )]
+    : []),
+  ...buildBrowserbaseSetupPrompt({ hasCardTool: writeSurface === 'agent_tools' })
+    .split('\n')
+    .map((line) => line === 'Cloud browser setup:' ? line : bullet(line)),
+]
+
 const modelSection = (models: AgentModelOption[] | null): string[] => {
   if (models === null) {
     return [
@@ -254,6 +270,8 @@ export const buildGlobalAgentCatalogueBlock = (
         ]
       : []),
     ...modelSection(facts.models),
+    '',
+    ...cloudBrowserSetupSection(facts.writeSurface),
     '',
     ...neverSection(),
     '',

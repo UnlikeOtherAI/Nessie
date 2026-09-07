@@ -263,7 +263,7 @@ runDatabaseTest('a resume reopens the same browser with no run, tabs restored, o
   }
 })
 
-runDatabaseTest('a signed-in browser is seen by its signers and its requester, nobody else', async () => {
+runDatabaseTest('a legacy shared browser with a human login is seen by nobody until reset', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma)
   try {
@@ -281,9 +281,9 @@ runDatabaseTest('a signed-in browser is seen by its signers and its requester, n
         browserbaseContextId: 'ctx-audience',
       },
     })
-    const { viewerMaySeeAgentBrowser } = await import('../src/agent-browser.js')
-    const see = (viewerId: string, requestedByUserId: string | null = null) =>
-      viewerMaySeeAgentBrowser(prisma, { agentBrowserId: browser.id, viewerId, requestedByUserId })
+    const { viewerMaySeeAgentBrowser } = await import('../src/agent-browser-access.js')
+    const see = (viewerId: string) =>
+      viewerMaySeeAgentBrowser(prisma, { agentBrowserId: browser.id, viewerId })
 
     // Nobody signed in: what the agent could see anyway.
     assert.equal(await see(stranger.id), true)
@@ -296,10 +296,10 @@ runDatabaseTest('a signed-in browser is seen by its signers and its requester, n
         serviceHint: 'Mail',
       },
     })
-    assert.equal(await see(s.ownerUserId), true)
+    // A migrated team jar with a human login has no audience, including the
+    // signer or the person who requested an earlier session.
+    assert.equal(await see(s.ownerUserId), false)
     assert.equal(await see(stranger.id), false)
-    // A session you asked for is your own request, whoever signed the browser in.
-    assert.equal(await see(stranger.id, stranger.id), true)
     await prisma.user.delete({ where: { id: stranger.id } }).catch(() => undefined)
   } finally {
     await s.cleanup()

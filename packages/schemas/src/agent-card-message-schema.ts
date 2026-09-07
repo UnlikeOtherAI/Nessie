@@ -58,6 +58,8 @@ export const isAgentCardResponseMessage = (metadata: unknown): boolean =>
 export const AgentCardRespondBodySchema = z
   .object({
     actionKey: AgentCardKeySchema,
+    /** The exact temporary session adopted by a browser-login Done press. */
+    handoverSessionId: z.string().uuid().optional(),
     values: z.record(z.union([z.string().max(4000), z.number(), z.boolean()])).optional(),
     secrets: z.record(z.string().min(1).max(8192)).optional(),
   })

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { mayUseSignedInBrowser } from '../src/run/browser-cloud/browser-tools.js'
+import { agentBrowserLoginStatus } from '@nessie/browser-cloud'
+
+import {
+  browserDisclosureScope,
+  mayUseSignedInBrowser,
+} from '../src/run/browser-cloud/browser-tools.js'
 
 const PERSON = 'user-1'
 const COLLEAGUE = 'user-2'
@@ -64,25 +69,17 @@ test('a colleague may not drive a jar somebody else signed in', () => {
 })
 
 /**
- * A team agent's browser is one jar shared with everyone who can reach the
- * agent — deliberately, and the sharing banner says so. Reaching the agent at
- * all is the authorization; the live-turn requirement is what still holds.
+ * A legacy team jar that carries a human login has no proof that every team
+ * member consented. It is quarantined until reset; only an unsigned team jar
+ * remains usable for ordinary shared automation.
  */
-test('a shared team jar is usable by anyone whose turn it is', () => {
-  assert.equal(
-    mayUseSignedInBrowser({
-      interactive: true,
-      loginCount: 3,
-      originatingUserId: COLLEAGUE,
-      principalUserId: null,
-    }),
-    true,
-  )
-  assert.equal(
-    mayUseSignedInBrowser({ interactive: false, loginCount: 3, principalUserId: null }),
-    false,
-    'but never on a schedule',
-  )
+test('a human-signed shared team jar is quarantined for every team member', () => {
+  const alice = agentBrowserLoginStatus({ loginCount: 3, principalUserId: null })
+  const bob = agentBrowserLoginStatus({ loginCount: 3, principalUserId: null })
+  assert.equal(alice.kind, 'legacy_team_human')
+  assert.equal(alice.permitsSensitiveUse, false)
+  assert.deepEqual(alice, bob, 'the quarantine is structural, not caller-specific')
+  assert.equal(agentBrowserLoginStatus({ loginCount: 0, principalUserId: null }).permitsSensitiveUse, true)
 })
 
 /**
@@ -146,3 +143,13 @@ test('without provenance an automated run is still refused', () => {
   )
 })
 
+test('a browser read with a personal jar stays in that person’s disclosure basis', () => {
+  assert.deepEqual(
+    browserDisclosureScope('agent-1', PERSON),
+    { scopeId: PERSON, scopeType: 'user' },
+  )
+  assert.deepEqual(
+    browserDisclosureScope('agent-1', null),
+    { scopeId: 'agent-1', scopeType: 'agent' },
+  )
+})

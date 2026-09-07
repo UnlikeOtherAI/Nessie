@@ -19,7 +19,7 @@ import {
   InfisicalVault,
   type InfisicalSecretNamespace,
 } from './infisical-vault.js'
-import type { PrismaClient } from '@prisma/client'
+import { type PrismaClient, type SecretPermission } from '@prisma/client'
 
 export const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'organization'])
 export type SecretScope = z.infer<typeof SecretScopeSchema>
@@ -135,8 +135,9 @@ export const hasSecretPermission = async (input: {
 
 /**
  * The one access-control predicate for rotating, revoking, or delegating a
- * secret: an organisation owner, the person who owns a `personal`-scope
- * secret, or someone holding an explicit grant for `permission`. Composed
+ * secret: an organisation owner for a non-personal scope, the person who
+ * owns a `personal`-scope secret, or someone holding an explicit grant for
+ * `permission`. Composed
  * once here so the three route handlers that gate on it cannot drift.
  */
 export const canManageSecret = async (
@@ -144,15 +145,27 @@ export const canManageSecret = async (
   secret: { id: string; scopeType: SecretScope; scopeId: string },
   permission: 'manage' | 'delegate',
   prisma: SecretGrantLookup,
-): Promise<boolean> =>
-  actorContext.actor.roles?.includes('owner') === true
-  || (secret.scopeType === 'personal' && secret.scopeId === actorContext.actor.actorId)
-  || await hasSecretPermission({
-    actorId: actorContext.actor.actorId,
-    permission,
-    prisma,
-    secretId: secret.id,
-  })
+): Promise<boolean> => {
+  const isPersonalOwner = secret.scopeType === 'personal'
+    && secret.scopeId === actorContext.actor.actorId
+  if (secret.scopeType === 'personal') {
+    // Organisation ownership administers the organisation's shared scopes; it
+    // is never a back door into a person's vault partition.
+    return isPersonalOwner || await hasSecretPermission({
+      actorId: actorContext.actor.actorId,
+      permission,
+      prisma,
+      secretId: secret.id,
+    })
+  }
+  return actorContext.actor.roles?.includes('owner') === true
+    || await hasSecretPermission({
+      actorId: actorContext.actor.actorId,
+      permission,
+      prisma,
+      secretId: secret.id,
+    })
+}
 
 /**
  * The secrets a person may see the *metadata* of: their own, everything
@@ -173,32 +186,52 @@ export const secretsVisibleToActor = async (input: {
   organizationId: string
   prisma: Pick<PrismaClient, 'projectMember' | 'secret' | 'teamMember'>
 }) => {
-  const where = input.isOwner
-    ? { organizationId: input.organizationId }
-    : await (async () => {
-      const { projectIds, teamIds } = await scopeIdsForActor(input)
-      return {
+  const activeUserGrant = {
+    principalType: 'user' as const,
+    principalId: input.actorId,
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+  }
+  const personalManagementGrant = {
+    ...activeUserGrant,
+    permissions: { hasSome: ['manage', 'delegate'] as SecretPermission[] },
+  }
+  const personalVisibility = [
+    { scopeType: 'personal' as const, scopeId: input.actorId },
+    { scopeType: 'personal' as const, grants: { some: personalManagementGrant } },
+  ]
+  if (input.isOwner) {
+    return input.prisma.secret.findMany({
+      where: {
         organizationId: input.organizationId,
         OR: [
-          { scopeType: 'organization' as const },
-          { scopeType: 'personal' as const, scopeId: input.actorId },
-          ...(teamIds.length ? [{ scopeType: 'team' as const, scopeId: { in: teamIds } }] : []),
-          ...(projectIds.length
-            ? [{ scopeType: 'project' as const, scopeId: { in: projectIds } }]
-            : []),
-          {
-            grants: {
-              some: {
-                principalType: 'user' as const,
-                principalId: input.actorId,
-                OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-              },
-            },
-          },
+          { scopeType: { not: 'personal' as const } },
+          ...personalVisibility,
         ],
-      }
-    })()
-  return input.prisma.secret.findMany({ where, orderBy: { createdAt: 'desc' } })
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+  }
+  const { projectIds, teamIds } = await scopeIdsForActor(input)
+  return input.prisma.secret.findMany({
+    where: {
+      organizationId: input.organizationId,
+      OR: [
+        { scopeType: 'organization' as const },
+        ...personalVisibility,
+        ...(teamIds.length ? [{ scopeType: 'team' as const, scopeId: { in: teamIds } }] : []),
+        ...(projectIds.length
+          ? [{ scopeType: 'project' as const, scopeId: { in: projectIds } }]
+          : []),
+        {
+          AND: [
+            { scopeType: { not: 'personal' as const } },
+            { grants: { some: activeUserGrant } },
+          ],
+        },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+  })
 }
 
 /**

@@ -121,6 +121,14 @@ export const buildModelPrompt = (
     documents?: AgentDocumentsPromptFacts
     /** True when `card_post` is in this run's resolved builtin toolset. */
     hasCardTool?: boolean
+    /** True when `browser_login_request` is in this run's resolved builtin toolset. */
+    hasBrowserLoginRequestTool?: boolean
+    /** The exact active temporary browser handoff for this resumed run. */
+    temporaryBrowserAccess?: {
+      expiresAt: Date
+      grantId: string
+      origins: string[]
+    } | null
     /** Clock for the volatile time message. Injectable so tests can prove the
      * stable anchor carries no time at all. */
     now?: Date
@@ -212,7 +220,21 @@ export const buildModelPrompt = (
     options.handoff ? buildHandoffRoutingBlock(options.handoff) ?? '' : '',
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
     options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
-    buildAgentCardsBlock({ hasCardTool: options.hasCardTool ?? false }) ?? '',
+    buildAgentCardsBlock({
+      hasBrowserLoginRequestTool: options.hasBrowserLoginRequestTool ?? false,
+      hasCardTool: options.hasCardTool ?? false,
+    }) ?? '',
+    options.temporaryBrowserAccess
+      ? [
+        'Temporary private browser access is active for this exact run.',
+        `Grant ID: ${options.temporaryBrowserAccess.grantId}`,
+        `Approved origins: ${options.temporaryBrowserAccess.origins.join(', ')}`,
+        `Expires at: ${options.temporaryBrowserAccess.expiresAt.toISOString()}`,
+        'Continue the work with the active session: use browser_observe, then browser_act as needed. '
+          + 'Do not call browser_login_request again for these approved origins. Request a new login only '
+          + 'when the required site is outside this list or this grant has expired or been revoked.',
+      ].join('\n')
+      : '',
   ].filter((part) => part.length > 0)
 
   const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]

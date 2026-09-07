@@ -10,9 +10,8 @@ import { resolveConnectionForRun, type CloudBrowserDeps } from './session-lifecy
  *
  * The browser belongs to the agent — its machine — which is what makes
  * clashes structurally impossible: no two agents ever share browser state.
- * What a person signs into it is shared with everyone who can reach that
- * agent, which the viewer says out loud before the first keystroke and the
- * disclosure basis enforces afterwards.
+ * Shared team jars remain for unsigned public browsing. Personal sign-ins
+ * belong in a private agent or Personal Assistant browser.
  */
 
 /**
@@ -28,6 +27,8 @@ export type AgentBrowserRow = {
   id: string
   connectionId: string
   browserbaseContextId: string
+  /** The person whose state is in this jar, if it is not a team jar. */
+  principalUserId: string | null
   loginCount: number
   /**
    * Set while a person's hand-back is still recent enough to act on. Null once
@@ -120,7 +121,7 @@ export const resolveDurableBrowserConnection = async (
   return organization
 }
 
-const loadClientForConnection = async (
+export const loadClientForConnection = async (
   deps: CloudBrowserDeps,
   connection: { projectId: string | null; apiKeyRef: string },
 ): Promise<BrowserbaseClient> => {
@@ -168,21 +169,40 @@ const loadClientForConnection = async (
  */
 const principalForBrowser = async (
   prisma: Pick<PrismaClient, 'agent'>,
-  input: { organizationId: string; agentId: string; principalUserId: string | null },
+  input: {
+    organizationId: string
+    agentId: string
+    agentVisibility: 'team' | 'private'
+    agentOwnerUserId: string | null
+    principalUserId: string | null
+  },
 ): Promise<string | null> => {
   const agent = await prisma.agent.findFirst({
     where: { id: input.agentId, organizationId: input.organizationId },
     select: { systemManaged: true },
   })
-  if (!agent?.systemManaged) return null
-  if (!input.principalUserId) {
+  if (agent?.systemManaged) {
+    if (input.principalUserId) return input.principalUserId
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
       'This assistant keeps a separate browser for each person, so it can only '
       + 'open one on behalf of somebody. An unattended run has no such person.',
     )
   }
-  return input.principalUserId
+  if (input.agentVisibility === 'private' && input.agentOwnerUserId) {
+    return input.agentOwnerUserId
+  }
+  return null
+}
+
+const requirePersonalPrincipal = (principalUserId: string | null): string => {
+  if (!principalUserId) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+      'This browser requires a person who can own its private context.',
+    )
+  }
+  return principalUserId
 }
 
 export const ensureAgentBrowser = async (
@@ -193,9 +213,9 @@ export const ensureAgentBrowser = async (
     agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
     /**
-     * The person this browser is for. Required for a system-managed agent —
-     * where it is the owner of the cookie jar — and ignored for an ordinary
-     * agent, whose browser is shared with its team.
+     * The requester for a system-managed agent's per-person jar. A private
+     * ordinary agent instead resolves to `agentOwnerUserId`; a workspace agent
+     * deliberately has no principal and uses its shared team jar.
      */
     principalUserId: string | null
   },
@@ -204,7 +224,11 @@ export const ensureAgentBrowser = async (
   const connection = await resolveDurableBrowserConnection(
     deps.prisma,
     principalUserId
-      ? { ...input, agentVisibility: 'private', agentOwnerUserId: principalUserId }
+      ? {
+        ...input,
+        agentVisibility: 'private',
+        agentOwnerUserId: requirePersonalPrincipal(principalUserId),
+      }
       : input,
   )
 
@@ -220,6 +244,7 @@ export const ensureAgentBrowser = async (
       id: true,
       connectionId: true,
       browserbaseContextId: true,
+      principalUserId: true,
       ...VIEWPORT_SELECT,
       ...HANDBACK_SELECT,
       _count: { select: { logins: true } },
@@ -230,6 +255,7 @@ export const ensureAgentBrowser = async (
       id: existing.id,
       connectionId: existing.connectionId,
       browserbaseContextId: existing.browserbaseContextId,
+      principalUserId: existing.principalUserId,
       loginCount: existing._count.logins,
       handedBackByUserId: handedBackByOf(existing),
       viewport: viewportOf(existing),
@@ -237,312 +263,97 @@ export const ensureAgentBrowser = async (
     }
   }
 
-  const client = await loadClientForConnection(deps, connection)
-  const context = await client.createContext()
-
-  try {
-    const created = await deps.prisma.agentBrowser.create({
-      data: {
+  return deps.prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{
+      apiKeyRef: string
+      id: string
+      projectId: string | null
+    }>>(Prisma.sql`SELECT id, project_id AS "projectId", api_key_ref AS "apiKeyRef"
+      FROM cloud_browser_connections
+      WHERE id = ${connection.id}::uuid
+        AND organization_id = ${input.organizationId}::uuid
+        AND status = 'active'
+      FOR UPDATE`)
+    const activeConnection = locked[0]
+    if (!activeConnection) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+        'This Browserbase connection was disconnected. Reconnect it before creating a saved browser.',
+      )
+    }
+    const winner = await tx.agentBrowser.findFirst({
+      where: {
         organizationId: input.organizationId,
         agentId: input.agentId,
-        connectionId: connection.id,
-        browserbaseContextId: context.id,
+        connectionId: activeConnection.id,
+        status: 'active',
         principalUserId,
       },
       select: {
         id: true,
         connectionId: true,
         browserbaseContextId: true,
+        principalUserId: true,
         ...VIEWPORT_SELECT,
         ...HANDBACK_SELECT,
-      ...HANDBACK_SELECT,
+        _count: { select: { logins: true } },
       },
     })
-    return {
-      id: created.id,
-      connectionId: created.connectionId,
-      browserbaseContextId: created.browserbaseContextId,
-      loginCount: 0,
-      // A browser is created without a size, so this is the default every
-      // time — read back from the row rather than assumed, so a column
-      // default added later is honoured without touching this path.
-      handedBackByUserId: handedBackByOf(created),
-      viewport: viewportOf(created),
-      connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+    if (winner) {
+      return {
+        id: winner.id,
+        connectionId: winner.connectionId,
+        browserbaseContextId: winner.browserbaseContextId,
+        principalUserId: winner.principalUserId,
+        loginCount: winner._count.logins,
+        handedBackByUserId: handedBackByOf(winner),
+        viewport: viewportOf(winner),
+        connection: { projectId: activeConnection.projectId, apiKeyRef: activeConnection.apiKeyRef },
+      }
     }
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      // Another run won the race. Release the context we just made rather
-      // than leaving it for the reconciler, and use theirs.
-      await client.deleteContext(context.id).catch((cause: unknown) => {
-        console.warn(
-          '[browser-cloud] orphaned Browserbase context (race loser) — delete it '
-          + `from the Browserbase dashboard: ${context.id}`,
-          cause,
-        )
-      })
-      const winner = await deps.prisma.agentBrowser.findFirstOrThrow({
-        where: {
+    const client = await loadClientForConnection(deps, activeConnection)
+    const context = await client.createContext()
+    try {
+      const created = await tx.agentBrowser.create({
+        data: {
           organizationId: input.organizationId,
           agentId: input.agentId,
-          connectionId: connection.id,
-          status: 'active',
+          connectionId: activeConnection.id,
+          browserbaseContextId: context.id,
           principalUserId,
         },
         select: {
           id: true,
           connectionId: true,
           browserbaseContextId: true,
+          principalUserId: true,
           ...VIEWPORT_SELECT,
           ...HANDBACK_SELECT,
-          _count: { select: { logins: true } },
         },
       })
       return {
-        id: winner.id,
-        connectionId: winner.connectionId,
-        browserbaseContextId: winner.browserbaseContextId,
-        loginCount: winner._count.logins,
-        handedBackByUserId: handedBackByOf(winner),
-        viewport: viewportOf(winner),
-        connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+        id: created.id,
+        connectionId: created.connectionId,
+        browserbaseContextId: created.browserbaseContextId,
+        principalUserId: created.principalUserId,
+        loginCount: 0,
+        handedBackByUserId: handedBackByOf(created),
+        viewport: viewportOf(created),
+        connection: { projectId: activeConnection.projectId, apiKeyRef: activeConnection.apiKeyRef },
       }
-    }
-    await client.deleteContext(context.id).catch((cause: unknown) => {
-      console.warn(
-        '[browser-cloud] orphaned Browserbase context — delete it from the '
-        + `Browserbase dashboard: ${context.id}`,
-        cause,
-      )
-    })
-    throw error
-  }
-}
-
-/**
- * Record that a person signed this browser into a service.
- *
- * Audit and revocation only — whether a *session* counts as authenticated is
- * a monotone fact on the session row, because somebody can also sign in
- * during an ad-hoc control claim that writes no login row at all.
- */
-export const recordAgentBrowserLogin = async (
-  prisma: Pick<PrismaClient, 'agentBrowserLogin'>,
-  input: {
-    organizationId: string
-    agentBrowserId: string
-    userId: string
-    serviceHint: string
-  },
-): Promise<void> => {
-  await prisma.agentBrowserLogin.create({
-    data: {
-      organizationId: input.organizationId,
-      agentBrowserId: input.agentBrowserId,
-      userId: input.userId,
-      serviceHint: input.serviceHint.slice(0, 200),
-    },
-  })
-}
-
-/**
- * Sign the agent out of everything: tombstone the row so no run can reach the
- * context again, then let the reconciler delete it remotely.
- *
- * Two honest limits the copy must state. Deleting a context does not revoke
- * the *service's* own server-side session — fully signing out means the
- * service's security page too. And it is all-or-nothing: per-service cookie
- * deletion is phase-3 polish, so this clears every signer's login at once.
- */
-export const resetAgentBrowser = async (
-  prisma: PrismaClient,
-  input: { organizationId: string; agentBrowserId: string },
-): Promise<{ tombstoned: boolean }> => {
-  const live = await prisma.cloudBrowserSession.count({
-    where: {
-      agentBrowserId: input.agentBrowserId,
-      status: { in: ['allocating', 'active', 'releasing'] },
-    },
-  })
-  if (live > 0) {
-    throw new CloudBrowserError(
-      CLOUD_BROWSER_ERROR_CODES.CAPACITY,
-      'This browser is open right now. Close it first, then reset it.',
-    )
-  }
-  const updated = await prisma.agentBrowser.updateMany({
-    where: {
-      id: input.agentBrowserId,
-      organizationId: input.organizationId,
-      status: 'active',
-    },
-    data: { status: 'tombstoned', tombstonedAt: new Date() },
-  })
-  if (updated.count === 1) {
-    // The logins go with the browser: they describe state that no longer
-    // exists, and leaving them would misreport who the agent is signed in as.
-    await prisma.agentBrowserLogin.deleteMany({
-      where: { agentBrowserId: input.agentBrowserId },
-    })
-  }
-  return { tombstoned: updated.count === 1 }
-}
-
-/**
- * How long a row claimed into `deleting` is trusted to belong to a live
- * delete before another tick may take it over.
- *
- * `deleting` is a claim, and every claim taken before a side effect needs a
- * horizon or it is a permanent drop (docs/standards/horizontal-scaling/overview.md §3):
- * a process killed between the claim and the provider's answer used to leave
- * the row in `deleting` forever, and the sweep only selected `tombstoned` — so
- * a Browserbase context holding somebody's encrypted login state leaked with
- * no reaper and no alert.
- *
- * Ten minutes, matching `STRANDED_RUN_MS` in the automatic-membership sweep.
- * The reaper ticks every 30 s and the claimed work is *one* HTTP call to
- * Browserbase, so ten minutes is roughly twenty times any plausible delete —
- * a live one is never stolen — while a killed process's row is picked up on
- * the next tick past the horizon rather than never.
- */
-const DELETING_CLAIM_HORIZON_MS = 10 * 60 * 1000
-
-/**
- * Delete the Browserbase contexts behind tombstoned rows.
- *
- * The row is only removed once the provider confirms — a local delete while
- * the context still exists would orphan encrypted login state in somebody's
- * Browserbase account with nothing pointing at it.
- */
-export const reconcileTombstonedAgentBrowsers = async (
-  deps: CloudBrowserDeps,
-  options: { limit?: number } = {},
-): Promise<number> => {
-  // A row is this sweep's to take if it is tombstoned, or if it is a
-  // `deleting` claim old enough to be a corpse. `updatedAt` is the claim's
-  // age: Prisma stamps it on the claiming `UPDATE`, so it moves forward each
-  // time a reconciler takes the row over and cannot drift backwards.
-  const claimable = [
-    { status: 'tombstoned' as const },
-    {
-      status: 'deleting' as const,
-      updatedAt: { lt: new Date(Date.now() - DELETING_CLAIM_HORIZON_MS) },
-    },
-  ]
-  const rows = await deps.prisma.agentBrowser.findMany({
-    where: { OR: claimable },
-    select: {
-      id: true,
-      browserbaseContextId: true,
-      connection: { select: { projectId: true, apiKeyRef: true } },
-    },
-    take: options.limit ?? 20,
-    orderBy: { tombstonedAt: 'asc' },
-  })
-  let deleted = 0
-  for (const row of rows) {
-    // Last line of defence for the reset/open race: never delete a context a
-    // live session is still attached to, however it got there.
-    const live = await deps.prisma.cloudBrowserSession.count({
-      where: {
-        agentBrowserId: row.id,
-        status: { in: ['allocating', 'active', 'releasing'] },
-      },
-    })
-    if (live > 0) continue
-
-    // Claim the row before touching the provider (horizontal-scaling audit
-    // 5.10). The `findMany` above is a snapshot every replica reads alike, so
-    // read-then-delete had N reconcilers calling Browserbase for the same
-    // context: one won, and each loser's "no such context" was written to
-    // `lastError` as though the row were broken. A conditional
-    // `tombstoned → deleting` is the right primitive rather than a lock —
-    // there is no indivisible walk here, just one row and one provider call,
-    // and the status is also what keeps the *next* tick from picking the row
-    // up while this delete is still in flight. The same statement is the
-    // takeover of a stranded claim: re-stamping `deleting` on a row past
-    // `DELETING_CLAIM_HORIZON_MS` moves `updatedAt`, so exactly one of the
-    // replicas that saw the corpse gets it and the rest lose the same way
-    // they lose a fresh tombstone.
-    const claimed = await deps.prisma.agentBrowser.updateMany({
-      where: { id: row.id, OR: claimable },
-      data: { status: 'deleting' },
-    })
-    if (claimed.count !== 1) continue
-
-    try {
-      const client = await loadClientForConnection(deps, row.connection)
-      await client.deleteContext(row.browserbaseContextId)
-      await deps.prisma.agentBrowser.delete({ where: { id: row.id } })
-      deleted += 1
     } catch (error) {
-      // Hand the row back, or a provider blip strands the context in
-      // `deleting` where no sweep will ever look at it again.
-      await deps.prisma.agentBrowser.updateMany({
-        where: { id: row.id, status: 'deleting' },
-        data: { lastError: (error as Error).message.slice(0, 500), status: 'tombstoned' },
-      }).catch(() => undefined)
+      await client.deleteContext(context.id).catch((cause: unknown) => {
+        console.warn(
+          '[browser-cloud] orphaned Browserbase context — delete it from the '
+          + `Browserbase dashboard: ${context.id}`,
+          cause,
+        )
+      })
+      throw error
     }
-  }
-  return deleted
+  })
 }
 
-/**
- * Facts about an agent's browser for the structural prompt block, so the
- * model knows whether it has one and what it is signed into without being
- * told by message content.
- */
-export const describeAgentBrowser = async (
-  prisma: Pick<PrismaClient, 'agentBrowser' | 'cloudBrowserSession'>,
-  input: { organizationId: string; agentId: string; principalUserId?: string | null },
-): Promise<{ exists: boolean; services: string[]; inUse: boolean } | null> => {
-  const browser = await prisma.agentBrowser.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      agentId: input.agentId,
-      status: 'active',
-      ...(input.principalUserId === undefined ? {} : { principalUserId: input.principalUserId }),
-    },
-    select: { id: true, logins: { select: { serviceHint: true }, take: 20 } },
-  })
-  if (!browser) return { exists: false, services: [], inUse: false }
-  const live = await prisma.cloudBrowserSession.count({
-    where: {
-      agentBrowserId: browser.id,
-      status: { in: ['allocating', 'active', 'releasing'] },
-    },
-  })
-  return {
-    exists: true,
-    services: [...new Set(browser.logins.map((row) => row.serviceHint))],
-    inUse: live > 0,
-  }
-}
-
-/**
- * Who may see what a durable browser shows — its live view, and now the
- * pictures it left behind — and who may pick it up.
- *
- * A browser nobody has signed in is what the agent could see anyway, so its
- * audience is whoever can reach the conversation. Once a person has signed it
- * in, what it shows is *their* material: the audience narrows to the people
- * with a login row on it, plus whoever asked for the session in front of you,
- * who is looking at their own request. One rule, used by every reader — the
- * session detail, the session list, the stored tabs, and the resume — because
- * the first version of this feature had three, and the idle face showed a
- * colleague the inbox the live face hid from them.
- */
-export const viewerMaySeeAgentBrowser = async (
-  prisma: Pick<PrismaClient, 'agentBrowserLogin'>,
-  input: { agentBrowserId: string; viewerId: string; requestedByUserId?: string | null },
-): Promise<boolean> => {
-  if (input.requestedByUserId === input.viewerId) return true
-  const logins = await prisma.agentBrowserLogin.findMany({
-    where: { agentBrowserId: input.agentBrowserId },
-    select: { userId: true },
-  })
-  if (logins.length === 0) return true
-  return logins.some((row) => row.userId === input.viewerId)
-}
+export { reconcileTombstonedAgentBrowsers, resetAgentBrowser } from './agent-browser-retirement.js'
 
 export { resolveConnectionForRun, isCloudBrowserError }

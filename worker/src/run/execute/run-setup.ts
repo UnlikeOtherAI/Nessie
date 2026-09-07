@@ -1,4 +1,5 @@
 import { markRecallsInjected } from '@nessie/memory'
+import { loadActivePersonalBrowserAccessForRun } from '@nessie/browser-cloud'
 import {
   AGENT_HANDOFF_TOOL_ID,
   attributionFromActorContext,
@@ -30,7 +31,10 @@ import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
-import { hasCardPromptTools } from './agent-cards-prompt.js'
+import {
+  browserLoginRequestPromptTools,
+  hasCardPromptTools,
+} from './agent-cards-prompt.js'
 import {
   hasDocumentsPromptTools,
   hasKbWriteTools,
@@ -343,6 +347,14 @@ export const prepareRunExecution = async (
       : null)
     : null
 
+  const temporaryBrowserAccess = resolvedToolIds.has('browser_open')
+    ? await loadActivePersonalBrowserAccessForRun(deps.prisma, {
+      agentId: context.agent.id,
+      runId: context.run.id,
+      threadId: context.run.threadId,
+    })
+    : null
+
   return {
     allowedToolIds,
     checkpoint,
@@ -369,6 +381,8 @@ export const prepareRunExecution = async (
       },
       handoff: { hasHandoffTool: resolvedToolIds.has(AGENT_HANDOFF_TOOL_ID) },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
+      hasBrowserLoginRequestTool: browserLoginRequestPromptTools(resolvedToolIds),
+      temporaryBrowserAccess,
       todoFacts,
       documents: documentsHome
         ? {

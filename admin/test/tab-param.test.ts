@@ -370,7 +370,6 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/components/features/triggers/useTriggersPageState.ts', 'status'],
     ['../src/components/features/agents/AgentDetailTabs.tsx', 'agentTab'],
     ['../src/components/features/agents/AgentsList.tsx', 'scope'],
-    ['../src/components/features/browser-cloud/AgentScreenViewer.tsx', 'browserTab'],
     ['../src/components/features/executors/ExecutorDetailPanels.tsx', 'tab'],
     ['../src/components/features/integrations/DeepWaterResearchPanel.tsx', 'research'],
     ['../src/components/features/knowledge/KnowledgeWorkspace.tsx', 'view'],

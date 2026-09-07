@@ -679,7 +679,7 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
-      - name: Run project usability browser suite
+      - name: Run browser and project usability suites
         if: steps.scope.outputs.code == '1'
         env:
           PROJECT_USABILITY_SCREENSHOTS: 1
@@ -705,6 +705,14 @@ jobs:
         with:
           name: project-usability-screenshots
           path: e2e/screenshots/project-usability
+          if-no-files-found: warn
+
+      - name: Upload browser cloud screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-cloud-screenshots
+          path: e2e/screenshots/browser-cloud
           if-no-files-found: warn
 
       - name: Upload connected mail screenshots

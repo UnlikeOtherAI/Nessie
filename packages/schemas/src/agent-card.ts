@@ -66,6 +66,12 @@ export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
  * Designer just created. Both are Prisma-backed operations which commit with
  * the press.
  *
+ * `browserbase_connection` connects a Browserbase account. Its key is probed
+ * before the encrypted Browserbase connection row is written, and it never
+ * becomes a general vault secret. A personal account belongs to the person who
+ * presses the card; a shared team or organisation account remains an owner
+ * decision, matching the Settings route.
+ *
  * `vault_secret` is the general destination: Secrets, for a credential that
  * belongs to a person or a level of the organisation rather than to one
  * connector. It is the only one whose write is an external HTTP call and so
@@ -152,6 +158,31 @@ export const AgentCardSecretDestinationSchema = z
             code: z.ZodIssueCode.custom,
             message: 'A header credential needs headerName.',
             path: ['headerName'],
+          })
+        }
+      }),
+    z
+      .object({
+        kind: z.literal('browserbase_connection'),
+        /** Defaults to the responder's own Browserbase account. */
+        scope: z.enum(['user', 'team', 'organization']).default('user'),
+        /** Required only for a team-owned Browserbase account. */
+        teamId: z.string().uuid().optional(),
+      })
+      .strict()
+      .superRefine((destination, ctx) => {
+        if (destination.scope === 'team' && !destination.teamId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A team Browserbase account needs teamId.',
+            path: ['teamId'],
+          })
+        }
+        if (destination.scope !== 'team' && destination.teamId !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Only a team Browserbase account takes teamId.',
+            path: ['teamId'],
           })
         }
       }),
@@ -442,6 +473,15 @@ export type AgentCardResolution = z.infer<typeof AgentCardResolutionSchema>
  * actionable?" flag the client trusts: it folds status, expiry, and whether
  * this particular viewer is a respondent into one server decision.
  */
+export const BrowserLoginCardPresenterSchema = z.object({
+  expiresAt: z.string(),
+  grantId: z.string().uuid(),
+  mode: z.literal('temporary'),
+  origins: z.array(z.string().url()).min(1).max(20),
+  service: z.string().min(1).max(200),
+}).strict()
+export type BrowserLoginCardPresenter = z.infer<typeof BrowserLoginCardPresenterSchema>
+
 export const AgentCardPresenterSchema = z
   .object({
     cardId: z.string().uuid(),
@@ -467,6 +507,8 @@ export const AgentCardPresenterSchema = z
     /** Display names of the people the agent asked; empty when anyone may press. */
     waitingFor: z.array(z.string()),
     resolution: AgentCardResolutionSchema.nullable(),
+    /** Private login-grant facts, visible only to the card's respondent. */
+    browserLogin: BrowserLoginCardPresenterSchema.nullable(),
   })
   .strict()
 export type AgentCardPresenter = z.infer<typeof AgentCardPresenterSchema>

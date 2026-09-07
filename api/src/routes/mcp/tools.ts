@@ -160,7 +160,7 @@ export const registerMcpToolsRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
 ): void => {
-  const { prisma, requireActorContext, requireOwner } = ctx
+  const { prisma, realtimeHub, requireActorContext, requireOwner } = ctx
 
   app.get('/api/mcp/tools', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -300,6 +300,13 @@ export const registerMcpToolsRoutes = (
           organizationId: actorContext.tenant.organizationId,
           toolRegistryEntryId: params.toolRegistryEntryId,
         })
+        await realtimeHub?.publishWs(
+          [
+            { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+            { kind: 'agent', agentId: target.id },
+          ],
+          { data: { agentId: target.id }, event: 'agent.updated' },
+        )
         return createApiResponse(AgentToolPolicyTargetSchema.parse(target))
       } catch (error) {
         if (sendMcpError(reply, error)) return reply

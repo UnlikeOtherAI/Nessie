@@ -156,7 +156,7 @@ export const ChannelHeader = ({
     // (Join is a public channel, which has no single conversation agent), the
     // iOS bar's one inline slot still goes to Join.
     ...chatToolHeaderActions({
-      hasConversationAgent: conversationAgent !== null,
+      hasConversationAgent: conversationAgent?.browserEnabled === true,
       onOpenTool: onOpenChatTool,
       single,
     }),
