@@ -169,8 +169,7 @@ export const exerciseRichBoardAssignees = async ({
     await listbox.waitFor()
     const keyboardSearch = assigneeSearch(page)
     await keyboardSearch.fill(viewer.displayName)
-    await listbox.getByRole('option', { name: viewer.displayName, exact: true }).waitFor()
-    await page.keyboard.press('Enter')
+    await keyboardSearch.press('Enter')
     await page.waitForFunction((userId) =>
       new URL(window.location.href).searchParams.get('assignee') === `user:${userId}`, viewer.id)
     await listbox.waitFor({ state: 'hidden' })
@@ -179,9 +178,9 @@ export const exerciseRichBoardAssignees = async ({
 
     await trigger.click()
     await listbox.waitFor()
-    await assigneeSearch(page).fill(REMOTE_NAME)
-    await listbox.getByRole('option', { name: new RegExp(REMOTE_NAME, 'u') }).waitFor()
-    await page.keyboard.press('Enter')
+    const remoteSearch = assigneeSearch(page)
+    await remoteSearch.fill(REMOTE_NAME)
+    await remoteSearch.press('Enter')
     await selectedFilter(page)
     await listbox.waitFor({ state: 'hidden' })
     await waitForTriggerFocus(page)
@@ -229,7 +228,12 @@ export const exerciseRichBoardAssigneesPhone = async ({
     const listboxBox = await listbox.boundingBox()
     const viewport = page.viewportSize()
     assert.ok(
-      dialogBox && viewport && dialogBox.x >= 0 && dialogBox.y >= 0 && dialogBox.x + dialogBox.width <= viewport.width && dialogBox.y + dialogBox.height <= viewport.height,
+      dialogBox
+        && viewport
+        && dialogBox.x >= 0
+        && dialogBox.y >= 0
+        && dialogBox.x + dialogBox.width <= viewport.width
+        && dialogBox.y + dialogBox.height <= viewport.height,
       'phone assignee popup stays in the viewport',
     )
     const options = listbox.getByRole('option')
@@ -238,14 +242,21 @@ export const exerciseRichBoardAssigneesPhone = async ({
       assert.ok(optionBox && optionBox.height >= 44, 'phone assignee options keep 44px touch targets')
     }
     const menu = options.first().locator('..')
-    const before = await menu.evaluate((node) => ({ clientHeight: node.clientHeight, scrollHeight: node.scrollHeight, scrollTop: node.scrollTop }))
+    const before = await menu.evaluate((node) => ({
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+      scrollTop: node.scrollTop,
+    }))
     assert.ok(before.scrollHeight > before.clientHeight, 'phone assignee options use a scrollable menu')
     await menu.hover()
     await page.mouse.wheel(0, 400)
     await page.waitForFunction((node) => node.scrollTop > 0, await menu.elementHandle())
     const lastOptionBox = await options.last().boundingBox()
     assert.ok(
-      listboxBox && lastOptionBox && lastOptionBox.y >= listboxBox.y && lastOptionBox.y + lastOptionBox.height <= listboxBox.y + listboxBox.height,
+      listboxBox
+        && lastOptionBox
+        && lastOptionBox.y >= listboxBox.y
+        && lastOptionBox.y + lastOptionBox.height <= listboxBox.y + listboxBox.height,
       'phone assignee menu scroll reaches its last option without clipping it',
     )
     await shot(page, 'phone-rich-board-assignees')
