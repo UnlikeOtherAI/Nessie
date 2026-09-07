@@ -9,6 +9,10 @@ import {
   grantMessageDisclosure,
   grantScopeDisclosure,
 } from '../src/services/disclosure-grants.js'
+import {
+  mapMessageRecordWithAttachments,
+  messageInclude,
+} from '../src/services/message-read-model.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -198,6 +202,60 @@ runDatabaseTest('grantMessageDisclosure accepts an audience the granter can actu
   const row = await prisma.disclosureGrant.findUnique({ where: { id: grant.id } })
   assert.equal(row?.audienceId, s.memberId)
   assert.equal(row?.audienceKind, 'user')
+})
+
+runDatabaseTest('a public channel grant reaches a nonmember only until it expires', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  t.after(cleanup(prisma, suffix))
+  const s = await seed(prisma, suffix)
+  await prisma.channelMember.create({ data: { channelId: s.privateChannelId, userId: s.granterId } })
+  const message = await createRestrictedMessage(prisma, s, {
+    scopeId: s.privateChannelId,
+    scopeType: 'channel',
+  })
+  await prisma.messageDisclosureSource.create({
+    data: {
+      messageId: message.id,
+      organizationId: s.organizationId,
+      sourceAuthorUserId: s.granterId,
+      sourceChannelId: s.privateChannelId,
+    },
+  })
+  const row = await prisma.message.findUniqueOrThrow({
+    where: { id: message.id },
+    include: messageInclude,
+  })
+  const viewer = {
+    channelId: s.channelId,
+    organizationId: s.organizationId,
+    userId: s.memberId,
+  }
+  assert.equal((await mapMessageRecordWithAttachments(prisma, row, viewer)).restricted, true)
+
+  const publicGrant = await grantMessageDisclosure(prisma, {
+    audienceId: s.channelId,
+    audienceKind: 'channel',
+    messageId: message.id,
+    organizationId: s.organizationId,
+    userId: s.granterId,
+  })
+  assert.equal((await mapMessageRecordWithAttachments(prisma, row, viewer)).content, 'restricted')
+
+  await prisma.disclosureGrant.update({
+    where: { id: publicGrant.id },
+    data: { expiresAt: new Date(Date.now() - 1_000) },
+  })
+  assert.equal((await mapMessageRecordWithAttachments(prisma, row, viewer)).restricted, true)
+
+  await grantMessageDisclosure(prisma, {
+    audienceId: s.privateChannelId,
+    audienceKind: 'channel',
+    messageId: message.id,
+    organizationId: s.organizationId,
+    userId: s.granterId,
+  })
+  assert.equal((await mapMessageRecordWithAttachments(prisma, row, viewer)).restricted, true)
 })
 
 runDatabaseTest('only the recorded private-conversation author can share a derived reply', async (t) => {

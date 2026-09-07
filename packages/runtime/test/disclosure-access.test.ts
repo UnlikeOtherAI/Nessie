@@ -99,14 +99,23 @@ const buildGrantPrisma = (input: {
     sourceScopeType: string
   }>
   channels?: Array<{ id: string; visibility: string }>
+  publicDestination?: boolean
 } = {}) => {
   const calls: string[] = []
+  const messageGrantQueries: unknown[] = []
   const prisma = {
     agent: { findMany: async () => [] },
-    channel: { findMany: async () => { calls.push('channel'); return input.channels ?? [] } },
+    channel: {
+      findFirst: async () => input.publicDestination ? { id: 'channel-1' } : null,
+      findMany: async () => { calls.push('channel'); return input.channels ?? [] },
+    },
     channelMember: { findMany: async () => { calls.push('channelMember'); return [{ channelId: 'channel-1' }, { channelId: 'private-channel' }, { channelId: 'public-channel' }] } },
     disclosureGrant: {
-      findMany: async () => { calls.push('disclosureGrant'); return input.messageGrants ?? [] },
+      findMany: async (args: unknown) => {
+        calls.push('disclosureGrant')
+        messageGrantQueries.push(args)
+        return input.messageGrants ?? []
+      },
     },
     organizationMember: {
       findFirst: async () => { calls.push('organizationMember'); return { id: 'membership-1' } },
@@ -121,7 +130,7 @@ const buildGrantPrisma = (input: {
     },
     teamMember: { findMany: async () => { calls.push('teamMember'); return [] } },
   } as unknown as DisclosureAccessPrisma
-  return { calls, prisma }
+  return { calls, messageGrantQueries, prisma }
 }
 
 const withheldPage = (count: number) =>
@@ -173,6 +182,35 @@ test('one granter is re-checked once for a page, and its grant lifts every row i
   assert.deepEqual([...(granted.get('message-2') ?? [])], [])
   // The granter's live reach is resolved once, not once per grant row.
   assert.equal(calls.filter((call) => call === 'organizationMember').length, 1)
+})
+
+test('a public destination grant reaches a reader without a ChannelMember row', async () => {
+  const { messageGrantQueries, prisma } = buildGrantPrisma({
+    messageGrants: [{ grantedByUserId: 'granter-1', messageId: 'message-0' }],
+    publicDestination: true,
+  })
+  const granted = await resolveGrantedScopeKeysForMessages(prisma, {
+    channelId: 'channel-1',
+    messages: withheldPage(1),
+    organizationId: 'org-1',
+    viewerChannelIds: [],
+    viewerUserId: 'user-1',
+  })
+
+  assert.deepEqual([...(granted.get('message-0') ?? [])], ['project:project-1'])
+  const grantQuery = messageGrantQueries[0] as { where: { AND: unknown[]; revokedAt: null } }
+  assert.equal(grantQuery.where.revokedAt, null)
+  assert.deepEqual(grantQuery.where.AND[1], {
+    OR: [
+      { audienceKind: 'user', audienceId: 'user-1' },
+      { audienceKind: 'channel', audienceId: { in: ['channel-1'] } },
+    ],
+  })
+  const expiryFilter = (grantQuery.where.AND[0] as {
+    OR: [{ expiresAt: null }, { expiresAt: { gt: unknown } }]
+  }).OR
+  assert.deepEqual(expiryFilter[0], { expiresAt: null })
+  assert.ok(expiryFilter[1].expiresAt.gt instanceof Date)
 })
 
 test('a message grant lifts only its own message, and a scope grant only its own agent', async () => {

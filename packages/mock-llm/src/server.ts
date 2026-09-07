@@ -218,6 +218,8 @@ const mockEmbedding = (): number[] => {
 
 export const createMockLlmServer = async (input: {
   host?: string
+  /** Lets a fixture select a complete scripted conversation by explicit test state. */
+  mainScenarioResolver?: () => MockScenario | undefined
   port?: number
   scenario: MockScenario
   utilityResponder?: (prompt: string) => string | undefined
@@ -258,8 +260,10 @@ export const createMockLlmServer = async (input: {
     const overrideText = !Array.isArray(body.tools) || body.tools.length === 0
       ? input.utilityResponder?.(messages.map((message) => message.content ?? '').join('\n'))
       : undefined
+    const mainScenario = input.mainScenarioResolver?.() ?? input.scenario
+    const mainEngine = mainScenario === input.scenario ? engine : new MockLlmEngine(mainScenario)
     const outcome = Array.isArray(body.tools) && body.tools.length > 0
-      ? await engine.next(messages)
+      ? await mainEngine.next(messages)
       : await engine.nextUtility(
         messages,
         overrideText === undefined
@@ -274,7 +278,7 @@ export const createMockLlmServer = async (input: {
     sequence += 1
     const completionId = `chatcmpl-mock-${sequence}`
     if (body.stream) {
-      await streamCompletion(response, engine, outcome, completionId)
+      await streamCompletion(response, mainEngine, outcome, completionId)
       return
     }
 
@@ -292,7 +296,7 @@ export const createMockLlmServer = async (input: {
       }],
       created: Math.floor(Date.now() / 1000),
       id: completionId,
-      model: engine.model,
+      model: mainEngine.model,
       object: 'chat.completion',
       usage: usageFor(outcome),
     })

@@ -69,6 +69,9 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- A manual share publishes the content-free `message.disclosure.changed` event
+  to the destination channel scopes. Open readers refetch the reply through
+  the current predicate; granting it never puts its text on the realtime wire.
 - A task, plan, or child-agent activity row linked to a run is a retained run
   output: its reader must satisfy both the run channel entitlement and that
   run's disclosure basis. A task without a run keeps ordinary task visibility.

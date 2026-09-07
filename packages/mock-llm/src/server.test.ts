@@ -138,6 +138,30 @@ test('a utility lane uses its scripted response when the request offers no tools
   }
 })
 
+test('an explicit fixture phase can select a main-inference scenario', async () => {
+  const base = parseScenario({ name: 'base', turns: [{ text: 'base response' }] })
+  const alternate = parseScenario({ name: 'alternate', turns: [{ text: 'alternate response' }] })
+  let phase = 'base'
+  const server = await createMockLlmServer({
+    mainScenarioResolver: () => phase === 'alternate' ? alternate : undefined,
+    scenario: base,
+  })
+  try {
+    const request = () => fetch(`${server.url}/v1/chat/completions`, chatRequest({
+      tools: [{ function: { name: 'send_message' }, type: 'function' }],
+    }))
+    const first = await request()
+    phase = 'alternate'
+    const second = await request()
+    const firstBody = await first.json() as { choices: Array<{ message: { content: string } }> }
+    const secondBody = await second.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(firstBody.choices[0]?.message.content, 'base response')
+    assert.equal(secondBody.choices[0]?.message.content, 'alternate response')
+  } finally {
+    await server.close()
+  }
+})
+
 test('utility turns are consumed in their declared order', async () => {
   const server = await createMockLlmServer({
     scenario: parseScenario({
