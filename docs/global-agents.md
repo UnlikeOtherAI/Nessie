@@ -257,6 +257,15 @@ shared `@nessie/team-admin` task operations, so a ticket changed in chat has
 the same validation, lifecycle event, assignment attention, and board placement
 as one changed by clicking.
 
+`ticket_checklist_read`, `ticket_checklist_apply`, and
+`ticket_checklist_step_update` use the same project gate. A template becomes a
+task-owned snapshot only when every project collaborator can see its source
+agent; its private template reference never leaves the task service. A step
+write refuses a run carrying a source the destination project does not imply,
+so research read in a restricted room cannot be copied into a shared result.
+Applying again observes the existing snapshot, while `result: null` explicitly
+clears a recorded result.
+
 Every ticket tool is project-scoped. It resolves the acting user's live project
 membership before it reads or writes; projectless and merely assigned tickets
 are deliberately outside this surface because they have no project disclosure

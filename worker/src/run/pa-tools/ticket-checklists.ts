@@ -2,6 +2,7 @@ import {
   applyTaskChecklistTemplate,
   getTaskChecklist,
   isAgentAccessibleToActor,
+  isAgentVisibleToUser,
   updateTaskChecklistStep,
 } from '@nessie/team-admin'
 import { z } from 'zod'
@@ -38,6 +39,30 @@ const checklistText = (checklist: {
   ].join('\n')),
 ].join('\n')
 
+const assertProjectChecklistDestination = async (
+  context: BuiltinToolRuntimeContext,
+  input: { agentId?: string; organizationId: string; projectId: string },
+): Promise<void> => {
+  const carried = context.consumedSources?.list() ?? []
+  if (carried.some((scope) => scope.scopeType !== 'organization'
+    && !(scope.scopeType === 'project' && scope.scopeId === input.projectId))) {
+    throw new Error('I cannot copy restricted research into this shared ticket checklist.')
+  }
+  if (!input.agentId) return
+  const members = await context.prisma.projectMember.findMany({
+    where: { projectId: input.projectId },
+    select: { userId: true },
+  })
+  const hiddenFrom = await Promise.all(members.map(async ({ userId }) => (
+    await isAgentVisibleToUser(context.prisma, userId, input.organizationId, input.agentId)
+      ? null
+      : userId
+  )))
+  if (hiddenFrom.some(Boolean)) {
+    throw new Error('This template is private to an agent some project collaborators cannot access.')
+  }
+}
+
 export const runTicketChecklistReadTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
@@ -71,6 +96,11 @@ export const runTicketChecklistApplyTool = async (
   if (!(await isAgentAccessibleToActor(context.prisma, member.actorContext, context.agentId))) {
     throw new Error('Agent not found.')
   }
+  await assertProjectChecklistDestination(context, {
+    agentId: context.agentId,
+    organizationId: member.organizationId,
+    projectId: ticket.projectId!,
+  })
   const checklist = await applyTaskChecklistTemplate(context.prisma, {
     agentId: context.agentId,
     createdByUserId: member.userId,
@@ -97,6 +127,10 @@ export const runTicketChecklistStepUpdateTool = async (
   const args = StepUpdateInput.parse(input)
   const member = await resolveActingMember(context)
   const ticket = await projectTicketFor(context, member, args.ticketId)
+  await assertProjectChecklistDestination(context, {
+    organizationId: member.organizationId,
+    projectId: ticket.projectId!,
+  })
   const checklist = await getTaskChecklist(context.prisma, {
     organizationId: member.organizationId,
     taskId: ticket.id,

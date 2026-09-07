@@ -119,6 +119,11 @@ permits a researcher/coordinator review cycle without turning agent-authored
 messages into unbounded orchestration, widening a source audience, or letting
 ambient session scope decide what project an agent can change.
 
+The same project-channel binding is re-read for every delegated ticket call.
+Checklist snapshots additionally require that each project collaborator can
+see the template's source agent; a checklist step refuses to persist material
+the run consumed from a scope the destination project does not imply.
+
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 
 
