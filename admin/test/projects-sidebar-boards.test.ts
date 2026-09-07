@@ -74,14 +74,16 @@ test('the Board section lists the project boards and creates one through a dialo
   assert.match(source('styles.css'), /\.admin-sb-item\.sidebar-grandchild\s*\{\s*padding-left: 44px;/)
   assert.match(source('styles.css'), /\.touch-sidebar \.admin-sb-item\.sidebar-grandchild/)
 
-  // A board is a tab of the board screen, so it is `?board=` — and the default
-  // board drops the param, exactly as `useTabParam` writes it.
-  assert.match(sectionRows, /board\.isDefault\s*\?\s*section\.to/)
-  assert.match(sectionRows, /\$\{section\.to\}\?board=\$\{encodeURIComponent\(board\.id\)\}/)
+  // Board management owns the parent Boards row, while a child board row opens
+  // actual work. The default drops `?board=`, as `useTabParam` does.
+  assert.match(sectionRows, /const workingBoardPath = `\/projects\/\$\{projectId\}\/board`/)
+  assert.match(sectionRows, /board\.isDefault\s*\?\s*workingBoardPath/)
+  assert.match(sectionRows, /\$\{workingBoardPath\}\?board=\$\{encodeURIComponent\(board\.id\)\}/)
 
   // Its own disclosure, remembered separately from the project's sections.
   assert.match(sectionRows, /aria-label=\{`\$\{boardsExpanded \? 'Collapse' : 'Expand'\} boards`\}/)
   assert.match(sectionRows, /onToggleBoardsExpanded\(projectId\)/)
+  assert.match(sectionRows, /showBoardSelection/, 'settings paths do not highlight a working board')
 
   // The "+" is a pop-up, not a trip to Settings, and it is offered only to
   // somebody whose click the server would not refuse.
