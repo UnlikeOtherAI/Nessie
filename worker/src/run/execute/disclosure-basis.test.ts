@@ -115,6 +115,14 @@ test('private conversation material cannot enter an unscoped write or MCP call',
     }),
     false,
   )
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { ...context, agent: { ...context.agent, agentKind: 'personal_assistant' } },
+      isExternal: true,
+      toolName: 'mcp_publish',
+    }),
+    false,
+  )
 })
 
 test('a private attachment source remains unknown beside a current human turn', () => {
