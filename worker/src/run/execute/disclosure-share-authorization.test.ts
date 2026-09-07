@@ -22,6 +22,33 @@ const context = (): RunContext => {
   } as RunContext
 }
 
+const rawHumanMessage = (content: string) => ({
+  agentId: null,
+  content,
+  metadata: null,
+  onBehalfOfUserId: null,
+  role: 'user',
+  userId: AUTHOR,
+})
+
+const destinationPrisma = (message: ReturnType<typeof rawHumanMessage>) => ({
+  channel: {
+    findFirst: async () => ({
+      id: CHANNEL,
+      label: 'Group',
+      systemChannelType: null,
+      team: { name: 'Team', project: { name: 'Project' } },
+      type: 'standard',
+    }),
+    findUnique: async () => ({ agentBindings: [], organizationId: 'org-1' }),
+  },
+  message: { findFirst: async () => message },
+  thread: {
+    findFirst: async () => ({ id: THREAD }),
+    findUnique: async () => ({ id: THREAD, title: 'General' }),
+  },
+})
+
 test('a delegated user-message cannot mint automatic private-conversation consent', async () => {
   let utilityCalled = false
   const allowed = await maybeAuthorizeDisclosureShare({
@@ -53,4 +80,26 @@ test('a delegated user-message cannot mint automatic private-conversation consen
 
   assert.equal(allowed, false)
   assert.equal(utilityCalled, false)
+})
+
+test('a raw human request remains eligible for the exact model judgement', async () => {
+  let utilityCalled = false
+  const allowed = await maybeAuthorizeDisclosureShare({
+    actorContext: {
+      actionContext: { effectiveUserId: AUTHOR },
+      actor: { actorId: AUTHOR, actorType: 'user', roles: [] },
+    } as never,
+    args: { content: 'private details', channelId: CHANNEL },
+    context: context(),
+    prisma: destinationPrisma(rawHumanMessage('Can you share this with the group?')) as never,
+    runUtility: async () => {
+      utilityCalled = true
+      return '{"share":true}'
+    },
+    toolName: 'send_message',
+    triggerMessageId: '44444444-4444-4444-8444-444444444444',
+  })
+
+  assert.equal(allowed, true)
+  assert.equal(utilityCalled, true)
 })
