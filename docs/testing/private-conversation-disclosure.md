@@ -40,7 +40,10 @@ only that message is granted to the destination channel. The raw private source
 still does not appear in C's UI, SSE frames, search result, or inspected read
 routes. B's explicit private request then creates the same exact
 message-and-channel grant automatically, without a redundant UI click or a
-standing grant.
+standing grant. C then asks the shared agent for B's private chat through the
+rendered group composer. The mock calls the enabled `message_search` tool;
+its stored result, C's public run-tools response, and the agent's public reply
+contain no private canary and create no further disclosure grant.
 
 The mock proves the full pipeline's routing, provenance, authorization and UI
 effects. It does not demonstrate that a live model understands Czech or slang;
