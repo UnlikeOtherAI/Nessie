@@ -8,7 +8,7 @@ const gotoBoardList = async (page, adminUrl, projectId) => {
   await page.getByRole('table', { name: 'Project boards' }).waitFor({ timeout: 60_000 })
 }
 
-const boardListRow = (page, name) => page.getByRole('row').filter({ hasText: name })
+const boardListRow = (page, name) => page.locator('tbody').getByRole('row').filter({ hasText: name })
 
 const waitForBoard = async (call, token, projectId, name, expected = {}) => {
   const deadline = Date.now() + 20_000
