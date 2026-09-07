@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { DesignerToolCatalogQuery, DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { Link } from 'react-router-dom'
@@ -31,6 +31,7 @@ type AgentDesignerFormProps = {
   modelOptionsError?: string
   modelsLoading: boolean
   parentAgentName?: string
+  onSectionChange: (section: AgentDesignerSection) => void
   /**
    * Render every control disabled and offer no way to change anything. A reader
    * who may not edit this agent sees the *same* form — same sections, same
@@ -39,6 +40,7 @@ type AgentDesignerFormProps = {
    * drift into describing different agents (Rule zero #4).
    */
   readOnly?: boolean
+  section: AgentDesignerSection
   // Tools live on the agent detail page's Tools tab for an existing agent; the
   // designer only shows the picker while creating one (no Tools tab yet).
   showTools?: boolean
@@ -57,7 +59,14 @@ const EFFORTS: { hint: string; label: string; value: string }[] = [
   { value: 'xhigh', label: 'Ultra', hint: 'deepest reasoning the model offers' },
 ]
 
-type AgentDesignerSection = 'basics' | 'behavior' | 'todos' | 'tools'
+export type AgentDesignerSection = 'basics' | 'behavior' | 'todos' | 'tools'
+
+export const AGENT_DESIGNER_SECTION_VALUES: readonly AgentDesignerSection[] = [
+  'basics',
+  'behavior',
+  'todos',
+  'tools',
+]
 
 const DESIGNER_SECTIONS: ReadonlyArray<{
   label: string
@@ -78,14 +87,15 @@ export const AgentDesignerForm = ({
   modelOptionsError,
   modelsLoading,
   parentAgentName,
+  onSectionChange,
   readOnly = false,
+  section,
   showTools = true,
   state,
   toolGroups,
   toolsQuery,
   visibilityReadOnly = false,
 }: AgentDesignerFormProps) => {
-  const [section, setSection] = useState<AgentDesignerSection>('basics')
   const isStreaming = (field: string) => state.streamingField === field
   const highlightClass = (field: string) => (isStreaming(field) ? STREAMING_HIGHLIGHT_CLASS : '')
   const selectedModel = modelOptions.find(
@@ -99,7 +109,7 @@ export const AgentDesignerForm = ({
         ariaLabel="Agent configuration sections"
         idPrefix="agent-designer-section"
         items={showTools ? DESIGNER_SECTIONS : DESIGNER_SECTIONS.slice(0, -1)}
-        onChange={setSection}
+        onChange={onSectionChange}
         value={section}
       />
 

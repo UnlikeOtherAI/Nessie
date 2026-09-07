@@ -12,6 +12,7 @@ import { TaskFieldsSection } from './TaskFieldsSection'
 import { useTaskFields } from '../../../../facades/task-fields/hooks'
 import { Input, Select, Textarea } from '../../../shared/FormControls'
 import { useAgents } from '../../../../facades/agents/queries'
+import { useTabParam } from '../../../../navigation/useTabParam'
 import { useProjects } from '../../../../facades/projects/hooks'
 import {
   type TaskPriority,
@@ -48,6 +49,7 @@ type TaskDraft = {
 }
 
 type TaskDialogTab = 'details' | 'checklist'
+const TASK_DIALOG_TABS: readonly TaskDialogTab[] = ['details', 'checklist']
 
 type TaskDialogProps = {
   open: boolean
@@ -114,7 +116,11 @@ export const TaskDialog = ({
   const titleRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
-  const [dialogTab, setDialogTab] = useState<TaskDialogTab>('details')
+  const [dialogTab, setDialogTab] = useTabParam(
+    'taskTab',
+    TASK_DIALOG_TABS,
+    'details',
+  )
 
   // The task as it stands on the server (blank for a new one) — the draft's
   // baseline, so a dialog opened and closed untouched stores nothing.
@@ -191,7 +197,7 @@ export const TaskDialog = ({
     if (!open) return
     setError(null)
     setDialogTab('details')
-  }, [open, task?.id])
+  }, [open, setDialogTab, task?.id])
 
   const pending =
     createTask.isPending

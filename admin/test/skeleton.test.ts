@@ -109,6 +109,10 @@ const KEEP_PREVIOUS_EXEMPT = [
   // board's recipients while another board is loading would disclose who is
   // notified, so the board boundary intentionally renders empty first.
   'src/facades/boards/hooks.ts',
+  // Checklist instructions and results can contain research evidence from the
+  // prior task. Replaying them while a different task resolves would disclose
+  // private work under a new ticket identity.
+  'src/facades/tasks/hooks.ts',
 ]
 
 test('every per-id facade query keeps its previous data', () => {

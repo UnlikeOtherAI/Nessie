@@ -9,7 +9,8 @@ const readSource = (relativePath: string): string =>
 test('opening the same task after a realtime refresh keeps its selected dialog tab', () => {
   const dialog = readSource('../src/components/features/projects/kanban/TaskDialog.tsx')
 
-  assert.match(dialog, /\}, \[open, task\?\.id\]\)/)
+  assert.match(dialog, /useTabParam\(\n    'taskTab'/)
+  assert.match(dialog, /\}, \[open, setDialogTab, task\?\.id\]\)/)
   assert.doesNotMatch(dialog, /\}, \[open, task\]\)/)
 })
 

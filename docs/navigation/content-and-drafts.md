@@ -36,7 +36,9 @@ for it. Four pieces, plus one cache underneath them all.
   scoped per UOA org/team and must never reuse another team's projection, and
   connected mail/Gmail drafts, where a mailbox, thread or provider draft is
   private third-party content and must never briefly paint under a new account,
-  provider or entitlement identity.
+  provider or entitlement identity. Task checklists are also exempt: their
+  instructions and results may contain private research evidence, so changing a
+  task id clears the panel until the next entitled read finishes.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
