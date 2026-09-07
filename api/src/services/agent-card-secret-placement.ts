@@ -26,6 +26,13 @@ import {
   type VaultSecretWrite,
 } from './secret-vault-write.js'
 import {
+  BrowserbaseCardConnectionError,
+  type BrowserbaseCardSecretDeps,
+  type PreparedBrowserbaseCardConnection,
+  persistPreparedBrowserbaseCardConnection,
+  prepareBrowserbaseCardConnection,
+} from './browserbase-card-connection.js'
+import {
   createDashboardMembership,
   resolveDashboardActor,
   setSourceCredential,
@@ -67,11 +74,14 @@ type DashboardSourcePlacement = {
 const MIN_REDACTABLE_SECRET_LENGTH = 12
 
 export type AgentCardSecretPlacements = {
+  browserbaseConnection: PreparedBrowserbaseCardConnection[]
   connector: ConnectorPlacement[]
   dashboardSource: DashboardSourcePlacement[]
   mcpAccess: Awaited<ReturnType<typeof resolveMcpUserAccess>> | null
   vault: VaultPlacement[]
 }
+
+export type { BrowserbaseCardSecretDeps } from './browserbase-card-connection.js'
 
 /**
  * Drop vault material written while resolving a press that then failed to
@@ -103,6 +113,7 @@ export class AgentCardSecretPlacementError extends Error {
 export const resolveAgentCardSecretPlacements = async (
   prisma: PrismaClient,
   input: {
+    browserCloud: BrowserbaseCardSecretDeps
     isOwner: boolean
     organizationId: string
     secrets: Record<string, string>
@@ -110,6 +121,7 @@ export const resolveAgentCardSecretPlacements = async (
     userId: string
   },
 ): Promise<AgentCardSecretPlacements> => {
+  const browserbaseConnection: PreparedBrowserbaseCardConnection[] = []
   let mcpAccess: Awaited<ReturnType<typeof resolveMcpUserAccess>> | null = null
   const connector: ConnectorPlacement[] = []
   const dashboardSource: DashboardSourcePlacement[] = []
@@ -235,6 +247,26 @@ export const resolveAgentCardSecretPlacements = async (
         continue
       }
 
+      if (block.destination.kind === 'browserbase_connection') {
+        try {
+          browserbaseConnection.push(await prepareBrowserbaseCardConnection(prisma, {
+            browserCloud: input.browserCloud,
+            destination: block.destination,
+            isOwner: input.isOwner,
+            key: block.key,
+            organizationId: input.organizationId,
+            userId: input.userId,
+            value,
+          }))
+        } catch (error) {
+          if (error instanceof BrowserbaseCardConnectionError) {
+            throw new AgentCardSecretPlacementError(error.httpStatus, error.code, error.message)
+          }
+          throw error
+        }
+        continue
+      }
+
       const instance = await getInstance(
         prisma,
         input.organizationId,
@@ -290,12 +322,11 @@ export const resolveAgentCardSecretPlacements = async (
       })
     }
 
-    return { connector, dashboardSource, mcpAccess, vault }
+    return { browserbaseConnection, connector, dashboardSource, mcpAccess, vault }
   } catch (error) {
     // A card may carry several secret blocks, and a vault write already
     // happened for every one resolved before the refusal. Without this, a
-    // second block denied for scope would strand the first block's value in
-    // Infisical with no Nessie row: unreachable, unrotatable, undeletable.
+    // second block denied for scope would strand the first value in Infisical.
     for (const placement of vault) await placement.written.rollback()
     throw error
   }
@@ -305,6 +336,7 @@ export const resolveAgentCardSecretPlacements = async (
 export const storeAgentCardSecrets = async (
   tx: Prisma.TransactionClient,
   input: {
+    browserCloud: Pick<BrowserbaseCardSecretDeps, 'storeSecret'>
     dashboardCredentials: CredentialStore
     mcpSecretStore: SecretStore
     organizationId: string
@@ -314,6 +346,15 @@ export const storeAgentCardSecrets = async (
   },
 ): Promise<Record<string, unknown>> => {
   const outcomes: Record<string, unknown> = {}
+
+  for (const placement of input.placements.browserbaseConnection) {
+    // Persist only after the card's conditional claim has won.
+    await persistPreparedBrowserbaseCardConnection(tx, input.browserCloud, placement)
+    outcomes[placement.key] = {
+      kind: 'browserbase_connection',
+      scope: placement.scope,
+    }
+  }
 
   for (const placement of input.placements.vault) {
     const secret = await tx.secret.create({

@@ -10,7 +10,10 @@ import {
 } from '../components/features/agents/designer/AgentCreationModeTabs'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useDesignerAssistantPanel } from '../components/features/agents/designer/DesignerAssistantPanelContext'
-import { revealDesignerToolCall } from '../components/features/agents/designer/reveal-control'
+import {
+  isFormMutatingDesignerTool,
+  revealDesignerToolCall,
+} from '../components/features/agents/designer/reveal-control'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
@@ -128,23 +131,10 @@ export const AgentDesignerContent = ({
     // A hidden form must never change while the person is inspecting a
     // different tab. The active page either owns a known action or the model
     // explains that no control is available there.
-    return !assistantCanEditForm && [
-      'batch_toggle_tools',
-      'set_model',
-      'set_name',
-      'set_role',
-      'set_system_prompt',
-      'toggle_tool',
-    ].includes(name)
+    return !assistantCanEditForm && isFormMutatingDesignerTool(name)
   }, [assistantCanEditForm, assistantPanel])
   const handleAssistantToolCallStart = useCallback((name: string) => {
-    const formAction = [
-      'set_model',
-      'set_name',
-      'set_role',
-      'set_system_prompt',
-    ].includes(name)
-    if (!assistantCanEditForm && formAction) return true
+    if (!assistantCanEditForm && isFormMutatingDesignerTool(name)) return true
     revealDesignerToolCall(name)
     return false
   }, [assistantCanEditForm])
@@ -173,7 +163,9 @@ export const AgentDesignerContent = ({
     }
   }, [editingAgent, requestedVisibility])
 
-  const { actions, clearDraft, state } = useAgentDesigner(initialState, modelOptions, editingAgent?.id)
+  const { actions, clearDraft, state } = useAgentDesigner(
+    initialState, modelOptions, editingAgent?.id, toolCatalog.options,
+  )
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
 
   // A new agent cannot be saved without a model, and the Design Assistant may

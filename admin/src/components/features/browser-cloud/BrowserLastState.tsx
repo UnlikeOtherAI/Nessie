@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import type { AgentRecord } from '../../../lib/api-client'
 import { ApiClientError } from '@nessie/client-core'
@@ -41,21 +42,48 @@ const formatWhen = (iso: string): string =>
  * The 409 and the 403 are the two ordinary refusals, and the server's own
  * sentences for the rest are written for whoever asked — a person here.
  */
-const describeResumeError = (error: unknown): string | null => {
+type ResumeRecovery = {
+  action?: string
+  href?: string
+  message: string
+}
+
+const describeResumeError = (error: unknown): ResumeRecovery | null => {
   if (!error) return null
   if (error instanceof ApiClientError) {
+    const recovery = error.details as { recovery?: { href?: unknown; label?: unknown; message?: unknown } } | undefined
+    const serverRecovery = recovery?.recovery
+    if (serverRecovery && typeof serverRecovery.href === 'string' && typeof serverRecovery.label === 'string') {
+      return { action: serverRecovery.label, href: serverRecovery.href, message: error.message }
+    }
+    if (serverRecovery && typeof serverRecovery.message === 'string') {
+      return { message: serverRecovery.message }
+    }
+    if (error.code === 'CLOUD_BROWSER_NO_CONNECTION') {
+      return {
+        message: 'This agent needs a Browserbase connection before its browser can open.',
+      }
+    }
+    if (error.code === 'CLOUD_BROWSER_AUTH_FAILED') {
+      return {
+        message: 'The Browserbase connection needs to be reconnected before this browser can open.',
+      }
+    }
     if (error.code === 'CLOUD_BROWSER_SESSION_ALREADY_OPEN') {
-      return 'This agent is using its browser right now. Wait for it to finish, then try again.'
+      return { message: 'This agent is using its browser right now. Wait for it to finish, then try again.' }
     }
     if (error.code === 'CLOUD_BROWSER_CAPACITY') {
-      return 'All of this team’s browsers are in use. Close one and try again.'
+      return { message: 'All of this team’s browsers are in use. Close one and try again.' }
     }
     if (error.code === 'AGENT_BROWSER_SIGNED_IN_BY_OTHERS') {
-      return 'This browser is signed in by someone else, so only they can open it.'
+      return { message: 'This browser is signed in by someone else, so only they can open it.' }
     }
-    if (error.message) return error.message
+    if (error.code === 'CLOUD_BROWSER_UNREACHABLE') {
+      return { action: 'Try again', message: 'Browserbase could not be reached. Try opening the browser again.' }
+    }
+    if (error.message) return { message: error.message }
   }
-  return 'Couldn’t open the browser.'
+  return { message: 'Couldn’t open the browser.' }
 }
 
 /**
@@ -108,7 +136,7 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
     if (!canOpen) return
     resume.mutate(undefined, { onSuccess: (result) => onResumed(result.sessionId) })
   }
-  const resumeError = describeResumeError(resume.error)
+  const recovery = describeResumeError(resume.error)
   const seen = selected?.capturedAt ? `Seen ${formatWhen(selected.capturedAt)}` : null
   const instruction = busy
     ? 'Opening…'
@@ -147,7 +175,25 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
         </div>
       ) : null}
 
-      {resumeError ? <FormError className="mx-3 mb-2">{resumeError}</FormError> : null}
+      {recovery ? (
+        <FormError className="mx-3 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>{recovery.message}</span>
+          {recovery.href && recovery.action ? (
+            <Link className="font-semibold text-[color:var(--lnk)] hover:underline" to={recovery.href}>
+              {recovery.action}
+            </Link>
+          ) : recovery.action ? (
+            <button
+              className="font-semibold text-[color:var(--lnk)] hover:underline"
+              disabled={busy}
+              onClick={start}
+              type="button"
+            >
+              {recovery.action}
+            </button>
+          ) : null}
+        </FormError>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <button

@@ -79,6 +79,8 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
   enabled: entry.enabled,
   handlerKind: entry.handlerKind,
   requiresExplicitGrant: EXPLICIT_GRANT_TOOL_IDS.has(entry.toolId) || undefined,
+  personalAssistantOnly:
+    SYSTEM_TOOL_DEFINITIONS.find((tool) => tool.id === entry.toolId)?.personalAssistantOnly || undefined,
   category: BUILTIN_TOOL_CATEGORIES.get(entry.toolId),
 })
 

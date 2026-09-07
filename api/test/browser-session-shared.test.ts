@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { browserSessionIsShared } from '../src/routes/browser-cloud.js'
+import {
+  browserSessionIsShared,
+  viewerMaySeeCloudBrowserSession,
+} from '../src/routes/browser-cloud.js'
 
 /**
  * The viewer prints this answer as a sentence above a sign-in box, so it is
@@ -39,4 +42,26 @@ test('a session with no durable browser keeps nothing to share', () => {
     browserSessionIsShared({ agentVisibility: 'team', principalUserId: undefined }),
     false,
   )
+})
+
+test('an authenticated throwaway session is readable only by its requester', () => {
+  const session = {
+    agentBrowserId: null,
+    authenticated: true,
+    durableBrowserAllowed: false,
+    requestedByUserId: 'requester',
+  }
+  assert.equal(viewerMaySeeCloudBrowserSession({ ...session, viewerId: 'requester' }), true)
+  assert.equal(viewerMaySeeCloudBrowserSession({ ...session, viewerId: 'thread-member' }), false)
+})
+
+test('the durable-browser audience remains the authority for authenticated sessions', () => {
+  const session = {
+    agentBrowserId: 'browser-1',
+    authenticated: true,
+    requestedByUserId: 'requester',
+    viewerId: 'signer',
+  }
+  assert.equal(viewerMaySeeCloudBrowserSession({ ...session, durableBrowserAllowed: true }), true)
+  assert.equal(viewerMaySeeCloudBrowserSession({ ...session, durableBrowserAllowed: false }), false)
 })

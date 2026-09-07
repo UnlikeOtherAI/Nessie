@@ -817,6 +817,28 @@ Browser panel, and comes back for a person who taps the window. What that
 changed — and where §4.9, §4.4 and §5a/§5b above are now stale — is in
 [2026-09-06-agent-browser-tabs-and-resume.md](2026-09-06-agent-browser-tabs-and-resume.md).
 
+### 5f. Browser doorway follows the explicit grant (2026-09-07)
+
+A Browserbase connection only supplies billing and transport. The browser rail,
+mobile doorway, stored tabs, resume, live-view reads and controls all require
+that agent's explicit `browser_open` allow; `AgentRecord.browserEnabled` is the
+server-decided read model for those doorways. Revoking that allow immediately
+hides active browser state and refuses further control, while the existing
+holder can still release or complete a login handover so revocation cannot
+strand a live session.
+
+### 5e. Live-view recovery and mobile presentation (2026-09-07)
+
+The viewer treats Browserbase's `browserbase-disconnected` message as a provider
+failure only when it came from the live-view iframe currently on screen and from
+that minted URL's origin. It clears the held URL, refetches to mint another one,
+and offers a retry while the session remains live; a terminal session shows the
+closed state and returns to the remembered-browser panel through the existing
+session list. The responsive viewer wraps its controls and uses the same iframe
+on phones. It does not claim mobile typing support or add a keyboard bridge:
+Browserbase has no simple keyboard URL parameter in this integration, so that
+work needs a separately verified provider contract.
+
 ## 6. Known risks — named, with owners in the phasing
 
 1. **Injection → exfiltration through the browser itself.** A hostile page

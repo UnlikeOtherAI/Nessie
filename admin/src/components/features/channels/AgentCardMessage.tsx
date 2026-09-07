@@ -2,7 +2,7 @@ import { AgentCardMessageMetadataSchema, type AgentCardPresenter } from '@nessie
 import { useState } from 'react'
 
 import { useAgentCard, useRespondToAgentCard } from '../../../facades/agent-cards/hooks'
-import { useToasts } from '../../../providers/ToastProvider'
+import { FormError } from '../../shared/FormActions'
 import { AppIcon } from '../apps/AppIcon'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentCardBlocks, type AgentCardFieldValue } from './AgentCardBlocks'
@@ -58,9 +58,9 @@ export const AgentCardMessage = ({
   const cardId = parsed.success ? parsed.data.agentCard.cardId : undefined
   const query = useAgentCard(cardId)
   const respond = useRespondToAgentCard()
-  const { pushToast } = useToasts()
 
   const [values, setValues] = useState<Record<string, AgentCardFieldValue> | null>(null)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
   // Secrets live only here, are never seeded from the server, and are dropped
   // the moment the press succeeds.
   const [secrets, setSecrets] = useState<Record<string, string>>({})
@@ -76,6 +76,7 @@ export const AgentCardMessage = ({
   const canRespond = card.action === 'respond'
 
   const press = (actionKey: string, submits: boolean) => {
+    setSubmissionError(null)
     respond.mutate(
       {
         actionKey,
@@ -84,12 +85,14 @@ export const AgentCardMessage = ({
         ...(submits ? { secrets, values: effectiveValues } : {}),
       },
       {
-        // Every refusal is authored by the API; the toast repeats it verbatim.
+        // Keep the API-authored refusal by the still-open form. A toast leaves
+        // before a person can correct a masked field and offers no context.
         onError: (error) => {
-          pushToast({ body: error.message, title: 'Could not send your answer' })
+          setSubmissionError(error.message)
         },
         onSuccess: () => {
           setSecrets({})
+          setSubmissionError(null)
         },
       },
     )
@@ -133,15 +136,23 @@ export const AgentCardMessage = ({
           providedSecretKeys={Object.keys(card.resolution?.secrets ?? {})}
           settled={card.status !== 'open'}
           onSecretChange={(key, value) =>
-            setSecrets((current) => ({ ...current, [key]: value }))
+            {
+              setSubmissionError(null)
+              setSecrets((current) => ({ ...current, [key]: value }))
+            }
           }
           onValueChange={(key, value) =>
-            setValues((current) => ({ ...(current ?? seedValues(card)), [key]: value }))
+            {
+              setSubmissionError(null)
+              setValues((current) => ({ ...(current ?? seedValues(card)), [key]: value }))
+            }
           }
           secrets={secrets}
           values={effectiveValues}
         />
       </div>
+
+      <FormError className="mt-3">{submissionError}</FormError>
 
       <footer className="mt-3 flex flex-wrap items-center gap-2">
         {card.status === 'open' ? (

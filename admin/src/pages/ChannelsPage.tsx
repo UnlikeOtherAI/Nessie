@@ -136,6 +136,7 @@ export const ChannelsPage = () => {
       && !(isPersonalAssistantConversation && personalAssistantPending),
     personalAssistantAgent,
   })
+  const browserAgent = conversationAgent?.browserEnabled === true ? conversationAgent : null
   // The tools this conversation puts within reach, and which one is open.
   // Keyed by the agent rather than the room: its browser is its browser
   // wherever you reached it from.
@@ -145,7 +146,7 @@ export const ChannelsPage = () => {
   // doorway is the conversation info screen, which pushes a real screen, so
   // the tool is a route there and Back, deep links and the phone stack all
   // resolve without this page having to hold state across a pop.
-  const toolRail = useChatToolRail(conversationAgent?.id ?? null, { remember: !phoneLayout })
+  const toolRail = useChatToolRail(browserAgent?.id ?? null, { remember: !phoneLayout })
   const routeTool = parseOpenChatTool(toolId ?? null)
   const openTool = routeTool ?? toolRail.openTool
   const conversationPath = `/channels/${activeChannel?.id ?? ''}`
@@ -627,9 +628,9 @@ export const ChannelsPage = () => {
         onSelectAgent={onSelectAgent}
         onSendAsFile={sendAsFile}
       />
-      {conversationAgent ? (
+      {browserAgent ? (
         <ChatToolDock
-          agent={conversationAgent}
+          agent={browserAgent}
           onClose={closeTool}
           onToggle={toggleTool}
           openTool={openTool}
@@ -645,7 +646,7 @@ export const ChannelsPage = () => {
           allUsers={allUsers}
           canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
-          hasAgentTools={conversationAgent !== null}
+          hasAgentTools={browserAgent !== null}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
           onOpenTool={openToolScreen}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { BROWSER_VIEWPORT_PRESETS, type BrowserViewport } from '@nessie/schemas'
 
@@ -11,6 +11,15 @@ import {
   type BrowserControl,
 } from '../../../facades/browser-cloud/hooks'
 import { browserCountdown, formatCountdown } from './session-countdown'
+import { useBrowserShareBanner } from './browser-share-banner'
+import {
+  isCurrentLiveViewDisconnect,
+  liveViewRecoveryMessage,
+  liveViewStatusLabel,
+  recoveryForLiveViewError,
+  type LiveViewRecovery,
+} from './live-view-recovery'
+import { BrowserPreviewStatus } from './browser-preview-status'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
@@ -43,23 +52,6 @@ type AgentScreenViewerProps = {
    * every time somebody resized the window they were typing in.
    */
   control: BrowserControl
-}
-
-/**
- * Dismissal is per (viewer, agent) and deliberately client-local: it is a
- * reminder, not a consent record, and the sentence returns undismissed while
- * somebody is actually driving, where it is load-bearing.
- */
-const bannerStorageKey = (agentId: string): string =>
-  `nessie.browserShareBanner.${agentId}`
-
-const STATUS_LABEL: Record<string, string> = {
-  allocating: 'Starting',
-  active: 'Live',
-  releasing: 'Closing',
-  released: 'Closed',
-  failed: 'Failed',
-  unknown: 'Unknown',
 }
 
 /**
@@ -111,23 +103,7 @@ export const AgentScreenViewer = ({
   // team agent owned — including the Personal Assistant's, which since the
   // per-principal browsers is one jar per person and shared with nobody.
   const shared = session.data?.shared ?? false
-  const [bannerDismissed, setBannerDismissed] = useState(() => {
-    if (!agent) return true
-    try {
-      return window.localStorage.getItem(bannerStorageKey(agent.id)) === 'dismissed'
-    } catch {
-      return false
-    }
-  })
-  const dismissBanner = () => {
-    setBannerDismissed(true)
-    if (!agent) return
-    try {
-      window.localStorage.setItem(bannerStorageKey(agent.id), 'dismissed')
-    } catch {
-      // A viewer with storage blocked simply sees the sentence again.
-    }
-  }
+  const { dismiss: dismissBanner, dismissed: bannerDismissed } = useBrowserShareBanner(agent?.id)
 
   const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
   const live = session.data?.status === 'active' || session.data?.status === 'allocating'
@@ -169,14 +145,87 @@ export const AgentScreenViewer = ({
   // A poll that comes back without a URL (a provider hiccup, which the route
   // deliberately renders as "no picture" rather than an error) also leaves
   // the frame alone rather than blanking it.
-  const heldFrame = useRef<{ key: string; url: string } | null>(null)
-  const [reloadNonce, setReloadNonce] = useState(0)
-  const frameKey = `${sessionId}::${activeTab}::${reloadNonce}`
-  if (!live) heldFrame.current = null
-  else if (mintedUrl !== null && heldFrame.current?.key !== frameKey) {
-    heldFrame.current = { key: frameKey, url: mintedUrl }
-  }
-  const frameUrl = heldFrame.current?.url ?? null
+  const [heldFrame, setHeldFrame] = useState<{ key: string; url: string; version: number } | null>(null)
+  const iframe = useRef<HTMLIFrameElement | null>(null)
+  const frameVersion = useRef(0)
+  const [recovery, setRecovery] = useState<LiveViewRecovery>('idle')
+  const frameKey = `${sessionId}::${activeTab}`
+  const frameUrl = live && recovery !== 'terminal' && recovery !== 'denied'
+    ? heldFrame?.url ?? null
+    : null
+  const frameOrigin = useMemo(() => {
+    if (!frameUrl) return null
+    try {
+      return new URL(frameUrl).origin
+    } catch {
+      return null
+    }
+  }, [frameUrl])
+
+  // Keep the initial and tab-selected frame stable across ordinary polls, but
+  // never restore an old URL while a recovery request is pending.
+  useEffect(() => {
+    if (!live) {
+      setHeldFrame(null)
+      return
+    }
+    if (recovery === 'idle' && mintedUrl !== null) {
+      setHeldFrame((current) => current?.key === frameKey
+        ? current
+        : { key: frameKey, url: mintedUrl, version: frameVersion.current++ })
+    }
+  }, [frameKey, live, mintedUrl, recovery])
+
+  // React Query retains the last successful detail while a poll is failing.
+  // That is useful for ordinary transient outages, but never for a revoked
+  // viewer: an old provider URL remains capable until its own expiry. Clear it
+  // as soon as the current poll says this caller no longer has access.
+  useEffect(() => {
+    if (!session.isError) return
+    const next = recoveryForLiveViewError(session.error)
+    if (next === 'denied' || next === 'terminal') {
+      setHeldFrame(null)
+      setRecovery(next)
+    }
+  }, [session.error, session.isError])
+
+  const recoverLiveView = useCallback(async () => {
+    setRecovery('loading')
+    setHeldFrame(null)
+    const answer = await session.refetch()
+    if (answer.isError) {
+      setRecovery(recoveryForLiveViewError(answer.error))
+      return
+    }
+    const detail = answer.data
+    const refreshedLive = detail?.status === 'active' || detail?.status === 'allocating'
+    const refreshedTab = detail?.tabs.find((tab) => tab.id === activeTab)
+    const refreshedUrl = refreshedTab?.liveViewUrl ?? detail?.liveViewUrl ?? null
+    if (!refreshedLive) {
+      setRecovery('terminal')
+      return
+    }
+    if (!refreshedUrl) {
+      setRecovery('retryable')
+      return
+    }
+    setHeldFrame({ key: frameKey, url: refreshedUrl, version: frameVersion.current++ })
+    setRecovery('idle')
+  }, [activeTab, frameKey, session])
+
+  // Live View tells its embedding page when Browserbase has disconnected. A
+  // same-origin check alone is insufficient: another Browserbase frame could
+  // otherwise make this viewer discard its own URL. Bind the event to the
+  // exact iframe as well as the URL we minted for it.
+  useEffect(() => {
+    if (!frameOrigin) return undefined
+    const onMessage = (event: MessageEvent<unknown>) => {
+      if (!isCurrentLiveViewDisconnect(event, frameOrigin, iframe.current?.contentWindow)) return
+      void recoverLiveView()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [frameOrigin, recoverLiveView])
 
   // The size the running session is actually at, which is not always the size
   // the browser is set to: Browserbase fixes a window when the session is
@@ -197,27 +246,50 @@ export const AgentScreenViewer = ({
   // like a frame that has simply stopped. Re-minting is one press away rather
   // than a reason to go back to swapping `src` on a timer.
   const reloadFrame = () => {
-    heldFrame.current = null
-    setReloadNonce((nonce) => nonce + 1)
-    void session.refetch()
+    void recoverLiveView()
   }
+  const retryable = recovery === 'retryable'
+    || (session.isError && recoveryForLiveViewError(session.error) === 'retryable')
+  const recoveryMessage = liveViewRecoveryMessage(!session.isLoading && session.data !== undefined && !live ? 'terminal' : recovery)
+  const emptyStateMessage = recovery === 'loading'
+    ? 'Requesting a fresh live view…'
+    : recoveryMessage ?? (retryable
+      ? live
+        ? 'The live view could not be refreshed. Retry to request a fresh view.'
+        : 'This browser has closed.'
+      : session.isLoading
+        ? 'Connecting to the browser…'
+        : live
+          ? 'The browser is starting up.'
+          : 'This browser has closed.')
+  const previewStatus = recovery === 'loading'
+    ? 'Refreshing the live view…'
+    : retryable
+      ? 'Live view disconnected.'
+      : !live
+        ? 'This browser has closed.'
+        : control.controlling
+          ? 'You are driving.'
+          : 'Take control to use this browser.'
+  const previewDisclosure = shared ? ' Saved sign-ins are shared.' : ''
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Wraps rather than overflows: full screen on a phone is a 390px row
-          carrying a name, two pills and up to four controls, and a header that
-          scrolls sideways hides the one control the reader came for. */}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 px-4 py-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">
           {session.data?.agentName ?? 'Agent'}
         </span>
-        <Pill size="sm" tone={live ? 'success' : 'muted'}>
-          {STATUS_LABEL[session.data?.status ?? ''] ?? 'Loading'}
-        </Pill>
-        {session.data?.controlledByUserId ? (
-          <Pill size="sm" tone="warning">
-            {control.controlling ? 'You are driving' : 'Someone is driving'}
-          </Pill>
+        {variant === 'fullscreen' ? (
+          <>
+            <Pill size="sm" tone={live ? 'success' : 'muted'}>
+              {liveViewStatusLabel(session.data?.status ?? '')}
+            </Pill>
+            {session.data?.controlledByUserId ? (
+              <Pill size="sm" tone="warning">
+                {control.controlling ? 'You are driving' : 'Someone is driving'}
+              </Pill>
+            ) : null}
+          </>
         ) : null}
         {live ? (
           <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -307,11 +379,11 @@ export const AgentScreenViewer = ({
         </div>
       ) : null}
 
-      {shared && (control.controlling || !bannerDismissed) ? (
+      {variant === 'fullscreen' && shared && (control.controlling || !bannerDismissed) ? (
         <div className="mx-3 mb-2 flex flex-shrink-0 items-start gap-3 border border-[color:var(--sep)] bg-[color:var(--bg2)] px-3 py-2">
           <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
-            Other people can use this agent’s browser. Anything you sign in to here is
-            shared with everyone who has access to this agent.
+            The people who signed in to this browser, and the person who requested this
+            session, can view its saved state. Anything you sign in to here is shared with them.
           </p>
           <button
             className="text-xs text-[color:var(--lnk)] hover:underline"
@@ -329,7 +401,7 @@ export const AgentScreenViewer = ({
           the rescue away exactly when it is needed, and a client running a
           minute fast never sees it at all. If the session really has gone the
           press is answered by a 404 and the panel moves on. */}
-      {countdown?.warning ? (
+      {variant === 'fullscreen' && countdown?.warning ? (
         <div
           aria-live="polite"
           className="mx-3 mb-2 flex flex-shrink-0 items-center gap-3 border border-[color:var(--warning)] bg-[color:var(--bg2)] px-3 py-2"
@@ -363,23 +435,42 @@ export const AgentScreenViewer = ({
           <iframe
             allow="clipboard-read; clipboard-write"
             className="h-full w-full border-0"
+            key={heldFrame?.version}
             // What the provider's live view needs and no more: its own scripts
             // and origin, and forms so a sign-in can submit in control mode.
             // Watch-only is the pointer-events line below, not this.
             sandbox="allow-same-origin allow-scripts allow-forms"
+            ref={iframe}
             src={frameUrl}
             style={{ pointerEvents: control.controlling ? 'auto' : 'none' }}
             title={`${session.data?.agentName ?? 'Agent'} browser`}
           />
         ) : (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--tx2)]">
-            {session.isLoading
-              ? 'Connecting to the browser…'
-              : live
-                ? 'The browser is starting up.'
-                : 'This browser has closed.'}
+            {emptyStateMessage}
           </div>
         )}
+        {frameUrl ? (
+          <BrowserPreviewStatus
+            countdown={countdown?.warning
+              ? { expired: countdown.expired, secondsLeft: countdown.secondsLeft }
+              : null}
+            disclosure={previewDisclosure}
+            onContinue={() => keepAlive.mutate()}
+            pending={keepAlive.isPending}
+            status={previewStatus}
+            variant={variant}
+          />
+        ) : null}
+        {retryable && live ? (
+          <button
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 admin-button admin-button-primary"
+            onClick={reloadFrame}
+            type="button"
+          >
+            Retry live view
+          </button>
+        ) : null}
       </div>
 
       {variant === 'fullscreen' ? (

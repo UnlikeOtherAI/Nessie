@@ -204,6 +204,8 @@ export type AgentRecord = {
   speakingStyle?: string | null
   status: AgentStatusResponse['status']
   systemPrompt?: string
+  /** Server-decided browser capability; never inferred from a connection. */
+  browserEnabled?: boolean
   toolPolicy?: Record<string, boolean>
   updatedAt: string
   /** Stored scope: private agents are visible only to their owner. */
@@ -446,6 +448,7 @@ export type ToolDescriptor = {
   // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
   // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
   requiresExplicitGrant?: boolean
+  personalAssistantOnly?: boolean
   safe: boolean
 }
 

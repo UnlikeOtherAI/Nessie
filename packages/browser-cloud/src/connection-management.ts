@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
@@ -55,14 +55,21 @@ export type ConnectionDeps = {
   clientFactory?: (credentials: { apiKey: string; projectId?: string | null }) => BrowserbaseClient
 }
 
+export type CloudBrowserConnectionProbeDeps = Pick<ConnectionDeps, 'clientFactory'>
+
+export type CloudBrowserConnectionPersistenceDeps = {
+  prisma: PrismaClient | Prisma.TransactionClient
+  storeSecret: (apiKey: string) => Promise<string>
+}
+
 /**
  * Probe before persisting: create a session and immediately release it. A
  * connection that cannot open a browser is a dead toggle, and the DeepWater
  * precedent is to refuse loudly rather than store one and fail later at the
  * moment somebody actually needs it.
  */
-const probe = async (
-  deps: ConnectionDeps,
+export const probeCloudBrowserConnection = async (
+  deps: CloudBrowserConnectionProbeDeps,
   credentials: { apiKey: string; projectId?: string | null },
 ): Promise<void> => {
   const client = deps.clientFactory
@@ -74,10 +81,9 @@ const probe = async (
   await client.endSession(session.id).catch(() => undefined)
 }
 
-export const connectCloudBrowser = async (
-  deps: ConnectionDeps,
+export const validateCloudBrowserConnectionInput = (
   input: ConnectCloudBrowserInput,
-): Promise<{ id: string }> => {
+): void => {
   if (input.scope === 'team' && !input.teamId) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
@@ -96,11 +102,19 @@ export const connectCloudBrowser = async (
       'A shared connection has no individual owner.',
     )
   }
+}
 
-  await probe(deps, { apiKey: input.apiKey, projectId: input.projectId ?? null })
+/**
+ * Store a key and create or repair its connection in the caller's transaction.
+ * Callers probe first, then call this only after their own one-shot decision
+ * has won; a card press therefore cannot rekey an account it failed to claim.
+ */
+export const persistCloudBrowserConnection = async (
+  deps: CloudBrowserConnectionPersistenceDeps,
+  input: ConnectCloudBrowserInput,
+): Promise<{ id: string }> => {
+  validateCloudBrowserConnectionInput(input)
 
-  // Only now does the plaintext reach the store, and only a `secret_*` ref is
-  // persisted on the row — the key itself never returns to any caller.
   const apiKeyRef = await deps.storeSecret(input.apiKey)
   const userId = input.scope === 'user' ? input.userId : null
   const teamId = input.scope === 'team' ? input.teamId ?? null : null
@@ -111,8 +125,6 @@ export const connectCloudBrowser = async (
   })
 
   if (existing) {
-    // Replacing a key is also the repair path for `needs_attention`, so the
-    // status resets and the health reason clears in the same write.
     await deps.prisma.cloudBrowserConnection.update({
       where: { id: existing.id },
       data: {
@@ -143,6 +155,18 @@ export const connectCloudBrowser = async (
     select: { id: true },
   })
   return { id: created.id }
+}
+
+export const connectCloudBrowser = async (
+  deps: ConnectionDeps,
+  input: ConnectCloudBrowserInput,
+): Promise<{ id: string }> => {
+  validateCloudBrowserConnectionInput(input)
+  await probeCloudBrowserConnection(deps, {
+    apiKey: input.apiKey,
+    projectId: input.projectId ?? null,
+  })
+  return persistCloudBrowserConnection(deps, input)
 }
 
 /**

@@ -184,6 +184,14 @@ export const presentAgentCard = async (
       secretLabels[block.key] = source ? `the ${source.name} dashboard source` : 'the dashboard source'
       continue
     }
+    if (block.destination.kind === 'browserbase_connection') {
+      secretLabels[block.key] = block.destination.scope === 'user'
+        ? 'your personal Browserbase connection'
+        : block.destination.scope === 'team'
+          ? 'the team Browserbase connection'
+          : 'the organisation Browserbase connection'
+      continue
+    }
     const instance = await prisma.mcpServerInstance.findFirst({
       select: { catalogEntry: { select: { displayName: true } } },
       where: {
@@ -340,3 +348,14 @@ export const buildCardOrchestrationPayload = (input: {
 })
 
 export const applyCardReplyBookkeeping = applyReplyBookkeeping
+
+/** The durable marker attached by the browser-login card generator. */
+export const readBrowserLoginHandoff = (
+  value: unknown,
+): { agentBrowserId: string; service: string } | null => {
+  if (!value || typeof value !== 'object') return null
+  const row = value as { agentBrowserId?: unknown; service?: unknown }
+  if (typeof row.agentBrowserId !== 'string' || typeof row.service !== 'string') return null
+  if (row.agentBrowserId.length === 0 || row.service.length === 0) return null
+  return { agentBrowserId: row.agentBrowserId, service: row.service.slice(0, 200) }
+}

@@ -49,6 +49,28 @@ test('a dashboard-source secret is a closed credential destination', () => {
   )
 })
 
+test('a Browserbase secret destination defaults to the responding person and scopes shared keys', () => {
+  const card = (destination: Record<string, unknown>) => AgentCardSpecSchema.safeParse({
+    ...baseSpec,
+    blocks: [{ destination, key: 'browserbase_api_key', label: 'Browserbase API key', type: 'secret' }],
+  })
+  const personal = card({ kind: 'browserbase_connection' })
+  assert.equal(personal.success, true)
+  const destination = personal.success && personal.data.blocks[0]?.type === 'secret'
+    ? personal.data.blocks[0].destination
+    : null
+  assert.equal(destination?.kind, 'browserbase_connection')
+  assert.equal(destination?.kind === 'browserbase_connection' && destination.scope, 'user')
+
+  assert.equal(card({ kind: 'browserbase_connection', scope: 'team' }).success, false)
+  assert.equal(card({ kind: 'browserbase_connection', scope: 'organization', teamId: '11111111-1111-4111-8111-111111111111' }).success, false)
+  assert.equal(card({
+    kind: 'browserbase_connection',
+    scope: 'team',
+    teamId: '11111111-1111-4111-8111-111111111111',
+  }).success, true)
+})
+
 test('a dashboard presentation message contains only its stable pointer', () => {
   assert.equal(
     DashboardPresentationMessageMetadataSchema.safeParse({

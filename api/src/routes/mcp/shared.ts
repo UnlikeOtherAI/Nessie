@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { sendApiError } from '../../lib/api.js'
 import type { AppConfig } from '../../lib/server-context.js'
+import type { RealtimeHub } from '../types.js'
 import type { RateLimiter } from '../../services/rate-limit.js'
 import {
   McpCatalogError,
@@ -38,6 +39,8 @@ import {
 
 export type McpRouteHelpers = {
   prisma: PrismaClient
+  /** Optional for isolated MCP route tests; production publishes policy edits. */
+  realtimeHub?: RealtimeHub
   /** Test seam: DNS resolution override for OAuth URL safety checks. */
   oauthResolveHost?: McpUrlSafetyOptions['resolveHost']
   /**
@@ -87,6 +90,7 @@ export type McpRouteHelpers = {
  */
 export type McpSubRegistrarContext = {
   prisma: PrismaClient
+  realtimeHub?: RealtimeHub
   config: AppConfig
   rateLimiter: RateLimiter
   requireActorContext: McpRouteHelpers['requireActorContext']

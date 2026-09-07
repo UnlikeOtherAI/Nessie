@@ -802,7 +802,7 @@ export const claimSessionControl = async (
  */
 export const releaseSessionControl = async (
   prisma: Pick<PrismaClient, 'cloudBrowserSession' | 'agentBrowserLogin'>,
-  input: { sessionId: string; userId: string },
+  input: { sessionId: string; userId: string; recordUnnamedLogin?: boolean },
 ): Promise<boolean> => {
   const session = await prisma.cloudBrowserSession.findFirst({
     where: { id: input.sessionId, controlledByUserId: input.userId },
@@ -829,7 +829,7 @@ export const releaseSessionControl = async (
   // nobody asked. One row per person per browser: a person who resumes the
   // browser to look, then to look again, is the same audit fact twice, and a
   // sign-in card's Done already writes the named row for a real handoff.
-  if (session?.agentBrowserId) {
+  if (input.recordUnnamedLogin !== false && session?.agentBrowserId) {
     const already = await prisma.agentBrowserLogin.count({
       where: { agentBrowserId: session.agentBrowserId, userId: input.userId },
     })

@@ -189,7 +189,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
   registerAgentCardRoutes(app, { ...deps, dashboardCredentials })
-  registerBrowserCloudRoutes(app, deps)
+  registerBrowserCloudRoutes(app, { ...deps, dashboardCredentials })
   registerScopedSettingsRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)
   registerKnowledgeBaseFileRoutes(app, deps)

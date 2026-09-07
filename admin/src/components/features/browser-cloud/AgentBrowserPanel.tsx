@@ -24,8 +24,9 @@ const formatDate = (iso: string): string =>
  * What this agent's browser is signed in to, and the way to undo it.
  *
  * The signer's name is shown beside each service on purpose: on a team
- * agent the logins are shared with everyone who can reach it, so "whose Google
- * is this" is the question a person actually has when they look here.
+ * agent the signers and a session's requester can inspect the durable browser
+ * state, so "whose Google is this" is the question a person actually has when
+ * they look here.
  */
 export const AgentBrowserPanel = ({ agent, heading = true }: AgentBrowserPanelProps) => {
   const browser = useAgentBrowser(agent.id)
@@ -107,8 +108,8 @@ export const AgentBrowserPanel = ({ agent, heading = true }: AgentBrowserPanelPr
               </ul>
               {agent.visibility === 'private' ? null : (
                 <p className="text-xs text-[color:var(--tx3)]">
-                  Anyone who can reach this agent can use these sign-ins, and anything it
-                  reads through them is shared with them too.
+                  Browser state is visible to the people who signed in and to a session’s
+                  requester. This does not decide who can read the agent’s replies.
                 </p>
               )}
             </div>

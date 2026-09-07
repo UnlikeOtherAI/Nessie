@@ -222,6 +222,8 @@ export const AgentSpawnedEventSchema = z.object({
   taskId: TaskIdSchema,
 })
 export type AgentSpawnedEvent = z.infer<typeof AgentSpawnedEventSchema>
+export const AgentUpdatedEventSchema = z.object({ agentId: AgentIdSchema })
+export type AgentUpdatedEvent = z.infer<typeof AgentUpdatedEventSchema>
 export const RunUpdatedEventSchema = z.object({
   runId: RunIdSchema,
   agentId: AgentIdSchema,
@@ -534,6 +536,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('agent.spawned'),
     data: AgentSpawnedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('agent.updated'),
+    data: AgentUpdatedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

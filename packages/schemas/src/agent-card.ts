@@ -48,6 +48,12 @@ export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
  * Designer just created. Both are Prisma-backed operations which commit with
  * the press.
  *
+ * `browserbase_connection` connects a Browserbase account. Its key is probed
+ * before the encrypted Browserbase connection row is written, and it never
+ * becomes a general vault secret. A personal account belongs to the person who
+ * presses the card; a shared team or organisation account remains an owner
+ * decision, matching the Settings route.
+ *
  * `vault_secret` is the general destination: Secrets, for a credential that
  * belongs to a person or a level of the organisation rather than to one
  * connector. It is the only one whose write is an external HTTP call and so
@@ -134,6 +140,31 @@ export const AgentCardSecretDestinationSchema = z
             code: z.ZodIssueCode.custom,
             message: 'A header credential needs headerName.',
             path: ['headerName'],
+          })
+        }
+      }),
+    z
+      .object({
+        kind: z.literal('browserbase_connection'),
+        /** Defaults to the responder's own Browserbase account. */
+        scope: z.enum(['user', 'team', 'organization']).default('user'),
+        /** Required only for a team-owned Browserbase account. */
+        teamId: z.string().uuid().optional(),
+      })
+      .strict()
+      .superRefine((destination, ctx) => {
+        if (destination.scope === 'team' && !destination.teamId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A team Browserbase account needs teamId.',
+            path: ['teamId'],
+          })
+        }
+        if (destination.scope !== 'team' && destination.teamId !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Only a team Browserbase account takes teamId.',
+            path: ['teamId'],
           })
         }
       }),

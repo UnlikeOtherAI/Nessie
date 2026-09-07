@@ -120,7 +120,15 @@ afterwards. Spec:
   exact authorization of its dashboard-source route; a `vault_secret` goes
   through `putSecretInVault` and `canManageSecretScope` — the same seam
   `POST /api/secrets` uses, so `personal` is the presser's own and every wider
-  scope stays owner-only and must resolve inside the organisation.
+  scope stays owner-only and must resolve inside the organisation. A
+  `browserbase_connection` uses the same Browserbase probe-and-persist seam as
+  Settings: its masked API key is never copied to
+  the ordinary vault, chat, audit, card row, presenter, or model. `user`
+  scope always binds to the person who pressed the card; `team` and
+  `organization` scope mirror the Settings route's owner and tenant checks.
+  The connection only supplies Browserbase credentials. It is never an
+  implicit per-agent browser grant; the existing explicit grant remains a
+  separate owner-side decision for each named agent.
 - **A plain `input` block is not a credential field.** Its value is written to
   `resolutionValues`, to the response message, to realtime and into the agent's
   next context, so a credential typed into one is refused at the press with

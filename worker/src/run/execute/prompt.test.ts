@@ -77,13 +77,38 @@ test('the system prompt tells the agent to link to tool-sourced locations, not d
   assert.match(systemContent(messages), /link=` value/)
 })
 
-test('every agent receives the compact secret-form instruction', () => {
-  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
+test('an agent with card_post receives the compact secret-form instruction', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    hasCardTool: true,
+  }))
   assert.match(system, /Never ask for, repeat, or put a secret in chat/)
   // The instruction has to name the thing an agent can DO, or it is only a
   // prohibition and no secret ever reaches Secrets.
   assert.match(system, /call card_post with a secret block/)
   assert.match(system, /vault_secret/)
+})
+
+test('every agent can describe Browserbase setup, but only card_post can collect its masked key', () => {
+  const noCard = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    hasCardTool: false,
+  }))
+  assert.match(noCard, /Browserbase account/)
+  assert.match(noCard, /Settings → Agents/)
+  assert.match(noCard, /Settings → Organization → Agents/)
+  assert.match(noCard, /Agents → Tools/)
+  assert.match(noCard, /\/settings\/account\?tab=agents/)
+  assert.match(noCard, /\/settings\/organization\?tab=agents/)
+  assert.match(noCard, /\/agents\/tools/)
+  assert.match(noCard, /cannot collect a Browserbase API key in this conversation/)
+  assert.doesNotMatch(noCard, /destination\.kind` `browserbase_connection/)
+  assert.doesNotMatch(noCard, /You can post an interactive card/)
+
+  const withCard = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    hasCardTool: true,
+  }))
+  assert.match(withCard, /destination\.kind` `browserbase_connection/)
+  assert.match(withCard, /masked card secret field/)
+  assert.match(withCard, /explicitly grant the named agent/)
 })
 
 test('the provider boundary replaces bypassed secrets with a safe prefix and bullets', () => {
