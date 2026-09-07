@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
+import { BasisScopeSchema } from '../execute/disclosure-basis.js'
 import { resolveActingMember } from './access.js'
 
 const MAX_PEER_DELEGATION_DEPTH = 4
@@ -23,11 +24,6 @@ const requesterAndProject = async (context: BuiltinToolRuntimeContext) => {
     where: { agentId: context.agentId, channelId: context.channel.id },
   })
   if (binding === 0) throw new Error('This agent is no longer bound to this project channel.')
-  // A peer brief is model-authored content. Until mailbox messages grow the
-  // full basis chain, forwarding a restricted run would fail open, so refuse.
-  if ((context.consumedSources?.size() ?? 0) > 0) {
-    throw new Error('This run has restricted sources and cannot delegate them to a peer.')
-  }
   const member = await resolveActingMember(context)
   if (!(await canAdministerProject(context.prisma, member, projectId))) {
     throw new Error('A current project administrator must authorize this collaboration.')
@@ -59,12 +55,14 @@ export const runAgentPeerDelegateTool = async (
     throw new Error('Choose another ordinary agent already bound to this project channel.')
   }
   const correlationId = `peer:${context.run.id}:${context.toolCallId ?? args.agentId}`
+  const basis = BasisScopeSchema.array().parse(context.consumedSources?.list() ?? [])
   let mail: { id: string }
   try {
     mail = await context.prisma.agentMailboxMessage.create({
       data: {
         actorId: member.userId,
         actorType: 'user',
+        basis: basis as Prisma.InputJsonValue,
         body: args.brief,
         channelId: context.channel.id,
         correlationId,

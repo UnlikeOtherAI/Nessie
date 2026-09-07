@@ -40,11 +40,24 @@ test('peer delegation refuses a fifth hop before it can write a mailbox item', a
   await assert.rejects(() => runAgentPeerDelegateTool(exhausted, { agentId: PEER, brief: 'review' }), /bounded peer-delegation limit/)
 })
 
-test('peer delegation refuses a run that consumed restricted material', async () => {
+test('peer delegation persists a restricted source basis for the target run', async () => {
+  const basis = [{ scopeId: PEER, scopeType: 'agent' }]
+  let storedBasis: unknown = null
   const restricted = context({
-    consumedSources: { add: () => undefined, addAll: () => undefined, list: () => [], size: () => 1 },
+    consumedSources: { add: () => undefined, addAll: () => undefined, list: () => basis, size: () => 1 },
+    prisma: {
+      agent: { findFirst: async () => ({ id: PEER, name: 'Coordinator' }) },
+      agentBinding: { count: async () => 1 },
+      agentMailboxMessage: { create: async ({ data }: { data: { basis: unknown } }) => {
+        storedBasis = data.basis
+        return { id: ID }
+      } },
+      organizationMember: { findUnique: async () => ({ deactivatedAt: null, role: 'owner' }) },
+      project: { count: async () => 1 },
+    } as unknown as BuiltinToolRuntimeContext['prisma'],
   })
-  await assert.rejects(() => runAgentPeerDelegateTool(restricted, { agentId: PEER, brief: 'review' }), /restricted sources/)
+  await runAgentPeerDelegateTool(restricted, { agentId: PEER, brief: 'review' })
+  assert.deepEqual(storedBasis, basis)
 })
 
 test('peer delegation refuses an agent after its source binding is removed', async () => {

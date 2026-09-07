@@ -1,4 +1,5 @@
 import type { DestinationScopeChain } from '@nessie/memory'
+import { z } from 'zod'
 
 /**
  * A scoped source a run consumed. Most scope types are `ThoughtAudienceType`
@@ -10,6 +11,12 @@ export type BasisScope = {
   scopeType: string
   scopeId: string
 }
+
+/** The durable representation used by message, run, and peer-mailbox basis rows. */
+export const BasisScopeSchema = z.object({
+  scopeId: z.string().min(1),
+  scopeType: z.string().min(1),
+})
 
 /**
  * Per-run accumulator of scoped sources the run actually consumed.

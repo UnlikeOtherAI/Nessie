@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import type { PgRealtimeTransport } from '@nessie/runtime'
+import { viewerSatisfiesBasis, type PgRealtimeTransport } from '@nessie/runtime'
 
 import { dispatchNextMailboxMessage } from '../../src/control/mailbox.js'
+import { runReplyBasis } from '../../src/run/execute/agent-message.js'
+import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
+import type { RunContext } from '../../src/run/execute/types.js'
 import {
   assertGlobalQueuesQuiet,
   deleteThreadQueueJobs,
@@ -105,6 +108,7 @@ const queueMail = async (
   seed: Seed,
   body: string,
   peerDelegationDepth?: number,
+  basis: { scopeId: string; scopeType: string }[] = [],
 ): Promise<{ id: string }> => {
   return prisma.agentMailboxMessage.create({
     data: {
@@ -115,6 +119,7 @@ const queueMail = async (
       threadId: seed.threadId,
       actorId: peerDelegationDepth === undefined ? seed.fromAgentId : seed.requesterId,
       actorType: peerDelegationDepth === undefined ? 'agent' : 'user',
+      basis,
       body,
       correlationId: randomUUID(),
       peerDelegationDepth,
@@ -205,7 +210,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
   )
 })
 
-runDatabaseTest('peer mailbox delivery persists the requester capability and bounded depth into its one queued run', async (t) => {
+runDatabaseTest('peer delivery keeps a restricted research basis through the coordinator reply ACL', async (t) => {
   const prisma = new PrismaClient()
   await assertGlobalQueuesQuiet(prisma)
   const seed = await seedTeam(prisma)
@@ -214,7 +219,14 @@ runDatabaseTest('peer mailbox delivery persists the requester capability and bou
     await prisma.$disconnect()
   })
 
-  const mail = await queueMail(prisma, seed, 'review the prospect evidence', 2)
+  const sourceBasis = [{ scopeId: seed.requesterId, scopeType: 'user' }]
+  const mail = await queueMail(
+    prisma,
+    seed,
+    'review the prospect evidence',
+    2,
+    sourceBasis,
+  )
   await dispatchSeededMail(prisma, mail)
 
   const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { correlationId?: string; effectiveUserId?: string; purpose?: string } } } }[]>`
@@ -224,6 +236,42 @@ runDatabaseTest('peer mailbox delivery persists the requester capability and bou
   assert.equal(rows[0]?.payload.actorContext.actionContext.purpose, 'agent.peer_delegation')
   assert.equal(rows[0]?.payload.actorContext.actionContext.correlationId, '2')
   assert.equal(rows[0]?.payload.actorContext.actionContext.effectiveUserId, seed.requesterId)
+
+  const prompt = await prisma.message.findFirstOrThrow({
+    where: { content: 'review the prospect evidence', threadId: seed.threadId },
+    select: { basisScopes: { select: { scopeId: true, scopeType: true } } },
+  })
+  assert.deepEqual(prompt.basisScopes, sourceBasis)
+
+  const run = await prisma.run.findFirstOrThrow({
+    where: { agentId: seed.toAgentId, threadId: seed.threadId },
+    select: { basisScopes: { select: { scopeId: true, scopeType: true } } },
+  })
+  assert.deepEqual(run.basisScopes, sourceBasis)
+
+  // run-job admits the stamped prompt basis into this sink before the model
+  // starts. The ordinary project channel does not imply a person-only source,
+  // so every coordinator reply retains that source ACL at read time.
+  const consumedSources = createConsumedSourceSink()
+  consumedSources.addAll(prompt.basisScopes)
+  const outputBasis = runReplyBasis({
+    boundAgentIds: [],
+    channel: {
+      id: seed.channelId,
+      organizationId: seed.organizationId,
+      projectId: seed.projectId,
+      systemChannelType: null,
+      teamId: seed.teamId,
+    },
+    consumedSources,
+  } as RunContext)
+  assert.deepEqual(outputBasis, sourceBasis)
+  assert.equal(viewerSatisfiesBasis(outputBasis, {
+    kind: 'user', scopes: sourceBasis, userId: seed.requesterId,
+  }), true)
+  assert.equal(viewerSatisfiesBasis(outputBasis, {
+    kind: 'user', scopes: [], userId: randomUUID(),
+  }), false)
 
   // The delivery row is terminal; replaying the sweep cannot create a second run.
   assert.equal(await dispatchNextMailboxMessage(prisma, realtime), false)
