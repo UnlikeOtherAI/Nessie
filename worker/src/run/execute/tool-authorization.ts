@@ -67,10 +67,7 @@ export type ToolAuthorizationDecision =
 export type ToolAuthorizationContext = {
   agentKind: RunContext['agent']['agentKind']
   allowedToolIds: Set<string>
-  /**
-   * Registry membership is the organisational ceiling; this per-run set is
-   * the resolved offer after agent capability gates such as todosEnabled.
-   */
+  /** Registry membership is the organisational ceiling for this resolved offer. */
   resolvedBuiltinToolIds?: Set<string>
   /**
    * Names dispatched outside the builtin registry (MCP views, the executor
