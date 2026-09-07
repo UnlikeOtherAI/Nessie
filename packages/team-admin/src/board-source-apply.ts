@@ -4,7 +4,7 @@ import {
   type BoardSourceFieldMapping,
   BoardSourceFieldMappingSchema,
   type BoardSourceStateMapping,
-  BoardSourceStateMappingSchema,
+  BoardSourceStateMappingsSchema,
   type ColumnCategory,
 } from '@nessie/schemas'
 
@@ -49,7 +49,7 @@ export type ApplyOutcome =
   | { applied: 'unmapped_state'; stateName: string }
 
 export const parseStateMapping = (value: unknown): BoardSourceStateMapping[] => {
-  const parsed = BoardSourceStateMappingSchema.array().safeParse(value)
+  const parsed = BoardSourceStateMappingsSchema.safeParse(value)
   return parsed.success ? parsed.data : []
 }
 

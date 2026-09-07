@@ -101,6 +101,36 @@ export const BoardSourceStateMappingSchema = z
   .strict()
 export type BoardSourceStateMapping = z.infer<typeof BoardSourceStateMappingSchema>
 
+/**
+ * A category has one write-back destination at most. `archived` and `null`
+ * are not destinations, so neither can name a default.
+ */
+export const BoardSourceStateMappingsSchema = BoardSourceStateMappingSchema.array().superRefine(
+  (mappings, context) => {
+    const defaultedCategories = new Set<ColumnCategory>()
+    for (const [index, mapping] of mappings.entries()) {
+      if (!mapping.isDefaultForCategory) continue
+      if (mapping.category === null || mapping.category === 'archived') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'only an active board category can have a default state',
+          path: [index, 'isDefaultForCategory'],
+        })
+        continue
+      }
+      if (defaultedCategories.has(mapping.category)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'a category can have only one default state',
+          path: [index, 'isDefaultForCategory'],
+        })
+        continue
+      }
+      defaultedCategories.add(mapping.category)
+    }
+  },
+)
+
 /** A native task field an external field may target, or one custom definition. */
 export const BoardSourceFieldTargetSchema = z.union([
   z.literal('native:priority'),
@@ -188,7 +218,7 @@ export const BoardSourceRecordSchema = z.object({
   // On the list rather than only the detail: a board's column editor needs
   // every source's states to offer bindings, and a handful of states per source
   // is far cheaper than one detail fetch per source.
-  stateMapping: BoardSourceStateMappingSchema.array(),
+  stateMapping: BoardSourceStateMappingsSchema,
 })
 export type BoardSourceRecord = z.infer<typeof BoardSourceRecordSchema>
 
@@ -252,7 +282,7 @@ export const UpdateBoardSourceBodySchema = z
  *  interdependent tables is a merge nobody can reason about. */
 export const PutBoardSourceMappingsBodySchema = z
   .object({
-    stateMapping: BoardSourceStateMappingSchema.array(),
+    stateMapping: BoardSourceStateMappingsSchema,
     fieldMappings: BoardSourceFieldMappingSchema.array(),
     identityLinks: z
       .object({

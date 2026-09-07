@@ -6,6 +6,7 @@ import {
   type BoardSourceProvider,
   type BoardSourceRecord,
   type BoardSourceStateMapping,
+  BoardSourceStateMappingsSchema,
   type BoardSourceWriteMode,
   parseProjectId,
   parseUserId,
@@ -33,6 +34,7 @@ export type BoardSourceError =
   | { error: 'CONNECTION_NOT_FOUND' }
   | { error: 'CONNECTION_NOT_OWNED' }
   | { error: 'CONTAINER_ALREADY_ATTACHED' }
+  | { error: 'INVALID_STATE_MAPPING' }
   | { error: 'CONNECTION_IN_USE'; detail: string }
 
 export const isBoardSourceError = <T>(value: T | BoardSourceError): value is BoardSourceError =>
@@ -354,6 +356,8 @@ export const putBoardSourceMappings = async (
     include: { connection: { select: { externalTenantId: true } } },
   })
   if (!source) return { error: 'SOURCE_NOT_FOUND' }
+  const stateMapping = BoardSourceStateMappingsSchema.safeParse(input.stateMapping)
+  if (!stateMapping.success) return { error: 'INVALID_STATE_MAPPING' }
   const tenant = {
     organizationId: source.organizationId,
     provider: source.provider,
@@ -423,7 +427,7 @@ export const putBoardSourceMappings = async (
     return tx.boardSource.update({
       where: { id: sourceId },
       data: {
-        stateMapping: input.stateMapping as unknown as Prisma.InputJsonValue,
+        stateMapping: stateMapping.data as unknown as Prisma.InputJsonValue,
         fieldMappings: input.fieldMappings as unknown as Prisma.InputJsonValue,
         // A mapping change is exactly what clears `UNMAPPED_STATE`, so the
         // source is re-run rather than left sitting in a state a person fixed.
