@@ -190,7 +190,7 @@ export const useAssignTask = () => {
   })
 }
 
-type OptimisticContext = { snapshots: [readonly unknown[], TaskRecord[] | undefined][] }
+type OptimisticContext = { snapshots: [readonly unknown[], unknown][] }
 
 // Optimistically patch the matching task across every per-project cache so the
 // board reacts instantly; returns the snapshots for rollback on error.
@@ -199,12 +199,17 @@ const optimisticPatch = (
   id: string,
   patch: Partial<TaskRecord>,
 ): OptimisticContext => {
-  const snapshots = queryClient.getQueriesData<TaskRecord[]>({ queryKey: taskKeys.all })
+  const snapshots = queryClient.getQueriesData<unknown>({ queryKey: taskKeys.all })
   for (const [key, data] of snapshots) {
-    if (!data) continue
+    // Task checklist reads live under the same root so one task invalidation
+    // reaches them too. Only board/list payloads are task arrays to patch.
+    if (!Array.isArray(data)) continue
     queryClient.setQueryData(
       key,
-      data.map((task) => (task.id === id ? { ...task, ...patch } : task)),
+      data.map((task) => {
+        if (!task || typeof task !== 'object' || !('id' in task)) return task
+        return task.id === id ? { ...task, ...patch } : task
+      }),
     )
   }
   return { snapshots }

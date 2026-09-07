@@ -108,6 +108,7 @@ const { draft, setDraft, flush, clear, restored, revision, saveError, isSaving }
   | reply-thread composer (panel + Threads inbox) | `draft:reply:<rootMessageId>` |
   | message inline edit | `draft:message-edit:<messageId>` |
   | task dialog | `draft:task:<taskId \| new>` |
+  | task checklist result | `draft:task-checklist:<taskId>` |
   | agent designer | `draft:agent-designer:<agentId \| new>` |
   | knowledge page editor | `draft:kb-page:<pageId \| new>` |
   | trigger editor | `draft:trigger:<triggerId \| new>` |

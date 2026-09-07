@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { AgentTodoTemplateRecord } from '@nessie/schemas'
 import { MessageMarkdown } from '../../channels/MessageMarkdown'
 import { useAgents } from '../../../../facades/agents/queries'
+import { agentTodoKeys } from '../../../../facades/agent-todos/keys'
 import {
   useApplyTaskChecklist,
   useTaskChecklist,
   useUpdateTaskChecklistStep,
 } from '../../../../facades/tasks/hooks'
 import { useApiClient } from '../../../../providers/ApiClientProvider'
+import { formErrorMessage } from '../../../../facades/forms/form-errors'
+import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import { Notice } from '../../../primitives/Notice'
 import { EmptyState } from '../../../shared/EmptyState'
 import { FormField } from '../../../shared/FormField'
@@ -28,13 +31,28 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
   const apply = useApplyTaskChecklist()
   const updateStep = useUpdateTaskChecklistStep()
   const [choice, setChoice] = useState('')
-  const [results, setResults] = useState<Record<string, string>>({})
+  const resultsDraft = useDraft<Record<string, string>>(draftKey('task-checklist', taskId), {
+    initial: {},
+  })
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const [pendingStepKeys, setPendingStepKeys] = useState<ReadonlySet<string>>(new Set())
+  const [saveStatus, setSaveStatus] = useState<Record<string, string>>({})
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({})
+  const activeTaskId = useRef(taskId)
+  const pendingStepKeysRef = useRef<ReadonlySet<string>>(new Set())
+  const resultsRef = useRef(resultsDraft.draft)
+  activeTaskId.current = taskId
+  resultsRef.current = resultsDraft.draft
 
   // Step keys are version-local, so a result typed for one task must never
   // appear after the dialog moves to a second task with the same template.
   useEffect(() => {
     setChoice('')
-    setResults({})
+    setApplyError(null)
+    pendingStepKeysRef.current = new Set()
+    setPendingStepKeys(pendingStepKeysRef.current)
+    setSaveStatus({})
+    setStepErrors({})
   }, [taskId])
 
   const templates = useQuery<TemplateChoice[]>({
@@ -54,7 +72,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
       )
       return choices.flat()
     },
-    queryKey: ['task-checklist-templates', agents.map((agent) => agent.id)],
+    queryKey: agentTodoKeys.templateChoices(agents.map((agent) => agent.id)),
   })
   const selected = useMemo(
     () => templates.data?.find((item) => `${item.agentId}:${item.template.id}` === choice),
@@ -71,8 +89,10 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
     return (
       <section className="grid gap-4">
         <EmptyState>This task has no checklist yet.</EmptyState>
-        {templates.isError || apply.isError ? (
-          <Notice tone="danger">The checklist could not be applied.</Notice>
+        {templates.isError || applyError ? (
+          <Notice tone="danger">
+            {applyError ?? 'The checklist could not be applied.'}
+          </Notice>
         ) : null}
         <FormField label="Apply a reusable checklist">
           <Select
@@ -103,11 +123,20 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
             disabled={!selected || apply.isPending}
             onClick={() => {
               if (!selected) return
-              void apply.mutateAsync({
-                agentId: selected.agentId,
-                taskId,
-                templateId: selected.template.id,
-              })
+              setApplyError(null)
+              void (async () => {
+                try {
+                  await apply.mutateAsync({
+                    agentId: selected.agentId,
+                    taskId,
+                    templateId: selected.template.id,
+                  })
+                } catch (cause) {
+                  if (activeTaskId.current === taskId) {
+                    setApplyError(formErrorMessage(cause, 'The checklist could not be applied.'))
+                  }
+                }
+              })()
             }}
             type="button"
           >
@@ -121,18 +150,68 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
   return (
     <section className="grid gap-4" data-testid="task-checklist">
       <h3 className="text-sm font-semibold text-[color:var(--tx)]">{checklist.data.title}</h3>
-      {updateStep.isError ? (
-        <Notice tone="danger">The checklist result could not be saved.</Notice>
-      ) : null}
       {checklist.data.steps.map((step) => {
-        const result = results[step.key] ?? step.result ?? ''
+        const result = resultsDraft.draft[step.key] ?? step.result ?? ''
+        const pending = pendingStepKeys.has(step.key)
         const save = (completed = Boolean(step.completedAt)) => {
-          void updateStep.mutateAsync({
-            completed,
-            result: result || null,
-            stepKey: step.key,
-            taskId,
+          if (pendingStepKeysRef.current.has(step.key)) return
+
+          const savedResult = result
+          const nextPending = new Set(pendingStepKeysRef.current).add(step.key)
+          pendingStepKeysRef.current = nextPending
+          setPendingStepKeys(nextPending)
+          setStepErrors((current) => {
+            const next = { ...current }
+            delete next[step.key]
+            return next
           })
+          setSaveStatus((current) => {
+            const next = { ...current }
+            delete next[step.key]
+            return next
+          })
+
+          void (async () => {
+            try {
+              await updateStep.mutateAsync({
+                completed,
+                result: savedResult || null,
+                stepKey: step.key,
+                taskId,
+              })
+              if (activeTaskId.current !== taskId) return
+
+              // A save only removes the exact value it sent. If the person
+              // kept typing while it was in flight, their newer draft remains.
+              if (resultsRef.current[step.key] === savedResult) {
+                resultsDraft.setDraft((current) => {
+                  const next = { ...current }
+                  delete next[step.key]
+                  resultsRef.current = next
+                  return next
+                })
+                setSaveStatus((current) => ({ ...current, [step.key]: 'Saved.' }))
+              } else {
+                setSaveStatus((current) => ({
+                  ...current,
+                  [step.key]: 'Saved an earlier version. Save again to keep your latest edit.',
+                }))
+              }
+            } catch (cause) {
+              if (activeTaskId.current === taskId) {
+                setStepErrors((current) => ({
+                  ...current,
+                  [step.key]: formErrorMessage(cause, 'The checklist result could not be saved.'),
+                }))
+              }
+            } finally {
+              if (activeTaskId.current !== taskId) return
+              const next = new Set(pendingStepKeysRef.current)
+              next.delete(step.key)
+              pendingStepKeysRef.current = next
+              setPendingStepKeys(next)
+            }
+          })()
         }
 
         return (
@@ -141,6 +220,7 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
               <Input
                 aria-label={`Complete ${step.title}`}
                 checked={Boolean(step.completedAt)}
+                disabled={pending}
                 onChange={(event) => save(event.target.checked)}
                 type="checkbox"
               />
@@ -154,7 +234,16 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
             <Textarea
               aria-label={`Result for ${step.title}`}
               onChange={(event) => {
-                setResults((current) => ({ ...current, [step.key]: event.target.value }))
+                resultsDraft.setDraft((current) => {
+                  const next = { ...current, [step.key]: event.target.value }
+                  resultsRef.current = next
+                  return next
+                })
+                setSaveStatus((current) => {
+                  const next = { ...current }
+                  delete next[step.key]
+                  return next
+                })
               }}
               placeholder="What did you find?"
               rows={2}
@@ -163,13 +252,19 @@ export const TaskChecklistTab = ({ taskId }: { taskId: string }) => {
             <div>
               <button
                 className="admin-button"
-                disabled={updateStep.isPending}
+                disabled={pending}
                 onClick={() => save()}
                 type="button"
               >
-                Save result
+                {pending ? 'Saving…' : 'Save result'}
               </button>
             </div>
+            {saveStatus[step.key] ? (
+              <p className="text-sm text-[color:var(--tx2)]" role="status">
+                {saveStatus[step.key]}
+              </p>
+            ) : null}
+            {stepErrors[step.key] ? <Notice tone="danger">{stepErrors[step.key]}</Notice> : null}
           </div>
         )
       })}
