@@ -10,6 +10,18 @@ const gotoBoardList = async (page, adminUrl, projectId) => {
 
 const boardListRow = (page, name) => page.locator('tbody').getByRole('row').filter({ hasText: name })
 
+const waitForSettings = async (page, projectId, boardId, tab) => {
+  const pathname = `/projects/${projectId}/boards/${boardId}/settings`
+  if (tab !== 'general') {
+    await page.waitForURL(new RegExp(`${pathname}\\?tab=${tab}$`, 'u'))
+    return
+  }
+  await page.waitForFunction((expectedPathname) => {
+    const url = new URL(window.location.href)
+    return url.pathname === expectedPathname && [null, 'general'].includes(url.searchParams.get('tab'))
+  }, pathname)
+}
+
 const waitForBoard = async (call, token, projectId, name, expected = {}) => {
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
@@ -51,8 +63,8 @@ const createBoardThroughUi = async ({ adminUrl, onCreated, page, projectId, sour
   assert.ok(await create.isVisible(), 'New board keeps its primary Create board action visible')
   await create.click()
   await dialog.waitFor({ state: 'hidden' })
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/[^/]+/settings\\?tab=general$`, 'u'))
-  const boardId = page.url().match(new RegExp(`/projects/${projectId}/boards/([^/]+)/settings$`, 'u'))?.[1]
+  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/[^/]+/settings(?:\\?tab=general)?$`, 'u'))
+  const boardId = new URL(page.url()).pathname.match(new RegExp(`/projects/${projectId}/boards/([^/]+)/settings$`, 'u'))?.[1]
   if (!boardId) throw new Error('new board route did not contain its board id')
   onCreated(decodeURIComponent(boardId))
   return decodeURIComponent(boardId)
@@ -98,8 +110,9 @@ export const exerciseBoardManagement = async ({
   })
   const board = await waitForBoard(call, token, projectId, boardName)
   assert.equal(board.id, createdBoardId, 'creation identifies the board it just made')
-  const generalPath = `/projects/${projectId}/boards/${board.id}/settings?tab=general`
-  assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, generalPath, 'creation lands on the new board’s general settings')
+  const landedUrl = new URL(page.url())
+  assert.equal(landedUrl.pathname, `/projects/${projectId}/boards/${board.id}/settings`, 'creation lands on the new board settings')
+  assert.ok([null, 'general'].includes(landedUrl.searchParams.get('tab')), 'creation lands on General settings')
   await page.getByRole('heading', { name: boardName, exact: true }).waitFor()
   const settingsTabs = page.getByRole('tablist', { name: 'Board settings' })
   assert.equal(await settingsTabs.getByRole('tab', { name: 'General' }).getAttribute('aria-selected'), 'true', 'general is selected after creation')
@@ -113,7 +126,7 @@ export const exerciseBoardManagement = async ({
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
 
   await boardListRow(page, boardName).getByRole('link', { name: 'Settings' }).click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'general')
   const nameField = page.getByLabel('Board name')
   await nameField.fill(renamedBoardName)
   await nameField.blur()
@@ -127,14 +140,14 @@ export const exerciseBoardManagement = async ({
   await waitForBoard(call, token, projectId, renamedBoardName, { isDefault: true })
 
   await settingsTabs.getByRole('tab', { name: 'Columns' }).click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=columns$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'columns')
   assert.equal(await page.getByLabel('Board name').count(), 0, 'Columns does not retain General controls')
   await page.getByLabel('New column name').fill(columnName)
   await page.getByRole('button', { name: 'Add column' }).click()
   await waitForBoardColumn(call, token, projectId, renamedBoardName, columnName)
 
   await settingsTabs.getByRole('tab', { name: 'Watchers' }).click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=watchers$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'watchers')
   assert.equal(await page.getByLabel('New column name').count(), 0, 'Watchers does not retain Columns controls')
   const recipients = page.getByLabel('Tell')
   await recipients.fill(watcherName)
@@ -144,7 +157,7 @@ export const exerciseBoardManagement = async ({
 
   await gotoBoardList(page, adminUrl, projectId)
   await boardListRow(page, renamedBoardName).getByRole('link', { name: 'Settings' }).click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'general')
   await page.goBack()
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
   await page.goto(`${adminUrl}/projects/${projectId}/boards/${board.id}/settings?tab=watchers`, { waitUntil: 'domcontentloaded' })
@@ -152,7 +165,7 @@ export const exerciseBoardManagement = async ({
   assert.equal(await settingsTabs.getByRole('tab', { name: 'Watchers' }).getAttribute('aria-selected'), 'true', 'a settings deep link selects its stated tab')
 
   await page.goto(`${adminUrl}/projects/${projectId}/settings?section=boards&board=${board.id}`, { waitUntil: 'domcontentloaded' })
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'general')
   await page.goto(`${adminUrl}/projects/${projectId}/settings?section=boards&create=board`, { waitUntil: 'domcontentloaded' })
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
   const legacyCreateDialog = page.getByRole('dialog', { name: 'New board' })
@@ -188,11 +201,11 @@ export const exerciseBoardManagementPhone = async ({ adminUrl, board, page, proj
   await shot(page, 'phone-board-management-list')
 
   await settings.click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'general')
   await page.getByRole('button', { name: 'Back to boards', exact: true }).click()
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
   await boardListRow(page, board.name).getByRole('link', { name: 'Settings' }).click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'general')
   const tabs = page.getByRole('tablist', { name: 'Board settings' })
   for (const name of ['General', 'Columns', 'Watchers']) {
     const box = await tabs.getByRole('tab', { name }).boundingBox()
@@ -200,7 +213,7 @@ export const exerciseBoardManagementPhone = async ({ adminUrl, board, page, proj
     assert.ok(box.height >= 44, `${name} tab keeps a 44px touch target (was ${box.height}px)`)
   }
   await tabs.getByRole('tab', { name: 'Watchers' }).click()
-  await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=watchers$`, 'u'))
+  await waitForSettings(page, projectId, board.id, 'watchers')
   const recipientBox = await page.getByLabel('Tell').boundingBox()
   assert.ok(recipientBox, 'watcher recipient control is visible on a phone')
   assert.ok(recipientBox.height >= 44, `watcher recipient control is a touch target (was ${recipientBox.height}px)`)

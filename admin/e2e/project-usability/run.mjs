@@ -80,6 +80,14 @@ const shot = async (page, name) => {
   await mkdir(SCREENSHOTS, { recursive: true })
   await page.screenshot({ path: `${SCREENSHOTS}/${name}.png`, fullPage: false })
 }
+const captureFailure = async (page, name) => {
+  if (!page) return
+  console.error(`project-usability e2e: ${name} failed at ${page.url()}`)
+  await mkdir(SCREENSHOTS, { recursive: true })
+  await page.screenshot({ path: `${SCREENSHOTS}/failure-${name}.png`, fullPage: false }).catch((error) => {
+    console.error(`project-usability e2e: could not capture ${name}: ${error.message}`)
+  })
+}
 
 const main = async () => {
   if (!databaseUrl()) skip('DATABASE_URL is not set')
@@ -169,6 +177,10 @@ const main = async () => {
     await phonePage.page.waitForFunction((title) => ![...document.querySelectorAll('[data-kanban-card]')].some((item) => item.textContent?.includes(title)), touchTitle, { timeout: 30_000 })
     assert.equal(await phonePage.page.locator('[data-kanban-card]').filter({ hasText: touchTitle }).count(), 0, 'board B excludes board A phone work')
     await shot(phonePage.page, 'phone-isolated-board')
+  } catch (error) {
+    await captureFailure(desktopPage?.page, 'desktop')
+    await captureFailure(phonePage?.page, 'phone')
+    throw error
   } finally {
     await desktopPage?.close().catch(() => {})
     await phonePage?.close().catch(() => {})
