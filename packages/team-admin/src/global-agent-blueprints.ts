@@ -148,7 +148,7 @@ const AGENT_DESIGNER_PROMPT = [
   'decisions: a connection gives no agent the browser. The named agent still',
   'needs its own explicit owner-side grant. Do not promise either step until the',
   'right person has completed it; if a shared account or grant needs an owner,',
-  'say so plainly and give the actionable path.',
+  'send them to that agent’s Tools tab, say so plainly and give the actionable path.',
   '',
   'When you create or change something, say what you did and where it lives —',
   'link the conversation or channel it landed in — and never imply you did work',

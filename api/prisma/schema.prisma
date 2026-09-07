@@ -1039,6 +1039,8 @@ model User {
   disclosureGrants                    DisclosureGrant[]
   scopeDisclosureGrants               ScopeDisclosureGrant[]
   messageDisclosureSources            MessageDisclosureSource[]
+  checkpointDisclosureSources         RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources            ThoughtDisclosureSource[]
   userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
   messageThreadFollows                MessageThreadFollow[]
   favorites                           Favorite[]
@@ -1291,6 +1293,8 @@ model Organization {
   runBasisScopes                   RunBasisScope[]
   messageBasisScopes               MessageBasisScope[]
   messageDisclosureSources         MessageDisclosureSource[]
+  checkpointDisclosureSources      RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources         ThoughtDisclosureSource[]
   disclosureGrants                 DisclosureGrant[]
   scopeDisclosureGrants            ScopeDisclosureGrant[]
   agentMailboxMessages             AgentMailboxMessage[]
@@ -2058,6 +2062,8 @@ model Channel {
   agentMailbox           AgentMailbox?
   agentHandoffRequests   AgentHandoffRequest[]
   disclosureSources      MessageDisclosureSource[]
+  checkpointDisclosureSources RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources ThoughtDisclosureSource[]
 
   agentCards AgentCard[]
 
@@ -2523,6 +2529,45 @@ model MessageBasisScope {
   @@unique([messageId, scopeType, scopeId], map: "message_basis_scopes_message_scope_key")
   @@index([organizationId], map: "message_basis_scopes_org_idx")
   @@map("message_basis_scopes")
+}
+
+/// Durable original-author provenance for a checkpoint note. An absent row on an
+/// older checkpoint is deliberately not repaired from the channel scope: resume
+/// records it as unknown and keeps exports closed.
+model RunCheckpointDisclosureSource {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  checkpointId       String        @map("checkpoint_id") @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  sourceChannelId    String        @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?       @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at")
+  checkpoint         RunCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  organization       Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel      Channel       @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  sourceAuthor       User?         @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([checkpointId, sourceChannelId, sourceAuthorUserId], map: "run_checkpoint_disclosure_sources_checkpoint_channel_author_key")
+  @@index([organizationId], map: "run_checkpoint_disclosure_sources_org_idx")
+  @@map("run_checkpoint_disclosure_sources")
+}
+
+/// Durable original-author provenance for a recalled thought. Absence is legacy
+/// uncertainty and is intentionally represented as an unknown source at recall.
+model ThoughtDisclosureSource {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  thoughtId          String       @map("thought_id") @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  sourceChannelId    String       @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?      @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at")
+  thought            Thought      @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel      Channel      @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  sourceAuthor       User?        @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([thoughtId, sourceChannelId, sourceAuthorUserId], map: "thought_disclosure_sources_thought_channel_author_key")
+  @@index([organizationId], map: "thought_disclosure_sources_org_idx")
+  @@map("thought_disclosure_sources")
 }
 
 /// The people whose words from a private conversation entered an agent reply.
@@ -3276,6 +3321,7 @@ model RunCheckpoint {
   createdAt       DateTime     @default(now()) @map("created_at")
   run             Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  disclosureSources RunCheckpointDisclosureSource[]
 
   @@index([threadId, rootMessageId, createdAt])
   @@map("run_checkpoints")
@@ -5417,6 +5463,7 @@ model Thought {
   linksTo    ThoughtLink[]      @relation("ThoughtLinksTo")
   auditLogs  ThoughtAuditLog[]
   recalls    ThoughtRecall[]
+  disclosureSources ThoughtDisclosureSource[]
 
   @@index([organizationId, visibility, createdAt])
   @@index([organizationId, memoryType, memoryCategory, createdAt])

@@ -55,6 +55,11 @@ export {
   type ResolveAccessibleScopesInput,
 } from './scopes.js'
 export {
+  loadThoughtDisclosureLineage,
+  type PrivateConversationSource,
+  type ThoughtDisclosureLineage,
+} from './disclosure-sources.js'
+export {
   logRecalls,
   recordRecallSignal,
   markRecallsInjected,
