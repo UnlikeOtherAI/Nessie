@@ -1,10 +1,12 @@
 import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
+  type CapabilityResolution,
   createInferenceService,
   isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
+  type PinnedFetch,
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
@@ -56,6 +58,25 @@ export const resolveMainOutputTokens = (input: {
   )
 }
 
+type MainOutputProviderConfig = Pick<
+  Awaited<ReturnType<typeof resolveStageProviderConfig>>,
+  'apiKey' | 'baseUrl' | 'connectorKind' | 'extraHeaders' | 'model' | 'providerKey'
+>
+
+type StageProviderResolver = (
+  ...args: Parameters<typeof resolveStageProviderConfig>
+) => Promise<MainOutputProviderConfig>
+
+type MainOutputInferenceService = {
+  getCapabilities: (model?: string) => Promise<{
+    effectiveSnapshot: Pick<CapabilityResolution['effectiveSnapshot'], 'maxOutputTokens'>
+  }>
+}
+
+type MainOutputInferenceServiceFactory = (
+  input: Parameters<typeof createInferenceService>[0],
+) => MainOutputInferenceService
+
 /**
  * How this run calls the model. One construction point for every inference the
  * run makes — the main turn, delegate sub-agents, compaction and checkpoint
@@ -99,9 +120,9 @@ export const createRunInference = (
      */
     subscription: RunSubscriptionBinding | null
     /** Narrow test seams; production uses the imported resolvers. */
-    stageProviderResolver?: typeof resolveStageProviderConfig
-    inferenceServiceFactory?: typeof createInferenceService
-    ledgerCatalogFetch?: typeof fetch
+    stageProviderResolver?: StageProviderResolver
+    inferenceServiceFactory?: MainOutputInferenceServiceFactory
+    ledgerCatalogFetch?: PinnedFetch
     thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
   },

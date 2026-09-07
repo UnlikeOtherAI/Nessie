@@ -4,6 +4,7 @@ import { type AgentModelOption, AgentModelOptionSchema } from '@nessie/schemas'
 import {
   attributionFromActorContext,
   type LedgerIdentityService,
+  type PinnedFetch,
 } from '@nessie/runtime'
 import { z } from 'zod'
 import { compareAgentModelOptions } from './agent-model-order.js'
@@ -55,7 +56,7 @@ type LedgerAgentModelCatalogConfig = Pick<ModelConfig, 'apiKey' | 'baseUrl'>
 
 type ListLedgerAgentModelsOptions = {
   config: LedgerAgentModelCatalogConfig
-  fetchImpl?: typeof fetch
+  fetchImpl?: PinnedFetch
   ledgerPublicUrl?: string
   requestHeaders?: Record<string, string>
 }
@@ -162,11 +163,7 @@ const toAgentModelOptions = (
   return [...options.values()].sort(compareAgentModelOptions)
 }
 
-/**
- * Load only models that can power the agentic loop. Ledger also lists models
- * for embeddings, images, and incompatible protocols; those cannot service
- * Nessie's OpenAI chat-completions loop and are intentionally excluded.
- */
+/** Load the authenticated Ledger catalog without filtering its model kinds. */
 const loadLedgerModelCatalog = async (
   input: ListLedgerAgentModelsOptions,
 ): Promise<z.infer<typeof LedgerModelListSchema>> => {
