@@ -120,6 +120,7 @@ const chatDoorway = async ({ adminUrl, assert, browser, expectNoErrors, fixture,
     await selectedList.getByText('Launch checklist', { exact: true }).waitFor()
     await selectedList.getByText('Budget', { exact: true }).waitFor()
     assert(await selectedList.getByRole('option').count() === 2, 'selected review rendered emails outside the requested ids')
+    assert(await selectedReview.getByText('Choose a conversation to open it in Mail.').count() === 0, 'selected review retained an empty reader pane in chat')
     await shot(page, 'chat-doorway-selected-emails')
     await selectedReview.locator('#mailbox-thread-thread-2').click()
     await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-2$/)
