@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import {
   canUserReadDisclosureBasis,
   grantMessageDisclosure,
@@ -143,6 +143,24 @@ const recipientCanRead = (prisma: PrismaClient, seed: Seed): Promise<boolean> =>
     userId: seed.recipientId,
   })
 
+const deferred = (): { promise: Promise<void>; resolve: () => void } => {
+  let resolve: (() => void) | undefined
+  return {
+    promise: new Promise<void>((done) => { resolve = done }),
+    resolve: () => resolve?.(),
+  }
+}
+
+const grantFor = (prisma: PrismaClient, seed: Seed, expectedContent: string) =>
+  grantMessageDisclosure(prisma, {
+    audienceId: seed.recipientId,
+    audienceKind: 'user',
+    expectedContent,
+    messageId: seed.messageId,
+    organizationId: seed.organizationId,
+    userId: seed.authorId,
+  })
+
 runDatabaseTest('message_edit revokes a grant before its replacement private body is readable', async (t) => {
   const prisma = new PrismaClient()
   const s = await seed(prisma)
@@ -152,14 +170,7 @@ runDatabaseTest('message_edit revokes a grant before its replacement private bod
     await prisma.$disconnect()
   })
 
-  const grant = await grantMessageDisclosure(prisma, {
-    audienceId: s.recipientId,
-    audienceKind: 'user',
-    expectedContent: 'B-OLD-PRIVATE-REPLY',
-    messageId: s.messageId,
-    organizationId: s.organizationId,
-    userId: s.authorId,
-  })
+  const grant = await grantFor(prisma, s, 'B-OLD-PRIVATE-REPLY')
   assert.equal(await recipientCanRead(prisma, s), true)
 
   await runMessageEditTool(contextFor(prisma, s), {
@@ -179,4 +190,103 @@ runDatabaseTest('message_edit revokes a grant before its replacement private bod
   assert.ok(storedGrant.revokedAt)
   assert.equal(await recipientCanRead(prisma, s), false)
   assert.deepEqual(sources, [{ sourceAuthorUserId: s.authorId, sourceChannelId: s.sourceChannelId }])
+})
+
+runDatabaseTest('message grants bind the reviewed body and preserve approvals for identical updates', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: s.organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: [s.authorId, s.recipientId] } } })
+    await prisma.$disconnect()
+  })
+
+  const original = await grantFor(prisma, s, 'B-OLD-PRIVATE-REPLY')
+  await prisma.message.update({
+    where: { id: s.messageId },
+    data: { content: 'B-OLD-PRIVATE-REPLY' },
+  })
+  assert.equal((await prisma.disclosureGrant.findUniqueOrThrow({ where: { id: original.id } })).revokedAt, null)
+  assert.equal(await recipientCanRead(prisma, s), true)
+
+  await prisma.message.update({
+    where: { id: s.messageId },
+    data: { content: 'B-CURRENT-PRIVATE-REPLY' },
+  })
+  await assert.rejects(
+    grantFor(prisma, s, 'B-OLD-PRIVATE-REPLY'),
+    (error: unknown) => error instanceof Error
+      && 'code' in error
+      && error.code === 'DISCLOSURE_CONTENT_CHANGED',
+  )
+  assert.equal(await recipientCanRead(prisma, s), false)
+
+  const renewed = await grantFor(prisma, s, 'B-CURRENT-PRIVATE-REPLY')
+  assert.equal(renewed.id, original.id)
+  assert.equal((await prisma.disclosureGrant.findUniqueOrThrow({ where: { id: original.id } })).revokedAt, null)
+  assert.equal(await recipientCanRead(prisma, s), true)
+})
+
+runDatabaseTest('grant and content-change ordering cannot leave an approval on an older body', async (t) => {
+  const prisma = new PrismaClient()
+  const grantClient = new PrismaClient()
+  const editClient = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: s.organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: [s.authorId, s.recipientId] } } })
+    await Promise.all([prisma.$disconnect(), grantClient.$disconnect(), editClient.$disconnect()])
+  })
+
+  const original = await grantFor(prisma, s, 'B-OLD-PRIVATE-REPLY')
+  const rowLocked = deferred()
+  const releaseRow = deferred()
+  const holdGrantRow = editClient.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "disclosure_grants" WHERE "id" = ${original.id}::uuid FOR UPDATE
+    `)
+    rowLocked.resolve()
+    await releaseRow.promise
+  })
+  await rowLocked.promise
+
+  // The renewal gets the disclosure lock first, then blocks on the existing
+  // grant row. The concurrent replacement queues behind that lock. Releasing
+  // the row proves the grant commits first and the trigger then revokes it.
+  const renewal = grantFor(grantClient, s, 'B-OLD-PRIVATE-REPLY')
+  const replacement = editClient.message.update({
+    where: { id: s.messageId },
+    data: { content: 'B-REPLACED-AFTER-GRANT' },
+  })
+  releaseRow.resolve()
+  await Promise.all([holdGrantRow, renewal, replacement])
+
+  const afterGrantFirst = await prisma.disclosureGrant.findUniqueOrThrow({ where: { id: original.id } })
+  assert.ok(afterGrantFirst.revokedAt)
+  assert.equal(await recipientCanRead(prisma, s), false)
+
+  const lockHeld = deferred()
+  const releaseContentChange = deferred()
+  const contentChange = editClient.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(
+      hashtextextended(${`disclosure-message:${s.messageId}`}::text, 0)
+    )`
+    lockHeld.resolve()
+    await releaseContentChange.promise
+    await tx.message.update({
+      where: { id: s.messageId },
+      data: { content: 'B-REPLACED-BEFORE-GRANT' },
+    })
+  })
+  await lockHeld.promise
+  const staleRenewal = grantFor(grantClient, s, 'B-REPLACED-AFTER-GRANT')
+  releaseContentChange.resolve()
+  await contentChange
+  await assert.rejects(
+    staleRenewal,
+    (error: unknown) => error instanceof Error
+      && 'code' in error
+      && error.code === 'DISCLOSURE_CONTENT_CHANGED',
+  )
+  assert.equal(await recipientCanRead(prisma, s), false)
 })
