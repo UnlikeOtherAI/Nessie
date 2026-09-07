@@ -70,6 +70,16 @@ board page's Configure menu is the in-context doorway. The executor detail
 page remains the home for descriptor review, grants, pause, drain, revoke, and
 session inspection.
 
+Watcher recipient authorization remains a separate prerequisite. The server
+must apply the same agent visibility fence as the rest of the product: a
+shared team agent may be selected when the board administrator is entitled to
+address it, a private agent only by its live owner, and system-managed agents
+and the Personal Assistant are never watcher targets. A project-admin role
+does not widen a private agent's audience. The current watcher resolver checks
+the organization and the private home, but does not compare the adder with the
+private owner; that comparison must land before an executor policy can attach
+to a watcher.
+
 ## Cost, lifecycle, and failure
 
 Keep the existing board-watch coalescing: webhook changes are per ticket and a
@@ -101,6 +111,9 @@ pipeline:
 - Extend `worker/test/db/board-watch-wake.test.ts` to prove a configured policy
   creates the exact bundle bindings and that a disabled/offline policy creates
   no binding and records its safe reason.
+- Add recipient authorization cases: a system-managed agent is refused, a
+  private agent is accepted only for its live owner, and another project admin
+  cannot use that private agent's owner DM as a watcher destination.
 - Use a stand-in board-source adapter with
   `processBoardSourceWebhook` (and one post-initial-sync sweep) to prove remote
   change → watcher claim → run/task → binding → `run.execute` queue.
@@ -115,21 +128,57 @@ pipeline:
 
 ## Adoption gaps to keep visible
 
-- Remote board creation is not a watcher trigger. The current source contract
-  mirrors provider items inbound; the shipped write-back covers selected task
-  edits and moves, not a general “create a ticket upstream” action.
+- A board's **New task** action creates a native Nessie task. It does not create
+  a Jira, Linear, Trello or GitHub item upstream. The reverse direction is
+  inbound mirroring, and remote item creation is not a watcher trigger until
+  its first sync/webhook apply; there is no general upstream-create action.
 - Several mapped fields remain inbound-only. The as-built board plan records
   that priority and custom fields are overwritten by the next sync; title,
   detail, and deadline have the narrower write-back path.
+- Source destination is not implicit. Attach seeds provider-derived category
+  mappings, but a person must review the state table and choose a default
+  write-back state for each active category (or bind a board column to one).
+  The source remains `read_only` by default, so no executor policy should
+  assume that a card move can reach the provider.
+- Webhook and polling are equivalent intake paths, not equivalent freshness:
+  per-source webhooks notify per item when registration and provider
+  permissions allow them; the incremental sweep is the fallback and emits a
+  coalesced summary. The status surface must say which path is active and the
+  tests must prove both paths share fingerprint/idempotency handling.
 - Initial sync deliberately sends no watcher notifications. The first import
   produced 543 created rows in the tested board, so notifying each would be a
   flood; mapping and identity review still precede trustworthy automation.
-- Watcher health is currently absent from the UI. The proposed status row is
-  part of this change, rather than treating worker logs as an operator
-  doorway.
+- Email auto-matching is only an adoption bridge against UOA-mirrored profile
+  data. UOA's stable subject and live membership remain the authority; a
+  provider email must never create a Nessie person or become a durable
+  identity key. Until a provider-to-UOA subject binding exists, exact email
+  matching should stay reviewable, visible as `matchedBy: email`, and easy to
+  override; membership deactivation or an upstream email change must stop
+  future automatic reprojection rather than silently retargeting work.
+- Watcher health is currently absent from the UI. The proposed status row must
+  cover ordinary wake failures as well as executor failures, with a durable
+  sanitized reason and a remediation doorway; worker logs alone are not an
+  operator surface. Executor policy must also show disabled, unavailable,
+  denied, budget-exhausted and unknown-outcome states without claiming that an
+  agent acted.
 - Native local moves do not yet enter the watcher notification seam. Adding
   them should be a separate decision because it changes the event and
   coalescing contract beyond remote-source adoption.
+
+## Acceptance checklist before approval
+
+- A native task remains local; a mapped remote item is created only by sync or
+  webhook intake, and the first import produces no watcher wake.
+- A reviewed state mapping has an explicit category destination before
+  read-write movement or executor action is enabled.
+- The same changed remote item produces one coalesced watcher outcome through
+  either webhook or polling, with duplicate delivery suppressed by the existing
+  fingerprint claim.
+- A provider identity is either explicitly linked or visibly unresolved;
+  email auto-match is never treated as UOA identity authority.
+- A watcher failure has a durable, sanitized reason reachable from Watchers;
+  executor actions are bound only after current policy, scope, grant,
+  descriptor, budget and live-agent authorization checks pass.
 
 Approval is required before implementing the policy schema, run binding, UI,
 and status surface.
