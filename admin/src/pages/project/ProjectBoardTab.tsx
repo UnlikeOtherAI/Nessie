@@ -30,7 +30,7 @@ type ProjectBoardTabProps = {
 export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
-  const { data: sources = [] } = useProjectSources(projectId)
+  const { data: sources = [] } = useProjectSources(projectId, board?.id)
   const canAdminister = useCanAdministerProject(projectId)
   const { data: assignableUsers = [] } = useTaskAssignees()
   const { me } = useAuthSession()
@@ -108,21 +108,23 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="min-w-0 w-full sm:flex-1">
           <SourceStatusStrip
             canAdminister={canAdminister}
             projectId={projectId}
             sources={sources}
           />
         </div>
-        <BoardAssigneeFilter
-          currentUserId={currentUserId}
-          onChange={setAssignee}
-          people={filterOptions.people}
-          remote={filterOptions.remote}
-          value={assignee}
-        />
+        <div className="self-end sm:self-auto">
+          <BoardAssigneeFilter
+            currentUserId={currentUserId}
+            onChange={setAssignee}
+            people={filterOptions.people}
+            remote={filterOptions.remote}
+            value={assignee}
+          />
+        </div>
       </div>
       {tasksQuery.data?.truncated ? (
         <div className="text-xs text-[color:var(--tx3)]">

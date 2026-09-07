@@ -20,8 +20,10 @@ import {
   createTaskFieldDefinition,
   deleteBoardSource,
   getBoardSourceDetail,
+  findBoard,
   isBoardSourceError,
   listBoardSources,
+  listBoardSourceIds,
   listTaskFieldDefinitions,
   loadBoardSourceConnectionContext,
   isBoardSourceCredentialError,
@@ -148,8 +150,38 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
+    const { boardId } = request.query as { boardId?: string }
+    if (!boardId) {
+      return createApiResponse(
+        BoardSourceRecordSchema.array().parse(await listBoardSources(prisma, project.id)),
+      )
+    }
+
+    const board = await findBoard(prisma, project.id, boardId)
+    if (!board) {
+      sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
+      return reply
+    }
+    let iterationId: string | null | undefined
+    if (board.style === 'scrum') {
+      const active = await prisma.iteration.findFirst({
+        where: { projectId: project.id, status: 'active' },
+        select: { id: true },
+      })
+      iterationId = active?.id ?? null
+    }
+    // The default board is the project's home. Its strip keeps project sources
+    // visible before they have cards, unless its explicit source filter says
+    // native-only or names a smaller source set.
+    const sourceIds = board.isDefault
+      ? board.filter.sources === 'native'
+        ? []
+        : Array.isArray(board.filter.sources)
+          ? board.filter.sources
+          : undefined
+      : await listBoardSourceIds(prisma, board, { iterationId })
     return createApiResponse(
-      BoardSourceRecordSchema.array().parse(await listBoardSources(prisma, project.id)),
+      BoardSourceRecordSchema.array().parse(await listBoardSources(prisma, project.id, sourceIds)),
     )
   })
 

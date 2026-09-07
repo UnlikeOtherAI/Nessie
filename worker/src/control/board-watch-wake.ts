@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { claimThreadRunOrPend } from '@nessie/db'
 import { UoaSessionIdentitySchema } from '@nessie/schemas'
+import { isBoardWatcherAgentEligible, isProjectAccessibleToUser } from '@nessie/team-admin'
 
 import { buildAgentActorContext, startAgentRun } from './agent-run-start.js'
 
@@ -65,6 +66,27 @@ export const wakeBoardWatcherAgent = async (
     taskIds: string[]
   },
 ): Promise<'woken' | 'pending' | 'unreachable'> => {
+  // Delivery normally checked this before calling us, but a watcher can be
+  // revoked between recipient resolution and this wake, and direct callers
+  // must not gain a second way into a private home.
+  if (!(await isBoardWatcherAgentEligible(prisma, {
+    addedByUserId: input.addedByUserId,
+    agentId: input.agentId,
+    organizationId: input.organizationId,
+  }))) return 'unreachable'
+  const isOwner = await prisma.organizationMember.count({
+    where: {
+      organizationId: input.organizationId,
+      userId: input.addedByUserId,
+      role: 'owner',
+      deactivatedAt: null,
+    },
+  }) > 0
+  if (!(await isProjectAccessibleToUser(prisma, {
+    isOwner,
+    organizationId: input.organizationId,
+    userId: input.addedByUserId,
+  }, input.projectId))) return 'unreachable'
   // A row written before the target was captured, or one whose channel has since
   // been deleted, is unreachable. Deliberately not re-resolved: a second guess
   // at the destination is the defect this column exists to remove.

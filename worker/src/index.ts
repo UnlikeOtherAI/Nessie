@@ -1031,7 +1031,7 @@ export const startWorker = async (
     try {
       const claimed = await sweepDueBoardSources(prisma, { limit: 20 })
       for (const source of claimed) {
-        await enqueueBoardSourceSync(prisma, { sourceId: source.sourceId })
+        await enqueueBoardSourceSync(prisma, { sourceId: source.sourceId }, source.claimedAt)
       }
       // A webhook due inside three days is renewed now. The idempotency key is
       // bucketed by day, so ticking every 30 seconds still queues one job.

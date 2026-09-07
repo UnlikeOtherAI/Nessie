@@ -19,7 +19,10 @@ fact. Read this before treating any section above as a description of the code.
   items themselves name — which is what covers somebody who joined the upstream
   team after the source was attached, without a second provider call. An
   external user that already has a link row is never re-matched, so a person's
-  choice — including a deliberate *Not linked* — survives every sync.
+  choice — including a deliberate *Not linked* — survives every sync. The
+  duplicate-tolerant insert reloads the durable row before projection, so an
+  existing People-table choice that makes that insert a duplicate keeps that
+  promise.
 - **A mapping reaches the items already mirrored.** §5.8 did not say what
   happens to the cards that were synced before a link existed, and the answer
   was "nothing until somebody upstream touches them", because an unchanged item
@@ -70,12 +73,25 @@ fact. Read this before treating any section above as a description of the code.
   repository issues write back fully.
 - **§5.6 `board-source.sync.sweep`** is not a queue topic. The worker's own
   30-second interval claims due sources directly, exactly as the dashboard
-  refresher does, so there is no second scheduler.
+  refresher does, so there is no second scheduler. Each successful claim gets
+  its own queue key: durable completed jobs cannot suppress the source's next
+  polling interval, while duplicate enqueues for one claim still collapse.
 - **§6.1 the board's source strip** now carries *Sync* as well as the health
   chip, and says whether the provider is pushing (*Live*) or the board is
   waiting for the next poll (*every 5 min*). The sync action already existed;
   the only door to it was Settings, which is not where "is this current?" is
-  asked.
+  asked. Its board-scoped source read uses the complete server-side task pool,
+  not the 500 rendered cards; the default board still keeps connected sources
+  visible before they have a card, while an explicit native/source filter wins.
+- **Source controls now stay usable on touch screens.** Source rows, the board
+  strip and Connect source dialog actions expose 44px settings, sync and
+  connection targets. State, field and people mappings stack their name above
+  the picker on narrow screens, and each mapping control waits for its
+  in-flight save before accepting another edit. Moving a state to another
+  category clears its default designation until somebody explicitly chooses
+  that category's write-back state.
+  A source that is healthy now reads *Ready*, reserving *Syncing* for a sync
+  actually in flight.
 
 - **§5 gained a live read: `searchItems`.** The adapter contract now has a
   seventh method, required of every provider, and the four implement it on
@@ -145,15 +161,22 @@ fact. Read this before treating any section above as a description of the code.
   are unchanged and still OAuth-only; the design for their key paths is
   [2026-09-05-api-key-board-source-connectors](../2026-09-05-api-key-board-source-connectors/overview.md).
 
-### Not yet verified against a live vendor
+### Live verification and remaining vendor checks
 
 Every adapter is unit-tested on its normalisation, its state mapping and its
 signature verification, and the whole inbound and write-back path is tested
-against a real database with a stand-in adapter. **None of the four has been
-run against the real provider**, because that needs an app registered with each
-vendor — see
-[configuration](../../deployment/configuration.md) → "Project board sources".
-The specific assumptions to check on first connect:
+against a real database with a stand-in adapter. On 7 September 2026, a local
+Nessie instance connected to the UnlikeOtherAI Linear workspace with a personal
+API key. The disposable UNL-10 ticket imported, a manual person mapping persisted,
+and remote assignment plus Backlog → In Progress → Done changes arrived through
+successive polls. Human watchers received alerts; the Done change also created
+and dispatched an agent run. Its inference failed at the deliberately disabled
+local model endpoint, so this verifies wake delivery, not completed agent work.
+
+The test exercised read-only API-key polling, including manual Sync. It did not
+verify Linear write-back, OAuth, webhooks, local executors, or another vendor.
+See [configuration](../../deployment/configuration.md) → "Project board sources".
+The remaining provider checks are:
 
 - **Linear, webhooks** — that `webhookCreate` takes `{url, teamId,
   resourceTypes: ['Issue'], enabled, label}` and returns the signing secret on
@@ -163,13 +186,10 @@ The specific assumptions to check on first connect:
   HMAC-SHA256 of the raw body. Every wrong assumption here costs freshness
   only — a refusal is caught by name and the adapter's five-minute poll runs.
   The board's source strip says which of the two is happening.
-- **Linear, API key** — that `Authorization: <key>` without a `Bearer` prefix is
-  accepted (the shared `linearGraphQl` helper has always sent the token bare,
-  so the OAuth path has the same assumption), and that `VIEWER_QUERY` returns
-  `organization { id }` under a personal key as it does under a grant. Both are
-  what `verify()` depends on to identify the workspace. A personal key's own
-  scopes are **not** readable, so a key created without Write connects, syncs,
-  and refuses the first drag with `LINEAR_UPDATE_REFUSED`.
+- **Linear, API key** — authentication and workspace identification passed the
+  live test. The key's own scopes are **not** readable; a key without Write is
+  expected to connect and sync but refuse a write with `LINEAR_UPDATE_REFUSED`.
+  That refusal and the OAuth authorization path still need a live check.
 - **Jira** — that `/rest/api/3/search/jql` paginates by `nextPageToken` as
   documented, and that the developer console permits this deployment's callback
   domain for webhook registration.
