@@ -190,7 +190,7 @@ export const exerciseRichBoardAssignees = async ({
     await listbox.waitFor({ state: 'hidden' })
     await waitForTriggerFocus(page)
     assert.equal(await trigger.innerText(), REMOTE_NAME, 'selected remote person stays named in the trigger')
-    assert.equal(await trigger.locator('[title]').getAttribute('title'), REMOTE_NAME, 'selected remote person exposes their full name')
+    assert.equal(await trigger.locator('span[title]').getAttribute('title'), REMOTE_NAME, 'selected remote person exposes their full name')
     assert.equal(await trigger.locator('svg[data-icon="user-slash"]').count(), 1, 'selected remote person keeps the unmapped-person icon')
     const remoteCard = page.locator('[data-kanban-card]').filter({ hasText: REMOTE_TITLE })
     await remoteCard.waitFor()
