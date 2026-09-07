@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ApiClientProvider, type ApiClient } from '@nessie/client-core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 
 import { AgentCreationModeTabs } from '../../src/components/features/agents/designer/AgentCreationModeTabs'
 import { AgentDesignerForm } from '../../src/components/features/agents/designer/AgentDesignerForm'
@@ -77,7 +77,7 @@ const DesignerFixture = () => {
 const view = new URLSearchParams(window.location.search).get('view')
 
 const Fixture = () => <QueryClientProvider client={queryClient}>
-  <AuthSessionProvider><ApiClientProvider client={client}><MemoryRouter><main className="min-h-screen bg-[color:var(--main)] p-8 text-[color:var(--tx)]">
+  <AuthSessionProvider><ApiClientProvider client={client}><BrowserRouter><main className="min-h-screen bg-[color:var(--main)] p-8 text-[color:var(--tx)]">
     <div className="mx-auto grid max-w-5xl gap-10"><DesignerFixture />
       {view === 'dialog' ? <TaskDialog onClose={() => undefined} open task={salesTask} /> : null}
       {view === 'calendar' ? <GoogleWorkspaceConnectDialog onClose={() => undefined} open /> : null}
@@ -85,7 +85,7 @@ const Fixture = () => <QueryClientProvider client={queryClient}>
         <section aria-label="Checklist verification"><h2>Checklist</h2><TaskChecklistTab taskId="task-sales" /></section></>}
       <GoogleScopeRequestCard metadata={{ card: { capabilityId: 'meet.create', kind: 'google_scope_request' } }} />
       <output data-testid="connection-request">{JSON.stringify(lastConnectionRequest)}</output></div>
-  </main></MemoryRouter></ApiClientProvider></AuthSessionProvider>
+  </main></BrowserRouter></ApiClientProvider></AuthSessionProvider>
 </QueryClientProvider>
 
 const root = document.querySelector('#root')
