@@ -301,6 +301,11 @@ export const createMailFixtures = () => {
       doorwayVisible = true
       mailboxComposeCardVisible = false
     },
+    showSelectedAccountDoorway: () => {
+      doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail', threadIds: ['thread-1', 'thread-2'] }
+      doorwayVisible = true
+      mailboxComposeCardVisible = false
+    },
     denyDoorway: () => { doorwayAllowed = false },
     loseNextGmailSendResponse: () => { loseNextGmailSendResponse = true },
     showPendingGmailApproval: () => { gmailApprovalVisible = true },
