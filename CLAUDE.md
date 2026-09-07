@@ -32,6 +32,10 @@ touches a routed area, open the linked file before writing code.**
 When a rule changes, its standards file changes in the same turn. The routing
 sentence changes only if the invariant itself did.
 
+- **Connected-mail chat review and drafts** reuse the viewer-scoped `/mail`
+  surface and its approval gate; read
+  [`docs/standards/connected-mailboxes.md`](docs/standards/connected-mailboxes.md).
+
 ## Notes specific to Claude Code
 
 - **Verification is Playwright, headless, against `http://localhost:5455`.**

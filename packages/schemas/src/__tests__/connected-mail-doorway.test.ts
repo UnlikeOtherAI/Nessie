@@ -57,3 +57,24 @@ test('mail-surface compose permits one structural provider reference', () => {
     false,
   )
 })
+
+test('an account doorway may carry a bounded structural review selection', () => {
+  assert.equal(
+    MailSurfaceDoorwayMetadataSchema.safeParse({
+      accountId: account,
+      mode: 'account',
+      source: 'mailbox',
+      threadIds: ['thread-1', 'thread-2'],
+    }).success,
+    true,
+  )
+  assert.equal(
+    MailSurfaceDoorwayMetadataSchema.safeParse({
+      accountId: account,
+      mode: 'account',
+      source: 'mailbox',
+      threadIds: ['thread-1', 'thread-1'],
+    }).success,
+    false,
+  )
+})

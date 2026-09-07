@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 
 import { createMailFixtures } from './fixtures.mjs'
+import { agentCardMailDraft, agentCardMailSend, chatDoorway, gmailPreviewDirectSend, gmailPreviewRevocation, narrowComposeDoorway } from './chat-draft-review.mjs'
 import { adminUrl, startAdmin } from './servers.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -51,6 +52,11 @@ const newPage = async (browser, fixture, { height, name, width }) => {
   }))
   const page = await context.newPage()
   page.setDefaultTimeout(20_000)
+  // A fresh Vite graph in the isolated Linux browser environment can take
+  // longer than an element interaction, while still serving the real HMR app.
+  // Keep selector failures fast but give the initial navigation enough time to
+  // compile the workspace packages it imports.
+  page.setDefaultNavigationTimeout(60_000)
   const errors = []
   page.on('pageerror', (error) => errors.push(`page: ${String(error)}`))
   page.on('console', (message) => {
@@ -381,102 +387,6 @@ const responsiveMail = async ({ browser, fixture }) => {
   }
 }
 
-const chatDoorway = async ({ browser, fixture }) => {
-  const target = await newPage(browser, fixture, { height: 800, name: 'desktop', width: 1280 })
-  const { page } = target
-  try {
-    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
-    await page.getByRole('heading', { name: 'Email triage' }).waitFor()
-    assert(await page.getByTestId('mail-surface-doorway').count() === 0, 'doorway should not exist before the message refetch')
-    fixture.showDoorway()
-    // The response changes after the conversation has already mounted; a
-    // product reload is the stable browser-level refetch seam (and avoids
-    // reaching into React Query internals from the test).
-    await page.reload()
-    await page.getByTestId('mail-surface-doorway').waitFor()
-    await page.getByRole('dialog', { name: 'Email ready to review' }).waitFor()
-    await page.getByTestId('connected-mail-conversation').waitFor()
-    await shot(page, 'chat-doorway-auto-popup')
-
-    await page.getByRole('button', { name: 'Close' }).click()
-    await page.getByRole('dialog').waitFor({ state: 'detached' })
-    await page.reload()
-    await page.getByTestId('mail-surface-doorway').waitFor()
-    assert(await page.getByRole('dialog').count() === 0, 'the same message reopened a session-scoped automatic popup')
-
-    fixture.denyDoorway()
-    const opener = page.getByRole('button', { name: 'Open mail' })
-    await opener.click()
-    await page.getByText('This email is no longer available to you.').waitFor()
-    assert(await page.getByRole('dialog').count() === 0, 'doorway opened after live entitlement was removed')
-    fixture.allowDoorway()
-    await opener.click()
-    await page.getByRole('dialog', { name: 'Email ready to review' }).waitFor()
-    await page.getByRole('button', { name: 'Close' }).click()
-    await page.getByRole('dialog').waitFor({ state: 'detached' })
-    assert(await opener.evaluate((element) => document.activeElement === element), 'dialog close did not restore focus to the mail doorway')
-
-    await opener.click()
-    await page.getByRole('dialog', { name: 'Email ready to review' }).waitFor()
-    await page.getByRole('button', { name: 'Open full mail' }).click()
-    await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-1$/)
-    await page.getByTestId('connected-mail-conversation').waitFor()
-
-    // A second chat render carries a Gmail draft pointer. The form is the
-    // same production composer used by Mail; it is not an email-shaped card.
-    fixture.showComposeDoorway()
-    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
-    const composeOpener = page.getByRole('button', { name: 'Open mail' })
-    await composeOpener.waitFor()
-    await composeOpener.click()
-    await page.getByRole('dialog', { name: 'Email draft ready' }).waitFor()
-    assert(await page.getByRole('textbox', { name: 'From', exact: true }).isDisabled(), 'chat draft form exposed a mutable From field')
-    await page.getByRole('textbox', { name: 'Subject', exact: true }).waitFor()
-    await shot(page, 'chat-doorway-compose-form')
-    await page.getByRole('textbox', { name: 'Message', exact: true }).fill('The doorway draft is ready to send.')
-    // This doorway fetched the existing draft's `draft` status before Send.
-    // The held result must atomically replace it rather than letting that
-    // stale read erase the newly persisted Undo identity.
-    await page.getByRole('button', { name: 'Send email' }).click()
-    await page.getByText('Your email is queued to send.').waitFor()
-    await page.getByRole('button', { name: 'Close' }).click()
-
-    // This route carries the provider action id, not a local-draft key. Its
-    // reload still has to recover the held Undo doorway without sending again.
-    await page.reload()
-    await composeOpener.click()
-    await page.getByRole('button', { name: 'Undo send' }).waitFor()
-    fixture.setGmailDraftActionStatus({ sendAfter: null, state: 'dispatching' })
-    await page.getByRole('button', { name: 'Close' }).click()
-    await page.reload()
-    await composeOpener.click()
-    await page.getByText('Your email is being delivered. It will not be sent again.').waitFor()
-    assert(await page.getByRole('button', { name: 'Undo send' }).count() === 0, 'a reloaded doorway dispatch offered Undo')
-    await page.getByRole('button', { name: 'Close' }).click()
-
-    // Account doorways carry the real, entitlement-scoped mailbox list into
-    // chat. Selecting its row must enter the normal reader route, not an
-    // email-shaped summary card with a second navigation implementation.
-    fixture.showAccountDoorway()
-    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
-    const accountOpener = page.getByRole('button', { name: 'Open mail' })
-    await accountOpener.click()
-    const accountDialog = page.getByRole('dialog', { name: 'Mail ready to review' })
-    await accountDialog.waitFor()
-    const accountPreview = accountDialog.getByTestId('mailbox-workspace')
-    await accountPreview.waitFor()
-    assert(await accountPreview.getAttribute('data-layout') === 'single', 'account doorway did not embed the canonical mailbox list')
-    await accountDialog.getByRole('listbox', { name: 'Mail conversations' }).waitFor()
-    await shot(page, 'chat-doorway-account-preview')
-    await accountDialog.locator('#mailbox-thread-thread-1').click()
-    await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-1$/)
-    await page.getByTestId('connected-mail-conversation').waitFor()
-  } finally {
-    expectNoErrors(target.errors, fixture)
-    await target.close()
-  }
-}
-
 const phoneDoorway = async ({ browser, fixture }) => {
   const target = await newPage(browser, fixture, { height: 844, name: 'phone', width: 390 })
   const { page } = target
@@ -515,7 +425,20 @@ const main = async () => {
     await desktopMail({ browser, fixture })
     await approvalsMailSendPreview({ browser, fixture })
     await responsiveMail({ browser, fixture })
-    await chatDoorway({ browser, fixture })
+    await chatDoorway({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
+    await narrowComposeDoorway({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
+    await gmailPreviewDirectSend({
+      adminUrl,
+      assert,
+      browser,
+      expectNoErrors,
+      fixture: createMailFixtures(),
+      newPage,
+      shot,
+    })
+    await gmailPreviewRevocation({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
+    await agentCardMailDraft({ adminUrl, assert, browser, expectNoErrors, fixture, newPage, shot })
+    await agentCardMailSend({ adminUrl, assert, browser, expectNoErrors, fixture: createMailFixtures(), newPage, shot })
     await phoneDoorway({ browser, fixture })
   } finally {
     await browser.close()

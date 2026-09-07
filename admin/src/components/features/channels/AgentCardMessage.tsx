@@ -1,5 +1,6 @@
 import { AgentCardMessageMetadataSchema, type AgentCardPresenter } from '@nessie/schemas'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { useAgentCard, useRespondToAgentCard } from '../../../facades/agent-cards/hooks'
 import { useToasts } from '../../../providers/ToastProvider'
@@ -42,6 +43,12 @@ const seedValues = (card: AgentCardPresenter): Record<string, AgentCardFieldValu
   return seeded
 }
 
+const destinationWithCard = (href: string, cardId: string): string => {
+  const destination = new URL(href, 'https://nessie.invalid')
+  destination.searchParams.set('agentCard', cardId)
+  return `${destination.pathname}${destination.search}${destination.hash}`
+}
+
 /**
  * An agent chat card. Its message metadata holds only a card id; every fact
  * rendered here — including whether this viewer may press anything — comes
@@ -58,6 +65,7 @@ export const AgentCardMessage = ({
   const cardId = parsed.success ? parsed.data.agentCard.cardId : undefined
   const query = useAgentCard(cardId)
   const respond = useRespondToAgentCard()
+  const navigate = useNavigate()
   const { pushToast } = useToasts()
 
   const [values, setValues] = useState<Record<string, AgentCardFieldValue> | null>(null)
@@ -75,13 +83,13 @@ export const AgentCardMessage = ({
     card.status === 'open' ? values ?? seedValues(card) : card.resolution?.values ?? {}
   const canRespond = card.action === 'respond'
 
-  const press = (actionKey: string, submits: boolean) => {
+  const press = (actionKey: string, submits: boolean, collectsValues?: boolean, href?: string) => {
     respond.mutate(
       {
         actionKey,
         cardId: card.cardId,
         threadId: card.threadId,
-        ...(submits ? { secrets, values: effectiveValues } : {}),
+        ...(submits || collectsValues ? { secrets: collectsValues ? {} : secrets, values: effectiveValues } : {}),
       },
       {
         // Every refusal is authored by the API; the toast repeats it verbatim.
@@ -90,6 +98,11 @@ export const AgentCardMessage = ({
         },
         onSuccess: () => {
           setSecrets({})
+          if (href) {
+            navigate(destinationWithCard(href, card.cardId), {
+              state: { agentCardFormValues: effectiveValues, agentCardId: card.cardId },
+            })
+          }
         },
       },
     )
@@ -154,7 +167,7 @@ export const AgentCardMessage = ({
                 key={action.key}
                 onClick={(event) => {
                   event.stopPropagation()
-                  press(action.key, action.submits)
+                  press(action.key, action.submits, action.collectsValues, action.href)
                 }}
                 type="button"
               >

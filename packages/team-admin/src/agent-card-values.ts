@@ -65,7 +65,7 @@ export const validateAgentCardSubmission = (input: {
   const action = input.spec.actions.find((candidate) => candidate.key === input.actionKey)
   if (!action) throw new AgentCardValueError('That button is not on this card.', [])
 
-  if (!action.submits) return { values: {}, secrets: {} }
+  if (!action.submits && !action.collectsValues) return { values: {}, secrets: {} }
 
   const inputBlocks = input.spec.blocks.flatMap((block) =>
     block.type === 'input' ? [block] : [],
@@ -92,7 +92,7 @@ export const validateAgentCardSubmission = (input: {
     const raw = input.values[block.key]
     const absent = raw === undefined || raw === null || raw === ''
     if (absent) {
-      if (block.required) missing.push(block.key)
+      if (action.submits && block.required) missing.push(block.key)
       continue
     }
     values[block.key] = coerce(raw, block.input, block.key, block.maxLength, block.options)
@@ -100,6 +100,7 @@ export const validateAgentCardSubmission = (input: {
 
   const secrets: Record<string, string> = {}
   for (const block of secretBlocks) {
+    if (action.collectsValues) continue
     const raw = input.secrets[block.key]
     // Every declared secret must be supplied on a submitting press: a card that
     // asks for a credential and stores nothing has silently failed its purpose.

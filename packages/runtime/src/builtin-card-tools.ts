@@ -28,6 +28,8 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
     + 'credential store and is never shown to you or recorded in the conversation — you learn '
     + 'only that it was provided). Give each action a short label such as Allow, OK, Send or '
     + 'Cancel, and set submits:false on the ones that dismiss without reading the inputs. '
+    + 'An internal href may instead set collectsValues:true with submits:false to claim a '
+    + 'non-secret partial form and continue it in the same app; that never submits the decision. '
     + 'Pressing resolves the card permanently: the answer arrives as a message in the '
     + 'conversation and the card freezes showing what was decided and by whom. '
     + 'Set respondents to choose who may press ("requester" — the person who asked, the '

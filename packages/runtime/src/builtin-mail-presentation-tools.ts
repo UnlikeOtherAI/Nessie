@@ -20,6 +20,7 @@ export const MAIL_PRESENT_TOOL_DEFINITION: BuiltinToolDefinition = {
       accountId: { description: 'The connected mail account id.', type: 'string' },
       mode: { enum: ['account', 'thread', 'compose'], type: 'string' },
       threadId: { description: 'Provider thread id, when opening a thread or reply.', type: 'string' },
+      threadIds: { description: 'Up to 10 provider thread ids for a selected review list.', items: { type: 'string' }, type: 'array' },
       draftId: { description: 'Gmail draft id, when opening an existing draft.', type: 'string' },
     },
     required: ['source', 'accountId', 'mode'],
