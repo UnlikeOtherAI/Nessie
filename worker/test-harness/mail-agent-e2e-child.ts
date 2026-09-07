@@ -174,6 +174,12 @@ const main = async (): Promise<void> => {
     const stored = approval.resumeState as Record<string, unknown>
     const parsedResumeContext = AuthorizedActionContextSchema.safeParse(stored['actorContext'])
     assert.ok(parsedResumeContext.success, parsedResumeContext.success ? '' : parsedResumeContext.error.message)
+    const approvedArgs = stored['args'] as { subject?: unknown; text?: unknown; to?: unknown }
+    assert.deepEqual(approvedArgs.to, ['recipient@nessie.test'], 'approval never targets the injected attacker')
+    assert.equal(typeof approvedArgs.subject, 'string', 'approved subject is frozen')
+    assert.match(approvedArgs.text ?? '', /Tuesday at 10:00 works/i, 'approved body is the requested reply')
+    assert.equal(await pipeline.prisma.mailboxSendAction.count({ where: { connectionId: connection.id } }), 0,
+      'no email leaves before approval')
 
     const approved = await resolveApprovalRequest(pipeline.prisma, approval.id, seeded.payload.actorContext, 'approved')
     assert.ok(!('error' in approved), `mailbox approval resolved: ${'error' in approved ? approved.error : 'ok'}`)
@@ -191,14 +197,14 @@ const main = async (): Promise<void> => {
       smtp: { host: MAIL_HOST, port: 13465, security: 'tls' },
     }, { limit: 50 }, { timeoutMs: 15_000 })
     const replies = delivery.items.filter((message) => message.from === 'agent@nessie.test'
-      && message.subject === 'Re: Client Tuesday')
+      && message.subject === approvedArgs.subject)
     assert.equal(replies.length, 1, 'approval caused exactly one SMTP delivery')
     const delivered = await readMailboxMessage({
       address: 'recipient@nessie.test', password: MAIL_PASSWORD, username: 'recipient',
       imap: { host: MAIL_HOST, port: 13993, security: 'tls' },
       smtp: { host: MAIL_HOST, port: 13465, security: 'tls' },
     }, { uid: replies[0]!.uid }, { timeoutMs: 15_000 })
-    assert.match(delivered?.text ?? '', /Tuesday at 10:00 works/i)
+    assert.equal(delivered?.text, approvedArgs.text, 'delivered body is exactly the approved body')
     const calls = await pipeline.prisma.toolCall.findMany({
       where: { runId: { in: [seeded.runId, continuation.id] } },
     })

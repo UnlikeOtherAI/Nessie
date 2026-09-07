@@ -29,6 +29,9 @@ DATABASE_URL=postgresql://... pnpm --filter @nessie/worker test:e2e:mail-agent
 
 The default uses scripted inference only for model decisions; SMTP/IMAP,
 connection lifecycle, agent access, approval/resume, and delivery are real.
+It verifies a different effective user and a revoked agent grant are denied,
+that no send action exists before approval, and that recipient, subject, and
+body observed over IMAP match the frozen approval arguments.
 The Ollama mode is an opt-in realistic-work probe because its tool selection is
 nondeterministic. Browser connected-mail tests remain
 fixture contracts and are not evidence of this SMTP/IMAP worker flow.
