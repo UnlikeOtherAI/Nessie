@@ -38,3 +38,5 @@ file is the rule.**
 ## Mock-LLM harness
 
 Deterministic scripted inference for tests lives in `@nessie/mock-llm` (`packages/mock-llm`, scenario JSON + in-process `runInference` adapter + OpenAI-compatible HTTP server). `pnpm --filter @nessie/worker test:smoke` runs the full-pipeline CI smoke (seeded Postgres → enqueue → loop → tool call → completion); `pnpm --filter @nessie/worker test:load --runs N --workers W` runs the load mode. See [docs/mock-llm-harness.md](../mock-llm-harness.md).
+
+The opt-in connected-mail workflow is documented in [local-mail-agent-e2e.md](../local-mail-agent-e2e.md). It uses scripted inference with real worker, approval, TLS SMTP and TLS IMAP boundaries; it requires a dedicated migrated database and Docker.
