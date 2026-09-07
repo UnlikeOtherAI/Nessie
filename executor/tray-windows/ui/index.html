@@ -195,14 +195,18 @@
       const act = async (command, args) => {
         if (busy) return
         busy = true
+        let refused = false
         try {
           render(await invoke(command, args))
         } catch (reason) {
+          refused = true
           headline.textContent = String(reason)
           dot.dataset.state = 'attention'
         } finally {
           busy = false
-          await refresh()
+          // Keep the service's refusal visible. Refreshing immediately would
+          // replace its recovery instruction with a generic idle headline.
+          if (!refused) await refresh()
         }
       }
 
