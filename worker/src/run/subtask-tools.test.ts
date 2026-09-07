@@ -139,3 +139,10 @@ test('spawned child strips every explicit grant while preserving ordinary policy
     sourceChannelId: 'private-channel',
   }])
 })
+
+test('spawn_subtask refuses to create an untracked child prompt without provenance', async () => {
+  await assert.rejects(
+    runSpawnSubtaskTool({} as BuiltinToolRuntimeContext, { task: 'Do not launder this.' }),
+    /disclosure provenance sink/,
+  )
+})

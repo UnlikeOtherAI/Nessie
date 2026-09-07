@@ -13,6 +13,7 @@ import { enqueueRunExecution } from '../queue.js'
 import {
   insertMessageBasis,
   insertPrivateConversationSources,
+  requireConsumedSources,
 } from './pa-tools/tool-message-basis.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
@@ -53,6 +54,7 @@ export const runSpawnSubtaskTool = async (
     task?: unknown
   },
 ): Promise<ToolExecutionResult> => {
+  const consumedSources = requireConsumedSources(context)
   const task = typeof input.task === 'string' ? input.task.trim() : ''
   if (!task) {
     throw new Error('task is required.')
@@ -132,7 +134,7 @@ export const runSpawnSubtaskTool = async (
       select: { id: true },
     })
     await insertMessageBasis(tx, {
-      basis: context.consumedSources?.list() ?? [],
+      basis: consumedSources.list(),
       messageId: taskPrompt.id,
       organizationId: context.channel.organizationId,
     })
