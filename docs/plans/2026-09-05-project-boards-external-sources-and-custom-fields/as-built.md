@@ -73,7 +73,9 @@ fact. Read this before treating any section above as a description of the code.
   repository issues write back fully.
 - **§5.6 `board-source.sync.sweep`** is not a queue topic. The worker's own
   30-second interval claims due sources directly, exactly as the dashboard
-  refresher does, so there is no second scheduler.
+  refresher does, so there is no second scheduler. Each successful claim gets
+  its own queue key: durable completed jobs cannot suppress the source's next
+  polling interval, while duplicate enqueues for one claim still collapse.
 - **§6.1 the board's source strip** now carries *Sync* as well as the health
   chip, and says whether the provider is pushing (*Live*) or the board is
   waiting for the next poll (*every 5 min*). The sync action already existed;

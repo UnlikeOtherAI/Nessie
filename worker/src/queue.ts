@@ -65,16 +65,21 @@ export const enqueueCommsIncrementalSweep = async (
 
 /**
  * Board-source jobs. Each carries an idempotency key at its natural
- * granularity: one sync per source (a slow provider must not pile up), one
- * alert per health transition, and one renewal sweep per window.
+ * granularity: one sync per source claim (a slow provider must not pile up),
+ * one alert per health transition, and one renewal sweep per window.
  */
+export const boardSourceSyncClaimKey = (sourceId: string, claimedAt: Date): string =>
+  `board-source:sync:${sourceId}:${claimedAt.toISOString()}`
+
 export const enqueueBoardSourceSync = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
   payload: { sourceId: string },
-  idempotencyKey?: string,
+  claimedAt: Date,
 ): Promise<boolean> =>
   enqueueQueueJob(prisma, {
-    idempotencyKey: idempotencyKey ?? `board-source:sync:${payload.sourceId}`,
+    // Completed queue rows remain durable. A source-wide key would therefore
+    // block every later poll; one successful scheduler claim is one queue job.
+    idempotencyKey: boardSourceSyncClaimKey(payload.sourceId, claimedAt),
     payload,
     topic: BOARD_SOURCE_SYNC_INCREMENTAL_TOPIC,
   })

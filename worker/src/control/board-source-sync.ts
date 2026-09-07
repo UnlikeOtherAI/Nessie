@@ -421,7 +421,7 @@ const failSource = async (
 export const sweepDueBoardSources = async (
   prisma: PrismaClient,
   input: { limit: number; now?: Date },
-): Promise<{ sourceId: string }[]> => {
+): Promise<{ sourceId: string; claimedAt: Date }[]> => {
   const now = input.now ?? new Date()
   const staleClaim = new Date(now.getTime() - BOARD_SOURCE_CLAIM_TIMEOUT_MS)
 
@@ -436,13 +436,13 @@ export const sweepDueBoardSources = async (
     select: { id: true, claimedAt: true },
   })
 
-  const claimed: { sourceId: string }[] = []
+  const claimed: { sourceId: string; claimedAt: Date }[] = []
   for (const source of due) {
     const result = await prisma.boardSource.updateMany({
       where: { id: source.id, claimedAt: source.claimedAt },
       data: { claimedAt: now },
     })
-    if (result.count === 1) claimed.push({ sourceId: source.id })
+    if (result.count === 1) claimed.push({ sourceId: source.id, claimedAt: now })
   }
   return claimed
 }
