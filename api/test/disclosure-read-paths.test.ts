@@ -5,6 +5,10 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import {
+  mapMessageRecordWithAttachments,
+  messageInclude,
+} from '../src/services/message-read-model.js'
+import {
   loadAgentActivity,
   loadAgentMessages,
   loadAgentStatus,
