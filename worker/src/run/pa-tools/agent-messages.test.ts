@@ -19,7 +19,12 @@ const makeContext = (basisScopes: Array<{ scopeId: string; scopeType: string }>)
       actor: { actorId: VIEWER_ID, actorType: 'user', roles: ['member'] },
       tenant: { organizationId: ORGANIZATION_ID },
     },
-    channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID, systemChannelType: null },
+    channel: {
+      id: CHANNEL_ID,
+      organizationId: ORGANIZATION_ID,
+      systemChannelType: null,
+      visibility: 'private',
+    },
     memoryCaptureConfig: {
       pool: {
         query: async (sql: string) => {
@@ -38,6 +43,9 @@ const makeContext = (basisScopes: Array<{ scopeId: string; scopeType: string }>)
     },
     prisma: {
       agent: { findMany: async () => [] },
+      // The message is in a private channel. A disclosure grant cannot use the
+      // public-channel audience exception for this fixture.
+      channel: { findFirst: async () => null },
       channelMember: { findMany: async () => [] },
       disclosureGrant: { findMany: async () => [] },
       message: {
