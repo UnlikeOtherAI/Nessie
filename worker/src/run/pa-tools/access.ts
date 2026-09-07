@@ -63,7 +63,7 @@ export const isDelegatingPersonalAssistant = (
 // delegated owner for the personal assistant's runs. Throws when neither exists
 // (a non-delegating agent has no user to act as).
 export const requireActingUserId = (
-  context: BuiltinToolRuntimeContext,
+  context: Pick<BuiltinToolRuntimeContext, 'actorContext'>,
 ): string => {
   const userId = resolveEffectiveUserId(context)
   if (!userId) {

@@ -45,6 +45,24 @@ test('sink keeps same-id sources under different audience types apart', () => {
   assert.equal(sink.size(), 2)
 })
 
+test('private source lineage retains an unknown-author denial marker', () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: 'author-b',
+    sourceChannelId: 'private-room',
+  })
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: null,
+    sourceChannelId: 'private-room',
+  })
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
+  assert.deepEqual(sink.list(), [scope('channel', 'private-room')])
+})
+
 test('a run consuming only destination-implied sources has an empty basis', () => {
   const basis = computeReplyBasis(
     [

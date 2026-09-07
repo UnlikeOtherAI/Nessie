@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { resolveMessageDestination } from '../pa-tools/message-destination.js'
 import { judgeExplicitDisclosureShare } from './disclosure-share-judge.js'
 import type { RunContext } from './types.js'
 
@@ -11,6 +13,7 @@ import type { RunContext } from './types.js'
  */
 export const maybeAuthorizeDisclosureShare = async (input: {
   args: Record<string, unknown>
+  actorContext: AuthorizedActionContext
   context: RunContext
   prisma: PrismaClient
   runUtility?: (prompt: string) => Promise<string | null>
@@ -34,11 +37,31 @@ export const maybeAuthorizeDisclosureShare = async (input: {
     source.sourceAuthorUserId ? [source.sourceAuthorUserId] : []))
   if (authors.size !== 1 || !authors.has(request.userId)) return false
   const content = typeof input.args['content'] === 'string' ? input.args['content'] : ''
-  const destination = [input.args['channelId'], input.args['threadId'], input.args['targetUserId']]
-    .filter((value): value is string => typeof value === 'string')
-    .join(',') || 'the current conversation'
+  let destination: Awaited<ReturnType<typeof resolveMessageDestination>>
+  try {
+    destination = await resolveMessageDestination({
+      actorContext: input.actorContext,
+      channel: { organizationId: input.context.channel.organizationId },
+      prisma: input.prisma,
+      run: { threadId: input.context.run.threadId },
+    }, {
+      channelId: typeof input.args['channelId'] === 'string' ? input.args['channelId'] : undefined,
+      content,
+      targetUserId: typeof input.args['targetUserId'] === 'string'
+        ? input.args['targetUserId']
+        : undefined,
+      threadId: typeof input.args['threadId'] === 'string' ? input.args['threadId'] : undefined,
+    })
+  } catch {
+    return false
+  }
   return judgeExplicitDisclosureShare({
-    proposal: `content: ${content}\ndestination: ${destination}`,
+    proposal: [
+      `content: ${content}`,
+      `destination: ${destination.channelLabel} (${destination.channelScope})`,
+      `destination channel id: ${destination.channelId}`,
+      `destination thread id: ${destination.threadId}`,
+    ].join('\n'),
     request: request.content,
     runUtility: input.runUtility,
   })
