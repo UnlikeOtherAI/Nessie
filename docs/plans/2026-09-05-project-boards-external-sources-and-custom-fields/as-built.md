@@ -83,7 +83,9 @@ fact. Read this before treating any section above as a description of the code.
   strip and Connect source dialog actions expose 44px settings, sync and
   connection targets. State, field and people mappings stack their name above
   the picker on narrow screens, and each mapping control waits for its
-  in-flight save before accepting another edit.
+  in-flight save before accepting another edit. Moving a state to another
+  category clears its default designation until somebody explicitly chooses
+  that category's write-back state.
   A source that is healthy now reads *Ready*, reserving *Syncing* for a sync
   actually in flight.
 
