@@ -37,6 +37,14 @@ export const projectFor = async (
   if (context.agentKind === 'shared' && context.channel.projectId !== projectId) {
     throw new Error('This agent may work only on the project that owns this channel.')
   }
+  if (context.agentKind === 'shared') {
+    const binding = await context.prisma.agentBinding.count({
+      where: { agentId: context.agentId, channelId: context.channel.id },
+    })
+    if (binding === 0) {
+      throw new Error('This agent is no longer bound to this project channel.')
+    }
+  }
   if (!(await isProjectAccessibleToUser(context.prisma, member, projectId))) {
     throw new Error('Project not found. Resolve it with project_list first.')
   }
