@@ -42,6 +42,7 @@ export type RunInference = {
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
+    options?: { maxOutputTokens?: number },
   ) => Promise<InferenceResult>
   /**
    * Silent, non-streaming inference on the pinned utility model (falling back
@@ -95,6 +96,7 @@ export const createRunInference = (
     tools: ToolSchemaDescriptor[],
     agentModel: { model: string | null; provider: string | null },
     streaming: boolean,
+    maxOutputTokens?: number,
   ): Promise<InferenceResult> => {
     const documentStream = streaming ? deps.documentStream : undefined
     // A document is emitted as tool-call arguments inside one completion, so
@@ -126,7 +128,7 @@ export const createRunInference = (
         baseMessages: messages,
         maxOutputTokensOverride: composeAvailable
           ? resolveComposeOutputTokens(runtimeModelConfig.maxTokens)
-          : undefined,
+          : maxOutputTokens,
         modelConfig: runtimeModelConfig,
         subscription: options.subscription
           ? {
@@ -207,9 +209,9 @@ export const createRunInference = (
       currentTurnStreamed = false
       return streamed
     },
-    runMain: (messages, tools) => {
+    runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
-      return call(messages, tools, runModel, true)
+      return call(messages, tools, runModel, true, callOptions?.maxOutputTokens)
     },
     runUtility: (messages, tools) =>
       call(

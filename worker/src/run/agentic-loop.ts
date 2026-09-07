@@ -166,7 +166,7 @@ export const runAgenticLoop = async (input: {
   runInference: (
     messages: ProviderMessage[],
     captured?: { toolResults: ExecutedToolResult[] },
-    options?: { noTools?: boolean },
+    options?: { maxOutputTokens?: number; noTools?: boolean },
   ) => Promise<InferenceResult>
   toolTimeoutError?: (toolName: string) => Error | null
   tools: ToolSchemaDescriptor[]
@@ -195,6 +195,8 @@ export const runAgenticLoop = async (input: {
    * turned into a conversation once and paid for.
    */
   resume?: LoopResumeState
+  /** Per-call fallback reserved until the selected model advertises a lower cap. */
+  maxOutputTokens?: number
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
@@ -354,11 +356,12 @@ export const runAgenticLoop = async (input: {
   // only here: the previous tool batch has fully settled, so no group is open.
   // A failed or unavailable compaction degrades to emergency truncation rather
   // than letting the transcript grow into a provider overflow.
-  const maintainContext = async (iteration: number): Promise<void> => {
+  const maintainContext = async (iteration: number, force = false): Promise<void> => {
     // The plan's thresholds already exclude the tool schemas, so only the
     // transcript is measured against them.
     const transcriptTokens = estimateMessagesTokens(messages)
-    if (!compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
+    if (!force && !compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
+    if (force && compactionAttempts >= 6) return
     compactionGovernor.recordAttempt(iteration)
     compactionAttempts += 1
     compactionLastIteration = iteration
@@ -421,6 +424,21 @@ export const runAgenticLoop = async (input: {
 
       await maintainContext(iterations)
 
+      const projectedInputTokens = estimateMessagesTokens(messages) + toolSchemaTokens
+      const remainingRunTokens = typeof budget.maxTokens === 'number'
+        ? Math.max(0, budget.maxTokens - spend.effectiveTokensUsed - projectedInputTokens)
+        : undefined
+      const requestedOutputTokens = input.maxOutputTokens === undefined
+        ? undefined
+        : Math.min(input.maxOutputTokens, remainingRunTokens ?? input.maxOutputTokens)
+      // Context compaction normally starts at 80%; an answer reserve can make
+      // a smaller retained transcript unsafe before that threshold, so compact
+      // here while all prior tool pairs are intact.
+      if (requestedOutputTokens !== undefined
+        && estimateMessagesTokens(messages) + requestedOutputTokens > contextPlan.availableTokens) {
+        await maintainContext(iterations, true)
+      }
+
       // The iteration boundary: the previous batch has fully settled and the
       // transcript that will be sent is assembled, so this is the state a
       // re-claiming executor should pick up.
@@ -432,6 +450,7 @@ export const runAgenticLoop = async (input: {
       const preInferenceStop = stopBeforeInference(budget, {
         effectiveTokensUsed: spend.effectiveTokensUsed,
         projectedCallTokens: estimateMessagesTokens(messages) + toolSchemaTokens,
+        projectedOutputTokens: requestedOutputTokens,
       })
       if (preInferenceStop) return stop(preInferenceStop)
 
@@ -445,7 +464,12 @@ export const runAgenticLoop = async (input: {
         (inferenceMessages) => input.runInference(
           inferenceMessages,
           captured,
-          finalizationPending ? { noTools: true } : undefined,
+          {
+            ...(requestedOutputTokens === undefined
+              ? {}
+              : { maxOutputTokens: requestedOutputTokens }),
+            ...(finalizationPending ? { noTools: true } : {}),
+          },
         ),
         retryBudget,
         contextPlan.targetTokens,

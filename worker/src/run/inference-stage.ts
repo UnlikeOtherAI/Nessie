@@ -43,6 +43,19 @@ export type StageExecutionSuccess = {
   toolCalls: ProviderToolCall[]
 }
 
+/**
+ * Capability limits are hard admission ceilings. An explicit caller allowance
+ * is already bounded by its run; the provider snapshot may only narrow it.
+ */
+export const resolveStageOutputTokens = (input: {
+  capabilityMaxOutputTokens?: number
+  configuredMaxOutputTokens: number
+  requestedMaxOutputTokens?: number
+}): number => Math.min(
+  input.requestedMaxOutputTokens ?? input.configuredMaxOutputTokens,
+  input.capabilityMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+)
+
 type StageExecutionFailure = Error & {
   creditRefusal?: 'ledger'
   invocation?: InvocationRecord
@@ -252,7 +265,12 @@ export const executeStage = async (
     // One attempt = one id. Retries re-enter this function, so this is exactly
     // the boundary a fragment consumer must reset on.
     const invocationId = randomUUID()
-    const maxOutputTokens = input.maxOutputTokensOverride ?? input.modelConfig.maxTokens
+    const capabilities = await service.getCapabilities(providerConfig.model)
+    const maxOutputTokens = resolveStageOutputTokens({
+      capabilityMaxOutputTokens: capabilities.effectiveSnapshot.maxOutputTokens,
+      configuredMaxOutputTokens: input.modelConfig.maxTokens,
+      requestedMaxOutputTokens: input.maxOutputTokensOverride,
+    })
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({

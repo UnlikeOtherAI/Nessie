@@ -44,6 +44,12 @@ summary and points here; **this file is the rule**.
     provider tool calls never dispatch. That attempt is carried in crash state,
     so a resumed run neither repeats it nor replays a completed tool effect; a
     second length result surfaces a truthful partial answer and checkpoint.
+  - Per-call output admission starts with the configured fallback, narrows to
+    the selected provider capability's `maxOutputTokens` when it is present,
+    and reserves that output together with the projected input before dispatch.
+    If retained context plus that reserve cannot fit, the existing compaction
+    hook runs before dispatch; no advertised capability means the fallback is
+    retained rather than guessing a model limit.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above
