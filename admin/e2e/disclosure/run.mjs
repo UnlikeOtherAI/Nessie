@@ -19,8 +19,10 @@ import {
 import {
   SECRET,
   REVISED_PRIVATE_BODY,
+  REVISABLE_REPLY,
   SHARED_SUMMARY,
   seedFixture,
+  seedRevisableReply,
   submitMentionedRequest,
   waitForRun,
 } from './fixture.mjs'
@@ -371,20 +373,25 @@ const main = async () => {
       'one-reply grant does not make its basis-bearing reply searchable',
     )
 
+    const revisableReply = await seedRevisableReply(pipeline.prisma, fixture)
+    await reloadWithRealtimeProbes(audiencePage.page, audienceToken, [
+      { channelId: fixture.group.id, kind: 'channel' },
+      { agentId: fixture.scope.agentId, kind: 'agent' },
+    ])
     await exerciseApprovedReplyRevision({
       activateRevision: () => {
         revisionScenario = createReplyRevisionScenario(parseScenario, {
           content: REVISED_PRIVATE_BODY,
-          messageId: forwarded.id,
+          messageId: revisableReply.id,
         })
         modelPhase = 'revision'
       },
       api,
       audiencePage: audiencePage.page,
       audienceToken,
-      currentContent: SHARED_SUMMARY,
+      currentContent: REVISABLE_REPLY,
       fixture,
-      forwarded,
+      forwarded: revisableReply,
       pipeline,
       revisedContent: REVISED_PRIVATE_BODY,
       runIds,

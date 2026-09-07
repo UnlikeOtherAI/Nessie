@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 
 export const SECRET = 'Kestrel closes on Friday.'
 export const SHARED_SUMMARY = 'Project Kestrel will close this Friday.'
+export const REVISABLE_REPLY = 'Project Kestrel timeline remains Friday.'
 export const REVISED_PRIVATE_BODY = 'Kestrel closes next Tuesday.'
 
 export const seedFixture = async (pipeline, seedScope, groupId) => {
@@ -187,6 +188,37 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
     sourceAuthor: { id: sourceAuthor.id, role: MemberRole.member, sessionId: sourceSessionId },
   }
 }
+
+// Matches an ordinary shared agent's assistant reply, including the private
+// source facts that make B the only person who can disclose it.
+export const seedRevisableReply = async (prisma, fixture) => prisma.$transaction(async (tx) => {
+  const reply = await tx.message.create({
+    data: {
+      agentId: fixture.scope.agentId,
+      content: REVISABLE_REPLY,
+      role: 'assistant',
+      threadId: fixture.groupThread.id,
+    },
+    select: { id: true },
+  })
+  await tx.messageBasisScope.create({
+    data: {
+      messageId: reply.id,
+      organizationId: fixture.scope.organizationId,
+      scopeId: fixture.privateChannel.id,
+      scopeType: 'channel',
+    },
+  })
+  await tx.messageDisclosureSource.create({
+    data: {
+      messageId: reply.id,
+      organizationId: fixture.scope.organizationId,
+      sourceAuthorUserId: fixture.sourceAuthor.id,
+      sourceChannelId: fixture.privateChannel.id,
+    },
+  })
+  return reply
+})
 
 export const submitMentionedRequest = async (page, agentId, agentName, text) => {
   const form = page.locator('form.admin-compose:visible')
