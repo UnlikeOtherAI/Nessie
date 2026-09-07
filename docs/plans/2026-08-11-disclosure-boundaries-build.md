@@ -202,7 +202,7 @@ actually in the tree.
 > **WP2.5 — derived-artifact containment** becomes part of the security cut.
 > The revised cut is stated at the end.
 
-## Build status (2026-08-29, read from the code)
+## Build status (2026-09-07, read from the code)
 
 This header claimed "Not yet started" while WP0–WP3 were already merged, which
 is how the gaps below survived: a reader checking whether a boundary existed was
@@ -214,7 +214,7 @@ told the whole thing was hypothetical. What is actually in the tree:
 | WP0 stamped-post chokepoint | **built.** `createAgentMessage` / `replaceAgentMessageContent` now guarantee their own atomicity (`inTransaction`) rather than trusting each caller, the rolling watch status and `message_edit` route through, and the docstring states which writers stay outside and why | `worker/src/run/execute/agent-message.ts`, `pa-tools/tool-message-basis.ts` |
 | WP1 `MessageBasisScope` + stamping | **built**, including transitive inheritance from the transcript | `prompt.ts` |
 | WP2 close the wire | **built.** WS `message.new`/`message.reply`/`message.updated` and SSE `stream.done` carry `restricted: true` instead of a preview on every terminal path (completion, cancel, rolling watch); the live lanes stop the moment a run's reply is restricted | `packages/schemas/src/realtime-{ws,sse}.ts`, `runReplyIsRestricted` |
-| WP3 read predicate | **built** and applied on the message list, the single-message read, and the durable thought log. A withheld row also carries no metadata, reactions or reply participants, and the share affordance is offered only to a reader who satisfies the basis directly rather than through a grant | `packages/runtime/src/disclosure-*.ts`, `api/src/services/{messages,run-disclosure}.ts` |
+| WP3 read predicate | **built** and applied on the message list, the single-message read, durable thought log, agent history/activity/tool projections, activity snapshots, and the agent reaction tool. A withheld row also carries no metadata, reactions or reply participants, and the share affordance is offered only to a reader who satisfies the basis directly rather than through a grant | `packages/runtime/src/disclosure-*.ts`, `api/src/services/{messages,run-disclosure,agent-read-disclosure}.ts`, `worker/src/run/pa-tools/agent-messages.ts` |
 | WP4 checkpoint basis | **built.** A checkpoint carries the writing run's basis (reusing `RunBasisScope` — a checkpoint belongs to one run, so no second table), is withheld from a viewer who cannot satisfy it, and is inherited when admitted. The API's Continue claim is gated on the same predicate | `checkpoint.ts`, `run-setup.ts`, `api/src/services/run-continuation.ts` |
 | WP5 withheld placeholder | **built** | `RestrictedMessageCard` |
 | WP8 standing grants | **partial.** Grants exist and are bounded by the granter's own reach — channel visibility at both ends, a validated audience, and a real expiry on message grants — but there is no owner-facing surface listing or revoking them | `api/src/routes/disclosure-grants.ts` |

@@ -6,11 +6,11 @@ import type { AuthorizedActionContext, WsScope } from '@nessie/schemas'
 
 import { createRequestHelpers } from '../src/lib/request-helpers.js'
 import {
-  buildSnapshotForScopes,
   loadAgentActivity,
   loadAgentChildren,
   loadAgentStatus,
 } from '../src/services/agent-read-model.js'
+import { buildSnapshotForScopes } from '../src/services/agent-read-snapshot.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const otherOrganizationId = '00000000-0000-4000-8000-000000000002'

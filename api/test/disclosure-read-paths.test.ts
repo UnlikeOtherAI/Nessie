@@ -5,6 +5,12 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import {
+  loadAgentActivity,
+  loadAgentMessages,
+  loadAgentStatus,
+  loadRunToolCalls,
+} from '../src/services/agent-read-model.js'
+import {
   mapMessageRecordWithAttachments,
   messageInclude,
 } from '../src/services/message-read-model.js'
@@ -261,6 +267,122 @@ runDatabaseTest('a run that consumed nothing privileged keeps its thought log re
     true,
     'a run with no basis must stay readable — this is the overwhelmingly common case',
   )
+})
+
+runDatabaseTest('agent history and tool activity use the same live disclosure gates', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { name: `disclosure-org-${suffix}` } })
+    await prisma.user.deleteMany({ where: { email: { contains: suffix } } })
+    await prisma.$disconnect()
+  })
+
+  const s = await seed(prisma, suffix)
+  const secret = 'The acquisition closes on the 14th.'
+  const restrictedMessage = await prisma.message.create({
+    data: { agentId: s.agentId, content: secret, role: 'assistant', threadId: s.threadId },
+  })
+  await prisma.messageBasisScope.create({
+    data: {
+      messageId: restrictedMessage.id,
+      organizationId: s.organizationId,
+      scopeId: s.insiderId,
+      scopeType: 'user',
+    },
+  })
+  const restrictedRun = await prisma.run.create({
+    data: { agentId: s.agentId, status: 'running', threadId: s.threadId },
+  })
+  await prisma.runBasisScope.create({
+    data: {
+      organizationId: s.organizationId,
+      runId: restrictedRun.id,
+      scopeId: s.insiderId,
+      scopeType: 'user',
+    },
+  })
+  await prisma.toolCall.create({
+    data: {
+      agentId: s.agentId,
+      inputSummary: secret,
+      outputPreview: secret,
+      runId: restrictedRun.id,
+      startedAt: new Date(),
+      toolName: 'web_search',
+    },
+  })
+
+  const outsiderVisibility = {
+    organizationId: s.organizationId,
+    userId: s.outsiderId,
+  }
+  const insiderVisibility = {
+    organizationId: s.organizationId,
+    userId: s.insiderId,
+  }
+  const outsiderHistory = await loadAgentMessages(
+    prisma,
+    s.agentId,
+    25,
+    0,
+    { visibility: outsiderVisibility },
+  )
+  assert.equal(outsiderHistory.total, 0)
+  assert.ok(!JSON.stringify(outsiderHistory).includes('acquisition'))
+  assert.equal(
+    (await loadAgentActivity(prisma, s.agentId, { visibility: outsiderVisibility }))
+      ?.recentToolCalls.length,
+    0,
+  )
+  assert.equal(
+    (await loadAgentStatus(prisma, s.agentId, { visibility: outsiderVisibility }))
+      ?.currentRunId,
+    undefined,
+  )
+  assert.deepEqual(
+    await loadRunToolCalls(prisma, s.agentId, restrictedRun.id, { visibility: outsiderVisibility }),
+    [],
+  )
+
+  const insiderHistory = await loadAgentMessages(
+    prisma,
+    s.agentId,
+    25,
+    0,
+    { visibility: insiderVisibility },
+  )
+  assert.equal(insiderHistory.items[0]?.fullContent, secret)
+  const insiderTools = await loadRunToolCalls(
+    prisma,
+    s.agentId,
+    restrictedRun.id,
+    { visibility: insiderVisibility },
+  )
+  assert.equal(insiderTools[0]?.outputPreview, secret)
+
+  // A missing basis remains public to everyone who can reach the agent's
+  // channel; the gate is provenance-aware, not a blanket activity hide.
+  const publicRun = await prisma.run.create({
+    data: { agentId: s.agentId, status: 'completed', threadId: s.threadId },
+  })
+  await prisma.toolCall.create({
+    data: {
+      agentId: s.agentId,
+      inputSummary: 'public input',
+      outputPreview: 'public output',
+      runId: publicRun.id,
+      startedAt: new Date(),
+      toolName: 'status',
+    },
+  })
+  const publicTools = await loadRunToolCalls(
+    prisma,
+    s.agentId,
+    publicRun.id,
+    { visibility: outsiderVisibility },
+  )
+  assert.equal(publicTools[0]?.outputPreview, 'public output')
 })
 
 runDatabaseTest('a withheld row carries no metadata, reactions, or reply participants', async (t) => {

@@ -6,3 +6,4 @@
 // directly.
 export * from './agent-management.js'
 export * from './agent-read-model.js'
+export * from './agent-read-snapshot.js'
