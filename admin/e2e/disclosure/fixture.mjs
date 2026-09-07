@@ -204,11 +204,17 @@ export const submitMentionedRequest = async (page, agentId, agentName, text) => 
   await composer.press('Enter')
 }
 
-export const waitForRun = async (pipeline, agentId, threadId) => {
+export const waitForRun = async (pipeline, agentId, threadId, excludedRunIds = []) => {
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
     const run = await pipeline.prisma.run.findFirst({
-      where: { agentId, threadId, triggerMessageId: { not: null } }, orderBy: { createdAt: 'desc' },
+      where: {
+        agentId,
+        threadId,
+        triggerMessageId: { not: null },
+        ...(excludedRunIds.length > 0 ? { id: { notIn: excludedRunIds } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
     })
     if (run) return run
     await new Promise((done) => setTimeout(done, 100))
