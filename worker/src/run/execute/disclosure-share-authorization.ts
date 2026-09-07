@@ -22,6 +22,9 @@ export const maybeAuthorizeDisclosureShare = async (input: {
   triggerMessageId?: string
 }): Promise<boolean> => {
   if (input.toolName !== 'send_message' || !input.runUtility) return false
+  // A human sentence cannot safely bind an attachment's bytes or identity yet.
+  // Keep that richer artifact on the ordinary restricted/card path.
+  if (input.args['attachmentIds'] !== undefined) return false
   const sources = input.context.consumedSources.privateConversationSources()
   if (sources.length === 0) return false
   if (sources.some((source) => !source.sourceAuthorUserId)) return false
