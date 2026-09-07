@@ -1,14 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
+import { originalHumanAuthorId } from '@nessie/runtime'
 
 import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
-
-type MessageAuthorship = {
-  agentId: string | null
-  metadata: unknown
-  onBehalfOfUserId: string | null
-  role: string
-  userId: string | null
-}
 
 export type PrivateConversationLineage = {
   basisScopes: readonly BasisScope[]
@@ -18,29 +11,7 @@ export type PrivateConversationLineage = {
   }[]
 }
 
-const hasDelegatedAgentMetadata = (metadata: unknown): boolean =>
-  typeof metadata === 'object'
-  && metadata !== null
-  && !Array.isArray(metadata)
-  && (
-    'delegatedByAgentId' in metadata
-    || 'delegatedFromRunId' in metadata
-  )
-
-/**
- * `userId` can record the effective person for an agent-delivered action.
- * Original-author disclosure needs the narrower structural proof of a raw
- * human turn, which legacy delegated rows do not have.
- */
-export const originalHumanAuthorId = (message: MessageAuthorship): string | null => {
-  if (
-    message.role !== 'user'
-    || message.agentId !== null
-    || message.onBehalfOfUserId !== null
-    || hasDelegatedAgentMetadata(message.metadata)
-  ) return null
-  return message.userId
-}
+export { originalHumanAuthorId }
 
 /**
  * Older carry-forward records retain channel scopes but not original human
