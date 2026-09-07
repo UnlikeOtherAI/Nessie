@@ -279,7 +279,7 @@ export const KanbanBoard = ({
               <button
                 aria-current={index === page ? 'page' : undefined}
                 aria-label={`Show page ${index + 1}`}
-                className="flex h-7 w-7 items-center justify-center rounded-full"
+                className="flex h-11 w-11 items-center justify-center rounded-full"
                 key={index}
                 onClick={() => showPage(index)}
                 type="button"
@@ -364,7 +364,14 @@ export const KanbanBoard = ({
         ) : null}
       </div>
 
-      <TaskDialog open={activeTask !== null} task={activeTask} onClose={() => setActiveTask(null)} />
+      <TaskDialog
+        boardId={boardId}
+        onClose={() => setActiveTask(null)}
+        open={activeTask !== null}
+        projectId={projectId}
+        task={activeTask}
+        taskColumnId={activeTask ? taskById.get(activeTask.id)?.columnId : undefined}
+      />
     </div>
   )
 }

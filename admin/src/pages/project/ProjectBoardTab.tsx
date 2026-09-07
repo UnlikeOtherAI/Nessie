@@ -139,21 +139,6 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
           <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
             Failed to load tasks. Please refresh.
           </div>
-        ) : tasks.length === 0 && sources.length === 0 ? (
-          <EmptyState
-            action={
-              <Link
-                className="admin-button admin-button-primary"
-                to={`/projects/${projectId}/settings?section=sources&connect=1`}
-              >
-                Connect a source
-              </Link>
-            }
-            title="Nothing on this board yet."
-          >
-            New tasks appear in the first column — or bring in work from Jira, Linear,
-            Trello or GitHub.
-          </EmptyState>
         ) : visibleTasks.length === 0 && tasks.length > 0 ? (
           // Empty columns under a filter would otherwise read as "nobody is
           // working on anything"; the board is not empty, this view is.

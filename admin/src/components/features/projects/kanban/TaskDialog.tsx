@@ -18,11 +18,13 @@ import { useTaskFields } from '../../../../facades/task-fields/hooks'
 import { Input, Select, Textarea } from '../../../shared/FormControls'
 import { useAgents } from '../../../../facades/agents/queries'
 import { useProjects } from '../../../../facades/projects/hooks'
+import { useProjectBoards } from '../../../../facades/boards/hooks'
 import {
   type TaskPriority,
   type TaskRecord,
   useAssignTask,
   useCreateTask,
+  useMoveTask,
   useTaskAssignees,
   useTransitionTask,
   useUpdateTask,
@@ -61,6 +63,8 @@ type TaskDialogProps = {
   // The board the card is created on. A board owns its tasks, so a card made
   // while looking at "Dev" belongs to Dev and appears on no other board.
   boardId?: string
+  /** The card's current column when details opened from a board. */
+  taskColumnId?: string | null
   iterationId?: string
 }
 
@@ -99,6 +103,7 @@ export const TaskDialog = ({
   task,
   projectId,
   boardId,
+  taskColumnId,
   iterationId,
 }: TaskDialogProps) => {
   const isEdit = Boolean(task)
@@ -106,6 +111,7 @@ export const TaskDialog = ({
   const { data: assignees = [] } = useTaskAssignees()
   const { data: agents = [] } = useAgents()
   const createTask = useCreateTask()
+  const moveTask = useMoveTask()
   const updateTask = useUpdateTask()
   const assignTask = useAssignTask()
   const transition = useTransitionTask()
@@ -114,6 +120,13 @@ export const TaskDialog = ({
   // task's own and for a new one the project the dialog was opened in.
   const fieldsProjectId = task?.projectId ?? projectId ?? null
   const { data: fieldDefinitions = [] } = useTaskFields(fieldsProjectId ?? undefined)
+  const { data: projectBoards = [] } = useProjectBoards(fieldsProjectId ?? undefined)
+  // A task with no persisted board belongs to its project's default board.
+  // `boardId` carries that resolved board while this dialog is opened from its
+  // card, so the selector always names the columns the ticket actually lives
+  // on rather than offering a sibling board by accident.
+  const taskBoardId = task?.boardId ?? boardId ?? null
+  const taskBoard = projectBoards.find((candidate) => candidate.id === taskBoardId) ?? null
 
   const titleRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -186,7 +199,11 @@ export const TaskDialog = ({
   }, [open, task])
 
   const pending =
-    createTask.isPending || updateTask.isPending || assignTask.isPending || transition.isPending
+    createTask.isPending
+    || updateTask.isPending
+    || assignTask.isPending
+    || moveTask.isPending
+    || transition.isPending
 
   // Still gates the footer's own Close button; the shell's close paths are
   // gated by `dismissDisabled`.
@@ -258,6 +275,20 @@ export const TaskDialog = ({
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not update status')
+    }
+  }
+
+  const handleMoveToColumn = async (columnId: string) => {
+    if (!task || columnId === taskColumnId) return
+    setError(null)
+    try {
+      // No position: this is a state change, not a claim about where another
+      // person's card belongs in the destination column. The server owns the
+      // resulting order and validates the board/source lifecycle transition.
+      await moveTask.mutateAsync({ id: task.id, columnId })
+      onClose()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not move task')
     }
   }
 
@@ -380,6 +411,25 @@ export const TaskDialog = ({
           <FormField label="Deadline">
             <Input onChange={(event) => patchDraft({ due: event.target.value })} type="date" value={due} />
           </FormField>
+
+          {isEdit && task && !archived && taskColumnId && taskBoard ? (
+            <FormField
+              help="Moving a ticket updates its status to match the column."
+              label="Column"
+            >
+              <Select
+                disabled={pending}
+                onChange={(event) => void handleMoveToColumn(event.target.value)}
+                value={taskColumnId}
+              >
+                {taskBoard.columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          ) : null}
 
           <TaskFieldsSection
             definitions={fieldDefinitions}

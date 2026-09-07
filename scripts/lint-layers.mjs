@@ -12,7 +12,7 @@
 // stacking order" problem the scale replaced. Modelled on
 // scripts/lint-breakpoints.mjs.
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -82,8 +82,9 @@ function fail(message) {
 }
 
 function trackedFiles() {
-  const output = execSync(
-    `git ls-files '${SCAN_ROOT}/*.ts' '${SCAN_ROOT}/*.tsx' '${SCAN_ROOT}/*.css'`,
+  const output = execFileSync(
+    'git',
+    ['ls-files', `${SCAN_ROOT}/*.ts`, `${SCAN_ROOT}/*.tsx`, `${SCAN_ROOT}/*.css`],
     { encoding: 'utf8' },
   )
   return output

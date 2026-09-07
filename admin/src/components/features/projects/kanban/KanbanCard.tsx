@@ -1,7 +1,7 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { faSignal } from '@fortawesome/free-solid-svg-icons'
+import { faGripVertical, faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
 import { useMemo } from 'react'
@@ -127,7 +127,15 @@ export const KanbanCard = ({
   pulse = false,
   onPulseEnd,
 }: KanbanCardProps) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: task.id,
   })
 
@@ -152,22 +160,20 @@ export const KanbanCard = ({
   const style = isDragging
     ? {
         transition,
-        touchAction: 'none' as const,
         border: '2px dashed var(--accent)',
         background: 'var(--overlay-weak)',
       }
-    : { transform: CSS.Transform.toString(transform), transition, touchAction: 'none' as const }
+    : { transform: CSS.Transform.toString(transform), transition }
+
+  const taskLabel = task.title ?? task.purpose ?? 'Untitled task'
 
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
       data-kanban-card
       data-kanban-placeholder={isDragging ? 'true' : undefined}
       className={[
-        'admin-card grid select-none gap-2 p-3',
-        'cursor-grab active:cursor-grabbing',
+        'admin-card relative grid select-none gap-2 p-3 pr-12',
         isDragging ? '[&>*]:invisible' : '',
         pulse ? 'kanban-card-pulse' : '',
       ].join(' ')}
@@ -176,6 +182,24 @@ export const KanbanCard = ({
       onPointerDown={handlePointerDown}
       style={style}
     >
+      {/* A card's body is an ordinary tap target and scroll surface. The drag
+          activator is deliberately separate: `touch-action: none` on the old
+          full-card activator prevented both horizontal board paging and the
+          column's vertical native scroll before dnd-kit could even decide
+          whether a long press was a drag. */}
+      <button
+        aria-label={`Reorder ${taskLabel}`}
+        className="absolute right-1 top-1 flex h-11 w-11 cursor-grab touch-none items-center justify-center rounded-md text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)] active:cursor-grabbing"
+        data-kanban-drag-handle
+        onClick={(event) => event.stopPropagation()}
+        ref={setActivatorNodeRef}
+        title="Drag to reorder or move this task"
+        type="button"
+        {...attributes}
+        {...listeners}
+      >
+        <FontAwesomeIcon icon={faGripVertical} />
+      </button>
       <KanbanCardContent projectName={projectName} showProject={showProject} task={task} />
     </div>
   )
