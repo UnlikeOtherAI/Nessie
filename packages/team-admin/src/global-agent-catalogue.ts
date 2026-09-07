@@ -74,7 +74,7 @@ const describeTool = (entry: AgentToolCatalogEntry): string =>
 
 const RESTRICTION_LABEL: Record<AgentToolRestriction, string> = {
   built_in_specialist_only: 'reserved for Nessie\'s built-in specialists',
-  explicit_grant: 'owner surfaces only (Apps / Integrations)',
+  explicit_grant: 'owner approval required (the agent Tools tab or an app access surface)',
   personal_assistant_only: 'Personal Assistant only',
 }
 

@@ -5,6 +5,8 @@ import {
   useDesignerToolCatalog,
 } from '../../../facades/designer/tool-catalog'
 import { useUpdateAgent } from '../../../facades/agents/hooks'
+import { useIsOwner } from '../../../facades/auth/hooks'
+import { useSetAgentToolPolicyEntry } from '../../../facades/tool-grants/hooks'
 import { useCanEditAgent } from './agent-edit-authority'
 import { ToolPicker } from './designer/ToolPicker'
 import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelContext'
@@ -15,8 +17,8 @@ import { revealDesignerControl } from './designer/reveal-control'
  * Whoever may edit this agent gets the enable/disable switches (the same
  * ToolPicker the create-agent designer uses) plus an inline Save; everyone else
  * sees the resolved read-only list — the same resolution the worker applies at
- * run time. Protected explicit-grant tools are never listed here; the server
- * preserves them across a save.
+ * run time. Explicit-grant tools appear off until an owner enables them; tools
+ * limited to the Personal Assistant remain unavailable to shared agents.
  *
  * "May edit" is `canEditAgent`, not the organization owner role: the steward of
  * a private or person-owned agent, and any entitled member of a team-owned one,
@@ -27,8 +29,8 @@ type AgentAvailableToolsProps = {
   agent: AgentRecord
   /**
    * Whether the switches are offered. A system-managed agent (the Personal
-   * Assistant) is configured through its own surface, so listing its resolved
-   * tools is right and offering a Save that competes with that surface is not.
+   * Assistant) is configured through its own surface, so listing ordinary
+   * tools is right and offering a competing Save is not.
    */
   editable?: boolean
 }
@@ -41,33 +43,68 @@ const sortedPolicy = (policy: Record<string, boolean>): string =>
   )
 
 const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
-  const toolCatalog = useDesignerToolCatalog(true)
+  const isOwner = useIsOwner()
+  const toolCatalog = useDesignerToolCatalog(isOwner, isOwner)
   const { groups, options } = toolCatalog
   const [toolState, setToolState] = useState<Record<string, boolean>>(
     () => agent.toolPolicy ?? {},
   )
+  const [saveError, setSaveError] = useState<string | null>(null)
   const updateAgent = useUpdateAgent()
+  const setExplicitPolicy = useSetAgentToolPolicyEntry()
   const assistantPanel = useDesignerAssistantPanel()
 
-  // Compare over the visible option set only, so protected grants the server
-  // keeps (and the picker never shows) do not make the tab look permanently
-  // dirty.
+  // Generic agent edits must never carry protected explicit grants. Those go
+  // through the owner-only registry writer, which locks and applies a precise
+  // allow or revoke for each descriptor.
+  const genericOptions = useMemo(
+    () => options.filter((option) => !option.protectedExplicit),
+    [options],
+  )
+  const explicitChanges = useMemo(
+    () => options
+      .filter((option) => option.protectedExplicit)
+      .filter((option) => (toolState[option.key] ?? option.defaultEnabled)
+        !== (agent.toolPolicy?.[option.key] ?? option.defaultEnabled)),
+    [agent.toolPolicy, options, toolState],
+  )
+  // Compare over the visible ordinary set only, so unavailable PA-only grants
+  // the server keeps do not make the tab look permanently dirty.
   const savedPolicy = useMemo(
-    () => buildToolPolicy(options, agent.toolPolicy ?? {}),
-    [agent.toolPolicy, options],
+    () => buildToolPolicy(genericOptions, agent.toolPolicy ?? {}),
+    [agent.toolPolicy, genericOptions],
   )
   const nextPolicy = useMemo(
-    () => buildToolPolicy(options, toolState),
-    [options, toolState],
+    () => buildToolPolicy(genericOptions, toolState),
+    [genericOptions, toolState],
   )
+  const hasMissingExplicitRegistry = explicitChanges.some((option) => !option.registryEntryId)
   const dirty = sortedPolicy(savedPolicy) !== sortedPolicy(nextPolicy)
+    || explicitChanges.length > 0
 
   const save = () => {
-    // No local onError: the switches simply stay at their pending state on
-    // failure, and the app-wide mutation default (providers/QueryProvider.tsx)
-    // surfaces the failure as a toast. `.catch` here only stops an unhandled
-    // promise rejection — it does not silence the failure.
-    void updateAgent.mutateAsync({ agentId: agent.id, toolPolicy: nextPolicy }).catch(() => undefined)
+    if (hasMissingExplicitRegistry) {
+      setSaveError('Protected tools are still loading. Wait for the catalog, then save again.')
+      return
+    }
+    setSaveError(null)
+    void (async () => {
+      for (const option of explicitChanges) {
+        if (!option.registryEntryId) {
+          throw new Error(`Explicit tool ${option.key} has no registry entry.`)
+        }
+        await setExplicitPolicy.mutateAsync({
+          agentId: agent.id,
+          enabled: toolState[option.key] ?? option.defaultEnabled,
+          toolRegistryEntryId: option.registryEntryId,
+        })
+      }
+      if (sortedPolicy(savedPolicy) !== sortedPolicy(nextPolicy)) {
+        await updateAgent.mutateAsync({ agentId: agent.id, toolPolicy: nextPolicy })
+      }
+    })().catch((error) => setSaveError(
+      error instanceof Error ? error.message : 'Could not save tool access.',
+    ))
   }
 
   // The assistant can stagger many toggles across a batch (`index * 650` in
@@ -99,6 +136,7 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
   const handleAssistantAction = useCallback((name: string, args: Record<string, unknown>) => {
     if (name === 'toggle_tool') {
       if (typeof args.toolId !== 'string' || !args.toolId) return false
+      // Draft only: an assistant cannot press Save or bypass the owner writer.
       changeTool(args.toolId, Boolean(args.enabled))
       return true
     }
@@ -122,17 +160,24 @@ const AgentToolsEditor = ({ agent }: { agent: AgentRecord }) => {
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-[color:var(--tx3)]">
-          Project access is granted explicitly. Protected tools are managed on the Tools and Apps pages.
+          Project and cloud-browser access are granted explicitly here. Connected apps are managed on Apps.
         </p>
         <button
           className="admin-button admin-button-primary flex-shrink-0"
-          disabled={!dirty || updateAgent.isPending}
+          disabled={!dirty || toolCatalog.isLoading || hasMissingExplicitRegistry
+            || updateAgent.isPending || setExplicitPolicy.isPending}
           onClick={save}
           type="button"
         >
           {updateAgent.isPending ? 'Saving…' : 'Save changes'}
         </button>
       </div>
+      {!isOwner ? (
+        <p className="text-xs text-[color:var(--tx3)]">
+          Only organization owners can change cloud-browser and other protected tool grants.
+        </p>
+      ) : null}
+      {saveError ? <p className="text-sm text-[color:var(--danger)]" role="alert">{saveError}</p> : null}
       <ToolPicker
         groups={groups}
         onToggle={(toolKey, enabled) =>

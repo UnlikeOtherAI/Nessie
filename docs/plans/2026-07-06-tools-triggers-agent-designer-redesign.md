@@ -32,6 +32,14 @@ What changed:
 - The agent detail **Tools tab** (`AgentAvailableTools`) shows the same
   catalog resolved against the agent's actual policy, matching the worker's
   runtime behaviour.
+- The Agent detail **Tools tab** (`/agents/:agentId?agentTab=tools`) is the owner
+  doorway for explicit-grant builtins. Cloud-browser and peer-delegation tools
+  start off and persist an explicit `true` only after Save. A builtin marked
+  `personalAssistantOnly` remains absent unless its descriptor also marks it
+  `projectDelegatedOnly`; that shared structural eligibility rule is
+  `isSharedAgentToolEligible` in `@nessie/schemas`, reused by the owner UI and
+  the server designer catalogue. Project-delegated ticket tools still require
+  project delegation at run setup; the UI policy alone does not grant that.
 - **Designer chat** (`POST /api/designer/chat`) accepts an optional
   `availableTools` array; the system prompt lists the org's real tool ids so
   `toggle_tool` / `batch_toggle_tools` calls target keys that exist.
