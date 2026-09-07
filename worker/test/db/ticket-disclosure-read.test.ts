@@ -68,9 +68,13 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const publicThread = await prisma.thread.create({ data: { channelId: publicChannel.id } })
   const agent = await prisma.agent.create({
     data: {
+      agentKind: 'personal_assistant',
+      delegationMode: 'act_as_requesting_user',
       name: `ticket-agent-${suffix}`,
       organizationId: organization.id,
       projectId: project.id,
+      surfacePolicy: 'dm_only',
+      systemManaged: true,
       teamId: team.id,
     },
   })
@@ -127,7 +131,10 @@ const contextFor = (prisma: PrismaClient, seed: Seed): BuiltinToolRuntimeContext
     tenant: { organizationId: seed.organizationId, projectId: seed.projectId },
   },
   agentId: seed.agentId,
-  agentKind: 'shared',
+  // Ticket tools are personal-assistant tools. A shared agent belongs to its
+  // bound project channel and must retain that project guard; this owner-run
+  // fixture exercises the PA's independent project-read entitlement instead.
+  agentKind: 'personal_assistant',
   channel: { id: seed.publicChannelId, organizationId: seed.organizationId, systemChannelType: null },
   ledgerIdentity: null,
   prisma,
