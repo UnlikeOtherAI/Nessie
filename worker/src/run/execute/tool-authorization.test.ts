@@ -130,6 +130,7 @@ const fakePrisma = (): FakePrisma => {
         )
       },
     },
+    runBasisScope: { createMany: async () => ({ count: 1 }) },
     run: { findUnique: async () => null },
     // The tool-effect ledger claims every MCP and executor dispatch before it
     // runs (`tool-effect-ledger.ts`), so this fake has to model the table or
