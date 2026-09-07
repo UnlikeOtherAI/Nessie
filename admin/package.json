@@ -57,6 +57,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@nessie/mock-llm": "workspace:*",
     "@types/jmespath": "^0.15.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
