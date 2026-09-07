@@ -7,6 +7,7 @@ import {
   type BasisScope,
 } from './disclosure-basis.js'
 import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
+import { blocksPrivateConversationWrite } from './private-conversation-write-gate.js'
 
 const DESTINATION = {
   channelId: 'channel-1',
@@ -81,6 +82,33 @@ test('checkpoint or memory channel provenance cannot be re-attributed by a later
     { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
     { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
   ])
+})
+
+test('private conversation material cannot enter an unscoped write or MCP call', () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' })
+  const context = { consumedSources: sink } as unknown as import('./types.js').RunContext
+
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'kb_draft_write' }),
+    true,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: true, toolName: 'mcp_publish' }),
+    true,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'send_message' }),
+    false,
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { ...context, agent: { agentKind: 'personal_assistant' } },
+      isExternal: false,
+      toolName: 'kb_draft_write',
+    }),
+    false,
+  )
 })
 
 test('a run consuming only destination-implied sources has an empty basis', () => {
