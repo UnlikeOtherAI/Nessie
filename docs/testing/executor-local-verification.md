@@ -23,6 +23,15 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 - The authenticated local Executors page renders an empty list and its Pair
   executor form. It initially showed a Vite cold-load skeleton and recovered on
   reload; no API error was established.
+- A private executor was created through that authenticated local form without
+  an agent assignment. Its source pairing must target `http://127.0.0.1:5454`.
+  The form instead prints the production API when Vite uses a same-origin API
+  base: `ExecutorsPage` falls back to `https://api.nessie.works`. This is a
+  local invitation rendering bug, not an API public-url setting.
+- The source pair command was not launched here: the command-execution policy
+  rejected the enrollment workflow even with `--challenge-stdin`. The
+  one-time challenge has not been written to this worktree or sent to another
+  endpoint. Complete that source pairing from an authorized local terminal.
 - Pairing must create an executor through the authenticated surface, complete
   the signed daemon enrollment, and then be confirmed by the user. Do not create
   a local UOA identity record or grant an existing watcher agent for this test.
