@@ -113,6 +113,8 @@ const main = async () => {
 
   const groupId = randomUUID()
   const { createMockLlmServer, parseScenario } = await import('@nessie/mock-llm')
+  const disclosureJudgePrompts = []
+  const disclosureJudgeVerdicts = ['{"share":false}', '{"share":true}']
   const scenario = parseScenario({
     name: 'disclosure-private-withheld',
     defaults: { latencyMs: 5, model: 'mock-model' },
@@ -147,9 +149,17 @@ const main = async () => {
         usage: { inputTokens: 176, outputTokens: 18 },
       },
     ],
-    utilityTurns: [{ text: '{"share":false}' }, { text: '{"share":true}' }],
+    utility: { text: '{}' },
   })
-  const model = await createMockLlmServer({ scenario })
+  const model = await createMockLlmServer({
+    scenario,
+    utilityResponder: (prompt) => {
+      // This fixed judgement protocol identifies the mock task, never the person’s wording.
+      if (!prompt.startsWith('Decide whether the person explicitly asked to share exactly this proposed')) return undefined
+      disclosureJudgePrompts.push(prompt)
+      return disclosureJudgeVerdicts.shift() ?? '{"share":false}'
+    },
+  })
   // `worker/src/run/agent-loop.ts` reads model configuration at import time.
   // Set the mock URL before importing pipeline.ts, not merely before enqueuing.
   process.env.NESSIE_MODEL_BASE_URL = `${model.url}/v1`
@@ -234,11 +244,7 @@ const main = async () => {
     runIds.push(firstRun.id)
     const terminal = await pipeline.waitForTerminalRuns([firstRun.id], 60_000)
     assert.equal(terminal.get(firstRun.id), 'completed', 'private-chat worker run completes')
-    assert.equal(
-      model.stats().turnCounts[-1],
-      1,
-      'the first private request invoked exactly its declined disclosure judge',
-    )
+    assert.equal(disclosureJudgePrompts.length, 1, 'the first private request invoked its declined disclosure judge')
     const privateTask = await pipeline.prisma.task.findFirstOrThrow({
       where: { runId: firstRun.id }, select: { id: true, purpose: true },
     })
@@ -391,11 +397,7 @@ const main = async () => {
     runIds.push(explicitRun.id)
     const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.id], 60_000)
     assert.equal(explicitTerminal.get(explicitRun.id), 'completed', 'author’s explicit private request completes')
-    assert.equal(
-      model.stats().turnCounts[-1],
-      2,
-      'the explicit private request invoked exactly its positive disclosure judge',
-    )
+    assert.equal(disclosureJudgePrompts.length, 2, 'the explicit private request invoked its positive disclosure judge')
     const automaticallyShared = await pipeline.prisma.message.findFirstOrThrow({
       where: { metadata: { path: ['delegatedFromRunId'], equals: explicitRun.id }, threadId: fixture.groupThread.id },
       select: { id: true },
