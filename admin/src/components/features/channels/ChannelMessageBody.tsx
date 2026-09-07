@@ -45,7 +45,7 @@ interface ChannelMessageBodyProps {
   onStartEdit: (messageId: string, content: string) => void
   shareRestrictedMessage?: (
     messageId: string,
-    input: { kind: 'message' | 'scope'; duration: DisclosureDuration },
+    input: { expectedContent: string; kind: 'message' | 'scope'; duration: DisclosureDuration },
   ) => Promise<void>
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void
@@ -138,6 +138,7 @@ export const ChannelMessageBody = ({
       ) : message.restricted ? (
         <RestrictedMessageCard
           allowStanding={false}
+          expectedContent={message.content}
           messageId={message.id}
           mode="withheld"
           onShare={async () => undefined}
@@ -161,6 +162,7 @@ export const ChannelMessageBody = ({
             <div className="mt-2">
               <RestrictedMessageCard
                 allowStanding={message.canShareStanding ?? false}
+                expectedContent={message.content}
                 messageId={message.id}
                 mode="shareable"
                 onShare={(input) => shareRestrictedMessage(message.id, input)}

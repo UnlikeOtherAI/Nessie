@@ -171,13 +171,20 @@ export const useShareRestrictedMessage = (threadId?: string) => {
 
   return useMutation({
     mutationFn: (input: {
+      expectedContent: string
       messageId: string
       kind: 'message' | 'scope'
       duration: DisclosureDuration
     }) =>
       apiClient.post<{ kind: string }>(
         `/api/messages/${input.messageId}/disclosure-grants`,
-        { duration: input.duration, kind: input.kind },
+        input.kind === 'message'
+          ? {
+              duration: input.duration,
+              expectedContent: input.expectedContent,
+              kind: input.kind,
+            }
+          : { duration: input.duration, kind: input.kind },
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
