@@ -69,7 +69,7 @@ export const ConnectedMailComposeDialog = ({
     >
       <div
         className="flex min-h-0 flex-1 flex-col p-4"
-        data-fullscreen={maximized ? 'true' : 'false'}
+        data-fullscreen={full ? 'true' : 'false'}
         data-testid="connected-mail-compose-dialog"
       >
         <ConnectedMailCompose

@@ -184,10 +184,13 @@ test('mailbox_compose returns a proposed universal card draft and does not send'
     to: ['client@example.test'],
   })
   const output = JSON.parse(result.outputPreview) as {
-    card: { blocks: Array<{ default?: string; key: string; maxLength?: number }>; actions: Array<{ collectsValues?: boolean; href?: string; key: string; submits: boolean }> }
+    card: MailboxComposeCard
     mailPresentation: { reviewUrl: string }
   }
-  assert.deepEqual(output.card.blocks.map((block) => block.key), ['to', 'cc', 'bcc', 'subject', 'body'])
+  assert.deepEqual(
+    output.card.blocks.map((block) => block.key),
+    ['to', 'cc', 'bcc', 'subject', 'body'],
+  )
   assert.deepEqual(output.card.actions.map((action) => action.key), ['send', 'edit', 'dismiss'])
   assert.deepEqual(output.card.actions.find((action) => action.key === 'edit'), {
     collectsValues: true,
