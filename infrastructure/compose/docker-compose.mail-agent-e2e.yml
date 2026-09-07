@@ -1,0 +1,22 @@
+# Isolated SMTP/IMAP fixture for the agent mailbox E2E harness. The harness
+# generates its untracked test certificate under .nessie/mail-agent-e2e before
+# starting this service, and trusts it only in its child test process.
+name: nessie-mail-agent-e2e
+
+services:
+  greenmail:
+    image: greenmail/standalone:2.1.3
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.tls.keystore.file=/certs/greenmail.p12
+        -Dgreenmail.tls.keystore.password=mail-e2e-cert
+        -Dgreenmail.users=agent:mail-e2e-only@nessie.test,recipient:mail-e2e-only@nessie.test
+    ports:
+      - "127.0.0.1:13025:3025"
+      - "127.0.0.1:13143:3143"
+      - "127.0.0.1:13465:3465"
+      - "127.0.0.1:13993:3993"
+    volumes:
+      - ../../.nessie/mail-agent-e2e:/certs:ro
