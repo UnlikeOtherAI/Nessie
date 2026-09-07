@@ -3721,6 +3721,9 @@ model AgentMailboxMessage {
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
   peerDelegationDepth Int?               @map("peer_delegation_depth")
+  /// Provenance carried by a durable peer brief. Existing mailbox producers
+  /// leave this empty; peer delivery stamps it on the prompt and target run.
+  basis             Json                 @default("[]")
   status            MailboxMessageStatus @default(queued)
   attempts          Int                  @default(0)
   visibleAt         DateTime             @default(now()) @map("visible_at")

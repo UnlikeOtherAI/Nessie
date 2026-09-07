@@ -10,13 +10,14 @@ import {
   parseTaskId,
   parseThreadId,
   type AuthorizedActionContext,
-  type WsScope,
 } from '@nessie/schemas'
+import type { WsScope } from '@nessie/schemas'
 import { ensureDefaultThread } from './channels.js'
 import { markDelegationStepQueued } from '../run/plans.js'
 import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
+import { BasisScopeSchema } from '../run/execute/disclosure-basis.js'
 
 const CLAIM_TIMEOUT_MS = 60_000
 
@@ -24,6 +25,7 @@ type ClaimedMailboxMessage = {
   actorId: string | null
   actorType: string | null
   attempts: number
+  basis: unknown
   body: string
   channelId: string | null
   claimedAt: Date
@@ -122,6 +124,7 @@ const claimNextMailboxMessage = async (
         amm."actor_type" AS "actorType",
         amm."body" AS "body",
         amm."attempts" AS "attempts",
+        amm."basis" AS "basis",
         amm."channel_id" AS "channelId",
         amm."claimed_at" AS "claimedAt",
         amm."correlation_id" AS "correlationId",
@@ -261,6 +264,14 @@ export const dispatchNextMailboxMessage = async (
     } as const)
 
   const publishPayload = await prisma.$transaction(async (tx) => {
+    // `agent_peer_delegate` is the sole producer allowed to carry a source
+    // chain. Other mailbox producers intentionally retain their historical
+    // empty-basis semantics even if a future writer supplies a JSON value.
+    // The prompt basis is then admitted by run-job and conversation loading
+    // into the target's ConsumedSourceSink on every retry and resume.
+    const basis = message.peerDelegationDepth === null
+      ? []
+      : BasisScopeSchema.array().parse(message.basis)
     const promptMessage = await tx.message.create({
       data: {
         content: message.body,
@@ -269,6 +280,17 @@ export const dispatchNextMailboxMessage = async (
       },
       select: { id: true },
     })
+    if (basis.length > 0) {
+      await tx.messageBasisScope.createMany({
+        data: basis.map((scope) => ({
+          messageId: promptMessage.id,
+          organizationId: message.organizationId,
+          scopeId: scope.scopeId,
+          scopeType: scope.scopeType,
+        })),
+        skipDuplicates: true,
+      })
+    }
 
     const baseActorContext = buildMailboxActorContext({
       actorId: message.actorId ?? message.fromAgentId ?? message.toAgentId,
@@ -318,6 +340,18 @@ export const dispatchNextMailboxMessage = async (
         },
         select: { id: true },
       })
+      if (basis.length > 0) {
+        const runId = run.id
+        await tx.runBasisScope.createMany({
+          data: basis.map((scope) => ({
+            organizationId: message.organizationId,
+            runId,
+            scopeId: scope.scopeId,
+            scopeType: scope.scopeType,
+          })),
+          skipDuplicates: true,
+        })
+      }
 
       await enqueueRunExecution(
         tx,
