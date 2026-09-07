@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
 import { PrismaClient } from '@prisma/client'
 
+import type { CommandRunner } from '../../src/control/execution/command-runner.js'
 import { runDatabaseTest } from './support.js'
 
 // Two rows this file refuses to let the worker write: an instance moved to
@@ -24,26 +22,17 @@ process.env['NESSIE_MODE'] = 'selfHosted'
 process.env['NESSIE_STORAGE_PROVIDER'] = 's3'
 process.env['NESSIE_STORAGE_BUCKET'] = 'nessie'
 
-// A `docker` on PATH that answers about one container the way a daemon answers
-// about a container it has never held, and succeeds for every other. No real
-// daemon is involved: the point is what the worker WRITES when the daemon says
-// the container is not here.
+// This test fakes the command runner itself. A PATH shim cannot safely replace
+// `docker` on Windows because `execFile` cannot execute a .cmd fake and may
+// choose a real docker.exe instead.
 const ABSENT_CONTAINER = 'container-on-another-host'
-const shimDirectory = mkdtempSync(`${tmpdir()}/nessie-docker-row-honesty-`)
-writeFileSync(
-  join(shimDirectory, 'docker'),
-  '#!/bin/sh\n'
-  + 'case "$*" in\n'
-  + `  *${ABSENT_CONTAINER}*)\n`
-  + `    echo "Error response from daemon: No such container: ${ABSENT_CONTAINER}" >&2\n`
-  + '    exit 1\n'
-  + '    ;;\n'
-  + 'esac\n'
-  + 'exit 0\n',
-)
-chmodSync(join(shimDirectory, 'docker'), 0o755)
-process.env['PATH'] = `${shimDirectory}:${process.env['PATH'] ?? ''}`
-
+const commandRunner: CommandRunner = async (command, args) => {
+  assert.equal(command, 'docker')
+  if (args.includes(ABSENT_CONTAINER)) {
+    throw new Error(`No such container: ${ABSENT_CONTAINER}`)
+  }
+  return { stderr: '', stdout: '' }
+}
 const { terminateExecutionEnvironmentInstance } = await import('../../src/control/execution.js')
 const { persistProvisionSuccess } = await import('../../src/control/execution/persistence.js')
 
@@ -212,7 +201,7 @@ runDatabaseTest(
     })
 
     try {
-      const verified = await terminateExecutionEnvironmentInstance(prisma, seed.instanceId)
+      const verified = await terminateExecutionEnvironmentInstance(prisma, seed.instanceId, { commandRunner })
 
       // The row first: this defect is a database claim, not a return value.
       const instance = await prisma.executionEnvironmentInstance.findUniqueOrThrow({
@@ -260,7 +249,7 @@ runDatabaseTest('a docker terminate that removes the container still records ter
   })
 
   try {
-    const verified = await terminateExecutionEnvironmentInstance(prisma, seed.instanceId)
+    const verified = await terminateExecutionEnvironmentInstance(prisma, seed.instanceId, { commandRunner })
     assert.equal(verified, true)
 
     const instance = await prisma.executionEnvironmentInstance.findUniqueOrThrow({
