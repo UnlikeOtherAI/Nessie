@@ -70,6 +70,12 @@ passing required CI, a merged PR, and removal of the merged task branches.
 The live browser walkthrough created **Sales Researcher — Test** and
 **Sales Coordinator — Test**, with bounded runs, an eight-step research template
 and a six-step planning template. Both were bound to `sales-planning-test`.
+Their current saved test ceilings are 40,000 tokens, 50 tool calls, 20 cycles,
+and ten minutes, with Low effort. The researcher keeps a 25-cent ceiling and
+the coordinator a 30-cent ceiling. These values and their handoff instructions
+were verified after reload. The coordinator creates one planning ticket and
+supplies prospect ticket IDs; the researcher applies its own research template
+to those tickets. This configuration has not yet completed a live backlog run.
 KiloTalk's Settings API-key page was deployed through
 [KiloTalk PR 20](https://github.com/UnlikeOtherAI/KiloTalk/pull/20). A new research
 key was generated in that UI and entered into Nessie's encrypted credential
