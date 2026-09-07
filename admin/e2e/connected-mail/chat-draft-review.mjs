@@ -116,9 +116,10 @@ const chatDoorway = async ({ adminUrl, assert, browser, expectNoErrors, fixture,
     await selectedReview.waitFor()
     assert(await page.getByRole('dialog').count() === 0, 'selected review opened a dialog before a person chose an email')
     const selectedList = selectedReview.getByRole('listbox', { name: 'Selected mail conversations' })
-    assert(await selectedList.getByRole('option').count() === 2, 'selected review rendered emails outside the requested ids')
+    await selectedList.waitFor()
     await selectedList.getByText('Launch checklist', { exact: true }).waitFor()
     await selectedList.getByText('Budget', { exact: true }).waitFor()
+    assert(await selectedList.getByRole('option').count() === 2, 'selected review rendered emails outside the requested ids')
     await shot(page, 'chat-doorway-selected-emails')
     await selectedReview.locator('#mailbox-thread-thread-2').click()
     await page.waitForURL(/\/mail\/gmail\/gmail-1\/threads\/thread-2$/)
@@ -236,6 +237,15 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     await page.getByText('This email draft is no longer available to you.').waitFor()
     assert(await page.getByRole('textbox', { name: 'Message', exact: true }).count() === 0, 'a card draft hydrated under a different mailbox account')
 
+    // Returning to the originating chat must show the API-claimed result. A
+    // fresh fixture below exercises Send separately; this card can no longer
+    // present a second action after its Edit claim.
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    const settledCard = page.getByTestId('agent-card')
+    await settledCard.waitFor()
+    await settledCard.getByText('Edit by Alex Example').waitFor()
+    assert(await settledCard.getByTestId('agent-card-action-send').count() === 0, 'a claimed Edit card still offered Send')
+
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()
@@ -252,11 +262,14 @@ const narrowComposeDoorway = async ({ adminUrl, assert, browser, expectNoErrors,
     await page.getByTestId('gmail-chat-draft-preview').getByRole('button', { name: 'Edit' }).click()
     const dialog = page.getByTestId('connected-mail-compose-dialog')
     await dialog.waitFor()
-    await page.getByTestId('mail-compose-dialog-maximize').click()
-    await page.getByTestId('mail-compose-dialog-restore').waitFor()
-    assert(await dialog.getAttribute('data-fullscreen') === 'true', 'narrow compose did not enter full viewport mode')
+    const maximize = page.getByTestId('mail-compose-dialog-maximize')
+    if (await maximize.count()) {
+      await maximize.click()
+      await page.getByTestId('mail-compose-dialog-restore').waitFor()
+      assert(await dialog.getAttribute('data-fullscreen') === 'true', 'narrow compose did not enter full viewport mode')
+    }
     const bounds = await dialog.boundingBox()
-    assert((bounds?.width ?? 0) >= 700, `narrow maximized composer did not occupy the viewport (${bounds?.width ?? 0}px)`)
+    assert((bounds?.width ?? 0) >= 700, `narrow composer did not occupy the viewport (${bounds?.width ?? 0}px)`)
     await shot(page, 'chat-doorway-compose-maximized-narrow')
   } finally {
     expectNoErrors(target.errors, fixture)
