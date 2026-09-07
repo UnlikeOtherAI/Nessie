@@ -292,7 +292,11 @@ export const createMailFixtures = () => {
       doorway = { accountId: 'gmail-1', draftId: gmailDraftId, mode: 'compose', source: 'gmail' }
     },
     showMailboxComposeCard: () => { mailboxComposeCardResolution = null; mailboxComposeCardVisible = true; doorwayVisible = true },
-    showAccountDoorway: () => { doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }; doorwayVisible = true; mailboxComposeCardVisible = false },
+    showAccountDoorway: () => {
+      doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }
+      doorwayVisible = true
+      mailboxComposeCardVisible = false
+    },
     denyDoorway: () => { doorwayAllowed = false },
     loseNextGmailSendResponse: () => { loseNextGmailSendResponse = true },
     showPendingGmailApproval: () => { gmailApprovalVisible = true },
