@@ -225,7 +225,7 @@ export const createMailFixtures = () => {
     }
     if (pathname === `/api/gmail/drafts/${gmailDraftId}` && method === 'GET') return json({
       attachments: [], bcc: [], body: 'Thanks — I will take this from here.', cc: [],
-      contentFingerprint: 'fingerprint-1', id: gmailDraftId, revision: 1, state: gmailDraftState,
+      connectionId: 'gmail-1', contentFingerprint: 'fingerprint-1', id: gmailDraftId, revision: 1, state: gmailDraftState,
       sendAfter: gmailSendAfter,
       subject: 'Re: Launch checklist', to: ['casey@acme.example'],
     })
