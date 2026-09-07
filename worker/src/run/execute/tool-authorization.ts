@@ -197,15 +197,21 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const disclosureShareAuthorized = await maybeAuthorizeDisclosureShare({
-    args,
-    actorContext: toolActorContext,
-    context,
-    prisma,
-    runUtility: auth.runUtility,
-    toolName,
-    triggerMessageId: auth.resumeState?.messageId,
-  })
+  // Batch preparation verifies structural policy but has no durable dispatch.
+  // A share judgement binds model-inferred intent to the one message that will
+  // actually be sent, so it runs only when this authorization invocation will
+  // execute. Rechecking structural facts below remains mandatory at dispatch.
+  const disclosureShareAuthorized = auth.consumeApprovalProof === false
+    ? false
+    : await maybeAuthorizeDisclosureShare({
+      args,
+      actorContext: toolActorContext,
+      context,
+      prisma,
+      runUtility: auth.runUtility,
+      toolName,
+      triggerMessageId: auth.resumeState?.messageId,
+    })
 
   if (await hooks.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
     return {
