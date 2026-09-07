@@ -75,7 +75,7 @@ jobs:
           build-args: ${{ matrix.build-args }}
           tags: ${{ steps.repo.outputs.prefix }}-${{ matrix.name }}:${{ github.sha }}
           secrets: |
-            "deep_agent_read_key=${{ secrets.DEEP_AGENT_READ_KEY }}"
+            "deep_agent_read_token=${{ secrets.DEEP_AGENT_READ_TOKEN }}"
           # Scoped per image so the three matrix legs don't evict each other.
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

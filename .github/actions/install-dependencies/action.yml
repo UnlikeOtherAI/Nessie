@@ -1,18 +1,14 @@
 name: Install dependencies
 description: Install dependencies with the read-only Deep.Agent deploy key.
 inputs:
-  deep-agent-read-key:
-    description: Read-only deploy key for UnlikeOtherAI/deep.agent.
+  deep-agent-read-token:
+    description: Fine-grained Contents:read token for UnlikeOtherAI/deep.agent.
     required: true
 runs:
   using: composite
   steps:
     - shell: bash
       env:
-        DEEP_AGENT_READ_KEY: ${{ inputs.deep-agent-read-key }}
+        DEEP_AGENT_READ_TOKEN: ${{ inputs.deep-agent-read-token }}
       run: |
-        key="$RUNNER_TEMP/deep-agent-read-key"
-        umask 077
-        printf '%s\n' "$DEEP_AGENT_READ_KEY" > "$key"
-        trap 'rm -f "$key"' EXIT
-        DEEP_AGENT_READ_KEY_PATH="$key" scripts/with-deep-agent-ssh.sh pnpm install --frozen-lockfile
+        scripts/with-deep-agent-ssh.sh pnpm install --frozen-lockfile

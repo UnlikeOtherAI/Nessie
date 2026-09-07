@@ -69,7 +69,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Resolve release version
         run: |
@@ -210,7 +210,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build shared packages
         run: pnpm exec turbo run build --filter=@nessie/executor...

@@ -162,7 +162,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       # The bundle is a release artifact, so do not bypass the repository's
       # lint gate when invoking Tauri directly below.
@@ -689,7 +689,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build shared packages
         run: pnpm exec turbo run build --filter=@nessie/executor...

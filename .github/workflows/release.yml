@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Validate the tag and record shipped app versions
         id: release
@@ -136,7 +136,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build executor inputs
         run: |
@@ -230,7 +230,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build the Linux packages
         run: |
@@ -293,7 +293,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install-dependencies
         with:
-          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build a signed Android APK with EAS
         working-directory: mobile

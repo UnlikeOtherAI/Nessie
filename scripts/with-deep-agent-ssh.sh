@@ -1,24 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-: "${DEEP_AGENT_READ_KEY_PATH:?Set DEEP_AGENT_READ_KEY_PATH to the temporary deploy key.}"
+: "${DEEP_AGENT_READ_TOKEN:?Set DEEP_AGENT_READ_TOKEN for the install command.}"
 
 ssh_dir="$(mktemp -d)"
 trap 'rm -rf "$ssh_dir"' EXIT
-key_path="$ssh_dir/deep-agent-read-key"
-cp "$DEEP_AGENT_READ_KEY_PATH" "$key_path"
-cat > "$ssh_dir/config" <<EOF
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile "${key_path}"
-  IdentitiesOnly yes
-  StrictHostKeyChecking yes
-  UserKnownHostsFile "${ssh_dir}/known_hosts"
-EOF
-printf '%s\n' \
-  'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
-  > "$ssh_dir/known_hosts"
-chmod 600 "$ssh_dir/config" "$ssh_dir/known_hosts" "$key_path"
+askpass="$ssh_dir/askpass"
+printf '%s\n' '#!/usr/bin/env sh' 'printf %s "$DEEP_AGENT_READ_TOKEN"' > "$askpass"
+chmod 700 "$askpass"
 
-GIT_SSH_COMMAND="ssh -F \"$ssh_dir/config\"" "$@"
+GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+GIT_CONFIG_COUNT=2 \
+GIT_CONFIG_KEY_0='url.https://github.com/UnlikeOtherAI/deep.agent.git.insteadOf' \
+GIT_CONFIG_VALUE_0='ssh://git@github.com/UnlikeOtherAI/deep.agent.git' \
+GIT_CONFIG_KEY_1='url.https://github.com/UnlikeOtherAI/deep.agent.git.insteadOf' \
+GIT_CONFIG_VALUE_1='git@github.com:UnlikeOtherAI/deep.agent.git' \
+"$@"

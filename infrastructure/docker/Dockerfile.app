@@ -27,8 +27,8 @@ RUN corepack enable
 # build output, git, screenshots, and other non-build cruft from the context.
 COPY . .
 
-RUN --mount=type=secret,id=deep_agent_read_key,required=true \
-  DEEP_AGENT_READ_KEY_PATH=/run/secrets/deep_agent_read_key \
+RUN --mount=type=secret,id=deep_agent_read_token,required=true \
+  DEEP_AGENT_READ_TOKEN="$(cat /run/secrets/deep_agent_read_token)" \
   scripts/with-deep-agent-ssh.sh pnpm install --frozen-lockfile \
     --filter='!@nessie/mobile' --filter='!@nessie/desktop' --filter='!@nessie/gateway'
 
