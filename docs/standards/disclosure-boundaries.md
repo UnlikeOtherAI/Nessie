@@ -53,6 +53,9 @@ Facts not restated there:
 - The remainder after `computeReplyBasis` is stamped as `MessageBasisScope` +
   `RunBasisScope` in the same transaction as the message; `agent-message.ts`
   opens that transaction itself rather than trusting callers.
+- The run ledger is monotone and is persisted before any run plan, tool
+  summary/preview, or crash checkpoint records derived content. A run that has
+  not replied yet is therefore still protected at every metadata read path.
 - Basis vocabulary is `user | channel | team | project | organization | agent`.
   `agent:<id>` means exactly the people who pass the shared live agent-visibility
   predicate. A destination implies agents bound to its channel; those ids are

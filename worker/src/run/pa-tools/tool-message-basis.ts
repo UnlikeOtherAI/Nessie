@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { computeReplyBasis, type BasisScope } from '../execute/disclosure-basis.js'
+import { persistablePrivateConversationSources } from '../execute/private-conversation-source-storage.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 type Tx = Prisma.TransactionClient | PrismaClient
@@ -102,9 +103,10 @@ export const insertPrivateConversationSources = async (
   input: { messageId: string; organizationId: string },
 ): Promise<void> => {
   const sources = context.consumedSources?.privateConversationSources() ?? []
-  if (sources.length === 0) return
+  const persistedSources = await persistablePrivateConversationSources(tx, sources)
+  if (persistedSources.length === 0) return
   await tx.messageDisclosureSource.createMany({
-    data: sources.map((source) => ({
+    data: persistedSources.map((source) => ({
       messageId: input.messageId,
       organizationId: input.organizationId,
       sourceAuthorUserId: source.sourceAuthorUserId,

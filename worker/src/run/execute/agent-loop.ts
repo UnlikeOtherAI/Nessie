@@ -34,7 +34,7 @@ import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
 import { createToolEffectLedger, externalDispatchPredicate } from './tool-effect-ledger.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
-import { runReplyIsRestricted } from './agent-message.js'
+import { persistCurrentRunBasis, runReplyIsRestricted } from './agent-message.js'
 import {
   BUILTIN_TOOL_SPEC_NAME,
   executeBuiltinToolSpec,
@@ -489,6 +489,10 @@ export const runExecutionAgentLoop = async (
         connectorUsage,
         toolCallRecordId,
       ) => {
+        // A read tool may have just added source provenance to the live sink.
+        // Tool summaries and previews are durable, so record that provenance
+        // before making either one observable through the activity APIs.
+        await persistCurrentRunBasis(deps.prisma, context)
         await recordToolEnd(deps, context, payload.actorContext, {
           argumentsValue,
           durationMs,
@@ -528,6 +532,7 @@ export const runExecutionAgentLoop = async (
       // per-iteration fence probe below is what stops a fenced-out execution),
       // and the writer has already said so in the log.
       onCheckpoint: async (state) => {
+        await persistCurrentRunBasis(deps.prisma, context)
         await input.crashCheckpoint.write(state)
       },
     },

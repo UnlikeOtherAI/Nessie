@@ -58,10 +58,21 @@ export const markUnknownPrivateConversationScopes = async (
   if (channelIds.length === 0) return
 
   const channels = await prisma.channel.findMany({
-    where: { id: { in: channelIds }, visibility: { not: 'public' } },
+    where: { id: { in: channelIds } },
     select: { id: true, visibility: true },
   })
-  markUnknownPrivateConversationChannels(sink, channels)
+  const nonPublicChannels = channels.filter((channel) => channel.visibility !== 'public')
+  const resolvedChannelIds = new Set(channels.map((channel) => channel.id))
+  // A deleted source row cannot retain a MessageDisclosureSource foreign key,
+  // but its basis may survive in a checkpoint or handoff. Missing must mean
+  // unknown, never public: otherwise deleting a channel reopens an external
+  // write after the source was already consumed.
+  markUnknownPrivateConversationChannels(sink, [
+    ...nonPublicChannels,
+    ...channelIds
+      .filter((channelId) => !resolvedChannelIds.has(channelId))
+      .map((id) => ({ id, visibility: 'unknown' })),
+  ])
 }
 
 /**

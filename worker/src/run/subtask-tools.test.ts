@@ -40,6 +40,7 @@ test('spawned child strips every explicit grant while preserving ordinary policy
   }
   const tx = {
     $executeRaw: async () => 1,
+    channel: { findMany: async () => [{ id: 'private-channel' }] },
     agent: {
       create: async ({ data }: { data: { toolPolicy?: unknown } }) => {
         createdToolPolicy = data.toolPolicy

@@ -71,6 +71,7 @@ import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
 import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
 import { admitTriggerMessageLineage } from './private-conversation-lineage.js'
+import { persistCurrentRunBasis } from './agent-message.js'
 import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
@@ -357,6 +358,10 @@ const runJobUnderFence = async (
             + 'starting it again from the prompt',
       )
     }
+    // Plans persist the prompt in both their goal and root-step payload. Stamp
+    // its source basis first: a reader must never observe the plan in the gap
+    // before this run produces its first reply.
+    await persistCurrentRunBasis(deps.prisma, context)
     planContext = await ensureRunPlanContext(deps.prisma, {
       agentId: context.agent.id,
       channelId: context.channel.id,
