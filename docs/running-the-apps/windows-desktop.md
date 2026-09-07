@@ -253,10 +253,19 @@ finds its pairings where it left them; delete the folder by hand to forget them.
 
 **Pair from the tray.** In Nessie, **Agents → Executors → Pair executor**
 produces an invitation. In the tray: **Pair a new executor…** → paste the
-pairing command or link → choose the workspace in the native picker → confirm →
+pairing command or link, and select the Nessie backend that produced it → choose the workspace in the native picker → confirm →
 approve one Windows administrator prompt → confirm the fingerprint in Nessie.
 The icon turns green. After a reboot the executor is online before anybody logs
 in.
+
+Release builds accept invitations from `https://api.nessie.works` only. A debug
+build also exposes the two explicit local-development choices,
+`http://127.0.0.1:5454` and `http://localhost:5454`. The tray compares the
+selected backend with the invitation before it creates a machine key or grants
+the workspace; it never retries a different origin or transfers pairing state
+between origins. This keeps the paired machine key and its enrollment proof
+bound to the backend a person selected. An unsigned release remains refused by
+the service; debug availability is a build-mode fact, not a tray preference.
 
 That administrator prompt is the only one, and it is worth knowing what it is
 for: the daemon runs as a service account with no rights anywhere a person

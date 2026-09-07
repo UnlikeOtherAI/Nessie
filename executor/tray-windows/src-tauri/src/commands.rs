@@ -114,8 +114,16 @@ async fn choose_workspace<R: Runtime>(app: AppHandle<R>) -> Result<PathBuf, Stri
 /// through one elevated relaunch, then hand the challenge to the service over
 /// the pipe. The challenge never reaches a command line, and the elevated step
 /// is what admits this account to the pipe from then on.
-pub async fn pair<R: Runtime>(app: AppHandle<R>, invitation: String) -> Result<ServiceView, String> {
+pub async fn pair<R: Runtime>(
+    app: AppHandle<R>, invitation: String, selected_api_base_url: String,
+) -> Result<ServiceView, String> {
     let invitation = parse_invitation(&invitation)?;
+    if invitation.api_base_url != selected_api_base_url {
+        return Err(
+            "The invitation belongs to a different Nessie backend. Select the backend that created it; pairing never falls back to another origin."
+                .to_owned(),
+        );
+    }
     let workspace = choose_workspace(app.clone()).await?;
     if !confirm(
         app,
@@ -190,8 +198,10 @@ pub async fn executor_stop(app: AppHandle, executor_id: String) -> Result<Servic
 }
 
 #[tauri::command]
-pub async fn executor_pair(app: AppHandle, invitation: String) -> Result<ServiceView, String> {
-    pair(app, invitation).await
+pub async fn executor_pair(
+    app: AppHandle, invitation: String, selected_api_base_url: String,
+) -> Result<ServiceView, String> {
+    pair(app, invitation, selected_api_base_url).await
 }
 
 #[tauri::command]
