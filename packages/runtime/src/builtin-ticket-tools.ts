@@ -39,6 +39,24 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     parameters: { type: 'object', properties: { ticketId: UUID }, required: ['ticketId'] },
   },
   {
+    id: 'ticket_checklist_read', category: 'projects', label: 'Read Ticket Checklist', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Read the reusable-checklist snapshot on one ticket.', safe: true,
+    description: 'Read the checklist applied to a ticket, including each step’s instructions, completion and recorded result.',
+    parameters: { type: 'object', properties: { ticketId: UUID }, required: ['ticketId'] },
+  },
+  {
+    id: 'ticket_checklist_apply', category: 'projects', label: 'Apply Ticket Checklist', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Apply one of this agent’s active reusable templates to a ticket.', safe: false,
+    description: 'Copy one of this agent’s active templates onto an accessible ticket. The ticket keeps a task-owned snapshot, so later template edits do not change recorded work. Applying again preserves the existing checklist and its results.',
+    parameters: { type: 'object', properties: { ticketId: UUID, templateId: UUID }, required: ['ticketId', 'templateId'] },
+  },
+  {
+    id: 'ticket_checklist_step_update', category: 'projects', label: 'Update Ticket Checklist Step', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Complete or reopen one checklist step and record its result.', safe: false,
+    description: 'Update a step returned by ticket_checklist_read. Set result to null to clear a previous result; omit result to keep it.',
+    parameters: { type: 'object', properties: { ticketId: UUID, stepKey: { type: 'string' }, completed: { type: 'boolean' }, result: { type: ['string', 'null'] } }, required: ['ticketId', 'stepKey', 'completed'] },
+  },
+  {
     id: 'ticket_board_read', category: 'projects', label: 'Read Ticket Board', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'List a project’s boards and their columns.', safe: true,
     description: 'Read a project’s boards before ticket_create or ticket_move. Each board owns its own tickets and columns; use a returned boardId or columnId, and do not guess UUIDs.',

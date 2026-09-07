@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   AgentTodoTemplateStepsSchema,
+  parseTaskId,
   type TaskChecklistRecord,
 } from '@nessie/schemas'
 
@@ -11,7 +12,7 @@ type ChecklistRow = Prisma.TaskChecklistGetPayload<{ include: typeof include }>
 
 const present = (row: ChecklistRow): TaskChecklistRecord => ({
   id: row.id,
-  taskId: row.taskId,
+  taskId: parseTaskId(row.taskId),
   title: row.title,
   steps: row.steps.map((step) => ({
     id: step.id,
@@ -47,7 +48,18 @@ export const applyTaskChecklistTemplate = async (
   },
 ): Promise<TaskChecklistRecord | { error: 'TASK_NOT_FOUND' | 'TEMPLATE_UNAVAILABLE' }> => {
   if ('$transaction' in prisma) {
-    return prisma.$transaction((tx) => applyTaskChecklistTemplate(tx, input))
+    try {
+      return await prisma.$transaction((tx) => applyTaskChecklistTemplate(tx, input))
+    } catch (error) {
+      // PostgreSQL marks the transaction aborted after the unique constraint
+      // race. Read the winning snapshot through the client, outside that
+      // aborted transaction, rather than issuing an invalid follow-up query.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const checklist = await getTaskChecklist(prisma, input)
+        if (checklist) return checklist
+      }
+      throw error
+    }
   }
   const existing = await getTaskChecklist(prisma, input)
   if (existing) return existing
@@ -66,32 +78,22 @@ export const applyTaskChecklistTemplate = async (
   })
   if (!task) return { error: 'TASK_NOT_FOUND' }
   const steps = AgentTodoTemplateStepsSchema.parse(template.steps)
-  try {
-    const created = await prisma.taskChecklist.create({
-      data: {
-        taskId: task.id,
-        organizationId: input.organizationId,
-        sourceTemplateId: template.id,
-        sourceTemplateVersion: template.version,
-        title: template.name,
-        createdByUserId: input.createdByUserId,
-        steps: { create: steps.map((step, sequence) => ({ ...step, sequence })) },
-      },
-      include,
-    })
-    await prisma.taskEvent.create({
-      data: { taskId: task.id, eventType: 'checklist_applied', payload: { checklistId: created.id } },
-    })
-    return present(created)
-  } catch (error) {
-    // The unique task binding is the concurrency fence. A second click observes
-    // the first complete snapshot instead of replacing progress.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const checklist = await getTaskChecklist(prisma, input)
-      if (checklist) return checklist
-    }
-    throw error
-  }
+  const created = await prisma.taskChecklist.create({
+    data: {
+      taskId: task.id,
+      organizationId: input.organizationId,
+      sourceTemplateId: template.id,
+      sourceTemplateVersion: template.version,
+      title: template.name,
+      createdByUserId: input.createdByUserId,
+      steps: { create: steps.map((step, sequence) => ({ ...step, sequence })) },
+    },
+    include,
+  })
+  await prisma.taskEvent.create({
+    data: { taskId: task.id, eventType: 'checklist_applied', payload: { checklistId: created.id } },
+  })
+  return present(created)
 }
 
 export const updateTaskChecklistStep = async (

@@ -52,7 +52,9 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
     }
     const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId)
     if (task) {
-      await publishTaskUpdated(deps.realtimeHub, [{ kind: 'organization', organizationId: actor.tenant.organizationId }], taskId, task.status)
+      await publishTaskUpdated(deps.realtimeHub, [
+        { kind: 'organization', organizationId: actor.tenant.organizationId },
+      ], taskId, task.status)
     }
     return reply.code(201).send(createApiResponse(TaskChecklistRecordSchema.parse(checklist)))
   })

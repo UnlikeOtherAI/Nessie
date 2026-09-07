@@ -46,6 +46,7 @@ const TODO_TOOL_IDS = new Set(TODO_TOOL_DEFINITIONS.map((tool) => tool.id))
 const PEER_PROJECT_TOOL_IDS = new Set([
   'ticket_list', 'ticket_read', 'ticket_board_read', 'ticket_board_create',
   'ticket_create', 'ticket_update', 'ticket_assign', 'ticket_move', 'ticket_transition',
+  'ticket_checklist_read', 'ticket_checklist_apply', 'ticket_checklist_step_update',
 ])
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
@@ -159,11 +160,17 @@ export const prepareRunExecution = async (
   const projectDelegation = context.agent.agentKind === 'shared'
     && context.channel.projectId !== null
     && payload.actorContext.actor.actorType === 'user'
-    && (payload.interactive === true || payload.actorContext.actionContext.purpose === 'agent.peer_delegation')
-    && (await deps.prisma.agentBinding.count({ where: { agentId: context.agent.id, channelId: context.channel.id } })) > 0
+    && (payload.interactive === true
+      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation')
+    && (await deps.prisma.agentBinding.count({
+      where: { agentId: context.agent.id, channelId: context.channel.id },
+    })) > 0
   const projectDelegatedToolIds = new Set(
     projectDelegation
-      ? BUILTIN_TOOL_DEFINITIONS.filter((tool) => PEER_PROJECT_TOOL_IDS.has(tool.id) && tool.projectDelegatedOnly && toolPolicy?.[tool.id] === true).map((tool) => tool.id)
+      ? BUILTIN_TOOL_DEFINITIONS
+        .filter((tool) => PEER_PROJECT_TOOL_IDS.has(tool.id)
+          && tool.projectDelegatedOnly && toolPolicy?.[tool.id] === true)
+        .map((tool) => tool.id)
       : [],
   )
 

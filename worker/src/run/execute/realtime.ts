@@ -3,7 +3,6 @@ import {
   parseAgentId,
   parseChannelId,
   parseRunId,
-  parseTaskId,
   parseThreadId,
   type RunStatus,
   type TaskStatus,

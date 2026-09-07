@@ -113,6 +113,11 @@ export {
   runTicketSearchTool,
 } from './pa-tools/ticket-search.js'
 export {
+  runTicketChecklistApplyTool,
+  runTicketChecklistReadTool,
+  runTicketChecklistStepUpdateTool,
+} from './pa-tools/ticket-checklists.js'
+export {
   runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
   runAgentReadTool,
