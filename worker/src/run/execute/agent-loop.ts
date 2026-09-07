@@ -97,6 +97,8 @@ export const runExecutionAgentLoop = async (
     windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
+  const mainOutputTokens = await input.inference.mainOutputTokens?.()
+    ?? loadConfig().model.maxTokens
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
   // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
@@ -526,7 +528,7 @@ export const runExecutionAgentLoop = async (
     executeTool: effects.executeTool,
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
-    maxOutputTokens: loadConfig().model.maxTokens,
+    maxOutputTokens: mainOutputTokens,
     ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
     runInference: (messages, _captured, options) =>
       input.inference.runMain(

@@ -1,9 +1,7 @@
 import type {
-  InferenceResult,
   InvocationRecord,
   ProviderMessage,
   ProviderToolCall,
-  ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { redactDetectedSecrets } from '@nessie/schemas'
 import { redactMessageContent } from './message-redaction.js'
@@ -12,7 +10,6 @@ import {
   createToolExecutionRecorder,
   restoreCompactionGovernor,
   type DrainGate,
-  type LoopResumeState,
 } from './loop-resume.js'
 import { createRetryBudget } from './error-classification.js'
 import { callInferenceWithRetry } from './inference-retry.js'
@@ -30,25 +27,25 @@ import {
   stopBeforeInference,
   stopBeforeIteration,
   type BudgetExhaustionReason,
-  type BudgetLimits,
   type SpendTotals,
 } from './loop-budget.js'
 import {
   buildContextPlan,
   createCompactionGovernor,
-  type ContextPlan,
+  MAX_COMPACTIONS_PER_RUN,
 } from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { truncateToolResult } from './tool-util.js'
 import {
   executeToolBatch,
-  type ExecuteToolFn,
   type ExecutedToolResult,
-  type PrepareToolFn,
   type AgentCardSuspension,
   type ToolApprovalSuspension,
-  type ToolBatchCallbacks,
 } from './tool-batch.js'
+import {
+  type AgenticLoopInput,
+  type LoopResult,
+} from './agentic-loop-types.js'
 
 // A provider can stop a turn at its own output ceiling after the run has
 // already completed useful tool work. Keep that work in the transcript, then
@@ -65,139 +62,9 @@ const outputLimitPartial = (text: string): string => [
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
-export type LoopCallbacks = ToolBatchCallbacks & {
-  onIterationStart: (iteration: number) => Promise<void>
-  onTextDelta: (delta: string) => Promise<void>
-  onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
-  /**
-   * Durable snapshot of the loop's working state, offered at every boundary
-   * where the transcript is consistent: each iteration start, immediately
-   * before a tool batch dispatches, and as each tool in that batch settles.
-   * The caller decides what to do with it (`crash-checkpoint.ts` persists it);
-   * a loop with no such caller — a delegate sub-agent — passes none.
-   */
-  onCheckpoint?: (state: LoopResumeState) => Promise<void>
-}
+export type { LoopCallbacks, LoopResult } from './agentic-loop-types.js'
 
-export type LoopResult = {
-  finalText: string
-  iterations: number
-  // The conversation as it stood when the loop exited. The caller reads it to
-  // produce a checkpoint note from the reserved budget headroom.
-  messages: ProviderMessage[]
-  toolCallsUsed: number
-  // Aggregate wall-clock time spent inside tool executions. It measures tool
-  // work rather than the run span; same-batch calls may overlap.
-  toolMs: number
-  totalCostCents: number
-  wallclockMs: number
-  // Raw provider-reported tokens, unchanged: what the ledger and telemetry read.
-  totalTokensUsed: number
-  // What the budget actually metered — fresh input + output + cache reads
-  // discounted by the run's cache-read weight. Every token verdict uses this.
-  effectiveTokensUsed: number
-  // Provider-reported cache reads, summed, so a stop can show the composition
-  // instead of only the number that tripped it.
-  cacheReadTokens: number
-  exhaustedBudget: BudgetExhaustionReason | null
-  /** A policy-gated tool persisted an approval request and stopped the loop. */
-  pendingApproval?: ToolApprovalSuspension | null
-  /**
-   * `card_post` posted an interactive card with `wait: true`. Unlike an
-   * approval this is decided *after* dispatch — the card has to exist before
-   * anybody can press it — so the batch reports it from a settled result.
-   */
-  pendingInput?: AgentCardSuspension | null
-  // True when the loop exited because a cooperative cancel was observed (via
-  // `checkCancelled`) between iterations or after a tool-call batch, rather than
-  // because the model finished or a budget cap tripped. `finalText` then holds
-  // whatever partial answer was produced so the caller can still deliver it.
-  cancelled: boolean
-  // True when the wind-down instruction was injected: the model was told the
-  // run is ending and asked to deliver with what it has. A natural finish after
-  // this is a deliberate handover (the caller checkpoints it quietly); a budget
-  // stop after this means the model overran even the reserve.
-  woundDown: boolean
-  invocations: InvocationRecord[]
-}
-
-export const runAgenticLoop = async (input: {
-  budget: BudgetLimits
-  // Fraction of the input price a cache read costs on this run's provider+model,
-  // resolved once per run (run-budget.ts `resolveCacheReadWeight`). Cache reads
-  // are metered at this weight against the token budget.
-  cacheReadWeight?: number
-  callbacks: LoopCallbacks
-  // Optional cooperative-cancel probe. Consulted between iterations and after
-  // each tool-call batch; when it resolves `true` the loop stops immediately and
-  // returns a `cancelled` result carrying any partial answer. Kept side-effect
-  // free (a cheap status read) — the caller owns terminalization and notices.
-  checkCancelled?: () => Promise<boolean>
-  // Optional org-`Budget` probe, consulted between iterations. The caller owns
-  // throttling and alerting; a `true` verdict stops the loop with the
-  // `org_budget_blocked` classification so the run is checkpointed like any
-  // other policy-ceiling stop.
-  checkBudgetBlocked?: () => Promise<boolean>
-  // Optional real-compaction hook. Called BETWEEN iterations only (every tool
-  // wrapper of the previous batch has settled), with the current transcript and
-  // the rebuild target. Returning null means "compaction unavailable" and the
-  // loop falls back to emergency truncation.
-  compactContext?: (input: {
-    messages: ProviderMessage[]
-    targetTokens: number
-  }) => Promise<ProviderMessage[] | null>
-  // Compaction/trim thresholds for this run's model (see context-window.ts).
-  contextPlan?: ContextPlan
-  executeTool: ExecuteToolFn
-  /** Optional authorization preflight that can suspend a whole tool batch. */
-  prepareTool?: PrepareToolFn
-  initialMessages: ProviderMessage[]
-  // Optional caller-owned accumulator for every inference invocation the loop
-  // makes. It is populated live (before the loop can throw), so a crashed or
-  // aborted run's partial token spend is still attributable — the caller reads
-  // this array on the failure path even when no LoopResult is returned.
-  invocationSink?: InvocationRecord[]
-  /**
-   * Optional capture of the tool results produced since the previous
-   * inference call, passed as an out-param so callers that bound context to
-   * their inference function (delegate sub-agents) can observe how each
-   * nested tool call resolved.
-   */
-  runInference: (
-    messages: ProviderMessage[],
-    captured?: { toolResults: ExecutedToolResult[] },
-    options?: { maxOutputTokens?: number; noTools?: boolean },
-  ) => Promise<InferenceResult>
-  toolTimeoutError?: (toolName: string) => Error | null
-  tools: ToolSchemaDescriptor[]
-  // Wind-down (spec §3a): when set, crossing WIND_DOWN_FRACTION of any budget
-  // dimension injects this as a one-time system message so the model can finish
-  // and hand over inside the remaining slice. Absent for delegate sub-agents
-  // (tiny budgets, digest-shaped output) and DeepWater handoff turns.
-  windDownInstruction?: string
-  // Fired once, when the wind-down instruction is injected — the caller closes
-  // structural fan-out (the delegate gate) for the rest of the run.
-  onWindDown?: () => void
-  /**
-   * The worker's drain signal for this job. When it fires, whatever is in
-   * flight gets a few seconds to land and then the loop throws
-   * `RunDrainedError` at the next boundary. Another worker resumes from the
-   * last checkpoint that actually became durable, and replays the run from its
-   * prompt when none did — `createCrashCheckpointWriter`
-   * (execute/crash-checkpoint.ts) owns which outcomes are which, and neither it
-   * nor its caller reports the answer back to this loop.
-   */
-  drainSignal?: AbortSignal
-  /**
-   * A crash checkpoint this execution is picking up. The transcript, iteration
-   * count, spend accumulator and already-executed tool results are restored
-   * from it, and `initialMessages` is ignored — the prompt has already been
-   * turned into a conversation once and paid for.
-   */
-  resume?: LoopResumeState
-  /** Per-call fallback reserved until the selected model advertises a lower cap. */
-  maxOutputTokens?: number
-}): Promise<LoopResult> => {
+export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
   const resume = input.resume ?? null
@@ -361,7 +228,7 @@ export const runAgenticLoop = async (input: {
     // transcript is measured against them.
     const transcriptTokens = estimateMessagesTokens(messages)
     if (!force && !compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
-    if (force && compactionAttempts >= 6) return
+    if (force && compactionAttempts >= MAX_COMPACTIONS_PER_RUN) return
     compactionGovernor.recordAttempt(iteration)
     compactionAttempts += 1
     compactionLastIteration = iteration
@@ -424,20 +291,45 @@ export const runAgenticLoop = async (input: {
 
       await maintainContext(iterations)
 
-      const projectedInputTokens = estimateMessagesTokens(messages) + toolSchemaTokens
-      const remainingRunTokens = typeof budget.maxTokens === 'number'
-        ? Math.max(0, budget.maxTokens - spend.effectiveTokensUsed - projectedInputTokens)
-        : undefined
-      const requestedOutputTokens = input.maxOutputTokens === undefined
-        ? undefined
-        : Math.min(input.maxOutputTokens, remainingRunTokens ?? input.maxOutputTokens)
+      const admission = (): {
+        projectedInputTokens: number
+        requestedOutputTokens: number | undefined
+        requiresCompaction: boolean
+      } => {
+        const projectedInputTokens = estimateMessagesTokens(messages) + toolSchemaTokens
+        const remainingRunTokens = typeof budget.maxTokens === 'number'
+          ? Math.max(0, budget.maxTokens - spend.effectiveTokensUsed - projectedInputTokens)
+          : undefined
+        const desiredOutputTokens = input.maxOutputTokens === undefined
+          ? undefined
+          : Math.min(input.maxOutputTokens, remainingRunTokens ?? input.maxOutputTokens)
+        const contextOutputTokens = Math.max(
+          0,
+          contextPlan.availableTokens - estimateMessagesTokens(messages),
+        )
+        return {
+          projectedInputTokens,
+          requiresCompaction: desiredOutputTokens !== undefined
+            && desiredOutputTokens > contextOutputTokens,
+          requestedOutputTokens: desiredOutputTokens === undefined
+            ? undefined
+            : Math.min(desiredOutputTokens, contextOutputTokens),
+        }
+      }
+      let currentAdmission = admission()
       // Context compaction normally starts at 80%; an answer reserve can make
       // a smaller retained transcript unsafe before that threshold, so compact
       // here while all prior tool pairs are intact.
-      if (requestedOutputTokens !== undefined
-        && estimateMessagesTokens(messages) + requestedOutputTokens > contextPlan.availableTokens) {
+      if (currentAdmission.requiresCompaction && compactionLastIteration !== iterations) {
         await maintainContext(iterations, true)
+        // Compaction is itself inference. Its invocation sink changes spend,
+        // and its rebuilt note changes input; both must be re-admitted.
+        spend = meterSpend(allInvocations, cacheReadWeight)
+        currentAdmission = admission()
       }
+
+      if (currentAdmission.requestedOutputTokens !== undefined
+        && currentAdmission.requestedOutputTokens < 1) return stop('tokens')
 
       // The iteration boundary: the previous batch has fully settled and the
       // transcript that will be sent is assembled, so this is the state a
@@ -449,8 +341,8 @@ export const runAgenticLoop = async (input: {
       // actually be sent rather than the one that was about to be folded away.
       const preInferenceStop = stopBeforeInference(budget, {
         effectiveTokensUsed: spend.effectiveTokensUsed,
-        projectedCallTokens: estimateMessagesTokens(messages) + toolSchemaTokens,
-        projectedOutputTokens: requestedOutputTokens,
+        projectedCallTokens: currentAdmission.projectedInputTokens,
+        projectedOutputTokens: currentAdmission.requestedOutputTokens,
       })
       if (preInferenceStop) return stop(preInferenceStop)
 
@@ -465,9 +357,9 @@ export const runAgenticLoop = async (input: {
           inferenceMessages,
           captured,
           {
-            ...(requestedOutputTokens === undefined
+            ...(currentAdmission.requestedOutputTokens === undefined
               ? {}
-              : { maxOutputTokens: requestedOutputTokens }),
+              : { maxOutputTokens: currentAdmission.requestedOutputTokens }),
             ...(finalizationPending ? { noTools: true } : {}),
           },
         ),

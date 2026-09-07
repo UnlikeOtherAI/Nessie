@@ -1,6 +1,8 @@
 import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
+  createInferenceService,
+  isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
@@ -13,6 +15,7 @@ import {
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
 import { runInferenceGraph } from '../inference.js'
+import { resolveRuntimeProvider, resolveStageProviderConfig } from '../inference-provider.js'
 import {
   resolveComposeOutputTokens,
   startCancellationPoll,
@@ -39,6 +42,7 @@ export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =
 export type RunInference = {
   /** True when the current main turn already streamed text to the thread. */
   consumeStreamedFlag: () => boolean
+  mainOutputTokens?: () => Promise<number>
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
@@ -89,6 +93,39 @@ export const createRunInference = (
   const runModel = {
     model: options.budgetModelOverride?.model ?? context.agent.model,
     provider: options.budgetModelOverride?.provider ?? context.agent.provider,
+  }
+
+  const mainOutputTokens = async (): Promise<number> => {
+    const providerConfig = await resolveStageProviderConfig(deps.prisma, {
+      modelConfig: runtimeModelConfig,
+      organizationId: context.channel.organizationId,
+      providerKey: runModel.provider ?? runtimeModelConfig.provider,
+      requestedModel: runModel.model ?? runtimeModelConfig.modelName ?? '',
+      routeSource: 'direct',
+      subscription: options.subscription
+        ? {
+          ownerUserId: options.subscription.ownerUserId,
+          secretStore: deps.subscriptionSecrets ?? null,
+          subscriptionId: options.subscription.subscriptionId,
+        }
+        : null,
+    })
+    const runtimeProvider = resolveRuntimeProvider(providerConfig.providerKey)
+      ?? (providerConfig.connectorKind === 'openai-compatible'
+        || isLedgerEndpoint(providerConfig.baseUrl)
+        ? 'openai-compatible'
+        : null)
+    if (!runtimeProvider) return runtimeModelConfig.maxTokens
+    const service = createInferenceService({
+      apiKey: providerConfig.apiKey,
+      baseUrl: providerConfig.baseUrl,
+      ...(providerConfig.extraHeaders ? { extraHeaders: providerConfig.extraHeaders } : {}),
+      modelName: providerConfig.model,
+      provider: runtimeProvider,
+      serviceId: providerConfig.providerKey,
+    })
+    const capability = await service.getCapabilities(providerConfig.model)
+    return capability.effectiveSnapshot.maxOutputTokens ?? runtimeModelConfig.maxTokens
   }
 
   const call = async (
@@ -209,6 +246,7 @@ export const createRunInference = (
       currentTurnStreamed = false
       return streamed
     },
+    mainOutputTokens,
     runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
       return call(messages, tools, runModel, true, callOptions?.maxOutputTokens)

@@ -402,6 +402,49 @@ test('answer reserve triggers compaction before the ordinary context threshold',
   assert.equal(compactions, 1)
 })
 
+test('zero output headroom stops before an invalid provider request', async () => {
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 10 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    invocationSink: [{ usage: { totalTokens: 5 } } as InferenceResult['invocations'][number]],
+    maxOutputTokens: 4,
+    runInference: async () => {
+      calls += 1
+      return finalAnswerInference('must not run')
+    },
+    tools: [],
+  })
+  assert.equal(calls, 0)
+  assert.equal(result.exhaustedBudget, 'tokens')
+})
+
+test('forced compaction re-admits its spend and rebuilt context before inference', async () => {
+  const sink: InferenceResult['invocations'] = []
+  let requestedOutputTokens: number | undefined
+  await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      sink.push({ usage: { totalTokens: 40 } } as InferenceResult['invocations'][number])
+      return [{ content: 'short', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 50, targetTokens: 30, triggerTokens: 45 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(200), role: 'user' }],
+    invocationSink: sink,
+    maxOutputTokens: 80,
+    runInference: async (_messages, _captured, options) => {
+      requestedOutputTokens = options?.maxOutputTokens
+      return finalAnswerInference('answer')
+    },
+    tools: [],
+  })
+  assert.equal(requestedOutputTokens, 44)
+})
+
 test('a length-limited turn gets one no-tools finalisation without replaying work', async () => {
   const noTools: boolean[] = []
   let calls = 0
