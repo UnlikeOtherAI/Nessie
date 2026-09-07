@@ -53,7 +53,7 @@ Two decisions are settled here rather than left open:
   Drain is solved by checkpointing inside sixty seconds, not by asking the
   platform for a 45-minute grace period.
 
-## The invariants (become `docs/standards/horizontal-scaling.md` in Phase 0)
+## The invariants (become `docs/standards/horizontal-scaling/overview.md` in Phase 0)
 
 1. No module-scope mutable state that a second instance would need. A cache
    is allowed only if it is read-through, bounded, has a TTL, and is never an
@@ -86,7 +86,7 @@ Do this first so every later phase lands with proof.
 
 | # | Item | Size |
 |---|---|---|
-| 0.1 | `docs/standards/horizontal-scaling.md` with the nine invariants, routed from `AGENTS.md` → Architecture. Fix `docs/the-agents.md:1297, 1687` to describe the lease-based scheduler that actually exists. | S |
+| 0.1 | `docs/standards/horizontal-scaling/overview.md` with the nine invariants, routed from `AGENTS.md` → Architecture. Fix `docs/the-agents.md:1297, 1687` to describe the lease-based scheduler that actually exists. | S |
 | 0.2 | ESLint ratchet in the root config, same shape as the egress block: module-scope `new Map`/`new Set`/`let` in `api/src` and `worker/src` fail lint unless the file is on an allowlist that shrinks as phases land. | S |
 | 0.3 | `infrastructure/compose/docker-compose.multi.yml` override: `api` × 2 and `worker` × 2 against one Postgres and MinIO, with Caddy round-robining the API. `pnpm dev:multi` runs it locally. | S |
 | 0.4 | CI job `multi-instance-smoke`: the existing mock-LLM smoke through the two-instance stack, plus a chaos step that sends `SIGTERM` to one worker mid-run and one API mid-stream and asserts no duplicate messages, no run left in `running`/`waiting_approval` without a live lease, and SSE resumes with no sequence gap. Required check once Phase 3 lands; advisory before. | M |

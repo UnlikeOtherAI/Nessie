@@ -24,7 +24,7 @@ export type DrainableRealtimeHub = {
  * Whether this server is going away. One object per built app, created in
  * `buildApp` and handed to the health routes through `RouteDeps` — deliberately
  * *not* a module-scope `let`: rule 1 of
- * [`docs/standards/horizontal-scaling.md`](../../docs/standards/horizontal-scaling.md)
+ * [`docs/standards/horizontal-scaling/overview.md`](../../docs/standards/horizontal-scaling/overview.md)
  * bans module state, and the eslint ratchet that enforces it only ever shrinks.
  * Per-app is also the truthful scope: an embedder that hosts two `buildApp`
  * instances in one process drains them independently, and a test that drains

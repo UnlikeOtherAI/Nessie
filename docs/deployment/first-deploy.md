@@ -69,7 +69,7 @@ Requires SSH access to the host and the Cloudflare full-token env var.
    The `reconcile` step seeds each organisation's default policy rules and
    backfills the protected-MCP and Personal Assistant tool grants. The API used
    to do this at boot on every replica; it now connects and listens and nothing
-   else ([standards/horizontal-scaling.md](../standards/horizontal-scaling.md)
+   else ([standards/horizontal-scaling/overview.md](../standards/horizontal-scaling/overview.md)
    §5), so **without this step the first organisation has no policy rules and
    every agent bind is denied.** It is idempotent, so `redeploy.sh` reruns it on
    every deploy.

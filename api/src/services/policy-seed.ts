@@ -7,7 +7,7 @@ import { actionToPrisma } from './policy-rules.js'
 // materialized organisation on the login path (`team-context.ts`,
 // `team-principal.ts`), and once per deploy from
 // `pnpm --filter @nessie/api reconcile` — never on every API replica's startup
-// path (docs/standards/horizontal-scaling.md §5). Idempotent and race-free:
+// path (docs/standards/horizontal-scaling/overview.md §5). Idempotent and race-free:
 // each rule carries a stable `seedKey` constrained by a partial unique index,
 // so N concurrent callers for one organisation converge on one default set.
 // Evaluation lives in `policy.ts`; rule CRUD lives in `policy-rules.ts`.
@@ -159,7 +159,7 @@ const writeDefaultPolicies = async (
  * Idempotent and race-free: N concurrent callers for one organisation produce
  * exactly one default set. Runs from `pnpm --filter @nessie/api reconcile` after
  * `migrate deploy` (and, in `local` mode only, at boot) — never on every API
- * replica's startup path, per docs/standards/horizontal-scaling.md §5.
+ * replica's startup path, per docs/standards/horizontal-scaling/overview.md §5.
  */
 export const seedDefaultPolicies = async (
   tx: PolicySeedClient,

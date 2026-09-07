@@ -46,7 +46,7 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 // One value on purpose. The Pub/Sub adapter (`packages/runtime/src/pubsub-queue.ts`)
 // and the worker branch that fell back from it are deleted, and so is the
 // Pub/Sub terraform module; Postgres is the queue by decision
-// (docs/standards/horizontal-scaling.md). Keeping `'pubsub'` in the enum let a
+// (docs/standards/horizontal-scaling/overview.md). Keeping `'pubsub'` in the enum let a
 // deployment be configured for a provider that no longer exists and then boot
 // silently on Postgres anyway.
 //
@@ -66,7 +66,7 @@ export const QueueProviderSchema = z.enum(['local'], {
       message:
         `Unsupported queue provider '${String(issue.received)}'. Postgres is the queue; `
         + "the 'pubsub' provider was retired and its adapter deleted "
-        + '(docs/standards/horizontal-scaling.md). Set NESSIE_QUEUE_PROVIDER=local or remove it.',
+        + '(docs/standards/horizontal-scaling/overview.md). Set NESSIE_QUEUE_PROVIDER=local or remove it.',
     }
   },
 })
@@ -321,7 +321,7 @@ export type NessieConfig = z.infer<typeof NessieConfigSchema>
 // No `hasRedis`, and no `hasPubSub`: `redis.enabled` had no environment mapping
 // and nothing ever read `config.redis`, and `hasPubSub` could only ever be true
 // for a queue provider that no longer exists. Postgres is the queue and the
-// realtime bus by decision (docs/standards/horizontal-scaling.md), so there is
+// realtime bus by decision (docs/standards/horizontal-scaling/overview.md), so there is
 // nothing for either of them to describe.
 export const RuntimeCapabilitiesSchema = z.object({
   hasObjectStorage: z.boolean(),
@@ -744,7 +744,7 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
 
   const config = NessieConfigSchema.parse(merged)
 
-  // Invariant 7 (docs/standards/horizontal-scaling.md). This is the one
+  // Invariant 7 (docs/standards/horizontal-scaling/overview.md). This is the one
   // single-host capability that is configuration, and both the API and the
   // worker load config before they do anything else, so this is the earliest
   // point at which either can refuse it.

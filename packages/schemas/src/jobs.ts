@@ -374,7 +374,7 @@ export type TriggerEventDispatchJobPayload = z.infer<typeof TriggerEventDispatch
  * kickoff message, the thread claim, the run and its task) runs in the worker
  * through the same `queueTriggerRun` seam the scheduler and event dispatch use,
  * so an instance recycled mid-fire no longer loses a delivery the sender was
- * already told 2xx for (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+ * already told 2xx for (docs/standards/horizontal-scaling/overview.md § 3; audit 9.2).
  *
  * `dedupeKey` is the caller's delivery id (`X-Nessie-Delivery-Id`,
  * `X-Github-Delivery`, `X-Request-Id`), or a per-request UUID when the sender

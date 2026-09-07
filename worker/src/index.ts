@@ -240,7 +240,7 @@ export const startWorker = async (
   // Postgres is the queue, by decision, not by fallback: the polling loop is
   // correct at N instances and the half-built Pub/Sub adapter beside it was
   // push-mode, could not delay a job, and deduplicated per process
-  // (docs/standards/horizontal-scaling.md; audit 5.14). It and the branch that
+  // (docs/standards/horizontal-scaling/overview.md; audit 5.14). It and the branch that
   // warned about it are gone.
   const queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
@@ -684,7 +684,7 @@ export const startWorker = async (
 
   // Inbound webhook deliveries. The intake route verifies and acks; the fire
   // happens here, on the same seam the scheduler and event dispatch use
-  // (docs/standards/horizontal-scaling.md § 3).
+  // (docs/standards/horizontal-scaling/overview.md § 3).
   subscribe(
     TRIGGER_WEBHOOK_DISPATCH_TOPIC,
     async (job) => {

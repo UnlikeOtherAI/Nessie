@@ -10,7 +10,7 @@ Upgrades are applied by `prisma migrate deploy` against the existing database
 policy rules, protected-MCP tool grants, Personal Assistant default grants and
 the expired-credential sweep used to run on every API replica at boot and now
 run once per deploy, because boot connects and listens and nothing else
-([standards/horizontal-scaling.md](../standards/horizontal-scaling.md) §5). An
+([standards/horizontal-scaling/overview.md](../standards/horizontal-scaling/overview.md) §5). An
 upgrade that applies the migrations by hand must run the reconcile job too, or
 organisations provisioned by an older release keep denying knowledge actions and
 agent binds. It is idempotent, so running it again is free.

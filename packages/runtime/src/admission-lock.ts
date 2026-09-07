@@ -19,7 +19,7 @@ import type { Prisma } from '@prisma/client'
  *
  * Blocking, deliberately. `pg_try_advisory_xact_lock` is right for a SWEEP,
  * where "somebody else is already doing this" is a fine answer (see
- * `withSweepLock` in `docs/standards/horizontal-scaling.md` §2). An admission
+ * `withSweepLock` in `docs/standards/horizontal-scaling/overview.md` §2). An admission
  * gate has no such answer — refusing because a lock was busy would fail work
  * that fits — so it waits.
  *

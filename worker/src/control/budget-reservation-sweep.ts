@@ -13,7 +13,7 @@ import { deleteSettledBudgetReservations } from '@nessie/runtime'
  * whose predicate is a terminal run status, so N replicas running it in the same
  * tick simply race to delete the same already-dead rows and the losers delete
  * nothing. That is why this is not one of the sweeps that needs `withSweepLock`
- * (docs/standards/horizontal-scaling.md §2) — there is no multi-step walk to
+ * (docs/standards/horizontal-scaling/overview.md §2) — there is no multi-step walk to
  * duplicate.
  *
  * It frees rows, never budget: the admission aggregate already ignores a

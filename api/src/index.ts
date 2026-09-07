@@ -256,7 +256,7 @@ export const buildApp = async (
   // grant backfill, Personal Assistant default grants and the credential sweep
   // all used to run here, on every replica, before `listen()`; they now run once
   // per deploy from `pnpm --filter @nessie/api reconcile`
-  // (docs/standards/horizontal-scaling.md §5).
+  // (docs/standards/horizontal-scaling/overview.md §5).
 
   app.decorateRequest('actorContext', null)
 
@@ -426,7 +426,7 @@ export const startApiServer = async () => {
     // a single developer instance with no deploy step to hang the reconcile job
     // off, and it already embeds the worker below for the same reason. Every
     // other mode runs `pnpm --filter @nessie/api reconcile` after
-    // `migrate deploy` (docs/standards/horizontal-scaling.md §5).
+    // `migrate deploy` (docs/standards/horizontal-scaling/overview.md §5).
     await runReconcile(prisma, (message) => {
       console.log(`[reconcile] ${message}`)
     })

@@ -336,7 +336,7 @@ when one changes, the same turn updates it, not this section.
   inside sixty seconds, and realtime publishes under a per-scope advisory lock
   held across insert and commit, so id order is commit order;
   the horizontal-scaling block in the root `eslint.config.js` is the ratchet.
-  Read [`docs/standards/horizontal-scaling.md`](docs/standards/horizontal-scaling.md)
+  Read [`docs/standards/horizontal-scaling/overview.md`](docs/standards/horizontal-scaling/overview.md)
   before writing code here.
 - **The App Store (`/apps`).** One row is one app on `McpCatalogEntry`; the store
   reads a decision rather than re-deriving one, and connect orchestrates the

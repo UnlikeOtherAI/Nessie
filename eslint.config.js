@@ -48,7 +48,7 @@ const EGRESS_RESTRICTED_SYNTAX = [
   },
 ]
 
-// Horizontal-scaling invariant 1 (docs/standards/horizontal-scaling.md): no
+// Horizontal-scaling invariant 1 (docs/standards/horizontal-scaling/overview.md): no
 // module-scope mutable state in the API or the worker. A second instance
 // cannot see it, so anything written there is either lost work or an
 // authority only one replica holds — the bootstrap token minted per process
@@ -82,7 +82,7 @@ const MODULE_MUTABLE_STATE_MESSAGE =
   'Module-scope mutable state is per replica: a second instance cannot see it, and a restart loses it. '
   + 'Put the state in Postgres (a claimed row, a conditional UPDATE, rate_limit_buckets), or make it a '
   + 'read-through bounded cache with a TTL that is never an authority. '
-  + 'See docs/standards/horizontal-scaling.md.'
+  + 'See docs/standards/horizontal-scaling/overview.md.'
 const NOT_READONLY_COLLECTION =
   ':not([id.typeAnnotation.typeAnnotation.typeName.name=/^Readonly(Map|Set|WeakMap)$/])'
 const NEW_EMPTY_COLLECTION =
@@ -539,7 +539,7 @@ export default [
     rules: REACT_HOOKS_RULES,
   },
   {
-    // Horizontal-scaling ratchet (docs/standards/horizontal-scaling.md
+    // Horizontal-scaling ratchet (docs/standards/horizontal-scaling/overview.md
     // invariant 1; docs/plans/2026-09-05-horizontal-scaling-statelessness/
     // overview.md Phase 0.2). Same shape as the egress block above: this lint
     // is NOT the boundary — Postgres is, and the standards file is the rule —

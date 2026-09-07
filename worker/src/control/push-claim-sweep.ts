@@ -32,7 +32,7 @@ import type { PushSendClaimPrisma } from './push-send-claim.js'
  * No claim, no lock, and no leader: this is a single idempotent DELETE whose
  * predicate is an age, so N replicas running it in the same tick race to delete
  * the same already-expired rows and the losers delete nothing. It is not one of
- * the sweeps that needs `withSweepLock` (docs/standards/horizontal-scaling.md
+ * the sweeps that needs `withSweepLock` (docs/standards/horizontal-scaling/overview.md
  * §2) — there is no multi-step walk to duplicate.
  */
 export const PUSH_SEND_CLAIM_RETENTION_MS = 24 * 60 * 60 * 1000

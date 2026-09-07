@@ -24,7 +24,7 @@ import { buildRealtimeScopesForChannel } from '../run/pa-tools/message-destinati
  * fifty-person team held the request open across fifty digest transactions, and
  * an instance recycled part-way through lost the remainder after DeepSignal had
  * already been told 2xx and would never send it again
- * (docs/standards/horizontal-scaling.md § 3; audit 9.2).
+ * (docs/standards/horizontal-scaling/overview.md § 3; audit 9.2).
  *
  * **Replay-safe without leaning on the enqueue key.** The queue is at-least-once
  * and a re-claimed job re-runs, so the guarantee has to be in the write:
