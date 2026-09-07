@@ -129,10 +129,12 @@ const asSelectedMailboxThread = (conversation: { id: string; messages: Array<{
  * a person leave chat merely to see which conversations need their attention. */
 const MailSurfaceAccountPreview = ({
   account,
+  compact = false,
   onSelect,
   threadIds,
 }: {
   account: ConnectedMailAccountRecord
+  compact?: boolean
   onSelect: (threadId: string) => void
   threadIds?: string[]
 }) => {
@@ -146,24 +148,26 @@ const MailSurfaceAccountPreview = ({
   const selectedItems = selected.flatMap((result) => result.data ? [asSelectedMailboxThread(result.data)] : [])
   const hasSelection = (threadIds?.length ?? 0) > 0
   const items = threads.data?.items ?? []
+  const conversationList = (
+    <QueryState
+      emptyLabel={hasSelection ? 'The selected emails are no longer available.' : 'No conversations are available.'}
+      errorLabel="Could not load this mailbox."
+      isEmpty={hasSelection ? selectedItems.length === 0 : items.length === 0}
+      loadingLabel="Loading mail…"
+      query={hasSelection ? {
+        isError: selected.some((result) => result.isError),
+        isLoading: selected.some((result) => result.isLoading),
+        refetch: () => Promise.all(selected.map((result) => result.refetch())),
+      } : threads}
+    >
+      {() => <MailboxThreadList ariaLabel={hasSelection ? 'Selected mail conversations' : 'Mail conversations'} onSelect={onSelect} threads={hasSelection ? selectedItems : items.map(asMailboxThread)} />}
+    </QueryState>
+  )
+  if (compact) return <div className="max-h-80 overflow-y-auto">{conversationList}</div>
   return (
     <MailboxWorkspace
       conversation={<p className="p-3 text-sm text-[color:var(--tx2)]">Choose a conversation to open it in Mail.</p>}
-      conversationList={(
-        <QueryState
-          emptyLabel={hasSelection ? 'The selected emails are no longer available.' : 'No conversations are available.'}
-          errorLabel="Could not load this mailbox."
-          isEmpty={hasSelection ? selectedItems.length === 0 : items.length === 0}
-          loadingLabel="Loading mail…"
-          query={hasSelection ? {
-            isError: selected.some((result) => result.isError),
-            isLoading: selected.some((result) => result.isLoading),
-            refetch: () => Promise.all(selected.map((result) => result.refetch())),
-          } : threads}
-        >
-          {() => <MailboxThreadList ariaLabel={hasSelection ? 'Selected mail conversations' : 'Mail conversations'} onSelect={onSelect} threads={hasSelection ? selectedItems : items.map(asMailboxThread)} />}
-        </QueryState>
-      )}
+      conversationList={conversationList}
       layout="single"
     />
   )
@@ -307,6 +311,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
         <div className="w-full max-w-2xl" data-testid="mail-surface-selected-threads">
           <MailSurfaceAccountPreview
             account={authorizedDoorwayAccount}
+            compact
             onSelect={(threadId) => navigate(`${mailPath({ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source })}/threads/${encodeURIComponent(threadId)}`)}
             threadIds={doorway.threadIds}
           />

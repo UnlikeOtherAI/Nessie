@@ -35,7 +35,7 @@ export const mailPath = ({ accountId, source }: MailAddress): string =>
 /**
  * `enabled` matters here: the chat doorway chip mounts on every message row, so
  * an ungated observer made each row refetch the account list. Entitlement is
- * still read live — `staleTime: 0` plus the explicit refetch before any open.
+ * still read live — `staleTime: 0`, a focus refresh, and the explicit refetch before any open.
  */
 export const useConnectedMailAccounts = (enabled = true) => {
   const apiClient = useApiClient()
@@ -45,6 +45,7 @@ export const useConnectedMailAccounts = (enabled = true) => {
     queryFn: async () => ConnectedMailAccountRecordSchema.array().parse(
       await apiClient.get('/api/mail/accounts'),
     ),
+    refetchOnWindowFocus: true,
     staleTime: 0,
   })
 }
