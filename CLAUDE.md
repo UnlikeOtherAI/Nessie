@@ -34,6 +34,9 @@ sentence changes only if the invariant itself did.
 
 ## Notes specific to Claude Code
 
+- Project peer tools and copied ticket checklists are covered by
+  [the collaboration standard](docs/standards/global-agents.md) and
+  [the sales verification walkthrough](docs/testing/sales-agent-collaboration.md).
 - **Verification is Playwright, headless, against `http://localhost:5455`.**
   Every UI change is screenshotted and confirmed rendering before the work is
   considered done — see [`AGENTS.md`](AGENTS.md) → "Verification". Do not ask a

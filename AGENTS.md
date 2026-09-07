@@ -267,6 +267,10 @@ when one changes, the same turn updates it, not this section.
   reachable through a per-user single-agent DM.
   Read [`docs/standards/global-agents.md`](docs/standards/global-agents.md)
   before writing code here.
+- **Project peer collaboration and ticket checklists.** Explicit project tool
+  grants preserve the requesting person's access and the research disclosure
+  basis; see [global agents](docs/standards/global-agents.md) and the
+  [sales workflow verification](docs/testing/sales-agent-collaboration.md).
 - **Disclosure boundaries — what an agent read decides who may read its answer.**
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails
