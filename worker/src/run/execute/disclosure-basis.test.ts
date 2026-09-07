@@ -6,6 +6,7 @@ import {
   createConsumedSourceSink,
   type BasisScope,
 } from './disclosure-basis.js'
+import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
 
 const DESTINATION = {
   channelId: 'channel-1',
@@ -61,6 +62,25 @@ test('private source lineage retains an unknown-author denial marker', () => {
     { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
   ])
   assert.deepEqual(sink.list(), [scope('channel', 'private-room')])
+})
+
+test('checkpoint or memory channel provenance cannot be re-attributed by a later author', async () => {
+  const sink = createConsumedSourceSink()
+  sink.addPrivateConversationSource({
+    sourceAuthorUserId: 'author-b',
+    sourceChannelId: 'private-room',
+  })
+
+  await markUnknownPrivateConversationScopes(
+    { channel: { findMany: async () => [{ id: 'private-room' }] } } as never,
+    sink,
+    [scope('channel', 'private-room')],
+  )
+
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
 })
 
 test('a run consuming only destination-implied sources has an empty basis', () => {
