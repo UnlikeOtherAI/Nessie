@@ -60,7 +60,7 @@ const GmailDraftChatPreview = ({
   const [error, setError] = useState<string | null>(null)
 
   if (draft.isError) return null
-  if (!draft.data) return <p className="text-xs text-[color:var(--tx3)]">Loading draft…</p>
+  if (!draft.data) return <p className="text-xs text-[color:var(--tx3)]">Loading draft...</p>
   const canSendDraft = canSend && draft.data.editable && draft.data.state === 'draft'
   return (
     <div data-testid="gmail-chat-draft-preview">
@@ -81,7 +81,7 @@ const GmailDraftChatPreview = ({
               }}
               type="button"
             >
-              {send.isPending ? 'Sending…' : 'Send'}
+              {send.isPending ? 'Sending...' : 'Send'}
             </button>
             <button className="admin-button admin-button-secondary" onClick={onEdit} type="button">Edit</button>
           </>
@@ -330,7 +330,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
               onClick={() => void openMail()}
               type="button"
             >
-              {awaitingReplyTarget ? 'Loading email…' : 'Open full mail'}
+              {awaitingReplyTarget ? 'Loading email...' : 'Open full mail'}
             </button>
           </div>
         </Dialog>
