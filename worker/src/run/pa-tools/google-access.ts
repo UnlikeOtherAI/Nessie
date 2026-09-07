@@ -2,7 +2,10 @@ import { Prisma } from '@prisma/client'
 import { publishMessageEnvelope } from '@nessie/runtime'
 import { parseThreadId } from '@nessie/schemas'
 import type { GoogleCapabilityId } from '@nessie/schemas'
-import { GmailDraftError } from '@nessie/team-admin'
+import {
+  CommsCredentialCoordinatorError,
+  GmailDraftError,
+} from '@nessie/team-admin'
 
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { buildRealtimeScopesForChannel } from './message-destination.js'
@@ -139,8 +142,9 @@ export const explainGoogleFailure = async (
   error: unknown,
 ): Promise<never> => {
   const code = error instanceof GmailDraftError
+    || error instanceof CommsCredentialCoordinatorError
     ? error.code
-    : (error as { code?: string }).code
+    : undefined
   if (code === 'SCOPE_MISSING' || code === 'GOOGLE_NOT_CONNECTED') {
     throw new Error(await requestGoogleCapability(context, capabilityId, ownerUserId))
   }
@@ -177,5 +181,5 @@ export const explainGoogleFailure = async (
   if (code === 'DRAFT_NOT_FOUND') {
     throw new Error('I cannot find that draft.')
   }
-  throw error instanceof Error ? error : new Error('Google request failed.')
+  throw new Error('Google request failed.')
 }

@@ -59,10 +59,7 @@ const credentialFor = async (
       encryptionSecret: encryptionSecret(),
     })
   } catch (error) {
-    return explainGoogleFailure(context, capabilityId, userId, {
-      code: (error as { code?: string }).code,
-      ...(error as object),
-    } as never)
+    return explainGoogleFailure(context, capabilityId, userId, error)
   }
 }
 

@@ -8,6 +8,7 @@ import {
   runGmailLabelsListTool,
   runGmailOrganiseTool,
 } from './gmail-organise-tools.js'
+import { explainGoogleFailure } from './google-access.js'
 
 const ORGANIZATION = '11111111-1111-4111-8111-111111111111'
 const USER = '22222222-2222-4222-8222-222222222222'
@@ -121,6 +122,7 @@ test('restores INBOX when unarchiving', async () => {
 })
 
 test('refuses a gmail.read-only connection and requests gmail.modify', async () => {
+  const originalSecret = process.env.NESSIE_AUTH_SECRET
   process.env.NESSIE_AUTH_SECRET = 'gmail-organise-test-secret'
   let credentialQuery: Record<string, unknown> | undefined
   const { consumed, context } = makeContext({
@@ -138,10 +140,15 @@ test('refuses a gmail.read-only connection and requests gmail.modify', async () 
     thread: { findUnique: async () => null },
   })
 
-  await assert.rejects(
-    runGmailOrganiseTool(context, { archive: true, threadId: 'thread-123' }),
-    /permission to organise your email/i,
-  )
+  try {
+    await assert.rejects(
+      runGmailOrganiseTool(context, { archive: true, threadId: 'thread-123' }),
+      /permission to organise your email/i,
+    )
+  } finally {
+    if (originalSecret === undefined) delete process.env.NESSIE_AUTH_SECRET
+    else process.env.NESSIE_AUTH_SECRET = originalSecret
+  }
 
   assert.deepEqual(credentialQuery, {
     organizationId: ORGANIZATION,
@@ -150,6 +157,17 @@ test('refuses a gmail.read-only connection and requests gmail.modify', async () 
     status: { not: 'disconnected' },
   })
   assert.deepEqual(consumed, [{ scopeId: USER, scopeType: 'user' }])
+})
+
+test('does not expose unexpected Google failures as grant-card errors', async () => {
+  const { context } = makeContext()
+  for (const failure of [null, undefined, new Error('provider detail')]) {
+    await assert.rejects(
+      explainGoogleFailure(context, 'gmail.modify', USER, failure),
+      (error: unknown) => error instanceof Error
+        && error.message === 'Google request failed.',
+    )
+  }
 })
 
 test('does not call Gmail for a run without an acting mailbox owner', async () => {
