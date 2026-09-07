@@ -7,6 +7,13 @@ of the named Nessie agent. It never reads a Chrome profile, Keychain,
 passwords, history, Sync, or browser storage, and it removes the optional
 Chrome permission after each attempt.
 
+Chrome requires both the cookies API permission and matching host access; the
+extension asks for those as optional runtime permissions after the person
+chooses sites, following [Chrome's permission model](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions).
+Its native bridge follows [Chrome's native messaging host rules](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging):
+the installed manifest fixes the executable and allowed extension origin, and
+Chrome communicates with that process over framed stdio.
+
 A copied login can still fail when a service binds it to a device or uses a
 separate identity host. Choose that identity host separately when Nessie asks,
 or sign in manually in the private browser. Nessie never adds related sites on
@@ -104,6 +111,22 @@ Chrome-helper readiness must remain **unverified** until a future desktop
 capability check proves that the native manifest is installed, points to the
 verified launcher, and can complete a harmless native-host handshake. A paired
 executor being online is insufficient.
+
+The synthetic native-to-API-to-Browserbase import has passed, including the
+confirmed Browserbase release. It did not verify the operating-system Chrome
+registration: the isolated-profile check could not install it, and the current
+Mac lacks the required `Developer ID Application` identity. A stable Chrome Web
+Store extension id and an installer-owned registration step are still release
+prerequisites.
+
+## Safari status
+
+[Safari Web Extensions](https://developer.apple.com/documentation/safariservices/safari-web-extensions)
+and [containing-app to extension messaging](https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension)
+make Safari a viable research path. Nessie has not implemented or verified its
+cookie permission, native app transport, signing, or entitlements, so Safari is
+unavailable for selected-site import. This is an implementation gap, not a
+claim that Safari cannot support the feature.
 
 ## Windows follow-up
 

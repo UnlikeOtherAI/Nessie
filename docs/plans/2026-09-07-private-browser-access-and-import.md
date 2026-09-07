@@ -110,6 +110,14 @@ permissions after the handoff. It does not read Chrome profile files, Keychain,
 passwords, history, Sync, storage, or a bulk profile. It does not run a
 content script.
 
+This is the Chrome permission model, not an assumed browser capability:
+[Chrome's permissions documentation](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions)
+requires the API and matching host permission for `chrome.cookies`, and
+supports optional API and host permissions granted at runtime. The native
+bridge follows [Chrome's native messaging requirements](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging):
+an installer registers a manifest with one fixed host path and non-wildcard
+extension origins, and Chrome uses length-prefixed JSON over stdio.
+
 The optional permissions are dropped after the handoff. Refresh is another
 explicit import request. Revoking the imported browser state is an explicit
 Nessie action that resets the private browser context; there is no background
@@ -168,9 +176,19 @@ expiry, and failure are visible request states with a named remedy.
 
 ## Platform truth
 
-Chrome on macOS has a reviewable source and packaging path, but is not an
-installed extension release. Windows is unavailable: its required service IPC
-bridge and installer path have not been implemented.
+The signed native-to-API-to-Browserbase path has passed with synthetic cookies:
+the native bridge signed the paired API upload and the tracked Browserbase
+import reached its confirmed-release outcome. That result does not verify
+Chrome's operating-system native-host registration. The isolated-profile check
+could not install or validate that registration, and this Mac has no
+`Developer ID Application` identity for a release launcher.
+
+Chrome on macOS therefore has reviewable source and packaging artifacts, but
+not an installed extension release. It still needs a Chrome Web Store publisher
+and stable extension id, a Developer ID Application-signed launcher, and an
+installer-owned native-host registration before it can be called usable.
+Windows is unavailable: its required service IPC bridge and installer path have
+not been implemented.
 
 Before that release can be made, Nessie needs a Chrome Web Store publisher and
 the resulting stable extension id, a release-signed native-host launcher, and
@@ -183,11 +201,13 @@ helper is ready.
 
 The reviewable macOS packaging seam is `executor/scripts/prepare-chrome-cookie-import.mjs`. Development emits an isolated unpacked extension identity, fixed local launcher, and unregistered native-host manifest. Release accepts only a Chrome Web Store id and a Developer ID-verified launcher, then emits artifacts for the signed installer; it neither signs nor registers them. The operator steps and readiness boundary are in [the macOS import guide](../running-the-apps/chrome-cookie-import-macos.md).
 
-Safari Web Extensions use the WebExtension model, but this importer has not
-been implemented or verified for Safari's cookie and native-app bridge
-entitlements. Safari is therefore unavailable, not declared impossible. A
-Safari phase must prove its exact cookie permission, native app transport, and
-App Store signing behavior before claiming parity.
+Safari is a viable research path, not an unavailable-by-design platform.
+Apple documents both [Safari Web Extensions](https://developer.apple.com/documentation/safariservices/safari-web-extensions)
+and [messaging between a containing app and extension JavaScript](https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension).
+Nessie has not implemented or verified Safari cookie access, the containing-app
+transport, or the required signing and entitlement behavior. Safari is
+therefore unavailable until that work proves the exact scope and release path;
+it is not declared impossible.
 
 ## Verification map
 
