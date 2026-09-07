@@ -138,7 +138,9 @@ export const explainGoogleFailure = async (
   ownerUserId: string,
   error: unknown,
 ): Promise<never> => {
-  const code = error instanceof GmailDraftError ? error.code : undefined
+  const code = error instanceof GmailDraftError
+    ? error.code
+    : (error as { code?: string }).code
   if (code === 'SCOPE_MISSING' || code === 'GOOGLE_NOT_CONNECTED') {
     throw new Error(await requestGoogleCapability(context, capabilityId, ownerUserId))
   }
