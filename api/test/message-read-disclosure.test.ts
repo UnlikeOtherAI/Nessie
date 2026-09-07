@@ -144,3 +144,68 @@ runDatabaseTest('the share affordance is offered to a direct reader, not a grant
     'a grant recipient must not be offered a share the server then refuses',
   )
 })
+
+runDatabaseTest('a private-channel author can share one reply but cannot create a standing rule', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { name: `disclosure-org-${suffix}` } })
+    await prisma.user.deleteMany({ where: { email: { contains: suffix } } })
+    await prisma.$disconnect()
+  })
+
+  const s = await seed(prisma, suffix)
+  const privateChannel = await prisma.channel.create({
+    data: {
+      label: `private-${suffix}`,
+      slug: `private-${suffix.slice(0, 8)}`,
+      organizationId: s.organizationId,
+      projectId: s.projectId,
+      teamId: s.teamId,
+      type: 'standard',
+      visibility: 'private',
+    },
+  })
+  await prisma.channelMember.create({ data: { channelId: privateChannel.id, userId: s.insiderId } })
+  const message = await prisma.message.create({
+    data: {
+      agentId: s.agentId,
+      content: 'Derived from the author’s private channel.',
+      role: 'assistant',
+      threadId: s.threadId,
+    },
+  })
+  await prisma.messageBasisScope.create({
+    data: {
+      messageId: message.id,
+      organizationId: s.organizationId,
+      scopeId: privateChannel.id,
+      scopeType: 'channel',
+    },
+  })
+  await prisma.messageDisclosureSource.create({
+    data: {
+      messageId: message.id,
+      organizationId: s.organizationId,
+      sourceAuthorUserId: s.insiderId,
+      sourceChannelId: privateChannel.id,
+    },
+  })
+
+  const row = await prisma.message.findFirstOrThrow({
+    where: { id: message.id },
+    include: messageInclude,
+  })
+  const forAuthor = await mapMessageRecordWithAttachments(prisma, row, {
+    channelId: s.channelId,
+    organizationId: s.organizationId,
+    userId: s.insiderId,
+  })
+
+  assert.equal(forAuthor.restrictedSources, true, 'the original author retains one-reply sharing')
+  assert.equal(
+    forAuthor.canShareStanding,
+    false,
+    'private conversation lineage never offers a standing disclosure rule',
+  )
+})
