@@ -291,7 +291,8 @@ runDatabaseTest('grant and content-change ordering cannot leave an approval on a
   releaseContentChange.resolve()
   await contentChange
   const staleError = await staleRenewal
-  assert.ok(staleError instanceof Error && 'code' in staleError)
+  assert.ok(staleError instanceof Error)
+  assert.ok('code' in staleError)
   assert.equal(staleError.code, 'DISCLOSURE_CONTENT_CHANGED')
   assert.equal(await recipientCanRead(prisma, s), false)
 })
