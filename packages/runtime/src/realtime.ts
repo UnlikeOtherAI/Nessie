@@ -18,7 +18,7 @@ import {
   type RealtimeEventRow,
   type RealtimeNotificationEnvelope,
   type RealtimeNotificationPayload,
-  type RealtimeReplayEvent,
+  type RealtimeReplayPage,
   type ThreadStreamEvent,
   type ThreadStreamEventRow,
   type WsEventMessage,
@@ -28,9 +28,11 @@ export {
   buildSseRefEnvelope,
   buildWsRefEnvelope,
   resolveRealtimeNotification,
+  NOTIFY_PAYLOAD_LIMIT_BYTES,
   type RealtimeNotificationEnvelope,
   type RealtimeNotificationPayload,
   type RealtimeReplayEvent,
+  type RealtimeReplayPage,
   type ThreadStreamEvent,
   type WsEventMessage,
 } from './realtime-publish.js'
@@ -65,6 +67,16 @@ export const parseLastRealtimeEventId = (
   return BigInt(trimmed)
 }
 
+/**
+ * One page of a user connection's replay, oldest first, and whether the cap cut
+ * it short.
+ *
+ * The row after the cap is asked for on purpose — `LIMIT MAX + 1` — because
+ * "returned exactly `MAX` rows" cannot tell a replay that ended on the cap from
+ * one that happened to end there. The extra row is dropped; only its existence
+ * is reported, as `truncated`. See `RealtimeReplayPage` for why a silent cap is
+ * the defect and the flag is the fix.
+ */
 export const listRealtimeEventsAfterCursor = async (
   pool: Pool,
   input: {
@@ -73,7 +85,7 @@ export const listRealtimeEventsAfterCursor = async (
     organizationId: string
     userId: string
   },
-): Promise<RealtimeReplayEvent[]> => {
+): Promise<RealtimeReplayPage> => {
   const result = await pool.query<RealtimeEventRow>(
     `
       SELECT id, organization_id, channel_id, recipient_user_id, event_type, payload, created_at
@@ -87,19 +99,77 @@ export const listRealtimeEventsAfterCursor = async (
       ORDER BY id ASC
       LIMIT $5
     `,
-    [input.organizationId, input.afterEventId, input.channelIds, input.userId, MAX_REPLAY_EVENTS],
+    [
+      input.organizationId,
+      input.afterEventId,
+      input.channelIds,
+      input.userId,
+      MAX_REPLAY_EVENTS + 1,
+    ],
   )
 
-  return result.rows.map(mapRealtimeEventRow)
+  const truncated = result.rows.length > MAX_REPLAY_EVENTS
+  return {
+    events: result.rows.slice(0, MAX_REPLAY_EVENTS).map(mapRealtimeEventRow),
+    truncated,
+  }
+}
+
+/**
+ * What `listen` is told to do besides fan a notification out.
+ */
+export type RealtimeListenOptions = {
+  /**
+   * Called once each time the LISTEN connection is **re-established**, never on
+   * the first successful listen.
+   *
+   * A dropped LISTEN is invisible to the clients this replica is serving
+   * (horizontal-scaling audit 2.2): their sockets are held open by keepalives,
+   * so no reconnect fires and nothing goes and fetches what the gap swallowed.
+   * Re-listening restores *future* notifications and does nothing at all about
+   * the ones that were published while the connection was down — the only thing
+   * that eventually rescued those clients was their own next reconnect, which
+   * on an idle admin tab may be hours away, or never.
+   *
+   * Every registered connection carries its own watermark, so the gap is
+   * recoverable from this side: this hook is where the owner of those
+   * connections re-reads the backlog for each of them. It is fired after the
+   * `LISTEN` has been issued, so anything published from that moment on arrives
+   * live and the re-read only has to cover what came before.
+   */
+  onListenRecovered?: () => void | Promise<void>
 }
 
 export class PgRealtimeTransport {
   private listenerClient: Client | null = null
   private listenerClosed = false
   private listenerConnectPromise: Promise<void> | null = null
+  /**
+   * True once a LISTEN has succeeded on this transport, so the next success is
+   * known to be a *re*-connect and `onListenRecovered` fires only then. A first
+   * listen has no registered connections to recover.
+   */
+  private hasListened = false
+  private listenOptions: RealtimeListenOptions = {}
   private notificationHandler:
     | ((payload: RealtimeNotificationPayload) => void | Promise<void>)
     | null = null
+  /**
+   * Serialises the *resolution* of arriving notifications, and nothing else.
+   *
+   * A compact `*-ref` envelope has to read its row back before it is a payload,
+   * which costs a round trip a full envelope does not pay. Without this chain an
+   * oversized event could therefore reach the fan-out behind a smaller one
+   * published after it, and the per-connection watermark — which only ever moves
+   * forward — would skip it for good.
+   *
+   * Only the re-read is ordered. The fan-out itself is still started without
+   * being awaited, exactly as it was, so a slow entitlement check on one
+   * connection cannot stall the next notification; what this buys is that
+   * `onNotification` is *invoked* in the order the notifications arrived,
+   * whatever form they arrived in.
+   */
+  private notificationChain: Promise<void> = Promise.resolve()
   private reconnectTimer: NodeJS.Timeout | null = null
   /**
    * Earliest moment this replica will ask the database whether a prune is due.
@@ -123,6 +193,11 @@ export class PgRealtimeTransport {
   async close(): Promise<void> {
     this.listenerClosed = true
     this.notificationHandler = null
+    // A `listen` after a `close` is a new session, not a recovery: whoever
+    // closed this transport owns whatever connections it was serving, and the
+    // hub clears its registries in the same breath. Leaving the flag set would
+    // fire a backlog re-read for a set of connections nobody is holding.
+    this.hasListened = false
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -214,9 +289,17 @@ export class PgRealtimeTransport {
 
   async listen(
     onNotification: (payload: RealtimeNotificationPayload) => void | Promise<void>,
+    options: RealtimeListenOptions = {},
   ): Promise<void> {
     this.listenerClosed = false
     this.notificationHandler = onNotification
+    // Carried on the instance rather than through `scheduleReconnect`, which
+    // re-enters `listen` with the handler alone: a recovery hook that survived
+    // only the first call would be silently dropped by the very reconnect it
+    // exists for.
+    if (options.onListenRecovered) {
+      this.listenOptions = options
+    }
 
     if (this.listenerClient) {
       return
@@ -251,23 +334,31 @@ export class PgRealtimeTransport {
 
         // A payload too large for NOTIFY travelled as its row id, so the row is
         // read back here and nothing above the transport ever meets the compact
-        // form. That read costs a round trip, so such an event can reach the
-        // fan-out behind a smaller one published after it, and the connection
-        // watermark then skips it. Reconnect replay does NOT bring that one
-        // back: replay is `id > watermark` and the watermark has already moved
-        // past it. The row is never lost, and on the thread lane the content is
-        // still reachable — the message is a durable row of its own, so a
-        // client that re-bootstraps the thread over REST sees it. That is a
-        // different mechanism from replay, and the WebSocket lane has no
-        // equivalent: what a connection's watermark skips there is gone for
-        // that connection.
-        void resolveRealtimeNotification(this.pool, envelope)
-          .then((payload) => (payload ? onNotification(payload) : undefined))
+        // form. That read costs a round trip a full envelope does not pay, so
+        // it goes through `notificationChain`: without it an oversized event
+        // could reach the fan-out behind a smaller one published after it, and
+        // the connection watermark — which only moves forward — would skip it
+        // permanently. Reconnect replay would not bring it back either, because
+        // replay is `id > watermark`.
+        this.notificationChain = this.notificationChain
+          .then(() => resolveRealtimeNotification(this.pool, envelope))
+          .then((payload) => {
+            if (!payload) {
+              return
+            }
+
+            // Started, not awaited: the chain orders the re-read, never the
+            // fan-out. A rejection here is caught on its own promise because
+            // this one runs outside any `try` — an unhandled rejection ends the
+            // process on Node 22.
+            void Promise.resolve(onNotification(payload)).catch(() => undefined)
+          })
           .catch(() => {
-            // The row could not be read back. Same recovery as above: not
-            // replay, which any later delivered event moves the watermark past
-            // — the durable row, re-read by a REST bootstrap on the thread
-            // lane.
+            // The row could not be read back. What recovers it is the durable
+            // row, re-read by a REST bootstrap on the thread lane — not replay,
+            // which any later delivered event moves the watermark past. The
+            // chain must survive either way, or one failed re-read would wedge
+            // every notification after it.
           })
       })
 
@@ -275,6 +366,20 @@ export class PgRealtimeTransport {
         await client.connect()
         await client.query(`LISTEN ${this.channel}`)
         this.listenerClient = client
+        const recovered = this.hasListened
+        this.hasListened = true
+        if (recovered) {
+          // Awaited, so a caller that re-listens by hand knows the backlog has
+          // been re-read before it returns. A failure must not undo the LISTEN
+          // that just succeeded: live delivery is working again either way, and
+          // the connections this could not repair are exactly as behind as they
+          // were before the attempt.
+          await Promise.resolve(this.listenOptions.onListenRecovered?.()).catch(
+            (error: unknown) => {
+              console.error('[realtime] backlog re-read after LISTEN recovery failed', error)
+            },
+          )
+        }
       } catch (error) {
         client.removeAllListeners()
         await client.end().catch(() => undefined)
@@ -330,8 +435,16 @@ export class PgRealtimeTransport {
   }
 
   /**
-   * Delete `realtime_events` past retention, once a minute for the whole
+   * Delete both replay logs past retention, once a minute for the whole
    * cluster.
+   *
+   * `thread_stream_events` is retained by this sweep and not by one of its own
+   * (audit 2.3: it was never pruned at all). The two tables are the same thing
+   * on two lanes — the durable log a reconnecting client replays from — so they
+   * get one window, one cadence and one leader rather than a second policy that
+   * could drift out of step with this one. A single claim covers both: a
+   * cadence row per table would let one lane's retention run while the other's
+   * did not, for no benefit.
    *
    * Two guards, because they answer different questions (horizontal-scaling
    * invariant 2, audit 2.3). `withSweepLock` answers *who*: the DELETE has no
@@ -355,7 +468,7 @@ export class PgRealtimeTransport {
    * replicas whose timers drift apart, or one that just restarted with a zero
    * here, cannot prune more often than the cadence the cluster agrees on.
    */
-  private async pruneOldRealtimeEvents(): Promise<void> {
+  private async pruneReplayLogs(): Promise<void> {
     const now = Date.now()
     if (now < this.nextPruneProbeAt) {
       return
@@ -388,6 +501,16 @@ export class PgRealtimeTransport {
         'DELETE FROM realtime_events WHERE created_at < now() - make_interval(secs => $1)',
         [REALTIME_EVENT_RETENTION_MS / 1000],
       )
+      // The thread lane, under the same claim, the same window and the same
+      // server clock. It is by far the larger of the two — one row per streamed
+      // token — which is why the migration beside this change gives it the
+      // `created_at` index `realtime_events` does not have: the cadence that
+      // makes a sequential scan acceptable there would not make one acceptable
+      // here.
+      await this.pool.query(
+        'DELETE FROM thread_stream_events WHERE created_at < now() - make_interval(secs => $1)',
+        [REALTIME_EVENT_RETENTION_MS / 1000],
+      )
     })
   }
 
@@ -417,7 +540,7 @@ export class PgRealtimeTransport {
       // Housekeeping must never fail a publish that already committed: the row
       // and its NOTIFY are durable by this point, and retention is not the
       // caller's problem. The next publish past the throttle asks again.
-      await this.pruneOldRealtimeEvents().catch((error: unknown) => {
+      await this.pruneReplayLogs().catch((error: unknown) => {
         console.error('[realtime] retention prune failed', error)
       })
     }
@@ -445,7 +568,7 @@ export class PgRealtimeTransport {
     channelIds: string[]
     organizationId: string
     userId: string
-  }): Promise<RealtimeReplayEvent[]> {
+  }): Promise<RealtimeReplayPage> {
     return listRealtimeEventsAfterCursor(this.pool, input)
   }
 }

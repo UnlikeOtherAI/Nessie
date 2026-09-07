@@ -148,6 +148,29 @@ export const formatUserSseEvent = (event: RealtimeReplayEvent) =>
 export const formatLiveUserSseEvent = (message: WsEventMessage) =>
   `event: ${message.event}\ndata: ${JSON.stringify(message)}\n\n`
 
+/**
+ * The event name a truncated replay is announced under, and the frame itself.
+ *
+ * `MAX_REPLAY_EVENTS` used to cut a long replay off in silence (horizontal-
+ * scaling audit 2.9), which is the worst version of a cap: the client's
+ * `Last-Event-ID` advances to the last row it was sent and it believes it is
+ * caught up, while the events the cap withheld are carried past by every live
+ * event that follows and can never be replayed again (`id > watermark`). The
+ * only recovery is for the client to re-read its state over REST, and it can
+ * only decide to do that if it is told.
+ *
+ * No `id:`, deliberately: this is a signal about the stream, not an event in
+ * it, and writing one would move the very watermark the signal is about. The
+ * name is shared with the admin's handler through
+ * `admin/src/facades/realtime/realtime-gap.ts`, which turns it into that
+ * re-read; an older client that has never heard of it ignores an unknown event
+ * name and is no worse off than it is today.
+ */
+export const REALTIME_GAP_EVENT = 'realtime.gap'
+
+export const formatRealtimeGapEvent = () =>
+  `event: ${REALTIME_GAP_EVENT}\ndata: {"reason":"replay_truncated"}\n\n`
+
 // The last frame a draining replica writes to an SSE stream. `retry:` resets
 // the EventSource reconnection time to 2 s for any native-EventSource client;
 // the admin runs its own fetch-based loop (`admin/src/lib/sse.ts` drops the

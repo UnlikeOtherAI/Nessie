@@ -8,12 +8,11 @@ import {
   type WsEventMessage,
 } from '@nessie/runtime'
 import type { SseEvent, WsScope } from '@nessie/schemas'
+import { createConnectionHydration } from './connection-hydration.js'
 import { createRealtimeDeliveryEntitlements } from './delivery-entitlements.js'
 import {
   createWsNotificationDelivery,
   endSseConnectionForShutdown,
-  formatSseEvent,
-  formatUserSseEvent,
   type AddThreadSseConnectionInput,
   type AddUserSseConnectionInput,
   type SseConnection,
@@ -72,7 +71,23 @@ export const createRealtimeHub = async (input: {
     entitlements: createRealtimeDeliveryEntitlements(input.prisma),
   })
 
-  await transport.listen(deliverNotification)
+  const { hydrateThreadConnection, hydrateUserConnection, resyncRegisteredConnections } =
+    createConnectionHydration({
+      logger: input.logger,
+      threadSseConnections,
+      transport,
+      userSseConnections,
+    })
+
+  // A dropped LISTEN re-listens by itself, which restores future notifications
+  // and nothing else: the connections this replica is already holding are kept
+  // open by keepalives, so no client reconnect fires and nothing goes and
+  // fetches what the gap swallowed (horizontal-scaling audit 2.2). This is the
+  // half that closes it — every registered connection is re-read from its own
+  // watermark as soon as the LISTEN comes back.
+  await transport.listen(deliverNotification, {
+    onListenRecovered: resyncRegisteredConnections,
+  })
 
   const addThreadSseConnection = async (
     request: string | AddThreadSseConnectionInput,
@@ -94,57 +109,10 @@ export const createRealtimeHub = async (input: {
           ? null
           : { organizationId: request.organizationId, userId: request.userId },
     }
-    const threadId = connection.threadId
-
     threadSseConnections.add(connection)
 
     try {
-      const backlog = await transport.listThreadEvents(threadId, connection.lastSequence)
-      for (const event of backlog) {
-        if (event.sequence <= connection.lastSequence) {
-          continue
-        }
-
-        // stream.start, stream.reasoning, stream.thinking.tool, stream.delta and
-        // stream.document.delta are live-only — don't replay from backlog. A
-        // reconnecting client missed the live stream; the final message is already
-        // in the messages table, an in-flight run's thought log is re-fetched over
-        // REST (GET /api/threads/:threadId/thinking) and a composing document over
-        // GET /api/threads/:threadId/document-streams/:sessionId. Replaying live
-        // chunks would show a zombie pending message, orphaned reasoning, or
-        // duplicated document text until the terminator arrives. The document
-        // start/meta/done/error/target events deliberately stay replayable, like
-        // stream.done: a reconnect must still learn a session began or ended.
-        if (
-          event.event === 'stream.start' ||
-          event.event === 'stream.reasoning' ||
-          event.event === 'stream.thinking.tool' ||
-          event.event === 'stream.delta' ||
-          event.event === 'stream.document.delta'
-        ) {
-          connection.lastSequence = event.sequence
-          continue
-        }
-
-        response.write(formatSseEvent({ kind: 'sse', ...event }))
-        connection.lastSequence = event.sequence
-      }
-
-      while (connection.pending.length > 0) {
-        const batch = connection.pending
-        connection.pending = []
-        batch.sort((left, right) => left.sequence - right.sequence)
-
-        for (const notification of batch) {
-          if (notification.sequence <= connection.lastSequence) {
-            continue
-          }
-
-          response.write(formatSseEvent(notification))
-          connection.lastSequence = notification.sequence
-        }
-      }
-      connection.hydrating = false
+      await hydrateThreadConnection(connection)
       return connection
     } catch (error) {
       threadSseConnections.delete(connection)
@@ -172,36 +140,7 @@ export const createRealtimeHub = async (input: {
     userSseConnections.add(connection)
 
     try {
-      const backlog = await transport.listRealtimeEventsAfter({
-        afterEventId: connection.lastEventId,
-        channelIds: [...connection.channelIds],
-        organizationId: connection.organizationId,
-        userId: connection.userId,
-      })
-      for (const event of backlog) {
-        if (event.id <= connection.lastEventId) {
-          continue
-        }
-
-        response.write(formatUserSseEvent(event))
-        connection.lastEventId = event.id
-      }
-
-      while (connection.pending.length > 0) {
-        const batch = connection.pending
-        connection.pending = []
-        batch.sort((left, right) => (left.id < right.id ? -1 : 1))
-
-        for (const event of batch) {
-          if (event.id <= connection.lastEventId) {
-            continue
-          }
-
-          response.write(formatUserSseEvent(event))
-          connection.lastEventId = event.id
-        }
-      }
-      connection.hydrating = false
+      await hydrateUserConnection(connection)
       return connection
     } catch (error) {
       userSseConnections.delete(connection)
