@@ -92,10 +92,21 @@ runDatabaseTest(
         },
       ],
     });
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: { ownerUserId: user.id, visibility: "private" },
+    });
+    await prisma.channel.update({
+      where: { id: channel.id },
+      data: {
+        dmKey: `agent:${organization.id}:${user.id}:${agent.id}`,
+        type: "dm",
+        visibility: "private",
+      },
+    });
     await prisma.channelMember.createMany({
       data: [
         { channelId: channel.id, userId: user.id },
-        { channelId: channel.id, userId: stranger.id },
       ],
     });
     const message = await prisma.message.create({

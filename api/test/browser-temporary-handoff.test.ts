@@ -327,6 +327,7 @@ runDatabaseTest('an expired temporary login card cancels only its waiting run an
       expiresAt: new Date(Date.now() - 1_000),
       messageId: ordinaryMessage.id,
       organizationId: fixture.organizationId,
+      runId: fixture.runId,
       spec: {
         actions: [{ key: 'done', label: 'Done', style: 'primary', submits: true }],
         blocks: [{ markdown: 'Ordinary expiry.', type: 'text' }],
@@ -369,14 +370,14 @@ runDatabaseTest('an expired temporary login card cancels only its waiting run an
       where: { id: fixture.runId }, select: { status: true },
     }),
     fixture.prisma.cloudBrowserSession.findUniqueOrThrow({
-      where: { id: fixture.sessionId }, select: { status: true },
+      where: { id: fixture.sessionId }, select: { browserbaseSessionId: true, status: true },
     }),
   ])
   assert.equal(card.status, 'expired')
   assert.equal(grant.status, 'expired')
   assert.equal(run.status, 'cancelled')
   assert.equal(session.status, 'released')
-  assert.deepEqual(released, [fixture.sessionId])
+  assert.deepEqual(released, [session.browserbaseSessionId])
   assert.equal(
     (await fixture.prisma.agentCard.findUniqueOrThrow({
       where: { id: ordinaryCard.id }, select: { status: true },
