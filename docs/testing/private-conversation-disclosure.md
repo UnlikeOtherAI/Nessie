@@ -46,6 +46,14 @@ inspected read routes. B's explicit private request then creates the same exact
 message-and-channel grant automatically, without a redundant UI click or a
 standing grant.
 
+The evaluation also has B use the rendered private composer to make the shared
+agent edit the already approved group reply. The edit revokes the prior grant;
+C's open transcript, thread API response, SSE frames, and activity WebSocket
+frames do not expose the revised private body. A stale approval that carries
+the former `expectedContent` receives a conflict. B then shares the current
+rendered body through the same control, which sends its exact `expectedContent`
+and makes that new body visible to C.
+
 The mock proves the full pipeline's routing, provenance, authorization and UI
 effects. It does not demonstrate that a live model understands Czech or slang;
 a live-provider eval is required for that claim.
