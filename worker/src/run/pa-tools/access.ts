@@ -40,7 +40,7 @@ export const effectiveUserIdOfActor = (actorContext: {
   ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null)
 
 export const resolveEffectiveUserId = (
-  context: BuiltinToolRuntimeContext,
+  context: Pick<BuiltinToolRuntimeContext, 'actorContext'>,
 ): string | null => effectiveUserIdOfActor(context.actorContext)
 
 // The personal assistant is a delegate of its owner: it acts as that user and,
