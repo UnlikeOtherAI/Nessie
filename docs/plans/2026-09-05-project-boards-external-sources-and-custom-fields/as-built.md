@@ -20,8 +20,9 @@ fact. Read this before treating any section above as a description of the code.
   team after the source was attached, without a second provider call. An
   external user that already has a link row is never re-matched, so a person's
   choice — including a deliberate *Not linked* — survives every sync. The
-  duplicate-tolerant insert reloads the durable row before projection, so a
-  People-table save that wins a concurrent sync's insert keeps that promise.
+  duplicate-tolerant insert reloads the durable row before projection, so an
+  existing People-table choice that makes that insert a duplicate keeps that
+  promise.
 - **A mapping reaches the items already mirrored.** §5.8 did not say what
   happens to the cards that were synced before a link existed, and the answer
   was "nothing until somebody upstream touches them", because an unchanged item

@@ -82,8 +82,8 @@ export const loadIdentityLinks = async (
  * comparison: a wrong match assigns somebody else's work to a real person.
  *
  * Returns the durable links that resolved the candidates, already re-projected
- * onto tasks mirrored before the match existed. A concurrent manual decision
- * wins over the candidate this invocation calculated.
+ * onto tasks mirrored before the match existed. If the insert finds an existing
+ * manual row, that durable row wins over this invocation's candidate.
  */
 export const autoMatchIdentitiesByEmail = async (
   prisma: PrismaClient,
