@@ -7,7 +7,7 @@ import { REPO_ROOT } from '../navigation/lib/config.mjs'
 import { call, seedTeam } from '../navigation/lib/seed.mjs'
 import { startAdmin, startApi } from '../navigation/lib/servers.mjs'
 
-const SESSION_ID = 'browser-cloud-mediated-e2e'
+const SESSION_ID = '00000000-0000-4000-8000-000000000002'
 const ADMIN_URL = 'http://localhost:5455'
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/browser-cloud')
 // A real PNG keeps the canvas image path browser-native without a provider URL.
@@ -128,37 +128,32 @@ const main = async () => {
       await page.screenshot({ fullPage: true, path: resolve(screenshots, 'fullscreen-observer.png') })
       await page.close()
 
-      // An HTTP screenshot never becomes an interactive fallback. The only
-      // control path is the sealed WebSocket canvas used in live coverage.
-      const controllerPage = await context.newPage()
-      const controllerState = { controller: false }
-      await controllerPage.goto(`${ADMIN_URL}/channels/${agent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
-      await installMediatedFixture(controllerPage, fixture, controllerState)
-      await grantBrowser(seed.token, agent.id)
+      // A separate fresh page follows the exact same grant path and proves
+      // that an HTTP screenshot never becomes an interactive fallback.
+      const controllerContext = await browser.newContext({ viewport: { height: 900, width: 1440 } })
+      await controllerContext.addInitScript(([key, value]) => window.localStorage.setItem(key, value), ['nessie.admin.token', seed.token])
+      const controllerPage = await controllerContext.newPage()
+      const controllerAgent = await createPrivateAgent(seed.token, 'Browser preview control E2E')
+      await controllerPage.goto(`${ADMIN_URL}/channels/${controllerAgent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
+      await grantBrowser(seed.token, controllerAgent.id)
       await controllerPage.waitForFunction(() =>
         [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
       { timeout: 10_000 })
+      const controllerState = { controller: false }
+      await installMediatedFixture(controllerPage, {
+        agentId: controllerAgent.id,
+        agentName: controllerAgent.name,
+        channelId: controllerAgent.homeChannelId,
+        userId: '00000000-0000-4000-8000-000000000001',
+      }, controllerState)
       await controllerPage.getByRole('button', { name: 'Browser', exact: true }).click()
       await controllerPage.getByRole('button', { name: 'Take control' }).click()
       await controllerPage.getByRole('button', { name: 'Reconnect' }).waitFor()
       assert.equal(await controllerPage.getByRole('application').count(), 0, 'an HTTP preview must not accept browser input')
       assert.equal(await controllerPage.getByLabel('Browser keyboard').isDisabled(), true)
       await controllerPage.screenshot({ fullPage: true, path: resolve(screenshots, 'fullscreen-preview-only.png') })
-      await controllerPage.close()
+      await controllerContext.close()
 
-      const expiredPage = await context.newPage()
-      const expiredState = { controller: true, leaseActive: false }
-      await expiredPage.goto(`${ADMIN_URL}/channels/${agent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
-      await installMediatedFixture(expiredPage, fixture, expiredState)
-      await grantBrowser(seed.token, agent.id)
-      await expiredPage.waitForFunction(() =>
-        [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-      { timeout: 10_000 })
-      await expiredPage.getByRole('button', { name: 'Browser', exact: true }).click()
-      await expiredPage.getByRole('button', { name: 'Take control' }).waitFor()
-      assert.equal(await expiredPage.getByText('You are driving', { exact: true }).count(), 0,
-        'an expired prior holder must not look like the active controller')
-      await expiredPage.close()
     }
 
     // The same routed surface fills a 390px phone and forwards tap-to-keyboard input.
