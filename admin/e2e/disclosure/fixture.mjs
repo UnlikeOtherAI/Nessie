@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 
 export const SECRET = 'Kestrel closes on Friday.'
 export const SHARED_SUMMARY = 'Project Kestrel will close this Friday.'
+export const REVISED_PRIVATE_BODY = 'Kestrel closes next Tuesday.'
 
 export const seedFixture = async (pipeline, seedScope, groupId) => {
   const scope = await seedScope(pipeline.prisma, 'disclosure-browser')
@@ -123,7 +124,7 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
         projectId: scope.projectId,
         teamId: scope.teamId,
         systemManaged: false,
-        toolPolicy: { message_search: true, send_message: true },
+        toolPolicy: { message_edit: true, message_search: true, send_message: true },
         visibility: 'team',
       },
     }),
@@ -149,6 +150,16 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
         handlerKind: 'builtin', label: 'Message Search', organizationId: scope.organizationId,
         overview: 'Search messages in channels visible to the acting person.', safe: true,
         scopeKey: 'builtin', toolId: 'message_search',
+      },
+      update: { builtin: true, enabled: true },
+    }),
+    prisma.toolRegistryEntry.upsert({
+      where: { organizationId_scopeKey_toolId: { organizationId: scope.organizationId, scopeKey: 'builtin', toolId: 'message_edit' } },
+      create: {
+        builtin: true, description: 'Edit a message previously authored by this agent.', enabled: true,
+        handlerKind: 'builtin', label: 'Message Edit', organizationId: scope.organizationId,
+        overview: 'Edit a message previously authored by this agent.', safe: false,
+        scopeKey: 'builtin', toolId: 'message_edit',
       },
       update: { builtin: true, enabled: true },
     }),
