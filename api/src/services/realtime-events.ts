@@ -7,12 +7,14 @@ type ChannelRealtimeScopeInput = {
   channelId: string
   organizationId: string
   systemChannelType: string | null
+  visibility?: string
 }
 
 type BuildChannelRealtimeScopes = (input: {
   channelId: string
   organizationId: string
   systemChannelType?: string | null
+  visibility?: string
 }) => WsScope[]
 
 export const buildUserChannelRealtimeScopes = (
@@ -27,6 +29,7 @@ export const buildUserChannelRealtimeScopes = (
       channelId: channel.channelId,
       organizationId: channel.organizationId,
       systemChannelType: channel.systemChannelType,
+      visibility: channel.visibility,
     })) {
       if (scope.kind !== 'channel') {
         continue
@@ -67,6 +70,7 @@ export const resolveUserChannelRealtimeScopes = async (
           id: true,
           organizationId: true,
           systemChannelType: true,
+          visibility: true,
         },
       },
     },
@@ -86,7 +90,9 @@ export const resolveUserChannelRealtimeScopes = async (
     select: {
       rootMessage: {
         select: {
-          thread: { select: { channel: { select: { id: true, organizationId: true, systemChannelType: true } } } },
+          thread: { select: { channel: { select: {
+            id: true, organizationId: true, systemChannelType: true, visibility: true,
+          } } } },
         },
       },
     },
@@ -105,11 +111,13 @@ export const resolveUserChannelRealtimeScopes = async (
       channelId: membership.channel.id,
       organizationId: membership.channel.organizationId,
       systemChannelType: membership.channel.systemChannelType,
+      visibility: membership.channel.visibility,
       })),
       ...followedPublicRoots.map((follow) => ({
         channelId: follow.rootMessage.thread.channel.id,
         organizationId: follow.rootMessage.thread.channel.organizationId,
         systemChannelType: follow.rootMessage.thread.channel.systemChannelType,
+        visibility: follow.rootMessage.thread.channel.visibility,
       })),
       ],
       input.buildChannelRealtimeScopes,

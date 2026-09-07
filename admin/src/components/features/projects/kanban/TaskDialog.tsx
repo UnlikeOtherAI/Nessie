@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import type { AgentVisibility } from '@nessie/schemas'
 import { Notice } from '../../../primitives/Notice'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../../../shared/AssigneePicker'
@@ -99,6 +100,7 @@ export const TaskDialog = ({
   iterationId,
 }: TaskDialogProps) => {
   const isEdit = Boolean(task)
+  const location = useLocation()
   const { data: projects = [] } = useProjects()
   const { data: assignees = [] } = useTaskAssignees()
   const { data: agents = [] } = useAgents()
@@ -120,6 +122,11 @@ export const TaskDialog = ({
     'taskTab',
     TASK_DIALOG_TABS,
     'details',
+  )
+  const resetDialogTabRef = useRef(setDialogTab)
+  resetDialogTabRef.current = setDialogTab
+  const hasExplicitTaskTab = TASK_DIALOG_TABS.some(
+    (tab) => tab === new URLSearchParams(location.search).get('taskTab'),
   )
 
   // The task as it stands on the server (blank for a new one) — the draft's
@@ -196,8 +203,8 @@ export const TaskDialog = ({
   useEffect(() => {
     if (!open) return
     setError(null)
-    setDialogTab('details')
-  }, [open, setDialogTab, task?.id])
+    if (!hasExplicitTaskTab) resetDialogTabRef.current('details')
+  }, [hasExplicitTaskTab, open, task?.id])
 
   const pending =
     createTask.isPending

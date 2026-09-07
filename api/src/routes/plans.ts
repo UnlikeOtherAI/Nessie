@@ -30,14 +30,19 @@ export const registerPlanRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     const query = request.query as { agentId?: string; status?: string }
-    const plans = await listPlans(prisma, actorContext.tenant.organizationId, {
-      agentId: query.agentId,
-      status:
-        query.status &&
-        ['draft', 'active', 'waiting', 'completed', 'failed', 'cancelled'].includes(query.status)
-          ? (query.status as 'active' | 'cancelled' | 'completed' | 'draft' | 'failed' | 'waiting')
-          : undefined,
-    })
+    const plans = await listPlans(
+      prisma,
+      actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
+      {
+        agentId: query.agentId,
+        status:
+          query.status &&
+          ['draft', 'active', 'waiting', 'completed', 'failed', 'cancelled'].includes(query.status)
+            ? (query.status as 'active' | 'cancelled' | 'completed' | 'draft' | 'failed' | 'waiting')
+            : undefined,
+      },
+    )
     return createApiResponse(PlanRecordSchema.array().parse(plans))
   })
 
@@ -69,7 +74,12 @@ export const registerPlanRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     const { planId } = request.params as { planId: string }
-    const plan = await getPlan(prisma, actorContext.tenant.organizationId, planId)
+    const plan = await getPlan(
+      prisma,
+      actorContext.tenant.organizationId,
+      planId,
+      actorContext.actor.actorId,
+    )
     if (!plan) {
       sendApiError(reply, 404, 'PLAN_NOT_FOUND', 'Plan not found')
       return reply

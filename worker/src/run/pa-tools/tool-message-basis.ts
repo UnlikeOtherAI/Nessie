@@ -1,9 +1,20 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { computeReplyBasis, type BasisScope } from '../execute/disclosure-basis.js'
+import { persistablePrivateConversationSources } from '../execute/private-conversation-source-storage.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 type Tx = Prisma.TransactionClient | PrismaClient
+
+/** Delegation turns model-authored content into another run's prompt. */
+export const requireConsumedSources = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+): NonNullable<BuiltinToolRuntimeContext['consumedSources']> => {
+  if (!context.consumedSources) {
+    throw new Error('Cannot delegate content without a disclosure provenance sink.')
+  }
+  return context.consumedSources
+}
 
 /**
  * Disclosure stamping for messages a *tool* writes.
@@ -80,6 +91,26 @@ export const insertMessageBasis = async (
       organizationId: input.organizationId,
       scopeId: scope.scopeId,
       scopeType: scope.scopeType,
+    })),
+    skipDuplicates: true,
+  })
+}
+
+/** Preserve private-conversation authors when a tool posts into another room. */
+export const insertPrivateConversationSources = async (
+  tx: Tx,
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  input: { messageId: string; organizationId: string },
+): Promise<void> => {
+  const sources = context.consumedSources?.privateConversationSources() ?? []
+  const persistedSources = await persistablePrivateConversationSources(tx, sources)
+  if (persistedSources.length === 0) return
+  await tx.messageDisclosureSource.createMany({
+    data: persistedSources.map((source) => ({
+      messageId: input.messageId,
+      organizationId: input.organizationId,
+      sourceAuthorUserId: source.sourceAuthorUserId,
+      sourceChannelId: source.sourceChannelId,
     })),
     skipDuplicates: true,
   })

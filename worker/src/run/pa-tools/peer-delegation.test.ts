@@ -14,7 +14,14 @@ const context = (overrides: Partial<BuiltinToolRuntimeContext> = {}): BuiltinToo
   agentId: '00000000-0000-4000-8000-000000000005', agentKind: 'shared',
   actorContext: { actor: { actorId: parseUserId(ID), actorType: 'user' }, actionContext: { requestId: 'test' }, tenant: { organizationId: parseOrganizationId('00000000-0000-4000-8000-000000000006') } },
   channel: { id: CHANNEL, organizationId: parseOrganizationId('00000000-0000-4000-8000-000000000006'), projectId: PROJECT },
-  consumedSources: { add: () => undefined, addAll: () => undefined, list: () => [], size: () => 0 },
+  consumedSources: {
+    add: () => undefined,
+    addAll: () => undefined,
+    addPrivateConversationSource: () => undefined,
+    list: () => [],
+    privateConversationSources: () => [],
+    size: () => 0,
+  },
   ledgerIdentity: null, prisma: {} as BuiltinToolRuntimeContext['prisma'], realtimeTransport: {} as BuiltinToolRuntimeContext['realtimeTransport'],
   run: { id: '00000000-0000-4000-8000-000000000007', interactive: true, messageId: ID, threadId: '00000000-0000-4000-8000-000000000008' }, toolCallId: 'call-1',
   ...overrides,
@@ -41,16 +48,29 @@ test('peer delegation refuses a fifth hop before it can write a mailbox item', a
   await assert.rejects(() => runAgentPeerDelegateTool(exhausted, { agentId: PEER, brief: 'review' }), /bounded peer-delegation limit/)
 })
 
-test('peer delegation persists a restricted source basis for the target run', async () => {
+test('peer delegation preserves known and unknown private-source authors for the target run', async () => {
   const basis = [{ scopeId: PEER, scopeType: 'agent' }]
+  const disclosureSources = [
+    { sourceAuthorUserId: ID, sourceChannelId: CHANNEL },
+    { sourceAuthorUserId: null, sourceChannelId: CHANNEL },
+  ]
   let storedBasis: unknown = null
+  let storedSources: unknown = null
   const restricted = context({
-    consumedSources: { add: () => undefined, addAll: () => undefined, list: () => basis, size: () => 1 },
+    consumedSources: {
+      add: () => undefined,
+      addAll: () => undefined,
+      addPrivateConversationSource: () => undefined,
+      list: () => basis,
+      privateConversationSources: () => disclosureSources,
+      size: () => 1,
+    },
     prisma: {
       agent: { findFirst: async () => ({ id: PEER, name: 'Coordinator' }) },
       agentBinding: { count: async () => 1 },
-      agentMailboxMessage: { create: async ({ data }: { data: { basis: unknown } }) => {
+      agentMailboxMessage: { create: async ({ data }: { data: { basis: unknown; disclosureSources: unknown } }) => {
         storedBasis = data.basis
+        storedSources = data.disclosureSources
         return { id: ID }
       } },
       organizationMember: { findUnique: async () => ({ deactivatedAt: null, role: 'owner' }) },
@@ -59,6 +79,7 @@ test('peer delegation persists a restricted source basis for the target run', as
   })
   await runAgentPeerDelegateTool(restricted, { agentId: PEER, brief: 'review' })
   assert.deepEqual(storedBasis, basis)
+  assert.deepEqual(storedSources, disclosureSources)
 })
 
 test('peer delegation refuses an agent after its source binding is removed', async () => {

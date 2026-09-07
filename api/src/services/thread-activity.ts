@@ -13,6 +13,7 @@ const MAX_LIMIT = 200
 const activityMessageInclude = {
   user: { select: { id: true, displayName: true, avatarUrl: true, avatarAttachmentId: true } },
   basisScopes: { select: { scopeType: true, scopeId: true } },
+  disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
 } satisfies Prisma.MessageInclude
 
 type ActivityMessage = Prisma.MessageGetPayload<{ include: typeof activityMessageInclude }>

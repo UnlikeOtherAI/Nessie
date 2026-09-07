@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
-import { publishMessageEnvelope, type PgRealtimeTransport } from '@nessie/runtime'
+import { type PgRealtimeTransport } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -18,7 +18,11 @@ import { markDelegationStepQueued } from '../run/plans.js'
 import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
-import { BasisScopeSchema } from '../run/execute/disclosure-basis.js'
+import {
+  BasisScopeSchema,
+  PrivateConversationSourceSchema,
+} from '../run/execute/disclosure-basis.js'
+import { persistablePrivateConversationSources } from '../run/execute/private-conversation-source-storage.js'
 
 const CLAIM_TIMEOUT_MS = 60_000
 
@@ -27,6 +31,7 @@ type ClaimedMailboxMessage = {
   actorType: string | null
   attempts: number
   basis: unknown
+  disclosureSources: unknown
   body: string
   channelId: string | null
   claimedAt: Date
@@ -126,6 +131,7 @@ const claimNextMailboxMessage = async (
         amm."body" AS "body",
         amm."attempts" AS "attempts",
         amm."basis" AS "basis",
+        amm."disclosure_sources" AS "disclosureSources",
         amm."channel_id" AS "channelId",
         amm."claimed_at" AS "claimedAt",
         amm."correlation_id" AS "correlationId",
@@ -273,10 +279,16 @@ export const dispatchNextMailboxMessage = async (
     const basis = message.peerDelegationDepth === null
       ? []
       : BasisScopeSchema.array().parse(message.basis)
+    const disclosureSources = message.peerDelegationDepth === null
+      ? []
+      : PrivateConversationSourceSchema.array().parse(message.disclosureSources)
     const promptMessage = await tx.message.create({
       data: {
         content: message.body,
-        role: 'user',
+        // Peer mail is automation. It becomes a hidden trigger rather than a
+        // human-visible message, because its brief can carry restricted source
+        // material into the target run.
+        role: 'system',
         threadId: targetThreadId,
       },
       select: { id: true },
@@ -288,6 +300,18 @@ export const dispatchNextMailboxMessage = async (
           organizationId: message.organizationId,
           scopeId: scope.scopeId,
           scopeType: scope.scopeType,
+        })),
+        skipDuplicates: true,
+      })
+    }
+    const persistedSources = await persistablePrivateConversationSources(tx, disclosureSources)
+    if (persistedSources.length > 0) {
+      await tx.messageDisclosureSource.createMany({
+        data: persistedSources.map((source) => ({
+          messageId: promptMessage.id,
+          organizationId: message.organizationId,
+          sourceAuthorUserId: source.sourceAuthorUserId,
+          sourceChannelId: source.sourceChannelId,
         })),
         skipDuplicates: true,
       })
@@ -437,25 +461,6 @@ export const dispatchNextMailboxMessage = async (
   if (!publishPayload) {
     return true
   }
-
-  await publishMessageEnvelope(
-    realtimeTransport,
-    buildScopes({
-      agentId: message.toAgentId,
-      channelId: thread.channelId,
-      organizationId: message.organizationId,
-    }),
-    {
-      channelId: thread.channelId,
-      message: {
-        agentId: message.toAgentId,
-        content: message.body,
-        id: publishPayload.messageId,
-        role: 'user',
-      },
-      threadId: targetThreadId,
-    },
-  )
 
   if (publishPayload.spawned) {
     await realtimeTransport.publishWs(publishPayload.spawned.scopes, {

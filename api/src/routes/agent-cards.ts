@@ -381,6 +381,7 @@ export const registerAgentCardRoutes = (
       channelId: card.channelId,
       organizationId,
       systemChannelType: card.channel.systemChannelType,
+      visibility: card.channel.visibility,
     })
 
     for (const [key, value] of Object.entries(outcome.secretOutcomes)) {
@@ -450,6 +451,7 @@ export const registerAgentCardRoutes = (
         id: card.channelId,
         organizationId,
         systemChannelType: card.channel.systemChannelType,
+        visibility: card.channel.visibility,
       },
       message: {
         content,

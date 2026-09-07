@@ -63,6 +63,15 @@ test('message.reply accepts the content-free restricted shape', () => {
   assert.equal(parsed.success, true, 'a restricted reply must publish, not throw')
 })
 
+test('agent.tool.start accepts the content-free restricted shape', () => {
+  const parsed = WsEventSchema.safeParse(wsEnvelope('agent.tool.start', {
+    agentId: AGENT_ID,
+    restricted: true,
+    runId: RUN_ID,
+  }))
+  assert.equal(parsed.success, true, 'a restricted tool start must publish, not throw')
+})
+
 test('the restricted marker survives parsing rather than being stripped', () => {
   // zod strips undeclared keys, so an undeclared marker reaches no client and
   // the terminator reads as an ordinary empty-content completion.

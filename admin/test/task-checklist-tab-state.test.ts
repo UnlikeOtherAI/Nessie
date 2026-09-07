@@ -6,14 +6,6 @@ import { fileURLToPath } from 'node:url'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
 
-test('opening the same task after a realtime refresh keeps its selected dialog tab', () => {
-  const dialog = readSource('../src/components/features/projects/kanban/TaskDialog.tsx')
-
-  assert.match(dialog, /useTabParam\(\n    'taskTab'/)
-  assert.match(dialog, /\}, \[open, setDialogTab, task\?\.id\]\)/)
-  assert.doesNotMatch(dialog, /\}, \[open, task\]\)/)
-})
-
 test('checklist result drafts are scoped to a task and yield to a saved result', () => {
   const checklist = readSource('../src/components/features/projects/kanban/TaskChecklistTab.tsx')
 

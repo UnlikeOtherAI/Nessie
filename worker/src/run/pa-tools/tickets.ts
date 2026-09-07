@@ -12,6 +12,7 @@ import {
   transitionProjectTask,
   updateProjectTask,
 } from '@nessie/team-admin'
+import { canUserReadRunDerivedRecord } from '@nessie/runtime'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -67,9 +68,20 @@ export const runTicketListTool = async (
     projectId: args.projectId,
     status: args.status,
   })
+  const readableTickets = await Promise.all(tickets.map(async (ticket) => ({
+    readable: await canUserReadRunDerivedRecord(context.prisma, {
+      organizationId: member.organizationId,
+      runId: ticket.runId ?? null,
+      userId: member.userId,
+    }),
+    ticket,
+  })))
   recordProjectRead(context, member, args.projectId)
-  const output = tickets.length
-    ? `Tickets (${tickets.length})\n${tickets.map(ticketLine).join('\n')}`
+  const visibleTickets = readableTickets
+    .filter(({ readable }) => readable)
+    .map(({ ticket }) => ticket)
+  const output = visibleTickets.length
+    ? `Tickets (${visibleTickets.length})\n${visibleTickets.map(ticketLine).join('\n')}`
     : 'No tickets in this project.'
   return result('ticket_list', `projectId=${args.projectId}`, output)
 }

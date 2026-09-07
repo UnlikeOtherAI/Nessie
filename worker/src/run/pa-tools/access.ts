@@ -40,7 +40,7 @@ export const effectiveUserIdOfActor = (actorContext: {
   ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null)
 
 export const resolveEffectiveUserId = (
-  context: BuiltinToolRuntimeContext,
+  context: Pick<BuiltinToolRuntimeContext, 'actorContext'>,
 ): string | null => effectiveUserIdOfActor(context.actorContext)
 
 // The personal assistant is a delegate of its owner: it acts as that user and,
@@ -63,7 +63,7 @@ export const isDelegatingPersonalAssistant = (
 // delegated owner for the personal assistant's runs. Throws when neither exists
 // (a non-delegating agent has no user to act as).
 export const requireActingUserId = (
-  context: BuiltinToolRuntimeContext,
+  context: Pick<BuiltinToolRuntimeContext, 'actorContext'>,
 ): string => {
   const userId = resolveEffectiveUserId(context)
   if (!userId) {

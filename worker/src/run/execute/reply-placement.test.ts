@@ -51,6 +51,7 @@ const makeContext = (replyRootMessageId?: string): RunContext => ({
     projectId: '00000000-0000-0000-0000-000000000066',
     teamId: TEAM_ID,
     systemChannelType: null,
+    visibility: 'public',
   },
   consumedSources: createConsumedSourceSink(),
   run: {

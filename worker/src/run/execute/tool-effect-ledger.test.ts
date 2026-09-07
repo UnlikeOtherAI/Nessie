@@ -9,6 +9,7 @@ import type { McpToolEntry } from '../mcp-toolset.js'
 import { runSpawnSubtaskTool } from '../subtask-tools.js'
 import type { ExecutedToolResult } from '../tool-batch.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 import {
   createToolEffectLedger,
   externalDispatchPredicate,
@@ -489,6 +490,14 @@ const createSubtaskWorld = () => {
         return row
       },
     },
+    // Delegated work has its own durable, hidden trigger message. Keep the
+    // fake's transaction surface aligned with the real writer even though this
+    // ledger fixture consumes no restricted source to stamp.
+    message: {
+      create: async () => ({ id: randomUUID() }),
+    },
+    messageBasisScope: { createMany: async () => ({ count: 0 }) },
+    messageDisclosureSource: { createMany: async () => ({ count: 0 }) },
     run: {
       create: async () => {
         const row = { id: randomUUID(), threadId: SUBTASK_FIXTURE.threadId }
@@ -541,6 +550,7 @@ const createSubtaskWorld = () => {
       id: SUBTASK_FIXTURE.channelId,
       organizationId: SUBTASK_FIXTURE.organizationId,
     },
+    consumedSources: createConsumedSourceSink(),
     prisma,
     realtimeTransport: { publishWs: async () => undefined },
     run: {
