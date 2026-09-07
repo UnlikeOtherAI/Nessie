@@ -18,10 +18,10 @@ const PERSONAL_SECRET = { id: 'secret-2', scopeType: 'personal' as const, scopeI
  * asserting the routes wire it in.
  */
 
-test('canManageSecret: an organization owner may manage any scope', async () => {
+test('canManageSecret: an organization owner may manage a shared scope, never a personal one', async () => {
   const prisma = { secretGrant: { findFirst: async () => null } }
   assert.equal(await canManageSecret(OWNER_ACTOR, ORG_SECRET, 'manage', prisma), true)
-  assert.equal(await canManageSecret(OWNER_ACTOR, PERSONAL_SECRET, 'delegate', prisma), true)
+  assert.equal(await canManageSecret(OWNER_ACTOR, PERSONAL_SECRET, 'delegate', prisma), false)
 })
 
 test('canManageSecret: the personal-scope owner may manage their own secret without a grant', async () => {
@@ -52,4 +52,76 @@ test('canManageSecret: an explicit grant for the exact permission is honored', a
   }
   assert.equal(await canManageSecret(MEMBER_ACTOR, ORG_SECRET, 'delegate', prisma), true)
   assert.equal(queriedPermission, 'delegate')
+})
+
+test('canManageSecret: a valid explicit user grant can delegate another personal secret', async () => {
+  const prisma = { secretGrant: { findFirst: async () => ({ id: 'grant-1' }) } }
+  assert.equal(await canManageSecret(OWNER_ACTOR, PERSONAL_SECRET, 'delegate', prisma), true)
+})
+
+test('secretsVisibleToActor: an organization owner cannot list another person’s metadata', async () => {
+  const { secretsVisibleToActor } = await import('../src/services/secret-vault-write.js')
+  let where: unknown
+  const prisma = {
+    secret: {
+      findMany: async (input: { where: unknown }) => {
+        where = input.where
+        return []
+      },
+    },
+  }
+
+  await secretsVisibleToActor({
+    actorId: 'owner-1',
+    isOwner: true,
+    organizationId: 'org-1',
+    prisma: prisma as never,
+  })
+
+  const ownerWhere = where as {
+    OR: Array<{ scopeId?: string; scopeType?: unknown; grants?: { some: unknown } }>
+    organizationId: string
+  }
+  assert.equal(ownerWhere.organizationId, 'org-1')
+  assert.deepEqual(ownerWhere.OR[0], { scopeType: { not: 'personal' } })
+  assert.deepEqual(ownerWhere.OR[1], { scopeType: 'personal', scopeId: 'owner-1' })
+  const delegated = ownerWhere.OR[2]?.grants?.some as {
+    OR: Array<{ expiresAt: null } | { expiresAt: { gt: Date } }>
+    permissions: { hasSome: string[] }
+    principalId: string
+    principalType: string
+  }
+  assert.equal(delegated.principalType, 'user')
+  assert.equal(delegated.principalId, 'owner-1')
+  assert.deepEqual(delegated.permissions.hasSome, ['manage', 'delegate'])
+  assert.ok(delegated.OR[1] && 'expiresAt' in delegated.OR[1])
+  assert.ok((delegated.OR[1] as { expiresAt: { gt: unknown } }).expiresAt.gt instanceof Date)
+})
+
+test('secretsVisibleToActor: a personal use or reveal grant alone does not list metadata', async () => {
+  const { secretsVisibleToActor } = await import('../src/services/secret-vault-write.js')
+  let where: { OR?: unknown[] } | undefined
+  const prisma = {
+    projectMember: { findMany: async () => [] },
+    secret: {
+      findMany: async (input: { where: { OR?: unknown[] } }) => {
+        where = input.where
+        return []
+      },
+    },
+    teamMember: { findMany: async () => [] },
+  }
+
+  await secretsVisibleToActor({
+    actorId: 'member-1',
+    isOwner: false,
+    organizationId: 'org-1',
+    prisma: prisma as never,
+  })
+
+  const personalGrant = where?.OR?.find((candidate) =>
+    (candidate as { scopeType?: string }).scopeType === 'personal'
+    && 'grants' in (candidate as object),
+  ) as { grants: { some: { permissions: { hasSome: string[] } } } } | undefined
+  assert.deepEqual(personalGrant?.grants.some.permissions.hasSome, ['manage', 'delegate'])
 })

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import type { AgentRecord } from '../../../lib/api-client'
 import { ApiClientError } from '@nessie/client-core'
@@ -7,6 +8,7 @@ import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
 import { FormError } from '../../shared/FormActions'
 import { AgentBrowserPanel } from './AgentBrowserPanel'
+import { ChromeCookieImportDialog } from './ChromeCookieImportDialog'
 
 type BrowserLastStateProps = {
   agent: AgentRecord
@@ -41,21 +43,48 @@ const formatWhen = (iso: string): string =>
  * The 409 and the 403 are the two ordinary refusals, and the server's own
  * sentences for the rest are written for whoever asked — a person here.
  */
-const describeResumeError = (error: unknown): string | null => {
+type ResumeRecovery = {
+  action?: string
+  href?: string
+  message: string
+}
+
+const describeResumeError = (error: unknown): ResumeRecovery | null => {
   if (!error) return null
   if (error instanceof ApiClientError) {
+    const recovery = error.details as { recovery?: { href?: unknown; label?: unknown; message?: unknown } } | undefined
+    const serverRecovery = recovery?.recovery
+    if (serverRecovery && typeof serverRecovery.href === 'string' && typeof serverRecovery.label === 'string') {
+      return { action: serverRecovery.label, href: serverRecovery.href, message: error.message }
+    }
+    if (serverRecovery && typeof serverRecovery.message === 'string') {
+      return { message: serverRecovery.message }
+    }
+    if (error.code === 'CLOUD_BROWSER_NO_CONNECTION') {
+      return {
+        message: 'This agent needs a Browserbase connection before its browser can open.',
+      }
+    }
+    if (error.code === 'CLOUD_BROWSER_AUTH_FAILED') {
+      return {
+        message: 'The Browserbase connection needs to be reconnected before this browser can open.',
+      }
+    }
     if (error.code === 'CLOUD_BROWSER_SESSION_ALREADY_OPEN') {
-      return 'This agent is using its browser right now. Wait for it to finish, then try again.'
+      return { message: 'This agent is using its browser right now. Wait for it to finish, then try again.' }
     }
     if (error.code === 'CLOUD_BROWSER_CAPACITY') {
-      return 'All of this team’s browsers are in use. Close one and try again.'
+      return { message: 'All of this team’s browsers are in use. Close one and try again.' }
     }
     if (error.code === 'AGENT_BROWSER_SIGNED_IN_BY_OTHERS') {
-      return 'This browser is signed in by someone else, so only they can open it.'
+      return { message: 'This browser is signed in by someone else, so only they can open it.' }
     }
-    if (error.message) return error.message
+    if (error.code === 'CLOUD_BROWSER_UNREACHABLE') {
+      return { action: 'Try again', message: 'Browserbase could not be reached. Try opening the browser again.' }
+    }
+    if (error.message) return { message: error.message }
   }
-  return 'Couldn’t open the browser.'
+  return { message: 'Couldn’t open the browser.' }
 }
 
 /**
@@ -98,17 +127,19 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
   const resume = useResumeAgentBrowser(threadId, agent.id)
   const rows = tabs.data?.tabs ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   // Follow the first tab until the reader picks one, and never point at a tab
   // a fresh capture has since removed.
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null
 
   const busy = resume.isPending || opening
-  const canOpen = threadId !== null && !busy
+  const quarantined = tabs.data?.quarantined === true
+  const canOpen = threadId !== null && !busy && !quarantined
   const start = () => {
     if (!canOpen) return
     resume.mutate(undefined, { onSuccess: (result) => onResumed(result.sessionId) })
   }
-  const resumeError = describeResumeError(resume.error)
+  const recovery = describeResumeError(resume.error)
   const seen = selected?.capturedAt ? `Seen ${formatWhen(selected.capturedAt)}` : null
   const instruction = busy
     ? 'Opening…'
@@ -131,6 +162,13 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
         </button>
       </div>
 
+      {quarantined ? (
+        <FormError className="mx-3 mb-2">
+          This shared browser may contain a personal sign-in, so its pages stay private.
+          Reset it below before opening a browser for this agent.
+        </FormError>
+      ) : null}
+
       {rows.length > 1 ? (
         <div className="flex-shrink-0 px-3 pb-2">
           <TabBar
@@ -147,7 +185,25 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
         </div>
       ) : null}
 
-      {resumeError ? <FormError className="mx-3 mb-2">{resumeError}</FormError> : null}
+      {recovery ? (
+        <FormError className="mx-3 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>{recovery.message}</span>
+          {recovery.href && recovery.action ? (
+            <Link className="font-semibold text-[color:var(--lnk)] hover:underline" to={recovery.href}>
+              {recovery.action}
+            </Link>
+          ) : recovery.action ? (
+            <button
+              className="font-semibold text-[color:var(--lnk)] hover:underline"
+              disabled={busy}
+              onClick={start}
+              type="button"
+            >
+              {recovery.action}
+            </button>
+          ) : null}
+        </FormError>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <button
@@ -196,12 +252,32 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
           </span>
         </button>
 
-        {agent.systemManaged ? null : (
+        {agent.systemManaged ? (
+          agent.browserEnabled === true && threadId ? (
+            <div className="px-3 pb-3">
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={() => setImportOpen(true)}
+                type="button"
+              >
+                Import selected Chrome sign-ins
+              </button>
+            </div>
+          ) : null
+        ) : (
           <div className="px-3 pb-3">
-            <AgentBrowserPanel agent={agent} heading={false} />
+            <AgentBrowserPanel agent={agent} heading={false} threadId={threadId} />
           </div>
         )}
       </div>
+      {threadId ? (
+        <ChromeCookieImportDialog
+          agent={agent}
+          onClose={() => setImportOpen(false)}
+          open={importOpen}
+          threadId={threadId}
+        />
+      ) : null}
     </div>
   )
 }

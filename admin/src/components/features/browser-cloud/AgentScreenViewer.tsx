@@ -1,80 +1,80 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-
+import { useEffect, useRef, useState } from 'react'
 import { BROWSER_VIEWPORT_PRESETS, type BrowserViewport } from '@nessie/schemas'
-
 import {
+  useCloudBrowserScreenshot,
   useCloudBrowserSession,
   useEndResumedSession,
   useKeepBrowserAlive,
+  useRevokePersonalBrowserAccessGrant,
   useSendBrowserHome,
   useSetAgentBrowserViewport,
+  useSetCloudBrowserSessionViewport,
   type BrowserControl,
+  type HumanBrowserInput,
+  type HumanBrowserKey,
 } from '../../../facades/browser-cloud/hooks'
-import { browserCountdown, formatCountdown } from './session-countdown'
-import { useTabParam } from '../../../navigation/useTabParam'
+import { browserCountdown } from './session-countdown'
+import { BrowserPreviewStatus } from './browser-preview-status'
+import { BrowserNavigationControls } from './BrowserNavigationControls'
 import { Pill } from '../../primitives/Pill'
-import { TabBar } from '../../primitives/TabBar'
-
+import { getBaseUrl } from '../../../lib/api-client'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 type AgentScreenViewerProps = {
   sessionId: string
-  /** Full-screen gets more chrome and a bigger frame; the panel is compact. */
   variant: 'panel' | 'fullscreen'
-  /**
-   * Take the controls as soon as the session is live. Set when the person
-   * opened the browser for themselves — a resume — where waiting for a second
-   * press of "Take control" is a step nobody asked for. Never set for a
-   * session an agent is driving.
-   */
   claimOnLive?: boolean
-  /** The conversation this is shown in; "Done" refetches through it. */
   threadId?: string | null
-  /** Leave full screen once a resumed session has been ended. */
   onDone?: () => void
-  /**
-   * The agent whose browser this is, when known. Only used to key the share
-   * banner's dismissal — whether the browser is actually shared is the
-   * session's answer, not the agent's visibility.
-   */
   agent?: { id: string; visibility?: 'team' | 'private' }
-  /**
-   * The claim, held by the panel rather than by this component. Going full
-   * screen and back re-renders the viewer in a different container, and a
-   * claim that unmounted with it would hand the keyboard back to the agent
-   * every time somebody resized the window they were typing in.
-   */
   control: BrowserControl
 }
-
-/**
- * Dismissal is per (viewer, agent) and deliberately client-local: it is a
- * reminder, not a consent record, and the sentence returns undismissed while
- * somebody is actually driving, where it is load-bearing.
- */
-const bannerStorageKey = (agentId: string): string =>
-  `nessie.browserShareBanner.${agentId}`
-
-const STATUS_LABEL: Record<string, string> = {
-  allocating: 'Starting',
-  active: 'Live',
-  releasing: 'Closing',
-  released: 'Closed',
-  failed: 'Failed',
-  unknown: 'Unknown',
+const specialKey = (key: string): HumanBrowserKey | null => {
+  const keys: Record<string, HumanBrowserKey> = {
+    ' ': 'Space', Alt: 'Alt', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft',
+    ArrowRight: 'ArrowRight', ArrowUp: 'ArrowUp', Backspace: 'Backspace',
+    Delete: 'Delete', End: 'End', Enter: 'Enter', Escape: 'Escape', Home: 'Home',
+    PageDown: 'PageDown', PageUp: 'PageUp', Tab: 'Tab',
+  }
+  return keys[key] ?? null
 }
-
+/** Maps a pointer in the displayed screenshot back to the remote viewport. */
+const remotePoint = (element: HTMLElement, clientX: number, clientY: number, viewport: BrowserViewport) => {
+  const bounds = element.getBoundingClientRect()
+  const scale = Math.min(bounds.width / viewport.width, bounds.height / viewport.height)
+  const width = viewport.width * scale
+  const height = viewport.height * scale
+  const left = bounds.left + (bounds.width - width) / 2
+  const top = bounds.top + (bounds.height - height) / 2
+  return {
+    x: Math.max(0, Math.min(viewport.width, (clientX - left) / scale)),
+    y: Math.max(0, Math.min(viewport.height, (clientY - top) / scale)),
+  }
+}
+const usePageVisible = (): boolean => {
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible')
+  useEffect(() => {
+    const update = (): void => setVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
+  return visible
+}
+const canvasUrl = (sessionId: string, token: string): string => {
+  const base = getBaseUrl()
+  const url = base ? new URL(base) : new URL(window.location.href)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = `/api/browser-sessions/${sessionId}/canvas`
+  url.searchParams.set('token', token)
+  return url.toString()
+}
 /**
- * The one browser viewer: live-view iframe, our own tab strip, and a status
- * line. Mounted by the screen panel and by the full-screen takeover, so the
- * two can never drift into different browsers.
+ * The one remote-browser viewer for the panel and fullscreen surface.
  *
- * Watch-only until somebody claims control — `pointer-events: none` keeps a
- * stray click out of the agent's browser. That is a courtesy, not the security
- * boundary: the boundary is who may fetch the live-view URL at all, which the
- * detail route decides. The claim is what makes the *agent* stand down, since
- * every browser verb is refused server-side while it is held.
- *
- * The claim itself belongs to the panel, which outlives both faces; both offer
- * it, so shrinking a browser you are driving leaves you still driving it.
+ * Browserbase never renders in this document. Nessie fetches a short-lived
+ * screenshot through the authenticated API and forwards a controller's closed
+ * set of gestures over its sealed server-side CDP connection. This makes the
+ * visible canvas genuinely read-only for observers instead of relying on CSS
+ * to make an interactive provider URL look harmless.
  */
 export const AgentScreenViewer = ({
   agent,
@@ -85,323 +85,391 @@ export const AgentScreenViewer = ({
   threadId = null,
   variant,
 }: AgentScreenViewerProps) => {
+  const { token } = useAuthSession()
   const session = useCloudBrowserSession(sessionId)
-  // A session with no run is one a person opened: nobody is watching through
-  // it, nobody is paused, and "done" means the browser saves where it is and
-  // stops — not "hand back to the agent".
+  const { refetch: refetchSession } = session
   const resumed = session.data?.runId === null
+  const live = session.data?.status === 'active' || session.data?.status === 'allocating'
+  const pageVisible = usePageVisible()
+  const [canvasFrame, setCanvasFrame] = useState<string | null>(null)
+  const [canvasConnected, setCanvasConnected] = useState(false)
+  const [canvasViewport, setCanvasViewport] = useState<BrowserViewport | null>(null)
+  const [canvasTabs, setCanvasTabs] = useState<Array<{ id: string; title: string; url: string }>>([])
+  const [canvasRetry, setCanvasRetry] = useState(0)
+  const canvasSocket = useRef<WebSocket | null>(null)
+  const screenshot = useCloudBrowserScreenshot(sessionId, live && pageVisible && !canvasConnected)
   const endResumed = useEndResumedSession(threadId, agent?.id ?? null)
   const sendHome = useSendBrowserHome()
   const keepAlive = useKeepBrowserAlive(sessionId)
-
-  // Ticks only while a resumed session is on screen: an agent's own session is
-  // ended by its run, so there is no idle window to count down and nothing to
-  // ask the reader for.
+  const revokePrivateAccess = useRevokePersonalBrowserAccessGrant()
+  const setViewport = useSetAgentBrowserViewport(threadId, agent?.id ?? null)
+  const setSessionViewport = useSetCloudBrowserSessionViewport(sessionId)
+  const keyboard = useRef<HTMLTextAreaElement | null>(null)
+  const touchGesture = useRef<{ last: { x: number; y: number }; moved: boolean } | null>(null)
+  const suppressTouchClick = useRef(false)
+  const claimed = useRef(false)
+  const inputEpoch = useRef(0)
+  const textBuffer = useRef('')
+  const textTimer = useRef<number | null>(null)
+  const [typedText, setTypedText] = useState('')
+  const [inputStopped, setInputStopped] = useState(false)
+  const [address, setAddress] = useState('')
+  const editingAddress = useRef(false)
   const [now, setNow] = useState(() => Date.now())
-  const countdownFor = session.data?.runId === null ? session.data?.expiresAt : null
+  const countdownFor = resumed ? session.data?.expiresAt : null
+  // The screenshot HTTP fallback is intentionally preview-only. Human input
+  // needs the fresh per-viewer WebSocket, which pins the CDP target while the
+  // server rechecks the current lease for every command.
+  const canDrive = session.data?.viewerMode === 'controller'
+    && session.data?.canControl === true
+    && control.controlling && live && canvasConnected && !inputStopped
+  const viewport = canvasViewport ?? session.data?.viewport ?? null
+  const presetId = viewport === null
+    ? null
+    : BROWSER_VIEWPORT_PRESETS.find(({ viewport: option }) =>
+      option.width === viewport.width && option.height === viewport.height,
+    )?.id ?? null
+  useEffect(() => {
+    if (!live || !pageVisible || !token) return undefined
+    const socket = new WebSocket(canvasUrl(sessionId, token))
+    canvasSocket.current = socket
+    socket.addEventListener('message', (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          imageDataUrl?: unknown
+          pageUrl?: unknown
+          tabs?: Array<{ id?: unknown; title?: unknown; url?: unknown }>
+          type?: string
+          viewport?: { height?: unknown; width?: unknown }
+        }
+        if (payload.type === 'frame' && typeof payload.imageDataUrl === 'string') {
+          setCanvasFrame(payload.imageDataUrl)
+          if (typeof payload.pageUrl === 'string' && !editingAddress.current) setAddress(payload.pageUrl)
+          if (typeof payload.viewport?.width === 'number' && typeof payload.viewport.height === 'number') {
+            setCanvasViewport({ height: payload.viewport.height, width: payload.viewport.width })
+          }
+          if (Array.isArray(payload.tabs)) {
+            setCanvasTabs(payload.tabs.flatMap((tab) =>
+              typeof tab.id === 'string' && typeof tab.title === 'string' && typeof tab.url === 'string'
+                ? [{ id: tab.id, title: tab.title, url: tab.url }]
+                : [],
+            ))
+          }
+          setCanvasConnected(true)
+        }
+      } catch { /* malformed frames close into HTTP fallback */ }
+    })
+    socket.addEventListener('close', (event) => {
+      if (canvasSocket.current === socket) {
+        canvasSocket.current = null
+        setCanvasConnected(false)
+        setCanvasFrame(null)
+        setCanvasViewport(null)
+        setCanvasTabs([])
+        // A CDP failure is ambiguous. Stop the local gesture sequence and let
+        // the HTTP preview be a picture only until the fresh socket reconnects.
+        if (event.code !== 1000) {
+          inputEpoch.current += 1
+          setInputStopped(true)
+        }
+        if (event.code !== 4003 && live && pageVisible && token) {
+          window.setTimeout(() => setCanvasRetry((attempt) => attempt + 1), 1_000)
+        }
+        // The socket can discover a lease expiry before the ordinary detail
+        // query polls. Refresh it so an expired owner gets Take control rather
+        // than a dead Reconnect affordance.
+        void refetchSession()
+      }
+    })
+    return () => {
+      if (canvasSocket.current === socket) canvasSocket.current = null
+      socket.close()
+    }
+  }, [canvasRetry, live, pageVisible, refetchSession, sessionId, token])
   useEffect(() => {
     if (!countdownFor) return undefined
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [countdownFor])
   const countdown = browserCountdown(countdownFor, now)
-  const setViewport = useSetAgentBrowserViewport(threadId, agent?.id ?? null)
-  // Whether signing in here signs in for other people is the session's answer.
-  // Reading it off the agent's visibility said "shared" for every browser a
-  // team agent owned — including the Personal Assistant's, which since the
-  // per-principal browsers is one jar per person and shared with nobody.
-  const shared = session.data?.shared ?? false
-  const [bannerDismissed, setBannerDismissed] = useState(() => {
-    if (!agent) return true
-    try {
-      return window.localStorage.getItem(bannerStorageKey(agent.id)) === 'dismissed'
-    } catch {
-      return false
-    }
-  })
-  const dismissBanner = () => {
-    setBannerDismissed(true)
-    if (!agent) return
-    try {
-      window.localStorage.setItem(bannerStorageKey(agent.id), 'dismissed')
-    } catch {
-      // A viewer with storage blocked simply sees the sentence again.
-    }
-  }
-
-  const tabs = useMemo(() => session.data?.tabs ?? [], [session.data])
-  const live = session.data?.status === 'active' || session.data?.status === 'allocating'
-
-  // Once, when the session first reports live and nobody else holds it. The
-  // ref rather than state, so a failed claim does not retry on every poll —
-  // the failure is shown instead, and the ordinary button stays available.
-  const claimed = useRef(false)
   const { take } = control
   useEffect(() => {
-    if (!claimOnLive || claimed.current) return
-    if (session.data?.status !== 'active' || session.data.controlledByUserId) return
+    const shouldClaim = session.data?.canControl === true
+      && session.data?.runId === null
+      && claimOnLive
+    if (!shouldClaim || claimed.current || session.data?.status !== 'active'
+      || session.data.controlledByUserId) return
     claimed.current = true
     take()
   }, [claimOnLive, session.data, take])
+  const submit = (input: HumanBrowserInput): void => {
+    if (!canDrive) return
+    const socket = canvasSocket.current
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'input', input }))
+      return
+    }
+    // Never replay through HTTP. A socket that died after accepting a frame
+    // is ambiguous, so a fresh control connection starts a new sequence.
+    inputEpoch.current += 1
+    setInputStopped(true)
+  }
+  const flushText = (): void => {
+    if (textTimer.current !== null) window.clearTimeout(textTimer.current)
+    textTimer.current = null
+    const text = textBuffer.current
+    textBuffer.current = ''
+    if (text) submit({ type: 'text', text })
+  }
+  useEffect(() => () => {
+    if (textTimer.current !== null) window.clearTimeout(textTimer.current)
+  }, [])
+  const focusKeyboard = (): void => keyboard.current?.focus()
+  const onCanvasClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    if (suppressTouchClick.current) {
+      suppressTouchClick.current = false
+      return
+    }
+    if (!viewport) return
+    const point = remotePoint(event.currentTarget, event.clientX, event.clientY, viewport)
+    submit({ type: 'click', ...point })
+    focusKeyboard()
+  }
+  const onCanvasWheel = (event: React.WheelEvent<HTMLDivElement>): void => {
+    if (!viewport) return
+    event.preventDefault()
+    const point = remotePoint(event.currentTarget, event.clientX, event.clientY, viewport)
+    submit({ type: 'scroll', ...point, deltaX: event.deltaX, deltaY: event.deltaY })
+  }
+  const onCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!viewport || event.pointerType !== 'touch') return
+    // A drag may not synthesize a click, so it cannot suppress a later tap.
+    suppressTouchClick.current = false
+    touchGesture.current = {
+      last: remotePoint(event.currentTarget, event.clientX, event.clientY, viewport),
+      moved: false,
+    }
+  }
+  const onCanvasPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!viewport || event.pointerType !== 'touch' || !touchGesture.current) return
+    const point = remotePoint(event.currentTarget, event.clientX, event.clientY, viewport)
+    const gesture = touchGesture.current
+    const deltaX = gesture.last.x - point.x
+    const deltaY = gesture.last.y - point.y
+    if (!gesture.moved && Math.hypot(deltaX, deltaY) < 6) return
+    gesture.moved = true
+    suppressTouchClick.current = true
+    gesture.last = point
+    event.preventDefault()
+    submit({ type: 'scroll', ...point, deltaX, deltaY })
+  }
+  const onCanvasPointerEnd = (): void => {
+    if (touchGesture.current?.moved) suppressTouchClick.current = true
+    touchGesture.current = null
+  }
+  const onKeyboard = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    // Space is ordinary text. Sending a raw space key event to CDP can scroll
+    // the page instead of inserting it, which silently joined words in forms.
+    if (event.key === ' ') {
+      event.preventDefault()
+      textBuffer.current += ' '
+      if (textTimer.current !== null) window.clearTimeout(textTimer.current)
+      textTimer.current = window.setTimeout(flushText, 80)
+      return
+    }
+    const key = specialKey(event.key)
+    if (!key) return
+    event.preventDefault()
+    flushText()
+    submit({ type: 'key', key })
+  }
+  const onTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>): void => {
+    const text = event.target.value
+    setTypedText('')
+    if (!text) return
+    textBuffer.current += text
+    if (textTimer.current !== null) window.clearTimeout(textTimer.current)
+    textTimer.current = window.setTimeout(flushText, 80)
+  }
+  const navigate = (): void => {
+    const url = address.trim()
+    if (!url) return
+    try {
+      if (new URL(url).protocol !== 'https:') return
+      submit({ type: 'navigate', url })
+    } catch { /* the compact field accepts only complete HTTPS addresses */ }
+  }
+  const previewStatus = !live
+    ? 'This browser has closed.'
+    : session.data?.canControl === false
+      ? 'View only.'
+    : inputStopped && session.data?.controlLeaseActive && session.data?.viewerMode === 'controller'
+      ? 'Control connection stopped. Reconnect.'
+      : inputStopped
+        ? 'Control expired. Take control to continue.'
+      : session.data?.viewerMode === 'controller' && control.controlling && !canvasConnected
+        ? 'Reconnecting controls…'
+      : canDrive
+      ? 'You are driving.'
+      : session.data?.viewerMode === 'controller'
+        ? 'Your controls are paused. Take control to continue.'
+      : session.data?.controlledByUserId
+        ? 'Someone is driving.'
+        : 'Take control to use this browser.'
+  const emptyState = session.isLoading
+    ? 'Connecting to the browser…'
+    : !live
+      ? 'This browser has closed.'
+      : screenshot.isError
+        ? 'The remote preview could not be refreshed. Try again in a moment.'
+        : 'Preparing the remote preview…'
+  const screenshotUrl = canvasFrame ?? screenshot.data?.imageDataUrl ?? null
   const claimFailed = claimOnLive && claimed.current && !control.controlling && control.error !== null
-
-  // Follow the agent by default: the hook reads an id the session no longer
-  // has as its fallback, so when the agent closes the tab being watched the
-  // viewer snaps back to the first one rather than pointing at a dead frame.
-  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
-  const [activeTab, setActiveTab] = useTabParam('browserTab', tabIds, tabIds[0] ?? '')
-
-  // The URL the provider minted, which is a *fresh* URL on every read.
-  const mintedUrl = useMemo(() => {
-    if (!session.data) return null
-    const chosen = tabs.find((tab) => tab.id === activeTab)
-    return chosen?.liveViewUrl ?? session.data.liveViewUrl
-  }, [session.data, tabs, activeTab])
-
-  // ...and the one actually in the frame, which must not be.
-  //
-  // The detail route mints a live-view URL per read and the panel polls, so
-  // handing `mintedUrl` straight to `src` swapped the iframe's source every
-  // fifteen seconds: the browser reloaded under the reader, losing a
-  // half-typed URL and any page state. Both URLs address the same live
-  // session, so the first one is kept for as long as it is pointing at the
-  // same thing — a new session, a different tab, or the reload button below.
-  // A poll that comes back without a URL (a provider hiccup, which the route
-  // deliberately renders as "no picture" rather than an error) also leaves
-  // the frame alone rather than blanking it.
-  const heldFrame = useRef<{ key: string; url: string } | null>(null)
-  const [reloadNonce, setReloadNonce] = useState(0)
-  const frameKey = `${sessionId}::${activeTab}::${reloadNonce}`
-  if (!live) heldFrame.current = null
-  else if (mintedUrl !== null && heldFrame.current?.key !== frameKey) {
-    heldFrame.current = { key: frameKey, url: mintedUrl }
-  }
-  const frameUrl = heldFrame.current?.url ?? null
-
-  // The size the running session is actually at, which is not always the size
-  // the browser is set to: Browserbase fixes a window when the session is
-  // created, so a resize the provider would not apply live shows here as the
-  // old size until the next open. Naming the size rather than the preset when
-  // the two disagree is what keeps that honest.
-  const viewport: BrowserViewport | null = session.data?.viewport ?? null
-  const presetId = viewport === null
-    ? null
-    : BROWSER_VIEWPORT_PRESETS.find((option) =>
-      option.viewport.width === viewport.width && option.viewport.height === viewport.height,
-    )?.id ?? null
-  const viewportLabel = viewport === null
-    ? 'Window size'
-    : `${viewport.width}×${viewport.height}`
-
-  // A held URL outlives its session if the provider retires it, which looks
-  // like a frame that has simply stopped. Re-minting is one press away rather
-  // than a reason to go back to swapping `src` on a timer.
-  const reloadFrame = () => {
-    heldFrame.current = null
-    setReloadNonce((nonce) => nonce + 1)
-    void session.refetch()
-  }
-
+  const heldByAnotherPerson = session.data?.controlLeaseActive === true
+    && session.data.viewerMode !== 'controller'
+  const viewerHasLiveLease = session.data?.controlLeaseActive === true
+    && session.data.viewerMode === 'controller'
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Wraps rather than overflows: full screen on a phone is a 390px row
-          carrying a name, two pills and up to four controls, and a header that
-          scrolls sideways hides the one control the reader came for. */}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 px-4 py-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">
           {session.data?.agentName ?? 'Agent'}
         </span>
-        <Pill size="sm" tone={live ? 'success' : 'muted'}>
-          {STATUS_LABEL[session.data?.status ?? ''] ?? 'Loading'}
-        </Pill>
-        {session.data?.controlledByUserId ? (
-          <Pill size="sm" tone="warning">
-            {control.controlling ? 'You are driving' : 'Someone is driving'}
-          </Pill>
+        {variant === 'fullscreen' ? (
+          <>
+            <Pill size="sm" tone={live ? 'success' : 'muted'}>{live ? 'Live' : 'Closed'}</Pill>
+            {viewerHasLiveLease ? (
+              <Pill size="sm" tone="warning">
+                {canDrive ? 'You are driving' : 'Control connection paused'}
+              </Pill>
+            ) : null}
+          </>
         ) : null}
         {live ? (
           <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {variant === 'fullscreen' ? (
-              <>
-                <label className="sr-only" htmlFor="browser-viewport">Window size</label>
-                <select
-                  // `.admin-input` is full-width by design; in a header row it
-                  // is one control among several, so the width is its content's.
-                  className="admin-input admin-input-sm w-auto"
-                  disabled={setViewport.isPending}
-                  id="browser-viewport"
-                  onChange={(event) => {
-                    const preset = BROWSER_VIEWPORT_PRESETS
-                      .find((option) => option.id === event.target.value)
-                    if (preset) setViewport.mutate(preset.viewport)
-                  }}
-                  value={presetId ?? ''}
-                >
-                  {presetId === null ? (
-                    <option value="">{viewportLabel}</option>
-                  ) : null}
-                  {BROWSER_VIEWPORT_PRESETS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label} · {option.viewport.width}×{option.viewport.height}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="admin-button admin-button-secondary admin-button-compact"
-                  disabled={!control.controlling || sendHome.isPending}
-                  onClick={() => sendHome.mutate(sessionId)}
-                  title={control.controlling
-                    ? 'Go to the home page set for this organisation'
-                    : 'Take control first'}
-                  type="button"
-                >
-                  {sendHome.isPending ? 'Going…' : 'Home'}
-                </button>
-                <button
-                  aria-label="Reload the live view"
-                  className="admin-button admin-button-secondary admin-button-compact"
-                  onClick={reloadFrame}
-                  type="button"
-                >
-                  Reload
-                </button>
-              </>
+              <BrowserNavigationControls
+                address={address}
+                canDrive={canDrive}
+                homePending={sendHome.isPending}
+                onAddressBlur={() => { editingAddress.current = false }}
+                onAddressChange={setAddress}
+                onAddressFocus={() => { editingAddress.current = true }}
+                onBack={() => submit({ type: 'back' })}
+                onForward={() => submit({ type: 'forward' })}
+                onHome={() => sendHome.mutate(sessionId, {
+                  onSuccess: ({ url }) => submit({ type: 'navigate', url }),
+                })}
+                onNavigate={navigate}
+                onReload={() => submit({ type: 'reload' })}
+                onSwitchTab={(targetId) => submit({ type: 'switch_tab', targetId })}
+                onViewport={(nextViewport) => {
+                  if (session.data?.privateAccess) setSessionViewport.mutate(nextViewport)
+                  else setViewport.mutate(nextViewport)
+                }}
+                presetId={presetId}
+                tabs={canvasTabs}
+                viewport={viewport}
+                viewportDisabled={session.data?.privateAccess
+                  ? !canDrive || setSessionViewport.isPending
+                  : setViewport.isPending}
+              />
             ) : null}
-            {resumed && control.controlling ? (
+            {session.data?.privateAccess ? (
               <button
-                className="admin-button admin-button-primary admin-button-compact"
-                disabled={endResumed.isPending}
-                onClick={() => endResumed.mutate(sessionId, { onSuccess: onDone })}
+                className="admin-button admin-button-danger admin-button-compact"
+                disabled={revokePrivateAccess.isPending}
+                onClick={() => revokePrivateAccess.mutate(session.data.privateAccess!.grantId, {
+                  onSuccess: () => onDone?.(),
+                })}
                 type="button"
               >
+                {revokePrivateAccess.isPending ? 'Stopping…' : 'Stop private access'}
+              </button>
+            ) : null}
+            {resumed && canDrive ? (
+              <button className="admin-button admin-button-primary admin-button-compact" disabled={endResumed.isPending} onClick={() => endResumed.mutate(sessionId, { onSuccess: onDone })} type="button">
                 {endResumed.isPending ? 'Saving…' : 'Done'}
               </button>
-            ) : (
+            ) : session.data?.canControl ? (
               <button
                 className="admin-button admin-button-secondary admin-button-compact"
-                disabled={control.pending
-                  || (Boolean(session.data?.controlledByUserId) && !control.controlling)}
-                onClick={() => (control.controlling ? control.handBack() : control.take())}
+                disabled={control.pending || heldByAnotherPerson}
+                onClick={() => {
+                  if (canDrive) control.handBack()
+                  else if (viewerHasLiveLease && control.controlling) {
+                    inputEpoch.current += 1
+                    setInputStopped(false)
+                    setCanvasRetry((attempt) => attempt + 1)
+                  }
+                  else {
+                    inputEpoch.current += 1
+                    setInputStopped(false)
+                    control.take()
+                  }
+                }}
                 type="button"
               >
-                {control.controlling ? 'Hand back' : 'Take control'}
+                {canDrive ? 'Hand back' : viewerHasLiveLease && control.controlling ? 'Reconnect' : 'Take control'}
               </button>
-            )}
+            ) : null}
           </span>
         ) : null}
       </div>
-
-      {tabs.length > 1 ? (
-        <div className="flex-shrink-0 px-3 pb-2">
-          <TabBar
-            ariaLabel="Browser tabs"
-            items={tabs.map((tab) => ({
-              label: tab.title || tab.url || 'Tab',
-              title: tab.url,
-              value: tab.id,
-            }))}
-            onChange={setActiveTab}
-            size="sm"
-            value={activeTab}
-          />
-        </div>
-      ) : null}
-
-      {shared && (control.controlling || !bannerDismissed) ? (
-        <div className="mx-3 mb-2 flex flex-shrink-0 items-start gap-3 border border-[color:var(--sep)] bg-[color:var(--bg2)] px-3 py-2">
-          <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
-            Other people can use this agent’s browser. Anything you sign in to here is
-            shared with everyone who has access to this agent.
-          </p>
-          <button
-            className="text-xs text-[color:var(--lnk)] hover:underline"
-            onClick={dismissBanner}
-            type="button"
+      <div className={variant === 'panel'
+        ? 'relative mx-3 mb-3 aspect-[16/10] flex-none overflow-hidden bg-[color:var(--bg2)]'
+        : 'relative min-h-0 flex-1 overflow-hidden bg-[color:var(--bg2)]'}>
+        {screenshotUrl ? (
+          <div
+            aria-label={`${session.data?.agentName ?? 'Agent'} browser`}
+            className={canDrive ? 'h-full w-full touch-none cursor-default' : 'h-full w-full'}
+            onClick={canDrive ? onCanvasClick : undefined}
+            onPointerCancel={canDrive ? onCanvasPointerEnd : undefined}
+            onPointerDown={canDrive ? onCanvasPointerDown : undefined}
+            onPointerMove={canDrive ? onCanvasPointerMove : undefined}
+            onPointerUp={canDrive ? onCanvasPointerEnd : undefined}
+            onWheel={canDrive ? onCanvasWheel : undefined}
+            role={canDrive ? 'application' : 'img'}
+            tabIndex={canDrive ? 0 : undefined}
           >
-            Got it
-          </button>
-        </div>
-      ) : null}
-
-      {/* Still offered at zero. The clock here is the reader's, the expiry is
-          the server's, and the reaper is the only thing that actually ends a
-          session — so hiding the button the moment this clock says zero takes
-          the rescue away exactly when it is needed, and a client running a
-          minute fast never sees it at all. If the session really has gone the
-          press is answered by a 404 and the panel moves on. */}
-      {countdown?.warning ? (
-        <div
-          aria-live="polite"
-          className="mx-3 mb-2 flex flex-shrink-0 items-center gap-3 border border-[color:var(--warning)] bg-[color:var(--bg2)] px-3 py-2"
-        >
-          <p className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
-            {countdown.expired ? (
-              <>This browser is closing. Anything signed in is saved.</>
-            ) : (
-              <>
-                This browser closes in{' '}
-                <span className="font-mono font-semibold text-[color:var(--tx)]">
-                  {formatCountdown(countdown.secondsLeft)}
-                </span>
-                {' '}unless you are still using it. Anything signed in is saved either way.
-              </>
-            )}
-          </p>
-          <button
-            className="admin-button admin-button-primary admin-button-compact"
-            disabled={keepAlive.isPending}
-            onClick={() => keepAlive.mutate()}
-            type="button"
-          >
-            {keepAlive.isPending ? 'Keeping…' : 'Continue'}
-          </button>
-        </div>
-      ) : null}
-
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-[color:var(--bg2)]">
-        {frameUrl ? (
-          <iframe
-            allow="clipboard-read; clipboard-write"
-            className="h-full w-full border-0"
-            // What the provider's live view needs and no more: its own scripts
-            // and origin, and forms so a sign-in can submit in control mode.
-            // Watch-only is the pointer-events line below, not this.
-            sandbox="allow-same-origin allow-scripts allow-forms"
-            src={frameUrl}
-            style={{ pointerEvents: control.controlling ? 'auto' : 'none' }}
-            title={`${session.data?.agentName ?? 'Agent'} browser`}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--tx2)]">
-            {session.isLoading
-              ? 'Connecting to the browser…'
-              : live
-                ? 'The browser is starting up.'
-                : 'This browser has closed.'}
+            <img alt="Current remote browser screen" className="h-full w-full select-none object-contain" draggable={false} src={screenshotUrl} />
           </div>
+        ) : (
+          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--tx2)]">{emptyState}</div>
         )}
+        {screenshotUrl ? (
+          <BrowserPreviewStatus
+            countdown={countdown?.warning ? { expired: countdown.expired, secondsLeft: countdown.secondsLeft } : null}
+            disclosure=""
+            onContinue={() => keepAlive.mutate()}
+            pending={keepAlive.isPending}
+            status={previewStatus}
+            variant={variant}
+          />
+        ) : null}
+        <textarea
+          aria-label="Browser keyboard"
+          className="absolute bottom-0 left-0 h-px w-px resize-none border-0 bg-transparent p-0 opacity-0"
+          disabled={!canDrive}
+          onChange={onTextChange}
+          onKeyDown={onKeyboard}
+          ref={keyboard}
+          value={typedText}
+        />
       </div>
-
       {variant === 'fullscreen' ? (
         <p className="flex-shrink-0 px-4 py-2 text-xs text-[color:var(--tx3)]">
           {claimFailed
             ? 'Couldn’t take control — try Take control above.'
-          : setViewport.data?.appliedToLiveSession === false
-            ? `Saved ${setViewport.variables?.width}×${setViewport.variables?.height}. `
-              + 'This browser keeps the window it opened with; the next one opens at the '
-              + 'new size.'
-            : resumed
-              ? control.controlling
-                ? 'You are driving. What you type goes straight to the browser — it never '
-                  + 'passes through this team. Press Done when you are finished; the browser '
-                  + 'saves where you left off.'
-                : 'Nobody is driving this browser. Take control to use it.'
-              : control.controlling
-                ? 'You are driving. The agent is paused until you hand back. What you type '
-                  + 'goes straight to the browser — it never passes through this team, '
-                  + 'and the agent cannot read it.'
-                : 'You are watching what the agent sees. Pages load directly from the browser '
-                  + 'provider, so their content never passes through this team.'}
+            : inputStopped && viewerHasLiveLease
+              ? 'The control connection stopped before the browser accepted that input. Reconnect to continue.'
+              : inputStopped
+                ? 'Control expired before the browser accepted that input. Take control to continue.'
+              : session.data?.canControl === false
+                ? 'You can watch this browser, but only its private owner can take control.'
+              : canDrive
+              ? 'Your keystrokes are not recorded in chat. After Done, the agent can read pages it has access to.'
+              : 'Live preview. Take control to use the browser.'}
         </p>
       ) : null}
     </div>

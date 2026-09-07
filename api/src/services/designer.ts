@@ -56,7 +56,26 @@ type DesignerUsageChunk = {
  */
 export const resolveDesignerModel = (modelClient: ModelClient): string =>
   resolveGlobalAgentModel(AGENT_DESIGNER_BLUEPRINT).model ?? modelClient.chatModel
-const MAX_TOOL_ROUNDS = 5
+// Five independent draft fields plus a final prose turn. Tool choices are
+// batched, so this is enough for a complete ordinary draft without an
+// unbounded model conversation.
+const MAX_TOOL_ROUNDS = 6
+const DESIGNER_FORM_TOOLS = new Set([
+  'set_name', 'set_role', 'set_system_prompt', 'set_model', 'set_tool_selection', 'toggle_tool', 'batch_toggle_tools',
+])
+
+const hasValidToolSelection = (
+  argsBuffer: string,
+  eligibleToolIds: ReadonlySet<string>,
+): boolean => {
+  try {
+    const args = JSON.parse(argsBuffer) as { toolIds?: unknown }
+    return Array.isArray(args.toolIds)
+      && args.toolIds.every((toolId) => typeof toolId === 'string' && eligibleToolIds.has(toolId))
+  } catch {
+    return false
+  }
+}
 
 export const userMessageForDesignerError = (error: unknown): string =>
   isCreditsExhaustedError(error)
@@ -336,6 +355,7 @@ export const streamDesignerChat = async (
   const catalogue = await loadAgentToolCatalog(usageContext.prisma, {
     organizationId: usageContext.actorContext.tenant.organizationId,
   })
+  const eligibleToolIds = new Set(catalogue.togglable.map((tool) => tool.key))
 
   // Writing to reply.raw directly bypasses @fastify/cors, so the cross-origin
   // allow-origin header must be merged in here (computed by the route).
@@ -372,6 +392,7 @@ export const streamDesignerChat = async (
   try {
     // Multi-turn loop: if the model calls web_search, execute it
     // and feed results back for another turn.
+    let exhausted = true
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const toolCalls = await streamModelTurn(
         reply,
@@ -381,14 +402,16 @@ export const streamDesignerChat = async (
       )
 
       // No tool calls — model is done
-      if (toolCalls.length === 0) break
+      if (toolCalls.length === 0) { exhausted = false; break }
 
-      // Check if any tool call needs backend execution (web_search)
-      const needsContinuation = toolCalls.some(
-        (tc) => tc.name === 'web_search',
-      )
-
-      if (!needsContinuation) break
+      // Every recognised form update gets an acknowledgement and another
+      // bounded turn. Sequential-tool models otherwise stop after `set_name`
+      // and never reach role, prompt, or tool judgement. Unknown calls remain
+      // terminal rather than being silently treated as designer actions.
+      const needsContinuation = toolCalls.every((tc) =>
+        (tc.name === 'web_search' || DESIGNER_FORM_TOOLS.has(tc.name))
+        && (tc.name !== 'set_tool_selection' || hasValidToolSelection(tc.argsBuffer, eligibleToolIds)))
+      if (!needsContinuation) { exhausted = false; break }
 
       // Build assistant message with all tool calls for conversation history
       const assistantToolCalls = toolCalls.map((tc) => ({
@@ -427,7 +450,9 @@ export const streamDesignerChat = async (
           // Non-search tool calls get a simple ack so the model can continue
           messages.push({
             role: 'tool',
-            content: 'Done.',
+          content: DESIGNER_FORM_TOOLS.has(tc.name)
+            ? 'Draft update was sent for review by the form.'
+            : 'Done.',
             tool_call_id: tc.id,
           })
         }
@@ -436,6 +461,9 @@ export const streamDesignerChat = async (
       // Signal that search is complete and model will continue
       writeSseEvent(reply, 'status', { message: 'Processing results...' })
     }
+    if (exhausted) writeSseEvent(reply, 'status', {
+      message: 'The draft has updates, but the assistant needs another message to finish explaining them.',
+    })
   } catch (error) {
     writeSseEvent(reply, 'error', { message: userMessageForDesignerError(error) })
   }

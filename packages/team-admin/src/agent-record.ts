@@ -20,7 +20,11 @@ import {
   parseRunId,
   VoiceNameSchema,
 } from '@nessie/schemas'
-import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
+import {
+  BROWSER_OPEN_TOOL_ID,
+  isExplicitToolGranted,
+  redactExplicitToolPolicyProvenance,
+} from '@nessie/runtime'
 
 import { getGlobalAgentBlueprint } from './global-agent-blueprints.js'
 
@@ -305,6 +309,7 @@ export const mapAgentRecord = (agent: {
     // setup and failing the call.
     voiceName: readAgentVoiceName(agent.voiceName),
     speakingStyle: agent.speakingStyle?.trim() ? agent.speakingStyle : null,
+    browserEnabled: isExplicitToolGranted(agent.toolPolicy, BROWSER_OPEN_TOOL_ID),
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     avatarBackgroundColor: readAgentAvatarBackgroundColor(agent.avatarBackgroundColor),

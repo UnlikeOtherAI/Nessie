@@ -1,9 +1,8 @@
-import { createHash, createPrivateKey, sign } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import type { Readable } from 'node:stream'
 
 import {
   canonicalExecutorJson,
-  canonicalExecutorPayload,
   ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
@@ -20,6 +19,7 @@ import {
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
+import { signExecutorDaemonPayload } from './daemon-signature.js'
 import {
   createExecutorBrowserSessionManager,
   type ExecutorBrowserSessionManager,
@@ -50,26 +50,12 @@ import {
 import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile, workspaceFailure } from './workspace.js'
 
-const signDaemonPayload = (
-  privateKeyDer: string,
-  domain: 'claim' | 'heartbeat' | 'poll' | 'receipt',
-  payload: Record<string, unknown>,
-): string => sign(
-  null,
-  Buffer.from(canonicalExecutorPayload(`nessie.executor.daemon.${domain}.v1`, payload)),
-  createPrivateKey({
-    format: 'der',
-    key: Buffer.from(privateKeyDer, 'base64url'),
-    type: 'pkcs8',
-  }),
-).toString('base64url')
-
 export const claimExecutor = async (
   stateDir: string,
   state: ExecutorLocalState,
 ): Promise<ExecutorLocalState> => {
   const issued = await executorApi.issueChallenge(state.apiBaseUrl, state.executorId)
-  const signature = signDaemonPayload(state.machinePrivateKey, 'claim', {
+  const signature = signExecutorDaemonPayload(state.machinePrivateKey, 'claim', {
     challenge: issued.challenge,
     executorId: state.executorId,
   })
@@ -95,7 +81,7 @@ export const heartbeatExecutor = async (
     throw new Error('Executor has not claimed a live daemon connection.')
   }
   const observedAt = new Date().toISOString()
-  const signature = signDaemonPayload(state.machinePrivateKey, 'heartbeat', {
+  const signature = signExecutorDaemonPayload(state.machinePrivateKey, 'heartbeat', {
     connectionEpoch: state.connectionEpoch,
     executorId: state.executorId,
     observedAt,
@@ -135,7 +121,7 @@ const receipt = async (
   await executorApi.recordCommandReceipt(state.apiBaseUrl, {
     ...payload,
     ...(input.result ? { result: input.result } : {}),
-    signature: signDaemonPayload(state.machinePrivateKey, 'receipt', payload),
+    signature: signExecutorDaemonPayload(state.machinePrivateKey, 'receipt', payload),
   })
 }
 
@@ -333,7 +319,7 @@ const pollAndExecuteCommand = async (
         }
         const response = await executorApi.pollCommand(state.apiBaseUrl, {
           ...payload,
-          signature: signDaemonPayload(state.machinePrivateKey, 'poll', payload),
+          signature: signExecutorDaemonPayload(state.machinePrivateKey, 'poll', payload),
         })
         return response.command
       },

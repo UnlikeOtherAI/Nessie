@@ -204,6 +204,8 @@ export type AgentRecord = {
   speakingStyle?: string | null
   status: AgentStatusResponse['status']
   systemPrompt?: string
+  /** Server-decided browser capability; never inferred from a connection. */
+  browserEnabled?: boolean
   toolPolicy?: Record<string, boolean>
   updatedAt: string
   /** Stored scope: private agents are visible only to their owner. */
@@ -446,6 +448,7 @@ export type ToolDescriptor = {
   // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
   // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
   requiresExplicitGrant?: boolean
+  personalAssistantOnly?: boolean
   safe: boolean
 }
 
@@ -503,15 +506,22 @@ export type CloudBrowserSessionSummary = {
 }
 
 export type CloudBrowserSessionDetail = CloudBrowserSessionSummary & {
-  /** Anything signed in here is visible to other people. */
+  viewerMode: 'controller' | 'observer'
+  controlLeaseActive: boolean
+  /** Only the agent owner's exact private home can relay human input. */
+  canControl: boolean
+  /** Whether the session has a shared durable browser context. */
   shared: boolean
   /** The window the session is running in, already defaulted. */
   viewport: { width: number; height: number }
   /** When the idle window closes; the countdown reads this, not a local timer. */
   expiresAt: string
   /** Minted per read, never persisted: whoever holds it can drive the browser. */
-  liveViewUrl: string | null
-  tabs: Array<{ id: string; title: string; url: string; liveViewUrl: string }>
+  /** Always null: live frames are mediated by Nessie's screenshot endpoint. */
+  liveViewUrl: null
+  /** Owner-only one-time private access, while the task grant remains active. */
+  privateAccess: { grantId: string; expiresAt: string } | null
+  tabs: Array<{ id: string; title: string; url: string }>
 }
 
 export type AgentBrowserLoginRecord = {
@@ -528,6 +538,7 @@ export type AgentBrowserRecord = {
   createdAt: string
   lastUsedAt: string | null
   inUse: boolean
+  loginStatus: 'unsigned' | 'personal' | 'legacy_team_human'
   logins: AgentBrowserLoginRecord[]
 }
 
@@ -543,6 +554,7 @@ export type AgentBrowserTabRecord = {
 
 export type AgentBrowserTabsResponse = {
   hasBrowser: boolean
+  quarantined: boolean
   tabs: AgentBrowserTabRecord[]
 }
 

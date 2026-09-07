@@ -253,7 +253,10 @@ test('a connect URL pointing away from Browserbase is refused', async () => {
  */
 test('no project id means no projectId field on the wire — never a null one', async () => {
   const bodies: Array<Record<string, unknown>> = []
-  const collect = (async (_url: string, init?: { body?: string }) => {
+  const collect = (async (_url: string, init?: { body?: string; method?: string }) => {
+    if (init?.method === 'GET') {
+      return new Response(JSON.stringify({ status: 'COMPLETED' }), { status: 200 })
+    }
     bodies.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>)
     return new Response(
       JSON.stringify({ id: 'sess-1', connectUrl: 'wss://connect.browserbase.com/x' }),

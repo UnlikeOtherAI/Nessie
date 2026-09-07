@@ -73,3 +73,18 @@ export const resolvePublicOrigin = (
   }
   return `${request.protocol}://${request.hostname}`
 }
+
+/**
+ * The same resolution for callers where a missing origin is not fatal — a
+ * value the response merely advertises, rather than a URL a third party will
+ * be redirected to. An unconfigured deployment gets `null` and advertises
+ * nothing; a *misconfigured* one still throws, because a declared-but-invalid
+ * `api.publicUrl` is an operator error either way.
+ */
+export const resolveOptionalPublicOrigin = (
+  request: Pick<FastifyRequest, 'protocol' | 'hostname'>,
+  config: Pick<AppConfig, 'mode' | 'api'>,
+): string | null => {
+  if (!config.api.publicUrl && config.mode !== 'local') return null
+  return resolvePublicOrigin(request, config)
+}

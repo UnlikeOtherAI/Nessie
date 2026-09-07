@@ -160,6 +160,14 @@ export const useAgentRealtime = (input: {
       return
     }
 
+    // A policy change can remove a capability that is mounted beside the
+    // conversation. Re-read the entitled agent records before leaving that
+    // stale doorway on another signed-in person's screen.
+    if (message.event === 'agent.updated') {
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      return
+    }
+
     if (message.event === 'run.updated') {
       invalidateAgentCaches(message.data.agentId)
       return

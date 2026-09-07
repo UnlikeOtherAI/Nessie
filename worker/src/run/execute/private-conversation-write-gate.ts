@@ -1,4 +1,8 @@
-import { EMAIL_SEND_TOOL_ID } from '@nessie/runtime'
+import {
+  BROWSER_ACT_TOOL_ID,
+  BROWSER_OPEN_TOOL_ID,
+  EMAIL_SEND_TOOL_ID,
+} from '@nessie/runtime'
 
 import type { RunContext } from './types.js'
 
@@ -11,6 +15,10 @@ const UNSCOPED_CONTENT_SINKS = new Set([
   'kb_document_edit',
   'kb_draft_write',
   'kb_note_add',
+  // A private source can be placed in a URL or typed into an external page.
+  // Neither browser verb has an original-author-bound disclosure protocol.
+  BROWSER_ACT_TOOL_ID,
+  BROWSER_OPEN_TOOL_ID,
   EMAIL_SEND_TOOL_ID,
   'mailbox_send',
   'ticket_create',

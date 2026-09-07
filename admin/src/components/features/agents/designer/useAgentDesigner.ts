@@ -3,6 +3,7 @@ import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { findModelOption } from './model-options'
 import { emptyRunLimitsForm, type RunLimitsField } from '../../../../facades/designer/run-limits'
+import { completeToolSelection, type DesignerToolOption } from '../../../../facades/designer/tool-catalog'
 import type {
   AgentDesignerAction,
   AgentDesignerActions,
@@ -61,6 +62,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, voiceName: action.voiceName }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
+    case 'set_tool_selection':
+      return { ...state, tools: action.toolState }
     case 'set_visibility':
       return { ...state, visibility: action.visibility }
     case 'restore':
@@ -87,6 +90,7 @@ export const useAgentDesigner = (
   modelOptions: AgentModelOption[] = [],
   // The agent being edited, or undefined for a new one — the draft's entity.
   agentId?: string,
+  toolOptions: DesignerToolOption[] = [],
 ) => {
   const [state, dispatch] = useReducer(reducer, {
     ...DEFAULT_STATE,
@@ -205,6 +209,12 @@ export const useAgentDesigner = (
       case 'set_system_prompt':
         dispatch({ type: 'set_system_prompt', prompt: String(args.content ?? '') })
         break
+      case 'set_tool_selection': {
+        if (!Array.isArray(args.toolIds) || !args.toolIds.every((id) => typeof id === 'string')) break
+        const toolState = completeToolSelection(state.tools, toolOptions, args.toolIds)
+        if (toolState) dispatch({ type: 'set_tool_selection', toolState })
+        break
+      }
       case 'toggle_tool':
         dispatch({
           type: 'toggle_tool',
@@ -227,7 +237,7 @@ export const useAgentDesigner = (
         }
         break
     }
-  }, [modelOptions])
+  }, [modelOptions, state.tools, toolOptions])
 
   const actions: AgentDesignerActions = {
     applyToolCall,

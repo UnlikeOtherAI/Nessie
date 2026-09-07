@@ -1,5 +1,29 @@
 import { z } from 'zod'
 
+import {
+  AgentCardActionSchema,
+  AgentCardKeySchema,
+} from './agent-card-actions.js'
+import { AgentCardServiceSchema } from './agent-card-service.js'
+
+export {
+  AgentCardActionSchema,
+  AgentCardActionStyleSchema,
+  AgentCardKeySchema,
+  type AgentCardActionStyle,
+  type AgentCardKey,
+} from './agent-card-actions.js'
+export { AgentCardServiceSchema, type AgentCardService } from './agent-card-service.js'
+export {
+  AgentCardMessageMetadataSchema,
+  AgentCardRespondBodySchema,
+  AgentCardResponseMetadataSchema,
+  isAgentCardResponseMessage,
+  type AgentCardMessageMetadata,
+  type AgentCardRespondBody,
+  type AgentCardResponseMetadata,
+} from './agent-card-message-schema.js'
+
 /**
  * Agent chat cards — one interactive card system for every agent.
  *
@@ -18,12 +42,6 @@ import { z } from 'zod'
  *
  * Design: docs/plans/2026-09-01-agent-chat-cards.md
  */
-
-/** Machine keys for inputs and actions: stable, lowercase, model-authored. */
-export const AgentCardKeySchema = z
-  .string()
-  .regex(/^[a-z][a-z0-9_]{0,31}$/, 'Keys are lowercase, start with a letter, max 32 characters')
-export type AgentCardKey = z.infer<typeof AgentCardKeySchema>
 
 export const AGENT_CARD_MAX_BLOCKS = 12
 export const AGENT_CARD_MAX_ACTIONS = 4
@@ -47,6 +65,12 @@ export const AGENT_CARD_MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60
  * `dashboard_source_credential` configures the HTTPS source the Dashboard
  * Designer just created. Both are Prisma-backed operations which commit with
  * the press.
+ *
+ * `browserbase_connection` connects a Browserbase account. Its key is probed
+ * before the encrypted Browserbase connection row is written, and it never
+ * becomes a general vault secret. A personal account belongs to the person who
+ * presses the card; a shared team or organisation account remains an owner
+ * decision, matching the Settings route.
  *
  * `vault_secret` is the general destination: Secrets, for a credential that
  * belongs to a person or a level of the organisation rather than to one
@@ -134,6 +158,31 @@ export const AgentCardSecretDestinationSchema = z
             code: z.ZodIssueCode.custom,
             message: 'A header credential needs headerName.',
             path: ['headerName'],
+          })
+        }
+      }),
+    z
+      .object({
+        kind: z.literal('browserbase_connection'),
+        /** Defaults to the responder's own Browserbase account. */
+        scope: z.enum(['user', 'team', 'organization']).default('user'),
+        /** Required only for a team-owned Browserbase account. */
+        teamId: z.string().uuid().optional(),
+      })
+      .strict()
+      .superRefine((destination, ctx) => {
+        if (destination.scope === 'team' && !destination.teamId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A team Browserbase account needs teamId.',
+            path: ['teamId'],
+          })
+        }
+        if (destination.scope !== 'team' && destination.teamId !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Only a team Browserbase account takes teamId.',
+            path: ['teamId'],
           })
         }
       }),
@@ -274,37 +323,6 @@ export const AgentCardBlockSchema = z.union([
 ])
 export type AgentCardBlock = z.infer<typeof AgentCardBlockSchema>
 
-export const AgentCardActionStyleSchema = z.enum(['primary', 'secondary', 'danger'])
-export type AgentCardActionStyle = z.infer<typeof AgentCardActionStyleSchema>
-
-export const AgentCardActionSchema = z
-  .object({
-    key: AgentCardKeySchema,
-    label: z.string().trim().min(1).max(24),
-    style: AgentCardActionStyleSchema,
-    /**
-     * `true` = the press validates and submits the card's inputs (OK, Allow,
-     * Send). `false` = a dismissal that ignores them (Cancel, Not now), so a
-     * half-filled form can still be declined.
-     */
-    submits: z.boolean(),
-  })
-  .strict()
-export type AgentCardAction = z.infer<typeof AgentCardActionSchema>
-
-/**
- * The service the card is about. `key` is matched server-side against the app
- * catalogue to resolve an icon; the model never supplies an icon URL, and a
- * key with no match simply renders the label's initials.
- */
-export const AgentCardServiceSchema = z
-  .object({
-    key: z.string().trim().min(1).max(64),
-    label: z.string().trim().min(1).max(40),
-  })
-  .strict()
-export type AgentCardService = z.infer<typeof AgentCardServiceSchema>
-
 const collectDuplicates = (keys: string[]): string[] => {
   const seen = new Set<string>()
   const duplicates = new Set<string>()
@@ -345,6 +363,14 @@ export const AgentCardSpecSchema = z
       })
     }
 
+    if (spec.actions.some((action) => action.collectsValues)
+      && spec.blocks.some((block) => block.type === 'secret')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A card that preserves form values cannot contain secret inputs.',
+      })
+    }
+
     // A card that asks for something needs a way to submit it, or the person
     // is looking at inputs with no button that reads them.
     const asksForInput = spec.blocks.some(
@@ -358,58 +384,6 @@ export const AgentCardSpecSchema = z
     }
   })
 export type AgentCardSpec = z.infer<typeof AgentCardSpecSchema>
-
-/**
- * The entire durable payload on the assistant message. The card id is an
- * opaque pointer: the spec, mutable status, who may press, and the resolution
- * are all loaded from the authenticated, viewer-scoped presenter — the same
- * discipline `AppSetupCardSchema` follows, and for the same reason (a press
- * must be claimed by a conditional UPDATE on a row, not a JSON mutation).
- */
-export const AgentCardMessageMetadataSchema = z
-  .object({
-    agentCard: z
-      .object({
-        cardId: z.string().uuid(),
-        schemaVersion: z.literal(1),
-      })
-      .strict(),
-  })
-  .strict()
-export type AgentCardMessageMetadata = z.infer<typeof AgentCardMessageMetadataSchema>
-
-/**
- * Stamped on the *response* message a press creates. Read structurally by the
- * orchestrator to wake the card's agent — never by matching content.
- */
-export const AgentCardResponseMetadataSchema = z
-  .object({
-    agentCardResponse: z
-      .object({
-        cardId: z.string().uuid(),
-        actionKey: AgentCardKeySchema,
-        schemaVersion: z.literal(1),
-      })
-      .strict(),
-  })
-  .strict()
-export type AgentCardResponseMetadata = z.infer<typeof AgentCardResponseMetadataSchema>
-
-/**
- * Does this message record a card press? The one predicate for that question —
- * the message-edit service refuses these (a "Deny" edited into "Allow" would
- * lie beside a card that says otherwise) and the admin hides the edit
- * affordance on them, and those two must never disagree.
- *
- * Only the key's presence is structural; the metadata around it is not this
- * predicate's business, so a card response is recognised even when a future
- * key sits beside it and the strict schema above would reject the whole
- * object.
- */
-export const isAgentCardResponseMessage = (metadata: unknown): boolean =>
-  AgentCardResponseMetadataSchema.shape.agentCardResponse.safeParse(
-    (metadata as { agentCardResponse?: unknown } | null | undefined)?.agentCardResponse,
-  ).success
 
 export const AgentCardStatusSchema = z.enum(['open', 'resolved', 'expired', 'cancelled'])
 export type AgentCardStatus = z.infer<typeof AgentCardStatusSchema>
@@ -499,6 +473,15 @@ export type AgentCardResolution = z.infer<typeof AgentCardResolutionSchema>
  * actionable?" flag the client trusts: it folds status, expiry, and whether
  * this particular viewer is a respondent into one server decision.
  */
+export const BrowserLoginCardPresenterSchema = z.object({
+  expiresAt: z.string(),
+  grantId: z.string().uuid(),
+  mode: z.literal('temporary'),
+  origins: z.array(z.string().url()).min(1).max(20),
+  service: z.string().min(1).max(200),
+}).strict()
+export type BrowserLoginCardPresenter = z.infer<typeof BrowserLoginCardPresenterSchema>
+
 export const AgentCardPresenterSchema = z
   .object({
     cardId: z.string().uuid(),
@@ -524,15 +507,8 @@ export const AgentCardPresenterSchema = z
     /** Display names of the people the agent asked; empty when anyone may press. */
     waitingFor: z.array(z.string()),
     resolution: AgentCardResolutionSchema.nullable(),
+    /** Private login-grant facts, visible only to the card's respondent. */
+    browserLogin: BrowserLoginCardPresenterSchema.nullable(),
   })
   .strict()
 export type AgentCardPresenter = z.infer<typeof AgentCardPresenterSchema>
-
-export const AgentCardRespondBodySchema = z
-  .object({
-    actionKey: AgentCardKeySchema,
-    values: z.record(z.union([z.string().max(4000), z.number(), z.boolean()])).optional(),
-    secrets: z.record(z.string().min(1).max(8192)).optional(),
-  })
-  .strict()
-export type AgentCardRespondBody = z.infer<typeof AgentCardRespondBodySchema>

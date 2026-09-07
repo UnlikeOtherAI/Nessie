@@ -20,7 +20,7 @@ use crate::{
     grant::request_workspace_grant,
     invitation::parse_invitation,
     pipe_client::call,
-    service_identity::{service_root, EXECUTORS_URL},
+    service_identity::{executors_url_for_api, service_root},
     state::ServiceView,
 };
 
@@ -114,15 +114,23 @@ async fn choose_workspace<R: Runtime>(app: AppHandle<R>) -> Result<PathBuf, Stri
 /// through one elevated relaunch, then hand the challenge to the service over
 /// the pipe. The challenge never reaches a command line, and the elevated step
 /// is what admits this account to the pipe from then on.
-pub async fn pair<R: Runtime>(app: AppHandle<R>, invitation: String) -> Result<ServiceView, String> {
+pub async fn pair<R: Runtime>(
+    app: AppHandle<R>, invitation: String, selected_api_base_url: String,
+) -> Result<ServiceView, String> {
     let invitation = parse_invitation(&invitation)?;
+    if invitation.api_base_url != selected_api_base_url {
+        return Err(
+            "The invitation belongs to a different Nessie backend. Select the backend that created it; pairing never falls back to another origin."
+                .to_owned(),
+        );
+    }
     let workspace = choose_workspace(app.clone()).await?;
     if !confirm(
         app,
         "Pair Nessie executor",
         format!(
             "Nessie Executor will create a private machine key and pair this computer with \
-             Nessie. Windows will ask for administrator approval once, to give the {SERVICE_ACCOUNT} \
+             Nessie at {selected_api_base_url}. Windows will ask for administrator approval once, to give the {SERVICE_ACCOUNT} \
              service account read access to the workspace you chose. Selected file contents and \
              command output may be sent to Nessie and its configured model, but only through \
              the executor's reviewed policy.",
@@ -147,9 +155,9 @@ pub async fn pair<R: Runtime>(app: AppHandle<R>, invitation: String) -> Result<S
     Ok(ServiceView::Reachable { executors })
 }
 
-pub fn open_nessie<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub fn open_nessie<R: Runtime>(app: &AppHandle<R>, api_base_url: &str) -> Result<(), String> {
     app.opener()
-        .open_url(EXECUTORS_URL, None::<&str>)
+        .open_url(executors_url_for_api(api_base_url)?, None::<&str>)
         .map_err(|_| "Nessie Executor could not open your browser.".to_owned())
 }
 
@@ -190,13 +198,24 @@ pub async fn executor_stop(app: AppHandle, executor_id: String) -> Result<Servic
 }
 
 #[tauri::command]
-pub async fn executor_pair(app: AppHandle, invitation: String) -> Result<ServiceView, String> {
-    pair(app, invitation).await
+pub async fn executor_pair(
+    app: AppHandle, invitation: String, selected_api_base_url: String,
+) -> Result<ServiceView, String> {
+    pair(app, invitation, selected_api_base_url).await
 }
 
 #[tauri::command]
-pub fn executor_open_nessie(app: AppHandle) -> Result<(), String> {
-    open_nessie(&app)
+pub fn executor_open_nessie(app: AppHandle, api_base_url: String) -> Result<(), String> {
+    open_nessie(&app, &api_base_url)
+}
+
+#[tauri::command]
+pub fn executor_pairing_backends() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("https://api.nessie.works", "Nessie cloud"),
+        ("http://127.0.0.1:5454", "Local development API (127.0.0.1:5454)"),
+        ("http://localhost:5454", "Local development API (localhost:5454)"),
+    ]
 }
 
 #[tauri::command]

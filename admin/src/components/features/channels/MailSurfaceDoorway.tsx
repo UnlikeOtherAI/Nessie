@@ -7,14 +7,16 @@ import {
 } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
 
+import { GmailDraftCardView } from './GmailDraftCard'
+import { useGmailDraft, useSendGmailDraft } from '../../../facades/gmail/hooks'
+import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { Dialog } from '../../shared/Dialog'
 import { QueryState } from '../../shared/QueryState'
-import { ConnectedMailCompose } from '../connected-mail/ConnectedMailCompose'
+import { ConnectedMailComposeDialog } from '../connected-mail/ConnectedMailComposeDialog'
 import { ConnectedMailConversationView } from '../connected-mail/ConnectedMailConversation'
 import { MailboxThreadList, MailboxWorkspace, type MailboxThreadSummary } from '../mailbox/MailboxWorkspace'
-import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads } from '../../../facades/mail/hooks'
+import { mailPath, useConnectedMailAccounts, useConnectedMailConversation, useConnectedMailThreads, useSelectedConnectedMailConversations } from '../../../facades/mail/hooks'
 import { connectedMailSettingsPath } from '../../../facades/mail/settings-path'
-import { useNavigationLayout } from '../../../navigation/mobile-shell'
 
 export type MailSurfaceDoorway = MailSurfaceDoorwayMetadata
 
@@ -45,6 +47,54 @@ const findAccount = (accounts: ConnectedMailAccountRecord[] | undefined, doorway
     account.id === doorway.accountId && account.source === doorway.source && canOpen(account, doorway),
   ) ?? null
 
+const GmailDraftChatPreview = ({
+  canSend,
+  connectionId,
+  draftId,
+  onEdit,
+}: {
+  canSend: boolean
+  connectionId: string
+  draftId: string
+  onEdit: () => void
+}) => {
+  const draft = useGmailDraft(draftId)
+  const send = useSendGmailDraft()
+  const [error, setError] = useState<string | null>(null)
+
+  if (draft.isError || !draft.data || draft.data.connectionId !== connectionId) return null
+  const canSendDraft = canSend && draft.data.editable && draft.data.state === 'draft'
+  return (
+    <div data-testid="gmail-chat-draft-preview">
+      <GmailDraftCardView
+        actions={(
+          <>
+            <button
+              className="admin-button admin-button-primary"
+              disabled={!canSendDraft || send.isPending}
+              onClick={() => {
+                setError(null)
+                void send.mutateAsync({
+                  expectedFingerprint: draft.data?.contentFingerprint,
+                  id: draftId,
+                }).catch((cause: unknown) => {
+                  setError(cause instanceof Error ? cause.message : 'Could not send this email.')
+                })
+              }}
+              type="button"
+            >
+              {send.isPending ? 'Sending...' : 'Send'}
+            </button>
+            <button className="admin-button admin-button-secondary" onClick={onEdit} type="button">Edit</button>
+          </>
+        )}
+        data={draft.data}
+      />
+      {error ? <p aria-live="polite" className="mt-1 text-xs text-[color:var(--danger)]">{error}</p> : null}
+    </div>
+  )
+}
+
 const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSummary => ({
   awaitingApproval: false,
   hasAttachments: thread.hasAttachments,
@@ -58,27 +108,67 @@ const asMailboxThread = (thread: ConnectedMailThreadSummary): MailboxThreadSumma
   unread: thread.unread,
 })
 
+const asSelectedMailboxThread = (conversation: { id: string; messages: Array<{
+  from: string | null; receivedAt: string | null; subject: string
+}> }): MailboxThreadSummary => {
+  const newest = conversation.messages.at(-1)
+  return {
+    awaitingApproval: false,
+    hasAttachments: false,
+    hasBounce: false,
+    id: conversation.id,
+    lastMessageAt: newest?.receivedAt ?? new Date(0).toISOString(),
+    messageCount: conversation.messages.length,
+    participants: newest?.from ? [newest.from] : [],
+    snippet: 'Selected for review',
+    subject: newest?.subject ?? 'Email selected for review',
+    unread: false,
+  }
+}
+
 /** The account handoff is the shared mailbox vocabulary, not prose that makes
  * a person leave chat merely to see which conversations need their attention. */
 const MailSurfaceAccountPreview = ({
   account,
+  compact = false,
   onSelect,
+  threadIds,
 }: {
   account: ConnectedMailAccountRecord
+  compact?: boolean
   onSelect: (threadId: string) => void
+  threadIds?: string[]
 }) => {
   const threads = useConnectedMailThreads({ accountId: account.id, source: account.source }, {
     pageSize: 10, query: '', unreadOnly: false,
   })
+  const selected = useSelectedConnectedMailConversations(
+    { accountId: account.id, source: account.source },
+    threadIds ?? [],
+  )
+  const selectedItems = selected.flatMap((result) => result.data ? [asSelectedMailboxThread(result.data)] : [])
+  const hasSelection = (threadIds?.length ?? 0) > 0
   const items = threads.data?.items ?? []
+  const conversationList = (
+    <QueryState
+      emptyLabel={hasSelection ? 'The selected emails are no longer available.' : 'No conversations are available.'}
+      errorLabel="Could not load this mailbox."
+      isEmpty={hasSelection ? selectedItems.length === 0 : items.length === 0}
+      loadingLabel="Loading mail…"
+      query={hasSelection ? {
+        isError: selected.some((result) => result.isError),
+        isLoading: selected.some((result) => result.isLoading),
+        refetch: () => Promise.all(selected.map((result) => result.refetch())),
+      } : threads}
+    >
+      {() => <MailboxThreadList ariaLabel={hasSelection ? 'Selected mail conversations' : 'Mail conversations'} onSelect={onSelect} threads={hasSelection ? selectedItems : items.map(asMailboxThread)} />}
+    </QueryState>
+  )
+  if (compact) return <div className="max-h-80 overflow-y-auto">{conversationList}</div>
   return (
     <MailboxWorkspace
       conversation={<p className="p-3 text-sm text-[color:var(--tx2)]">Choose a conversation to open it in Mail.</p>}
-      conversationList={(
-        <QueryState emptyLabel="No conversations are available." errorLabel="Could not load this mailbox." isEmpty={items.length === 0} loadingLabel="Loading mail…" query={threads}>
-          {() => <MailboxThreadList ariaLabel="Mail conversations" onSelect={onSelect} threads={items.map(asMailboxThread)} />}
-        </QueryState>
-      )}
+      conversationList={conversationList}
       layout="single"
     />
   )
@@ -118,6 +208,8 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
     doorway?.threadId,
     open && Boolean(account),
   )
+  const isGmailDraftDoorway = doorway?.source === 'gmail'
+    && doorway.mode === 'compose' && Boolean(doorway.draftId)
 
   // `refetch` rather than the whole query result: it is the stable handle, so
   // the observer effect below is not restarted every time the account list
@@ -140,7 +232,10 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   }, [doorway, refetchAccounts])
 
   useEffect(() => {
-    if (!storageKey || !targetRef.current || !doorway) return
+    const inlineReview = doorway?.threadIds?.length || (
+      doorway?.source === 'gmail' && doorway.mode === 'compose' && doorway.draftId
+    )
+    if (!storageKey || !targetRef.current || !doorway || inlineReview) return
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry?.isIntersecting) return
       try {
@@ -173,6 +268,7 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   const matchingAccount = accounts.data?.find((candidate) =>
     candidate.id === doorway.accountId && candidate.source === doorway.source,
   )
+  const authorizedDoorwayAccount = findAccount(accounts.data, doorway)
   const title = doorway.mode === 'compose' ? 'Email draft ready' : doorway.mode === 'thread' ? 'Email ready to review' : 'Mail ready to review'
   // A compose doorway that names a thread is a reply. The newest message in the
   // (oldest-first) conversation carries the provider thread and Message-ID the
@@ -202,29 +298,64 @@ export const MailSurfaceDoorwayChip = ({ messageId, metadata }: {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="mail-surface-doorway" ref={targetRef}>
       <span className="text-xs text-[color:var(--tx2)]">{title}</span>
-      <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">Open mail</button>
+      {!isGmailDraftDoorway ? <button className="admin-button admin-button-secondary admin-button-compact" onClick={() => void checkAndOpen()} type="button">{doorway.mode === 'compose' ? 'Edit' : 'Open mail'}</button> : null}
       {accessError ? <span aria-live="polite" className="text-xs text-[color:var(--danger)]">{accessError}</span> : null}
       {accessError && matchingAccount ? <button className="text-xs font-semibold text-[color:var(--accent)]" onClick={() => navigate(connectedMailSettingsPath(matchingAccount))} type="button">Open mailbox settings</button> : null}
-      <Dialog description="Mail access is checked when this opens." onClose={close} open={open} size={layout === 'single' ? 'full' : 'xl'} title={title}>
-        <div className="min-h-0 p-4">
-          {doorway.mode === 'thread' && conversation.data ? <ConnectedMailConversationView conversation={conversation.data} onReply={(message) => { close(); navigate(`${mailPath({ accountId: doorway.accountId, source: doorway.source })}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`) }} /> : null}
-          {doorway.mode === 'compose' && account ? <ConnectedMailCompose account={account} address={{ accountId: account.id, source: account.source }} gmailDraftId={doorway.draftId} replyTo={replyTo} onOpenSettings={() => navigate(connectedMailSettingsPath(account))} onSent={close} onStartNewEmail={(id) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/compose?compose=${id}&new=1`) }} /> : null}
-          {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} /> : null}
-          {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
-          {/* A compose doorway naming a thread has no reply target until the
-              conversation resolves. Leaving this pressable meanwhile navigates
-              without `reply=`, and the compose page then starts a new thread —
-              the same defect this doorway was fixed for, only timing-dependent. */}
-          <button
-            className="mt-3 admin-button admin-button-primary"
-            disabled={awaitingReplyTarget}
-            onClick={() => void openMail()}
-            type="button"
-          >
-            {awaitingReplyTarget ? 'Loading email…' : 'Open full mail'}
-          </button>
+      {isGmailDraftDoorway && doorway.draftId && authorizedDoorwayAccount ? (
+        <GmailDraftChatPreview
+          canSend={authorizedDoorwayAccount.canSend}
+          connectionId={authorizedDoorwayAccount.id}
+          draftId={doorway.draftId}
+          onEdit={() => { void checkAndOpen() }}
+        />
+      ) : null}
+      {doorway.mode === 'account' && doorway.threadIds?.length && authorizedDoorwayAccount ? (
+        <div className="w-full max-w-2xl" data-testid="mail-surface-selected-threads">
+          <MailSurfaceAccountPreview
+            account={authorizedDoorwayAccount}
+            compact
+            onSelect={(threadId) => navigate(`${mailPath({ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source })}/threads/${encodeURIComponent(threadId)}`)}
+            threadIds={doorway.threadIds}
+          />
         </div>
-      </Dialog>
+      ) : null}
+      {doorway.mode === 'compose' && authorizedDoorwayAccount && account ? (
+        <ConnectedMailComposeDialog
+          account={authorizedDoorwayAccount}
+          address={{ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source }}
+          gmailDraftId={doorway.draftId}
+          onClose={close}
+          onOpenSettings={() => navigate(connectedMailSettingsPath(authorizedDoorwayAccount))}
+          onSent={close}
+          onStartNewEmail={(id) => {
+            close()
+            navigate(`${mailPath({ accountId: authorizedDoorwayAccount.id, source: authorizedDoorwayAccount.source })}/compose?compose=${id}&new=1`)
+          }}
+          open={open}
+          replyTo={replyTo}
+        />
+      ) : (
+        <Dialog
+          onClose={close}
+          open={open}
+          size={layout === 'single' ? 'full' : 'xl'}
+          title={title}
+        >
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" data-testid="mail-surface-doorway-content">
+            {doorway.mode === 'thread' && conversation.data ? <ConnectedMailConversationView conversation={conversation.data} onReply={(message) => { close(); navigate(`${mailPath({ accountId: doorway.accountId, source: doorway.source })}/compose?threadId=${encodeURIComponent(message.threadId)}&reply=${encodeURIComponent(message.id)}`) }} /> : null}
+            {doorway.mode === 'account' && account ? <MailSurfaceAccountPreview account={account} onSelect={(threadId) => { close(); navigate(`${mailPath({ accountId: account.id, source: account.source })}/threads/${encodeURIComponent(threadId)}`) }} threadIds={doorway.threadIds} /> : null}
+            {conversation.isError ? <p aria-live="polite" className="text-sm text-[color:var(--danger)]">Could not load this email. Try opening it again.</p> : null}
+            <button
+              className="mt-3 admin-button admin-button-primary"
+              disabled={awaitingReplyTarget}
+              onClick={() => void openMail()}
+              type="button"
+            >
+              {awaitingReplyTarget ? 'Loading email...' : 'Open full mail'}
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   )
 }

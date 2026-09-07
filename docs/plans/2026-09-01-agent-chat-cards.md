@@ -514,16 +514,16 @@ Together these satisfy "retained in the context": as long as the card is in
 the window the model knows its terminal state and who decided it, and the
 decision itself is a human turn it would never mistake for its own words.
 
-**The one-line prompt block.** A structural `buildAgentCardsBlock` is injected
-beside the todo/documents blocks **only when `card_post` is in the run's
-resolved builtin ids** — the same toolset-derived condition the documents
-block uses — as one sentence: *"You can post an interactive card into this
-conversation with `card_post` (a ticket or email overview, an image with a
-caption, a small form) whose buttons the person presses, and the press and
-any entered values come back to you and stay in the conversation — prefer it
-over prose whenever you need a decision, a confirmation, a secret, or
-structured input."* An agent whose `toolPolicy` disables the tool sees no
-line, so the prompt never advertises a capability the toolset withholds.
+**The prompt block.** A structural `buildAgentCardsBlock` is injected beside
+the todo/documents blocks. When `card_post` is in the resolved builtin ids, it
+states that the agent can post an interactive card and may request a
+Browserbase API key only through the masked
+`browserbase_connection` secret destination. Without `card_post`, it contains
+no card instruction or form destination. It still gives every agent the
+truthful Browserbase setup path, so the model can recommend a cloud browser
+when useful: the account connection and the named agent's explicit browser
+grant are separate decisions, and the person signs in within the controlled
+browser rather than providing a website password to Nessie.
 
 ## 6. Disclosure and tenancy
 

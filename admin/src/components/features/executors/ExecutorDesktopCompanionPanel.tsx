@@ -12,7 +12,7 @@ import {
   type ExecutorCompanionStatus,
   type ExecutorCompanionStatusResponse,
 } from '../../../lib/executor-companion'
-import { getBaseUrl } from '../../../lib/api-client'
+import { getExecutorApiOrigin } from '../../../lib/api-client'
 import { useShellEnvironment } from '../../../providers/ShellEnvironmentProvider'
 
 const workspaceOperations = [
@@ -187,7 +187,7 @@ export const ExecutorDesktopCompanionPanel = ({
             className="admin-button admin-button-primary w-fit"
             disabled={busy !== null}
             onClick={() => void run('pair', () => pairExecutorWithCompanion({
-              apiBaseUrl: getBaseUrl() || 'https://api.nessie.works',
+              apiBaseUrl: getExecutorApiOrigin(created.invitation.apiBaseUrl),
               challenge: created.invitation.challenge,
               enrollmentId: created.invitation.enrollmentId,
               executorId: created.executor.id,

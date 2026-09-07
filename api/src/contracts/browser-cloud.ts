@@ -70,6 +70,12 @@ export const CloudBrowserSessionListSchema = z.object({
  * session lives.
  */
 export const CloudBrowserSessionDetailSchema = CloudBrowserSessionSummarySchema.extend({
+  /** The server's current authority for this viewer, rechecked on every read. */
+  viewerMode: z.enum(['controller', 'observer']),
+  /** False once the displayed holder's heartbeat expires, so it can be reclaimed. */
+  controlLeaseActive: z.boolean(),
+  /** Only an owner's exact private home can relay human browser input. */
+  canControl: z.boolean(),
   /**
    * Whether anything signed in through this session is shared with other
    * people. True only for a durable browser with no principal — a team
@@ -91,14 +97,64 @@ export const CloudBrowserSessionDetailSchema = CloudBrowserSessionSummarySchema.
    * time remaining on a session the reaper had already taken.
    */
   expiresAt: z.string(),
-  liveViewUrl: z.string().url().nullable(),
+  /**
+   * Kept as a null compatibility field while clients move to the mediated
+   * screenshot stream. A Browserbase live-view URL is an input capability and
+   * must never leave the API.
+   */
+  liveViewUrl: z.null(),
+  /** Present only to the owner of a still-active one-time login grant. */
+  privateAccess: z.object({ grantId: z.string().uuid(), expiresAt: z.string() }).nullable(),
   tabs: z.array(z.object({
     id: z.string(),
     title: z.string(),
     url: z.string(),
-    liveViewUrl: z.string().url(),
   })),
 })
+
+/** One private, transient frame from the server-side CDP connection. */
+export const CloudBrowserSessionScreenshotSchema = z.object({
+  imageDataUrl: z.string().startsWith('data:image/png;base64,').nullable(),
+})
+
+const HumanBrowserKeySchema = z.enum([
+  'Alt', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Backspace',
+  'Delete', 'End', 'Enter', 'Escape', 'Home', 'PageDown', 'PageUp', 'Space', 'Tab',
+])
+
+/**
+ * Closed human-only input grammar. It is intentionally separate from the
+ * agent tool grammar: browser agents act on observed semantic nodes, while a
+ * person operates the remote canvas at viewport coordinates.
+ */
+export const HumanBrowserInputSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('navigate'),
+    url: z.string().url().max(2_048).refine((url) => new URL(url).protocol === 'https:', {
+      message: 'Only HTTPS addresses are allowed.',
+    }),
+  }).strict(),
+  z.object({ type: z.literal('back') }).strict(),
+  z.object({ type: z.literal('forward') }).strict(),
+  z.object({ type: z.literal('reload') }).strict(),
+  z.object({ type: z.literal('switch_tab'), targetId: z.string().min(1).max(200) }).strict(),
+  z.object({
+    type: z.literal('click'),
+    x: z.number().finite().min(0).max(20_000),
+    y: z.number().finite().min(0).max(20_000),
+  }).strict(),
+  z.object({
+    type: z.literal('scroll'),
+    x: z.number().finite().min(0).max(20_000),
+    y: z.number().finite().min(0).max(20_000),
+    deltaX: z.number().finite().min(-20_000).max(20_000),
+    deltaY: z.number().finite().min(-20_000).max(20_000),
+  }).strict(),
+  z.object({ type: z.literal('key'), key: HumanBrowserKeySchema }).strict(),
+  z.object({ type: z.literal('text'), text: z.string().min(1).max(10_000) }).strict(),
+])
+
+export type HumanBrowserInput = z.infer<typeof HumanBrowserInputSchema>
 
 export type ConnectCloudBrowserBody = z.infer<typeof ConnectCloudBrowserBodySchema>
 export type CloudBrowserConnectionRecord = z.infer<typeof CloudBrowserConnectionSchema>
@@ -120,6 +176,8 @@ export const AgentBrowserResponseSchema = z.object({
     createdAt: z.string(),
     lastUsedAt: z.string().nullable(),
     inUse: z.boolean(),
+    /** A legacy shared jar that contains a human sign-in is reset-only. */
+    loginStatus: z.enum(['unsigned', 'personal', 'legacy_team_human']),
     logins: z.array(AgentBrowserLoginSchema),
   }).nullable(),
 })
@@ -153,6 +211,8 @@ export const AgentBrowserTabSchema = z.object({
 export const AgentBrowserTabsResponseSchema = z.object({
   /** False when the agent has no durable browser yet — no tabs is then expected. */
   hasBrowser: z.boolean(),
+  /** Page material is unavailable until an unsafe legacy team jar is reset. */
+  quarantined: z.boolean(),
   tabs: z.array(AgentBrowserTabSchema),
 })
 
@@ -166,29 +226,31 @@ export type AgentBrowserTabsResponse = z.infer<typeof AgentBrowserTabsResponseSc
 export type BrowserLoginList = z.infer<typeof BrowserLoginListSchema>
 
 
-/**
- * Resizing an agent's browser. The pair is remembered on the browser, so the
- * next session it opens — the agent's own, not only this person's — comes back
- * the same size.
- */
+/** The durable default and the current guarded canvas both use this size. */
 export const SetAgentBrowserViewportBodySchema = BrowserViewportSchema
+
+/** A one-time private session has no durable browser whose preference it can change. */
+export const SetCloudBrowserSessionViewportBodySchema = BrowserViewportSchema
+
+export const ActivatePersonalBrowserAccessGrantBodySchema = z.object({
+  viewport: BrowserViewportSchema.optional(),
+}).strict()
 
 export const AgentBrowserViewportResponseSchema = z.object({
   viewport: BrowserViewportSchema,
-  /**
-   * Whether the session on screen was resized too. False is ordinary rather
-   * than a failure: nothing was open, or the provider would not resize a live
-   * window, and either way the size is stored and the next session honours it.
-   */
-  appliedToLiveSession: z.boolean(),
+})
+
+export const CloudBrowserSessionViewportResponseSchema = z.object({
+  viewport: BrowserViewportSchema,
 })
 
 export const BrowserHomeResponseSchema = z.object({
-  /** Where it was sent, so the caller can say so without resolving it again. */
+  /** Server-resolved address; only the current guarded canvas may navigate to it. */
   url: z.string().url(),
 })
 
 export type SetAgentBrowserViewportBody = z.infer<typeof SetAgentBrowserViewportBodySchema>
+export type SetCloudBrowserSessionViewportBody = z.infer<typeof SetCloudBrowserSessionViewportBodySchema>
 
 
 /** What a press of Continue answers with, so the countdown can reset. */

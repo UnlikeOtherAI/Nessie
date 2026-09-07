@@ -44,9 +44,18 @@ now stale; the invariants that did not change are still stated there.
   now includes the idle window and the per-open tab restore.
 - **One audience rule** (`viewerMaySeeAgentBrowser`): a browser nobody signed
   in is visible to whoever can reach the conversation; once signed in, to its
-  signers and the session's requester. The session detail, the session list,
-  the stored tabs (others get the site and no picture) and the resume all use
-  it. Hand-back writes at most one synthetic login row per person per browser.
+  signers and the session's requester. An authenticated throwaway session has
+  no durable-browser audience, so it is requester-only. The session detail,
+  control, continue, stored tabs (others get the site and no picture) and the
+  resume all use that gate. Hand-back writes at most one synthetic login row
+  per person per browser.
+- **A login card owns its parked run.** Both the card's Done action and the
+  browser viewer's Done route use the same conditional response transaction.
+  It identifies the generated card by organisation, thread, browser and its
+  structured `done` action, releases the responder's matching session, records
+  hand-back provenance, writes one human response and resumes the waiting run.
+  A repeat or a competing door loses the claim without another queue entry; the
+  worker adopts the live session rather than the viewer opening CDP after it.
 - **§5a/§5b:** the disclosure row is always present with "Browsing now" while
   live; the browser panel lives in the chat as well as on the agent's Tools
   tab. Open question for §7: screenshots of signed-in pages sit unencrypted in

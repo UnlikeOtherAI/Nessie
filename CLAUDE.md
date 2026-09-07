@@ -32,6 +32,13 @@ touches a routed area, open the linked file before writing code.**
 When a rule changes, its standards file changes in the same turn. The routing
 sentence changes only if the invariant itself did.
 
+- **Connected-mail chat review and drafts** reuse the viewer-scoped `/mail`
+  surface and its approval gate; read
+  [`docs/standards/connected-mailboxes.md`](docs/standards/connected-mailboxes.md).
+- **Private browser access, human control, and selected-site Chrome import**
+  have their own explicit-grant contract; read
+  [`docs/plans/2026-09-07-private-browser-access-and-import.md`](docs/plans/2026-09-07-private-browser-access-and-import.md).
+
 ## Notes specific to Claude Code
 
 - **Verification is Playwright, headless, against `http://localhost:5455`.**
@@ -47,6 +54,10 @@ sentence changes only if the invariant itself did.
   building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
   the same fixed ports; details and limits are in
   [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
+- **Browser Cloud usability coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
+  CI runs it in that same managed Navigation Transitions lifecycle before the
+  project usability suite.
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is
