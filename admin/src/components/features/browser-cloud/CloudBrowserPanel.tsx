@@ -28,7 +28,7 @@ type CloudBrowserPanelProps = {
 const HEALTH_COPY: Record<string, string> = {
   auth_failed: 'Browserbase rejected the stored key. Replace it to start browsing again.',
   unreachable: 'Browserbase could not be reached the last time an agent tried.',
-  disabled_by_owner: 'Switched off for this team.',
+  disabled_by_owner: 'Saved sign-ins remain in your Browserbase account. Reconnect to use them again.',
 }
 
 const SCOPE_COPY: Record<CloudBrowserScope, { title: string; blurb: string; empty: string }> = {
@@ -88,6 +88,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
     scope === 'organization' ? row.scope === 'organization'
     : scope === 'team' ? row.scope === 'team'
     : row.scope === 'user' && row.isMine)
+  const connected = connection?.status === 'active'
+  const disconnected = connection?.status === 'disabled'
 
   const setLock = (locked: boolean) => {
     setError(null)
@@ -142,8 +144,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
           ) : null}
         </div>
         {connection ? (
-          <Pill tone={connection.status === 'active' ? 'success' : 'warning'}>
-            {connection.status === 'active' ? 'Connected' : 'Needs attention'}
+          <Pill tone={connected ? 'success' : 'warning'}>
+            {connected ? 'Connected' : disconnected ? 'Disconnected' : 'Needs attention'}
           </Pill>
         ) : null}
       </div>
@@ -151,7 +153,8 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
       <ScopedSettingGate setting={setting}>
         <CloudBrowserConnectionForm
           blurb={copy.blurb}
-          connected={Boolean(connection)}
+          connected={connected}
+          reconnect={Boolean(connection) && !connected}
           scope={scope}
           teamId={teamId}
         />
@@ -170,7 +173,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
 
       <BrowserHomepageField scope={scope} setting={homepageSetting} teamId={teamId} />
 
-      {connection ? (
+      {connection && !disconnected ? (
         <div className="mt-4 border-t border-[color:var(--sep)] pt-3">
           <button
             className="admin-button admin-button-danger admin-button-compact"
@@ -181,8 +184,9 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
             Disconnect
           </button>
           <p className="mt-2 text-xs text-[color:var(--tx3)]">
-            Disconnecting deletes the stored key. Any browsers still open must be closed
-            first, because nothing could tell Browserbase to stop them afterwards.
+            Disconnecting deletes the stored key but keeps saved browser sign-ins in Browserbase.
+            Any browsers still open must be closed first, because nothing could tell Browserbase
+            to stop them afterwards.
           </p>
         </div>
       ) : null}
@@ -190,7 +194,7 @@ export const CloudBrowserPanel = ({ scope, teamId = null }: CloudBrowserPanelPro
       <FormError className="mt-3">{error}</FormError>
 
       <ConfirmDialog
-        body="Agents will not be able to open a browser through this account until a key is connected again."
+        body="Agents will not be able to open a browser through this account until it is reconnected. Saved browser sign-ins stay in Browserbase."
         confirmLabel="Disconnect"
         destructive
         onCancel={() => setConfirming(false)}

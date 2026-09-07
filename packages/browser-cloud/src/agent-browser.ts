@@ -3,11 +3,7 @@ import { browserViewportOrDefault, type BrowserViewport } from '@nessie/schemas'
 
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
-import {
-  BLOCKING_SESSION_STATUSES,
-  resolveConnectionForRun,
-  type CloudBrowserDeps,
-} from './session-lifecycle.js'
+import { resolveConnectionForRun, type CloudBrowserDeps } from './session-lifecycle.js'
 
 /**
  * An agent's own durable browser.
@@ -125,7 +121,7 @@ export const resolveDurableBrowserConnection = async (
   return organization
 }
 
-const loadClientForConnection = async (
+export const loadClientForConnection = async (
   deps: CloudBrowserDeps,
   connection: { projectId: string | null; apiKeyRef: string },
 ): Promise<BrowserbaseClient> => {
@@ -267,16 +263,30 @@ export const ensureAgentBrowser = async (
     }
   }
 
-  const client = await loadClientForConnection(deps, connection)
-  const context = await client.createContext()
-
-  try {
-    const created = await deps.prisma.agentBrowser.create({
-      data: {
+  return deps.prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{
+      apiKeyRef: string
+      id: string
+      projectId: string | null
+    }>>(Prisma.sql`SELECT id, project_id AS "projectId", api_key_ref AS "apiKeyRef"
+      FROM cloud_browser_connections
+      WHERE id = ${connection.id}::uuid
+        AND organization_id = ${input.organizationId}::uuid
+        AND status = 'active'
+      FOR UPDATE`)
+    const activeConnection = locked[0]
+    if (!activeConnection) {
+      throw new CloudBrowserError(
+        CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+        'This Browserbase connection was disconnected. Reconnect it before creating a saved browser.',
+      )
+    }
+    const winner = await tx.agentBrowser.findFirst({
+      where: {
         organizationId: input.organizationId,
         agentId: input.agentId,
-        connectionId: connection.id,
-        browserbaseContextId: context.id,
+        connectionId: activeConnection.id,
+        status: 'active',
         principalUserId,
       },
       select: {
@@ -286,38 +296,30 @@ export const ensureAgentBrowser = async (
         principalUserId: true,
         ...VIEWPORT_SELECT,
         ...HANDBACK_SELECT,
+        _count: { select: { logins: true } },
       },
     })
-    return {
-      id: created.id,
-      connectionId: created.connectionId,
-      browserbaseContextId: created.browserbaseContextId,
-      principalUserId: created.principalUserId,
-      loginCount: 0,
-      // A browser is created without a size, so this is the default every
-      // time — read back from the row rather than assumed, so a column
-      // default added later is honoured without touching this path.
-      handedBackByUserId: handedBackByOf(created),
-      viewport: viewportOf(created),
-      connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+    if (winner) {
+      return {
+        id: winner.id,
+        connectionId: winner.connectionId,
+        browserbaseContextId: winner.browserbaseContextId,
+        principalUserId: winner.principalUserId,
+        loginCount: winner._count.logins,
+        handedBackByUserId: handedBackByOf(winner),
+        viewport: viewportOf(winner),
+        connection: { projectId: activeConnection.projectId, apiKeyRef: activeConnection.apiKeyRef },
+      }
     }
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      // Another run won the race. Release the context we just made rather
-      // than leaving it for the reconciler, and use theirs.
-      await client.deleteContext(context.id).catch((cause: unknown) => {
-        console.warn(
-          '[browser-cloud] orphaned Browserbase context (race loser) — delete it '
-          + `from the Browserbase dashboard: ${context.id}`,
-          cause,
-        )
-      })
-      const winner = await deps.prisma.agentBrowser.findFirstOrThrow({
-        where: {
+    const client = await loadClientForConnection(deps, activeConnection)
+    const context = await client.createContext()
+    try {
+      const created = await tx.agentBrowser.create({
+        data: {
           organizationId: input.organizationId,
           agentId: input.agentId,
-          connectionId: connection.id,
-          status: 'active',
+          connectionId: activeConnection.id,
+          browserbaseContextId: context.id,
           principalUserId,
         },
         select: {
@@ -327,171 +329,31 @@ export const ensureAgentBrowser = async (
           principalUserId: true,
           ...VIEWPORT_SELECT,
           ...HANDBACK_SELECT,
-          _count: { select: { logins: true } },
         },
       })
       return {
-        id: winner.id,
-        connectionId: winner.connectionId,
-        browserbaseContextId: winner.browserbaseContextId,
-        principalUserId: winner.principalUserId,
-        loginCount: winner._count.logins,
-        handedBackByUserId: handedBackByOf(winner),
-        viewport: viewportOf(winner),
-        connection: { projectId: connection.projectId, apiKeyRef: connection.apiKeyRef },
+        id: created.id,
+        connectionId: created.connectionId,
+        browserbaseContextId: created.browserbaseContextId,
+        principalUserId: created.principalUserId,
+        loginCount: 0,
+        handedBackByUserId: handedBackByOf(created),
+        viewport: viewportOf(created),
+        connection: { projectId: activeConnection.projectId, apiKeyRef: activeConnection.apiKeyRef },
       }
-    }
-    await client.deleteContext(context.id).catch((cause: unknown) => {
-      console.warn(
-        '[browser-cloud] orphaned Browserbase context — delete it from the '
-        + `Browserbase dashboard: ${context.id}`,
-        cause,
-      )
-    })
-    throw error
-  }
-}
-
-/**
- * Sign the agent out of everything: tombstone the row so no run can reach the
- * context again, then let the reconciler delete it remotely.
- *
- * Two honest limits the copy must state. Deleting a context does not revoke
- * the *service's* own server-side session — fully signing out means the
- * service's security page too. And it is all-or-nothing: per-service cookie
- * deletion is phase-3 polish, so this clears every signer's login at once.
- */
-export const resetAgentBrowser = async (
-  prisma: PrismaClient,
-  input: { organizationId: string; agentBrowserId: string },
-): Promise<{ tombstoned: boolean }> => {
-  const live = await prisma.cloudBrowserSession.count({
-    where: {
-      agentBrowserId: input.agentBrowserId,
-      status: { in: [...BLOCKING_SESSION_STATUSES] },
-    },
-  })
-  if (live > 0) {
-    throw new CloudBrowserError(
-      CLOUD_BROWSER_ERROR_CODES.CAPACITY,
-      'This browser is open right now. Close it first, then reset it.',
-    )
-  }
-  const updated = await prisma.agentBrowser.updateMany({
-    where: {
-      id: input.agentBrowserId,
-      organizationId: input.organizationId,
-      status: 'active',
-    },
-    data: { status: 'tombstoned', tombstonedAt: new Date() },
-  })
-  if (updated.count === 1) {
-    // The logins go with the browser: they describe state that no longer
-    // exists, and leaving them would misreport who the agent is signed in as.
-    await prisma.agentBrowserLogin.deleteMany({
-      where: { agentBrowserId: input.agentBrowserId },
-    })
-  }
-  return { tombstoned: updated.count === 1 }
-}
-
-/**
- * How long a row claimed into `deleting` is trusted to belong to a live
- * delete before another tick may take it over.
- *
- * `deleting` is a claim, and every claim taken before a side effect needs a
- * horizon or it is a permanent drop (docs/standards/horizontal-scaling/overview.md §3):
- * a process killed between the claim and the provider's answer used to leave
- * the row in `deleting` forever, and the sweep only selected `tombstoned` — so
- * a Browserbase context holding somebody's encrypted login state leaked with
- * no reaper and no alert.
- *
- * Ten minutes, matching `STRANDED_RUN_MS` in the automatic-membership sweep.
- * The reaper ticks every 30 s and the claimed work is *one* HTTP call to
- * Browserbase, so ten minutes is roughly twenty times any plausible delete —
- * a live one is never stolen — while a killed process's row is picked up on
- * the next tick past the horizon rather than never.
- */
-const DELETING_CLAIM_HORIZON_MS = 10 * 60 * 1000
-
-/**
- * Delete the Browserbase contexts behind tombstoned rows.
- *
- * The row is only removed once the provider confirms — a local delete while
- * the context still exists would orphan encrypted login state in somebody's
- * Browserbase account with nothing pointing at it.
- */
-export const reconcileTombstonedAgentBrowsers = async (
-  deps: CloudBrowserDeps,
-  options: { limit?: number } = {},
-): Promise<number> => {
-  // A row is this sweep's to take if it is tombstoned, or if it is a
-  // `deleting` claim old enough to be a corpse. `updatedAt` is the claim's
-  // age: Prisma stamps it on the claiming `UPDATE`, so it moves forward each
-  // time a reconciler takes the row over and cannot drift backwards.
-  const claimable = [
-    { status: 'tombstoned' as const },
-    {
-      status: 'deleting' as const,
-      updatedAt: { lt: new Date(Date.now() - DELETING_CLAIM_HORIZON_MS) },
-    },
-  ]
-  const rows = await deps.prisma.agentBrowser.findMany({
-    where: { OR: claimable },
-    select: {
-      id: true,
-      browserbaseContextId: true,
-      connection: { select: { projectId: true, apiKeyRef: true } },
-    },
-    take: options.limit ?? 20,
-    orderBy: { tombstonedAt: 'asc' },
-  })
-  let deleted = 0
-  for (const row of rows) {
-    // Last line of defence for the reset/open race: never delete a context a
-    // live session is still attached to, however it got there.
-    const live = await deps.prisma.cloudBrowserSession.count({
-      where: {
-        agentBrowserId: row.id,
-        status: { in: [...BLOCKING_SESSION_STATUSES] },
-      },
-    })
-    if (live > 0) continue
-
-    // Claim the row before touching the provider (horizontal-scaling audit
-    // 5.10). The `findMany` above is a snapshot every replica reads alike, so
-    // read-then-delete had N reconcilers calling Browserbase for the same
-    // context: one won, and each loser's "no such context" was written to
-    // `lastError` as though the row were broken. A conditional
-    // `tombstoned → deleting` is the right primitive rather than a lock —
-    // there is no indivisible walk here, just one row and one provider call,
-    // and the status is also what keeps the *next* tick from picking the row
-    // up while this delete is still in flight. The same statement is the
-    // takeover of a stranded claim: re-stamping `deleting` on a row past
-    // `DELETING_CLAIM_HORIZON_MS` moves `updatedAt`, so exactly one of the
-    // replicas that saw the corpse gets it and the rest lose the same way
-    // they lose a fresh tombstone.
-    const claimed = await deps.prisma.agentBrowser.updateMany({
-      where: { id: row.id, OR: claimable },
-      data: { status: 'deleting' },
-    })
-    if (claimed.count !== 1) continue
-
-    try {
-      const client = await loadClientForConnection(deps, row.connection)
-      await client.deleteContext(row.browserbaseContextId)
-      await deps.prisma.agentBrowser.delete({ where: { id: row.id } })
-      deleted += 1
     } catch (error) {
-      // Hand the row back, or a provider blip strands the context in
-      // `deleting` where no sweep will ever look at it again.
-      await deps.prisma.agentBrowser.updateMany({
-        where: { id: row.id, status: 'deleting' },
-        data: { lastError: (error as Error).message.slice(0, 500), status: 'tombstoned' },
-      }).catch(() => undefined)
+      await client.deleteContext(context.id).catch((cause: unknown) => {
+        console.warn(
+          '[browser-cloud] orphaned Browserbase context — delete it from the '
+          + `Browserbase dashboard: ${context.id}`,
+          cause,
+        )
+      })
+      throw error
     }
-  }
-  return deleted
+  })
 }
+
+export { reconcileTombstonedAgentBrowsers, resetAgentBrowser } from './agent-browser-retirement.js'
 
 export { resolveConnectionForRun, isCloudBrowserError }

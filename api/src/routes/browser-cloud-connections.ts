@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { connectCloudBrowser, disconnectCloudBrowser, isCloudBrowserError, listCloudBrowserConnections } from '@nessie/browser-cloud'
 import { createPgSecretStore } from '@nessie/mcp-manage'
 
@@ -18,8 +19,14 @@ const sendConnectionError = (reply: FastifyReply, error: unknown): boolean => {
 
 export const registerBrowserCloudConnectionRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { authSecret, prisma, requireActorContext, requireOwner, requireUserActor } = deps
-  const secretStore = createPgSecretStore(prisma, authSecret ?? '', { refPrefix: 'secret_browserbase_' })
-  const connectionDeps = { prisma, storeSecret: (apiKey: string) => secretStore.put({ accessToken: apiKey }) }
+  const connectionDeps = {
+    prisma,
+    storeSecret: (tx: PrismaClient | Prisma.TransactionClient, apiKey: string) => createPgSecretStore(
+      tx,
+      authSecret ?? '',
+      { refPrefix: 'secret_browserbase_' },
+    ).put({ accessToken: apiKey }),
+  }
   app.get('/api/browser-cloud/connections', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
