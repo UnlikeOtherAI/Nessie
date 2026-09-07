@@ -160,7 +160,9 @@ jobs:
           restore-keys: desktop-windows-cargo-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
 
       # The bundle is a release artifact, so do not bypass the repository's
       # lint gate when invoking Tauri directly below.
@@ -685,7 +687,9 @@ jobs:
           cache-dependency-path: executor/guest/go.sum
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
 
       - name: Build shared packages
         run: pnpm exec turbo run build --filter=@nessie/executor...

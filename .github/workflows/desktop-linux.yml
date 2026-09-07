@@ -67,7 +67,9 @@ jobs:
           restore-keys: desktop-linux-cargo-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
 
       - name: Resolve release version
         run: |
@@ -206,7 +208,9 @@ jobs:
           cache-dependency-path: executor/guest/go.sum
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-key: ${{ secrets.DEEP_AGENT_READ_KEY }}
 
       - name: Build shared packages
         run: pnpm exec turbo run build --filter=@nessie/executor...
