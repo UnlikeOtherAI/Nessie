@@ -120,17 +120,18 @@ export const SourceMappingPanel = ({
   }
 
   const setCategory = (externalStateId: string, value: string) => {
-    const next = stateMapping.map((entry) =>
-      entry.externalStateId === externalStateId
-        ? {
-            ...entry,
-            category: (value === '' ? null : value) as BoardSourceStateMapping['category'],
-            // A state that stops being mapped cannot be the default for a
-            // category it no longer belongs to.
-            isDefaultForCategory: value === '' ? false : entry.isDefaultForCategory,
-          }
-        : entry,
-    )
+    const category = (value === '' ? null : value) as BoardSourceStateMapping['category']
+    const next = stateMapping.map((entry) => {
+      if (entry.externalStateId !== externalStateId) return entry
+      return {
+        ...entry,
+        category,
+        // Defaults name the one upstream state a write-back uses. Moving this
+        // row to another category must not silently make it a second default
+        // there; choose that deliberately after the category is settled.
+        isDefaultForCategory: entry.category === category ? entry.isDefaultForCategory : false,
+      }
+    })
     setStateMapping(next)
     save(next, identity)
   }

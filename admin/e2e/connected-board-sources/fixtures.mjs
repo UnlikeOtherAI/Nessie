@@ -29,7 +29,7 @@ export const createConnectedBoardSourceFixtures = () => {
     teamCount: 0,
   }
   const board = {
-    columns: [{ boardId: ids.board, category: 'inbox', id: ids.column, name: 'To do', position: 0, stateBindings: [] }],
+    columns: [{ boardId: ids.board, category: 'todo', id: ids.column, name: 'To do', position: 0, stateBindings: [] }],
     filter: { sources: 'all' }, iconEmoji: null, id: ids.board, isDefault: true,
     name: 'UnlikeOtherAI QA board', position: 0, projectId: ids.project, style: 'kanban',
   }
@@ -41,7 +41,7 @@ export const createConnectedBoardSourceFixtures = () => {
     pollingIntervalMinutes: 5, projectId: ids.project, provider: 'linear', syncWindowDays: 30,
     webhookActive: false, writeMode: 'read_write',
     stateMapping: [
-      { category: 'inbox', externalStateId: 'triage', externalStateName: 'Triage', isDefaultForCategory: true },
+      { category: 'todo', externalStateId: 'triage', externalStateName: 'Triage', isDefaultForCategory: true },
       { category: 'in_progress', externalStateId: 'started', externalStateName: 'Started', isDefaultForCategory: true },
     ],
   }

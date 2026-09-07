@@ -52,9 +52,18 @@ const exerciseDesktop = async (browser, fixtures) => {
     await category.selectOption('in_progress')
     await waitForMappingRequest(fixtures)
     assert.equal(await category.isDisabled(), true, 'mapping controls lock while saving')
+    const rejectedMutation = fixtures.calls.filter((call) => call.pathname.endsWith('/mappings')).at(-1)
+    const inProgressDefaults = rejectedMutation.body.stateMapping.filter(
+      (entry) => entry.category === 'in_progress' && entry.isDefaultForCategory,
+    )
+    assert.deepEqual(
+      inProgressDefaults.map((entry) => entry.externalStateId),
+      ['started'],
+      'moving a default clears it before another category can be chosen',
+    )
     await fixtures.rejectHeldMapping()
     await page.getByRole('alert').filter({ hasText: 'UnlikeOtherAI QA rejected this mapping.' }).waitFor()
-    assert.equal(await category.inputValue(), 'inbox', 'a rejected mapping restores the saved choice')
+    assert.equal(await category.inputValue(), 'todo', 'a rejected mapping restores the saved choice')
 
     await category.selectOption('in_progress')
     await page.getByText('Saved.').waitFor()

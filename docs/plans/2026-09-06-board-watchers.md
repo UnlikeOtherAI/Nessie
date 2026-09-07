@@ -281,8 +281,12 @@ added.
 
 ## 10. As built
 
-Three things the build settled differently. Read this before treating a section
+The build settled several things differently. Read this before treating a section
 above as a description of the code.
+
+- **Only remote connected-ticket changes notify.** The webhook and sweep paths
+  emit a watcher event only for an inbound status or assignee change after the
+  initial import. Native tickets and local moves do not notify watchers.
 
 - **§6 amends no standard, because there is no card.** The design added a
   `task` block to the agent-card vocabulary. It did not need to: that system is

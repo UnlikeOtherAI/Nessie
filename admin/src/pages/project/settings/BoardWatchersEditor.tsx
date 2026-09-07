@@ -19,7 +19,7 @@ type BoardWatchersEditorProps = {
 }
 
 /**
- * Who hears that a ticket on this board moved.
+ * Who hears that a connected ticket changed remotely.
  *
  * The same address bar as New message, on purpose: choosing a person or an
  * agent is one act in this product, even though what happens next differs.
@@ -78,7 +78,11 @@ export const BoardWatchersEditor = ({
 
   return (
     <Section
-      description={`They hear about every ticket that moves or is reassigned on ${boardName}. Connected tickets alert people or run agents after their first import.`}
+      description={
+        `Alert people or run your agent when a connected ticket moves or is ` +
+        `reassigned remotely after its first import on ${boardName}. Native ` +
+        'tickets and local moves do not notify watchers.'
+      }
       title="Watchers"
     >
       <div className="grid gap-3">
