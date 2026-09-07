@@ -648,8 +648,12 @@ escalation delivery ships**, not filed alongside the cosmetic defects.
   `[blocked-on-UOA-contract]`
 - **"Owner has left" as a reliable signal** — needs the org-wide roster read.
   `[blocked-on-org-wide-roster-read]`
-- **A shared agent addressing a specific person** — `send_message` is
-  `personalAssistantOnly`. `[blocked-by-design — do not relax]`
+- **A shared agent addressing a specific person** — `send_message` is available
+  only when its owner explicitly enables that ordinary builtin and the registry
+  enables it for the organization; it always acts as the live requesting user
+  and fails closed without one. A private-conversation export additionally
+  needs the recorded original author's exact, model-judged request; it creates
+  only the existing short-lived message grant for the posted destination.
 
 **Pre-existing defects found on the way, tracked separately**
 

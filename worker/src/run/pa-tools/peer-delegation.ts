@@ -3,9 +3,13 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { BasisScopeSchema } from '../execute/disclosure-basis.js'
+import {
+  BasisScopeSchema,
+  PrivateConversationSourceSchema,
+} from '../execute/disclosure-basis.js'
 import { resolveActingMember } from './access.js'
 import { assertProjectWriteDestination } from './ticket-context.js'
+import { requireConsumedSources } from './tool-message-basis.js'
 
 const MAX_PEER_DELEGATION_DEPTH = 4
 const DelegateInput = z.object({ agentId: z.string().uuid(), brief: z.string().trim().min(1).max(8_000) })
@@ -56,7 +60,11 @@ export const runAgentPeerDelegateTool = async (
     throw new Error('Choose another ordinary agent already bound to this project channel.')
   }
   const correlationId = `peer:${context.run.id}:${context.toolCallId ?? args.agentId}`
-  const basis = BasisScopeSchema.array().parse(context.consumedSources?.list() ?? [])
+  const consumedSources = requireConsumedSources(context)
+  const basis = BasisScopeSchema.array().parse(consumedSources.list())
+  const disclosureSources = PrivateConversationSourceSchema.array().parse(
+    consumedSources.privateConversationSources(),
+  )
   let mail: { id: string }
   try {
     mail = await context.prisma.agentMailboxMessage.create({
@@ -64,6 +72,7 @@ export const runAgentPeerDelegateTool = async (
         actorId: member.userId,
         actorType: 'user',
         basis: basis as Prisma.InputJsonValue,
+        disclosureSources: disclosureSources as Prisma.InputJsonValue,
         body: args.brief,
         channelId: context.channel.id,
         correlationId,

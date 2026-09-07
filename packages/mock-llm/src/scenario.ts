@@ -35,6 +35,15 @@ export const MockStreamSchema = z.object({
 })
 export type MockStream = z.infer<typeof MockStreamSchema>
 
+// Utility-model prompts (policy and boundary judgements) deliberately carry no
+// tool schema. A scenario can give that structurally distinct inference lane a
+// response without keying test behaviour on the human wording in the prompt.
+export const MockUtilityTurnSchema = MockLatencySchema.extend({
+  text: z.string().default(''),
+  usage: MockUsageSchema.default({}),
+}).strict()
+export type MockUtilityTurn = z.infer<typeof MockUtilityTurnSchema>
+
 // Failure injection: provider error shapes a real endpoint can produce —
 // auth errors (401/403), rate limiting (429), and server errors (5xx).
 export const MockErrorSchema = z.object({
@@ -88,6 +97,8 @@ export const MockScenarioSchema = z.object({
   description: z.string().optional(),
   name: z.string().min(1),
   turns: z.array(MockTurnSchema).min(1),
+  utility: MockUtilityTurnSchema.optional(),
+  utilityTurns: z.array(MockUtilityTurnSchema).min(1).optional(),
 })
 export type MockScenario = z.infer<typeof MockScenarioSchema>
 

@@ -10,6 +10,11 @@ import {
 } from '@nessie/schemas'
 import { stripProtectedExplicitToolPolicy } from '@nessie/runtime'
 import { enqueueRunExecution } from '../queue.js'
+import {
+  insertMessageBasis,
+  insertPrivateConversationSources,
+  requireConsumedSources,
+} from './pa-tools/tool-message-basis.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
 
@@ -21,6 +26,8 @@ const normalizeSubtaskRole = (value: unknown): string => {
 
   return 'assistant'
 }
+
+const delegatedTaskLabel = (role: string): string => `Delegated ${role} subtask`
 
 const buildSubtaskSystemPrompt = (input: {
   parentName: string
@@ -49,6 +56,7 @@ export const runSpawnSubtaskTool = async (
     task?: unknown
   },
 ): Promise<ToolExecutionResult> => {
+  const consumedSources = requireConsumedSources(context)
   const task = typeof input.task === 'string' ? input.task.trim() : ''
   if (!task) {
     throw new Error('task is required.')
@@ -114,12 +122,35 @@ export const runSpawnSubtaskTool = async (
       select: { id: true, name: true },
     })
 
+    // A model-supplied prompt override is an untracked content channel: it
+    // gives the child bytes the parent read without a durable message whose
+    // provenance can enter the child's sink. Make the assignment a hidden
+    // trigger instead, stamped with the parent run's basis and original
+    // private-conversation authors.
+    const taskPrompt = await tx.message.create({
+      data: {
+        content: task,
+        role: 'system',
+        threadId: context.run.threadId,
+      },
+      select: { id: true },
+    })
+    await insertMessageBasis(tx, {
+      basis: consumedSources.list(),
+      messageId: taskPrompt.id,
+      organizationId: context.channel.organizationId,
+    })
+    await insertPrivateConversationSources(tx, context, {
+      messageId: taskPrompt.id,
+      organizationId: context.channel.organizationId,
+    })
+
     const planStep = plan
       ? await appendDelegationStep(tx, {
         assignedAgentId: childAgent.id,
         planId: plan.id,
-        payload: { role, task },
-        title: `${role}: ${task}`,
+        payload: { role, triggerMessageId: taskPrompt.id },
+        title: delegatedTaskLabel(role),
       })
       : null
 
@@ -132,6 +163,7 @@ export const runSpawnSubtaskTool = async (
         principalUserId: context.run.principalUserId ?? null,
         status: 'pending',
         threadId: context.run.threadId,
+        triggerMessageId: taskPrompt.id,
       },
       select: { id: true, threadId: true },
     })
@@ -140,7 +172,10 @@ export const runSpawnSubtaskTool = async (
       data: {
         agentId: childAgent.id,
         organizationId: context.channel.organizationId,
-        purpose: task.slice(0, 200),
+        // Tasks and plans are organization-scoped operational records. The
+        // actual assignment stays only in the stamped hidden trigger above;
+        // these rows carry structural progress, never prompt bytes.
+        purpose: delegatedTaskLabel(role),
         runId: run.id,
         status: 'inbox',
       },
@@ -157,13 +192,12 @@ export const runSpawnSubtaskTool = async (
           threadId: parseThreadId(context.run.threadId),
         }),
         agentId: parseAgentId(childAgent.id),
-        messageId: context.run.messageId,
+        messageId: taskPrompt.id,
         parentPlanId: plan?.id,
         parentPlanStepId: planStep?.stepId,
         ...(context.run.principalUserId
           ? { principalUserId: context.run.principalUserId }
           : {}),
-        promptOverride: task,
         runId: parseRunId(run.id),
         taskId: parseTaskId(childTask.id),
         threadId: parseThreadId(run.threadId),

@@ -109,6 +109,7 @@ const queueMail = async (
   body: string,
   peerDelegationDepth?: number,
   basis: { scopeId: string; scopeType: string }[] = [],
+  disclosureSources: { sourceAuthorUserId: string | null; sourceChannelId: string }[] = [],
 ): Promise<{ id: string }> => {
   return prisma.agentMailboxMessage.create({
     data: {
@@ -120,6 +121,7 @@ const queueMail = async (
       actorId: peerDelegationDepth === undefined ? seed.fromAgentId : seed.requesterId,
       actorType: peerDelegationDepth === undefined ? 'agent' : 'user',
       basis,
+      disclosureSources,
       body,
       correlationId: randomUUID(),
       peerDelegationDepth,
@@ -220,12 +222,17 @@ runDatabaseTest('peer delivery keeps a restricted research basis through the coo
   })
 
   const sourceBasis = [{ scopeId: seed.requesterId, scopeType: 'user' }]
+  const disclosureSources = [
+    { sourceAuthorUserId: seed.requesterId, sourceChannelId: seed.channelId },
+    { sourceAuthorUserId: null, sourceChannelId: seed.channelId },
+  ]
   const mail = await queueMail(
     prisma,
     seed,
     'review the prospect evidence',
     2,
     sourceBasis,
+    disclosureSources,
   )
   await dispatchSeededMail(prisma, mail)
 
@@ -239,9 +246,15 @@ runDatabaseTest('peer delivery keeps a restricted research basis through the coo
 
   const prompt = await prisma.message.findFirstOrThrow({
     where: { content: 'review the prospect evidence', threadId: seed.threadId },
-    select: { basisScopes: { select: { scopeId: true, scopeType: true } } },
+    select: {
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+      role: true,
+    },
   })
+  assert.equal(prompt.role, 'system')
   assert.deepEqual(prompt.basisScopes, sourceBasis)
+  assert.deepEqual(prompt.disclosureSources, disclosureSources)
 
   const run = await prisma.run.findFirstOrThrow({
     where: { agentId: seed.toAgentId, threadId: seed.threadId },

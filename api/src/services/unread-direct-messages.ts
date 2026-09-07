@@ -17,6 +17,7 @@ type UnreadMessageRow = {
 
 const previewMessageInclude = {
   basisScopes: { select: { scopeId: true, scopeType: true } },
+  disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
 } satisfies Prisma.MessageInclude
 
 /**

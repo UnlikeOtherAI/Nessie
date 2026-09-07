@@ -13,6 +13,7 @@ import {
   type DelegatedRunFacts,
 } from '../delegated-identity.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
+import { markUnknownPrivateConversationScopes } from './private-conversation-lineage.js'
 
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
@@ -255,6 +256,7 @@ export const retrieveRelevantMemories = async (
         retained.map((result) => result.id),
       )
       context.consumedSources.addAll(audiences)
+      await markUnknownPrivateConversationScopes(deps.prisma, context.consumedSources, audiences)
     }
 
     return retained

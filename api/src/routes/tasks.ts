@@ -118,6 +118,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       actorContext.tenant.organizationId,
       await taskVisibilityFor(actorContext),
+      actorContext.actor.actorId,
     )
     if (!task) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
@@ -143,6 +144,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         projectId: projectFilter.success ? projectFilter.data : undefined,
       },
       await taskVisibilityFor(actorContext),
+      actorContext.actor.actorId,
     )
     return createApiResponse(TaskRecordSchema.array().parse(tasks))
   })
@@ -244,6 +246,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       actorContext.tenant.organizationId,
       await taskVisibilityFor(actorContext),
+      actorContext.actor.actorId,
     )
     if (!task) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
