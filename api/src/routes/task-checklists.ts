@@ -15,12 +15,17 @@ import { getTask } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
 export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  const taskVisibilityFor = async (actor: Parameters<RouteDeps['listAccessibleProjectIds']>[0]) => {
+    const projects = await deps.listAccessibleProjectIds(actor)
+    return projects === 'all'
+      ? undefined
+      : { accessibleProjectIds: projects, actorUserId: actor.actor.actorId }
+  }
   const requireAccess = async (
     actor: Parameters<RouteDeps['listAccessibleProjectIds']>[0], taskId: string, reply: FastifyReply,
   ) => {
-    const projects = await deps.listAccessibleProjectIds(actor)
     const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId,
-      projects === 'all' ? undefined : { accessibleProjectIds: projects, actorUserId: actor.actor.actorId })
+      await taskVisibilityFor(actor), actor.actor.actorId)
     if (task) return true
     sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
     return false
@@ -50,7 +55,13 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
       sendApiError(reply, 404, checklist.error, 'Template not found')
       return reply
     }
-    const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId)
+    const task = await getTask(
+      deps.prisma,
+      taskId,
+      actor.tenant.organizationId,
+      await taskVisibilityFor(actor),
+      actor.actor.actorId,
+    )
     if (task) {
       await publishTaskUpdated(deps.realtimeHub, [
         { kind: 'organization', organizationId: actor.tenant.organizationId },
@@ -76,7 +87,13 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
       sendApiError(reply, 404, 'CHECKLIST_STEP_NOT_FOUND', 'Checklist step not found')
       return reply
     }
-    const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId)
+    const task = await getTask(
+      deps.prisma,
+      taskId,
+      actor.tenant.organizationId,
+      await taskVisibilityFor(actor),
+      actor.actor.actorId,
+    )
     if (task) {
       await publishTaskUpdated(deps.realtimeHub, [{ kind: 'organization', organizationId: actor.tenant.organizationId }], taskId, task.status)
     }
