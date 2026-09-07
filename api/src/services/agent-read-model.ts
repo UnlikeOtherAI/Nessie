@@ -13,7 +13,6 @@ import {
 
 import {
   buildAccessibleChannelWhere,
-  buildAccessibleThreadWhere,
   isSystemManagedAgent,
   type AgentVisibilityScope,
 } from '@nessie/team-admin'
@@ -22,7 +21,11 @@ import {
   canReadAgentMessage,
   filterReadableAgentRuns,
 } from './agent-read-disclosure.js'
-import { buildAccessibleRunWhere, toTimestamp } from './agent-read-primitives.js'
+import {
+  buildAccessibleRunWhere,
+  buildDisclosureReadableThreadWhere,
+  toTimestamp,
+} from './agent-read-primitives.js'
 
 const mapToolCall = (toolCall: {
   durationMs: number | null
@@ -54,7 +57,7 @@ export const loadAgentStatus = async (
     ? { run: runVisibilityWhere }
     : {}
   const messageVisibilityWhere = options?.visibility
-    ? { thread: buildAccessibleThreadWhere(options.visibility) }
+    ? { thread: buildDisclosureReadableThreadWhere(options.visibility) }
     : {}
 
   const agent = await prisma.agent.findFirst({
@@ -264,7 +267,7 @@ export const loadAgentMessages = async (
   if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return { items: [], total: 0 }
 
   const threadVisibilityWhere = options?.visibility
-    ? buildAccessibleThreadWhere(options.visibility)
+    ? buildDisclosureReadableThreadWhere(options.visibility)
     : undefined
   const where: Prisma.MessageWhereInput = {
     OR: [

@@ -457,13 +457,24 @@ export const runExecutionAgentLoop = async (
           currentToolStartedAt: startedAt.toISOString(),
           status: 'executing',
         })
+        // Tool arguments are model-visible content. A restricted run can carry
+        // private reply bytes into a later `send_message` or other tool call,
+        // so channel-wide WebSocket subscribers receive the same content-free
+        // marker as they do for a restricted message rather than its summary.
+        const restricted = runReplyIsRestricted(context)
         await deps.realtimeTransport.publishWs(buildScopes(context), {
-          data: {
-            agentId: parseAgentId(context.agent.id),
-            inputSummary: summarizeToolInput(_args),
-            runId: parseRunId(context.run.id),
-            toolName,
-          },
+          data: restricted
+            ? {
+                agentId: parseAgentId(context.agent.id),
+                restricted: true as const,
+                runId: parseRunId(context.run.id),
+              }
+            : {
+                agentId: parseAgentId(context.agent.id),
+                inputSummary: summarizeToolInput(_args),
+                runId: parseRunId(context.run.id),
+                toolName,
+              },
           event: 'agent.tool.start',
         })
       },

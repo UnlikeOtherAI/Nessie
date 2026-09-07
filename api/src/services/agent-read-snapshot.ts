@@ -2,13 +2,16 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { parseAgentId, parseRunId, type WsScope, type WsSnapshot } from '@nessie/schemas'
 import {
   buildAccessibleChannelWhere,
-  buildAccessibleThreadWhere,
   isSystemManagedAgent,
   type AgentVisibilityScope,
 } from '@nessie/team-admin'
 
 import { filterReadableAgentRuns } from './agent-read-disclosure.js'
-import { buildAccessibleRunWhere, toTimestamp } from './agent-read-primitives.js'
+import {
+  buildAccessibleRunWhere,
+  buildDisclosureReadableThreadWhere,
+  toTimestamp,
+} from './agent-read-primitives.js'
 
 export const buildSnapshotForScopes = async (
   prisma: PrismaClient,
@@ -59,7 +62,7 @@ export const buildSnapshotForScopes = async (
     include: {
       messages: {
         where: options?.visibility
-          ? { thread: buildAccessibleThreadWhere(options.visibility) }
+          ? { thread: buildDisclosureReadableThreadWhere(options.visibility) }
           : {},
         orderBy: { createdAt: 'desc' },
         take: 1,
