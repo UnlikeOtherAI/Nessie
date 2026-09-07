@@ -101,6 +101,9 @@ test('options offer the whole team plus every unmapped person holding a card', (
   assert.deepEqual(options.people, people)
   // Deduplicated by provider identity, and ordered for a person reading a list.
   assert.deepEqual(options.remote.map((option) => option.label), ['Ada', 'Zoe'])
+  // Presentation can identify the provider without treating this provider
+  // person as a Nessie user or changing their remote filter value.
+  assert.equal(options.remote[0]?.provider, 'linear')
 })
 
 test('an unrecognised or stale filter falls back to showing everything', () => {
