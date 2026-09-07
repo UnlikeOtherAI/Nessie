@@ -44,8 +44,8 @@ sentence changes only if the invariant itself did.
   between the navigation and independent connected-mail suites.
 - **Private-conversation disclosure browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:disclosure` after
-  building `@nessie/mock-llm`. CI runs it in Navigation Transitions on the same
-  fixed ports after the other browser suites; details and limits are in
+  building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
+  the same fixed ports; details and limits are in
   [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.

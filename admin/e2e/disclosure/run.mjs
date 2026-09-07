@@ -6,7 +6,7 @@
 // Czech request correctly; that needs a separately approved live-model eval.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
@@ -34,6 +34,27 @@ const assertNoSecret = (value, boundary) => {
 const assertWithheld = (value, boundary) => {
   assertNoSecret(value, boundary)
   assert.equal(String(value).includes(SHARED_SUMMARY), false, `${boundary} exposed the restricted reply`)
+}
+
+const savePublicFailureEvidence = async (page, error) => {
+  const detail = error instanceof Error ? error.stack ?? error.message : String(error)
+  await writeFile(resolve(SCREENSHOTS, 'failure.txt'), `${detail}\n`)
+  if (!page) return
+
+  const body = await page.locator('body').innerText().catch(() => '')
+  const sanitized = body
+    .replaceAll(SECRET, '[REDACTED PRIVATE SOURCE]')
+    .replaceAll(SHARED_SUMMARY, '[REDACTED RESTRICTED SUMMARY]')
+  await writeFile(resolve(SCREENSHOTS, 'failure-public-recipient.txt'), sanitized)
+  // CI artifacts must not turn a failing confidentiality assertion into a
+  // second leak. Preserve a recipient screenshot only when it contains none
+  // of the private source or restricted derived reply canaries.
+  if (!body.includes(SECRET) && !body.includes(SHARED_SUMMARY)) {
+    await page.screenshot({
+      path: resolve(SCREENSHOTS, 'failure-public-recipient.png'),
+      fullPage: true,
+    }).catch(() => {})
+  }
 }
 
 const responseData = async (response, label) => {
@@ -161,7 +182,7 @@ const seedFixture = async (pipeline, seedScope, groupId) => {
 
   await prisma.$transaction([
     prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'member', userId: agentOwner.id },
+      data: { organizationId: scope.organizationId, role: 'owner', userId: agentOwner.id },
     }),
     prisma.organizationMember.create({
       data: { organizationId: scope.organizationId, role: 'member', userId: sourceAuthor.id },
@@ -330,18 +351,25 @@ const main = async () => {
   let ownerContext = null
   let sourceContext = null
   let audienceContext = null
+  let audiencePage = null
   try {
     // This security evaluation must never adopt another worktree's dev loop:
     // that would exercise different source and leave this fixture unverified.
     apiServer = await startApi({ reuseExisting: false })
     adminServer = await startAdmin({ reuseExisting: false })
+    const ownerMe = await api('/api/auth/me', ownerToken)
+    assert.deepEqual(
+      ownerMe.data.user.roleIds,
+      ['owner'],
+      'A is an organization owner through the API’s live membership resolver',
+    )
     browser = await launchBrowser()
     ownerContext = await openViewportContext(browser, { name: 'desktop', token: ownerToken })
     sourceContext = await openViewportContext(browser, { name: 'desktop', token: sourceToken })
     audienceContext = await openViewportContext(browser, { name: 'desktop', token: audienceToken })
     const ownerPage = await ownerContext.newPage()
     const sourcePage = await sourceContext.newPage()
-    const audiencePage = await audienceContext.newPage()
+    audiencePage = await audienceContext.newPage()
     await Promise.all([
       ownerPage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' }),
       sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.privateChannel.id}`, { waitUntil: 'domcontentloaded' }),
@@ -364,6 +392,11 @@ const main = async () => {
     runIds.push(firstRun.id)
     const terminal = await pipeline.waitForTerminalRuns([firstRun.id], 60_000)
     assert.equal(terminal.get(firstRun.id), 'completed', 'private-chat worker run completes')
+    assert.equal(
+      model.stats().turnCounts[-1],
+      1,
+      'the first private request invoked exactly its declined disclosure judge',
+    )
     await sourcePage.page.goto(`${ADMIN_URL}/channels/${fixture.group.id}`, { waitUntil: 'domcontentloaded' })
 
     const forwarded = await pipeline.prisma.message.findFirstOrThrow({
@@ -465,6 +498,11 @@ const main = async () => {
     runIds.push(explicitRun.id)
     const explicitTerminal = await pipeline.waitForTerminalRuns([explicitRun.id], 60_000)
     assert.equal(explicitTerminal.get(explicitRun.id), 'completed', 'author’s explicit private request completes')
+    assert.equal(
+      model.stats().turnCounts[-1],
+      2,
+      'the explicit private request invoked exactly its positive disclosure judge',
+    )
     const automaticallyShared = await pipeline.prisma.message.findFirstOrThrow({
       where: { metadata: { path: ['delegatedFromRunId'], equals: explicitRun.id }, threadId: fixture.groupThread.id },
       select: { id: true },
@@ -501,6 +539,9 @@ const main = async () => {
     await sourcePage.close()
     await audiencePage.close()
     console.log('[disclosure e2e] PASS: private transcript → shared worker → UI and explicit scoped disclosure')
+  } catch (error) {
+    await savePublicFailureEvidence(audiencePage?.page, error)
+    throw error
   } finally {
     if (audienceContext) await audienceContext.close().catch(() => {})
     if (sourceContext) await sourceContext.close().catch(() => {})

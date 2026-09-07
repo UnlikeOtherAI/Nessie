@@ -41,9 +41,10 @@ Deterministic scripted inference for tests lives in `@nessie/mock-llm` (`package
 
 [`private-conversation-disclosure.md`](../testing/private-conversation-disclosure.md)
 uses that HTTP transport with the production queue, worker, API and headless
-admin UI. It is part of the **Navigation Transitions** job, after the other
-browser suites, so it reuses that job's migrated Postgres service, built
-artifacts, fixed ports, and Chromium installation. It proves the worker and UI
+admin UI. It runs first in the **Navigation Transitions** job, so it reuses
+that job's migrated Postgres service, built artifacts, fixed ports, and
+Chromium installation before another suite can start a different lifecycle.
+It proves the worker and UI
 enforce scripted model decisions; it does not claim live-model language
 understanding.
 
