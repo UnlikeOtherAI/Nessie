@@ -27,6 +27,8 @@ const normalizeSubtaskRole = (value: unknown): string => {
   return 'assistant'
 }
 
+const delegatedTaskLabel = (role: string): string => `Delegated ${role} subtask`
+
 const buildSubtaskSystemPrompt = (input: {
   parentName: string
   parentSystemPrompt: string | null
@@ -147,8 +149,8 @@ export const runSpawnSubtaskTool = async (
       ? await appendDelegationStep(tx, {
         assignedAgentId: childAgent.id,
         planId: plan.id,
-        payload: { role, task },
-        title: `${role}: ${task}`,
+        payload: { role, triggerMessageId: taskPrompt.id },
+        title: delegatedTaskLabel(role),
       })
       : null
 
@@ -170,7 +172,10 @@ export const runSpawnSubtaskTool = async (
       data: {
         agentId: childAgent.id,
         organizationId: context.channel.organizationId,
-        purpose: task.slice(0, 200),
+        // Tasks and plans are organization-scoped operational records. The
+        // actual assignment stays only in the stamped hidden trigger above;
+        // these rows carry structural progress, never prompt bytes.
+        purpose: delegatedTaskLabel(role),
         runId: run.id,
         status: 'inbox',
       },
