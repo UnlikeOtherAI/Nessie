@@ -47,11 +47,6 @@ import {
   type LoopResult,
 } from './agentic-loop-types.js'
 
-// A provider can stop a turn at its own output ceiling after the run has
-// already completed useful tool work. Keep that work in the transcript, then
-// give it one short, structurally no-tools turn to answer from the retained
-// evidence. This is deliberately a loop invariant, not a retry: it cannot
-// issue another effectful tool call and it never repeats indefinitely.
 export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
   'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
 
@@ -79,11 +74,6 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     Object.entries(resume?.signatureCounts ?? {}),
   )
   const drainGate: DrainGate = createDrainGate(input.drainSignal)
-  // Both of these count failures, and failures belong to the run rather than to
-  // whichever executor happened to see them: a run that crashes and is
-  // re-claimed must not get a fresh retry allowance and a clean breaker every
-  // time round, or a run that crash-loops retries forever and a tool that has
-  // been failing since the first execution is never disabled.
   const retryBudget = createRetryBudget(6)
   retryBudget.remaining = Math.max(0, retryBudget.total - (resume?.retriesUsed ?? 0))
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
@@ -105,10 +95,6 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // way back into the transcript that does not re-bill the inference that
   // produced it.
   let resumedToolCalls: ProviderToolCall[] | null = resume?.pendingToolCalls ?? null
-  // Mirrors of the governor's own counters, which it keeps in a closure. Kept
-  // here so a snapshot can carry them and `restoreCompactionGovernor` can
-  // replay them onto a fresh governor, rather than a resumed run getting a
-  // second full allowance of compaction calls.
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
   let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
@@ -117,8 +103,6 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
   let lastAssistantText = resume?.lastAssistantText ?? ''
-  // Wall-clock carried across executions, so a crashed run's budget is the
-  // run's, not this executor's.
   const priorElapsedMs = resume?.elapsedMs ?? 0
   const startTime = Date.now()
 
@@ -290,13 +274,28 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       await callbacks.onIterationStart(iterations)
 
       await maintainContext(iterations)
+      // Utility compaction is metered inference. Even a failed compaction call
+      // may have usage in the shared sink, so re-check every budget dimension
+      // before allowing the main model call.
+      spend = meterSpend(allInvocations, cacheReadWeight)
+      const postCompactionSpendStop = stopAfterInference(budget, spend)
+      if (postCompactionSpendStop) return stop(postCompactionSpendStop)
+      const postCompactionTimeStop = stopBeforeIteration(budget, {
+        elapsedMs: elapsed(),
+        // This is an elapsed-time probe only: this iteration has already
+        // claimed its countable slot.
+        iterations: 0,
+      })
+      if (postCompactionTimeStop) return stop(postCompactionTimeStop)
 
+      const finalizationPending = lengthFinalizationPending
+      const activeToolSchemaTokens = finalizationPending ? 0 : toolSchemaTokens
       const admission = (): {
         projectedInputTokens: number
         requestedOutputTokens: number | undefined
         requiresCompaction: boolean
       } => {
-        const projectedInputTokens = estimateMessagesTokens(messages) + toolSchemaTokens
+        const projectedInputTokens = estimateMessagesTokens(messages) + activeToolSchemaTokens
         const remainingRunTokens = typeof budget.maxTokens === 'number'
           ? Math.max(0, budget.maxTokens - spend.effectiveTokensUsed - projectedInputTokens)
           : undefined
@@ -325,6 +324,13 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         // Compaction is itself inference. Its invocation sink changes spend,
         // and its rebuilt note changes input; both must be re-admitted.
         spend = meterSpend(allInvocations, cacheReadWeight)
+        const forcedCompactionSpendStop = stopAfterInference(budget, spend)
+        if (forcedCompactionSpendStop) return stop(forcedCompactionSpendStop)
+        const forcedCompactionTimeStop = stopBeforeIteration(budget, {
+          elapsedMs: elapsed(),
+          iterations: 0,
+        })
+        if (forcedCompactionTimeStop) return stop(forcedCompactionTimeStop)
         currentAdmission = admission()
       }
 
@@ -350,7 +356,6 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         ? { toolResults: pendingToolResults }
         : undefined
       pendingToolResults = null
-      const finalizationPending = lengthFinalizationPending
       const result = await drainGate.expiry(callInferenceWithRetry(
         messages,
         (inferenceMessages) => input.runInference(

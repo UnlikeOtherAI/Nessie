@@ -402,6 +402,31 @@ test('answer reserve triggers compaction before the ordinary context threshold',
   assert.equal(compactions, 1)
 })
 
+test('normal compaction spend can stop the run before the main model call', async () => {
+  const sink: InferenceResult['invocations'] = []
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      sink.push({ usage: { totalTokens: 90 } } as InferenceResult['invocations'][number])
+      return [{ content: 'compacted', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 100, targetTokens: 60, triggerTokens: 20 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(100), role: 'user' }],
+    invocationSink: sink,
+    maxOutputTokens: 10,
+    runInference: async () => {
+      calls += 1
+      return finalAnswerInference('must not run')
+    },
+    tools: [],
+  })
+  assert.equal(calls, 0)
+  assert.equal(result.exhaustedBudget, 'tokens')
+})
+
 test('zero output headroom stops before an invalid provider request', async () => {
   let calls = 0
   const result = await runAgenticLoop({

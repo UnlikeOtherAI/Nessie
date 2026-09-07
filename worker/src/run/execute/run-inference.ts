@@ -33,6 +33,18 @@ const runtimeModelConfig = loadConfig().model
 export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
   tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
 
+export const resolveMainOutputTokens = (input: {
+  admittedMaxOutputTokens?: number
+  composeAvailable: boolean
+  configuredMaxTokens: number
+}): number | undefined => {
+  if (!input.composeAvailable) return input.admittedMaxOutputTokens
+  return Math.min(
+    resolveComposeOutputTokens(input.configuredMaxTokens),
+    input.admittedMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+  )
+}
+
 /**
  * How this run calls the model. One construction point for every inference the
  * run makes — the main turn, delegate sub-agents, compaction and checkpoint
@@ -163,9 +175,11 @@ export const createRunInference = (
           routingProfileId: null,
         },
         baseMessages: messages,
-        maxOutputTokensOverride: composeAvailable
-          ? resolveComposeOutputTokens(runtimeModelConfig.maxTokens)
-          : maxOutputTokens,
+        maxOutputTokensOverride: resolveMainOutputTokens({
+          admittedMaxOutputTokens: maxOutputTokens,
+          composeAvailable,
+          configuredMaxTokens: runtimeModelConfig.maxTokens,
+        }),
         modelConfig: runtimeModelConfig,
         subscription: options.subscription
           ? {

@@ -20,23 +20,27 @@ export type LoopCallbacks = ToolBatchCallbacks & {
   onIterationStart: (iteration: number) => Promise<void>
   onTextDelta: (delta: string) => Promise<void>
   onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
+  /** Offered only at transcript-consistent boundaries for durable crash resume. */
   onCheckpoint?: (state: LoopResumeState) => Promise<void>
 }
 
 export type LoopResult = {
   finalText: string
   iterations: number
+  /** Transcript retained for the model-authored budget checkpoint. */
   messages: ProviderMessage[]
   toolCallsUsed: number
   toolMs: number
   totalCostCents: number
   wallclockMs: number
   totalTokensUsed: number
+  /** Input + output + discounted cache reads: every token verdict uses this. */
   effectiveTokensUsed: number
   cacheReadTokens: number
   exhaustedBudget: BudgetExhaustionReason | null
   pendingApproval?: ToolApprovalSuspension | null
   pendingInput?: AgentCardSuspension | null
+  /** Cooperative cancellation keeps any partial answer without a budget stop. */
   cancelled: boolean
   woundDown: boolean
   invocations: InvocationRecord[]

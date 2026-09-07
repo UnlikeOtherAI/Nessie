@@ -1,24 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
+import { resolveMainOutputTokens } from './run-inference.js'
 
-import { hasDocumentComposeTool } from './run-inference.js'
+test('document compose never exceeds the loop-admitted output cap', () => {
+  assert.equal(resolveMainOutputTokens({
+    admittedMaxOutputTokens: 3_000,
+    composeAvailable: true,
+    configuredMaxTokens: 12_000,
+  }), 3_000)
+})
 
-test('compose output capacity is detected by tool name even with a stub descriptor', () => {
-  assert.equal(hasDocumentComposeTool([{
-    toolName: KB_DOCUMENT_COMPOSE_TOOL_ID,
-    description: 'compact summary only',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: true,
-      description: 'Call tool_spec first for the exact argument schema.',
-    },
-  }]), true)
-
-  assert.equal(hasDocumentComposeTool([{
-    toolName: 'kb_document_edit',
-    description: 'same cluster, different name',
-    inputSchema: { type: 'object' },
-  }]), false)
+test('document compose keeps its configured desired size without a loop cap', () => {
+  assert.equal(resolveMainOutputTokens({
+    composeAvailable: true,
+    configuredMaxTokens: 12_000,
+  }), 32_768)
 })
