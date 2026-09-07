@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import { Prisma, PrismaClient } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import {
   canUserReadDisclosureBasis,
   grantMessageDisclosure,
@@ -239,27 +239,30 @@ runDatabaseTest('grant and content-change ordering cannot leave an approval on a
   })
 
   const original = await grantFor(prisma, s, 'B-OLD-PRIVATE-REPLY')
-  const rowLocked = deferred()
-  const releaseRow = deferred()
-  const holdGrantRow = editClient.$transaction(async (tx) => {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id" FROM "disclosure_grants" WHERE "id" = ${original.id}::uuid FOR UPDATE
-    `)
-    rowLocked.resolve()
-    await releaseRow.promise
+  const renewalReachedUpsert = deferred()
+  const releaseRenewal = deferred()
+  const interceptedGrantClient = grantClient.$extends({
+    query: {
+      disclosureGrant: {
+        upsert: async ({ args, query }) => {
+          // `grantMessageDisclosure` reaches this only after acquiring its
+          // advisory lock and checking the exact body. Pause there so the
+          // content update demonstrably queues behind the canonical lock.
+          renewalReachedUpsert.resolve()
+          await releaseRenewal.promise
+          return query(args)
+        },
+      },
+    },
   })
-  await rowLocked.promise
-
-  // The renewal gets the disclosure lock first, then blocks on the existing
-  // grant row. The concurrent replacement queues behind that lock. Releasing
-  // the row proves the grant commits first and the trigger then revokes it.
-  const renewal = grantFor(grantClient, s, 'B-OLD-PRIVATE-REPLY')
+  const renewal = grantFor(interceptedGrantClient as PrismaClient, s, 'B-OLD-PRIVATE-REPLY')
+  await renewalReachedUpsert.promise
   const replacement = editClient.message.update({
     where: { id: s.messageId },
     data: { content: 'B-REPLACED-AFTER-GRANT' },
   })
-  releaseRow.resolve()
-  await Promise.all([holdGrantRow, renewal, replacement])
+  releaseRenewal.resolve()
+  await Promise.all([renewal, replacement])
 
   const afterGrantFirst = await prisma.disclosureGrant.findUniqueOrThrow({ where: { id: original.id } })
   assert.ok(afterGrantFirst.revokedAt)
@@ -279,14 +282,16 @@ runDatabaseTest('grant and content-change ordering cannot leave an approval on a
     })
   })
   await lockHeld.promise
-  const staleRenewal = grantFor(grantClient, s, 'B-REPLACED-AFTER-GRANT')
+  // Attach the rejection handler before releasing the transaction so Node
+  // cannot report a rejected promise before the assertion observes it.
+  const staleRenewal = grantFor(grantClient, s, 'B-REPLACED-AFTER-GRANT').then(
+    () => null,
+    (error: unknown) => error,
+  )
   releaseContentChange.resolve()
   await contentChange
-  await assert.rejects(
-    staleRenewal,
-    (error: unknown) => error instanceof Error
-      && 'code' in error
-      && error.code === 'DISCLOSURE_CONTENT_CHANGED',
-  )
+  const staleError = await staleRenewal
+  assert.ok(staleError instanceof Error && 'code' in staleError)
+  assert.equal(staleError.code, 'DISCLOSURE_CONTENT_CHANGED')
   assert.equal(await recipientCanRead(prisma, s), false)
 })
