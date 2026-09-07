@@ -76,6 +76,12 @@ fact. Read this before treating any section above as a description of the code.
   waiting for the next poll (*every 5 min*). The sync action already existed;
   the only door to it was Settings, which is not where "is this current?" is
   asked.
+- **Source controls now stay usable on touch screens.** Source rows and the
+  board strip expose 44px settings and sync targets. State, field and people
+  mappings stack their name above the picker on narrow screens, and each
+  mapping control waits for its in-flight save before accepting another edit.
+  A source that is healthy now reads *Ready*, reserving *Syncing* for a sync
+  actually in flight.
 
 - **§5 gained a live read: `searchItems`.** The adapter contract now has a
   seventh method, required of every provider, and the four implement it on

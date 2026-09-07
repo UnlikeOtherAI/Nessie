@@ -141,36 +141,40 @@ export const SourceMappingPanel = ({
       >
         <div className="grid gap-2">
           {stateMapping.map((entry) => (
-            <div className="flex items-center gap-2" key={entry.externalStateId}>
+            <div className="grid gap-2 sm:flex sm:items-center" key={entry.externalStateId}>
               <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
                 {entry.externalStateName}
               </span>
-              <Select
-                aria-label={`Category for ${entry.externalStateName}`}
-                className="max-w-[180px]"
-                disabled={!canAdminister}
-                onChange={(event) => setCategory(entry.externalStateId, event.target.value)}
-                size="compact"
-                value={entry.category ?? ''}
-              >
-                {CATEGORY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              <label className="flex items-center gap-1.5 text-xs text-[color:var(--tx3)]">
-                <input
-                  checked={entry.isDefaultForCategory}
-                  disabled={
-                    !canAdminister || entry.category === null || entry.category === 'archived'
-                  }
-                  name={`default-${entry.category ?? 'none'}`}
-                  onChange={() => setDefault(entry.externalStateId)}
-                  type="radio"
-                />
-                Default
-              </label>
+              <div className="flex items-center gap-2 sm:contents">
+                <Select
+                  aria-label={`Category for ${entry.externalStateName}`}
+                  className="h-11 min-w-0 flex-1 sm:max-w-[180px]"
+                  disabled={!canAdminister || putMappings.isPending}
+                  onChange={(event) => setCategory(entry.externalStateId, event.target.value)}
+                  value={entry.category ?? ''}
+                >
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+                <label className="flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-xs text-[color:var(--tx3)]">
+                  <input
+                    checked={entry.isDefaultForCategory}
+                    disabled={
+                      !canAdminister
+                      || putMappings.isPending
+                      || entry.category === null
+                      || entry.category === 'archived'
+                    }
+                    name={`default-${entry.category ?? 'none'}`}
+                    onChange={() => setDefault(entry.externalStateId)}
+                    type="radio"
+                  />
+                  Default
+                </label>
+              </div>
             </div>
           ))}
           {stateMapping.length === 0 ? (
@@ -189,15 +193,15 @@ export const SourceMappingPanel = ({
           {source.fields.map((field) => {
             const mapped = fieldMappings.find((entry) => entry.externalKey === field.key)
             return (
-              <div className="flex items-center gap-2" key={field.key}>
+              <div className="grid gap-2 sm:flex sm:items-center" key={field.key}>
                 <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
                   {field.label}
                   <span className="ml-2 text-xs text-[color:var(--tx3)]">{field.type}</span>
                 </span>
                 <Select
                   aria-label={`Target for ${field.label}`}
-                  className="max-w-[240px]"
-                  disabled={!canAdminister}
+                  className="h-11 sm:max-w-[240px]"
+                  disabled={!canAdminister || putMappings.isPending}
                   onChange={(event) => {
                     const target = event.target.value
                     const next = [
@@ -215,7 +219,6 @@ export const SourceMappingPanel = ({
                     setFieldMappings(next)
                     save(stateMapping, identity, next)
                   }}
-                  size="compact"
                   value={mapped?.target ?? ''}
                 >
                   <option value="">Not imported</option>
@@ -248,7 +251,7 @@ export const SourceMappingPanel = ({
           {source.members.map((member) => {
             const link = linkByExternalUserId.get(member.externalUserId)
             return (
-              <div className="flex items-center gap-2" key={member.externalUserId}>
+              <div className="grid gap-2 sm:flex sm:items-center" key={member.externalUserId}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-[color:var(--tx)]">
                     {member.displayName}
@@ -266,10 +269,9 @@ export const SourceMappingPanel = ({
                 ) : null}
                 <Select
                   aria-label={`Nessie identity for ${member.displayName}`}
-                  className="max-w-[220px]"
-                  disabled={!canAdminister}
+                  className="h-11 sm:max-w-[220px]"
+                  disabled={!canAdminister || putMappings.isPending}
                   onChange={(event) => setPerson(member.externalUserId, event.target.value)}
-                  size="compact"
                   value={identity[member.externalUserId] ?? ''}
                 >
                   <option value="">Not linked</option>

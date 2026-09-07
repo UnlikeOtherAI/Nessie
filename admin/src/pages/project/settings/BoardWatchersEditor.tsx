@@ -78,7 +78,7 @@ export const BoardWatchersEditor = ({
 
   return (
     <Section
-      description={`They hear about every ticket that moves or changes on ${boardName}. Nobody is told about a first import.`}
+      description={`They hear about every ticket that moves or is reassigned on ${boardName}. Connected tickets alert people or run agents after their first import.`}
       title="Watchers"
     >
       <div className="grid gap-3">
