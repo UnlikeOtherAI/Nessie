@@ -256,6 +256,7 @@ export const runReactTool = async (
         select: {
           agentId: true,
           basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
           id: true,
           thread: { select: { channelId: true } },
           threadId: true,
@@ -282,6 +283,7 @@ export const runReactTool = async (
       agentId: message.agentId,
       basis: message.basisScopes,
       channelId: message.thread.channelId,
+      disclosureSources: message.disclosureSources,
       messageId: message.id,
       organizationId: context.channel.organizationId,
       userId: effectiveUserId,

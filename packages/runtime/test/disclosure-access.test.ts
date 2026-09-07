@@ -22,6 +22,7 @@ const buildPrisma = (
         return visibleAgentIds.map((id) => ({ id }))
       },
     },
+    channel: { findMany: async () => [] },
     channelMember: {
       findMany: async () => [{ channelId: 'channel-1' }],
     },
@@ -97,11 +98,13 @@ const buildGrantPrisma = (input: {
     sourceScopeId: string
     sourceScopeType: string
   }>
+  channels?: Array<{ id: string; visibility: string }>
 } = {}) => {
   const calls: string[] = []
   const prisma = {
     agent: { findMany: async () => [] },
-    channelMember: { findMany: async () => { calls.push('channelMember'); return [{ channelId: 'channel-1' }] } },
+    channel: { findMany: async () => { calls.push('channel'); return input.channels ?? [] } },
+    channelMember: { findMany: async () => { calls.push('channelMember'); return [{ channelId: 'channel-1' }, { channelId: 'private-channel' }, { channelId: 'public-channel' }] } },
     disclosureGrant: {
       findMany: async () => { calls.push('disclosureGrant'); return input.messageGrants ?? [] },
     },
@@ -239,4 +242,123 @@ test('an unrestricted page and an autonomous viewer never query grants at all', 
 
   assert.deepEqual(unrestricted.calls, [])
   assert.deepEqual(autonomous.calls, [])
+})
+
+
+const privateLineage = [{ sourceAuthorUserId: 'author-1', sourceChannelId: 'private-channel' }]
+const privateBasis = [{ scopeId: 'private-channel', scopeType: 'channel' }]
+
+test('a message grant over private lineage needs the sole original author', async () => {
+  const input = {
+    agentId: 'agent-1',
+    basis: privateBasis,
+    channelId: 'destination-channel',
+    disclosureSources: privateLineage,
+    messageId: 'message-1',
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  }
+  const authorGrant = await resolveGrantedDisclosureScopeKeys(buildGrantPrisma({
+    messageGrants: [{ grantedByUserId: 'author-1', messageId: 'message-1' }],
+  }).prisma, input)
+  const otherGrant = await resolveGrantedDisclosureScopeKeys(buildGrantPrisma({
+    messageGrants: [{ grantedByUserId: 'other-user', messageId: 'message-1' }],
+  }).prisma, input)
+
+  assert.deepEqual([...authorGrant], ['channel:private-channel'])
+  assert.deepEqual([...otherGrant], [])
+})
+
+test('standing scope grants never lift private conversation lineage', async () => {
+  const { prisma } = buildGrantPrisma({
+    scopeGrants: [{
+      agentId: 'agent-1',
+      grantedByUserId: 'author-1',
+      sourceScopeId: 'private-channel',
+      sourceScopeType: 'channel',
+    }],
+  })
+  const granted = await resolveGrantedDisclosureScopeKeys(prisma, {
+    agentId: 'agent-1',
+    basis: privateBasis,
+    channelId: 'destination-channel',
+    disclosureSources: privateLineage,
+    messageId: 'message-1',
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  })
+
+  assert.deepEqual([...granted], [])
+})
+
+test('unattributed legacy non-public channel bases fail closed while public bases keep grants', async () => {
+  const grants = {
+    messageGrants: [{ grantedByUserId: 'granter-1', messageId: 'message-1' }],
+    scopeGrants: [{
+      agentId: 'agent-1',
+      grantedByUserId: 'granter-1',
+      sourceScopeId: 'private-channel',
+      sourceScopeType: 'channel',
+    }],
+    channels: [
+      { id: 'private-channel', visibility: 'private' },
+      { id: 'public-channel', visibility: 'public' },
+    ],
+  }
+  const legacyPrivate = await resolveGrantedDisclosureScopeKeys(buildGrantPrisma(grants).prisma, {
+    agentId: 'agent-1',
+    basis: privateBasis,
+    channelId: 'destination-channel',
+    messageId: 'message-1',
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  })
+  const publicMessage = await resolveGrantedDisclosureScopeKeys(buildGrantPrisma({
+    ...grants,
+    messageGrants: [{ grantedByUserId: 'granter-1', messageId: 'message-2' }],
+  }).prisma, {
+    agentId: null,
+    basis: [{ scopeId: 'public-channel', scopeType: 'channel' }],
+    channelId: 'destination-channel',
+    messageId: 'message-2',
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  })
+
+  assert.deepEqual([...legacyPrivate], [])
+  assert.deepEqual([...publicMessage], ['channel:public-channel'])
+})
+
+test('private-lineage policy agrees for batched and single grant reads', async () => {
+  const grants = {
+    messageGrants: [{ grantedByUserId: 'author-1', messageId: 'message-1' }],
+  }
+  const single = await resolveGrantedDisclosureScopeKeys(buildGrantPrisma(grants).prisma, {
+    agentId: 'agent-1',
+    basis: privateBasis,
+    channelId: 'destination-channel',
+    disclosureSources: privateLineage,
+    messageId: 'message-1',
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  })
+  const batched = await resolveGrantedScopeKeysForMessages(buildGrantPrisma(grants).prisma, {
+    channelId: 'destination-channel',
+    messages: [{
+      agentId: 'agent-1',
+      basis: privateBasis,
+      disclosureSources: privateLineage,
+      messageId: 'message-1',
+    }],
+    organizationId: 'org-1',
+    viewerChannelIds: ['destination-channel'],
+    viewerUserId: 'viewer-1',
+  })
+
+  assert.deepEqual([...single], [...(batched.get('message-1') ?? [])])
 })

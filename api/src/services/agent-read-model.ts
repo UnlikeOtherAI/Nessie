@@ -83,6 +83,7 @@ export const loadAgentStatus = async (
       messages: {
         include: {
           basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
           thread: { select: { channelId: true } },
         },
         where: messageVisibilityWhere,
@@ -293,6 +294,7 @@ export const loadAgentMessages = async (
     where,
     include: {
       basisScopes: { select: { scopeId: true, scopeType: true } },
+      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
       thread: { select: { channelId: true } },
     },
     orderBy: { createdAt: 'desc' },

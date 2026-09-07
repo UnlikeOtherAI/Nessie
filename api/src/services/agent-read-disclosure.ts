@@ -42,6 +42,7 @@ export const filterReadableAgentRuns = async <TRun extends { id: string }>(
 export type AgentMessageDisclosureCandidate = {
   agentId: string | null
   basisScopes: Array<{ scopeId: string; scopeType: string }>
+  disclosureSources: Array<{ sourceAuthorUserId: string | null; sourceChannelId: string }>
   id: string
   thread: { channelId: string }
 }
@@ -58,6 +59,7 @@ export const canReadAgentMessage = async (
     agentId: message.agentId,
     basis: message.basisScopes,
     channelId: message.thread.channelId,
+    disclosureSources: message.disclosureSources,
     messageId: message.id,
     organizationId: visibility.organizationId,
     userId: visibility.userId,
