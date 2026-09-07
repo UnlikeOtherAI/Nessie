@@ -269,7 +269,7 @@ const exerciseBoardManagementPhone = async ({ page, projectId, board }) => {
 
   await settings.click()
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await page.getByRole('button', { name: 'Back to boards', exact: true }).click()
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards$`, 'u'))
   await boardListRow(page, board.name).getByRole('link', { name: 'Settings' }).click()
   await page.waitForURL(new RegExp(`/projects/${projectId}/boards/${board.id}/settings\\?tab=general$`, 'u'))
