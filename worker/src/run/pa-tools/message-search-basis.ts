@@ -62,6 +62,22 @@ export const recordMessageChannelRead = (
   }
 }
 
+/** A returned human message also retains its original-author consent lineage. */
+export const recordPrivateConversationMessageRead = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  messages: readonly { authorUserId: string | null; channelId: string; channelVisibility: string }[],
+): void => {
+  const sink = context.consumedSources
+  if (!sink) return
+  for (const message of messages) {
+    if (message.channelVisibility === 'public' || !message.authorUserId) continue
+    sink.addPrivateConversationSource({
+      sourceAuthorUserId: message.authorUserId,
+      sourceChannelId: message.channelId,
+    })
+  }
+}
+
 /**
  * The same rule for a channel *directory* read (`channel_list`, `channel_find`).
  *

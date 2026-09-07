@@ -193,9 +193,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     category: 'conversation',
     summary: 'Send a message as the current user.',
     label: 'Send Message',
-    personalAssistantOnly: true,
     description:
-      'Send a message as the current user to a thread, channelId, or a DM by targetUserId. ' +
+      'Send a message as the current requesting user to a thread, channelId, or a DM by targetUserId. ' +
       'Optional attachmentIds must name the current user\'s still-unlinked uploads. ' +
       'Resolve named channels with channel_find first; do not guess between duplicate channel names.',
     parameters: {

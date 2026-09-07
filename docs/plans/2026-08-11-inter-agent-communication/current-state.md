@@ -11,7 +11,7 @@ Every claim below was checked against the tree at
 | 2 | **`spawn_subtask`** builtin | Any agent whose `parentAgentId` is null | New **permanent `Agent` row** + `Run` + `Task` + `PlanStep` | none beyond tool grant; depth capped at 1 |
 | 3 | **`delegate`** builtin | Any granted agent | Nothing durable — invocations fold into the parent run | capped at `NESSIE_MAX_DELEGATES_PER_RUN` (16); no nesting |
 | 4 | **Channel messages / @mentions** | Any agent that can post | `Message` row | channel membership + engagement decision |
-| 5 | **`send_message`** builtin | **Personal Assistant only** | `Message` row authored **as the human user** | `personalAssistantOnly`; destination resolution |
+| 5 | **`send_message`** builtin | Any agent with the ordinary tool grant and live requesting user | `Message` row authored **as the human user** | destination resolution; private-conversation exports need original-author consent |
 
 ### 1. The mailbox — real infrastructure, no agent access
 
