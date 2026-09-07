@@ -105,7 +105,7 @@ const main = async (): Promise<void> => {
         agentId: agent.id, connectionId: connection.id, effectiveUserId: otherUserId,
         organizationId: scope.organizationId,
       }),
-      (error: unknown) => error instanceof MailboxAccessError && error.code === 'MAILBOX_NOT_FOUND',
+      (error: unknown) => error instanceof MailboxAccessError && error.code === 'NO_MAILBOX',
       'a personal mailbox is unavailable to a different effective user',
     )
     await setMailboxAgentAccess(pipeline.prisma, {
