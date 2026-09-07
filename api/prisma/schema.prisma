@@ -2238,6 +2238,10 @@ model ThreadStreamEvent {
   thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, id], map: "idx_thread_stream_events_replay")
+  // The retention sweep deletes on `created_at` alone. This table is a row per
+  // streamed token, so unlike `realtime_events` it cannot carry that DELETE as
+  // a sequential scan.
+  @@index([createdAt])
   @@map("thread_stream_events")
 }
 
@@ -2257,16 +2261,19 @@ model RealtimeEvent {
   @@map("realtime_events")
 }
 
-/// Cluster-wide clock for the `realtime_events` retention sweep.
+/// Cluster-wide clock for the realtime replay-log retention sweep.
 ///
-/// One row (`id = 'realtime_events'`), deliberately tenant-free: the sweep
-/// deletes across every organisation, so its cadence is a property of the
-/// cluster and not of anybody's data. It exists because the cadence used to be
-/// an in-process `lastPruneAt` (horizontal-scaling audit 2.3), which every
-/// replica kept separately — and `realtime_events` carries no index on
-/// `created_at` alone, so the retention DELETE is a sequential scan that must
-/// not run once per publish per instance. `withSweepLock` decides *who* prunes;
-/// this row decides *whether it is due*.
+/// One row (`id = 'realtime_events'`, kept for its existing value rather than
+/// renamed), deliberately tenant-free: the sweep deletes across every
+/// organisation, so its cadence is a property of the cluster and not of
+/// anybody's data. One row covers both replay logs — `realtime_events` and
+/// `thread_stream_events` — because they are the same thing on two lanes and a
+/// cadence row each would let one lane's retention run while the other's did
+/// not. It exists because the cadence used to be an in-process `lastPruneAt`
+/// (horizontal-scaling audit 2.3), which every replica kept separately — and
+/// `realtime_events` carries no index on `created_at` alone, so its retention
+/// DELETE is a sequential scan that must not run once per publish per instance.
+/// `withSweepLock` decides *who* prunes; this row decides *whether it is due*.
 model RealtimePruneState {
   id       String   @id
   prunedAt DateTime @map("pruned_at") @db.Timestamptz()

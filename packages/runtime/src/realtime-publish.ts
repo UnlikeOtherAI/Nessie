@@ -179,6 +179,23 @@ export type RealtimeReplayEvent = {
   recipientUserId: string | null
 }
 
+/**
+ * One page of user-lane replay, and whether it is the whole of it.
+ *
+ * `truncated` is the gap signal (horizontal-scaling audit 2.9). The cap used to
+ * be applied silently, and a silent cap is worse than a small one: the client
+ * moves its `Last-Event-ID` to the last row it received and believes it has
+ * caught up, while the connection stays open and every later live event carries
+ * the watermark further past the events the cap withheld. Replay cannot bring
+ * those back afterwards — it is `id > watermark` — so the only recovery is for
+ * the client to re-read state over REST, and it can only choose to do that if
+ * it is told.
+ */
+export type RealtimeReplayPage = {
+  events: RealtimeReplayEvent[]
+  truncated: boolean
+}
+
 export type RealtimeEventRow = {
   id: bigint | number
   organization_id: string
@@ -209,12 +226,28 @@ export const mapRealtimeEventRow = (row: RealtimeEventRow): RealtimeReplayEvent 
   recipientUserId: row.recipient_user_id,
 })
 
+/**
+ * Announce a publication that has **no durable row**: an ephemeral thread
+ * event, a ws publication whose scopes name no organization, the cross-replica
+ * session revocation.
+ *
+ * It goes through the same size guard as a durable publish, because the cap is
+ * a property of `pg_notify` and not of the lane using it. What differs is the
+ * fallback: there is no row to announce by id, so an oversized rowless payload
+ * is dropped rather than raised. Dropping is the outcome these lanes are
+ * already built for — an ephemeral document delta is dropped under
+ * backpressure too and the client rebuilds from
+ * `GET /api/threads/:threadId/document-streams/:sessionId`, and a revocation
+ * converges on its cache TTL. Raising is the outcome none of them are built
+ * for: it fails the caller's operation (audit 2.7 is exactly that failure on
+ * the durable lane) over an announcement that was never the authority.
+ */
 export const notifyRealtime = async (
   pool: Pool,
   channel: string,
   payload: RealtimeNotificationPayload,
 ): Promise<void> => {
-  await pool.query('SELECT pg_notify($1, $2)', [channel, JSON.stringify(payload)])
+  await notifyEnvelope(pool, channel, payload)
 }
 
 /**
@@ -288,8 +321,65 @@ const withOrderedPublish = async <T>(
  * re-reads it (`resolveRealtimeNotification`). The margin below 8000 leaves the
  * compact envelope room and keeps the check clear of the terminator Postgres
  * counts for itself.
+ *
+ * The same cap binds the rowless lanes, which have no ref form to fall back to
+ * — `notifyRealtime` says what each of those recovers by instead.
  */
-const NOTIFY_PAYLOAD_LIMIT_BYTES = 7_000
+export const NOTIFY_PAYLOAD_LIMIT_BYTES = 7_000
+
+/**
+ * Anything that can run one parameterised statement: a `Pool` or a `PoolClient`
+ * already inside a transaction. Named structurally because the cap check is the
+ * same either way and only the caller knows which door it is holding.
+ */
+type NotifyQuerier = {
+  query: (sql: string, values: unknown[]) => Promise<unknown>
+}
+
+/**
+ * The one door to `pg_notify` for every realtime lane, durable or not, so the
+ * cap is measured in exactly one place.
+ *
+ * `compact` is the ref form when the caller has a committed row to point at,
+ * and absent when it has none. Both fall back to sending nothing rather than
+ * raising — see `notifyWithinTransaction` and `notifyRealtime` for what each
+ * lane recovers by instead.
+ */
+const notifyEnvelope = async (
+  querier: NotifyQuerier,
+  channel: string,
+  payload: RealtimeNotificationEnvelope,
+  compact?: () => RealtimeNotificationEnvelope,
+): Promise<void> => {
+  const full = JSON.stringify(payload)
+  const body =
+    Buffer.byteLength(full, 'utf8') <= NOTIFY_PAYLOAD_LIMIT_BYTES || !compact
+      ? full
+      : JSON.stringify(compact())
+
+  if (Buffer.byteLength(body, 'utf8') > NOTIFY_PAYLOAD_LIMIT_BYTES) {
+    // With a row: not reachable unless the scope list alone is enormous, and
+    // the row is committed regardless — so stay silent rather than raise and
+    // destroy it. No connection is told, and reconnect replay returns the event
+    // only while no later event has carried that connection's watermark past it
+    // (`id > watermark`). What does recover the content is the durable row
+    // itself: on the thread lane a REST bootstrap re-reads the message. The
+    // WebSocket lane has no such re-read, so there the live event is simply
+    // missed.
+    //
+    // Without a row there is nothing to announce by id at all, which is why
+    // this is a log rather than a silent return: the lane's own recovery (a
+    // document-stream bootstrap, a cache TTL) is what closes it, and an
+    // operator has no other way to learn the announcement never went out.
+    console.warn(
+      '[realtime] notification over the pg_notify cap was dropped',
+      { bytes: Buffer.byteLength(body, 'utf8'), kind: payload.kind, refForm: Boolean(compact) },
+    )
+    return
+  }
+
+  await querier.query('SELECT pg_notify($1, $2)', [channel, body])
+}
 
 const notifyWithinTransaction = async (
   client: PoolClient,
@@ -297,24 +387,7 @@ const notifyWithinTransaction = async (
   payload: RealtimeNotificationEnvelope,
   compact: () => RealtimeNotificationEnvelope,
 ): Promise<void> => {
-  const full = JSON.stringify(payload)
-  const body =
-    Buffer.byteLength(full, 'utf8') <= NOTIFY_PAYLOAD_LIMIT_BYTES
-      ? full
-      : JSON.stringify(compact())
-
-  if (Buffer.byteLength(body, 'utf8') > NOTIFY_PAYLOAD_LIMIT_BYTES) {
-    // Not reachable unless the scope list alone is enormous, and the row is
-    // committed regardless — so stay silent rather than raise and destroy it.
-    // No connection is told, and reconnect replay returns the event only while
-    // no later event has carried that connection's watermark past it (`id >
-    // watermark`). What does recover the content is the durable row itself: on
-    // the thread lane a REST bootstrap re-reads the message. The WebSocket lane
-    // has no such re-read, so there the live event is simply missed.
-    return
-  }
-
-  await client.query('SELECT pg_notify($1, $2)', [channel, body])
+  await notifyEnvelope(client, channel, payload, compact)
 }
 
 /**

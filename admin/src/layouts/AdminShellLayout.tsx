@@ -46,6 +46,7 @@ import { useAdminShell } from './admin-shell/useAdminShell';
 import { TeamSwitcher } from './admin-shell/TeamSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
 import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
+import { useRealtimeGapRecovery } from '../facades/realtime/realtime-gap';
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
 
@@ -116,6 +117,10 @@ const AuthenticatedAdminShellLayout = () => {
   const threadActivity = useThreadActivity();
   const unreadDirectMessages = useUnreadDirectMessages();
   useThreadActivityEvents();
+  // Mounted once for the whole shell: a `realtime.gap` frame says this
+  // connection's replay was cut short, and the answer is one REST bootstrap for
+  // every surface reading from it, not one per subscriber.
+  useRealtimeGapRecovery();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
     attentionCountByProjectId.set(projectId, count);

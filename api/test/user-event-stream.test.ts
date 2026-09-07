@@ -70,14 +70,18 @@ test('realtime replay query returns only accessible channel events after the cur
     userId,
   })
 
-  assert.deepEqual(result.map((row) => row.id), [5n])
+  assert.deepEqual(result.events.map((row) => row.id), [5n])
+  assert.equal(result.truncated, false, 'a page well under the cap reports no gap')
   assert.match(capturedSql ?? '', /FROM realtime_events/)
   assert.match(capturedSql ?? '', /organization_id = \$1/)
   assert.match(capturedSql ?? '', /id > \$2/)
   assert.match(capturedSql ?? '', /channel_id = ANY\(\$3::uuid\[\]\)/)
   assert.match(capturedSql ?? '', /recipient_user_id = \$4/)
   assert.match(capturedSql ?? '', /LIMIT \$5/)
-  assert.deepEqual(capturedParams, [organizationId, 2n, [channelA, channelB], userId, 5000])
+  // 5001, not 5000: the row past the cap is asked for so a page that ended *on*
+  // the cap can be told from one the cap cut short. It is counted, never
+  // delivered — see `listRealtimeEventsAfterCursor`.
+  assert.deepEqual(capturedParams, [organizationId, 2n, [channelA, channelB], userId, 5001])
 })
 
 test('realtime membership resolution returns the union of channel scopes', async () => {

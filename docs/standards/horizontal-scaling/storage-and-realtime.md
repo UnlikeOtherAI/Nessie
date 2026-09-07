@@ -239,15 +239,31 @@ only be the same event delivered twice — a LISTEN reconnect, or an old
 publisher mid rolling deploy — so the listener skips it, leaves the watermark
 where it is, and logs the pair of numbers at **warn** level so a publisher
 regression is visible instead of silent (`api/src/realtime/hub.ts`). It never
-moves a watermark past an id it did not write. On LISTEN reconnect, re-read the
-backlog for every registered connection from its own watermark.
+moves a watermark past an id it did not write.
+
+**On LISTEN reconnect, re-read the backlog for every registered connection from
+its own watermark.** Re-listening restores future notifications only (2.2) while
+keepalives hide the drop from that replica's clients, whose own next reconnect
+was the only rescue. The hub answers the transport's post-reconnect hook through
+the one hydration path a fresh connection takes
+(`api/src/realtime/connection-hydration.ts`); one still hydrating is skipped, a
+WebSocket has no watermark, a failure is logged not rethrown.
+
+**A silent replay cap is a gap the client cannot detect** (2.9): `Last-Event-ID`
+moves on, later live events carry it past what was withheld, and replay is `id >
+watermark`. Ask for `MAX_REPLAY_EVENTS + 1` — "returned exactly `MAX`" cannot
+tell a page that *ended* on the cap from one it *cut* — and write one id-less
+`realtime.gap` frame the admin turns into a REST bootstrap
+(`admin/src/facades/realtime/realtime-gap.ts`, mounted once in the shell). One
+sweep retains both logs on one window, cadence row and leader; 2.3 left
+`thread_stream_events` unpruned, and it needs an index the other does not.
 
 **Resuming a stream is not the same as replaying every row, and the difference
 has to be stated or it gets mistaken for data loss.** A reconnect with a
 `Last-Event-ID` replays `thread_stream_events` from that watermark — except for
 five event types the hub deliberately skips: `stream.start`,
 `stream.reasoning`, `stream.thinking.tool`, `stream.delta` and
-`stream.document.delta` (`api/src/realtime/hub.ts`). Those are a live preview of
+`stream.document.delta` (`connection-hydration.ts`). Those are a live preview of
 state that is durable somewhere else, and re-sending them to a client that
 reconnected after the run ended paints a pending bubble over a finished answer.
 The watermark still advances across them, so the stream carries on from the real
@@ -277,3 +293,11 @@ reaches `message`, matches no connection and delivers nothing; the row is
 committed either way and the client's next reconnect replays it. Widen a
 notification payload the same way, and remove such a shim only once no deployed
 replica predates the shape.
+
+**Every door to `pg_notify` measures the cap; no lane raises over it** (2.7).
+With a committed row an oversized envelope falls back to its `*-ref` form and
+the listener re-reads the row; rowless (`publishSseEphemeral`, a ws publication
+naming no organization, the revocation) it is dropped and logged, which those
+lanes already survive by re-read. The re-read costs a round trip, so resolution
+is serialised on the transport, or an oversized event lands behind a smaller one
+published later and a forward-only watermark skips it for good.
