@@ -233,9 +233,20 @@ control request; the agent then read the public heading “Herman Melville -
 Moby-Dick”, closed its browser, and its exact successor completed. The tracked
 session released without an error.
 
-This is not a Chrome import release claim. ChromeOS native-host registration
-and release packaging remain unverified, as do the Chrome Web Store identity
-and signed launcher prerequisites described above. One mobile touch regression
-is also pending its final automated check: the first tap after a drag can move
-the page slightly. It does not invalidate the completed handoff, but it must
-remain covered before calling touch input fully verified.
+The durable context was then reopened through the UI after the task closed.
+Its cookie page contained both the signed-native selected-site import marker
+and the pre-existing durable-context marker, but never the temporary task's
+cookie. A generic **Done** returned 204 and released that persistent session
+without creating the requested task. This proves the temporary no-context
+session did not copy cookies back into the saved private context.
+
+The final mobile viewport retest also passed. A durable saved browser moved
+from laptop to phone dimensions through live WebSocket frames, remounted with
+“Your controls are paused”, and accepted touch scrolling at 390×844. On the
+form page, the first tap focused the browser keyboard and subsequent real
+input preserved “Nessie mobile QA” including spaces. **Done** showed Saving,
+closed the panel, and reached confirmed release.
+
+This is not a Chrome import release claim. Chrome-on-macOS native-host
+registration and release packaging remain unverified, as do the Chrome Web
+Store identity and signed launcher prerequisites described above.

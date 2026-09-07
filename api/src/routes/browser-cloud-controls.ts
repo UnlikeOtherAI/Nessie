@@ -41,10 +41,10 @@ export const registerBrowserCloudControlRoutes = (
 /**
  * Take the controls, or renew a claim the viewer is still holding.
  *
- * The claim is coordination and audit, not the security boundary — that is
- * who may fetch the live-view URL at all, and everyone it admits could
- * already drive. What the claim does guarantee is that the *agent* stands
- * down: every browser verb is refused while it is held.
+ * The claim coordinates human and agent input after the private-home and
+ * current-viewer checks above. The mediated canvas checks that lease again
+ * before each gesture; holding it also makes the *agent* stand down, because
+ * every browser verb is refused while it is held.
  */
 app.post('/api/browser-sessions/:sessionId/control', async (request, reply) => {
   const actorContext = requireActorContext(request, reply)
