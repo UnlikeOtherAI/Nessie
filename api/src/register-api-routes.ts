@@ -73,6 +73,7 @@ import { registerSearchRoutes } from './routes/search.js'
 import { registerSecretRoutes } from './routes/secrets.js'
 import { registerStatusRoutes } from './routes/statuses.js'
 import { registerTaskRoutes } from './routes/tasks.js'
+import { registerTaskChecklistRoutes } from './routes/task-checklists.js'
 import { registerTeamRoutes } from './routes/teams.js'
 import { registerThoughtRoutes } from './routes/thoughts.js'
 import { registerThreadRoutes } from './routes/threads.js'
@@ -200,6 +201,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerKnowledgeSummaryRoutes(app, deps)
   registerKnowledgeTaskRoutes(app, deps)
   registerTaskRoutes(app, deps)
+  registerTaskChecklistRoutes(app, deps)
   registerBillingRoutes(app, deps)
   registerLedgerRoutes(app, deps)
   registerVoiceRoutes(app, deps)

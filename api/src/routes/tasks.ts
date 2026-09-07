@@ -1,18 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
-import {
-  ApplyTaskChecklistBodySchema,
-  TaskChecklistRecordSchema,
-  type AuthorizedActionContext,
-  ProjectIdSchema,
-  TaskStatusSchema,
-  UpdateTaskChecklistStepBodySchema,
-} from '@nessie/schemas'
-import {
-  applyTaskChecklistTemplate,
-  getTaskChecklist,
-  updateTaskChecklistStep,
-} from '@nessie/team-admin'
+import { type AuthorizedActionContext, ProjectIdSchema, TaskStatusSchema } from '@nessie/schemas'
 import {
   ArchiveDoneTasksBodySchema,
   AssignableUserSchema,
@@ -88,7 +76,6 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     requireActorContext,
     requireUserActor,
     listAccessibleProjectIds,
-    isAgentAccessibleToActor,
   } = deps
 
   const resolveTaskUserFilter = (
@@ -266,69 +253,6 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     return createApiResponse(TaskRecordSchema.parse(task))
   })
 
-  app.get('/api/tasks/:taskId/checklist', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const { taskId } = request.params as { taskId: string }
-    if (!(await requireTaskAccess(actorContext, taskId, reply))) return reply
-    const checklist = await getTaskChecklist(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      taskId,
-    })
-    return createApiResponse(TaskChecklistRecordSchema.nullable().parse(checklist))
-  })
-
-  app.post('/api/tasks/:taskId/checklist', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireUserActor(actorContext, reply)) return reply
-    const { taskId } = request.params as { taskId: string }
-    const body = parseInput(ApplyTaskChecklistBodySchema, request.body, reply)
-    if (!body || !(await requireTaskAccess(actorContext, taskId, reply))) return reply
-    // A template is copied only by somebody already entitled to its source
-    // agent. Later task collaborators read the snapshot, not the agent.
-    if (!(await isAgentAccessibleToActor(actorContext, body.agentId))) {
-      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
-      return reply
-    }
-    const checklist = await applyTaskChecklistTemplate(prisma, {
-      ...body,
-      createdByUserId: actorContext.actor.actorId,
-      organizationId: actorContext.tenant.organizationId,
-      taskId,
-    })
-    if ('error' in checklist) {
-      sendApiError(reply, 404, checklist.error, checklist.error === 'TASK_NOT_FOUND' ? 'Task not found' : 'Template not found')
-      return reply
-    }
-    return reply.code(201).send(createApiResponse(TaskChecklistRecordSchema.parse(checklist)))
-  })
-
-  app.patch('/api/tasks/:taskId/checklist/steps/:stepKey', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireUserActor(actorContext, reply)) return reply
-    const { taskId, stepKey } = request.params as { taskId: string; stepKey: string }
-    const body = parseInput(UpdateTaskChecklistStepBodySchema, request.body, reply)
-    if (!body || !(await requireTaskAccess(actorContext, taskId, reply))) return reply
-    const checklist = await getTaskChecklist(prisma, { organizationId: actorContext.tenant.organizationId, taskId })
-    if (!checklist) {
-      sendApiError(reply, 404, 'CHECKLIST_NOT_FOUND', 'Checklist not found')
-      return reply
-    }
-    const updated = await updateTaskChecklistStep(prisma, {
-      ...body,
-      checklistId: checklist.id,
-      organizationId: actorContext.tenant.organizationId,
-      stepKey,
-      taskId,
-    })
-    if (!updated) {
-      sendApiError(reply, 404, 'CHECKLIST_STEP_NOT_FOUND', 'Checklist step not found')
-      return reply
-    }
-    return createApiResponse(TaskChecklistRecordSchema.parse(updated))
-  })
 
   app.post('/api/tasks/:taskId/assign', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
