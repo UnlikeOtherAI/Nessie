@@ -100,7 +100,10 @@ export const publishMessageCreated = async (
     ...(reply ? { rootMessageId: reply.rootMessageId } : {}),
     threadId: context.run.threadId,
   })
-  if (reply) {
+  // The restricted envelope is an intentionally content-free wake-up marker.
+  // Reply-thread counts, timestamps, and participants are durable metadata for
+  // the withheld row, so only a reader of the reply itself may refetch them.
+  if (reply && !input.restricted) {
     await realtimeTransport.publishWs(scopes, {
       data: {
         channelId: parseChannelId(context.channel.id),
