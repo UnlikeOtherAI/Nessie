@@ -173,6 +173,18 @@ test('mail_present refuses when no effective user can receive the private doorwa
   assert.equal(events.length, 0)
 })
 
+type MailboxComposeCard = {
+  actions: Array<{
+    collectsValues?: boolean
+    href?: string
+    key: string
+    label?: string
+    style?: string
+    submits: boolean
+  }>
+  blocks: Array<{ default?: string; key: string; maxLength?: number }>
+}
+
 test('mailbox_compose returns a proposed universal card draft and does not send', async () => {
   const { context, events, messageCreates } = makeContext()
   const result = await runMailboxComposeTool(context, {
