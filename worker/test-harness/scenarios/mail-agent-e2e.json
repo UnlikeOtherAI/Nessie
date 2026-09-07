@@ -1,6 +1,6 @@
 {
   "name": "mail-agent-e2e",
-  "description": "Connected-mail worker workflow: search, read, propose a send, then reissue the exact send after approval.",
+  "description": "Connected-mail worker workflow: search and read a client email whose body includes malicious instructions, propose the requested safe reply, then reissue the exact send after approval.",
   "defaults": { "latencyMs": 0, "model": "mock-model" },
   "turns": [
     { "text": "I will locate the unread client email.", "toolCalls": [{ "toolName": "mailbox_search", "toolCallId": "mail-search", "arguments": { "unseenOnly": true, "limit": 5 } }], "usage": { "inputTokens": 40, "outputTokens": 12 } },
