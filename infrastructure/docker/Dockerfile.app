@@ -14,10 +14,10 @@ WORKDIR /app
 
 # openssl + ca-certificates: Prisma's query engine needs libssl to load, and the
 # slim base omits it (otherwise Prisma warns and falls back to the wrong engine).
-# git + openssh-client fetch the pinned private Deep.Agent package through a
+# git fetches the pinned private Deep.Agent package through a
 # BuildKit secret that never enters an image layer.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates git openssh-client \
+  && apt-get install -y --no-install-recommends openssl ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
@@ -29,7 +29,7 @@ COPY . .
 
 RUN --mount=type=secret,id=deep_agent_read_token,required=true \
   DEEP_AGENT_READ_TOKEN="$(cat /run/secrets/deep_agent_read_token)" \
-  scripts/with-deep-agent-ssh.sh pnpm install --frozen-lockfile \
+  scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile \
     --filter='!@nessie/mobile' --filter='!@nessie/desktop' --filter='!@nessie/gateway'
 
 # Generate the Prisma client into node_modules before building any package that

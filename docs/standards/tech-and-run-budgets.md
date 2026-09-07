@@ -57,16 +57,14 @@ summary and points here; **this file is the rule**.
 
 ## Deep.Agent compaction extraction
 
-Nessie currently owns its durable compaction path: `runContextCompaction` uses
-the run's inference lane and the caller retains disclosure lineage, checkpoint
-state, whole tool-call/result groups, untrusted-note framing, and source URLs.
-The private `@deep/agent` `0.0.0` workspace already contains and exports a
-model-authored compaction helper, and its loop automatically uses it when a
-host supplies `generateNote`; without that callback it falls back to trimming.
-It is neither published nor consumed by Nessie. Do not call it over HTTP or
-copy its loop into Nessie. Any dependency adoption must use a pinned, versioned
-library contract while Nessie continues to own its inference adapter, run
-checkpoints, disclosure basis, and durable lifecycle.
+Nessie consumes only `@deep/agent`'s commit-pinned, pure
+`runContextCompaction` helper. Nessie still owns utility inference and its
+invocation sink, checkpoint persistence, disclosure basis and durable state.
+The helper preserves complete tool groups, fences its rolling note and retains
+source URLs. CI and Docker require the externally managed
+`DEEP_AGENT_READ_TOKEN`: a fine-grained token scoped only to `deep.agent`
+Contents:Read, rotated before expiry. It is supplied only to installation and
+is never committed, persisted in an image layer, or exposed at runtime.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above

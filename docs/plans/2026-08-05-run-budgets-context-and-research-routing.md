@@ -336,3 +336,10 @@ DeepWater launch invariants, the handoff path, and ordinary granted
 - Offer-card UI for the DeepWater consent (plain chat offer in v1).
 - Checkpoint freshness stamping beyond the conversation tail the follow-up
   run naturally sees.
+## Shared compaction implementation
+
+The worker calls the pure `@deep/agent` compaction helper through
+`worker/src/run/context-compaction.ts`, pinned to one reviewed commit. Nessie
+keeps invocation metering, checkpoints, provenance and disclosure lineage at
+the caller boundary. Build access requires the externally provisioned,
+fine-grained `DEEP_AGENT_READ_TOKEN` with `deep.agent` Contents:Read only.

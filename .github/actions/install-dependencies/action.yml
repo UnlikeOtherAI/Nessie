@@ -11,4 +11,4 @@ runs:
       env:
         DEEP_AGENT_READ_TOKEN: ${{ inputs.deep-agent-read-token }}
       run: |
-        scripts/with-deep-agent-ssh.sh pnpm install --frozen-lockfile
+        scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile
