@@ -44,6 +44,7 @@ export * from './url-safety.js'
 export * from './connector-usage.js'
 export * from './disclosure-predicate.js'
 export * from './disclosure-access.js'
+export * from './run-disclosure.js'
 
 export * from './builtin-google-tools.js'
 export * from './builtin-mailbox-tools.js'
