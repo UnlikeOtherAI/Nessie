@@ -87,6 +87,7 @@ export const exerciseBoardManagement = async ({
   const renamedBoardName = `Managed board renamed ${runId}`
   const columnName = `Ready for review ${runId}`
   const me = await api('/api/auth/me', { token })
+  const watcherEmail = me.user.email
   const watcherName = me.user.displayName
 
   await gotoBoardList(page, adminUrl, projectId)
@@ -154,10 +155,13 @@ export const exerciseBoardManagement = async ({
   await newColumnName.waitFor({ state: 'hidden' })
   assert.equal(await newColumnName.count(), 0, 'Watchers does not retain Columns controls')
   const recipients = page.getByLabel('Tell')
-  await recipients.fill(watcherName)
-  await page.getByRole('button', { name: watcherName, exact: true }).click()
-  await page.getByRole('button', { name: 'Save watchers' }).click()
+  await recipients.fill(watcherEmail)
+  await page.getByRole('button').filter({ hasText: watcherEmail }).click()
+  await page.getByRole('button', { name: `Remove ${watcherName}` }).waitFor()
+  const saveWatchers = page.getByRole('button', { name: 'Save watchers' })
+  await saveWatchers.click()
   await waitForWatcher(api, token, projectId, board.id, me.user.id)
+  await saveWatchers.waitFor({ state: 'hidden' })
 
   await gotoBoardList(page, adminUrl, projectId)
   await boardListRow(page, renamedBoardName).getByRole('link', { name: 'Settings' }).click()
