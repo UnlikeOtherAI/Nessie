@@ -129,7 +129,7 @@ const touchSwipe = async (page, { fromX, fromY, toX, toY = fromY }) => {
   try {
     await client.send('Input.dispatchTouchEvent', {
       type: 'touchStart',
-      touchPoints: [{ x: fromX, y }],
+      touchPoints: [{ x: fromX, y: fromY }],
     })
     for (let step = 1; step <= 8; step += 1) {
       await client.send('Input.dispatchTouchEvent', {
