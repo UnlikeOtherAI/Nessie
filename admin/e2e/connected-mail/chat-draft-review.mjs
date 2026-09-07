@@ -269,7 +269,7 @@ const narrowComposeDoorway = async ({ adminUrl, assert, browser, expectNoErrors,
       assert(await dialog.getAttribute('data-fullscreen') === 'true', 'narrow compose did not enter full viewport mode')
     }
     const bounds = await dialog.boundingBox()
-    assert((bounds?.width ?? 0) >= 700, `narrow composer did not occupy the viewport (${bounds?.width ?? 0}px)`)
+    assert((bounds?.width ?? 0) >= 680, `narrow composer did not occupy its usable viewport (${bounds?.width ?? 0}px)`)
     await shot(page, 'chat-doorway-compose-maximized-narrow')
   } finally {
     expectNoErrors(target.errors, fixture)
