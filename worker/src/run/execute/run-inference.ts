@@ -98,6 +98,10 @@ export const createRunInference = (
      * mixes a person's plan with the organization's credits.
      */
     subscription: RunSubscriptionBinding | null
+    /** Narrow test seams; production uses the imported resolvers. */
+    stageProviderResolver?: typeof resolveStageProviderConfig
+    inferenceServiceFactory?: typeof createInferenceService
+    ledgerCatalogFetch?: typeof fetch
     thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
   },
@@ -119,7 +123,7 @@ export const createRunInference = (
   }
 
   const mainOutputTokens = async (): Promise<number> => {
-    const providerConfig = await resolveStageProviderConfig(deps.prisma, {
+    const providerConfig = await (options.stageProviderResolver ?? resolveStageProviderConfig)(deps.prisma, {
       modelConfig: runtimeModelConfig,
       organizationId: context.channel.organizationId,
       providerKey: runModel.provider ?? runtimeModelConfig.provider,
@@ -139,7 +143,7 @@ export const createRunInference = (
         ? 'openai-compatible'
         : null)
     if (!runtimeProvider) return runtimeModelConfig.maxTokens
-    const service = createInferenceService({
+    const service = (options.inferenceServiceFactory ?? createInferenceService)({
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
       ...(providerConfig.extraHeaders ? { extraHeaders: providerConfig.extraHeaders } : {}),
@@ -158,6 +162,7 @@ export const createRunInference = (
           model: providerConfig.model,
           provider: providerConfig.providerKey,
           ...(requestHeaders ? { requestHeaders } : {}),
+          ...(options.ledgerCatalogFetch ? { fetchImpl: options.ledgerCatalogFetch } : {}),
         })
       } catch {
         // Ledger metadata is advisory. Its absence or a transient listing failure
