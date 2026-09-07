@@ -33,7 +33,6 @@ export const completeBrowserLoginHandover = async (
   })
   if (!session) return { released: false, sessionId: null }
   const released = await releaseSessionControl(prisma, {
-    recordUnnamedLogin: false,
     sessionId: session.id,
     userId: input.userId,
   })

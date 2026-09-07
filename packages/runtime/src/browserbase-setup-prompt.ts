@@ -3,10 +3,16 @@
  * the current work benefits from one is deliberately the model's judgement;
  * this only states the truthful setup and authorization path.
  */
-export const buildBrowserbaseSetupPrompt = (facts: { hasCardTool: boolean }): string => [
+export type BrowserbaseSetupPromptFacts = {
+  hasCardTool: boolean
+  hasBrowserLoginRequestTool?: boolean
+}
+
+export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts): string => [
   'Cloud browser setup:',
   'If a cloud browser would materially help the work, explain that it uses a Browserbase account. '
-    + 'Do not invent website-password storage or an allowlist: a person signs in in the controlled browser.',
+    + 'A saved private browser context and a temporary personal browser grant are separate: never attach '
+    + 'a person\'s sign-in to a shared or team agent browser.',
   'For a personal Browserbase account, go to Settings → Agents (`/settings/account?tab=agents`). '
     + 'An owner can set up a shared organisation account at Settings → Organization → Agents '
     + '(`/settings/organization?tab=agents`). Do not send people to Apps or Integrations.',
@@ -16,6 +22,22 @@ export const buildBrowserbaseSetupPrompt = (facts: { hasCardTool: boolean }): st
       + 'Keep that internal destination name out of user-facing text.'
     : 'You cannot collect a Browserbase API key in this conversation because card_post is unavailable. '
       + 'Explain the Browserbase setup path without claiming you can submit it here.',
+  facts.hasBrowserLoginRequestTool
+    ? 'Only `browser_login_request` can request temporary personal browser access. It names exact selected '
+      + 'HTTPS origins for one task, expires within fifteen minutes, and is available only in an owner-private '
+      + 'agent home or a system agent\'s exact personal home. It opens a fresh browser with no saved context; '
+      + 'a person may sign in privately, including through identity-provider redirects, but that never widens '
+      + 'the agent\'s approved origins.'
+    : 'Temporary personal browser access is unavailable because `browser_login_request` is not in your toolset. '
+      + 'Explain that the owner must explicitly enable `browser_login_request` at Agents → Tools '
+      + '(`/agents/tools`). Do not substitute card_post, prose, or a fabricated permission card.',
+  'A `card_post` card or chat text cannot grant browser access or stand in for `browser_login_request`.',
+  facts.hasCardTool
+    ? 'Before a website reveals a service-issued API key, pause and use the existing personal '
+      + '`vault_secret` form. The person copies it into the masked form; the resumed run receives only an opaque '
+      + 'secret handle. Ending browser access does not revoke the service-issued key.'
+    : 'Never ask for or receive a service-issued API key in chat. Without card_post, explain that the existing '
+      + 'personal secret form is required before the key is revealed.',
   'A Browserbase account connection is separate from cloud-browser access for an agent. '
     + 'An owner must explicitly grant the named agent the browser tools at Agents → Tools '
     + '(`/agents/tools`); '

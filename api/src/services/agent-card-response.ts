@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { CloudBrowserConnectionProbeDeps } from "@nessie/browser-cloud";
+import { adoptPersonalBrowserAccessGrant, CONTROL_CLAIM_TTL_MS, releaseSessionControl, type CloudBrowserConnectionProbeDeps } from "@nessie/browser-cloud";
 import type { CredentialStore } from "@nessie/dashboard";
 import { enqueueOrchestrateDecide } from "@nessie/db";
 import { forgetMessageThoughts } from "@nessie/memory";
@@ -25,6 +25,7 @@ import {
   buildResponseContent,
   buildResponseMetadata,
   readBrowserLoginHandoff,
+  readTemporaryBrowserLogin,
   validateSubmission,
   type LoadedAgentCard,
 } from "./agent-cards.js";
@@ -39,7 +40,6 @@ import { completeBrowserLoginHandover } from "./browser-login-handover.js";
 import { publishMessageReply } from "./message-delivery.js";
 import { ResumeRollback, resumeSuspendedRun } from "./run-resume-core.js";
 import type { RouteDeps } from "../routes/types.js";
-
 type ResponseDeps = Pick<
   RouteDeps,
   | "authSecret"
@@ -52,7 +52,6 @@ type ResponseDeps = Pick<
   browserCloudClientFactory?: CloudBrowserConnectionProbeDeps["clientFactory"];
   dashboardCredentials: CredentialStore;
 };
-
 export class AgentCardResponseError extends Error {
   constructor(
     readonly httpStatus: 403 | 404 | 409 | 422 | 502 | 503,
@@ -64,7 +63,6 @@ export class AgentCardResponseError extends Error {
     this.name = "AgentCardResponseError";
   }
 }
-
 type PreparedResponse = {
   card: LoadedAgentCard;
   actionKey: string;
@@ -225,6 +223,35 @@ export const respondToAgentCard = async (
         },
       });
       if (claimed.count !== 1) throw new ResumeRollback("run_not_waiting");
+      const temporaryLogin = readTemporaryBrowserLogin(prepared.card.browserLogin);
+      if (temporaryLogin) {
+        // A temporary-login card cannot resume a run until its exact private
+        // session is still under this respondent's fresh human claim. Both
+        // release and adoption run in the card's conditional transaction.
+        const freshGrantSession = input.handoverSessionId
+          ? await tx.browserPersonalAccessGrant.findFirst({
+            where: {
+              id: temporaryLogin.grantId,
+              sessionId: input.handoverSessionId,
+              status: 'active',
+              expiresAt: { gt: new Date() },
+              userId,
+              session: {
+                controlledByUserId: userId,
+                controlClaimedAt: { gt: new Date(Date.now() - CONTROL_CLAIM_TTL_MS) },
+                status: 'active',
+              },
+            },
+            select: { id: true },
+          })
+          : null
+        if (!prepared.card.waitRunId
+          || !freshGrantSession
+          || !(await releaseSessionControl(tx, {
+            sessionId: input.handoverSessionId!,
+            userId,
+          }))) throw new ResumeRollback("run_not_waiting");
+      }
       const handoff = readBrowserLoginHandoff(prepared.card.browserLogin);
       if (handoff) {
         const completed = await completeBrowserLoginHandover(tx, {
@@ -308,6 +335,17 @@ export const respondToAgentCard = async (
             suspendedStatus: "waiting_input",
             triggerMessageId: resumeState.data.messageId,
           });
+          // `resumeSuspendedRun` always creates a successor. The temporary
+          // grant is one task's consent, not a permission for its terminal
+          // parked row, so bind it to that exact successor only after the
+          // card's one-shot resume proved the old→new continuation edge.
+          if (temporaryLogin && !(await adoptPersonalBrowserAccessGrant(tx, {
+            expectedOriginalRunId: prepared.card.waitRunId,
+            grantId: temporaryLogin.grantId,
+            runId: resumed.runId,
+            threadId: prepared.card.threadId,
+            userId,
+          }))) throw new ResumeRollback("run_not_waiting");
           await tx.agentCard.update({
             data: { resumedByRunId: resumed.runId },
             where: { id: prepared.card.id },

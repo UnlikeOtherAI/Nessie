@@ -71,6 +71,7 @@ export const registerAgentCardRoutes = (
           actionKey: body.actionKey,
           actorContext,
           card,
+          handoverSessionId: body.handoverSessionId,
           secrets: body.secrets,
           values: body.values,
         },

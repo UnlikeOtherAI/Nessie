@@ -8,6 +8,7 @@ import { Pill } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
 import { FormError } from '../../shared/FormActions'
 import { AgentBrowserPanel } from './AgentBrowserPanel'
+import { ChromeCookieImportDialog } from './ChromeCookieImportDialog'
 
 type BrowserLastStateProps = {
   agent: AgentRecord
@@ -126,12 +127,14 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
   const resume = useResumeAgentBrowser(threadId, agent.id)
   const rows = tabs.data?.tabs ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   // Follow the first tab until the reader picks one, and never point at a tab
   // a fresh capture has since removed.
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null
 
   const busy = resume.isPending || opening
-  const canOpen = threadId !== null && !busy
+  const quarantined = tabs.data?.quarantined === true
+  const canOpen = threadId !== null && !busy && !quarantined
   const start = () => {
     if (!canOpen) return
     resume.mutate(undefined, { onSuccess: (result) => onResumed(result.sessionId) })
@@ -158,6 +161,13 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
           {busy ? 'Opening…' : 'Open browser'}
         </button>
       </div>
+
+      {quarantined ? (
+        <FormError className="mx-3 mb-2">
+          This shared browser may contain a personal sign-in, so its pages stay private.
+          Reset it below before opening a browser for this agent.
+        </FormError>
+      ) : null}
 
       {rows.length > 1 ? (
         <div className="flex-shrink-0 px-3 pb-2">
@@ -242,12 +252,32 @@ export const BrowserLastState = ({ agent, onResumed, opening, threadId }: Browse
           </span>
         </button>
 
-        {agent.systemManaged ? null : (
+        {agent.systemManaged ? (
+          agent.browserEnabled === true && threadId ? (
+            <div className="px-3 pb-3">
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={() => setImportOpen(true)}
+                type="button"
+              >
+                Import selected Chrome sign-ins
+              </button>
+            </div>
+          ) : null
+        ) : (
           <div className="px-3 pb-3">
-            <AgentBrowserPanel agent={agent} heading={false} />
+            <AgentBrowserPanel agent={agent} heading={false} threadId={threadId} />
           </div>
         )}
       </div>
+      {threadId ? (
+        <ChromeCookieImportDialog
+          agent={agent}
+          onClose={() => setImportOpen(false)}
+          open={importOpen}
+          threadId={threadId}
+        />
+      ) : null}
     </div>
   )
 }

@@ -38,7 +38,7 @@ const machineKey = (encoded: string) => {
 
 export const verifyExecutorDaemonSignature = (
   machinePublicKey: string,
-  domain: 'claim' | 'heartbeat' | 'poll' | 'receipt',
+  domain: 'browser_cookie_import.poll' | 'browser_cookie_import.upload' | 'claim' | 'heartbeat' | 'poll' | 'receipt',
   payload: Record<string, unknown>,
   signature: string,
 ): boolean => {
@@ -326,7 +326,7 @@ export const authorizeExecutorDaemonControlCall = async <Result>(
     observedAt: string
     payload: Record<string, unknown>
     signature: string
-    type: 'poll' | 'receipt'
+    type: 'browser_cookie_import.poll' | 'browser_cookie_import.upload' | 'poll' | 'receipt'
   },
   action: (tx: Prisma.TransactionClient) => Promise<Result>,
   now = new Date(),

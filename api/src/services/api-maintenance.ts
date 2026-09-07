@@ -1,10 +1,15 @@
 import type { PrismaClient } from '@prisma/client'
 import { withSweepLock, type SweepLockPool } from '@nessie/db'
+import type { CloudBrowserDeps } from '@nessie/browser-cloud'
 
-import { sweepExpiredAgentCards } from './agent-card-sweep.js'
+import {
+  sweepExpiredAgentCards,
+  sweepExpiredTemporaryBrowserLoginCards,
+} from './agent-card-sweep.js'
 import { sweepExpiredApprovals } from './approvals.js'
 import { sweepStalePushSurfacePresence } from './push-surface-presence.js'
 import { sweepExpiredUoaSessionCredentials } from './refresh-session-management.js'
+import { requestRunCancellation } from './runs.js'
 
 /**
  * Horizontal-scaling invariant 2 (docs/standards/horizontal-scaling.md, audit
@@ -59,9 +64,19 @@ export const runRefreshCredentialSweep = async (
 const runAgentCardSweep = async (
   prisma: PrismaClient,
   lockPool: SweepLockPool,
+  browserDeps: CloudBrowserDeps,
 ): Promise<void> => {
   try {
-    await withSweepLock(lockPool, AGENT_CARD_SWEEP_LOCK, () => sweepExpiredAgentCards(prisma))
+    await withSweepLock(lockPool, AGENT_CARD_SWEEP_LOCK, async () => {
+      await sweepExpiredTemporaryBrowserLoginCards(browserDeps, async (input) => {
+        await requestRunCancellation(prisma, {
+          cancelledByUserId: input.userId,
+          organizationId: input.organizationId,
+          runId: input.runId,
+        })
+      })
+      await sweepExpiredAgentCards(prisma)
+    })
   } catch {
     console.error('[agent-card-sweep] Failed to expire lapsed cards')
   }
@@ -83,12 +98,13 @@ const runPushSurfaceSweep = async (
 export const startApiMaintenance = (
   prisma: PrismaClient,
   lockPool: SweepLockPool,
+  browserDeps: Pick<CloudBrowserDeps, 'clientFactory' | 'connect' | 'encryptionSecret' | 'resolveSecret'>,
 ): (() => void) => {
   const approvalInterval = setInterval(() => {
     void runApprovalSweep(prisma, lockPool)
   }, 60_000)
   const agentCardInterval = setInterval(() => {
-    void runAgentCardSweep(prisma, lockPool)
+    void runAgentCardSweep(prisma, lockPool, { ...browserDeps, prisma })
   }, 60_000)
   const refreshCredentialInterval = setInterval(() => {
     void runRefreshCredentialSweep(prisma, lockPool)

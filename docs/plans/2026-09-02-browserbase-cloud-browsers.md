@@ -88,10 +88,11 @@ Verified against docs.browserbase.com on 2026-09-02:
   session create via `browserSettings.context.id` with `persist: true|false`.
   Encrypted at rest. **Do not run two sessions on one context concurrently**
   (sites force logouts) — Nessie must lock a context to one live session.
-- **Live View**: `sessions.debug(sessionId)` returns an embeddable URL; a
-  human in the iframe can click and type in real time (interactive), or the
-  iframe is styled `pointer-events: none` for watch-only. This is the login
-  handoff mechanism.
+- **Live View**: `sessions.debug(sessionId)` returns an interactive bearer
+  URL. Nessie no longer sends that URL to a client: a server-held CDP session
+  produces a private, no-store screenshot for the viewer and accepts a
+  controller's closed human-input grammar. CSS `pointer-events` is never an
+  authorization boundary.
 - **Pricing** (2026-09): Free 1 browser-hour (3 concurrent, ~15-min session
   cap, 7-day data retention) / Developer $20 → 100 h, $0.12/h over /
   Startup $99 → 500 h, $0.10/h over / Scale custom. Concurrency caps per plan
@@ -282,7 +283,10 @@ homes stay `/settings/organization` and `/settings/connections` (§4.7).
   clean "this agent's browser is in use" error and can go ephemeral or
   retry — Browserbase warns against two sessions on one context), and one
   live session per `runId` (so `goto`/`observe`/`close` always have an
-  unambiguous current browser).
+  unambiguous current browser). `unknown` is not drivable but remains in
+  both locks, the concurrency count, reset and disconnect guards until a
+  reaper confirms Browserbase ended it; a failed stop must never make its
+  context reusable.
 - **Release is fused to every terminal writer, not just the worker's.**
   The working-marker precedent covers `lifecycle.ts` `updateRunStatus`
   (completion, failure, budget stop, worker cancel) — but the review found
@@ -410,14 +414,12 @@ it.
 
 ### 4.5 Disclosure and unattended use
 
-- **Logins are shared with the agent's audience — warned, not partitioned**
-  (decided 2026-09-02). An authenticated browser registers the existing
-  `agent:<agentId>` basis scope in `ConsumedSourceSink` — the vocabulary
-  already defines it as *exactly the people who pass the shared live
-  agent-visibility predicate*. Material read through a workspace agent's
-  browser is readable by whoever can reach that agent; on a private agent
-  the same scope resolves to its owner alone. The consent mechanism is the
-  §4.9 banner; the copy still steers: **personal accounts belong in your
+- **Authenticated browser reads follow the human whose state they use.** A
+  browser with a resolved principal registers `user:<principalUserId>` in the
+  `ConsumedSourceSink`; only a browser with no principal falls back to
+  `agent:<agentId>`. This keeps a system-managed agent's personal jar from
+  widening material to the agent's general audience. The consent mechanism is
+  the §4.9 banner; the copy still steers: **personal accounts belong in your
   private agent's browser**.
 - **"Authenticated" is a monotone session fact, never derived from login
   rows alone** (review finding — the row-derived version failed open two
@@ -429,11 +431,12 @@ it.
   of: session open on a context whose **CDP-enumerated cookies** are
   non-empty (the mechanical authenticated-origin set — `serviceHint` is
   display text, never the trigger); a login-handoff resume; or **any
-  control claim** taken on the session. Hand-back of a control claim on a
-  persistent session also writes an `AgentBrowserLogin` row (service
-  "unlabeled" until the person names it), so ad-hoc sign-ins during
-  control are recorded, and an ephemeral session that had a control claim
-  is treated as authenticated for the rest of its run. Once set it never
+  control claim** taken on the session. Taking a control claim atomically
+  marks it authenticated and records a durable `AgentBrowserLogin` row
+  (service "unlabeled" until the person names it), so a dropped or expired
+  claim cannot make an ad-hoc sign-in look public. An ephemeral session that
+  had a control claim is treated as authenticated for the rest of its run.
+  Once set it never
   clears within the session — monotone, like `runReplyIsRestricted`. A
   session that never trips any trigger browses the public web like
   `web_fetch` and adds no basis.
@@ -829,17 +832,34 @@ strand a live session. A policy write publishes the existing id-only
 `agent.updated` event: every open client refreshes its entitled agent records,
 so a mounted rail or mobile doorway disappears without a reload.
 
-### 5e. Live-view recovery and mobile presentation (2026-09-07)
+### 5e. Mediated remote canvas and mobile presentation (2026-09-07)
 
-The viewer treats Browserbase's `browserbase-disconnected` message as a provider
-failure only when it came from the live-view iframe currently on screen and from
-that minted URL's origin. It clears the held URL, refetches to mint another one,
-and offers a retry while the session remains live; a terminal session shows the
-closed state and returns to the remembered-browser panel through the existing
-session list. The responsive viewer wraps its controls and uses the same iframe
-on phones. It does not claim mobile typing support or add a keyboard bridge:
-Browserbase has no simple keyboard URL parameter in this integration, so that
-work needs a separately verified provider contract.
+The viewer receives no Browserbase live-view or CDP capability. Every screenshot
+is captured over a sealed server-side CDP connection after the current audience
+check, returned `Cache-Control: private, no-store`, and checked again before it
+is sent. A current controller can send only the closed `click`, `scroll`, `key`,
+and `text` grammar; the API renews the lease atomically before dispatch and
+never logs, persists, retries, or forwards those values to a model or message.
+Observers get the same mediated pixels with no input path. The responsive canvas
+maps pointer coordinates through the reported browser viewport and focuses the
+mobile keyboard bridge on a controller's tap, so desktop and phone use one
+viewer rather than a provider iframe on either surface. On a phone, a short
+tap focuses that keyboard and a deliberate drag sends bounded closed scroll
+events; the drag suppresses the synthetic click. There is no HTTP input
+fallback when the control connection drops.
+
+*Done* has two explicit lifecycles. A matching pending login card atomically
+hands its exact claimed session to that card's continuation. A manual resumed
+session has no continuation to wake: Nessie captures its final tab state while
+the controller still holds it, then closes the provider session immediately.
+That makes the visible action stop browser billing instead of releasing a
+partial sign-in to an unsolicited agent turn.
+
+An active human lease and a resumed (`runId: null`) browser are requester-only
+from allocation. An unsigned public agent run remains observable to the
+entitled thread audience; once a control claim or durable authenticated state
+exists, the persisted monotone audience rule applies. This replaces the older
+iframe and URL-minting prose in §4.9.
 
 ## 6. Known risks — named, with owners in the phasing
 
@@ -882,13 +902,11 @@ work needs a separately verified provider contract.
    still sees session metadata and could change nothing we control at
    Browserbase's side; the connect UI says so, and §4.1's private-agent
    personal-connection preference exists for exactly this.
-3. **Live-view URL semantics are unverified — phase-1 gate.** Browserbase
-   documents neither expiry nor single-use for `debuggerFullscreenUrl`; if
-   it is a long-lived bearer link, a leaked URL outlives membership
-   revocation and sidesteps the control claim. §4.9 already treats every
-   URL holder as a potential driver and admits only the session's
-   authorized audience; the empirical expiry check is a gate on phase 1,
-   not a to-do.
+3. **Live-view URL semantics no longer set Nessie's viewer boundary.** A
+   Browserbase `debuggerFullscreenUrl` remains an interactive bearer URL, but
+   the API never returns it. Existing sessions that minted one before this
+   cutover must be closed before claiming the mediated guarantee; a copied
+   legacy URL cannot be individually revoked by Nessie.
 4. **Anti-bot lockouts hit the person's real account.** Handoff copy warns;
    and a structural steering block (toolset facts only, the research-routing
    precedent) points agents at first-party connectors where one exists —

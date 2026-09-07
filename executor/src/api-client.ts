@@ -1,4 +1,5 @@
 import type { ExecutorCommandEnvelope, ExecutorCommandReceipt } from '@nessie/schemas'
+import type { BrowserCookieImportOffer } from './browser-cookie-import-bridge.js'
 
 type ApiError = { error?: { code?: string; message?: string } }
 
@@ -43,6 +44,10 @@ export type ExecutorApiClient = {
   ) => Promise<{ recorded: boolean }>
   issueChallenge: (baseUrl: string, executorId: string) =>
     Promise<{ challenge: string; expiresAt: string }>
+  pollBrowserCookieImport: (
+    baseUrl: string,
+    input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },
+  ) => Promise<{ offer: BrowserCookieImportOffer | null }>
   submitDescriptor: (
     baseUrl: string,
     input: { connectionEpoch: string; descriptor: unknown; executorId: string },
@@ -51,6 +56,19 @@ export type ExecutorApiClient = {
     baseUrl: string,
     input: unknown,
   ) => Promise<{ executorId: string; fingerprint: string }>
+  uploadBrowserCookieImport: (
+    baseUrl: string,
+    input: {
+      connectionEpoch: string
+      cookies: unknown
+      executorId: string
+      payloadDigest: string
+      requestId: string
+      selectedOrigins: string[]
+      signature: string
+      submittedAt: string
+    },
+  ) => Promise<{ status: 'imported' }>
 }
 
 export const createExecutorApi = (options: {
@@ -116,8 +134,12 @@ export const createExecutorApi = (options: {
       post(baseUrl, '/api/executor-daemon/commands/receipt', input),
     issueChallenge: (baseUrl, executorId) =>
       post(baseUrl, '/api/executor-daemon/challenge', { executorId }),
+    pollBrowserCookieImport: (baseUrl, input) =>
+      post(baseUrl, '/api/executor-daemon/browser-cookie-imports/pending', input),
     submitDescriptor: (baseUrl, input) => post(baseUrl, '/api/executor-daemon/descriptor', input),
     submitEnrollment: (baseUrl, input) => post(baseUrl, '/api/executor-enrollments/submit', input),
+    uploadBrowserCookieImport: (baseUrl, input) =>
+      post(baseUrl, '/api/executor-daemon/browser-cookie-imports/upload', input),
   }
 }
 

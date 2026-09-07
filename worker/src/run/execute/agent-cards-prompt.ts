@@ -1,4 +1,8 @@
-import { buildBrowserbaseSetupPrompt, CARD_POST_TOOL_ID } from '@nessie/runtime'
+import {
+  BROWSER_LOGIN_REQUEST_TOOL_ID,
+  buildBrowserbaseSetupPrompt,
+  CARD_POST_TOOL_ID,
+} from '@nessie/runtime'
 
 /**
  * The one line that tells an agent it can post cards.
@@ -11,7 +15,12 @@ import { buildBrowserbaseSetupPrompt, CARD_POST_TOOL_ID } from '@nessie/runtime'
 export const hasCardPromptTools = (toolIds: ReadonlySet<string>): boolean =>
   toolIds.has(CARD_POST_TOOL_ID)
 
-export const buildAgentCardsBlock = (facts: { hasCardTool: boolean }): string => {
+export const browserLoginRequestPromptTools = (toolIds: ReadonlySet<string>): boolean =>
+  toolIds.has(BROWSER_LOGIN_REQUEST_TOOL_ID)
+
+export const buildAgentCardsBlock = (
+  facts: { hasCardTool: boolean; hasBrowserLoginRequestTool?: boolean },
+): string => {
   const card = facts.hasCardTool
     ? (
     'You can post an interactive card into this conversation with `card_post` '

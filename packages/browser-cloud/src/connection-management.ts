@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
+import { BLOCKING_SESSION_STATUSES } from './session-lifecycle.js'
 
 /**
  * Connecting and disconnecting a Browserbase account.
@@ -206,7 +207,7 @@ export const listCloudBrowserConnections = async (
     by: ['connectionId'],
     where: {
       connectionId: { in: rows.map((row) => row.id) },
-      status: { in: ['allocating', 'active', 'releasing'] },
+      status: { in: [...BLOCKING_SESSION_STATUSES] },
     },
     _count: { _all: true },
   })
@@ -267,7 +268,7 @@ export const disconnectCloudBrowser = async (
   const live = await prisma.cloudBrowserSession.count({
     where: {
       connectionId: input.connectionId,
-      status: { in: ['allocating', 'active', 'releasing'] },
+      status: { in: [...BLOCKING_SESSION_STATUSES] },
     },
   })
   if (live > 0) {

@@ -106,6 +106,21 @@ export const loadReadableCard = async (
 }
 
 /** Expiry is a property of the clock, so a lapsed row reads as expired before any sweep runs. */
+export const readTemporaryBrowserLogin = (value: unknown): {
+  grantId: string
+  mode: 'temporary'
+  origins: string[]
+  service: string
+} | null => {
+  const parsed = z.object({
+    grantId: z.string().uuid(),
+    mode: z.literal('temporary'),
+    origins: z.array(z.string().url()).min(1).max(20),
+    service: z.string().min(1).max(200),
+  }).strict().safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
 const effectiveStatus = (card: {
   expiresAt: Date | null
   status: 'open' | 'resolved' | 'expired' | 'cancelled'
@@ -211,6 +226,12 @@ export const presentAgentCard = async (
     agentId: card.agent.id,
     agentName: card.agent.name,
     blocks: presentAgentCardBlocks(spec, secretLabels),
+    browserLogin: action === 'respond'
+      ? (() => {
+        const login = readTemporaryBrowserLogin(card.browserLogin)
+        return login ? { ...login, expiresAt: card.expiresAt?.toISOString() ?? new Date().toISOString() } : null
+      })()
+      : null,
     cardId: card.id,
     expiresAt: card.expiresAt?.toISOString() ?? null,
     messageId: card.messageId,

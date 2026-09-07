@@ -63,6 +63,13 @@ runDatabaseTest(
         toolPolicy: { [BROWSER_OPEN_TOOL_ID]: true },
       },
     });
+    await prisma.agentBinding.create({
+      data: {
+        agentId: agent.id,
+        channelId: channel.id,
+        principalUserId: null,
+      },
+    });
     const user = await prisma.user.create({
       data: {
         displayName: "responder",
@@ -143,6 +150,7 @@ runDatabaseTest(
         connectionId: connection.id,
         controlledByUserId: user.id,
         expiresAt: new Date(Date.now() + 60_000),
+        interactionTransport: 'mediated',
         organizationId: organization.id,
         requestedByUserId: user.id,
         status: "active",
@@ -257,6 +265,7 @@ runDatabaseTest(
         authenticated: true,
         connectionId: connection.id,
         expiresAt: new Date(Date.now() + 60_000),
+        interactionTransport: 'mediated',
         organizationId: organization.id,
         requestedByUserId: user.id,
         status: "active",
@@ -269,6 +278,7 @@ runDatabaseTest(
         authenticated: false,
         connectionId: connection.id,
         expiresAt: new Date(Date.now() + 60_000),
+        interactionTransport: 'mediated',
         organizationId: organization.id,
         requestedByUserId: user.id,
         status: "active",
@@ -331,6 +341,34 @@ runDatabaseTest(
       ).statusCode,
       200,
       "the requester can read their ephemeral session",
+    );
+    assert.equal(
+      (
+        await requesterApp.inject({
+          method: "POST",
+          url: `/api/browser-sessions/${ephemeral.id}/control`,
+        })
+      ).statusCode,
+      200,
+      "the requester can take control before closing their manual session",
+    );
+    assert.equal(
+      (
+        await requesterApp.inject({
+          method: "DELETE",
+          url: `/api/browser-sessions/${ephemeral.id}`,
+        })
+      ).statusCode,
+      204,
+      "Done closes a manual session rather than handing it to an agent",
+    );
+    assert.deepEqual(
+      await prisma.cloudBrowserSession.findUnique({
+        select: { releasedBy: true, status: true },
+        where: { id: ephemeral.id },
+      }),
+      { releasedBy: "viewer_done", status: "released" },
+      "the provider lifecycle is released after the final authenticated capture",
     );
     assert.equal(
       (

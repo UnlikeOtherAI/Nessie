@@ -530,6 +530,15 @@ export type AgentCardResolution = z.infer<typeof AgentCardResolutionSchema>
  * actionable?" flag the client trusts: it folds status, expiry, and whether
  * this particular viewer is a respondent into one server decision.
  */
+export const BrowserLoginCardPresenterSchema = z.object({
+  expiresAt: z.string(),
+  grantId: z.string().uuid(),
+  mode: z.literal('temporary'),
+  origins: z.array(z.string().url()).min(1).max(20),
+  service: z.string().min(1).max(200),
+}).strict()
+export type BrowserLoginCardPresenter = z.infer<typeof BrowserLoginCardPresenterSchema>
+
 export const AgentCardPresenterSchema = z
   .object({
     cardId: z.string().uuid(),
@@ -555,6 +564,8 @@ export const AgentCardPresenterSchema = z
     /** Display names of the people the agent asked; empty when anyone may press. */
     waitingFor: z.array(z.string()),
     resolution: AgentCardResolutionSchema.nullable(),
+    /** Private login-grant facts, visible only to the card's respondent. */
+    browserLogin: BrowserLoginCardPresenterSchema.nullable(),
   })
   .strict()
 export type AgentCardPresenter = z.infer<typeof AgentCardPresenterSchema>
@@ -562,6 +573,8 @@ export type AgentCardPresenter = z.infer<typeof AgentCardPresenterSchema>
 export const AgentCardRespondBodySchema = z
   .object({
     actionKey: AgentCardKeySchema,
+    /** The exact temporary session adopted by a browser-login Done press. */
+    handoverSessionId: z.string().uuid().optional(),
     values: z.record(z.union([z.string().max(4000), z.number(), z.boolean()])).optional(),
     secrets: z.record(z.string().min(1).max(8192)).optional(),
   })

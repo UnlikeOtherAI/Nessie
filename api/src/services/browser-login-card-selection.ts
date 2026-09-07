@@ -4,6 +4,7 @@ import { AgentCardSpecSchema } from '@nessie/schemas'
 import {
   loadReadableCard,
   readBrowserLoginHandoff,
+  readTemporaryBrowserLogin,
   type LoadedAgentCard,
 } from './agent-cards.js'
 
@@ -48,6 +49,37 @@ export const findBrowserLoginCardForViewer = async (
       && handoff?.agentBrowserId === input.agentBrowserId
       && spec.data.actions.some((action) => action.key === 'done')
     ) return card
+  }
+  return null
+}
+
+/** Finds the exact temporary-login card whose grant owns this private session. */
+export const findTemporaryBrowserLoginCardForViewer = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; sessionId: string; threadId: string; userId: string },
+): Promise<LoadedAgentCard | null> => {
+  const grant = await prisma.browserPersonalAccessGrant.findUnique({
+    where: { sessionId: input.sessionId }, select: { id: true },
+  })
+  if (!grant) return null
+  const candidates = await prisma.agentCard.findMany({
+    select: { id: true },
+    where: {
+      organizationId: input.organizationId,
+      status: 'open',
+      threadId: input.threadId,
+      waitRunId: { not: null },
+    },
+  })
+  for (const candidate of candidates) {
+    const card = await loadReadableCard(prisma, {
+      cardId: candidate.id,
+      organizationId: input.organizationId,
+      userId: input.userId,
+    })
+    if (!card || (card.expiresAt !== null && card.expiresAt <= new Date())) continue
+    const login = readTemporaryBrowserLogin(card.browserLogin)
+    if (login?.grantId === grant.id) return card
   }
   return null
 }

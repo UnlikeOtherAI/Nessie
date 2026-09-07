@@ -59,7 +59,7 @@ const hrefForNode = async (cdp: CdpClient, nodeId: number): Promise<string | nul
 export const downloadFromBrowser = async (
   cdp: CdpClient,
   context: BuiltinToolRuntimeContext,
-  input: { nodeId: number; gate: OriginGateState | null },
+  input: { allowedOrigins?: readonly string[]; gate: OriginGateState | null; nodeId: number },
 ): Promise<DownloadOutcome> => {
   const href = await hrefForNode(cdp, input.nodeId)
   if (!href) {
@@ -80,6 +80,9 @@ export const downloadFromBrowser = async (
   }
   if (!absolute.startsWith('https://')) {
     return { output: 'Only https downloads are allowed.', success: false }
+  }
+  if (input.allowedOrigins && !input.allowedOrigins.includes(new URL(absolute).origin)) {
+    return { output: 'That download is outside the private browser grant.', success: false }
   }
 
   // A signed-in browser must not be used to pull bytes off an unrelated

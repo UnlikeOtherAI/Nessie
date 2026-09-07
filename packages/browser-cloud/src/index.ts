@@ -36,9 +36,12 @@ export {
   claimSessionControl,
   CONTROL_CLAIM_TTL_MS,
   expireStaleControlClaims,
+  hasActiveSessionControlClaim,
   releaseSessionControl,
+  userMayClaimCloudBrowserSessionControl,
   cloudBrowserSettings,
   findLiveSessionForRun,
+  BLOCKING_SESSION_STATUSES,
   LIVE_SESSION_STATUSES,
   markConnectionNeedsAttention,
   markSessionAuthenticated,
@@ -53,6 +56,7 @@ export {
   type OpenSessionInput,
   type OpenSessionResult,
   type ResolvedConnection,
+  withCloudBrowserSessionControlLock,
 } from './session-lifecycle.js'
 
 export {
@@ -79,15 +83,21 @@ export {
 } from './session-capability.js'
 
 export {
-  describeAgentBrowser,
   ensureAgentBrowser,
-  recordAgentBrowserLogin,
   reconcileTombstonedAgentBrowsers,
   resetAgentBrowser,
   resolveDurableBrowserConnection,
-  viewerMaySeeAgentBrowser,
   type AgentBrowserRow,
 } from './agent-browser.js'
+
+export {
+  agentBrowserLoginStatus,
+  describeAgentBrowser,
+  loadAgentBrowserLoginStatus,
+  recordAgentBrowserLogin,
+  viewerMaySeeAgentBrowser,
+  type AgentBrowserLoginStatus,
+} from './agent-browser-access.js'
 
 export {
   AGENT_BROWSER_TAB_LIMIT,
@@ -105,3 +115,31 @@ export {
 } from './agent-browser-tabs.js'
 
 export { resumeAgentBrowser, type ResumeAgentBrowserInput } from './resume.js'
+
+export {
+  isPrivateBrowserHome,
+  type PrivateBrowserHome,
+  type PrivateBrowserHomeDatabase,
+} from './private-browser-home.js'
+
+export {
+  importBrowserCookies,
+  prepareImportedCookies,
+  type ImportedBrowserCookie,
+} from './cookie-import.js'
+
+export {
+  activatePersonalBrowserAccessGrant,
+  adoptPersonalBrowserAccessGrant,
+  createPersonalBrowserAccessGrant,
+  hasPendingPersonalBrowserAccess,
+  loadActivePersonalBrowserAccessForRun,
+  normalizePersonalBrowserOrigins,
+  openPersonalBrowserAccessSession,
+  revokePersonalBrowserAccessForRun,
+  revokePersonalBrowserAccessGrant,
+  PERSONAL_BROWSER_ACCESS_MAX_MS,
+  personalBrowserGrantAllowsOrigin,
+  validatePersonalBrowserAccess,
+  type PersonalBrowser,
+} from './personal-access-grant.js'

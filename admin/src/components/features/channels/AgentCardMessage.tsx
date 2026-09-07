@@ -1,7 +1,13 @@
-import { AgentCardMessageMetadataSchema, type AgentCardPresenter } from '@nessie/schemas'
+import { AgentCardMessageMetadataSchema, BROWSER_VIEWPORT_PRESETS, type AgentCardPresenter } from '@nessie/schemas'
 import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
+import { useViewport, type ViewportSnapshot } from '../../../hooks/useViewport'
 import { useAgentCard, useRespondToAgentCard } from '../../../facades/agent-cards/hooks'
+import {
+  useActivatePersonalBrowserAccessGrant,
+  useRevokePersonalBrowserAccessGrant,
+} from '../../../facades/browser-cloud/hooks'
 import { FormError } from '../../shared/FormActions'
 import { AppIcon } from '../apps/AppIcon'
 import { Pill, type PillTone } from '../../primitives/Pill'
@@ -42,6 +48,11 @@ const seedValues = (card: AgentCardPresenter): Record<string, AgentCardFieldValu
   return seeded
 }
 
+const personalBrowserViewport = (viewport: ViewportSnapshot): { height: number; width: number } => {
+  const preset = viewport.atLeast.lg ? 'laptop' : viewport.atLeast.md ? 'tablet' : 'phone'
+  return BROWSER_VIEWPORT_PRESETS.find((option) => option.id === preset)!.viewport
+}
+
 /**
  * An agent chat card. Its message metadata holds only a card id; every fact
  * rendered here — including whether this viewer may press anything — comes
@@ -56,11 +67,18 @@ export const AgentCardMessage = ({
 }) => {
   const parsed = AgentCardMessageMetadataSchema.safeParse(metadata)
   const cardId = parsed.success ? parsed.data.agentCard.cardId : undefined
+  const { channelId } = useParams<{ channelId?: string }>()
+  const viewport = useViewport()
+  const navigate = useNavigate()
   const query = useAgentCard(cardId)
   const respond = useRespondToAgentCard()
+  const activateBrowser = useActivatePersonalBrowserAccessGrant()
+  const revokeBrowser = useRevokePersonalBrowserAccessGrant()
 
   const [values, setValues] = useState<Record<string, AgentCardFieldValue> | null>(null)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [temporarySessionId, setTemporarySessionId] = useState<string | null>(null)
+  const [loginCancelled, setLoginCancelled] = useState(false)
   // Secrets live only here, are never seeded from the server, and are dropped
   // the moment the press succeeds.
   const [secrets, setSecrets] = useState<Record<string, string>>({})
@@ -83,6 +101,9 @@ export const AgentCardMessage = ({
         cardId: card.cardId,
         threadId: card.threadId,
         ...(submits ? { secrets, values: effectiveValues } : {}),
+        ...(card.browserLogin && actionKey === 'done' && temporarySessionId
+          ? { handoverSessionId: temporarySessionId }
+          : {}),
       },
       {
         // Keep the API-authored refusal by the still-open form. A toast leaves
@@ -96,6 +117,31 @@ export const AgentCardMessage = ({
         },
       },
     )
+  }
+
+  const startPrivateBrowser = () => {
+    if (!card.browserLogin) return
+    setSubmissionError(null)
+    activateBrowser.mutate({
+      grantId: card.browserLogin.grantId,
+      viewport: personalBrowserViewport(viewport),
+    }, {
+      onError: (error: Error) => setSubmissionError(error.message),
+      onSuccess: (result) => {
+        setTemporarySessionId(result.sessionId)
+        if (channelId) navigate(`/channels/${channelId}/tools/browser`)
+      },
+    })
+  }
+  const cancelPrivateBrowser = () => {
+    if (!card.browserLogin) return
+    revokeBrowser.mutate(card.browserLogin.grantId, {
+      onError: (error: Error) => setSubmissionError(error.message),
+      onSuccess: () => {
+        setLoginCancelled(true)
+        setTemporarySessionId(null)
+      },
+    })
   }
 
   return (
@@ -152,16 +198,48 @@ export const AgentCardMessage = ({
         />
       </div>
 
+      {card.browserLogin ? (
+        <div className="mt-3 rounded-md border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] p-3 text-xs text-[color:var(--tx2)]">
+          <p className="m-0 font-medium text-[color:var(--tx)]">Private, one-time access</p>
+          <p className="mt-1 mb-0">Only you can open this browser. It ends {new Date(card.browserLogin.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
+          <p className="mt-1 mb-0">Allowed for this task: {card.browserLogin.origins.join(', ')}.</p>
+          <p className="mt-1 mb-0">Nessie relays browser input privately; it never enters chat or the agent context.</p>
+        </div>
+      ) : null}
+
       <FormError className="mt-3">{submissionError}</FormError>
 
       <footer className="mt-3 flex flex-wrap items-center gap-2">
         {card.status === 'open' ? (
           canRespond ? (
-            card.actions.map((action) => (
+            <>
+              {card.browserLogin && !temporarySessionId && !loginCancelled ? (
+                <button
+                  className={actionClass('primary')}
+                  disabled={activateBrowser.isPending || revokeBrowser.isPending || respond.isPending}
+                  onClick={startPrivateBrowser}
+                  type="button"
+                >
+                  {activateBrowser.isPending ? 'Starting private browser…' : 'Start private browser'}
+                </button>
+              ) : null}
+              {card.browserLogin && temporarySessionId ? (
+                <button
+                  className={actionClass('secondary')}
+                  disabled={revokeBrowser.isPending || respond.isPending}
+                  onClick={cancelPrivateBrowser}
+                  type="button"
+                >
+                  {revokeBrowser.isPending ? 'Cancelling…' : 'Cancel private access'}
+                </button>
+              ) : null}
+              {loginCancelled ? <span className="text-xs text-[color:var(--tx2)]">Private access was cancelled. Ask the agent to request it again.</span> : null}
+              {card.actions.map((action) => (
               <button
                 className={actionClass(action.style)}
                 data-testid={`agent-card-action-${action.key}`}
-                disabled={respond.isPending}
+                disabled={respond.isPending || (card.browserLogin !== null
+                  && action.key === 'done' && !temporarySessionId)}
                 key={action.key}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -171,7 +249,8 @@ export const AgentCardMessage = ({
               >
                 {action.label}
               </button>
-            ))
+              ))}
+            </>
           ) : (
             <span className="text-xs text-[color:var(--tx2)]">
               {card.waitingFor.length > 0

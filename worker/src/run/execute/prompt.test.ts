@@ -104,11 +104,32 @@ test('every agent can describe Browserbase setup, but only card_post can collect
   assert.doesNotMatch(noCard, /You can post an interactive card/)
 
   const withCard = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    hasBrowserLoginRequestTool: true,
     hasCardTool: true,
   }))
   assert.match(withCard, /destination\.kind` `browserbase_connection/)
   assert.match(withCard, /masked card secret field/)
   assert.match(withCard, /explicitly grant the named agent/)
+  assert.match(withCard, /Only `browser_login_request` can request temporary personal browser access/)
+  assert.match(withCard, /exact selected HTTPS origins for one task/)
+  assert.match(withCard, /A `card_post` card or chat text cannot grant browser access/)
+})
+
+test('an adopted temporary browser grant tells the successor to continue within its exact scope', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'continue', null, {
+    temporaryBrowserAccess: {
+      expiresAt: new Date('2026-09-07T13:00:00.000Z'),
+      grantId: '00000000-0000-0000-0000-0000000000b1',
+      origins: ['https://signin.example.test', 'https://app.example.test'],
+    },
+  }))
+
+  assert.match(system, /Temporary private browser access is active for this exact run/)
+  assert.match(system, /00000000-0000-0000-0000-0000000000b1/)
+  assert.match(system, /https:\/\/signin\.example\.test, https:\/\/app\.example\.test/)
+  assert.match(system, /2026-09-07T13:00:00\.000Z/)
+  assert.match(system, /Do not call browser_login_request again for these approved origins/)
+  assert.match(system, /outside this list or this grant has expired or been revoked/)
 })
 
 test('the provider boundary replaces bypassed secrets with a safe prefix and bullets', () => {

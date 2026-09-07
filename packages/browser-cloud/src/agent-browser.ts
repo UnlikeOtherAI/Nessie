@@ -3,16 +3,19 @@ import { browserViewportOrDefault, type BrowserViewport } from '@nessie/schemas'
 
 import { createBrowserbaseClient, type BrowserbaseClient } from './browserbase-client.js'
 import { CLOUD_BROWSER_ERROR_CODES, CloudBrowserError, isCloudBrowserError } from './errors.js'
-import { resolveConnectionForRun, type CloudBrowserDeps } from './session-lifecycle.js'
+import {
+  BLOCKING_SESSION_STATUSES,
+  resolveConnectionForRun,
+  type CloudBrowserDeps,
+} from './session-lifecycle.js'
 
 /**
  * An agent's own durable browser.
  *
  * The browser belongs to the agent — its machine — which is what makes
  * clashes structurally impossible: no two agents ever share browser state.
- * What a person signs into it is shared with everyone who can reach that
- * agent, which the viewer says out loud before the first keystroke and the
- * disclosure basis enforces afterwards.
+ * Shared team jars remain for unsigned public browsing. Personal sign-ins
+ * belong in a private agent or Personal Assistant browser.
  */
 
 /**
@@ -28,6 +31,8 @@ export type AgentBrowserRow = {
   id: string
   connectionId: string
   browserbaseContextId: string
+  /** The person whose state is in this jar, if it is not a team jar. */
+  principalUserId: string | null
   loginCount: number
   /**
    * Set while a person's hand-back is still recent enough to act on. Null once
@@ -168,21 +173,40 @@ const loadClientForConnection = async (
  */
 const principalForBrowser = async (
   prisma: Pick<PrismaClient, 'agent'>,
-  input: { organizationId: string; agentId: string; principalUserId: string | null },
+  input: {
+    organizationId: string
+    agentId: string
+    agentVisibility: 'team' | 'private'
+    agentOwnerUserId: string | null
+    principalUserId: string | null
+  },
 ): Promise<string | null> => {
   const agent = await prisma.agent.findFirst({
     where: { id: input.agentId, organizationId: input.organizationId },
     select: { systemManaged: true },
   })
-  if (!agent?.systemManaged) return null
-  if (!input.principalUserId) {
+  if (agent?.systemManaged) {
+    if (input.principalUserId) return input.principalUserId
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
       'This assistant keeps a separate browser for each person, so it can only '
       + 'open one on behalf of somebody. An unattended run has no such person.',
     )
   }
-  return input.principalUserId
+  if (input.agentVisibility === 'private' && input.agentOwnerUserId) {
+    return input.agentOwnerUserId
+  }
+  return null
+}
+
+const requirePersonalPrincipal = (principalUserId: string | null): string => {
+  if (!principalUserId) {
+    throw new CloudBrowserError(
+      CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
+      'This browser requires a person who can own its private context.',
+    )
+  }
+  return principalUserId
 }
 
 export const ensureAgentBrowser = async (
@@ -193,9 +217,9 @@ export const ensureAgentBrowser = async (
     agentVisibility: 'team' | 'private'
     agentOwnerUserId: string | null
     /**
-     * The person this browser is for. Required for a system-managed agent —
-     * where it is the owner of the cookie jar — and ignored for an ordinary
-     * agent, whose browser is shared with its team.
+     * The requester for a system-managed agent's per-person jar. A private
+     * ordinary agent instead resolves to `agentOwnerUserId`; a workspace agent
+     * deliberately has no principal and uses its shared team jar.
      */
     principalUserId: string | null
   },
@@ -204,7 +228,11 @@ export const ensureAgentBrowser = async (
   const connection = await resolveDurableBrowserConnection(
     deps.prisma,
     principalUserId
-      ? { ...input, agentVisibility: 'private', agentOwnerUserId: principalUserId }
+      ? {
+        ...input,
+        agentVisibility: 'private',
+        agentOwnerUserId: requirePersonalPrincipal(principalUserId),
+      }
       : input,
   )
 
@@ -220,6 +248,7 @@ export const ensureAgentBrowser = async (
       id: true,
       connectionId: true,
       browserbaseContextId: true,
+      principalUserId: true,
       ...VIEWPORT_SELECT,
       ...HANDBACK_SELECT,
       _count: { select: { logins: true } },
@@ -230,6 +259,7 @@ export const ensureAgentBrowser = async (
       id: existing.id,
       connectionId: existing.connectionId,
       browserbaseContextId: existing.browserbaseContextId,
+      principalUserId: existing.principalUserId,
       loginCount: existing._count.logins,
       handedBackByUserId: handedBackByOf(existing),
       viewport: viewportOf(existing),
@@ -253,15 +283,16 @@ export const ensureAgentBrowser = async (
         id: true,
         connectionId: true,
         browserbaseContextId: true,
+        principalUserId: true,
         ...VIEWPORT_SELECT,
         ...HANDBACK_SELECT,
-      ...HANDBACK_SELECT,
       },
     })
     return {
       id: created.id,
       connectionId: created.connectionId,
       browserbaseContextId: created.browserbaseContextId,
+      principalUserId: created.principalUserId,
       loginCount: 0,
       // A browser is created without a size, so this is the default every
       // time — read back from the row rather than assumed, so a column
@@ -293,6 +324,7 @@ export const ensureAgentBrowser = async (
           id: true,
           connectionId: true,
           browserbaseContextId: true,
+          principalUserId: true,
           ...VIEWPORT_SELECT,
           ...HANDBACK_SELECT,
           _count: { select: { logins: true } },
@@ -302,6 +334,7 @@ export const ensureAgentBrowser = async (
         id: winner.id,
         connectionId: winner.connectionId,
         browserbaseContextId: winner.browserbaseContextId,
+        principalUserId: winner.principalUserId,
         loginCount: winner._count.logins,
         handedBackByUserId: handedBackByOf(winner),
         viewport: viewportOf(winner),
@@ -320,32 +353,6 @@ export const ensureAgentBrowser = async (
 }
 
 /**
- * Record that a person signed this browser into a service.
- *
- * Audit and revocation only — whether a *session* counts as authenticated is
- * a monotone fact on the session row, because somebody can also sign in
- * during an ad-hoc control claim that writes no login row at all.
- */
-export const recordAgentBrowserLogin = async (
-  prisma: Pick<PrismaClient, 'agentBrowserLogin'>,
-  input: {
-    organizationId: string
-    agentBrowserId: string
-    userId: string
-    serviceHint: string
-  },
-): Promise<void> => {
-  await prisma.agentBrowserLogin.create({
-    data: {
-      organizationId: input.organizationId,
-      agentBrowserId: input.agentBrowserId,
-      userId: input.userId,
-      serviceHint: input.serviceHint.slice(0, 200),
-    },
-  })
-}
-
-/**
  * Sign the agent out of everything: tombstone the row so no run can reach the
  * context again, then let the reconciler delete it remotely.
  *
@@ -361,7 +368,7 @@ export const resetAgentBrowser = async (
   const live = await prisma.cloudBrowserSession.count({
     where: {
       agentBrowserId: input.agentBrowserId,
-      status: { in: ['allocating', 'active', 'releasing'] },
+      status: { in: [...BLOCKING_SESSION_STATUSES] },
     },
   })
   if (live > 0) {
@@ -446,7 +453,7 @@ export const reconcileTombstonedAgentBrowsers = async (
     const live = await deps.prisma.cloudBrowserSession.count({
       where: {
         agentBrowserId: row.id,
-        status: { in: ['allocating', 'active', 'releasing'] },
+        status: { in: [...BLOCKING_SESSION_STATUSES] },
       },
     })
     if (live > 0) continue
@@ -485,64 +492,6 @@ export const reconcileTombstonedAgentBrowsers = async (
     }
   }
   return deleted
-}
-
-/**
- * Facts about an agent's browser for the structural prompt block, so the
- * model knows whether it has one and what it is signed into without being
- * told by message content.
- */
-export const describeAgentBrowser = async (
-  prisma: Pick<PrismaClient, 'agentBrowser' | 'cloudBrowserSession'>,
-  input: { organizationId: string; agentId: string; principalUserId?: string | null },
-): Promise<{ exists: boolean; services: string[]; inUse: boolean } | null> => {
-  const browser = await prisma.agentBrowser.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      agentId: input.agentId,
-      status: 'active',
-      ...(input.principalUserId === undefined ? {} : { principalUserId: input.principalUserId }),
-    },
-    select: { id: true, logins: { select: { serviceHint: true }, take: 20 } },
-  })
-  if (!browser) return { exists: false, services: [], inUse: false }
-  const live = await prisma.cloudBrowserSession.count({
-    where: {
-      agentBrowserId: browser.id,
-      status: { in: ['allocating', 'active', 'releasing'] },
-    },
-  })
-  return {
-    exists: true,
-    services: [...new Set(browser.logins.map((row) => row.serviceHint))],
-    inUse: live > 0,
-  }
-}
-
-/**
- * Who may see what a durable browser shows — its live view, and now the
- * pictures it left behind — and who may pick it up.
- *
- * A browser nobody has signed in is what the agent could see anyway, so its
- * audience is whoever can reach the conversation. Once a person has signed it
- * in, what it shows is *their* material: the audience narrows to the people
- * with a login row on it, plus whoever asked for the session in front of you,
- * who is looking at their own request. One rule, used by every reader — the
- * session detail, the session list, the stored tabs, and the resume — because
- * the first version of this feature had three, and the idle face showed a
- * colleague the inbox the live face hid from them.
- */
-export const viewerMaySeeAgentBrowser = async (
-  prisma: Pick<PrismaClient, 'agentBrowserLogin'>,
-  input: { agentBrowserId: string; viewerId: string; requestedByUserId?: string | null },
-): Promise<boolean> => {
-  if (input.requestedByUserId === input.viewerId) return true
-  const logins = await prisma.agentBrowserLogin.findMany({
-    where: { agentBrowserId: input.agentBrowserId },
-    select: { userId: true },
-  })
-  if (logins.length === 0) return true
-  return logins.some((row) => row.userId === input.viewerId)
 }
 
 export { resolveConnectionForRun, isCloudBrowserError }

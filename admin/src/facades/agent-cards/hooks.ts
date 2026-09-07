@@ -22,6 +22,8 @@ export type RespondToAgentCardInput = {
   cardId: string
   threadId: string
   values?: Record<string, string | number | boolean>
+  /** Exact private browser session for a temporary-login Done press. */
+  handoverSessionId?: string
   /**
    * Masked field values. Held only in component state and sent only here; the
    * server places them in the encrypted credential store and records that they
@@ -42,6 +44,7 @@ export const useRespondToAgentCard = () => {
           actionKey: input.actionKey,
           ...(input.values ? { values: input.values } : {}),
           ...(input.secrets ? { secrets: input.secrets } : {}),
+          ...(input.handoverSessionId ? { handoverSessionId: input.handoverSessionId } : {}),
         },
       ),
     onSuccess: (_result, input) => {
