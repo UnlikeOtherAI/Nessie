@@ -15,6 +15,7 @@ import { EmptyState } from '../../components/shared/EmptyState'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 import { ConnectionCard } from './connections/ConnectionCard'
+import { GoogleWorkspaceConnectDialog } from './connections/GoogleWorkspaceConnectDialog'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { ProjectToolConnections } from './connections/ProjectToolConnections'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
@@ -63,6 +64,7 @@ export const ConnectionsPage = () => {
   const start = useStartCommsConnection()
   const [searchParams, setSearchParams] = useSearchParams()
   const [callbackNotice, setCallbackNotice] = useState<string | null>(null)
+  const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false)
   const connected = searchParams.get('connected')
   const callbackError = searchParams.get('error')
   const rows = connections.data?.connections ?? []
@@ -168,6 +170,32 @@ export const ConnectionsPage = () => {
           </QueryState>
           <MailboxConnectionsPanel embedded scope="user" showConnectAction={false} />
         </section>
+
+        <div className="h-px bg-[color:var(--bd1)]" />
+
+        <section className="grid gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-[color:var(--tx)]">Google Calendar and Meet</h2>
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">
+                Connect Calendar or Meet without granting Gmail access. Choose each permission
+                before Google asks you to sign in.
+              </p>
+            </div>
+            <button
+              className="admin-button admin-button-secondary admin-button-compact"
+              onClick={() => setGoogleWorkspaceOpen(true)}
+              type="button"
+            >
+              Connect Calendar or Meet
+            </button>
+          </div>
+        </section>
+
+        <GoogleWorkspaceConnectDialog
+          onClose={() => setGoogleWorkspaceOpen(false)}
+          open={googleWorkspaceOpen}
+        />
 
         <div className="h-px bg-[color:var(--bd1)]" />
         <ProjectToolConnections />
