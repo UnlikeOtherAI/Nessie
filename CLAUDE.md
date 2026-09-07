@@ -40,8 +40,8 @@ sentence changes only if the invariant itself did.
   person to check a screen you can open yourself.
 - **Project usability browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
-  CI runs it in Navigation Transitions after the navigation suite keeps its
-  preview/API pair available, before the independent connected-mail suite.
+  CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
+  between the navigation and independent connected-mail suites.
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is

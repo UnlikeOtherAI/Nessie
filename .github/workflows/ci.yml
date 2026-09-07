@@ -677,26 +677,18 @@ jobs:
       # frames (docs/navigation/overview.md → "Verification").
       - name: Run navigation transition suite
         if: steps.scope.outputs.code == '1'
-        env:
-          # The project-usability suite adopts these preview/API processes in
-          # the following step, rather than racing a second strict-port pair.
-          NAV_E2E_KEEP_SERVERS: 1
         run: pnpm --filter @nessie/admin test:e2e:navigation
 
       - name: Run project usability browser suite
         if: steps.scope.outputs.code == '1'
         env:
           PROJECT_USABILITY_SCREENSHOTS: 1
-        run: pnpm --filter @nessie/admin test:e2e:project-usability
+        run: node admin/e2e/project-usability/ci.mjs
 
       # Connected mail uses a deterministic provider boundary, but renders the
-      # production admin shell, mailbox and chat doorway in Chromium. It owns
-      # a Vite server, so keep it separate from the navigation suite's preview
-      # server that remains on 5455 for project-usability above.
+      # production admin shell, mailbox and chat doorway in Chromium.
       - name: Run connected mail browser suite
         if: steps.scope.outputs.code == '1'
-        env:
-          NAV_E2E_ADMIN_PORT: 5456
         run: pnpm --filter @nessie/admin test:e2e:connected-mail
 
       - name: Upload transition frames
