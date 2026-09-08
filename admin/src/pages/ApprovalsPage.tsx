@@ -176,7 +176,14 @@ export const ApprovalsPage = () => {
                               {approvalTitle(approval)}
                             </span>
                             <span className="text-xs text-[color:var(--tx3)]">
-                              Agent: {approval.agentId.slice(0, 8)}
+                              {/* A request from a paired MCP agent has no Agent
+                                  row — it came from a program on somebody's
+                                  machine holding their credential. Saying so is
+                                  the point: "who is asking" is most of what a
+                                  person needs to decide. */}
+                              {approval.agentId
+                                ? `Agent: ${approval.agentId.slice(0, 8)}`
+                                : 'Asked by a paired agent working as you'}
                             </span>
                           </span>
                         }

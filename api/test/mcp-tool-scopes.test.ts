@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { AgentAccessScope } from '@prisma/client'
+
 import { McpScopeError, requireScope } from '../src/mcp/scopes.js'
 import { nessieMcpTools } from '../src/mcp/server.js'
 
@@ -74,17 +76,16 @@ test('the tool set covers boards and documents, publishing included', () => {
   }
 })
 
-test('publishing is never implied by writing', () => {
-  // "Agents draft; only a human may publish" survives because publishing has
-  // its own scope. A credential holding every write scope still cannot
-  // publish; only a person ticking `documents_publish` at pairing time does.
+test('publishing takes no scope, because it grants nothing', () => {
+  // "Agents draft; only a human may publish" used to survive here because
+  // publishing had its own scope — a tick at pairing time. That decided, once
+  // and for ninety days, a question this product asks per document, so the
+  // scope is gone: `nessie_doc_publish` opens an approval instead. A tool that
+  // cannot publish needs no permission to ask.
   const publish = nessieMcpTools().find((tool) => tool.name === 'nessie_doc_publish')
   assert.ok(publish)
-  assert.rejects(
-    () => publish.run(
-      { scopes: ['boards_write', 'documents_read', 'documents_write'] } as never,
-      {},
-    ),
-    McpScopeError,
+  assert.ok(
+    !Object.keys(AgentAccessScope).includes('documents_publish'),
+    'documents_publish must not come back as a scope',
   )
 })

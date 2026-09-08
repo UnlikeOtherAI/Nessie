@@ -6,6 +6,10 @@
 export const agentAccessKeys = {
   all: ['agent-access'] as const,
   credentials: ['agent-access', 'credentials'] as const,
+  // The organisation-wide list is a different question with a different
+  // audience, so it is its own member rather than a parameter on the personal
+  // one — a revoke invalidates both through the family root.
+  orgCredentials: ['agent-access', 'org-credentials'] as const,
   // The pending lookup is per pairing code, and the root above is what a
   // decision invalidates — so a code's own entry sits under it rather than
   // beside it.

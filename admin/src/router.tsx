@@ -116,8 +116,13 @@ const ProjectBoardsPage = lazy(() =>
 const BoardSettingsPage = lazy(() =>
   import('./pages/project/BoardSettingsPage').then((m) => ({ default: m.BoardSettingsPage })),
 )
-const AgentAccessPage = lazy(() =>
-  import('./pages/settings/AgentAccessPage').then((m) => ({ default: m.AgentAccessPage })),
+const PairedAgentsPage = lazy(() =>
+  import('./pages/settings/PairedAgentsPage').then((m) => ({ default: m.PairedAgentsPage })),
+)
+const OrganizationPairedAgentsPage = lazy(() =>
+  import('./pages/settings/OrganizationPairedAgentsPage').then(
+    (m) => ({ default: m.OrganizationPairedAgentsPage }),
+  ),
 )
 const ConnectionsPage = lazy(() =>
   import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
@@ -178,6 +183,16 @@ const RootRouteRedirect = () => {
       to={resolveRootLandingPath(search, readNativePendingPushPath() ?? consumeDesktopPendingPath())}
     />
   )
+}
+
+// `/settings/agent-access` was renamed to `/settings/paired-agents`. An agent
+// that started a pairing before the rename printed the old verification URI and
+// a person is holding it, so the old path keeps working — and the `?code=` it
+// carries has to survive, or the redirect lands them on an empty form and the
+// pairing they were three seconds from finishing dies.
+const AgentAccessRedirect = () => {
+  const { search } = useLocation()
+  return <RedirectRoute to={{ pathname: '/settings/paired-agents', search }} />
 }
 
 // The Admin tab's first phone page is its existing navigation list. Wider
@@ -453,6 +468,10 @@ export const router = createBrowserRouter([
         element: lazyElement(TeamSecretsPage, 'list'),
       },
       {
+        path: '/settings/organization/paired-agents',
+        element: lazyElement(OrganizationPairedAgentsPage, 'list'),
+      },
+      {
         path: '/settings/organization/secrets',
         element: lazyElement(OrganizationSecretsPage, 'list'),
       },
@@ -469,8 +488,15 @@ export const router = createBrowserRouter([
         element: lazyElement(ConnectionsPage, 'list'),
       },
       {
+        path: '/settings/paired-agents',
+        element: lazyElement(PairedAgentsPage, 'list'),
+      },
+      {
+        // The old path. An agent that printed a verification URI before this
+        // rename is still holding it, and a person following one deserves the
+        // page rather than a 404 — the code in the query survives the redirect.
         path: '/settings/agent-access',
-        element: lazyElement(AgentAccessPage, 'list'),
+        element: <AgentAccessRedirect />,
       },
       {
         path: '/settings/integrations',

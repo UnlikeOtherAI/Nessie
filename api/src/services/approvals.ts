@@ -14,9 +14,30 @@ import { emitAuditEvent } from './audit.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
+/**
+ * A week, for a request a paired agent opened.
+ *
+ * The thirty minutes above is calibrated to a suspended run: an agent is
+ * sitting in a channel waiting, and a stale request there is worse than a
+ * refused one. A paired agent is not waiting — it made its request over HTTP
+ * and moved on, and the person who must answer may not be at a keyboard at
+ * all. Same reasoning, and the same week, as `kb_publish_request`.
+ */
+const CREDENTIAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Who is asking. An approval always has exactly one asker, and the two kinds
+ * are not interchangeable: an in-house agent has an `Agent` row and runs inside
+ * a channel, while a paired MCP credential is a program on somebody's machine
+ * with no agent record and no run to suspend.
+ */
+export type ApprovalRequester =
+  | { agentId: string }
+  | { agentAccessCredentialId: string; requiredApproverUserId: string }
+
 export type CreateApprovalInput = {
   actorContext: AuthorizedActionContext
-  agentId: string
+  requester: ApprovalRequester
   action: string
   reason: string
   context?: Record<string, unknown>
@@ -30,7 +51,20 @@ export const createApprovalRequest = async (
   input: CreateApprovalInput,
 ) => {
   const continuationToken = randomUUID()
-  const expiresAt = new Date(Date.now() + DEFAULT_EXPIRY_MS)
+  // Bound once, so the narrowing survives every use below.
+  const credentialRequest =
+    'agentAccessCredentialId' in input.requester ? input.requester : null
+  const expiresAt = new Date(
+    Date.now() + (credentialRequest ? CREDENTIAL_EXPIRY_MS : DEFAULT_EXPIRY_MS),
+  )
+
+  // Never the human the credential acts as. `resolveApprovalRequest` refuses a
+  // requester who tries to answer their own request, so naming the approver
+  // here would make the one person allowed to decide the one person who
+  // cannot. The credential is the honest answer anyway: it asked, not them.
+  const requesterId = credentialRequest
+    ? credentialRequest.agentAccessCredentialId
+    : input.actorContext.actor.actorId
 
   const approval = await prisma.approvalRequest.create({
     data: {
@@ -40,8 +74,13 @@ export const createApprovalRequest = async (
       channelId: input.actorContext.actionContext.channelId ?? null,
       taskId: input.taskId ?? null,
       runId: input.runId ?? null,
-      agentId: input.agentId,
-      requesterId: input.actorContext.actor.actorId,
+      agentId: 'agentId' in input.requester ? input.requester.agentId : null,
+      agentAccessCredentialId: credentialRequest?.agentAccessCredentialId ?? null,
+      // The person who lent their account is the only person who may answer for
+      // it — the same pinning a send-as-you gate uses, and for the same reason:
+      // a colleague must not be able to authorise something done in your name.
+      requiredApproverUserId: credentialRequest?.requiredApproverUserId ?? null,
+      requesterId,
       action: input.action,
       reason: input.reason,
       context: (input.context as Prisma.InputJsonValue) ?? undefined,
@@ -57,7 +96,7 @@ export const createApprovalRequest = async (
     resourceType: 'approval',
     resourceId: approval.id,
     outcome: 'success',
-    metadata: { action: input.action, agentId: input.agentId },
+    metadata: { action: input.action, ...input.requester },
   })
 
   return mapApproval(approval)
@@ -409,10 +448,14 @@ export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
         return terminalizeWaitingApprovalRunInTransaction(tx, approval.id, 'expired')
       }
       // Existing deferred-effect approvals have no suspended run to close.
-      await tx.agent.updateMany({
-        where: { id: approval.agentId, status: 'waiting_approval' },
-        data: { status: 'idle' },
-      })
+      // A request from a paired credential has no agent parked on it either —
+      // the caller is a program over HTTP, not a run waiting in a channel.
+      if (approval.agentId) {
+        await tx.agent.updateMany({
+          where: { id: approval.agentId, status: 'waiting_approval' },
+          data: { status: 'idle' },
+        })
+      }
       return null
     })
     if (terminalized) drains.push(terminalized)
@@ -437,7 +480,8 @@ const mapApproval = (approval: {
   channelId: string | null
   taskId: string | null
   runId: string | null
-  agentId: string
+  agentId: string | null
+  agentAccessCredentialId: string | null
   requesterId: string
   action: string
   reason: string
@@ -462,6 +506,7 @@ const mapApproval = (approval: {
   taskId: approval.taskId,
   runId: approval.runId,
   agentId: approval.agentId,
+  agentAccessCredentialId: approval.agentAccessCredentialId,
   requesterId: approval.requesterId,
   action: approval.action,
   reason: approval.reason,

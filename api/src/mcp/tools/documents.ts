@@ -1,6 +1,7 @@
 import { canReadSpace, canWriteSpace } from '@nessie/knowledge'
 import { z } from 'zod'
 
+import { createApprovalRequest } from '../../services/approvals.js'
 import { emitAuditEvent } from '../../services/audit.js'
 import { requireScope } from '../scopes.js'
 import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
@@ -21,23 +22,30 @@ import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
  * predicates underneath it are what actually decide, and those are what these
  * call.
  *
- * **Publishing has its own scope, and that is the whole design.** The route
- * refuses publication for an `agent` actor outright — "agents draft; only a
- * human may publish" — and sends it to an approval. An MCP credential resolves
- * as the human who approved it, so that check does not catch it: the rule would
- * be bypassed by exactly the kind of caller it was written for.
+ * **Publishing is a request, never a grant.** The route refuses publication for
+ * an `agent` actor outright — "agents draft; only a human may publish" — and
+ * sends it to an approval. An MCP credential resolves as the human who approved
+ * it, so that check cannot catch it: the rule would be bypassed by exactly the
+ * kind of caller it was written for.
  *
- * Dropping the rule was not acceptable, and refusing publication forever left
- * an agent unable to finish work a person asked it to do. So the decision stays
- * human and moves to pairing time: `documents_publish` is granted only by
- * ticking a box that says this agent may publish, it is deliberately not
- * pre-selected the way the other scopes are, and it can be revoked. A person
- * decides once, explicitly, instead of per document or never.
+ * This was once answered with a `documents_publish` scope — a tick at pairing
+ * time saying this agent may publish. That was the wrong shape. It decided,
+ * once and for ninety days, a question this product asks per document
+ * everywhere else, and it decided it before the document existed; a person
+ * ticking it had no way to know what they were agreeing to publish. So the
+ * scope is gone and `nessie_doc_publish` opens the same
+ * `knowledge.page.publish` approval `kb_publish_request` opens, pinned to the
+ * person whose account the credential borrows. One rule, one vocabulary, one
+ * Approvals page — and the agent gets a real answer either way instead of a
+ * permanent refusal.
  */
 
 const NOT_AVAILABLE = {
   error: 'The knowledge base is not available on this deployment.',
 } as const
+
+/** Named the way the agent should report it back to whoever is reading. */
+const PUBLISH_APPROVER_HINT = 'the person whose account this agent works as'
 
 /**
  * One answer for "no such space" and "not yours".
@@ -285,19 +293,26 @@ export const documentTools = (): McpToolDefinition[] => [
   },
   {
     description:
-      'Publish a document, making it visible to everyone who can read its '
-      + 'space. Needs the separate `documents_publish` scope, which a person '
-      + 'grants deliberately — publication is normally a human act.',
-    inputSchema: { pageId: z.string().uuid() },
+      'Ask for a document to be published. Publication is a human decision here, '
+      + 'so this does not publish: it opens an approval for the person whose '
+      + 'account this credential acts as, and returns its id. They approve it in '
+      + 'Nessie and the page goes live. Calling again for the same draft returns '
+      + 'the request already waiting rather than opening a second one.',
+    inputSchema: {
+      pageId: z.string().uuid(),
+      reason: z.string().max(2000).optional(),
+    },
     name: 'nessie_doc_publish',
     run: async (context, input) => {
-      requireScope(context.scopes, 'documents_publish')
       const access = context.knowledge
       if (!access) return NOT_AVAILABLE
 
-      // The same policy action the route checks — `approve`, not `edit`.
-      // Publishing is a different decision from writing, and the policy engine
-      // already says so.
+      // `approve`, not `edit`. Publishing is a different decision from writing,
+      // and the policy engine already says so — this is the gate on whether the
+      // granting human could publish this page at all. It is not a substitute
+      // for the approval below: the question that gate answers is "may this
+      // account publish here", and the question left over is "did a person
+      // actually decide to publish *this*".
       const decision = await context.checkPolicy(
         context.prisma,
         context.actorContext,
@@ -317,24 +332,70 @@ export const documentTools = (): McpToolDefinition[] => [
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
 
-      const page = await access.provider.publishPage({
-        actorUserId: context.actorContext.actor.actorId,
-        organizationId,
-        pageId,
-      })
-      if (!page) return PAGE_UNREACHABLE
+      const versionId = existing.latestVersion?.id
+      if (!versionId) {
+        return { error: 'That page has no draft to publish.' }
+      }
 
-      await emitAuditEvent(context.prisma, {
-        action: 'kb.page.published',
-        actorContext: context.actorContext,
-        // `via` is what separates a person's own publication from one their
-        // agent made for them, which for publishing is the interesting fact.
-        metadata: { publishedVersionId: page.publishedVersionId, via: 'mcp_agent_credential' },
-        outcome: 'success',
-        resourceId: page.id,
-        resourceType: 'knowledge_page',
+      const credentialId = context.actorContext.actionContext.agentCredentialId
+      if (!credentialId) {
+        // Every call on this endpoint arrives on a credential, so this is
+        // unreachable rather than a case — but publishing straight through
+        // because a marker was missing is the exact failure this tool exists to
+        // prevent, so it refuses rather than assuming.
+        return { error: 'This call carries no agent credential, so it cannot request publication.' }
+      }
+
+      // Never a second pending request for the same draft. An agent that polls
+      // would otherwise fill a person's Approvals page with the same decision.
+      const pending = await context.prisma.approvalRequest.findMany({
+        select: { context: true, id: true },
+        where: {
+          action: 'knowledge.page.publish',
+          agentAccessCredentialId: credentialId,
+          organizationId,
+          status: 'pending',
+        },
       })
-      return { page }
+      const duplicate = pending.find((row) => {
+        const rowContext = row.context as Record<string, unknown> | null
+        return rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId
+      })
+      if (duplicate) {
+        return {
+          status: 'awaiting_approval',
+          approvalId: duplicate.id,
+          message:
+            'Publication was already requested for this draft and is waiting for '
+            + `${PUBLISH_APPROVER_HINT}.`,
+        }
+      }
+
+      const approval = await createApprovalRequest(context.prisma, {
+        action: 'knowledge.page.publish',
+        actorContext: context.actorContext,
+        context: {
+          pageId: existing.id,
+          spaceId: existing.spaceId,
+          title: existing.title,
+          versionId,
+        },
+        reason:
+          (input.reason as string | undefined)?.trim()
+          || 'Requested by a paired agent through the MCP endpoint.',
+        requester: {
+          agentAccessCredentialId: credentialId,
+          requiredApproverUserId: context.actorContext.actor.actorId,
+        },
+      })
+
+      return {
+        status: 'awaiting_approval',
+        approvalId: approval.id,
+        message:
+          'Publication requested. Agents draft; a person publishes — this is now '
+          + `waiting for ${PUBLISH_APPROVER_HINT}.`,
+      }
     },
   },
 ]

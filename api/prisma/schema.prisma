@@ -5017,7 +5017,20 @@ model ApprovalRequest {
   channelId              String?        @map("channel_id") @db.Uuid
   taskId                 String?        @map("task_id") @db.Uuid
   runId                  String?        @map("run_id") @db.Uuid
-  agentId                String         @map("agent_id") @db.Uuid
+  /// The agent that asked. Null exactly when `agentAccessCredentialId` is set:
+  /// a request from a paired MCP agent has no `Agent` row to point at, because
+  /// the thing holding the credential is a program on somebody's machine and
+  /// not a configured agent in this organisation. Exactly one of the two is
+  /// always set — see the CHECK in the migration.
+  agentId                String?        @map("agent_id") @db.Uuid
+  /// The paired credential that asked, for a request opened through the MCP
+  /// endpoint. Its owner is the `requiredApproverUserId`: the person who lent
+  /// their account is the only person who may answer for it.
+  agentAccessCredentialId String?       @map("agent_access_credential_id") @db.Uuid
+  /// Who asked, for the self-approval check. An agent request carries the agent
+  /// id; a credential request carries the credential id, never the human it
+  /// acts as — otherwise the one person allowed to answer would be refused as
+  /// the requester.
   requesterId            String         @map("requester_id")
   action                 String
   reason                 String
@@ -5053,11 +5066,13 @@ model ApprovalRequest {
   channel                Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
   task                   Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
   run                    Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent                  Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent                  Agent?         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentAccessCredential  AgentAccessCredential? @relation(fields: [agentAccessCredentialId], references: [id], onDelete: Cascade)
   userAlerts             UserAlert[]
 
   @@index([organizationId, status])
   @@index([agentId, status])
+  @@index([agentAccessCredentialId, status])
   @@index([status, expiresAt])
   @@map("approval_requests")
 }
@@ -8418,16 +8433,17 @@ enum AgentAccessScope {
   boards_write
   documents_read
   documents_write
-  /// Publishing, separated from writing on purpose.
-  ///
-  /// "Agents draft; only a human may publish" is a rule this codebase already
-  /// enforces for its own agents. An MCP credential resolves as the human who
-  /// approved it, so it would otherwise walk straight past that rule. Making
-  /// publication its own scope keeps the decision human — a person ticks a box
-  /// that says this agent may publish, once, and can revoke it — rather than
-  /// letting it arrive as a side effect of "can write documents".
-  documents_publish
 }
+/// There is deliberately no `documents_publish`.
+///
+/// "Agents draft; only a human may publish" is a rule this codebase enforces
+/// for its own agents by refusing an agent actor outright. A pairing-time
+/// checkbox was the wrong shape for it: it decided, once and for ninety days,
+/// a question the product asks per document everywhere else — and it decided it
+/// before the document existed. `nessie_doc_publish` now opens the same
+/// `knowledge.page.publish` approval `kb_publish_request` does, pinned to the
+/// person who approved the pairing. One rule, one vocabulary, one Approvals
+/// page.
 
 enum AgentAuthorizationStatus {
   pending
@@ -8542,6 +8558,7 @@ model AgentAccessCredential {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation("AgentAccessCredentialUser", fields: [userId], references: [id], onDelete: Cascade)
+  approvalRequests ApprovalRequest[]
 
   @@index([userId, revokedAt])
   @@index([organizationId, revokedAt])

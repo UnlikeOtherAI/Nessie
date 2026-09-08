@@ -207,8 +207,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
-        path: '/settings/agent-access',
-        label: 'Agent access',
+        path: '/settings/paired-agents',
+        label: 'Paired agents',
         icon: icon(
           <>
             <rect height="12" rx="2" width="16" x="4" y="7" />
@@ -323,6 +323,22 @@ export const ADMIN_NAV: AdminNavGroup[] = [
             <rect height="10" rx="2" width="14" x="5" y="11" />
             <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M12 14v3" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
+        // Whose accounts outside programs are currently borrowing, and whether
+        // that is allowed at all. The personal page under User is deliberately
+        // self-only, which left an organisation with no view of its own live
+        // credentials; this is that view.
+        path: '/settings/organization/paired-agents',
+        label: 'Paired agents',
+        visibleTo: ({ canManageOrganization }) => canManageOrganization,
+        icon: icon(
+          <>
+            <rect height="12" rx="2" width="16" x="4" y="7" />
+            <path d="M9 12h.01M15 12h.01" strokeLinecap="round" />
+            <path d="M12 4v3" strokeLinecap="round" />
           </>,
         ),
       },

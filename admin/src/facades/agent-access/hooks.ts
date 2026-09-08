@@ -17,11 +17,24 @@ export type AgentAccessScope =
   | 'boards_write'
   | 'documents_read'
   | 'documents_write'
-  | 'documents_publish'
 
 export type PendingAgentAuthorization = {
   clientName: string
+  /** When the credential this would mint stops working, ISO. */
+  credentialExpiresAt: string
   requestedScopes: AgentAccessScope[]
+}
+
+/** One paired agent as an owner sees it, whoever paired it. */
+export type OrgAgentAccessCredentialRecord = {
+  createdAt: string
+  expiresAt: string
+  id: string
+  label: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+  scopes: AgentAccessScope[]
+  user: { displayName: string; email: string; id: string }
 }
 
 export type AgentAccessCredentialRecord = {
@@ -71,6 +84,23 @@ export const useAgentAccessCredentials = () => {
   })
 }
 
+/**
+ * Every paired agent in the organisation. Owner and organisation-admin only —
+ * the API refuses anyone else, and the surface that calls this is behind the
+ * same gate, so a 403 here is a bug rather than a state to render.
+ */
+export const useOrgAgentAccessCredentials = (enabled: boolean) => {
+  const apiClient = useApiClient()
+  return useQuery({
+    enabled,
+    queryFn: () =>
+      apiClient.get<{ credentials: OrgAgentAccessCredentialRecord[] }>(
+        '/api/mcp/agent-access/org-credentials',
+      ),
+    queryKey: agentAccessKeys.orgCredentials,
+  })
+}
+
 export const useDecideAgentAuthorization = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -96,7 +126,9 @@ export const useRevokeAgentAccessCredential = () => {
     mutationFn: (credentialId: string) =>
       apiClient.post(`/api/mcp/agent-access/credentials/${credentialId}/revoke`),
     onSuccess: () => {
+      // Both lists show the same row to different audiences.
       void queryClient.invalidateQueries({ queryKey: agentAccessKeys.credentials })
+      void queryClient.invalidateQueries({ queryKey: agentAccessKeys.orgCredentials })
     },
   })
 }

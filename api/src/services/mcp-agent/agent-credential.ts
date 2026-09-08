@@ -228,6 +228,13 @@ export const verifyAgentAccessCredential = async (
     // without anything failing.
     actorContext: AuthorizedActionContextSchema.parse({
       actionContext: {
+        // The actor below is the human, which is the whole design and also the
+        // whole problem for a reader of the audit log: nothing in it separates
+        // a task their paired agent moved from one they moved themselves.
+        // Carrying the credential here is what `emitAuditEvent` stamps, and
+        // what a credential-opened approval is pinned to, without every tool
+        // having to remember to do it.
+        agentCredentialId: credential.id,
         effectiveUserId: credential.userId,
         requestId: randomUUID(),
         // Replayed so background work this call starts — an embedding job for a

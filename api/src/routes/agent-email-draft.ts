@@ -139,7 +139,7 @@ export const registerAgentEmailDraftRoutes = (app: FastifyInstance, deps: RouteD
 
     return sendDraftPreview(reply, {
       approvalId: approval.id, bcc: draft.bcc, cc: draft.cc, expiresAt: approval.expiresAt,
-      externalDisclosureSources: externalSources, mailboxAddress: approval.agent.mailbox?.address ?? '',
+      externalDisclosureSources: externalSources, mailboxAddress: approval.agent?.mailbox?.address ?? '',
       status: approval.status, subject: draft.subject, text: parsed.data.args.text, to: draft.to,
     })
   })

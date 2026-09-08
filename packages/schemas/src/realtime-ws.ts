@@ -94,7 +94,14 @@ export type WsEventMap = {
   'approval.resolved': {
     approvalId: string
     taskId: TaskId
-    agentId: AgentId
+    /**
+     * Absent for an approval a paired MCP credential opened — there is no
+     * `Agent` row behind one. Optional rather than a placeholder id: the sole
+     * consumer invalidates a query and reads no field of this payload, so an
+     * older build during a swap is unaffected, while a manufactured agent id
+     * would be a lie any future reader would believe.
+     */
+    agentId?: AgentId
     outcome: 'approved' | 'rejected' | 'expired'
     resolverId?: string
     resolvedAt: string
