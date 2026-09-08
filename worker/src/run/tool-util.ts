@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { redactDetectedSecrets } from '@nessie/schemas'
+import { ZodError } from 'zod'
 
 import type { AgenticToolResult, ToolExecutionUsage, AgentCardSuspension } from './tool-types.js'
 
@@ -89,6 +90,7 @@ export const wrapTool = async (
     }
   } catch (error) {
     return {
+      ...(error instanceof ZodError ? { failureKind: 'invalid_arguments' as const } : {}),
       inputSummary,
       output: 'Tool error: ' + (error instanceof Error ? error.message : String(error)),
       success: false,

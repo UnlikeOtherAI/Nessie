@@ -100,6 +100,7 @@ const targetOf = (fixture: Seed): CrashCheckpointTarget => ({
 })
 
 const stateAt = (iteration: number): LoopResumeState => ({
+  budgetRecoveryAttempted: false,
   compactionAttempts: 0,
   compactionLastIteration: null,
   elapsedMs: 1_000 * iteration,

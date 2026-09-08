@@ -6,12 +6,12 @@ import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import { executeBuiltinTool } from './tools.js'
 import type { BuiltinToolRuntimeContext } from './tool-types.js'
 
-test('a failed stubbed builtin carries its full argument schema', async () => {
-  const toolName = 'schedule_task'
+test('a structurally invalid stubbed builtin carries its full argument schema', async () => {
+  const toolName = 'agent_read'
   const definition = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.id === toolName)
   assert.ok(definition)
 
-  // Missing instructions fails before this handler needs any runtime service.
+  // This Zod failure happens before the handler needs runtime services.
   const result = await executeBuiltinTool(
     toolName,
     {},
@@ -20,7 +20,7 @@ test('a failed stubbed builtin carries its full argument schema', async () => {
   )
 
   assert.equal(result.success, false)
-  assert.match(result.output, /Exact argument schema for schedule_task:/)
+  assert.match(result.output, /Exact argument schema for agent_read:/)
   assert.ok(result.output.includes(JSON.stringify(definition.parameters, null, 2)))
 })
 
