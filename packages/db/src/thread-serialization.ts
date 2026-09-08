@@ -238,6 +238,15 @@ export const drainPendingThreadMessages = async (
     if (!latest) {
       return null
     }
+    // System kickoffs are intentionally excluded from ordinary conversation
+    // history. A serialized peer batch must still give every distinct brief to
+    // its follow-up, rather than silently retaining only the latest one.
+    const promptOverride = latest.message.role === 'system'
+      ? pendings
+        .filter((pending) => pending.message.role === 'system')
+        .map((pending) => pending.message.content)
+        .join('\n\n')
+      : undefined
 
     const thread = await tx.thread.findUniqueOrThrow({
       where: { id: input.threadId },
@@ -319,6 +328,7 @@ export const drainPendingThreadMessages = async (
       ...(latest.principalUserId ? { principalUserId: latest.principalUserId } : {}),
       interactive: latest.interactive,
       messageId: scheduledKickoff?.id ?? latest.messageId,
+      ...(promptOverride ? { promptOverride } : {}),
       runId: parseRunId(run.id),
       taskId: parseTaskId(task.id),
       threadId: parseThreadId(input.threadId),

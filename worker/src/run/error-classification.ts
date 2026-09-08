@@ -217,9 +217,7 @@ export const resolveRecovery = (
 
     case 'format':
     case 'empty_response':
-      return attemptCount < 1
-        ? { action: 'retry', delayMs: 500 }
-        : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
+      return { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'context_overflow':
       return { action: 'compact_and_retry' }

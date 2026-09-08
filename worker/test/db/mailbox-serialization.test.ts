@@ -165,8 +165,12 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
     data: { agentId: seed.toAgentId, threadId: seed.threadId, status: 'running' },
   })
 
-  const mail = await queueMail(prisma, seed, 'subtask result payload')
+  const mail = await queueMail(prisma, seed, 'subtask result payload one')
+  const mailTwo = await queueMail(prisma, seed, 'subtask result payload two')
+  const mailThree = await queueMail(prisma, seed, 'subtask result payload three')
   await dispatchSeededMail(prisma, mail)
+  await dispatchSeededMail(prisma, mailTwo)
+  await dispatchSeededMail(prisma, mailThree)
 
   // No concurrent run: the delivery is a durable pending marker instead.
   const runs = await prisma.run.findMany({
@@ -178,7 +182,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
   const pendings = await prisma.runThreadPendingMessage.findMany({
     where: { agentId: seed.toAgentId, threadId: seed.threadId },
   })
-  assert.equal(pendings.length, 1)
+  assert.equal(pendings.length, 3)
   assert.equal(pendings[0]?.channelId, seed.channelId)
   assert.equal(pendings[0]?.interactive, false)
 
@@ -187,7 +191,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
   const promptMessage = await prisma.message.findUnique({
     where: { id: pendings[0]!.messageId },
   })
-  assert.equal(promptMessage?.content, 'subtask result payload')
+  assert.equal(promptMessage?.content, 'subtask result payload one')
   const delivered = await prisma.agentMailboxMessage.findUnique({ where: { id: mail.id } })
   assert.equal(delivered?.status, 'delivered')
   assert.ok(delivered?.deliveredAt)
@@ -204,6 +208,12 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
     threadId: seed.threadId,
   })
   assert.ok(followUpRunId)
+  const batch = await prisma.$queryRaw<{ payload: { promptOverride?: string } }[]>`
+    SELECT payload FROM queue_jobs WHERE idempotency_key = ${`run:batch:${followUpRunId}`}
+  `
+  assert.match(batch[0]?.payload.promptOverride ?? '', /payload one/)
+  assert.match(batch[0]?.payload.promptOverride ?? '', /payload two/)
+  assert.match(batch[0]?.payload.promptOverride ?? '', /payload three/)
   assert.equal(
     await prisma.runThreadPendingMessage.count({
       where: { agentId: seed.toAgentId, threadId: seed.threadId },
@@ -236,13 +246,15 @@ runDatabaseTest('peer delivery keeps a restricted research basis through the coo
   )
   await dispatchSeededMail(prisma, mail)
 
-  const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { correlationId?: string; effectiveUserId?: string; purpose?: string } } } }[]>`
+  const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { correlationId?: string; effectiveUserId?: string; purpose?: string }; tenant: { projectId?: string; teamId?: string } } } }[]>`
     SELECT payload FROM queue_jobs WHERE idempotency_key = ${`mailbox:${mail.id}`}
   `
   assert.equal(rows.length, 1)
   assert.equal(rows[0]?.payload.actorContext.actionContext.purpose, 'agent.peer_delegation')
   assert.equal(rows[0]?.payload.actorContext.actionContext.correlationId, '2')
   assert.equal(rows[0]?.payload.actorContext.actionContext.effectiveUserId, seed.requesterId)
+  assert.equal(rows[0]?.payload.actorContext.tenant.projectId, seed.projectId)
+  assert.equal(rows[0]?.payload.actorContext.tenant.teamId, seed.teamId)
 
   const prompt = await prisma.message.findFirstOrThrow({
     where: { content: 'review the prospect evidence', threadId: seed.threadId },

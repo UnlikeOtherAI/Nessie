@@ -134,7 +134,7 @@ test('an interactive run tells the person waiting that Ledger credits are exhaus
   assert.deepEqual(streamEvents, [])
 })
 
-test('an unattended run fails quietly — no message into a room that did not ask', async () => {
+test('a peer-delegated run reports its terminal failure to the waiting conversation once', async () => {
   const messages: Array<{ content: string; role: string }> = []
   // A real `$transaction` hands the callback a client carrying every model, so
   // the stub must too: the message chokepoint writes the row and its basis rows
@@ -211,11 +211,9 @@ test('an unattended run fails quietly — no message into a room that did not as
   await handleRunExecutionFailure(
     deps,
     {
-      actorContext: {} as never,
+      actorContext: { actionContext: { purpose: 'agent.peer_delegation' } } as never,
       agentId: ID.agent as never,
-      // No `interactive` flag: a scheduled sweep. Nobody is waiting, and
-      // repeating the same apology every 15 minutes would bury the findings
-      // the channel exists for.
+      // A peer has explicitly delegated this work and is waiting in the same conversation.
       messageId: '00000000-0000-4000-8000-00000000000a',
       runId: ID.run as never,
       taskId: ID.task as never,
@@ -229,7 +227,12 @@ test('an unattended run fails quietly — no message into a room that did not as
     },
   )
 
-  assert.deepEqual(messages, [])
+  assert.deepEqual(messages, [{
+    agentId: ID.agent,
+    content: 'No API key is configured for the model provider. Ask a team owner to add the provider credential, then try again.',
+    role: 'assistant',
+    threadId: ID.thread,
+  }])
 })
 
 test('an invalid private placement fails without speaking into the shared destination', async () => {
