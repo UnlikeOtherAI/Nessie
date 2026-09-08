@@ -9,24 +9,24 @@ import {
   type AgentMessagePage,
   type AgentStatusResponse,
   type ToolCallEntry,
-  type WsScope,
-  type WsSnapshot,
 } from '@nessie/schemas'
 
 import {
   buildAccessibleChannelWhere,
-  buildAccessibleThreadWhere,
   isSystemManagedAgent,
   type AgentVisibilityScope,
 } from '@nessie/team-admin'
 
-const buildAccessibleRunWhere = (
-  visibility?: AgentVisibilityScope,
-): Prisma.RunWhereInput =>
-  visibility ? { thread: buildAccessibleThreadWhere(visibility) } : {}
-
-const toTimestamp = (value: Date | null | undefined): string | undefined =>
-  value ? value.toISOString() : undefined
+import {
+  canReadAgentMessage,
+  filterReadableAgentRuns,
+} from './agent-read-disclosure.js'
+import {
+  buildAccessibleRunWhere,
+  buildDisclosureReadableThreadWhere,
+  toTimestamp,
+} from './agent-read-primitives.js'
+import { canUserReadRunDerivedRecord } from './run-derived-read.js'
 
 const mapToolCall = (toolCall: {
   durationMs: number | null
@@ -58,7 +58,7 @@ export const loadAgentStatus = async (
     ? { run: runVisibilityWhere }
     : {}
   const messageVisibilityWhere = options?.visibility
-    ? { thread: buildAccessibleThreadWhere(options.visibility) }
+    ? { thread: buildDisclosureReadableThreadWhere(options.visibility) }
     : {}
 
   const agent = await prisma.agent.findFirst({
@@ -82,6 +82,11 @@ export const loadAgentStatus = async (
         },
       },
       messages: {
+        include: {
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+          thread: { select: { channelId: true } },
+        },
         where: messageVisibilityWhere,
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -108,9 +113,23 @@ export const loadAgentStatus = async (
   if (!agent) return null
   if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return null
 
-  const latestRun = agent.runs[0]
+  const readableRuns = await filterReadableAgentRuns(prisma, agent.runs, options?.visibility)
+  const latestRun = readableRuns[0]
   const latestToolCall = latestRun?.toolCalls[0]
-  const latestMessage = agent.messages[0]
+  const readableMessages = (await Promise.all(agent.messages.map(async (message) => ({
+    message,
+    readable: await canReadAgentMessage(prisma, message, options?.visibility),
+  })))).filter(({ readable }) => readable).map(({ message }) => message)
+  const readableActiveSubAgents = await Promise.all(agent.childAgents.map(async (childAgent) => {
+    const childTask = childAgent.tasks[0]
+    if (!childTask || !options?.visibility || !(await canUserReadRunDerivedRecord(prisma, {
+      organizationId: options.visibility.organizationId,
+      runId: childTask.runId,
+      userId: options.visibility.userId,
+    }))) return null
+    return { childAgent, childTask }
+  }))
+  const latestMessage = readableMessages[0]
   const isActiveRun =
     latestRun !== undefined
     && latestRun.status !== 'completed'
@@ -135,10 +154,10 @@ export const loadAgentStatus = async (
       isActiveRun && latestToolCall?.endedAt === null
         ? toTimestamp(latestToolCall.startedAt)
         : undefined,
-    activeSubAgents: agent.childAgents
-      .map((childAgent) => {
-        const childTask = childAgent.tasks[0]
-        if (!childTask) return null
+    activeSubAgents: readableActiveSubAgents
+      .map((entry) => {
+        if (!entry) return null
+        const { childAgent, childTask } = entry
         return {
           agentId: parseAgentId(childAgent.id),
           status: childAgent.status,
@@ -198,9 +217,19 @@ export const loadAgentActivity = async (
   if (!agent) return null
   if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return null
 
-  const currentRun = agent.runs.find(
+  const readableRuns = await filterReadableAgentRuns(prisma, agent.runs, options?.visibility)
+  const currentRun = readableRuns.find(
     (run) => run.status === 'running' || run.status === 'pending',
   )
+  const readableChildTasks = await Promise.all(agent.childAgents.map(async (childAgent) => {
+    const childTask = childAgent.tasks[0]
+    if (!childTask || !options?.visibility || !(await canUserReadRunDerivedRecord(prisma, {
+      organizationId: options.visibility.organizationId,
+      runId: childTask.runId,
+      userId: options.visibility.userId,
+    }))) return null
+    return { childAgent, childTask }
+  }))
 
   return {
     agentId: parseAgentId(agent.id),
@@ -215,7 +244,7 @@ export const loadAgentActivity = async (
           toolCalls: currentRun.toolCalls.map(mapToolCall),
         }
       : undefined,
-    recentToolCalls: agent.runs
+    recentToolCalls: readableRuns
       .flatMap((run) => run.toolCalls)
       .sort(
         (left, right) =>
@@ -223,10 +252,10 @@ export const loadAgentActivity = async (
       )
       .slice(0, 20)
       .map(mapToolCall),
-    subAgents: agent.childAgents
-      .map((childAgent) => {
-        const childTask = childAgent.tasks[0]
-        if (!childTask) return null
+    subAgents: readableChildTasks
+      .map((entry) => {
+        if (!entry) return null
+        const { childAgent, childTask } = entry
         return {
           agentId: parseAgentId(childAgent.id),
           name: childAgent.name,
@@ -258,7 +287,7 @@ export const loadAgentMessages = async (
   if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return { items: [], total: 0 }
 
   const threadVisibilityWhere = options?.visibility
-    ? buildAccessibleThreadWhere(options.visibility)
+    ? buildDisclosureReadableThreadWhere(options.visibility)
     : undefined
   const where: Prisma.MessageWhereInput = {
     OR: [
@@ -276,15 +305,24 @@ export const loadAgentMessages = async (
       },
     ],
   }
-  const [messages, total] = await Promise.all([
-    prisma.message.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-    }),
-    prisma.message.count({ where }),
-  ])
+  // Unlike an ordinary channel predicate, a message basis may be admitted by a
+  // live grant. Fetch the lightweight projection first, ask the one canonical
+  // predicate for each restricted row, then page the resulting safe set. This
+  // keeps both the content and the total from revealing a withheld reply.
+  const candidates = await prisma.message.findMany({
+    where,
+    include: {
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+      thread: { select: { channelId: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+  const readable = (await Promise.all(candidates.map(async (message) => ({
+    message,
+    readable: await canReadAgentMessage(prisma, message, options?.visibility),
+  })))).filter(({ readable }) => readable).map(({ message }) => message)
+  const messages = readable.slice(offset, offset + limit)
 
   return {
     items: messages.map((message) => ({
@@ -295,7 +333,7 @@ export const loadAgentMessages = async (
       threadId: parseThreadId(message.threadId),
       timestamp: message.createdAt.toISOString(),
     })),
-    total,
+    total: readable.length,
   }
 }
 
@@ -376,6 +414,10 @@ export const loadRunToolCalls = async (
   if (!agent) return []
   if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return []
 
+  if (!(await filterReadableAgentRuns(prisma, [{ id: runId }], options?.visibility)).length) {
+    return []
+  }
+
   const toolCalls = await prisma.toolCall.findMany({
     where: {
       agentId,
@@ -388,116 +430,4 @@ export const loadRunToolCalls = async (
   })
 
   return toolCalls.map(mapToolCall)
-}
-
-export const buildSnapshotForScopes = async (
-  prisma: PrismaClient,
-  scopes: WsScope[],
-  options?: { visibility?: AgentVisibilityScope },
-): Promise<WsSnapshot> => {
-  if (scopes.length === 0) return { agents: [] }
-
-  const agentIds = new Set<string>()
-  const bindingOr: Prisma.AgentBindingWhereInput[] = []
-  for (const scope of scopes) {
-    if (scope.kind === 'agent') {
-      agentIds.add(scope.agentId)
-      continue
-    }
-    if (scope.kind === 'channel') {
-      bindingOr.push({
-        channelId: scope.channelId,
-        ...(options?.visibility
-          ? { channel: buildAccessibleChannelWhere(options.visibility) }
-          : {}),
-      })
-      continue
-    }
-    if (scope.kind === 'user') {
-      continue
-    }
-    if (scope.kind === 'dashboard') {
-      continue
-    }
-    bindingOr.push({
-      channel: {
-        ...(options?.visibility
-          ? buildAccessibleChannelWhere(options.visibility)
-          : { organizationId: scope.organizationId }),
-      },
-    })
-  }
-
-  if (bindingOr.length > 0) {
-    const bindings = await prisma.agentBinding.findMany({
-      where: { OR: bindingOr },
-      select: { agentId: true },
-    })
-    bindings.forEach((binding) => agentIds.add(binding.agentId))
-  }
-  if (agentIds.size === 0) return { agents: [] }
-
-  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
-  const agents = await prisma.agent.findMany({
-    where: {
-      id: { in: Array.from(agentIds) },
-      ...(options?.visibility
-        ? { organizationId: options.visibility.organizationId }
-        : {}),
-    },
-    include: {
-      messages: {
-        where: options?.visibility
-          ? { thread: buildAccessibleThreadWhere(options.visibility) }
-          : {},
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      runs: {
-        include: {
-          toolCalls: {
-            orderBy: { startedAt: 'desc' },
-            take: 1,
-          },
-        },
-        where: {
-          ...runVisibilityWhere,
-          status: {
-            in: ['pending', 'running'],
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-  })
-
-  return {
-    agents: agents
-      .filter((agent) => !isSystemManagedAgent(agent))
-      .map((agent) => {
-        const latestRun = agent.runs[0]
-        const latestToolCall = latestRun?.toolCalls[0]
-        const isActiveRun =
-          latestRun !== undefined
-          && latestRun.status !== 'completed'
-          && latestRun.status !== 'failed'
-          && latestRun.status !== 'cancelled'
-
-        return {
-          agentId: parseAgentId(agent.id),
-          status: agent.status,
-          since: agent.updatedAt.toISOString(),
-          currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
-          currentToolName:
-            isActiveRun && latestToolCall?.endedAt === null
-              ? latestToolCall.toolName
-              : undefined,
-          currentToolStartedAt:
-            isActiveRun && latestToolCall?.endedAt === null
-              ? toTimestamp(latestToolCall.startedAt)
-              : undefined,
-        }
-      }),
-  }
 }

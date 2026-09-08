@@ -414,6 +414,7 @@ export const respondToAgentCard = async (
     channelId: prepared.card.channelId,
     organizationId: prepared.card.organizationId,
     systemChannelType: prepared.card.channel.systemChannelType,
+    visibility: prepared.card.channel.visibility,
   });
   for (const [key, value] of Object.entries(outcome.secretOutcomes)) {
     const stored = value as {
@@ -480,6 +481,7 @@ export const respondToAgentCard = async (
         id: prepared.card.channelId,
         organizationId: prepared.card.organizationId,
         systemChannelType: prepared.card.channel.systemChannelType,
+        visibility: prepared.card.channel.visibility,
       },
       message: {
         content: prepared.content,

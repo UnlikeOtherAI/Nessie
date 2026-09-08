@@ -1038,6 +1038,9 @@ model User {
   userAlerts                          UserAlert[]
   disclosureGrants                    DisclosureGrant[]
   scopeDisclosureGrants               ScopeDisclosureGrant[]
+  messageDisclosureSources            MessageDisclosureSource[]
+  checkpointDisclosureSources         RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources            ThoughtDisclosureSource[]
   userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
   messageThreadFollows                MessageThreadFollow[]
   favorites                           Favorite[]
@@ -1287,6 +1290,9 @@ model Organization {
   runCheckpoints                   RunCheckpoint[]
   runBasisScopes                   RunBasisScope[]
   messageBasisScopes               MessageBasisScope[]
+  messageDisclosureSources         MessageDisclosureSource[]
+  checkpointDisclosureSources      RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources         ThoughtDisclosureSource[]
   disclosureGrants                 DisclosureGrant[]
   scopeDisclosureGrants            ScopeDisclosureGrant[]
   agentMailboxMessages             AgentMailboxMessage[]
@@ -2053,6 +2059,9 @@ model Channel {
   demonstrations         Demonstration[]
   agentMailbox           AgentMailbox?
   agentHandoffRequests   AgentHandoffRequest[]
+  disclosureSources      MessageDisclosureSource[]
+  checkpointDisclosureSources RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources ThoughtDisclosureSource[]
 
   agentCards AgentCard[]
 
@@ -2488,6 +2497,7 @@ model Message {
   workflowRunReplyRoots       WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
   runThreadPendingMessages    RunThreadPendingMessage[]
   basisScopes                 MessageBasisScope[]
+  disclosureSources           MessageDisclosureSource[]
   disclosureGrants            DisclosureGrant[]
   pushSurfacePresences        UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
   conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
@@ -2517,6 +2527,71 @@ model MessageBasisScope {
   @@unique([messageId, scopeType, scopeId], map: "message_basis_scopes_message_scope_key")
   @@index([organizationId], map: "message_basis_scopes_org_idx")
   @@map("message_basis_scopes")
+}
+
+/// Durable original-author provenance for a checkpoint note. An absent row on an
+/// older checkpoint is deliberately not repaired from the channel scope: resume
+/// records it as unknown and keeps exports closed.
+model RunCheckpointDisclosureSource {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  checkpointId       String        @map("checkpoint_id") @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  sourceChannelId    String        @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?       @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at")
+  checkpoint         RunCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  organization       Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel      Channel       @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  sourceAuthor       User?         @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([checkpointId, sourceChannelId, sourceAuthorUserId], map: "run_checkpoint_disclosure_sources_checkpoint_channel_author_key")
+  @@index([organizationId], map: "run_checkpoint_disclosure_sources_org_idx")
+  @@map("run_checkpoint_disclosure_sources")
+}
+
+/// Durable original-author provenance for a recalled thought. Absence is legacy
+/// uncertainty and is intentionally represented as an unknown source at recall.
+model ThoughtDisclosureSource {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  thoughtId          String       @map("thought_id") @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  sourceChannelId    String       @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?      @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at")
+  thought            Thought      @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel      Channel      @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  sourceAuthor       User?        @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([thoughtId, sourceChannelId, sourceAuthorUserId], map: "thought_disclosure_sources_thought_channel_author_key")
+  @@index([organizationId], map: "thought_disclosure_sources_org_idx")
+  @@map("thought_disclosure_sources")
+}
+
+/// The people whose words from a private conversation entered an agent reply.
+///
+/// A channel scope answers who may read the reply; it cannot answer who may
+/// consent to carry that conversation into a different audience. Keep that
+/// second fact with the derived message so a later transcript, checkpoint, or
+/// tool post preserves the original author's authority instead of substituting
+/// the agent owner or another channel member.
+model MessageDisclosureSource {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId          String       @map("message_id") @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  sourceChannelId    String       @map("source_channel_id") @db.Uuid
+    // Null marks private material whose original human author was not
+    // durably recorded. It is a denial marker, never an anonymous consent.
+    sourceAuthorUserId String?      @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at")
+  message            Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel      Channel      @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+    sourceAuthor       User?        @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, sourceChannelId, sourceAuthorUserId], map: "message_disclosure_sources_message_channel_author_key")
+  @@index([organizationId], map: "message_disclosure_sources_org_idx")
+  @@map("message_disclosure_sources")
 }
 
 /// The acknowledgement card's "share this reply": one message, one audience,
@@ -3244,6 +3319,7 @@ model RunCheckpoint {
   createdAt       DateTime     @default(now()) @map("created_at")
   run             Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  disclosureSources RunCheckpointDisclosureSource[]
 
   @@index([threadId, rootMessageId, createdAt])
   @@map("run_checkpoints")
@@ -5335,6 +5411,7 @@ model Thought {
   linksTo    ThoughtLink[]      @relation("ThoughtLinksTo")
   auditLogs  ThoughtAuditLog[]
   recalls    ThoughtRecall[]
+  disclosureSources ThoughtDisclosureSource[]
 
   @@index([organizationId, visibility, createdAt])
   @@index([organizationId, memoryType, memoryCategory, createdAt])

@@ -49,6 +49,11 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
   CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
   between the navigation and independent connected-mail suites.
+- **Private-conversation disclosure browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:disclosure` after
+  building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
+  the same fixed ports; details and limits are in
+  [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the

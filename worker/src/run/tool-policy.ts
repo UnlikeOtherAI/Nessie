@@ -49,6 +49,7 @@ export const PA_PRESENCE_PRIVATE_READ_TOOL_IDS = new Set([
   'message_edit',
   'message_delete',
   'react',
+  'send_message',
   'team_search',
 ])
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createMockLlmServer, MOCK_EMBEDDING_DIMENSIONS } from './server.js'
-import { loadScenario } from './scenario.js'
+import { loadScenario, parseScenario } from './scenario.js'
 
 const chatRequest = (body: Record<string, unknown>) => ({
   body: JSON.stringify({
@@ -111,6 +111,72 @@ test('tool-call turn streams function calls and a tool_calls finish reason', asy
     assert.match(raw, /"tool_calls"/)
     assert.match(raw, /channel_list/)
     assert.match(raw, /"finish_reason":"tool_calls"/)
+  } finally {
+    await server.close()
+  }
+})
+
+test('a utility lane uses its scripted response when the request offers no tools', async () => {
+  const server = await createMockLlmServer({
+    scenario: parseScenario({
+      name: 'utility-response',
+      turns: [{ text: 'main response' }],
+      utility: { text: '{"share":true}' },
+    }),
+  })
+  try {
+    const utility = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ tools: [] }))
+    const main = await fetch(`${server.url}/v1/chat/completions`, chatRequest({
+      tools: [{ function: { name: 'send_message' }, type: 'function' }],
+    }))
+    const utilityBody = await utility.json() as { choices: Array<{ message: { content: string } }> }
+    const mainBody = await main.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(utilityBody.choices[0]?.message.content, '{"share":true}')
+    assert.equal(mainBody.choices[0]?.message.content, 'main response')
+  } finally {
+    await server.close()
+  }
+})
+
+test('an explicit fixture phase can select a main-inference scenario', async () => {
+  const base = parseScenario({ name: 'base', turns: [{ text: 'base response' }] })
+  const alternate = parseScenario({ name: 'alternate', turns: [{ text: 'alternate response' }] })
+  let phase = 'base'
+  const server = await createMockLlmServer({
+    mainScenarioResolver: () => phase === 'alternate' ? alternate : undefined,
+    scenario: base,
+  })
+  try {
+    const request = () => fetch(`${server.url}/v1/chat/completions`, chatRequest({
+      tools: [{ function: { name: 'send_message' }, type: 'function' }],
+    }))
+    const first = await request()
+    phase = 'alternate'
+    const second = await request()
+    const firstBody = await first.json() as { choices: Array<{ message: { content: string } }> }
+    const secondBody = await second.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(firstBody.choices[0]?.message.content, 'base response')
+    assert.equal(secondBody.choices[0]?.message.content, 'alternate response')
+  } finally {
+    await server.close()
+  }
+})
+
+test('utility turns are consumed in their declared order', async () => {
+  const server = await createMockLlmServer({
+    scenario: parseScenario({
+      name: 'utility-turns',
+      turns: [{ text: 'main response' }],
+      utilityTurns: [{ text: '{"share":false}' }, { text: '{"share":true}' }],
+    }),
+  })
+  try {
+    const first = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ tools: [] }))
+    const second = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ tools: [] }))
+    const firstBody = await first.json() as { choices: Array<{ message: { content: string } }> }
+    const secondBody = await second.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(firstBody.choices[0]?.message.content, '{"share":false}')
+    assert.equal(secondBody.choices[0]?.message.content, '{"share":true}')
   } finally {
     await server.close()
   }

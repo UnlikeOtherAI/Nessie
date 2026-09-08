@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { grantMessageDisclosure } from '@nessie/runtime'
 import { captureUserMessageMemory } from '@nessie/memory'
 import { CHAT_MESSAGE_MAX_CHARS, redactDetectedSecrets, withActionContext } from '@nessie/schemas'
 import {
@@ -17,6 +18,7 @@ import {
 } from './message-destination.js'
 import {
   insertMessageBasis,
+  insertPrivateConversationSources,
   resolveToolPostBasis,
 } from './tool-message-basis.js'
 import { truncate } from './tool-output.js'
@@ -131,8 +133,34 @@ export const runSendMessageTool = async (
       messageId: created.id,
       organizationId: String(context.channel.organizationId),
     })
+    await insertPrivateConversationSources(tx, context, {
+      messageId: created.id,
+      organizationId: String(context.channel.organizationId),
+    })
     return created
   })
+
+  // The authorization gate proved a model judgement over the live request;
+  // this shared service separately proves present-day source entitlement,
+  // original authorship and the exact destination before it creates the same
+  // one-message grant that the card route uses.
+  if (context.disclosureShareAuthorized && destinationBasis.length > 0) {
+    const grantedByUserId = context.run.originatingUserId
+    if (grantedByUserId) {
+      await grantMessageDisclosure(context.prisma, {
+        audienceId: destination.channelId,
+        audienceKind: 'channel',
+        duration: '10m',
+        // This row was created from `content` moments above. Binding the
+        // automatic share to that exact persisted text keeps it on the same
+        // stale-content boundary as the acknowledgement card.
+        expectedContent: content,
+        messageId: message.id,
+        organizationId: String(context.channel.organizationId),
+        userId: grantedByUserId,
+      })
+    }
+  }
 
   // Capture writes this content back as durable memory. A restricted post must
   // not become a memory that later recall serves without the restriction, so a
@@ -161,6 +189,7 @@ export const runSendMessageTool = async (
         actorType: context.actorContext.actor.actorType,
         requestId: context.actorContext.actionContext.requestId,
         correlationId: context.actorContext.actionContext.correlationId,
+        privateConversationSources: context.consumedSources?.privateConversationSources() ?? [],
       },
       context.memoryCaptureConfig,
     )

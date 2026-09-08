@@ -13,6 +13,7 @@
     "test:e2e:connected-mail": "node e2e/connected-mail/run.mjs",
     "test:e2e:browser-cloud": "node e2e/browser-cloud/run.mjs",
     "test:e2e:connected-board-sources": "node e2e/connected-board-sources/run.mjs",
+    "test:e2e:disclosure": "node --import tsx e2e/disclosure/run.mjs",
     "test:e2e:ios-nav-bar": "node e2e/ios-nav-bar/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
     "test:e2e:organization-theme": "node e2e/organization-theme/run.mjs",
@@ -57,6 +58,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@nessie/mock-llm": "workspace:*",
     "@types/jmespath": "^0.15.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",

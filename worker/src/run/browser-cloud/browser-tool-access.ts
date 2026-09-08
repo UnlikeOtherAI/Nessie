@@ -36,7 +36,10 @@ export const recordBrowserDisclosure = (
   context: BrowserToolContext,
   principalUserId: string | null,
 ): void => {
-  context.consumedSources?.add(browserDisclosureScope(context.agentId, principalUserId))
+  if (!context.consumedSources) {
+    throw new Error('A browser read requires the run disclosure source sink.')
+  }
+  context.consumedSources.add(browserDisclosureScope(context.agentId, principalUserId))
 }
 
 export const poolFor = (deps: CloudBrowserDeps): SessionPoolDeps => ({ prisma: deps.prisma })

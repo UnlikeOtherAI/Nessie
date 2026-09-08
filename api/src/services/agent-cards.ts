@@ -52,13 +52,14 @@ export const loadReadableCard = async (
       // announced to the channel scope alone, and a press that published the
       // organization scope too would put the response preview in front of the
       // whole organisation (docs/standards/disclosure-boundaries.md).
-      channel: { select: { systemChannelType: true } },
+      channel: { select: { systemChannelType: true, visibility: true } },
       channelId: true,
       expiresAt: true,
       id: true,
       message: {
         select: {
           basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
           id: true,
           rootMessageId: true,
         },
@@ -95,6 +96,7 @@ export const loadReadableCard = async (
       agentId: card.agentId,
       basis: card.message.basisScopes,
       channelId: card.channelId,
+      disclosureSources: card.message.disclosureSources,
       messageId: card.messageId,
       organizationId: card.organizationId,
       userId: input.userId,

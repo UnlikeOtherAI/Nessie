@@ -671,6 +671,14 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm exec playwright-core install --with-deps chromium
 
+      # The disclosure boundary needs a browser recipient, while its source
+      # travels through the real queue and worker. Run it first: it owns the
+      # fixed-port API/admin lifecycle and fails closed if a different suite
+      # has already adopted those ports.
+      - name: Run private conversation disclosure browser evaluation
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:disclosure
+
       # Real-browser navigation transitions: each case freezes the actual
       # animation with document.getAnimations() at 0 %, 50 % and 100 %,
       # asserts layer positions and scrollLeft numerically, and saves the
@@ -721,6 +729,14 @@ jobs:
         with:
           name: connected-mail-screenshots
           path: e2e/screenshots/connected-mail
+          if-no-files-found: warn
+
+      - name: Upload disclosure browser screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-conversation-disclosure-screenshots
+          path: e2e/screenshots/disclosure
           if-no-files-found: warn
 
       - name: Report skip

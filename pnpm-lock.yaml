@@ -157,6 +157,9 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@nessie/mock-llm':
+        specifier: workspace:*
+        version: link:../packages/mock-llm
       '@types/jmespath':
         specifier: ^0.15.2
         version: 0.15.2

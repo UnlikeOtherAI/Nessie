@@ -10,6 +10,7 @@ import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 type DisclosureMessage = {
   agentId: string | null
   basisScopes: Array<{ scopeId: string; scopeType: string }>
+  disclosureSources: Array<{ sourceAuthorUserId: string | null; sourceChannelId: string }>
   id: string
 }
 
@@ -44,6 +45,7 @@ export const evaluateMessageReadAccess = async (
       agentId: input.message.agentId,
       basis: input.message.basisScopes,
       channelId: input.channelId,
+      disclosureSources: input.message.disclosureSources,
       messageId: input.message.id,
       organizationId: input.organizationId,
       viewerChannelIds: input.viewer.scopes

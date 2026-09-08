@@ -41,12 +41,19 @@ export type WsEventMap = {
     currentToolName?: string
     currentToolStartedAt?: string
   }
-  'agent.tool.start': {
-    agentId: AgentId
-    runId: RunId
-    toolName: string
-    inputSummary: string
-  }
+  'agent.tool.start':
+    | {
+        agentId: AgentId
+        runId: RunId
+        toolName: string
+        inputSummary: string
+      }
+    | {
+        agentId: AgentId
+        runId: RunId
+        /** The tool input was derived from sources this channel cannot all read. */
+        restricted: true
+      }
   'agent.tool.end': {
     agentId: AgentId
     runId: RunId
@@ -110,6 +117,11 @@ export type WsEventMap = {
     contentPreview?: string
     restricted?: true
     editedAt: string
+  }
+  /** A one-reply disclosure grant changed; readers refetch through the ACL. */
+  'message.disclosure.changed': {
+    messageId: string
+    threadId: ThreadId
   }
   'message.deleted': {
     messageId: string
@@ -201,12 +213,19 @@ export const AgentStatusEventSchema = z.object({
   currentToolStartedAt: TimestampSchema.optional(),
 })
 export type AgentStatusEvent = z.infer<typeof AgentStatusEventSchema>
-export const AgentToolStartEventSchema = z.object({
-  agentId: AgentIdSchema,
-  runId: RunIdSchema,
-  toolName: NonEmptyStringSchema,
-  inputSummary: z.string(),
-})
+export const AgentToolStartEventSchema = z.union([
+  z.object({
+    agentId: AgentIdSchema,
+    runId: RunIdSchema,
+    toolName: NonEmptyStringSchema,
+    inputSummary: z.string(),
+  }),
+  z.object({
+    agentId: AgentIdSchema,
+    runId: RunIdSchema,
+    restricted: z.literal(true),
+  }),
+])
 export type AgentToolStartEvent = z.infer<typeof AgentToolStartEventSchema>
 export const AgentToolEndEventSchema = z.object({
   agentId: AgentIdSchema,
@@ -277,6 +296,11 @@ export const MessageUpdatedEventSchema = z.object({
   editedAt: TimestampSchema,
 })
 export type MessageUpdatedEvent = z.infer<typeof MessageUpdatedEventSchema>
+export const MessageDisclosureChangedEventSchema = z.object({
+  messageId: NonEmptyStringSchema,
+  threadId: ThreadIdSchema,
+})
+export type MessageDisclosureChangedEvent = z.infer<typeof MessageDisclosureChangedEventSchema>
 export const MessageDeletedEventSchema = z.object({
   messageId: NonEmptyStringSchema,
   threadId: ThreadIdSchema,
@@ -417,6 +441,7 @@ export const WsEventNameSchema = z.enum([
   'card.updated',
   'message.new',
   'message.updated',
+  'message.disclosure.changed',
   'message.deleted',
   'message.reaction',
   'message.reply',
@@ -590,6 +615,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('message.updated'),
     data: MessageUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.disclosure.changed'),
+    data: MessageDisclosureChangedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

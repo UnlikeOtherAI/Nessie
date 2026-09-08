@@ -12,6 +12,14 @@ import {
 } from './access.js'
 import { formatChannelScope } from './tool-output.js'
 
+type MessageDestinationContext = Pick<
+  BuiltinToolRuntimeContext,
+  'actorContext' | 'prisma'
+> & {
+  channel: { organizationId: string }
+  run: { threadId: string }
+}
+
 const ensureThreadForChannel = async (
   prisma: PrismaClient,
   channelId: string,
@@ -194,7 +202,7 @@ const resolveDmChannel = async (
 }
 
 export const resolveMessageDestination = async (
-  context: BuiltinToolRuntimeContext,
+  context: MessageDestinationContext,
   input: {
     channelId?: string
     content: string

@@ -11,7 +11,7 @@ Every claim below was checked against the tree at
 | 2 | **`spawn_subtask`** builtin | Any agent whose `parentAgentId` is null | New **permanent `Agent` row** + `Run` + `Task` + `PlanStep` | none beyond tool grant; depth capped at 1 |
 | 3 | **`delegate`** builtin | Any granted agent | Nothing durable — invocations fold into the parent run | capped at `NESSIE_MAX_DELEGATES_PER_RUN` (16); no nesting |
 | 4 | **Channel messages / @mentions** | Any agent that can post | `Message` row | channel membership + engagement decision |
-| 5 | **`send_message`** builtin | **Personal Assistant only** | `Message` row authored **as the human user** | `personalAssistantOnly`; destination resolution |
+| 5 | **`send_message`** builtin | Any agent with the ordinary tool grant and live requesting user | `Message` row authored **as the human user** | destination resolution; private-conversation exports need original-author consent |
 
 ### 1. The mailbox — real infrastructure, no agent access
 
@@ -91,9 +91,13 @@ live and agent-reachable today.
 Channel posting plus the model-judged engagement decision
 ([`worker/src/run/orchestrate.ts`](../../../worker/src/run/orchestrate.ts)) is the de
 facto agent-to-agent surface, and it is the *right* one for conversational work.
-`send_message` ([`worker/src/run/pa-tools/message-delivery.ts:19`](../../../worker/src/run/pa-tools/message-delivery.ts#L19))
-lets the PA post **as the user**, recording `delegatedByAgentId` /
-`delegatedFromRunId` in `Message.metadata`.
+`send_message` ([`worker/src/run/pa-tools/message-delivery.ts`](../../../worker/src/run/pa-tools/message-delivery.ts))
+lets an agent whose owner explicitly enabled the builtin post **as the live
+requesting user**, recording `delegatedByAgentId` / `delegatedFromRunId` in
+`Message.metadata`. It is unavailable without that grant or without a live
+requester. A message derived from a private conversation retains its original
+human-author lineage and can leave the source only through that author's
+destination-and-content-specific disclosure grant.
 
 ## 2.2 What we already have that the brief asks for
 
@@ -138,11 +142,11 @@ Three corrections to how this was first written:
   today; the only live traffic is workflow mail (owner-authored templates). G2 is
   the right thing to fix *before* Phase 1, because Phase 1 weaponizes it — not
   because it is being exploited now.
-- **`send_message` is not part of this defect.** The PA posting as the user is by
-  design: the PA is the user's explicit delegate, and
-  [`message-delivery.ts:47-56`](../../../worker/src/run/pa-tools/message-delivery.ts#L47)
-  records `delegatedByAgentId` / `delegatedFromRunId`. Lumping it in overstated
-  the gap.
+- **`send_message` does not create the G2 attribution issue.** It posts as the
+  live requester by design and records `delegatedByAgentId` /
+  `delegatedFromRunId`; its separate private-conversation disclosure boundary
+  verifies original-human-author consent before a restricted message can be
+  read in a new destination.
 - **Attribution machinery already exists and is being routed around.**
   [`prompt.ts:40-58`](../../../worker/src/run/execute/prompt.ts#L40) prefixes
   foreign-agent turns with the author's name, and

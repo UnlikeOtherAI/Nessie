@@ -1,7 +1,11 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 
 import { captureUserMessageMemory, type CaptureConfig } from '@nessie/memory'
-import { publishMessageEnvelope, type AnnouncedMessage } from '@nessie/runtime'
+import {
+  originalHumanAuthorId,
+  publishMessageEnvelope,
+  type AnnouncedMessage,
+} from '@nessie/runtime'
 import {
   parseChannelId,
   parseThreadId,
@@ -45,6 +49,7 @@ type BuildChannelRealtimeScopes = (input: {
   channelId: string
   organizationId: string
   systemChannelType?: string | null
+  visibility?: string
 }) => WsScope[]
 
 type MessageRealtimePublisher = {
@@ -73,6 +78,7 @@ export type DeliveredMessageThread = {
     id: string
     systemChannelType: ChannelSystemType | null
     type: 'dm' | 'standard'
+    visibility?: string
   }
 }
 
@@ -85,6 +91,7 @@ export type MessageEnvelopeDeps = {
 export type MessageEnvelopeChannel = {
   id: string
   organizationId: string
+  visibility?: string
   /**
    * Load-bearing, not decoration: a delegated system DM announces to the
    * channel scope alone, while every other channel also announces
@@ -121,6 +128,7 @@ export const publishMessageNew = async (
       channelId: input.channel.id,
       organizationId: input.channel.organizationId,
       systemChannelType: input.channel.systemChannelType,
+      visibility: input.channel.visibility,
     }),
     { channelId: input.channel.id, message: input.message, threadId: input.threadId },
   )
@@ -145,6 +153,7 @@ export const publishMessageReply = async (
       channelId: input.channel.id,
       organizationId: input.channel.organizationId,
       systemChannelType: input.channel.systemChannelType,
+      visibility: input.channel.visibility,
     }),
     {
       channelId: input.channel.id,
@@ -170,6 +179,9 @@ export const deliverCreatedMessage = async (
 ): Promise<void> => {
   const { actorContext, content, log, result, thread } = input
   const { buildChannelRealtimeScopes, messageMemoryCaptureConfig, prisma, realtimeHub } = deps
+  const sourceAuthorUserId = thread.channel.visibility && thread.channel.visibility !== 'public'
+    ? originalHumanAuthorId(result.message)
+    : null
 
   if (messageMemoryCaptureConfig) {
     // Fire-and-forget: memory capture must never delay message posting.
@@ -198,6 +210,9 @@ export const deliverCreatedMessage = async (
         requestId: actorContext.actionContext.requestId,
         correlationId: actorContext.actionContext.correlationId,
         systemComponent: 'memory-capture',
+        privateConversationSources: sourceAuthorUserId
+          ? [{ sourceAuthorUserId, sourceChannelId: thread.channel.id }]
+          : [],
       },
       messageMemoryCaptureConfig,
     ).catch((error) =>
@@ -212,6 +227,7 @@ export const deliverCreatedMessage = async (
     id: thread.channel.id,
     organizationId: actorContext.tenant.organizationId,
     systemChannelType: thread.channel.systemChannelType,
+    visibility: thread.channel.visibility,
   }
 
   if (result.replyRoot) {
@@ -229,6 +245,7 @@ export const deliverCreatedMessage = async (
         channelId: channel.id,
         organizationId: channel.organizationId,
         systemChannelType: channel.systemChannelType,
+        visibility: channel.visibility,
       }),
       {
         data: {
@@ -270,6 +287,7 @@ export const deliverCreatedMessage = async (
           channelId: thread.channel.id,
           organizationId: actorContext.tenant.organizationId,
           systemChannelType: thread.channel.systemChannelType,
+          visibility: thread.channel.visibility,
         }),
         {
           data: {

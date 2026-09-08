@@ -32,6 +32,7 @@ type OpenAiRequestMessage = {
 type ChatCompletionBody = {
   messages?: OpenAiRequestMessage[]
   stream?: boolean
+  tools?: unknown[]
 }
 
 const sendJson = (response: ServerResponse, status: number, body: unknown): void => {
@@ -217,8 +218,11 @@ const mockEmbedding = (): number[] => {
 
 export const createMockLlmServer = async (input: {
   host?: string
+  /** Lets a fixture select a complete scripted conversation by explicit test state. */
+  mainScenarioResolver?: () => MockScenario | undefined
   port?: number
   scenario: MockScenario
+  utilityResponder?: (prompt: string) => string | undefined
 }): Promise<MockLlmServer> => {
   const engine = new MockLlmEngine(input.scenario)
   let sequence = 0
@@ -249,7 +253,23 @@ export const createMockLlmServer = async (input: {
       return
     }
 
-    const outcome = await engine.next(toProviderMessages(body.messages))
+    const messages = toProviderMessages(body.messages)
+    // Main inference always receives its offered schemas. Utility judgements
+    // intentionally receive none, so this selects a scenario lane without
+    // inspecting natural-language prompt content.
+    const overrideText = !Array.isArray(body.tools) || body.tools.length === 0
+      ? input.utilityResponder?.(messages.map((message) => message.content ?? '').join('\n'))
+      : undefined
+    const mainScenario = input.mainScenarioResolver?.() ?? input.scenario
+    const mainEngine = mainScenario === input.scenario ? engine : new MockLlmEngine(mainScenario)
+    const outcome = Array.isArray(body.tools) && body.tools.length > 0
+      ? await mainEngine.next(messages)
+      : await engine.nextUtility(
+        messages,
+        overrideText === undefined
+          ? undefined
+          : { latencyMs: 0, text: overrideText, usage: {} },
+      )
     if (outcome.kind === 'error') {
       sendProviderError(response, outcome.error)
       return
@@ -258,7 +278,7 @@ export const createMockLlmServer = async (input: {
     sequence += 1
     const completionId = `chatcmpl-mock-${sequence}`
     if (body.stream) {
-      await streamCompletion(response, engine, outcome, completionId)
+      await streamCompletion(response, mainEngine, outcome, completionId)
       return
     }
 
@@ -276,7 +296,7 @@ export const createMockLlmServer = async (input: {
       }],
       created: Math.floor(Date.now() / 1000),
       id: completionId,
-      model: engine.model,
+      model: mainEngine.model,
       object: 'chat.completion',
       usage: usageFor(outcome),
     })

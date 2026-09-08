@@ -6,6 +6,7 @@ import { BROWSER_OBSERVE_TOOL_ID, BROWSER_OPEN_TOOL_ID } from '@nessie/runtime'
 import {
   liveSession,
   observeWithinGrantedOrigin,
+  recordBrowserDisclosure,
   requireGrantedObservationOrigin,
 } from '../src/run/browser-cloud/browser-tool-access.js'
 import { cloudBrowserTool } from '../src/run/browser-cloud/browser-tools.js'
@@ -40,6 +41,13 @@ test('a legacy team login refuses browser reads for both Alice and Bob', async (
     assert.match(alice.result.output, /without a private owner/)
     assert.equal(alice.result.output, bob.result.output)
   }
+})
+
+test('a signed-in browser cannot omit the run disclosure sink', () => {
+  assert.throws(
+    () => recordBrowserDisclosure({ agentId: 'agent' } as never, 'person'),
+    /requires the run disclosure source sink/,
+  )
 })
 
 test('a deferred observation redirected outside a temporary grant emits no output', async () => {

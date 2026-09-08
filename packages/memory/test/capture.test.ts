@@ -196,3 +196,105 @@ test('captureThought rejects conflicting scoped audience identifiers', async () 
     /conflicting audience identifiers/,
   )
 })
+
+test('captureThought stores its trusted private-conversation source snapshot', async () => {
+  const queries: { params: unknown[] | undefined; sql: string }[] = []
+  const pool = createPoolStub((sql, params) => {
+    queries.push({ params, sql })
+    if (sql.includes('SELECT visibility::text AS "visibility"')) return { rows: [{ visibility: 'private' }] }
+    if (sql.includes('SELECT id, metadata FROM thoughts')) return { rows: [] }
+    if (sql.includes('INSERT INTO thoughts')) {
+      return { rows: [{ created_at: '2026-09-09T10:00:00.000Z', id: '44444444-4444-4444-4444-444444444444' }] }
+    }
+    if (sql.includes('INSERT INTO thought_disclosure_sources')) return { rows: [] }
+    if (sql.includes('INSERT INTO thought_audit_logs')) return { rows: [] }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  await captureThought({
+    audienceId: '22222222-2222-2222-2222-222222222222',
+    audienceType: 'channel',
+    content: 'The private launch date remains Friday.',
+    organizationId: '33333333-3333-3333-3333-333333333333',
+    ownerId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    ownerType: 'agent',
+    privateConversationSources: [{
+      sourceAuthorUserId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      sourceChannelId: '22222222-2222-2222-2222-222222222222',
+    }],
+  }, { modelClient: createModelClientStub(), pool })
+
+  assert.ok(queries.some((query) =>
+    query.sql.includes('INSERT INTO thought_disclosure_sources')
+    && query.params?.[2] === '22222222-2222-2222-2222-222222222222'
+    && query.params?.[3] === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  ))
+})
+
+test('duplicate capture retains unknown legacy private provenance beside a new source', async () => {
+  const sources: unknown[][] = []
+  const pool = createPoolStub((sql, params) => {
+    if (sql.includes('SELECT visibility::text AS "visibility"')) return { rows: [{ visibility: 'private' }] }
+    if (sql.includes('SELECT id, metadata FROM thoughts')) {
+      return { rows: [{ id: '44444444-4444-4444-4444-444444444444', metadata: null }] }
+    }
+    if (sql.includes('FROM thoughts t') && sql.includes('FOR UPDATE')) {
+      return { rows: [{ audienceId: '22222222-2222-2222-2222-222222222222', audienceType: 'channel', channelVisibility: 'private' }] }
+    }
+    if (sql.trimStart().startsWith('SELECT source_channel_id')) return { rows: [] }
+    if (sql.includes('INSERT INTO thought_disclosure_sources')) {
+      sources.push(params ?? [])
+      return { rows: [] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  await captureThought({
+    audienceId: '22222222-2222-2222-2222-222222222222',
+    audienceType: 'channel',
+    content: 'The private launch date remains Friday.',
+    organizationId: '33333333-3333-3333-3333-333333333333',
+    ownerId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    ownerType: 'agent',
+    privateConversationSources: [{
+      sourceAuthorUserId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      sourceChannelId: '22222222-2222-2222-2222-222222222222',
+    }],
+  }, { modelClient: createModelClientStub(), pool })
+
+  assert.deepEqual(sources.map((params) => params[3]), [null, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'])
+})
+
+test('an unproven duplicate contribution retains unknown provenance beside an existing author', async () => {
+  const insertedAuthors: unknown[] = []
+  const pool = createPoolStub((sql, params) => {
+    if (sql.includes('SELECT visibility::text AS "visibility"')) return { rows: [{ visibility: 'private' }] }
+    if (sql.includes('SELECT id, metadata FROM thoughts')) {
+      return { rows: [{ id: '44444444-4444-4444-4444-444444444444', metadata: null }] }
+    }
+    if (sql.includes('FROM thoughts t') && sql.includes('FOR UPDATE')) {
+      return { rows: [{ audienceId: '22222222-2222-2222-2222-222222222222', audienceType: 'channel', channelVisibility: 'private' }] }
+    }
+    if (sql.trimStart().startsWith('SELECT source_channel_id')) {
+      return { rows: [{ sourceChannelId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }] }
+    }
+    if (sql.includes('INSERT INTO thought_disclosure_sources')) {
+      insertedAuthors.push(params?.[3])
+      return { rows: [] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  await captureThought({
+    audienceId: '22222222-2222-2222-2222-222222222222',
+    audienceType: 'channel',
+    channelId: '22222222-2222-2222-2222-222222222222',
+    content: 'The private launch date remains Friday.',
+    organizationId: '33333333-3333-3333-3333-333333333333',
+    ownerId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    ownerType: 'agent',
+    privateConversationSources: [],
+  }, { modelClient: createModelClientStub(), pool })
+
+  assert.deepEqual(insertedAuthors, [null])
+})

@@ -97,7 +97,7 @@ interface ChannelMessageFeedProps {
    */
   shareRestrictedMessage?: (
     messageId: string,
-    input: { kind: 'message' | 'scope'; duration: DisclosureDuration },
+    input: { expectedContent: string; kind: 'message' | 'scope'; duration: DisclosureDuration },
   ) => Promise<void>
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void

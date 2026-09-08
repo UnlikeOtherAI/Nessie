@@ -58,6 +58,8 @@ export type BuiltinToolRuntimeContext = {
   gmailDraftSendApproved?: true
   /** Standing consent already resolved by the authorization chokepoint. */
   gmailDraftSendStandingAuthorized?: true
+  /** Exact one-message disclosure share admitted by the run authorizer. */
+  disclosureShareAuthorized?: true
   /**
    * Keeps the run-local opt-in capture state in sync when the model starts or
    * stops a demonstration during this very run. Ordinary tool fixtures need

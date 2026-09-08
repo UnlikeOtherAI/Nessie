@@ -27,10 +27,13 @@ file is the rule**.
   list has nowhere to render a placeholder. On the read side every path asks the
   one predicate — list, single message, and the durable thought log alike, since
   reasoning inherits the provenance of what the reply was built from. The live
-  SSE lanes cannot filter per viewer, so they are cut structurally by
-  `runReplyIsRestricted` the moment a run consumes a privileged source; that
-  predicate is monotone by construction, which is what makes it safe to call per
-  delta. Containment (`constrainScopesToDestination`) is a floor under all of
+  SSE lanes cannot filter per viewer, so `runReplyIsRestricted` cuts them the
+  moment a run consumes a source beyond its destination; that predicate is
+  monotone by construction, which is what makes it safe to call per delta.
+  Separately, all content-bearing realtime activity for a non-public channel
+  uses its channel scope alone: a destination's own channel basis must never
+  reopen organisation or agent broadcast lanes. Containment
+  (`constrainScopesToDestination`) is a floor under all of
   this, but it constrains **memory recall only** — never treat it as "nothing
   crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
   `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
@@ -50,6 +53,9 @@ Facts not restated there:
 - The remainder after `computeReplyBasis` is stamped as `MessageBasisScope` +
   `RunBasisScope` in the same transaction as the message; `agent-message.ts`
   opens that transaction itself rather than trusting callers.
+- The run ledger is monotone and is persisted before any run plan, tool
+  summary/preview, or crash checkpoint records derived content. A run that has
+  not replied yet is therefore still protected at every metadata read path.
 - Basis vocabulary is `user | channel | team | project | organization | agent`.
   `agent:<id>` means exactly the people who pass the shared live agent-visibility
   predicate. A destination implies agents bound to its channel; those ids are
@@ -63,6 +69,44 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- A manual share publishes the content-free `message.disclosure.changed` event
+  to the destination channel scopes. Open readers refetch the reply through
+  the current predicate; granting it never puts its text on the realtime wire.
+- A task, plan, or child-agent activity row linked to a run is a retained run
+  output: its reader must satisfy both the run channel entitlement and that
+  run's disclosure basis. A task without a run keeps ordinary task visibility.
+- A shared agent with private-conversation material cannot place that material
+  into an external browser URL or page (`browser_open` and `browser_act`). Those
+  browser verbs have no original-author-bound, exact-content disclosure grant;
+  personal-assistant and public-context browser work keep their ordinary flow.
+- **A private conversation's author, rather than its agent's owner or another
+  reader, decides export.** `MessageDisclosureSource` carries the source
+  channel and each human author whose private turn entered a derived message.
+  A one-message grant needs that exact single author; a multi-author private
+  conversation therefore stays withheld until each author has a deliberately
+  scoped route. Standing grants never cover private conversation lineage. An
+  explicit request can create the existing one-message grant automatically,
+  but only after the utility model judges the current author-authored request
+  against the exact proposed content and destination and the server proves the
+  requester is that recorded source author. Read-time grant evaluation repeats
+  that author check, so grants made before lineage existed cannot release a
+  private conversation and a valid author can renew the same one-message grant.
+  The acknowledgement submits the exact rendered reply body; a concurrent
+  replacement revokes earlier grants and a stale acknowledgement is refused, so
+  a grant never covers content its author did not inspect.
+  Missing lineage fails closed for sharing. Transcript, attachment, checkpoint,
+  memory and conversation-search reads carry known lineage forward and mark an
+  older/agent-derived source with no durable author as unknown; a known turn in
+  the same channel cannot re-attribute it. `RunCheckpointDisclosureSource` and
+  `ThoughtDisclosureSource` retain only server-derived channel-and-author
+  provenance; a checkpoint writes its body, basis, and source rows atomically,
+  while a legacy checkpoint or thought without source rows remains unknown on
+  recall. Thought capture may union provenance from its actual input, but never
+  invent an author from channel membership, an actor, or metadata. A handoff
+  brief or delegated subtask assignment is a hidden trigger message, never an
+  untracked prompt override:
+  it stamps the inherited basis and these same original authors before the child
+  run receives its bytes. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
   `canManageChannel` (`api/src/services/channel-members.ts`), the same gate

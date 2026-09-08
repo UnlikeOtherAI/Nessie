@@ -51,6 +51,7 @@ const makeContext = (replyRootMessageId?: string): RunContext => ({
     projectId: '00000000-0000-0000-0000-000000000066',
     teamId: TEAM_ID,
     systemChannelType: null,
+    visibility: 'public',
   },
   consumedSources: createConsumedSourceSink(),
   run: {
@@ -113,6 +114,8 @@ const makeDeps = () => {
         }
       },
     },
+    messageBasisScope: { createMany: async () => ({ count: 1 }) },
+    messageDisclosureSource: { createMany: async () => ({ count: 0 }) },
     plan: { update: async () => ({}) },
     planStep: { count: async () => 0, update: async () => ({}) },
     run: {
@@ -121,6 +124,7 @@ const makeDeps = () => {
       findUnique: async () => ({ modelSubscription: null }),
       update: async () => ({}),
     },
+    runBasisScope: { createMany: async () => ({ count: 1 }) },
     task: { update: async () => ({}) },
     taskEvent: { create: async () => ({}) },
   }
@@ -262,6 +266,43 @@ test('completeRunExecution attaches rootMessageId, bookkeeping, and reply events
   const streamDone = sse.find((call) => call.event === 'stream.done')
   assert.ok(streamDone)
   assert.equal(streamDone.data.rootMessageId, ROOT_MESSAGE_ID)
+})
+
+test('a restricted reply publishes no reply-thread metadata', async () => {
+  const { deps, sse, ws } = makeDeps()
+  const context = makeContext(ROOT_MESSAGE_ID)
+  context.consumedSources.add({
+    scopeId: '00000000-0000-0000-0000-0000000000aa',
+    scopeType: 'user',
+  })
+
+  await completeRunExecution(deps, makePayload(), context, {
+    planId: PLAN_ID,
+    rootStepId: PLAN_STEP_ID,
+  }, {
+    invocations: [],
+    iterations: 1,
+    memories: [],
+    responseText: 'private response',
+    toolCallsUsed: 0,
+  })
+
+  const replies = wsEvents(ws, 'message.reply')
+  assert.equal(replies.length, 1)
+  assert.deepEqual(replies[0]?.data, {
+    agentId: AGENT_ID,
+    channelId: CHANNEL_ID,
+    messageId: REPLY_MESSAGE_ID,
+    restricted: true,
+    role: 'assistant',
+    rootMessageId: ROOT_MESSAGE_ID,
+    threadId: THREAD_ID,
+  })
+  assert.equal(wsEvents(ws, 'message.reply.meta').length, 0)
+
+  const streamDone = sse.find((call) => call.event === 'stream.done')
+  assert.equal(streamDone?.data.content, '')
+  assert.equal(streamDone?.data.restricted, true)
 })
 
 test('completeRunExecution without a reply root stays byte-identical (top-level)', async () => {
