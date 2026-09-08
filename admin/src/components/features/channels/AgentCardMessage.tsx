@@ -12,6 +12,7 @@ import { FormError } from '../../shared/FormActions'
 import { AppIcon } from '../apps/AppIcon'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentCardBlocks, type AgentCardFieldValue } from './AgentCardBlocks'
+import { ChatCardShell } from './ChatCardShell'
 
 const statusCopy: Record<AgentCardPresenter['status'], string> = {
   cancelled: 'Cancelled',
@@ -158,14 +159,8 @@ export const AgentCardMessage = ({
   }
 
   return (
-    <section
-      className={[
-        'mt-2 max-w-2xl rounded-[var(--radius-lg)] border border-[color:var(--line)]',
-        'bg-[color:var(--panel-soft)] p-3',
-      ].join(' ')}
-      data-testid="agent-card"
-    >
-      <header className="flex items-start gap-2">
+    <ChatCardShell className="agent-card-message" testId="agent-card">
+      <header className="agent-card-header">
         {card.service ? (
           <AppIcon
             displayName={card.service.label}
@@ -174,8 +169,8 @@ export const AgentCardMessage = ({
           />
         ) : null}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="m-0 truncate text-sm font-semibold text-[color:var(--tx1)]">
+          <div className="agent-card-title-row">
+            <h3 className="agent-card-title">
               {card.title}
             </h3>
             <Pill size="sm" tone={statusTone[card.status]}>
@@ -183,12 +178,12 @@ export const AgentCardMessage = ({
             </Pill>
           </div>
           {card.subtitle ? (
-            <p className="m-0 text-xs text-[color:var(--tx2)]">{card.subtitle}</p>
+            <p className="agent-card-subtitle">{card.subtitle}</p>
           ) : null}
         </div>
       </header>
 
-      <div className="mt-3">
+      <div className="agent-card-body">
         <AgentCardBlocks
           blocks={card.blocks}
           disabled={!canRespond || respond.isPending}
@@ -212,17 +207,17 @@ export const AgentCardMessage = ({
       </div>
 
       {card.browserLogin ? (
-        <div className="mt-3 rounded-md border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] p-3 text-xs text-[color:var(--tx2)]">
-          <p className="m-0 font-medium text-[color:var(--tx)]">Private, one-time access</p>
-          <p className="mt-1 mb-0">Only you can open this browser. It ends {new Date(card.browserLogin.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
-          <p className="mt-1 mb-0">Allowed for this task: {card.browserLogin.origins.join(', ')}.</p>
-          <p className="mt-1 mb-0">Nessie relays browser input privately; it never enters chat or the agent context.</p>
+        <div className="agent-card-notice">
+          <p>Private, one-time access</p>
+          <p>Only you can open this browser. It ends {new Date(card.browserLogin.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
+          <p>Allowed for this task: {card.browserLogin.origins.join(', ')}.</p>
+          <p>Nessie relays browser input privately; it never enters chat or the agent context.</p>
         </div>
       ) : null}
 
-      <FormError className="mt-3">{submissionError}</FormError>
+      <FormError className="agent-card-error">{submissionError}</FormError>
 
-      <footer className="mt-3 flex flex-wrap items-center gap-2">
+      <footer className="agent-card-footer">
         {card.status === 'open' ? (
           canRespond ? (
             <>
@@ -289,6 +284,6 @@ export const AgentCardMessage = ({
           </span>
         )}
       </footer>
-    </section>
+    </ChatCardShell>
   )
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { useAuthedObjectUrlFromPath } from '../../../lib/uploads'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { TabBar } from '../../primitives/TabBar'
 import { MessageMarkdown } from './MessageMarkdown'
 
 /**
@@ -53,6 +54,22 @@ const CardImage = ({ alt, attachmentId, caption }: {
 export type AgentCardFieldValue = string | number | boolean
 
 /**
+ * A short, preselected option set is clearer as the shared compact choice
+ * strip. A blank required value and longer sets retain the native select: the
+ * latter keeps its placeholder and is the more legible compact picker.
+ */
+const canUseChoiceStrip = (
+  block: Extract<PresentedAgentCardBlock, { type: 'input' }>,
+  value: AgentCardFieldValue | undefined,
+): value is string =>
+  block.input === 'select'
+  && typeof value === 'string'
+  && (block.options?.length ?? 0) > 1
+  && (block.options?.length ?? 0) <= 4
+  && (block.options ?? []).every((option) => option.label.length <= 18)
+  && (block.options ?? []).some((option) => option.value === value)
+
+/**
  * A settled card is a record of what was decided, not a form nobody can use.
  * Rendering its inputs as empty disabled controls says "nothing was chosen",
  * which is the opposite of what happened, so the answered values are shown
@@ -96,11 +113,11 @@ export const AgentCardBlocks = ({
   settled: boolean
   values: Record<string, AgentCardFieldValue>
 }) => (
-  <div className="flex flex-col gap-3">
+  <div className="agent-card-blocks">
     {blocks.map((block, index) => {
       if (block.type === 'text') {
         return (
-          <div className="text-sm" key={`text-${index}`}>
+          <div className="agent-card-text" key={`text-${index}`}>
             {/* Card text is agent-authored prose, not channel chat: it carries
                 no @mention entities to resolve, so text nodes pass through
                 unchanged. Remote images stay blocked by the default. */}
@@ -112,11 +129,11 @@ export const AgentCardBlocks = ({
       }
       if (block.type === 'fields') {
         return (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" key={`fields-${index}`}>
+          <dl className="agent-card-fields" key={`fields-${index}`}>
             {block.items.map((item) => (
               <div className="contents" key={item.label}>
-                <dt className="text-[color:var(--tx2)]">{item.label}</dt>
-                <dd className="m-0 text-[color:var(--tx1)]">{item.value}</dd>
+                <dt>{item.label}</dt>
+                <dd>{item.value}</dd>
               </div>
             ))}
           </dl>
@@ -139,7 +156,7 @@ export const AgentCardBlocks = ({
         if (block.href.startsWith('/')) {
           return (
             <Link
-              className="text-sm text-[color:var(--thinking)] underline"
+              className="agent-card-link"
               key={`link-${index}`}
               onClick={(event) => event.stopPropagation()}
               to={block.href}
@@ -150,7 +167,7 @@ export const AgentCardBlocks = ({
         }
         return (
           <a
-            className="text-sm text-[color:var(--thinking)] underline"
+            className="agent-card-link"
             href={block.href}
             key={`link-${index}`}
             onClick={(event) => event.stopPropagation()}
@@ -163,9 +180,9 @@ export const AgentCardBlocks = ({
       }
       if (settled && (block.type === 'input' || block.type === 'secret')) {
         return (
-          <div className="flex flex-col gap-0.5 text-sm" key={block.key}>
-            <span className="text-xs text-[color:var(--tx2)]">{block.label}</span>
-            <span className="text-[color:var(--tx1)]">
+          <div className="agent-card-value-row" key={block.key}>
+            <span>{block.label}</span>
+            <span>
               {settledValueText(block, values, providedSecretKeys)}
             </span>
           </div>
@@ -173,18 +190,18 @@ export const AgentCardBlocks = ({
       }
       if (block.type === 'secret') {
         return (
-          <label className="flex flex-col gap-1 text-sm" key={block.key}>
-            <span className="text-[color:var(--tx2)]">{block.label}</span>
+          <label className="agent-card-input-field" key={block.key}>
+            <span>{block.label}</span>
             <input
               autoComplete="off"
-              className="admin-input admin-input-sm"
+              className="agent-card-control"
               disabled={disabled}
               onChange={(event) => onSecretChange(block.key, event.target.value)}
               onClick={(event) => event.stopPropagation()}
               type="password"
               value={secrets[block.key] ?? ''}
             />
-            <span className="text-xs text-[color:var(--tx2)]">
+            <span className="agent-card-help">
               {block.help ?? `Stored securely in ${block.destinationLabel}. Never shown in this chat.`}
             </span>
           </label>
@@ -196,16 +213,40 @@ export const AgentCardBlocks = ({
         disabled,
         onClick: (event: { stopPropagation: () => void }) => event.stopPropagation(),
       }
+      if (canUseChoiceStrip(block, value)) {
+        return (
+          <div className="agent-card-input-field" key={block.key}>
+            <span>
+              {block.label}
+              {block.required ? ' *' : ''}
+            </span>
+            <div onClick={(event) => event.stopPropagation()}>
+              <TabBar<string>
+                ariaLabel={block.label}
+                items={(block.options ?? []).map((option) => ({
+                  disabled,
+                  label: option.label,
+                  value: option.value,
+                }))}
+                onChange={(nextValue) => onValueChange(block.key, nextValue)}
+                role="radiogroup"
+                size="sm"
+                value={value}
+              />
+            </div>
+          </div>
+        )
+      }
       return (
-        <label className="flex flex-col gap-1 text-sm" key={block.key}>
-          <span className="text-[color:var(--tx2)]">
+        <label className={`agent-card-input-field${block.input === 'checkbox' ? ' agent-card-checkbox-field' : ''}`} key={block.key}>
+          <span>
             {block.label}
             {block.required ? ' *' : ''}
           </span>
           {block.input === 'textarea' ? (
             <textarea
               {...common}
-              className="admin-input admin-input-sm"
+              className="agent-card-control agent-card-textarea"
               onChange={(event) => onValueChange(block.key, event.target.value)}
               maxLength={block.maxLength ?? 500}
               placeholder={block.placeholder ?? ''}
@@ -215,7 +256,7 @@ export const AgentCardBlocks = ({
           ) : block.input === 'select' ? (
             <select
               {...common}
-              className="admin-input admin-input-sm"
+              className="agent-card-control"
               onChange={(event) => onValueChange(block.key, event.target.value)}
               value={String(value ?? '')}
             >
@@ -236,7 +277,7 @@ export const AgentCardBlocks = ({
           ) : (
             <input
               {...common}
-              className="admin-input admin-input-sm"
+              className="agent-card-control"
               onChange={(event) =>
                 onValueChange(
                   block.key,

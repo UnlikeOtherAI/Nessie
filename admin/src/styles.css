@@ -2798,6 +2798,224 @@ button.reaction-pill-active:focus-visible {
   border-color: var(--accent);
 }
 
+/* Structured messages are compact sheets inside the chat stream, rather than
+   miniature settings forms. `--panel` is the semantic paper surface: it is
+   white in light themes and remains legible in dark/high-contrast themes. */
+.chat-card {
+  max-width: 42rem;
+  margin-top: 8px;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: 10px;
+  color: var(--tx);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-card-header,
+.agent-card-title-row,
+.agent-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-card-header {
+  align-items: flex-start;
+}
+
+.agent-card-title-row {
+  min-width: 0;
+}
+
+.agent-card-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card-subtitle {
+  margin: 1px 0 0;
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.agent-card-body,
+.agent-card-footer,
+.agent-card-error,
+.agent-card-notice {
+  margin-top: 10px;
+}
+
+.agent-card-footer {
+  flex-wrap: wrap;
+}
+
+.agent-card-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.agent-card-text,
+.agent-card-fields,
+.agent-card-link,
+.agent-card-value-row > span:last-child {
+  color: var(--tx2);
+}
+
+.agent-card-text {
+  font-size: 12px;
+}
+
+.agent-card-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.agent-card-fields dt,
+.agent-card-value-row > span:first-child,
+.agent-card-input-field > span:first-child {
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.agent-card-fields dd {
+  margin: 0;
+  color: var(--tx);
+}
+
+.agent-card-link {
+  width: fit-content;
+  font-size: 12px;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+.agent-card-input-field,
+.agent-card-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.agent-card-control {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-sm);
+  background: var(--overlay-weak);
+  padding: 4px 7px;
+  color: var(--tx);
+  font-size: 12px;
+  line-height: 18px;
+  outline: none;
+}
+
+.agent-card-control::placeholder {
+  color: var(--tx3);
+}
+
+.agent-card-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.agent-card-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.agent-card-textarea {
+  min-height: 66px;
+  resize: vertical;
+}
+
+.agent-card-checkbox-field {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.agent-card-checkbox-field > span {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.agent-card-checkbox-field > input {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
+}
+
+.agent-card-help {
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.agent-card-notice {
+  border-top: 1px solid var(--sep);
+  padding-top: 8px;
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.agent-card-notice p {
+  margin: 3px 0 0;
+}
+
+.agent-card-notice p:first-child {
+  margin-top: 0;
+  color: var(--tx2);
+  font-weight: var(--font-weight-medium);
+}
+
+.gmail-draft-card .gmail-draft-subject {
+  margin-top: 8px;
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* A draft's body is content in the sheet, not another boxed card. */
+.gmail-draft-card .gmail-draft-body {
+  margin-top: 6px;
+  border-top: 1px solid var(--sep);
+  padding-top: 7px;
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.gmail-draft-card .gmail-draft-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+@media (min-width: 36rem) {
+  .agent-card-input-field:not(.agent-card-checkbox-field),
+  .agent-card-value-row {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .agent-card-input-field:has(.agent-card-textarea) {
+    align-items: start;
+  }
+}
+
 .admin-input {
   width: 100%;
   border: 1px solid var(--sep);

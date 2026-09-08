@@ -95,6 +95,12 @@ this standard, not an exception to it.
   Text inputs default to 500 characters; a text or textarea card block alone
   may declare a smaller or larger `maxLength`, bounded at 100,000, so mail copy
   does not silently widen every card field.
+- **One chat-card treatment does not merge authority.** The universal
+  `AgentCardMessage` renderer and the read-only historical Gmail-draft preview
+  share `ChatCardShell`'s compact visual surface. The preview remains its own
+  owner-gated compatibility read: it does not gain an `AgentCard` row, card
+  lifecycle, press handling, or access to card form values merely by sharing
+  that presentation primitive.
 - **The press is a message.** It writes a real `user` turn stamped
   `metadata.agentCardResponse`, so the outcome is in the chat, is an ordinary
   human turn in the transcript, and wakes the card's agent through one
