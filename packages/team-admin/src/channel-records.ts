@@ -108,20 +108,21 @@ export const loadTeamProjectScope = async (
   }
 }
 
-export const loadUnreadCountsByThread = async (
+/**
+ * Unread per thread, over whichever threads the caller's filter names.
+ *
+ * One statement of the rule, two ways in: by thread id (the channel list,
+ * which already holds them) and by channel (one room's badge). A reply panel
+ * is an exact conversation, not the container thread, so each message resolves
+ * its root — a top-level post is its own root — and reads that root's cursor
+ * first. The old container cursor remains a deployment-safe baseline for roots
+ * that have not been opened since this more precise model shipped.
+ */
+const loadUnreadCounts = async (
   prisma: PrismaClient,
-  threadIds: string[],
+  threadFilter: Prisma.Sql,
   userId: string,
 ): Promise<Map<string, number>> => {
-  if (threadIds.length === 0) {
-    return new Map()
-  }
-
-  // A reply panel is an exact conversation, not the container thread. Each
-  // message therefore resolves its root (a top-level post is its own root) and
-  // reads that root's cursor first. The old container cursor remains a
-  // deployment-safe baseline for roots that have not been opened since this
-  // more precise model shipped.
   const rows = await prisma.$queryRaw<ThreadUnreadRow[]>(Prisma.sql`
     SELECT
       t.id AS thread_id,
@@ -139,7 +140,7 @@ export const loadUnreadCountsByThread = async (
     LEFT JOIN "message_conversation_read_states" mcrs
       ON mcrs.user_id = ${userId}::uuid
       AND mcrs.root_message_id = COALESCE(m.root_message_id, m.id)
-    WHERE t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
+    WHERE ${threadFilter}
     GROUP BY t.id
   `)
 
@@ -153,29 +154,45 @@ export const loadUnreadCountsByThread = async (
   )
 }
 
+export const loadUnreadCountsByThread = async (
+  prisma: PrismaClient,
+  threadIds: string[],
+  userId: string,
+): Promise<Map<string, number>> => {
+  if (threadIds.length === 0) {
+    return new Map()
+  }
+  return loadUnreadCounts(
+    prisma,
+    Prisma.sql`t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})`,
+    userId,
+  )
+}
+
 /**
  * Everything unread in a channel, across every thread of it.
  *
- * A conversation is a thread in the room, so the sidebar's badge has to count
- * the room — not only its General thread — or a job an agent is doing in a
- * conversation makes no mark anywhere a person looks. Thread visibility is
- * channel visibility (`buildViewerThreadWhere`), so a viewer who can see the
- * channel can see all of its threads and no further filter is owed here.
+ * A conversation is a thread in the room, so the sidebar's badge counts the
+ * room and not only its General thread — otherwise a job an agent is doing
+ * inside a conversation makes no mark anywhere a person looks. Thread
+ * visibility *is* channel visibility (`buildViewerThreadWhere`), so a viewer
+ * who can see the channel can see all of its threads and no further filter is
+ * owed here.
  *
- * Shared by the channel list and by `mapChannelRecord`: the admin patches its
- * cached list in place from single-record responses, so a second rule here
- * would blank a badge the moment anyone renamed or joined a channel.
+ * Shared with the channel list on purpose: the admin patches its cached list
+ * in place from single-record responses, so a second rule here would blank a
+ * badge the moment anyone renamed or joined a channel.
  */
 export const loadChannelUnreadCount = async (
   prisma: PrismaClient,
   channelId: string,
   userId: string,
 ): Promise<number> => {
-  const threads = await prisma.thread.findMany({
-    where: { channelId },
-    select: { id: true },
-  })
-  const counts = await loadUnreadCountsByThread(prisma, threads.map((thread) => thread.id), userId)
+  const counts = await loadUnreadCounts(
+    prisma,
+    Prisma.sql`t.channel_id = ${channelId}::uuid`,
+    userId,
+  )
   let total = 0
   for (const count of counts.values()) total += count
   return total
