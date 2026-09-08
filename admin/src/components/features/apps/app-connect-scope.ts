@@ -35,13 +35,13 @@ export const appConnectScopeCopy = (
 
   if (choice === 'project') {
     if (scopeLabel) {
-      return `A separate connection will be created for ${scopeLabel}. You will add your own credential; only agents acting in that project can use this connection.`
+      return `A separate connection for ${scopeLabel}. Only agents working in this project can use it after access is granted.`
     }
-    return 'Select a project. A separate connection will be created for it. You will add your own credential; only agents acting in that project can use this connection.'
+    return 'Select a project. Only agents working in it can use the connection after access is granted.'
   }
 
   if (scopeLabel) {
-    return `A separate connection will be created for ${scopeLabel}. You will add your own credential; only agents acting in that channel can use this connection.`
+    return `A separate connection for ${scopeLabel}. Only agents working in this channel can use it after access is granted.`
   }
-  return 'Select a channel. A separate connection will be created for it. You will add your own credential; only agents acting in that channel can use this connection.'
+  return 'Select a channel. Only agents working in it can use the connection after access is granted.'
 }

@@ -83,11 +83,11 @@ test('personal remains the default scope and a channel needs an explicit id', ()
   )
   assert.equal(
     appConnectScopeCopy('project', project.name),
-    'A separate connection will be created for Operations. You will add your own credential; only agents acting in that project can use this connection.',
+    'A separate connection for Operations. Only agents working in this project can use it after access is granted.',
   )
   assert.equal(
     appConnectScopeCopy('channel', channel.label),
-    'A separate connection will be created for Customer support. You will add your own credential; only agents acting in that channel can use this connection.',
+    'A separate connection for Customer support. Only agents working in this channel can use it after access is granted.',
   )
 })
 
@@ -272,10 +272,9 @@ test('the dialog posts personal scope by default and posts only the explicitly s
     assert.equal(confirm.disabled, false)
     assert.match(
       channelHarness.scope.textContent ?? '',
-      /A separate connection will be created for Customer support\./,
+      /A separate connection for Customer support\./,
     )
-    assert.match(channelHarness.scope.textContent ?? '', /You will add your own credential/)
-    assert.match(channelHarness.scope.textContent ?? '', /only agents acting in that channel can use this connection\./)
+    assert.match(channelHarness.scope.textContent ?? '', /Only agents working in this channel can use it after access is granted\./)
 
     await act(async () => confirm.click())
     await settle()
@@ -312,7 +311,7 @@ test('the dialog posts personal scope by default and posts only the explicitly s
       picker.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
     })
     assert.equal(confirm.disabled, false)
-    assert.match(projectHarness.scope.textContent ?? '', /only agents acting in that project can use this connection\./)
+    assert.match(projectHarness.scope.textContent ?? '', /Only agents working in this project can use it after access is granted\./)
 
     await act(async () => confirm.click())
     await settle()
