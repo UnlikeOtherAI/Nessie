@@ -11,6 +11,11 @@ export const agentKeys = {
   allScopes: ['agents', 'all'] as const,
   activity: (agentId?: string) => ['agents', agentId, 'activity'] as const,
   children: (agentId?: string) => ['agents', agentId, 'children'] as const,
+  // Every conversation with this agent the caller is privy to
+  // (docs/plans/2026-09-08-agent-conversations.md). Keyed on the agent because
+  // that is what the list is *of*: the rail beside a conversation and the
+  // agent page's own tab read the same rows, so they share one cache entry.
+  conversations: (agentId?: string) => ['agents', agentId, 'conversations'] as const,
   documents: (agentId?: string) => ['agents', agentId, 'documents'] as const,
   messages: (agentId: string) => ['agents', agentId, 'messages'] as const,
   messagePage: (agentId: string | undefined, limit: number, offset: number) =>
