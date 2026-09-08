@@ -2,6 +2,14 @@
 
 Status: proposed · Date: 2026-05-30 · Author: architecture review (11-agent discovery + synthesis)
 
+> Forward decision (2026-09-08): the
+> [agent documents and learning plan](2026-09-08-agent-documents-and-learning.md)
+> supersedes the competing hidden agent-memory/document authoring direction in
+> Phases D/E below. Durable agent knowledge moves to visible Markdown documents;
+> raw history remains canonical conversation records. Preserve the implemented
+> retrieval substrate and separately scoped external-source work. The earlier
+> phase text is retained as design history, not a second implementation mandate.
+
 ## Goal
 
 Give Nessie a **company-wide long-term memory** available to the whole organisation, plus a

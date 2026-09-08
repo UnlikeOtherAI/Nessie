@@ -1,5 +1,14 @@
 # Learn-by-demonstration — recorded, replayable skills
 
+> Forward decision (2026-09-08): the recording-first UX and remaining recording
+> rollout are superseded by the
+> [agent documents and learning plan](2026-09-08-agent-documents-and-learning.md).
+> Ordinary descriptions, corrections and functional examples will teach
+> procedures without a Record routine button. Existing checklists and installed
+> workflows remain; retained demonstration artifacts require migration before
+> capture machinery is retired. That replacement has not shipped. The earlier
+> implementation record below explains the system being migrated.
+
 > Status: in delivery, revision 3 (2026-08-31). P1 capture and P2
 > generalisation-to-draft Workflow are implemented, including provenance,
 > approval-gated agent proposals, and the existing Workflows review doorway.

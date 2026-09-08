@@ -38,6 +38,18 @@ profiles, organisation and team membership, and invitations.
   or proposed compatibility copy must flag it to the developer and plan an
   API-backed refactor and migration instead of extending the duplicate store.
 
+## Agent knowledge and learning direction (2026-09-08)
+
+The forward product goal is an agent whose personality, working rules,
+templates, examples, experiences and procedures are visible, versioned Markdown
+documents in its Documents surface. Authorized conversation history remains
+recoverable through hybrid retrieval, and ordinary work/corrections drive
+evidence-grounded learning. Keep checklists; replace the recording-first routine
+UX with natural-language procedure distillation. Implementation, privacy gates
+and the Nessie/deep.agent boundary are specified in the
+[agent documents and learning plan](plans/2026-09-08-agent-documents-and-learning.md).
+This is planned work, not a claim that the learning loop has shipped.
+
 ## Vision
 
 A personal AI agent that lives on your Mac, voice-first but keyboard-capable. You talk to it, it talks back. When you need deep research done across your computer, it spins up a sub-agent to do the work. When you're in keyboard mode, it types into whatever app you're using — no UI, no interruption, just you and the machine working together.
