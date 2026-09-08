@@ -26,8 +26,17 @@ test('a held scope passes and a missing one refuses by name', () => {
   )
 })
 
-test('every tool refuses without its scope', async () => {
-  const tools = nessieMcpTools()
+/**
+ * The one tool that takes no scope, because it grants nothing.
+ *
+ * `nessie_doc_publish` cannot publish. It opens an approval for a person to
+ * answer, so there is no reach to narrow and nothing to refuse — the decision
+ * it asks for is the gate. Every other tool does work directly and must check.
+ */
+const SCOPELESS_TOOLS = ['nessie_doc_publish']
+
+test('every tool that does work refuses without its scope', async () => {
+  const tools = nessieMcpTools().filter((tool) => !SCOPELESS_TOOLS.includes(tool.name))
   assert.ok(tools.length > 0)
 
   for (const tool of tools) {

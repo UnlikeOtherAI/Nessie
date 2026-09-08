@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { AgentAccessScope } from '@prisma/client'
 
 import { resolvePublicOrigin } from '../lib/public-origin.js'
 import { sendApiError } from '../lib/api.js'
@@ -53,20 +54,19 @@ export const registerWellKnownMcpResourceRoutes = (
           bearer_methods_supported: ['header'],
           resource,
           resource_documentation: adminOrigin
-            ? `${adminOrigin}/settings/agent-access`
+            ? `${adminOrigin}/settings/paired-agents`
             : undefined,
           // Not an OAuth authorization server. Naming the grant this resource
           // actually implements is what lets a client act rather than guess.
           'x-nessie-device-authorization': {
             device_authorization_endpoint: `${resolvePublicOrigin(request, config)}/mcp/auth/device`,
             grant_types_supported: ['urn:ietf:params:oauth:grant-type:device_code'],
-            scopes_supported: [
-              'boards_read',
-              'boards_write',
-              'documents_read',
-              'documents_write',
-              'documents_publish',
-            ],
+            // Derived, never retyped. This list was a hand-written literal and
+            // it outlived the scope it named: `documents_publish` was retired
+            // and this kept advertising it, so a client doing exactly what
+            // discovery told it would ask for a scope the device endpoint
+            // refuses. The enum is the one place scopes are defined.
+            scopes_supported: Object.keys(AgentAccessScope),
             token_endpoint: `${resolvePublicOrigin(request, config)}/mcp/auth/token`,
           },
         })

@@ -1,3 +1,4 @@
+import { AgentAccessScope } from '@prisma/client'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -34,7 +35,7 @@ test('the document names this resource and how to reach its pairing', async () =
   assert.equal(body.resource, 'https://api.example.test/mcp')
   assert.deepEqual(body.bearer_methods_supported, ['header'])
   // Where a person goes, which is the thing an agent must print.
-  assert.equal(body.resource_documentation, 'https://app.example.test/settings/agent-access')
+  assert.equal(body.resource_documentation, 'https://app.example.test/settings/paired-agents')
   await app.close()
 })
 
@@ -64,13 +65,18 @@ test('every grantable scope is listed, so a client can ask for the right ones', 
     url: '/.well-known/oauth-protected-resource',
   })).json()
 
-  assert.deepEqual(body['x-nessie-device-authorization'].scopes_supported, [
-    'boards_read',
-    'boards_write',
-    'documents_read',
-    'documents_write',
-    'documents_publish',
-  ])
+  // Compared against the enum rather than a second hand-written list. The
+  // literal that used to be here agreed with a literal in the route, so when
+  // `documents_publish` was retired both stayed wrong together and discovery
+  // went on advertising a scope the device endpoint refuses.
+  assert.deepEqual(
+    body['x-nessie-device-authorization'].scopes_supported,
+    Object.keys(AgentAccessScope),
+  )
+  assert.ok(
+    !body['x-nessie-device-authorization'].scopes_supported.includes('documents_publish'),
+    'publishing is an approval, never a scope a client can ask for',
+  )
   await app.close()
 })
 

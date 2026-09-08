@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
@@ -48,6 +50,10 @@ const formatDate = (value: string): string =>
   })
 
 const OrganizationPairedAgentsBody = () => {
+  // A revoke or a switch that silently failed would leave an owner believing
+  // they had ended access they had not, which is the one outcome this surface
+  // must never produce.
+  const [actionError, setActionError] = useState<string | null>(null)
   const credentials = useOrgAgentAccessCredentials(true)
   const revoke = useRevokeAgentAccessCredential()
   const settings = useScopedSettings('organization', [SETTING_KEYS.agentPairing])
@@ -82,7 +88,8 @@ const OrganizationPairedAgentsBody = () => {
             }
             disabled={writeSetting.isPending}
             label="Allow members to pair outside agents"
-            onChange={(checked) =>
+            onChange={(checked) => {
+              setActionError(null)
               writeSetting.mutate({
                 key: SETTING_KEYS.agentPairing,
                 // Locked whenever the organisation says no: an organisation-level
@@ -90,13 +97,19 @@ const OrganizationPairedAgentsBody = () => {
                 locked: !checked,
                 scope: 'organization',
                 value: { allowed: checked },
-              })}
+              }, {
+                onError: (error) =>
+                  setActionError(
+                    error instanceof Error
+                      ? error.message
+                      : 'That setting could not be saved. Nothing changed.',
+                  ),
+              })
+            }}
           />
         </div>
-        {writeSetting.isError ? (
-          <p className="mt-3 text-sm text-[color:var(--danger-text)]">
-            That setting could not be saved. Nothing changed.
-          </p>
+        {actionError ? (
+          <p className="mt-3 text-sm text-[color:var(--danger-text)]">{actionError}</p>
         ) : null}
       </Card>
 
@@ -151,7 +164,17 @@ const OrganizationPairedAgentsBody = () => {
                     <button
                       className="admin-button admin-button-secondary flex-shrink-0"
                       disabled={revoke.isPending}
-                      onClick={() => revoke.mutate(credential.id)}
+                      onClick={() => {
+                        setActionError(null)
+                        revoke.mutate(credential.id, {
+                          onError: (error) =>
+                            setActionError(
+                              error instanceof Error
+                                ? error.message
+                                : 'That credential could not be revoked. It is still live.',
+                            ),
+                        })
+                      }}
                       type="button"
                     >
                       Revoke
@@ -162,10 +185,8 @@ const OrganizationPairedAgentsBody = () => {
             })}
           </div>
         )}
-        {revoke.isError ? (
-          <p className="mt-3 text-sm text-[color:var(--danger-text)]">
-            That credential could not be revoked. It is still live.
-          </p>
+        {actionError ? (
+          <p className="mt-3 text-sm text-[color:var(--danger-text)]">{actionError}</p>
         ) : null}
       </Card>
     </div>

@@ -83,7 +83,7 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         )
         return reply
       }
-      const verificationUri = `${adminOrigin}/settings/agent-access`
+      const verificationUri = `${adminOrigin}/settings/paired-agents`
 
       // Snake_case because this half of the exchange is RFC 8628's, and a
       // client implementing the standard reads these names.

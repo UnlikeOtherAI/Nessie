@@ -28,6 +28,28 @@ type KnowledgePagePublishContext = {
 // Narrows an approval's opaque `context` blob to the shape the knowledge-base
 // publish action always sends. Returns null for anything malformed so the UI
 // falls back to the generic action-name rendering rather than crashing.
+/**
+ * A time alone for something expiring today, a date once it is not.
+ *
+ * A suspended run's approval expires in thirty minutes, so a bare clock time
+ * was right for every approval that existed when this was written. One opened
+ * by a paired agent lasts a week — nobody is sitting in a channel waiting for
+ * it — and "Expires: 11:26:26" on a request that dies next Tuesday reads as a
+ * deadline six days earlier than the real one.
+ */
+const formatExpiry = (value: string): string => {
+  const expires = new Date(value)
+  const sameDay = expires.toDateString() === new Date().toDateString()
+  return sameDay
+    ? expires.toLocaleTimeString()
+    : expires.toLocaleString(undefined, {
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      month: 'short',
+    })
+}
+
 const readKnowledgePagePublishContext = (
   approval: ApprovalRequest,
 ): KnowledgePagePublishContext | null => {
@@ -189,7 +211,7 @@ export const ApprovalsPage = () => {
                         }
                         trailing={
                           <span className="text-xs text-[color:var(--tx3)]">
-                            Expires: {new Date(approval.expiresAt).toLocaleTimeString()}
+                            Expires: {formatExpiry(approval.expiresAt)}
                           </span>
                         }
                       >
