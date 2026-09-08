@@ -48,7 +48,8 @@ const main = async () => {
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage()
     await page.addInitScript((value) => localStorage.setItem('nessie.admin.token', value), token)
-    await page.goto(`${adminUrl}/knowledge-base?spaceId=${space.id}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${adminUrl}/knowledge-base/spaces/${space.id}`, { waitUntil: 'domcontentloaded' })
+    await page.getByText(space.name).first().waitFor()
     await page.locator('input[type=file]').setInputFiles({ name: 'entry.md', mimeType: 'text/markdown', buffer: Buffer.from('# Canonical\n\nfirst') })
     await page.getByText('entry.md').first().waitFor()
     let node
@@ -58,7 +59,7 @@ const main = async () => {
     }
     assert.ok(node, 'upload creates a file node')
     const baseVersion = node.latestVersion.id
-    await page.goto(`${adminUrl}/knowledge-base?spaceId=${space.id}&pageId=${node.id}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${adminUrl}/knowledge-base/spaces/${space.id}?pageId=${node.id}`, { waitUntil: 'domcontentloaded' })
     await page.getByTestId('markdown-file-preview').waitFor()
     await page.getByRole('button', { name: 'Edit' }).click()
     await page.getByRole('textbox', { name: 'Markdown source' }).fill('# Canonical\n\nchanged')
@@ -70,7 +71,9 @@ const main = async () => {
     assert.equal(bytes, '# Canonical\n\nchanged')
     await call(`/api/knowledge-base/pages/${node.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'renamed-without-extension', expectedRevision: saved.revision }) })
     await page.reload({ waitUntil: 'domcontentloaded' }); await page.getByTestId('markdown-file-preview').waitFor()
-    const conflict = await fetch(`${apiUrl}/api/knowledge-base/pages/${node.id}/file-version`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'x-knowledge-base-version': baseVersion, 'content-type': 'text/markdown' }, body: '# stale' })
+    const staleUpload = new FormData()
+    staleUpload.append('file', new Blob(['# stale'], { type: 'text/markdown' }), 'renamed-without-extension')
+    const conflict = await fetch(`${apiUrl}/api/knowledge-base/pages/${node.id}/file-version`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'x-knowledge-base-version': baseVersion }, body: staleUpload })
     assert.equal(conflict.status, 409, 'pinned base version rejects a stale save')
     await mkdir(resolve(root, 'e2e', 'screenshots', 'knowledge-markdown'), { recursive: true })
     await page.screenshot({ path: screenshot, fullPage: true })
