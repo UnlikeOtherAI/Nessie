@@ -62,6 +62,11 @@ export const useCreateProject = () => {
       apiClient.post<ProjectRecord>('/api/projects', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
+      // The sidebar resolves a project's explicit channel target from the
+      // team's canonical `projectIds`. Refresh both directories together so a
+      // second project created under one team never posts a channel without
+      // the team id the route requires.
+      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
     },
   })
 }
