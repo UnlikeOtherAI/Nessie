@@ -10,9 +10,10 @@ WORKDIR /app
 
 # pnpm's frozen lockfile resolution invokes Git for its pinned private package
 # entries, including when the installed workspace graph does not import them.
-# The read token is supplied as a BuildKit secret for that one install layer.
+# The system CA bundle validates GitHub's certificate and the read token is a
+# BuildKit secret supplied only to that install layer.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
+  && apt-get install -y --no-install-recommends ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 
 ARG VITE_API_BASE_URL=""
