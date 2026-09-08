@@ -102,11 +102,12 @@ const ObservedAgentRow = ({ row }: { row: AgentAccessRow }) => (
 
 type ManagedAgentRowProps = {
   appName: string
+  onAccessSettled: () => void
   row: AgentAccessRow
   toolRegistryEntryIds: readonly string[]
 }
 
-const ManagedAgentRow = ({ appName, row, toolRegistryEntryIds }: ManagedAgentRowProps) => {
+const ManagedAgentRow = ({ appName, onAccessSettled, row, toolRegistryEntryIds }: ManagedAgentRowProps) => {
   const setAccess = useSetAppAgentAccess()
   const [pending, setPending] = useState<PendingAgentAccess | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -120,6 +121,7 @@ const ManagedAgentRow = ({ appName, row, toolRegistryEntryIds }: ManagedAgentRow
     setAccess.mutate(
       { agentId: row.agentId, enabled, toolRegistryEntryIds },
       {
+        onSettled: onAccessSettled,
         onError: (caught) => {
           setPending(null)
           setError(
@@ -252,6 +254,7 @@ export const AppAgentAccessList = ({ app }: AppAgentAccessListProps) => {
                       <ManagedAgentRow
                         appName={app.displayName}
                         key={row.agentId}
+                        onAccessSettled={source.refetch}
                         row={row}
                         toolRegistryEntryIds={toolRegistryEntryIds}
                       />

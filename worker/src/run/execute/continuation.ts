@@ -63,6 +63,10 @@ export const enqueueAutoContinuation = async (
         agentId: context.agent.id,
         continuationOfRunId: context.run.id,
         principalUserId: context.run.principalUserId ?? null,
+        // A continuation has the same conversation delivery contract as the
+        // run that checkpointed it. Dropping `channel` here makes the resolver
+        // fall back to a hidden peer brief's root and hides later parts.
+        replyPlacement: context.run.replyPlacement,
         status: 'pending',
         threadId: context.run.threadId,
         triggerMessageId: payload.messageId,

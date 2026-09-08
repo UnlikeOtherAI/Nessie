@@ -131,6 +131,11 @@ another peer cannot replace the selected hidden message, requester, or source
 basis. A terminal peer failure posts one useful result through the ordinary run
 lifecycle for the waiting conversation; it does not retry or acknowledge itself.
 
+An automatic continuation keeps the originating run's reply placement, so every
+part remains visible in that same conversation and reloads the checkpoint keyed
+to that placement. It does not create a second peer protocol or alter the
+captured requester, UOA provenance, or disclosure basis.
+
 The same project-channel binding is re-read for every delegated ticket call.
 Content-bearing ticket, board, and checklist writes share
 `assertProjectWriteDestination`: they refuse material the run consumed from a

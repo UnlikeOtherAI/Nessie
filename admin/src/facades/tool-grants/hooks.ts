@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import type {
   AgentToolPolicyTarget,
   SetAgentToolPolicyEntryRequest,
@@ -139,6 +140,13 @@ export const useAgentToolPolicyTargets = (enabled = true) => {
   })
 }
 
+export const invalidateAgentToolPolicy = (queryClient: QueryClient, agentId: string): void => {
+  void queryClient.invalidateQueries({ queryKey: deepWaterAgentAccessKeyPrefix })
+  void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+  void queryClient.invalidateQueries({ queryKey: browserCloudKeys.agentBrowser(agentId) })
+  void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
+}
+
 export const useSetAgentToolPolicyEntry = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -147,29 +155,16 @@ export const useSetAgentToolPolicyEntry = () => {
     mutationFn: (
       input: SetAgentToolPolicyEntryRequest & {
         agentId: string
+        invalidate?: boolean
         toolRegistryEntryId: string
       },
-    ) =>
-      apiClient.patch<AgentToolPolicyTarget>(
-        `/api/mcp/tools/${input.toolRegistryEntryId}/policy-targets/${input.agentId}`,
-        { enabled: input.enabled },
-      ),
+    ) => apiClient.patch<AgentToolPolicyTarget>(
+      `/api/mcp/tools/${input.toolRegistryEntryId}/policy-targets/${input.agentId}`,
+      { enabled: input.enabled },
+    ),
     onSuccess: (_target, input) => {
-      void queryClient.invalidateQueries({
-        queryKey: toolPolicyTargetsKeyPrefix,
-      })
-      void queryClient.invalidateQueries({
-        queryKey: deepWaterAgentAccessKeyPrefix,
-      })
-      // browserEnabled is projected on every agent record. Refresh the
-      // conversation's source of truth so an owner sees a grant or revoke
-      // take effect without navigating away, then clear the affected browser
-      // session projection that the unmounted dock may have left behind.
-      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
-      void queryClient.invalidateQueries({
-        queryKey: browserCloudKeys.agentBrowser(input.agentId),
-      })
-      void queryClient.invalidateQueries({ queryKey: browserCloudKeys.sessions })
+      if (input.invalidate === false) return
+      invalidateAgentToolPolicy(queryClient, input.agentId)
     },
   })
 }
