@@ -62,6 +62,14 @@ test('the panel sits in the popover layer of the one scale, and declares no othe
   assert.doesNotMatch(html, /9999|10000/)
 })
 
+test('a modal-owned popover sits above its owner, owns Back, and still yields to blocking', () => {
+  assert.match(render({ layer: 'modal' }), /z-index:var\(--layer-modal-popover, 75\)/)
+  assert.ok(OVERLAY_LAYER.modal < OVERLAY_LAYER.modalPopover)
+  assert.ok(OVERLAY_LAYER.modalPopover < OVERLAY_LAYER.blocking)
+  assert.ok(OVERLAY_BACK_PRIORITY.modal < OVERLAY_BACK_PRIORITY.modalPopover)
+  assert.ok(OVERLAY_BACK_PRIORITY.modalPopover < OVERLAY_BACK_PRIORITY.blocking)
+})
+
 // Before the first measurement the panel is in the DOM at its natural size so
 // it can be measured at all; it must not be painted at 0,0 while that happens.
 test('an unmeasured panel is laid out but not painted', () => {
@@ -86,10 +94,12 @@ test('the primitive composes useOverlay, and nothing else composes the internals
 // The Back rule that separates a popover from a modal: Android's hardware key
 // closes an open menu, and on a split layout it must not do so instead of
 // navigating. The precedence itself is asserted in navigation-overlay.test.ts.
-test('a popover owns Back only on a single-column layout', () => {
+test('an ordinary popover owns Back only on a single-column layout, while its modal-owned child outranks the owner', () => {
   const hook = read('components/overlays/useOverlay.ts')
-  assert.match(hook, /active: open && \(kind !== 'popover' \|\| layout === 'single'\)/)
+  assert.match(hook, /active: open && \(kind !== 'popover' \|\| ownerKind === 'modal' \|\| layout === 'single'\)/)
   assert.ok(OVERLAY_BACK_PRIORITY.popover < OVERLAY_BACK_PRIORITY.sheet)
+  assert.ok(OVERLAY_BACK_PRIORITY.modal < OVERLAY_BACK_PRIORITY.modalPopover)
+  assert.ok(OVERLAY_BACK_PRIORITY.modalPopover < OVERLAY_BACK_PRIORITY.blocking)
 })
 
 // ---------------------------------------------------------------------------

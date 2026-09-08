@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Popover } from '../overlays/Popover'
+import type { PopoverLayer } from '../overlays/Popover'
 import { decideTabBarCollapse } from './tab-bar-fit'
 
 export type TabBarItem<T extends string> = {
@@ -45,6 +46,8 @@ type TabBarProps<T extends string> = {
    */
   idPrefix?: string
   items: ReadonlyArray<TabBarItem<T>>
+  /** Layer for the dropdown when this strip is owned by a modal. */
+  menuLayer?: PopoverLayer
   onChange: (value: T) => void
   /**
    * `tablist` when the strip switches panels, `radiogroup` when it narrows a
@@ -79,6 +82,7 @@ export const TabBar = <T extends string>({
   fullWidth = false,
   idPrefix,
   items,
+  menuLayer = 'popover',
   onChange,
   role = 'tablist',
   size = 'md',
@@ -261,6 +265,7 @@ export const TabBar = <T extends string>({
             className="tabbar-menu"
             id={menuId}
             label={ariaLabel}
+            layer={menuLayer}
             onClose={() => setMenuOpen(false)}
             onKeyDown={onMenuKeyDown}
             open={menuOpen}

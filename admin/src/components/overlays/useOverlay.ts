@@ -29,6 +29,10 @@ export type UseOverlayOptions = {
   onClose: () => void
   // Refuses every close path the overlay owns while a submit is in flight.
   dismissDisabled?: boolean
+  // An anchored popover owned by a modal remains above and closes before that
+  // modal, while still yielding to a blocking overlay.
+  ownerKind?: 'modal'
+  escapeAnchorRef?: RefObject<HTMLElement | null>
   initialFocusRef?: RefObject<HTMLElement | null>
   side?: SheetSide
 }
@@ -50,6 +54,8 @@ export const useOverlay = ({
   open,
   onClose,
   dismissDisabled = false,
+  ownerKind,
+  escapeAnchorRef,
   initialFocusRef,
   side,
 }: UseOverlayOptions): OverlayState => {
@@ -57,6 +63,7 @@ export const useOverlay = ({
   const reducedMotion = useReducedMotion()
   const layout = useNavigationLayout()
   const [closing, setClosing] = useState(false)
+  const effectiveKind = kind === 'popover' && ownerKind === 'modal' ? 'modalPopover' : kind
 
   // The live handler and the live dismiss gate ride in refs so the callback
   // handed to the a11y hook stays stable: call sites rebuild `onClose` on
@@ -74,14 +81,14 @@ export const useOverlay = ({
   }, [])
 
   // Hardware Back, the header Back and the edge swipe close the overlay
-  // before any route change; a popover owns Back only on a single-column
-  // layout, where Android's key would otherwise leave the page under a menu.
+  // before any route change. A modal-owned popover stays above its owner on
+  // every layout; an ordinary popover owns Back on a single column only.
   useLocalBack({
-    active: open && (kind !== 'popover' || layout === 'single'),
+    active: open && (kind !== 'popover' || ownerKind === 'modal' || layout === 'single'),
     id: `overlay:${id}`,
     label,
     onBack: requestClose,
-    priority: OVERLAY_BACK_PRIORITY[kind],
+    priority: OVERLAY_BACK_PRIORITY[effectiveKind],
   })
 
   // A modal covers the document, so any native chrome placed over the page
@@ -97,12 +104,25 @@ export const useOverlay = ({
     if (!open || trapsFocus) return undefined
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (ownerKind === 'modal') {
+        const target = event.target
+        const panel = panelRef.current
+        const domNode = panel?.ownerDocument.defaultView?.Node
+        if (!panel || !domNode || !(target instanceof domNode)) return
+        const inMenu = panel.contains(target)
+        const onAnchor = escapeAnchorRef?.current?.contains(target)
+        if (!inMenu && !onAnchor) return
+      }
       event.preventDefault()
+      event.stopPropagation()
       requestClose()
     }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, requestClose, trapsFocus])
+    // A portalled popover can be owned by a modal while focus remains on its
+    // trigger inside that modal. Capture closes that focused menu before the
+    // modal's focus trap sees Escape; a blocking panel owns focus, so it wins.
+    document.addEventListener('keydown', onKeyDown, ownerKind === 'modal')
+    return () => document.removeEventListener('keydown', onKeyDown, ownerKind === 'modal')
+  }, [escapeAnchorRef, open, ownerKind, requestClose, trapsFocus])
 
   const scrimProps = useOverlayDismiss(requestClose)
 
@@ -112,12 +132,12 @@ export const useOverlay = ({
     const run = runOverlayTransition({
       direction: 'open',
       element: panelRef.current,
-      kind,
+      kind: effectiveKind,
       reducedMotion,
       side,
     })
     return () => run.cancel()
-  }, [kind, open, reducedMotion, side])
+  }, [effectiveKind, open, reducedMotion, side])
 
   // Close motion: the element stays mounted, inert, until it has played out.
   const wasOpen = useRef(open)
@@ -128,7 +148,7 @@ export const useOverlay = ({
     const element = panelRef.current
     if (!element) return undefined
     setClosing(true)
-    const run = runOverlayTransition({ direction: 'close', element, kind, reducedMotion, side })
+    const run = runOverlayTransition({ direction: 'close', element, kind: effectiveKind, reducedMotion, side })
     let cancelled = false
     void run.finished.then(() => {
       if (!cancelled) setClosing(false)
@@ -138,11 +158,11 @@ export const useOverlay = ({
       run.cancel()
       setClosing(false)
     }
-  }, [kind, open, reducedMotion, side])
+  }, [effectiveKind, open, reducedMotion, side])
 
   return {
     closing,
-    layerStyle: { zIndex: `var(--layer-${kind}, ${OVERLAY_LAYER[kind]})` },
+    layerStyle: { zIndex: `var(--layer-${effectiveKind.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}, ${OVERLAY_LAYER[effectiveKind]})` },
     mounted: open || closing,
     panelRef,
     requestClose,
