@@ -4,6 +4,10 @@ This workflow checks that a person can configure a researcher and coordinator,
 have them review a small prospect set together, and retain the work in a project.
 The default test brief is three Czech hospitality prospects for KiloMayo.
 
+For the current status and next acceptance pass, start with the
+[consolidated batch review](sales-verification-batch-review.md). The evidence
+below records the earlier verification passes.
+
 ## Evidence and connections
 
 KiloTalk is the primary research source. Its admin is
