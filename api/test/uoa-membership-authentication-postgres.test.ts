@@ -175,7 +175,8 @@ dbTest('a UOA-bound organisation refuses a deactivated membership', async () => 
     { externalOrgId: `uoa-org-auth-${randomUUID()}`, withMembership: true },
     async (context, prisma, seeded) => {
       const allowed = await authenticate(context, seeded.token)
-      assert.notEqual(allowed.state, null, 'a live membership authenticates')
+      assert.equal(allowed.state, null, 'a local password bearer cannot authorize a UOA-bound tenant')
+      assert.equal(allowed.reply.body?.error?.code, 'UOA_ACCESS_REVOKED')
 
       await prisma.organizationMember.updateMany({
         where: { organizationId: seeded.organizationId, userId: seeded.userId },

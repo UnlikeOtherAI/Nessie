@@ -117,12 +117,13 @@ const actorContext = {
 /** Records whether the handler reached the database at all. */
 class PrismaSpy {
   userFindUniqueCalls = 0
+  userRecord: { uoaSub: string; passwordHash: string } | null = null
 
   readonly client = {
     user: {
       findUnique: async () => {
         this.userFindUniqueCalls += 1
-        return null
+        return this.userRecord
       },
     },
   }
@@ -364,4 +365,34 @@ test('password change still runs in local mode', async () => {
   assert.equal(prismaSpy.userFindUniqueCalls, 1)
 
   await app.close()
+})
+
+test('a UOA-linked legacy password cannot sign in even in local mode', async () => {
+  const prismaSpy = new PrismaSpy()
+  prismaSpy.userRecord = { uoaSub: 'uoa-alice', passwordHash: 'legacy-hash' }
+  const app = await buildLoginApp('local', prismaSpy)
+  try {
+    const response = await postJson(app, '/api/auth/session', {
+      email: 'alice@example.com', password: 'old-password',
+    })
+    assert.equal(response.statusCode, 403)
+    assert.equal(response.json().error.code, 'PASSWORD_AUTH_DISABLED')
+  } finally {
+    await app.close()
+  }
+})
+
+test('a UOA-linked account cannot maintain its old local password', async () => {
+  const prismaSpy = new PrismaSpy()
+  prismaSpy.userRecord = { uoaSub: 'uoa-alice', passwordHash: 'legacy-hash' }
+  const app = await buildSecurityApp('local', prismaSpy)
+  try {
+    const response = await postJson(app, '/api/auth/password', {
+      currentPassword: 'old-password', newPassword: 'correct-horse-battery',
+    })
+    assert.equal(response.statusCode, 403)
+    assert.equal(response.json().error.code, 'PASSWORD_AUTH_DISABLED')
+  } finally {
+    await app.close()
+  }
 })

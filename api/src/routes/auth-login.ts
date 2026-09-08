@@ -444,6 +444,10 @@ export const registerAuthLoginRoute = (
       return reply
     }
     const user = await loadSessionUserByEmail(prisma, body.email)
+    if (user?.uoaSub) {
+      sendApiError(reply, 403, 'PASSWORD_AUTH_DISABLED', 'Sign in with UnlikeOtherAI to access this account.')
+      return reply
+    }
     if (!user?.passwordHash || !(await verifyPassword(body.password, user.passwordHash))) {
       sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
       return reply
@@ -451,6 +455,14 @@ export const registerAuthLoginRoute = (
     const primaryOrganizationMember = user.organizationMembers[0]
     if (!primaryOrganizationMember) {
       sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
+      return reply
+    }
+    const localOrganization = await prisma.organization.findUnique({
+      where: { id: primaryOrganizationMember.organizationId },
+      select: { externalOrgId: true },
+    })
+    if (localOrganization?.externalOrgId) {
+      sendApiError(reply, 403, 'PASSWORD_AUTH_DISABLED', 'Sign in with UnlikeOtherAI to access this organisation.')
       return reply
     }
     const session = await buildLocalSession(

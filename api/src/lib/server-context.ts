@@ -30,6 +30,7 @@ import { createRateLimiter } from '../services/rate-limit.js'
 import { lockBootstrapInitialization } from '../db/seed.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from '../services/user-session-lock.js'
 import { parseOriginList } from './server-origin-policy.js'
+import { authorizeUoaRequest } from '../services/uoa-request-authorization.js'
 
 export { createFastifyTrustProxyConfig } from './rate-limit.js'
 export {
@@ -283,11 +284,11 @@ export const createServerContext = () => {
     if (membership?.deactivatedAt) {
       return reject(403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
     }
+    const organization = await prisma.organization.findUnique({
+      where: { id: verification.claims.org },
+      select: { externalOrgId: true },
+    })
     if (!membership) {
-      const organization = await prisma.organization.findUnique({
-        where: { id: verification.claims.org },
-        select: { externalOrgId: true },
-      })
       if (organization?.externalOrgId) {
         return reject(
           403,
@@ -304,6 +305,16 @@ export const createServerContext = () => {
     // requireOwner read actor.roles, so this is what makes them authoritative.
     if (membership) {
       actorContext.actor.roles = [membership.role]
+    }
+    if (organization?.externalOrgId) {
+      const authorization = await authorizeUoaRequest(organization.externalOrgId, verification.claims.uoaIdentity)
+      if (authorization.status === 'unavailable') {
+        return reject(503, 'UOA_AUTHORIZATION_UNAVAILABLE', 'UnlikeOtherAI could not verify your access. Please retry.')
+      }
+      if (authorization.status === 'forbidden') {
+        return reject(403, 'UOA_ACCESS_REVOKED', 'Sign in with UnlikeOtherAI to verify your current access.')
+      }
+      actorContext.actor.roles = [authorization.role]
     }
     request.actorContext = actorContext
 
