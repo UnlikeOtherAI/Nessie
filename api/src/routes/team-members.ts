@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { type AuditAction, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  CreateMemberInvitationRequestSchema,
+  type AuditAction,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -68,11 +72,7 @@ const TeamRoleBodySchema = z.object({
   role: z.string().trim().min(1).max(100).refine((role) => role !== 'owner'),
 })
 
-const CreateMemberInvitationSchema = z.object({
-  email: z.string().trim().email().max(320),
-  name: z.string().trim().min(1).max(200).optional(),
-  teamRole: z.string().trim().min(1).max(100).optional(),
-})
+const CreateMemberInvitationSchema = CreateMemberInvitationRequestSchema
 
 /**
  * What a relayed mutation records in the audit trail. Membership changes are

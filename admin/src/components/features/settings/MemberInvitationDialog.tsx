@@ -237,7 +237,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-name">Name (optional)</label>
-              <Input id="invite-name" onChange={(event) => setName(event.target.value)} value={name} />
+              <Input id="invite-name" maxLength={120} onChange={(event) => setName(event.target.value)} value={name} />
             </div>
             <FormError>{targetError ?? inviteForm.formError}</FormError>
             <FormActions>

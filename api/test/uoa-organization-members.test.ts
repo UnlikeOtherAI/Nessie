@@ -276,6 +276,53 @@ test('the org invite dialog receives only UOA-authorized targets and sends to it
   })
 })
 
+test('organization invitations enforce UOA’s 120-character optional name limit before invitation egress', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, () => json({ status: 'ok' })),
+    )
+
+    try {
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations',
+        payload: {
+          email: 'new@acme.test',
+          name: 'a'.repeat(120),
+          teamId: 'team_product',
+        },
+      })
+      assert.equal(accepted.statusCode, 200)
+      assert.equal(calls.length, 2)
+      assert.equal(
+        calls[1]?.body,
+        JSON.stringify({ email: 'new@acme.test', name: 'a'.repeat(120) }),
+      )
+
+      const rejected = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations',
+        payload: {
+          email: 'new@acme.test',
+          name: 'a'.repeat(121),
+          teamId: 'team_product',
+        },
+      })
+      assert.equal(rejected.statusCode, 400)
+      assert.equal(rejected.json().error.code, 'VALIDATION_ERROR')
+      // The required administration check is read-only; the invalid payload
+      // must never create a second invitation POST upstream.
+      assert.equal(calls.length, 3)
+      assert.equal(calls[2]?.method, 'GET')
+      assert.equal(new URL(calls[2]?.url ?? '').pathname, '/org/me')
+    } finally {
+      await app.close()
+    }
+  })
+})
+
 test('an organization with no UOA link 404s and never reaches UOA', async () => {
   await withUoaEnv(async () => {
     const app = Fastify({ logger: false })
