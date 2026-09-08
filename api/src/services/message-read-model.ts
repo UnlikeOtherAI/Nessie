@@ -7,7 +7,7 @@ import {
   resolveGrantedScopeKeysForMessages,
   viewerSatisfiesBasis,
 } from '@nessie/runtime'
-import { parseAgentId, parseThreadId, parseUserId } from '@nessie/schemas'
+import { parseAgentId, parseThreadId, parseUserId, type UoaSessionIdentity } from '@nessie/schemas'
 import { messageInclude, type MessageWithReactions } from '@nessie/team-admin'
 
 import type { ThreadMessageRecord } from '../contracts/messaging.js'
@@ -161,7 +161,12 @@ export const mapMessageRecordWithAttachments = async (
   // a cold deep-link into a reply thread, so it was reachable from the product.
   // Omitting `viewer` keeps the unrestricted behaviour for internal callers that
   // have already authorized the read.
-  viewer?: { channelId: string; organizationId: string; userId: string },
+  viewer?: {
+    channelId: string
+    organizationId: string
+    uoaIdentity?: UoaSessionIdentity
+    userId: string
+  },
 ): Promise<ThreadMessageRecord> => {
   const counts = await loadAttachmentCounts(prisma, [message.id])
   const count = counts.get(message.id) ?? 0
@@ -174,6 +179,7 @@ export const mapMessageRecordWithAttachments = async (
     prisma,
     viewer.organizationId,
     viewer.userId,
+    { uoaIdentity: viewer.uoaIdentity },
   )
   const direct = viewerSatisfiesBasis(message.basisScopes, messageViewer)
   if (direct) {
@@ -197,6 +203,7 @@ export const mapMessageRecordWithAttachments = async (
     disclosureSources: message.disclosureSources,
     messageId: message.id,
     organizationId: viewer.organizationId,
+    uoaIdentity: viewer.uoaIdentity,
     userId: viewer.userId,
   })
   return mapThreadMessageRecord(message, count, !readable, false)
@@ -241,6 +248,7 @@ export const listThreadMessages = async (
      */
     organizationId?: string
     viewerUserId?: string
+    uoaIdentity?: UoaSessionIdentity
   } = {},
 ): Promise<ListThreadMessagesPage> => {
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
@@ -306,7 +314,9 @@ export const listThreadMessages = async (
   // the row without its content, so the feed shows a placeholder rather than an
   // unexplained hole.
   const viewer = options.organizationId
-    ? await resolveDisclosureViewer(prisma, options.organizationId, options.viewerUserId)
+    ? await resolveDisclosureViewer(prisma, options.organizationId, options.viewerUserId, {
+      uoaIdentity: options.uoaIdentity,
+    })
     : ({ kind: 'autonomous' } as const)
 
   // Grants are consulted only for the messages the predicate would otherwise

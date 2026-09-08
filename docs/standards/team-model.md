@@ -314,6 +314,17 @@ must therefore be able to *lose* rows, not only gain them:
   and an `Organization` with no `externalOrgId` have no upstream authority to be
   reconciled against.
 
+### Live entitlement readers
+
+Disclosure, memory recall and agent-edit checks resolve one fresh `GET /org/me`
+response through `@nessie/runtime` at their boundary. The response's exact
+`org_id`, active `teams` and role are translated to existing local IDs only for
+that decision; `team_directory`, retained membership rows and session context
+are not authority. A UOA-bound read without a current request identity fails
+closed, except for an intentional background recheck of the same user's linked
+subject and epoch. The result is bound to that local user and organisation and
+is never a reusable authorization token or a roster/profile write.
+
 ### Which door creates a team, and who may write membership locally
 
 "Is UOA the authority here?" is answered by **the acting tenant's binding** —

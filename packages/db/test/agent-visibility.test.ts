@@ -42,6 +42,43 @@ test('buildVisibleAgentWhere centralizes channel reach, live stewardship, and pr
   })
 })
 
+test('a fresh UOA owner keeps unbound and directly granted agent reach', () => {
+  const where = buildVisibleAgentWhere({
+    organizationId,
+    uoaMembershipVerified: true,
+    userId,
+  })
+
+  const owned = where.AND?.[0]
+  assert.deepEqual(owned, {
+    OR: [
+      {
+        bindings: {
+          some: {
+            channel: {
+              organizationId,
+              OR: [
+                { visibility: 'public' },
+                { members: { some: { userId } } },
+              ],
+            },
+          },
+        },
+      },
+      { ownerUserId: userId, parentAgentId: null },
+    ],
+  })
+  assert.equal(JSON.stringify(where).includes('teamId'), false)
+})
+
+test('a stale local owner row cannot stand in for a fresh UOA proof', () => {
+  assert.deepEqual(buildOwnedAgentWhere({ organizationId, userId }), {
+    ownerMembership: { deactivatedAt: null },
+    ownerUserId: userId,
+    parentAgentId: null,
+  })
+})
+
 test('listVisibleAgentIdsForUser returns ids from the shared where fragment', async () => {
   const calls: unknown[] = []
   const prisma = {

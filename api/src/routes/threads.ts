@@ -79,6 +79,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       ...(actorContext.actor.actorType === 'user'
         ? { viewerUserId: actorContext.actor.actorId }
         : {}),
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
     })
     return createApiResponse(
       ThreadMessageRecordSchema.array().parse(page.data),
@@ -190,6 +191,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const marked = await markThreadRead(prisma, {
       organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       rootMessageId: body.rootMessageId,
       lastReadMessageId: body.lastReadMessageId,
       threadId: thread.id,

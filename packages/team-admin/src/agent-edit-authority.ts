@@ -1,7 +1,9 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { isAgentAccessibleToActor } from './access-checks.js'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 
 /**
  * Who may rewrite an agent.
@@ -24,9 +26,9 @@ import { isAgentAccessibleToActor } from './access-checks.js'
  * agent in place, while *placement* (`agent_bind_channel`) keeps its stricter
  * four gates.
  *
- * Owner-ness is re-derived from the live `OrganizationMember` row on every call,
- * never from the session claim or a run's enqueue-time snapshot — a deactivated
- * member edits nothing, and a demoted org owner loses the override immediately.
+ * Owner-ness is re-derived from the live UOA entitlement for a bound tenant and
+ * the active local membership for a no-IdP install, never from a session claim
+ * or a run's enqueue-time snapshot.
  *
  * Editing is field-sensitive: `UpdateAgentBodySchema` also carries
  * `ownerUserId` and `todosEnabled`, and one predicate over the whole body would
@@ -70,6 +72,7 @@ export class AgentEditAuthorityError extends Error {
 /** The person doing the editing, resolved against one organization. */
 export type AgentEditActor = {
   organizationId: string
+  uoaIdentity?: UoaSessionIdentity
   userId: string
 }
 
@@ -103,18 +106,6 @@ export const agentOwnershipState = (agent: EditableAgentRow): AgentOwnershipStat
   if (agent.systemManaged) return 'system'
   if (agent.visibility === 'private') return 'private'
   return agent.ownerUserId ? 'person_owned' : 'team_owned'
-}
-
-const ownerDisplayName = async (
-  prisma: PrismaClient | Prisma.TransactionClient,
-  ownerUserId: string | null,
-): Promise<string> => {
-  if (!ownerUserId) return 'another member'
-  const owner = await prisma.user.findUnique({
-    select: { displayName: true },
-    where: { id: ownerUserId },
-  })
-  return owner?.displayName?.trim() || 'another member'
 }
 
 /**
@@ -156,7 +147,20 @@ export const resolveAgentEditAuthority = async (
     )
   }
 
-  const membership = await prisma.organizationMember.findUnique({
+  const entitlements = await resolveLiveEntitlements(prisma, {
+    organizationId: actor.organizationId,
+    uoaIdentity: actor.uoaIdentity,
+    userId: actor.userId,
+  })
+  if (entitlements.kind === 'denied') {
+    return deny(
+      AGENT_EDIT_AUTHORITY_ERROR_CODES.MEMBERSHIP_INACTIVE,
+      'Your access to this team is not active, so you cannot edit agents in it.',
+      { isLiveOwner: false, isOrgOwner: false },
+    )
+  }
+  const membership = entitlements.kind === 'local'
+    ? await prisma.organizationMember.findUnique({
     select: { deactivatedAt: true, role: true },
     where: {
       organizationId_userId: {
@@ -165,7 +169,8 @@ export const resolveAgentEditAuthority = async (
       },
     },
   })
-  if (!membership || membership.deactivatedAt) {
+    : null
+  if (entitlements.kind === 'local' && (!membership || membership.deactivatedAt)) {
     return deny(
       AGENT_EDIT_AUTHORITY_ERROR_CODES.MEMBERSHIP_INACTIVE,
       'Your access to this team is not active, so you cannot edit agents in it.',
@@ -173,7 +178,9 @@ export const resolveAgentEditAuthority = async (
     )
   }
 
-  const isOrgOwner = membership.role === 'owner'
+  const isOrgOwner = entitlements.kind === 'uoa'
+    ? entitlements.organizationRole === 'owner'
+    : membership?.role === 'owner'
   const isLiveOwner = agent.ownerUserId === actor.userId
   const parts = { isLiveOwner, isOrgOwner }
 
@@ -193,8 +200,7 @@ export const resolveAgentEditAuthority = async (
     if (isLiveOwner || isOrgOwner) return { canEdit: true, ownership, ...parts }
     return deny(
       AGENT_EDIT_AUTHORITY_ERROR_CODES.OWNER_ONLY,
-      `This agent is owned by ${await ownerDisplayName(prisma, agent.ownerUserId)}; `
-        + 'ask them or an organisation owner to change it.',
+      'This agent is owned by another person; ask them or an organisation owner to change it.',
       parts,
     )
   }
@@ -204,11 +210,19 @@ export const resolveAgentEditAuthority = async (
   const entitled = await isAgentAccessibleToActor(
     prisma as PrismaClient,
     {
-      actionContext: { requestId: `agent-edit-authority:${agent.id}` },
-      actor: { actorId: actor.userId, actorType: 'user', roles: [membership.role] },
+      actionContext: {
+        requestId: `agent-edit-authority:${agent.id}`,
+        ...(actor.uoaIdentity ? { uoaIdentity: actor.uoaIdentity } : {}),
+      },
+      actor: {
+        actorId: actor.userId,
+        actorType: 'user',
+        roles: isOrgOwner ? ['owner'] : ['member'],
+      },
       tenant: { organizationId: actor.organizationId },
     } as AuthorizedActionContext,
     agent.id,
+    entitlements,
   )
   return entitled
     ? { canEdit: true, ownership, ...parts }

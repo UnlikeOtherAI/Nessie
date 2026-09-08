@@ -174,6 +174,7 @@ export const runAgentHandoffTool = async (
     context.prisma,
     organizationId,
     requesterUserId,
+    { uoaIdentity: context.actorContext.actionContext.uoaIdentity },
   )
   const briefBasis = computeHandoffBriefBasis({
     consumed: consumedSources.list(),

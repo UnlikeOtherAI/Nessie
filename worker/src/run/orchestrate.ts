@@ -182,6 +182,12 @@ export const executeOrchestrateDecideJob = async (
       channel.organizationId,
       actorContext.actionContext.effectiveUserId
         ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : undefined),
+      {
+        agentId: actorContext.actor.actorType === 'agent'
+          ? actorContext.actor.actorId
+          : actorContext.actionContext.agentId,
+        uoaIdentity: actorContext.actionContext.uoaIdentity,
+      },
     )
     const recentOrdered = partitionByDisclosure(recentDbMessages, viewer).visible.reverse()
     // A message can be nothing but a photo. Naming its files gives the

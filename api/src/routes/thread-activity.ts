@@ -15,6 +15,7 @@ export const registerThreadActivityRoutes = (app: FastifyInstance, deps: RouteDe
     const { unread, ...pagination } = query
     const result = await listThreadActivity(deps.prisma, {
       organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
       ...pagination,
       unreadOnly: unread === 'true' || unread === '1',

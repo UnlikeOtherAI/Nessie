@@ -26,12 +26,17 @@ const buildPrisma = (
     channelMember: {
       findMany: async () => [{ channelId: 'channel-1' }],
     },
+    organization: {
+      findUnique: async () => ({ externalOrgId: null }),
+    },
     organizationMember: {
       findFirst: async () => options.liveMembership === false ? null : { id: 'membership-1' },
     },
     projectMember: {
       findMany: async () => [{ projectId: 'project-1' }],
     },
+    productAccountLink: { findUnique: async () => null },
+    team: { findMany: async () => [] },
     teamMember: {
       findMany: async () => [{ teamId: 'team-1' }],
     },
@@ -110,6 +115,7 @@ const buildGrantPrisma = (input: {
       findMany: async () => { calls.push('channel'); return input.channels ?? [] },
     },
     channelMember: { findMany: async () => { calls.push('channelMember'); return [{ channelId: 'channel-1' }, { channelId: 'private-channel' }, { channelId: 'public-channel' }] } },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
     disclosureGrant: {
       findMany: async (args: unknown) => {
         calls.push('disclosureGrant')
@@ -125,10 +131,12 @@ const buildGrantPrisma = (input: {
     projectMember: {
       findMany: async () => { calls.push('projectMember'); return [{ projectId: 'project-1' }] },
     },
+    productAccountLink: { findUnique: async () => null },
     scopeDisclosureGrant: {
       findMany: async () => { calls.push('scopeDisclosureGrant'); return input.scopeGrants ?? [] },
     },
     teamMember: { findMany: async () => { calls.push('teamMember'); return [] } },
+    team: { findMany: async () => [] },
   } as unknown as DisclosureAccessPrisma
   return { calls, messageGrantQueries, prisma }
 }

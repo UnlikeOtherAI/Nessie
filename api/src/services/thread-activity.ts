@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { buildAccessibleChannelWhere } from '@nessie/team-admin'
 import { decodeKeysetCursor, encodeKeysetCursor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { resolveDisclosureViewer } from '@nessie/runtime'
 
@@ -45,6 +46,7 @@ export const listThreadActivity = async (
   prisma: PrismaClient,
   input: {
     organizationId: string
+    uoaIdentity?: UoaSessionIdentity
     userId: string
     cursor?: string
     limit?: number
@@ -55,11 +57,10 @@ export const listThreadActivity = async (
   meta: { hasMore: boolean; nextCursor: string | null; prevCursor: string | null }
 }> => {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
-  const activeMembership = await prisma.organizationMember.findFirst({
-    where: { organizationId: input.organizationId, userId: input.userId, deactivatedAt: null },
-    select: { id: true },
+  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
+    uoaIdentity: input.uoaIdentity,
   })
-  if (!activeMembership) {
+  if (viewer.kind !== 'user') {
     return {
       data: { items: [], unreadTotal: 0 },
       meta: { hasMore: false, nextCursor: null, prevCursor: null },
@@ -99,7 +100,6 @@ export const listThreadActivity = async (
     },
   })
 
-  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
   const isReadable = async (message: ActivityMessage, channelId: string): Promise<boolean> => {
     const access = await evaluateMessageReadAccess(prisma, {
       channelId,

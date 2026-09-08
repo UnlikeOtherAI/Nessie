@@ -25,6 +25,7 @@ export type BasisScopeRow = {
  */
 export type DisclosureViewer =
   | { kind: 'user'; userId: string; scopes: readonly BasisScopeRow[] }
+  | { kind: 'agent'; agentId: string; scopes: readonly BasisScopeRow[] }
   | { kind: 'autonomous' }
 
 const scopeKey = (scope: BasisScopeRow): string => `${scope.scopeType}:${scope.scopeId}`
