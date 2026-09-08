@@ -116,6 +116,7 @@ dbTest('grants on a global tool are scoped to the calling tenant', async () => {
     const attached = await attachGrantsToRegistryEntries(
       context.prisma,
       context.ownOrganizationId,
+      context.ownAgentId,
       [registryRow(context.globalToolId)],
     )
 
@@ -136,6 +137,7 @@ dbTest('the other tenant sees its own grant on the same global tool', async () =
     const attached = await attachGrantsToRegistryEntries(
       context.prisma,
       context.foreignOrganizationId,
+      context.foreignAgentId,
       [registryRow(context.globalToolId)],
     )
 
@@ -164,6 +166,7 @@ dbTest('a role grant is returned only for a tool the tenant owns', async () => {
     const attached = await attachGrantsToRegistryEntries(
       context.prisma,
       context.ownOrganizationId,
+      context.ownAgentId,
       [registryRow(context.ownToolId), registryRow(context.globalToolId)],
     )
     const byTool = new Map(attached.map((entry) => [entry.id, entry.grants]))

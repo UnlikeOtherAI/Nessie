@@ -37,6 +37,7 @@ const UUID_PATTERN =
 type RegistryDb = PrismaClient | Prisma.TransactionClient
 type PolicyInput = {
   agentId: string
+  actorUserId?: string
   enabled: boolean
   organizationId: string
   toolRegistryEntryId: string
@@ -277,6 +278,7 @@ const updateEntryPolicy = (
 
   return mutate({
     agentId: input.agentId,
+    actorUserId: input.actorUserId,
     organizationId: input.organizationId,
     update: async (current, policyTx) => {
       // Read the descriptor after acquiring the agent lock. A concurrent probe

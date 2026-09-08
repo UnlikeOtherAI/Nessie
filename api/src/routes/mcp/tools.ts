@@ -25,6 +25,7 @@ import {
   setToolRegistryEntriesStatus,
 } from '@nessie/mcp-manage'
 import { ensureExecutorLogicalTools } from '@nessie/executor-manage'
+import { buildAgentVisibilityWhere } from '@nessie/db'
 import { ensureBuiltinToolsRegistered } from '../../services/tools.js'
 import {
   listAgentToolPolicyTargets,
@@ -92,6 +93,7 @@ export type ToolRegistryEntryWithGrants = ToolRegistryRow & {
 export const attachGrantsToRegistryEntries = async (
   prisma: PrismaClient,
   organizationId: string,
+  actorUserId: string,
   entries: ToolRegistryRow[],
 ): Promise<ToolRegistryEntryWithGrants[]> => {
   if (entries.length === 0) return []
@@ -100,7 +102,14 @@ export const attachGrantsToRegistryEntries = async (
     where: {
       toolId: { in: toolIds },
       OR: [
-        { agent: { organizationId } },
+        {
+          agent: {
+            organizationId,
+            AND: [
+              buildAgentVisibilityWhere({ organizationId, userId: actorUserId }),
+            ],
+          },
+        },
         { agentId: null, tool: { organizationId } },
       ],
     },
@@ -203,6 +212,7 @@ export const registerMcpToolsRoutes = (
     const withGrants = await attachGrantsToRegistryEntries(
       prisma,
       actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
       tools,
     )
     return createApiResponse(withGrants)
@@ -296,6 +306,7 @@ export const registerMcpToolsRoutes = (
       try {
         const target = await setAgentToolPolicyForRegistryEntry(prisma, {
           agentId: params.agentId,
+          actorUserId: actorContext.actor.actorId,
           enabled: body.enabled,
           organizationId: actorContext.tenant.organizationId,
           toolRegistryEntryId: params.toolRegistryEntryId,
@@ -330,6 +341,7 @@ export const registerMcpToolsRoutes = (
 
     try {
       const grant = await createGrant(prisma, {
+        actorUserId: actorContext.actor.actorId,
         toolRegistryEntryId,
         organizationId: actorContext.tenant.organizationId,
         state: body.state,
@@ -364,6 +376,7 @@ export const registerMcpToolsRoutes = (
         actorContext.tenant.organizationId,
         toolRegistryEntryId,
         grantId,
+        actorContext.actor.actorId,
       )
       if (!deleted) {
         sendApiError(

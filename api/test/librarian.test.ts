@@ -53,14 +53,20 @@ const buildFakePrisma = () => {
   let nextGrantId = 1
 
   const agentApi = {
-    findFirst: async ({ where }: { where: any }) =>
-      agents.find(
+    findFirst: async ({ where }: { where: any }) => {
+      if (where.id) {
+        return agents.find(
+          (agent) => agent.id === where.id && agent.organizationId === where.organizationId,
+        ) ?? null
+      }
+      return agents.find(
         (agent) =>
           agent.organizationId === where.organizationId &&
           agent.agentKind === where.agentKind &&
           agent.systemManaged === where.systemManaged &&
           agent.name === where.name,
-      ) ?? null,
+      ) ?? null
+    },
     update: async ({ where, data }: { where: { id: string }; data: any }) => {
       const agent = agents.find((a) => a.id === where.id)
       if (!agent) throw new Error('agent not found')

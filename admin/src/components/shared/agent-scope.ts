@@ -43,8 +43,8 @@ export const AGENT_SCOPE_META: Record<AgentScope, AgentScopeCopy> = {
   },
   team: {
     description: 'Shared agents your team builds, binds to channels, and runs.',
-    empty: 'No team agents yet. Create one to put an agent to work in your channels.',
-    label: 'Team agents',
+    empty: 'No shared agents yet. Create one to put an agent to work in your channels.',
+    label: 'Shared agents',
   },
   global: {
     description: 'System-provided agents. These are managed for you and cannot be edited here.',

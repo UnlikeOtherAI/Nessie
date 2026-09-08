@@ -11,8 +11,8 @@ const VISIBILITY_OPTIONS: ReadonlyArray<TabBarItem<AgentVisibility>> = [
     value: 'private',
   },
   {
-    label: 'Public',
-    title: 'People in your organization can find and invite this agent',
+    label: 'Shared',
+    title: 'This agent can work in shared channels',
     value: 'team',
   },
 ]
@@ -46,7 +46,8 @@ export const AgentVisibilityPicker = ({
     <p className="text-sm leading-6 text-[color:var(--tx2)]">
       {value === 'private'
         ? 'Private — only you can see and message this agent.'
-        : 'Public — people in your organization can find it and invite it to any channel.'}
+        : 'Shared — this agent can work in shared channels. '
+          + 'People who can see its channels can find it; people who can post there can address it.'}
     </p>
     {readOnly ? (
       <p className="text-xs leading-5 text-[color:var(--tx3)]">

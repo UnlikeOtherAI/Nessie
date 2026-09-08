@@ -93,7 +93,7 @@ const CreateMenuPopover = ({
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-semibold text-[color:var(--tx)]">Agent</span>
-          <span className="block text-xs text-[color:var(--tx3)]">Create a private or public agent</span>
+          <span className="block text-xs text-[color:var(--tx3)]">Create a private or shared agent</span>
         </span>
       </button>
     </Popover>

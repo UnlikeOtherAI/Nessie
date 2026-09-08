@@ -12,6 +12,7 @@ import type {
   ExecutionUsageLedgerRecord,
 } from '../contracts/execution.js'
 import { enqueueQueueJob } from '@nessie/db'
+import { buildAgentVisibilityWhere } from '@nessie/team-admin'
 import { parseOptional } from './contract-helpers.js'
 
 export const EXECUTION_ENVIRONMENT_ERROR_CODES = {
@@ -243,9 +244,27 @@ const validateChannelOwnership = async (
   }
 }
 
+type AgentVisibility = {
+  organizationId: string
+  userId: string
+}
+
+const visibleRunWhere = (visibility: AgentVisibility): Prisma.RunWhereInput => ({
+  agent: buildAgentVisibilityWhere(visibility),
+  thread: {
+    channel: {
+      organizationId: visibility.organizationId,
+      OR: [
+        { visibility: 'public' },
+        { members: { some: { userId: visibility.userId } } },
+      ],
+    },
+  },
+})
+
 const validateExecutionEnvironmentReferences = async (
   prisma: Prisma.TransactionClient,
-  organizationId: string,
+  visibility: AgentVisibility,
   input: {
     agentId?: string
     runId?: string
@@ -257,7 +276,8 @@ const validateExecutionEnvironmentReferences = async (
     const agent = await prisma.agent.findFirst({
       where: {
         id: input.agentId,
-        organizationId,
+        organizationId: visibility.organizationId,
+        AND: [buildAgentVisibilityWhere(visibility)],
       },
       select: { id: true },
     })
@@ -273,11 +293,7 @@ const validateExecutionEnvironmentReferences = async (
     const run = await prisma.run.findFirst({
       where: {
         id: input.runId,
-        thread: {
-          channel: {
-            organizationId,
-          },
-        },
+        ...visibleRunWhere(visibility),
       },
       select: { id: true },
     })
@@ -293,7 +309,7 @@ const validateExecutionEnvironmentReferences = async (
     const workflowRun = await prisma.workflowRun.findFirst({
       where: {
         id: input.workflowRunId,
-        organizationId,
+        organizationId: visibility.organizationId,
       },
       select: { id: true },
     })
@@ -310,7 +326,7 @@ const validateExecutionEnvironmentReferences = async (
       where: {
         id: input.workflowStepRunId,
         workflowRun: {
-          organizationId,
+          organizationId: visibility.organizationId,
         },
       },
       select: {
@@ -389,15 +405,29 @@ export const createExecutionEnvironmentTemplate = async (
 
 export const listExecutionEnvironmentInstances = async (
   prisma: PrismaClient,
-  organizationId: string,
+  visibility: AgentVisibility,
   input: {
     workflowRunId?: string
   },
 ): Promise<ExecutionEnvironmentInstanceRecord[]> => {
   const instances = await prisma.executionEnvironmentInstance.findMany({
     where: {
-      organizationId,
+      organizationId: visibility.organizationId,
       ...(input.workflowRunId ? { workflowRunId: input.workflowRunId } : {}),
+      AND: [
+        {
+          OR: [
+            { agentId: null },
+            { agent: { is: buildAgentVisibilityWhere(visibility) } },
+          ],
+        },
+        {
+          OR: [
+            { runId: null },
+            { run: { is: visibleRunWhere(visibility) } },
+          ],
+        },
+      ],
     },
     orderBy: [{ createdAt: 'desc' }],
   })
@@ -439,7 +469,10 @@ export const requestExecutionEnvironmentLaunch = async (
       actorContext.tenant.organizationId,
       input.channelId ?? template.channelId ?? undefined,
     )
-    await validateExecutionEnvironmentReferences(tx, actorContext.tenant.organizationId, input)
+    await validateExecutionEnvironmentReferences(tx, {
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    }, input)
 
     const instanceRow = await tx.executionEnvironmentInstance.create({
       data: {

@@ -70,7 +70,7 @@ export const CurrentAgentRow = ({
             className={agentActionBtnClass}
             disabled={clonePending}
             onClick={() => onClone(agent.id)}
-            title="Clone to personal collection"
+            title="Create a copy you own"
             type="button"
           >
             <CloneIcon />
@@ -193,7 +193,7 @@ export const AvailableAgentRow = ({
             className={agentActionBtnClass}
             disabled={clonePending}
             onClick={() => onClone(agent.id)}
-            title="Clone to personal collection"
+            title="Create a copy you own"
             type="button"
           >
             <CloneIcon />
