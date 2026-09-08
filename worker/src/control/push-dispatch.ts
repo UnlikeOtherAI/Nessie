@@ -46,9 +46,12 @@ export type PushDispatchPrisma = PushDeliveryPrisma &
     | 'disclosureGrant'
     | 'message'
     | 'organizationMember'
+    | 'organization'
+    | 'productAccountLink'
     | 'projectMember'
     | 'scopeDisclosureGrant'
     | 'teamMember'
+    | 'team'
     | 'user'>
 
 export type PushDispatchDeps = {

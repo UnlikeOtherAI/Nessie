@@ -23,6 +23,7 @@ import {
   assertAgentFieldAuthority,
   type AgentEditActor,
 } from './agent-edit-authority.js'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 import {
   acquireAgentToolPolicyLock,
   mergeGenericAgentToolPolicy,
@@ -87,8 +88,13 @@ export const updateAgentRecord = async (
   agentId: string,
   actor: AgentEditActor,
   input: UpdateAgentRecordInput,
-): Promise<AgentRecord | null> =>
-  prisma.$transaction(async (tx) => {
+): Promise<AgentRecord | null> => {
+  const entitlements = await resolveLiveEntitlements(prisma, {
+    organizationId: actor.organizationId,
+    uoaIdentity: actor.uoaIdentity,
+    userId: actor.userId,
+  })
+  return prisma.$transaction(async (tx) => {
     await acquireAgentToolPolicyLock(tx, agentId)
     const existing = await tx.agent.findFirst({
       where: {
@@ -111,11 +117,12 @@ export const updateAgentRecord = async (
     }
 
     // Edit authority plus the two narrower field gates, over the row actually
-    // being written and the live membership row — never the session claim.
+    // being written and the entitlement resolved before this transaction — never
+    // the session claim or a network read while this lock is held.
     await assertAgentFieldAuthority(tx, actor, existing, {
       ...(input.ownerUserId === undefined ? {} : { ownerUserId: input.ownerUserId }),
       ...(input.todosEnabled === undefined ? {} : { todosEnabled: input.todosEnabled }),
-    })
+    }, entitlements)
 
     // A transfer is any change of steward to a different person (or to the
     // unowned pool) on an agent currently running on a personal subscription.
@@ -254,6 +261,7 @@ export const updateAgentRecord = async (
 
     return mapAgentRecord(agent)
   })
+}
 
 /**
  * An agent's portrait follows the same edit authority as the rest of its

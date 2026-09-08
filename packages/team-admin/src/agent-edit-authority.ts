@@ -3,7 +3,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { isAgentAccessibleToActor } from './access-checks.js'
-import { resolveLiveEntitlements } from '@nessie/runtime'
+import { resolveLiveEntitlements, type LiveEntitlements } from '@nessie/runtime'
 
 /**
  * Who may rewrite an agent.
@@ -116,6 +116,7 @@ export const resolveAgentEditAuthority = async (
   prisma: PrismaClient | Prisma.TransactionClient,
   actor: AgentEditActor,
   agent: EditableAgentRow,
+  verifiedEntitlements?: LiveEntitlements,
 ): Promise<AgentEditAuthority> => {
   const ownership = agentOwnershipState(agent)
   const deny = (
@@ -147,7 +148,7 @@ export const resolveAgentEditAuthority = async (
     )
   }
 
-  const entitlements = await resolveLiveEntitlements(prisma, {
+  const entitlements = verifiedEntitlements ?? await resolveLiveEntitlements(prisma, {
     organizationId: actor.organizationId,
     uoaIdentity: actor.uoaIdentity,
     userId: actor.userId,
@@ -245,8 +246,9 @@ export const assertAgentEditAuthority = async (
   prisma: PrismaClient | Prisma.TransactionClient,
   actor: AgentEditActor,
   agent: EditableAgentRow,
+  verifiedEntitlements?: LiveEntitlements,
 ): Promise<AgentEditAuthority> => {
-  const authority = await resolveAgentEditAuthority(prisma, actor, agent)
+  const authority = await resolveAgentEditAuthority(prisma, actor, agent, verifiedEntitlements)
   if (!authority.canEdit && authority.refusal) {
     throw new AgentEditAuthorityError(authority.refusal.code, authority.refusal.message)
   }
@@ -283,8 +285,9 @@ export const assertAgentFieldAuthority = async (
   actor: AgentEditActor,
   agent: EditableAgentRow & { todosEnabled: boolean },
   patch: AgentEditPatch,
+  verifiedEntitlements?: LiveEntitlements,
 ): Promise<AgentEditAuthority> => {
-  const authority = await assertAgentEditAuthority(prisma, actor, agent)
+  const authority = await assertAgentEditAuthority(prisma, actor, agent, verifiedEntitlements)
 
   const changesOwnership =
     patch.ownerUserId !== undefined

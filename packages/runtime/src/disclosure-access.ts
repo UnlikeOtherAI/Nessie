@@ -385,6 +385,7 @@ export const canUserReadDisclosureBasis = async (
   },
 ): Promise<boolean> => {
   const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
+    allowStoredUoaIdentity: input.uoaIdentity === undefined,
     uoaIdentity: input.uoaIdentity,
   })
   if (viewer.kind !== 'user') return false
