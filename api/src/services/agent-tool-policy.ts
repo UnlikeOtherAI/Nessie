@@ -83,6 +83,8 @@ export const listAgentToolPolicyTargets = async (
 
 type AgentToolPolicyMutation = {
   agentId: string
+  /** Human requests supply a viewer; bootstrap maintenance does not. */
+  actorUserId?: string
   organizationId: string
   update: (
     current: Record<string, boolean>,
@@ -100,6 +102,16 @@ export const mutateAgentToolPolicyInTransaction = async (
       where: {
         id: input.agentId,
         organizationId: input.organizationId,
+        ...(input.actorUserId
+          ? {
+              AND: [
+                buildAgentVisibilityWhere({
+                  organizationId: input.organizationId,
+                  userId: input.actorUserId,
+                }),
+              ],
+            }
+          : {}),
         OR: [
           {
             agentKind: 'personal_assistant',
@@ -156,6 +168,7 @@ export const setAgentToolPolicyKeys = (
   prisma: PrismaClient,
   input: {
     agentId: string
+    actorUserId?: string
     enabled: boolean
     organizationId: string
     policyKeys: readonly string[]
@@ -163,6 +176,7 @@ export const setAgentToolPolicyKeys = (
 ): Promise<AgentToolPolicyTarget> =>
   mutateAgentToolPolicy(prisma, {
     agentId: input.agentId,
+    actorUserId: input.actorUserId,
     organizationId: input.organizationId,
     update: (current) =>
       mergeAgentToolPolicy(current, input.policyKeys, input.enabled),

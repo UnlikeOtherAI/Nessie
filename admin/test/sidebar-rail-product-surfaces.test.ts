@@ -28,7 +28,7 @@ test('Create ends with Agent, opening the Direct messages agent tab', () => {
   const shellHook = readSource('../src/layouts/admin-shell/useAdminShell.ts')
 
   assert.match(createMenu, />Agent</)
-  assert.match(createMenu, />Create a private or public agent</)
+  assert.match(createMenu, />Create a private or shared agent</)
   // Agent is the last row of the menu.
   assert.ok(createMenu.indexOf('>Project<') < createMenu.indexOf('>Agent<'))
   // Desktop and the native phone sheet reach the same Direct-messages flow.
@@ -56,8 +56,8 @@ test('the Direct messages composer separates people and agents and offers visibi
   assert.match(creator, /Create a new agent/)
   assert.match(creator, /Continue to Agent Designer/)
   assert.match(visibility, /label: 'Private'/)
-  assert.match(visibility, /label: 'Public'/)
-  assert.match(visibility, /invite it to any channel/)
+  assert.match(visibility, /label: 'Shared'/)
+  assert.match(visibility, /People who can see its channels can find it; people who can post there can address it/)
   assert.match(compose, /`\/agents\/designer\?visibility=\$\{newAgentVisibility\}`/)
   assert.match(designer, /searchParams\.get\('visibility'\) === 'private'/)
   assert.match(designer, /if \(requestedVisibility\) setVisibility\(requestedVisibility\)/)

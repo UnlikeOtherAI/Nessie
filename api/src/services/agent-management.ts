@@ -4,19 +4,15 @@ import {
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentEditAuthorityError,
   AgentManagementError,
-  agentRecordInclude,
   assertAgentFieldAuthority,
   assertAgentOwnerIsActiveMember,
   canEditAgent,
   createAgentRecord,
   isSystemManagedAgent,
   listAgentsForUser,
-  mapAgentRecord,
-  randomAgentAvatarBackgroundColor,
   readAgentRecordForActor,
   readAgentRunLimits,
   resolveAgentEditAuthority,
-  runLimitsWriteValue,
   stripProtectedAgentToolPolicy,
   updateAgentRecord,
   validateAgentCreateInput,
@@ -80,9 +76,10 @@ export const cloneAgentRecord = async (
       todosEnabled: true,
       toolPolicy: true,
       modelSubscriptionId: true,
+      visibility: true,
     },
   })
-  if (!source || isSystemManagedAgent(source)) return null
+  if (!source || !source.organizationId || isSystemManagedAgent(source)) return null
 
   // A clone belongs to whoever cloned it, and a personal subscription is not
   // transferable: the copy would otherwise spend the ORIGINAL owner's plan.
@@ -97,31 +94,22 @@ export const cloneAgentRecord = async (
   if (source.organizationId) {
     await assertAgentOwnerIsActiveMember(prisma, source.organizationId, clonedByUserId)
   }
-  const agent = await prisma.agent.create({
-    data: {
-      agentKind: 'shared',
-      avatarBackgroundColor: randomAgentAvatarBackgroundColor(),
-      delegationMode: 'none',
-      effort: source.effort,
-      model: clonesSubscription ? null : source.model,
-      name: `${source.name} (copy)`,
-      organizationId: source.organizationId,
-      ownerUserId: clonedByUserId,
-      provider: clonesSubscription ? null : source.provider,
-      projectId: source.projectId,
-      role: source.role,
-      // Run limits are ordinary agent configuration (not a protected key), so a
-      // clone inherits them the same way it inherits effort/model.
-      runLimits: runLimitsWriteValue(readAgentRunLimits(source.runLimits)),
-      surfacePolicy: 'shared',
-      systemPrompt: source.systemPrompt,
-      systemManaged: false,
-      teamId: source.teamId,
-      todosEnabled: source.todosEnabled,
-      toolPolicy,
-    },
-    include: agentRecordInclude,
+  // The creation chokepoint keeps a private clone private and provisions its
+  // owner-only home atomically instead of silently widening its visibility.
+  return createAgentRecord(prisma, {
+    effort: source.effort,
+    model: clonesSubscription ? undefined : source.model ?? undefined,
+    name: `${source.name} (copy)`,
+    organizationId: source.organizationId,
+    ownerUserId: clonedByUserId,
+    provider: clonesSubscription ? undefined : source.provider ?? undefined,
+    projectId: source.projectId ?? undefined,
+    role: source.role,
+    runLimits: readAgentRunLimits(source.runLimits),
+    systemPrompt: source.systemPrompt ?? undefined,
+    teamId: source.teamId ?? undefined,
+    todosEnabled: source.todosEnabled,
+    toolPolicy,
+    visibility: source.visibility,
   })
-
-  return mapAgentRecord(agent)
 }

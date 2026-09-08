@@ -422,6 +422,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         // resource grant and then strand its mandatory policy update.
         await setAgentToolPolicyForRegistryEntry(prisma, {
           agentId: accessChange.change.agentId,
+          actorUserId: actorContext.actor.actorId,
           enabled: accessChange.change.state === 'allowed',
           organizationId: actorContext.tenant.organizationId,
           toolRegistryEntryId,

@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { ensurePrivateAgentHome, setBoardWatchers } from '../src/index.js'
+import { ensurePrivateAgentHome, listBoardWatchers, setBoardWatchers } from '../src/index.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -100,6 +100,19 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     ownerUserId: adder.id,
     teamId: team.id,
   })
+  const sharedChannel = await prisma.channel.create({
+    data: {
+      label: `shared-watch-${suffix}`,
+      organizationId: organization.id,
+      projectId: project.id,
+      slug: `shared-watch-${suffix}`,
+      teamId: team.id,
+      visibility: 'public',
+    },
+  })
+  await prisma.agentBinding.create({
+    data: { agentId: shared.id, channelId: sharedChannel.id },
+  })
   return {
     adderId: adder.id,
     boardId: board.id,
@@ -137,7 +150,7 @@ runDatabaseTest('another person’s private agent is refused before a DM or watc
       { error: 'RECIPIENT_NOT_REACHABLE', recipientId: seeded.otherPrivateAgentId },
     )
     assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId } }), 0)
-    assert.equal(await prisma.channel.count({ where: { organizationId: seeded.organizationId } }), 1)
+    assert.equal(await prisma.channel.count({ where: { organizationId: seeded.organizationId } }), 2)
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
@@ -161,6 +174,29 @@ runDatabaseTest('the adder’s private agent and an ordinary shared agent are va
       [seeded.ownPrivateAgentId, seeded.sharedAgentId].sort(),
     )
     assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId } }), 2)
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a private watcher is never disclosed to another member', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const created = await setBoardWatchers(prisma, {
+      ...watcherInput(seeded),
+      watchers: [{ kind: 'agent', id: seeded.ownPrivateAgentId }],
+    })
+    assert.ok(Array.isArray(created), JSON.stringify(created))
+    assert.deepEqual(
+      await listBoardWatchers(prisma, {
+        boardId: seeded.boardId,
+        organizationId: seeded.organizationId,
+        userId: seeded.otherId,
+      }),
+      [],
+    )
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()

@@ -81,7 +81,13 @@ file is the rule**.
   current owner or an org owner (so *claiming* a team-owned agent is
   org-owner-only by construction) and `todosEnabled` keeps its own org-owner
   gate — both firing only on an actual change, so a form echoing the stored
-  value back stays an ordinary edit. Unchanged by all of it:
+  value back stays an ordinary edit. The UI says this separately from
+  visibility: `Shared` means the agent may work in shared channels, while
+  `Team-owned` means it has no individual steward. A shared agent remains
+  discoverable only through channels the viewer can see (or stewardship), and
+  may be addressed there only by people allowed to post. It is neither
+  organization-wide discovery nor a placement grant. Unchanged
+  by all of it:
   protected/explicit-grant policy keys (`assertGenericAgentToolPolicyInput` is
   the law for every editor), immutable `visibility`,
   `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`, and the `agent.owner_changed` audit on

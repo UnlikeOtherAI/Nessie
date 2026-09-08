@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { BoardWatcherRecord } from '@nessie/schemas'
+import { buildVisibleAgentWhere } from '@nessie/db'
 
 import { resolveAgentConversation } from './agent-conversation.js'
 
@@ -113,10 +114,26 @@ const WATCHER_INCLUDE = {
 
 export const listBoardWatchers = async (
   prisma: PrismaClient,
-  boardId: string,
+  input: { boardId: string; organizationId: string; userId: string },
 ): Promise<BoardWatcherRecord[]> => {
   const rows = await prisma.boardWatcher.findMany({
-    where: { boardId },
+    where: {
+      boardId: input.boardId,
+      organizationId: input.organizationId,
+      OR: [
+        { userId: { not: null } },
+        {
+          agent: {
+            AND: [
+              buildVisibleAgentWhere({
+                organizationId: input.organizationId,
+                userId: input.userId,
+              }),
+            ],
+          },
+        },
+      ],
+    },
     include: WATCHER_INCLUDE,
     orderBy: { createdAt: 'asc' },
   })
@@ -220,7 +237,11 @@ export const setBoardWatchers = async (
     })
   })
 
-  return listBoardWatchers(prisma, input.boardId)
+  return listBoardWatchers(prisma, {
+    boardId: input.boardId,
+    organizationId: input.organizationId,
+    userId: input.addedByUserId,
+  })
 }
 
 /**

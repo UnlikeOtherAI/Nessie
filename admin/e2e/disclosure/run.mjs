@@ -21,6 +21,7 @@ import {
   REVISED_PRIVATE_BODY,
   REVISABLE_REPLY,
   SHARED_SUMMARY,
+  assertKeyboardMentionSelection,
   seedFixture,
   seedRevisableReply,
   submitMentionedRequest,
@@ -194,6 +195,12 @@ const main = async () => {
     await reloadWithRealtimeProbes(audiencePage.page, audienceToken, publicAgentScopes)
     assert.ok((await api('/api/agents', audienceToken)).data.some((agent) => agent.id === fixture.scope.agentId),
       'the public-channel reader can select the shared agent through the normal directory')
+
+    await assertKeyboardMentionSelection(
+      sourcePage.page,
+      fixture.scope.agentId,
+      'Disclosure',
+    )
 
     await submitMentionedRequest(
       sourcePage.page,

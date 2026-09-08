@@ -91,7 +91,10 @@ export const registerExecutionEnvironmentRoutes = (app: FastifyInstance, deps: R
     const query = request.query as { workflowRunId?: string }
     const instances = await listExecutionEnvironmentInstances(
       prisma,
-      actorContext.tenant.organizationId,
+      {
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      },
       {
         workflowRunId: query.workflowRunId,
       },

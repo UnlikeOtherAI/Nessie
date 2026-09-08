@@ -223,9 +223,14 @@ export const seedRevisableReply = async (prisma, fixture) => prisma.$transaction
 export const submitMentionedRequest = async (page, agentId, agentName, text) => {
   const form = page.locator('form.admin-compose:visible')
   const composer = form.locator('[role="textbox"]')
-  await composer.fill(`@${agentName}`)
-  await composer.locator('..').getByRole('button', { name: agentName }).waitFor()
-  await composer.press('Enter')
+  await composer.click()
+  // Type into the contenteditable as a person would. `fill()` replaces its
+  // DOM in one step and can invalidate the live Range the mention controller
+  // needs to replace with the selected entity.
+  await composer.pressSequentially(`@${agentName}`, { delay: 25 })
+  // Pick the visible suggestion directly. This takes the same insertion path
+  // as an ordinary pointer selection after the editor has updated its range.
+  await composer.locator('..').getByRole('button', { name: agentName }).click()
   const mention = composer.locator('span.mention-tag[data-mention-type="agent"]')
   await mention.waitFor()
   if (await mention.getAttribute('data-mention-id') !== agentId) {
@@ -234,6 +239,25 @@ export const submitMentionedRequest = async (page, agentId, agentName, text) => 
   await composer.press('End')
   await composer.pressSequentially(` ${text}`)
   await composer.press('Enter')
+}
+
+// Keep the keyboard path covered independently: typing a real sequence keeps
+// the contenteditable range current, then Enter selects the highlighted entity.
+export const assertKeyboardMentionSelection = async (page, agentId, agentName) => {
+  const form = page.locator('form.admin-compose:visible')
+  const composer = form.locator('[role="textbox"]')
+  await composer.click()
+  await composer.pressSequentially(`@${agentName}`, { delay: 25 })
+  await form.getByRole('button', { name: agentName }).waitFor()
+  await composer.press('Enter')
+  const mention = composer.locator('span.mention-tag[data-mention-type="agent"]')
+  await mention.waitFor()
+  if (await mention.getAttribute('data-mention-id') !== agentId) {
+    throw new Error('The keyboard selected a different agent mention')
+  }
+  await composer.press('ControlOrMeta+A')
+  await composer.press('Backspace')
+  await mention.waitFor({ state: 'detached' })
 }
 
 export const waitForRun = async (pipeline, agentId, threadId, excludedRunIds = []) => {

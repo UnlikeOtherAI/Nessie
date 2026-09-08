@@ -261,3 +261,50 @@ dbTest('capabilities: a session naming no scope maps to 400 TEMP_CONTEXT_SCOPE_R
     await prisma.$disconnect()
   }
 })
+
+dbTest('capabilities: an owner cannot create a session for another person’s private agent', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  const app = buildApp(registerCapabilityRoutes, prisma, actorFor(s))
+  const privateOwner = await prisma.user.create({
+    data: { displayName: 'Private owner', email: `private-owner-${randomUUID()}@example.com` },
+  })
+  try {
+    await prisma.organizationMember.create({
+      data: { organizationId: s.organizationId, role: 'member', userId: privateOwner.id },
+    })
+    const team = await prisma.team.findFirstOrThrow({
+      where: { project: { organizationId: s.organizationId } },
+      select: { id: true },
+    })
+    const privateAgent = await prisma.agent.create({
+      data: {
+        name: 'Private capability target',
+        organizationId: s.organizationId,
+        ownerUserId: privateOwner.id,
+        role: 'assistant',
+        teamId: team.id,
+        visibility: 'private',
+      },
+    })
+    const response = await app.inject({
+      method: 'POST',
+      payload: { agentId: privateAgent.id, toolIds: ['some_tool'] },
+      url: '/api/capabilities/sessions',
+    })
+    assert.equal(response.statusCode, 404)
+    assert.equal(
+      (response.json() as { error: { code: string } }).error.code,
+      'TEMP_CONTEXT_AGENT_NOT_FOUND',
+    )
+    await prisma.agent.delete({ where: { id: privateAgent.id } })
+  } finally {
+    await app.close()
+    await prisma.organizationMember.deleteMany({
+      where: { organizationId: s.organizationId, userId: privateOwner.id },
+    })
+    await prisma.user.delete({ where: { id: privateOwner.id } })
+    await cleanup(prisma, s)
+    await prisma.$disconnect()
+  }
+})

@@ -13,7 +13,7 @@ import {
   updateAgentAvatar,
 } from '@nessie/team-admin'
 import { AgentToolPolicyError } from '../src/services/agent-tool-policy.js'
-import { updateAgentRecord } from '../src/services/agent-management.js'
+import { cloneAgentRecord, updateAgentRecord } from '../src/services/agent-management.js'
 
 /**
  * Who may rewrite an agent, exercised against a real database because every arm
@@ -417,5 +417,27 @@ dbTest('the avatar service follows the same rule as the rest of the configuratio
 
     const updated = await updateAgentAvatar(prisma, agent.id, actor(stewardUserId), null, '#F8D7DA')
     assert.equal(updated?.avatarBackgroundColor, '#F8D7DA')
+  })
+})
+
+dbTest('cloning a private agent preserves privacy and provisions the clone home atomically', async () => {
+  await withDb(async (prisma) => {
+    const source = await createPrivateAgent(prisma)
+    const clone = await cloneAgentRecord(prisma, source.id, orgId, otherMemberUserId)
+
+    assert.ok(clone)
+    assert.equal(clone.visibility, 'private')
+    assert.equal(clone.ownerUserId, otherMemberUserId)
+
+    const home = await prisma.agentBinding.findFirst({
+      where: { agentId: clone.id },
+      select: {
+        channel: {
+          select: { members: { select: { userId: true } }, visibility: true },
+        },
+      },
+    })
+    assert.equal(home?.channel.visibility, 'private')
+    assert.deepEqual(home?.channel.members.map((member) => member.userId), [otherMemberUserId])
   })
 })

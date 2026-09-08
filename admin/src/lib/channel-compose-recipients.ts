@@ -28,7 +28,7 @@ export type Recipient = {
 
 export type RecipientOption = Recipient & {
   agentVisibility?: AgentVisibility
-  category: 'person' | 'private agent' | 'team agent'
+  category: 'person' | 'private agent' | 'shared agent'
   detail: string
   label: string
   user?: UserRecord
@@ -82,7 +82,7 @@ export const buildRecipientOptions = (input: {
   }))
   const agentOptions: RecipientOption[] = input.agents.map((agent) => ({
     agentVisibility: agent.visibility,
-    category: agent.visibility === 'private' ? 'private agent' : 'team agent',
+    category: agent.visibility === 'private' ? 'private agent' : 'shared agent',
     detail: agent.role,
     id: agent.id,
     kind: 'agent',

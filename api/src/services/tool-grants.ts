@@ -6,6 +6,7 @@ import type {
   ToolRegistrySource,
   ToolRegistryTransport,
 } from '@nessie/schemas'
+import { buildAgentVisibilityWhere } from '@nessie/db'
 
 import {
   fromPrismaToolGrantSource,
@@ -35,6 +36,7 @@ export const TOOL_GRANT_ERROR_CODES = {
   GRANT_NOT_FOUND: 'TOOL_GRANT_NOT_FOUND',
   PRINCIPAL_REQUIRED: 'TOOL_GRANT_PRINCIPAL_REQUIRED',
   PRINCIPAL_AMBIGUOUS: 'TOOL_GRANT_PRINCIPAL_AMBIGUOUS',
+  AGENT_NOT_FOUND: 'TOOL_GRANT_AGENT_NOT_FOUND',
 } as const
 
 export class ToolGrantError extends Error {
@@ -184,6 +186,8 @@ export const listToolRegistry = async (
 }
 
 export type CreateGrantInput = {
+  /** Present for a human request; bootstrap grants have no viewer. */
+  actorUserId?: string
   toolRegistryEntryId: string
   organizationId: string
   state?: ToolGrantState
@@ -229,6 +233,32 @@ export const createGrant = async (
     )
   }
 
+  if (input.agentId) {
+    const agent = await prisma.agent.findFirst({
+      where: {
+        id: input.agentId,
+        organizationId: input.organizationId,
+        ...(input.actorUserId
+          ? {
+              AND: [
+                buildAgentVisibilityWhere({
+                  organizationId: input.organizationId,
+                  userId: input.actorUserId,
+                }),
+              ],
+            }
+          : {}),
+      },
+      select: { id: true },
+    })
+    if (!agent) {
+      throw new ToolGrantError(
+        TOOL_GRANT_ERROR_CODES.AGENT_NOT_FOUND,
+        'Agent not found',
+      )
+    }
+  }
+
   const state = input.state ?? 'allowed'
 
   // Idempotent: a grant for the same (tool, principal, state) already conveys the
@@ -264,6 +294,7 @@ export const deleteGrant = async (
   organizationId: string,
   toolRegistryEntryId: string,
   grantId: string,
+  actorUserId?: string,
 ): Promise<boolean> => {
   // Re-scope the registry lookup so org B cannot delete grants belonging to
   // org A's tool even if it knows the grant id. Same OR rule as createGrant:
@@ -278,7 +309,25 @@ export const deleteGrant = async (
   if (!tool) return false
 
   const existing = await prisma.toolGrant.findFirst({
-    where: { id: grantId, toolId: toolRegistryEntryId },
+    where: {
+      id: grantId,
+      toolId: toolRegistryEntryId,
+      OR: [
+        { agentId: null },
+        {
+          agent: {
+            organizationId,
+            ...(actorUserId
+              ? {
+                  AND: [
+                    buildAgentVisibilityWhere({ organizationId, userId: actorUserId }),
+                  ],
+                }
+              : {}),
+          },
+        },
+      ],
+    },
     select: { id: true },
   })
   if (!existing) return false

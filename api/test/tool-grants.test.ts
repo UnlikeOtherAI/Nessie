@@ -95,6 +95,7 @@ const buildFakePrisma = (
 const ORG_A = '00000000-0000-4000-8000-00000000000a'
 const ORG_B = '00000000-0000-4000-8000-00000000000b'
 const ROLE_A = '00000000-0000-4000-8000-0000000000aa'
+const PRIVATE_AGENT = '00000000-0000-4000-8000-0000000000ab'
 
 const makeListedTool = (input: {
   catalogName: string
@@ -235,6 +236,36 @@ test('createGrant succeeds for global (organizationId=null) registry entries', a
   })
 
   assert.equal(grant.toolId, 'tool-global')
+})
+
+test('createGrant refuses another owner’s private agent and composes the visibility fence', async () => {
+  let agentWhere: Record<string, unknown> | undefined
+  const prisma = {
+    agent: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        agentWhere = where
+        return null
+      },
+    },
+    toolGrant: {},
+    toolRegistryEntry: {
+      findFirst: async () => ({ id: 'tool-orgA' }),
+    },
+  } as unknown as PrismaClient
+
+  await assert.rejects(
+    () => createGrant(prisma, {
+      actorUserId: '00000000-0000-4000-8000-0000000000ac',
+      agentId: PRIVATE_AGENT,
+      organizationId: ORG_A,
+      toolRegistryEntryId: 'tool-orgA',
+    }),
+    (error: unknown) => error instanceof ToolGrantError
+      && error.code === TOOL_GRANT_ERROR_CODES.AGENT_NOT_FOUND,
+  )
+  assert.equal(agentWhere?.organizationId, ORG_A)
+  assert.match(JSON.stringify(agentWhere), /"visibility":"private"/u)
+  assert.match(JSON.stringify(agentWhere), /"ownerUserId"/u)
 })
 
 test('deleteGrant refuses to delete a grant whose tool belongs to another org', async () => {

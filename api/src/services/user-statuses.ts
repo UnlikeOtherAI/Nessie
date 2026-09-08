@@ -12,6 +12,7 @@ import {
   parseProjectId,
   parseUserId,
 } from '@nessie/schemas'
+import { buildVisibleAgentWhere } from '@nessie/db'
 import type {
   CreateUserStatusBody,
   CreateUserStatusScheduleBody,
@@ -206,7 +207,10 @@ const validateRuleTargets = async (
       : null,
     input.agentId
       ? prisma.agent.findFirst({
-          where: { id: input.agentId, organizationId: owner.organizationId },
+          where: {
+            id: input.agentId,
+            AND: [buildVisibleAgentWhere(owner)],
+          },
           select: { id: true },
         })
       : null,

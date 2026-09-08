@@ -58,7 +58,11 @@ export const registerBoardWatcherRoutes = (
       return reply
     }
     return createApiResponse(
-      BoardWatcherRecordSchema.array().parse(await listBoardWatchers(prisma, board.id)),
+      BoardWatcherRecordSchema.array().parse(await listBoardWatchers(prisma, {
+        boardId: board.id,
+        organizationId: board.organizationId,
+        userId: actorContext.actor.actorId,
+      })),
     )
   })
 

@@ -29,7 +29,7 @@ export const registerCapabilityRoutes = (app: FastifyInstance, deps: RouteDeps):
       runId?: string
       threadId?: string
     }
-    const sessions = await listTemporaryContextSessions(prisma, actorContext.tenant.organizationId, {
+    const sessions = await listTemporaryContextSessions(prisma, actorContext, {
       agentId: query.agentId,
       includeDropped: query.includeDropped === 'true',
       runId: query.runId,
@@ -83,7 +83,7 @@ export const registerCapabilityRoutes = (app: FastifyInstance, deps: RouteDeps):
     const { sessionId } = request.params as { sessionId: string }
     const session = await dropTemporaryContextSession(
       prisma,
-      actorContext.tenant.organizationId,
+      actorContext,
       sessionId,
     )
     if (!session) {

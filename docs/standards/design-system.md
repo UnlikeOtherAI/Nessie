@@ -139,9 +139,11 @@ summary and points here; **this file is the rule**.
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
 - **One agent-visibility marker wherever identity drives an action.** Every
   agent picker and actionable agent row uses
-  `components/shared/AgentVisibilityPill.tsx`: `Public` for an
-  organization-visible shared
-  agent and a lock-bearing `Private` for a personal one. Native `<select>`
+  `components/shared/AgentVisibilityPill.tsx`: `Shared` for an agent that
+  works in shared channels and a lock-bearing `Private` for a personal one.
+  Shared discovery follows channel visibility; addressing still requires the
+  channel's posting authority. It is not organization-wide discovery or a
+  placement grant. Native `<select>`
   controls use that component's text formatter because option elements cannot
   render the pill. Display names are not unique; a surface that lets a person
   choose, grant, invite, assign, or open an agent must not leave two same-named
