@@ -161,7 +161,7 @@ export const appendStubbedBuiltinSchema = (
   stubbedIds: ReadonlySet<string>,
   definitions: BuiltinToolDefinition[],
 ): AgenticToolResult => {
-  if (result.success || !stubbedIds.has(toolName)) return result
+  if (result.success || result.failureKind !== 'invalid_arguments' || !stubbedIds.has(toolName)) return result
   const definition = definitions.find((tool) => tool.id === toolName)
   if (!definition) return result
   return {
