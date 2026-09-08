@@ -1,3 +1,5 @@
+import { resolveDisclosureViewer, resolveLiveEntitlements } from '@nessie/runtime'
+import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
@@ -33,8 +35,31 @@ export type RunRecorders = {
 export const createRunRecorders = (
   deps: ExecutionDependencies,
   context: RunContext,
+  actorContext: RunExecuteJobPayload['actorContext'],
 ): RunRecorders => {
   const organizationId = String(context.channel.organizationId)
+  const effectiveUserId = actorContext.actionContext.effectiveUserId
+    ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null)
+  let documentDisclosureViewer: ReturnType<typeof resolveDisclosureViewer> | null = null
+  const resolveDocumentDisclosureViewer = () => {
+    if (documentDisclosureViewer) return documentDisclosureViewer
+    documentDisclosureViewer = (async () => {
+      const liveEntitlements = effectiveUserId
+        ? await resolveLiveEntitlements(deps.prisma, {
+            organizationId,
+            userId: effectiveUserId,
+            uoaIdentity: actorContext.actionContext.uoaIdentity,
+          })
+        : undefined
+      return resolveDisclosureViewer(
+        deps.prisma,
+        organizationId,
+        effectiveUserId,
+        effectiveUserId ? { liveEntitlements } : { agentId: context.agent.id },
+      )
+    })()
+    return documentDisclosureViewer
+  }
   // Durable thought log + coalesced live thinking events.
   const thinkingRecorder = createThinkingRecorder({
     isRestricted: () => runReplyIsRestricted(context),
@@ -56,7 +81,10 @@ export const createRunRecorders = (
       fileServiceFor(deps.prisma),
       organizationId,
       pageId,
-      { agentId: context.agent.id, consumedSources: context.consumedSources },
+      {
+        consumedSources: context.consumedSources,
+        disclosureViewer: await resolveDocumentDisclosureViewer(),
+      },
     ),
     prisma: deps.prisma,
     persistRestrictionBasis: (basis) => persistRunBasis(deps.prisma, {

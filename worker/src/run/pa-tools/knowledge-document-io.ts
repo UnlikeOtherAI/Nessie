@@ -1,10 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
-import type { FileService } from '@nessie/runtime'
-import { readCanonicalMarkdownAttachment } from '@nessie/knowledge'
+import type { DisclosureViewer, FileService } from '@nessie/runtime'
+import {
+  canReadKnowledgePageVersion,
+  isMarkdownAttachment,
+  readCanonicalMarkdownAttachment,
+} from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
-import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
-
-const MARKDOWN_EXTENSION = '.md'
+import { recordKnowledgeSpaceRead, recordKnowledgeVersionRead } from './knowledge-basis.js'
 
 export const readMarkdownAttachmentContent = async (
   fileService: FileService,
@@ -34,7 +36,9 @@ export const readMarkdownDocument = async (
   fileService: FileService,
   organizationId: string,
   pageId: string,
-  disclosureContext: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  disclosureContext: Pick<BuiltinToolRuntimeContext, 'consumedSources'> & {
+    disclosureViewer?: DisclosureViewer
+  },
 ): Promise<{
   attachmentId: string
   content: string
@@ -48,7 +52,6 @@ export const readMarkdownDocument = async (
       kind: true,
       parentPageId: true,
       spaceId: true,
-      publishedVersion: { select: { attachmentId: true } },
       space: {
         select: {
           channelId: true,
@@ -63,26 +66,45 @@ export const readMarkdownDocument = async (
       title: true,
       versions: {
         orderBy: { versionNumber: 'desc' },
-        select: { attachmentId: true },
-        take: 1,
+        select: {
+          attachmentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+        },
       },
     },
     where: { deletedAt: null, id: pageId, organizationId },
   })
   if (!page || page.kind !== 'file') return null
-  if (!page.title.toLowerCase().endsWith(MARKDOWN_EXTENSION)) return null
+  // The live composer receives both a page title and source bytes. Preserve
+  // the all-retained-version rule used by ordinary page envelopes before
+  // either reaches the run context.
+  if (!disclosureContext.disclosureViewer || !page.versions.every((version) =>
+    canReadKnowledgePageVersion(version, disclosureContext.disclosureViewer!),
+  )) return null
 
-  const attachmentId = page.versions[0]?.attachmentId ?? page.publishedVersion?.attachmentId
+  const version = page.versions[0]
+  const attachmentId = version?.attachmentId
   if (!attachmentId) return null
 
   // The body is about to enter the run. Record its source before opening the
   // attachment so no byte can be streamed or persisted with an empty basis.
+  // An envelope shows title/history together, so every retained version's
+  // provenance accompanies the admitted read as well.
   recordKnowledgeSpaceRead(disclosureContext, [page.space])
-  const content = await readMarkdownAttachmentContent(fileService, attachmentId, organizationId)
-  if (content === null) return null
+  for (const retainedVersion of page.versions) {
+    recordKnowledgeVersionRead(disclosureContext, retainedVersion)
+  }
+  const opened = await fileService.openStream(attachmentId, organizationId)
+  if (!opened || !isMarkdownAttachment(opened.attachment)) return null
+  const source = await readCanonicalMarkdownAttachment(
+    async () => opened.stream,
+    attachmentId,
+    organizationId,
+  )
   return {
     attachmentId,
-    content,
+    content: source.content,
     parentPageId: page.parentPageId,
     spaceId: page.spaceId,
     title: page.title,

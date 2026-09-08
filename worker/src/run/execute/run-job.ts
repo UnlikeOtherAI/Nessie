@@ -230,7 +230,11 @@ const runJobUnderFence = async (
   // Both live recorders, created before the `try` and closed in its `finally`:
   // they must exist before the first provider chunk, and every exit path —
   // completion, classified stop, crash, drain — has to settle them.
-  const { documentStream, executionDeps, thinkingRecorder } = createRunRecorders(deps, context)
+  const { documentStream, executionDeps, thinkingRecorder } = createRunRecorders(
+    deps,
+    context,
+    payload.actorContext,
+  )
 
   try {
     assertPrivateAgentRunPlacement(context)

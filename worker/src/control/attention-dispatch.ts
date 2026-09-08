@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
-import { listVisibleAgentIdsForUser } from '@nessie/db'
-import { canReadSpace } from '@nessie/knowledge'
+import { canReadKnowledgePageVersion, canReadSpace, loadSpaceViewer } from '@nessie/knowledge'
 import { type AttentionDispatchJobPayload } from '@nessie/schemas'
+import { resolveDisclosureViewer, resolveLiveEntitlements } from '@nessie/runtime'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
@@ -17,7 +17,8 @@ import {
 
 export type AttentionDispatchPrisma = PushDeliveryPrisma & PushBadgePrisma & Pick<
   PrismaClient,
-  'agent' | 'organizationMember' | 'projectMember' | 'userAlert'
+  | 'agent' | 'knowledgePageVersion' | 'organization' | 'organizationMember'
+  | 'productAccountLink' | 'projectMember' | 'team' | 'userAlert'
 >
 
 export type AttentionDispatchDeps = {
@@ -108,31 +109,41 @@ const resolveAttention = async (
   if (alert.kind === 'knowledge_published') {
     const page = alert.knowledgePage
     if (!page || !alert.projectId || page.status !== 'published' || page.deletedAt || page.organizationId !== alert.organizationId) return null
-    const memberUserIds = page.space.members.flatMap((member) => member.userId ? [member.userId] : [])
-    // Delivery revalidates the same live agent audience the durable alert and
-    // KB reader use, so access revoked after enqueue suppresses the push. See
-    // docs/plans/2026-08-31-agent-documents.md §4.1.
-    const [projectMembership, visibleAgentIds] = await Promise.all([
+    // A background delivery has no request identity, so it is the one explicit
+    // stored-identity revalidation path. It still calls fresh UOA `/org/me`;
+    // revocation suppresses the title-bearing notification before delivery.
+    const accessPrisma = prisma as unknown as PrismaClient
+    const liveEntitlements = await resolveLiveEntitlements(accessPrisma, {
+      allowStoredIdentity: true,
+      organizationId: alert.organizationId,
+      userId: alert.userId,
+    })
+    const [projectMembership, viewer, disclosureViewer, versions] = await Promise.all([
       prisma.projectMember.findFirst({
         where: { projectId: page.projectId, userId: alert.userId },
         select: { id: true },
       }),
-      listVisibleAgentIdsForUser(prisma, {
-        organizationId: alert.organizationId,
-        userId: alert.userId,
+      loadSpaceViewer(accessPrisma, alert.organizationId, { actorId: alert.userId, actorType: 'user' }, {
+        liveEntitlements,
+      }),
+      resolveDisclosureViewer(accessPrisma, alert.organizationId, alert.userId, {
+        allowStoredUoaIdentity: true,
+        liveEntitlements,
+      }),
+      prisma.knowledgePageVersion.findMany({
+        where: { pageId: page.id },
+        select: {
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+        },
       }),
     ])
     const readable = canReadSpace({
       ...page.space,
       memberAgentIds: [],
-      memberUserIds,
-    }, {
-      bypass: false,
-      projectIds: projectMembership ? new Set([page.projectId]) : new Set(),
-      userId: alert.userId,
-      visibleAgentIds: new Set(visibleAgentIds),
-    })
-    if (!readable) return null
+      memberUserIds: page.space.members.flatMap((member) => member.userId ? [member.userId] : []),
+    }, viewer)
+    if (!readable || !versions.every((version) => canReadKnowledgePageVersion(version, disclosureViewer))) return null
     const publisher = alert.actorUser?.displayName ?? 'Someone'
     const projectDestination = projectMembership
       ? `/projects/${page.projectId}/docs?spaceId=${page.spaceId}&pageId=${page.id}`
