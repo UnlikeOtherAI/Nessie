@@ -56,6 +56,10 @@ export const ChatToolDock = ({
 }: ChatToolDockProps) => {
   const single = useNavigationLayout() === 'single'
   const { atLeast } = useViewport()
+  // This is the API's projection of the explicit browser_open grant. The
+  // Browser dock must use the same fact as the Tools page: a missing grant is
+  // an unavailable capability, never a browser read that failed.
+  const browserEnabled = agent.browserEnabled === true
   // Two 400px panels plus the shell's own 389px of chrome leave a 1280px
   // window 91px of conversation, and below `xl` they are not columns at all —
   // each is a layer over the chat, so a second one means two scrims and a
@@ -64,13 +68,13 @@ export const ChatToolDock = ({
   // does *not* close the tool, because a window resize is not a decision and
   // must not erase what the reader chose.
   const crowded = otherPanelOpen && !atLeast['2xl'] && !routed
-  const browserOpen = openTool === 'browser' && !crowded
+  const browserOpen = browserEnabled && openTool === 'browser' && !crowded
 
   // Watching wants a fresh answer; a rail dot does not, and a layout with no
   // rail wants none at all. Both callers share one query key, so a
   // conversation with the column open polls once, quickly.
   const sessions = useThreadBrowserSessions(threadId, {
-    enabled: browserOpen || !single,
+    enabled: browserEnabled && (browserOpen || !single),
     refetchInterval: browserOpen ? WATCHING_POLL_MS : RAIL_POLL_MS,
   })
   // This agent's session, not the newest in the thread: the panel is per
@@ -99,7 +103,7 @@ export const ChatToolDock = ({
         down on a phone is the same statement as the header picking them up:
         they can neither double up nor both vanish.
       */}
-      {chatToolDoorway({ hasConversationAgent: true, single }) === 'rail' ? (
+      {chatToolDoorway({ hasConversationAgent: browserEnabled, single }) === 'rail' ? (
         <ChatToolRail
           blockedReason={crowded ? CROWDED_REASON : null}
           liveTools={liveTools}
