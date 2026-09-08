@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module'
 import type { Readable } from 'node:stream'
 import type { PrismaClient } from '@prisma/client'
-import type { FileService } from '@nessie/runtime'
-import { replaceKnowledgePageVersionChunks } from '@nessie/knowledge'
+import type { FileService, ModelClient } from '@nessie/runtime'
+import { knowledgeEmbeddingJobKey, replaceKnowledgePageVersionChunks } from '@nessie/knowledge'
 import { KNOWLEDGE_EMBED_TOPIC, type KnowledgeExtractJobPayload } from '@nessie/schemas'
 import mammoth from 'mammoth'
 import { enqueueQueueJob } from '../queue.js'
@@ -126,6 +126,7 @@ const extractText = async (
 
 type KnowledgeExtractDeps = {
   fileService: FileService
+  modelClient?: Pick<ModelClient, 'embeddingModel'>
   prisma: PrismaClient
   // Overridable for tests; defaults to the real pdf-parse/mammoth calls.
   parsePdf?: PdfParser
@@ -213,7 +214,11 @@ export const executeKnowledgeExtractJob = async (
     })
     if (!written) return
     await enqueueQueueJob(tx, {
-      idempotencyKey: `kb-embed:${payload.pageId}:${payload.versionId}`,
+      idempotencyKey: knowledgeEmbeddingJobKey(
+        payload.pageId,
+        payload.versionId,
+        deps.modelClient?.embeddingModel ?? 'unresolved',
+      ),
       payload: {
         organizationId: payload.organizationId,
         origin: payload.origin,

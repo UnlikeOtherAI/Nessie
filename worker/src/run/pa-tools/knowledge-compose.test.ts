@@ -53,6 +53,7 @@ const createdPage = (): KnowledgePageRecord => ({
     createdAt: '2026-08-31T00:00:00.000Z',
     id: 'version-1',
     pageId: 'page-1',
+    sourceContentHash: null,
     versionNumber: 1,
   },
   metadata: null,

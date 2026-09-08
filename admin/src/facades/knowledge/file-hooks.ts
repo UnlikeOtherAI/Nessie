@@ -15,7 +15,7 @@ export const versionDownloadPath = (pageId: string, versionId: string): string =
 export const kbAttachmentDownloadPath = (attachmentId: string): string =>
   `/api/knowledge-base/attachments/${attachmentId}/download`
 
-type UploadVars = { file: File; onProgress?: (progress: UploadProgress) => void }
+type UploadVars = { baseVersionId?: string; file: File; onProgress?: (progress: UploadProgress) => void }
 
 // Create a file node in a space (optionally inside a folder page).
 export const useUploadFileNode = (spaceId?: string, parentPageId?: string | null) => {
@@ -42,34 +42,17 @@ export const useUploadFileVersion = (pageId?: string, spaceId?: string) => {
   const { token } = useAuthSession()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ file, onProgress }: UploadVars) =>
+    mutationFn: ({ baseVersionId, file, onProgress }: UploadVars) =>
       uploadFileWithProgress<KnowledgeVersionRecord>(
         `/api/knowledge-base/pages/${pageId}/file-version`,
         file,
         token,
         onProgress,
+        baseVersionId ? { baseVersionId } : undefined,
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: knowledgeKeys.versions(pageId) })
       void queryClient.invalidateQueries({ queryKey: knowledgeKeys.page(pageId) })
-      if (spaceId) void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(spaceId) })
-    },
-  })
-}
-
-// Convert a markdown file node into a native document (rendered + editable).
-export const useConvertToDocument = (spaceId?: string) => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (pageId: string) =>
-      apiClient.post<KnowledgePageRecord>(
-        `/api/knowledge-base/pages/${pageId}/convert-to-document`,
-        {},
-      ),
-    onSuccess: (_data, pageId) => {
-      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.page(pageId) })
-      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.versions(pageId) })
       if (spaceId) void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(spaceId) })
     },
   })

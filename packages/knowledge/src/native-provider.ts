@@ -1,59 +1,40 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
-import { replaceLabels } from './native-labels.js'
-import { readableKnowledgeSpaceWhere } from './access.js'
-import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
+import { mapPage, mapVersion, pageInclude } from './native-mappers.js'
 import { listNativeRecentPages } from './native-recent-pages.js'
 import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
-import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
-import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js'
-import { clampLimit, parseCursor, trimPage } from './pagination.js'
+import {
+  addFileVersion,
+  createPage,
+  fetchPage,
+  getMutablePage,
+  indexVersionChunks,
+  restoreVersion,
+  updatePage,
+  type NativeKnowledgeProviderOptions,
+} from './native-version-writer.js'
+import {
+  archiveSpace,
+  createSpace,
+  getSpace,
+  listSpaces,
+  updateSpace,
+} from './native-space-operations.js'
 import { KnowledgePageRevisionConflictError } from './types.js'
 import type {
-  AddFileVersionInput,
-  KnowledgePageRecord,
   KnowledgePageTreeNode,
-  KnowledgePageVersionRecord,
   KnowledgeProvider,
   ListPagesInput,
   MovePageInput,
   PublishPageInput,
-  RestorePageVersionInput,
-  UpdatePageInput,
 } from './types.js'
 
-export type KnowledgeVersionIndexedEvent = {
-  organizationId: string
-  pageId: string
-  versionId: string
-}
-
-export type KnowledgePagePublishedEvent = {
-  actorUserId: string | null
-  organizationId: string
-  pageId: string
-  projectId: string
-  spaceId: string
-  versionId: string
-}
-
-export type NativeKnowledgeProviderOptions = {
-  // Invoked inside the same transaction that wrote a version's chunk rows —
-  // the api wires this to enqueue the `knowledge.embed` job, so a failed
-  // enqueue rolls the save back instead of silently losing the embedding pass.
-  onVersionChunksReplaced?: (
-    tx: Prisma.TransactionClient,
-    event: KnowledgeVersionIndexedEvent,
-  ) => Promise<void>
-  // Invoked inside the publication transaction after the page points at its
-  // newly published version. The API owns recipient resolution and the queue
-  // outbox because they are app-level attention policy, not knowledge storage.
-  onPagePublished?: (
-    tx: Prisma.TransactionClient,
-    event: KnowledgePagePublishedEvent,
-  ) => Promise<void>
-}
+export type {
+  KnowledgePagePublishedEvent,
+  KnowledgeVersionIndexedEvent,
+  NativeKnowledgeProviderOptions,
+} from './native-version-writer.js'
 
 const nativeCapabilities = {
   canWrite: true,
@@ -64,215 +45,6 @@ const nativeCapabilities = {
   supportsHierarchicalPages: true,
   supportsDeterministicSearch: true,
 } as const
-
-const VERSION_CREATE_MAX_ATTEMPTS = 3
-const ARCHIVED_PAGE_MESSAGE = 'Archived pages are read-only'
-
-// Knowledge-space agent membership grants must name real agents in the same
-// org — otherwise a grant silently never matches any SpaceViewer.agent.id and
-// looks like a bug in access.ts rather than bad input. Reject rather than
-// silently drop foreign/unknown ids.
-const assertAgentsBelongToOrg = async (
-  client: PrismaClient | Prisma.TransactionClient,
-  organizationId: string,
-  agentIds: string[],
-): Promise<void> => {
-  const found = await client.agent.findMany({
-    where: { id: { in: agentIds }, organizationId },
-    select: { id: true },
-  })
-  const foundIds = new Set(found.map((agent) => agent.id))
-  const unknown = agentIds.filter((id) => !foundIds.has(id))
-  if (unknown.length > 0) {
-    throw new KnowledgeConflictError(
-      `Unknown agent id(s) for knowledge space membership: ${unknown.join(', ')}`,
-    )
-  }
-}
-
-// User grants are organization-scoped, just like agent grants. Persisting an
-// arbitrary global User id would leave a latent cross-tenant grant that starts
-// working if that person later joins this organization.
-const assertUsersBelongToOrg = async (
-  client: PrismaClient | Prisma.TransactionClient,
-  organizationId: string,
-  userIds: string[],
-): Promise<void> => {
-  const found = await client.organizationMember.findMany({
-    where: {
-      organizationId,
-      userId: { in: userIds },
-      deactivatedAt: null,
-    },
-    select: { userId: true },
-  })
-  const foundIds = new Set(found.map((member) => member.userId))
-  const unknown = userIds.filter((id) => !foundIds.has(id))
-  if (unknown.length > 0) {
-    throw new KnowledgeConflictError(
-      `Unknown, foreign, or deactivated user id(s) for knowledge space membership: ${unknown.join(', ')}`,
-    )
-  }
-}
-
-// KnowledgeSpace stores both organizationId and projectId. The database FK
-// validates only that the project exists, so the domain layer must also prove
-// that it belongs to the same organization before it writes the pair.
-const assertProjectBelongsToOrg = async (
-  client: PrismaClient | Prisma.TransactionClient,
-  organizationId: string,
-  projectId: string,
-): Promise<void> => {
-  const project = await client.project.findFirst({
-    where: { id: projectId, organizationId },
-    select: { id: true },
-  })
-  if (!project) {
-    throw new KnowledgeConflictError('Knowledge space project does not belong to this organization')
-  }
-}
-
-// `KnowledgePage.taskId` is intentionally a loose column rather than a
-// database foreign key, so every page creation path must prove that the ticket
-// belongs to the page's organization and destination-space project before it
-// persists the reference.
-const assertTaskBelongsToSpaceProject = async (
-  client: Prisma.TransactionClient,
-  organizationId: string,
-  projectId: string,
-  taskId: string | null | undefined,
-): Promise<void> => {
-  if (!taskId) return
-  const task = await client.task.findFirst({
-    where: { id: taskId, organizationId, projectId },
-    select: { id: true },
-  })
-  if (!task) {
-    throw new KnowledgeConflictError('Ticket not found in this knowledge space project')
-  }
-}
-
-const fetchPage = async (
-  client: PrismaClient | Prisma.TransactionClient,
-  organizationId: string,
-  pageId: string,
-): Promise<KnowledgePageRecord | null> => {
-  const page = await client.knowledgePage.findFirst({
-    where: { id: pageId, organizationId, deletedAt: null },
-    include: pageInclude,
-  })
-  return page ? mapPage(page) : null
-}
-
-const nextVersionNumber = async (
-  tx: Prisma.TransactionClient,
-  pageId: string,
-): Promise<number> => {
-  const latest = await tx.knowledgePageVersion.findFirst({
-    where: { pageId },
-    orderBy: { versionNumber: 'desc' },
-    select: { versionNumber: true },
-  })
-  return (latest?.versionNumber ?? 0) + 1
-}
-
-const isVersionNumberConflict = (error: unknown): boolean => {
-  if (
-    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-    error.code !== 'P2002'
-  ) {
-    return false
-  }
-
-  const target = error.meta?.['target']
-  if (Array.isArray(target)) {
-    const columns = new Set(
-      target.filter((value): value is string => typeof value === 'string'),
-    )
-    return (
-      (columns.has('page_id') || columns.has('pageId')) &&
-      (columns.has('version_number') || columns.has('versionNumber'))
-    )
-  }
-
-  return (
-    typeof target === 'string' &&
-    (target.includes('knowledge_page_versions_page_version_key') ||
-      (target.includes('page_id') && target.includes('version_number')))
-  )
-}
-
-const withVersionNumberRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
-  for (let attempt = 1; attempt <= VERSION_CREATE_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      return await operation()
-    } catch (error) {
-      if (!isVersionNumberConflict(error)) throw error
-      if (attempt === VERSION_CREATE_MAX_ATTEMPTS) {
-        throw new KnowledgeConflictError('Knowledge page version conflict')
-      }
-    }
-  }
-  throw new KnowledgeConflictError('Knowledge page version conflict')
-}
-
-const getMutablePage = async (
-  tx: Prisma.TransactionClient,
-  organizationId: string,
-  pageId: string,
-) => {
-  const page = await tx.knowledgePage.findFirst({
-    where: { id: pageId, organizationId, deletedAt: null },
-    select: {
-      id: true,
-      spaceId: true,
-      status: true,
-      organizationId: true,
-      projectId: true,
-      teamId: true,
-      channelId: true,
-      threadId: true,
-      userId: true,
-      visibility: true,
-      sensitivityTier: true,
-      privateToAgentId: true,
-      publishedVersionId: true,
-      revision: true,
-      taskId: true,
-    },
-  })
-  if (!page) return null
-  if (page.status === 'archived') throw new KnowledgeConflictError(ARCHIVED_PAGE_MESSAGE)
-  return page
-}
-
-// Chunk a version and fire the index hook when rows were actually written
-// (replaceKnowledgePageVersionChunks no-ops on already-chunked versions). The
-// same "written" gate doubles as the wikilink-maintenance seam: it is true
-// exactly once per genuinely new version (create/update/restore), so a
-// publish that re-runs on an already-chunked version skips both chunking and
-// link recomputation — the links already reflect that version's body.
-const indexVersionChunks = async (
-  tx: Prisma.TransactionClient,
-  options: NativeKnowledgeProviderOptions,
-  page: ChunkablePage,
-  version: { body: string | null; id: string },
-): Promise<void> => {
-  const written = await replaceKnowledgePageVersionChunks(tx, { page, version })
-  if (!written) return
-  await replaceKnowledgePageLinks(tx, {
-    organizationId: page.organizationId,
-    sourcePageId: page.id,
-    bodyHtml: version.body,
-  })
-  if (options.onVersionChunksReplaced) {
-    await options.onVersionChunksReplaced(tx, {
-      organizationId: page.organizationId,
-      pageId: page.id,
-      versionId: version.id,
-    })
-  }
-}
 
 const assertMoveDoesNotCycle = async (
   tx: Prisma.TransactionClient,
@@ -292,9 +64,6 @@ const assertMoveDoesNotCycle = async (
   return true
 }
 
-// Tree moves are structural writes: two individually valid moves can form a
-// cycle if they inspect different snapshots. Serialize every move in a space
-// until both the ancestry check and conditional update have completed.
 const lockKnowledgeTreeMoves = async (
   tx: Prisma.TransactionClient,
   spaceId: string,
@@ -337,12 +106,10 @@ const listPages = async (
   }
   return pages.map((page) => {
     const record = mapPage(page)
+    // Space tree views never render the body. Fetch it on demand when a page
+    // is opened so listing a large space does not retain every document body.
     return {
       ...record,
-      // Drop the (potentially large) HTML body from the space-pages list — the
-      // tree/column views never render it, and the client otherwise holds every
-      // page's full body in memory. It is fetched on demand via GET /pages/:id
-      // when a document is opened or edited.
       latestVersion: record.latestVersion ? { ...record.latestVersion, body: null } : null,
       childPageIds: childrenByParent.get(page.id) ?? [],
     }
@@ -356,11 +123,10 @@ const movePage = async (
   prisma.$transaction(async (tx) => {
     const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
+    // Serialize moves per space so cycle checks and the revision CAS observe
+    // one stable tree while this transaction changes the parent relationship.
     await lockKnowledgeTreeMoves(tx, page.spaceId)
-    if (
-      input.expectedRevision !== undefined
-      && page.revision !== input.expectedRevision
-    ) {
+    if (input.expectedRevision !== undefined && page.revision !== input.expectedRevision) {
       throw new KnowledgePageRevisionConflictError(page.revision)
     }
     const validMove = await assertMoveDoesNotCycle(
@@ -395,9 +161,6 @@ const movePage = async (
         revision: { increment: 1 },
       },
     })
-    // The initial revision check gives the common stale path a direct answer;
-    // this conditional update closes the race between that read and the tree
-    // write. A concurrent edit has won, so report its current revision.
     if (moved.count === 0 && input.expectedRevision !== undefined) {
       const current = await getMutablePage(tx, input.organizationId, input.pageId)
       if (!current) return null
@@ -438,143 +201,6 @@ const publishPage = async (
     return fetchPage(tx, input.organizationId, input.pageId)
   })
 
-const restoreVersion = async (
-  prisma: PrismaClient,
-  options: NativeKnowledgeProviderOptions,
-  input: RestorePageVersionInput,
-) =>
-  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
-    const page = await getMutablePage(tx, input.organizationId, input.pageId)
-    if (!page) return null
-    const version = await tx.knowledgePageVersion.findFirst({
-      where: {
-        id: input.versionId,
-        pageId: input.pageId,
-      },
-    })
-    if (!version) return null
-    const restored = await tx.knowledgePageVersion.create({
-      data: {
-        pageId: input.pageId,
-        versionNumber: await nextVersionNumber(tx, input.pageId),
-        body: version.body,
-        bodyRef: version.bodyRef,
-        attachmentId: version.attachmentId,
-        authorType: input.authorType,
-        authorId: input.authorId,
-        changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
-      },
-    })
-    await indexVersionChunks(tx, options, page, restored)
-    await tx.knowledgePage.update({
-      where: { id: input.pageId },
-      data: { status: 'draft' },
-    })
-    return fetchPage(tx, input.organizationId, input.pageId)
-  }))
-
-// Add a new version to a file node, backed by a freshly stored attachment.
-// Mirrors the version-creation path but carries an attachmentId instead of body.
-const addFileVersion = async (
-  prisma: PrismaClient,
-  input: AddFileVersionInput,
-): Promise<KnowledgePageVersionRecord | null> =>
-  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
-    const page = await getMutablePage(tx, input.organizationId, input.pageId)
-    if (!page) return null
-    const version = await tx.knowledgePageVersion.create({
-      data: {
-        pageId: input.pageId,
-        versionNumber: await nextVersionNumber(tx, input.pageId),
-        body: null,
-        attachmentId: input.attachmentId,
-        authorType: input.authorType,
-        authorId: input.authorId,
-        changeComment: input.changeComment ?? null,
-      },
-    })
-    // Touch the page so updatedAt reflects the new version.
-    await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
-    return mapVersion(version)
-  }))
-
-const updatePage = async (
-  prisma: PrismaClient,
-  options: NativeKnowledgeProviderOptions,
-  pageId: string,
-  input: UpdatePageInput,
-) =>
-  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
-    const existing = await getMutablePage(tx, input.organizationId, pageId)
-    if (!existing) return null
-    // Optimistic concurrency: an auto-saving editor states the revision it
-    // edited, and a stale one is refused rather than overwriting a colleague.
-    if (
-      input.expectedRevision !== undefined
-      && existing.revision !== input.expectedRevision
-    ) {
-      throw new KnowledgePageRevisionConflictError(existing.revision)
-    }
-    const createsVersion = input.body !== undefined || input.bodyRef !== undefined
-    if (createsVersion) {
-      const version = await tx.knowledgePageVersion.create({
-        data: {
-          pageId,
-          versionNumber: await nextVersionNumber(tx, pageId),
-          body: input.body ?? null,
-          bodyRef: input.bodyRef ?? null,
-          authorType: input.authorType,
-          authorId: input.authorId,
-          changeComment: input.changeComment ?? null,
-        },
-      })
-      await indexVersionChunks(tx, options, existing, version)
-    }
-    const updated = await tx.knowledgePage.updateMany({
-      where: {
-        id: pageId,
-        organizationId: input.organizationId,
-        ...(input.expectedRevision !== undefined ? { revision: input.expectedRevision } : {}),
-      },
-      data: {
-        ...(input.title !== undefined ? { title: input.title } : {}),
-        ...(input.summary !== undefined ? { summary: input.summary } : {}),
-        ...(input.metadata !== undefined
-          ? { metadata: input.metadata as Prisma.InputJsonValue }
-          : {}),
-        ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
-        ...(input.sensitivityTier !== undefined
-          ? { sensitivityTier: input.sensitivityTier }
-          : {}),
-        ...(createsVersion ? { status: 'draft' as const } : {}),
-        revision: { increment: 1 },
-      },
-    })
-    // Creating the version above is intentionally inside this transaction:
-    // if another writer wins between our read and this conditional update, the
-    // transaction rolls that version (and its chunks) back with the conflict.
-    if (updated.count === 0 && input.expectedRevision !== undefined) {
-      const current = await getMutablePage(tx, input.organizationId, pageId)
-      if (!current) return null
-      throw new KnowledgePageRevisionConflictError(current.revision)
-    }
-    if (input.title !== undefined) {
-      // A rename may match a still-unresolved wikilink title elsewhere; it
-      // never un-resolves an already-resolved link (those are tracked by id).
-      await resolveLinksToPage(tx, {
-        organizationId: input.organizationId,
-        pageId,
-        title: input.title,
-      })
-    }
-    await replaceLabels(tx, {
-      labels: input.labels,
-      organizationId: input.organizationId,
-      pageId,
-    })
-    return fetchPage(tx, input.organizationId, pageId)
-  }))
-
 export const createNativeKnowledgeProvider = (
   prisma: PrismaClient,
   options: NativeKnowledgeProviderOptions = {},
@@ -582,228 +208,16 @@ export const createNativeKnowledgeProvider = (
   capabilities: nativeCapabilities,
   id: 'native:first-party',
   kind: 'first_party',
-
-  addFileVersion: (input) => addFileVersion(prisma, input),
-
+  addFileVersion: (input) => addFileVersion(prisma, options, input),
   archivePage: (organizationId, pageId) => archivePage(prisma, organizationId, pageId),
-
-  archiveSpace: async (organizationId, spaceId) => {
-    const result = await prisma.knowledgeSpace.updateMany({
-      where: { id: spaceId, organizationId, deletedAt: null },
-      data: { deletedAt: new Date() },
-    })
-    if (result.count === 0) return null
-    const space = await prisma.knowledgeSpace.findFirst({
-      where: { id: spaceId, organizationId },
-      include: spaceInclude,
-    })
-    return space ? mapSpace(space) : null
-  },
-
-  createPage: async (input) =>
-    prisma.$transaction(async (tx) => {
-      const space = await tx.knowledgeSpace.findFirst({
-        where: { id: input.spaceId, organizationId: input.organizationId, deletedAt: null },
-      })
-      if (!space) throw new Error('Knowledge space not found')
-      await assertTaskBelongsToSpaceProject(
-        tx,
-        input.organizationId,
-        space.projectId,
-        input.taskId,
-      )
-      if (input.parentPageId) {
-        const parent = await tx.knowledgePage.findFirst({
-          where: {
-            id: input.parentPageId,
-            organizationId: input.organizationId,
-            spaceId: input.spaceId,
-            deletedAt: null,
-            status: { not: 'archived' },
-          },
-          select: { id: true },
-        })
-        if (!parent) throw new Error('Parent page not found')
-      }
-      const position = input.position ?? await tx.knowledgePage.count({
-        where: { parentPageId: input.parentPageId ?? null, spaceId: input.spaceId },
-      })
-      const page = await tx.knowledgePage.create({
-        data: {
-          title: input.title,
-          summary: input.summary ?? null,
-          metadata: input.metadata as Prisma.InputJsonValue,
-          kind: input.kind ?? 'document',
-          spaceId: input.spaceId,
-          parentPageId: input.parentPageId ?? null,
-          position,
-          organizationId: input.organizationId,
-          projectId: space.projectId,
-          teamId: input.teamId ?? space.teamId,
-          channelId: input.channelId ?? space.channelId,
-          threadId: input.threadId ?? space.threadId,
-          userId: input.userId ?? space.userId,
-          visibility: input.visibility ?? space.visibility,
-          sensitivityTier: input.sensitivityTier ?? space.sensitivityTier,
-          privateToAgentId: input.privateToAgentId ?? space.privateToAgentId,
-          taskId: input.taskId ?? null,
-          createdBy: input.createdBy,
-        },
-      })
-      // Repoint any pre-existing unresolved wikilinks (`[[This Title]]`
-      // written before this page existed) at the newly created page.
-      await resolveLinksToPage(tx, {
-        organizationId: input.organizationId,
-        pageId: page.id,
-        title: page.title,
-      })
-      const version = await tx.knowledgePageVersion.create({
-        data: {
-          pageId: page.id,
-          versionNumber: 1,
-          body: input.body ?? null,
-          bodyRef: input.bodyRef ?? null,
-          attachmentId: input.attachmentId ?? null,
-          authorType: input.authorType,
-          authorId: input.authorId,
-          changeComment: input.changeComment ?? null,
-        },
-      })
-      await indexVersionChunks(tx, options, page, version)
-      await replaceLabels(tx, {
-        labels: input.labels,
-        organizationId: input.organizationId,
-        pageId: page.id,
-      })
-      const created = await fetchPage(tx, input.organizationId, page.id)
-      if (!created) throw new Error('Created page could not be loaded')
-      return created
-    }),
-
-  createSpace: async (input) => {
-    const memberUserIds = Array.from(new Set(input.memberUserIds ?? []))
-    const memberAgentIds = Array.from(new Set(input.memberAgentIds ?? []))
-    await assertProjectBelongsToOrg(prisma, input.organizationId, input.projectId)
-    if (memberUserIds.length > 0) {
-      await assertUsersBelongToOrg(prisma, input.organizationId, memberUserIds)
-    }
-    if (memberAgentIds.length > 0) {
-      await assertAgentsBelongToOrg(prisma, input.organizationId, memberAgentIds)
-    }
-    const space = await prisma.knowledgeSpace.create({
-      data: {
-        name: input.name,
-        description: input.description ?? null,
-        metadata: input.metadata as Prisma.InputJsonValue,
-        organizationId: input.organizationId,
-        projectId: input.projectId,
-        teamId: input.teamId ?? null,
-        channelId: input.channelId ?? null,
-        threadId: input.threadId ?? null,
-        userId: input.userId ?? null,
-        visibility: input.visibility ?? 'project',
-        writeRestricted: input.writeRestricted ?? false,
-        sensitivityTier: input.sensitivityTier ?? 'normal',
-        privateToAgentId: input.privateToAgentId ?? null,
-        createdBy: input.createdBy,
-        members: memberUserIds.length || memberAgentIds.length
-          ? {
-              create: [
-                ...memberUserIds.map((userId) => ({
-                  userId,
-                  organizationId: input.organizationId,
-                })),
-                ...memberAgentIds.map((agentId) => ({
-                  agentId,
-                  organizationId: input.organizationId,
-                })),
-              ],
-            }
-          : undefined,
-      },
-      include: spaceInclude,
-    })
-    return mapSpace(space)
-  },
-
+  archiveSpace: (organizationId, spaceId) => archiveSpace(prisma, organizationId, spaceId),
+  createPage: (input) => createPage(prisma, options, input),
+  createSpace: (input) => createSpace(prisma, input),
   getPage: fetchPage.bind(null, prisma),
-
-  getSpace: async (organizationId, spaceId) => {
-    const space = await prisma.knowledgeSpace.findFirst({
-      where: { id: spaceId, organizationId, deletedAt: null },
-      include: spaceInclude,
-    })
-    return space ? mapSpace(space) : null
-  },
-
+  getSpace: (organizationId, spaceId) => getSpace(prisma, organizationId, spaceId),
   listPages: (input) => listPages(prisma, input),
-
   listRecentPages: (input) => listNativeRecentPages(prisma, input),
-
-  listSpaces: async (input) => {
-    const limit = clampLimit(input.limit)
-    const cursor = parseCursor(input.cursor)
-    const backwards = input.direction === 'backward'
-    const readableWhere = input.viewer
-      ? readableKnowledgeSpaceWhere(input.organizationId, input.viewer)
-      : null
-    // The viewer's own My Docs has a stable pin outside the shared list. A
-    // different person's personal space may have been explicitly granted to
-    // this viewer, however, so it remains discoverable. Agents have no
-    // personal pin and therefore retain every readable explicit grant.
-    const scopeFilters: Prisma.KnowledgeSpaceWhereInput[] = [
-      ...(input.projectId ? [{ projectId: input.projectId }] : []),
-      ...(!input.includePersonal && typeof input.viewer?.userId === 'string'
-        ? [{
-            OR: [
-              { userId: null },
-              { userId: { not: input.viewer.userId } },
-            ],
-          }]
-        : []),
-    ]
-    const where: Prisma.KnowledgeSpaceWhereInput = {
-      AND: [
-        readableWhere ?? { organizationId: input.organizationId, deletedAt: null },
-        ...scopeFilters,
-        ...(cursor
-          ? [{
-              OR: [
-                { updatedAt: { [backwards ? 'gt' : 'lt']: cursor.cursorDate } },
-                {
-                  updatedAt: cursor.cursorDate,
-                  id: { [backwards ? 'gt' : 'lt']: cursor.cursorId },
-                },
-              ],
-            }]
-          : []),
-      ],
-    }
-    const countWhere: Prisma.KnowledgeSpaceWhereInput = {
-      AND: [
-        readableWhere ?? { organizationId: input.organizationId, deletedAt: null },
-        ...scopeFilters,
-      ],
-    }
-    const [spaces, total] = await Promise.all([
-      prisma.knowledgeSpace.findMany({
-        where,
-      orderBy: backwards
-        ? [{ updatedAt: 'asc' }, { id: 'asc' }]
-        : [{ updatedAt: 'desc' }, { id: 'desc' }],
-      include: spaceInclude,
-      take: limit + 1,
-      }),
-      prisma.knowledgeSpace.count({ where: countWhere }),
-    ])
-    const page = trimPage(spaces.map(mapSpace), limit, {
-      cursor: cursor ? input.cursor : undefined,
-      direction: input.direction,
-      hasCursor: Boolean(cursor),
-    })
-    return { ...page, meta: { ...page.meta, total } }
-  },
-
+  listSpaces: (input) => listSpaces(prisma, input),
   listVersions: async (organizationId, pageId) => {
     const page = await prisma.knowledgePage.findFirst({
       where: { id: pageId, organizationId, deletedAt: null },
@@ -816,78 +230,15 @@ export const createNativeKnowledgeProvider = (
     })
     return versions
       .map((version) => mapVersion(version))
-      .filter((v): v is KnowledgePageVersionRecord => v !== null)
+      .filter((version): version is NonNullable<typeof version> => version !== null)
   },
-
   movePage: (input) => movePage(prisma, input),
   publishPage: (input) => publishPage(prisma, options, input),
   restoreVersion: (input) => restoreVersion(prisma, options, input),
   searchPages: (input) => searchNativePages(prisma, input),
   searchPagesHybrid: (input) => searchNativePagesHybrid(prisma, input),
   updatePage: (pageId, input) => updatePage(prisma, options, pageId, input),
-
-  updateSpace: async (organizationId, spaceId, input) => {
-    const space = await prisma.$transaction(async (tx) => {
-      // Existence is checked separately from the scalar update: a members-only
-      // patch has an empty scalar data object, and updateMany with empty data
-      // matches nothing — which would wrongly read as "space not found".
-      const existing = await tx.knowledgeSpace.findFirst({
-        where: { id: spaceId, organizationId, deletedAt: null },
-        select: { id: true },
-      })
-      if (!existing) return null
-      const data = {
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.description !== undefined ? { description: input.description } : {}),
-        ...(input.metadata !== undefined
-          ? { metadata: input.metadata as Prisma.InputJsonValue }
-          : {}),
-        ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
-        ...(input.writeRestricted !== undefined
-          ? { writeRestricted: input.writeRestricted }
-          : {}),
-        ...(input.sensitivityTier !== undefined
-          ? { sensitivityTier: input.sensitivityTier }
-          : {}),
-      }
-      if (Object.keys(data).length > 0) {
-        await tx.knowledgeSpace.update({ where: { id: spaceId }, data })
-      }
-      // Each principal kind is replaced independently (only when its field is
-      // provided), so patching memberUserIds alone can never wipe out agent
-      // members as a side effect, and vice versa — both stay atomic within
-      // this transaction relative to the caller's intent.
-      if (input.memberAgentIds !== undefined) {
-        const memberAgentIds = Array.from(new Set(input.memberAgentIds))
-        if (memberAgentIds.length > 0) {
-          await assertAgentsBelongToOrg(tx, organizationId, memberAgentIds)
-        }
-        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, agentId: { not: null } } })
-        if (memberAgentIds.length) {
-          await tx.knowledgeSpaceMember.createMany({
-            data: memberAgentIds.map((agentId) => ({ spaceId, agentId, organizationId })),
-          })
-        }
-      }
-      if (input.memberUserIds !== undefined) {
-        const memberUserIds = Array.from(new Set(input.memberUserIds))
-        if (memberUserIds.length > 0) {
-          await assertUsersBelongToOrg(tx, organizationId, memberUserIds)
-        }
-        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, userId: { not: null } } })
-        if (memberUserIds.length) {
-          await tx.knowledgeSpaceMember.createMany({
-            data: memberUserIds.map((userId) => ({ spaceId, userId, organizationId })),
-          })
-        }
-      }
-      return tx.knowledgeSpace.findFirst({
-        where: { id: spaceId, organizationId, deletedAt: null },
-        include: spaceInclude,
-      })
-    })
-    return space ? mapSpace(space) : null
-  },
+  updateSpace: (organizationId, spaceId, input) => updateSpace(prisma, organizationId, spaceId, input),
 })
 
 export const buildNativeSourceRef = (pageId: string, versionId: string | null): string =>

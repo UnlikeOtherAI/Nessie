@@ -591,7 +591,7 @@ export const startWorker = async (
     KNOWLEDGE_EXTRACT_TOPIC,
     async (job) => {
       const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
-      await executeKnowledgeExtractJob({ fileService, prisma }, payload)
+      await executeKnowledgeExtractJob({ fileService, modelClient, prisma }, payload)
     },
     { signal: abortController.signal },
   )

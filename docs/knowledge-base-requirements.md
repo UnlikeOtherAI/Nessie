@@ -594,15 +594,24 @@ store/delete keeps per-scope usage accurate. REST surface
   entries from its central directory (no extraction to disk), and
   `…/zip/entry?path=` to peek a single text entry (see below)
 
-**Markdown is the native document format.** An uploaded `.md`/`.markdown`
-(by extension or `text/markdown`) is **not** stored as a file blob: the upload
-route renders it to HTML (`markdown-it`, `api/src/lib/markdown.ts`) and creates a
-`kind = document` page with that body, so it gets the rich-text reader, the
-WYSIWYG editor, comments/notes and version history — identical to a document
-authored in-app. Import is capped at `MARKDOWN_IMPORT_MAX_BYTES` (5 MiB). Existing
-markdown file nodes are migrated on open: `KnowledgeWorkspace` calls
-`convert-to-document` (read the attachment text → HTML → new document version →
-flip `kind` → drop the now-unused blob) and then renders the document.
+**Markdown is the native document format.** A Markdown file node retains its
+attachment as the authoritative byte source. On create, replacement, restore,
+and backfill, the native writer reads those bytes through `FileService`, writes
+the exact UTF-8 body projection plus `sourceContentHash` onto the append-only
+version, then indexes that same body in the enclosing transaction. The reader
+uses the hash to recognize canonical Markdown even if the display title is
+renamed without a `.md` suffix. Its Edit action downloads the pinned version,
+and Save uploads a new attachment using that version id as the CAS base; a
+second writer therefore cannot overwrite an editor's opened bytes silently.
+The attachment remains the download source for every version, while the body is
+the searchable/renderable projection rather than a second source of truth.
+
+**Verification.** `admin/e2e/knowledge-markdown/run.mjs` starts the local API
+and Vite admin, checks their real readiness, then uses an authenticated browser
+to upload, edit, download, rename, reopen, and concurrently edit a Markdown
+file. It asserts byte/hash/projection equality and that the stale editor keeps
+its draft after the server rejects its pinned base version. The run captures the
+conflict dialog at `e2e/screenshots/knowledge-markdown/canonical-flow.png`.
 
 **Type-aware file viewer.** Non-markdown file nodes keep the file-node path, with
 the viewer inferred from the filename (`previewKindForFilename`): **images** and

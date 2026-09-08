@@ -5,6 +5,7 @@ import {
   canReadSpace,
   canWriteSpace,
   createNativeKnowledgeProvider,
+  knowledgeEmbeddingJobKey,
   loadSpaceViewer,
   type KnowledgePageRecord,
   type KnowledgeProvider,
@@ -170,6 +171,10 @@ export const toKnowledgePaginationMeta = (
 export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   const { prisma } = deps
   const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma, {
+    readMarkdownAttachment: async (attachmentId, organizationId) => {
+      const opened = await deps.fileService.openStream(attachmentId, organizationId)
+      return opened?.stream ?? null
+    },
     // Enqueued inside the save transaction: the job becomes visible only when
     // the version + chunk rows commit, and a failed enqueue rolls the save back.
     onVersionChunksReplaced: async (tx, event) => {
@@ -179,7 +184,11 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
         'knowledge-indexer',
       )
       await enqueueQueueJob(tx, {
-        idempotencyKey: `kb-embed:${event.pageId}:${event.versionId}`,
+        idempotencyKey: knowledgeEmbeddingJobKey(
+          event.pageId,
+          event.versionId,
+          deps.sharedModelClient?.embeddingModel ?? 'unresolved',
+        ),
         payload: { ...event, origin },
         topic: KNOWLEDGE_EMBED_TOPIC,
       })

@@ -1,9 +1,25 @@
 import type { PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
+import { readCanonicalMarkdownAttachment } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 
 const MARKDOWN_EXTENSION = '.md'
+
+export const readMarkdownAttachmentContent = async (
+  fileService: FileService,
+  attachmentId: string,
+  organizationId: string,
+): Promise<string | null> => {
+  const opened = await fileService.openStream(attachmentId, organizationId)
+  if (!opened) return null
+  const source = await readCanonicalMarkdownAttachment(
+    async () => opened.stream,
+    attachmentId,
+    organizationId,
+  )
+  return source.content
+}
 
 /**
  * Read a `.md` document node's current text.
@@ -62,16 +78,11 @@ export const readMarkdownDocument = async (
   // The body is about to enter the run. Record its source before opening the
   // attachment so no byte can be streamed or persisted with an empty basis.
   recordKnowledgeSpaceRead(disclosureContext, [page.space])
-  const opened = await fileService.openStream(attachmentId, organizationId)
-  if (!opened) return null
-
-  const chunks: Buffer[] = []
-  for await (const chunk of opened.stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array))
-  }
+  const content = await readMarkdownAttachmentContent(fileService, attachmentId, organizationId)
+  if (content === null) return null
   return {
     attachmentId,
-    content: Buffer.concat(chunks).toString('utf8'),
+    content,
     parentPageId: page.parentPageId,
     spaceId: page.spaceId,
     title: page.title,

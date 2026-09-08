@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  useConvertToDocument,
-  useUploadFileNode,
-} from '../../../facades/knowledge/file-hooks'
+import { useUploadFileNode } from '../../../facades/knowledge/file-hooks'
 import {
   useKnowledgePage,
   useKnowledgeVersions,
@@ -17,7 +14,6 @@ import type { UploadProgress } from '../../../lib/upload-xhr'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
-import { isMarkdownFilename } from '../../shared/file-icons'
 import { KnowledgeDocumentPane } from './KnowledgeDocumentPane'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
@@ -224,20 +220,6 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     viewMode,
   })
 
-  // Markdown is the KB's native document format: when a markdown file node is
-  // opened, convert it to a real document once so it renders + edits like one.
-  const convertToDocument = useConvertToDocument(selectedSpaceId)
-  const convertAttempted = useRef<Set<string>>(new Set())
-  const isMarkdownFileNode = Boolean(
-    current && current.kind === 'file' && isMarkdownFilename(current.title),
-  )
-  useEffect(() => {
-    if (!canWrite || !current || !isMarkdownFileNode) return
-    if (convertAttempted.current.has(current.id)) return
-    convertAttempted.current.add(current.id)
-    convertToDocument.mutate(current.id)
-  }, [canWrite, current, isMarkdownFileNode, convertToDocument])
-
   const uploadFileNode = (file: File) => {
     if (!selectedSpaceId) return
     setFileNodeProgress({ loaded: 0, total: file.size, pct: 0 })
@@ -345,7 +327,6 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       bodyQuery={fullPageQuery}
       breadcrumbPages={breadcrumbPages}
       canWrite={canWrite}
-      converting={canWrite && isMarkdownFileNode && !convertToDocument.isError}
       depth={depth}
       fullPage={fullPage}
       onBack={stacked ? undefined : () => popTo(depth)}
