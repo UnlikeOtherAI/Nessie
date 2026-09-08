@@ -261,6 +261,12 @@ when one changes, the same turn updates it, not this section.
   Read
   [docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md](docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md)
   before writing code here.
+- **Paired agents (Nessie as an MCP server).** A paired credential names a
+  human and can never reach more than they can; publishing is an approval, never
+  a scope; and pairing itself is governed by the settings cascade and visible to
+  an owner.
+  Read [`docs/standards/paired-agents.md`](docs/standards/paired-agents.md)
+  before writing code here.
 - **Personal-assistant tools and route mirroring.** A PA tool that does what a
   person does by clicking calls the same function that person's button calls,
   and mirrors that route's authorization exactly.

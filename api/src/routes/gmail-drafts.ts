@@ -415,6 +415,14 @@ export const registerGmailDraftRoutes = (
       return reply
     }
 
+    // A Gmail send gate is always an in-house agent's — the tool that opens it
+    // runs inside a run. Refuse rather than coerce: a grant is per agent, and
+    // there is no agent here to grant anything to.
+    if (!approval.agentId) {
+      sendApiError(reply, 409, 'NOT_AN_AGENT_APPROVAL', 'That approval was not opened by an agent')
+      return reply
+    }
+
     const frozen = FrozenGmailApprovalSchema.safeParse(approval.resumeState)
     if (!frozen.success) {
       sendApiError(reply, 409, 'INVALID_RESUME_STATE', 'This approval is not bound to a Gmail draft')

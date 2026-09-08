@@ -115,7 +115,9 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
         data: {
           approvalId,
           taskId: parseTaskId(result.approval.taskId ?? '00000000-0000-4000-8000-000000000000'),
-          agentId: parseAgentId(result.approval.agentId),
+          ...(result.approval.agentId
+            ? { agentId: parseAgentId(result.approval.agentId) }
+            : {}),
           outcome: body.resolution,
           resolverId: actorContext.actor.actorId,
           resolvedAt: new Date().toISOString(),

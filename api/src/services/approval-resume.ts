@@ -236,10 +236,14 @@ export const terminalizeWaitingApprovalRunInTransaction = async (
       },
     })
   }
-  await tx.agent.updateMany({
-    where: { id: approval.agentId, status: 'waiting_approval' },
-    data: { status: 'idle' },
-  })
+  // Only an in-house agent is ever parked here: a suspended run is what put it
+  // in `waiting_approval`, and a paired credential has no run to suspend.
+  if (approval.agentId) {
+    await tx.agent.updateMany({
+      where: { id: approval.agentId, status: 'waiting_approval' },
+      data: { status: 'idle' },
+    })
+  }
   return { agentId: run.agentId, principalUserId: run.principalUserId, threadId: run.threadId }
 }
 
@@ -355,10 +359,12 @@ export const expirePendingToolApprovalsForRun = async (
           skipDuplicates: true,
         })
       }
-      await tx.agent.updateMany({
-        where: { id: approval.agentId, status: 'waiting_approval' },
-        data: { status: 'idle' },
-      })
+      if (approval.agentId) {
+        await tx.agent.updateMany({
+          where: { id: approval.agentId, status: 'waiting_approval' },
+          data: { status: 'idle' },
+        })
+      }
     }
     return claimed
   })

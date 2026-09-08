@@ -74,7 +74,20 @@ export const emitAuditEvent = async (
       resourceId: input.resourceId ?? null,
       outcome: input.outcome,
       reason: input.reason ?? null,
-      metadata: (redactMetadata(input.metadata) as Prisma.InputJsonValue | undefined) ?? null,
+      // A paired MCP credential acts as its granting human, so `actorId` alone
+      // cannot say that a program did this rather than the person. Stamped here
+      // rather than per tool: a marker every caller has to remember is a marker
+      // the next tool forgets, which is exactly how board writes ended up
+      // unattributable while document writes were not.
+      metadata: (redactMetadata(
+        input.actorContext.actionContext.agentCredentialId
+          ? {
+              ...input.metadata,
+              agentCredentialId: input.actorContext.actionContext.agentCredentialId,
+              via: 'mcp_agent_credential',
+            }
+          : input.metadata,
+      ) as Prisma.InputJsonValue | undefined) ?? null,
       requestId: input.actorContext.actionContext.requestId,
       ipAddress: input.ipAddress ?? null,
       userAgent: input.userAgent ?? null,

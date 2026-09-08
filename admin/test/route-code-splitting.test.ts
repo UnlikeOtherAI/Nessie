@@ -39,6 +39,10 @@ const ALLOWED_DIRECT_ELEMENTS = [
   'RootLayout',
   'RootRouteRedirect',
   'SettingsRootRoute',
+  // `/settings/agent-access` → `/settings/paired-agents`, carrying the `?code=`
+  // an agent's verification URI put there. A redirect, not a page: nothing to
+  // code-split.
+  'AgentAccessRedirect',
 ]
 
 const staticPageImports = [...source.matchAll(

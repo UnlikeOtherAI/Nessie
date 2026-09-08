@@ -14,9 +14,30 @@ import { emitAuditEvent } from './audit.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
+/**
+ * A week, for a request a paired agent opened.
+ *
+ * The thirty minutes above is calibrated to a suspended run: an agent is
+ * sitting in a channel waiting, and a stale request there is worse than a
+ * refused one. A paired agent is not waiting — it made its request over HTTP
+ * and moved on, and the person who must answer may not be at a keyboard at
+ * all. Same reasoning, and the same week, as `kb_publish_request`.
+ */
+const CREDENTIAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Who is asking. An approval always has exactly one asker, and the two kinds
+ * are not interchangeable: an in-house agent has an `Agent` row and runs inside
+ * a channel, while a paired MCP credential is a program on somebody's machine
+ * with no agent record and no run to suspend.
+ */
+export type ApprovalRequester =
+  | { agentId: string }
+  | { agentAccessCredentialId: string; requiredApproverUserId: string }
+
 export type CreateApprovalInput = {
   actorContext: AuthorizedActionContext
-  agentId: string
+  requester: ApprovalRequester
   action: string
   reason: string
   context?: Record<string, unknown>
@@ -25,31 +46,54 @@ export type CreateApprovalInput = {
   requiredApproverRole?: string
 }
 
+/**
+ * The row, shaped once.
+ *
+ * Both doors — the plain create and the deduplicating one — build an approval
+ * the same way, and a second spelling of this is how the two would drift on
+ * the field that matters most, `requesterId`.
+ */
+const approvalRequestData = (input: CreateApprovalInput): Prisma.ApprovalRequestUncheckedCreateInput => {
+  // Bound once, so the narrowing survives every use below.
+  const credentialRequest =
+    'agentAccessCredentialId' in input.requester ? input.requester : null
+
+  return {
+    organizationId: input.actorContext.tenant.organizationId,
+    projectId: input.actorContext.tenant.projectId ?? null,
+    teamId: input.actorContext.tenant.teamId ?? null,
+    channelId: input.actorContext.actionContext.channelId ?? null,
+    taskId: input.taskId ?? null,
+    runId: input.runId ?? null,
+    agentId: 'agentId' in input.requester ? input.requester.agentId : null,
+    agentAccessCredentialId: credentialRequest?.agentAccessCredentialId ?? null,
+    // The person who lent their account is the only person who may answer for
+    // it — the same pinning a send-as-you gate uses, and for the same reason:
+    // a colleague must not be able to authorise something done in your name.
+    requiredApproverUserId: credentialRequest?.requiredApproverUserId ?? null,
+    // Never the human the credential acts as. `resolveApprovalRequest` refuses a
+    // requester who tries to answer their own request, so naming the approver
+    // here would make the one person allowed to decide the one person who
+    // cannot. The credential is the honest answer anyway: it asked, not them.
+    requesterId: credentialRequest
+      ? credentialRequest.agentAccessCredentialId
+      : input.actorContext.actor.actorId,
+    action: input.action,
+    reason: input.reason,
+    context: (input.context as Prisma.InputJsonValue) ?? undefined,
+    requiredApproverRole: input.requiredApproverRole ?? null,
+    continuationToken: randomUUID(),
+    expiresAt: new Date(
+      Date.now() + (credentialRequest ? CREDENTIAL_EXPIRY_MS : DEFAULT_EXPIRY_MS),
+    ),
+  }
+}
+
 export const createApprovalRequest = async (
   prisma: PrismaClient,
   input: CreateApprovalInput,
 ) => {
-  const continuationToken = randomUUID()
-  const expiresAt = new Date(Date.now() + DEFAULT_EXPIRY_MS)
-
-  const approval = await prisma.approvalRequest.create({
-    data: {
-      organizationId: input.actorContext.tenant.organizationId,
-      projectId: input.actorContext.tenant.projectId ?? null,
-      teamId: input.actorContext.tenant.teamId ?? null,
-      channelId: input.actorContext.actionContext.channelId ?? null,
-      taskId: input.taskId ?? null,
-      runId: input.runId ?? null,
-      agentId: input.agentId,
-      requesterId: input.actorContext.actor.actorId,
-      action: input.action,
-      reason: input.reason,
-      context: (input.context as Prisma.InputJsonValue) ?? undefined,
-      requiredApproverRole: input.requiredApproverRole ?? null,
-      continuationToken,
-      expiresAt,
-    },
-  })
+  const approval = await prisma.approvalRequest.create({ data: approvalRequestData(input) })
 
   await emitAuditEvent(prisma, {
     actorContext: input.actorContext,
@@ -57,10 +101,106 @@ export const createApprovalRequest = async (
     resourceType: 'approval',
     resourceId: approval.id,
     outcome: 'success',
-    metadata: { action: input.action, agentId: input.agentId },
+    metadata: { action: input.action, ...input.requester },
   })
 
   return mapApproval(approval)
+}
+
+/**
+ * Open an approval, or hand back the one already open for the same thing.
+ *
+ * A paired agent that polls calls its tool again, and find-then-create is not
+ * atomic: two calls — the same agent retrying, or two replicas — both see no
+ * pending row and both create one, so a person gets the same decision twice.
+ * There is no unique index to lean on, because what makes two requests "the
+ * same" lives inside the approval's JSON `context`.
+ *
+ * So the check and the create happen under one `pg_advisory_xact_lock` on the
+ * caller's own key — the instrument the settings cascade and the cloud-browser
+ * admission already use for this shape of problem. The audit event is emitted
+ * after the transaction commits, so a slow audit write never holds the lock.
+ */
+/**
+ * How many decisions one asker may leave waiting.
+ *
+ * Deduplication alone is not a limit. It keys on the exact thing being decided
+ * — for a publish request, the draft *version* — so an agent that edits and
+ * asks again is asking about something genuinely new every time, and twenty-five
+ * edit-and-ask cycles left twenty-five requests standing, each for seven days.
+ * Nothing was granted, but the Approvals page is the surface the whole gate
+ * depends on, and burying it is its own kind of failure.
+ *
+ * Ten, the same ceiling `kb_publish_request`'s sibling
+ * (`worker/src/run/pa-tools/todos.ts`) already sets on agent proposals.
+ */
+export const PENDING_APPROVALS_PER_REQUESTER = 10
+
+export class TooManyPendingApprovalsError extends Error {
+  constructor() {
+    super(
+      `There are already ${PENDING_APPROVALS_PER_REQUESTER} requests from this agent `
+      + 'waiting for a person. Ask them to work through those before sending more.',
+    )
+    this.name = 'TooManyPendingApprovalsError'
+  }
+}
+
+export const createApprovalRequestOnce = async (
+  prisma: PrismaClient,
+  input: CreateApprovalInput & {
+    /** Distinct per thing-being-decided, e.g. credential + page + version. */
+    lockKey: string
+    /** True when an existing pending approval is for the same thing. */
+    matches: (context: Record<string, unknown> | null) => boolean
+  },
+): Promise<{ approval: ReturnType<typeof mapApproval>; created: boolean }> => {
+  const requester = input.requester
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${input.lockKey}, 0))`
+
+    const pending = await tx.approvalRequest.findMany({
+      where: {
+        action: input.action,
+        organizationId: input.actorContext.tenant.organizationId,
+        status: 'pending',
+        ...('agentAccessCredentialId' in requester
+          ? { agentAccessCredentialId: requester.agentAccessCredentialId }
+          : { agentId: requester.agentId }),
+      },
+    })
+    const existing = pending.find((row) =>
+      input.matches(row.context as Record<string, unknown> | null))
+    if (existing) return { approval: mapApproval(existing), created: false }
+
+    // Counted inside the lock, so two concurrent asks cannot both pass the
+    // ceiling. An asker at the limit is refused rather than queued: the point
+    // is that a person is behind on decisions, and adding to the pile is the
+    // opposite of what helps.
+    if (pending.length >= PENDING_APPROVALS_PER_REQUESTER) {
+      throw new TooManyPendingApprovalsError()
+    }
+
+    return {
+      approval: mapApproval(await tx.approvalRequest.create({
+        data: approvalRequestData(input),
+      })),
+      created: true,
+    }
+  })
+
+  if (created.created) {
+    await emitAuditEvent(prisma, {
+      actorContext: input.actorContext,
+      action: 'approval.created',
+      resourceType: 'approval',
+      resourceId: created.approval.id,
+      outcome: 'success',
+      metadata: { action: input.action, ...requester },
+    })
+  }
+  return created
 }
 
 /**
@@ -409,10 +549,14 @@ export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
         return terminalizeWaitingApprovalRunInTransaction(tx, approval.id, 'expired')
       }
       // Existing deferred-effect approvals have no suspended run to close.
-      await tx.agent.updateMany({
-        where: { id: approval.agentId, status: 'waiting_approval' },
-        data: { status: 'idle' },
-      })
+      // A request from a paired credential has no agent parked on it either —
+      // the caller is a program over HTTP, not a run waiting in a channel.
+      if (approval.agentId) {
+        await tx.agent.updateMany({
+          where: { id: approval.agentId, status: 'waiting_approval' },
+          data: { status: 'idle' },
+        })
+      }
       return null
     })
     if (terminalized) drains.push(terminalized)
@@ -437,7 +581,8 @@ const mapApproval = (approval: {
   channelId: string | null
   taskId: string | null
   runId: string | null
-  agentId: string
+  agentId: string | null
+  agentAccessCredentialId: string | null
   requesterId: string
   action: string
   reason: string
@@ -462,6 +607,7 @@ const mapApproval = (approval: {
   taskId: approval.taskId,
   runId: approval.runId,
   agentId: approval.agentId,
+  agentAccessCredentialId: approval.agentAccessCredentialId,
   requesterId: approval.requesterId,
   action: approval.action,
   reason: approval.reason,

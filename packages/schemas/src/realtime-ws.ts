@@ -94,7 +94,14 @@ export type WsEventMap = {
   'approval.resolved': {
     approvalId: string
     taskId: TaskId
-    agentId: AgentId
+    /**
+     * Absent for an approval a paired MCP credential opened — there is no
+     * `Agent` row behind one. Optional rather than a placeholder id: the sole
+     * consumer invalidates a query and reads no field of this payload, so an
+     * older build during a swap is unaffected, while a manufactured agent id
+     * would be a lie any future reader would believe.
+     */
+    agentId?: AgentId
     outcome: 'approved' | 'rejected' | 'expired'
     resolverId?: string
     resolvedAt: string
@@ -339,7 +346,22 @@ export type ThreadReadEvent = z.infer<typeof ThreadReadEventSchema>
 export const ApprovalResolvedEventSchema = z.object({
   approvalId: NonEmptyStringSchema,
   taskId: TaskIdSchema,
-  agentId: AgentIdSchema,
+  /**
+   * Absent for an approval a paired MCP credential opened — there is no `Agent`
+   * row behind one.
+   *
+   * `publishWs` parses against this schema and throws on a mismatch, and the
+   * resolve route publishes *after* the mutation and its effect have committed.
+   * So a required field here does not refuse a bad publish; it turns a resolve
+   * that fully succeeded into a 400, and a person watching a document actually
+   * get published is told it failed. The type map above and this schema have to
+   * move together — the typechecker cannot see the gap between them.
+   *
+   * A build running the previous schema drops an `agentId`-less event rather
+   * than crashing on it; its only consumer invalidates a query, so the worst a
+   * swap costs is a stale badge until the next read.
+   */
+  agentId: AgentIdSchema.optional(),
   outcome: z.enum(['approved', 'rejected', 'expired']),
   resolverId: NonEmptyStringSchema.optional(),
   resolvedAt: TimestampSchema,

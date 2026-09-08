@@ -21,7 +21,10 @@ export const ApprovalRequestRecordSchema = z.object({
   channelId: z.string().uuid().nullable(),
   taskId: z.string().uuid().nullable(),
   runId: z.string().uuid().nullable(),
-  agentId: z.string().uuid(),
+  /// Null exactly when `agentAccessCredentialId` is set: a request opened
+  /// through the MCP endpoint has no `Agent` row behind it.
+  agentId: z.string().uuid().nullable(),
+  agentAccessCredentialId: z.string().uuid().nullable(),
   requesterId: z.string().uuid(),
   action: z.string(),
   reason: z.string(),

@@ -57,6 +57,14 @@ export const ActionContextSchema = z.object({
   requestId: NonEmptyStringSchema,
   correlationId: NonEmptyStringSchema.optional(),
   purpose: z.string().optional(),
+  /// The paired MCP credential this call arrived on.
+  ///
+  /// The actor is the human who approved the pairing — that is the whole design
+  /// — which leaves nothing in the actor to distinguish a task their agent moved
+  /// from one they moved themselves. Carrying the credential here means every
+  /// audit event gets that fact without each tool having to remember to stamp
+  /// it, and it is what `ApprovalRequest.agentAccessCredentialId` is set from.
+  agentCredentialId: NonEmptyStringSchema.optional(),
   uoaIdentity: UoaSessionIdentitySchema.optional(),
 })
 export type ActionContext = z.infer<typeof ActionContextSchema>

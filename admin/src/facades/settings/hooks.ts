@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BROWSER_HOMEPAGE_SETTING_KEY } from '@nessie/schemas'
+import { AGENT_PAIRING_SETTING_KEY, BROWSER_HOMEPAGE_SETTING_KEY } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { scopedSettingKeys } from './keys'
@@ -24,6 +24,9 @@ export const SETTING_KEYS = {
   // setting rather than a per-generation option because the Agent Designer
   // draws in it too, in a conversation with no dialog to read.
   agentAvatarStyle: 'agentAvatar.style',
+  // Same rule as the home page below: the API resolves this key when it decides
+  // whether a pairing may be completed, so both ends read the one constant.
+  agentPairing: AGENT_PAIRING_SETTING_KEY,
   browserConnection: 'browser.connection',
   // Not retyped: the API resolves the same key when it opens a session, from
   // the constant in @nessie/schemas, and a home page the admin wrote under a

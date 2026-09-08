@@ -12,8 +12,12 @@ import {
   startDeviceAuthorization,
   DEVICE_POLL_INTERVAL_SECONDS,
 } from '../services/mcp-agent/device-authorization.js'
-import { revokeAgentAccessCredential } from '../services/mcp-agent/agent-credential.js'
-import { loadLedgerIdentitySettings } from '@nessie/runtime'
+import {
+  AGENT_CREDENTIAL_TTL_MS,
+  revokeAgentAccessCredential,
+} from '../services/mcp-agent/agent-credential.js'
+import { loadLedgerIdentitySettings, resolveScopedSetting } from '@nessie/runtime'
+import { AGENT_PAIRING_SETTING_KEY, agentPairingAllowed, isAdminActor } from '@nessie/schemas'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -51,7 +55,7 @@ const ApproveBodySchema = z.object({
 })
 
 export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { config, prisma, requireActorContext } = deps
+  const { config, prisma, requireActorContext, requireOrgAdmin } = deps
 
   app.post(
     '/mcp/auth/device',
@@ -79,7 +83,7 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         )
         return reply
       }
-      const verificationUri = `${adminOrigin}/settings/agent-access`
+      const verificationUri = `${adminOrigin}/settings/paired-agents`
 
       // Snake_case because this half of the exchange is RFC 8628's, and a
       // client implementing the standard reads these names.
@@ -155,6 +159,11 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
 
     return createApiResponse({
       clientName: pending.clientName,
+      // What the person is actually agreeing to, in the only unit that means
+      // anything to them: a date. The TTL lives on the server, so a surface
+      // that wants to say "until 7 December" should be told, not left to
+      // hardcode ninety days and drift the day that changes.
+      credentialExpiresAt: new Date(Date.now() + AGENT_CREDENTIAL_TTL_MS).toISOString(),
       requestedScopes: pending.requestedScopes,
     })
   })
@@ -177,6 +186,47 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
       return reply
     }
 
+    // One team, decided once.
+    //
+    // The tenant's team and the action context's are not always both present,
+    // and reading the setting from one while minting the credential against the
+    // other is a bypass: a team that locked pairing off would be skipped by the
+    // resolve and then be the team the credential is scoped to.
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? null
+    const projectId = actorContext.tenant.projectId
+
+    // Is pairing allowed for this person at all?
+    //
+    // Checked on approval rather than at the start of the flow on purpose: the
+    // organisation's answer depends on who is approving, and nobody is signed
+    // in when an agent starts a device request. Refusing here is also the only
+    // refusal that matters — a pairing request that is never approved mints
+    // nothing.
+    if (body.approve) {
+      const pairing = await resolveScopedSetting(
+        prisma,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+          userId: actorContext.actor.actorId,
+        },
+        AGENT_PAIRING_SETTING_KEY,
+      )
+      if (!agentPairingAllowed(pairing.value)) {
+        sendApiError(
+          reply,
+          403,
+          'AGENT_PAIRING_DISABLED',
+          pairing.lockedAtScope === 'organization'
+            ? 'Pairing outside agents is turned off for this organisation.'
+            : pairing.lockedAtScope === 'team'
+              ? 'Pairing outside agents is turned off for your team.'
+              : 'Pairing outside agents is turned off for your account.',
+        )
+        return reply
+      }
+    }
+
     // A team is required, not optional.
     //
     // Attribution here is scoped by project AND team — the knowledge indexer
@@ -185,8 +235,6 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
     // same requirement the scheduled-trigger route already states, and for the
     // same reason: refuse now, while there is somebody to tell, rather than at
     // every use.
-    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
-    const projectId = actorContext.tenant.projectId
     if (body.approve && (!teamId || !projectId)) {
       sendApiError(
         reply,
@@ -287,15 +335,19 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
     if (!actorContext) return reply
 
     const { credentialId } = request.params as { credentialId: string }
-    const owned = await prisma.agentAccessCredential.findFirst({
+    // Your own, or anyone's if you run the organisation. An owner who can see a
+    // live foothold and not take it back has a report, not a control — and the
+    // moment an owner most needs this is the moment the person who paired it is
+    // unreachable.
+    const reachable = await prisma.agentAccessCredential.findFirst({
       select: { id: true },
       where: {
         id: credentialId,
         organizationId: actorContext.tenant.organizationId,
-        userId: actorContext.actor.actorId,
+        ...(isAdminActor(actorContext) ? {} : { userId: actorContext.actor.actorId }),
       },
     })
-    if (!owned) {
+    if (!reachable) {
       sendApiError(reply, 404, 'AGENT_CREDENTIAL_NOT_FOUND', 'Agent credential not found')
       return reply
     }
@@ -305,6 +357,66 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
       organizationId: actorContext.tenant.organizationId,
     })
     return createApiResponse({ revoked })
+  })
+
+  /**
+   * Every paired agent in the organisation, for whoever runs it.
+   *
+   * The personal list above is deliberately self-only — a credential list is a
+   * list of live footholds, not general reading. That reasoning holds for a
+   * colleague and fails for an owner: a member could lend a ninety-day
+   * acts-as-them key to an arbitrary program and nobody accountable for the
+   * organisation had any way to know it had happened. This is that view, and
+   * nothing more — labels, scopes, liveness and whose account it borrows. The
+   * token prefix is deliberately absent: an owner needs to know a credential
+   * exists and be able to end it, not to tell two of somebody else's apart.
+   */
+  app.get('/api/mcp/agent-access/org-credentials', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOrgAdmin(actorContext, reply)) return reply
+
+    const credentials = await prisma.agentAccessCredential.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        createdAt: true,
+        expiresAt: true,
+        id: true,
+        label: true,
+        lastUsedAt: true,
+        revokedAt: true,
+        scopes: true,
+        // Name and id, never email.
+        //
+        // `User.displayName` is a documented non-authoritative mirror, re-synced
+        // from the provider's claims at login, team switch and refresh, and
+        // every comparable surface renders it from the local row. `User.email`
+        // is not that: nothing re-syncs it after the row is created, so it is a
+        // first-login snapshot that silently goes stale when somebody changes
+        // their address at UOA. Rendering it here would put a wrong address on
+        // the one screen used to decide whether to end a live acts-as-them
+        // credential, while the Members page beside it showed the right one.
+        // The id is the join key for a client that wants the live roster.
+        user: { select: { displayName: true, id: true } },
+      },
+      where: { organizationId: actorContext.tenant.organizationId },
+    })
+
+    return createApiResponse({
+      credentials: credentials.map((credential) => ({
+        createdAt: credential.createdAt.toISOString(),
+        expiresAt: credential.expiresAt.toISOString(),
+        id: credential.id,
+        label: credential.label,
+        lastUsedAt: credential.lastUsedAt?.toISOString() ?? null,
+        revokedAt: credential.revokedAt?.toISOString() ?? null,
+        scopes: credential.scopes,
+        user: {
+          displayName: credential.user.displayName,
+          id: credential.user.id,
+        },
+      })),
+    })
   })
 }
 
