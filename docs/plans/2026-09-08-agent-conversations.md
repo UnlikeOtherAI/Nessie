@@ -730,28 +730,30 @@ inverted and assert the behaviour instead.
   answers under its trigger (`resolveReplyRootMessageId`). The suite opens that
   reply thread rather than pretending the card is one screen closer than it is.
 
-### Found by the browser suite, not fixed here
+### Found by the browser suite, fixed in a follow-up run
 
-- **The conversation header does not take the name its first message just gave
-  it.** The server renames the thread and reports it in the 201, but
-  `ChannelsPage` reads the title from `useConversation(threadId)` and nothing on
-  the send path touches that key: `threadKeys.conversation` is written only by
-  `useRenameThread`, and `conversationTitle` is read nowhere in the admin. So
-  the person who just named the conversation goes on being shown "New
-  conversation" until the app is reloaded — the list catches up on its own poll,
-  the header does not. One `setQueryData`/`invalidateQueries` on the send path
-  closes it. Pinned in `run.mjs` → `start-two` with an assertion that says to
-  invert it.
-- **The shell's sidebar resize handle is drawn over the full-screen
-  conversations panel.** In the tablet band the shell is `split` but the panel
-  opens as a full-screen layer, and `[aria-label="Resize sidebar"]` is still
-  painted across it: a full-height rule down the middle of the panel that takes
-  the pointer events of everything under its line — in the fixture, the agent
-  strip's second agent and part of "New conversation". Clicking a strip item
-  whose centre falls on the line times out with the separator named as the
-  interceptor, which is why the suite roves the strip from the keyboard. Pinned
-  in `run.mjs` → `room-strip` by comparing the two bounding boxes, so it fails
-  by geometry rather than by where a name happens to land.
+Both were pinned with an assertion naming the gap; both assertions are now
+inverted and assert the behaviour instead.
+
+- **The header now takes the name its first message just gave it.**
+  `useSendMessage` reads the 201's optional `conversationTitle` and writes it
+  onto `threadKeys.conversation(threadId)` through the pure
+  `applyConversationTitle` — the key `ChannelsPage` reads its title from — then
+  invalidates that agent's conversation list; before, `threadKeys.conversation`
+  was written only by `useRenameThread` and the person who named the
+  conversation went on being shown "New conversation" until a reload. Pinned in
+  `run.mjs` → `start-two`, which now asserts the title with no reload and keeps
+  the after-reload assertion beside it.
+- **A full-screen side panel now stands the sidebar separator down.** A panel
+  below 900 px is `inset-0` inside the detail column's own stacking context
+  (`.phone-navigation-viewport` isolates), so no layer on the overlay scale can
+  lift it over shell chrome — the fix is not a bigger z-index but no separator:
+  `SidePanelShell` publishes `registerFullScreenSidePanel` while it covers the
+  screen and `ResizableSidebar` reads `useFullScreenSidePanelOpen`, because a
+  control for a column nobody can see is not a control. The reply-thread panel
+  had the same defect (same shell) and is fixed with it. Pinned in `run.mjs` →
+  `room-strip`, which now asserts non-overlap at every width and selects the
+  strip by click, with the keyboard rove kept as a second assertion.
 
 ## Later — named so nothing hides
 

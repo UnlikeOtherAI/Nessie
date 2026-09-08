@@ -21,6 +21,13 @@ import {
   focusComposerState,
   readFocusComposerIntent,
 } from '../src/components/features/agents/conversations/conversation-intent'
+import { applyConversationTitle } from '../src/facades/messages/hooks'
+import {
+  fullScreenSidePanelOpen,
+  registerFullScreenSidePanel,
+  sidePanelCoversScreen,
+  SIDE_PANEL_FULL_SCREEN_MAX_WIDTH,
+} from '../src/hooks/useSidePanelGeometry'
 
 /**
  * The pure half of agent conversations
@@ -244,5 +251,60 @@ describe('arriving in a new conversation', () => {
     // An ordinary navigation entry's state — a compose return address — is not
     // an instruction to steal the caret.
     assert.equal(readFocusComposerIntent({ returnTo: '/channels/x' }), false)
+  })
+})
+
+describe('the name a send gives a conversation', () => {
+  it('lands on the record the header is already rendering', () => {
+    const cached = record({ title: 'New conversation' })
+    const updated = applyConversationTitle(cached, 'Alpha question one')
+    assert.equal(updated?.title, 'Alpha question one')
+    // Everything else is the record that was there: the 201 reports a title,
+    // not a conversation, so nothing else may be invented from it.
+    assert.deepEqual({ ...updated, title: cached.title }, cached)
+  })
+
+  it('leaves an absent cache absent', () => {
+    // Writing a record built from a title alone would put a conversation with
+    // no agent, no room and no timestamps under the key the header reads.
+    assert.equal(applyConversationTitle(undefined, 'Alpha question one'), undefined)
+  })
+
+  it('changes nothing when the send named nothing', () => {
+    // Every send but the first reports no title, and a rename that agrees with
+    // what is cached must not hand React a new object to re-render for.
+    const cached = record({ title: 'Pricing page copy' })
+    assert.equal(applyConversationTitle(cached, undefined), cached)
+    assert.equal(applyConversationTitle(cached, ''), cached)
+    assert.equal(applyConversationTitle(cached, 'Pricing page copy'), cached)
+    assert.equal(applyConversationTitle(undefined, undefined), undefined)
+  })
+})
+
+describe('a side panel that covers the shell', () => {
+  it('knows the width at which it stops being a panel', () => {
+    assert.equal(sidePanelCoversScreen(768), true)
+    assert.equal(sidePanelCoversScreen(899), true)
+    assert.equal(sidePanelCoversScreen(SIDE_PANEL_FULL_SCREEN_MAX_WIDTH), false)
+    assert.equal(sidePanelCoversScreen(1280), false)
+    assert.equal(sidePanelCoversScreen(Number.NaN), false)
+  })
+
+  it('is uncovered only when the last panel has gone', () => {
+    // Two can be mounted at once — a reply thread under an agent's screen —
+    // and the first to close must not hand the shell chrome back over the one
+    // still on screen.
+    assert.equal(fullScreenSidePanelOpen(), false)
+    const first = registerFullScreenSidePanel()
+    const second = registerFullScreenSidePanel()
+    assert.equal(fullScreenSidePanelOpen(), true)
+    first()
+    assert.equal(fullScreenSidePanelOpen(), true)
+    second()
+    assert.equal(fullScreenSidePanelOpen(), false)
+    // A remount releases the outgoing registration after the replacement has
+    // registered; releasing twice must not take the replacement down with it.
+    second()
+    assert.equal(fullScreenSidePanelOpen(), false)
   })
 })

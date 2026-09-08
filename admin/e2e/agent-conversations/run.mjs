@@ -213,14 +213,10 @@ const sendNamingMessage = async (page, threadId, text) => {
  * `aria-hidden`, so it is correctly absent from the name a screen reader is
  * given, and correctly present in the string the DOM holds.
  *
- * At every width this suite uses the panel sits at its 320 px minimum, which
- * is narrower than two agent names, so what actually renders is the collapsed
- * form. The strip branch is kept and exercised the moment a reader has widened
- * the panel; forcing that here (a seeded
- * `nessie.agentConversationsPanelWidth`) was tried and reverted — the widened
- * panel squeezes the shell enough for its sidebar resize handle to sit over
- * the strip and swallow the click, which is a defect of the synthetic width
- * rather than of the strip.
+ * Where the panel sits at its 320 px minimum it is narrower than two agent
+ * names, so what renders is the collapsed form; where it covers the screen the
+ * names fit and the radiogroup is what renders. Both branches are real, so
+ * this reads which one is there rather than assuming either.
  */
 const expectStripAgents = async (page, agents, viewport) => {
   const panel = conversationsPanel(page)
@@ -256,17 +252,29 @@ const selectStripAgent = async (page, agent) => {
     await trigger.first().click()
     await page.locator(`[role="option"][data-testid="chat-tool-agent-${agent.id}"]`).click()
   } else {
-    // Driven from the keyboard rather than clicked. `TabBar` roves a
-    // radiogroup with the arrow keys, so this is a real path — and it is the
-    // only one that works at the width where the strip lays its names out:
-    // there the panel is a full-screen layer and the shell's sidebar resize
-    // handle is painted over it, swallowing the click (pinned in `room-strip`).
+    // Clicked, which is what a person does. This is the path the shell's
+    // sidebar separator used to swallow at the width where the strip lays its
+    // names out — the panel is a full-screen layer there — so the click is the
+    // assertion, not a convenience.
+    await panel.getByRole('radio', { exact: true, name: agent.name }).first().click()
+    await panel.getByRole('radio', { checked: true, exact: true, name: agent.name })
+      .first().waitFor({ timeout: 30_000 })
+    // And the same strip still roves from the keyboard: `TabBar` moves a
+    // radiogroup with the arrow keys and wraps, so pressing right enough times
+    // comes back to where it started. A control reachable only by pointer is
+    // not reachable at all, so both paths are asserted rather than one.
     await panel.getByRole('radio', { checked: true }).first().focus()
+    await page.keyboard.press('ArrowRight')
+    assert.equal(
+      await panel.getByRole('radio', { checked: true, exact: true, name: agent.name }).count(),
+      0,
+      `an arrow key roves the strip off ${agent.name}`,
+    )
     for (let step = 0; step <= 8; step += 1) {
       const landed = await panel
         .getByRole('radio', { checked: true, exact: true, name: agent.name }).count()
       if (landed === 1) break
-      assert.notEqual(step, 8, `the strip would not rove to ${agent.name}`)
+      assert.notEqual(step, 8, `the strip would not rove back to ${agent.name}`)
       await page.keyboard.press('ArrowRight')
     }
   }
@@ -450,27 +458,22 @@ const main = async () => {
       const named = await sendNamingMessage(desktop, threadId, question)
       assert.equal(named, question,
         'the send that named the conversation reports the name it chose')
-      // GAP, pinned rather than glossed — once, on the first conversation:
-      // the header goes on saying "New conversation" to the very person who
-      // just named it. Not repeated for the second, because the wait it needs
+      // The header takes the name from the send that gave it — no reload, no
+      // waiting for the list's poll. `useSendMessage` writes the 201's
+      // `conversationTitle` onto `threadKeys.conversation`, which is the key
+      // `ChannelsPage` reads its title from
+      // (`admin/src/facades/messages/hooks.ts`). Asserted once, on the first
+      // conversation: not repeated for the second, because the settle it needs
       // would close the window the live-dot case wants a run to still be in.
-      //
-      // Why: `ChannelsPage` takes the title from `useConversation(threadId)`
-      // (`admin/src/facades/threads/hooks.ts`) and nothing on the send path
-      // touches that key — `threadKeys.conversation` is written only by
-      // `useRenameThread`, and the 201's `conversationTitle` is not read
-      // anywhere in the admin. The name IS real (asserted on reload below and
-      // in the list), so this is a cache-invalidation gap, not a server one.
       if (started.length === 0) {
-        // A settle first, so "still the placeholder" means still.
+        // A settle first, so this is the header having *learned* the name
+        // rather than a read that happened to land in the same instant.
         await desktop.waitForTimeout(1_500)
         assert.equal(
           (await desktop.locator('h1:visible').last().innerText()).trim(),
-          'New conversation',
-          'GAP: the conversation header does not take the name its first message'
-          + ' just gave it — nothing invalidates threadKeys.conversation on send,'
-          + ' and the 201’s conversationTitle is read by nobody. If this now reads'
-          + ' the title, the gap is closed: assert `question` instead.',
+          question,
+          'the conversation header takes the name its first message just gave'
+          + ' it, without a reload',
         )
       }
       started.push(threadId)
@@ -509,9 +512,8 @@ const main = async () => {
     assert.equal(terminal.get(alphaRun.id), 'completed', 'the first conversation’s run completes')
     assert.equal(terminal.get(betaRun.id), 'completed', 'the second conversation’s run completes')
 
-    // The name is real, and a reader who arrives after it is shown it. This is
-    // the positive half of the GAP above: the server named the thread, the
-    // header simply never re-read it.
+    // And the name is durable, not only a cache write: a reader who arrives
+    // afterwards is shown the same thing, from the server's own record.
     for (const [namedThreadId, question] of [
       [alphaThreadId, ALPHA_QUESTION], [betaThreadId, BETA_QUESTION],
     ]) {
@@ -820,39 +822,35 @@ const main = async () => {
       // subject rather than a confirmation of one.
       await openConversationsColumn(page, viewport, fixture.agent.name)
       await expectStripAgents(page, [fixture.agent, fixture.secondAgent], viewport)
-      // GAP, pinned rather than worked around: where this panel opens as a
+      // Nothing of the shell is painted over this panel. Where it opens as a
       // full-screen layer — the tablet band, `split` shell but layered panel —
-      // the shell's own sidebar resize handle is still painted over it. It is a
-      // full-height rule down the middle of the panel, and it takes the pointer
-      // events of everything under its line: here the strip's second agent and
-      // part of "New conversation". Reproduced by clicking a strip item whose
-      // centre falls on the line; the click times out with the separator named
-      // as the interceptor. This is why `selectStripAgent` roves the strip from
-      // the keyboard instead.
+      // the shell's sidebar resize separator stands down entirely
+      // (`useFullScreenSidePanelOpen`), because it resizes a column the reader
+      // can no longer see and, left up, it is a full-height rule down the
+      // middle of the panel that takes the pointer events of everything under
+      // its line: the strip's second agent and part of "New conversation".
       const handleOverPanel = await page.evaluate(() => {
         const panel = document.querySelector('[aria-label^="Conversations with "]')
-        const handle = document.querySelector('[aria-label="Resize sidebar"]')
-        if (!panel || !handle) return null
+        if (!panel) return null
         const panelBox = panel.getBoundingClientRect()
-        const handleBox = handle.getBoundingClientRect()
+        const handle = document.querySelector('[aria-label="Resize sidebar"]')
+        const handleBox = handle?.getBoundingClientRect() ?? null
         return {
-          handle: { left: Math.round(handleBox.left), right: Math.round(handleBox.right) },
-          over: handleBox.left < panelBox.right && handleBox.right > panelBox.left
+          handle: handleBox
+            ? { left: Math.round(handleBox.left), right: Math.round(handleBox.right) }
+            : null,
+          over: handleBox !== null
+            && handleBox.left < panelBox.right && handleBox.right > panelBox.left
             && handleBox.top < panelBox.bottom && handleBox.bottom > panelBox.top,
           panel: { left: Math.round(panelBox.left), right: Math.round(panelBox.right) },
         }
       })
-      if (viewport === 'tablet') {
-        assert.equal(handleOverPanel?.over, true,
-          'GAP: the shell’s sidebar resize handle is drawn over the full-screen'
-          + ' conversations panel and swallows every click along its line'
-          + ` (${JSON.stringify(handleOverPanel)}). If this is now false the gap`
-          + ' is closed: assert false, and click the strip rather than roving it.')
-      }
-      if (viewport === 'desktop') {
-        assert.equal(handleOverPanel?.over ?? false, false,
-          'beside a wide conversation the handle stands to the panel’s left')
-      }
+      assert.equal(handleOverPanel?.over, false,
+        `no shell separator is drawn over the conversations panel (${viewport}):`
+        + ` ${JSON.stringify(handleOverPanel)}`)
+      // The click path, which is the one a person uses. It was the pointer
+      // interception above that made this impossible; `selectStripAgent`
+      // clicks, and roves the same strip from the keyboard afterwards.
       await selectStripAgent(page, fixture.secondAgent)
       // The panel's accessible name follows the selection, which is the whole
       // claim: everything below the strip is about the agent it names.
