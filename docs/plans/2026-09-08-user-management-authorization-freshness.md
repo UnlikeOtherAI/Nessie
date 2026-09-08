@@ -15,6 +15,15 @@ to a UOA subject cannot sign in with, or change, a retained legacy password even
 when the deployment runs in local mode. Unbound local accounts retain their
 existing password flow.
 
+## Organisation role changes
+
+The organisation roster now relays UOA's live
+`permissions.orgRoleOptions` display model. It is absent or empty when UOA
+does not grant `changeMemberRole`; Nessie supplies no fallback vocabulary. The
+Members detail view therefore offers only roles UOA configured for that
+organisation, excludes `owner`, and relays the selected non-owner role to UOA.
+UOA validates the value and keeps ownership transfer separate from role edits.
+
 ## Remaining migration
 
 This admission gate does not replace all product authorization. The existing
