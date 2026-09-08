@@ -12,7 +12,10 @@ const canonicalOneId = '00000000-0000-4000-8000-000000000004'
 const canonicalTwoId = '00000000-0000-4000-8000-000000000005'
 const teamId = '00000000-0000-4000-8000-000000000006'
 
-const prismaFor = (canonical: { id: string; organizationId: string }[]) => ({
+const prismaFor = (
+  canonical: { id: string; organizationId: string }[],
+  requestedTeamId: string | null = null,
+) => ({
   team: {
     findUnique: async ({ where, select }: {
       where: { id: string }
@@ -23,6 +26,9 @@ const prismaFor = (canonical: { id: string; organizationId: string }[]) => ({
           projects: canonical.filter((project) => project.id === select.projects.where.id),
         }
       : null,
+  },
+  project: {
+    findUnique: async () => ({ teamId: requestedTeamId }),
   },
 }) as unknown as PrismaClient
 
@@ -69,6 +75,15 @@ test('refuses an unselected project rather than choosing an ambient project', as
     projectId: canonicalTwoId,
     teamId,
   })
+
+  assert.equal(selected, null)
+})
+
+test('refuses a legacy fallback when another team canonically owns the project', async () => {
+  const selected = await resolveTeamProject(
+    prismaFor([], '00000000-0000-4000-8000-000000000007'),
+    { organizationId, projectId: legacyProjectId, teamId },
+  )
 
   assert.equal(selected, null)
 })
