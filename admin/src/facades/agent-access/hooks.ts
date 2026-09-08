@@ -34,7 +34,8 @@ export type OrgAgentAccessCredentialRecord = {
   lastUsedAt: string | null
   revokedAt: string | null
   scopes: AgentAccessScope[]
-  user: { displayName: string; email: string; id: string }
+  /** Name and id only — see the route: `User.email` is not a live mirror. */
+  user: { displayName: string; id: string }
 }
 
 export type AgentAccessCredentialRecord = {

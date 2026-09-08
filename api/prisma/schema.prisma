@@ -8428,22 +8428,21 @@ model AutomaticMembershipReconciliation {
 
 /// How far an agent credential reaches. Coarse and capability-shaped on
 /// purpose: a scope nobody can explain is a scope nobody sets correctly.
+///
+/// There is deliberately no `documents_publish`. "Agents draft; only a human
+/// may publish" is a rule this codebase enforces for its own agents by refusing
+/// an agent actor outright. A pairing-time checkbox was the wrong shape for it:
+/// it decided, once and for ninety days, a question the product asks per
+/// document everywhere else — and it decided it before the document existed.
+/// `nessie_doc_publish` now opens the same `knowledge.page.publish` approval
+/// `kb_publish_request` does, pinned to the person who approved the pairing.
+/// One rule, one vocabulary, one Approvals page.
 enum AgentAccessScope {
   boards_read
   boards_write
   documents_read
   documents_write
 }
-/// There is deliberately no `documents_publish`.
-///
-/// "Agents draft; only a human may publish" is a rule this codebase enforces
-/// for its own agents by refusing an agent actor outright. A pairing-time
-/// checkbox was the wrong shape for it: it decided, once and for ninety days,
-/// a question the product asks per document everywhere else — and it decided it
-/// before the document existed. `nessie_doc_publish` now opens the same
-/// `knowledge.page.publish` approval `kb_publish_request` does, pinned to the
-/// person who approved the pairing. One rule, one vocabulary, one Approvals
-/// page.
 
 enum AgentAuthorizationStatus {
   pending

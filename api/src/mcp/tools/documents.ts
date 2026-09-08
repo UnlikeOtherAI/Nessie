@@ -1,7 +1,10 @@
 import { canReadSpace, canWriteSpace } from '@nessie/knowledge'
 import { z } from 'zod'
 
-import { createApprovalRequestOnce } from '../../services/approvals.js'
+import {
+  createApprovalRequestOnce,
+  TooManyPendingApprovalsError,
+} from '../../services/approvals.js'
 import { emitAuditEvent } from '../../services/audit.js'
 import { requireScope } from '../scopes.js'
 import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
@@ -357,26 +360,38 @@ export const documentTools = (): McpToolDefinition[] => [
       // One request per draft, even if the agent polls or two replicas race:
       // the check and the create happen under one lock inside the approvals
       // service, which is where that concern belongs.
-      const { approval, created } = await createApprovalRequestOnce(context.prisma, {
-        action: 'knowledge.page.publish',
-        actorContext: context.actorContext,
-        context: {
-          pageId: existing.id,
-          spaceId: existing.spaceId,
-          title: existing.title,
-          versionId,
-        },
-        lockKey: `mcp-doc-publish:${credentialId}:${pageId}:${versionId}`,
-        matches: (rowContext) =>
-          rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId,
-        reason:
-          (input.reason as string | undefined)?.trim()
-          || 'Requested by a paired agent through the MCP endpoint.',
-        requester: {
-          agentAccessCredentialId: credentialId,
-          requiredApproverUserId: context.actorContext.actor.actorId,
-        },
-      })
+      let opened: Awaited<ReturnType<typeof createApprovalRequestOnce>>
+      try {
+        opened = await createApprovalRequestOnce(context.prisma, {
+          action: 'knowledge.page.publish',
+          actorContext: context.actorContext,
+          context: {
+            pageId: existing.id,
+            spaceId: existing.spaceId,
+            title: existing.title,
+            versionId,
+          },
+          lockKey: `mcp-doc-publish:${credentialId}:${pageId}:${versionId}`,
+          matches: (rowContext) =>
+            rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId,
+          reason:
+            (input.reason as string | undefined)?.trim()
+            || 'Requested by a paired agent through the MCP endpoint.',
+          requester: {
+            agentAccessCredentialId: credentialId,
+            requiredApproverUserId: context.actorContext.actor.actorId,
+          },
+        })
+      } catch (error) {
+        // A refusal the agent can act on — it names the actual problem and what
+        // would clear it — rather than a stack trace it will retry into a loop.
+        if (error instanceof TooManyPendingApprovalsError) {
+          return { error: error.message, retryable: false }
+        }
+        throw error
+      }
+
+      const { approval, created } = opened
 
       if (!created) {
         return {

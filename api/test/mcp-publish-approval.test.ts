@@ -6,7 +6,10 @@ import { PrismaClient } from '@prisma/client'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
 import { AuthorizedActionContextSchema } from '@nessie/schemas'
 
-import { resolveApprovalRequest } from '../src/services/approvals.js'
+import {
+  PENDING_APPROVALS_PER_REQUESTER,
+  resolveApprovalRequest,
+} from '../src/services/approvals.js'
 import { McpScopeError } from '../src/mcp/scopes.js'
 import { nessieMcpTools } from '../src/mcp/server.js'
 import type { McpToolContext } from '../src/mcp/tool-context.js'
@@ -295,6 +298,89 @@ runDatabaseTest('concurrent asks for one draft converge on a single approval', a
       where: { action: 'knowledge.page.publish', organizationId: s.organizationId },
     })
     assert.equal(count, 1, 'exactly one approval survived the race')
+  } finally {
+    await cleanup(prisma, s)
+  }
+})
+
+runDatabaseTest('nobody but the borrowed account can answer, not even another owner', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const context = contextFor(prisma, s)
+    const created = await tool('nessie_doc_create').run(context, {
+      spaceId: s.spaceId,
+      title: 'Someone else\'s call',
+    }) as { page: { id: string } }
+    const asked = await tool('nessie_doc_publish').run(context, {
+      pageId: created.page.id,
+    }) as { approvalId: string }
+
+    // The pin is the branch's central security property and had no test: a
+    // colleague must not be able to authorise something done in somebody else's
+    // name. A second OWNER is the strongest case — org-wide visibility would
+    // otherwise reach them.
+    const colleague = await prisma.user.create({
+      data: { displayName: 'Colleague', email: `col-${randomUUID()}@example.test` },
+    })
+    await prisma.organizationMember.create({
+      data: { organizationId: s.organizationId, role: 'owner', userId: colleague.id },
+    })
+
+    const refused = await resolveApprovalRequest(
+      prisma,
+      asked.approvalId,
+      AuthorizedActionContextSchema.parse({
+        actionContext: { requestId: randomUUID() },
+        actor: { actorId: colleague.id, actorType: 'user', roles: ['owner'] },
+        tenant: { organizationId: s.organizationId, projectId: s.projectId },
+      }),
+      'approved',
+    )
+    // A pinned approval is invisible to everyone but its approver, so this
+    // reads as "not found" rather than "forbidden" — which is the right shape:
+    // the request's reason and context are not theirs to read either.
+    assert.equal(refused, null, 'a colleague must not be able to resolve this')
+
+    const stored = await prisma.knowledgePage.findUniqueOrThrow({
+      select: { status: true },
+      where: { id: created.page.id },
+    })
+    assert.equal(stored.status, 'draft', 'and nothing may have been published')
+  } finally {
+    await cleanup(prisma, s)
+  }
+})
+
+runDatabaseTest('a requester at the pending ceiling is refused, not queued', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const context = contextFor(prisma, s)
+    // Dedupe keys on the draft *version*, so editing and asking again is a
+    // genuinely new question every time — which is how one agent left 25
+    // requests standing before this ceiling existed.
+    const opened: string[] = []
+    let refusal: string | undefined
+    for (let attempt = 0; attempt < PENDING_APPROVALS_PER_REQUESTER + 2; attempt += 1) {
+      const page = await tool('nessie_doc_create').run(context, {
+        spaceId: s.spaceId,
+        title: `Draft ${attempt}`,
+      }) as { page: { id: string } }
+      const asked = await tool('nessie_doc_publish').run(context, {
+        pageId: page.page.id,
+      }) as { approvalId?: string; error?: string }
+      if (asked.approvalId) opened.push(asked.approvalId)
+      if (asked.error) refusal = asked.error
+    }
+
+    assert.equal(opened.length, PENDING_APPROVALS_PER_REQUESTER)
+    assert.match(String(refusal), /already .* waiting for a person/i)
+
+    const count = await prisma.approvalRequest.count({
+      where: { action: 'knowledge.page.publish', organizationId: s.organizationId },
+    })
+    assert.equal(count, PENDING_APPROVALS_PER_REQUESTER, 'the ceiling holds in the database')
   } finally {
     await cleanup(prisma, s)
   }

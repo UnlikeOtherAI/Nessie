@@ -145,7 +145,7 @@ const OrganizationPairedAgentsBody = () => {
                       </Pill>
                     </div>
                     <div className="mt-0.5 text-xs text-[color:var(--tx2)]">
-                      {`Works as ${credential.user.displayName} (${credential.user.email})`}
+                      {`Works as ${credential.user.displayName}`}
                     </div>
                     <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
                       {credential.scopes.length > 0

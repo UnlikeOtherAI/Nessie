@@ -10,10 +10,16 @@ import { z } from 'zod'
  * or say in, which is what "any member, no list, no switch" amounted to.
  *
  * It rides the one settings cascade (`docs/standards/scoped-settings.md`)
- * rather than a bespoke column, so an organisation can turn it off and lock it,
- * a team can turn it off for itself, and a person can turn it off for their own
- * account without anybody's help. Absent means allowed: an installation that
- * has never thought about this keeps working exactly as it did.
+ * rather than a bespoke column, so the answer resolves organisation → team →
+ * person and stops at the first level that locked it. Absent means allowed: an
+ * installation that has never thought about this keeps working exactly as it
+ * did.
+ *
+ * **Only the organisation level has a surface today**
+ * (`/settings/organization/paired-agents`, which always writes the key locked).
+ * The cascade will honour a team or personal row the moment one exists, but
+ * nothing writes them, so do not describe those levels as available to a person
+ * until something does — a capability nobody can reach is not a capability.
  */
 export const AGENT_PAIRING_SETTING_KEY = 'agents.pairing'
 

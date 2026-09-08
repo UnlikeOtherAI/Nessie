@@ -98,16 +98,22 @@ nobody sets correctly:
 | `boards_read` | list projects/boards/columns, read tasks |
 | `boards_write` | create, update and move tasks |
 | `documents_read` | list spaces, read pages |
-| `documents_write` | create and edit pages, as drafts |
-| `documents_publish` | publish a draft |
+| `documents_write` | create and edit pages as drafts, and ask for one to be published |
 
-`documents_publish` is separated from `documents_write` deliberately, and is the
-one scope the approval screen does **not** pre-tick. "Agents draft; only a human
-may publish" is a rule this product enforces for its own agents by refusing an
-`agent` actor outright — and an MCP credential resolves as the human who
-approved it, so that check does not catch it. Rather than drop the rule or
-refuse publication forever, the decision stays human and moves to pairing time:
-a person ticks a box that says this agent may publish, once, and can revoke it.
+**Superseded — there is no `documents_publish` scope.** This plan shipped with
+one: a tick at pairing time saying an agent may publish. That was the wrong
+shape, and it was retired. It decided, once and for ninety days, a question this
+product asks per document everywhere else — and it decided it before the
+document existed, so the person ticking it could not know what they were
+agreeing to publish.
+
+"Agents draft; only a human may publish" now survives the way it does for
+in-house agents: `nessie_doc_publish` opens the same `knowledge.page.publish`
+approval `kb_publish_request` opens, pinned to the person whose account the
+credential borrows. It takes `documents_write`, because asking is not free —
+it reads the page and puts a decision in front of somebody — but it grants
+nothing. The rule and its corollaries are
+[`docs/standards/paired-agents.md`](../standards/paired-agents.md).
 
 Enforced at the tool boundary **and** underneath by the service functions'
 own authorization. The scope narrows; it never widens.

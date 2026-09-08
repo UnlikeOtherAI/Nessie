@@ -121,6 +121,31 @@ export const createApprovalRequest = async (
  * admission already use for this shape of problem. The audit event is emitted
  * after the transaction commits, so a slow audit write never holds the lock.
  */
+/**
+ * How many decisions one asker may leave waiting.
+ *
+ * Deduplication alone is not a limit. It keys on the exact thing being decided
+ * — for a publish request, the draft *version* — so an agent that edits and
+ * asks again is asking about something genuinely new every time, and twenty-five
+ * edit-and-ask cycles left twenty-five requests standing, each for seven days.
+ * Nothing was granted, but the Approvals page is the surface the whole gate
+ * depends on, and burying it is its own kind of failure.
+ *
+ * Ten, the same ceiling `kb_publish_request`'s sibling
+ * (`worker/src/run/pa-tools/todos.ts`) already sets on agent proposals.
+ */
+export const PENDING_APPROVALS_PER_REQUESTER = 10
+
+export class TooManyPendingApprovalsError extends Error {
+  constructor() {
+    super(
+      `There are already ${PENDING_APPROVALS_PER_REQUESTER} requests from this agent `
+      + 'waiting for a person. Ask them to work through those before sending more.',
+    )
+    this.name = 'TooManyPendingApprovalsError'
+  }
+}
+
 export const createApprovalRequestOnce = async (
   prisma: PrismaClient,
   input: CreateApprovalInput & {
@@ -148,6 +173,14 @@ export const createApprovalRequestOnce = async (
     const existing = pending.find((row) =>
       input.matches(row.context as Record<string, unknown> | null))
     if (existing) return { approval: mapApproval(existing), created: false }
+
+    // Counted inside the lock, so two concurrent asks cannot both pass the
+    // ceiling. An asker at the limit is refused rather than queued: the point
+    // is that a person is behind on decisions, and adding to the pile is the
+    // opposite of what helps.
+    if (pending.length >= PENDING_APPROVALS_PER_REQUESTER) {
+      throw new TooManyPendingApprovalsError()
+    }
 
     return {
       approval: mapApproval(await tx.approvalRequest.create({

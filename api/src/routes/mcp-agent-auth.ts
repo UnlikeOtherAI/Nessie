@@ -386,7 +386,18 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         lastUsedAt: true,
         revokedAt: true,
         scopes: true,
-        user: { select: { displayName: true, email: true, id: true } },
+        // Name and id, never email.
+        //
+        // `User.displayName` is a documented non-authoritative mirror, re-synced
+        // from the provider's claims at login, team switch and refresh, and
+        // every comparable surface renders it from the local row. `User.email`
+        // is not that: nothing re-syncs it after the row is created, so it is a
+        // first-login snapshot that silently goes stale when somebody changes
+        // their address at UOA. Rendering it here would put a wrong address on
+        // the one screen used to decide whether to end a live acts-as-them
+        // credential, while the Members page beside it showed the right one.
+        // The id is the join key for a client that wants the live roster.
+        user: { select: { displayName: true, id: true } },
       },
       where: { organizationId: actorContext.tenant.organizationId },
     })
@@ -402,7 +413,6 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         scopes: credential.scopes,
         user: {
           displayName: credential.user.displayName,
-          email: credential.user.email,
           id: credential.user.id,
         },
       })),

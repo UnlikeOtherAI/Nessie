@@ -53,11 +53,20 @@ agent (a Claude Code or Codex CLI on somebody's machine) calling *in* on
 - **Pairing is an organisation's decision as well as a person's.** The
   `agents.pairing` key rides the one settings cascade
   ([`scoped-settings.md`](scoped-settings.md)) — organisation → team → person,
-  absent means allowed — and is checked at approval time, because nobody is
-  signed in when an agent *starts* a device request. An owner sees every
-  credential in the organisation at `/settings/organization/paired-agents` and
-  can revoke any of them. The personal list stays self-only: a credential list
-  is a list of live footholds, not general reading.
+  absent means allowed — and is checked at **approval** time, not when the agent
+  starts a device request, because nobody is signed in then. The `teamId` used
+  to resolve it must be the same one the credential is minted with; resolving
+  against one and minting against the other was a real bypass, caught in review.
+
+  **Only the organisation level has a surface**
+  (`/settings/organization/paired-agents`, which writes the key locked whenever
+  the answer is no). The cascade honours a team or personal row if one appears,
+  but nothing writes them today — do not document those levels as something a
+  team or a person can use until a surface exists.
+
+  An owner sees every credential in the organisation on that same page and can
+  revoke any of them. The personal list stays self-only: a credential list is a
+  list of live footholds, not general reading.
 
 ## The flow, and why it is this one
 
