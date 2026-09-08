@@ -305,6 +305,7 @@ export const SidebarProjectsSection = ({
                               e.stopPropagation();
                               closeProjectMenu();
                               onOpenCreateChannel({
+                                projectId: project.id,
                                 projectName: project.name,
                                 teamId: teamIdByProjectId.get(project.id),
                               });

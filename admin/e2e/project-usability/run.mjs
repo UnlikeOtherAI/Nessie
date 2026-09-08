@@ -143,7 +143,11 @@ const main = async () => {
   let browser; let desktop; let phone; let tablet; let desktopPage; let phonePage; let tabletPage
   let project; let sourceBoard; let boardAId; let boardBId
   try {
-    project = await api('/api/projects', { body: { name: `Project usability ${runId}` }, method: 'POST', token: seed.token })
+    project = await api('/api/projects', {
+      body: { name: `Project usability ${runId}`, teamId: seed.team.id },
+      method: 'POST',
+      token: seed.token,
+    })
     const boards = await call(`/api/projects/${project.id}/boards`, { token: seed.token })
     sourceBoard = boards.find((board) => board.isDefault) ?? boards[0]
     assert.ok(sourceBoard, 'the disposable project has a default board')

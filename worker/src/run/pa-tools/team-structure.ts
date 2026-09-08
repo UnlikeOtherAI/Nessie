@@ -96,12 +96,12 @@ export const runProjectListTool = async (
     if (project.name.toLowerCase().includes(needle)) return true
     return teams.some(
       (team) =>
-        team.projectId === project.id && team.name.toLowerCase().includes(needle),
+        (team.projectIds ?? []).includes(project.id) && team.name.toLowerCase().includes(needle),
     )
   })
 
   const lines = matches.map((project) => {
-    const projectTeams = teams.filter((team) => team.projectId === project.id)
+    const projectTeams = teams.filter((team) => (team.projectIds ?? []).includes(project.id))
     const teamText = projectTeams.length === 0
       ? 'no teams yet — a channel needs one'
       : projectTeams
@@ -123,6 +123,7 @@ export const runProjectListTool = async (
 
 const ProjectCreateInputSchema = z.object({
   name: z.string().min(1, 'name is required.'),
+  teamId: z.string().uuid(),
 })
 
 export const runProjectCreateTool = async (
@@ -139,6 +140,7 @@ export const runProjectCreateTool = async (
     project = await createProjectForUser(context.prisma, {
       name: args.name,
       organizationId: member.organizationId,
+      teamId: args.teamId,
       userId: member.userId,
     })
   } catch (error) {
@@ -149,13 +151,12 @@ export const runProjectCreateTool = async (
   }
 
   return {
-    inputSummary: `name="${args.name}"`,
+    inputSummary: `name="${args.name}" teamId=${args.teamId}`,
     outputPreview: [
       `Created project "${project.name}"`,
       `projectId=${project.id}`,
       'You are its only member and its owner — nobody else was added.',
-      'A project holds no channels until it has a team: create one with '
-      + 'team_create, then a channel in that team with channel_create.',
+      `It belongs to teamId=${args.teamId}. Pass both ids to channel_create.`,
     ].join('\n'),
     toolName: 'project_create',
   }

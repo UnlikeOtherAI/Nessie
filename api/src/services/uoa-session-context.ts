@@ -73,15 +73,8 @@ const loadBinding = async (
       project: {
         members: { some: { userId: input.userId } },
         organization: {
-          // Organizations map 1:1 to UOA organisations: the team must live in
-          // the Organization carrying this session's external org id. A team
-          // reachable only through a foreign org — or a legacy team left in a
-          // null-externalOrgId org — fails closed here rather than scoping the
-          // session to an organization the UOA proof does not name.
           externalOrgId: input.identity.organizationId,
-          members: {
-            some: { deactivatedAt: null, userId: input.userId },
-          },
+          members: { some: { deactivatedAt: null, userId: input.userId } },
         },
       },
     },
@@ -90,6 +83,7 @@ const loadBinding = async (
       projectId: true,
       project: {
         select: {
+          id: true,
           organizationId: true,
           organization: {
             select: {
@@ -104,8 +98,12 @@ const loadBinding = async (
       },
     },
   })
-  const role = team?.project.organization.members[0]?.role
-  if (!team || !role) {
+  // A UOA session proves a team, not one of its canonical projects. Its legacy
+  // project remains the strictly checked default until context switching names
+  // a canonical project explicitly.
+  const defaultProject = team?.project
+  const role = defaultProject?.organization.members[0]?.role
+  if (!team || !defaultProject || !role) {
     throw new UoaLocalSessionBindingError(
       'The UnlikeOtherAI team is no longer available in Nessie.',
     )
@@ -114,7 +112,7 @@ const loadBinding = async (
   const link = await prisma.productAccountLink.findUnique({
     where: {
       organizationId_userId_productSlug: {
-        organizationId: team.project.organizationId,
+        organizationId: defaultProject.organizationId,
         productSlug: 'nessie',
         userId: input.userId,
       },
@@ -139,8 +137,8 @@ const loadBinding = async (
 
   return {
     linkId: link.id,
-    organizationId: team.project.organizationId,
-    projectId: team.projectId,
+    organizationId: defaultProject.organizationId,
+    projectId: defaultProject.id,
     role,
     teamId: team.id,
   }

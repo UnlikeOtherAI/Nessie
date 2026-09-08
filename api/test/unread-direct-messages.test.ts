@@ -37,9 +37,9 @@ const channel = (input: {
   teamId,
   threads: [{ id: input.threadId }],
   members: [{ muted: false, role: 'member' }],
+  project: { channelRoot: false, id: projectId, name: 'Nessie' },
   team: {
     name: 'Core',
-    project: { channelRoot: false, id: projectId, name: 'Nessie' },
   },
   topic: null,
   type: input.type,

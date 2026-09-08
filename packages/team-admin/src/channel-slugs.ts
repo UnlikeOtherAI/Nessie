@@ -1,6 +1,8 @@
 import { toChannelSlug } from '@nessie/schemas'
 import { Prisma, type PrismaClient } from '@prisma/client'
 
+import { resolveTeamProject } from './team-project.js'
+
 export type ChannelLabelParts = {
   label: string
   slug: string
@@ -57,25 +59,11 @@ export const loadChannelTeamProject = async (
   prisma: PrismaClient,
   input: {
     organizationId: string
+    projectId: string
     teamId: string
   },
 ): Promise<ChannelTeamProject | null> => {
-  const team = await prisma.team.findUnique({
-    where: { id: input.teamId },
-    select: {
-      project: {
-        select: { id: true, organizationId: true },
-      },
-    },
-  })
-  if (team?.project.organizationId !== input.organizationId) {
-    return null
-  }
-  return {
-    organizationId: team.project.organizationId,
-    projectId: team.project.id,
-    teamId: input.teamId,
-  }
+  return resolveTeamProject(prisma, input)
 }
 
 /**

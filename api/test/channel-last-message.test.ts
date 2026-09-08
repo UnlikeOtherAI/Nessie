@@ -38,8 +38,8 @@ const channelRow = (overrides: Partial<Channel> = {}) => ({
 
 const teamShape = {
   name: 'Core',
-  project: { id: projectId, name: 'Nessie' },
 }
+const projectShape = { channelRoot: false, id: projectId, name: 'Nessie' }
 
 // The unread walk and the recency aggregate are two distinct queries; the fake
 // answers each by the SQL it was handed, which also pins that the recency read
@@ -57,12 +57,14 @@ test('the channel list carries lastMessageAt, null for a channel with no message
           ...channelRow(),
           threads: [{ id: threadId }],
           members: [{ role: 'member', muted: false }],
+          project: projectShape,
           team: teamShape,
         },
         {
           ...channelRow({ id: quietChannelId, label: 'empty', slug: 'empty' }),
           threads: [{ id: quietThreadId }],
           members: [{ role: 'member', muted: false }],
+          project: projectShape,
           team: teamShape,
         },
       ],
@@ -124,7 +126,11 @@ test('a single channel record carries lastMessageAt too, so a mutation response 
 
   const record = await mapChannelRecord(
     prisma,
-    { ...channelRow(), team: teamShape } as unknown as Parameters<typeof mapChannelRecord>[1],
+    {
+      ...channelRow(),
+      project: projectShape,
+      team: teamShape,
+    } as unknown as Parameters<typeof mapChannelRecord>[1],
     userId,
   )
 
@@ -149,6 +155,7 @@ test('a single channel record reports null lastMessageAt for an empty thread', a
     prisma,
     {
       ...channelRow({ id: quietChannelId, label: 'empty', slug: 'empty' }),
+      project: projectShape,
       team: teamShape,
     } as unknown as Parameters<typeof mapChannelRecord>[1],
     userId,

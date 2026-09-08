@@ -8,7 +8,6 @@ import {
   ChannelSlugConflictError,
   createChannelForUser,
   createProjectForUser,
-  createTeamForUser,
   setChannelArchived,
   updateChannel,
 } from '../src/index.js'
@@ -28,6 +27,7 @@ const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 type Seed = {
   organizationId: string
   ownerId: string
+  teamId: string
 }
 
 const seed = async (prisma: PrismaClient): Promise<Seed> => {
@@ -38,10 +38,19 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const organization = await prisma.organization.create({
     data: { name: `slug-archive-${suffix}` },
   })
+  const anchorProject = await prisma.project.create({
+    data: { name: `slug-archive-anchor-${suffix}`, organizationId: organization.id },
+  })
+  const team = await prisma.team.create({
+    data: { name: `slug-archive-team-${suffix}`, projectId: anchorProject.id },
+  })
   await prisma.organizationMember.create({
     data: { organizationId: organization.id, role: 'owner', userId: owner.id },
   })
-  return { organizationId: organization.id, ownerId: owner.id }
+  await prisma.teamMember.create({
+    data: { role: 'owner', teamId: team.id, userId: owner.id },
+  })
+  return { organizationId: organization.id, ownerId: owner.id, teamId: team.id }
 }
 
 const cleanup = async (prisma: PrismaClient, seeded: Seed): Promise<void> => {
@@ -180,21 +189,15 @@ runDatabaseTest('the shared list and a project keep separate names', async (t) =
   const project = await createProjectForUser(prisma, {
     name: 'Marketing',
     organizationId: seeded.organizationId,
+    teamId: seeded.teamId,
     userId: seeded.ownerId,
   })
-  const team = await createTeamForUser(prisma, {
-    name: 'Campaigns',
-    organizationId: seeded.organizationId,
-    projectId: project.id,
-    userId: seeded.ownerId,
-  })
-  assert.ok(team)
-
   // The same name in a project is a different channel, not a conflict.
   const inProject = await createChannelForUser(prisma, {
     label: 'general',
     organizationId: seeded.organizationId,
-    teamId: team.id,
+    projectId: project.id,
+    teamId: seeded.teamId,
     userId: seeded.ownerId,
     visibility: 'public',
   })
@@ -207,7 +210,8 @@ runDatabaseTest('the shared list and a project keep separate names', async (t) =
     createChannelForUser(prisma, {
       label: 'general',
       organizationId: seeded.organizationId,
-      teamId: team.id,
+      projectId: project.id,
+      teamId: seeded.teamId,
       userId: seeded.ownerId,
       visibility: 'public',
     }),

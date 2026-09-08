@@ -1527,12 +1527,16 @@ model Project {
   avatarEmoji              String?                   @map("avatar_emoji")
   avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
+  // Expand phase of the team-model inversion. This is nullable until the
+  // audited backfill can prove every existing non-root project has one team.
+  teamId                   String?                   @map("team_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA team and does not mirror any external team.
   channelRoot              Boolean                   @default(false) @map("channel_root")
   createdAt                DateTime                  @default(now()) @map("created_at")
   updatedAt                DateTime                  @updatedAt @map("updated_at")
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                     Team?                     @relation("ProjectOwningTeam", fields: [teamId], references: [id], onDelete: Restrict)
   channels                 Channel[]
   members                  ProjectMember[]
   teams                    Team[]
@@ -1554,6 +1558,7 @@ model Project {
 
   @@unique([id, organizationId])
   @@index([avatarAttachmentId])
+  @@index([teamId])
   @@map("projects")
 }
 
@@ -2008,6 +2013,7 @@ model Team {
   cloudBrowserConnections  CloudBrowserConnection[]  @relation("CloudBrowserConnectionTeam")
   scopedSettings           ScopedSetting[]           @relation("ScopedSettingTeam")
   automaticMembershipRules AutomaticMembershipRule[]
+  projects                 Project[]                 @relation("ProjectOwningTeam")
 
   @@map("teams")
 }
