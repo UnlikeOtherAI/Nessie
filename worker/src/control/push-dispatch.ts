@@ -155,6 +155,7 @@ export const handlePushDispatch = async (
       user,
       readable: await canUserReadDisclosureBasis(deps.prisma, {
         agentId: replyMessage.agentId,
+        allowStoredUoaIdentity: true,
         basis: replyMessage.basisScopes,
         channelId: payload.channelId,
         disclosureSources: replyMessage.disclosureSources,

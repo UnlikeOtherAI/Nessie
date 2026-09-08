@@ -153,7 +153,11 @@ export const resolveAgentEditAuthority = async (
     uoaIdentity: actor.uoaIdentity,
     userId: actor.userId,
   })
-  if (entitlements.kind === 'denied') {
+  if (
+    entitlements.kind === 'denied'
+    || entitlements.organizationId !== actor.organizationId
+    || entitlements.userId !== actor.userId
+  ) {
     return deny(
       AGENT_EDIT_AUTHORITY_ERROR_CODES.MEMBERSHIP_INACTIVE,
       'Your access to this team is not active, so you cannot edit agents in it.',

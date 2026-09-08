@@ -10,6 +10,7 @@ import {
   type AgentCardPresenter,
   type AgentCardSpec,
   type AuthorizedActionContext,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 import {
   presentAgentCardBlocks,
@@ -41,7 +42,7 @@ export type LoadedAgentCard = NonNullable<Awaited<ReturnType<typeof loadReadable
  */
 export const loadReadableCard = async (
   prisma: PrismaClient,
-  input: { cardId: string; organizationId: string; userId: string },
+  input: { cardId: string; organizationId: string; uoaIdentity?: UoaSessionIdentity; userId: string },
 ) => {
   const card = await prisma.agentCard.findFirst({
     select: {
@@ -99,6 +100,7 @@ export const loadReadableCard = async (
       disclosureSources: card.message.disclosureSources,
       messageId: card.messageId,
       organizationId: card.organizationId,
+      uoaIdentity: input.uoaIdentity,
       userId: input.userId,
     })
     if (!readable) return null

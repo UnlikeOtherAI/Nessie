@@ -380,12 +380,14 @@ export const canUserReadDisclosureBasis = async (
     /** See DisclosureGrantSubject; absent for a run-level ledger. */
     disclosureSources?: readonly DisclosureSource[]
     organizationId: string
+    /** Only queue delivery may revalidate its stored, scoped product link. */
+    allowStoredUoaIdentity?: boolean
     uoaIdentity?: UoaSessionIdentity
     userId: string
   },
 ): Promise<boolean> => {
   const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
-    allowStoredUoaIdentity: input.uoaIdentity === undefined,
+    allowStoredUoaIdentity: input.allowStoredUoaIdentity,
     uoaIdentity: input.uoaIdentity,
   })
   if (viewer.kind !== 'user') return false
