@@ -16,7 +16,7 @@
  *     "re-check authorization before every batch" a mechanism rather than a
  *     claim: the assertion is minted per batch and verified upstream.
  *
- *  2. **Never send a role.** `addTeamMember` forwards `team_role` whenever it
+ *  2. **Never send a role.** `addTeamMember` forwards `teamRole` whenever it
  *     is given, and UOA's member add is becoming an upsert, so passing
  *     `'member'` would silently demote an existing team owner. Membership is
  *     read first and the add is skipped entirely when the person is already

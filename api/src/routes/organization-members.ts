@@ -12,19 +12,18 @@ import {
   listOrganisationMembers,
   listOrganisationMemberTeamAccess,
   removeTeamMember,
+  resendTeamInvitation,
   resolveLocalUserIdsByUoaSub,
   revokeTeamInvitation,
   setTeamMemberActivation,
   updateOrganisationMemberRole,
-  UoaInvitationAlreadyAcceptedError,
-  UoaRosterIdentityError,
   UoaRosterRejectedError,
-  UoaRosterUnavailableError,
   withUoaOrgRosterSubjectAssertion,
   type UoaRosterDeps,
   type UoaRosterPage,
 } from '../services/uoa-org-roster.js'
 import { resolveOrganizationAdministrationAccess } from '../services/uoa-organization-administration.js'
+import { sendMemberManagementError } from './member-management-errors.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -79,7 +78,7 @@ const TeamAccessSchema = z.object({
   teamIds: z.array(z.string().trim().min(1).max(200)).max(100),
 })
 
-const RevokeInvitationSchema = z.object({
+const InvitationActionSchema = z.object({
   teamId: z.string().trim().min(1).max(200),
 })
 
@@ -131,52 +130,6 @@ const requireOrganizationAdministrator = async (
     'ORGANIZATION_ADMIN_REQUIRED',
     'Organisation administrator access is required.',
   )
-  return false
-}
-
-/** Map a relay failure onto the API's error envelope. Returns true if handled. */
-const sendRelayError = (
-  request: FastifyRequest,
-  reply: FastifyReply,
-  error: unknown,
-): boolean => {
-  if (error instanceof UoaInvitationAlreadyAcceptedError) {
-    sendApiError(
-      reply,
-      409,
-      'INVITATION_ALREADY_ACCEPTED',
-      'This invitation was already accepted. Remove the member instead.',
-    )
-    return true
-  }
-  if (error instanceof UoaRosterRejectedError) {
-    sendApiError(
-      reply,
-      error.statusCode === 404 ? 404 : 400,
-      'ORGANIZATION_MEMBERS_REJECTED',
-      'UnlikeOtherAI refused the request. The member may no longer exist.',
-    )
-    return true
-  }
-  if (error instanceof UoaRosterIdentityError) {
-    sendApiError(
-      reply,
-      403,
-      'UOA_SESSION_REQUIRED',
-      'Sign in with UnlikeOtherAI to view organisation members.',
-    )
-    return true
-  }
-  if (error instanceof UoaRosterUnavailableError) {
-    request.log.warn({ err: error }, 'uoa organisation roster relay failed')
-    sendApiError(
-      reply,
-      502,
-      'UOA_DIRECTORY_UNAVAILABLE',
-      'The UnlikeOtherAI directory is temporarily unavailable',
-    )
-    return true
-  }
   return false
 }
 
@@ -234,7 +187,7 @@ export const registerOrganizationMembersRoutes = (
       }
       return createApiResponse(result)
     } catch (error) {
-      if (sendRelayError(request, reply, error)) return reply
+      if (sendMemberManagementError(request, reply, error, 'organization')) return reply
       throw error
     }
   }
@@ -263,7 +216,7 @@ export const registerOrganizationMembersRoutes = (
       )
       return createApiResponse({ items: result.items, permissions: result.permissions }, result.meta)
     } catch (error) {
-      if (sendRelayError(request, reply, error)) return reply
+      if (sendMemberManagementError(request, reply, error, 'organization')) return reply
       throw error
     }
   }
@@ -303,30 +256,33 @@ export const registerOrganizationMembersRoutes = (
     relayPage(request, reply, async (orgId, _actorContext, subjectDeps) =>
       listOrganisationMemberInvitations(orgId, RosterQuerySchema.parse(request.query), subjectDeps)))
 
-  app.post<{ Params: { inviteId: string } }>(
-    '/api/organization/member-invitations/:inviteId/revoke',
-    async (request, reply) =>
-      relay(
-        request,
-        reply,
-        {
-          audit: {
-            action: 'organization.member_invitation_revoked',
-            resourceId: request.params.inviteId,
-            resourceType: 'organization_invitation',
+  for (const action of ['resend', 'revoke'] as const) {
+    app.post<{ Params: { inviteId: string } }>(
+      `/api/organization/member-invitations/:inviteId/${action}`,
+      async (request, reply) =>
+        relay(
+          request,
+          reply,
+          {
+            ...(action === 'revoke' ? { audit: {
+              action: 'organization.member_invitation_revoked',
+              resourceId: request.params.inviteId,
+              resourceType: 'organization_invitation',
+            } satisfies RelayAudit } : {}),
+            parse: () => parseInput(InvitationActionSchema, request.body, reply),
           },
-          parse: () => parseInput(RevokeInvitationSchema, request.body, reply),
-        },
-        async (orgId, body, subjectDeps) => {
-          await revokeTeamInvitation(
-            { externalOrgId: orgId, externalTeamId: body.teamId },
-            request.params.inviteId,
-            subjectDeps,
-          )
-          return { ok: true }
-        },
-      ),
-  )
+          async (orgId, body, subjectDeps) => {
+            const mutate = action === 'revoke' ? revokeTeamInvitation : resendTeamInvitation
+            await mutate(
+              { externalOrgId: orgId, externalTeamId: body.teamId },
+              request.params.inviteId,
+              subjectDeps,
+            )
+            return { ok: true }
+          },
+        ),
+    )
+  }
 
   app.post('/api/organization/member-invitations', async (request, reply) =>
     relay(

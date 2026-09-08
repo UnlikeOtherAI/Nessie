@@ -330,7 +330,7 @@ export const updateTeamMemberRole = async (
   await rosterRequest(
     requireSettings(),
     `${teamPath(team)}/members/${encodeURIComponent(uoaSub)}`,
-    { method: 'PUT', body: { team_role: teamRole } },
+    { method: 'PUT', body: { teamRole } },
     deps,
   )
 }

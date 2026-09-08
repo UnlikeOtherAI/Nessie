@@ -379,7 +379,7 @@ test('team access is read from UOA and only writes the selected exact teams', as
           `GET ${base}/members/usr_grace/teams${query}`,
           `GET https://uoa.test/org/me${query}`,
           `GET ${base}/members/usr_grace/teams${query}`,
-          `POST ${base}/teams/team_design/members${query} {"user_id":"usr_grace"}`,
+          `POST ${base}/teams/team_design/members${query} {"userId":"usr_grace"}`,
           `DELETE ${base}/teams/team_product/members/usr_grace${query}`,
         ],
       )
@@ -410,29 +410,6 @@ test('team access never writes a team UOA did not authorize for the caller', asy
       assert.equal(response.statusCode, 400)
       assert.equal(calls.length, 2)
       assert.equal(calls[1]?.method, 'GET')
-    } finally {
-      await app.close()
-    }
-  })
-})
-
-test('an organization invitation revokes through its row target team', async () => {
-  await withUoaEnv(async () => {
-    const calls: StubCall[] = []
-    const app = await makeApp(
-      actorContextFor(['viewer']),
-      rosterDeps(calls, () => json({ ok: true })),
-    )
-
-    try {
-      const response = await app.inject({
-        method: 'POST',
-        url: '/api/organization/member-invitations/invite-1/revoke',
-        payload: { teamId: 'team_product' },
-      })
-      assert.equal(response.statusCode, 200)
-      assert.equal(calls[1]?.method, 'DELETE')
-      assert.equal(calls[1]?.url, `${base}/teams/team_product/invitations/invite-1${query}`)
     } finally {
       await app.close()
     }

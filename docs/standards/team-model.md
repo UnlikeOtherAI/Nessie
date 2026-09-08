@@ -275,24 +275,20 @@ UOA-bound organisation; a failed role read answers retryably and fails closed.
 
 ### Who may ask, and who authorizes it
 
-A membership mutation passes two gates, and they are not the same gate:
+The relay admits an authenticated caller with a current UOA subject assertion;
+**UOA authorizes the exact target**. It re-resolves the person's live
+membership and capability for every write, so a demoted or removed
+administrator stops being able to change membership upstream even if a local
+projection still says otherwise. A team administrator need not have an
+organisation-admin role, so `requireOrgAdmin` must not gate team membership
+routes. Roster reads remain available to people entitled by UOA to see that
+team.
 
-1. **Locally, org owner or admin** — `requireOrgAdmin`
-   ([api/src/lib/server-context.ts](../../api/src/lib/server-context.ts)), over
-   the `isAdminActor` contract in `@nessie/schemas`. It runs in the `relay`
-   helper of [api/src/routes/team-members.ts](../../api/src/routes/team-members.ts)
-   and beside the team rename/settings writes in
-   [api/src/routes/teams.ts](../../api/src/routes/teams.ts), so both relaying
-   route modules answer the same way. Roster *reads* are not gated by it: any
-   member of the team sees the roster.
-2. **At UOA, the caller's own subject assertion** — this is the authorization.
-   UOA re-resolves that person's live membership and capability before every
-   write, so a demoted or removed administrator stops being able to change
-   membership upstream whatever the local row says.
-
-The local gate is defence in depth and a consistency rule, never a substitute:
-never widen it into an authorization by relaying with the domain-hash bearer
-alone, which would leave the `TeamMember` projection as the only check.
+The organisation-wide Members section is distinct: its declared
+`nessie.organisation.manage` capability is checked from fresh `GET /org/me`
+standing before its roster or mutations run. Neither path may relay with only a
+domain-hash bearer, because that would replace UOA's live authorization with a
+local membership projection.
 
 ### The projection has a revocation half
 
