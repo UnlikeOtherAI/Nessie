@@ -31,6 +31,7 @@ import type { PopoverAnchorRect, PopoverPlacement } from './placePopover'
  */
 
 export type PopoverRole = 'menu' | 'listbox' | 'dialog' | 'tooltip'
+export type PopoverLayer = 'popover' | 'modal'
 
 type PopoverProps = {
   /**
@@ -49,6 +50,8 @@ type PopoverProps = {
   id?: string
   /** The accessible name; also what the Back control announces on `single`. */
   label: string
+  /** A modal-owned menu shares the modal layer but remains below blocking. */
+  layer?: PopoverLayer
   /** Sizes the panel to its anchor, the way a combobox listbox matches its input. */
   matchAnchorWidth?: boolean
   onClose: () => void
@@ -80,6 +83,7 @@ export const Popover = ({
   className,
   id,
   label,
+  layer = 'popover',
   matchAnchorWidth = false,
   onClose,
   onKeyDown,
@@ -210,6 +214,7 @@ export const Popover = ({
         style={{
           position: 'fixed',
           ...overlay.layerStyle,
+          ...(layer === 'modal' ? { zIndex: 'var(--layer-modal)' } : undefined),
           // Until the first measurement the panel is laid out but not painted:
           // it has to be in the DOM at its natural size to be measured at all.
           ...(placed

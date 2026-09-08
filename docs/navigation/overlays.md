@@ -140,6 +140,11 @@ and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
 hover hint, not a dismissible anchored surface.
 
+An anchored control inside a modal passes `layer="modal"`: it shares its
+owner's layer so the menu is visible and interactive, while `blocking` (80)
+still outranks both at 70. This changes paint order only; its Popover Back and
+focus behavior remain unchanged.
+
 **`OverlayCard`** (`components/overlays/OverlayCard.tsx`) is the ambient kind, and one
 **`CardViewport`** per shell (mounted by `ToastProvider`) is the region it lives
 in: top-right on `split`, above the tab bar on `single`, decided from

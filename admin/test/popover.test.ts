@@ -62,6 +62,10 @@ test('the panel sits in the popover layer of the one scale, and declares no othe
   assert.doesNotMatch(html, /9999|10000/)
 })
 
+test('a modal-owned popover shares its owner layer without overtaking a blocking confirm', () => {
+  assert.match(render({ layer: 'modal' }), /z-index:var\(--layer-modal\)/)
+})
+
 // Before the first measurement the panel is in the DOM at its natural size so
 // it can be measured at all; it must not be painted at 0,0 while that happens.
 test('an unmeasured panel is laid out but not painted', () => {
