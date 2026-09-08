@@ -224,8 +224,11 @@ export const submitMentionedRequest = async (page, agentId, agentName, text) => 
   const form = page.locator('form.admin-compose:visible')
   const composer = form.locator('[role="textbox"]')
   await composer.fill(`@${agentName}`)
-  await composer.locator('..').getByRole('button', { name: agentName }).waitFor()
-  await composer.press('Enter')
+  // Pick the visible suggestion directly. The keyboard selection depends on
+  // the editor retaining its mention range between the fill and Enter events;
+  // a pointer selection is the same product interaction without that timing
+  // race in the browser evaluation.
+  await composer.locator('..').getByRole('button', { name: agentName }).click()
   const mention = composer.locator('span.mention-tag[data-mention-type="agent"]')
   await mention.waitFor()
   if (await mention.getAttribute('data-mention-id') !== agentId) {
