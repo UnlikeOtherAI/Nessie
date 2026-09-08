@@ -55,6 +55,7 @@ import type { OAuthDiscoveryOptions } from '../src/oauth-discovery.js'
 const ORG = '00000000-0000-4000-8000-00000000000a'
 const MEMBER = '00000000-0000-4000-8000-0000000000c1'
 const OTHER = '00000000-0000-4000-8000-0000000000c2'
+const PROJECT = '00000000-0000-4000-8000-0000000000d1'
 const ENDPOINT = 'https://93.184.216.34/mcp'
 
 const actor = (userId: string, roles: string[] = []): AuthorizedActionContext =>
@@ -437,6 +438,17 @@ test('a member cannot install a new organisation-wide connection', async () => {
   const { ctx, created } = makeStub({ instanceAtScope: null })
   await assert.rejects(
     resolveConnection(ctx, 'entry-1', 'organization', ORG),
+    (error: unknown) =>
+      error instanceof AppConnectError
+      && error.code === APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN,
+  )
+  assert.equal(created.length, 0)
+})
+
+test('a member cannot install a project connection by naming a stale project id', async () => {
+  const { ctx, created } = makeStub({ instanceAtScope: null })
+  await assert.rejects(
+    resolveConnection(ctx, 'entry-1', 'project', PROJECT),
     (error: unknown) =>
       error instanceof AppConnectError
       && error.code === APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN,

@@ -9,12 +9,13 @@ import { teamKeys } from '../team/keys'
 import { projectKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export const useProjects = () => {
+export const useProjects = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<ProjectRecord[]>({
     queryKey: projectKeys.all,
     queryFn: () => apiClient.get('/api/projects'),
+    enabled,
     staleTime: Infinity,
   })
 }
