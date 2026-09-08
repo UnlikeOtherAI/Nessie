@@ -1,15 +1,13 @@
 export {
   CORE_DOCUMENT_ROLES,
   CoreDocumentIntegrityError,
-  createAgentCoreDocument,
   isAgentCoreDocumentPage,
   loadActiveAgentCoreDocuments,
 } from './agent-core-documents.js'
-export { migrateAgentCoreDocuments } from './native-version-writer.js'
+export { migrateAgentCoreDocuments } from './agent-core-migration.js'
 export type {
   ActiveCoreDocument,
   CoreDocumentRole,
-  CreateAgentCoreDocumentInput,
 } from './agent-core-documents.js'
 export {
   buildNativeSourceRef,
@@ -20,7 +18,11 @@ export type {
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
-export type { AgentCoreMigrationDraft, AgentCoreMigrationResult } from './native-version-writer.js'
+export type {
+  AgentCoreMigrationDraft,
+  AgentCoreMigrationInput,
+  AgentCoreMigrationResult,
+} from './types.js'
 export {
   canReadSpace,
   canWriteSpace,

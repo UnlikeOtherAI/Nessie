@@ -368,6 +368,25 @@ export type PublishPageInput = {
   pageId: string
 }
 
+export type AgentCoreMigrationDraft = {
+  attachmentId: string
+  role: 'identity' | 'working_rules'
+}
+
+export type AgentCoreMigrationInput = {
+  agentId: string
+  authorId: string
+  drafts: AgentCoreMigrationDraft[]
+  organizationId: string
+  projectId: string
+  spaceId: string
+}
+
+export type AgentCoreMigrationResult =
+  | { kind: 'migrated'; pageIds: string[] }
+  | { kind: 'already_migrated' }
+  | { kind: 'stale' }
+
 export type RestorePageVersionInput = KnowledgePageVersionDisclosureInput & {
   authorId: string
   authorType: KnowledgeAuthorType
@@ -387,6 +406,7 @@ export type KnowledgeProvider = {
   archivePage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
   archiveSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>
   createPage: (input: CreatePageInput) => Promise<KnowledgePageRecord>
+  migrateAgentCoreDocuments?: (input: AgentCoreMigrationInput) => Promise<AgentCoreMigrationResult>
   createSpace: (input: CreateSpaceInput) => Promise<KnowledgeSpaceRecord>
   getPage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
   getSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>

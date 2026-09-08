@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
 import { replaceLabels } from './native-labels.js'
@@ -189,165 +187,16 @@ export const createPage = async (
       },
       include: versionInclude,
     })
-    await persistVersionDisclosure(tx, { disclosure: input, organizationId: input.organizationId, versionId: version.id })
+    await persistVersionDisclosure(tx, {
+      disclosure: input,
+      organizationId: input.organizationId,
+      versionId: version.id,
+    })
     await indexVersionChunks(tx, options, page, version)
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     const created = await fetchPage(tx, input.organizationId, page.id)
     if (!created) throw new Error('Created page could not be loaded')
     return created
-  })
-}
-
-export type AgentCoreMigrationDraft = {
-  attachmentId: string
-  role: 'identity' | 'working_rules'
-}
-
-export type AgentCoreMigrationResult =
-  | { kind: 'migrated'; pageIds: string[] }
-  | { kind: 'already_migrated' }
-  | { kind: 'stale' }
-
-const legacyHash = (value: string): string => createHash('sha256').update(value).digest('hex')
-
-/**
- * The one transaction that activates legacy agent text as core documents. Blob
- * bytes are staged through FileService before this starts; everything that can
- * make a document active — page, published version, mapping, and legacy CAS —
- * either commits together or is compensated by the caller's staged-file cleanup.
- */
-export const migrateAgentCoreDocuments = async (
-  prisma: PrismaClient,
-  options: NativeKnowledgeProviderOptions,
-  input: {
-    agentId: string
-    authorId: string
-    drafts: AgentCoreMigrationDraft[]
-    organizationId: string
-    projectId: string
-    spaceId: string
-  },
-): Promise<AgentCoreMigrationResult> => {
-  const projections = await Promise.all(input.drafts.map(async (draft) => {
-    const projection = await markdownProjectionForAttachment(
-      prisma, options, input.organizationId, draft.attachmentId,
-    )
-    if (!projection) throw new KnowledgeConflictError('Core instructions must be Markdown files')
-    return { ...draft, projection }
-  }))
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw(Prisma.sql`
-      SELECT pg_advisory_xact_lock(hashtext(${input.agentId}), hashtext('agent_core_migration'))
-    `)
-    const agent = await tx.agent.findFirst({
-      where: { id: input.agentId, organizationId: input.organizationId, systemManaged: false },
-      select: { id: true, projectId: true, speakingStyle: true, systemPrompt: true },
-    })
-    if (!agent || agent.projectId !== input.projectId) {
-      throw new KnowledgeConflictError('Agent is not in this document project')
-    }
-    const space = await tx.knowledgeSpace.findFirst({
-      where: {
-        id: input.spaceId,
-        organizationId: input.organizationId,
-        ownerAgentId: input.agentId,
-        projectId: input.projectId,
-        deletedAt: null,
-      },
-      select: { id: true, teamId: true, visibility: true, sensitivityTier: true },
-    })
-    if (!space) throw new KnowledgeConflictError('Agent document home is unavailable')
-    const expected = [
-      { role: 'identity' as const, value: agent.systemPrompt ?? '' },
-      { role: 'working_rules' as const, value: agent.speakingStyle ?? '' },
-    ].filter((entry) => entry.value.trim())
-    const expectedByRole = new Map(expected.map((entry) => [entry.role, legacyHash(entry.value)]))
-    if (
-      projections.length !== expectedByRole.size
-      || projections.some((draft) => draft.projection.sourceContentHash !== expectedByRole.get(draft.role))
-    ) return { kind: 'stale' }
-    const mappings = await tx.agentCoreDocument.findMany({
-      where: { agentId: input.agentId },
-      select: { id: true },
-    })
-    if (mappings.length > 0) {
-      // A completed migration has cleared its source columns. Anything else is
-      // an interrupted historical state and must be repaired deliberately,
-      // never made active beside a second authority.
-      if (!agent.systemPrompt && !agent.speakingStyle) return { kind: 'already_migrated' }
-      throw new KnowledgeConflictError('Agent core migration is incomplete and needs repair')
-    }
-    const pages: Array<{ id: string; role: 'identity' | 'working_rules'; versionId: string }> = []
-    for (const draft of projections) {
-      const position = await tx.knowledgePage.count({
-        where: { parentPageId: null, spaceId: input.spaceId },
-      })
-      const title = draft.role === 'identity' ? 'Identity.md' : 'Working style.md'
-      const page = await tx.knowledgePage.create({
-        data: {
-          createdBy: input.authorId,
-          documentRole: draft.role,
-          kind: 'file',
-          organizationId: input.organizationId,
-          position,
-          projectId: input.projectId,
-          sensitivityTier: space.sensitivityTier,
-          spaceId: input.spaceId,
-          teamId: space.teamId,
-          title,
-          visibility: space.visibility,
-        },
-      })
-      const version = await tx.knowledgePageVersion.create({
-        data: {
-          attachmentId: draft.attachmentId,
-          authorId: input.authorId,
-          authorType: 'user',
-          body: draft.projection.body,
-          origin: 'legacy_migration',
-          pageId: page.id,
-          sourceContentHash: draft.projection.sourceContentHash,
-          trust: 'unverified_import',
-          versionNumber: 1,
-        },
-      })
-      await tx.knowledgePage.update({
-        where: { id: page.id },
-        data: { publishedVersionId: version.id, status: 'published' },
-      })
-      await tx.agentCoreDocument.create({
-        data: {
-          agentId: input.agentId,
-          legacySourceHash: expectedByRole.get(draft.role) ?? null,
-          migratedAt: new Date(),
-          pageId: page.id,
-          role: draft.role,
-        },
-      })
-      await indexVersionChunks(tx, options, page, version)
-      if (options.onPagePublished) {
-        await options.onPagePublished(tx, {
-          actorUserId: input.authorId,
-          organizationId: input.organizationId,
-          pageId: page.id,
-          projectId: input.projectId,
-          spaceId: input.spaceId,
-          versionId: version.id,
-        })
-      }
-      pages.push({ id: page.id, role: draft.role, versionId: version.id })
-    }
-    const cutover = await tx.agent.updateMany({
-      where: {
-        id: input.agentId,
-        organizationId: input.organizationId,
-        speakingStyle: agent.speakingStyle,
-        systemPrompt: agent.systemPrompt,
-      },
-      data: { speakingStyle: null, systemPrompt: null },
-    })
-    if (cutover.count !== 1) throw new KnowledgeConflictError('Agent instructions changed during migration')
-    return { kind: 'migrated', pageIds: pages.map((page) => page.id) }
   })
 }
 

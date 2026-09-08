@@ -2862,6 +2862,7 @@ model Agent {
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
   coreDocuments                  AgentCoreDocument[]
+  coreDocumentMigration          AgentCoreDocumentMigration?
   personalCoreOverlays           PersonalAgentCoreOverlay[]
   userAlertActivity              UserAlert[]
   callsCreatedVia                Call[]                          @relation("CallCreatedViaAgent")
@@ -5807,6 +5808,22 @@ model RunCoreDocumentSnapshot {
   @@unique([runId, role])
   @@index([versionId])
   @@map("run_core_document_snapshots")
+}
+
+// A marker makes a blank legacy configuration a durable cutover too. Without
+// it, a concurrent request could mistake no mappings for an unfinished import.
+model AgentCoreDocumentMigration {
+  id             String       @id @default(uuid()) @db.Uuid
+  agentId        String       @unique @map("agent_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  documentCount  Int          @map("document_count")
+  sourceHash     String       @map("source_hash")
+  migratedAt     DateTime     @default(now()) @map("migrated_at")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("agent_core_document_migrations")
 }
 
 model KnowledgePageVersionBasisScope {
