@@ -63,6 +63,7 @@ export const registerThreadReplyRoutes = (app: FastifyInstance, deps: RouteDeps)
         await mapMessageRecordWithAttachments(prisma, message, {
           channelId: thread.channel.id,
           organizationId: actorContext.tenant.organizationId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
           userId: actorContext.actor.actorId,
         }),
       ),

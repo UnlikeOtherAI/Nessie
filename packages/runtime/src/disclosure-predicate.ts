@@ -25,7 +25,10 @@ export type BasisScopeRow = {
  */
 export type DisclosureViewer =
   | { kind: 'user'; userId: string; scopes: readonly BasisScopeRow[] }
+  | { kind: 'agent'; agentId: string; scopes: readonly BasisScopeRow[] }
   | { kind: 'autonomous' }
+  /** A human identity whose current entitlement check failed. */
+  | { kind: 'denied' }
 
 const scopeKey = (scope: BasisScopeRow): string => `${scope.scopeType}:${scope.scopeId}`
 
@@ -41,6 +44,11 @@ export const viewerSatisfiesBasis = (
   viewer: DisclosureViewer,
   grantedScopeKeys: ReadonlySet<string> = new Set(),
 ): boolean => {
+  // A denied human is not an autonomous run. Even a basis-free record must not
+  // revive stale local membership after its live UOA entitlement was revoked.
+  if (viewer.kind === 'denied') {
+    return false
+  }
   if (basis.length === 0) {
     return true
   }

@@ -5,6 +5,7 @@ import {
 } from '@nessie/memory'
 import type { SpaceViewerPrincipal } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 export type ChannelAgent = {
@@ -204,9 +205,17 @@ export const resolveAccessibleChannelIds = async (
       ? 'user_shared'
       : 'autonomous'
 
+  const entitlements = effectiveUserId
+    ? await resolveLiveEntitlements(context.prisma, {
+      organizationId: context.channel.organizationId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      userId: effectiveUserId,
+    })
+    : undefined
   const scopes = await resolveAccessibleScopes(
     {
       agentId: context.agentId,
+      entitlements,
       mode,
       organizationId: context.channel.organizationId,
       userId: effectiveUserId ?? null,

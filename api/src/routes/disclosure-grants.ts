@@ -73,6 +73,7 @@ export const registerDisclosureGrantRoutes = (
       if (body.kind === 'message') {
         const grant = await grantMessageDisclosure(prisma, {
           organizationId: actorContext.tenant.organizationId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
           userId: actorContext.actor.actorId,
           messageId,
           expectedContent: body.expectedContent,
@@ -95,6 +96,7 @@ export const registerDisclosureGrantRoutes = (
 
       const grant = await grantScopeDisclosure(prisma, {
         organizationId: actorContext.tenant.organizationId,
+        uoaIdentity: actorContext.actionContext.uoaIdentity,
         userId: actorContext.actor.actorId,
         messageId,
         ...(body.duration !== undefined ? { duration: body.duration } : {}),

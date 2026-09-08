@@ -145,6 +145,8 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
           ? { id: 'active-membership' }
           : null,
     },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    productAccountLink: { findUnique: async () => null },
     disclosureGrant: { findMany: async () => state.disclosureGrants ?? [] },
     scopeDisclosureGrant: { findMany: async () => [] },
     mcpOAuthSecret: {

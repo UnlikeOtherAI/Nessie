@@ -31,6 +31,7 @@ export const registerAgentCardRoutes = (
     const card = await loadReadableCard(prisma, {
       cardId,
       organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
     });
     if (!card) {
@@ -58,6 +59,7 @@ export const registerAgentCardRoutes = (
     const card = await loadReadableCard(prisma, {
       cardId,
       organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
     });
     if (!card) {

@@ -1,73 +1,18 @@
-import type { PrismaClient } from '@prisma/client'
-import { listVisibleAgentIdsForUser } from '@nessie/db'
 import {
   viewerSatisfiesBasis,
   type BasisScopeRow,
   type DisclosureViewer,
 } from './disclosure-predicate.js'
-
-/** The small Prisma surface shared by disclosure readers and push delivery. */
-export type DisclosureAccessPrisma = Pick<PrismaClient,
-  | 'agent'
-  | 'channel'
-  | 'channelMember'
-  | 'disclosureGrant'
-  | 'organizationMember'
-  | 'projectMember'
-  | 'scopeDisclosureGrant'
-  | 'teamMember'>
-
-/**
- * Resolves a person's live reach for disclosure reads. This is shared by the
- * API feed and worker delivery paths so a revoked source cannot remain visible
- * in a notification after the feed would withhold it.
- */
-export const resolveDisclosureViewer = async (
-  prisma: DisclosureAccessPrisma,
-  organizationId: string,
-  userId: string | null | undefined,
-): Promise<DisclosureViewer> => {
-  if (!userId) return { kind: 'autonomous' }
-
-  // Membership rows are intentionally retained after deactivation for audit
-  // history. Resolve the live organization membership first so those retained
-  // channel/project/team rows cannot keep a deactivated viewer or grantor
-  // entitled to a restricted reply.
-  const orgMembership = await prisma.organizationMember.findFirst({
-    where: { deactivatedAt: null, organizationId, userId },
-    select: { id: true },
-  })
-  if (!orgMembership) return { kind: 'autonomous' }
-
-  const [channels, teams, projects, visibleAgentIds] = await Promise.all([
-    prisma.channelMember.findMany({
-      where: { userId, channel: { organizationId } },
-      select: { channelId: true },
-    }),
-    prisma.teamMember.findMany({
-      where: { userId, team: { project: { organizationId } } },
-      select: { teamId: true },
-    }),
-    prisma.projectMember.findMany({
-      where: { userId, project: { organizationId } },
-      select: { projectId: true },
-    }),
-    listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
-  ])
-
-  return {
-    kind: 'user',
-    scopes: [
-      { scopeId: userId, scopeType: 'user' },
-      ...channels.map((row) => ({ scopeId: row.channelId, scopeType: 'channel' })),
-      ...teams.map((row) => ({ scopeId: row.teamId, scopeType: 'team' })),
-      ...projects.map((row) => ({ scopeId: row.projectId, scopeType: 'project' })),
-      ...visibleAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
-      { scopeId: organizationId, scopeType: 'organization' },
-    ],
-    userId,
-  }
-}
+import type { UoaSessionIdentity } from '@nessie/schemas'
+import {
+  resolveDisclosureViewer,
+  type DisclosureAccessPrisma,
+} from './disclosure-viewer.js'
+export {
+  resolveDisclosureViewer,
+  type DisclosureAccessPrisma,
+  type DisclosureViewerAuthority,
+} from './disclosure-viewer.js'
 
 const liveGrantFilter = (now: Date) => ({
   revokedAt: null,
@@ -186,7 +131,9 @@ const resolveGranterViewers = async (
   const distinct = [...new Set(granterIds)]
   const resolved = await Promise.all(
     distinct.map(async (userId) =>
-      [userId, await resolveDisclosureViewer(prisma, organizationId, userId)] as const),
+      [userId, await resolveDisclosureViewer(prisma, organizationId, userId, {
+        allowStoredUoaIdentity: true,
+      })] as const),
   )
   return new Map(resolved)
 }
@@ -433,10 +380,16 @@ export const canUserReadDisclosureBasis = async (
     /** See DisclosureGrantSubject; absent for a run-level ledger. */
     disclosureSources?: readonly DisclosureSource[]
     organizationId: string
+    /** Only queue delivery may revalidate its stored, scoped product link. */
+    allowStoredUoaIdentity?: boolean
+    uoaIdentity?: UoaSessionIdentity
     userId: string
   },
 ): Promise<boolean> => {
-  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
+  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
+    allowStoredUoaIdentity: input.allowStoredUoaIdentity,
+    uoaIdentity: input.uoaIdentity,
+  })
   if (viewer.kind !== 'user') return false
   if (viewerSatisfiesBasis(input.basis, viewer)) return true
 

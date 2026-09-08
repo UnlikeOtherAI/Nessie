@@ -34,6 +34,7 @@ export const registerPlanRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       prisma,
       actorContext.tenant.organizationId,
       actorContext.actor.actorId,
+      actorContext.actionContext.uoaIdentity,
       {
         agentId: query.agentId,
         status:
@@ -79,6 +80,7 @@ export const registerPlanRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       actorContext.tenant.organizationId,
       planId,
       actorContext.actor.actorId,
+      actorContext.actionContext.uoaIdentity,
     )
     if (!plan) {
       sendApiError(reply, 404, 'PLAN_NOT_FOUND', 'Plan not found')

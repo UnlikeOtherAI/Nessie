@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { parseAgentId, parseRunId } from '@nessie/schemas'
+import { parseAgentId, parseRunId, type UoaSessionIdentity } from '@nessie/schemas'
 
 import type { RunThinkingEntry, RunThinkingLog, ThreadThinking } from '../contracts/messaging.js'
 import { canUserReadRunBasis } from './run-disclosure.js'
@@ -93,7 +93,7 @@ export const loadThreadThinking = async (
   // was built from, so a viewer who would be withheld the reply is withheld the
   // thinking too. The run stays listed — the bubble is the honest signal that
   // *something* is happening — but carries no entries.
-  viewer: { organizationId: string; userId: string },
+  viewer: { organizationId: string; uoaIdentity: UoaSessionIdentity | undefined; userId: string },
 ): Promise<ThreadThinking> => {
   const runs = await prisma.run.findMany({
     where: { threadId, status: 'running' },
@@ -107,6 +107,7 @@ export const loadThreadThinking = async (
       canUserReadRunBasis(prisma, {
         organizationId: viewer.organizationId,
         runId: run.id,
+        uoaIdentity: viewer.uoaIdentity,
         userId: viewer.userId,
       }),
     ),

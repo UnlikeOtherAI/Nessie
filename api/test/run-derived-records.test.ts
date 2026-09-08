@@ -148,39 +148,39 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   await prisma.planStep.create({ data: { payload: { task: 'B-PRIVATE-STEP-CANARY' }, planId: privatePlan.id, sequence: 1, title: 'B-PRIVATE-STEP-CANARY', type: 'spawn_task' } })
   const publicPlan = await prisma.plan.create({ data: { agentId: s.agentId, channelId: s.channelId, createdByActorId: s.insiderId, createdByActorType: 'user', goal: 'public plan', organizationId: s.organizationId, runId: publicRun.id } })
 
-  const ownerTasks = await listTasks(prisma, s.organizationId, {}, undefined, ownerId)
+  const ownerTasks = await listTasks(prisma, s.organizationId, {}, undefined, ownerId, undefined)
   assert.deepEqual(ownerTasks.map((task) => task.id).sort(), [humanTask.id, publicChildTask.id, publicTask.id].sort())
-  assert.equal(await getTask(prisma, privateTask.id, s.organizationId, undefined, ownerId), null)
-  assert.equal(await getTask(prisma, restrictedPublicTask.id, s.organizationId, undefined, ownerId), null)
-  assert.equal(await getTask(prisma, activeRestrictedTask.id, s.organizationId, undefined, ownerId), null)
-  assert.equal((await getTask(prisma, publicTask.id, s.organizationId, undefined, ownerId))?.purpose, 'public task')
+  assert.equal(await getTask(prisma, privateTask.id, s.organizationId, undefined, ownerId, undefined), null)
+  assert.equal(await getTask(prisma, restrictedPublicTask.id, s.organizationId, undefined, ownerId, undefined), null)
+  assert.equal(await getTask(prisma, activeRestrictedTask.id, s.organizationId, undefined, ownerId, undefined), null)
+  assert.equal((await getTask(prisma, publicTask.id, s.organizationId, undefined, ownerId, undefined))?.purpose, 'public task')
   assert.equal(
-    (await listPlans(prisma, s.organizationId, ownerId, {})).some((plan) => plan.id === privatePlan.id),
+    (await listPlans(prisma, s.organizationId, ownerId, undefined, {})).some((plan) => plan.id === privatePlan.id),
     false,
   )
-  assert.equal(await getPlan(prisma, s.organizationId, privatePlan.id, ownerId), null)
-  assert.equal((await getPlan(prisma, s.organizationId, publicPlan.id, ownerId))?.plan.goal, 'public plan')
+  assert.equal(await getPlan(prisma, s.organizationId, privatePlan.id, ownerId, undefined), null)
+  assert.equal((await getPlan(prisma, s.organizationId, publicPlan.id, ownerId, undefined))?.plan.goal, 'public plan')
   const ownerActivity = await loadAgentActivity(prisma, s.agentId, {
-    visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, userId: ownerId },
+    visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, uoaIdentity: undefined, userId: ownerId },
   })
   assert.equal(ownerActivity?.subAgents.some((child) => child.taskId === childRestrictedTask.id), false)
   const ownerStatus = await loadAgentStatus(prisma, s.agentId, {
-    visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, userId: ownerId },
+    visibility: { includeAllOrgChannels: true, organizationId: s.organizationId, uoaIdentity: undefined, userId: ownerId },
   })
   assert.equal(ownerStatus?.activeSubAgents.some((child) => child.taskId === childRestrictedTask.id), false)
   assert.equal(ownerStatus?.activeSubAgents.some((child) => child.taskId === publicChildTask.id), true)
 
-  const sourceAuthorTasks = await listTasks(prisma, s.organizationId, {}, undefined, s.insiderId)
+  const sourceAuthorTasks = await listTasks(prisma, s.organizationId, {}, undefined, s.insiderId, undefined)
   assert.equal(sourceAuthorTasks.some((task) => task.id === privateTask.id), true)
   assert.equal(
-    (await getPlan(prisma, s.organizationId, privatePlan.id, s.insiderId))?.steps[0]?.title,
+    (await getPlan(prisma, s.organizationId, privatePlan.id, s.insiderId, undefined))?.steps[0]?.title,
     'B-PRIVATE-STEP-CANARY',
   )
   const sourceAuthorActivity = await loadAgentActivity(prisma, s.agentId, {
-    visibility: { organizationId: s.organizationId, userId: s.insiderId },
+    visibility: { organizationId: s.organizationId, uoaIdentity: undefined, userId: s.insiderId },
   })
   assert.equal(sourceAuthorActivity?.subAgents.some((child) => child.taskId === childRestrictedTask.id), true)
-  const memberTasks = await listTasks(prisma, s.organizationId, {}, undefined, member.id)
+  const memberTasks = await listTasks(prisma, s.organizationId, {}, undefined, member.id, undefined)
   assert.equal(memberTasks.some((task) => task.id === privateTask.id || task.id === restrictedPublicTask.id), false)
   assert.equal(memberTasks.some((task) => task.id === activeRestrictedTask.id), false)
 })

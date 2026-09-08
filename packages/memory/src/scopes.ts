@@ -1,4 +1,5 @@
 import type { Pool } from 'pg'
+import type { LiveEntitlements } from '@nessie/runtime'
 
 type Queryable = Pick<Pool, 'query'>
 
@@ -27,25 +28,14 @@ export type ResolveAccessibleScopesInput = {
   agentId: string
   userId?: string | null
   mode: ScopeResolutionMode
+  /** Fresh runtime authority bound to this exact user and organization. */
+  entitlements?: LiveEntitlements
 }
 
 type IdRow = { id: string }
 
 const collectIds = (rows: unknown[]): string[] =>
   (rows as IdRow[]).map((row) => row.id)
-
-const userIsOrgMember = async (
-  db: Queryable,
-  organizationId: string,
-  userId: string,
-): Promise<boolean> => {
-  const result = await db.query(
-    `SELECT 1 FROM organization_members
-     WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
-    [organizationId, userId],
-  )
-  return (result.rowCount ?? 0) > 0
-}
 
 const filterTeamsByMembership = async (
   db: Queryable,
@@ -134,6 +124,7 @@ const resolvePersonalAssistantScopes = async (
   db: Queryable,
   organizationId: string,
   userId: string,
+  uoaTeamIds?: readonly string[],
 ): Promise<{ channelIds: string[]; teamIds: string[]; projectIds: string[] }> => {
   const [channels, teams, projects] = await Promise.all([
     // The personal assistant is its owner's delegate: it reaches every channel
@@ -149,7 +140,9 @@ const resolvePersonalAssistantScopes = async (
                          WHERE cm.channel_id = c.id AND cm.user_id = $2))`,
       [organizationId, userId],
     ),
-    db.query(
+    uoaTeamIds
+      ? Promise.resolve({ rows: uoaTeamIds.map((id) => ({ id })) })
+      : db.query(
       `SELECT t.id FROM teams t
        JOIN projects p ON p.id = t.project_id
        WHERE p.organization_id = $1
@@ -217,19 +210,31 @@ export const resolveAccessibleScopes = async (
 ): Promise<AccessibleScopes> => {
   const { organizationId, agentId, mode } = input
   const userId = input.userId ?? null
+  const entitlements = input.entitlements
+  if (
+    (mode !== 'autonomous' && !entitlements)
+    || entitlements?.kind === 'denied'
+    || (entitlements && (
+      entitlements.organizationId !== organizationId || entitlements.userId !== userId
+    ))
+  ) return assembleScopes({
+    channelIds: [], teamIds: [], projectIds: [], organizationId,
+    includeOrg: false, userPrivateId: null,
+  })
+  const uoaTeamIds = entitlements?.kind === 'uoa' ? entitlements.teamIds : undefined
 
   if (mode === 'personal_assistant') {
     if (!userId) {
       throw new Error('personal_assistant scope resolution requires a userId')
     }
     const { channelIds, teamIds, projectIds } =
-      await resolvePersonalAssistantScopes(db, organizationId, userId)
+      await resolvePersonalAssistantScopes(db, organizationId, userId, uoaTeamIds)
     return assembleScopes({
       channelIds,
       teamIds,
       projectIds,
       organizationId,
-      includeOrg: await userIsOrgMember(db, organizationId, userId),
+      includeOrg: true,
       userPrivateId: userId,
     })
   }
@@ -265,9 +270,11 @@ export const resolveAccessibleScopes = async (
     throw new Error('user_shared scope resolution requires a userId')
   }
   const [teamIds, projectIds, includeOrg] = await Promise.all([
-    filterTeamsByMembership(db, userId, candidateTeamIds),
+    uoaTeamIds
+      ? Promise.resolve(candidateTeamIds.filter((teamId) => uoaTeamIds.includes(teamId)))
+      : filterTeamsByMembership(db, userId, candidateTeamIds),
     filterProjectsByMembership(db, userId, candidateProjectIds),
-    userIsOrgMember(db, organizationId, userId),
+    Promise.resolve(true),
   ])
   return assembleScopes({
     channelIds,

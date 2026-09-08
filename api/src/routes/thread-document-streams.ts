@@ -50,6 +50,7 @@ export const registerThreadDocumentStreamRoutes = (
       activeOnly: active === '1' || active === 'true',
       organizationId: actorContext.tenant.organizationId,
       threadId: thread.id,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
     })
 
@@ -78,6 +79,7 @@ export const registerThreadDocumentStreamRoutes = (
       organizationId: actorContext.tenant.organizationId,
       sessionId,
       threadId: thread.id,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
     })
     if (!detail) {

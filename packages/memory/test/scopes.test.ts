@@ -20,6 +20,7 @@ const createPoolStub = (
 const ORG = '33333333-3333-3333-3333-333333333333'
 const AGENT = '99999999-9999-9999-9999-999999999999'
 const USER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+const localEntitlements = { kind: 'local' as const, organizationId: ORG, userId: USER }
 
 const zip = (types: string[], ids: string[]): Array<[string, string]> =>
   types.map((type, index) => [type, ids[index]!])
@@ -52,7 +53,7 @@ test('user_shared intersects the agent reach with the user membership', async ()
   })
 
   const scopes = await resolveAccessibleScopes(
-    { agentId: AGENT, mode: 'user_shared', organizationId: ORG, userId: USER },
+    { agentId: AGENT, entitlements: localEntitlements, mode: 'user_shared', organizationId: ORG, userId: USER },
     pool,
   )
 
@@ -89,7 +90,7 @@ test('user_shared drops a team the user is not a member of', async () => {
   })
 
   const scopes = await resolveAccessibleScopes(
-    { agentId: AGENT, mode: 'user_shared', organizationId: ORG, userId: USER },
+    { agentId: AGENT, entitlements: localEntitlements, mode: 'user_shared', organizationId: ORG, userId: USER },
     pool,
   )
 
@@ -117,7 +118,7 @@ test('personal_assistant grants the user full accessible scope plus private memo
   })
 
   const scopes = await resolveAccessibleScopes(
-    { agentId: AGENT, mode: 'personal_assistant', organizationId: ORG, userId: USER },
+    { agentId: AGENT, entitlements: localEntitlements, mode: 'personal_assistant', organizationId: ORG, userId: USER },
     pool,
   )
 
@@ -128,6 +129,32 @@ test('personal_assistant grants the user full accessible scope plus private memo
   assert.ok(pairs.some(([t, i]) => t === 'organization' && i === ORG))
   // The PA acts as the user, so it reads the user's private memory.
   assert.ok(pairs.some(([t, i]) => t === 'user' && i === USER))
+})
+
+test('fresh UOA teams replace local team membership while project and channel grants remain Nessie-owned', async () => {
+  const calls: string[] = []
+  const pool = createPoolStub((sql) => {
+    calls.push(sql)
+    if (sql.includes('FROM channels c') && !sql.includes('agent_bindings')) return { rows: [{ id: 'chan-1' }] }
+    if (sql.includes('FROM projects p') && !sql.includes('FROM teams')) return { rows: [{ id: 'project-1' }] }
+    if (sql.includes('organization_members')) throw new Error('must not use local org membership')
+    if (sql.includes('team_members')) throw new Error('must not use local team membership')
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+  const scopes = await resolveAccessibleScopes({
+    agentId: AGENT,
+    entitlements: {
+      kind: 'uoa', organizationId: ORG, organizationRole: 'member',
+      teamIds: ['active-team'], userId: USER,
+    },
+    mode: 'personal_assistant', organizationId: ORG, userId: USER,
+  }, pool)
+
+  assert.deepEqual(zip(scopes.audienceTypes, scopes.audienceIds), [
+    ['channel', 'chan-1'], ['team', 'active-team'], ['project', 'project-1'],
+    ['organization', ORG], ['user', USER],
+  ])
+  assert.equal(calls.some((sql) => sql.includes('team_members')), false)
 })
 
 test('personal_assistant is limited to channels the owner can access', async () => {
@@ -154,7 +181,7 @@ test('personal_assistant is limited to channels the owner can access', async () 
   })
 
   const scopes = await resolveAccessibleScopes(
-    { agentId: AGENT, mode: 'personal_assistant', organizationId: ORG, userId: USER },
+    { agentId: AGENT, entitlements: localEntitlements, mode: 'personal_assistant', organizationId: ORG, userId: USER },
     pool,
   )
 

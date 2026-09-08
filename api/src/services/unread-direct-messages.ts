@@ -4,6 +4,7 @@ import {
   UnreadDirectMessageRecordSchema,
   type UnreadDirectMessageRecord,
 } from '@nessie/schemas'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { resolveDisclosureViewer } from '@nessie/runtime'
 
@@ -55,7 +56,7 @@ const findLatestUnreadMessageByThread = async (
 
 export const listUnreadDirectMessages = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string },
+  input: { organizationId: string; uoaIdentity?: UoaSessionIdentity; userId: string },
 ): Promise<UnreadDirectMessageRecord[]> => {
   const channels = await listChannelsForUser(
     prisma,
@@ -76,7 +77,9 @@ export const listUnreadDirectMessages = async (
     include: previewMessageInclude,
   })
   const messagesById = new Map(messages.map((message) => [message.id, message]))
-  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
+  const viewer = await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
+    uoaIdentity: input.uoaIdentity,
+  })
 
   const items = await Promise.all(
     unreadChannels.map(async (channel) => {

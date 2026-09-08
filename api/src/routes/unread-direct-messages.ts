@@ -13,6 +13,7 @@ export const registerUnreadDirectMessageRoutes = (app: FastifyInstance, deps: Ro
 
     const items = await listUnreadDirectMessages(deps.prisma, {
       organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
     })
     return createApiResponse(UnreadDirectMessagesResponseSchema.parse({ items }))

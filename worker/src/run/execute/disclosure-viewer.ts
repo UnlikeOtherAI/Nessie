@@ -33,5 +33,12 @@ export const resolveDisclosureViewer = async (
       ? payload.actorContext.actor.actorId
       : undefined)
 
-  return resolveRuntimeDisclosureViewer(prisma, organizationId, effectiveUserId)
+  return resolveRuntimeDisclosureViewer(prisma, organizationId, effectiveUserId, {
+    agentId: effectiveUserId ? undefined : (
+      payload.actorContext.actor.actorType === 'agent'
+        ? payload.actorContext.actor.actorId
+        : payload.actorContext.actionContext.agentId
+    ),
+    uoaIdentity: payload.actorContext.actionContext.uoaIdentity,
+  })
 }
