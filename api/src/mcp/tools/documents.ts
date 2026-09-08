@@ -260,6 +260,9 @@ export const documentTools = (): McpToolDefinition[] => [
       const space = await access.provider.getSpace(organizationId, existing.spaceId)
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
+      if ((await access.filterReadablePages(context.actorContext, [existing])).length === 0) {
+        return PAGE_UNREACHABLE
+      }
 
       const fields = {
         ...(typeof input.body === 'string' ? { body: input.body } : {}),
@@ -351,6 +354,9 @@ export const documentTools = (): McpToolDefinition[] => [
       const space = await access.provider.getSpace(organizationId, existing.spaceId)
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
+      if ((await access.filterReadablePages(context.actorContext, [existing])).length === 0) {
+        return PAGE_UNREACHABLE
+      }
 
       const versionId = existing.latestVersion?.id
       if (!versionId) {
