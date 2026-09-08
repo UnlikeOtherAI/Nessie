@@ -264,6 +264,24 @@ connection was disconnected through the UI; no credential was added and the
 original channel connection remained connected. The compact menu requires a
 layering repair before the project connection can be accepted.
 
+PR 423 is merged at `45b58d9e3` after all nine checks passed in
+[CI run 34260161435](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34260161435).
+It adds explicit, non-unique project ownership by an existing team and carries
+the selected project/team pair into channel creation. A real local API/Vite
+walkthrough created two projects in one existing fixture team, created a
+channel through the second project's sidebar menu, and verified the live
+records, destination URL and sidebar placement after reload. That journey now
+runs in the Navigation Transitions gate. It exposed and helped repair stale
+team-directory cache state after project creation; incomplete team context now
+blocks submission with an explicit explanation.
+
+The migration deliberately does not infer ownership for ambiguous historical
+projects. Local team-admin tests passed 336/336 and a full worker run passed
+1,077 unit tests (four environment skips) plus 169 database tests. No full local
+API pass is claimed: local reruns encountered Windows tooling and a transient
+worker prerequisite failure. The final Linux Test and Navigation Transitions
+jobs both passed. A new production sales run remains necessary.
+
 ## Compaction verification
 
 The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
