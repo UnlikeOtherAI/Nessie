@@ -46,6 +46,23 @@ people who can read its channel, so there is no ACL of its own, and the General
 thread of a room keeps `agent_id NULL` and is not "with" anyone.
 `startedByUserId` records who opened it, which is what the rename door reads.
 
+**Titles.** A conversation opened empty carries the placeholder until somebody
+speaks: the first top-level `user` message in a thread with `agent_id` whose
+title is still the default becomes its title
+(`titleConversationFromFirstMessage` in `api/src/services/message-create.ts`,
+through the same `deriveConversationTitle` `startAgentConversation` uses, and
+reported once on that send's 201 as `conversationTitle`), and after that only
+the person who started it or someone who can manage its room may rename it —
+the doorway is the conversation header's **Rename** action
+(`admin/src/components/features/channels/rename-conversation.ts`).
+
+**Previews.** A conversation's `lastMessagePreview` is the newest message *this
+viewer* may read — `resolveDisclosureViewer` + `viewerSatisfiesBasis`, the same
+predicate `listThreadMessages` withholds a feed row with — so a newest message
+whose basis the viewer does not satisfy contributes null rather than an older
+readable line, and grants are deliberately not consulted, which makes a preview
+strictly more closed than the thread it quotes.
+
 **The list rule**, stated once and implemented once in
 `listAgentConversationsForUser` (`packages/team-admin/src/agent-conversations.ts`):
 a thread is in agent X's list for viewer V when it passes

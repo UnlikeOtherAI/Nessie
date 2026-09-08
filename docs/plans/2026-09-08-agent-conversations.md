@@ -136,8 +136,10 @@ export const AgentConversationRecordSchema = z.object({
   }),
   startedByUserId: UserIdSchema.nullable(),
   lastActivityAt: TimestampSchema.nullable(),
-  // ≤ 120 chars of the newest message the viewer may read. Fails closed: a
-  // message carrying any basis scope contributes null, never a redaction.
+  // ≤ 120 chars of the newest message the viewer may read — viewer-relative,
+  // not basis-existence: a newest message whose basis this viewer satisfies
+  // yields the preview, one it does not yields null, never a redaction and
+  // never an older readable line.
   lastMessagePreview: z.string().nullable(),
   unreadCount: z.number().int().nonnegative(),
   activeRun: z.object({
@@ -661,39 +663,95 @@ each line is a fact somebody will otherwise rediscover.
   corrected above to match.
 - `AgentConversationsPanel` is allowlisted in `admin/test/screen-header.test.ts`;
   folding the four panel headers into one is a follow-up, not this change.
-- The rename doorway is a header action → `Dialog`.
+- The rename doorway is a header action → `Dialog` (`rename-conversation.ts` +
+  `RenameConversationDialog.tsx`), not an inline-editable title.
 
-### Found by the browser suite, not fixed here
+### Found by the browser suite, fixed in the same run
 
-Both are pinned by `admin/e2e/agent-conversations/run.mjs` /
-`conversation-card.mjs` with an assertion that names the gap and says to invert
-it once closed.
+Each was pinned by `admin/e2e/agent-conversations/run.mjs` /
+`conversation-card.mjs` with an assertion naming the gap; the assertions are now
+inverted and assert the behaviour instead.
 
 - **An ordinary channel offers no doorway at all.** `conversationAgent` is null
-  outside a DM — `ChannelsPage.tsx` sets `isConversationSurface` from
-  `activeChannel.type === 'dm' || isPersonalAssistantConversation`, and
-  `resolveConversationAgent`
-  (`admin/src/components/features/channels/channel-tabs.ts`) returns null
-  without it. Both predate this change. So in a standard channel an agent works
-  in there is no rail, no header doorway, no "New conversation" button, and
-  `/channels/:id/tools/conversations` renders nothing — even though the API
-  lists that room's conversations for the same person. The reachable surfaces
-  today are a DM with the agent, the assistant's DM, and `/agents/:id?agentTab=conversations`.
-- **An assistant-started conversation's card never shows what was said.** The
+  outside a DM, and the rail insisted on that single subject, so a standard
+  channel an agent works in had no rail, no header doorway, no "New
+  conversation" and an empty `/channels/:id/tools/conversations` — even though
+  the API listed that room's conversations for the same person. Fixed by making
+  the rail's subject a **set**: `resolveChatToolAgents`
+  (`admin/src/components/features/channels/tool-rail/chat-tools.ts`) returns the
+  thread's agent inside a conversation, the one agent of a DM or the assistant's
+  room, and otherwise every agent bound to the room; `chatToolDoorway` now keys
+  on `hasToolAgents` rather than on the shape of the room. A room with several
+  agents draws a `TabBar` strip (`role="radiogroup"`, item testid
+  `chat-tool-agent-<agentId>`, collapsing to a trigger + `listbox` when the
+  panel is too narrow for the names) under the panel header; the selection is
+  remembered per room in `localStorage`
+  (`nessie.chatToolAgent.<channelId>`, `useChatToolAgent`), the panel's
+  accessible name, its list and "New conversation" all follow it, and the open
+  column is carried across a switch rather than closing. Browser stays offered
+  only where the set is exactly one agent with `browserEnabled` — a browser
+  column is one agent's screen.
+- **An assistant-started conversation's card never showed what was said.** The
   start tool stamps the opener with the requester's PA-DM lineage
   (`insertPrivateConversationSources`), the target's run consumes that source
   when it reads the opener (`worker/src/run/execute/prompt.ts`), and its reply
   therefore carries a `message_basis_scopes` row for the assistant's DM — a
   scope this very reader satisfies. `loadLastMessagePreviews`
-  (`packages/team-admin/src/agent-conversations.ts`) then fails closed on *any*
-  basis rather than on an unsatisfied one, so `lastMessagePreview` is null and
-  the card and row read "Nothing said yet" for the person who asked for the
-  work. A person-started conversation is unaffected, which is what localises it
-  to the delegated path.
+  (`packages/team-admin/src/agent-conversations.ts`) failed closed on *any*
+  basis. It now asks whether **this viewer** satisfies it —
+  `resolveDisclosureViewer` + `viewerSatisfiesBasis`, the predicate
+  `listThreadMessages` already withholds a feed row with — so the person who
+  asked for the work is shown the answer to it. A withheld newest message still
+  contributes null rather than an older readable line, and **grants are
+  deliberately not consulted**: a preview is a quotation in a list with none of
+  the "readable, but not yours to pass on" framing the conversation itself
+  carries, so previews are strictly more closed than the feed.
+- **Two "New conversation" rows were indistinguishable.** The first top-level
+  `user` message in a thread with `agent_id` whose title is still the default
+  now names it (`titleConversationFromFirstMessage`,
+  `api/src/services/message-create.ts`, deriving through the same
+  `deriveConversationTitle` `startAgentConversation` uses: first line, ≤ 80
+  chars). Every condition is structural, the conditional `updateMany` carries
+  the default title in its WHERE inside the send's own transaction, so a second
+  message finds a named conversation and two racing first messages cannot both
+  win. `POST /api/threads/:threadId/messages` gains an optional
+  `conversationTitle` on the 201 of that send alone.
+- **Nothing a person could press renamed a conversation.** `PATCH
+  /api/threads/:threadId` and `useRenameThread` both existed; the doorway did
+  not. It is now a header action (`rename-conversation`, label "Rename",
+  `admin/src/components/features/channels/rename-conversation.ts`) offered to
+  the starter or a channel manager, opening `RenameConversationDialog` — a
+  `Dialog` titled "Rename conversation" with the current title prefilled,
+  bounded at `CONVERSATION_TITLE_MAX_CHARS`, Save disabled until it changes.
+  Deliberately not `primary`, so a narrow header sweeps it into "More" rather
+  than displacing a tool doorway.
 - Related, and by design rather than by accident: the doorway card lands
   **inside the reply thread** under the request, because an assistant run
   answers under its trigger (`resolveReplyRootMessageId`). The suite opens that
   reply thread rather than pretending the card is one screen closer than it is.
+
+### Found by the browser suite, not fixed here
+
+- **The conversation header does not take the name its first message just gave
+  it.** The server renames the thread and reports it in the 201, but
+  `ChannelsPage` reads the title from `useConversation(threadId)` and nothing on
+  the send path touches that key: `threadKeys.conversation` is written only by
+  `useRenameThread`, and `conversationTitle` is read nowhere in the admin. So
+  the person who just named the conversation goes on being shown "New
+  conversation" until the app is reloaded — the list catches up on its own poll,
+  the header does not. One `setQueryData`/`invalidateQueries` on the send path
+  closes it. Pinned in `run.mjs` → `start-two` with an assertion that says to
+  invert it.
+- **The shell's sidebar resize handle is drawn over the full-screen
+  conversations panel.** In the tablet band the shell is `split` but the panel
+  opens as a full-screen layer, and `[aria-label="Resize sidebar"]` is still
+  painted across it: a full-height rule down the middle of the panel that takes
+  the pointer events of everything under its line — in the fixture, the agent
+  strip's second agent and part of "New conversation". Clicking a strip item
+  whose centre falls on the line times out with the separator named as the
+  interceptor, which is why the suite roves the strip from the keyboard. Pinned
+  in `run.mjs` → `room-strip` by comparing the two bounding boxes, so it fails
+  by geometry rather than by where a name happens to land.
 
 ## Later — named so nothing hides
 
