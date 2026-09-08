@@ -5,9 +5,10 @@ WORKDIR /app
 
 # pnpm's frozen lockfile resolution invokes Git for pinned private package
 # entries even though this public bundle does not import them. The token is a
-# BuildKit secret, available only to the install command.
+# BuildKit secret, available only to the install command. The system CA bundle
+# lets Git validate GitHub's certificate.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
+  && apt-get install -y --no-install-recommends ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json turbo.json eslint.config.js ./
