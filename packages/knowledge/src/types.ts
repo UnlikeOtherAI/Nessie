@@ -22,6 +22,24 @@ export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
 // backed by an Attachment). Folders stay virtual (a document with children).
 export type KnowledgePageKind = 'document' | 'file'
 export type KnowledgeAuthorType = 'user' | 'agent'
+export type KnowledgeDocumentRole =
+  | 'identity'
+  | 'working_rules'
+  | 'knowledge'
+  | 'template'
+  | 'example'
+  | 'procedure'
+  | 'experience'
+export type KnowledgeDocumentTrust =
+  | 'observed'
+  | 'explicitly_confirmed'
+  | 'inferred'
+  | 'unverified_import'
+export type KnowledgeDocumentOrigin =
+  | 'user_authored'
+  | 'agent_authored'
+  | 'legacy_migration'
+  | 'import'
 
 export type KnowledgeProviderCapabilities = {
   canWrite: boolean
@@ -56,6 +74,8 @@ export type KnowledgePageVersionRecord = {
   // SHA-256 of the canonical Markdown attachment bytes. Null for rich-text
   // pages and legacy file versions whose projection has not been backfilled.
   sourceContentHash: string | null
+  trust: KnowledgeDocumentTrust
+  origin: KnowledgeDocumentOrigin
   authorType: KnowledgeAuthorType
   authorId: string
   changeComment: string | null
@@ -86,6 +106,7 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   title: string
   summary: string | null
   metadata: Record<string, unknown> | null
+  documentRole: KnowledgeDocumentRole
   kind: KnowledgePageKind
   parentPageId: string | null
   position: number
@@ -241,10 +262,13 @@ export type CreatePageInput = KnowledgeScopeInput & {
   authorType: KnowledgeAuthorType
   body?: string | null
   bodyRef?: string | null
+  documentRole?: KnowledgeDocumentRole
   // For file nodes: kind = 'file' and the v1 version is backed by this attachment.
   kind?: KnowledgePageKind
   attachmentId?: string | null
   changeComment?: string | null
+  origin?: KnowledgeDocumentOrigin
+  trust?: KnowledgeDocumentTrust
   createdBy: string
   labels?: string[]
   metadata?: Record<string, unknown> | null
@@ -265,6 +289,8 @@ export type AddFileVersionInput = {
   authorId: string
   authorType: KnowledgeAuthorType
   changeComment?: string | null
+  origin?: KnowledgeDocumentOrigin
+  trust?: KnowledgeDocumentTrust
   // A downloaded Markdown editor pins the file version it edited. Ordinary
   // upload remains append-only without this optional compare-and-swap fence.
   expectedLatestVersionId?: string
@@ -285,6 +311,7 @@ export class KnowledgePageRevisionConflictError extends Error {
 export type UpdatePageInput = Partial<{
   body: string | null
   bodyRef: string | null
+  origin?: KnowledgeDocumentOrigin
   changeComment: string | null
   labels: string[]
   metadata: Record<string, unknown> | null
@@ -292,6 +319,7 @@ export type UpdatePageInput = Partial<{
   summary: string | null
   title: string
   visibility: KnowledgeVisibility
+  trust?: KnowledgeDocumentTrust
 }> & {
   authorId: string
   authorType: KnowledgeAuthorType
@@ -323,6 +351,8 @@ export type RestorePageVersionInput = {
   authorId: string
   authorType: KnowledgeAuthorType
   changeComment?: string | null
+  origin?: KnowledgeDocumentOrigin
+  trust?: KnowledgeDocumentTrust
   organizationId: string
   pageId: string
   versionId: string

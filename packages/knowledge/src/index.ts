@@ -1,4 +1,15 @@
 export {
+  CORE_DOCUMENT_ROLES,
+  createAgentCoreDocument,
+  isAgentCoreDocumentPage,
+  loadActiveAgentCoreDocuments,
+} from './agent-core-documents.js'
+export type {
+  ActiveCoreDocument,
+  CoreDocumentRole,
+  CreateAgentCoreDocumentInput,
+} from './agent-core-documents.js'
+export {
   buildNativeSourceRef,
   buildSpaceSourceRef,
   createNativeKnowledgeProvider,
@@ -112,6 +123,9 @@ export type {
   CreatePageInput,
   CreateSpaceInput,
   KnowledgeAuthorType,
+  KnowledgeDocumentOrigin,
+  KnowledgeDocumentRole,
+  KnowledgeDocumentTrust,
   KnowledgePageKind,
   KnowledgePageRecord,
   KnowledgePageStatus,

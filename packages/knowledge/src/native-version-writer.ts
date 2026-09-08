@@ -147,6 +147,7 @@ export const createPage = async (
         title: input.title,
         summary: input.summary ?? null,
         metadata: input.metadata as Prisma.InputJsonValue,
+        documentRole: input.documentRole ?? 'knowledge',
         kind: input.kind ?? 'document',
         spaceId: input.spaceId,
         parentPageId: input.parentPageId ?? null,
@@ -180,6 +181,8 @@ export const createPage = async (
         authorType: input.authorType,
         authorId: input.authorId,
         changeComment: input.changeComment ?? null,
+        origin: input.origin ?? 'user_authored',
+        trust: input.trust ?? 'unverified_import',
       },
     })
     await indexVersionChunks(tx, options, page, version)
@@ -322,6 +325,8 @@ export const restoreVersion = async (
         authorType: input.authorType,
         authorId: input.authorId,
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
+        origin: input.origin ?? version.origin,
+        trust: input.trust ?? version.trust,
       },
     })
     await indexVersionChunks(tx, options, page, restored)
@@ -362,6 +367,8 @@ export const addFileVersion = async (
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
+          origin: input.origin ?? 'user_authored',
+          trust: input.trust ?? 'unverified_import',
         },
       })
       await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
@@ -396,6 +403,8 @@ export const updatePage = async (
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
+          origin: input.origin ?? 'user_authored',
+          trust: input.trust ?? 'unverified_import',
         },
       })
       await indexVersionChunks(tx, options, existing, version)

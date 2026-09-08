@@ -1,4 +1,6 @@
 export * from './admission-lock.js'
+export * from './agent-access.js'
+export * from './agent-edit-authority.js'
 export * from './budget.js'
 export * from './budget-admin.js'
 export * from './budget-reservations.js'
