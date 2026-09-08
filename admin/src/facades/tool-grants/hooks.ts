@@ -141,6 +141,7 @@ export const useAgentToolPolicyTargets = (enabled = true) => {
 }
 
 export const invalidateAgentToolPolicy = (queryClient: QueryClient, agentId: string): void => {
+  void queryClient.invalidateQueries({ queryKey: toolPolicyTargetsKeyPrefix })
   void queryClient.invalidateQueries({ queryKey: deepWaterAgentAccessKeyPrefix })
   void queryClient.invalidateQueries({ queryKey: agentKeys.all })
   void queryClient.invalidateQueries({ queryKey: browserCloudKeys.agentBrowser(agentId) })

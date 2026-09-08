@@ -21,6 +21,7 @@ const app: AppSummaryRecord = {
 }
 
 const pendingConnectionId = '44444444-4444-4444-8444-444444444444'
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 const mixedAccessApp: AppDetailRecord = {
   agentsWithAccess: [], aliases: [], appSource: 'nessie', capabilities: { tools: [] },
   categories: ['development'], connectionCount: 2, connections: [
@@ -50,7 +51,11 @@ const calls: Array<{ body: unknown; path: string }> = []
 const policyCalls: string[] = []
 declare global {
   interface Window {
-    __appConnectScopeFixture: { calls: Array<{ body: unknown; path: string }>; policyCalls: string[] }
+    __appConnectScopeFixture: {
+      calls: Array<{ body: unknown; path: string }>
+      failPolicyPatchAt: number | null
+      policyCalls: string[]
+    }
   }
 }
 const apiClient = {
@@ -67,7 +72,14 @@ const apiClient = {
     if (path === '/api/mcp/tools/policy-targets') { policyCalls.push(path); return [{ agentKind: 'shared', id: '99999999-9999-4999-8999-999999999999', name: 'Fixture researcher', role: 'Researcher', toolPolicy: {} }] }
     return []
   },
-  patch: async (path: string) => { policyCalls.push(path); return {} },
+  patch: async (path: string) => {
+    policyCalls.push(path)
+    const patchCount = policyCalls.filter((call) => call.includes('/policy-targets/')).length
+    if (window.__appConnectScopeFixture.failPolicyPatchAt === patchCount) {
+      throw new Error('rate limited')
+    }
+    return {}
+  },
   post: async (path: string, body: unknown) => {
     calls.push({ body, path })
     return { connectionId: '33333333-3333-3333-3333-333333333333', status: 'needs_secret' }
@@ -75,7 +87,7 @@ const apiClient = {
   put: async () => undefined,
 } as unknown as ApiClient
 
-Object.assign(window, { __appConnectScopeFixture: { calls, policyCalls } })
+Object.assign(window, { __appConnectScopeFixture: { calls, failPolicyPatchAt: null, policyCalls } })
 window.localStorage.setItem('nessie.admin.token', 'app-connect-scope-e2e')
 window.fetch = async (input) => {
   const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin)
@@ -93,7 +105,7 @@ if (!(root instanceof HTMLElement)) throw new Error('App connection fixture root
 const Fixture = () => {
   const [dialogOpen, setDialogOpen] = useState(true)
   return (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  <QueryClientProvider client={queryClient}>
     <AuthSessionProvider><ApiClientProvider client={apiClient}><BrowserRouter>
       <main className="min-h-screen bg-[color:var(--bg)] p-8 text-[color:var(--tx)]">
         <AppConnectDialog app={app} onClose={() => setDialogOpen(false)} open={dialogOpen} />

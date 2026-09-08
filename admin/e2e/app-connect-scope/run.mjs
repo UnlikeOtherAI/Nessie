@@ -61,7 +61,7 @@ try {
   )
   await page.screenshot({ fullPage: true, path: reviewScreenshotPath })
   await page.evaluate(() => { window.__appConnectScopeFixture.policyCalls.length = 0 })
-  await page.getByRole('switch', { name: 'Let Fixture researcher use KiloTalk fixture' }).click()
+  await page.getByRole('switch').click()
   await page.waitForFunction(() => window.__appConnectScopeFixture.policyCalls.length >= 3)
   await page.waitForTimeout(150)
   const policyCalls = await page.evaluate(() => window.__appConnectScopeFixture.policyCalls)
@@ -74,6 +74,22 @@ try {
       '/api/mcp/tools/policy-targets',
     ],
   )
+  await page.evaluate(() => {
+    window.__appConnectScopeFixture.failPolicyPatchAt = 2
+    window.__appConnectScopeFixture.policyCalls.length = 0
+  })
+  await page.getByRole('switch').click()
+  await page.waitForFunction(() => window.__appConnectScopeFixture.policyCalls.length >= 3)
+  await page.waitForTimeout(150)
+  assert.deepEqual(
+    await page.evaluate(() => window.__appConnectScopeFixture.policyCalls),
+    [
+      '/api/mcp/tools/tool-active-a/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/tool-active-b/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/policy-targets',
+    ],
+  )
+  await page.getByRole('alert').waitFor()
   await context.close()
   console.log(`App connection scope proofs passed: ${menuScreenshotPath}, ${projectScreenshotPath}, ${reviewScreenshotPath}`)
 } finally {
