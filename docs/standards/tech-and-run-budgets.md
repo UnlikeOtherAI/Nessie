@@ -39,6 +39,34 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
+  - A provider `finish_reason: length` checkpoints the retained transcript and
+    gets one no-tools finalisation turn from completed evidence; incomplete
+    provider tool calls never dispatch. That attempt is carried in crash state,
+    so a resumed run neither repeats it nor replays a completed tool effect; a
+    second length result surfaces a truthful partial answer and checkpoint.
+  - Per-call output admission starts with the configured fallback, narrows to
+    the selected provider capability's `maxOutputTokens` when it is present,
+    and reserves that output together with the projected input before dispatch.
+    If retained context plus that reserve cannot fit, the existing compaction
+    hook runs before dispatch; no advertised capability means the fallback is
+    retained rather than guessing a model limit. This recovery covers
+    normalized `finish_reason: length` results and advertised capability
+    ceilings. A provider request-validation refusal for an oversized
+    `max_tokens`/`max_completion_tokens` value without capability metadata is
+    an ordinary provider failure, not an adaptive fallback signal.
+
+## Deep.Agent compaction extraction
+
+Nessie currently owns its durable compaction path: `runContextCompaction` uses
+the run's inference lane and the caller retains disclosure lineage, checkpoint
+state, whole tool-call/result groups, untrusted-note framing, and source URLs.
+The private `@deep/agent` `0.0.0` workspace already contains and exports a
+model-authored compaction helper, and its loop automatically uses it when a
+host supplies `generateNote`; without that callback it falls back to trimming.
+It is neither published nor consumed by Nessie. Do not call it over HTTP or
+copy its loop into Nessie. Any dependency adoption must use a pinned, versioned
+library contract while Nessie continues to own its inference adapter, run
+checkpoints, disclosure basis, and durable lifecycle.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above

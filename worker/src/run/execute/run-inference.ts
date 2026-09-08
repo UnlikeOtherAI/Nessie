@@ -1,6 +1,8 @@
 import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
+  createInferenceService,
+  isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
@@ -13,6 +15,7 @@ import {
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
 import { runInferenceGraph } from '../inference.js'
+import { resolveRuntimeProvider, resolveStageProviderConfig } from '../inference-provider.js'
 import {
   resolveComposeOutputTokens,
   startCancellationPoll,
@@ -30,6 +33,18 @@ const runtimeModelConfig = loadConfig().model
 export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
   tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
 
+export const resolveMainOutputTokens = (input: {
+  admittedMaxOutputTokens?: number
+  composeAvailable: boolean
+  configuredMaxTokens: number
+}): number | undefined => {
+  if (!input.composeAvailable) return input.admittedMaxOutputTokens
+  return Math.min(
+    resolveComposeOutputTokens(input.configuredMaxTokens),
+    input.admittedMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+  )
+}
+
 /**
  * How this run calls the model. One construction point for every inference the
  * run makes — the main turn, delegate sub-agents, compaction and checkpoint
@@ -39,9 +54,11 @@ export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =
 export type RunInference = {
   /** True when the current main turn already streamed text to the thread. */
   consumeStreamedFlag: () => boolean
+  mainOutputTokens?: () => Promise<number>
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
+    options?: { maxOutputTokens?: number },
   ) => Promise<InferenceResult>
   /**
    * Silent, non-streaming inference on the pinned utility model (falling back
@@ -90,11 +107,45 @@ export const createRunInference = (
     provider: options.budgetModelOverride?.provider ?? context.agent.provider,
   }
 
+  const mainOutputTokens = async (): Promise<number> => {
+    const providerConfig = await resolveStageProviderConfig(deps.prisma, {
+      modelConfig: runtimeModelConfig,
+      organizationId: context.channel.organizationId,
+      providerKey: runModel.provider ?? runtimeModelConfig.provider,
+      requestedModel: runModel.model ?? runtimeModelConfig.modelName ?? '',
+      routeSource: 'direct',
+      subscription: options.subscription
+        ? {
+          ownerUserId: options.subscription.ownerUserId,
+          secretStore: deps.subscriptionSecrets ?? null,
+          subscriptionId: options.subscription.subscriptionId,
+        }
+        : null,
+    })
+    const runtimeProvider = resolveRuntimeProvider(providerConfig.providerKey)
+      ?? (providerConfig.connectorKind === 'openai-compatible'
+        || isLedgerEndpoint(providerConfig.baseUrl)
+        ? 'openai-compatible'
+        : null)
+    if (!runtimeProvider) return runtimeModelConfig.maxTokens
+    const service = createInferenceService({
+      apiKey: providerConfig.apiKey,
+      baseUrl: providerConfig.baseUrl,
+      ...(providerConfig.extraHeaders ? { extraHeaders: providerConfig.extraHeaders } : {}),
+      modelName: providerConfig.model,
+      provider: runtimeProvider,
+      serviceId: providerConfig.providerKey,
+    })
+    const capability = await service.getCapabilities(providerConfig.model)
+    return capability.effectiveSnapshot.maxOutputTokens ?? runtimeModelConfig.maxTokens
+  }
+
   const call = async (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
     agentModel: { model: string | null; provider: string | null },
     streaming: boolean,
+    maxOutputTokens?: number,
   ): Promise<InferenceResult> => {
     const documentStream = streaming ? deps.documentStream : undefined
     // A document is emitted as tool-call arguments inside one completion, so
@@ -124,9 +175,11 @@ export const createRunInference = (
           routingProfileId: null,
         },
         baseMessages: messages,
-        maxOutputTokensOverride: composeAvailable
-          ? resolveComposeOutputTokens(runtimeModelConfig.maxTokens)
-          : undefined,
+        maxOutputTokensOverride: resolveMainOutputTokens({
+          admittedMaxOutputTokens: maxOutputTokens,
+          composeAvailable,
+          configuredMaxTokens: runtimeModelConfig.maxTokens,
+        }),
         modelConfig: runtimeModelConfig,
         subscription: options.subscription
           ? {
@@ -207,9 +260,10 @@ export const createRunInference = (
       currentTurnStreamed = false
       return streamed
     },
-    runMain: (messages, tools) => {
+    mainOutputTokens,
+    runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
-      return call(messages, tools, runModel, true)
+      return call(messages, tools, runModel, true, callOptions?.maxOutputTokens)
     },
     runUtility: (messages, tools) =>
       call(

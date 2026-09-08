@@ -163,3 +163,14 @@ test('the pre-flight gate is inert without a token limit', () => {
     null,
   )
 })
+
+test('the pre-flight gate reserves the selected output allowance', () => {
+  assert.equal(
+    stopBeforeInference(budget({ maxTokens: 40_000 }), {
+      effectiveTokensUsed: 20_000,
+      projectedCallTokens: 5_000,
+      projectedOutputTokens: 15_001,
+    }),
+    'tokens',
+  )
+})

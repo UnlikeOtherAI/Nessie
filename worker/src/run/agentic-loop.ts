@@ -1,9 +1,7 @@
 import type {
-  InferenceResult,
   InvocationRecord,
   ProviderMessage,
   ProviderToolCall,
-  ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { redactDetectedSecrets } from '@nessie/schemas'
 import { redactMessageContent } from './message-redaction.js'
@@ -12,7 +10,6 @@ import {
   createToolExecutionRecorder,
   restoreCompactionGovernor,
   type DrainGate,
-  type LoopResumeState,
 } from './loop-resume.js'
 import { createRetryBudget } from './error-classification.js'
 import { callInferenceWithRetry } from './inference-retry.js'
@@ -21,6 +18,7 @@ import {
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
+import { resolveOutputAdmission } from './output-admission.js'
 import {
   DEFAULT_CACHE_READ_WEIGHT,
   meterSpend,
@@ -30,158 +28,39 @@ import {
   stopBeforeInference,
   stopBeforeIteration,
   type BudgetExhaustionReason,
-  type BudgetLimits,
   type SpendTotals,
 } from './loop-budget.js'
 import {
   buildContextPlan,
   createCompactionGovernor,
-  type ContextPlan,
+  MAX_COMPACTIONS_PER_RUN,
 } from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { truncateToolResult } from './tool-util.js'
 import {
   executeToolBatch,
-  type ExecuteToolFn,
   type ExecutedToolResult,
-  type PrepareToolFn,
   type AgentCardSuspension,
   type ToolApprovalSuspension,
-  type ToolBatchCallbacks,
 } from './tool-batch.js'
+import {
+  type AgenticLoopInput,
+  type LoopResult,
+} from './agentic-loop-types.js'
+
+export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
+  'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
+
+const outputLimitPartial = (text: string): string => [
+  text.trim(),
+  'I reached the response limit before completing the answer. Continue this run to finish.',
+].filter(Boolean).join('\n\n')
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
-export type LoopCallbacks = ToolBatchCallbacks & {
-  onIterationStart: (iteration: number) => Promise<void>
-  onTextDelta: (delta: string) => Promise<void>
-  onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
-  /**
-   * Durable snapshot of the loop's working state, offered at every boundary
-   * where the transcript is consistent: each iteration start, immediately
-   * before a tool batch dispatches, and as each tool in that batch settles.
-   * The caller decides what to do with it (`crash-checkpoint.ts` persists it);
-   * a loop with no such caller — a delegate sub-agent — passes none.
-   */
-  onCheckpoint?: (state: LoopResumeState) => Promise<void>
-}
+export type { LoopCallbacks, LoopResult } from './agentic-loop-types.js'
 
-export type LoopResult = {
-  finalText: string
-  iterations: number
-  // The conversation as it stood when the loop exited. The caller reads it to
-  // produce a checkpoint note from the reserved budget headroom.
-  messages: ProviderMessage[]
-  toolCallsUsed: number
-  // Aggregate wall-clock time spent inside tool executions. It measures tool
-  // work rather than the run span; same-batch calls may overlap.
-  toolMs: number
-  totalCostCents: number
-  wallclockMs: number
-  // Raw provider-reported tokens, unchanged: what the ledger and telemetry read.
-  totalTokensUsed: number
-  // What the budget actually metered — fresh input + output + cache reads
-  // discounted by the run's cache-read weight. Every token verdict uses this.
-  effectiveTokensUsed: number
-  // Provider-reported cache reads, summed, so a stop can show the composition
-  // instead of only the number that tripped it.
-  cacheReadTokens: number
-  exhaustedBudget: BudgetExhaustionReason | null
-  /** A policy-gated tool persisted an approval request and stopped the loop. */
-  pendingApproval?: ToolApprovalSuspension | null
-  /**
-   * `card_post` posted an interactive card with `wait: true`. Unlike an
-   * approval this is decided *after* dispatch — the card has to exist before
-   * anybody can press it — so the batch reports it from a settled result.
-   */
-  pendingInput?: AgentCardSuspension | null
-  // True when the loop exited because a cooperative cancel was observed (via
-  // `checkCancelled`) between iterations or after a tool-call batch, rather than
-  // because the model finished or a budget cap tripped. `finalText` then holds
-  // whatever partial answer was produced so the caller can still deliver it.
-  cancelled: boolean
-  // True when the wind-down instruction was injected: the model was told the
-  // run is ending and asked to deliver with what it has. A natural finish after
-  // this is a deliberate handover (the caller checkpoints it quietly); a budget
-  // stop after this means the model overran even the reserve.
-  woundDown: boolean
-  invocations: InvocationRecord[]
-}
-
-export const runAgenticLoop = async (input: {
-  budget: BudgetLimits
-  // Fraction of the input price a cache read costs on this run's provider+model,
-  // resolved once per run (run-budget.ts `resolveCacheReadWeight`). Cache reads
-  // are metered at this weight against the token budget.
-  cacheReadWeight?: number
-  callbacks: LoopCallbacks
-  // Optional cooperative-cancel probe. Consulted between iterations and after
-  // each tool-call batch; when it resolves `true` the loop stops immediately and
-  // returns a `cancelled` result carrying any partial answer. Kept side-effect
-  // free (a cheap status read) — the caller owns terminalization and notices.
-  checkCancelled?: () => Promise<boolean>
-  // Optional org-`Budget` probe, consulted between iterations. The caller owns
-  // throttling and alerting; a `true` verdict stops the loop with the
-  // `org_budget_blocked` classification so the run is checkpointed like any
-  // other policy-ceiling stop.
-  checkBudgetBlocked?: () => Promise<boolean>
-  // Optional real-compaction hook. Called BETWEEN iterations only (every tool
-  // wrapper of the previous batch has settled), with the current transcript and
-  // the rebuild target. Returning null means "compaction unavailable" and the
-  // loop falls back to emergency truncation.
-  compactContext?: (input: {
-    messages: ProviderMessage[]
-    targetTokens: number
-  }) => Promise<ProviderMessage[] | null>
-  // Compaction/trim thresholds for this run's model (see context-window.ts).
-  contextPlan?: ContextPlan
-  executeTool: ExecuteToolFn
-  /** Optional authorization preflight that can suspend a whole tool batch. */
-  prepareTool?: PrepareToolFn
-  initialMessages: ProviderMessage[]
-  // Optional caller-owned accumulator for every inference invocation the loop
-  // makes. It is populated live (before the loop can throw), so a crashed or
-  // aborted run's partial token spend is still attributable — the caller reads
-  // this array on the failure path even when no LoopResult is returned.
-  invocationSink?: InvocationRecord[]
-  /**
-   * Optional capture of the tool results produced since the previous
-   * inference call, passed as an out-param so callers that bound context to
-   * their inference function (delegate sub-agents) can observe how each
-   * nested tool call resolved.
-   */
-  runInference: (
-    messages: ProviderMessage[],
-    captured?: { toolResults: ExecutedToolResult[] },
-  ) => Promise<InferenceResult>
-  toolTimeoutError?: (toolName: string) => Error | null
-  tools: ToolSchemaDescriptor[]
-  // Wind-down (spec §3a): when set, crossing WIND_DOWN_FRACTION of any budget
-  // dimension injects this as a one-time system message so the model can finish
-  // and hand over inside the remaining slice. Absent for delegate sub-agents
-  // (tiny budgets, digest-shaped output) and DeepWater handoff turns.
-  windDownInstruction?: string
-  // Fired once, when the wind-down instruction is injected — the caller closes
-  // structural fan-out (the delegate gate) for the rest of the run.
-  onWindDown?: () => void
-  /**
-   * The worker's drain signal for this job. When it fires, whatever is in
-   * flight gets a few seconds to land and then the loop throws
-   * `RunDrainedError` at the next boundary. Another worker resumes from the
-   * last checkpoint that actually became durable, and replays the run from its
-   * prompt when none did — `createCrashCheckpointWriter`
-   * (execute/crash-checkpoint.ts) owns which outcomes are which, and neither it
-   * nor its caller reports the answer back to this loop.
-   */
-  drainSignal?: AbortSignal
-  /**
-   * A crash checkpoint this execution is picking up. The transcript, iteration
-   * count, spend accumulator and already-executed tool results are restored
-   * from it, and `initialMessages` is ignored — the prompt has already been
-   * turned into a conversation once and paid for.
-   */
-  resume?: LoopResumeState
-}): Promise<LoopResult> => {
+export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
   const resume = input.resume ?? null
@@ -196,11 +75,6 @@ export const runAgenticLoop = async (input: {
     Object.entries(resume?.signatureCounts ?? {}),
   )
   const drainGate: DrainGate = createDrainGate(input.drainSignal)
-  // Both of these count failures, and failures belong to the run rather than to
-  // whichever executor happened to see them: a run that crashes and is
-  // re-claimed must not get a fresh retry allowance and a clean breaker every
-  // time round, or a run that crash-loops retries forever and a tool that has
-  // been failing since the first execution is never disabled.
   const retryBudget = createRetryBudget(6)
   retryBudget.remaining = Math.max(0, retryBudget.total - (resume?.retriesUsed ?? 0))
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
@@ -222,18 +96,16 @@ export const runAgenticLoop = async (input: {
   // way back into the transcript that does not re-bill the inference that
   // produced it.
   let resumedToolCalls: ProviderToolCall[] | null = resume?.pendingToolCalls ?? null
-  // Mirrors of the governor's own counters, which it keeps in a closure. Kept
-  // here so a snapshot can carry them and `restoreCompactionGovernor` can
-  // replay them onto a fresh governor, rather than a resumed run getting a
-  // second full allowance of compaction calls.
+  // Mirror the governor state into checkpoints so a reclaimed run keeps both
+  // the attempt ceiling and the two-iteration cooldown.
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
+  let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
+  let lengthFinalizationPending = resume?.lengthFinalizationPending ?? false
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
   let lastAssistantText = resume?.lastAssistantText ?? ''
-  // Wall-clock carried across executions, so a crashed run's budget is the
-  // run's, not this executor's.
   const priorElapsedMs = resume?.elapsedMs ?? 0
   const startTime = Date.now()
 
@@ -264,6 +136,8 @@ export const runAgenticLoop = async (input: {
       invocations: allInvocations,
       iterations,
       lastAssistantText,
+      lengthFinalizationUsed,
+      lengthFinalizationPending,
       messages,
       pendingToolCalls: inFlightToolCalls,
       retriesUsed: retryBudget.total - retryBudget.remaining,
@@ -336,11 +210,12 @@ export const runAgenticLoop = async (input: {
   // only here: the previous tool batch has fully settled, so no group is open.
   // A failed or unavailable compaction degrades to emergency truncation rather
   // than letting the transcript grow into a provider overflow.
-  const maintainContext = async (iteration: number): Promise<void> => {
+  const maintainContext = async (iteration: number, force = false): Promise<void> => {
     // The plan's thresholds already exclude the tool schemas, so only the
     // transcript is measured against them.
     const transcriptTokens = estimateMessagesTokens(messages)
-    if (!compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
+    if (!force && !compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
+    if (force && compactionAttempts >= MAX_COMPACTIONS_PER_RUN) return
     compactionGovernor.recordAttempt(iteration)
     compactionAttempts += 1
     compactionLastIteration = iteration
@@ -402,6 +277,51 @@ export const runAgenticLoop = async (input: {
       await callbacks.onIterationStart(iterations)
 
       await maintainContext(iterations)
+      // Utility compaction is metered inference. Even a failed compaction call
+      // may have usage in the shared sink, so re-check every budget dimension
+      // before allowing the main model call.
+      spend = meterSpend(allInvocations, cacheReadWeight)
+      const postCompactionSpendStop = stopAfterInference(budget, spend)
+      if (postCompactionSpendStop) return stop(postCompactionSpendStop)
+      const postCompactionTimeStop = stopBeforeIteration(budget, {
+        elapsedMs: elapsed(),
+        // This is an elapsed-time probe only: this iteration has already
+        // claimed its countable slot.
+        iterations: 0,
+      })
+      if (postCompactionTimeStop) return stop(postCompactionTimeStop)
+
+      const finalizationPending = lengthFinalizationPending
+      const activeToolSchemaTokens = finalizationPending ? 0 : toolSchemaTokens
+      const admission = () => resolveOutputAdmission({
+        contextPlan,
+        effectiveTokensUsed: spend.effectiveTokensUsed,
+        maxOutputTokens: input.maxOutputTokens,
+        maxRunTokens: budget.maxTokens,
+        messages,
+        toolSchemaTokens: activeToolSchemaTokens,
+      })
+      let currentAdmission = admission()
+      // Context compaction normally starts at 80%; an answer reserve can make
+      // a smaller retained transcript unsafe before that threshold, so compact
+      // here while all prior tool pairs are intact.
+      if (currentAdmission.requiresCompaction && compactionLastIteration !== iterations) {
+        await maintainContext(iterations, true)
+        // Compaction is itself inference. Its invocation sink changes spend,
+        // and its rebuilt note changes input; both must be re-admitted.
+        spend = meterSpend(allInvocations, cacheReadWeight)
+        const forcedCompactionSpendStop = stopAfterInference(budget, spend)
+        if (forcedCompactionSpendStop) return stop(forcedCompactionSpendStop)
+        const forcedCompactionTimeStop = stopBeforeIteration(budget, {
+          elapsedMs: elapsed(),
+          iterations: 0,
+        })
+        if (forcedCompactionTimeStop) return stop(forcedCompactionTimeStop)
+        currentAdmission = admission()
+      }
+
+      if (currentAdmission.requestedOutputTokens !== undefined
+        && currentAdmission.requestedOutputTokens < 1) return stop('tokens')
 
       // The iteration boundary: the previous batch has fully settled and the
       // transcript that will be sent is assembled, so this is the state a
@@ -413,7 +333,8 @@ export const runAgenticLoop = async (input: {
       // actually be sent rather than the one that was about to be folded away.
       const preInferenceStop = stopBeforeInference(budget, {
         effectiveTokensUsed: spend.effectiveTokensUsed,
-        projectedCallTokens: estimateMessagesTokens(messages) + toolSchemaTokens,
+        projectedCallTokens: currentAdmission.projectedInputTokens,
+        projectedOutputTokens: currentAdmission.requestedOutputTokens,
       })
       if (preInferenceStop) return stop(preInferenceStop)
 
@@ -423,7 +344,16 @@ export const runAgenticLoop = async (input: {
       pendingToolResults = null
       const result = await drainGate.expiry(callInferenceWithRetry(
         messages,
-        (inferenceMessages) => input.runInference(inferenceMessages, captured),
+        (inferenceMessages) => input.runInference(
+          inferenceMessages,
+          captured,
+          {
+            ...(currentAdmission.requestedOutputTokens === undefined
+              ? {}
+              : { maxOutputTokens: currentAdmission.requestedOutputTokens }),
+            ...(finalizationPending ? { noTools: true } : {}),
+          },
+        ),
         retryBudget,
         contextPlan.targetTokens,
       ))
@@ -437,7 +367,40 @@ export const runAgenticLoop = async (input: {
       const spendStop = stopAfterInference(budget, spend)
       if (spendStop) return stop(spendStop)
 
+      if (result.finishReason === 'length') {
+        if (finalizationPending || lengthFinalizationUsed) {
+          lastAssistantText = outputLimitPartial(safeOutputText || lastAssistantText)
+          return stop('tokens')
+        }
+        {
+          // Persist the truncated turn before asking for the bounded recovery.
+          // A re-claimed worker therefore retains the evidence and never has to
+          // re-dispatch the tool batch that produced it.
+          lengthFinalizationUsed = true
+          lengthFinalizationPending = true
+          messages.push(redactMessageContent({
+            content: safeOutputText || null,
+            role: 'assistant',
+          }))
+          messages.push({
+            content: OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+            role: 'system',
+          })
+          await checkpoint()
+          // Re-enter through the next loop boundary. The pending marker is
+          // durable, so a crash cannot turn this recovery into a tool-enabled
+          // call or replay an incomplete provider tool-call batch.
+          continue
+        }
+      }
+
+      if (finalizationPending && result.toolCalls.length > 0) {
+        lastAssistantText = outputLimitPartial(safeOutputText || lastAssistantText)
+        return stop('tokens')
+      }
+
       if (!result.toolCalls || result.toolCalls.length === 0) {
+        lengthFinalizationPending = false
         if (safeOutputText) {
           await callbacks.onTextDelta(safeOutputText)
         }

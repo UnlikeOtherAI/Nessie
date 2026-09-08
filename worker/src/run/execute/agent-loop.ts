@@ -4,6 +4,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import { loadConfig } from '@nessie/config'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
 import type { LoopResumeState } from '../loop-resume.js'
@@ -101,6 +102,8 @@ export const runExecutionAgentLoop = async (
   // this loop can write a thought, a tool record, or any model-derived state.
   await persistCurrentRunBasis(deps.prisma, context)
 
+  const mainOutputTokens = await input.inference.mainOutputTokens?.()
+    ?? loadConfig().model.maxTokens
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
   // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
@@ -546,9 +549,16 @@ export const runExecutionAgentLoop = async (
     executeTool: effects.executeTool,
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
+    maxOutputTokens: mainOutputTokens,
     ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
-    runInference: (messages) =>
-      input.inference.runMain(messages, [...input.toolDefs, ...mcpView.descriptors]),
+    runInference: (messages, _captured, options) =>
+      input.inference.runMain(
+        messages,
+        options?.noTools ? [] : [...input.toolDefs, ...mcpView.descriptors],
+        options?.maxOutputTokens === undefined
+          ? undefined
+          : { maxOutputTokens: options.maxOutputTokens },
+      ),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,
   })

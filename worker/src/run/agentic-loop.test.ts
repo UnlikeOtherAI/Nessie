@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { InferenceResult, ProviderMessage } from '@nessie/runtime'
-import { runAgenticLoop, type BudgetLimits } from './agentic-loop.js'
+import {
+  OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+  runAgenticLoop,
+  type BudgetLimits,
+} from './agentic-loop.js'
 import { classifyBudgetStop } from './execute/budget-stop.js'
 import type { LoopResumeState } from './loop-resume.js'
 
@@ -365,6 +369,8 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   invocations: [],
   iterations: 1,
   lastAssistantText: '',
+  lengthFinalizationPending: false,
+  lengthFinalizationUsed: false,
   messages: [{ content: 'go', role: 'user' }],
   pendingToolCalls: null,
   retriesUsed: 0,
@@ -375,6 +381,186 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   toolResults: {},
   woundDown: false,
   ...over,
+})
+
+test('a length result at the budget cap keeps its partial answer and never dispatches calls', async () => {
+  let dispatched = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      dispatched += 1
+      return { inputSummary: 'write', output: 'must not run', success: true }
+    },
+    initialMessages: initial,
+    runInference: async () => ({
+      ...toolCallInference('research findings retained'),
+      finishReason: 'length',
+      invocations: [{ usage: { totalTokens: 100 } } as InferenceResult['invocations'][number]],
+    }),
+    tools: [],
+  })
+  assert.equal(result.exhaustedBudget, 'tokens')
+  assert.equal(result.finalText, 'research findings retained')
+  assert.equal(dispatched, 0)
+  assert.equal(result.messages.some((message) => message.role === 'assistant'), false)
+})
+
+test('answer reserve triggers compaction before the ordinary context threshold', async () => {
+  let compactions = 0
+  await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      compactions += 1
+      return [{ content: 'compacted evidence', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 100, targetTokens: 60, triggerTokens: 80 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(200), role: 'user' }],
+    maxOutputTokens: 80,
+    runInference: async () => finalAnswerInference('answer'),
+    tools: [],
+  })
+  assert.equal(compactions, 1)
+})
+
+test('normal compaction spend can stop the run before the main model call', async () => {
+  const sink: InferenceResult['invocations'] = []
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      sink.push({ usage: { totalTokens: 90 } } as InferenceResult['invocations'][number])
+      return [{ content: 'compacted', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 100, targetTokens: 60, triggerTokens: 20 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(100), role: 'user' }],
+    invocationSink: sink,
+    maxOutputTokens: 10,
+    runInference: async () => {
+      calls += 1
+      return finalAnswerInference('must not run')
+    },
+    tools: [],
+  })
+  assert.equal(calls, 0)
+  assert.equal(result.exhaustedBudget, 'tokens')
+})
+
+test('zero output headroom stops before an invalid provider request', async () => {
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 10 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    invocationSink: [{ usage: { totalTokens: 5 } } as InferenceResult['invocations'][number]],
+    maxOutputTokens: 4,
+    runInference: async () => {
+      calls += 1
+      return finalAnswerInference('must not run')
+    },
+    tools: [],
+  })
+  assert.equal(calls, 0)
+  assert.equal(result.exhaustedBudget, 'tokens')
+})
+
+test('forced compaction re-admits its spend and rebuilt context before inference', async () => {
+  const sink: InferenceResult['invocations'] = []
+  let requestedOutputTokens: number | undefined
+  await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      sink.push({ usage: { totalTokens: 40 } } as InferenceResult['invocations'][number])
+      return [{ content: 'short', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 50, targetTokens: 30, triggerTokens: 45 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(200), role: 'user' }],
+    invocationSink: sink,
+    maxOutputTokens: 80,
+    runInference: async (_messages, _captured, options) => {
+      requestedOutputTokens = options?.maxOutputTokens
+      return finalAnswerInference('answer')
+    },
+    tools: [],
+  })
+  assert.equal(requestedOutputTokens, 44)
+})
+
+test('a length-limited turn gets one no-tools finalisation without replaying work', async () => {
+  const noTools: boolean[] = []
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      calls += 1
+      return calls === 1
+        ? { ...finalAnswerInference('partial research'), finishReason: 'length' }
+        : finalAnswerInference('concise answer from retained research')
+    },
+    tools: [{ description: 'would be dangerous if replayed', inputSchema: {}, toolName: 'write' }],
+  })
+  assert.equal(result.finalText, 'concise answer from retained research')
+  assert.deepEqual(noTools, [false, true])
+  assert.ok(result.messages.some((message) => message.role === 'system'
+    && message.content === OUTPUT_LENGTH_FINALIZATION_INSTRUCTION))
+})
+
+test('a resumed run does not repeat an output-length finalisation', async () => {
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    resume: resumeStateFrom({ lengthFinalizationUsed: true }),
+    runInference: async () => {
+      calls += 1
+      return { ...finalAnswerInference('retained partial'), finishReason: 'length' }
+    },
+    tools: [],
+  })
+  assert.equal(calls, 1)
+  assert.match(result.finalText, /retained partial/)
+  assert.match(result.finalText, /response limit/)
+})
+
+test('a reclaimed output-length recovery never re-enables tools', async () => {
+  const noTools: boolean[] = []
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      throw new Error('must not dispatch a tool during recovery')
+    },
+    initialMessages: initial,
+    resume: resumeStateFrom({
+      lengthFinalizationPending: true,
+      lengthFinalizationUsed: true,
+      messages: [
+        ...initial,
+        { content: 'partial research', role: 'assistant' },
+        { content: OUTPUT_LENGTH_FINALIZATION_INSTRUCTION, role: 'system' },
+      ],
+    }),
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      return finalAnswerInference('recovered concise answer')
+    },
+    tools: [{ description: 'must stay absent', inputSchema: {}, toolName: 'write' }],
+  })
+  assert.equal(result.finalText, 'recovered concise answer')
+  assert.deepEqual(noTools, [true])
 })
 
 test('a resumed run inherits the breaker counts its earlier executions earned', async () => {

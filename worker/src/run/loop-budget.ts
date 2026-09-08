@@ -155,11 +155,17 @@ export const stopBeforeIteration = (
 // crossed, and the reserve still belongs to the checkpoint.
 export const stopBeforeInference = (
   budget: BudgetLimits,
-  usage: { effectiveTokensUsed: number; projectedCallTokens: number },
+  usage: {
+    effectiveTokensUsed: number
+    projectedCallTokens: number
+    projectedOutputTokens?: number
+  },
 ): BudgetExhaustionReason | null => {
   const limit = budget.maxTokens
   if (typeof limit !== 'number' || limit <= 0) return null
-  return usage.effectiveTokensUsed + usage.projectedCallTokens > limit ? 'tokens' : null
+  return usage.effectiveTokensUsed
+    + usage.projectedCallTokens
+    + (usage.projectedOutputTokens ?? 0) > limit ? 'tokens' : null
 }
 
 export const stopAfterInference = (
