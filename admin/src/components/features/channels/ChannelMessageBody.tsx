@@ -8,6 +8,7 @@ import { AgentHandoffDoorway } from './AgentHandoffDoorway'
 import { AllowedByRuleCard } from './AllowedByRuleCard'
 import { AppSetupCard } from './AppSetupCard'
 import { CommsConnectCard } from './CommsConnectCard'
+import { ConversationCard } from './ConversationCard'
 import { DocumentRefChip } from './DocumentRefChip'
 import { EmailAccountConnectCard } from './EmailAccountConnectCard'
 import { GmailDraftCard } from './GmailDraftCard'
@@ -202,6 +203,7 @@ export const ChannelMessageBody = ({
       {!isEditingMessage ? <TodoProgressCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <DocumentRefChip metadata={message.metadata} /> : null}
       {!isEditingMessage ? <AgentHandoffDoorway metadata={message.metadata} /> : null}
+      {!isEditingMessage ? <ConversationCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <WorkflowRunCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <WorkflowPreviewCard metadata={message.metadata} /> : null}
       {(message.attachmentCount ?? 1) > 0 ? (
