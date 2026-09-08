@@ -328,3 +328,24 @@ no setup replay is warranted because the writes succeeded.
 The first checklist result called the verification exercise the product offer.
 That does not establish a real commercial offer or ICP. The research phase must
 correct this distinction and retain missing qualification information explicitly.
+
+Read-only production records narrowed the setup failure to run
+`63e19189-796f-4878-841e-764cd87e5ce3`: all ten tool calls succeeded, then the
+direct Qwen/DeepSeek executor returned HTTP 200 with neither visible content nor
+a tool call. The inference-stage guard threw `Stage direct produced no content`.
+The recorded error invocation does not preserve the raw provider finish reason,
+so it does not establish whether the response was length-limited. Persisted
+thinking confirms reasoning was emitted, not why the visible answer was empty.
+A bounded, metered finalization repair is in progress; no setup replay occurred.
+
+PR 428 passed all nine checks in CI run 34265171195 and merged at `101870af4`.
+The final compact-menu screenshots were downloaded and visually reviewed.
+Its deployment is pending at this checkpoint.
+
+The continuation brief now identifies the actual commercial offer from
+https://www.kilomayo.com/: a hospitality platform spanning POS/KDS, loyalty,
+team operations, inventory, finance and till/kiosk/e-shop selling. These are
+vendor claims, not verified customer needs. KiloTalk remains the research
+portal; Respond.io use is not a hospitality qualification requirement. The
+brief references the existing board and all four ticket IDs and requires the
+coordinator to correct the earlier first-step result.
