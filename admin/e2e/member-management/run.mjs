@@ -89,6 +89,14 @@ try {
     }
     await open('?scope=organization')
     await member().click()
+    await page.getByLabel('Organization role', { exact: true }).selectOption('admin')
+    await page.screenshot({ path: resolve(output, `${width}-organization-role-change.png`) })
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await dialogClosed()
+    assert.ok((await calls(page)).some((call) => call.path.endsWith('/organization/members/subject-jakub/role')
+      && call.body.role === 'admin'))
+    await member().click()
+    assert.equal(await page.getByLabel('Organization role', { exact: true }).inputValue(), 'admin')
     await page.getByRole('checkbox', { name: 'Design', exact: true }).uncheck()
     await page.getByRole('button', { name: 'Save changes', exact: true }).click()
     await dialogClosed()
@@ -119,6 +127,11 @@ try {
     await page.getByRole('button', { name: 'Open invitation for pending@example.test' }).click()
     assert.equal(await page.getByRole('button', { name: 'Resend invitation', exact: true }).count(), 0)
     assert.equal(await page.getByRole('button', { name: 'Cancel invitation', exact: true }).count(), 0)
+
+    await open('?scope=organization&noPermissions=1')
+    await member().click()
+    assert.equal(await page.getByLabel('Organization role', { exact: true }).isDisabled(), true)
+    assert.equal(await page.getByRole('button', { name: 'Save changes', exact: true }).isDisabled(), true)
 
     await open('?pendingApproval=1')
     await tab(page, 'Pending invitations')

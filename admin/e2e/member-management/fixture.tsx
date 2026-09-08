@@ -18,7 +18,7 @@ const permissions = {
   addMember: !readOnly && !noPermissions, changeMemberRole: !readOnly && !noPermissions,
   removeMember: !readOnly && !noPermissions, deactivateMember: !readOnly && !noPermissions,
   reactivateMember: !readOnly && !noPermissions, viewMemberEmail: true,
-  teamRoleOptions: ['admin', 'member'],
+  teamRoleOptions: ['admin', 'member'], orgRoleOptions: ['admin', 'member'],
 }
 let members: TeamMemberRecord[] = [
   { uoaSub: 'subject-jakub', displayName: 'Jakub Rafaj', email: 'jakub@example.test',
@@ -63,7 +63,9 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   if (fail === 'invite' && (path.endsWith('/invitations') || path.endsWith('/member-invitations'))) {
     throw new ApiClientError('Your permission to send invitations has changed. Reload members and try again.', 'FORBIDDEN', 403)
   }
-  if (path.endsWith('/role')) members = members.map((member) => ({ ...member, teamRole: String(body?.role) }))
+  if (path.endsWith('/role')) members = members.map((member) => path.includes('/organization/members/')
+    ? { ...member, orgRole: String(body?.role) }
+    : { ...member, teamRole: String(body?.role) })
   else if (path.endsWith('/teams')) access = (body?.teamIds as string[]).includes('team-external')
   else if (path.endsWith('/deactivate')) members = members.map((member) => ({ ...member, status: 'DEACTIVATED' }))
   else if (path.endsWith('/reactivate')) members = members.map((member) => ({ ...member, status: 'ACTIVE' }))

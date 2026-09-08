@@ -132,6 +132,17 @@ export const useUpdateTeamMemberRole = () => {
   })
 }
 
+/** UOA owns the organisation role vocabulary; callers pass only a live option. */
+export const useUpdateOrganizationMemberRole = () => {
+  const api = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { role: string; uoaSub: string }) =>
+      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/role`, { role: input.role }),
+    onSuccess: () => invalidateRosters(queryClient),
+  })
+}
+
 export const useUpdateMemberTeamAccess = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()

@@ -10,6 +10,7 @@ import { Select } from '../../shared/FormControls'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
 import {
   useMemberTeamAccess,
+  useUpdateOrganizationMemberRole,
   useUpdateMemberTeamAccess,
   useUpdateTeamMemberRole,
   type MemberRosterScope,
@@ -38,6 +39,7 @@ export const MemberDetailsDialog = ({
   scope,
 }: MemberDetailsDialogProps) => {
   const roleMutation = useUpdateTeamMemberRole()
+  const organizationRoleMutation = useUpdateOrganizationMemberRole()
   const teamMutation = useUpdateMemberTeamAccess()
   const removeMutation = useRemoveTeamMember()
   const activationMutation = useSetTeamMemberActivation()
@@ -55,22 +57,31 @@ export const MemberDetailsDialog = ({
     () => teams.filter((team) => team.hasAccess).map((team) => team.id),
     [teams],
   )
+  const organizationRoleOptions = permissions?.orgRoleOptions
   const roleOptions = useMemo(() => {
-    const options = permissions?.teamRoleOptions ?? []
-    return member?.teamRole && !options.includes(member.teamRole)
-      ? [member.teamRole, ...options]
+    const options = scope === 'team'
+      ? permissions?.teamRoleOptions ?? []
+      : organizationRoleOptions ?? []
+    const currentRole = scope === 'team' ? member?.teamRole : member?.orgRole
+    return scope === 'team' && currentRole && !options.includes(currentRole)
+      ? [currentRole, ...options]
       : options
-  }, [member?.teamRole, permissions?.teamRoleOptions])
-  const canChangeRole = permissions?.changeMemberRole === true && roleOptions.length > 0
+  }, [member?.orgRole, member?.teamRole, organizationRoleOptions, permissions?.teamRoleOptions, scope])
+  const currentRole = scope === 'team' ? member?.teamRole : member?.orgRole
+  // Ownership moves through UOA's separate transfer workflow. A member's
+  // current owner role is therefore information, never an editable option.
+  const canChangeRole = permissions?.changeMemberRole === true
+    && (scope === 'team' || member?.orgRole !== 'owner')
+    && roleOptions.length > 0
   const canChangeTeams = !teamAccess.isError && teamAccess.data?.data.permissions.changeTeamAccess === true
-  const busy = roleMutation.isPending || teamMutation.isPending
+  const busy = roleMutation.isPending || organizationRoleMutation.isPending || teamMutation.isPending
     || removeMutation.isPending || activationMutation.isPending
 
   useEffect(() => {
     setError(null)
     setAction(null)
-    setRole(member?.teamRole ?? '')
-  }, [member?.teamRole, member?.uoaSub, open])
+    setRole(scope === 'team' ? member?.teamRole ?? '' : member?.orgRole ?? '')
+  }, [member?.orgRole, member?.teamRole, member?.uoaSub, open, scope])
 
   useEffect(() => {
     setTeamIds(initialTeamIds)
@@ -81,9 +92,11 @@ export const MemberDetailsDialog = ({
     if (!member) return
     setError(null)
     try {
-      if (scope === 'team') {
-        await roleMutation.mutateAsync({ role, uoaSub: member.uoaSub })
-      } else {
+      if (role !== currentRole && canChangeRole) {
+        const mutation = scope === 'team' ? roleMutation : organizationRoleMutation
+        await mutation.mutateAsync({ role, uoaSub: member.uoaSub })
+      }
+      if (scope === 'organization' && !sameIds(teamIds, initialTeamIds)) {
         await teamMutation.mutateAsync({ uoaSub: member.uoaSub, teamIds })
       }
       onClose()
@@ -113,26 +126,27 @@ export const MemberDetailsDialog = ({
       setError(formErrorMessage(caught, 'Unable to change member access.'))
     }
   }
+  const hasRoleChange = role !== (currentRole ?? '')
   const hasChanges = scope === 'team'
-    ? role !== (member?.teamRole ?? '')
-    : !sameIds(teamIds, initialTeamIds)
+    ? hasRoleChange
+    : hasRoleChange || !sameIds(teamIds, initialTeamIds)
 
   return (
     <>
     <Dialog
       description={scope === 'team'
         ? 'Change this member’s role in the current team.'
-        : 'Select the teams this member can access.'}
+        : 'Change their organization role and select the teams they can access.'}
       dismissDisabled={busy}
       onClose={onClose}
       open={open && member !== null}
       title={name}
     >
       <form className="space-y-4 p-4" onSubmit={(event) => void submit(event)}>
-        {scope === 'team' ? (
+        {scope === 'team' || member?.orgRole !== 'owner' ? (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="member-role">
-              Role
+              {scope === 'team' ? 'Role' : 'Organization role'}
             </label>
             <Select
               disabled={!canChangeRole || busy}
@@ -143,10 +157,15 @@ export const MemberDetailsDialog = ({
               {roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </Select>
             {!canChangeRole ? (
-              <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change this role.</p>
+              <p className="text-xs text-[color:var(--tx3)]">
+                {permissions?.changeMemberRole === true
+                  ? 'UnlikeOtherAI did not provide an assignable organization role.'
+                  : 'You don’t have permission to change this role.'}
+              </p>
             ) : null}
           </div>
-        ) : (
+        ) : <p className="text-sm text-[color:var(--tx3)]">Organization ownership is transferred in UnlikeOtherAI.</p>}
+        {scope === 'organization' ? (
           <div className="space-y-3">
             <div>
               <p className="text-sm font-medium text-[color:var(--tx)]">Team access</p>
@@ -177,7 +196,7 @@ export const MemberDetailsDialog = ({
               <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change this access.</p>
             ) : null}
           </div>
-        )}
+        ) : null}
 
         <FormError>{error}</FormError>
         {scope === 'team' ? (
@@ -203,7 +222,8 @@ export const MemberDetailsDialog = ({
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={busy || !hasChanges || (scope === 'team' ? !canChangeRole : !canChangeTeams)}
+            disabled={busy || !hasChanges || (hasRoleChange && !canChangeRole)
+              || (scope === 'organization' && !sameIds(teamIds, initialTeamIds) && !canChangeTeams)}
             type="submit"
           >
             {busy ? 'Saving…' : 'Save changes'}
