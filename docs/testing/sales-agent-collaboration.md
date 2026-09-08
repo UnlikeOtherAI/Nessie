@@ -313,3 +313,18 @@ with Connect disabled until a project is selected. The browser evaluation
 also checks hit-testing and Escape behavior. This removes the earlier
 unstyled/mid-animation proof ambiguity. Production acceptance and the full
 CI gate remain pending at this checkpoint.
+
+The production coordinator setup phase created board
+`63760773-95e2-4127-bb88-1d10d71d8bb2` (**KiloMayo prospect backlog**), planning
+ticket `275cdbf6-c84c-4305-8c12-2aeb3ccb1358`, Eska
+`ec7c28aa-d2cd-4665-9d14-ea0b3add7cbf`, Nordbeans
+`1815d0d8-220e-4687-9291-ad2be1bd0c9c`, and Můj šálek kávy
+`a15e385e-d9a9-443d-951a-fbc89dbb2f5e`. The browser verified all four cards on
+the dedicated board and the copied six-step checklist on the planning ticket.
+The first result persisted; research/review steps remained pending. The run
+then posted a generic unexpected-error reply. Its cause is under investigation;
+no setup replay is warranted because the writes succeeded.
+
+The first checklist result called the verification exercise the product offer.
+That does not establish a real commercial offer or ICP. The research phase must
+correct this distinction and retain missing qualification information explicitly.
