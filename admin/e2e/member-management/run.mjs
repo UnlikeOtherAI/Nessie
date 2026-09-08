@@ -73,8 +73,23 @@ try {
       const sent = (await calls(page)).find((call) => call.method === 'POST' && call.body?.email === 'new@example.test')
       assert.ok(sent)
       if (scope === 'organization') assert.equal(sent.body.teamId, 'team-external')
+      // Submit the same person to the same target again. The admin sends both
+      // requests through to UOA, which owns the atomic resend/no-duplicate
+      // behaviour; the fixture retains one actionable pending row.
+      await page.getByRole('button', { name: 'Send invitation', exact: true }).click()
+      assert.equal(await page.getByText('Set up automatic team access', { exact: true }).count(), 0)
+      if (scope === 'team') await page.getByRole('tab', { name: 'Invite to workspace', exact: true }).click()
+      else await page.getByLabel('Workspace', { exact: true }).selectOption('team-external')
+      await page.getByLabel('Email', { exact: true }).fill('new@example.test')
+      await page.getByRole('button', { name: 'Send invitation', exact: true }).last().click()
+      await dialogClosed()
+      const repeated = (await calls(page)).filter((call) =>
+        call.method === 'POST' && call.body?.email === 'new@example.test')
+      assert.equal(repeated.length, 2)
+      if (scope === 'organization') assert.equal(repeated[1]?.body.teamId, 'team-external')
       await tab(page, 'Pending invitations')
       await page.getByRole('button', { name: 'Open invitation for new@example.test' }).waitFor()
+      assert.equal(await page.getByRole('button', { name: 'Open invitation for new@example.test' }).count(), 1)
       await page.getByRole('button', { name: 'Open invitation for pending@example.test' }).click()
       await page.getByRole('button', { name: 'Resend invitation', exact: true }).click()
       await dialogClosed()

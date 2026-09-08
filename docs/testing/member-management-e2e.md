@@ -3,8 +3,12 @@
 `pnpm --filter @nessie/admin test:e2e:member-management` renders the real
 Members roster and its facades against a stateful, in-browser UOA boundary. It
 never contacts UOA or sends email. The fixture proves desktop and phone flows
-for role changes, organisation activation, team removal, invitations, team
-access, live permission withdrawal, request refusal and list refreshes.
+for role changes, organisation activation, team removal, invitations (including
+a same-email, same-team resubmission sent through to UOA), explicit resend and
+cancellation, team access, live permission withdrawal, request refusal and
+list refreshes. UOA remains the authority for the atomic
+one-actionable-invitation rule; the fixture retains one pending row after that
+second submission.
 
 The pending-approval case deliberately exposes no resend, cancellation, or
 approval decision. An invitation awaiting UOA approval has not been sent, and

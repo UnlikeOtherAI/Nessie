@@ -230,7 +230,48 @@ test('GET /api/organization/members returns the org-wide roster with org roles',
   })
 })
 
-test('the org invite dialog receives only UOA-authorized targets and sends to its explicit team', async () => {
+test('GET /api/organization/member-invitations maps UOA invite authority to the shared roster capability', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['member']),
+      rosterDeps(calls, () => json({
+        data: [{
+          email: 'pending@acme.test',
+          id: 'invite_pending',
+          team: { id: externalTeamId, name: 'Design' },
+        }],
+        meta: { hasMore: false, nextCursor: null, prevCursor: null },
+        permissions: { createInvitation: true, viewPendingInvitations: true },
+        total: 1,
+      })),
+    )
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/organization/member-invitations?limit=25',
+      })
+
+      assert.equal(response.statusCode, 200)
+      assert.deepEqual(response.json().data.permissions, {
+        addMember: true,
+        viewPendingInvitations: true,
+      })
+      assert.deepEqual(
+        calls.map((call) => `${call.method} ${call.url}`),
+        [
+          `GET https://uoa.test/org/me${query}`,
+          `GET ${base}/member-invitations${query}&limit=25`,
+        ],
+      )
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+test('the org invite dialog receives only UOA-authorized targets and repeats the explicit team submission unchanged', async () => {
   await withUoaEnv(async () => {
     const calls: StubCall[] = []
     const app = await makeApp(
@@ -270,6 +311,19 @@ test('the org invite dialog receives only UOA-authorized targets and sends to it
       )
       assert.equal(calls[3]?.body, JSON.stringify({ email: 'new@acme.test' }))
       assert.ok(calls[3]?.subjectAssertion)
+
+      // UOA owns one actionable invitation for this exact team and normalized
+      // email. A repeat reaches that atomic UOA operation unchanged so it can
+      // resend rather than Nessie persisting or guessing invitation state.
+      const repeated = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations',
+        payload: { email: 'new@acme.test', teamId: 'team_product' },
+      })
+      assert.equal(repeated.statusCode, 200)
+      assert.equal(calls[5]?.url, `${base}/teams/team_product/invitations${query}`)
+      assert.equal(calls[5]?.body, JSON.stringify({ email: 'new@acme.test' }))
+      assert.ok(calls[5]?.subjectAssertion)
     } finally {
       await app.close()
     }

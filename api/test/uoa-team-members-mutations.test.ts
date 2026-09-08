@@ -151,10 +151,16 @@ test('UOA-authorized users drive the member and invitation mutations', async () 
           }
         }
         assert.deepEqual(calls.length, expected.length)
-        assert.deepEqual(
-          (await app.inject(expected[1].request)).json().data,
-          { ok: true },
-        )
+        // UOA owns exact-team, normalized-email invitation uniqueness. A
+        // second submission must reach its signed-subject invite endpoint
+        // unchanged, where UOA replaces the actionable invite and sends the
+        // fresh email; Nessie must not keep a local duplicate detector.
+        assert.deepEqual((await app.inject(expected[1].request)).json().data, { ok: true })
+        const repeated = calls.at(-1)
+        assert.equal(repeated?.method, expected[1]?.upstream.method)
+        assert.equal(repeated?.url, expected[1]?.upstream.url)
+        assert.equal(repeated?.body, expected[1]?.upstream.body)
+        assert.equal(calls.length, expected.length + 1)
       } finally {
         await app.close()
       }
