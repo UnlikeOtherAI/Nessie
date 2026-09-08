@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { useCreateProject, useCreateTeam } from '../../facades/projects/hooks'
+import { useCreateProject, useTeams } from '../../facades/projects/hooks'
 import { Dialog } from './Dialog'
 
 type CreateProjectDialogProps = {
@@ -10,11 +10,13 @@ type CreateProjectDialogProps = {
 export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const createProject = useCreateProject()
-  const createTeam = useCreateTeam()
+  const teams = useTeams()
   const [name, setName] = useState('')
+  const [teamId, setTeamId] = useState('')
 
   const handleClose = () => {
     setName('')
+    setTeamId('')
     onClose()
   }
 
@@ -23,11 +25,7 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
     const trimmedName = name.trim()
     if (!trimmedName) return
 
-    const project = await createProject.mutateAsync({ name: trimmedName })
-    await createTeam.mutateAsync({
-      name: `${trimmedName} Team`,
-      projectId: project.id,
-    })
+    await createProject.mutateAsync({ name: trimmedName, teamId })
     handleClose()
   }
 
@@ -59,6 +57,15 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
             value={name}
           />
         </div>
+        <div className="grid gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]" htmlFor="project-team">
+            Team
+          </label>
+          <select className="admin-input" id="project-team" onChange={(event) => setTeamId(event.target.value)} value={teamId}>
+            <option value="">Choose a team</option>
+            {teams.data?.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+          </select>
+        </div>
 
         <div className="flex justify-end gap-2 pt-1">
           <button className="admin-button admin-button-secondary" onClick={handleClose} type="button">
@@ -66,7 +73,7 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={!name.trim() || createProject.isPending || createTeam.isPending}
+            disabled={!name.trim() || !teamId || createProject.isPending}
             type="submit"
           >
             Create project

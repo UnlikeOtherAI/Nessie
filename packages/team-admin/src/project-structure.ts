@@ -33,6 +33,7 @@ import { defaultBoardCreateData } from './board-structure.js'
 export const projectCountsInclude = {
   members: { select: { userId: true, role: true } },
   teams: { select: { _count: { select: { channels: true } } } },
+  team: { select: { _count: { select: { channels: true } } } },
 } as const
 
 type ProjectWithCounts = {
@@ -44,6 +45,7 @@ type ProjectWithCounts = {
   createdAt: Date
   members: { userId: string; role: string }[]
   teams: { _count: { channels: number } }[]
+  team: { _count: { channels: number } } | null
 }
 
 export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => ({
@@ -53,8 +55,10 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
   avatarAttachmentId: project.avatarAttachmentId,
   organizationId: parseOrganizationId(project.organizationId),
   memberCount: project.members.length,
-  teamCount: project.teams.length,
-  channelCount: project.teams.reduce((total, team) => total + team._count.channels, 0),
+  teamCount: project.team ? 1 : project.teams.length,
+  channelCount: project.team
+    ? project.team._count.channels
+    : project.teams.reduce((total, team) => total + team._count.channels, 0),
   createdAt: project.createdAt.toISOString(),
 })
 
@@ -129,14 +133,19 @@ export const listTeamsForOrganization = async (
 ): Promise<(TeamRecord & { memberCount: number })[]> => {
   const teams = await prisma.team.findMany({
     where: {
-      project: { organizationId: input.organizationId },
       systemManaged: false,
-      ...(input.projectIds ? { projectId: { in: input.projectIds } } : {}),
+      OR: [
+        { project: { organizationId: input.organizationId } },
+        { projects: { some: { organizationId: input.organizationId } } },
+      ],
     },
-    include: { members: { select: { userId: true } } },
+    include: { members: { select: { userId: true } }, projects: { select: { id: true } } },
     orderBy: { createdAt: 'asc' },
   })
-  return teams.map((team) => ({
+  return teams.flatMap((team) => {
+    const projectId = team.projects[0]?.id ?? team.projectId
+    if (input.projectIds && !input.projectIds.includes(projectId)) return []
+    return [{
     callProvider: team.callProvider as TeamRecord['callProvider'],
     createdAt: team.createdAt.toISOString(),
     // UOA holds a bound team's name, so a rename here is relayed to UOA
@@ -146,8 +155,9 @@ export const listTeamsForOrganization = async (
     id: parseTeamId(team.id),
     memberCount: team.members.length,
     name: team.name,
-    projectId: parseProjectId(team.projectId),
-  }))
+    projectId: parseProjectId(projectId),
+    }]
+  })
 }
 
 export class ProjectValidationError extends Error {}
@@ -170,13 +180,22 @@ const requireName = (value: string | undefined, what: string): string => {
  */
 export const createProjectForUser = async (
   prisma: PrismaClient,
-  input: { name: string; organizationId: string; userId: string },
+  input: { name: string; organizationId: string; teamId: string; userId: string },
 ): Promise<ProjectRecord> => {
   const name = requireName(input.name, 'Project')
+  // The legacy Team.projectId still exists for rows that have not passed the
+  // audited inversion backfill. It establishes the team's tenant here; this
+  // write itself uses the canonical Project.teamId relation.
+  const team = await prisma.team.findFirst({
+    where: { id: input.teamId, project: { organizationId: input.organizationId } },
+    select: { id: true },
+  })
+  if (!team) throw new ProjectValidationError('Team not found in this organization')
   const project = await prisma.project.create({
     data: {
       name,
       organizationId: input.organizationId,
+      teamId: team.id,
       members: { create: { userId: input.userId, role: 'owner' } },
       boards: { create: defaultBoardCreateData(input.organizationId) },
     },

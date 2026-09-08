@@ -9,6 +9,13 @@ with it backwards, as `Organisation → Project → Team → Channel`.
 **The schema currently contradicts this document** (§"What the schema does
 today"). Write code and copy for the model below, not for the foreign key.
 
+The inversion is now in its **expand phase**: `Project.teamId` is written for
+new person-created projects, while `Team.projectId` remains only to read rows
+that have not passed the audited backfill. The backfill must run
+`scripts/inspect-team-shape.sql` first and halt for orphaned, multi-team, or
+inconsistent rows; it may never infer an owner from a name, current session,
+or creation time.
+
 ## The model
 
 UnlikeOtherAI (UOA), the SSO, owns two levels, and people are members of the

@@ -58,7 +58,7 @@ export const useCreateProject = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string }) =>
+    mutationFn: (input: { name: string; teamId: string }) =>
       apiClient.post<ProjectRecord>('/api/projects', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
