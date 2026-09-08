@@ -147,6 +147,20 @@ would exceed the **full** (100%) token limit, the call is never made and the run
 stops on the ordinary classified-stop path. This is the one boundary judged at
 100% rather than 90% — the reserve still belongs to the checkpoint.
 
+When a retained transcript leaves zero output tokens under that same gate, the
+loop makes one compaction attempt before stopping when the schemas leave some
+run allowance to recover. Its target is the smaller of the ordinary context
+target and half of the allowance left after schemas, reserving the other half
+for the recovered answer. This is a deterministic admission reservation, not a
+claim that half is universally optimal: the post-compaction admission still
+stops safely when the retained minimum cannot fit. This is one recovery attempt
+for the run, including after a crash and resume, tracked separately from normal
+context compaction. It does not compact when schemas alone exhaust the
+allowance, because compaction cannot reduce them and its utility call would
+only spend more of the run budget. The attempt is checkpointed before its
+utility call, then re-admitted after its own metered usage; it remains subject
+to the existing per-iteration cooldown and durable compaction-attempt state.
+
 The loop triggers its stop at **90%** of any effective dimension (or ≤1
 remaining iteration/tool call), reserving the last 10% to:
 

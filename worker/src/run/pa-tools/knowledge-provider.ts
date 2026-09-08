@@ -1,5 +1,6 @@
 import {
   createNativeKnowledgeProvider,
+  knowledgeEmbeddingJobKey,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import {
@@ -7,6 +8,7 @@ import {
   type KnowledgeInferenceOrigin,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../../queue.js'
+import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 const buildOrigin = (
@@ -49,6 +51,10 @@ export const createWorkerKnowledgeProvider = (
   context: BuiltinToolRuntimeContext,
 ): KnowledgeProvider =>
   createNativeKnowledgeProvider(context.prisma, {
+    readMarkdownAttachment: async (attachmentId, organizationId) => {
+      const opened = await fileServiceFor(context.prisma).openStream(attachmentId, organizationId)
+      return opened?.stream ?? null
+    },
     onVersionChunksReplaced: async (tx, event) => {
       const origin = buildOrigin(context)
       if (!origin) {
@@ -58,7 +64,11 @@ export const createWorkerKnowledgeProvider = (
         )
       }
       await enqueueQueueJob(tx, {
-        idempotencyKey: `kb-embed:${event.pageId}:${event.versionId}`,
+        idempotencyKey: knowledgeEmbeddingJobKey(
+          event.pageId,
+          event.versionId,
+          context.modelClient?.embeddingModel ?? 'unresolved',
+        ),
         payload: { ...event, origin },
         topic: KNOWLEDGE_EMBED_TOPIC,
       })

@@ -60,6 +60,8 @@ export type RecordedToolResult = {
  * ask the provider again.
  */
 export type LoopResumeState = {
+  /** The run-budget zero-output compaction recovery has already been spent. */
+  budgetRecoveryAttempted: boolean
   compactionAttempts: number
   compactionLastIteration: number | null
   /** A provider output-length response gets one no-tools finalisation turn per run. */

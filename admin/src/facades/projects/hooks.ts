@@ -9,12 +9,13 @@ import { teamKeys } from '../team/keys'
 import { projectKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export const useProjects = () => {
+export const useProjects = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<ProjectRecord[]>({
     queryKey: projectKeys.all,
     queryFn: () => apiClient.get('/api/projects'),
+    enabled,
     staleTime: Infinity,
   })
 }
@@ -58,10 +59,17 @@ export const useCreateProject = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string }) =>
+    mutationFn: (input: { name: string; teamId: string }) =>
       apiClient.post<ProjectRecord>('/api/projects', input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: projectKeys.all })
+    onSuccess: async () => {
+      // The sidebar resolves a project's explicit channel target from the
+      // team's canonical `projectIds`. Refresh both directories together so a
+      // second project created under one team never posts a channel without
+      // the team id the route requires.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectKeys.all }),
+        queryClient.invalidateQueries({ queryKey: teamKeys.all }),
+      ])
     },
   })
 }

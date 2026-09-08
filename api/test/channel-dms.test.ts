@@ -61,6 +61,7 @@ test('findOrCreateDmChannel creates a one-member self DM', async () => {
           id: channelId,
           label: args.create.label,
           organizationId,
+          project: { channelRoot: false, id: projectId, name: 'Default Project' },
           systemChannelType: null,
           team: {
             name: 'Default Team',
@@ -112,6 +113,7 @@ test('findOrCreateDmChannel migrates a legacy one-member self DM key', async () 
     label: 'Owner',
     organizationId,
     projectId,
+    project: { channelRoot: false, id: projectId, name: 'Default Project' },
     slug: null,
     systemChannelType: null,
     team: {
@@ -244,6 +246,7 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
           id: channelId,
           label: 'Planner',
           organizationId,
+          project: { channelRoot: false, id: projectId, name: 'Default Project' },
           slug: null,
           systemChannelType: null,
           team: {
@@ -267,6 +270,7 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
         id: channelId,
         label: 'Planner',
         organizationId,
+        project: { channelRoot: false, id: projectId, name: 'Default Project' },
         slug: null,
         systemChannelType: null,
         team: {
@@ -347,6 +351,7 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
           id: channelId,
           label: args.create.label,
           organizationId,
+          project: { channelRoot: false, id: projectId, name: 'Default Project' },
           slug: null,
           systemChannelType: null,
           team: {

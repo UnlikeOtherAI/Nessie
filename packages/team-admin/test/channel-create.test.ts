@@ -53,11 +53,11 @@ const createStandalonePrisma = (slugTaken = false) => {
           label: 'general',
           organizationId: IDS.organization,
           projectId: IDS.project,
+          project: { channelRoot: true, id: IDS.project, name: 'Standalone channels' },
           slug: 'general',
           systemChannelType: null,
           team: {
             name: 'Standalone channels',
-            project: { channelRoot: true, id: IDS.project, name: 'Standalone channels' },
           },
           teamId: IDS.team,
           type: 'standard',

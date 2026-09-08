@@ -8,6 +8,7 @@ import {
   buildUoaAssertedTeams,
   reconcileUoaMembershipProjection,
 } from '../src/services/uoa-roles.js'
+import { loadUserMemberships } from '../src/services/auth.js'
 
 /**
  * The revocation half of the membership projection (2026-09-05 API review,
@@ -32,7 +33,10 @@ type Seed = {
   localTeamId: string
   teamAId: string
   teamBId: string
+  canonicalProjectIds: string[]
+  legacyProjectId: string
   unboundOrgId: string
+  unboundProjectId: string
   unboundTeamId: string
   userId: string
 }
@@ -50,14 +54,11 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     data: { name: `unbound-${suffix}` },
   })
 
-  // Two UOA teams in the bound organisation, each with its own fabricated
-  // project (`createTeamEnvironment`'s shape), plus a purely local team beside
-  // them and a team in the unbound organisation.
-  const projectA = await prisma.project.create({
+  // Team A keeps its legacy project, while three more projects name it through
+  // Project.teamId. Team B's old project now belongs canonically to team A: a
+  // transitional Team.projectId must not make team B claim it.
+  const legacyProject = await prisma.project.create({
     data: { name: `a-${suffix}`, organizationId: boundOrg.id },
-  })
-  const projectB = await prisma.project.create({
-    data: { name: `b-${suffix}`, organizationId: boundOrg.id },
   })
   const unboundProject = await prisma.project.create({
     data: { name: `u-${suffix}`, organizationId: unboundOrg.id },
@@ -65,21 +66,25 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const teamA = await prisma.team.create({
     data: {
       name: `team-a-${suffix}`,
-      projectId: projectA.id,
+      projectId: legacyProject.id,
       externalOrgId,
       externalTeamId: `uoa-team-a-${suffix}`,
     },
   })
+  const canonicalProjects = await Promise.all(['b', 'c', 'd'].map((name) =>
+    prisma.project.create({
+      data: { name: `${name}-${suffix}`, organizationId: boundOrg.id, teamId: teamA.id },
+    })))
   const teamB = await prisma.team.create({
     data: {
       name: `team-b-${suffix}`,
-      projectId: projectB.id,
+      projectId: canonicalProjects[0]!.id,
       externalOrgId,
       externalTeamId: `uoa-team-b-${suffix}`,
     },
   })
   const localTeam = await prisma.team.create({
-    data: { name: `local-${suffix}`, projectId: projectA.id },
+    data: { name: `local-${suffix}`, projectId: legacyProject.id },
   })
   const unboundTeam = await prisma.team.create({
     data: { name: `unbound-team-${suffix}`, projectId: unboundProject.id },
@@ -90,7 +95,11 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
       data: { organizationId, role: 'member', userId: user.id },
     })
   }
-  for (const projectId of [projectA.id, projectB.id, unboundProject.id]) {
+  for (const projectId of [
+    legacyProject.id,
+    ...canonicalProjects.map((project) => project.id),
+    unboundProject.id,
+  ]) {
     await prisma.projectMember.create({
       data: { projectId, role: 'member', userId: user.id },
     })
@@ -107,7 +116,10 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     localTeamId: localTeam.id,
     teamAId: teamA.id,
     teamBId: teamB.id,
+    canonicalProjectIds: canonicalProjects.map((project) => project.id),
+    legacyProjectId: legacyProject.id,
     unboundOrgId: unboundOrg.id,
+    unboundProjectId: unboundProject.id,
     unboundTeamId: unboundTeam.id,
     userId: user.id,
   }
@@ -171,18 +183,47 @@ dbTest('a bound team UOA no longer asserts loses its membership row', async () =
       [seeded.teamAId, seeded.localTeamId, seeded.unboundTeamId].sort(),
       'the asserted team, the local team and the unbound organisation are untouched',
     )
-    // The project row is the team row's other half, so it follows it out —
-    // and the still-held team's project stays.
+    // Team B's old project is now one of team A's canonical projects, so it
+    // stays with every other project team A still owns.
     const projects = await prisma.projectMember.findMany({
       where: { userId: seeded.userId },
-      select: { project: { select: { organizationId: true } } },
+      select: { projectId: true },
     })
-    assert.equal(projects.length, 2)
+    assert.deepEqual(
+      new Set(projects.map((project) => project.projectId)),
+      new Set([
+        seeded.legacyProjectId,
+        ...seeded.canonicalProjectIds,
+        seeded.unboundProjectId,
+      ]),
+    )
     assert.deepEqual(result.deactivatedOrganizationIds, [])
     const membership = await prisma.organizationMember.findFirstOrThrow({
       where: { organizationId: seeded.boundOrgId, userId: seeded.userId },
     })
     assert.equal(membership.deactivatedAt, null)
+  })
+})
+
+dbTest('canonical ownership reaches every project and excludes a conflicting legacy team', async () => {
+  await withSeed(async (prisma, seeded) => {
+    const memberships = await loadUserMemberships(prisma, seeded.userId)
+    const bound = memberships.find((membership) => membership.organizationId === seeded.boundOrgId)
+    assert.ok(bound)
+
+    for (const projectId of seeded.canonicalProjectIds) {
+      const project = bound.projects.find((candidate) => candidate.projectId === projectId)
+      assert.ok(project, `project ${projectId} is visible`)
+      assert.deepEqual(
+        project.teams.map((team) => team.teamId),
+        [seeded.teamAId],
+        `project ${projectId} belongs only to its canonical team`,
+      )
+    }
+
+    const legacy = bound.projects.find((project) => project.projectId === seeded.legacyProjectId)
+    assert.ok(legacy)
+    assert.ok(legacy.teams.some((team) => team.teamId === seeded.teamAId))
   })
 })
 

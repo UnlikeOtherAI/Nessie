@@ -1,19 +1,17 @@
+import { Readable } from 'node:stream'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { attributionFromActorContext, recordStorageTransferUsage } from '@nessie/runtime'
 import type { FileService } from '@nessie/runtime'
+import {
+  isMarkdownAttachment,
+  MARKDOWN_IMPORT_MAX_BYTES,
+} from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { toAttachmentRecord } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import {
-  MARKDOWN_IMPORT_MAX_BYTES,
-  filenameToTitle,
-  isMarkdownFilename,
-  isMarkdownUpload,
-  markdownToHtml,
-  readStreamCapped,
-} from '../lib/markdown.js'
+import { readStreamCapped } from '../lib/markdown.js'
 import { ZIP_LIST_MAX_BYTES, listZipEntries, readZipEntryText } from '../lib/zip.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { KnowledgeFileRowError, storeFileWithRollback } from '../services/knowledge-file-store.js'
@@ -110,38 +108,66 @@ export const registerKnowledgeBaseFileRoutes = (
     const mime = file.mimetype || 'application/octet-stream'
     const filename = file.filename || 'upload.bin'
 
-    // Markdown is the KB's native document format: import it as a real document
-    // (rendered + editable) instead of an opaque file blob.
-    if (isMarkdownUpload(filename, mime)) {
+    // Markdown is a file document: bytes are its authority and the provider
+    // reads those stored bytes back through FileService to derive the rendered
+    // body/chunks in the same version write.
+    if (isMarkdownAttachment({ filename, mime })) {
       const buffer = await readStreamCapped(file.file, MARKDOWN_IMPORT_MAX_BYTES)
       if (!buffer) {
         sendApiError(reply, 413, 'FILE_TOO_LARGE', 'Markdown document exceeds the import limit')
         return reply
       }
+      const body = Readable.from([buffer]) as Readable & { truncated: boolean }
+      body.truncated = false
       try {
-        const page = await provider.createPage({
-          organizationId: actorContext.tenant.organizationId,
-          projectId: space.projectId,
-          spaceId,
-          kind: 'document',
-          title: query.title ?? filenameToTitle(filename),
-          parentPageId: query.parentPageId ?? null,
-          body: markdownToHtml(buffer.toString('utf8')),
-          authorId: actorContext.actor.actorId,
-          authorType: actorAuthorType(actorContext),
-          createdBy: actorContext.actor.actorId,
-        })
+        const outcome = await storeFileWithRollback(
+          fileService,
+          {
+            attribution: attributionFromActorContext(actorContext),
+            body,
+            filename,
+            mime,
+            organizationId: actorContext.tenant.organizationId,
+            scope: { projectId: space.projectId, teamId: space.teamId, spaceId: space.id },
+            uploaderId: actorContext.actor.actorId,
+          },
+          (attachmentId) => provider.createPage({
+            attachmentId,
+            authorId: actorContext.actor.actorId,
+            authorType: actorAuthorType(actorContext),
+            createdBy: actorContext.actor.actorId,
+            kind: 'file',
+            organizationId: actorContext.tenant.organizationId,
+            parentPageId: query.parentPageId ?? null,
+            projectId: space.projectId,
+            spaceId,
+            title: query.title ?? filename,
+          }),
+        )
+        if (outcome.kind === 'truncated') {
+          sendApiError(reply, 413, 'FILE_TOO_LARGE', 'Markdown document exceeds the import limit')
+          return reply
+        }
+        const page = outcome.row
         await emitAuditEvent(prisma, {
           actorContext,
           action: 'kb.page.created',
           resourceType: 'knowledge_page',
           resourceId: page.id,
           outcome: 'success',
-          metadata: { spaceId, title: page.title, kind: 'document', importedFrom: 'markdown' },
+          metadata: { spaceId, title: page.title, kind: 'file', importedFrom: 'markdown' },
           ...requestIds(request),
         })
         return reply.code(201).send(createApiResponse(attachPageEnvelope(page, decision)))
       } catch (error) {
+        if (error instanceof KnowledgeFileRowError) {
+          return sendKnowledgeMutationError(request, reply, error.cause, {
+            code: 'KNOWLEDGE_PAGE_INVALID',
+            message: 'Markdown document could not be created',
+            statusCode: 400,
+          })
+        }
+        if (sendFileServiceError(reply, error)) return reply
         return sendKnowledgeMutationError(request, reply, error, {
           code: 'KNOWLEDGE_PAGE_INVALID',
           message: 'Markdown document could not be created',
@@ -233,8 +259,29 @@ export const registerKnowledgeBaseFileRoutes = (
 
     const file = await requireFilePart(request, reply)
     if (!file) return reply
+    const baseVersionField = file.fields.baseVersionId
+    const baseVersionValue = !Array.isArray(baseVersionField)
+      && baseVersionField
+      && 'value' in baseVersionField
+      ? baseVersionField.value
+      : undefined
+    const expectedLatestVersionId = z.string().uuid().optional().safeParse(baseVersionValue)
+    if (!expectedLatestVersionId.success) {
+      return sendApiError(reply, 400, 'INVALID_BASE_VERSION', 'baseVersionId must be a UUID')
+    }
     const mime = file.mimetype || 'application/octet-stream'
     const filename = file.filename || 'upload.bin'
+    const markdownUpload = isMarkdownAttachment({ filename, mime })
+    const markdownBuffer = markdownUpload
+      ? await readStreamCapped(file.file, MARKDOWN_IMPORT_MAX_BYTES)
+      : null
+    if (markdownUpload && !markdownBuffer) {
+      sendApiError(reply, 413, 'FILE_TOO_LARGE', 'Markdown document exceeds the import limit')
+      return reply
+    }
+    const body = markdownBuffer
+      ? Object.assign(Readable.from([markdownBuffer]), { truncated: false })
+      : file.file
 
     // `addFileVersion` returning null (the page vanished between the read
     // above and now) is not a validation fault; it is wrapped so it reaches
@@ -251,7 +298,7 @@ export const registerKnowledgeBaseFileRoutes = (
           uploaderId: actorContext.actor.actorId,
           filename,
           mime,
-          body: file.file,
+          body,
           scope: { projectId: page.projectId, teamId: page.teamId, spaceId: page.spaceId },
         },
         async (attachmentId) => {
@@ -261,6 +308,7 @@ export const registerKnowledgeBaseFileRoutes = (
             attachmentId,
             authorId: actorContext.actor.actorId,
             authorType: actorAuthorType(actorContext),
+            expectedLatestVersionId: expectedLatestVersionId.data,
           })
           if (!version) throw new FileVersionPageNotFound()
           return version
@@ -270,6 +318,12 @@ export const registerKnowledgeBaseFileRoutes = (
       if (error instanceof KnowledgeFileRowError) {
         if (error.cause instanceof FileVersionPageNotFound) {
           return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+        }
+        if (
+          error.cause instanceof Error
+          && error.cause.message === 'The file changed after this Markdown editor opened'
+        ) {
+          return sendApiError(reply, 409, 'KNOWLEDGE_FILE_VERSION_CONFLICT', error.cause.message)
         }
         return sendKnowledgeMutationError(request, reply, error.cause, {
           code: 'KNOWLEDGE_PAGE_INVALID',
@@ -286,86 +340,17 @@ export const registerKnowledgeBaseFileRoutes = (
       return reply
     }
     const { attachmentId, row: version } = outcome
-    await enqueueKnowledgeExtract(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      pageId,
-      versionId: version.id,
-      attachmentId,
-      filename,
-      mime,
-    })
+    if (!markdownUpload) {
+      await enqueueKnowledgeExtract(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        pageId,
+        versionId: version.id,
+        attachmentId,
+        filename,
+        mime,
+      })
+    }
     return reply.code(201).send(createApiResponse(version))
-  })
-
-  // ─── Convert a markdown file node into a native document ──────────────────
-  app.post('/api/knowledge-base/pages/:pageId/convert-to-document', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
-    if (!decision) return reply
-    const { pageId } = request.params as { pageId: string }
-    const org = actorContext.tenant.organizationId
-    const page = await provider.getPage(org, pageId)
-    if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
-    if (page.kind !== 'file') {
-      return sendApiError(reply, 400, 'NOT_A_FILE_NODE', 'Page is not a file node')
-    }
-    if (!isMarkdownFilename(page.title)) {
-      return sendApiError(reply, 400, 'NOT_MARKDOWN', 'Only markdown files can become documents')
-    }
-    const viewer = await buildViewer(actorContext)
-    if (!(await accessPageSpace(actorContext, page, viewer, 'write', reply))) return reply
-
-    const version = await prisma.knowledgePageVersion.findFirst({
-      where: { pageId },
-      orderBy: { versionNumber: 'desc' },
-      select: { attachmentId: true },
-    })
-    if (!version?.attachmentId) {
-      return sendApiError(reply, 400, 'VERSION_FILE_NOT_FOUND', 'File has no content to convert')
-    }
-    const opened = await fileService.openStream(version.attachmentId, org)
-    if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'File bytes not found')
-    const buffer = await readStreamCapped(opened.stream, MARKDOWN_IMPORT_MAX_BYTES)
-    if (!buffer) {
-      return sendApiError(reply, 413, 'FILE_TOO_LARGE', 'Markdown document exceeds the import limit')
-    }
-
-    try {
-      const updated = await provider.updatePage(pageId, {
-        body: markdownToHtml(buffer.toString('utf8')),
-        organizationId: org,
-        authorId: actorContext.actor.actorId,
-        authorType: actorAuthorType(actorContext),
-      })
-      if (!updated) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
-      // Flip the node to a document; the original file blob is no longer needed.
-      await prisma.knowledgePage.update({ where: { id: pageId }, data: { kind: 'document' } })
-      await fileService
-        .delete(version.attachmentId, org, attributionFromActorContext(actorContext), {
-          projectId: page.projectId,
-          teamId: page.teamId,
-          spaceId: page.spaceId,
-        })
-        .catch(() => undefined)
-      await emitAuditEvent(prisma, {
-        actorContext,
-        action: 'kb.page.updated',
-        resourceType: 'knowledge_page',
-        resourceId: pageId,
-        outcome: 'success',
-        metadata: { convertedFrom: 'file', importedFrom: 'markdown' },
-        ...requestIds(request),
-      })
-      const finalPage = (await provider.getPage(org, pageId)) ?? updated
-      return createApiResponse(attachPageEnvelope(finalPage, decision))
-    } catch (error) {
-      return sendKnowledgeMutationError(request, reply, error, {
-        code: 'KNOWLEDGE_PAGE_INVALID',
-        message: 'File could not be converted to a document',
-        statusCode: 400,
-      })
-    }
   })
 
   // ─── Download a specific version's file ───────────────────────────────────

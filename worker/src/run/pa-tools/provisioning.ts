@@ -63,34 +63,10 @@ const describeChannel = (channel: ChannelRecord): string =>
 
 const ChannelCreateInputSchema = z.object({
   label: z.string().min(1, 'label is required.'),
-  teamId: z.string().uuid().optional(),
+  projectId: z.string().uuid(),
+  teamId: z.string().uuid(),
   visibility: z.enum(['public', 'protected', 'private']).optional(),
 })
-
-/**
- * The team a new channel lands in. The route falls back through the session's
- * tenant/action team; a run has no session, so its last resort is the team of
- * the channel the conversation is happening in — never an invented default.
- */
-const resolveTeamId = async (
-  context: BuiltinToolRuntimeContext,
-  requested: string | undefined,
-): Promise<string> => {
-  const fromContext =
-    requested
-    ?? context.actorContext.tenant.teamId
-    ?? context.actorContext.actionContext.teamId
-  if (fromContext) return fromContext
-
-  const channel = await context.prisma.channel.findUnique({
-    where: { id: context.channel.id },
-    select: { teamId: true },
-  })
-  if (!channel) {
-    throw new Error('Could not work out which team this channel should belong to.')
-  }
-  return channel.teamId
-}
 
 /**
  * The visibility a channel lands on when the model named none.
@@ -118,14 +94,14 @@ export const runChannelCreateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = ChannelCreateInputSchema.parse(input)
   const member = await resolveActingMember(context)
-  const teamId = await resolveTeamId(context, args.teamId)
 
   // An invalid name and a taken slug both throw messages written for a person
   // (the route turns them into 400/409), so they travel to the model as they are.
   const channel = await createChannelForUser(context.prisma, {
     label: args.label,
     organizationId: member.organizationId,
-    teamId,
+    projectId: args.projectId,
+    teamId: args.teamId,
     userId: member.userId,
     visibility: resolveNewChannelVisibility(context, args.visibility),
   })

@@ -77,14 +77,12 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const teamId =
-      body.teamId
-      ?? actorContext.tenant.teamId
-      ?? actorContext.actionContext.teamId
+    const teamId = body.teamId
+    const projectId = body.projectId
     const placement = body.scope === 'standalone'
       ? { scope: 'standalone' as const }
-      : teamId
-        ? { teamId }
+      : teamId && projectId
+        ? { projectId, teamId }
         : null
     if (!placement) {
       sendApiError(reply, 400, 'CHANNEL_TEAM_CONTEXT_REQUIRED', TEAM_CONTEXT_REQUIRED)

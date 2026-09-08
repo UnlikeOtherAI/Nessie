@@ -42,6 +42,7 @@ export const mapVersion = (
         body: version.body,
         bodyRef: version.bodyRef,
         attachmentId: version.attachmentId,
+        sourceContentHash: version.sourceContentHash,
         authorType: version.authorType,
         authorId: version.authorId,
         changeComment: version.changeComment,

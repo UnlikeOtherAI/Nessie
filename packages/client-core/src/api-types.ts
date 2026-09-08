@@ -115,6 +115,7 @@ export type TeamRecord = {
   memberCount: number
   name: string
   projectId: string
+  projectIds?: string[]
 }
 
 export type CallParticipantRecord = {

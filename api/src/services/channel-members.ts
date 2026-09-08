@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { canManageChannel, loadChannelTeamProject } from '@nessie/team-admin'
+import { canManageChannel, loadTeamProjectScope } from '@nessie/team-admin'
 
 import { emitAuditEvent } from './audit.js'
 
@@ -176,4 +176,4 @@ export const validateTenantHierarchy = async (
   organizationId: string,
   teamId: string,
 ): Promise<boolean> =>
-  (await loadChannelTeamProject(prisma, { organizationId, teamId })) !== null
+  (await loadTeamProjectScope(prisma, { organizationId, teamId })) !== null
