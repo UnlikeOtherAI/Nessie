@@ -37,8 +37,11 @@ import { readFocusComposerIntent } from '../components/features/agents/conversat
 import {
   availableChatTools,
   parseOpenChatTool,
+  resolveChatToolAgents,
+  writeOpenChatTool,
   type ChatToolId,
 } from '../components/features/channels/tool-rail/chat-tools'
+import { useChatToolAgent } from '../components/features/channels/tool-rail/useChatToolAgent'
 import { useChatToolRail } from '../components/features/channels/tool-rail/useChatToolRail'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { ChannelConversationSurface } from './channels/ChannelConversationSurface'
@@ -115,6 +118,16 @@ export const ChannelsPage = () => {
   // only when one is open. A General thread is the room and needs no read.
   const conversationQuery = useConversation(inConversation ? threadId : undefined)
   const conversationRecord = conversationQuery.data ?? null
+  // The agent this conversation is *with*, resolved from the record's id. The
+  // placeable-agent list answers for every ordinary and global agent; the
+  // Personal Assistant is absent from it (it is system-managed), so its own
+  // facade answers for its DM — the same two sources `conversationAgent` uses.
+  const conversationThreadAgent = inConversation && conversationRecord
+    ? agentMap.get(conversationRecord.agentId)
+      ?? (personalAssistantState?.agent?.id === conversationRecord.agentId
+        ? personalAssistantState.agent
+        : null)
+    : null
   const conversationHeader = inConversation && conversationRecord
     ? {
         eyebrow: conversationRoomEyebrow(conversationRecord.channel),
@@ -183,7 +196,28 @@ export const ChannelsPage = () => {
   // doorway is the conversation info screen, which pushes a real screen, so
   // the tool is a route there and Back, deep links and the phone stack all
   // resolve without this page having to hold state across a pop.
-  const toolRail = useChatToolRail(conversationAgent?.id ?? null, { remember: !phoneLayout })
+  // Whose tools the rail offers. A set, and derived structurally: inside a
+  // conversation it is that thread's own agent; in a DM the one agent it is
+  // with; in an ordinary room every agent bound to it — which is the case that
+  // had no doorway at all, even though `GET /api/agents/:id/conversations`
+  // lists that very room for the same person.
+  const chatToolAgents = useMemo(
+    () => resolveChatToolAgents({
+      boundAgents,
+      conversationAgent,
+      conversationThreadAgent,
+      inConversation,
+    }),
+    [boundAgents, conversationAgent, conversationThreadAgent, inConversation],
+  )
+  // Which of them the column is about, remembered per room. The rail's own
+  // state is keyed on the selection, so switching agents inside a room opens
+  // that agent's remembered tool rather than the previous agent's.
+  const { selectAgent, selectedAgent } = useChatToolAgent(
+    activeChannel?.id ?? null,
+    chatToolAgents,
+  )
+  const toolRail = useChatToolRail(selectedAgent?.id ?? null, { remember: !phoneLayout })
   const routeTool = parseOpenChatTool(toolId ?? null)
   const openTool = routeTool ?? toolRail.openTool
   const conversationPath = `/channels/${activeChannel?.id ?? ''}`
@@ -205,6 +239,14 @@ export const ChannelsPage = () => {
   // conversation header and the info screen's list — call this rather than
   // building a destination of their own, so the two can never come to disagree
   // about what "open the browser" means.
+  // Picking another of the room's agents is a change of subject, not a change
+  // of column. The rail's open tool is held per agent, so without carrying it
+  // over the panel would close under the person who just pressed it — and
+  // reopening it is not what "show me the Editor's conversations" asked for.
+  const selectChatToolAgent = useCallback((agentId: string) => {
+    if (!phoneLayout && openTool !== null) writeOpenChatTool(agentId, openTool)
+    selectAgent(agentId)
+  }, [openTool, phoneLayout, selectAgent])
   const openToolScreen = useCallback((tool: ChatToolId) => {
     if (activeChannel) void navigate(`/channels/${activeChannel.id}/tools/${tool}`)
   }, [activeChannel, navigate])
@@ -215,8 +257,8 @@ export const ChannelsPage = () => {
     !isPersonalAssistantConversation && channelUsers.length >= 2
   // In a conversation the message reaches exactly one agent — that is what a
   // conversation is — so the placeholder names it rather than the room.
-  const composePlaceholder = inConversation && conversationAgent
-    ? `Message ${conversationAgent.name}`
+  const composePlaceholder = inConversation && conversationThreadAgent
+    ? `Message ${conversationThreadAgent.name}`
     : isPersonalAssistantConversation
       ? 'Message Personal Assistant'
       : activeChannel?.type === 'dm'
@@ -551,6 +593,7 @@ export const ChannelsPage = () => {
         }}
         agentTabAvailable={agentTabAvailable}
         agentsTabAvailable={agentsTabAvailable}
+        chatToolAgents={chatToolAgents}
         conversationAgent={conversationAgent}
         conversationRename={conversationRename}
         deepWaterLauncher={deepWaterLauncher}
@@ -706,16 +749,18 @@ export const ChannelsPage = () => {
         onSelectAgent={onSelectAgent}
         onSendAsFile={sendAsFile}
       />
-      {conversationAgent ? (
+      {selectedAgent ? (
         <ChatToolDock
           activeChannelId={activeChannel?.id ?? null}
           activeThreadId={activeThreadId ?? null}
-          agent={conversationAgent}
+          agents={chatToolAgents}
           onClose={closeTool}
+          onSelectAgent={selectChatToolAgent}
           onToggle={toggleTool}
           openTool={openTool}
           otherPanelOpen={Boolean(replyThread.openRootMessageId) || Boolean(dashboardId)}
           routed={routeTool !== null}
+          selectedAgent={selectedAgent}
           threadId={browserThreadId ?? null}
         />
       ) : null}
@@ -726,7 +771,7 @@ export const ChannelsPage = () => {
           allUsers={allUsers}
           canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
-          agentTools={availableChatTools(conversationAgent)}
+          agentTools={availableChatTools(chatToolAgents)}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
           onOpenTool={openToolScreen}

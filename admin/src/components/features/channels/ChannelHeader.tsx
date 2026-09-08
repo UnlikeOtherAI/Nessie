@@ -28,10 +28,12 @@ interface ChannelHeaderProps {
   callStarting: boolean
   channelUsers: UserRecord[]
   /**
-   * The one agent this conversation is with, when it has one. Its tools reach
-   * the header on a layout with no rail beside the chat to hold them.
+   * The agents whose tools this room offers (`resolveChatToolAgents`) — the
+   * thread's own agent inside a conversation, the subject of a DM, or every
+   * agent bound to an ordinary room. They reach the header on a layout with no
+   * rail beside the chat to hold them.
    */
-  conversationAgent: AgentRecord | null
+  chatToolAgents: readonly AgentRecord[]
   /**
    * The conversation on screen when it is *not* the room's General thread: its
    * own title becomes the heading and the room drops to the eyebrow, because a
@@ -84,8 +86,8 @@ export const ChannelHeader = ({
   callMeetingUri,
   callStarting,
   channelUsers,
+  chatToolAgents,
   conversation,
-  conversationAgent,
   conversationRename,
   externalAgentIdentity,
   isExternalAgentConversation,
@@ -180,7 +182,7 @@ export const ChannelHeader = ({
     // (Join is a public channel, which has no single conversation agent), the
     // iOS bar's one inline slot still goes to Join.
     ...chatToolHeaderActions({
-      agent: conversationAgent,
+      agents: chatToolAgents,
       onOpenTool: onOpenChatTool,
       single,
     }),

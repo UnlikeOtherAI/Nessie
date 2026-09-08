@@ -11,6 +11,7 @@ import { PhoneBackButton } from '../../../../navigation/PhoneBackButton'
 import { useNativeBarHeader } from '../../../../navigation/useNativeBarHeader'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { Notice } from '../../../primitives/Notice'
+import { TabBar } from '../../../primitives/TabBar'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { SidePanelShell } from '../../channels/side-panel/SidePanelShell'
 import { THREAD_PANEL_WIDTH_STORAGE_KEY } from '../../channels/thread-panel/thread-panel-layout'
@@ -25,13 +26,28 @@ import { focusComposerState } from './conversation-intent'
  */
 const CONVERSATIONS_PANEL_WIDTH_STORAGE_KEY = 'nessie.agentConversationsPanelWidth'
 
+/**
+ * The agent avatar inside a `sm` strip item (26px tall): large enough to be a
+ * portrait rather than a dot, with the 4px of breathing room the item's own
+ * padding does not give it.
+ */
+const STRIP_AVATAR_PX = 18
+
 type AgentConversationsPanelProps = {
+  /** Whose conversations the column is showing — one of `agents`. */
   agent: AgentRecord
+  /**
+   * Every agent this room's rail names. One of them renders exactly as before;
+   * several put a strip under the header so the column can be pointed at any
+   * of them without leaving the room.
+   */
+  agents: readonly AgentRecord[]
   /** The room the reader is standing in — where a new conversation is started. */
   activeChannelId: string | null
   /** The conversation on screen, marked in the list. */
   activeThreadId: string | null
   onClose: () => void
+  onSelectAgent: (agentId: string) => void
 }
 
 /**
@@ -46,12 +62,20 @@ type AgentConversationsPanelProps = {
  * second, isolated conversation with the same agent is started. It is created
  * empty, in the room the reader is already in, and the caret lands in its
  * composer.
+ *
+ * In a room with several agents the column is about one of them at a time. The
+ * strip that says which is `TabBar`, the admin's one single-select strip, so it
+ * collapses into a dropdown in a narrow column instead of scrolling its own
+ * options out of sight — and everything below it (the list, the new
+ * conversation, the panel's accessible name) follows the selection.
  */
 export const AgentConversationsPanel = ({
   activeChannelId,
   activeThreadId,
   agent,
+  agents,
   onClose,
+  onSelectAgent,
 }: AgentConversationsPanelProps) => {
   const navigate = useNavigate()
   const { token } = useAuthSession()
@@ -139,6 +163,27 @@ export const AgentConversationsPanel = ({
           )}
         </header>
       )}
+      {agents.length > 1 ? (
+        <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-3 py-2">
+          <TabBar
+            ariaLabel="Agent"
+            items={agents.map((candidate) => ({
+              icon: (
+                <AgentAvatar agent={candidate} size={STRIP_AVATAR_PX} token={token} />
+              ),
+              label: candidate.name,
+              testId: `chat-tool-agent-${candidate.id}`,
+              value: candidate.id,
+            }))}
+            onChange={onSelectAgent}
+            // It narrows the list under it rather than switching between
+            // panels, so it announces as a set of choices, not as tabs.
+            role="radiogroup"
+            size="sm"
+            value={agent.id}
+          />
+        </div>
+      ) : null}
       <div className="flex-shrink-0 border-b border-[color:var(--sep)] p-3">
         <button
           className="admin-button admin-button-primary w-full"

@@ -70,6 +70,10 @@ interface ChannelConversationSurfaceProps {
   // The single agent a direct conversation is with, when there is one. Its
   // To-dos and Triggers sections hang off it.
   conversationAgent: AgentRecord | null
+  // The agents whose tools this room offers — a set, because an ordinary room
+  // an agent works in has a conversations doorway too. Deliberately not
+  // `conversationAgent`: the sections above need one subject, the tools do not.
+  chatToolAgents: readonly AgentRecord[]
   callEligible: boolean
   callStarting: boolean
   voiceCallActive: boolean
@@ -132,7 +136,7 @@ interface ChannelConversationSurfaceProps {
   >
   me: MeResponse
   onCallButton: () => void
-  /** Opens one of `conversationAgent`'s tools; the page owns the route. */
+  /** Opens one of `chatToolAgents`' tools; the page owns the route. */
   onOpenChatTool: (tool: ChatToolId) => void
   onCreateAgent: () => void
   onJoin: () => void
@@ -176,6 +180,7 @@ export const ChannelConversationSurface = ({
   channelLiveness,
   channelUsers,
   chatDrop,
+  chatToolAgents,
   composePlaceholder,
   composer,
   conversationAgent,
@@ -278,7 +283,7 @@ export const ChannelConversationSurface = ({
         joinPending={joinPending}
         searchOpen={search.searchOpen}
         titleFavorite={titleFavorite}
-        conversationAgent={conversationAgent}
+        chatToolAgents={chatToolAgents}
         conversationRename={conversationRename}
         onCallButton={onCallButton}
         onOpenChatTool={onOpenChatTool}

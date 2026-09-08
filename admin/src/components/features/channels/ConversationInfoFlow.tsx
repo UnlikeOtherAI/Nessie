@@ -20,10 +20,11 @@ type ConversationInfoFlowProps = {
   canAddPeople: boolean
   channelUsers: UserRecord[]
   /**
-   * The tools this conversation's agent actually has (`availableChatTools`),
-   * or empty where the conversation has no single agent. A list rather than a
-   * flag: an agent with conversations but no browser must be offered the one
-   * it has and not the one it does not.
+   * The tools this room's agents actually have (`availableChatTools`), or empty
+   * where no agent works here. A list rather than a flag: an agent with
+   * conversations but no browser must be offered the one it has and not the
+   * one it does not, and a room with several agents has conversations but no
+   * one browser to name.
    */
   agentTools: readonly ChatTool[]
   me: MeResponse
