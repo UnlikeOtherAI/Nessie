@@ -7,6 +7,7 @@ import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { Input, Select } from '../../shared/FormControls'
 import { PaginationFooter } from '../../shared/PaginationFooter'
+import { QueryState } from '../../shared/QueryState'
 import { useFormSubmit } from '../../../facades/forms/form-errors'
 import {
   useAddTeamMember,
@@ -27,7 +28,7 @@ type MemberInvitationDialogProps = {
 
 /** One invite dialog for both roster scopes; only teams can add an existing person. */
 export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitationDialogProps) => {
-  const { token } = useAuthSession()
+  const { me, token } = useAuthSession()
   const [, setSearchParams] = useSearchParams()
   const invite = useInviteMember(scope)
   const addMember = useAddTeamMember()
@@ -60,6 +61,9 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   useEffect(() => {
     if (!open) return
     setTargetError(null)
+    setEmail('')
+    setName('')
+    setTargetId('')
     resetInviteForm()
     resetAddCandidateForm()
     setCandidateQuery('')
@@ -111,7 +115,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
           someone, so the answer is offered here rather than only on a tab they
           would have to already know about.
         */}
-        <p className="text-xs text-[color:var(--tx3)]">
+        {me?.features?.automaticMembership === true ? <p className="text-xs text-[color:var(--tx3)]">
           Adding lots of people from one company?{' '}
           <button
             className="underline underline-offset-2"
@@ -128,7 +132,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             Set up automatic team access
           </button>{' '}
           instead.
-        </p>
+        </p> : null}
         {scope === 'team' ? (
           <TabBar
             ariaLabel="Invitation method"
@@ -154,17 +158,20 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               placeholder="Start typing a name"
               value={candidateQuery}
             />
-            {candidateQuery.trim() && candidates.isLoading ? (
-              <p className="text-sm text-[color:var(--tx3)]">Searching members…</p>
-            ) : null}
-            {candidateQuery.trim() && !candidates.isLoading && candidateItems.length === 0 ? (
-              <p className="text-sm text-[color:var(--tx3)]">No eligible members found.</p>
-            ) : null}
+            {debouncedCandidateQuery.trim() ? <QueryState
+              className="py-2"
+              emptyLabel="No eligible members found."
+              errorLabel="Members could not be searched."
+              isEmpty={candidateItems.length === 0}
+              loadingLabel="Searching members…"
+              query={candidates}
+            >
+            {() => (
             <div className="divide-y divide-[color:var(--sep)]">
               {candidateItems.map((candidate) => (
                 <button
                   className="flex w-full items-center gap-3 py-3 text-left hover:bg-[color:var(--main-hover)]"
-                  disabled={busy}
+                  disabled={busy || candidates.data?.data.permissions.addMember !== true}
                   key={candidate.uoaSub}
                   onClick={() => void addCandidate(candidate.uoaSub)}
                   type="button"
@@ -185,6 +192,8 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                 </button>
               ))}
             </div>
+            )}
+            </QueryState> : null}
             <FormError>{addCandidateForm.formError}</FormError>
           </div>
         ) : (
@@ -194,10 +203,13 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                 <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-team">
                   Workspace
                 </label>
-                <Select id="invite-team" onChange={(event) => setTargetId(event.target.value)} value={targetId}>
+                <QueryState className="py-2" errorLabel="Teams could not be loaded."
+                  loadingLabel="Loading teams…" query={targets.query}>
+                {() => <Select disabled={busy} id="invite-team" onChange={(event) => setTargetId(event.target.value)} value={targetId}>
                   <option value="">Choose a workspace</option>
                   {targetItems.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}
-                </Select>
+                </Select>}
+                </QueryState>
                 <PaginationFooter
                   canNext={targets.canNext}
                   canPrevious={targets.canPrevious}
@@ -230,7 +242,10 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             <FormError>{targetError ?? inviteForm.formError}</FormError>
             <FormActions>
               <button className="admin-button admin-button-secondary" disabled={busy} onClick={onClose} type="button">Cancel</button>
-              <button className="admin-button admin-button-primary" disabled={busy} type="submit">Send invitation</button>
+              <button className="admin-button admin-button-primary"
+                disabled={busy || (scope === 'organization' && (targets.query.isError
+                  || targets.query.data?.data.permissions.createInvitation !== true))}
+                type="submit">Send invitation</button>
             </FormActions>
           </form>
         )}

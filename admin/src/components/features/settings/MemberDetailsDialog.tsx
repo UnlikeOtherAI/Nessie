@@ -3,6 +3,8 @@ import type { MemberRosterPermissions, TeamMemberRecord } from '@nessie/schemas'
 
 import { Checkbox } from '../../primitives/Checkbox'
 import { Dialog } from '../../shared/Dialog'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
+import { QueryState } from '../../shared/QueryState'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { Select } from '../../shared/FormControls'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
@@ -12,6 +14,7 @@ import {
   useUpdateTeamMemberRole,
   type MemberRosterScope,
 } from '../../../facades/users/member-roster'
+import { useRemoveTeamMember, useSetTeamMemberActivation } from '../../../facades/users/team-members'
 
 type MemberDetailsDialogProps = {
   member: TeamMemberRecord | null
@@ -36,6 +39,9 @@ export const MemberDetailsDialog = ({
 }: MemberDetailsDialogProps) => {
   const roleMutation = useUpdateTeamMemberRole()
   const teamMutation = useUpdateMemberTeamAccess()
+  const removeMutation = useRemoveTeamMember()
+  const activationMutation = useSetTeamMemberActivation()
+  const [action, setAction] = useState<'remove' | 'deactivate' | 'reactivate' | null>(null)
   const teamAccess = useMemberTeamAccess(
     member?.uoaSub ?? null,
     open && scope === 'organization' && member !== null,
@@ -56,13 +62,15 @@ export const MemberDetailsDialog = ({
       : options
   }, [member?.teamRole, permissions?.teamRoleOptions])
   const canChangeRole = permissions?.changeMemberRole === true && roleOptions.length > 0
-  const canChangeTeams = teamAccess.data?.data.permissions.changeTeamAccess === true
+  const canChangeTeams = !teamAccess.isError && teamAccess.data?.data.permissions.changeTeamAccess === true
   const busy = roleMutation.isPending || teamMutation.isPending
+    || removeMutation.isPending || activationMutation.isPending
 
   useEffect(() => {
     setError(null)
+    setAction(null)
     setRole(member?.teamRole ?? '')
-  }, [member?.teamRole, member?.uoaSub])
+  }, [member?.teamRole, member?.uoaSub, open])
 
   useEffect(() => {
     setTeamIds(initialTeamIds)
@@ -91,11 +99,26 @@ export const MemberDetailsDialog = ({
   }
 
   const name = member?.displayName ?? member?.email ?? 'Member'
+  const actionLabel = action === 'remove' ? 'Remove from team'
+    : action === 'deactivate' ? 'Deactivate in organization' : 'Reactivate in organization'
+  const changeMembership = async () => {
+    if (!member || !action) return
+    setError(null)
+    try {
+      if (action === 'remove') await removeMutation.mutateAsync({ uoaSub: member.uoaSub })
+      else await activationMutation.mutateAsync({ uoaSub: member.uoaSub, deactivated: action === 'deactivate' })
+      setAction(null)
+      onClose()
+    } catch (caught) {
+      setError(formErrorMessage(caught, 'Unable to change member access.'))
+    }
+  }
   const hasChanges = scope === 'team'
     ? role !== (member?.teamRole ?? '')
     : !sameIds(teamIds, initialTeamIds)
 
   return (
+    <>
     <Dialog
       description={scope === 'team'
         ? 'Change this member’s role in the current team.'
@@ -129,11 +152,15 @@ export const MemberDetailsDialog = ({
               <p className="text-sm font-medium text-[color:var(--tx)]">Team access</p>
               <p className="text-xs text-[color:var(--tx3)]">Only teams you can manage are shown.</p>
             </div>
-            {teamAccess.isLoading ? <p className="text-sm text-[color:var(--tx3)]">Loading teams…</p> : null}
-            {!teamAccess.isLoading && teams.length === 0 ? (
-              <p className="text-sm text-[color:var(--tx3)]">No editable team access is available.</p>
-            ) : null}
-            <div className="grid max-h-64 gap-1 overflow-y-auto rounded-lg border border-[color:var(--sep)] p-2">
+            <QueryState
+              className="py-2"
+              emptyLabel="No editable team access is available."
+              errorLabel="Team access could not be loaded."
+              isEmpty={teams.length === 0}
+              loadingLabel="Loading teams…"
+              query={teamAccess}
+            >
+            {() => <div className="grid max-h-64 gap-1 overflow-y-auto">
               {teams.map((team) => (
                 <div className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]" key={team.id}>
                   <Checkbox
@@ -144,7 +171,8 @@ export const MemberDetailsDialog = ({
                   />
                 </div>
               ))}
-            </div>
+            </div>}
+            </QueryState>
             {!teamAccess.isLoading && !canChangeTeams && teams.length > 0 ? (
               <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change this access.</p>
             ) : null}
@@ -152,6 +180,23 @@ export const MemberDetailsDialog = ({
         )}
 
         <FormError>{error}</FormError>
+        {scope === 'team' ? (
+          <div className="flex flex-wrap gap-2">
+            {permissions?.removeMember === true ? (
+              <button className="admin-button admin-button-danger" disabled={busy}
+                onClick={() => { setError(null); setAction('remove') }} type="button">
+                Remove from team
+              </button>
+            ) : null}
+            {(member?.status === 'DEACTIVATED' ? permissions?.reactivateMember : permissions?.deactivateMember) === true ? (
+              <button className="admin-button admin-button-secondary" disabled={busy}
+                onClick={() => { setError(null); setAction(member?.status === 'DEACTIVATED' ? 'reactivate' : 'deactivate') }}
+                type="button">
+                {member?.status === 'DEACTIVATED' ? 'Reactivate in organization' : 'Deactivate in organization'}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <FormActions>
           <button className="admin-button admin-button-secondary" disabled={busy} onClick={onClose} type="button">
             Cancel
@@ -166,5 +211,22 @@ export const MemberDetailsDialog = ({
         </FormActions>
       </form>
     </Dialog>
+    <ConfirmDialog
+      blocking
+      body={<>
+        <p>{action === 'remove' ? 'This member will lose access to this team.'
+          : action === 'deactivate' ? 'This suspends their access across the entire organization, including its other teams.'
+            : 'This restores their active membership in the organization.'}</p>
+        <FormError>{error}</FormError>
+      </>}
+      confirmLabel={actionLabel}
+      destructive={action !== 'reactivate'}
+      onCancel={() => { setAction(null); setError(null) }}
+      onConfirm={() => void changeMembership()}
+      open={open && action !== null}
+      pending={busy}
+      title={`${actionLabel}: ${name}?`}
+    />
+    </>
   )
 }

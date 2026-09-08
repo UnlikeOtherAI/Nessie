@@ -715,6 +715,14 @@ jobs:
           path: e2e/screenshots/project-usability
           if-no-files-found: warn
 
+      - name: Upload member management screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: member-management-screenshots
+          path: e2e/screenshots/member-management
+          if-no-files-found: warn
+
       - name: Upload browser cloud screenshots
         if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
