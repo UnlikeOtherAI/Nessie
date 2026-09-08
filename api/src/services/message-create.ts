@@ -12,7 +12,6 @@ import type { AgentMention } from '@nessie/schemas'
 import {
   buildAgentVisibilityWhere,
   deriveConversationTitle,
-  DEFAULT_CONVERSATION_TITLE,
 } from '@nessie/team-admin'
 
 import { messageInclude, type MessageWithReactions } from './message-read-model.js'
@@ -49,21 +48,26 @@ const isDuplicateClientKey = (error: unknown): boolean =>
 
 // ─── A conversation takes its first message as its title ───────────────────
 //
-// "New conversation" opens an empty thread, so its title is the placeholder
-// `DEFAULT_CONVERSATION_TITLE` and two of them are indistinguishable in a list.
-// The first thing said in one is its name. The derivation is
-// `deriveConversationTitle` — the same helper `startAgentConversation` uses for
-// a conversation opened *with* an opening line, so there is one title rule and
-// not two.
+// "New conversation" opens an empty thread, so it has no title at all and two
+// of them are indistinguishable in a list. The first thing said in one is its
+// name. The derivation is `deriveConversationTitle` — the same helper
+// `startAgentConversation` uses for a conversation opened *with* an opening
+// line, so there is one title rule and not two.
 //
 // Every condition is structural, never a reading of the content: the thread is
 // a conversation with an agent (`agent_id` set, so a room's General thread is
-// never touched), its title is still the default, and the message is a
-// top-level `user` post (the caller passes only that branch). "The first such
-// message" is enforced by the write rather than by a count — the conditional
-// `updateMany` carries the default title in its WHERE and runs inside the
-// send's own transaction, so a second message finds a named conversation and
-// two racing first messages cannot both win.
+// never touched), its title is still NULL, and the message is a top-level
+// `user` post (the caller passes only that branch). NULL is the whole marker:
+// `DEFAULT_CONVERSATION_TITLE` is a legal title a person may type, and while it
+// doubled as the "unnamed" sentinel their explicit "New conversation" was
+// overwritten by whatever they said first. Rows written before that change
+// carry the sentinel and stay named "New conversation" — deliberately, since
+// nothing can now tell those two cases apart.
+//
+// "The first such message" is enforced by the write rather than by a count —
+// the conditional `updateMany` carries `title: null` in its WHERE and runs
+// inside the send's own transaction, so a second message finds a named
+// conversation and two racing first messages cannot both win.
 const titleConversationFromFirstMessage = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -73,19 +77,19 @@ const titleConversationFromFirstMessage = async (
   },
 ): Promise<string | undefined> => {
   if (!input.thread.agentId) return undefined
-  const current = input.thread.title?.trim() ?? ''
-  if (current !== '' && current !== DEFAULT_CONVERSATION_TITLE) return undefined
+  if (input.thread.title !== null) return undefined
 
+  // An attachment-only send has no line to take (`null` here). Leaving the
+  // conversation unnamed keeps the naming with the first message that actually
+  // says something.
   const title = deriveConversationTitle({ message: input.content })
-  // An attachment-only send has no line to take. Leaving the default in place
-  // keeps the naming with the first message that actually says something.
-  if (title === DEFAULT_CONVERSATION_TITLE) return undefined
+  if (!title) return undefined
 
   const renamed = await tx.thread.updateMany({
     where: {
       id: input.threadId,
       agentId: { not: null },
-      OR: [{ title: null }, { title: '' }, { title: DEFAULT_CONVERSATION_TITLE }],
+      title: null,
     },
     data: { title },
   })
