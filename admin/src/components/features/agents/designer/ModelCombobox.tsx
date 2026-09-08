@@ -9,6 +9,8 @@ import {
   modelOptionLabel,
   modelOptionSource,
   modelOptionSubtitle,
+  orderModelOptionsForPicker,
+  readTypedQuery,
 } from './model-options'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
 
@@ -26,9 +28,10 @@ type ModelComboboxProps = {
 }
 
 /**
- * A type-to-filter model picker. The catalogue arrives already ordered
- * (provider, then newest version first), so grouping only has to walk it and
- * start a new section whenever the provider changes.
+ * A type-to-filter model picker. The person's own subscriptions lead the list
+ * ({@link orderModelOptionsForPicker}); inside each source the catalogue
+ * arrives already ordered (provider, then newest version first), so grouping
+ * only has to walk it and start a new section whenever the provider changes.
  */
 export const ModelCombobox = ({
   disabled,
@@ -42,12 +45,19 @@ export const ModelCombobox = ({
   value,
 }: ModelComboboxProps) => {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  // `null` means "not typing": the field then shows the selected model rather
+  // than an empty box wearing the placeholder, so opening the list never reads
+  // as having thrown the person's own choice away.
+  const [query, setQuery] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  const filtered = useMemo(() => filterModelOptions(options, query), [options, query])
+  const ordered = useMemo(() => orderModelOptionsForPicker(options), [options])
+  const filtered = useMemo(
+    () => filterModelOptions(ordered, query ?? ''),
+    [ordered, query],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -56,28 +66,43 @@ export const ModelCombobox = ({
       ?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex, open])
 
+  // A search typed over the model name in the field arrives as the whole name
+  // plus the keystroke; `readTypedQuery` is what pulls the person's own text
+  // back out of it.
+  const typedQuery = (next: string): string =>
+    query === null ? readTypedQuery(value ? modelOptionLabel(value) : '', next) : next
+
   const openList = () => {
     if (disabled) return
-    setQuery('')
-    setActiveIndex(Math.max(0, filtered.findIndex((option) => option === value)))
+    setQuery(null)
+    // Against the unfiltered list, which is exactly what an untyped open
+    // renders: the current model is the row the list opens on, and the effect
+    // above scrolls to it.
+    setActiveIndex(Math.max(0, ordered.findIndex((option) => option === value)))
     setOpen(true)
+  }
+
+  // Every close goes back to showing the selection, so a half-typed search is
+  // never left sitting in the field as though it were the chosen model.
+  const closeList = () => {
+    setQuery(null)
+    setOpen(false)
   }
 
   const pick = (option: AgentModelOption) => {
     onSelect(option)
-    setQuery('')
-    setOpen(false)
+    closeList()
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       if (!open) return
       event.stopPropagation()
-      setOpen(false)
+      closeList()
       return
     }
     if (event.key === 'Tab') {
-      setOpen(false)
+      closeList()
       return
     }
     if (!open && (event.key === 'ArrowDown' || event.key === 'Enter')) {
@@ -115,7 +140,7 @@ export const ModelCombobox = ({
         disabled={disabled}
         id={id}
         onChange={(event) => {
-          setQuery(event.target.value)
+          setQuery(typedQuery(event.target.value))
           setActiveIndex(0)
           setOpen(true)
         }}
@@ -127,7 +152,7 @@ export const ModelCombobox = ({
         ref={inputRef}
         role="combobox"
         type="text"
-        value={open ? query : value ? modelOptionLabel(value) : ''}
+        value={query ?? (value ? modelOptionLabel(value) : '')}
       />
       <FontAwesomeIcon
         className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[color:var(--tx3)]"
@@ -143,20 +168,29 @@ export const ModelCombobox = ({
         id={`${id}-listbox`}
         label={placeholder}
         matchAnchorWidth
-        onClose={() => setOpen(false)}
+        onClose={closeList}
         open={open}
         placement="bottom-start"
         role="listbox"
       >
-        <div ref={listRef}>
+        {/* The panel's own max-height is an inline style Popover computes from
+            the space available, and an inline style beats `max-h-72` on the
+            panel — which is how this list grew to the height of the window and
+            covered the field it hangs off. Capping the scroller INSIDE the
+            panel keeps both: a list that stops at 18rem, and Popover's clamp
+            for the times there is less room than that. */}
+        <div className="max-h-72 overflow-y-auto overflow-x-hidden" ref={listRef}>
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-xs text-[color:var(--tx3)]">{emptyLabel}</div>
           ) : null}
           {onLinkSubscription
-            && !filtered.some((option) => modelOptionSource(option) === 'subscription')
+            && !ordered.some((option) => modelOptionSource(option) === 'subscription')
             ? (
               // The doorway: the question "can this agent run on my own plan?"
-              // arises here, so the way to link one lives here too.
+              // arises here, so the way to link one lives here too. Read off the
+              // whole catalogue rather than the filtered rows — a search that
+              // happens to exclude a person's own models is not a person with
+              // no plan linked.
               <div
                 className={[
                   'mt-1 cursor-pointer border-t border-[color:var(--sep)]',
@@ -164,7 +198,7 @@ export const ModelCombobox = ({
                 ].join(' ')}
                 onMouseDown={(event) => {
                   event.preventDefault()
-                  setOpen(false)
+                  closeList()
                   onLinkSubscription()
                 }}
                 role="option"
@@ -176,17 +210,27 @@ export const ModelCombobox = ({
             : null}
           {filtered.map((option, index) => {
             const isActive = index === activeIndex
-            const startsProvider = filtered[index - 1]?.providerDisplayName
-              !== option.providerDisplayName
-            // One "Your subscriptions" heading marks where the person's own
-            // plans begin; the provider groups inside it stay as they are.
             const previous = filtered[index - 1]
-            const startsSubscriptions =
-              modelOptionSource(option) === 'subscription'
-              && (previous === undefined || modelOptionSource(previous) !== 'subscription')
+            // A section is one spending lane. Its heading also restarts the
+            // provider grouping, so two providers that happen to share a
+            // display name across the boundary still get one heading each.
+            const startsSection = previous === undefined
+              || modelOptionSource(previous) !== modelOptionSource(option)
+            const startsProvider = previous === undefined
+              || startsSection
+              || previous.providerDisplayName !== option.providerDisplayName
+            const isSubscription = modelOptionSource(option) === 'subscription'
+            // "Your subscriptions" leads the list whenever the person has any.
+            // The Ledger heading only earns its place underneath one — on its
+            // own the catalogue is the whole list and needs no label.
+            const sectionLabel = !startsSection
+              ? null
+              : isSubscription
+                ? 'Your subscriptions'
+                : previous === undefined ? null : 'Ledger models'
             return (
               <div key={modelOptionKey(option)}>
-                {startsSubscriptions ? (
+                {sectionLabel ? (
                   <div
                     className={[
                       'mt-1 border-t border-[color:var(--sep)] px-3 pb-1 pt-2',
@@ -194,7 +238,7 @@ export const ModelCombobox = ({
                       'text-[color:var(--tx2)]',
                     ].join(' ')}
                   >
-                    Your subscriptions
+                    {sectionLabel}
                   </div>
                 ) : null}
                 {startsProvider ? (

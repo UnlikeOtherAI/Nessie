@@ -24,6 +24,7 @@ import {
   readAgentRunLimits,
   runLimitsToForm,
 } from '../facades/designer/run-limits'
+import { modelOptionSource } from '../components/features/agents/designer/model-options'
 import { saveBlockedReason } from '../components/features/agents/designer/save-readiness'
 import { QueryState } from '../components/shared/QueryState'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
@@ -179,13 +180,20 @@ export const AgentDesignerContent = ({
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
 
   // A new agent cannot be saved without a model, and the Design Assistant may
-  // never be asked to pick one. Lead with the catalogue's first entry — Ledger
-  // returns it provider-ordered, newest model of each provider first — and
-  // never touch a selection that already exists, which is also why edit mode
-  // (always seeded from the stored agent) is out.
+  // never be asked to pick one. Lead with the catalogue's first Ledger entry —
+  // Ledger returns it provider-ordered, newest model of each provider first —
+  // and never touch a selection that already exists, which is also why edit
+  // mode (always seeded from the stored agent) is out.
+  //
+  // Deliberately NOT the picker's first row: that one is the person's own
+  // subscription, and a default nobody chose must not put an agent's spend on
+  // somebody's personal plan. A deployment whose Ledger catalogue is empty
+  // falls back to whatever there is, because an unsaveable form helps less.
   const { setModelSelection } = actions
   const { setVisibility } = actions
-  const leadingModelOption = modelOptions[0]
+  const leadingModelOption = modelOptions.find(
+    (option) => modelOptionSource(option) === 'ledger',
+  ) ?? modelOptions[0]
   useEffect(() => {
     if (isEditMode || state.model || state.provider || !leadingModelOption) return
     setModelSelection(leadingModelOption)
