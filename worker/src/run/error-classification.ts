@@ -215,9 +215,13 @@ export const resolveRecovery = (
         ? { action: 'retry', delayMs: exponentialBackoffMs({ attempt: attemptCount, baseMs: 2000, capMs: 30_000 }) }
         : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
-    case 'format':
     case 'empty_response':
       return { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
+
+    case 'format':
+      return attemptCount < 1
+        ? { action: 'retry', delayMs: 500 }
+        : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'context_overflow':
       return { action: 'compact_and_retry' }

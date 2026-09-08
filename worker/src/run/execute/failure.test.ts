@@ -134,7 +134,7 @@ test('an interactive run tells the person waiting that Ledger credits are exhaus
   assert.deepEqual(streamEvents, [])
 })
 
-test('a peer-delegated run reports its terminal failure to the waiting conversation once', async () => {
+test('a peer-delegated failure reports once while an unattended failure remains quiet', async () => {
   const messages: Array<{ content: string; role: string }> = []
   // A real `$transaction` hands the callback a client carrying every model, so
   // the stub must too: the message chokepoint writes the row and its basis rows
@@ -233,6 +233,25 @@ test('a peer-delegated run reports its terminal failure to the waiting conversat
     role: 'assistant',
     threadId: ID.thread,
   }])
+
+  await handleRunExecutionFailure(
+    deps,
+    {
+      actorContext: { actionContext: {} } as never,
+      agentId: ID.agent as never,
+      messageId: '00000000-0000-4000-8000-000000000012',
+      runId: '00000000-0000-4000-8000-000000000013' as never,
+      taskId: ID.task as never,
+      threadId: ID.thread as never,
+    },
+    context,
+    {
+      error: new Error('ordinary scheduled provider failure'),
+      planContext: null,
+      streamStarted: false,
+    },
+  )
+  assert.equal(messages.length, 1, 'an unattended retry does not post into the conversation')
 })
 
 test('an invalid private placement fails without speaking into the shared destination', async () => {

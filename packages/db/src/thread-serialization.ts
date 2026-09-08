@@ -19,8 +19,9 @@ import { enqueueRunExecution } from './queue.js'
 // arrives while a run is in flight is recorded as a durable
 // `RunThreadPendingMessage` row instead of spawning a concurrent run; when the
 // in-flight run reaches a terminal state (completed, cancelled, failed —
-// including the budget-gate block), the terminal path drains every pending row
-// into ONE batched follow-up run, in arrival order. No message is lost across
+// including the budget-gate block), the terminal path batches ordinary pending
+// rows in arrival order. Peer-delegated hidden briefs drain one at a time so
+// each keeps its original human authority and disclosure lineage. No message is lost across
 // a worker crash: the row is the pending marker, and the periodic
 // `sweepPendingThreadMessages` re-poll enqueues the follow-up for any pair
 // whose run disappeared without draining (crash between terminal update and
@@ -43,12 +44,12 @@ import { enqueueRunExecution } from './queue.js'
 // way, and the only thing the tie can reorder is which of two same-millisecond
 // messages is treated as "latest" for the prompt and `triggerMessageId`.
 //
-// Batch visibility caveat: the batched follow-up loads pended `user`/
-// `assistant` messages as ordinary thread history, but `loadConversation`
-// excludes `system`-role messages (e.g. PA scheduled-trigger kickoffs), so
-// repeated system-role kickoffs coalesce to the LATEST one — only it drives
-// the follow-up's prompt. That is intended: each kickoff is a self-contained
-// "check for work" directive, not conversation content.
+// Batch visibility caveat: an ordinary batched follow-up loads pended `user`/
+// `assistant` messages as thread history, but `loadConversation` excludes
+// `system`-role messages. Ordinary scheduled kickoffs therefore coalesce to
+// the latest self-contained "check for work" directive. A peer-delegation
+// brief is different: it drains alone with its durable hidden message and
+// original human authority, so it never inherits another brief's lineage.
 
 // Statuses that count as "a run is in flight for this (agent, thread)".
 // `waiting_approval` is in-flight: the run resumes after the approval, so new
@@ -194,15 +195,15 @@ export const isThreadRunSlotBusy = async (
   ) !== null
 }
 
-// Drain every pending message for (agent, thread) into ONE batched follow-up
-// run. Pended user/assistant messages stay visible to the follow-up through
-// normal thread conversation loading (system-role kickoffs coalesce to the
-// latest — see the module header). The latest pending message drives the
-// run's prompt, triggerMessageId (restart replay), interactivity (budget
+// Drain ordinary pending messages for (agent, thread) into ONE batched
+// follow-up. A peer-delegation marker drains individually so its hidden
+// message, disclosure basis, and requesting human remain inseparable. The
+// latest message of an ordinary batch drives the run's prompt, triggerMessageId
+// (restart replay), interactivity (budget
 // exemption), actor context, and — when it came from a trigger fire — the
 // triggerId/triggerDeliveryId linkage. Returns the follow-up run id, or null
 // when there is nothing to drain (no pendings, or a run is already in flight
-// again).
+// again). A peer brief is deliberately the one-row exception above.
 export const drainPendingThreadMessages = async (
   prisma: PrismaClient,
   input: { agentId: string; principalUserId?: string; threadId: string },
@@ -234,19 +235,21 @@ export const drainPendingThreadMessages = async (
     if (pendings.length === 0) {
       return null
     }
-    const latest = pendings[pendings.length - 1]
+    const firstPeerIndex = pendings.findIndex((pending) =>
+      AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose === 'agent.peer_delegation')
+    // Preserve arrival order. Drain ordinary work before the first peer as its
+    // usual batch; drain a first peer alone. Later markers remain durable for
+    // the next terminal drain, rather than being silently coalesced under a
+    // different brief's authority.
+    const pendingBatch = firstPeerIndex < 0
+      ? pendings
+      : firstPeerIndex === 0
+        ? [pendings[0]!]
+        : pendings.slice(0, firstPeerIndex)
+    const latest = pendingBatch[pendingBatch.length - 1]
     if (!latest) {
       return null
     }
-    // System kickoffs are intentionally excluded from ordinary conversation
-    // history. A serialized peer batch must still give every distinct brief to
-    // its follow-up, rather than silently retaining only the latest one.
-    const promptOverride = latest.message.role === 'system'
-      ? pendings
-        .filter((pending) => pending.message.role === 'system')
-        .map((pending) => pending.message.content)
-        .join('\n\n')
-      : undefined
 
     const thread = await tx.thread.findUniqueOrThrow({
       where: { id: input.threadId },
@@ -256,7 +259,7 @@ export const drainPendingThreadMessages = async (
     // A batch may contain fires from more than one schedule. Preserve the
     // latest fire's trigger provenance for each template while coalescing
     // repeated fires of the same checklist into one adopting-run instance.
-    const scheduledTemplates = [...pendings.reduce((templates, pending) => {
+    const scheduledTemplates = [...pendingBatch.reduce((templates, pending) => {
       if (pending.todoTemplateId && pending.triggerId) {
         templates.set(pending.todoTemplateId, {
           templateId: pending.todoTemplateId,
@@ -328,7 +331,6 @@ export const drainPendingThreadMessages = async (
       ...(latest.principalUserId ? { principalUserId: latest.principalUserId } : {}),
       interactive: latest.interactive,
       messageId: scheduledKickoff?.id ?? latest.messageId,
-      ...(promptOverride ? { promptOverride } : {}),
       runId: parseRunId(run.id),
       taskId: parseTaskId(task.id),
       threadId: parseThreadId(input.threadId),
@@ -338,7 +340,7 @@ export const drainPendingThreadMessages = async (
     await enqueueRunExecution(tx, payload, `run:batch:${run.id}`)
 
     await tx.runThreadPendingMessage.deleteMany({
-      where: { seq: { in: pendings.map((pending) => pending.seq) } },
+      where: { seq: { in: pendingBatch.map((pending) => pending.seq) } },
     })
 
     console.log(
@@ -347,7 +349,7 @@ export const drainPendingThreadMessages = async (
         agentId: input.agentId,
         threadId: input.threadId,
         runId: run.id,
-        batchedMessages: pendings.length,
+        batchedMessages: pendingBatch.length,
       }),
     )
     return run.id

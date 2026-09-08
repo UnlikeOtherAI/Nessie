@@ -6,9 +6,11 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseProjectId,
   parseUserId,
   parseRunId,
   parseTaskId,
+  parseTeamId,
   parseThreadId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
@@ -83,8 +85,8 @@ const buildMailboxActorContext = (input: {
   },
   tenant: {
     organizationId: parseOrganizationId(input.organizationId),
-    ...(input.projectId ? { projectId: input.projectId } : {}),
-    ...(input.teamId ? { teamId: input.teamId } : {}),
+    ...(input.projectId ? { projectId: parseProjectId(input.projectId) } : {}),
+    ...(input.teamId ? { teamId: parseTeamId(input.teamId) } : {}),
   },
 })
 
