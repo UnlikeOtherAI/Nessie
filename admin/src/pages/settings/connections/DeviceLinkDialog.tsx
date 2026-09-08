@@ -9,6 +9,10 @@ import {
 } from '../../../facades/subscriptions/hooks'
 import { Dialog } from '../../../components/shared/Dialog'
 import { renderFieldError } from '../../../components/shared/FormFieldError'
+import {
+  openExternalAuthorizationUrl,
+  usesExternalUrlShell,
+} from '../../../lib/open-external-url'
 
 /**
  * Device-code sign-in for Codex and Grok.
@@ -24,6 +28,27 @@ type Phase =
   | { kind: 'waiting'; start: DeviceStart }
   | { kind: 'confirm'; start: DeviceStart; accountId: string; accountLabel?: string }
   | { kind: 'error'; message: string }
+
+/**
+ * iOS WebViews do not consistently expose `navigator.clipboard`, even for a
+ * direct tap. Keep the fallback in the click gesture so the platform is still
+ * allowed to put the device code on the pasteboard.
+ */
+const copyToClipboard = async (value: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+  const field = document.createElement('textarea')
+  field.setAttribute('readonly', '')
+  field.style.cssText = 'left:-9999px;position:fixed;top:0'
+  field.value = value
+  document.body.appendChild(field)
+  field.select()
+  const copied = document.execCommand('copy')
+  field.remove()
+  if (!copied) throw new Error('The browser denied clipboard access.')
+}
 
 export const DeviceLinkDialog = ({
   onClose,
@@ -154,6 +179,18 @@ export const DeviceLinkDialog = ({
     }
   }
 
+  const copyCode = async (userCode: string) => {
+    try {
+      await copyToClipboard(userCode)
+      setCopied(true)
+    } catch {
+      // A WebView can deny the modern API even while supporting the legacy
+      // user-gesture copy command. The code stays visible either way, so a
+      // denied clipboard permission never changes the dialog's layout.
+      setCopied(false)
+    }
+  }
+
   return (
     <Dialog onClose={dismiss} open title={`Connect ${provider.displayName}`}>
       <div className="flex flex-col gap-4">
@@ -168,16 +205,13 @@ export const DeviceLinkDialog = ({
             <p className="text-sm text-[color:var(--tx1)]">
               Open the link below and enter this code. You can do it on any device.
             </p>
-            <div className="flex items-center gap-3">
-              <code className="rounded-[var(--radius-md)] bg-[color:var(--overlay)] px-3 py-2 text-lg font-semibold tracking-[0.2em] text-[color:var(--tx1)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="shrink-0 whitespace-nowrap rounded-[var(--radius-md)] bg-[color:var(--overlay)] px-3 py-2 text-lg font-semibold tracking-[0.2em] text-[color:var(--tx1)]">
                 {phase.start.userCode}
               </code>
               <button
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(phase.start.userCode)
-                  setCopied(true)
-                }}
+                className="admin-button admin-button-secondary admin-button-compact min-w-[6.5rem] shrink-0 whitespace-nowrap"
+                onClick={() => void copyCode(phase.start.userCode)}
                 type="button"
               >
                 {copied ? 'Copied' : 'Copy code'}
@@ -186,6 +220,13 @@ export const DeviceLinkDialog = ({
             <a
               className="admin-button admin-button-primary admin-button-compact self-start"
               href={phase.start.verificationUriComplete ?? phase.start.verificationUri}
+              onClick={(event) => {
+                if (!usesExternalUrlShell()) return
+                event.preventDefault()
+                void openExternalAuthorizationUrl(
+                  phase.start.verificationUriComplete ?? phase.start.verificationUri,
+                )
+              }}
               rel="noopener noreferrer"
               target="_blank"
             >

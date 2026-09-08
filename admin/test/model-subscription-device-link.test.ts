@@ -95,7 +95,7 @@ const mount = async ({ pollStatuses = [] }: { pollStatuses?: unknown[] } = {}) =
         intervalMs: 10,
         stateToken: 'state-token-1',
         userCode: 'HJKL-9021',
-        verificationUri: 'https://auth.openai.com/device',
+        verificationUri: 'https://auth.openai.com/codex/device',
       })
     }
     if (path === '/api/model-subscriptions/device/poll') {
@@ -174,6 +174,31 @@ test('the sign-in code is shown, and the flow is not cancelled while the dialog 
     assert.equal(view.countOf('POST /api/model-subscriptions/device/cancel'), 0)
   } finally {
     await view.dispose()
+  }
+})
+
+test('a phone opens the provider page through the native authorization bridge', async () => {
+  const nativeWindow = dom.window as typeof dom.window & {
+    ReactNativeWebView?: { postMessage: (message: string) => void }
+  }
+  const messages: string[] = []
+  nativeWindow.ReactNativeWebView = { postMessage: (message) => messages.push(message) }
+  const view = await mount()
+  try {
+    const link = [...openOverlayIn(dom.window.document).querySelectorAll('a')].find(
+      (candidate) => candidate.textContent?.trim() === 'Open sign-in page',
+    )
+    assert.ok(link)
+    await act(async () => {
+      link.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    assert.deepEqual(messages.map((message) => JSON.parse(message)), [{
+      authorizationUrl: 'https://auth.openai.com/codex/device',
+      type: 'nessie:connector-authorization',
+    }])
+  } finally {
+    await view.dispose()
+    delete nativeWindow.ReactNativeWebView
   }
 })
 

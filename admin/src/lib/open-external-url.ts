@@ -56,3 +56,28 @@ export const openExternalUrl = (url: string): Promise<ExternalUrlDispatch> =>
     openDesktopUrl,
     postMobileMessage,
   })
+
+/**
+ * Opens an authorization page outside a native shell without navigating its
+ * persistent WebView away from Nessie. The mobile half re-validates the HTTPS
+ * target before handing it to the operating system browser.
+ *
+ * Unlike {@link openExternalUrl}, this is for sign-in/consent pages, not call
+ * links. Call URLs stay on their restricted native bridge.
+ */
+export const openExternalAuthorizationUrl = async (
+  authorizationUrl: string,
+): Promise<ExternalUrlDispatch> => {
+  if (isDesktopApp()) {
+    await openDesktopUrl(authorizationUrl)
+    return 'desktop'
+  }
+  if (isReactNativeWebView()) {
+    postMobileMessage(JSON.stringify({
+      authorizationUrl,
+      type: 'nessie:connector-authorization',
+    }))
+    return 'mobile'
+  }
+  return 'browser'
+}
