@@ -3,6 +3,7 @@ import {
   canReadKnowledgePageVersion,
   createNativeKnowledgeProvider,
   htmlToPlainText,
+  isMarkdownAttachment,
   loadSpaceViewer,
   mapPage,
   pageInclude,
@@ -15,6 +16,8 @@ import {
 import { attributionFromActorContext, resolveDisclosureViewer, resolveLiveEntitlements, type DisclosureViewer } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
+import { fileServiceFor } from '../file-service.js'
+import { readMarkdownAttachmentContent } from './knowledge-document-io.js'
 import { recordKnowledgeSpaceRead, recordKnowledgeVersionRead } from './knowledge-basis.js'
 import { truncate } from './tool-output.js'
 
@@ -186,9 +189,12 @@ export const runKbSearchTool = async (
 
 const ACCESS_DENIED_MESSAGE = 'You do not have access to this knowledge page.'
 
+type PageReadDependencies = { files?: Parameters<typeof readMarkdownAttachmentContent>[0] }
+
 export const runKbPageReadTool = async (
   context: BuiltinToolRuntimeContext,
   input: { pageId: string },
+  dependencies: PageReadDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const pageId = input.pageId.trim()
   if (!pageId) {
@@ -243,7 +249,25 @@ export const runKbPageReadTool = async (
   recordPageVersionRead(context, page)
 
   const version = page.publishedVersion ?? page.latestVersion
-  const plain = htmlToPlainText(version?.body ?? '')
+  const attachment = version?.attachmentId
+    ? await context.prisma.attachment.findUnique({
+        where: { id: version.attachmentId },
+        select: { filename: true, mime: true, organizationId: true },
+      })
+    : null
+  const isCanonicalMarkdown = attachment
+    && attachment.organizationId === organizationId
+    && isMarkdownAttachment(attachment)
+  const markdown = isCanonicalMarkdown
+    ? await readMarkdownAttachmentContent(
+        dependencies.files ?? fileServiceFor(context.prisma),
+        version?.attachmentId ?? '',
+        organizationId,
+      )
+    : null
+  const plain = isCanonicalMarkdown
+    ? markdown ?? '(Markdown attachment bytes are unavailable.)'
+    : htmlToPlainText(version?.body ?? '')
   const truncated = plain.length > PAGE_BODY_CHAR_CAP
   const body = truncated
     ? `${plain.slice(0, PAGE_BODY_CHAR_CAP)}\n\n[truncated at ${PAGE_BODY_CHAR_CAP} characters]`
