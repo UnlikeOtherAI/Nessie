@@ -144,16 +144,22 @@ export const backfillMarkdownProjections = async (
             version: { body: projection.body, id: current.id },
           })
         : false
-      const needsCurrentModel = deps.embeddingModel !== null
-        && (written || current.chunks.some((chunk) => chunk.embeddingModel !== deps.embeddingModel))
+      const embeddingModel = deps.embeddingModel
+      const needsCurrentModel = embeddingModel !== null
+        && (written || current.chunks.some((chunk) => chunk.embeddingModel !== embeddingModel))
       if (!needsCurrentModel) {
         return {
-          kind: deps.embeddingModel === null && (written || current.chunks.length > 0)
+          kind: embeddingModel === null && (written || current.chunks.length > 0)
             ? 'without-model' as const
             : 'complete' as const,
           projected: projectionChanged,
           written,
         }
+      }
+      // The condition above proves this branch has a model. Keep that fact
+      // explicit for TypeScript and future edits to the condition.
+      if (embeddingModel === null) {
+        return { kind: 'without-model' as const, projected: projectionChanged, written }
       }
 
       const origin = await resolvePersistedKnowledgeOrigin(tx, {
@@ -167,7 +173,7 @@ export const backfillMarkdownProjections = async (
         idempotencyKey: knowledgeEmbeddingJobKey(
           current.page.id,
           current.id,
-          deps.embeddingModel,
+          embeddingModel,
           projection.sourceContentHash,
         ),
         payload: {
