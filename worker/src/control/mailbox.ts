@@ -1,22 +1,28 @@
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
-import { publishMessageEnvelope, type PgRealtimeTransport } from '@nessie/runtime'
+import { type PgRealtimeTransport } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseUserId,
   parseRunId,
   parseTaskId,
   parseThreadId,
   type AuthorizedActionContext,
-  type WsScope,
 } from '@nessie/schemas'
+import type { WsScope } from '@nessie/schemas'
 import { ensureDefaultThread } from './channels.js'
 import { markDelegationStepQueued } from '../run/plans.js'
 import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
+import {
+  BasisScopeSchema,
+  PrivateConversationSourceSchema,
+} from '../run/execute/disclosure-basis.js'
+import { persistablePrivateConversationSources } from '../run/execute/private-conversation-source-storage.js'
 
 const CLAIM_TIMEOUT_MS = 60_000
 
@@ -24,6 +30,8 @@ type ClaimedMailboxMessage = {
   actorId: string | null
   actorType: string | null
   attempts: number
+  basis: unknown
+  disclosureSources: unknown
   body: string
   channelId: string | null
   claimedAt: Date
@@ -33,6 +41,7 @@ type ClaimedMailboxMessage = {
   organizationId: string
   planId: string | null
   planStepId: string | null
+  peerDelegationDepth: number | null
   subject: string | null
   threadId: string | null
   toAgentId: string
@@ -46,6 +55,7 @@ const buildMailboxActorContext = (input: {
   channelId: string
   organizationId: string
   targetAgentId: string
+  peerDelegationDepth?: number | null
   // Omitted while the (agent, thread) slot claim is still unresolved: the
   // pending-marker path has no task, and the claimed path injects the fresh
   // task id once the task exists.
@@ -64,6 +74,9 @@ const buildMailboxActorContext = (input: {
     purpose: 'mailbox.delivery',
     requestId: randomUUID(),
     ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
+    ...(input.peerDelegationDepth !== null && input.peerDelegationDepth !== undefined
+      ? { effectiveUserId: parseUserId(input.actorId), purpose: 'agent.peer_delegation', correlationId: String(input.peerDelegationDepth) }
+      : {}),
     threadId: parseThreadId(input.threadId),
   },
   tenant: {
@@ -117,6 +130,8 @@ const claimNextMailboxMessage = async (
         amm."actor_type" AS "actorType",
         amm."body" AS "body",
         amm."attempts" AS "attempts",
+        amm."basis" AS "basis",
+        amm."disclosure_sources" AS "disclosureSources",
         amm."channel_id" AS "channelId",
         amm."claimed_at" AS "claimedAt",
         amm."correlation_id" AS "correlationId",
@@ -125,6 +140,7 @@ const claimNextMailboxMessage = async (
         amm."organization_id" AS "organizationId",
         amm."plan_id" AS "planId",
         amm."plan_step_id" AS "planStepId",
+        amm."peer_delegation_depth" AS "peerDelegationDepth",
         amm."subject" AS "subject",
         amm."thread_id" AS "threadId",
         amm."to_agent_id" AS "toAgentId",
@@ -255,14 +271,51 @@ export const dispatchNextMailboxMessage = async (
     } as const)
 
   const publishPayload = await prisma.$transaction(async (tx) => {
+    // `agent_peer_delegate` is the sole producer allowed to carry a source
+    // chain. Other mailbox producers intentionally retain their historical
+    // empty-basis semantics even if a future writer supplies a JSON value.
+    // The prompt basis is then admitted by run-job and conversation loading
+    // into the target's ConsumedSourceSink on every retry and resume.
+    const basis = message.peerDelegationDepth === null
+      ? []
+      : BasisScopeSchema.array().parse(message.basis)
+    const disclosureSources = message.peerDelegationDepth === null
+      ? []
+      : PrivateConversationSourceSchema.array().parse(message.disclosureSources)
     const promptMessage = await tx.message.create({
       data: {
         content: message.body,
-        role: 'user',
+        // Peer mail is automation. It becomes a hidden trigger rather than a
+        // human-visible message, because its brief can carry restricted source
+        // material into the target run.
+        role: 'system',
         threadId: targetThreadId,
       },
       select: { id: true },
     })
+    if (basis.length > 0) {
+      await tx.messageBasisScope.createMany({
+        data: basis.map((scope) => ({
+          messageId: promptMessage.id,
+          organizationId: message.organizationId,
+          scopeId: scope.scopeId,
+          scopeType: scope.scopeType,
+        })),
+        skipDuplicates: true,
+      })
+    }
+    const persistedSources = await persistablePrivateConversationSources(tx, disclosureSources)
+    if (persistedSources.length > 0) {
+      await tx.messageDisclosureSource.createMany({
+        data: persistedSources.map((source) => ({
+          messageId: promptMessage.id,
+          organizationId: message.organizationId,
+          sourceAuthorUserId: source.sourceAuthorUserId,
+          sourceChannelId: source.sourceChannelId,
+        })),
+        skipDuplicates: true,
+      })
+    }
 
     const baseActorContext = buildMailboxActorContext({
       actorId: message.actorId ?? message.fromAgentId ?? message.toAgentId,
@@ -270,6 +323,7 @@ export const dispatchNextMailboxMessage = async (
       channelId: thread.channelId,
       organizationId: message.organizationId,
       targetAgentId: message.toAgentId,
+      peerDelegationDepth: message.peerDelegationDepth,
       threadId: targetThreadId,
     })
 
@@ -311,6 +365,18 @@ export const dispatchNextMailboxMessage = async (
         },
         select: { id: true },
       })
+      if (basis.length > 0) {
+        const runId = run.id
+        await tx.runBasisScope.createMany({
+          data: basis.map((scope) => ({
+            organizationId: message.organizationId,
+            runId,
+            scopeId: scope.scopeId,
+            scopeType: scope.scopeType,
+          })),
+          skipDuplicates: true,
+        })
+      }
 
       await enqueueRunExecution(
         tx,
@@ -321,6 +387,7 @@ export const dispatchNextMailboxMessage = async (
             channelId: thread.channelId,
             organizationId: message.organizationId,
             targetAgentId: message.toAgentId,
+            peerDelegationDepth: message.peerDelegationDepth,
             taskId: task.id,
             threadId: targetThreadId,
           }),
@@ -394,25 +461,6 @@ export const dispatchNextMailboxMessage = async (
   if (!publishPayload) {
     return true
   }
-
-  await publishMessageEnvelope(
-    realtimeTransport,
-    buildScopes({
-      agentId: message.toAgentId,
-      channelId: thread.channelId,
-      organizationId: message.organizationId,
-    }),
-    {
-      channelId: thread.channelId,
-      message: {
-        agentId: message.toAgentId,
-        content: message.body,
-        id: publishPayload.messageId,
-        role: 'user',
-      },
-      threadId: targetThreadId,
-    },
-  )
 
   if (publishPayload.spawned) {
     await realtimeTransport.publishWs(publishPayload.spawned.scopes, {

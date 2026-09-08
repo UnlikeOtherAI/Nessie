@@ -12,6 +12,7 @@ export const taskKeys = {
   // every drag.
   assignees: ['task-assignees'] as const,
   documents: (taskId?: string) => ['task-pages', taskId ?? 'none'] as const,
+  checklist: (taskId?: string) => ['tasks', 'checklist', taskId ?? 'none'] as const,
   // Deliberately NOT nested, for the same reason `assignees` is not: a ticket
   // card shown in a conversation reads one TaskRecord, and the optimistic
   // sweep over ['tasks'] would hand a single record an array patch.

@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
-import { findToolCategory } from '@nessie/schemas'
+import { findToolCategory, isSharedAgentToolEligible } from '@nessie/schemas'
 
 import {
   registryEntryPolicyKey,
@@ -164,7 +164,7 @@ export const loadAgentToolCatalog = async (
       ...(TODO_GATED_TOOL_IDS.has(tool.id) ? { requiresTodos: true } : {}),
       summary: summarise(tool.summary),
     }
-    if (tool.personalAssistantOnly) {
+    if (!isSharedAgentToolEligible(tool)) {
       restricted.push({
         ...entry,
         restriction: tool.identityDelegatedOnly === true

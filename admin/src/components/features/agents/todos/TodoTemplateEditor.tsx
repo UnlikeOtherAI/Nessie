@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { AgentTodoTemplateRecord, AgentTodoTemplateStepInput } from '@nessie/schemas'
 import {
   AGENT_TODO_MAX_STEPS,
@@ -23,6 +23,14 @@ type TodoTemplateEditorProps = {
   template?: AgentTodoTemplateRecord
 }
 
+// `key` is the template's durable step identity. A new step does not receive
+// one until it is saved, so the editor needs its own stable row identity while
+// a person is still writing its title.
+type EditableStep = {
+  editorId: string
+  step: AgentTodoTemplateStepInput
+}
+
 const blankStep = (): AgentTodoTemplateStepInput => ({ instructions: '', title: '' })
 
 const templateSteps = (template?: AgentTodoTemplateRecord): AgentTodoTemplateStepInput[] =>
@@ -40,7 +48,13 @@ export const TodoTemplateEditor = ({
 }: TodoTemplateEditorProps) => {
   const [name, setName] = useState(template?.name ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
-  const [steps, setSteps] = useState<AgentTodoTemplateStepInput[]>(() => templateSteps(template))
+  const [steps, setSteps] = useState<EditableStep[]>(() =>
+    templateSteps(template).map((step, index) => ({
+      editorId: step.key ?? `new-${index}`,
+      step,
+    })),
+  )
+  const nextEditorStepId = useRef(steps.length)
   const [formErrors, setFormErrors] = useState(EMPTY_FORM_ERRORS)
 
   const setStep = (
@@ -48,8 +62,8 @@ export const TodoTemplateEditor = ({
     field: 'instructions' | 'title',
     value: string,
   ) => {
-    setSteps((current) => current.map((step, stepIndex) =>
-      stepIndex === index ? { ...step, [field]: value } : step,
+    setSteps((current) => current.map((entry, stepIndex) =>
+      stepIndex === index ? { ...entry, step: { ...entry.step, [field]: value } } : entry,
     ))
   }
 
@@ -74,7 +88,7 @@ export const TodoTemplateEditor = ({
     void onSave({
       description: description.trim() || null,
       name: name.trim(),
-      steps,
+      steps: steps.map(({ step }) => step),
     }).catch((error) => setFormErrors(toFormErrors(error)))
   }
 
@@ -132,17 +146,22 @@ export const TodoTemplateEditor = ({
           <button
             className="admin-button admin-button-secondary"
             disabled={steps.length >= AGENT_TODO_MAX_STEPS}
-            onClick={() => setSteps((current) => [...current, blankStep()])}
+            onClick={() => {
+              setSteps((current) => [
+                ...current,
+                { editorId: `new-${nextEditorStepId.current++}`, step: blankStep() },
+              ])
+            }}
             type="button"
           >
             Add step
           </button>
         </div>
 
-        {steps.map((step, index) => (
+        {steps.map(({ editorId, step }, index) => (
           <fieldset
             className="grid gap-3 rounded-xl border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] p-3"
-            key={step.key ?? `${index}-${step.title}`}
+            key={editorId}
           >
             <legend className="px-1 text-xs font-semibold text-[color:var(--tx2)]">
               Step {index + 1}

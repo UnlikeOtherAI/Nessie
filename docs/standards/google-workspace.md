@@ -27,6 +27,12 @@ file is the rule**.
   because a callback that trusts whoever finished consent will silently
   re-point a different mailbox. Plan:
   `docs/plans/2026-08-31-google-workspace-email-calendar.md`.
+- **Calendar and Meet have a first-connection doorway.** User → Connected
+  accounts → **Google Calendar and Meet** opens a capability picker that sends
+  only selected Calendar and Meet capability ids to the existing Google OAuth
+  start route. Email → Google keeps its Gmail-read and Meet default. Once
+  connected, the account's Permissions rows and in-chat grant cards widen one
+  capability at a time.
 - **An approval over provider content binds the content, not its handle, and
   the gate is code rather than data.** Hashing a Gmail draft's *id* authorises
   nothing useful: the draft stays mutable through the chat card, through Gmail,

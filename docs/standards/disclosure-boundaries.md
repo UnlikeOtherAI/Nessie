@@ -103,8 +103,8 @@ Facts not restated there:
   while a legacy checkpoint or thought without source rows remains unknown on
   recall. Thought capture may union provenance from its actual input, but never
   invent an author from channel membership, an actor, or metadata. A handoff
-  brief or delegated subtask assignment is a hidden trigger message, never an
-  untracked prompt override:
+  brief, delegated subtask assignment, or peer-delegation mailbox brief is a
+  hidden trigger message, never an untracked prompt override:
   it stamps the inherited basis and these same original authors before the child
   run receives its bytes. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or

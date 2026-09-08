@@ -83,6 +83,7 @@ export type ToolAuthorizationContext = {
    * exercised after the conditions stopped holding.
    */
   identityToolIds?: ReadonlySet<string>
+  projectDelegatedToolIds?: ReadonlySet<string>
   /** The main loop's live view, including deferred MCP names loaded mid-run. */
   mcpToolNames?: ReadonlySet<string>
   /** The executor operations actually exposed for this run. */
@@ -236,6 +237,7 @@ export const authorizeToolExecution = async (
       auth.agentKind,
       {
         ...(auth.identityToolIds ? { identityToolIds: auth.identityToolIds } : {}),
+        ...(auth.projectDelegatedToolIds ? { projectDelegatedToolIds: auth.projectDelegatedToolIds } : {}),
         // Read straight off the run context rather than threaded through every
         // caller: the same row toolset assembly consulted, so a stale schema
         // (a deferred stub, a replayed call, a resumed approval) cannot smuggle

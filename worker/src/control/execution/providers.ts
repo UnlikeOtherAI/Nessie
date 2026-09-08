@@ -5,6 +5,7 @@ import {
   localOnlyGateMode,
 } from '@nessie/config'
 import { probeDocker, provisionDocker, terminateDocker } from './docker-provider.js'
+import type { CommandRunner } from './command-runner.js'
 import {
   deriveGcloudProviderInstanceRef,
   probeGcloud,
@@ -84,10 +85,11 @@ export const deriveProviderInstanceRef = (context: ProvisioningContext): string 
 
 export const provisionProviderInstance = async (
   context: ProvisioningContext,
+  dependencies: { commandRunner?: CommandRunner } = {},
 ): Promise<ProviderProvisionResult> => {
   if (context.instance.template.provider === 'docker') {
     assertDockerAllowed()
-    return provisionDocker(context)
+    return provisionDocker(context, dependencies.commandRunner)
   }
 
   return provisionGcloud(context)
@@ -116,9 +118,10 @@ export const provisionProviderInstance = async (
  */
 export const terminateProviderInstance = async (
   context: TerminationContext,
+  dependencies: { commandRunner?: CommandRunner } = {},
 ): Promise<ProviderTerminationResult> => {
   if (context.instance.template.provider === 'docker') {
-    return terminateDocker(context, { soleDaemon: localOnlyGateMode() === 'local' })
+    return terminateDocker(context, { soleDaemon: localOnlyGateMode() === 'local' }, dependencies.commandRunner)
   }
 
   return terminateGcloud(context)

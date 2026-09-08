@@ -495,6 +495,7 @@ const runJobUnderFence = async (
         return budgetBlockedProbe()
       },
       identityToolIds: setup.identityToolIds,
+      projectDelegatedToolIds: setup.projectDelegatedToolIds,
       inference,
       isHandoffTurn: handoffLocator !== null,
       initialMessages,

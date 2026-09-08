@@ -74,6 +74,7 @@ export type BuiltinToolRuntimeContext = {
     organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']
     /** One level of the setting cascade; absent on a channel with no team. */
     teamId?: string | null
+    projectId?: string | null
     systemChannelType?: ChannelSystemType | null
   }
   /**
@@ -139,6 +140,7 @@ export type BuiltinToolRuntimeContext = {
     interactive?: boolean
     messageId: string
     originatingUserId?: string | null
+    peerDelegationDepth?: number | null
     principalUserId?: string | null
     threadId: string
   }

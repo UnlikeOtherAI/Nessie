@@ -14,4 +14,7 @@ export const agentTodoKeys = {
   instances: (agentId?: string) => ['agents', agentId, 'todos'] as const,
   templates: (agentId?: string, includeArchived = false) =>
     ['agents', agentId, 'todo-templates', includeArchived] as const,
+  /** Active templates pooled for choosing one to apply to a task. */
+  templateChoices: (agentIds: readonly string[]) =>
+    ['agents', 'todo-templates', [...agentIds].sort()] as const,
 }

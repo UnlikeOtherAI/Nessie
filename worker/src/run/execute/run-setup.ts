@@ -48,6 +48,11 @@ import {
 
 const DELEGATE_TOOL_ID = 'delegate'
 const TODO_TOOL_IDS = new Set(TODO_TOOL_DEFINITIONS.map((tool) => tool.id))
+const PEER_PROJECT_TOOL_IDS = new Set([
+  'ticket_list', 'ticket_read', 'ticket_board_read', 'ticket_board_create',
+  'ticket_create', 'ticket_update', 'ticket_assign', 'ticket_move', 'ticket_transition',
+  'ticket_checklist_read', 'ticket_checklist_apply', 'ticket_checklist_step_update',
+])
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
   descriptors: ToolSchemaDescriptor[]
@@ -117,6 +122,7 @@ export type RunExecutionSetup = {
    * `authorizeToolExecution` judges the exact set toolset assembly offered.
    */
   identityToolIds: ReadonlySet<string>
+  projectDelegatedToolIds: ReadonlySet<string>
   executorToolset: ExecutorToolset
   initialMessages: ProviderMessage[]
   mcpToolset: McpToolset
@@ -153,6 +159,31 @@ export const prepareRunExecution = async (
     },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
+  // Ordinary shared agents may receive project tools only when a real person
+  // initiated this project-channel run (or a bounded durable peer request did),
+  // the agent remains bound there, and its policy explicitly grants each tool.
+  const projectDelegation = context.agent.agentKind === 'shared'
+    && context.channel.projectId !== null
+    && payload.actorContext.actor.actorType === 'user'
+    && (
+      payload.interactive === true
+      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation'
+    )
+    && (await deps.prisma.agentBinding.count({
+      where: { agentId: context.agent.id, channelId: context.channel.id },
+    })) > 0
+  const projectDelegatedToolIds = new Set(
+    projectDelegation
+      ? BUILTIN_TOOL_DEFINITIONS
+        .filter(
+          (tool) =>
+            PEER_PROJECT_TOOL_IDS.has(tool.id)
+            && tool.projectDelegatedOnly
+            && toolPolicy?.[tool.id] === true,
+        )
+        .map((tool) => tool.id)
+      : [],
+  )
 
   // D3: the one place the identity-tool admission is decided. Both the schema
   // array below and the per-call gate downstream consume this same set, so a
@@ -192,6 +223,7 @@ export const prepareRunExecution = async (
         // than offered and denied.
         agentSystemSlug: context.agent.systemSlug ?? null,
         identityToolIds,
+        projectDelegatedToolIds,
         isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
           agentKind: context.agent.agentKind,
           principalUserId: context.run.principalUserId,
@@ -360,6 +392,7 @@ export const prepareRunExecution = async (
     allowedToolIds,
     checkpoint,
     identityToolIds,
+    projectDelegatedToolIds,
     executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
       approvalInstruction,

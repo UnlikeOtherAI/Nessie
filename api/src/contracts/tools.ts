@@ -21,6 +21,9 @@ export const ToolDescriptorSchema = z.object({
   // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
   // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
   requiresExplicitGrant: z.boolean().optional(),
+  // A project tool can be granted to a shared agent, but only for a
+  // person-started run in a project channel where that agent is bound.
+  projectDelegatedOnly: z.boolean().optional(),
   personalAssistantOnly: z.boolean().optional(),
   // Where the tool belongs in every surface that lists tools, declared by the
   // tool itself. Optional on the wire only because an organization-local

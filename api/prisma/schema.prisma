@@ -1070,6 +1070,7 @@ model User {
   executorAvailabilityCandidates      ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
   createdAgentTodoTemplates           AgentTodoTemplate[]             @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                   AgentTodo[]                     @relation("AgentTodoCreatedBy")
+  createdTaskChecklists               TaskChecklist[]                 @relation("TaskChecklistCreatedBy")
   startedDemonstrations               Demonstration[]                 @relation("DemonstrationStartedBy")
   agentAppConnectionRequests          AgentAppConnectionRequest[]
   avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
@@ -1251,6 +1252,7 @@ model Organization {
   dashboards                 Dashboard[]
   dashboardDataSources       DashboardDataSource[]
   tasks                      Task[]
+  taskChecklists             TaskChecklist[]
   budgets                    Budget[]
   plans                      Plan[]
   approvalRequests           ApprovalRequest[]
@@ -3803,6 +3805,15 @@ model AgentMailboxMessage {
   subject           String?
   body              String
   correlationId     String?              @map("correlation_id")
+  /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
+  /// never receives a requester capability or delegation depth.
+  peerDelegationDepth Int?               @map("peer_delegation_depth")
+  /// Provenance carried by a durable peer brief. Existing mailbox producers
+  /// leave this empty; peer delivery stamps it on the prompt and target run.
+  basis             Json                 @default("[]")
+  /// Original private-conversation authors carried independently from scope.
+  /// A null author is an intentional unknown marker and must never be dropped.
+  disclosureSources Json                 @default("[]") @map("disclosure_sources")
   status            MailboxMessageStatus @default(queued)
   attempts          Int                  @default(0)
   visibleAt         DateTime             @default(now()) @map("visible_at")
@@ -4571,6 +4582,7 @@ model Task {
   placements          TaskBoardPlacement[]
   externalLink        TaskExternalLink?
   boardWatchNotifications  BoardWatchNotification[]
+  checklist          TaskChecklist?
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -4582,6 +4594,46 @@ model Task {
   @@index([ownerUserId, status])
   @@index([runId])
   @@map("tasks")
+}
+
+/// A task-owned snapshot of an agent-authored reusable checklist. Its source
+/// is audit metadata only: task collaborators receive the copied work, never
+/// an entitlement to the private agent or its template library.
+model TaskChecklist {
+  id                    String              @id @default(uuid()) @db.Uuid
+  taskId                String              @unique @map("task_id") @db.Uuid
+  organizationId        String              @map("organization_id") @db.Uuid
+  sourceTemplateId      String              @map("source_template_id") @db.Uuid
+  sourceTemplateVersion Int                 @map("source_template_version")
+  title                 String
+  createdByUserId       String?             @map("created_by_user_id") @db.Uuid
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  task                  Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser         User?               @relation("TaskChecklistCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  steps                 TaskChecklistStep[]
+
+  @@index([organizationId])
+  @@index([sourceTemplateId])
+  @@map("task_checklists")
+}
+
+model TaskChecklistStep {
+  id          String   @id @default(uuid()) @db.Uuid
+  checklistId String   @map("checklist_id") @db.Uuid
+  sequence    Int
+  key         String
+  title       String
+  instructions String
+  completedAt DateTime? @map("completed_at")
+  result      String?
+  checklist   TaskChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@unique([checklistId, sequence])
+  @@unique([checklistId, key])
+  @@index([checklistId])
+  @@map("task_checklist_steps")
 }
 
 model TaskEvent {

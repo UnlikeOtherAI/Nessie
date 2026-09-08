@@ -256,6 +256,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     return createApiResponse(TaskRecordSchema.parse(task))
   })
 
+
   app.post('/api/tasks/:taskId/assign', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply

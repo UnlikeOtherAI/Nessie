@@ -70,6 +70,7 @@ export const runExecutionAgentLoop = async (
      * home DM, on an interactive turn from a live human requester.
      */
     identityToolIds: ReadonlySet<string>
+    projectDelegatedToolIds: ReadonlySet<string>
     initialMessages: ProviderMessage[]
     inference: RunInference
     /** DeepWater turns retain their own recovery matrix and never suspend. */
@@ -165,6 +166,7 @@ export const runExecutionAgentLoop = async (
         allowedToolIds: input.allowedToolIds,
         consumeApprovalProof: options.consumeApprovalProof,
         identityToolIds: input.identityToolIds,
+        projectDelegatedToolIds: input.projectDelegatedToolIds,
         executorToolNames: input.executorToolset.handledNames,
         mcpToolNames: mcpExposedNames,
         skipAutoReview: options.skipAutoReview,

@@ -366,6 +366,7 @@ const runLoop = async (input: {
       deepWaterHandoffGuard: quietGuard(),
       executorToolset,
       identityToolIds: new Set<string>(),
+      projectDelegatedToolIds: new Set<string>(),
       initialMessages: [{ content: 'go', role: 'user' }],
       inference: {
         consumeStreamedFlag: () => false,

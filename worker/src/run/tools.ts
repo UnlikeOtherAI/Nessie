@@ -69,6 +69,11 @@ import {
   runWorkflowTriggerCreateTool,
   runWorkflowUpdateTool,
   runTeamSearchTool,
+  runAgentPeerDelegateTool,
+  runTicketBoardCreateTool,
+  runTicketChecklistApplyTool,
+  runTicketChecklistReadTool,
+  runTicketChecklistStepUpdateTool,
 } from './pa-tools.js'
 import { dispatchMailTool } from './mail-tool-dispatch.js'
 import { runAgentHandoffTool } from './pa-tools/agent-handoff.js'
@@ -180,6 +185,8 @@ const executeBuiltinToolUncorrected = async (
             typeof args.threadId === 'string' ? args.threadId : undefined,
         }),
       )
+    case 'agent_peer_delegate':
+      return wrapTool(inputSummary, () => runAgentPeerDelegateTool(context, args))
     case 'workflow_transform_preview':
       return wrapTool(inputSummary, () =>
         runWorkflowTransformPreviewTool(
@@ -276,8 +283,16 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runTicketPeopleReadTool(context, args))
     case 'ticket_read':
       return wrapTool(inputSummary, () => runTicketReadTool(context, args))
+    case 'ticket_checklist_read':
+      return wrapTool(inputSummary, () => runTicketChecklistReadTool(context, args))
+    case 'ticket_checklist_apply':
+      return wrapTool(inputSummary, () => runTicketChecklistApplyTool(context, args))
+    case 'ticket_checklist_step_update':
+      return wrapTool(inputSummary, () => runTicketChecklistStepUpdateTool(context, args))
     case 'ticket_board_read':
       return wrapTool(inputSummary, () => runTicketBoardReadTool(context, args))
+    case 'ticket_board_create':
+      return wrapTool(inputSummary, () => runTicketBoardCreateTool(context, args))
     case 'ticket_fields_read':
       return wrapTool(inputSummary, () => runTicketFieldsReadTool(context, args))
     case 'ticket_create':

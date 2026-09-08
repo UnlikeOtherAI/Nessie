@@ -13,7 +13,8 @@ import { CARD_TOOL_DEFINITIONS } from './builtin-card-tools.js'
 import { HANDOFF_TOOL_DEFINITIONS } from './builtin-handoff-tools.js'
 import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
 import { TEAM_STRUCTURE_TOOL_DEFINITIONS } from './builtin-team-structure-tools.js'
-import { TICKET_TOOL_DEFINITIONS } from './builtin-ticket-tools.js'
+import { TICKET_BOARD_CREATE_TOOL_DEFINITION, TICKET_TOOL_DEFINITIONS } from './builtin-ticket-tools.js'
+import { AGENT_PEER_DELEGATE_TOOL_DEFINITION } from './builtin-peer-delegation-tools.js'
 import { BROWSER_TOOL_DEFINITIONS } from './builtin-browser-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
 import { EMAIL_ACCOUNT_TOOL_DEFINITIONS } from './builtin-email-account-tools.js'
@@ -336,6 +337,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   DELEGATE_TOOL_DEFINITION,
+  AGENT_PEER_DELEGATE_TOOL_DEFINITION,
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
   HTTP_FETCH_TOOL_DEFINITION,
@@ -461,6 +463,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...CHANNEL_TOOL_DEFINITIONS,
   ...TEAM_STRUCTURE_TOOL_DEFINITIONS,
   ...TICKET_TOOL_DEFINITIONS,
+  TICKET_BOARD_CREATE_TOOL_DEFINITION,
   ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...DASHBOARD_TOOL_DEFINITIONS,
   ...DASHBOARD_EMBED_TOOL_DEFINITIONS,

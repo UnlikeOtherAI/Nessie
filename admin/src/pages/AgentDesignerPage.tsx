@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentAvatarDraftPanel } from '../components/features/agents/AgentAvatarDraftPanel'
-import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
+import {
+  AGENT_DESIGNER_SECTION_VALUES,
+  AgentDesignerForm,
+} from '../components/features/agents/designer/AgentDesignerForm'
 import {
   AgentCreationModeTabs,
   CREATION_MODE_VALUES,
@@ -122,6 +125,13 @@ export const AgentDesignerContent = ({
     'designerMode',
     CREATION_MODE_VALUES,
     'create',
+  )
+  const [designerSection, setDesignerSection] = useTabParam(
+    'designerSection',
+    isEditMode
+      ? AGENT_DESIGNER_SECTION_VALUES.slice(0, -1)
+      : AGENT_DESIGNER_SECTION_VALUES,
+    'basics',
   )
   const assistantPanel = useDesignerAssistantPanel()
   const assistantCanEditForm = !assistantPanel || assistantPanel.pageContext.title === 'Edit agent'
@@ -431,6 +441,8 @@ export const AgentDesignerContent = ({
               modelsLoading={modelOptionsQuery.isLoading}
               parentAgentName={parentAgent?.name}
               readOnly={readOnly}
+              onSectionChange={setDesignerSection}
+              section={designerSection}
               showTools={!isEditMode}
               state={state}
               toolGroups={toolCatalog.groups}

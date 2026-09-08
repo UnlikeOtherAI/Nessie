@@ -10,6 +10,10 @@ const EXPLICIT_GRANT_TOOL_IDS = new Set(
   SYSTEM_TOOL_DEFINITIONS.filter((tool) => tool.requiresExplicitGrant).map((tool) => tool.id),
 )
 
+const PROJECT_DELEGATED_TOOL_IDS = new Set(
+  SYSTEM_TOOL_DEFINITIONS.filter((tool) => tool.projectDelegatedOnly).map((tool) => tool.id),
+)
+
 // The tool's own declared category, read from the definitions rather than
 // stored on the registry row: it is a property of the tool's code, so a
 // re-categorised tool must not need a migration to move. Resolved here, beside
@@ -79,6 +83,7 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
   enabled: entry.enabled,
   handlerKind: entry.handlerKind,
   requiresExplicitGrant: EXPLICIT_GRANT_TOOL_IDS.has(entry.toolId) || undefined,
+  projectDelegatedOnly: PROJECT_DELEGATED_TOOL_IDS.has(entry.toolId) || undefined,
   personalAssistantOnly:
     SYSTEM_TOOL_DEFINITIONS.find((tool) => tool.id === entry.toolId)?.personalAssistantOnly || undefined,
   category: BUILTIN_TOOL_CATEGORIES.get(entry.toolId),

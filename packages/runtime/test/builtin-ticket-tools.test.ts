@@ -6,6 +6,9 @@ import { SYSTEM_TOOL_DEFINITIONS } from '../src/index.js'
 const TICKET_TOOL_IDS = [
   'ticket_list',
   'ticket_read',
+  'ticket_checklist_read',
+  'ticket_checklist_apply',
+  'ticket_checklist_step_update',
   'ticket_board_read',
   'ticket_create',
   'ticket_update',

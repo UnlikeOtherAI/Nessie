@@ -1,4 +1,5 @@
 import type { DestinationScopeChain } from '@nessie/memory'
+import { z } from 'zod'
 
 /**
  * A scoped source a run consumed. Most scope types are `ThoughtAudienceType`
@@ -11,6 +12,12 @@ export type BasisScope = {
   scopeId: string
 }
 
+/** The durable representation used by message, run, and peer-mailbox basis rows. */
+export const BasisScopeSchema = z.object({
+  scopeId: z.string().min(1),
+  scopeType: z.string().min(1),
+})
+
 /** A private conversation's channel scope and the human whose words were read. */
 export type PrivateConversationSource = {
   /** Absent means a legacy or otherwise untraceable private source: deny export. */
@@ -18,6 +25,11 @@ export type PrivateConversationSource = {
   sourceChannelId: string
 }
 
+/** Durable private-conversation lineage for a delegated trigger or mailbox. */
+export const PrivateConversationSourceSchema = z.object({
+  sourceAuthorUserId: z.string().min(1).nullable(),
+  sourceChannelId: z.string().min(1),
+})
 /**
  * Per-run accumulator of scoped sources the run actually consumed.
  *
