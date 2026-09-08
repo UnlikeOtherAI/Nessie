@@ -40,6 +40,10 @@ import type { RouteDeps } from './types.js'
 // the response envelope stay identical across them.
 export type KnowledgeRouteDeps = RouteDeps & {
   knowledgeProvider?: KnowledgeProvider
+  // Tests may supply these exact runtime seams to verify request-local proof
+  // reuse without performing a live UOA request.
+  resolveDisclosureViewer?: typeof resolveDisclosureViewer
+  resolveLiveEntitlements?: typeof resolveLiveEntitlements
 }
 
 export const policyTrace = (decision: PolicyDecision): string[] => [
@@ -67,8 +71,6 @@ export const canManageKnowledgeSpaceAccess = (
     actorContext.actor.actorType === 'user'
     && (
       viewer.organizationRole === 'owner'
-      || (viewer.organizationRole === null
-        && actorContext.actor.roles?.includes('owner') === true)
       || actorContext.actor.actorId === space.createdBy
     )
   )
@@ -175,6 +177,8 @@ export const toKnowledgePaginationMeta = (
 // route deps once. Both route modules destructure exactly what they need.
 export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   const { prisma } = deps
+  const resolveLive = deps.resolveLiveEntitlements ?? resolveLiveEntitlements
+  const resolveViewer = deps.resolveDisclosureViewer ?? resolveDisclosureViewer
   const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma, {
     readMarkdownAttachment: async (attachmentId, organizationId) => {
       const opened = await deps.fileService.openStream(attachmentId, organizationId)
@@ -218,13 +222,13 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     const userId = actorContext.actionContext.effectiveUserId
       ?? (actorType === 'user' ? actorId : null)
     const liveEntitlements = userId
-      ? await resolveLiveEntitlements(prisma, {
+      ? await resolveLive(prisma, {
           organizationId: actorContext.tenant.organizationId,
           userId,
           uoaIdentity: actorContext.actionContext.uoaIdentity,
         })
       : undefined
-    const disclosureViewer = await resolveDisclosureViewer(
+    const disclosureViewer = await resolveViewer(
       prisma,
       actorContext.tenant.organizationId,
       userId,
@@ -239,7 +243,7 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
       prisma,
       actorContext.tenant.organizationId,
       principal,
-      liveEntitlements ? { liveEntitlements } : {},
+      liveEntitlements ? { liveEntitlements, effectiveUserId: userId } : {},
     )
     return { ...viewer, disclosureViewer }
   }

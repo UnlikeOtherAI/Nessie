@@ -72,7 +72,7 @@ export const registerAgentDocumentRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         principal,
-        liveEntitlements ? { liveEntitlements } : {},
+        liveEntitlements ? { liveEntitlements, effectiveUserId: actorContext.actor.actorId } : {},
       ),
     ])
     if (!space) {

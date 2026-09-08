@@ -55,7 +55,7 @@ export const resolveKnowledgeAccessViewers = async (
     context.prisma,
     organizationId,
     buildSpaceViewerPrincipal(context),
-    liveEntitlements ? { liveEntitlements } : {},
+    liveEntitlements ? { liveEntitlements, effectiveUserId } : {},
   )
   return { disclosureViewer, viewer }
 }

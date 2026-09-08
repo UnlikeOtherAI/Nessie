@@ -19,6 +19,7 @@ const parentAgentId = '00000000-0000-4000-8000-000000000008'
 
 const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
+  uoaMembershipVerified: false,
   projectIds: new Set(),
   visibleAgentIds: new Set(),
   userId,
@@ -189,6 +190,7 @@ test('readableSpaceIdsSqlForViewer picks the agent fragment for an agent viewer'
     organizationId,
     {
       bypass: false,
+      uoaMembershipVerified: false,
       userId: null,
       projectIds: new Set(),
       visibleAgentIds: new Set(),
@@ -203,6 +205,7 @@ test('readableSpaceIdsSqlForViewer returns null (no filter) for a bypass viewer'
     organizationId,
     {
       bypass: true,
+      uoaMembershipVerified: false,
       userId: null,
       projectIds: new Set(),
       visibleAgentIds: new Set(),

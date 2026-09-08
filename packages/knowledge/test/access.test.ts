@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { canReadSpace, canWriteSpace, type SpaceViewer, type SpaceViewerAgentScopes } from '../src/access.js'
+import {
+  canReadSpace,
+  canWriteSpace,
+  loadSpaceViewer,
+  type SpaceViewer,
+  type SpaceViewerAgentScopes,
+} from '../src/access.js'
 
 const projectId = '00000000-0000-4000-8000-000000000001'
 const otherProjectId = '00000000-0000-4000-8000-000000000002'
@@ -43,6 +49,7 @@ const agentScopes = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceView
 
 const agentViewer = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceViewer => ({
   bypass: false,
+  uoaMembershipVerified: false,
   userId: null,
   projectIds: new Set(),
   visibleAgentIds: new Set(),
@@ -51,6 +58,7 @@ const agentViewer = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceView
 
 const userViewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
+  uoaMembershipVerified: false,
   userId: 'user-1',
   projectIds: new Set(),
   visibleAgentIds: new Set(),
@@ -355,4 +363,57 @@ test('a human whose live UOA proof was denied cannot read or write an otherwise 
   const shared = space({ visibility: 'organization' })
   assert.equal(canReadSpace(shared, denied), false)
   assert.equal(canWriteSpace(shared, denied), false)
+})
+
+
+test('loadSpaceViewer denies missing and mismatched human entitlement proofs before any local grant', async () => {
+  const principal = { actorId: 'user-1', actorType: 'user' as const }
+  const prisma = {} as never
+  const missing = await loadSpaceViewer(prisma, projectId, principal)
+  const wrongUser = await loadSpaceViewer(prisma, projectId, principal, {
+    liveEntitlements: { kind: 'local', organizationId: projectId, userId: 'user-2' },
+  })
+  const wrongOrganization = await loadSpaceViewer(prisma, projectId, principal, {
+    liveEntitlements: { kind: 'local', organizationId: otherProjectId, userId: 'user-1' },
+  })
+  assert.equal(missing.baseEntitled, false)
+  assert.equal(wrongUser.baseEntitled, false)
+  assert.equal(wrongOrganization.baseEntitled, false)
+})
+
+test('a delegated agent inherits a denied effective human base proof', async () => {
+  const prisma = {
+    agent: {
+      findFirst: async () => ({
+        bindings: [],
+        knowledgeSpaceMemberships: [],
+        parentAgentId: null,
+      }),
+    },
+  } as never
+  const viewer = await loadSpaceViewer(
+    prisma,
+    projectId,
+    { actorId: agentId, actorType: 'agent' },
+    { effectiveUserId: 'user-1', liveEntitlements: { kind: 'denied' } },
+  )
+  assert.equal(viewer.baseEntitled, false)
+  assert.equal(canReadSpace(space({ visibility: 'organization' }), viewer), false)
+})
+
+test('an unbound local viewer reads its current local role instead of a session role', async () => {
+  const prisma = {
+    agent: { findMany: async () => [] },
+    organizationMember: { findFirst: async () => ({ role: 'member' }) },
+    projectMember: { findMany: async () => [] },
+  } as never
+  const viewer = await loadSpaceViewer(
+    prisma,
+    projectId,
+    { actorId: 'user-1', actorType: 'user' },
+    { liveEntitlements: { kind: 'local', organizationId: projectId, userId: 'user-1' } },
+  )
+  assert.equal(viewer.baseEntitled, true)
+  assert.equal(viewer.organizationRole, 'member')
+  assert.equal(viewer.uoaMembershipVerified, false)
 })
