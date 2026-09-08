@@ -1,7 +1,17 @@
-import type { ApiResponse } from '@nessie/schemas'
+import { ApiErrorSchema, type ApiResponse } from '@nessie/schemas'
 import { getBaseUrl } from './api-client'
 
 export type UploadProgress = { loaded: number; total: number; pct: number }
+
+const uploadErrorMessage = (responseText: string, fallback: string): string => {
+  try {
+    const parsed = ApiErrorSchema.safeParse(JSON.parse(responseText))
+    if (parsed.success) return parsed.data.error.message
+  } catch {
+    // Non-JSON upstream errors retain their response text below.
+  }
+  return responseText || fallback
+}
 
 // Multipart upload with real progress. `fetch` cannot report upload progress, so
 // file-node / attachment uploads go through XHR and surface `upload.onprogress`.
@@ -43,7 +53,7 @@ export const uploadFileWithProgress = <T>(
         }
         return
       }
-      reject(new Error(xhr.responseText || `${xhr.status} ${xhr.statusText}`))
+      reject(new Error(uploadErrorMessage(xhr.responseText, `${xhr.status} ${xhr.statusText}`)))
     }
     xhr.onerror = () => reject(new Error('Upload failed'))
     xhr.send(form)

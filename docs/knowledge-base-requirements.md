@@ -606,6 +606,13 @@ second writer therefore cannot overwrite an editor's opened bytes silently.
 The attachment remains the download source for every version, while the body is
 the searchable/renderable projection rather than a second source of truth.
 
+**Verification.** `admin/e2e/knowledge-markdown/run.mjs` starts the local API
+and Vite admin, checks their real readiness, then uses an authenticated browser
+to upload, edit, download, rename, reopen, and concurrently edit a Markdown
+file. It asserts byte/hash/projection equality and that the stale editor keeps
+its draft after the server rejects its pinned base version. The run captures the
+conflict dialog at `e2e/screenshots/knowledge-markdown/canonical-flow.png`.
+
 **Type-aware file viewer.** Non-markdown file nodes keep the file-node path, with
 the viewer inferred from the filename (`previewKindForFilename`): **images** and
 **PDFs** preview via an authed object URL; **video** (mp4/webm/mov/…) and **audio**

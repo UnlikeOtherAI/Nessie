@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -12,29 +13,54 @@ const screenshot = resolve(root, 'e2e', 'screenshots', 'knowledge-markdown', 'ca
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required')
 
-const waitFor = async (url) => {
+const waitFor = async (url, ready) => {
   const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {
-    try { if ((await fetch(url)).status < 500) return } catch { /* poll */ }
+    try {
+      const response = await fetch(url)
+      if (await ready(response)) return
+    } catch { /* poll */ }
     await new Promise((done) => setTimeout(done, 250))
   }
   throw new Error(`${url} did not become ready`)
 }
-const start = (filter) => spawn('pnpm.cmd', ['--filter', filter, 'dev'], {
-  cwd: root,
-  env: { ...process.env, DATABASE_URL: databaseUrl, NESSIE_DB_URL: databaseUrl },
-  shell: process.platform === 'win32',
-  stdio: 'ignore',
-  windowsHide: true,
-})
-const stop = (child) => child?.pid && process.platform === 'win32'
-  ? new Promise((done) => spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' }).once('exit', done))
-  : undefined
+const start = (filter) => {
+  const windows = process.platform === 'win32'
+  return spawn(
+    windows ? (process.env.ComSpec ?? 'cmd.exe') : 'pnpm',
+    windows ? ['/d', '/s', '/c', `pnpm.cmd --filter ${filter} dev`] : ['--filter', filter, 'dev'],
+    {
+      cwd: root,
+      detached: !windows,
+      env: { ...process.env, DATABASE_URL: databaseUrl, NESSIE_DB_URL: databaseUrl },
+      stdio: 'ignore',
+      windowsHide: true,
+    },
+  )
+}
+const stop = async (child) => {
+  if (!child?.pid || child.exitCode !== null) return
+  if (process.platform === 'win32') {
+    await new Promise((done) => spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' }).once('exit', done))
+    return
+  }
+  await new Promise((done) => {
+    const timeout = setTimeout(() => {
+      try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+    }, 10_000)
+    child.once('exit', () => { clearTimeout(timeout); done() })
+    try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') }
+  })
+}
 const main = async () => {
   const api = start('@nessie/api'); const admin = start('@nessie/admin')
   let browser
   try {
-    await Promise.all([waitFor(`${apiUrl}/api/health`), waitFor(adminUrl)])
+    await Promise.all([
+      waitFor(`${apiUrl}/api/health`, async (response) => response.status === 200),
+      waitFor(adminUrl, async (response) => response.status === 200 && (await response.text()).includes('@vite/client')),
+    ])
+    console.log('knowledge-markdown e2e: services ready')
     const login = await (await fetch(`${apiUrl}/api/auth/dev-login`)).json()
     const token = login.data.token
     const call = async (path, init = {}) => {
@@ -46,8 +72,12 @@ const main = async () => {
     const project = (await call('/api/projects'))[0]
     const space = await call('/api/knowledge-base/spaces', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: `Markdown QA ${Date.now()}`, projectId: project.id }) })
     browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage()
-    await page.addInitScript((value) => localStorage.setItem('nessie.admin.token', value), token)
+    const openPage = async () => {
+      const page = await browser.newPage()
+      await page.addInitScript((value) => localStorage.setItem('nessie.admin.token', value), token)
+      return page
+    }
+    const page = await openPage()
     await page.goto(`${adminUrl}/knowledge-base/spaces/${space.id}`, { waitUntil: 'domcontentloaded' })
     await page.getByText(space.name).first().waitFor()
     await page.locator('input[type=file]').setInputFiles({ name: 'entry.md', mimeType: 'text/markdown', buffer: Buffer.from('# Canonical\n\nfirst') })
@@ -58,26 +88,72 @@ const main = async () => {
       if (!node) await new Promise((done) => setTimeout(done, 250))
     }
     assert.ok(node, 'upload creates a file node')
+    console.log('knowledge-markdown e2e: upload created node')
     const baseVersion = node.latestVersion.id
-    await page.goto(`${adminUrl}/knowledge-base/spaces/${space.id}?pageId=${node.id}`, { waitUntil: 'domcontentloaded' })
-    await page.getByTestId('markdown-file-preview').waitFor()
-    await page.getByRole('button', { name: 'Edit' }).click()
+    const fileRoute = `${adminUrl}/knowledge-base/spaces/${space.id}?pageId=${node.id}`
+    const openMarkdownEditor = async (editorPage) => {
+      await editorPage.goto(fileRoute, { waitUntil: 'domcontentloaded' })
+      await editorPage.getByText(space.name).first().waitFor()
+      await editorPage.getByTestId('markdown-file-preview').waitFor()
+      await editorPage.getByRole('button', { name: 'Edit' }).click()
+      await editorPage.getByRole('textbox', { name: 'Markdown source' }).waitFor()
+    }
+    await openMarkdownEditor(page)
     await page.getByRole('textbox', { name: 'Markdown source' }).fill('# Canonical\n\nchanged')
     await page.getByRole('button', { name: 'Save new version' }).click()
     await page.getByText('changed').waitFor()
-    let saved = await call(`/api/knowledge-base/pages/${node.id}`)
+    let saved
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      saved = await call(`/api/knowledge-base/pages/${node.id}`)
+      if (saved.latestVersion.id !== baseVersion) break
+      await new Promise((done) => setTimeout(done, 250))
+    }
+    assert.notEqual(saved.latestVersion.id, baseVersion, 'editor save creates a new version')
     const bytes = await (await fetch(`${apiUrl}/api/knowledge-base/pages/${node.id}/versions/${saved.latestVersion.id}/download`, { headers: { authorization: `Bearer ${token}` } })).text()
-    assert.equal(bytes, saved.latestVersion.body)
     assert.equal(bytes, '# Canonical\n\nchanged')
+    assert.equal(saved.latestVersion.body, '<h1>Canonical</h1>\n<p>changed</p>\n')
+    assert.equal(saved.latestVersion.sourceContentHash, createHash('sha256').update(bytes).digest('hex'))
+    console.log('knowledge-markdown e2e: canonical bytes, body, and hash match')
     await call(`/api/knowledge-base/pages/${node.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'renamed-without-extension', expectedRevision: saved.revision }) })
-    await page.reload({ waitUntil: 'domcontentloaded' }); await page.getByTestId('markdown-file-preview').waitFor()
-    const staleUpload = new FormData()
-    staleUpload.append('file', new Blob(['# stale'], { type: 'text/markdown' }), 'renamed-without-extension')
-    const conflict = await fetch(`${apiUrl}/api/knowledge-base/pages/${node.id}/file-version`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'x-knowledge-base-version': baseVersion }, body: staleUpload })
-    assert.equal(conflict.status, 409, 'pinned base version rejects a stale save')
+    await page.goto(fileRoute, { waitUntil: 'domcontentloaded' })
+    await page.getByTestId('markdown-file-preview').waitFor()
+    assert.equal(await page.getByTestId('markdown-file-preview').textContent(), 'Canonical\nchanged')
+    console.log('knowledge-markdown e2e: renamed file reopens as Markdown')
+
+    // These dialogs both pin the same version before either write happens. The
+    // second is deliberately stale, so this proves the XHR multipart
+    // `baseVersionId` contract as a person experiences it.
+    const staleEditor = await openPage()
+    await page.getByRole('button', { name: 'Edit' }).click()
+    await page.getByRole('textbox', { name: 'Markdown source' }).waitFor()
+    await openMarkdownEditor(staleEditor)
+    await page.getByRole('textbox', { name: 'Markdown source' }).fill('# Canonical\n\nnewer version')
+    await page.getByRole('button', { name: 'Save new version' }).click()
+    await page.getByText('newer version').waitFor()
+    await staleEditor.getByRole('textbox', { name: 'Markdown source' }).fill('# Canonical\n\nstale draft')
+    await staleEditor.getByRole('button', { name: 'Save new version' }).click()
+    await staleEditor.getByRole('dialog').getByText('The file changed after this Markdown editor opened').waitFor()
+    console.log('knowledge-markdown e2e: stale UI save was rejected')
+    assert.equal(
+      await staleEditor.getByRole('textbox', { name: 'Markdown source' }).inputValue(),
+      '# Canonical\n\nstale draft',
+      'a rejected UI save keeps the draft open for resolution',
+    )
+    const afterConflict = await call(`/api/knowledge-base/pages/${node.id}`)
+    assert.equal(afterConflict.latestVersion.body, '<h1>Canonical</h1>\n<p>newer version</p>\n')
+    assert.equal(
+      afterConflict.latestVersion.sourceContentHash,
+      createHash('sha256').update('# Canonical\n\nnewer version').digest('hex'),
+      'the stale editor does not overwrite the newer version',
+    )
     await mkdir(resolve(root, 'e2e', 'screenshots', 'knowledge-markdown'), { recursive: true })
-    await page.screenshot({ path: screenshot, fullPage: true })
+    await staleEditor.screenshot({ path: screenshot, fullPage: true })
     console.log('knowledge-markdown e2e: passed')
-  } finally { await browser?.close(); await stop(admin); await stop(api) }
+  } finally {
+    await browser?.close()
+    await stop(admin)
+    await stop(api)
+    console.log('knowledge-markdown e2e: owned servers stopped')
+  }
 }
 await main()
