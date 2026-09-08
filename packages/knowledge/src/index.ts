@@ -5,6 +5,7 @@ export {
   isAgentCoreDocumentPage,
   loadActiveAgentCoreDocuments,
 } from './agent-core-documents.js'
+export { migrateAgentCoreDocuments } from './native-version-writer.js'
 export type {
   ActiveCoreDocument,
   CoreDocumentRole,
@@ -19,6 +20,7 @@ export type {
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
+export type { AgentCoreMigrationDraft, AgentCoreMigrationResult } from './native-version-writer.js'
 export {
   canReadSpace,
   canWriteSpace,
