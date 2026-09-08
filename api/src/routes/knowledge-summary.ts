@@ -74,6 +74,7 @@ export const registerKnowledgeSummaryRoutes = (
       organizationId,
       query,
       queryEmbedding,
+      embeddingModel: modelClient.embeddingModel,
       viewer,
       projectId,
       spaceId: body.spaceId,

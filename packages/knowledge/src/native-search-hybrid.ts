@@ -123,6 +123,9 @@ const runSemanticQuery = (
     ${latestVersionJoin}
     WHERE ${sharedChunkWhere(input)}
       AND c.embedding IS NOT NULL
+      ${input.embeddingModel
+        ? Prisma.sql`AND c.embedding_model = ${input.embeddingModel}`
+        : Prisma.empty}
     ORDER BY c.embedding <=> ${vectorLiteral}::vector ASC
     LIMIT ${CHANNEL_CANDIDATE_LIMIT}
   `)
@@ -233,7 +236,12 @@ export const searchNativePagesHybrid = async (
     return { data: [], meta: { cursor: null, hasMore: false } }
   }
 
-  const vectorLiteral = toVectorLiteral(input.queryEmbedding)
+  // A vector has meaning only in the embedding space that created it.  If the
+  // caller cannot name that model, retain lexical retrieval but fail closed on
+  // the semantic lane rather than comparing potentially incompatible vectors.
+  const vectorLiteral = input.embeddingModel
+    ? toVectorLiteral(input.queryEmbedding)
+    : null
   const [lexicalRows, semanticRows] = await Promise.all([
     runLexicalQuery(prisma, input, query),
     vectorLiteral ? runSemanticQuery(prisma, input, vectorLiteral) : Promise.resolve([]),

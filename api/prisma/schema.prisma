@@ -5647,6 +5647,9 @@ model KnowledgePageVersion {
   // For file nodes (KnowledgePage.kind = file): the stored object backing this
   // version. App-enforced (no FK relation), mirroring Attachment's other links.
   attachmentId  String?             @map("attachment_id") @db.Uuid
+  // SHA-256 of immutable Markdown attachment bytes when `body` is its derived
+  // projection. Null for rich-text pages and Markdown not yet backfilled.
+  sourceContentHash String?         @map("source_content_hash")
   authorType    KnowledgeAuthorType @map("author_type")
   authorId      String              @map("author_id")
   changeComment String?             @map("change_comment")
