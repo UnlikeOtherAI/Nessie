@@ -188,6 +188,11 @@ export const registerCreateThreadMessageRoute = (
           mapMessageRecord(result.message, linkedAttachmentCount),
         ),
         pendingAgentInvites: result.pendingAgentInvites,
+        // Present only when this message named its conversation (the first
+        // top-level message in a still-unnamed agent thread). Additive: every
+        // other send omits it, and a client that ignores it is not wrong — the
+        // thread row carries the same title on its next read.
+        ...(result.conversationTitle ? { conversationTitle: result.conversationTitle } : {}),
       }),
     )
   })

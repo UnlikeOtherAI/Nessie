@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import {
+  DEFAULT_CONVERSATION_TITLE,
   listAgentConversationsForUser,
   loadConversationForUser,
   renameThreadForUser,
@@ -11,6 +12,7 @@ import {
 } from '@nessie/team-admin'
 
 import { listChannelsForUser } from '../src/services/channels.js'
+import { createThreadMessage } from '../src/services/message-create.js'
 import { findThreadForUser } from '../src/services/message-read-state.js'
 
 /**
@@ -19,7 +21,8 @@ import { findThreadForUser } from '../src/services/message-read-state.js'
  * Every property here is a *relationship between tables* — a thread's audience
  * is its channel's membership, an agent's list is two arms over bindings, a
  * preview is the newest message the viewer satisfies the `message_basis_scopes`
- * of, a progress line is gated by `run_basis_scopes` — and a fake would only
+ * of, a progress line is gated by `run_basis_scopes`, a conversation's title is
+ * a conditional update racing its own first message — and a fake would only
  * restate the code. What is proved is that the queries say what the rules say.
  *
  * Integration test against the local Postgres (see AGENTS.md). Every cleanup is
@@ -892,3 +895,132 @@ runDatabaseTest('the list pages by activity without repeating a row', async () =
   })
 })
 
+/**
+ * A conversation opened empty ("New conversation" posts `{ channelId }` and no
+ * message) is titled by the first thing said in it. Every condition below is
+ * structural — an agent thread, the placeholder title, a top-level `user`
+ * message — and none of them reads the content for intent.
+ */
+const threadTitle = async (prisma: PrismaClient, threadId: string): Promise<string | null> => {
+  const thread = await prisma.thread.findUniqueOrThrow({
+    where: { id: threadId },
+    select: { title: true },
+  })
+  return thread.title
+}
+
+const openEmptyConversation = async (
+  prisma: PrismaClient,
+  s: Seed,
+): Promise<string> => {
+  const started = await startAgentConversation(prisma, {
+    agentId: s.agentId,
+    channelId: s.publicChannelId,
+    organizationId: s.organizationId,
+    startedByUserId: s.userA,
+  })
+  assert.equal(started.kind, 'created')
+  if (started.kind !== 'created') throw new Error('the conversation was not created')
+  assert.equal(started.thread.title, DEFAULT_CONVERSATION_TITLE)
+  return started.thread.id
+}
+
+runDatabaseTest('the first message in an empty conversation becomes its title', async () => {
+  await withSeed(async (prisma, s) => {
+    const threadId = await openEmptyConversation(prisma, s)
+
+    const first = await createThreadMessage(prisma, {
+      content: 'Check the Q3 pricing sheet\nand the deck that goes with it',
+      threadId,
+      userId: s.userA,
+    })
+    assert.equal(first.kind, 'created')
+    if (first.kind !== 'created') return
+    // The one title helper: first non-empty line, whitespace collapsed.
+    assert.equal(await threadTitle(prisma, threadId), 'Check the Q3 pricing sheet')
+    // Additive on the wire, so the client can show the name it just caused.
+    assert.equal(first.conversationTitle, 'Check the Q3 pricing sheet')
+
+    // A conversation is named once. The second message is a message.
+    const second = await createThreadMessage(prisma, {
+      content: 'and while you are in there, the renewal dates',
+      threadId,
+      userId: s.userA,
+    })
+    assert.equal(second.kind, 'created')
+    if (second.kind !== 'created') return
+    assert.equal(second.conversationTitle, undefined)
+    assert.equal(await threadTitle(prisma, threadId), 'Check the Q3 pricing sheet')
+
+    // The list and the card read the same name.
+    const record = await loadConversationForUser(prisma, {
+      organizationId: s.organizationId,
+      threadId,
+      userId: s.userA,
+    })
+    assert.equal(record?.title, 'Check the Q3 pricing sheet')
+  })
+})
+
+runDatabaseTest('a reply never names the conversation it is written in', async () => {
+  await withSeed(async (prisma, s) => {
+    const threadId = await openEmptyConversation(prisma, s)
+    // A root that did not come through this door, so the conversation is still
+    // unnamed when the reply lands.
+    const rootMessageId = await postMessage(prisma, {
+      content: 'the opening turn',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      threadId,
+      userId: s.userA,
+    })
+
+    const reply = await createThreadMessage(prisma, {
+      content: 'a side remark about the opening turn',
+      rootMessageId,
+      threadId,
+      userId: s.userA,
+    })
+    assert.equal(reply.kind, 'created')
+    if (reply.kind !== 'created') return
+    assert.equal(reply.conversationTitle, undefined)
+    assert.equal(await threadTitle(prisma, threadId), DEFAULT_CONVERSATION_TITLE)
+  })
+})
+
+runDatabaseTest('a room’s General thread and a renamed conversation keep their names', async () => {
+  await withSeed(async (prisma, s) => {
+    // A room's own thread is named by the room; `agent_id` is null and nothing
+    // said in it may rename anything.
+    const generalId = await generalThreadId(prisma, s.publicChannelId)
+    const inGeneral = await createThreadMessage(prisma, {
+      content: 'morning all',
+      threadId: generalId,
+      userId: s.userA,
+    })
+    assert.equal(inGeneral.kind, 'created')
+    if (inGeneral.kind !== 'created') return
+    assert.equal(inGeneral.conversationTitle, undefined)
+    assert.equal(await threadTitle(prisma, generalId), 'General')
+
+    // A conversation somebody has already named is theirs, not the first
+    // message's.
+    const started = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+      title: 'Pricing review',
+    })
+    assert.equal(started.kind, 'created')
+    if (started.kind !== 'created') return
+    const named = await createThreadMessage(prisma, {
+      content: 'starting somewhere else entirely',
+      threadId: started.thread.id,
+      userId: s.userA,
+    })
+    assert.equal(named.kind, 'created')
+    if (named.kind !== 'created') return
+    assert.equal(named.conversationTitle, undefined)
+    assert.equal(await threadTitle(prisma, started.thread.id), 'Pricing review')
+  })
+})
