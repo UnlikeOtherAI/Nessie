@@ -7,6 +7,7 @@ import { createNativeKnowledgeProvider } from '@nessie/knowledge'
 import { AuthorizedActionContextSchema } from '@nessie/schemas'
 
 import { resolveApprovalRequest } from '../src/services/approvals.js'
+import { McpScopeError } from '../src/mcp/scopes.js'
 import { nessieMcpTools } from '../src/mcp/server.js'
 import type { McpToolContext } from '../src/mcp/tool-context.js'
 
@@ -215,6 +216,85 @@ runDatabaseTest('the borrowed account can approve, and that publishes', async ()
       where: { id: created.page.id },
     })
     assert.equal(stored.status, 'published')
+  } finally {
+    await cleanup(prisma, s)
+  }
+})
+
+runDatabaseTest('a credential with no document grant cannot even ask', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const writer = contextFor(prisma, s)
+    const created = await tool('nessie_doc_create').run(writer, {
+      spaceId: s.spaceId,
+      title: 'Not yours to ask about',
+    }) as { page: { id: string } }
+
+    // Asking is not free: it reads the page, learns whether it is reachable,
+    // and puts a decision in front of a person. A boards-only credential holds
+    // no grant that covers any of that.
+    const boardsOnly: McpToolContext = { ...writer, scopes: ['boards_read'] }
+    const refused = await tool('nessie_doc_publish').run(boardsOnly, {
+      pageId: created.page.id,
+    }).catch((error: unknown) => error)
+    assert.ok(refused instanceof McpScopeError, 'a missing document scope must refuse')
+    assert.equal(refused.required, 'documents_write')
+
+    const count = await prisma.approvalRequest.count({
+      where: { action: 'knowledge.page.publish', organizationId: s.organizationId },
+    })
+    assert.equal(count, 0, 'a refused caller must open nothing')
+  } finally {
+    await cleanup(prisma, s)
+  }
+})
+
+runDatabaseTest('concurrent asks for one draft converge on a single approval', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const context = contextFor(prisma, s)
+    const created = await tool('nessie_doc_create').run(context, {
+      spaceId: s.spaceId,
+      title: 'Raced',
+    }) as { page: { id: string } }
+
+    // Honest scope: this pins the observable behaviour — two overlapping asks
+    // yield one decision — and it does NOT prove the advisory lock in
+    // `createApprovalRequestOnce` is what produces it. Neutralising that lock
+    // leaves this test green, with one client or with two: the window between
+    // the read and the write is too narrow to lose without artificial
+    // synchronisation, and a barrier wedged into the service to widen it would
+    // be test scaffolding in production code. The lock is still right — two
+    // replicas are not two connections in one process — but the reader should
+    // know this is a regression guard on the outcome, not evidence of the
+    // mechanism.
+    //
+    // Two clients rather than one anyway: separate connections are the closer
+    // model of two replicas, and cost nothing.
+    const other = new PrismaClient()
+    const contextB: McpToolContext = {
+      ...contextFor(other, s),
+      knowledge: {
+        buildViewer: async () => ({
+          bypass: true,
+          userId: s.userId,
+          visibleAgentIds: new Set<string>(),
+        }) as never,
+        provider: createNativeKnowledgeProvider(other, {}),
+      },
+    }
+    const [first, second] = await Promise.all([
+      tool('nessie_doc_publish').run(context, { pageId: created.page.id }),
+      tool('nessie_doc_publish').run(contextB, { pageId: created.page.id }),
+    ]).finally(() => other.$disconnect()) as { approvalId?: string }[]
+
+    assert.equal(first.approvalId, second.approvalId, 'a race must not open two decisions')
+    const count = await prisma.approvalRequest.count({
+      where: { action: 'knowledge.page.publish', organizationId: s.organizationId },
+    })
+    assert.equal(count, 1, 'exactly one approval survived the race')
   } finally {
     await cleanup(prisma, s)
   }

@@ -46,49 +46,54 @@ export type CreateApprovalInput = {
   requiredApproverRole?: string
 }
 
+/**
+ * The row, shaped once.
+ *
+ * Both doors — the plain create and the deduplicating one — build an approval
+ * the same way, and a second spelling of this is how the two would drift on
+ * the field that matters most, `requesterId`.
+ */
+const approvalRequestData = (input: CreateApprovalInput): Prisma.ApprovalRequestUncheckedCreateInput => {
+  // Bound once, so the narrowing survives every use below.
+  const credentialRequest =
+    'agentAccessCredentialId' in input.requester ? input.requester : null
+
+  return {
+    organizationId: input.actorContext.tenant.organizationId,
+    projectId: input.actorContext.tenant.projectId ?? null,
+    teamId: input.actorContext.tenant.teamId ?? null,
+    channelId: input.actorContext.actionContext.channelId ?? null,
+    taskId: input.taskId ?? null,
+    runId: input.runId ?? null,
+    agentId: 'agentId' in input.requester ? input.requester.agentId : null,
+    agentAccessCredentialId: credentialRequest?.agentAccessCredentialId ?? null,
+    // The person who lent their account is the only person who may answer for
+    // it — the same pinning a send-as-you gate uses, and for the same reason:
+    // a colleague must not be able to authorise something done in your name.
+    requiredApproverUserId: credentialRequest?.requiredApproverUserId ?? null,
+    // Never the human the credential acts as. `resolveApprovalRequest` refuses a
+    // requester who tries to answer their own request, so naming the approver
+    // here would make the one person allowed to decide the one person who
+    // cannot. The credential is the honest answer anyway: it asked, not them.
+    requesterId: credentialRequest
+      ? credentialRequest.agentAccessCredentialId
+      : input.actorContext.actor.actorId,
+    action: input.action,
+    reason: input.reason,
+    context: (input.context as Prisma.InputJsonValue) ?? undefined,
+    requiredApproverRole: input.requiredApproverRole ?? null,
+    continuationToken: randomUUID(),
+    expiresAt: new Date(
+      Date.now() + (credentialRequest ? CREDENTIAL_EXPIRY_MS : DEFAULT_EXPIRY_MS),
+    ),
+  }
+}
+
 export const createApprovalRequest = async (
   prisma: PrismaClient,
   input: CreateApprovalInput,
 ) => {
-  const continuationToken = randomUUID()
-  // Bound once, so the narrowing survives every use below.
-  const credentialRequest =
-    'agentAccessCredentialId' in input.requester ? input.requester : null
-  const expiresAt = new Date(
-    Date.now() + (credentialRequest ? CREDENTIAL_EXPIRY_MS : DEFAULT_EXPIRY_MS),
-  )
-
-  // Never the human the credential acts as. `resolveApprovalRequest` refuses a
-  // requester who tries to answer their own request, so naming the approver
-  // here would make the one person allowed to decide the one person who
-  // cannot. The credential is the honest answer anyway: it asked, not them.
-  const requesterId = credentialRequest
-    ? credentialRequest.agentAccessCredentialId
-    : input.actorContext.actor.actorId
-
-  const approval = await prisma.approvalRequest.create({
-    data: {
-      organizationId: input.actorContext.tenant.organizationId,
-      projectId: input.actorContext.tenant.projectId ?? null,
-      teamId: input.actorContext.tenant.teamId ?? null,
-      channelId: input.actorContext.actionContext.channelId ?? null,
-      taskId: input.taskId ?? null,
-      runId: input.runId ?? null,
-      agentId: 'agentId' in input.requester ? input.requester.agentId : null,
-      agentAccessCredentialId: credentialRequest?.agentAccessCredentialId ?? null,
-      // The person who lent their account is the only person who may answer for
-      // it — the same pinning a send-as-you gate uses, and for the same reason:
-      // a colleague must not be able to authorise something done in your name.
-      requiredApproverUserId: credentialRequest?.requiredApproverUserId ?? null,
-      requesterId,
-      action: input.action,
-      reason: input.reason,
-      context: (input.context as Prisma.InputJsonValue) ?? undefined,
-      requiredApproverRole: input.requiredApproverRole ?? null,
-      continuationToken,
-      expiresAt,
-    },
-  })
+  const approval = await prisma.approvalRequest.create({ data: approvalRequestData(input) })
 
   await emitAuditEvent(prisma, {
     actorContext: input.actorContext,
@@ -100,6 +105,69 @@ export const createApprovalRequest = async (
   })
 
   return mapApproval(approval)
+}
+
+/**
+ * Open an approval, or hand back the one already open for the same thing.
+ *
+ * A paired agent that polls calls its tool again, and find-then-create is not
+ * atomic: two calls — the same agent retrying, or two replicas — both see no
+ * pending row and both create one, so a person gets the same decision twice.
+ * There is no unique index to lean on, because what makes two requests "the
+ * same" lives inside the approval's JSON `context`.
+ *
+ * So the check and the create happen under one `pg_advisory_xact_lock` on the
+ * caller's own key — the instrument the settings cascade and the cloud-browser
+ * admission already use for this shape of problem. The audit event is emitted
+ * after the transaction commits, so a slow audit write never holds the lock.
+ */
+export const createApprovalRequestOnce = async (
+  prisma: PrismaClient,
+  input: CreateApprovalInput & {
+    /** Distinct per thing-being-decided, e.g. credential + page + version. */
+    lockKey: string
+    /** True when an existing pending approval is for the same thing. */
+    matches: (context: Record<string, unknown> | null) => boolean
+  },
+): Promise<{ approval: ReturnType<typeof mapApproval>; created: boolean }> => {
+  const requester = input.requester
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${input.lockKey}, 0))`
+
+    const pending = await tx.approvalRequest.findMany({
+      where: {
+        action: input.action,
+        organizationId: input.actorContext.tenant.organizationId,
+        status: 'pending',
+        ...('agentAccessCredentialId' in requester
+          ? { agentAccessCredentialId: requester.agentAccessCredentialId }
+          : { agentId: requester.agentId }),
+      },
+    })
+    const existing = pending.find((row) =>
+      input.matches(row.context as Record<string, unknown> | null))
+    if (existing) return { approval: mapApproval(existing), created: false }
+
+    return {
+      approval: mapApproval(await tx.approvalRequest.create({
+        data: approvalRequestData(input),
+      })),
+      created: true,
+    }
+  })
+
+  if (created.created) {
+    await emitAuditEvent(prisma, {
+      actorContext: input.actorContext,
+      action: 'approval.created',
+      resourceType: 'approval',
+      resourceId: created.approval.id,
+      outcome: 'success',
+      metadata: { action: input.action, ...requester },
+    })
+  }
+  return created
 }
 
 /**

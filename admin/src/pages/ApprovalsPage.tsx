@@ -228,7 +228,11 @@ export const ApprovalsPage = () => {
                               Open page
                             </button>
                           ) : null}
-                          {todoTemplatePublish ? (
+                          {/* `agentId` is null for a request a paired credential
+                              opened. No such request carries this action today,
+                              but the generic creation API allows one, and the
+                              link would navigate to `/agents/null`. */}
+                          {todoTemplatePublish && approval.agentId ? (
                             <button
                               className="admin-button admin-button-secondary admin-button-compact"
                               onClick={() => navigate(`/agents/${approval.agentId}?tab=todos`)}

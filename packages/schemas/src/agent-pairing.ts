@@ -23,14 +23,19 @@ export const AgentPairingSettingSchema = z.object({
 export type AgentPairingSetting = z.infer<typeof AgentPairingSettingSchema>
 
 /**
- * Read the resolved value, defaulting to allowed.
+ * Read the resolved value.
  *
- * Parsed rather than cast, and a malformed stored value reads as allowed rather
- * than throwing: a settings row that has gone strange must not be able to lock
- * every member of an organisation out of a capability they already had.
+ * Absent means allowed — an installation that has never thought about pairing
+ * keeps working exactly as it did, and there is nothing to misread.
+ *
+ * A row that is *present* and does not parse is the opposite case and takes the
+ * opposite answer. Somebody wrote that row to express a decision; reading
+ * `{"allowed":"false"}` as permission would grant the very thing they sat down
+ * to forbid. A security switch that fails open on malformed input is not a
+ * switch, so a value that exists and cannot be understood denies.
  */
 export const agentPairingAllowed = (value: unknown): boolean => {
   if (value === null || value === undefined) return true
   const parsed = AgentPairingSettingSchema.safeParse(value)
-  return parsed.success ? parsed.data.allowed : true
+  return parsed.success ? parsed.data.allowed : false
 }

@@ -1,7 +1,7 @@
 import { canReadSpace, canWriteSpace } from '@nessie/knowledge'
 import { z } from 'zod'
 
-import { createApprovalRequest } from '../../services/approvals.js'
+import { createApprovalRequestOnce } from '../../services/approvals.js'
 import { emitAuditEvent } from '../../services/audit.js'
 import { requireScope } from '../scopes.js'
 import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
@@ -304,6 +304,14 @@ export const documentTools = (): McpToolDefinition[] => [
     },
     name: 'nessie_doc_publish',
     run: async (context, input) => {
+      // Publishing grants nothing, so this is not the publish permission — it is
+      // the document permission. Without it a credential holding only
+      // `boards_read` could name a page id, learn from the answer whether that
+      // document is reachable, and put a request in front of a person, none of
+      // which its grant covers. `documents_write` is the scope that says this
+      // agent works on documents at all, and asking for one to go live is part
+      // of that work.
+      requireScope(context.scopes, 'documents_write')
       const access = context.knowledge
       if (!access) return NOT_AVAILABLE
 
@@ -346,32 +354,10 @@ export const documentTools = (): McpToolDefinition[] => [
         return { error: 'This call carries no agent credential, so it cannot request publication.' }
       }
 
-      // Never a second pending request for the same draft. An agent that polls
-      // would otherwise fill a person's Approvals page with the same decision.
-      const pending = await context.prisma.approvalRequest.findMany({
-        select: { context: true, id: true },
-        where: {
-          action: 'knowledge.page.publish',
-          agentAccessCredentialId: credentialId,
-          organizationId,
-          status: 'pending',
-        },
-      })
-      const duplicate = pending.find((row) => {
-        const rowContext = row.context as Record<string, unknown> | null
-        return rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId
-      })
-      if (duplicate) {
-        return {
-          status: 'awaiting_approval',
-          approvalId: duplicate.id,
-          message:
-            'Publication was already requested for this draft and is waiting for '
-            + `${PUBLISH_APPROVER_HINT}.`,
-        }
-      }
-
-      const approval = await createApprovalRequest(context.prisma, {
+      // One request per draft, even if the agent polls or two replicas race:
+      // the check and the create happen under one lock inside the approvals
+      // service, which is where that concern belongs.
+      const { approval, created } = await createApprovalRequestOnce(context.prisma, {
         action: 'knowledge.page.publish',
         actorContext: context.actorContext,
         context: {
@@ -380,6 +366,9 @@ export const documentTools = (): McpToolDefinition[] => [
           title: existing.title,
           versionId,
         },
+        lockKey: `mcp-doc-publish:${credentialId}:${pageId}:${versionId}`,
+        matches: (rowContext) =>
+          rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId,
         reason:
           (input.reason as string | undefined)?.trim()
           || 'Requested by a paired agent through the MCP endpoint.',
@@ -388,6 +377,16 @@ export const documentTools = (): McpToolDefinition[] => [
           requiredApproverUserId: context.actorContext.actor.actorId,
         },
       })
+
+      if (!created) {
+        return {
+          status: 'awaiting_approval',
+          approvalId: approval.id,
+          message:
+            'Publication was already requested for this draft and is waiting for '
+            + `${PUBLISH_APPROVER_HINT}.`,
+        }
+      }
 
       return {
         status: 'awaiting_approval',

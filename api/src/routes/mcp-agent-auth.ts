@@ -186,6 +186,15 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
       return reply
     }
 
+    // One team, decided once.
+    //
+    // The tenant's team and the action context's are not always both present,
+    // and reading the setting from one while minting the credential against the
+    // other is a bypass: a team that locked pairing off would be skipped by the
+    // resolve and then be the team the credential is scoped to.
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? null
+    const projectId = actorContext.tenant.projectId
+
     // Is pairing allowed for this person at all?
     //
     // Checked on approval rather than at the start of the flow on purpose: the
@@ -198,7 +207,7 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
         prisma,
         {
           organizationId: actorContext.tenant.organizationId,
-          teamId: actorContext.tenant.teamId ?? null,
+          teamId,
           userId: actorContext.actor.actorId,
         },
         AGENT_PAIRING_SETTING_KEY,
@@ -226,8 +235,6 @@ export const registerMcpAgentAuthRoutes = (app: FastifyInstance, deps: RouteDeps
     // same requirement the scheduled-trigger route already states, and for the
     // same reason: refuse now, while there is somebody to tell, rather than at
     // every use.
-    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
-    const projectId = actorContext.tenant.projectId
     if (body.approve && (!teamId || !projectId)) {
       sendApiError(
         reply,
