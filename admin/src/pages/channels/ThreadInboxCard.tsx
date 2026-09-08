@@ -84,13 +84,16 @@ export const ThreadInboxCard = ({
   )
   const composer = useChannelComposer({
     activeChannel: channel,
+    // The row's own thread, not the room's General one: an inbox card renders
+    // one reply thread, and that thread may live in a conversation.
+    activeThreadId: activity.threadId,
     currentUserId: currentUser.id,
     draftKey: replyComposerDraftKey(activity.rootMessageId),
     getSendExtras,
     threadMessages: messages,
   })
   const markRead = useMarkThreadRead()
-  const messageActions = useChannelMessageActions(channel?.defaultThreadId)
+  const messageActions = useChannelMessageActions(activity.threadId)
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const isLoading = rootQuery.isLoading || repliesQuery.isLoading
   const hasFailed = rootQuery.isError || repliesQuery.isError
@@ -110,7 +113,21 @@ export const ThreadInboxCard = ({
           onClick={onOpen}
           type="button"
         >
-          <div className="font-semibold text-[color:var(--tx)]">
+          {activity.threadTitle ? (
+            <div className="font-semibold text-[color:var(--tx)]">
+              {activity.threadTitle}
+            </div>
+          ) : null}
+          {/*
+            A conversation names itself, and the room it lives in drops to the
+            line beneath — the same order the conversation header uses, so the
+            inbox and the thread agree about what this thing is called.
+          */}
+          <div
+            className={activity.threadTitle
+              ? 'mt-0.5 text-xs text-[color:var(--tx2)]'
+              : 'font-semibold text-[color:var(--tx)]'}
+          >
             {channelContextLabel(channel ?? undefined, activity.channelLabel)}
           </div>
           <div className="mt-0.5 text-xs text-[color:var(--tx3)]">

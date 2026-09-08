@@ -51,7 +51,12 @@ export const ThreadsPage = () => {
               key={item.rootMessageId}
               token={token}
               users={users}
-              onOpen={() => navigate(`/channels/${item.channelId}/threads/${item.threadId}/replies/${item.rootMessageId}`)}
+              // A conversation opens as itself; a reply in a room's General
+              // thread still opens its reply panel, which is the thing that
+              // row is about (docs/plans/2026-09-08-agent-conversations.md).
+              onOpen={() => navigate(item.threadTitle
+                ? `/channels/${item.channelId}/threads/${item.threadId}`
+                : `/channels/${item.channelId}/threads/${item.threadId}/replies/${item.rootMessageId}`)}
             />
           )) : null}
         </div>

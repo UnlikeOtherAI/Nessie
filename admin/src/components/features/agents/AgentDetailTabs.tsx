@@ -18,6 +18,7 @@ import { AgentDocumentsTab } from './AgentDocumentsTab'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
+import { AgentConversationList } from './conversations/AgentConversationList'
 import { SubAgentTree } from './SubAgentTree'
 import { AgentEmailSection } from './AgentEmailSection'
 import { ToolExecutionLog } from './ToolExecutionLog'
@@ -28,6 +29,7 @@ import type { DesignerPageContext } from '../../../facades/designer/types'
 type Tab =
   | 'edit'
   | 'activity'
+  | 'conversations'
   | 'sub-agents'
   | 'tools'
   | 'messages'
@@ -42,6 +44,7 @@ const FIRST_DETAIL_TAB: Tab = 'to-dos'
 const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'To-dos', value: FIRST_DETAIL_TAB },
   { label: 'Activity', value: 'activity' },
+  { label: 'Conversations', value: 'conversations' },
   { label: 'Sub-Agents', value: 'sub-agents' },
   { label: 'Tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
@@ -77,6 +80,12 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
     actions: [],
     description: 'Review this agent’s current run, triggers, recent tool calls, and thought stream.',
     title: 'Activity',
+  },
+  conversations: {
+    actions: [],
+    description:
+      'Every conversation this agent is in that you can see — open one or start another.',
+    title: 'Conversations',
   },
   'sub-agents': {
     actions: [],
@@ -230,6 +239,13 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
             <AgentThoughtStream />
           </div>
         )}
+
+        {/*
+          What this agent is working on and where — the same rows as the rail's
+          column, at page width. Not offered for a system-managed agent: its
+          operational reads are closed, and this tab would only ever 404.
+        */}
+        {activeTab === 'conversations' && <AgentConversationList agentId={agent.id} />}
 
         {activeTab === 'sub-agents' && (
           <SubAgentTree
