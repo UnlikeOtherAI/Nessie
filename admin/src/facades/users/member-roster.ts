@@ -132,6 +132,17 @@ export const useUpdateTeamMemberRole = () => {
   })
 }
 
+/** UOA owns the organisation role vocabulary; callers pass only a live option. */
+export const useUpdateOrganizationMemberRole = () => {
+  const api = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { role: string; uoaSub: string }) =>
+      api.put(`/api/organization/members/${encodeURIComponent(input.uoaSub)}/role`, { role: input.role }),
+    onSuccess: () => invalidateRosters(queryClient),
+  })
+}
+
 export const useUpdateMemberTeamAccess = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
@@ -144,14 +155,14 @@ export const useUpdateMemberTeamAccess = () => {
   })
 }
 
-export const useRevokeMemberInvitation = (scope: MemberRosterScope) => {
+export const useMemberInvitationAction = (scope: MemberRosterScope) => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { inviteId: string; teamId?: string }) =>
+    mutationFn: (input: { action: 'resend' | 'revoke'; inviteId: string; teamId?: string }) =>
       scope === 'team'
-        ? api.post(`/api/team/invitations/${encodeURIComponent(input.inviteId)}/revoke`, {})
-        : api.post(`/api/organization/member-invitations/${encodeURIComponent(input.inviteId)}/revoke`, {
+        ? api.post(`/api/team/invitations/${encodeURIComponent(input.inviteId)}/${input.action}`, {})
+        : api.post(`/api/organization/member-invitations/${encodeURIComponent(input.inviteId)}/${input.action}`, {
             teamId: input.teamId,
           }),
     onSuccess: () => invalidateRosters(queryClient),

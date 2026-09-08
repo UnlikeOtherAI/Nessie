@@ -5,15 +5,12 @@ import type { TeamInvitationRecord, TeamMemberRecord } from '@nessie/schemas'
 import { UserAvatar } from '../../shared/UserAvatar'
 import { TabBar } from '../../primitives/TabBar'
 import { DataTable, type DataTableColumn } from '../../shared/DataTable'
-import { Dialog } from '../../shared/Dialog'
 import { EmptyState } from '../../shared/EmptyState'
-import { FormActions, FormError } from '../../shared/FormActions'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { QueryState } from '../../shared/QueryState'
 import {
   useMemberInvitations,
   useMemberRoster,
-  useRevokeMemberInvitation,
   type MemberRosterScope,
 } from '../../../facades/users/member-roster'
 import {
@@ -24,6 +21,7 @@ import { useTabParam } from '../../../navigation/useTabParam'
 import { SettingsPanel } from '../../shared/SettingsPanel'
 import { MemberInvitationDialog } from './MemberInvitationDialog'
 import { MemberDetailsDialog } from './MemberDetailsDialog'
+import { MemberInvitationDetailsDialog } from './MemberInvitationDetailsDialog'
 
 type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 
@@ -114,7 +112,6 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMemberRecord | null>(null)
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
-  const [revokeError, setRevokeError] = useState<string | null>(null)
   const [tab] = useTabParam('membersTab', ROSTER_TAB_VALUES, 'active')
 
   // The roster read also carries UOA's live verdict on what this person may do,
@@ -128,7 +125,6 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     tab !== 'pending',
   )
   const invitations = useMemberInvitations(scope, tab === 'pending')
-  const revokeInvitation = useRevokeMemberInvitation(scope)
   const current = tab === 'automatic' ? null : tab === 'pending' ? invitations : roster
   const permissions = (current ?? roster).query.data?.data.permissions
   const canInvite = permissions?.addMember === true && tab !== 'automatic'
@@ -161,28 +157,6 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const members = roster.items
   const invitationsRows = invitations.items
   const tabPanelId = `members-${scope}-tabpanel-${tab}`
-  const closeInvitation = () => {
-    setSelectedInvitation(null)
-    setRevokeError(null)
-  }
-  const revokeSelectedInvitation = async () => {
-    if (!selectedInvitation) return
-    if (scope === 'organization' && !selectedInvitation.team?.id) {
-      setRevokeError('This invitation no longer has a workspace target.')
-      return
-    }
-    setRevokeError(null)
-    try {
-      await revokeInvitation.mutateAsync({
-        inviteId: selectedInvitation.inviteId,
-        ...(scope === 'organization' ? { teamId: selectedInvitation.team?.id } : {}),
-      })
-      closeInvitation()
-    } catch (error) {
-      setRevokeError(error instanceof Error ? error.message : 'Unable to cancel this invitation.')
-    }
-  }
-
   return (
     <SettingsPanel
       actions={canInvite ? [{
@@ -217,10 +191,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 empty={<EmptyState title="No pending invitations">No invitations are awaiting a response.</EmptyState>}
                 expandable={false}
                 label="Pending invitations"
-                onRowClick={(invite) => {
-                  setRevokeError(null)
-                  setSelectedInvitation(invite)
-                }}
+                onRowClick={setSelectedInvitation}
                 rowActionLabel={(invite) => `Open invitation for ${invite.name ?? invite.email ?? 'member'}`}
                 rowKey={(invite) => invite.inviteId}
                 rows={invitationsRows}
@@ -264,40 +235,12 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
         permissions={roster.query.data?.data.permissions}
         scope={scope}
       />
-      <Dialog
-        description="This cannot be undone. You can send a new invitation later."
-        dismissDisabled={revokeInvitation.isPending}
-        onClose={closeInvitation}
-        open={selectedInvitation !== null}
-        title="Cancel invitation"
-      >
-        <div className="space-y-4 p-4">
-          <p className="text-sm text-[color:var(--tx)]">
-            Cancel the invitation for {selectedInvitation?.name ?? selectedInvitation?.email ?? 'this person'}?
-          </p>
-          <FormError>{revokeError}</FormError>
-          <FormActions destructive={(
-            <button
-              className="admin-button admin-button-danger"
-              disabled={revokeInvitation.isPending}
-              onClick={() => void revokeSelectedInvitation()}
-              type="button"
-            >
-              {revokeInvitation.isPending ? 'Cancelling…' : 'Cancel invitation'}
-            </button>
-          )}
-          >
-            <button
-              className="admin-button admin-button-secondary"
-              disabled={revokeInvitation.isPending}
-              onClick={closeInvitation}
-              type="button"
-            >
-              Keep invitation
-            </button>
-          </FormActions>
-        </div>
-      </Dialog>
+      <MemberInvitationDetailsDialog
+        canManage={invitations.query.data?.data.permissions.addMember === true}
+        invitation={selectedInvitation}
+        onClose={() => setSelectedInvitation(null)}
+        scope={scope}
+      />
     </SettingsPanel>
   )
 }

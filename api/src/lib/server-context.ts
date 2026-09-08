@@ -5,31 +5,26 @@ import { loadConfig } from '@nessie/config'
 import {
   isAdminActor,
   type AuthorizedActionContext,
-  type MeResponse,
 } from '@nessie/schemas'
 import { disconnectPrismaClient, getPrismaClient } from '@nessie/db'
 import {
   ensureBootstrapToken,
   type BootstrapTokenState,
 } from '../auth/bootstrap.js'
-import {
-  isSessionTokenRevoked,
-  verifySessionToken,
-  type SessionTokenClaims,
-} from '../auth/session.js'
 import { sendApiError } from './api.js'
-import {
-  buildMeResponse,
-  createActorContextFromClaims,
-} from '../services/auth.js'
 import { createAuthSessionRevocationChecker } from '../services/auth-session-registry.js'
-import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import { createSessionIssuers } from '../services/session-issuers.js'
 import { createRequestHelpers } from './request-helpers.js'
 import { createRateLimiter } from '../services/rate-limit.js'
 import { lockBootstrapInitialization } from '../db/seed.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from '../services/user-session-lock.js'
 import { parseOriginList } from './server-origin-policy.js'
+import {
+  createRequestAdmission,
+  getAuthorizationToken,
+} from '../services/request-admission.js'
+
+export type { AuthenticatedRequestState } from '../services/request-admission.js'
 
 export { createFastifyTrustProxyConfig } from './rate-limit.js'
 export {
@@ -39,12 +34,6 @@ export {
 } from './server-origin-policy.js'
 
 export type AppConfig = ReturnType<typeof loadConfig>
-
-export type AuthenticatedRequestState = {
-  actorContext: AuthorizedActionContext
-  claims: SessionTokenClaims
-  me: MeResponse
-}
 
 export type RequestWithRawBody = FastifyRequest & {
   rawBody?: Buffer
@@ -179,139 +168,6 @@ export const createServerContext = () => {
     const baseUrl = `http://${config.api.host === '0.0.0.0' ? 'localhost' : config.api.host}:${config.api.port}`
     console.log('First-time setup. Open this URL to create your owner account:')
     console.log(`${baseUrl}/bootstrap?token=${state.token}`)
-  }
-
-  const getAuthorizationToken = (request: FastifyRequest): string | null => {
-    const header = request.headers.authorization
-    if (header) {
-      const [scheme, token] = header.split(' ')
-      if (scheme === 'Bearer' && token) {
-        return token
-      }
-    }
-
-    // Narrow exception: WebSocket upgrade requests may carry the token in the
-    // query string because the browser WebSocket API cannot set custom headers.
-    if (request.headers.upgrade?.toLowerCase() === 'websocket') {
-      const query = request.query as { token?: unknown } | undefined
-      if (query && typeof query.token === 'string' && query.token) {
-        return query.token
-      }
-    }
-
-    return null
-  }
-
-  const authenticateRequest = async (
-    request: FastifyRequest,
-    reply: FastifyReply | null,
-  ): Promise<AuthenticatedRequestState | null> => {
-    const reject = (status: number, code: string, message: string): null => {
-      if (reply) sendApiError(reply, status, code, message)
-      return null
-    }
-    const token = getAuthorizationToken(request)
-    if (!token) return reject(401, 'AUTH_REQUIRED', 'Missing or invalid authorization header')
-
-    const verification = verifySessionToken(token, authSecret)
-    if (!verification.ok) return reject(401, verification.code, verification.message)
-
-    const user = await prisma.user.findUnique({
-      where: { id: verification.claims.sub },
-    })
-
-    if (!user) return reject(401, 'USER_NOT_FOUND', 'User no longer exists')
-
-    // Revocation: a forced sign-out bumps User.tokenVersion, which
-    // invalidates every access token minted at an older generation.
-    if (isSessionTokenRevoked(verification.claims, user.tokenVersion)) {
-      return reject(401, 'TOKEN_REVOKED', 'Session has been revoked')
-    }
-
-    // Session-row revocation (workstream 1e, S9/SB-04): DELETE /sessions and
-    // password change set AuthSession.revokedAt for the targeted sids, so a
-    // revoked session's access JWT stops working now instead of surviving its
-    // full ~30-minute TTL. Deliberate rollout-safety tradeoff: a sid with NO
-    // AuthSession row is ACCEPTED — pre-migration tokens and any issuance
-    // path not yet writing rows keep working; the check fails closed only on
-    // an explicit revoked row and tightens to fail-closed-on-absence once
-    // issuance is proven to cover every path. Staleness: the checker caches
-    // the revoked boolean per process for ~30s, so across replicas a revoked
-    // sid can keep authenticating on one replica for up to the TTL.
-    if (await isSessionRevokedById(verification.claims.sid)) {
-      return reject(401, 'TOKEN_REVOKED', 'Session has been revoked')
-    }
-
-    // Exact-session revocation: logout revokes only the bearer's `sid`, never
-    // the whole user generation, so the live check must be per-session. With
-    // no unrevoked, unexpired refresh row for this exact `sid`, the session
-    // was logged out and its access token stops working now, not at expiry.
-    if (
-      !(await hasActiveUserSession(
-        prisma,
-        verification.claims.sub,
-        verification.claims.sid,
-      ))
-    ) {
-      return reject(401, 'TOKEN_REVOKED', 'Session has been revoked')
-    }
-
-    // Deactivated members keep their row + history but lose access immediately
-    // (their refresh tokens are revoked on deactivation, but a still-valid
-    // access token must be rejected too).
-    //
-    // An ABSENT membership is the other half. It has to keep passing through
-    // for the tenants that legitimately have none — the only writers of these
-    // rows are `db/seed.ts` (bootstrap), `services/users.ts` (local account
-    // creation) and `services/team-principal.ts` (a UOA login), and
-    // `buildLocalSession` falls back to the bootstrap organisation id for a
-    // user with no membership at all, so an unbound install can hold a session
-    // whose `org` claim names no live row. In a **UOA-bound** organisation
-    // there is no such principal: every session there was minted from a proven
-    // UOA membership, so an absent row means the membership was withdrawn
-    // (`reconcileUoaMembershipProjection`) and the still-valid access token
-    // must stop working now rather than at expiry (2026-09-05 review, FO2-1).
-    const membership = await prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId: verification.claims.org,
-          userId: verification.claims.sub,
-        },
-      },
-      select: { role: true, deactivatedAt: true },
-    })
-    if (membership?.deactivatedAt) {
-      return reject(403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
-    }
-    if (!membership) {
-      const organization = await prisma.organization.findUnique({
-        where: { id: verification.claims.org },
-        select: { externalOrgId: true },
-      })
-      if (organization?.externalOrgId) {
-        return reject(
-          403,
-          'ORGANIZATION_MEMBERSHIP_REQUIRED',
-          'Your membership of this organisation is no longer held by UnlikeOtherAI',
-        )
-      }
-    }
-
-    const actorContext = createActorContextFromClaims(verification.claims)
-    // Re-resolve the role from the live membership rather than trusting the
-    // (possibly stale) JWT claim, so a role change — e.g. demoting an owner —
-    // takes effect on the next request instead of at token expiry. Guards like
-    // requireOwner read actor.roles, so this is what makes them authoritative.
-    if (membership) {
-      actorContext.actor.roles = [membership.role]
-    }
-    request.actorContext = actorContext
-
-    return {
-      actorContext,
-      claims: verification.claims,
-      me: await buildMeResponse(prisma, user, verification.claims, config),
-    }
   }
 
   const requireActorContext = (
@@ -485,6 +341,13 @@ export const createServerContext = () => {
   }
 
   const isSessionRevokedById = createAuthSessionRevocationChecker(prisma)
+  const authenticateRequest = createRequestAdmission({
+    authSecret,
+    config,
+    getAuthorizationToken,
+    isSessionRevokedById,
+    prisma,
+  })
 
   const { buildLocalSession, buildSessionForUser } = createSessionIssuers({
     authSecret,

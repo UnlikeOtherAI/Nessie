@@ -43,6 +43,9 @@ const main = async () => {
     api = await startApi()
     admin = await startAdmin()
     await runBrowserSuite(resolve(here, '../browser-cloud/run.mjs'), 'browser-cloud')
+    // This is a stateful, provider-boundary fixture: it proves the member
+    // management screen never sends an email or touches UOA while running CI.
+    await runBrowserSuite(resolve(here, '../member-management/run.mjs'), 'member-management')
     await runBrowserSuite(resolve(here, 'run.mjs'), 'project-usability')
     await runBrowserSuite(resolve(here, '../connected-board-sources/run.mjs'), 'connected-board-sources')
   } finally {

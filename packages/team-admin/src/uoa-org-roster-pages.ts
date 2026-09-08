@@ -111,7 +111,7 @@ export const addTeamMember = async (
   await rosterRequest(
     requireSettings(),
     `${teamPath(team)}/members`,
-    { method: 'POST', body: { user_id: input.uoaSub, ...(input.teamRole ? { team_role: input.teamRole } : {}) } },
+    { method: 'POST', body: { userId: input.uoaSub, ...(input.teamRole ? { teamRole: input.teamRole } : {}) } },
     deps,
   )
 }

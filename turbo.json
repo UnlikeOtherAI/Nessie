@@ -12,6 +12,11 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "build/**"]
     },
+    "@nessie/admin#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**"],
+      "env": ["NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE"]
+    },
     "lint": {
       "dependsOn": ["^lint"],
       "outputs": []

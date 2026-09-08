@@ -59,6 +59,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - **Build:** Install a release on the named device.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
+- **Member-management browser fixture builds:** the Navigation Transitions job alone enables its preview entry; ordinary bundles omit it. Read [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md) before changing that evaluation or its build cache inputs.
 - **Desktop bundles, macOS signing (never ad-hoc unless Ondrej explicitly asks), lint-gated root builds, Prisma generation ordering, and migration immutability:** read [docs/standards/build-and-release.md](docs/standards/build-and-release.md) before building a desktop app, changing a build pipeline or Dockerfile, or touching `api/prisma/migrations/`.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.

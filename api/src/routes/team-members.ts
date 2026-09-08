@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { type AuditAction, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  CreateMemberInvitationRequestSchema,
+  type AuditAction,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -25,15 +29,12 @@ import {
   reviewTeamInvitation,
   setTeamMemberActivation,
   updateTeamMemberRole,
-  UoaInvitationAlreadyAcceptedError,
-  UoaRosterIdentityError,
-  UoaRosterRejectedError,
-  UoaRosterUnavailableError,
   withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
   type UoaRosterPage,
   type UoaRosterTeam,
 } from '../services/uoa-org-roster.js'
+import { sendMemberManagementError } from './member-management-errors.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -54,10 +55,9 @@ import type { RouteDeps } from './types.js'
  *
  * Every `/org/*` call carries a short-lived assertion of the signed-in UOA
  * subject. UOA re-resolves that person's credential epoch and membership, then
- * applies its own role/capability rules. The owner/admin gate below remains the
- * local entitlement check before we send a mutation upstream; `actor.roles` is
- * re-resolved from the live `OrganizationMember` row on every request
- * (`lib/server-context.ts`).
+ * applies its own exact-team role/capability rules. Local organisation roles
+ * cannot authorize or veto these operations: a team administrator may be an
+ * ordinary organisation member, and a projected org role may be stale.
  */
 
 const NOT_LINKED_MESSAGE =
@@ -72,11 +72,7 @@ const TeamRoleBodySchema = z.object({
   role: z.string().trim().min(1).max(100).refine((role) => role !== 'owner'),
 })
 
-const CreateMemberInvitationSchema = z.object({
-  email: z.string().trim().email().max(320),
-  name: z.string().trim().min(1).max(200).optional(),
-  teamRole: z.string().trim().min(1).max(100).optional(),
-})
+const CreateMemberInvitationSchema = CreateMemberInvitationRequestSchema
 
 /**
  * What a relayed mutation records in the audit trail. Membership changes are
@@ -125,52 +121,6 @@ const requireTeam = async (
   return team
 }
 
-/** Map a relay failure onto the API's error envelope. Returns true if handled. */
-const sendRelayError = (
-  request: FastifyRequest,
-  reply: FastifyReply,
-  error: unknown,
-): boolean => {
-  if (error instanceof UoaInvitationAlreadyAcceptedError) {
-    sendApiError(
-      reply,
-      409,
-      'INVITATION_ALREADY_ACCEPTED',
-      'This invitation was already accepted. Remove the member instead.',
-    )
-    return true
-  }
-  if (error instanceof UoaRosterRejectedError) {
-    sendApiError(
-      reply,
-      error.statusCode === 404 ? 404 : 400,
-      'TEAM_MEMBERS_REJECTED',
-      'UnlikeOtherAI refused the request. The member or invitation may no longer exist.',
-    )
-    return true
-  }
-  if (error instanceof UoaRosterIdentityError) {
-    sendApiError(
-      reply,
-      403,
-      'UOA_SESSION_REQUIRED',
-      'Sign in with UnlikeOtherAI and select this team to view its members.',
-    )
-    return true
-  }
-  if (error instanceof UoaRosterUnavailableError) {
-    request.log.warn({ err: error }, 'uoa team roster relay failed')
-    sendApiError(
-      reply,
-      502,
-      'UOA_DIRECTORY_UNAVAILABLE',
-      'The UnlikeOtherAI directory is temporarily unavailable',
-    )
-    return true
-  }
-  return false
-}
-
 /**
  * `rosterDeps` is the injectable egress seam (pinned fetch + DNS), the same one
  * `services/uoa-org-roster.ts` takes. Production passes nothing.
@@ -180,22 +130,17 @@ export const registerTeamMembersRoutes = (
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
 ): void => {
-  const { requireActorContext, requireOrgAdmin } = deps
+  const { requireActorContext } = deps
 
   /**
    * Run one relayed **mutation** behind the shared preconditions, in order:
-   * authorization, then body validation, then the team lookup, then the relay.
-   * `parse` is the route's body schema, applied after the gate so an
-   * unauthorized caller learns nothing about the payload. Roster *reads* go
+   * authentication, body validation, team binding, and signed-subject relay.
+   * UOA authorizes the exact target from the caller's current membership and
+   * configured capabilities on every mutation. Roster *reads* go
    * through `relayPage`, which is visible to any member of the team.
    *
-   * The owner/admin gate is defence in depth, not the authorization: UOA
-   * re-resolves the caller's live membership and capability from the subject
-   * assertion every relay carries, and that assertion is what actually
-   * authorizes the write. The local gate is here because the adjacent
-   * `routes/teams.ts` has one for the same class of relay and this file's own
-   * prose already claimed one (2026-09-05 review, FO1-7); the rule is recorded
-   * in `docs/standards/team-model.md`.
+   * An absent or mismatched subject fails before egress. There is no backend
+   * fallback and no parallel permission policy based on local org roles.
    */
   const relay = async <TResult, TBody = undefined>(
     request: FastifyRequest,
@@ -210,7 +155,6 @@ export const registerTeamMembersRoutes = (
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOrgAdmin(actorContext, reply)) return reply
     const body = options.parse ? options.parse() : (undefined as TBody)
     if (body === null) return reply
 
@@ -240,7 +184,7 @@ export const registerTeamMembersRoutes = (
       }
       return createApiResponse(result)
     } catch (error) {
-      if (sendRelayError(request, reply, error)) return reply
+      if (sendMemberManagementError(request, reply, error, 'team')) return reply
       throw error
     }
   }
@@ -268,7 +212,7 @@ export const registerTeamMembersRoutes = (
       )
       return createApiResponse({ items: result.items, permissions: result.permissions }, result.meta)
     } catch (error) {
-      if (sendRelayError(request, reply, error)) return reply
+      if (sendMemberManagementError(request, reply, error, 'team')) return reply
       throw error
     }
   }
@@ -355,7 +299,7 @@ export const registerTeamMembersRoutes = (
         }
         image = await fetchUoaUserAvatar(uoaSub, rosterDeps)
       } catch (error) {
-        if (sendRelayError(request, reply, error)) return reply
+        if (sendMemberManagementError(request, reply, error, 'team')) return reply
         if (error instanceof UoaAvatarUnavailableError) {
           request.log.warn({ err: error }, 'uoa team member avatar relay failed')
           sendApiError(
@@ -419,7 +363,7 @@ export const registerTeamMembersRoutes = (
         relay(request, reply, {
           audit: {
             action: 'user.updated',
-            metadata: { activation: action, scope: 'team' },
+            metadata: { activation: action, scope: 'organization' },
             resourceId: request.params.uoaSub,
             resourceType: 'team_member',
           },

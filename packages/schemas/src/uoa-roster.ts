@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 /**
  * Team roster and invitation records, as Nessie serves them from the
  * UnlikeOtherAI (UOA) org API. Nothing here is persisted: every field is read
@@ -46,6 +48,8 @@ export type MemberRosterPermissions = {
   searchMemberCandidates?: boolean
   /** UOA's live, assignable team-role vocabulary (never ownership). */
   teamRoleOptions?: string[]
+  /** UOA's live, assignable organisation roles (never ownership). */
+  orgRoleOptions?: string[]
 }
 
 /** A stateless UOA list response, retaining its keyset pagination contract. */
@@ -134,8 +138,11 @@ export type CreateTeamInvitationsResponse = {
   results: TeamInviteResult[]
 }
 
-export type CreateMemberInvitationRequest = {
-  email: string
-  name?: string
-  teamRole?: string
-}
+/** The UOA user-mode invitation payload, kept in lockstep with its 120-character name limit. */
+export const CreateMemberInvitationRequestSchema = z.object({
+  email: z.string().trim().email().max(320),
+  name: z.string().trim().min(1).max(120).optional(),
+  teamRole: z.string().trim().min(1).max(100).optional(),
+})
+
+export type CreateMemberInvitationRequest = z.infer<typeof CreateMemberInvitationRequestSchema>

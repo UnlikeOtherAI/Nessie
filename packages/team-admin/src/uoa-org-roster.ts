@@ -236,6 +236,12 @@ export const parseUoaRosterPermissions = (payload: unknown): MemberRosterPermiss
             typeof role === 'string' && role.trim() ? [role.trim()] : []),
         }
       : {}),
+    ...(Array.isArray(permissions?.orgRoleOptions)
+      ? {
+          orgRoleOptions: permissions.orgRoleOptions.flatMap((role) =>
+            typeof role === 'string' && role.trim() && role.trim() !== 'owner' ? [role.trim()] : []),
+        }
+      : {}),
   }
 }
 
@@ -330,7 +336,7 @@ export const updateTeamMemberRole = async (
   await rosterRequest(
     requireSettings(),
     `${teamPath(team)}/members/${encodeURIComponent(uoaSub)}`,
-    { method: 'PUT', body: { team_role: teamRole } },
+    { method: 'PUT', body: { teamRole } },
     deps,
   )
 }

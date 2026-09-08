@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify'
 import { MeResponseSchema, type UoaSessionIdentity } from '@nessie/schemas'
 import type { Prisma } from '@prisma/client'
 
-import { verifyPassword } from '../auth/password.js'
 import type { SessionTokenClaims } from '../auth/session.js'
 import { LoginRequestSchema } from '../contracts/auth.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -18,9 +17,8 @@ import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
-import { RefreshTokenIssuanceError } from '../services/refresh-token.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
-import { loadSessionUserByEmail, loadSessionUserById } from '../services/users.js'
+import { loadSessionUserById } from '../services/users.js'
 import { guardAuthRequest, rateLimitFor } from './auth-rate-limit.js'
 import {
   rejectTeamIdentity,
@@ -36,6 +34,7 @@ import {
 import { UoaUnrecognizedRoleError } from '../services/uoa-roles.js'
 import { resolveUoaTeamContext } from '../services/team-context.js'
 import { UoaSubjectConflictError } from '../services/team-principal.js'
+import { authenticateLocalPassword } from '../services/local-password-login.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -48,7 +47,6 @@ export const registerAuthLoginRoute = (
     authSecret,
     config,
     prisma,
-    buildLocalSession,
     buildSessionForUser,
     getAuthorizationToken,
     rateLimiter,
@@ -426,84 +424,6 @@ export const registerAuthLoginRoute = (
       }
     }
 
-    // Local-password authentication exists only for `local` installs (the
-    // bootstrap owner + `nessie local up`). Anywhere else identity belongs to
-    // the configured SSO provider, so the password branch is refused
-    // server-side rather than merely hidden from the login screen.
-    if (config.mode !== 'local') {
-      sendApiError(
-        reply,
-        403,
-        'PASSWORD_AUTH_DISABLED',
-        'Password sign-in is disabled on this deployment. Sign in with your identity provider.',
-      )
-      return reply
-    }
-    if (!body.email || !body.password) {
-      sendApiError(reply, 400, 'PASSWORD_REQUIRED', 'Password is required', 'password')
-      return reply
-    }
-    const user = await loadSessionUserByEmail(prisma, body.email)
-    if (!user?.passwordHash || !(await verifyPassword(body.password, user.passwordHash))) {
-      sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
-      return reply
-    }
-    const primaryOrganizationMember = user.organizationMembers[0]
-    if (!primaryOrganizationMember) {
-      sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
-      return reply
-    }
-    const session = await buildLocalSession(
-      user.id,
-      [primaryOrganizationMember.role],
-      undefined,
-      { userAgent: request.headers['user-agent'] ?? null },
-    )
-    const actorContext = createActorContextFromClaims(session.claims)
-    await ensurePersonalAssistantBootstrap(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId: actorContext.tenant.teamId!,
-      userId: user.id,
-    })
-    await attemptGlobalAgentsBootstrap(
-      prisma,
-      {
-        organizationId: actorContext.tenant.organizationId,
-        teamId: actorContext.tenant.teamId!,
-        userId: user.id,
-      },
-      (error) => request.log.error({ err: error }, 'global_agent_bootstrap_failed'),
-    )
-    await attemptPersonalAssistantAvatar({
-      actorContext,
-      config: deps.config.model,
-      fileService: deps.fileService,
-      ledgerIdentity: deps.ledgerIdentity,
-      modelClient: deps.sharedModelClient,
-      organizationId: actorContext.tenant.organizationId,
-      prisma,
-    })
-    try {
-      await issueRefreshCookie(request, reply, {
-        userId: user.id,
-        organizationId: session.claims.org,
-        sessionId: session.sessionId,
-        providerId: session.claims.providerId,
-        providerType: session.claims.providerType,
-        expectedPasswordHash: user.passwordHash,
-      })
-    } catch (error) {
-      if (error instanceof RefreshTokenIssuanceError) {
-        sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
-        return reply
-      }
-      throw error
-    }
-    return createApiResponse({
-      token: session.token,
-      me: MeResponseSchema.parse(
-        await buildMeResponse(prisma, user, session.claims, config),
-      ),
-    })
+    return authenticateLocalPassword(body, request, reply, deps, issueRefreshCookie)
   })
 }

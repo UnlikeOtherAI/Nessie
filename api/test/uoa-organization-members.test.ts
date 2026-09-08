@@ -276,6 +276,51 @@ test('the org invite dialog receives only UOA-authorized targets and sends to it
   })
 })
 
+test('organization invitations enforce UOA’s 120-character optional name limit before invitation egress', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['viewer']),
+      rosterDeps(calls, () => json({ status: 'ok' })),
+    )
+
+    try {
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations',
+        payload: {
+          email: 'new@acme.test',
+          name: 'a'.repeat(120),
+          teamId: 'team_product',
+        },
+      })
+      assert.equal(accepted.statusCode, 200)
+      assert.equal(calls.length, 2)
+      assert.equal(
+        calls[1]?.body,
+        JSON.stringify({ email: 'new@acme.test', name: 'a'.repeat(120) }),
+      )
+
+      const rejected = await app.inject({
+        method: 'POST',
+        url: '/api/organization/member-invitations',
+        payload: {
+          email: 'new@acme.test',
+          name: 'a'.repeat(121),
+          teamId: 'team_product',
+        },
+      })
+      assert.equal(rejected.statusCode, 400)
+      assert.equal(rejected.json().error.code, 'VALIDATION_ERROR')
+      // Route validation runs before any UOA authorization or invitation
+      // egress, so an invalid payload cannot consume an upstream request.
+      assert.equal(calls.length, 2)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
 test('an organization with no UOA link 404s and never reaches UOA', async () => {
   await withUoaEnv(async () => {
     const app = Fastify({ logger: false })
@@ -379,7 +424,7 @@ test('team access is read from UOA and only writes the selected exact teams', as
           `GET ${base}/members/usr_grace/teams${query}`,
           `GET https://uoa.test/org/me${query}`,
           `GET ${base}/members/usr_grace/teams${query}`,
-          `POST ${base}/teams/team_design/members${query} {"user_id":"usr_grace"}`,
+          `POST ${base}/teams/team_design/members${query} {"userId":"usr_grace"}`,
           `DELETE ${base}/teams/team_product/members/usr_grace${query}`,
         ],
       )
@@ -407,32 +452,14 @@ test('team access never writes a team UOA did not authorize for the caller', asy
         payload: { teamIds: ['team_secret'] },
       })
 
-      assert.equal(response.statusCode, 400)
+      assert.equal(response.statusCode, 403)
+      assert.equal(response.json().error.code, 'ORGANIZATION_MEMBERS_REJECTED')
+      assert.equal(
+        response.json().error.message,
+        'You no longer have permission to make this change. Refresh the members list to see your current access.',
+      )
       assert.equal(calls.length, 2)
-      assert.equal(calls[1]?.method, 'GET')
-    } finally {
-      await app.close()
-    }
-  })
-})
-
-test('an organization invitation revokes through its row target team', async () => {
-  await withUoaEnv(async () => {
-    const calls: StubCall[] = []
-    const app = await makeApp(
-      actorContextFor(['viewer']),
-      rosterDeps(calls, () => json({ ok: true })),
-    )
-
-    try {
-      const response = await app.inject({
-        method: 'POST',
-        url: '/api/organization/member-invitations/invite-1/revoke',
-        payload: { teamId: 'team_product' },
-      })
-      assert.equal(response.statusCode, 200)
-      assert.equal(calls[1]?.method, 'DELETE')
-      assert.equal(calls[1]?.url, `${base}/teams/team_product/invitations/invite-1${query}`)
+      assert.deepEqual(calls.map((call) => call.method), ['GET', 'GET'])
     } finally {
       await app.close()
     }

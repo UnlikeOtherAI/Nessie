@@ -150,8 +150,12 @@ export const registerAuthSecurityRoutes = (
     }
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { passwordHash: true },
+      select: { passwordHash: true, uoaSub: true },
     })
+    if (user?.uoaSub) {
+      sendApiError(reply, 403, 'PASSWORD_AUTH_DISABLED', 'Manage your credentials with UnlikeOtherAI.')
+      return reply
+    }
     if (!user?.passwordHash) {
       sendApiError(reply, 400, 'PASSWORD_NOT_SUPPORTED', 'This account does not use a password')
       return reply
