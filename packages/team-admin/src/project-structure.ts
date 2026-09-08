@@ -144,7 +144,8 @@ export const listTeamsForOrganization = async (
   })
   return teams.flatMap((team) => {
     const projectIds = [...new Set([team.projectId, ...team.projects.map((project) => project.id)])]
-    return projectIds.filter((projectId) => !input.projectIds || input.projectIds.includes(projectId)).map((projectId) => ({
+    if (input.projectIds && !projectIds.some((projectId) => input.projectIds!.includes(projectId))) return []
+    return [{
     callProvider: team.callProvider as TeamRecord['callProvider'],
     createdAt: team.createdAt.toISOString(),
     // UOA holds a bound team's name, so a rename here is relayed to UOA
@@ -154,8 +155,9 @@ export const listTeamsForOrganization = async (
     id: parseTeamId(team.id),
     memberCount: team.members.length,
     name: team.name,
-    projectId: parseProjectId(projectId),
-    }))
+    projectId: parseProjectId(team.projectId),
+    projectIds: projectIds.map(parseProjectId),
+    }]
   })
 }
 

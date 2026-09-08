@@ -66,8 +66,10 @@ export const buildSidebarTree = ({
   const teamIdByProjectId = new Map<string, string>()
 
   for (const team of teams) {
-    if (!teamIdByProjectId.has(team.projectId)) {
-      teamIdByProjectId.set(team.projectId, team.id)
+    for (const projectId of team.projectIds ?? [team.projectId]) {
+      if (!teamIdByProjectId.has(projectId)) {
+        teamIdByProjectId.set(projectId, team.id)
+      }
     }
   }
 

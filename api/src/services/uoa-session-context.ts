@@ -70,28 +70,13 @@ const loadBinding = async (
       externalOrgId: input.identity.organizationId,
       externalTeamId: input.identity.teamId,
       members: { some: { userId: input.userId } },
-      OR: [
-        {
-          project: {
-            members: { some: { userId: input.userId } },
-            organization: {
-              externalOrgId: input.identity.organizationId,
-              members: { some: { deactivatedAt: null, userId: input.userId } },
-            },
-          },
+      project: {
+        members: { some: { userId: input.userId } },
+        organization: {
+          externalOrgId: input.identity.organizationId,
+          members: { some: { deactivatedAt: null, userId: input.userId } },
         },
-        {
-          projects: {
-            some: {
-              members: { some: { userId: input.userId } },
-              organization: {
-                externalOrgId: input.identity.organizationId,
-                members: { some: { deactivatedAt: null, userId: input.userId } },
-              },
-            },
-          },
-        },
-      ],
+      },
     },
     select: {
       id: true,
@@ -111,29 +96,11 @@ const loadBinding = async (
           },
         },
       },
-      projects: {
-        select: {
-          id: true,
-          organizationId: true,
-          organization: {
-            select: {
-              members: {
-                where: { deactivatedAt: null, userId: input.userId },
-                select: { role: true },
-                take: 1,
-              },
-            },
-          },
-        },
-        take: 2,
-      },
     },
   })
-  // A UOA session proves a team, not one of its projects. Until a person
-  // selects a canonical project through the normal context-switch door, use
-  // the team's existing legacy project as its stable default. Never take the
-  // first canonical project: a team can own many, and that would make one
-  // project visible by query order alone.
+  // A UOA session proves a team, not one of its canonical projects. Its legacy
+  // project remains the strictly checked default until context switching names
+  // a canonical project explicitly.
   const defaultProject = team?.project
   const role = defaultProject?.organization.members[0]?.role
   if (!team || !defaultProject || !role) {
