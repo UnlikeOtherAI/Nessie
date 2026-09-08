@@ -166,6 +166,16 @@ export const getAlertLink = (
   if (alert.kind === 'knowledge_published' && alert.projectId && alert.knowledgePageId) {
     return { to: `/projects/${alert.projectId}/docs?pageId=${alert.knowledgePageId}` }
   }
+  if (alert.kind === 'approval_requested') {
+    // An approval raised by a suspended run belongs to the channel it is
+    // waiting in, where the card and its buttons are. One raised anywhere else
+    // — a paired agent asking to publish, for instance — has no channel at all,
+    // and without this the row marked itself read and went nowhere, which is
+    // the dead row this whole function exists to prevent.
+    return alert.channelId
+      ? { to: `/channels/${alert.channelId}` }
+      : { to: '/approvals' }
+  }
   if (alert.kind === 'call_missed' && alert.channelId) {
     // A missed call belongs to its channel's call record/message, never to a
     // reply thread. Keep this separate from generic mentions so this durable

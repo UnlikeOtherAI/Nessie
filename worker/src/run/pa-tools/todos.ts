@@ -10,6 +10,7 @@ import {
   AgentTodoTemplateStepInputSchema,
   AgentTodoTemplateStepKeySchema,
 } from '@nessie/schemas'
+import { createApprovalUserAlerts } from '@nessie/runtime'
 import {
   acquireAgentTodoAgentLock,
   createAgentTodoTemplate,
@@ -115,7 +116,7 @@ export const runTodoTemplateProposeTool = async (
     })
     // Approval visibility can include a member. The required role is what
     // mirrors the owner-only direct template-authoring route.
-    return tx.approvalRequest.create({
+    const approval = await tx.approvalRequest.create({
       data: {
         action: 'agent.todo_template.publish',
         agentId: context.agentId,
@@ -132,6 +133,17 @@ export const runTodoTemplateProposeTool = async (
       },
       select: { id: true },
     })
+    // Owners are the ones who can answer this, so owners are the ones told.
+    // Without it the proposal sat behind the Approvals badge until somebody
+    // happened to look, and expired if nobody did.
+    await createApprovalUserAlerts(tx, {
+      actorAgentId: context.agentId,
+      approvalId: approval.id,
+      channelId: context.channel.id,
+      organizationId,
+      requiredApproverRole: 'owner',
+    })
+    return approval
   })
   return {
     inputSummary: `template=${JSON.stringify(args.name)}`,

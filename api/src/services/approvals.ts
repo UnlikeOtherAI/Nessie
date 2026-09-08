@@ -10,6 +10,8 @@ import {
   terminalizeWaitingApprovalRunInTransaction,
   type TerminalizedApprovalRun,
 } from './approval-resume.js'
+import { createApprovalUserAlerts } from '@nessie/runtime'
+
 import { emitAuditEvent } from './audit.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
@@ -89,11 +91,55 @@ const approvalRequestData = (input: CreateApprovalInput): Prisma.ApprovalRequest
   }
 }
 
+/**
+ * Tell the people who can answer an approval that one is waiting.
+ *
+ * The audience rule and the disclosure reasoning live with the writer, in
+ * `@nessie/runtime` `user-alerts.ts`, because the worker opens approvals too
+ * and one decision must ring one bell however it was raised.
+ *
+ * Deliberately no realtime event. `approval.needed` carries the approval's
+ * free-text `reason` and rides a channel-wide scope — the exact field a pinned
+ * approval restricts to one person — and a credential-opened request has no
+ * channel to ride anyway. The bell and its badge already poll on
+ * `ATTENTION_REFRESH_MS`, so the durable row is the notification; putting the
+ * reason on the wire to save that interval would be a bad trade.
+ *
+ * Never throws: an approval that exists and did not ring is recoverable, and
+ * one rolled back because the bell failed is not.
+ */
+const raiseApprovalAlert = async (
+  prisma: PrismaClient,
+  approval: {
+    agentId?: string | null
+    channelId: string | null
+    id: string
+    organizationId: string
+    requiredApproverRole?: string | null
+    requiredApproverUserId?: string | null
+  },
+): Promise<void> => {
+  try {
+    await createApprovalUserAlerts(prisma, {
+      actorAgentId: approval.agentId ?? null,
+      approvalId: approval.id,
+      channelId: approval.channelId,
+      organizationId: approval.organizationId,
+      requiredApproverRole: approval.requiredApproverRole ?? null,
+      requiredApproverUserId: approval.requiredApproverUserId ?? null,
+    })
+  } catch (error) {
+    console.error('[approvals] could not raise alert for', approval.id, error)
+  }
+}
+
 export const createApprovalRequest = async (
   prisma: PrismaClient,
   input: CreateApprovalInput,
 ) => {
   const approval = await prisma.approvalRequest.create({ data: approvalRequestData(input) })
+
+  await raiseApprovalAlert(prisma, approval)
 
   await emitAuditEvent(prisma, {
     actorContext: input.actorContext,
@@ -191,6 +237,16 @@ export const createApprovalRequestOnce = async (
   })
 
   if (created.created) {
+    await raiseApprovalAlert(prisma, {
+      agentId: created.approval.agentId,
+      channelId: created.approval.channelId,
+      id: created.approval.id,
+      organizationId: created.approval.organizationId,
+      requiredApproverRole: created.approval.requiredApproverRole,
+      // Off the stored row, not the input: what was written is what decides.
+      requiredApproverUserId:
+        'agentAccessCredentialId' in requester ? requester.requiredApproverUserId : null,
+    })
     await emitAuditEvent(prisma, {
       actorContext: input.actorContext,
       action: 'approval.created',
@@ -339,10 +395,6 @@ export const resolveApprovalRequest = async (
     return { error: 'SELF_APPROVAL' as const, approval: mapApproval(approval) }
   }
 
-  // When the approval is routed to a role, only an actor holding that role may
-  // resolve it. Check the LIVE organization membership rather than the JWT `roles`
-  // claim — tokens are long-lived (default 24h), so a user demoted after their
-  // token was issued must not retain approval power on a stale claim.
   // An exact required approver outranks every other visibility rule. Approval
   // visibility otherwise reaches any member who can read a public channel, so
   // without this a colleague could authorise an email sent in your name.
@@ -353,6 +405,28 @@ export const resolveApprovalRequest = async (
     return { error: 'APPROVER_REQUIRED' as const, approval: mapApproval(approval) }
   }
 
+  // When the approval is routed to a role, only an actor holding that role may
+  // resolve it — and the role that decides is the actor context's, not a second
+  // read of `OrganizationMember`.
+  //
+  // This used to read the row and compare that instead, on the stated grounds
+  // that `actor.roles` was a long-lived JWT claim a demotion would not reach.
+  // That is not what `actor.roles` is: `request-admission.ts` replaces it on
+  // every request from the live membership row, and for a UOA-bound
+  // organisation replaces it again from a per-request `/org/me` call that
+  // caches nothing and fails closed. So the row this used to read was the
+  // *staler* of the two. UOA owns the organisation role and the local row is a
+  // projection re-applied at login and at token rotation, so a demotion at UOA
+  // is authoritative on the next request while this check could still have seen
+  // the old role for the rest of that rotation.
+  //
+  // The membership lookup stays, and it is not redundant. It is what keeps this
+  // closed in the one case where `actor.roles` really can be a stale claim:
+  // `request-admission.ts` only overwrites the claim `if (membership)`, and its
+  // `ORGANIZATION_MEMBERSHIP_REQUIRED` refusal fires only for a UOA-bound
+  // organisation — so a local-mode organisation with no membership row would
+  // arrive here still carrying whatever the token said. Nothing in production
+  // deletes a membership row, which is the only reason that is theoretical.
   if (approval.requiredApproverRole) {
     const membership = await prisma.organizationMember.findUnique({
       where: {
@@ -361,9 +435,12 @@ export const resolveApprovalRequest = async (
           userId: actorContext.actor.actorId,
         },
       },
-      select: { role: true },
+      select: { id: true },
     })
-    if (membership?.role !== approval.requiredApproverRole) {
+    if (
+      !membership
+      || !actorContext.actor.roles?.includes(approval.requiredApproverRole)
+    ) {
       return { error: 'ROLE_REQUIRED' as const, approval: mapApproval(approval) }
     }
   }

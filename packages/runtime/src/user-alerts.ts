@@ -106,3 +106,80 @@ export const createMentionUserAlerts = async (
 
   return recipientIds
 }
+
+// ─── approval alerts ─────────────────────────────────────────────────────────
+// Shared by the api (approvals opened by a route or a paired MCP agent) and the
+// worker (approvals opened by an agent's own tools) so one decision rings one
+// bell, however it was raised.
+
+export type ApprovalUserAlertInput = {
+  approvalId: string
+  channelId?: string | null
+  organizationId: string
+  /** The agent that asked, when one did. Null for a paired-credential request. */
+  actorAgentId?: string | null
+  /** Exactly this person must answer. Set for a send-as-you or credential gate. */
+  requiredApproverUserId?: string | null
+  /** Anyone holding this organisation role may answer. */
+  requiredApproverRole?: string | null
+}
+
+/**
+ * Ring the people who can actually answer an approval, and nobody else.
+ *
+ * The audience is the gate's own audience, not the approval's readership:
+ *
+ * - Pinned to a person, and only that person is alerted. `approvalVisibilityWhere`
+ *   shows a pinned approval to that person **alone** — not to owners, not to the
+ *   channel — so anybody else would be told a decision exists that they cannot
+ *   open. That is a leak, not a notification.
+ * - Routed to a role, and the live holders of that role are alerted. Read fresh
+ *   rather than taken on trust, and deactivated members are skipped: an alert to
+ *   somebody who will be refused at the resolve is worse than no alert.
+ * - Neither, and nobody is alerted. The audience there is "anyone who can read
+ *   the channel", which is what the in-channel card is already for.
+ *
+ * The row carries ids only. What is waiting for approval reaches a lock screen
+ * through the alert presenter, so the reason and context deliberately stay in
+ * the approval, behind the entitlement-scoped read.
+ *
+ * `eventKey` is the same generation key the suspended-run path uses, so the two
+ * writers can never raise two bells for one decision.
+ *
+ * Safe inside a transaction: takes a transaction client.
+ */
+export const createApprovalUserAlerts = async (
+  prisma: Pick<PrismaClient, 'organizationMember' | 'userAlert'>,
+  input: ApprovalUserAlertInput,
+): Promise<string[]> => {
+  const recipients = input.requiredApproverUserId
+    ? [input.requiredApproverUserId]
+    : input.requiredApproverRole
+      ? (await prisma.organizationMember.findMany({
+        select: { userId: true },
+        where: {
+          deactivatedAt: null,
+          organizationId: input.organizationId,
+          role: input.requiredApproverRole as never,
+        },
+      })).map((member) => member.userId)
+      : []
+
+  if (recipients.length === 0) return []
+
+  await prisma.userAlert.createMany({
+    data: recipients.map((userId) => ({
+      actorAgentId: input.actorAgentId ?? null,
+      approvalRequestId: input.approvalId,
+      channelId: input.channelId ?? null,
+      eventKey: `approval:${input.approvalId}`,
+      kind: 'approval_requested' as const,
+      organizationId: input.organizationId,
+      userId,
+    })),
+    // A retry of the same creation must not double-ring.
+    skipDuplicates: true,
+  })
+
+  return recipients
+}
