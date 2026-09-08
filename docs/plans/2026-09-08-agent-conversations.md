@@ -1,7 +1,9 @@
 # Agent conversations — many isolated conversations with one agent
 
-Status: design, 2026-09-08. Implementation lands on
-`claude/agent-multi-conversation-verify-807d6d`.
+Status: as built (2026-09-08), on
+`claude/agent-multi-conversation-verify-807d6d`. The design below is kept as
+written; everything that changed on the way is in "As built — deviations" at the
+end, and the standards files it routes to are the rule.
 
 ## The problem
 
@@ -577,8 +579,10 @@ no global count.
      scripted run finishes; clicking it lands in that thread; both states
      screenshotted; the same card for the non-member user renders the
      withheld placeholder;
-   - phone: header doorway → full-screen list → row → thread → Back returns
-     to the list, Back again to the room.
+   - phone: header doorway → full-screen list → row → thread → **one** Back,
+     to the room. The conversation's declared parent is the channel, not the
+     list it was picked from (`navigation/surfaces.ts`), so there is no second
+     Back to assert.
    CI: a step in the Navigation Transitions job after the connected-mail
    suite, with an `agent-conversations-screenshots` artifact, gated on the
    same `steps.scope.outputs.code` as its neighbours.
@@ -596,6 +600,100 @@ no global count.
   `metadata.conversationRef`, and is the reason a card kind per thing is
   still not needed.
 - This file is updated to "as built" with anything that changed.
+
+## As built — deviations
+
+What the code does where it differs from the design above. Terse on purpose:
+each line is a fact somebody will otherwise rediscover.
+
+### Server
+
+- Agent resolution uses `OR`, not `IN`: `organizationId: { in: [tenant, null] }`
+  never matches a NULL column in Prisma, so a global agent was invisible.
+- `listAgentConversationsForUser` returns `null` (not an empty page) for an
+  agent the viewer cannot see; the route maps that to 404.
+- `startAgentConversation` takes `message` — for the **title** only. It still
+  authors nothing; the caller posts through its own door.
+- DM room resolution keys on **bindings**, not on `dmKey` shapes: the two-party
+  DM whose bindings are exactly this agent. The `dmKey` prefixes in the design
+  are descriptions, not the predicate.
+- The partial index `threads_agent_updated_idx` lives in the migration only —
+  Prisma's schema language has no partial-index syntax, so `schema.prisma`
+  carries the plain one.
+- Ordering coalesces `lastActivityAt` to `createdAt` (a conversation with no
+  messages must still sort), and the candidate scan is capped at 1000 threads
+  per read (`AGENT_CONVERSATION_CANDIDATE_LIMIT`).
+- The route repeats the 413 oversize and 422 secret-interception checks that the
+  service also makes. Deliberate: the client has to tell "too large, offer a
+  file upload" from generic validation, exactly as `POST /api/threads/:id/messages`
+  does.
+- `Channel.lastMessageAt` is still General-only. `unreadCount` was widened;
+  recency was not — see "Later".
+- The thread-activity row fields are `threadTitle` / `threadAgentId` (not
+  `title` / `agentId`), because the row already had both names for the channel.
+- The rename function is `renameThreadForUser`.
+
+### Worker
+
+- The requester's own scopes are subtracted from the opener's basis **only when
+  the destination's whole audience is the requester** — a system DM's own type,
+  or a DM with exactly one member who is the requester
+  (`computeDelegatedPostBasis`). `agent_handoff` silently assumed that condition
+  because it always lands in such a room; it is now a wrapper over the shared
+  function.
+- `createAgentMessage` gained an optional `basis`.
+- The tool input/output schemas live in the worker, beside their handlers,
+  rather than in `@nessie/schemas`.
+- `where` in every line these tools print is one `describeRoom`.
+- A `cancelled` conversation reads as `idle`, not as a fourth live state.
+
+### Admin
+
+- The row's leading gutter is 24 px, not 8: `UnreadBadge` has a min-width, and a
+  gutter sized for the dot alone lost the alignment it exists for.
+- The header doorways are compact (icon-only). Two labelled pills squeezed a
+  390 px conversation's own title to zero width — measured, not guessed.
+- The tool rail is 84 px, not the shell rail's 65: "Conversations" is 69 px at
+  the rail's label size and was being cut mid-word.
+- The row's room chip is not uppercased; a room name is a name.
+- Back from a conversation goes to **the room** (the surface's declared parent),
+  not to the list it was picked from — §"Verification system" 5's phone case is
+  corrected above to match.
+- `AgentConversationsPanel` is allowlisted in `admin/test/screen-header.test.ts`;
+  folding the four panel headers into one is a follow-up, not this change.
+- The rename doorway is a header action → `Dialog`.
+
+### Found by the browser suite, not fixed here
+
+Both are pinned by `admin/e2e/agent-conversations/run.mjs` /
+`conversation-card.mjs` with an assertion that names the gap and says to invert
+it once closed.
+
+- **An ordinary channel offers no doorway at all.** `conversationAgent` is null
+  outside a DM — `ChannelsPage.tsx` sets `isConversationSurface` from
+  `activeChannel.type === 'dm' || isPersonalAssistantConversation`, and
+  `resolveConversationAgent`
+  (`admin/src/components/features/channels/channel-tabs.ts`) returns null
+  without it. Both predate this change. So in a standard channel an agent works
+  in there is no rail, no header doorway, no "New conversation" button, and
+  `/channels/:id/tools/conversations` renders nothing — even though the API
+  lists that room's conversations for the same person. The reachable surfaces
+  today are a DM with the agent, the assistant's DM, and `/agents/:id?agentTab=conversations`.
+- **An assistant-started conversation's card never shows what was said.** The
+  start tool stamps the opener with the requester's PA-DM lineage
+  (`insertPrivateConversationSources`), the target's run consumes that source
+  when it reads the opener (`worker/src/run/execute/prompt.ts`), and its reply
+  therefore carries a `message_basis_scopes` row for the assistant's DM — a
+  scope this very reader satisfies. `loadLastMessagePreviews`
+  (`packages/team-admin/src/agent-conversations.ts`) then fails closed on *any*
+  basis rather than on an unsatisfied one, so `lastMessagePreview` is null and
+  the card and row read "Nothing said yet" for the person who asked for the
+  work. A person-started conversation is unaffected, which is what localises it
+  to the delegated path.
+- Related, and by design rather than by accident: the doorway card lands
+  **inside the reply thread** under the request, because an assistant run
+  answers under its trigger (`resolveReplyRootMessageId`). The suite opens that
+  reply thread rather than pretending the card is one screen closer than it is.
 
 ## Later — named so nothing hides
 
