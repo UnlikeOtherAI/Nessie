@@ -157,11 +157,13 @@ runDatabaseTest('all four access implementations agree for one agent-owned space
     prisma,
     organizationId,
     { actorType: 'user', actorId: readerUserId },
+    { liveEntitlements: { kind: 'local', organizationId, userId: readerUserId } },
   )
   const hiddenViewer = await loadSpaceViewer(
     prisma,
     organizationId,
     { actorType: 'user', actorId: hiddenUserId },
+    { liveEntitlements: { kind: 'local', organizationId, userId: hiddenUserId } },
   )
   const childViewer = await loadSpaceViewer(
     prisma,
@@ -235,6 +237,7 @@ runDatabaseTest('all four access implementations agree for one agent-owned space
     prisma,
     organizationId,
     { actorType: 'user', actorId: stewardUserId },
+    { liveEntitlements: { kind: 'local', organizationId, userId: stewardUserId } },
   )
   assert.equal(canReadSpace(space, activeStewardViewer), true)
   await prisma.organizationMember.update({
@@ -245,6 +248,7 @@ runDatabaseTest('all four access implementations agree for one agent-owned space
     prisma,
     organizationId,
     { actorType: 'user', actorId: stewardUserId },
+    { liveEntitlements: { kind: 'denied' } },
   )
   assert.equal(canReadSpace(space, deactivatedStewardViewer), false)
 })

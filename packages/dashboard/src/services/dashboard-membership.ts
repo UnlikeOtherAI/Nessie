@@ -13,10 +13,17 @@
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { canReadKnowledgePageVersion } from '@nessie/knowledge'
+import { resolveDisclosureViewer, type DisclosureViewerAuthority } from '@nessie/runtime'
 import type { DashboardActor, DashboardMembership } from '../index.js'
+
+type DashboardMembershipOptions = {
+  authority?: DisclosureViewerAuthority
+}
 
 export const createDashboardMembership = (
   prisma: PrismaClient | Prisma.TransactionClient,
+  options: DashboardMembershipOptions = {},
 ): DashboardMembership => ({
   isProjectMember: async (userId, projectId) =>
     (await prisma.projectMember.count({ where: { userId, projectId } })) > 0,
@@ -43,22 +50,36 @@ export const createDashboardMembership = (
   },
 
   /**
-   * A knowledge page version is readable when its page's project is. Page-level
-   * privacy (privateToAgentId) is checked too: an agent-private page must not
-   * become readable because a widget was embedded in it.
+   * A dashboard placement never widens its source document. The ordinary page
+   * home entitlement and the immutable per-version basis both have to hold.
    */
   canReadKnowledgePageVersion: async (userId, versionId) => {
     const version = await prisma.knowledgePageVersion.findFirst({
       where: { id: versionId },
       select: {
+        basisScopes: { select: { scopeId: true, scopeType: true } },
+        disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
         page: {
-          select: { projectId: true, deletedAt: true, privateToAgentId: true },
+          select: {
+            organizationId: true,
+            projectId: true,
+            deletedAt: true,
+            privateToAgentId: true,
+          },
         },
       },
     })
     const page = version?.page
     if (!page || page.deletedAt || page.privateToAgentId) return false
-    return (await prisma.projectMember.count({ where: { userId, projectId: page.projectId } })) > 0
+    const viewer = await resolveDisclosureViewer(
+      prisma,
+      page.organizationId,
+      userId,
+      options.authority,
+    )
+    return viewer !== null
+      && canReadKnowledgePageVersion(version, viewer)
+      && (await prisma.projectMember.count({ where: { userId, projectId: page.projectId } })) > 0
   },
 
   /**

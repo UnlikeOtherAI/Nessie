@@ -96,6 +96,8 @@ const pageRow = (
     authorId: 'user-1',
     changeComment: null,
     createdAt: now,
+    basisScopes: [],
+    disclosureSources: [],
   }],
   publishedVersion: null,
 })

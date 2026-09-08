@@ -167,8 +167,6 @@ export const registerDashboardRoutes = (
   deps: RouteDeps & { egressPolicy: DashboardEgressPolicy; credentials: Parameters<typeof setSourceCredential>[2] },
 ): void => {
   const { prisma, requireActorContext, requireUserActor, egressPolicy, credentials, realtimeHub } = deps
-  const membership = createDashboardMembership(prisma)
-
   const contextFor = async (request: unknown, reply: never) => {
     const actorContext = requireActorContext(request as never, reply)
     if (!actorContext) return null
@@ -182,7 +180,13 @@ export const registerDashboardRoutes = (
       sendApiError(reply, 403, 'DASHBOARD_FORBIDDEN', 'membership is not active')
       return null
     }
-    return { prisma, membership, actor }
+    return {
+      prisma,
+      membership: createDashboardMembership(prisma, {
+        authority: { uoaIdentity: actorContext.actionContext.uoaIdentity },
+      }),
+      actor,
+    }
   }
   const dashboardForWidget = async (context: NonNullable<Awaited<ReturnType<typeof contextFor>>>, widgetId: string) => {
     const widget = await prisma.dashboardWidget.findFirst({

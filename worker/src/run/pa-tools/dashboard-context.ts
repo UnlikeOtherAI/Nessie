@@ -101,7 +101,14 @@ export const buildDashboardContext = async (
 
   return {
     prisma: services.prisma,
-    membership: createDashboardMembership(services.prisma),
+    membership: createDashboardMembership(services.prisma, {
+      authority: {
+        ...(context.agentId ? { agentId: context.agentId } : {}),
+        ...(context.actorContext?.actionContext?.uoaIdentity
+          ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }
+          : {}),
+      },
+    }),
     actor,
   }
 }

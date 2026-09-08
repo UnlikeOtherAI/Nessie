@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
 import { replaceLabels } from './native-labels.js'
-import { mapPage, mapVersion, pageInclude } from './native-mappers.js'
+import { mapPage, mapVersion, pageInclude, versionInclude } from './native-mappers.js'
 import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
 import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js'
 import {
@@ -11,6 +11,7 @@ import {
   type MarkdownProjection,
 } from './markdown-projection.js'
 import { KnowledgePageRevisionConflictError } from './types.js'
+import { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
 import type {
   AddFileVersionInput,
   CreatePageInput,
@@ -181,7 +182,9 @@ export const createPage = async (
         authorId: input.authorId,
         changeComment: input.changeComment ?? null,
       },
+      include: versionInclude,
     })
+    await persistVersionDisclosure(tx, { disclosure: input, organizationId: input.organizationId, versionId: version.id })
     await indexVersionChunks(tx, options, page, version)
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     const created = await fetchPage(tx, input.organizationId, page.id)
@@ -306,8 +309,12 @@ export const restoreVersion = async (
     if (!page) return null
     const version = await tx.knowledgePageVersion.findFirst({
       where: { id: input.versionId, pageId: input.pageId },
+      include: versionInclude,
     })
     if (!version) return null
+    const current = await tx.knowledgePageVersion.findFirst({
+      where: { pageId: input.pageId }, orderBy: { versionNumber: 'desc' }, include: versionInclude,
+    })
     const projection = version.attachmentId
       ? await markdownProjectionForAttachment(tx, options, input.organizationId, version.attachmentId)
       : null
@@ -323,6 +330,10 @@ export const restoreVersion = async (
         authorId: input.authorId,
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
       },
+    })
+    await persistVersionDisclosure(tx, {
+      disclosure: mergeVersionDisclosure(current ?? undefined, mergeVersionDisclosure(version, input)),
+      organizationId: input.organizationId, versionId: restored.id,
     })
     await indexVersionChunks(tx, options, page, restored)
     await tx.knowledgePage.update({ where: { id: input.pageId }, data: { status: 'draft' } })
@@ -347,7 +358,7 @@ export const addFileVersion = async (
       const latest = await tx.knowledgePageVersion.findFirst({
         where: { pageId: input.pageId },
         orderBy: { versionNumber: 'desc' },
-        select: { id: true },
+        include: versionInclude,
       })
       if (input.expectedLatestVersionId && latest?.id !== input.expectedLatestVersionId) {
         throw new KnowledgeConflictError('The file changed after this Markdown editor opened')
@@ -363,6 +374,11 @@ export const addFileVersion = async (
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
         },
+        include: versionInclude,
+      })
+      await persistVersionDisclosure(tx, {
+        disclosure: mergeVersionDisclosure(latest ?? undefined, input),
+        organizationId: input.organizationId, versionId: version.id,
       })
       await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
       await indexVersionChunks(tx, options, page, version)
@@ -386,17 +402,28 @@ export const updatePage = async (
       throw new KnowledgePageRevisionConflictError(existing.revision)
     }
     const createsVersion = input.body !== undefined || input.bodyRef !== undefined
+      || input.basisScopes !== undefined || input.disclosureSources !== undefined
+      || input.title !== undefined || input.summary !== undefined || input.labels !== undefined
     if (createsVersion) {
+      const previous = await tx.knowledgePageVersion.findFirst({
+        where: { pageId }, orderBy: { versionNumber: 'desc' }, include: versionInclude,
+      })
       const version = await tx.knowledgePageVersion.create({
         data: {
           pageId,
           versionNumber: await nextVersionNumber(tx, pageId),
-          body: input.body ?? null,
-          bodyRef: input.bodyRef ?? null,
+          body: input.body ?? previous?.body ?? null,
+          bodyRef: input.bodyRef ?? previous?.bodyRef ?? null,
+          attachmentId: previous?.attachmentId ?? null,
+          sourceContentHash: previous?.sourceContentHash ?? null,
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
         },
+      })
+      await persistVersionDisclosure(tx, {
+        disclosure: mergeVersionDisclosure(previous ?? undefined, input),
+        organizationId: input.organizationId, versionId: version.id,
       })
       await indexVersionChunks(tx, options, existing, version)
     }

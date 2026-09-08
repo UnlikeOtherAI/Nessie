@@ -1041,6 +1041,7 @@ model User {
   messageDisclosureSources            MessageDisclosureSource[]
   checkpointDisclosureSources         RunCheckpointDisclosureSource[]
   thoughtDisclosureSources            ThoughtDisclosureSource[]
+  knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
   userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
   messageThreadFollows                MessageThreadFollow[]
   favorites                           Favorite[]
@@ -1248,6 +1249,8 @@ model Organization {
   thoughts                   Thought[]
   knowledgeSpaces            KnowledgeSpace[]
   knowledgePages             KnowledgePage[]
+  knowledgePageVersionBasisScopes KnowledgePageVersionBasisScope[]
+  knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
   knowledgePageChunks        KnowledgePageChunk[]
   dashboards                 Dashboard[]
   dashboardDataSources       DashboardDataSource[]
@@ -2070,6 +2073,7 @@ model Channel {
   disclosureSources      MessageDisclosureSource[]
   checkpointDisclosureSources RunCheckpointDisclosureSource[]
   thoughtDisclosureSources ThoughtDisclosureSource[]
+  knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
 
   agentCards AgentCard[]
 
@@ -5664,11 +5668,49 @@ model KnowledgePageVersion {
   page             KnowledgePage        @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
   publishedForPage KnowledgePage?       @relation("KnowledgePagePublishedVersion")
   chunks           KnowledgePageChunk[]
+  basisScopes      KnowledgePageVersionBasisScope[]
+  disclosureSources KnowledgePageVersionDisclosureSource[]
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
   @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
   @@index([attachmentId], map: "knowledge_page_versions_attachment_id_idx")
   @@map("knowledge_page_versions")
+}
+
+model KnowledgePageVersionBasisScope {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId      String               @map("version_id") @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  scopeType      String               @map("scope_type")
+  scopeId        String               @map("scope_id") @db.Uuid
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  version      KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, scopeType, scopeId], map: "knowledge_page_version_basis_scopes_version_scope_key")
+  @@index([organizationId], map: "knowledge_page_version_basis_scopes_org_idx")
+  @@map("knowledge_page_version_basis_scopes")
+}
+
+model KnowledgePageVersionDisclosureSource {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId          String               @map("version_id") @db.Uuid
+  organizationId     String               @map("organization_id") @db.Uuid
+  sourceChannelId    String               @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?              @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime             @default(now()) @map("created_at")
+
+  version      KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel Channel              @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  sourceAuthor User?                 @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  // PostgreSQL's ordinary unique constraints treat NULL as distinct. The
+  // migration installs the structural `NULLS NOT DISTINCT` index instead.
+  @@index([versionId, sourceChannelId, sourceAuthorUserId], map: "knowledge_page_version_source_lineage_idx")
+  @@index([organizationId], map: "knowledge_page_version_disclosure_sources_org_idx")
+  @@map("knowledge_page_version_disclosure_sources")
 }
 
 model KnowledgePageChunk {

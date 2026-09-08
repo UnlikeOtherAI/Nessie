@@ -6,6 +6,7 @@ import {
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import { AgentDocumentsResponseSchema } from '@nessie/schemas'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
@@ -58,9 +59,21 @@ export const registerAgentDocumentRoutes = (
     const principal = actorType === 'user' || actorType === 'agent'
       ? { actorId: actorContext.actor.actorId, actorType }
       : { actorId: actorContext.actor.actorId, actorType: 'service' as const }
+    const liveEntitlements = actorType === 'user'
+      ? await resolveLiveEntitlements(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
+        })
+      : undefined
     const [space, viewer] = await Promise.all([
       provider.getSpace(actorContext.tenant.organizationId, reference.id),
-      loadSpaceViewer(prisma, actorContext.tenant.organizationId, principal),
+      loadSpaceViewer(
+        prisma,
+        actorContext.tenant.organizationId,
+        principal,
+        liveEntitlements ? { liveEntitlements, effectiveUserId: actorContext.actor.actorId } : {},
+      ),
     ])
     if (!space) {
       return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))

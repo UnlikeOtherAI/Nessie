@@ -121,6 +121,7 @@ export const readableSpaceIdsSqlForViewer = (
   viewer: SpaceViewer,
 ): Prisma.Sql | null => {
   if (viewer.bypass) return null
+  if (viewer.baseEntitled === false) return Prisma.sql`SELECT s.id FROM knowledge_spaces s WHERE FALSE`
   if (viewer.agent) return readableSpaceIdsSqlForAgent(organizationId, viewer.agent)
   return readableSpaceIdsSql(organizationId, viewer)
 }

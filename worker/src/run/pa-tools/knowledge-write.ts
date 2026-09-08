@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import {
   canWriteSpace,
-  loadSpaceViewer,
   type KnowledgeAuthorType,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
+import {
+  canReadPageVersions,
+  recordPageVersionRead,
+  resolveKnowledgeAccessViewers,
+} from './knowledge.js'
 
 const MAX_BODY_CHARS = 200_000
 const MAX_LABELS = 16
@@ -68,6 +72,7 @@ export const runKbDraftWriteTool = async (
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   const author = resolveAuthor(context)
 
   const existingPage = input.pageId ? await provider.getPage(organizationId, input.pageId) : null
@@ -91,10 +96,13 @@ export const runKbDraftWriteTool = async (
   if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
     throw new Error('Agents may not write to a restricted knowledge space.')
   }
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (existingPage && !(await canReadPageVersions(context, existingPage, disclosureViewer))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  if (existingPage) recordPageVersionRead(context, existingPage)
 
   if (existingPage) {
     const updated = await provider.updatePage(existingPage.id, {
@@ -179,7 +187,7 @@ export const runKbFileTool = async (
 
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
-  const principal = buildSpaceViewerPrincipal(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
   if (!page) {
@@ -191,10 +199,13 @@ export const runKbFileTool = async (
     throw new Error(`Knowledge space not found for page: ${input.pageId}`)
   }
 
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  recordPageVersionRead(context, page)
 
   // An agent keeps its authorship limits even when it is delegated to a person
   // for space access. `principal` deliberately becomes that person in a PA or
@@ -257,7 +268,7 @@ export const runKbPublishRequestTool = async (
 ): Promise<ToolExecutionResult> => {
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
-  const principal = buildSpaceViewerPrincipal(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
   if (!page) {
@@ -269,10 +280,13 @@ export const runKbPublishRequestTool = async (
     throw new Error(`Knowledge space not found for page: ${input.pageId}`)
   }
 
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  recordPageVersionRead(context, page)
 
   if (
     page.status !== 'draft'
@@ -280,6 +294,13 @@ export const runKbPublishRequestTool = async (
     || page.latestVersion.authorId !== context.agentId
   ) {
     throw new Error('Only agent-authored drafts can be submitted for publication with this tool.')
+  }
+
+  // Approval reasons and the title copied into its context are durable output
+  // outside the version reader. Keep private-derived drafts there until the
+  // exact-content authorization route exists.
+  if (context.consumedSources?.privateConversationSources().length) {
+    throw new Error('Private conversation-derived drafts cannot be submitted for publication yet.')
   }
 
   const versionId = page.latestVersion.id

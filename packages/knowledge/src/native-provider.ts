@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
-import { mapPage, mapVersion, pageInclude } from './native-mappers.js'
+import { mapPage, mapVersion, pageInclude, versionInclude } from './native-mappers.js'
 import { listNativeRecentPages } from './native-recent-pages.js'
 import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
@@ -227,6 +227,7 @@ export const createNativeKnowledgeProvider = (
     const versions = await prisma.knowledgePageVersion.findMany({
       where: { pageId },
       orderBy: { versionNumber: 'desc' },
+      include: versionInclude,
     })
     return versions
       .map((version) => mapVersion(version))
