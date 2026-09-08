@@ -254,14 +254,10 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
       // in the SSO team chooser to ACTIVE org owners/admins. Without this,
       // anyone who already belongs to a team sees no create option.
       allow_user_create_team: true,
-      // Let the Nessie backend drive the `/org/*` roster and invitation routes
-      // with the domain-hash bearer alone (UOA "backend mode" — the
-      // `X-UOA-Access-Token` header is omitted entirely; Nessie holds a bound
-      // refresh credential, never a spendable user access token). UOA defaults
-      // this to false, and while it is false a missing access token stays
-      // `401 MISSING_ACCESS_TOKEN`. Backend mode has no acting user, so UOA
-      // applies no per-member role check: the owner/admin gate in
-      // `routes/team-members.ts` is what authorises every mutation.
+      // Enable Nessie's `/org/*` roster and invitation surface. Interactive
+      // membership writes still carry a short-lived signed subject assertion,
+      // so UOA authorizes the actor's current capability for the exact target.
+      // Nessie never supplies a spendable UOA access token.
       backend_org_management: true,
       // Nessie declares the one product-specific organisation capability in
       // the signed UOA config. UOA keeps role authority; Nessie resolves this
