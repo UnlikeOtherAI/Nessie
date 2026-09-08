@@ -19,13 +19,14 @@ export const registerKnowledgeLinkRoutes = (
   const { provider, buildViewer, accessPageSpace, filterReadablePages } = createKnowledgeAccess(deps)
 
   const filterVersionReadableRows = async <T extends { pageId: string }>(
-    actorContext: Parameters<typeof filterReadablePages>[0],
+    organizationId: string,
+    viewer: Parameters<typeof filterReadablePages>[0],
     rows: readonly T[],
   ): Promise<T[]> => {
     const pages = (await Promise.all(rows.map((row) =>
-      provider.getPage(actorContext.tenant.organizationId, row.pageId))))
+      provider.getPage(organizationId, row.pageId))))
       .filter((page): page is NonNullable<typeof page> => page !== null)
-    const ids = new Set((await filterReadablePages(actorContext, pages)).map((page) => page.id))
+    const ids = new Set((await filterReadablePages(viewer, pages)).map((page) => page.id))
     return rows.filter((row) => ids.has(row.pageId))
   }
 
@@ -43,7 +44,7 @@ export const registerKnowledgeLinkRoutes = (
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
     const data = await listBacklinks(deps.prisma, { organizationId, pageId, viewer })
-    return createApiResponse(await filterVersionReadableRows(actorContext, data))
+    return createApiResponse(await filterVersionReadableRows(organizationId, viewer, data))
   })
 
   app.get('/api/knowledge-base/pages/:pageId/mentions', async (request, reply) => {
@@ -60,6 +61,6 @@ export const registerKnowledgeLinkRoutes = (
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
     const data = await listUnlinkedMentions(deps.prisma, { organizationId, pageId, viewer })
-    return createApiResponse(await filterVersionReadableRows(actorContext, data))
+    return createApiResponse(await filterVersionReadableRows(organizationId, viewer, data))
   })
 }

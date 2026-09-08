@@ -14,6 +14,7 @@ export const readableKnowledgePageVersionsWhere = (
   viewer: DisclosureViewer | undefined,
 ): Prisma.KnowledgePageWhereInput => {
   if (!viewer) return {}
+  if (viewer.kind === 'denied') return { id: { in: [] } }
   if (viewer.kind === 'autonomous') {
     return {
       versions: {

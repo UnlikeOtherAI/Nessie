@@ -210,3 +210,9 @@ test('readableSpaceIdsSqlForViewer returns null (no filter) for a bypass viewer'
   )
   assert.equal(fragment, null)
 })
+
+
+test('readableSpaceIdsSqlForViewer returns an impossible predicate for a denied live base proof', () => {
+  const fragment = readableSpaceIdsSqlForViewer(organizationId, viewer({ baseEntitled: false }))
+  assert.match(fragment?.sql ?? '', /WHERE FALSE/)
+})

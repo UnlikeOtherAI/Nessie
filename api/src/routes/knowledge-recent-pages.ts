@@ -45,7 +45,7 @@ export const registerKnowledgeRecentPagesRoutes = (
     }
     const viewer = await buildViewer(actorContext)
     const data = await provider.listRecentPages({
-      disclosureViewer: await buildDisclosureViewer(actorContext) ?? undefined,
+      disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
       organizationId: actorContext.tenant.organizationId,
       projectId: query.projectId,
       limit: query.limit,
@@ -58,7 +58,7 @@ export const registerKnowledgeRecentPagesRoutes = (
     const pages = (await Promise.all(data.map((row) =>
       provider.getPage(actorContext.tenant.organizationId, row.id))))
       .filter((page): page is NonNullable<typeof page> => page !== null)
-    const readable = new Set((await filterReadablePages(actorContext, pages)).map((page) => page.id))
+    const readable = new Set((await filterReadablePages(viewer, pages)).map((page) => page.id))
     return createApiResponse(data.filter((row) => readable.has(row.id)))
   })
 }

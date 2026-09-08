@@ -12,7 +12,7 @@ import {
   type KnowledgeSpaceRecord,
   type SpaceViewer,
 } from '@nessie/knowledge'
-import { attributionFromActorContext, resolveDisclosureViewer } from '@nessie/runtime'
+import { attributionFromActorContext, resolveDisclosureViewer, resolveLiveEntitlements, type DisclosureViewer } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
 import { recordKnowledgeSpaceRead, recordKnowledgeVersionRead } from './knowledge-basis.js'
@@ -23,19 +23,46 @@ const DEFAULT_KB_SEARCH_LIMIT = 5
 const PAGE_BODY_CHAR_CAP = 20_000
 const MAX_LIST_SPACES = 50
 
-export const resolveKnowledgeDisclosureViewer = (
+export type KnowledgeAccessViewers = {
+  disclosureViewer: DisclosureViewer
+  viewer: SpaceViewer
+}
+
+// One fresh human UOA proof governs both ordinary KB home access and version
+// disclosure. A tool reuses this pair through all of its reads and mutations;
+// resolving either side per page would be both slower and an authority split.
+export const resolveKnowledgeAccessViewers = async (
   context: BuiltinToolRuntimeContext,
-) => {
+): Promise<KnowledgeAccessViewers> => {
+  const organizationId = String(context.channel.organizationId)
   const effectiveUserId = resolveEffectiveUserId(context)
-  return resolveDisclosureViewer(
+  const liveEntitlements = effectiveUserId
+    ? await resolveLiveEntitlements(context.prisma, {
+        organizationId,
+        userId: effectiveUserId,
+        uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      })
+    : undefined
+  const disclosureViewer = await resolveDisclosureViewer(
     context.prisma,
-    context.channel.organizationId,
+    organizationId,
     effectiveUserId,
     effectiveUserId
-      ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }
+      ? { liveEntitlements }
       : { agentId: context.agentId },
   )
+  const viewer = await loadSpaceViewer(
+    context.prisma,
+    organizationId,
+    buildSpaceViewerPrincipal(context),
+    liveEntitlements ? { liveEntitlements } : {},
+  )
+  return { disclosureViewer, viewer }
 }
+
+export const resolveKnowledgeDisclosureViewer = async (
+  context: BuiltinToolRuntimeContext,
+): Promise<DisclosureViewer> => (await resolveKnowledgeAccessViewers(context)).disclosureViewer
 
 export const canReadPageVersions = async (
   context: BuiltinToolRuntimeContext,
@@ -103,12 +130,7 @@ export const runKbSearchTool = async (
 
   const organizationId = String(context.channel.organizationId)
   const limit = clampKbSearchLimit(input.limit)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
-  const viewer = await loadSpaceViewer(
-    context.prisma,
-    organizationId,
-    buildSpaceViewerPrincipal(context),
-  )
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   const queryEmbedding = await resolveQueryEmbedding(context, query)
 
   const result = await searchNativePagesHybrid(context.prisma, {
@@ -194,8 +216,7 @@ export const runKbPageReadTool = async (
   }
 
   const principal = buildSpaceViewerPrincipal(context)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   if (!canReadSpace(space, viewer)) {
     return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
   }
@@ -324,12 +345,7 @@ export const runKbListTool = async (
 ): Promise<ToolExecutionResult> => {
   const organizationId = String(context.channel.organizationId)
   const provider = createNativeKnowledgeProvider(context.prisma)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
-  const viewer = await loadSpaceViewer(
-    context.prisma,
-    organizationId,
-    buildSpaceViewerPrincipal(context),
-  )
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
 
   if (input.taskId) {
     return runKbListByTaskTool(context, organizationId, disclosureViewer, viewer, input.taskId)

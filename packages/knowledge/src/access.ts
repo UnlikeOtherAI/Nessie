@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { listVisibleAgentIdsForUser, visibleKnowledgeSpaceWhere } from '@nessie/db'
+import type { DisclosureViewer, LiveEntitlements } from '@nessie/runtime'
 import type { KnowledgeSpaceRecord } from './types.js'
 
 // Per-space access. The space creator always has full access. `bypass` is now
@@ -21,7 +22,14 @@ export type SpaceViewerAgentScopes = {
 }
 
 export type SpaceViewer = {
+  // A live UOA organization assertion is the human base entitlement where SSO
+  // owns the tenant. Explicit Nessie grants only apply after this passes.
+  baseEntitled?: boolean
   bypass: boolean
+  // The request-level disclosure resolver is attached by API/worker adapters.
+  // Keeping it with the space proof prevents a second UOA freshness read.
+  disclosureViewer?: DisclosureViewer | null
+  organizationRole?: string | null
   userId: string | null
   projectIds: Set<string>
   visibleAgentIds: Set<string>
@@ -111,6 +119,7 @@ const canAgentWriteSpace = (
 
 export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
+  if (viewer.baseEntitled === false) return false
   if (viewer.agent) return canAgentReadSpace(space, viewer.agent)
   if (space.ownerAgentId !== null) {
     // Agent homes derive their audience from live agent visibility; stored
@@ -132,6 +141,7 @@ export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): bool
 
 export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
+  if (viewer.baseEntitled === false) return false
   if (viewer.agent) return canAgentWriteSpace(space, viewer.agent)
   if (space.ownerAgentId !== null) {
     // `writeRestricted` is the steward's explicit narrowing switch and wins
@@ -166,9 +176,16 @@ export const readableKnowledgeSpaceWhere = (
   viewer: SpaceViewer,
 ): Prisma.KnowledgeSpaceWhereInput | null => {
   if (viewer.bypass) return null
+  if (viewer.baseEntitled === false) return { id: { in: [] } }
   if (!viewer.agent) {
     if (viewer.userId === null) return { id: { in: [] } }
-    return visibleKnowledgeSpaceWhere({ organizationId, userId: viewer.userId })
+    return visibleKnowledgeSpaceWhere({
+      organizationId,
+      userId: viewer.userId,
+      ...(viewer.organizationRole !== null && viewer.organizationRole !== undefined
+        ? { uoaMembershipVerified: true }
+        : {}),
+    })
   }
 
   const { agent } = viewer
@@ -201,7 +218,10 @@ const loadUserViewer = async (
   prisma: PrismaClient,
   organizationId: string,
   userId: string,
+  liveEntitlements?: LiveEntitlements,
 ): Promise<SpaceViewer> => {
+  const uoa = liveEntitlements?.kind === 'uoa'
+  const baseEntitled = liveEntitlements?.kind !== 'denied'
   const [memberships, visibleAgentIds] = await Promise.all([
     prisma.projectMember.findMany({
       select: { projectId: true },
@@ -210,10 +230,16 @@ const loadUserViewer = async (
       // membership from another organization must never widen this viewer.
       where: { userId, project: { organizationId } },
     }),
-    listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
+    listVisibleAgentIdsForUser(prisma, {
+      organizationId,
+      userId,
+      ...(uoa ? { uoaMembershipVerified: true } : {}),
+    }),
   ])
   return {
+    baseEntitled,
     bypass: false,
+    organizationRole: uoa ? liveEntitlements.organizationRole : null,
     userId,
     projectIds: new Set(memberships.map((m) => m.projectId)),
     visibleAgentIds: new Set(visibleAgentIds),
@@ -256,7 +282,9 @@ const loadAgentViewer = async (
     projectIds.add(binding.channel.projectId)
   }
   return {
+    baseEntitled: true,
     bypass: false,
+    organizationRole: null,
     userId: null,
     projectIds: new Set(),
     visibleAgentIds: new Set(),
@@ -280,17 +308,20 @@ export const loadSpaceViewer = async (
   prisma: PrismaClient,
   organizationId: string,
   principal: SpaceViewerPrincipal,
+  options: { liveEntitlements?: LiveEntitlements } = {},
 ): Promise<SpaceViewer> => {
   if (principal.actorType === 'service') {
     return {
+      baseEntitled: true,
       bypass: true,
+      organizationRole: null,
       userId: null,
       projectIds: new Set(),
       visibleAgentIds: new Set(),
     }
   }
   if (principal.actorType === 'user') {
-    return loadUserViewer(prisma, organizationId, principal.actorId)
+    return loadUserViewer(prisma, organizationId, principal.actorId, options.liveEntitlements)
   }
   return loadAgentViewer(prisma, organizationId, principal.actorId)
 }

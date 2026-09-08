@@ -191,7 +191,7 @@ export const registerKnowledgeBaseRoutes = (
       reply,
     )
     if (!currentSpace) return reply
-    if (changesAccess && !canManageKnowledgeSpaceAccess(currentSpace, actorContext)) {
+    if (changesAccess && !canManageKnowledgeSpaceAccess(currentSpace, actorContext, viewer)) {
       sendApiError(
         reply,
         403,
@@ -254,12 +254,12 @@ export const registerKnowledgeBaseRoutes = (
     const viewer = await buildViewer(actorContext)
     if (!(await accessSpace(actorContext, spaceId, viewer, 'read', reply))) return reply
     const pages = await provider.listPages({
-      disclosureViewer: await buildDisclosureViewer(actorContext) ?? undefined,
+      disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
       organizationId: actorContext.tenant.organizationId,
       spaceId,
       includeArchived: query.includeArchived === 'true',
     })
-    const readablePages = await filterReadablePages(actorContext, pages)
+    const readablePages = await filterReadablePages(viewer, pages)
     return createApiResponse(readablePages.map((page) => attachPageEnvelope(page, decision)))
   })
 
@@ -341,7 +341,7 @@ export const registerKnowledgeBaseRoutes = (
         attributionFromActorContext(actorContext),
       )
       const result = await hybridSearch({
-        disclosureViewer: await buildDisclosureViewer(actorContext) ?? undefined,
+        disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
         organizationId,
         query,
         queryEmbedding,
@@ -356,7 +356,7 @@ export const registerKnowledgeBaseRoutes = (
       // different question than "how many hits" and the provider's hybrid
       // path (native-search-hybrid.ts) never supports a cursor at all.
       const readablePages = new Set((await filterReadablePages(
-        actorContext,
+        viewer,
         result.data.map((hit) => hit.page),
       )).map((page) => page.id))
       return createApiResponse(
@@ -375,7 +375,7 @@ export const registerKnowledgeBaseRoutes = (
       organizationId,
       projectId,
       viewer,
-      disclosureViewer: await buildDisclosureViewer(actorContext) ?? undefined,
+      disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
     })
     // `total` omitted: this is the same free-text search endpoint's keyword
     // fallback (ranked search per the pagination contract) — its matching
@@ -601,7 +601,7 @@ export const registerKnowledgeBaseRoutes = (
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, versionsPage, viewer, 'read', reply))) return reply
     const versions = await provider.listVersions(actorContext.tenant.organizationId, pageId)
-    const decisions = await Promise.all(versions.map((version) => canReadVersion(actorContext, version)))
+    const decisions = await Promise.all(versions.map((version) => canReadVersion(viewer, version)))
     const readableVersions = versions.filter((_, index) => decisions[index])
     return createApiResponse(readableVersions.map((version) => ({
       ...version,
@@ -625,7 +625,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     const restoreTarget = (await provider.listVersions(actorContext.tenant.organizationId, pageId))
       .find((version) => version.id === versionId)
-    if (!restoreTarget || !(await canReadVersion(actorContext, restoreTarget))) {
+    if (!restoreTarget || !(await canReadVersion(viewer, restoreTarget))) {
       return sendApiError(reply, 404, 'KNOWLEDGE_VERSION_NOT_FOUND', 'Version not found')
     }
     let page: KnowledgePageRecord | null

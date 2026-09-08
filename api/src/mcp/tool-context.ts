@@ -70,10 +70,10 @@ export type TaskWithOrigin = {
  * can drift from the one that actually runs.
  */
 export type KnowledgeAccess = {
-  buildDisclosureViewer: (actorContext: AuthorizedActionContext) => Promise<DisclosureViewer | null>
+  buildDisclosureViewer: (viewer: SpaceViewer) => DisclosureViewer | null
   buildViewer: (actorContext: AuthorizedActionContext) => Promise<SpaceViewer>
   filterReadablePages: (
-    actorContext: AuthorizedActionContext,
+    viewer: SpaceViewer,
     pages: readonly KnowledgePageRecord[],
   ) => Promise<KnowledgePageRecord[]>
   provider: KnowledgeProvider

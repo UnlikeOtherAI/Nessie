@@ -2,13 +2,13 @@ import { Readable } from 'node:stream'
 import { attributionFromActorContext, type FileService } from '@nessie/runtime'
 import {
   canWriteSpace,
-  loadSpaceViewer,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { settleDocumentSession } from '../execute/document-session-claim.js'
 import { fileServiceFor } from '../file-service.js'
 import { buildSpaceViewerPrincipal } from './access.js'
+import { resolveKnowledgeAccessViewers } from './knowledge.js'
 import { versionDisclosureFromConsumedSources } from './knowledge-basis.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 
@@ -115,7 +115,7 @@ export const runKbDocumentComposeTool = async (
   if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
     throw new Error('Agents may not write to a restricted knowledge space.')
   }
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+  const { viewer } = await resolveKnowledgeAccessViewers(context)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }

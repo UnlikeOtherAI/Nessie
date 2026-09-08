@@ -37,3 +37,10 @@ test('an autonomous reader receives only versions with no retained basis or unkn
     },
   })
 })
+
+
+test('a denied viewer receives an impossible page predicate, including unrestricted versions', () => {
+  assert.deepEqual(readableKnowledgePageVersionsWhere({ kind: 'denied' }), {
+    id: { in: [] },
+  })
+})

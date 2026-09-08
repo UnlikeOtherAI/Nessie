@@ -82,13 +82,14 @@ export const registerKnowledgeBaseFileRoutes = (
   const { provider, buildViewer, accessSpace, accessPageSpace, canReadVersion } = createKnowledgeAccess(deps)
 
   const canReadRequestedVersion = async (
-    actorContext: AuthorizedActionContext,
+    organizationId: string,
+    viewer: Awaited<ReturnType<typeof buildViewer>>,
     pageId: string,
     versionId: string,
   ): Promise<boolean> => {
-    const version = (await provider.listVersions(actorContext.tenant.organizationId, pageId))
+    const version = (await provider.listVersions(organizationId, pageId))
       .find((candidate) => candidate.id === versionId)
-    return version !== undefined && canReadVersion(actorContext, version)
+    return version !== undefined && canReadVersion(viewer, version)
   }
 
   const requireFilePart = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -375,7 +376,7 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
-    if (!(await canReadRequestedVersion(actorContext, pageId, versionId))) {
+    if (!(await canReadRequestedVersion(actorContext.tenant.organizationId, viewer, pageId, versionId))) {
       return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
     }
 
@@ -412,7 +413,7 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
-    if (!(await canReadRequestedVersion(actorContext, pageId, versionId))) {
+    if (!(await canReadRequestedVersion(actorContext.tenant.organizationId, viewer, pageId, versionId))) {
       return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
     }
 
@@ -447,7 +448,7 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
-    if (!(await canReadRequestedVersion(actorContext, pageId, versionId))) {
+    if (!(await canReadRequestedVersion(actorContext.tenant.organizationId, viewer, pageId, versionId))) {
       return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
     }
 

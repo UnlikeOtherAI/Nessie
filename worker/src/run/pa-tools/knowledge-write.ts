@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {
   canWriteSpace,
-  loadSpaceViewer,
   type KnowledgeAuthorType,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -10,7 +9,7 @@ import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import {
   canReadPageVersions,
   recordPageVersionRead,
-  resolveKnowledgeDisclosureViewer,
+  resolveKnowledgeAccessViewers,
 } from './knowledge.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -73,7 +72,7 @@ export const runKbDraftWriteTool = async (
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   const author = resolveAuthor(context)
 
   const existingPage = input.pageId ? await provider.getPage(organizationId, input.pageId) : null
@@ -97,7 +96,6 @@ export const runKbDraftWriteTool = async (
   if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
     throw new Error('Agents may not write to a restricted knowledge space.')
   }
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
@@ -189,8 +187,7 @@ export const runKbFileTool = async (
 
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
-  const principal = buildSpaceViewerPrincipal(context)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
   if (!page) {
@@ -202,7 +199,6 @@ export const runKbFileTool = async (
     throw new Error(`Knowledge space not found for page: ${input.pageId}`)
   }
 
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
@@ -272,8 +268,7 @@ export const runKbPublishRequestTool = async (
 ): Promise<ToolExecutionResult> => {
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
-  const principal = buildSpaceViewerPrincipal(context)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
   if (!page) {
@@ -285,7 +280,6 @@ export const runKbPublishRequestTool = async (
     throw new Error(`Knowledge space not found for page: ${input.pageId}`)
   }
 
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }

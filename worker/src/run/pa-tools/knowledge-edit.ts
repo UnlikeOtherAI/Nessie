@@ -2,7 +2,6 @@ import { Readable } from 'node:stream'
 import { attributionFromActorContext, type FileService } from '@nessie/runtime'
 import {
   canWriteSpace,
-  loadSpaceViewer,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -15,7 +14,7 @@ import { recordKnowledgeSpaceRead, versionDisclosureFromConsumedSources } from '
 import {
   canReadPageVersions,
   recordPageVersionRead,
-  resolveKnowledgeDisclosureViewer,
+  resolveKnowledgeAccessViewers,
 } from './knowledge.js'
 import { readMarkdownDocument } from './knowledge-document-io.js'
 
@@ -73,14 +72,14 @@ export const runKbDocumentEditTool = async (
     throw new Error(`Knowledge space not found: ${page.spaceId}`)
   }
   const principal = buildSpaceViewerPrincipal(context)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
     throw new Error('Agents may not write to a restricted knowledge space.')
   }
   // The whole document body is now in the run's context.
   recordKnowledgeSpaceRead(context, [space])
 
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }

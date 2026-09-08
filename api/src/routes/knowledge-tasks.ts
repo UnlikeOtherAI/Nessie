@@ -160,7 +160,8 @@ export const registerKnowledgeTaskRoutes = (
     const team = await resolveTicketTeam(request, reply, actorContext, taskId, 'read')
     if (!team) return reply
 
-    const disclosureViewer = await buildDisclosureViewer(actorContext)
+    const viewer = await buildViewer(actorContext)
+    const disclosureViewer = buildDisclosureViewer(viewer)
     const pages = await prisma.knowledgePage.findMany({
       where: {
         taskId,
@@ -168,7 +169,7 @@ export const registerKnowledgeTaskRoutes = (
         projectId: team.projectId,
         spaceId: team.docsSpaceId,
         deletedAt: null,
-        ...readableKnowledgePageVersionsWhere(disclosureViewer),
+        ...readableKnowledgePageVersionsWhere(disclosureViewer ?? undefined),
         status: { not: 'archived' },
       },
       include: pageInclude,

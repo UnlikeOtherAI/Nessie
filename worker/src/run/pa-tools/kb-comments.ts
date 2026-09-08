@@ -4,18 +4,17 @@ import {
   createNativeKnowledgeProvider,
   findAnnotationLocation,
   htmlToPlainText,
-  loadSpaceViewer,
   type AnnotationAccess,
   type AnnotationActor,
   type AnnotationRecord,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
+import { resolveEffectiveUserId } from './access.js'
 import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import {
   canReadPageVersions,
   recordPageVersionRead,
-  resolveKnowledgeDisclosureViewer,
+  resolveKnowledgeAccessViewers,
 } from './knowledge.js'
 import { truncate } from './tool-output.js'
 
@@ -35,8 +34,8 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   if (!page) throw new Error(`Knowledge page not found: ${pageId}`)
   const space = await provider.getSpace(organizationId, page.spaceId)
   if (!space) throw new Error(`Knowledge space not found for page: ${pageId}`)
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, buildSpaceViewerPrincipal(context))
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
+
   if (!(await canReadPageVersions(context, page, disclosureViewer))) {
     throw new Error('You do not have access to this knowledge page.')
   }

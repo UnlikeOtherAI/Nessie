@@ -71,7 +71,7 @@ export const registerKnowledgeSummaryRoutes = (
       }),
     )
     const result = await hybridSearch({
-      disclosureViewer: await buildDisclosureViewer(actorContext) ?? undefined,
+      disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
       organizationId,
       query,
       queryEmbedding,
@@ -84,7 +84,7 @@ export const registerKnowledgeSummaryRoutes = (
     })
 
     const readablePageIds = new Set((await filterReadablePages(
-      actorContext,
+      viewer,
       result.data.map((hit) => hit.page),
     )).map((page) => page.id))
     const readableHits = result.data.filter((hit) => readablePageIds.has(hit.page.id))

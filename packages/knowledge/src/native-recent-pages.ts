@@ -23,6 +23,7 @@ type RecentPageRow = {
 
 const readableVersionSql = (viewer: DisclosureViewer | undefined): Prisma.Sql => {
   if (!viewer) return Prisma.empty
+  if (viewer.kind === 'denied') return Prisma.sql`AND FALSE`
   if (viewer.kind === 'autonomous') {
     return Prisma.sql`AND NOT EXISTS (
       SELECT 1 FROM knowledge_page_versions v

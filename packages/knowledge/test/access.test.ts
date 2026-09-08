@@ -348,3 +348,11 @@ test('bypass viewers keep full read/write access regardless of space facts', () 
   assert.equal(canReadSpace(s, bypassViewer), true)
   assert.equal(canWriteSpace(s, bypassViewer), true)
 })
+
+
+test('a human whose live UOA proof was denied cannot read or write an otherwise public space', () => {
+  const denied = userViewer({ baseEntitled: false })
+  const shared = space({ visibility: 'organization' })
+  assert.equal(canReadSpace(shared, denied), false)
+  assert.equal(canWriteSpace(shared, denied), false)
+})

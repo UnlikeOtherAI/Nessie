@@ -135,7 +135,7 @@ export const documentTools = (): McpToolDefinition[] => [
 
       return {
         pages: await access.provider.listPages({
-          disclosureViewer: await access.buildDisclosureViewer(context.actorContext) ?? undefined,
+          disclosureViewer: access.buildDisclosureViewer(viewer) ?? undefined,
           organizationId,
           spaceId,
         }),
@@ -160,7 +160,7 @@ export const documentTools = (): McpToolDefinition[] => [
       const space = await access.provider.getSpace(organizationId, page.spaceId)
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canReadSpace(space, viewer)) return PAGE_UNREACHABLE
-      if ((await access.filterReadablePages(context.actorContext, [page])).length === 0) {
+      if ((await access.filterReadablePages(viewer, [page])).length === 0) {
         return PAGE_UNREACHABLE
       }
 
@@ -260,7 +260,7 @@ export const documentTools = (): McpToolDefinition[] => [
       const space = await access.provider.getSpace(organizationId, existing.spaceId)
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
-      if ((await access.filterReadablePages(context.actorContext, [existing])).length === 0) {
+      if ((await access.filterReadablePages(viewer, [existing])).length === 0) {
         return PAGE_UNREACHABLE
       }
 
@@ -354,7 +354,7 @@ export const documentTools = (): McpToolDefinition[] => [
       const space = await access.provider.getSpace(organizationId, existing.spaceId)
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
-      if ((await access.filterReadablePages(context.actorContext, [existing])).length === 0) {
+      if ((await access.filterReadablePages(viewer, [existing])).length === 0) {
         return PAGE_UNREACHABLE
       }
 
