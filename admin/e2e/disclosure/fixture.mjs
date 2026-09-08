@@ -255,7 +255,7 @@ export const assertKeyboardMentionSelection = async (page, agentId, agentName) =
   if (await mention.getAttribute('data-mention-id') !== agentId) {
     throw new Error('The keyboard selected a different agent mention')
   }
-  await composer.press('Meta+A')
+  await composer.press('ControlOrMeta+A')
   await composer.press('Backspace')
   await mention.waitFor({ state: 'detached' })
 }
