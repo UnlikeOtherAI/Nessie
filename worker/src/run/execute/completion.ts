@@ -1,5 +1,4 @@
 import { Prisma } from '@prisma/client'
-import { markRecallsReferenced } from '@nessie/memory'
 import { parseAgentId, parseRunId } from '@nessie/schemas'
 import type { InvocationRecord } from '@nessie/runtime'
 import { persistInvocationLedgerEvents } from '../inference.js'
@@ -11,7 +10,6 @@ import { enqueueInteractiveReplyPush } from './reply-push.js'
 import { buildScopes } from './scopes.js'
 import { foldWatchStatus } from './watch-status.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
-import { detectReferencedRecallIds } from './memory.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import {
   publishAgentStatus,
@@ -59,11 +57,6 @@ export const completeRunExecution = async (
     runId: context.run.id,
     invocations: input.invocations,
   })
-
-  const referencedRecallIds = detectReferencedRecallIds(input.responseText, input.memories)
-  if (referencedRecallIds.length > 0) {
-    await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
-  }
 
   let replyPushMessage: {
     content: string

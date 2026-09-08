@@ -45,8 +45,10 @@ import {
   ExecutionEnvironmentTerminateJobPayloadSchema,
   KNOWLEDGE_EMBED_TOPIC,
   KNOWLEDGE_EXTRACT_TOPIC,
+  MESSAGE_EMBED_TOPIC,
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
+  MessageEmbedJobPayloadSchema,
   AUTOMATIC_MEMBERSHIP_PROVISION_TOPIC,
   AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
   AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
@@ -110,6 +112,11 @@ import {
 } from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
+import { executeMessageEmbedJob } from './control/message-embed.js'
+import {
+  reapDeletedMessageEmbeddings,
+  sweepMessageEmbeddings,
+} from './control/message-embedding-sweep.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { maybeSyncRegistry } from './control/registry-sync-sweep.js'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
@@ -592,6 +599,15 @@ export const startWorker = async (
     async (job) => {
       const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
       await executeKnowledgeExtractJob({ fileService, modelClient, prisma }, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  subscribe(
+    MESSAGE_EMBED_TOPIC,
+    async (job) => {
+      const payload = MessageEmbedJobPayloadSchema.parse(job.payload)
+      await executeMessageEmbedJob({ modelClient, prisma }, payload)
     },
     { signal: abortController.signal },
   )
@@ -1346,6 +1362,15 @@ export const startWorker = async (
     })
   }, registrySyncSweepMs)
 
+  const messageEmbeddingSweepInterval = setInterval(() => {
+    void withSweepLock(pool, 'message-embedding-sweep', async () => {
+      await reapDeletedMessageEmbeddings(prisma)
+      return sweepMessageEmbeddings(prisma, { embeddingModel: modelClient.embeddingModel })
+    }).catch((error: unknown) => {
+      console.error('[worker.message-embedding-sweep] failed', error)
+    })
+  }, 60_000)
+
   console.log(
     JSON.stringify(
       {
@@ -1396,6 +1421,7 @@ export const startWorker = async (
     clearInterval(commsRenewInterval)
     clearInterval(commsIncrementalSweepInterval)
     clearInterval(registrySyncSweepInterval)
+    clearInterval(messageEmbeddingSweepInterval)
     const { settleTimedOut, timedOut } = await drainQueueSubscriptions(subscriptions)
     if (timedOut) {
       console.warn(

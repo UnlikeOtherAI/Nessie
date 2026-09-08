@@ -1106,6 +1106,9 @@ importers:
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../packages/retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime

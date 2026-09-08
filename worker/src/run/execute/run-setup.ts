@@ -25,8 +25,14 @@ import {
   type LoadedRunCheckpoint,
 } from './checkpoint.js'
 import { buildMemoryContext, retrieveRelevantMemories } from './memory.js'
+import {
+  RETRIEVED_CONTEXT_TOKEN_BUDGET,
+  retrieveRelevantHistory,
+} from './history-recall.js'
+import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { admitPrivateConversationLineage } from './private-conversation-lineage.js'
@@ -296,10 +302,23 @@ export const prepareRunExecution = async (
       : Promise.resolve(null),
   ])
 
+  const effectiveUserId =
+    payload.actorContext.actionContext.effectiveUserId
+    ?? (payload.actorContext.actor.actorType === 'user'
+      ? payload.actorContext.actor.actorId
+      : undefined)
+  const liveEntitlements = effectiveUserId
+    ? await resolveLiveEntitlements(deps.prisma, {
+      organizationId: context.channel.organizationId,
+      uoaIdentity: payload.actorContext.actionContext.uoaIdentity,
+      userId: effectiveUserId,
+    })
+    : undefined
   const viewer = await resolveDisclosureViewer(
     deps.prisma,
     payload,
     context.channel.organizationId,
+    liveEntitlements,
   )
   const conversation = await loadConversation(deps.prisma, {
     consumedSources: context.consumedSources,
@@ -321,11 +340,29 @@ export const prepareRunExecution = async (
       })
       : null
 
-  const memories = await retrieveRelevantMemories(deps, context, payload, input.prompt)
+  const memories = await retrieveRelevantMemories(
+    deps,
+    context,
+    payload,
+    input.prompt,
+    liveEntitlements,
+  )
+  const legacyMemoryContext = buildMemoryContext(memories)
+  const history = await retrieveRelevantHistory(deps, context, payload, {
+    liveEntitlements,
+    prompt: input.prompt,
+    tokenBudget: Math.max(
+      0,
+      RETRIEVED_CONTEXT_TOKEN_BUDGET - estimateTokens(legacyMemoryContext ?? ''),
+    ),
+    viewer,
+  })
   const injectedRecallIds = memories.flatMap((memory) =>
     memory.recallId ? [memory.recallId] : [],
   )
-  const memoryContext = buildMemoryContext(memories)
+  const memoryContext = [legacyMemoryContext, history.context]
+    .filter((value): value is string => Boolean(value))
+    .join('\n\n') || null
 
   if (injectedRecallIds.length > 0) {
     await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)

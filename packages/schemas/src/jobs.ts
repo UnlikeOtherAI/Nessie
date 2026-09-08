@@ -310,6 +310,19 @@ export const KnowledgeEmbedJobPayloadSchema = z.object({
 })
 export type KnowledgeEmbedJobPayload = z.infer<typeof KnowledgeEmbedJobPayloadSchema>
 
+// Canonical conversation indexing. The payload carries the expected content
+// hash so a delayed/redelivered job can never write an embedding for an edited
+// or tombstoned Message.
+export const MESSAGE_EMBED_TOPIC = 'message.embed'
+
+export const MessageEmbedJobPayloadSchema = z.object({
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  embeddingModel: NonEmptyStringSchema,
+  messageId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+})
+export type MessageEmbedJobPayload = z.infer<typeof MessageEmbedJobPayloadSchema>
+
 // The embedding model for knowledge page chunks is not pinned here: the worker
 // (chunk embedding) and the api (query embedding) both read
 // `ModelClient.embeddingModel`, so the two sides agree because they resolve the

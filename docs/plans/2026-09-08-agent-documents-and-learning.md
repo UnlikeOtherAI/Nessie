@@ -433,6 +433,20 @@ and learning scheduling use existing document status and history for visibility.
 | 5. Procedures and migration | Knowledge + AgentTodo + WorkflowTemplate services, existing review UI | Natural-language routine distillation works; checklists preserved; recording UI removed without losing installed work |
 | 6. Measured rollout | Eval corpus, legacy Thought migration, learning enablement | Learning improves held-out follow-up work; privacy/regression gates pass; old agent-memory writers/readers retired |
 
+Phase 3 indexes only the canonical `Message` source. A hash- and
+model-pinned `MessageEmbedding` projection is claimed through the durable queue,
+with terminal skipped/failed states, bounded retry, deletion cleanup, and a
+tenant-bounded resumable backfill. Retrieval embeds the query once, fuses bounded
+FTS and vector candidate sets through the shared retrieval helper, then reloads
+each Message and its neighbouring passage. It verifies the current hash,
+disclosure basis, private human-source lineage, and the same live UOA viewer
+before admitting text into the run's `ConsumedSourceSink`. The initial retrieved
+history allowance is 4k estimated tokens and shares prompt space with the
+existing core admission boundary; it does not retrieve core-role documents.
+Server-supplied channel links remain the source doorway. These deterministic
+checks enforce access and provenance; a separate configured quality-model eval
+is still required to measure multilingual retrieval quality.
+
 Phase 1 can ship while the UOA authority refactor progresses. No expanded memory
 audience ships until that dependency and all affected output/egress gates pass.
 Land Phase 3 read-only retrieval before enabling Phase 4 auto-writes; schema

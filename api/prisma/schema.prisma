@@ -2511,6 +2511,7 @@ model Message {
   basisScopes                 MessageBasisScope[]
   disclosureSources           MessageDisclosureSource[]
   disclosureGrants            DisclosureGrant[]
+  embedding                   MessageEmbedding?
   pushSurfacePresences        UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
   conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
@@ -2519,6 +2520,27 @@ model Message {
   @@index([agentId, createdAt])
   @@index([rootMessageId, createdAt])
   @@map("messages")
+}
+
+/// A derived semantic projection of the canonical Message.  It intentionally
+/// holds no transcript copy: all recall text is loaded from Message again after
+/// the candidate and disclosure checks succeed.
+model MessageEmbedding {
+  id             String       @id @default(uuid()) @db.Uuid
+  messageId      String       @unique @map("message_id") @db.Uuid
+  contentHash    String       @map("content_hash")
+  embedding      Unsupported("vector")?
+  embeddingModel String?      @map("embedding_model")
+  dims           Int?
+  status         String       @default("pending")
+  lastError      String?      @map("last_error")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  message        Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([embeddingModel, dims])
+  @@index([status])
+  @@map("message_embeddings")
 }
 
 /// Denormalised copy of the producing run's disclosure basis, carried on the
