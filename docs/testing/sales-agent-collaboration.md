@@ -296,3 +296,20 @@ run. The shared helper receives no Nessie identity or persistence state. Its
 preservation test keeps checkpoint input unchanged and retains an image-bearing
 recent turn; run-level tests continue to cover checkpoint recovery and tool
 pair integrity.
+
+PR 423 deployment succeeded in run 34261949124. Through the production UI,
+the verification created **Sales Verification — KiloMayo**
+(`8c03c93d-0175-4b74-ba79-391da2e938be`) in the existing General team and then
+created **sales-planning-verification**
+(`29d5a59f-01a4-46db-bb28-93dd18d8b8dd`) from that project's sidebar menu.
+Both saved sales agents were added through the channel's Members dialog.
+After reload the channel remained under the correct project and its Agents
+tab showed both agents; membership contained the owner and those two agents.
+
+PR 428's final browser evaluation passed against its conditional preview
+fixture in CI run 34263668156. The downloaded screenshots visibly show the
+compact audience menu above the connection dialog and the project picker
+with Connect disabled until a project is selected. The browser evaluation
+also checks hit-testing and Escape behavior. This removes the earlier
+unstyled/mid-animation proof ambiguity. Production acceptance and the full
+CI gate remain pending at this checkpoint.
