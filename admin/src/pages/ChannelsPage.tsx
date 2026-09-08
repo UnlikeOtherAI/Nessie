@@ -26,6 +26,7 @@ import { ConversationInfoFlow } from '../components/features/channels/Conversati
 import { buildFeedItems } from '../components/features/channels/channel-feed'
 import { type ChannelAgentParticipant, type MessageUserIdentity } from '../components/features/channels/channel-participants'
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
+import type { ConversationRenameDoorway } from '../components/features/channels/rename-conversation'
 import { channelComposerDraftKey } from '../components/features/channels/composer-draft'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
@@ -120,6 +121,22 @@ export const ChannelsPage = () => {
         title: conversationRecord.title,
       }
     : null
+  // Renaming the open conversation. The doorway is a header action and the
+  // dialog is a modal over this page, exactly like channel settings — a
+  // rename is an edit of the thing on screen, not a place you navigate to.
+  const [renameConversationOpen, setRenameConversationOpen] = useState(false)
+  // Who may rename, and what pressing it does. The rule itself lives in
+  // `rename-conversation.ts` so the header and this page cannot come to
+  // disagree about it, and so it can be pinned without a DOM.
+  const conversationRename: ConversationRenameDoorway | null =
+    inConversation && conversationRecord && activeChannel
+      ? {
+          conversation: conversationRecord,
+          onRename: () => setRenameConversationOpen(true),
+          viewerCanManageChannel: activeChannel.viewerCanManage,
+          viewerUserId: me?.user.id ?? null,
+        }
+      : null
 
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
@@ -389,6 +406,7 @@ export const ChannelsPage = () => {
     cancelEdit()
     closeSearch()
     setShowChannelSettings(false)
+    setRenameConversationOpen(false)
     setSelectedMessageUser(null)
     setSelectedMessageAgent(null)
   }, [activeChannel?.id, activeThreadId, cancelEdit, closeSearch])
@@ -534,6 +552,7 @@ export const ChannelsPage = () => {
         agentTabAvailable={agentTabAvailable}
         agentsTabAvailable={agentsTabAvailable}
         conversationAgent={conversationAgent}
+        conversationRename={conversationRename}
         deepWaterLauncher={deepWaterLauncher}
         documentSessions={documentSessions}
         documentStore={documentStore}
@@ -636,6 +655,11 @@ export const ChannelsPage = () => {
         mentionEntities={mentionEntities}
         oversizePaste={oversizePaste}
         pendingMessages={pendingMessages}
+        renameConversation={{
+          conversation: conversationRecord,
+          onClose: () => setRenameConversationOpen(false),
+          open: renameConversationOpen,
+        }}
         renderContent={renderContent}
         replyThread={replyThread}
         selectedMessageAgent={selectedMessageAgent}

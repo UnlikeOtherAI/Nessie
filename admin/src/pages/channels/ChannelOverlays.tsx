@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
+import { CHAT_MESSAGE_MAX_CHARS, type AgentConversationRecord } from '@nessie/schemas'
 import type {
   AgentRecord,
   CallRecord,
@@ -20,6 +20,7 @@ import {
   StartCallFailureDialog,
 } from '../../components/features/channels/CallerCallDialog'
 import VoiceCallDialog from '../../components/features/channels/VoiceCallDialog'
+import { RenameConversationDialog } from '../../components/features/channels/RenameConversationDialog'
 import type { VoiceCallState } from '../../facades/voice/voice-call-client'
 import { DashboardWorkspacePanel } from '../../components/features/dashboards/DashboardWorkspacePanel'
 
@@ -65,6 +66,16 @@ interface ChannelOverlaysProps {
   mentionEntities: MentionEntity[]
   oversizePaste: string | null
   pendingMessages: PendingStreamMessage[]
+  /**
+   * Renaming the open conversation: the record the header is naming, and the
+   * open state of the dialog that edits it. Null record on a room's General
+   * thread, which has no conversation to rename.
+   */
+  renameConversation: {
+    conversation: AgentConversationRecord | null
+    onClose: () => void
+    open: boolean
+  }
   renderContent: (text: string) => ReactNode
   replyThread: ReturnType<typeof useReplyThread>
   selectedMessageAgent: ChannelAgentParticipant | null
@@ -126,6 +137,7 @@ export const ChannelOverlays = ({
   mentionEntities,
   oversizePaste,
   pendingMessages,
+  renameConversation,
   renderContent,
   replyThread,
   selectedMessageAgent,
@@ -215,6 +227,12 @@ export const ChannelOverlays = ({
         onSelectAgent={onSelectAgent}
       />
     ) : null}
+
+    <RenameConversationDialog
+      conversation={renameConversation.conversation}
+      onClose={renameConversation.onClose}
+      open={renameConversation.open}
+    />
 
     {activeChannel ? (
       <ChannelSettingsDialog

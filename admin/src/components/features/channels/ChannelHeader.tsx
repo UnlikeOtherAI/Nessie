@@ -13,6 +13,10 @@ import { usePhoneLayout } from '../../../navigation/mobile-shell'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { ChannelTitleFavorite } from './ChannelFavoriteButton'
+import {
+  renameConversationHeaderActions,
+  type ConversationRenameDoorway,
+} from './rename-conversation'
 import { chatToolHeaderActions, type ChatToolId } from './tool-rail/chat-tools'
 
 interface ChannelHeaderProps {
@@ -35,6 +39,13 @@ interface ChannelHeaderProps {
    * thing being read. Null in a room's General thread, which is the room.
    */
   conversation: { eyebrow: string; title: string } | null
+  /**
+   * Renaming the conversation whose title this header is showing: the record,
+   * who is looking, and what opening the dialog does. Null where there is
+   * nothing to rename; the rule that turns it into an action (or into nothing)
+   * is `rename-conversation.ts`, never spelt out here.
+   */
+  conversationRename: ConversationRenameDoorway | null
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -75,6 +86,7 @@ export const ChannelHeader = ({
   channelUsers,
   conversation,
   conversationAgent,
+  conversationRename,
   externalAgentIdentity,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -138,6 +150,9 @@ export const ChannelHeader = ({
       priority: 90,
       selected: titleFavorite.isFavorite,
     } satisfies PageHeaderAction] : []),
+    // Directly under the star, and above the room's own controls: it acts on
+    // the thing the title names, which is what this header is showing.
+    ...renameConversationHeaderActions(conversationRename),
     ...(canOpenConversationInfo ? [{
       compact: true,
       icon: faCircleInfo,

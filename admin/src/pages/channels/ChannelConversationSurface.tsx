@@ -25,6 +25,7 @@ import { Dialog } from '../../components/shared/Dialog'
 import { ChannelTabPanels } from '../../components/features/channels/ChannelTabPanels'
 import { ExternalAgentIntro } from '../../components/features/channels/ExternalAgentIntro'
 import type { ChannelTitleFavorite } from '../../components/features/channels/ChannelFavoriteButton'
+import type { ConversationRenameDoorway } from '../../components/features/channels/rename-conversation'
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { type ChannelAgentParticipant, type MessageUserIdentity } from '../../components/features/channels/channel-participants'
 import { type ChannelTab } from '../../components/features/channels/channel-tabs'
@@ -60,6 +61,8 @@ interface ChannelConversationSurfaceProps {
   activeThreadId: string | null
   /** Set only inside a conversation; the header then names it, not the room. */
   conversation: { eyebrow: string; title: string } | null
+  /** The header's rename doorway; the page owns the rule and the dialog. */
+  conversationRename: ConversationRenameDoorway | null
   agentMap: Map<string, AgentRecord>
   agentTabAvailable: boolean
   agentsTabAvailable: boolean
@@ -176,6 +179,7 @@ export const ChannelConversationSurface = ({
   composePlaceholder,
   composer,
   conversationAgent,
+  conversationRename,
   deepWaterLauncher,
   documentSessions,
   documentStore,
@@ -275,6 +279,7 @@ export const ChannelConversationSurface = ({
         searchOpen={search.searchOpen}
         titleFavorite={titleFavorite}
         conversationAgent={conversationAgent}
+        conversationRename={conversationRename}
         onCallButton={onCallButton}
         onOpenChatTool={onOpenChatTool}
         onJoin={onJoin}
