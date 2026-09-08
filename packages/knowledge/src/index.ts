@@ -4,7 +4,9 @@ export {
   isAgentCoreDocumentPage,
   loadActiveAgentCoreDocuments,
 } from './agent-core-documents.js'
-export { migrateAgentCoreDocuments } from './agent-core-migration.js'
+export { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
+export { readCanonicalAgentCore, writeCanonicalAgentCore } from './agent-core-write.js'
+export type { CanonicalAgentCore } from './agent-core-write.js'
 export type {
   ActiveCoreDocument,
   CoreDocumentRole,

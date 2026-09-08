@@ -22,12 +22,15 @@ import {
   type AgentToolCatalogEntry,
   type AgentToolCatalogRestrictedEntry,
 } from '@nessie/team-admin'
+import { readCanonicalAgentCore, writeCanonicalAgentCore } from '@nessie/knowledge'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
 import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
+import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 
 /**
  * Reading and rewriting an agent's configuration from chat.
@@ -71,7 +74,10 @@ const describeToolPolicy = (
   ].filter(Boolean).join(' | ')
 }
 
-const describeConfig = (config: AgentConfigProjection): string[] => [
+const describeConfig = (
+  config: AgentConfigProjection,
+  core?: { speakingStyle: string; systemPrompt: string } | null,
+): string[] => [
   `name: ${config.name}`,
   `role: ${config.role}`,
   `visibility: ${config.visibility}${config.systemManaged ? ' (Nessie-managed)' : ''}`,
@@ -83,7 +89,8 @@ const describeConfig = (config: AgentConfigProjection): string[] => [
   `run limits: ${describeRunLimits(config.runLimits)}`,
   `to-dos: ${config.todosEnabled ? 'on' : 'off'}`,
   `tool policy: ${describeToolPolicy(config.toolPolicy)}`,
-  `instructions:\n${config.systemPrompt?.trim() || '(none)'}`,
+  `instructions:\n${core?.systemPrompt.trim() || config.systemPrompt?.trim() || '(none)'}`,
+  ...(core ? [`working style:\n${core.speakingStyle.trim() || '(none)'}`] : []),
 ]
 
 export const runAgentReadTool = async (
@@ -109,7 +116,16 @@ export const runAgentReadTool = async (
   // predicate, so the person who just read it satisfies it by construction.
   context.consumedSources?.add({ scopeId: args.agentId, scopeType: 'agent' })
 
-  const lines = describeConfig(result.config)
+  const core = await readCanonicalAgentCore(context.prisma, fileServiceFor(context.prisma), {
+    agentId: args.agentId,
+    organizationId: member.organizationId,
+  })
+  const lines = describeConfig(result.config, core)
+  if (core) {
+    lines.push(
+      `core revisions: ${core.documents.map((document) => `${document.role} v${document.versionNumber}`).join(', ') || 'none'}`,
+    )
+  }
   if (result.record) {
     lines.push(
       `channels: ${result.record.channelIds.length === 0
@@ -135,6 +151,7 @@ const AgentUpdateInputSchema = z.object({
   agentId: z.string().uuid(),
   name: z.string().min(1).optional(),
   role: z.string().min(1).optional(),
+  speakingStyle: z.string().nullable().optional(),
   systemPrompt: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
@@ -205,6 +222,36 @@ export const runAgentUpdateTool = async (
     modelSubscriptionId = selection.modelSubscriptionId
   }
 
+  let canonicalCore: Awaited<ReturnType<typeof writeCanonicalAgentCore>> | null = null
+  if (patch.systemPrompt !== undefined || patch.speakingStyle !== undefined) {
+    const target = await context.prisma.agent.findFirst({
+      where: { id: agentId, organizationId: member.organizationId },
+      select: { projectId: true },
+    })
+    if (!target?.projectId) throw new Error('Agent has no document project.')
+    canonicalCore = await writeCanonicalAgentCore(
+      context.prisma,
+      createWorkerKnowledgeProvider(context),
+      fileServiceFor(context.prisma),
+      {
+        actor: {
+          organizationId: member.organizationId,
+          uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+          userId: member.userId,
+        },
+        agentId,
+        attribution: attributionFromActorContext(context.actorContext),
+        organizationId: member.organizationId,
+        projectId: target.projectId,
+        ...(patch.speakingStyle === undefined ? {} : { speakingStyle: patch.speakingStyle }),
+        ...(patch.systemPrompt === undefined ? {} : { systemPrompt: patch.systemPrompt }),
+        userId: member.userId,
+      },
+    )
+  }
+  const recordPatch = { ...patch }
+  delete recordPatch.speakingStyle
+  delete recordPatch.systemPrompt
   const agent = await updateAgentRecord(
     context.prisma,
     agentId,
@@ -214,7 +261,7 @@ export const runAgentUpdateTool = async (
       userId: member.userId,
     },
     {
-      ...patch,
+      ...recordPatch,
       ...(modelSubscriptionId === undefined ? {} : { modelSubscriptionId }),
       ...(patch.ownerUserId === undefined ? {} : { ownerUserId: patch.ownerUserId }),
       organizationId: member.organizationId,
@@ -234,6 +281,9 @@ export const runAgentUpdateTool = async (
       `changed: ${changed.join(', ') || 'nothing'}`,
       `model=${agent.model ? `${agent.provider ?? '?'}/${agent.model}` : 'deployment default'}`
       + ` | effort=${agent.effort ?? 'medium'}`,
+      ...(canonicalCore
+        ? [`core revisions: ${canonicalCore.documents.map((document) => `${document.role} v${document.versionNumber}`).join(', ')}`]
+        : []),
     ].join('\n'),
     toolName: 'agent_update',
   }

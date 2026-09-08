@@ -5,6 +5,7 @@ import { isAgentAccessibleToActor } from './agent-access.js'
 import { resolveLiveEntitlements, type LiveEntitlements } from './uoa-live-entitlements.js'
 
 export const AGENT_EDIT_AUTHORITY_ERROR_CODES = {
+  CORE_CANONICAL_WRITE_REQUIRED: 'AGENT_CORE_CANONICAL_WRITE_REQUIRED',
   MEMBERSHIP_INACTIVE: 'AGENT_EDIT_MEMBERSHIP_INACTIVE',
   NOT_ENTITLED: 'AGENT_EDIT_NOT_ENTITLED',
   OWNERSHIP_FORBIDDEN: 'AGENT_OWNERSHIP_CHANGE_FORBIDDEN',

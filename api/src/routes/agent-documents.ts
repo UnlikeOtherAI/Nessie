@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   canReadSpace,
   ensureAgentDocsSpace,
+  readCanonicalAgentCore,
   loadSpaceViewer,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
@@ -103,8 +104,14 @@ export const registerAgentDocumentRoutes = (
       }))
     }
 
+    const canonicalCore = await readCanonicalAgentCore(prisma, deps.fileService, {
+      agentId: agent.id,
+      organizationId: actorContext.tenant.organizationId,
+    })
+
     return createApiResponse(AgentDocumentsResponseSchema.parse({
       core,
+      ...(canonicalCore ? { coreDocuments: canonicalCore.documents } : {}),
       space: {
         ...reference,
         canRead: true,

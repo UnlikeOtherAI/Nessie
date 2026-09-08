@@ -387,6 +387,31 @@ export type AgentCoreMigrationResult =
   | { kind: 'already_migrated' }
   | { kind: 'stale' }
 
+/** A staged canonical Markdown file and the published version it replaces. */
+export type AgentCoreDocumentUpdateDraft = {
+  attachmentId: string
+  expectedPublishedVersionId?: string
+  role: 'identity' | 'working_rules'
+}
+
+/**
+ * Replaces one or both active core documents.  A blank migrated agent has no
+ * mappings yet, so its first non-empty edit supplies both roles and creates
+ * them together.
+ */
+export type AgentCoreDocumentUpdateInput = {
+  agentId: string
+  authorId: string
+  drafts: AgentCoreDocumentUpdateDraft[]
+  organizationId: string
+  projectId: string
+  spaceId: string
+}
+
+export type AgentCoreDocumentUpdateResult =
+  | { kind: 'updated'; pageIds: string[] }
+  | { kind: 'stale' }
+
 export type RestorePageVersionInput = KnowledgePageVersionDisclosureInput & {
   authorId: string
   authorType: KnowledgeAuthorType
@@ -407,6 +432,7 @@ export type KnowledgeProvider = {
   archiveSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>
   createPage: (input: CreatePageInput) => Promise<KnowledgePageRecord>
   migrateAgentCoreDocuments?: (input: AgentCoreMigrationInput) => Promise<AgentCoreMigrationResult>
+  updateAgentCoreDocuments?: (input: AgentCoreDocumentUpdateInput) => Promise<AgentCoreDocumentUpdateResult>
   createSpace: (input: CreateSpaceInput) => Promise<KnowledgeSpaceRecord>
   getPage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
   getSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>
