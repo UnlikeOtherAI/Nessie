@@ -13,16 +13,18 @@ type CreateChannelDialogProps = {
   onCreated?: (channel: ChannelRecord) => void
   open: boolean
   projectName?: string
+  projectId?: string
   scope?: 'standalone'
   teamId?: string
 }
 
 export const CreateChannelDialog = (
-  { onClose, onCreated, open, projectName, scope, teamId }: CreateChannelDialogProps,
+  { onClose, onCreated, open, projectId, projectName, scope, teamId }: CreateChannelDialogProps,
 ) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const createChannel = useCreateChannel()
+  const projectTeamIsMissing = projectId !== undefined && scope !== 'standalone' && !teamId
 
   const [name, setName] = useState('')
   const [visibility, setVisibility] = useState<
@@ -42,11 +44,12 @@ export const CreateChannelDialog = (
   ) => {
     event.preventDefault()
     const label = toChannelSlug(name)
-    if (!label) return
+    if (!label || projectTeamIsMissing) return
 
     try {
       const created = await createChannel.mutateAsync({
         label,
+        projectId,
         scope,
         teamId,
         visibility,
@@ -135,6 +138,12 @@ export const CreateChannelDialog = (
           </select>
         </div>
 
+        {projectTeamIsMissing ? (
+          <p className="text-xs text-[color:var(--tx3)]" role="status">
+            This project has no resolved team. Channel creation is unavailable.
+          </p>
+        ) : null}
+
         <div className="flex justify-end gap-2 pt-1">
           <button
             className="admin-button admin-button-secondary"
@@ -145,7 +154,7 @@ export const CreateChannelDialog = (
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={!toChannelSlug(name)}
+            disabled={!toChannelSlug(name) || projectTeamIsMissing}
             type="submit"
           >
             Create channel

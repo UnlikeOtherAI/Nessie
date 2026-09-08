@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { readableSpaceIdsSqlForViewer } from './native-search-access.js'
+import type { DisclosureViewer } from '@nessie/runtime'
 import type {
   KnowledgePageKind,
   KnowledgePageStatus,
@@ -20,6 +21,41 @@ type RecentPageRow = {
   updatedAt: Date
 }
 
+const readableVersionSql = (viewer: DisclosureViewer | undefined): Prisma.Sql => {
+  if (!viewer) return Prisma.empty
+  if (viewer.kind === 'denied') return Prisma.sql`AND FALSE`
+  if (viewer.kind === 'autonomous') {
+    return Prisma.sql`AND NOT EXISTS (
+      SELECT 1 FROM knowledge_page_versions v
+      WHERE v.page_id = p.id AND (
+        EXISTS (SELECT 1 FROM knowledge_page_version_basis_scopes b WHERE b.version_id = v.id)
+        OR EXISTS (
+          SELECT 1 FROM knowledge_page_version_disclosure_sources ds
+          WHERE ds.version_id = v.id AND ds.source_author_user_id IS NULL
+        )
+      )
+    )`
+  }
+  const reachable = viewer.scopes.map((scope) =>
+    Prisma.sql`(b.scope_type = ${scope.scopeType} AND b.scope_id = ${scope.scopeId}::uuid)`)
+  const reachableClause = reachable.length > 0
+    ? Prisma.join(reachable, ' OR ')
+    : Prisma.sql`FALSE`
+  return Prisma.sql`AND NOT EXISTS (
+    SELECT 1 FROM knowledge_page_versions v
+    WHERE v.page_id = p.id AND (
+      EXISTS (
+        SELECT 1 FROM knowledge_page_version_disclosure_sources ds
+        WHERE ds.version_id = v.id AND ds.source_author_user_id IS NULL
+      ) OR EXISTS (
+        SELECT 1 FROM knowledge_page_version_basis_scopes b
+        WHERE b.version_id = v.id
+          AND NOT (${reachableClause})
+      )
+    )
+  )`
+}
+
 export const clampRecentLimit = (limit?: number): number =>
   Math.min(Math.max(Math.trunc(limit ?? DEFAULT_RECENT_LIMIT), 1), MAX_RECENT_LIMIT)
 
@@ -38,6 +74,7 @@ export const listNativeRecentPages = async (
   const spaceFilter = input.viewer
     ? readableSpaceIdsSqlForViewer(input.organizationId, input.viewer)
     : null
+  const versionFilter = readableVersionSql(input.disclosureViewer)
   const rows = await prisma.$queryRaw<RecentPageRow[]>(Prisma.sql`
     SELECT p.id,
            p.space_id AS "spaceId",
@@ -54,6 +91,7 @@ export const listNativeRecentPages = async (
       AND p.status <> 'archived'::"KnowledgePageStatus"
       AND s.deleted_at IS NULL
       ${spaceFilter ? Prisma.sql`AND p.space_id IN (${spaceFilter})` : Prisma.empty}
+      ${versionFilter}
     ORDER BY p.updated_at DESC, p.id DESC
     LIMIT ${limit}
   `)

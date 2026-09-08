@@ -188,7 +188,21 @@ const main = async () => {
       await subscription
       const browserDoor = page.getByRole('button', { name: 'Browser', exact: true })
       assert.equal(await browserDoor.count(), 0, 'an ungranted agent must not expose a browser doorway')
+      await page.goto(`${ADMIN_URL}/agents/${agent.id}?agentTab=tools`, { waitUntil: 'domcontentloaded' })
+      await page.getByRole('tab', { name: 'Tools', exact: true }).waitFor()
+      await page.getByText('Loading tools…', { exact: true }).waitFor({ state: 'hidden' })
+      await page.getByText(
+        'Project and cloud-browser access are granted explicitly here. Connected apps are managed on Apps.',
+        { exact: true },
+      ).waitFor()
+      assert.equal(
+        await page.getByText('Couldn’t load this agent’s browser.', { exact: true }).count(),
+        0,
+        'an ungranted agent must not render its correctly-refused browser read as an error',
+      )
+      await page.screenshot({ fullPage: true, path: resolve(screenshots, 'agent-tools-no-browser-grant.png') })
       await grantBrowser(seed.token, agent.id)
+      await page.goto(`${ADMIN_URL}/channels/${agent.homeChannelId}`, { waitUntil: 'domcontentloaded' })
       await page.waitForFunction(() =>
         [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
       null, { timeout: 10_000 })

@@ -63,7 +63,12 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
   let knowledge: KnowledgeAccess | null = null
   try {
     const access = createKnowledgeAccess(deps)
-    knowledge = { buildViewer: access.buildViewer, provider: access.provider }
+    knowledge = {
+      buildDisclosureViewer: access.buildDisclosureViewer,
+      buildViewer: access.buildViewer,
+      filterReadablePages: access.filterReadablePages,
+      provider: access.provider,
+    }
   } catch (error) {
     console.error('[mcp] knowledge access unavailable; document tools will refuse', error)
   }

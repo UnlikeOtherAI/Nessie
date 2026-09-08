@@ -1,8 +1,24 @@
 # Agent documents, conversation recall and learning from work
 
-Status: proposed implementation plan, 2026-09-08. Product direction requested by
-Ondrej; implementation and migration have not shipped. This document covers
-Nessie and the reusable changes required in deep.agent.
+Status: implementation in progress, 2026-09-08. Product direction requested by
+Ondrej. The reusable learning proposal/verification helpers have landed in
+deep.agent; Nessie's document, recall and automatic-learning migrations have
+not shipped. This document covers both repositories.
+
+### Implementation record
+
+- [deep.agent PR #2](https://github.com/UnlikeOtherAI/deep.agent/pull/2) merged
+  at `26b8cf9edc9fe12947eedf070762f0f19d48f7d7`: stateless evidence-grounded
+  distillation and separate verification, complete-record context selection,
+  input budgets and source/version validation. Local lint, build and workspace
+  tests passed. Nessie has not adopted these new exports yet; this is the
+  shared-library portion of Phase 4, not an enabled learning loop or a measured
+  improvement result.
+- [Nessie PR #424](https://github.com/UnlikeOtherAI/Nessie/pull/424) is a draft
+  for canonical Markdown storage, projection repair and editing. It remains
+  gated on structural refactoring, required checks and browser verification.
+  Document disclosure and live UOA entitlement work are separate in-progress
+  foundations. Current destination containment remains in place.
 
 ## Outcome and product decisions
 

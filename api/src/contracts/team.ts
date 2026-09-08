@@ -87,6 +87,7 @@ export const CreateChannelBodySchema = z.object({
   // for project-scoped creation and personal-assistant tools.
   scope: z.enum(['standalone']).optional(),
   teamId: TeamIdSchema.optional(),
+  projectId: z.string().uuid().optional(),
   visibility: z.enum(['public', 'protected', 'private']).optional(),
 })
 

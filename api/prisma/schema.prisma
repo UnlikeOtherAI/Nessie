@@ -1079,6 +1079,7 @@ model User {
   messageDisclosureSources            MessageDisclosureSource[]
   checkpointDisclosureSources         RunCheckpointDisclosureSource[]
   thoughtDisclosureSources            ThoughtDisclosureSource[]
+  knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
   userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
   messageThreadFollows                MessageThreadFollow[]
   favorites                           Favorite[]
@@ -1286,6 +1287,8 @@ model Organization {
   thoughts                   Thought[]
   knowledgeSpaces            KnowledgeSpace[]
   knowledgePages             KnowledgePage[]
+  knowledgePageVersionBasisScopes KnowledgePageVersionBasisScope[]
+  knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
   knowledgePageChunks        KnowledgePageChunk[]
   dashboards                 Dashboard[]
   dashboardDataSources       DashboardDataSource[]
@@ -1565,12 +1568,16 @@ model Project {
   avatarEmoji              String?                   @map("avatar_emoji")
   avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
+  // Expand phase of the team-model inversion. This is nullable until the
+  // audited backfill can prove every existing non-root project has one team.
+  teamId                   String?                   @map("team_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA team and does not mirror any external team.
   channelRoot              Boolean                   @default(false) @map("channel_root")
   createdAt                DateTime                  @default(now()) @map("created_at")
   updatedAt                DateTime                  @updatedAt @map("updated_at")
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                     Team?                     @relation("ProjectOwningTeam", fields: [teamId], references: [id], onDelete: Restrict)
   channels                 Channel[]
   members                  ProjectMember[]
   teams                    Team[]
@@ -1592,6 +1599,7 @@ model Project {
 
   @@unique([id, organizationId])
   @@index([avatarAttachmentId])
+  @@index([teamId])
   @@map("projects")
 }
 
@@ -2046,6 +2054,7 @@ model Team {
   cloudBrowserConnections  CloudBrowserConnection[]  @relation("CloudBrowserConnectionTeam")
   scopedSettings           ScopedSetting[]           @relation("ScopedSettingTeam")
   automaticMembershipRules AutomaticMembershipRule[]
+  projects                 Project[]                 @relation("ProjectOwningTeam")
 
   @@map("teams")
 }
@@ -2102,6 +2111,7 @@ model Channel {
   disclosureSources           MessageDisclosureSource[]
   checkpointDisclosureSources RunCheckpointDisclosureSource[]
   thoughtDisclosureSources    ThoughtDisclosureSource[]
+  knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
 
   agentCards AgentCard[]
 
@@ -5708,11 +5718,13 @@ model KnowledgePageVersion {
   origin            KnowledgeDocumentOrigin @default(user_authored)
   createdAt         DateTime                @default(now()) @map("created_at")
 
-  page                  KnowledgePage               @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
-  publishedForPage      KnowledgePage?              @relation("KnowledgePagePublishedVersion")
+  page                  KnowledgePage                         @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedForPage      KnowledgePage?                        @relation("KnowledgePagePublishedVersion")
   chunks                KnowledgePageChunk[]
   evidence              KnowledgeDocumentEvidence[]
   coreDocumentSnapshots RunCoreDocumentSnapshot[]
+  basisScopes           KnowledgePageVersionBasisScope[]
+  disclosureSources     KnowledgePageVersionDisclosureSource[]
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
   @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
@@ -5790,11 +5802,47 @@ model RunCoreDocumentSnapshot {
   createdAt DateTime              @default(now()) @map("created_at")
 
   run     Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
-  version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@unique([runId, role])
   @@index([versionId])
   @@map("run_core_document_snapshots")
+}
+
+model KnowledgePageVersionBasisScope {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId      String               @map("version_id") @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  scopeType      String               @map("scope_type")
+  scopeId        String               @map("scope_id") @db.Uuid
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  version      KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, scopeType, scopeId], map: "knowledge_page_version_basis_scopes_version_scope_key")
+  @@index([organizationId], map: "knowledge_page_version_basis_scopes_org_idx")
+  @@map("knowledge_page_version_basis_scopes")
+}
+
+model KnowledgePageVersionDisclosureSource {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId          String               @map("version_id") @db.Uuid
+  organizationId     String               @map("organization_id") @db.Uuid
+  sourceChannelId    String               @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?              @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime             @default(now()) @map("created_at")
+
+  version      KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceChannel Channel              @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  sourceAuthor User?                 @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+
+  // PostgreSQL's ordinary unique constraints treat NULL as distinct. The
+  // migration installs the structural `NULLS NOT DISTINCT` index instead.
+  @@index([versionId, sourceChannelId, sourceAuthorUserId], map: "knowledge_page_version_source_lineage_idx")
+  @@index([organizationId], map: "knowledge_page_version_disclosure_sources_org_idx")
+  @@map("knowledge_page_version_disclosure_sources")
 }
 
 model KnowledgePageChunk {

@@ -21,6 +21,7 @@
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
     "test:e2e:organization-theme": "node e2e/organization-theme/run.mjs",
     "test:e2e:page-header": "node e2e/page-header/run.mjs",
+    "test:e2e:project-team-channel": "node e2e/project-usability/project-team-channel.mjs",
     "test:e2e:project-usability": "node e2e/project-usability/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"

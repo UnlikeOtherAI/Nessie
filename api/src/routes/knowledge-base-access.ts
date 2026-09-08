@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import {
   buildNativeSourceRef,
   buildSpaceSourceRef,
+  canReadKnowledgePageVersion,
   canReadSpace,
   canWriteSpace,
   createNativeKnowledgeProvider,
@@ -15,6 +16,7 @@ import {
   type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
 import { AgentEditAuthorityError, assertAgentFieldAuthority } from '@nessie/runtime'
+import { resolveDisclosureViewer, resolveLiveEntitlements, type DisclosureViewer } from '@nessie/runtime'
 import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
@@ -40,6 +42,10 @@ import type { RouteDeps } from './types.js'
 // the response envelope stay identical across them.
 export type KnowledgeRouteDeps = RouteDeps & {
   knowledgeProvider?: KnowledgeProvider
+  // Tests may supply these exact runtime seams to verify request-local proof
+  // reuse without performing a live UOA request.
+  resolveDisclosureViewer?: typeof resolveDisclosureViewer
+  resolveLiveEntitlements?: typeof resolveLiveEntitlements
 }
 
 export const policyTrace = (decision: PolicyDecision): string[] => [
@@ -60,12 +66,13 @@ const pageVersionRef = (page: KnowledgePageRecord): string | null =>
 export const canManageKnowledgeSpaceAccess = (
   space: Pick<KnowledgeSpaceRecord, 'createdBy'>,
   actorContext: AuthorizedActionContext,
+  viewer: SpaceViewer,
 ): boolean =>
   actorContext.actor.actorType === 'service'
   || (
     actorContext.actor.actorType === 'user'
     && (
-      actorContext.actor.roles?.includes('owner') === true
+      viewer.organizationRole === 'owner'
       || actorContext.actor.actorId === space.createdBy
     )
   )
@@ -93,7 +100,7 @@ export const attachSpaceEnvelope = (
       ? space.ownerAgentId
       : null,
   canWrite: canWriteSpace(space, viewer),
-  canManageAccess: canManageKnowledgeSpaceAccess(space, actorContext),
+  canManageAccess: canManageKnowledgeSpaceAccess(space, actorContext, viewer),
   policyChainTrace: policyTrace(decision),
   sourceRef: buildSpaceSourceRef(space.id),
   visibilityReason: visibilityReason(space, decision),
@@ -172,6 +179,8 @@ export const toKnowledgePaginationMeta = (
 // route deps once. Both route modules destructure exactly what they need.
 export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   const { prisma } = deps
+  const resolveLive = deps.resolveLiveEntitlements ?? resolveLiveEntitlements
+  const resolveViewer = deps.resolveDisclosureViewer ?? resolveDisclosureViewer
   const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma, {
     readMarkdownAttachment: async (attachmentId, organizationId) => {
       const opened = await deps.fileService.openStream(attachmentId, organizationId)
@@ -200,24 +209,78 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     },
   })
 
-  // 'user' and 'agent' map to their real principal; anything else (including
-  // 'service') is a bypass viewer — there is no third first-class principal
-  // kind in the knowledge base's access model.
-  const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
-    // The provider's transactional version hook runs later in the same request
-    // chain. Preserve the authenticated team/user here so a project-scoped,
-    // teamless space still produces an attributable durable embedding job.
+  // Build the live organization proof once, then reuse it for the document
+  // basis and ordinary space entitlement. UOA remains the authority for both.
+  const buildViewer = async (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
     enterKnowledgeInferenceActorContext(actorContext)
     const { actorType, actorId } = actorContext.actor
     const principal: SpaceViewerPrincipal =
       actorType === 'user' || actorType === 'agent'
         ? { actorType, actorId }
         : { actorType: 'service', actorId }
-    return loadSpaceViewer(prisma, actorContext.tenant.organizationId, principal)
+    if (actorType === 'service') {
+      return loadSpaceViewer(prisma, actorContext.tenant.organizationId, principal)
+    }
+    const userId = actorContext.actionContext.effectiveUserId
+      ?? (actorType === 'user' ? actorId : null)
+    const liveEntitlements = userId
+      ? await resolveLive(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          userId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
+        })
+      : undefined
+    const disclosureViewer = await resolveViewer(
+      prisma,
+      actorContext.tenant.organizationId,
+      userId,
+      {
+        ...(actorType === 'agent' ? { agentId: actorId } : {}),
+        ...(liveEntitlements ? { liveEntitlements } : {
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
+        }),
+      },
+    )
+    const viewer = await loadSpaceViewer(
+      prisma,
+      actorContext.tenant.organizationId,
+      principal,
+      liveEntitlements ? { liveEntitlements, effectiveUserId: userId } : {},
+    )
+    return { ...viewer, disclosureViewer }
   }
 
   const denyAccess = (reply: FastifyReply, reason: string) =>
     sendApiError(reply, 403, 'POLICY_DENIED', `Knowledge base access denied: ${reason}`)
+
+  const disclosureViewerFor = (viewer: SpaceViewer): DisclosureViewer | null =>
+    viewer.disclosureViewer ?? null
+
+  const canReadVersionWithViewer = (
+    version: NonNullable<KnowledgePageRecord['latestVersion']>,
+    disclosureViewer: DisclosureViewer | null,
+  ): boolean => disclosureViewer === null || canReadKnowledgePageVersion(version, disclosureViewer)
+
+  const canReadVersion = (
+    viewer: SpaceViewer,
+    version: NonNullable<KnowledgePageRecord['latestVersion']>,
+  ): boolean => canReadVersionWithViewer(version, disclosureViewerFor(viewer))
+
+  const canReadPageVersionsWithViewer = async (
+    page: KnowledgePageRecord,
+    disclosureViewer: DisclosureViewer | null,
+  ): Promise<boolean> => {
+    const versions = await provider.listVersions(
+      page.organizationId,
+      page.id,
+    )
+    return versions.every((version) => canReadVersionWithViewer(version, disclosureViewer))
+  }
+
+  const canReadPageVersion = async (
+    viewer: SpaceViewer,
+    page: KnowledgePageRecord,
+  ): Promise<boolean> => canReadPageVersionsWithViewer(page, disclosureViewerFor(viewer))
 
   // Loads a space and enforces read/write access; sends 404/403 and returns null
   // when the caller may not proceed.
@@ -247,10 +310,37 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     viewer: SpaceViewer,
     mode: 'read' | 'write',
     reply: FastifyReply,
-  ): Promise<boolean> =>
-    (await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) !== null
+  ): Promise<boolean> => {
+    if ((await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) === null) return false
 
-  return { provider, buildViewer, denyAccess, accessSpace, accessPageSpace }
+    // Unversioned page metadata and annotations inherit every retained
+    // version's source boundary. Letting an editor alter such a page without
+    // reading its history would create a disclosure bypass.
+    if (await canReadPageVersion(viewer, page)) return true
+    denyAccess(reply, 'VERSION_SOURCE_RESTRICTED')
+    return false
+  }
+
+  const filterReadablePages = async (
+    viewer: SpaceViewer,
+    pages: readonly KnowledgePageRecord[],
+  ): Promise<KnowledgePageRecord[]> => {
+    const disclosureViewer = disclosureViewerFor(viewer)
+    const readable = await Promise.all(pages.map(async (page) =>
+      (await canReadPageVersionsWithViewer(page, disclosureViewer)) ? page : null))
+    return readable.filter((page): page is KnowledgePageRecord => page !== null)
+  }
+
+  return {
+    provider,
+    buildViewer,
+    denyAccess,
+    accessSpace,
+    accessPageSpace,
+    canReadVersion,
+    buildDisclosureViewer: disclosureViewerFor,
+    filterReadablePages,
+  }
 }
 
 /**

@@ -188,7 +188,7 @@ test('a legacy delegated trigger becomes an unknown private source', async () =>
   ])
 })
 
-test('private conversation material cannot enter an unscoped write or MCP call', () => {
+test('private conversation material reaches only the disclosure-stamped knowledge writers', () => {
   const sink = createConsumedSourceSink()
   sink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' })
   const context = {
@@ -198,7 +198,7 @@ test('private conversation material cannot enter an unscoped write or MCP call',
 
   assert.equal(
     blocksPrivateConversationWrite({ context, isExternal: false, toolName: 'kb_draft_write' }),
-    true,
+    false,
   )
   assert.equal(
     blocksPrivateConversationWrite({ context, isExternal: true, toolName: 'mcp_publish' }),

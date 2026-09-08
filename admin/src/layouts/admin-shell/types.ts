@@ -6,6 +6,7 @@ export type StarredItem = FavoriteStarredItem | { type: 'project'; id: string }
 export type SidebarProject = ProjectRecord & { channels: ChannelRecord[] }
 export type CreateChannelTarget = {
   projectName?: string
+  projectId?: string
   scope?: 'standalone'
   teamId?: string
 }

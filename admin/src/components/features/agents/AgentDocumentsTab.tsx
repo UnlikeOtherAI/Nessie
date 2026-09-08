@@ -30,7 +30,7 @@ const AgentDocumentsTeam = ({ core }: { core?: { estimatedTokens: number; state:
           <span>
             {core?.state === 'oversized'
               ? `Core instructions estimate ${core.estimatedTokens} tokens, above the ${core.tokenBudget} token limit. Shorten them before they can be activated.`
-              : 'Published Identity and Working style documents shape new runs. Other documents remain available as knowledge.'}
+              : 'Published Identity and Working style documents shape new runs. Documents can have narrower access than this agent. Don’t store secrets here.'}
           </span>
           {!selectedSpace.canWrite ? <Pill tone="warning">Read-only</Pill> : null}
         </Notice>

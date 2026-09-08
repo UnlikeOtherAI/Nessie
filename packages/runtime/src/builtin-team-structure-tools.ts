@@ -54,8 +54,8 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Create a new project in the current organisation. The user becomes its '
       + 'only member and its owner; nobody else is added. Organisation owners '
-      + 'only. A project holds no channels until it has a team, so follow this '
-      + 'with team_create, then channel_create for the team it returns.',
+      + 'only. Resolve an existing team with project_list and pass its teamId; '
+      + 'then pass both ids to channel_create.',
     parameters: {
       type: 'object',
       properties: {
@@ -63,8 +63,12 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'string',
           description: 'The project name, e.g. "Marketing".',
         },
+        teamId: {
+          type: 'string',
+          description: 'The existing team the project belongs to, from project_list.',
+        },
       },
-      required: ['name'],
+      required: ['name', 'teamId'],
     },
     safe: false,
   },

@@ -82,12 +82,15 @@ test('channel_create makes the acting user the owner of a channel in the run tea
   const context = buildContext('member', {
     team: {
       // Read twice: `canPlaceChannelInTeam` selects `systemManaged`, the
-      // container lookup selects the project. One superset row serves both.
+      // explicit project resolver selects the canonical project. One superset
+      // row serves both.
       findUnique: async () => ({
         project: { id: PROJECT_ID, organizationId: ORG_ID },
+        projects: [{ id: PROJECT_ID, organizationId: ORG_ID }],
         systemManaged: false,
       }),
     },
+    project: { findUnique: async () => ({ teamId: TEAM_ID }) },
     // Placing a channel in a team requires standing in it; a plain org member
     // gets that standing from their team membership, not their org role.
     teamMember: { findFirst: async () => ({ role: 'member' }) },
@@ -115,13 +118,14 @@ test('channel_create makes the acting user the owner of a channel in the run tea
           visibility: 'private',
           organizationId: ORG_ID,
           projectId: PROJECT_ID,
+          project: { channelRoot: false, id: PROJECT_ID, name: 'Nessie' },
           teamId: TEAM_ID,
           topic: null,
           description: null,
           archivedAt: null,
           createdAt: new Date('2026-01-01T00:00:00Z'),
           updatedAt: new Date('2026-01-01T00:00:00Z'),
-          team: { name: 'Core', project: { id: PROJECT_ID, name: 'Nessie' } },
+          team: { name: 'Core' },
         }
       },
     },
@@ -131,6 +135,8 @@ test('channel_create makes the acting user the owner of a channel in the run tea
 
   const result = await runChannelCreateTool(context, {
     label: 'Release planning',
+    projectId: PROJECT_ID,
+    teamId: TEAM_ID,
     visibility: 'private',
   })
 

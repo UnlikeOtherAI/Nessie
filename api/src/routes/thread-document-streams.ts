@@ -48,6 +48,7 @@ export const registerThreadDocumentStreamRoutes = (
     const { active } = request.query as { active?: string }
     const sessions = await listThreadDocumentStreams(prisma, {
       activeOnly: active === '1' || active === 'true',
+      authority: { uoaIdentity: actorContext.actionContext.uoaIdentity },
       organizationId: actorContext.tenant.organizationId,
       threadId: thread.id,
       uoaIdentity: actorContext.actionContext.uoaIdentity,
@@ -76,6 +77,7 @@ export const registerThreadDocumentStreamRoutes = (
     }
 
     const detail = await getThreadDocumentStream(prisma, {
+      authority: { uoaIdentity: actorContext.actionContext.uoaIdentity },
       organizationId: actorContext.tenant.organizationId,
       sessionId,
       threadId: thread.id,

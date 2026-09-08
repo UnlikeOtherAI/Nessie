@@ -53,7 +53,10 @@ summary and points here; **this file is the rule**.
     the selected provider capability's `maxOutputTokens` when it is present,
     and reserves that output together with the projected input before dispatch.
     If retained context plus that reserve cannot fit, the existing compaction
-    hook runs before dispatch; no advertised capability means the fallback is
+    hook runs before dispatch. When the run allowance leaves no output after a
+    retained transcript, it also gets one compaction attempt if the schemas do
+    not already consume the allowance, targeted to leave answer room and
+    checkpointed before its utility call; no advertised capability means the fallback is
     retained rather than guessing a model limit. This recovery covers
     normalized `finish_reason: length` results and advertised capability
     ceilings. A provider request-validation refusal for an oversized

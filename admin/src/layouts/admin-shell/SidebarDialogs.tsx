@@ -30,6 +30,7 @@ export const SidebarDialogs = ({
         onCreated={onCreatedChannel}
         open={createChannelTarget !== null}
         projectName={createChannelTarget?.projectName}
+        projectId={createChannelTarget?.projectId}
         scope={createChannelTarget?.scope}
         teamId={createChannelTarget?.teamId}
       />

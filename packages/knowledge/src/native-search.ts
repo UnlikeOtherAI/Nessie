@@ -3,6 +3,7 @@ import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import { normalizeLabels } from './native-labels.js'
 import { mapPage, pageInclude } from './native-mappers.js'
 import { readableSpaceIdsSqlForViewer } from './native-search-access.js'
+import { readableKnowledgePageVersionsWhere } from './version-disclosure-where.js'
 import type {
   KnowledgePageCursorPage,
   KnowledgeSearchHit,
@@ -79,6 +80,7 @@ export const searchNativePages = async (
       organizationId: input.organizationId,
       deletedAt: null,
       status: { not: 'archived' },
+      ...readableKnowledgePageVersionsWhere(input.disclosureViewer),
     },
     include: pageInclude,
   })

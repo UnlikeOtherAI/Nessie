@@ -10,6 +10,7 @@ import {
   BUILTIN_STUB_INPUT_SCHEMA,
   BUILTIN_HOT_TOOL_IDS,
   BUILTIN_TOOL_SPEC_NAME,
+  appendStubbedBuiltinSchema,
   buildBuiltinToolsetView,
   executeBuiltinToolSpec,
 } from './builtin-toolset-deferred.js'
@@ -125,6 +126,39 @@ test('tool_spec returns allowed full schemas and corrects unknown names', () => 
   }])
   assert.deepEqual(output.unknownNames, ['not_allowed'])
   assert.match(output.message, /exact names from the current tool list/)
+})
+
+test('a deferred builtin policy failure does not carry an argument schema', () => {
+  const toolName = 'send_message'
+  const result = appendStubbedBuiltinSchema(
+    toolName,
+    {
+      inputSummary: 'channelId=shared-channel',
+      output: 'Tool error: write refused by the disclosure boundary',
+      success: false,
+    },
+    new Set([toolName]),
+    definitions,
+  )
+
+  assert.doesNotMatch(result.output, /Exact argument schema/)
+})
+
+test('a deferred builtin argument failure carries its argument schema', () => {
+  const toolName = 'send_message'
+  const result = appendStubbedBuiltinSchema(
+    toolName,
+    {
+      failureKind: 'invalid_arguments',
+      inputSummary: '{}',
+      output: 'Tool error: recipient is required',
+      success: false,
+    },
+    new Set([toolName]),
+    definitions,
+  )
+
+  assert.match(result.output, /Exact argument schema for send_message/)
 })
 
 test('repeated composition produces a byte-stable descriptor array', () => {

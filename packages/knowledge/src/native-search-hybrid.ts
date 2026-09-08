@@ -8,6 +8,7 @@ import {
 } from '@nessie/retrieval'
 import { mapPage, pageInclude } from './native-mappers.js'
 import { readableSpaceIdsSqlForViewer } from './native-search-access.js'
+import { readableKnowledgePageVersionsWhere } from './version-disclosure-where.js'
 import type { SpaceViewer } from './access.js'
 import type {
   HybridSearchPagesInput,
@@ -263,6 +264,7 @@ export const searchNativePagesHybrid = async (
       organizationId: input.organizationId,
       deletedAt: null,
       status: { not: 'archived' },
+      ...readableKnowledgePageVersionsWhere(input.disclosureViewer),
     },
     include: pageInclude,
   })

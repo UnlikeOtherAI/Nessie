@@ -65,6 +65,25 @@ Facts not restated there:
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, and an
   admitted checkpoint — and a checkpoint on resume is a read path too.
+- **Document versions retain their source boundary.** A `KnowledgePageVersion`
+  stores its own basis scopes and private-conversation source authors. A reader
+  first passes the document home's ordinary entitlement, then must satisfy the
+  exact version basis before the title, body, search snippet, download, comment
+  surface, historical version, recent-page row, summary, or live document
+  output can be returned. A version created from a run stamps the consumed
+  basis and private source rows; a successor unions rather than discards its
+  predecessor's rows. Until comments, labels and page cards are individually
+  version-bound, list/search/recent queries conservatively require every
+  retained version to be readable before returning the page; a later exact
+  version selector may narrow that rule without exposing pending-draft
+  metadata. An explicit unknown private author fails closed for that
+  version, while ordinary legacy versions with no private-derived marker remain
+  unrestricted. The database unique index treats a null author as equal so an
+  unknown marker cannot multiply into ambiguous lineage. A source channel must
+  be present in the retained basis and both channel and known author must belong
+  to the document organisation before persistence. Existing message grants do
+  not widen document versions; wider publishing/export awaits an exact-content
+  authorization route.
 - A withheld row carries no metadata, reactions, or reply participants; the
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`

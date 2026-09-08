@@ -3,6 +3,8 @@ import { buildVisibleAgentWhere } from './agent-visibility.js'
 
 export type VisibleKnowledgeSpaceWhereInput = {
   organizationId: string
+  /** UOA has freshly proved the user's org membership for this request. */
+  uoaMembershipVerified?: boolean
   userId: string
 }
 

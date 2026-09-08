@@ -87,6 +87,8 @@ const makePage = (input: Partial<KnowledgePageRecord> = {}): KnowledgePageRecord
     authorId: userId,
     changeComment: null,
     createdAt: '2026-05-31T10:00:00.000Z',
+    basisScopes: [],
+    disclosureSources: [],
   },
   publishedVersion: null,
   publishedVersionId: null,
@@ -147,7 +149,7 @@ const makeProvider = (
     listPages: async () => [],
     listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
-    listVersions: async () => [],
+    listVersions: async () => [makePage().latestVersion].filter((version): version is NonNullable<typeof version> => version !== null),
     movePage: async () => null,
     publishPage: async () => null,
     restoreVersion: async () => null,
@@ -183,6 +185,10 @@ const makeApp = (
     projectMember: {
       findMany: async () => [{ projectId }],
     },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1' }) },
+    channelMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
     agent: { findMany: async () => visibleAgentIds.map((id) => ({ id })) },
     agentBinding: {
       findMany: async () => [],
@@ -235,6 +241,30 @@ test('knowledge page creation emits audit and provenance envelope', async () => 
     'source:organization:00000000-0000-4000-8000-000000000001/allow',
     'rule:00000000-0000-4000-8000-000000000010',
   ])
+  await app.close()
+})
+
+test('a direct page read does not bypass a retained private historical version', async () => {
+  const latest = makePage().latestVersion
+  assert.ok(latest)
+  const privateHistorical = {
+    ...latest,
+    basisScopes: [{ scopeId: '00000000-0000-4000-8000-000000000009', scopeType: 'channel' }],
+    id: '00000000-0000-4000-8000-000000000008',
+    versionNumber: 2,
+  }
+  const { app } = makeApp('allow', {
+    getPage: async () => makePage({ latestVersion: { ...latest, versionNumber: 3 } }),
+    listVersions: async () => [privateHistorical, { ...latest, versionNumber: 3 }],
+  })
+
+  const response = await app.inject({
+    method: 'GET',
+    url: `/api/knowledge-base/pages/${pageId}`,
+  })
+
+  assert.equal(response.statusCode, 403)
+  assert.equal(response.json().error.code, 'POLICY_DENIED')
   await app.close()
 })
 
