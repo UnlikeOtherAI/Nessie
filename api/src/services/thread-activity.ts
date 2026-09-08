@@ -90,6 +90,8 @@ export const listThreadActivity = async (
           thread: {
             select: {
               id: true,
+              agentId: true,
+              title: true,
               readStates: { where: { userId: input.userId }, select: { lastReadAt: true } },
               channel: { select: { id: true, label: true } },
             },
@@ -133,6 +135,10 @@ export const listThreadActivity = async (
     records.push({
       rootMessageId: root.id,
       threadId: parseThreadId(root.thread.id),
+      // A conversation row is named by its thread; a General row has no title
+      // of its own and keeps saying only where it is.
+      threadTitle: root.thread.agentId ? root.thread.title : null,
+      threadAgentId: root.thread.agentId ? parseAgentId(root.thread.agentId) : null,
       channelId: parseChannelId(channel.id),
       channelLabel: channel.label,
       root: toActivityMessage(root),
