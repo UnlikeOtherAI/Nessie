@@ -15,6 +15,7 @@
     "test:e2e:connected-board-sources": "node e2e/connected-board-sources/run.mjs",
     "test:e2e:disclosure": "node --import tsx e2e/disclosure/run.mjs",
     "test:e2e:ios-nav-bar": "node e2e/ios-nav-bar/run.mjs",
+    "test:e2e:knowledge-markdown": "node e2e/knowledge-markdown/run.mjs",
     "test:e2e:member-management": "node e2e/member-management/run.mjs",
     "test:e2e:model-subscription-device-link": "node e2e/model-subscription-device-link/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
