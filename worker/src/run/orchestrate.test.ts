@@ -142,6 +142,23 @@ test('an assistant-authored turn inside a conversation engages nobody', () => {
   )
 })
 
+test('an assistant-authored *reply* inside a conversation engages nobody either', () => {
+  // The anti-loop bound is about who wrote the turn, not about where it sits.
+  // While the top-level check came first, this exact case — an agent's reply
+  // inside a conversation — returned `null` and fell through to the
+  // model-judged path, which is free to answer it; that is the circle the
+  // bound exists to prevent, reached by the one shape that skipped it.
+  assert.deepEqual(
+    resolveConversationDecisions({
+      channelAgents: [researcher, reporter],
+      isTopLevelTrigger: false,
+      role: 'assistant',
+      thread: { agentId: researcher.id, startedByUserId: STARTER_ID },
+    }),
+    [],
+  )
+})
+
 test('an @mention inside a conversation adds the mentioned agent', () => {
   assert.deepEqual(
     resolveConversationDecisions({
@@ -263,7 +280,16 @@ const decideFixture = (thread: { agentId: string | null; startedByUserId: string
       },
       message: {
         findMany: async () => [],
-        findUnique: async () => ({ id: MESSAGE_ID, rootMessageId: null, thread }),
+        // `role` and `threadId` are read from the row rather than believed
+        // from the payload; a fake omitting either would silently take the
+        // consistency guard's other branch.
+        findUnique: async () => ({
+          id: MESSAGE_ID,
+          role: 'user',
+          rootMessageId: null,
+          thread,
+          threadId: THREAD_ID,
+        }),
       },
       // Reached only on the model-judged path, where the window is
       // disclosure-filtered before the engagement judgement is formed. A

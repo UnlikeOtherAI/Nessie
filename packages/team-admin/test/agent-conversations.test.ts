@@ -88,10 +88,16 @@ test('a derived title is bounded, with the elision visible', () => {
   assert.ok(title.endsWith('…'))
 })
 
-test('a conversation opened with neither a title nor a message is still named', () => {
-  assert.equal(deriveConversationTitle({}), DEFAULT_CONVERSATION_TITLE)
+test('nothing to derive is null, and never the words a person may type', () => {
+  // `null` is the marker `threads.title` stores for "unnamed", which is what
+  // leaves the first message free to name it. Returning
+  // `DEFAULT_CONVERSATION_TITLE` here made the placeholder indistinguishable
+  // from a person who typed those very words, and their title was overwritten.
+  assert.equal(deriveConversationTitle({}), null)
+  assert.equal(deriveConversationTitle({ message: '   \n  ', title: '   ' }), null)
+  // Typed, it is a title like any other — and it survives, because it is one.
   assert.equal(
-    deriveConversationTitle({ message: '   \n  ', title: '   ' }),
+    deriveConversationTitle({ message: 'Payroll escalation', title: DEFAULT_CONVERSATION_TITLE }),
     DEFAULT_CONVERSATION_TITLE,
   )
 })

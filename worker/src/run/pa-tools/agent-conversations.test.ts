@@ -56,6 +56,8 @@ type FixtureOptions = {
   consumed?: Array<{ scopeId: string; scopeType: string }>
   /** `null` makes every agent invisible to the caller. */
   entitledAgentName?: string | null
+  /** The id of the model's tool call, which keys the target run's enqueue. */
+  toolCallId?: string | null
   /** No user actor and no delegated identity: an autonomous run. */
   unattended?: boolean
 }
@@ -98,6 +100,8 @@ const destinationRow = {
 
 const makeFixture = (options: FixtureOptions = {}) => {
   const committed: Written[] = []
+  const committedThreads: string[] = []
+  const enqueuedKeys: string[] = []
   const runsCreated: Array<{ triggerMessageId: string; replyPlacement: string }> = []
   const published: Array<{ event: string }> = []
   const basisRows: Array<{ messageId: string; scopeId: string; scopeType: string }> = []
@@ -105,9 +109,33 @@ const makeFixture = (options: FixtureOptions = {}) => {
   const consumedSources = createConsumedSourceSink()
   consumedSources.addAll(options.consumed ?? [])
 
-  const makeTx = (staged: Written[]) => {
+  const makeTx = (staged: Written[], stagedThreads: string[]) => {
     const tx: Record<string, unknown> = {
-      $executeRaw: async () => 1,
+      // `enqueueQueueJob` passes the idempotency key as a bound parameter, so
+      // the key this tool chose is readable off the statement's values.
+      $executeRaw: async (query: { values?: unknown[] }) => {
+        for (const value of query.values ?? []) {
+          if (typeof value === 'string' && value.startsWith('agent-conversation:')) {
+            enqueuedKeys.push(value)
+          }
+        }
+        return 1
+      },
+      // `loadLastMessageAtByChannel`, when the default-room path is taken.
+      $queryRaw: async () => [],
+      agent: {
+        // `startAgentConversation` now runs inside the transaction, so its
+        // tenant lookup and its "can this person see this agent at all" count
+        // are reads on the transaction client.
+        count: async () => (options.entitledAgentName === null ? 0 : 1),
+        findFirst: async () => ({ id: TARGET_AGENT_ID }),
+      },
+      thread: {
+        create: async () => {
+          stagedThreads.push(NEW_THREAD_ID)
+          return { channelId: DESTINATION_CHANNEL_ID, id: NEW_THREAD_ID }
+        },
+      },
       message: {
         create: async ({ data }: { data: { content: string; metadata?: unknown; threadId: string } }) => {
           staged.push({
@@ -134,9 +162,17 @@ const makeFixture = (options: FixtureOptions = {}) => {
       },
       messageDisclosureSource: { createMany: async () => ({ count: 0 }) },
       runBasisScope: { createMany: async () => ({ count: 0 }) },
-      // `persistablePrivateConversationSources` resolves source channels that
-      // still exist before it writes lineage rows.
-      channel: { findMany: async () => [{ id: PRIVATE_SOURCE_CHANNEL_ID }] },
+      channel: {
+        // `persistablePrivateConversationSources` resolves source channels that
+        // still exist before it writes lineage rows.
+        findMany: async () => [{ id: PRIVATE_SOURCE_CHANNEL_ID }],
+        // The room resolvers, which are inside the transaction now.
+        findFirst: async () => ({ id: DESTINATION_CHANNEL_ID, label: 'research' }),
+        // The destination read the sole-audience decision and the opener's
+        // basis are computed from — also inside, so the audience the basis was
+        // computed for is the audience the opener was committed to.
+        findUniqueOrThrow: async () => destinationRow,
+      },
       run: {
         // Serves both of `claimThreadRunOrPend`'s reads: no run already
         // delivered for this message, and no run in flight on the thread.
@@ -178,16 +214,20 @@ const makeFixture = (options: FixtureOptions = {}) => {
       findUnique: async () => ({ deactivatedAt: null, role: 'member' }),
     },
     thread: {
-      create: async () => ({ channelId: DESTINATION_CHANNEL_ID, id: NEW_THREAD_ID }),
+      // Deliberately absent: the conversation is created on the transaction
+      // client now, so a `thread.create` reaching the base client at all is the
+      // orphan-thread bug coming back.
       findFirst: async () => null,
     },
-    // Emulates commit/rollback so "the doorway is written in the opener's
-    // transaction" is an assertion and not a comment: staged writes reach
-    // `committed` only when the callback resolves.
+    // Emulates commit/rollback so "the conversation, the opener and the doorway
+    // share one transaction" is an assertion and not a comment: staged writes
+    // reach `committed` only when the callback resolves.
     $transaction: async (work: (tx: unknown) => Promise<unknown>) => {
       const staged: Written[] = []
-      const result = await work(makeTx(staged))
+      const stagedThreads: string[] = []
+      const result = await work(makeTx(staged, stagedThreads))
       committed.push(...staged)
+      committedThreads.push(...stagedThreads)
       return result
     },
     $queryRaw: async () => [],
@@ -242,7 +282,7 @@ const makeFixture = (options: FixtureOptions = {}) => {
     },
     run: { id: RUN_ID, interactive: !options.unattended, messageId: OPENER_ID, threadId: ORIGIN_THREAD_ID },
     runContext,
-    toolCallId: null,
+    toolCallId: options.toolCallId ?? null,
   } as unknown as BuiltinToolRuntimeContext
 
   // The unattended run still needs an acting person to be *for*; a PA run in a
@@ -252,7 +292,7 @@ const makeFixture = (options: FixtureOptions = {}) => {
     ;(context.actorContext.actionContext as { effectiveUserId?: string }).effectiveUserId = ACTOR_ID
   }
 
-  return { basisRows, committed, context, published, runsCreated }
+  return { basisRows, committed, committedThreads, context, enqueuedKeys, published, runsCreated }
 }
 
 test('the opener and the doorway are written, and the doorway carries the ref', async () => {
@@ -330,7 +370,7 @@ test('an unattended run may start a conversation', async () => {
   assert.equal(fixture.committed.length, 2)
 })
 
-test('a failing claim leaves no doorway', async () => {
+test('a failing claim leaves no doorway and no conversation', async () => {
   const fixture = makeFixture({ claimThrows: true })
 
   await assert.rejects(
@@ -344,6 +384,26 @@ test('a failing claim leaves no doorway', async () => {
   // Nothing committed: a card pointing at work that never started is worse than
   // no card, and the opener would sit in a conversation nobody is answering.
   assert.deepEqual(fixture.committed, [])
+  // The thread rolls back with them. Created before the transaction, it
+  // survived every failure below it as an empty unnamed conversation sitting in
+  // the target agent's list with nothing in it and nobody working on it.
+  assert.deepEqual(fixture.committedThreads, [])
+})
+
+test('the target run is enqueued under a key the tool call owns', async () => {
+  const toolCallId = 'call_5f3a9c'
+  const fixture = makeFixture({ toolCallId })
+  await runAgentConversationStartTool(fixture.context, {
+    agent: 'Researcher',
+    channel: DESTINATION_CHANNEL_ID,
+    message: 'Check the pricing page.',
+  })
+
+  // The same shape peer delegation's `correlationId` uses. A key carrying the
+  // new thread's id instead would be different on every redelivery of this very
+  // tool call — which is the only thing it has to converge on.
+  assert.deepEqual(fixture.enqueuedKeys, [`agent-conversation:${RUN_ID}:${toolCallId}`])
+  assert.ok(!fixture.enqueuedKeys[0]?.includes(NEW_THREAD_ID))
 })
 
 test('the opener carries the destination\'s basis, not the origin\'s', async () => {

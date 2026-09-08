@@ -291,9 +291,12 @@ runDatabaseTest('three conversations are three threads, and General is untouched
       assert.equal(row.agentId, s.agentId)
       assert.equal(row.startedByUserId, s.userA)
     }
+    // Stored titles: the third had neither a title nor an opening line, so it
+    // is unnamed — NULL, not the words a person might type. The record and the
+    // outcome both project `DEFAULT_CONVERSATION_TITLE` for it.
     assert.deepEqual(
       rows.map((row) => row.title),
-      ['Pricing review', 'Draft the brief', 'New conversation'],
+      ['Pricing review', 'Draft the brief', null],
     )
 
     // The room's feed is still the room's feed.
@@ -518,15 +521,16 @@ runDatabaseTest('a room the agent is not in refuses, and no room at all says so'
       { kind: 'channel_not_allowed' },
     )
 
-    // The other agent is bound only to a room B cannot see, so B has nowhere
-    // to start — and the door does not invent one.
+    // The other agent is bound only to a room B cannot see — so B cannot see
+    // the agent either, and "nowhere to start" would confirm it exists. The
+    // read answers 404 for exactly this pair; the write says the same thing.
     assert.deepEqual(
       await startAgentConversation(prisma, {
         agentId: s.otherAgentId,
         organizationId: s.organizationId,
         startedByUserId: s.userB,
       }),
-      { kind: 'no_room' },
+      { kind: 'agent_not_found' },
     )
 
     assert.deepEqual(
@@ -536,6 +540,160 @@ runDatabaseTest('a room the agent is not in refuses, and no room at all says so'
         startedByUserId: s.userA,
       }),
       { kind: 'agent_not_found' },
+    )
+  })
+})
+
+/**
+ * The write says exactly what the read says about an agent's existence.
+ *
+ * `no_room` (409) and `channel_not_allowed` (403) are both "that agent is real,
+ * and here is why this room will not do" — answers only somebody who can see
+ * the agent may have. For everybody else the outcome is the one
+ * `listAgentConversationsForUser` gives: not found.
+ */
+runDatabaseTest('a refusal never confirms an agent the caller cannot see', async () => {
+  await withSeed(async (prisma, s) => {
+    // Naming a room does not change the answer: B cannot see the other agent,
+    // so the room is not what is wrong.
+    assert.deepEqual(
+      await startAgentConversation(prisma, {
+        agentId: s.otherAgentId,
+        channelId: s.strangerChannelId,
+        organizationId: s.organizationId,
+        startedByUserId: s.userB,
+      }),
+      { kind: 'agent_not_found' },
+    )
+    assert.equal(
+      await listAgentConversationsForUser(prisma, {
+        agentId: s.otherAgentId,
+        organizationId: s.organizationId,
+        userId: s.userB,
+      }),
+      null,
+    )
+
+    // A *visible* agent keeps the room-shaped answer. Archiving both of its
+    // rooms leaves A able to see it working and unable to post anywhere it is.
+    await prisma.channel.updateMany({
+      where: { id: { in: [s.publicChannelId, s.privateChannelId] } },
+      data: { archivedAt: new Date() },
+    })
+    assert.deepEqual(
+      await startAgentConversation(prisma, {
+        agentId: s.agentId,
+        organizationId: s.organizationId,
+        startedByUserId: s.userA,
+      }),
+      { kind: 'no_room' },
+    )
+    await prisma.channel.updateMany({
+      where: { id: { in: [s.publicChannelId, s.privateChannelId] } },
+      data: { archivedAt: null },
+    })
+  })
+})
+
+/**
+ * A room bound to two agents appears in both their lists, and each list is
+ * about its own agent: the row names the agent it is listed under, and the run
+ * it reports is that agent's run in that thread. Keyed on `(thread, agent)`,
+ * never on the thread alone — one General thread holds both agents' work.
+ */
+runDatabaseTest('a General row names the agent whose list it is, with that agent’s run', async () => {
+  await withSeed(async (prisma, s) => {
+    // `agentId` was bound to the public room first, so the oldest-binding rule
+    // would name every General row of that room after it — in both lists.
+    await prisma.agentBinding.create({
+      data: { agentId: s.otherAgentId, channelId: s.publicChannelId },
+    })
+    const generalId = await generalThreadId(prisma, s.publicChannelId)
+
+    const generalRowFor = async (agentId: string) => {
+      const page = await listAgentConversationsForUser(prisma, {
+        agentId,
+        organizationId: s.organizationId,
+        userId: s.userA,
+      })
+      assert.ok(page)
+      return page.data.find((row) => row.isGeneral && row.channel.id === s.publicChannelId)
+    }
+
+    assert.equal((await generalRowFor(s.agentId))?.agentId, s.agentId)
+    assert.equal((await generalRowFor(s.otherAgentId))?.agentId, s.otherAgentId)
+
+    // One run in that thread, belonging to the agent bound first.
+    const firstRun = await prisma.run.create({
+      data: { agentId: s.agentId, status: 'running', threadId: generalId },
+      select: { id: true },
+    })
+    assert.equal((await generalRowFor(s.agentId))?.activeRun?.id, firstRun.id)
+    // The newest active run in the thread is not this agent's, so its row says
+    // nothing is running — because for it, nothing is.
+    assert.equal((await generalRowFor(s.otherAgentId))?.activeRun, null)
+
+    // A newer run for the second agent does not move the first agent's row.
+    const secondRun = await prisma.run.create({
+      data: { agentId: s.otherAgentId, status: 'running', threadId: generalId },
+      select: { id: true },
+    })
+    assert.equal((await generalRowFor(s.agentId))?.activeRun?.id, firstRun.id)
+    assert.equal((await generalRowFor(s.otherAgentId))?.activeRun?.id, secondRun.id)
+
+    // The same pairing decides how the last run ended.
+    await prisma.run.update({ where: { id: firstRun.id }, data: { status: 'failed' } })
+    assert.equal((await generalRowFor(s.agentId))?.lastRunOutcome, 'failed')
+    assert.equal((await generalRowFor(s.otherAgentId))?.lastRunOutcome, null)
+  })
+})
+
+runDatabaseTest('with no room named, the most recently active bound room wins', async () => {
+  await withSeed(async (prisma, s) => {
+    // A has no DM with this agent, so the choice is between its two rooms.
+    // `private` was created after `public`, so with nothing said anywhere the
+    // newest room is the answer.
+    const quiet = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+    })
+    assert.equal(quiet.kind, 'created')
+    if (quiet.kind !== 'created') return
+    assert.equal(quiet.thread.channelId, s.privateChannelId)
+
+    // One message in the older room, and it is the room being worked in.
+    await postMessage(prisma, {
+      content: 'about the pricing page',
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      threadId: await generalThreadId(prisma, s.publicChannelId),
+      userId: s.userA,
+    })
+    const active = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+    })
+    assert.equal(active.kind, 'created')
+    if (active.kind !== 'created') return
+    assert.equal(active.thread.channelId, s.publicChannelId)
+  })
+})
+
+runDatabaseTest('a home DM is enough to see an agent the entitlement excludes', async () => {
+  await withSeed(async (prisma, s) => {
+    // The Personal Assistant is system-managed, so `buildVisibleAgentWhere`
+    // refuses it for everybody — and A obviously can see their own assistant.
+    // The home-DM arm the default-room resolution already understands is what
+    // keeps a room-shaped mistake a room-shaped answer.
+    assert.deepEqual(
+      await startAgentConversation(prisma, {
+        agentId: s.paAgentId,
+        channelId: s.publicChannelId,
+        organizationId: s.organizationId,
+        startedByUserId: s.userA,
+      }),
+      { kind: 'channel_not_allowed' },
     )
   })
 })
@@ -898,8 +1056,10 @@ runDatabaseTest('the list pages by activity without repeating a row', async () =
 /**
  * A conversation opened empty ("New conversation" posts `{ channelId }` and no
  * message) is titled by the first thing said in it. Every condition below is
- * structural — an agent thread, the placeholder title, a top-level `user`
- * message — and none of them reads the content for intent.
+ * structural — an agent thread, a NULL title, a top-level `user` message — and
+ * none of them reads the content for intent. NULL is the whole marker: the
+ * words "New conversation" are a name a person may choose, and while they also
+ * meant "unnamed" that choice was overwritten by whatever they said first.
  */
 const threadTitle = async (prisma: PrismaClient, threadId: string): Promise<string | null> => {
   const thread = await prisma.thread.findUniqueOrThrow({
@@ -921,7 +1081,10 @@ const openEmptyConversation = async (
   })
   assert.equal(started.kind, 'created')
   if (started.kind !== 'created') throw new Error('the conversation was not created')
+  // The outcome projects the displayed name; the row itself is unnamed, which
+  // is what leaves the first message free to name it.
   assert.equal(started.thread.title, DEFAULT_CONVERSATION_TITLE)
+  assert.equal(await threadTitle(prisma, started.thread.id), null)
   return started.thread.id
 }
 
@@ -962,6 +1125,34 @@ runDatabaseTest('the first message in an empty conversation becomes its title', 
   })
 })
 
+runDatabaseTest('a conversation somebody named "New conversation" keeps that name', async () => {
+  await withSeed(async (prisma, s) => {
+    const started = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+      title: DEFAULT_CONVERSATION_TITLE,
+    })
+    assert.equal(started.kind, 'created')
+    if (started.kind !== 'created') return
+    // Stored, not projected: this row carries a title because a person gave it
+    // one, and it happens to read the same as the placeholder.
+    assert.equal(await threadTitle(prisma, started.thread.id), DEFAULT_CONVERSATION_TITLE)
+
+    const first = await createThreadMessage(prisma, {
+      content: 'Payroll escalation',
+      threadId: started.thread.id,
+      userId: s.userA,
+    })
+    assert.equal(first.kind, 'created')
+    if (first.kind !== 'created') return
+    // Their name survives the first thing said in it.
+    assert.equal(first.conversationTitle, undefined)
+    assert.equal(await threadTitle(prisma, started.thread.id), DEFAULT_CONVERSATION_TITLE)
+  })
+})
+
 runDatabaseTest('a reply never names the conversation it is written in', async () => {
   await withSeed(async (prisma, s) => {
     const threadId = await openEmptyConversation(prisma, s)
@@ -983,7 +1174,8 @@ runDatabaseTest('a reply never names the conversation it is written in', async (
     assert.equal(reply.kind, 'created')
     if (reply.kind !== 'created') return
     assert.equal(reply.conversationTitle, undefined)
-    assert.equal(await threadTitle(prisma, threadId), DEFAULT_CONVERSATION_TITLE)
+    // Still unnamed, so the next top-level message may still name it.
+    assert.equal(await threadTitle(prisma, threadId), null)
   })
 })
 
