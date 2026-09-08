@@ -113,7 +113,7 @@ const main = async () => {
     const formError = channelDialog.getByRole('alert')
     if (await formError.count()) {
       assert.fail(
-        `channel creation failed: ${await formError.innerText()} request=${channelCreationRequest} response=${JSON.stringify(channelCreationResponse)}`,
+        `channel creation failed: ${await formError.innerText()} ${JSON.stringify(channelCreation)}`,
       )
     }
     await channelDialog.waitFor({ state: 'hidden' })
