@@ -755,6 +755,58 @@ inverted and assert the behaviour instead.
   `room-strip`, which now asserts non-overlap at every width and selects the
   strip by click, with the keyboard rove kept as a second assertion.
 
+## Cross-model review (2026-09-08)
+
+Codex Sol reviewed the committed tip read-only in three briefs (server
+contract, worker tools + orchestrator, admin rail/card/panel); Kimix was down
+for the whole evening (five runs, provider "high demand", no findings), so
+this round is Sol's. Findings were re-verified against the code before any
+were accepted — the roster's standing rule.
+
+**Accepted and fixed in this run**
+
+- Server: `POST /api/agents/:id/conversations` answered `no_room`/`channel_not_allowed`
+  for an agent the caller cannot see, confirming it exists where `GET` says
+  404 — now `agent_not_found`. A General row was listed under the room's
+  *oldest* binding and showed the newest active run regardless of agent —
+  now the requested agent and its own run. Default-room resolution loaded
+  every thread of up to 1,000 channels — now one per-channel `MAX(created_at)`
+  query. "New conversation" was both a legal title and the unnamed sentinel —
+  unnamed is `title NULL`, projected at read.
+- Worker: the thread was created outside the transaction that writes the
+  opener, claims the run and writes the doorway (an orphan on failure, and the
+  sole-audience decision read outside the commit) — one transaction now, the
+  start door accepting a transaction client. The idempotency key embedded the
+  fresh thread id and so never deduplicated — keyed on the tool call, as
+  peer delegation is. `resolveConversationDecisions` checked top-level before
+  role, so a non-user *reply* in a conversation fell through to the generic
+  path — role first now. The trigger read also checks the message's own
+  thread and uses its persisted role.
+- Admin: a withheld (404) card kept polling every 20 s — it stops. The open
+  list polled at the watching cadence unconditionally — now only while a row
+  is running (`conversationListCadence`). The card's `aria-label="Open …"`
+  hid its status, room and age from a screen reader — the content names the
+  link.
+
+**Rejected, with the reason**
+
+- "No posting-authority check in room resolution" — in this product posting
+  authority *is* read access: `POST /api/threads/:id/messages` authorises with
+  `findThreadForUser`, the same predicate `roomWhere` applies.
+- "A withheld newest message still moves `lastActivityAt`/`unreadCount`" and
+  "a restricted run's id/status/outcome reach an unauthorised viewer" — the
+  product deliberately shows that *something* exists and withholds *what*:
+  the feed renders a withheld placeholder, `loadThreadThinking` lists the run
+  with no entries. Consistent, not a leak.
+- "No run-start realtime publication for the claimed run" — `agent_handoff`
+  publishes exactly the same set; the card polls.
+
+**Deferred to Later** (bounded, documented): the keyset over a 1,000-row
+candidate set; one `canUserReadRunBasis` + chunk read per running run on a
+page; the enqueue-time `channelAgents` snapshot and budget-gate ordering in the
+orchestrator (pre-existing design, not this change); one poll timer per card
+observer for the same thread.
+
 ## Later — named so nothing hides
 
 Decided out of scope for this run, each one change away:

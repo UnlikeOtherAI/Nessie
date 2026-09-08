@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useStartAgentConversation } from '../../../../facades/agents/hooks'
-import { WATCHING_POLL_MS } from '../../../../facades/browser-cloud/hooks'
+import { RAIL_POLL_MS, WATCHING_POLL_MS } from '../../../../facades/browser-cloud/hooks'
+import { conversationListCadence } from './conversation-status'
 import { useSidePanelGeometry } from '../../../../hooks/useSidePanelGeometry'
 import { LOCAL_BACK_PRIORITY, useLocalBack } from '../../../../navigation/LocalBackContext'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
@@ -69,6 +70,10 @@ type AgentConversationsPanelProps = {
  * options out of sight — and everything below it (the list, the new
  * conversation, the panel's accessible name) follows the selection.
  */
+// The open column watches closely only while a listed row is running.
+const openListCadence = (conversations: readonly { activeRun: unknown }[]): number =>
+  conversationListCadence({ conversations, railPollMs: RAIL_POLL_MS, watchingPollMs: WATCHING_POLL_MS })
+
 export const AgentConversationsPanel = ({
   activeChannelId,
   activeThreadId,
@@ -205,7 +210,7 @@ export const AgentConversationsPanel = ({
           activeChannelId={activeChannelId}
           activeThreadId={activeThreadId}
           agentId={agent.id}
-          refetchInterval={WATCHING_POLL_MS}
+          refetchInterval={openListCadence}
         />
       </div>
     </SidePanelShell>

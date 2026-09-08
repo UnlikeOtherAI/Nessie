@@ -32,7 +32,7 @@ type AgentConversationListProps = {
    */
   activeChannelId?: string | null
   /** How often the list refreshes while it is visible; the caller decides. */
-  refetchInterval?: number
+  refetchInterval?: number | ((conversations: AgentConversationRecord[]) => number)
   /** Selected after the navigation — the panel focuses its composer with it. */
   onSelect?: (conversation: AgentConversationRecord) => void
 }

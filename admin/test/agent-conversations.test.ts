@@ -16,6 +16,7 @@ import {
 import {
   conversationBodyLine,
   conversationStatus,
+  conversationListCadence,
 } from '../src/components/features/agents/conversations/conversation-status'
 import {
   focusComposerState,
@@ -307,4 +308,12 @@ describe('a side panel that covers the shell', () => {
     second()
     assert.equal(fullScreenSidePanelOpen(), false)
   })
+})
+
+it('a conversation list watches closely only while a row is running', () => {
+  const idle = [{ activeRun: null }, { activeRun: null }]
+  const busy = [{ activeRun: null }, { activeRun: { id: 'r' } }]
+  assert.equal(conversationListCadence({ conversations: idle, railPollMs: 20, watchingPollMs: 5 }), 20)
+  assert.equal(conversationListCadence({ conversations: busy, railPollMs: 20, watchingPollMs: 5 }), 5)
+  assert.equal(conversationListCadence({ conversations: [], railPollMs: 20, watchingPollMs: 5 }), 20)
 })

@@ -174,7 +174,7 @@ export const exerciseConversationCard = async ({
 
   // The whole card is the way in.
   await desktop.locator('[data-testid="conversation-card"]').first()
-    .getByRole('link', { name: `Open ${title}` }).click()
+    .locator('a').first().click()
   await desktop.waitForURL(new RegExp(`/threads/${reference.threadId}$`, 'u'))
 
   // The other reader. The API is the boundary; the planted doorway proves the

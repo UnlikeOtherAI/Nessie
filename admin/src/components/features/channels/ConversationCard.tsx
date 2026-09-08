@@ -49,7 +49,10 @@ const ResolvedConversationCard = ({ threadId }: { threadId: string }) => {
   // The cadence follows the newest answer: watch a run closely, let a finished
   // conversation settle to the rail's slower beat.
   const conversation = useConversation(threadId, {
-    refetchInterval: (record) => (record?.activeRun ? WATCHING_POLL_MS : RAIL_POLL_MS),
+    // A thread this viewer cannot see stays that way until something outside
+    // this card changes; asking every twenty seconds would learn nothing.
+    refetchInterval: (record, error) =>
+      isNotFound(error) ? false : record?.activeRun ? WATCHING_POLL_MS : RAIL_POLL_MS,
   })
   const record = conversation.data ?? null
 
@@ -90,7 +93,6 @@ const ResolvedConversationCard = ({ threadId }: { threadId: string }) => {
   return (
     <ChatCardShell testId="conversation-card">
       <Link
-        aria-label={`Open ${record.title}`}
         className="flex flex-col gap-2 no-underline"
         to={`/channels/${encodeURIComponent(record.channel.id)}/threads/${encodeURIComponent(record.id)}`}
       >

@@ -224,17 +224,30 @@ export const flattenAgentConversationPages = (
  */
 export const useAgentConversations = (
   agentId?: string,
-  options: { enabled?: boolean; refetchInterval?: number } = {},
+  options: {
+    enabled?: boolean
+    /**
+     * A number, or a function of the rows so far — a list watches closely only
+     * while a row is running (`conversationListCadence`).
+     */
+    refetchInterval?: number | ((conversations: AgentConversationRecord[]) => number)
+  } = {},
 ) => {
   const apiClient = useApiClient()
+  const { refetchInterval } = options
 
   const query = useInfiniteQuery({
     ...agentConversationsInfiniteQueryOptions(apiClient, agentId ?? ''),
     enabled: Boolean(agentId) && (options.enabled ?? true),
     placeholderData: keepPreviousData,
-    ...(options.refetchInterval === undefined
+    ...(refetchInterval === undefined
       ? {}
-      : { refetchInterval: options.refetchInterval }),
+      : {
+          refetchInterval: typeof refetchInterval === 'function'
+            ? (query: { state: { data?: Parameters<typeof flattenAgentConversationPages>[0] } }) =>
+                refetchInterval(flattenAgentConversationPages(query.state.data))
+            : refetchInterval,
+        }),
   })
   const conversations = useMemo(
     () => flattenAgentConversationPages(query.data),

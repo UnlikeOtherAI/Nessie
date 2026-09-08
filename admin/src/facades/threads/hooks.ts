@@ -151,7 +151,7 @@ export const useConversation = (
      */
     refetchInterval?:
       | number
-      | ((record: AgentConversationRecord | undefined) => number)
+      | ((record: AgentConversationRecord | undefined, error: unknown) => number | false)
   } = {},
 ) => {
   const apiClient = useApiClient()
@@ -167,8 +167,8 @@ export const useConversation = (
       ? {}
       : {
           refetchInterval: typeof refetchInterval === 'function'
-            ? (query: { state: { data?: AgentConversationRecord } }) =>
-                refetchInterval(query.state.data)
+            ? (query: { state: { data?: AgentConversationRecord; error?: unknown } }) =>
+                refetchInterval(query.state.data, query.state.error)
             : refetchInterval,
         }),
   })

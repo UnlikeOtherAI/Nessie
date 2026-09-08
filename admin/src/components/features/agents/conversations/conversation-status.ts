@@ -72,3 +72,20 @@ export const conversationBodyLine = (
   // so the caller supplies the words and the precedence stays here.
   empty = 'Nothing said yet',
 ): string => activeRun?.progressLine || lastMessagePreview || empty
+
+/**
+ * How often a list of conversations asks again.
+ *
+ * Fast only while something on it is actually running — that is when a person
+ * is watching a dot or a progress line change. An idle list left open in a
+ * column would otherwise poll at the watching beat for as long as the panel
+ * stood there, and an infinite list refetches every retained page each time.
+ */
+export const conversationListCadence = (input: {
+  conversations: readonly { activeRun: unknown }[]
+  railPollMs: number
+  watchingPollMs: number
+}): number =>
+  input.conversations.some((conversation) => conversation.activeRun !== null)
+    ? input.watchingPollMs
+    : input.railPollMs
