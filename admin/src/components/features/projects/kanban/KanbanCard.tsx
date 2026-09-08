@@ -38,7 +38,8 @@ export const KanbanCardContent = ({
   projectName,
   archived,
 }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'> & { archived?: boolean }) => {
-  const excerpt = buildCardExcerpt(task.detail ?? (task.title ? task.purpose : null))
+  const excerpt = buildCardExcerpt(task.title ? task.purpose : null)
+    ?? buildCardExcerpt(task.detail)
   const { data: fieldDefinitions = [] } = useTaskFields(task.projectId ?? undefined)
   const { data: assignees = [] } = useTaskAssignees()
   const peopleById = useMemo(

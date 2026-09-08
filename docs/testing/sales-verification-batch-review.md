@@ -140,6 +140,56 @@ same fixture. This establishes runtime behavior only. A live KiloTalk research
 read and live compaction invocation remain pending; no new product work belongs
 in this batch.
 
+## Peer-context follow-up — local batch pending review
+
+The Eska pilot exposed a distinct deployed gap: the coordinator's immediately
+preceding run could enter its personal Ledger lane, while a peer-delivered
+researcher run could not because durable mailbox work retained the original
+human id but not the verified UOA tuple required at admission. This batch stores
+the tuple on peer mail as immutable run provenance, restores it for direct and
+serialized delivery, and leaves Ledger's live link, epoch, subject, and active
+team checks unchanged. Missing or malformed tuples remain terminal rather than
+falling back to another identity. Direct hidden-mailbox work now uses the same
+channel reply placement as serialized work, so the existing lifecycle posts one
+useful terminal result for a waiting conversation and a redelivery adds none.
+
+The coordinator configuration was corrected through the Tools UI and persisted
+after reload: `ticket_checklist_apply` is disabled, while project read and
+step-update remain enabled (Projects & tickets: 9/12). The original Eska pilot
+ticket was renamed **Eska — failed pilot record (8 September)**, annotated with
+its failure history, and cancelled into Archived; reopening it confirmed the
+six-step snapshot and completed **Confirm sales brief** result remain intact.
+The board now has three active and one archived ticket. No fresh prospect,
+paid research, live KiloTalk read, or compaction run has occurred. The next
+pilot remains blocked on review, merge, CI, and deployment of this batch.
+
+Local validation for this follow-up is recorded with the retained Turbo worker
+test artifact after the batch checks complete; the earlier 1,090-unit/170-DB
+checkpoint above belongs to PR 431's already merged runtime repair.
+
+The board UI regression is covered by the reusable project-usability browser
+journey: an existing task can retain its Checklist URL when closed, while the
+next New task dialog returns to Details and exposes its title and create action.
+Cards prefer an explicit titled task excerpt (`purpose`) over implementation
+detail, with detail retained as the fallback when no excerpt exists.
+
+## Final local validation — ready for CI
+
+The completed peer-context batch passed Turbo worker validation (29/29 tasks):
+1,090 unit passes with four expected skips and 171 database passes. The nine
+focused mailbox admission, serialization, and terminal-failure regressions also
+passed. Combined API, worker, and shared typechecks passed 33/33 tasks; the
+admin/worker final typecheck also passed 33/33, and the final admin typecheck
+passed 9/9. The full headless project-usability journey passed against its own
+isolated database with the owned API on 5454 and Vite on 5455, including the
+retained-checklist New task dialog and explicit-excerpt card screenshots.
+
+The coordinator remains configured without `ticket_checklist_apply`; project
+read and checklist step-update remain enabled. The archived failed-pilot record
+is preserved, and the fresh active ticket is **Eska — research and contact
+decision**. No paid research kickoff, live KiloTalk read, or compaction run was
+performed during validation. Production remains pending CI, merge, and deploy.
+
 ## Fixture references
 
 - Project: `8c03c93d-0175-4b74-ba79-391da2e938be`

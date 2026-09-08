@@ -79,6 +79,12 @@ export const runAgentPeerDelegateTool = async (
         fromAgentId: context.agentId,
         organizationId: member.organizationId,
         peerDelegationDepth: depth + 1,
+        // The authenticated tuple is immutable run provenance. Its later
+        // Ledger use still verifies the original human's live account link,
+        // so this does not create a second identity authority or store a token.
+        ...(context.actorContext.actionContext.uoaIdentity
+          ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }
+          : {}),
         subject: `Project review: ${projectId}`,
         threadId: context.run.threadId,
         toAgentId: target.id,

@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import { ProviderHttpError } from '@nessie/runtime'
 import { handleRunExecutionFailure } from './failure.js'
+import { executeRunJob } from './run-job.js'
 import { PrivateAgentPlacementError } from './private-agent-placement.js'
+import { resolveReplyRootMessageId } from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 
@@ -134,8 +136,13 @@ test('an interactive run tells the person waiting that Ledger credits are exhaus
   assert.deepEqual(streamEvents, [])
 })
 
-test('a peer-delegated failure reports once while an unattended failure remains quiet', async () => {
-  const messages: Array<{ content: string; role: string }> = []
+test('a direct peer failure posts one top-level result and redelivery leaves it alone', async () => {
+  const messages: Array<{ content: string; role: string; rootMessageId: string | null }> = []
+  const replyRootMessageId = resolveReplyRootMessageId(
+    { id: '00000000-0000-4000-8000-00000000000a', rootMessageId: null },
+    null,
+    'channel',
+  )
   // A real `$transaction` hands the callback a client carrying every model, so
   // the stub must too: the message chokepoint writes the row and its basis rows
   // inside one, and a transaction client missing `message` made the write throw
@@ -143,8 +150,8 @@ test('a peer-delegated failure reports once while an unattended failure remains 
   const transaction = {
     $executeRaw: async () => undefined,
     message: {
-      create: async ({ data }: { data: { content: string; role: string } }) => {
-        messages.push(data)
+      create: async ({ data }: { data: { content: string; role: string; rootMessageId?: string } }) => {
+        messages.push({ ...data, rootMessageId: data.rootMessageId ?? null })
         return {
           content: data.content,
           createdAt: new Date('2026-08-04T20:00:00.000Z'),
@@ -163,8 +170,8 @@ test('a peer-delegated failure reports once while an unattended failure remains 
       $transaction: async (work: (tx: typeof transaction) => Promise<unknown>) => work(transaction),
       agent: { update: async () => undefined },
       message: {
-        create: async ({ data }: { data: { content: string; role: string } }) => {
-          messages.push(data)
+        create: async ({ data }: { data: { content: string; role: string; rootMessageId?: string } }) => {
+          messages.push({ ...data, rootMessageId: data.rootMessageId ?? null })
           return {
             content: data.content,
             createdAt: new Date('2026-08-11T20:00:00.000Z'),
@@ -204,7 +211,8 @@ test('a peer-delegated failure reports once while an unattended failure remains 
       teamId: ID.team,
     },
     consumedSources: createConsumedSourceSink(),
-    run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
+    run: { createdAt: new Date(), id: ID.run, replyPlacement: 'channel', threadId: ID.thread },
+    replyRootMessageId,
     task: { id: ID.task },
   } satisfies RunContext
 
@@ -231,8 +239,26 @@ test('a peer-delegated failure reports once while an unattended failure remains 
     agentId: ID.agent,
     content: 'No API key is configured for the model provider. Ask a team owner to add the provider credential, then try again.',
     role: 'assistant',
+    rootMessageId: null,
     threadId: ID.thread,
   }])
+
+  const terminalDeps = {
+    prisma: {
+      run: { findUnique: async () => ({ finishedAt: new Date(), status: 'failed' }) },
+    },
+  } as unknown as ExecutionDependencies
+  const peerPayload = {
+    actorContext: { actionContext: { purpose: 'agent.peer_delegation' } },
+    agentId: ID.agent,
+    messageId: '00000000-0000-4000-8000-00000000000a',
+    runId: ID.run,
+    taskId: ID.task,
+    threadId: ID.thread,
+  } as never
+  await executeRunJob(terminalDeps, peerPayload, {} as never)
+  await executeRunJob(terminalDeps, peerPayload, {} as never)
+  assert.equal(messages.length, 1, 'redelivery preserves the one visible terminal result')
 
   await handleRunExecutionFailure(
     deps,

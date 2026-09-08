@@ -3814,6 +3814,10 @@ model AgentMailboxMessage {
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
   peerDelegationDepth Int?               @map("peer_delegation_depth")
+  /// Immutable UOA login proof captured by the peer-delegation tool. This is
+  /// run provenance, not a local identity or credential record: Ledger still
+  /// verifies its subject and epoch against the originating person's live link.
+  uoaIdentity       Json?                @map("uoa_identity")
   /// Provenance carried by a durable peer brief. Existing mailbox producers
   /// leave this empty; peer delivery stamps it on the prompt and target run.
   basis             Json                 @default("[]")

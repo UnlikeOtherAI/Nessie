@@ -56,7 +56,18 @@ test('peer delegation preserves known and unknown private-source authors for the
   ]
   let storedBasis: unknown = null
   let storedSources: unknown = null
+  let storedUoaIdentity: unknown = null
   const restricted = context({
+    actorContext: {
+      actor: { actorId: parseUserId(ID), actorType: 'user' },
+      actionContext: {
+        requestId: 'test',
+        uoaIdentity: {
+          organizationId: 'uoa-org', subject: 'uoa-subject', teamId: 'uoa-team', tokenVersion: 7,
+        },
+      },
+      tenant: { organizationId: parseOrganizationId('00000000-0000-4000-8000-000000000006') },
+    },
     consumedSources: {
       add: () => undefined,
       addAll: () => undefined,
@@ -68,11 +79,18 @@ test('peer delegation preserves known and unknown private-source authors for the
     prisma: {
       agent: { findFirst: async () => ({ id: PEER, name: 'Coordinator' }) },
       agentBinding: { count: async () => 1 },
-      agentMailboxMessage: { create: async ({ data }: { data: { basis: unknown; disclosureSources: unknown } }) => {
-        storedBasis = data.basis
-        storedSources = data.disclosureSources
-        return { id: ID }
-      } },
+      agentMailboxMessage: {
+        create: async ({ data }: { data: {
+          basis: unknown
+          disclosureSources: unknown
+          uoaIdentity?: unknown
+        } }) => {
+          storedBasis = data.basis
+          storedSources = data.disclosureSources
+          storedUoaIdentity = data.uoaIdentity
+          return { id: ID }
+        },
+      },
       organizationMember: { findUnique: async () => ({ deactivatedAt: null, role: 'owner' }) },
       project: { count: async () => 1 },
     } as unknown as BuiltinToolRuntimeContext['prisma'],
@@ -80,6 +98,9 @@ test('peer delegation preserves known and unknown private-source authors for the
   await runAgentPeerDelegateTool(restricted, { agentId: PEER, brief: 'review' })
   assert.deepEqual(storedBasis, basis)
   assert.deepEqual(storedSources, disclosureSources)
+  assert.deepEqual(storedUoaIdentity, {
+    organizationId: 'uoa-org', subject: 'uoa-subject', teamId: 'uoa-team', tokenVersion: 7,
+  })
 })
 
 test('peer delegation refuses an agent after its source binding is removed', async () => {
