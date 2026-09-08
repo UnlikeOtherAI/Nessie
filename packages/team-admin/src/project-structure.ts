@@ -32,7 +32,8 @@ import { defaultBoardCreateData } from './board-structure.js'
 // project created from chat must get the same board a clicked one gets.
 export const projectCountsInclude = {
   members: { select: { userId: true, role: true } },
-  teams: { select: { _count: { select: { channels: true } } } },
+  channels: { select: { id: true } },
+  teams: { select: { id: true } },
   team: { select: { id: true } },
 } as const
 
@@ -44,7 +45,8 @@ type ProjectWithCounts = {
   organizationId: string
   createdAt: Date
   members: { userId: string; role: string }[]
-  teams: { _count: { channels: number } }[]
+  channels: { id: string }[]
+  teams: { id: string }[]
   team: { id: string } | null
 }
 
@@ -56,7 +58,7 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
   organizationId: parseOrganizationId(project.organizationId),
   memberCount: project.members.length,
   teamCount: project.team ? 1 : project.teams.length,
-  channelCount: project.teams.reduce((total, team) => total + team._count.channels, 0),
+  channelCount: project.channels.length,
   createdAt: project.createdAt.toISOString(),
 })
 
@@ -188,6 +190,23 @@ export const createProjectForUser = async (
     select: { id: true },
   })
   if (!team) throw new ProjectValidationError('Team not found in this organization')
+  const [teamMember, organizationMember] = await Promise.all([
+    prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId: team.id, userId: input.userId } },
+      select: { id: true },
+    }),
+    prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
+      select: { deactivatedAt: true, role: true },
+    }),
+  ])
+  if (
+    !organizationMember
+    || organizationMember.deactivatedAt
+    || (!teamMember && organizationMember.role !== 'owner' && organizationMember.role !== 'admin')
+  ) {
+    throw new ProjectValidationError('You are not allowed to create a project in that team')
+  }
   const project = await prisma.project.create({
     data: {
       name,
