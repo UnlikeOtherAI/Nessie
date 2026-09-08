@@ -1,6 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 
-import { computeReplyBasis, type BasisScope } from '../execute/disclosure-basis.js'
+import {
+  computeReplyBasis,
+  subtractImpliedScopes,
+  type BasisScope,
+} from '../execute/disclosure-basis.js'
 import { persistablePrivateConversationSources } from '../execute/private-conversation-source-storage.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
@@ -70,6 +74,43 @@ export const resolveToolPostBasis = async (
     boundAgents.map((binding) => binding.agentId),
   )
 }
+
+/**
+ * The basis of a message one run writes to start *another* run.
+ *
+ * Two subtractions, in order:
+ * 1. what the destination already implies (`computeReplyBasis`), the ordinary
+ *    rule every reply obeys;
+ * 2. what `requesterScopes` already satisfies — and this one is only ever
+ *    correct when the destination's audience *is* that one person.
+ *
+ * The second is load-bearing where it applies and a disclosure hole where it
+ * does not. `agent_handoff` writes into the requester's own single-member DM,
+ * so a scope they cannot satisfy would silence the specialist in its own home
+ * while withholding nothing (they heard the content in the origin thread).
+ * Hand `requesterScopes: []` for any destination with a second reader — a
+ * shared room, a project channel — where subtracting one person's reach would
+ * publish restricted material to everybody else in it.
+ *
+ * `targetAgentIds` are the agents bound to the destination: an `agent` scope
+ * they satisfy is not privileged there, exactly as `computeReplyBasis` treats a
+ * run's own bound agents.
+ */
+export const computeDelegatedPostBasis = (input: {
+  consumed: readonly BasisScope[]
+  destination: {
+    channelId: string
+    organizationId: string
+    projectId: string
+    teamId: string
+  }
+  requesterScopes: readonly BasisScope[]
+  targetAgentIds: readonly string[]
+}): BasisScope[] =>
+  subtractImpliedScopes(
+    computeReplyBasis(input.consumed, input.destination, input.targetAgentIds),
+    input.requesterScopes,
+  )
 
 /**
  * Attach a basis to a message.

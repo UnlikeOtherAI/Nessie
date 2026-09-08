@@ -55,6 +55,10 @@ export {
   AGENT_HANDOFF_TOOL_DEFINITION,
   AGENT_HANDOFF_TOOL_ID,
 } from './builtin-handoff-tools.js'
+export {
+  AGENT_CONVERSATIONS_LIST_TOOL_ID,
+  AGENT_CONVERSATION_START_TOOL_ID,
+} from './builtin-agent-tools.js'
 export type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export {
   APP_CONNECT_REQUEST_TOOL_DEFINITION,
@@ -70,6 +74,54 @@ export {
   HTTP_FETCH_TOOL_DEFINITION,
   SANDBOXED_BUILTIN_TOOL_DEFINITIONS,
 } from './builtin-tools-sandboxed.js'
+
+export const CONVERSATION_REFERENCE_TOOL_ID = 'conversation_reference'
+
+/**
+ * Show a conversation with an agent as a live card in this chat.
+ *
+ * Registered exactly like `card_post` and for the same reason: `safe: false`,
+ * no `personalAssistantOnly`, no explicit grant. Pointing at a conversation is
+ * a better-shaped message, not a wider permission — what a viewer then sees is
+ * decided per viewer by the card's own read
+ * (`GET /api/threads/:threadId/conversation`), and the handler bounds which
+ * conversations may be pointed at: the acting person's own visibility, or, for
+ * a run with nobody asking, its own channel.
+ *
+ * Spec: docs/plans/2026-09-08-agent-conversations.md § "The doorway".
+ */
+export const CONVERSATION_REFERENCE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: CONVERSATION_REFERENCE_TOOL_ID,
+  category: 'conversation',
+  summary: 'Show a conversation with an agent as a live card in this chat.',
+  label: 'Show conversation',
+  description:
+    'Put a live card for another conversation into this chat, so the person can watch '
+    + 'it or step into it without being sent to go and look. The card reads itself: it '
+    + 'shows the conversation\'s title, whether it is running, queued, waiting or done, '
+    + 'what it is doing right now, and opens it when pressed — all of it current every '
+    + 'time anyone looks. So do NOT narrate the status in your own words, and never '
+    + 'state one you were not told: say why you are showing it and let the card say how '
+    + 'it is going. Take the thread id from agent_conversations_list or from a '
+    + 'conversation you just started; never invent one.',
+  parameters: {
+    type: 'object',
+    properties: {
+      conversation: {
+        type: 'string',
+        description: 'The conversation to show, by thread id.',
+      },
+      note: {
+        type: 'string',
+        description:
+          'Optional one line to post with the card, e.g. why you are showing it. '
+          + 'Omit for a plain default. Never a status — the card carries that.',
+      },
+    },
+    required: ['conversation'],
+  },
+  safe: false,
+}
 
 // Fan-out to a sub-agent. Advertised to ordinary agent runs so the model can
 // push discovery legwork out of its own context; the worker dispatches it
@@ -459,6 +511,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ATTACHMENT_LIST_TOOL_DEFINITION,
   ATTACHMENT_READ_TOOL_DEFINITION,
   ...CARD_TOOL_DEFINITIONS,
+  CONVERSATION_REFERENCE_TOOL_DEFINITION,
   ...HANDOFF_TOOL_DEFINITIONS,
   ...CHANNEL_TOOL_DEFINITIONS,
   ...TEAM_STRUCTURE_TOOL_DEFINITIONS,

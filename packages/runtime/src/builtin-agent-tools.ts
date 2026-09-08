@@ -28,6 +28,9 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
  * shared `canEditAgent` predicate the PUT route uses, so a conversation and a
  * form cannot disagree about who may rewrite an agent.
  */
+export const AGENT_CONVERSATION_START_TOOL_ID = 'agent_conversation_start'
+export const AGENT_CONVERSATIONS_LIST_TOOL_ID = 'agent_conversations_list'
+
 export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'agent_list',
@@ -409,5 +412,78 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       required: ['agentId', 'type'],
     },
     safe: false,
+  },
+  {
+    id: AGENT_CONVERSATION_START_TOOL_ID,
+    category: 'agents',
+    summary: 'Start a separate conversation with an agent and give it a job.',
+    label: 'Start Agent Conversation',
+    personalAssistantOnly: true,
+    description:
+      'Start a NEW, separate conversation with another agent and send it a job. The '
+      + 'conversation is its own chat with its own context, so it runs on its own while '
+      + 'this one carries on — use it for work that should go away and happen (a piece '
+      + 'of research, a report, a long task) or for a topic that deserves its own thread '
+      + 'with that agent, rather than making the person wait here. Name the agent as the '
+      + 'person named it; call agent_list first if you do not already hold its id. '
+      + 'Write `message` as the job itself, addressed to that agent. Optionally give a '
+      + '`title` (otherwise the first line of the message names it) and a `channel` '
+      + '(otherwise it goes to your own conversation with that agent, or the room you '
+      + 'both work in). A live card for the new conversation appears in this chat the '
+      + 'moment it starts, showing its status, what it is doing now and a way in — so '
+      + 'point the person at the card instead of describing progress you cannot see.',
+    parameters: {
+      type: 'object',
+      properties: {
+        agent: {
+          type: 'string',
+          description: 'The agent to talk to, by name or agentId.',
+        },
+        message: {
+          type: 'string',
+          description:
+            'The opening message: the job, written to that agent. It is posted in the '
+            + 'new conversation and is what starts its run.',
+        },
+        title: {
+          type: 'string',
+          description:
+            'Optional short name for the conversation. Omit to name it after the first '
+            + 'line of the message.',
+        },
+        channel: {
+          type: 'string',
+          description:
+            'Optional room to hold the conversation, by name or channelId. Must be one '
+            + 'you can post in that the agent works in.',
+        },
+      },
+      required: ['agent', 'message'],
+    },
+    safe: false,
+  },
+  {
+    id: AGENT_CONVERSATIONS_LIST_TOOL_ID,
+    category: 'agents',
+    summary: 'List the conversations you can see with one agent.',
+    label: 'List Agent Conversations',
+    personalAssistantOnly: true,
+    description:
+      'List the conversations with one agent that you can see, newest activity first, '
+      + 'each with where it lives, whether it is running and its thread id. This is the '
+      + 'answer to "what is X working on?" and it is how a conversation NAME becomes the '
+      + 'thread id conversation_reference takes — call it rather than guessing an id. '
+      + 'It shows only what the person you are acting for may read.',
+    parameters: {
+      type: 'object',
+      properties: {
+        agent: {
+          type: 'string',
+          description: 'The agent whose conversations to list, by name or agentId.',
+        },
+      },
+      required: ['agent'],
+    },
+    safe: true,
   },
 ]
