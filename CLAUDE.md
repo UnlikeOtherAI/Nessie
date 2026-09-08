@@ -52,6 +52,10 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
   CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
   between the navigation and independent connected-mail suites.
+- **Member-management browser coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:member-management`. CI alone includes
+  its fixture in the preview build; details and cache rules are in
+  [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md).
 - **Private-conversation disclosure browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:disclosure` after
   building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on

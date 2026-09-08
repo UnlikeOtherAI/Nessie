@@ -13,4 +13,8 @@ member roster.
 
 The Navigation Transitions CI job runs this fixture through the existing
 managed API/admin lifecycle and retains screenshots in
-`e2e/screenshots/member-management/`.
+`e2e/screenshots/member-management/`. Its build alone sets
+`NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE=1`, making the fixture a Vite preview
+entry. Ordinary production builds omit that entry; Turbo includes the flag in
+the admin-build cache key so those two artifacts cannot be reused for each
+other.

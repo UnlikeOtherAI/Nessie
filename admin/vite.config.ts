@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -26,6 +27,7 @@ export const resolveExecutorApiPublicUrl = (
 export default defineConfig(({ command, mode }) => {
   const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') }
   const executorApiPublicUrl = resolveExecutorApiPublicUrl(env, apiPort, command === 'serve')
+  const includeMemberManagementFixture = env.NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -34,6 +36,18 @@ export default defineConfig(({ command, mode }) => {
       },
     } : {}),
   plugins: [react(), tailwindcss()],
+  // The CI-only member-management fixture must be a build input for preview
+  // mode. The explicit flag keeps it out of ordinary production bundles.
+  ...(includeMemberManagementFixture ? {
+    build: {
+      rollupOptions: {
+        input: {
+          app: resolve(__dirname, 'index.html'),
+          memberManagement: resolve(__dirname, 'e2e/member-management/index.html'),
+        },
+      },
+    },
+  } : {}),
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
