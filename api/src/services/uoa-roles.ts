@@ -259,7 +259,10 @@ export const reconcileUoaMembershipProjection = async (
     where: {
       team: {
         externalTeamId: { not: null },
-        project: { organization: { externalOrgId: { not: null } } },
+        OR: [
+          { project: { organization: { externalOrgId: { not: null } } } },
+          { projects: { some: { organization: { externalOrgId: { not: null } } } } },
+        ],
       },
       userId: input.userId,
     },
@@ -270,19 +273,24 @@ export const reconcileUoaMembershipProjection = async (
           id: true,
           projectId: true,
           project: { select: { organization: { select: { externalOrgId: true } } } },
+          projects: { select: { id: true, organization: { select: { externalOrgId: true } } }, take: 2 },
         },
       },
     },
   })
-  const revoked = memberships.filter(({ team }) => {
-    const externalOrgId = team.project.organization.externalOrgId
+  const resolvedMemberships = memberships.flatMap(({ team }) => {
+    if (team.projects.length > 1) return []
+    const project = team.projects[0] ?? team.project
+    return [{ projectId: project.id, team, externalOrgId: project.organization.externalOrgId }]
+  })
+  const revoked = resolvedMemberships.filter(({ externalOrgId, team }) => {
     if (!externalOrgId || !team.externalTeamId) return false
     return !input.asserted.get(externalOrgId)?.has(team.externalTeamId)
-  }).map(({ team }) => team)
+  })
 
   if (revoked.length > 0) {
     await tx.teamMember.deleteMany({
-      where: { teamId: { in: revoked.map((team) => team.id) }, userId: input.userId },
+      where: { teamId: { in: revoked.map(({ team }) => team.id) }, userId: input.userId },
     })
     // A project row is the team row's other half (`ensureTeamMemberships`
     // writes them together), so it follows the team out — unless another team
@@ -290,9 +298,9 @@ export const reconcileUoaMembershipProjection = async (
     // still permits (`Team.projectId` has no `@unique`).
     const stillHeld = new Set((await tx.teamMember.findMany({
       where: { userId: input.userId },
-      select: { team: { select: { projectId: true } } },
-    })).map(({ team }) => team.projectId))
-    const orphanedProjectIds = [...new Set(revoked.map((team) => team.projectId))]
+      select: { team: { select: { projectId: true, projects: { select: { id: true }, take: 2 } } } },
+    })).map(({ team }) => team.projects[0]?.id ?? team.projectId))
+    const orphanedProjectIds = [...new Set(revoked.map(({ projectId }) => projectId))]
       .filter((projectId) => !stillHeld.has(projectId))
     if (orphanedProjectIds.length > 0) {
       await tx.projectMember.deleteMany({

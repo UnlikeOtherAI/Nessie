@@ -70,26 +70,35 @@ const loadBinding = async (
       externalOrgId: input.identity.organizationId,
       externalTeamId: input.identity.teamId,
       members: { some: { userId: input.userId } },
-      project: {
-        members: { some: { userId: input.userId } },
-        organization: {
-          // Organizations map 1:1 to UOA organisations: the team must live in
-          // the Organization carrying this session's external org id. A team
-          // reachable only through a foreign org — or a legacy team left in a
-          // null-externalOrgId org — fails closed here rather than scoping the
-          // session to an organization the UOA proof does not name.
-          externalOrgId: input.identity.organizationId,
-          members: {
-            some: { deactivatedAt: null, userId: input.userId },
+      OR: [
+        {
+          project: {
+            members: { some: { userId: input.userId } },
+            organization: {
+              externalOrgId: input.identity.organizationId,
+              members: { some: { deactivatedAt: null, userId: input.userId } },
+            },
           },
         },
-      },
+        {
+          projects: {
+            some: {
+              members: { some: { userId: input.userId } },
+              organization: {
+                externalOrgId: input.identity.organizationId,
+                members: { some: { deactivatedAt: null, userId: input.userId } },
+              },
+            },
+          },
+        },
+      ],
     },
     select: {
       id: true,
       projectId: true,
       project: {
         select: {
+          id: true,
           organizationId: true,
           organization: {
             select: {
@@ -102,10 +111,27 @@ const loadBinding = async (
           },
         },
       },
+      projects: {
+        select: {
+          id: true,
+          organizationId: true,
+          organization: {
+            select: {
+              members: {
+                where: { deactivatedAt: null, userId: input.userId },
+                select: { role: true },
+                take: 1,
+              },
+            },
+          },
+        },
+        take: 2,
+      },
     },
   })
-  const role = team?.project.organization.members[0]?.role
-  if (!team || !role) {
+  const canonicalProject = team?.projects[0] ?? team?.project
+  const role = canonicalProject?.organization.members[0]?.role
+  if (!team || !canonicalProject || team.projects.length > 1 || !role) {
     throw new UoaLocalSessionBindingError(
       'The UnlikeOtherAI team is no longer available in Nessie.',
     )
@@ -114,7 +140,7 @@ const loadBinding = async (
   const link = await prisma.productAccountLink.findUnique({
     where: {
       organizationId_userId_productSlug: {
-        organizationId: team.project.organizationId,
+        organizationId: canonicalProject.organizationId,
         productSlug: 'nessie',
         userId: input.userId,
       },
@@ -139,8 +165,8 @@ const loadBinding = async (
 
   return {
     linkId: link.id,
-    organizationId: team.project.organizationId,
-    projectId: team.projectId,
+    organizationId: canonicalProject.organizationId,
+    projectId: canonicalProject.id,
     role,
     teamId: team.id,
   }
