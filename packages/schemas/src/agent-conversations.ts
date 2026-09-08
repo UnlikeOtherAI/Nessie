@@ -89,9 +89,11 @@ export const AgentConversationRecordSchema = z.object({
   startedByUserId: UserIdSchema.nullable(),
   lastActivityAt: TimestampSchema.nullable(),
   /**
-   * At most `CONVERSATION_PREVIEW_MAX_CHARS` of the newest message the viewer
-   * may read. Fails closed: a message carrying any basis scope contributes
-   * null, never a redaction.
+   * At most `CONVERSATION_PREVIEW_MAX_CHARS` of the newest message, when the
+   * viewer may read it. Fails closed on the *newest* row: a newest message
+   * whose basis this viewer does not satisfy contributes null — never a
+   * redaction, and never an older readable line in its place, which would
+   * reveal that something newer exists.
    */
   lastMessagePreview: z.string().nullable(),
   unreadCount: z.number().int().nonnegative(),
