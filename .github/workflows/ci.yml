@@ -752,14 +752,6 @@ jobs:
           path: e2e/screenshots/browser-cloud
           if-no-files-found: warn
 
-      - name: Upload app connection screenshots
-        if: always() && steps.scope.outputs.code == '1'
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-connect-scope-screenshots
-          path: e2e/screenshots/apps
-          if-no-files-found: warn
-
       - name: Upload connected mail screenshots
         if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
