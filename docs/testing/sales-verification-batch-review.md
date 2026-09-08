@@ -81,8 +81,8 @@ where continuing would cause unsafe or destructive effects.
 
 The first implementation batch is pushed. Worker typecheck passed; the author
 did not run the added database tests because its isolated fixture was unavailable.
-CI run `34271980606` is still collecting results. Review found these corrections
-to resolve together before deployment:
+CI run `34271980606` is complete: three checks passed and six failed. Review
+found these corrections to resolve together before deployment:
 
 - **Preserve every brief's disclosure and requester.** The new raw
   `promptOverride` concatenates hidden messages, but `run-job.ts` admits only
@@ -99,6 +99,10 @@ to resolve together before deployment:
 - **Restore format-error recovery.** The switch modification made both `format`
   and `empty_response` terminal. Only exhausted `empty_response` belongs in this
   change; preserve the existing bounded format retry.
+- **Use the schema's typed ID parsers.** CI rejected `mailbox.ts:84` with TS2322
+  because raw strings were assigned to branded project/team IDs. This one error
+  failed Type Check and the four build-dependent jobs. Rebuild dependencies
+  through Turbo before trusting local typecheck results.
 - **Prove the promised lifecycle.** The new serialization test completes its
   predecessor rather than failing it, and the failure test calls the handler
   once while deleting the unattended-silence regression. Add meaningful checks
@@ -109,9 +113,12 @@ to resolve together before deployment:
   database path, and accurately describe both the original empty-output fix and
   this runtime correction in the final PR body.
 
-Wait for the current CI results, append any relevant failures to this same
-brief, then return one correction package to the existing Terra agent. Do not
-start live sales runs against this unverified implementation.
+The Test job also failed the existing `the retries an execution spends are
+carried in its checkpoints` assertion: the format error was no longer retried.
+The worker unit failure prevented its database suite from running. These are
+the complete current CI findings; return this one correction package to the
+existing Terra agent. Do not start live sales runs against this unverified
+implementation.
 
 ## Fixture references
 
