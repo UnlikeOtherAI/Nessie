@@ -23,6 +23,8 @@ COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json turbo.js
 COPY scripts/with-deep-agent-token.sh scripts/with-deep-agent-token.sh
 COPY packages/ packages/
 COPY admin/ admin/
+COPY api/package.json api/package.json
+COPY api/prisma/ api/prisma/
 COPY mobile/package.json mobile/package.json
 COPY desktop/package.json desktop/package.json
 COPY gateway/package.json gateway/package.json
@@ -33,7 +35,12 @@ COPY gateway/package.json gateway/package.json
 RUN --mount=type=secret,id=deep_agent_read_token,required=true \
   corepack enable \
   && DEEP_AGENT_READ_TOKEN="$(cat /run/secrets/deep_agent_read_token)" \
-    scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile --filter=@nessie/admin...
+    scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile --filter=@nessie/admin... --filter=@nessie/api
+
+# The admin's runtime dependency graph includes @nessie/db. Generate its Prisma
+# client before Turbo compiles that graph, using the schema and CLI from the API
+# package without copying the API server source into the browser image.
+RUN pnpm --filter @nessie/api exec prisma generate --schema prisma/schema.prisma
 
 # Admin imports runtime values (not just types) from its workspace packages
 # (@nessie/schemas, @nessie/config, @nessie/client-core, …) through their dist
