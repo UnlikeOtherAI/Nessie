@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import { buildVisibleAgentWhere } from '@nessie/db'
-import { canUserReadRunBasis } from '@nessie/runtime'
+import {
+  canUserReadRunBasis,
+  resolveDisclosureViewer,
+  viewerSatisfiesBasis,
+  type BasisScopeRow,
+} from '@nessie/runtime'
 import {
   buildPage,
   CONVERSATION_PREVIEW_MAX_CHARS,
@@ -216,40 +221,69 @@ const resolveGeneralThreadAgentId = (
 const uuidList = (ids: string[]): Prisma.Sql =>
   Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))
 
-type PreviewRow = { thread_id: string; content: string; restricted: boolean }
+type PreviewRow = { thread_id: string; id: string; content: string }
 
 /**
- * The newest message a viewer may quote, at most
+ * The newest message a viewer may read, at most
  * `CONVERSATION_PREVIEW_MAX_CHARS` of it.
  *
- * Fails closed by construction: a message carrying **any** basis scope
- * contributes null rather than a redaction, so a preview can never become the
- * place a restricted answer leaks one line at a time. `DISTINCT ON` is what
- * keeps this one query rather than one per row.
+ * The predicate is the one every other message read applies —
+ * `resolveDisclosureViewer` + `viewerSatisfiesBasis` (`@nessie/runtime`), what
+ * `listThreadMessages` withholds a feed row with and what `canUserReadRunBasis`
+ * asks on the run side for `progressLine`. Fail closed on an **unsatisfied**
+ * basis, not on the existence of one: the previous rule (any
+ * `message_basis_scopes` row at all) hid a reply from the very person who asked
+ * for it, because an assistant-started conversation's reply carries the
+ * requester's own DM as its lineage.
+ *
+ * A withheld newest message contributes null rather than an older readable
+ * line: reaching past it would tell the list that something newer exists.
+ * Grants are deliberately not consulted here — a preview is a quotation in a
+ * list, with none of the "readable, but not yours to pass on" framing the
+ * conversation itself carries, so a grant-only read stays inside the thread.
+ *
+ * Two queries, whatever the page size: `DISTINCT ON` for the newest row per
+ * thread, then the basis rows for exactly those ids. A page carrying no basis
+ * at all resolves no viewer and costs nothing further.
  */
 const loadLastMessagePreviews = async (
   prisma: PrismaClient,
-  threadIds: string[],
+  input: { organizationId: string; threadIds: string[]; userId: string },
 ): Promise<Map<string, string>> => {
   const previews = new Map<string, string>()
-  if (threadIds.length === 0) return previews
+  if (input.threadIds.length === 0) return previews
 
   const rows = await prisma.$queryRaw<PreviewRow[]>(Prisma.sql`
     SELECT DISTINCT ON (m.thread_id)
       m.thread_id AS thread_id,
-      m.content AS content,
-      EXISTS (
-        SELECT 1 FROM "message_basis_scopes" s WHERE s.message_id = m.id
-      ) AS restricted
+      m.id AS id,
+      m.content AS content
     FROM "messages" m
-    WHERE m.thread_id IN (${uuidList(threadIds)})
+    WHERE m.thread_id IN (${uuidList(input.threadIds)})
       AND m.deleted_at IS NULL
       AND m.role::text <> 'system'
     ORDER BY m.thread_id, m.created_at DESC, m.id DESC
   `)
+  if (rows.length === 0) return previews
+
+  const basisRows = await prisma.messageBasisScope.findMany({
+    where: { messageId: { in: rows.map((row) => row.id) } },
+    select: { messageId: true, scopeId: true, scopeType: true },
+  })
+  const basisByMessage = new Map<string, BasisScopeRow[]>()
+  for (const row of basisRows) {
+    const basis = basisByMessage.get(row.messageId) ?? []
+    basis.push({ scopeId: row.scopeId, scopeType: row.scopeType })
+    basisByMessage.set(row.messageId, basis)
+  }
+  // Resolved once for the whole page, never once per row.
+  const viewer = basisRows.length > 0
+    ? await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
+    : null
 
   for (const row of rows) {
-    if (row.restricted) continue
+    const basis = basisByMessage.get(row.id)
+    if (basis && !(viewer && viewerSatisfiesBasis(basis, viewer))) continue
     // One line, always: a row and a card each give this a single line, and a
     // preview that carried the message's own newlines would either be clipped
     // by CSS or push the row's height around.
@@ -348,7 +382,11 @@ const buildConversationRecords = async (
       ? Promise.resolve(input.lastActivityByThread)
       : loadLastMessageAtByThread(prisma, threadIds),
     loadUnreadCountsByThread(prisma, threadIds, input.userId),
-    loadLastMessagePreviews(prisma, threadIds),
+    loadLastMessagePreviews(prisma, {
+      organizationId: input.organizationId,
+      threadIds,
+      userId: input.userId,
+    }),
     loadActiveRuns(prisma, {
       organizationId: input.organizationId,
       threadIds,

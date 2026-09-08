@@ -18,9 +18,9 @@ import { findThreadForUser } from '../src/services/message-read-state.js'
  *
  * Every property here is a *relationship between tables* — a thread's audience
  * is its channel's membership, an agent's list is two arms over bindings, a
- * preview fails closed on a `message_basis_scopes` row, a progress line is
- * gated by `run_basis_scopes` — and a fake would only restate the code. What
- * is proved is that the queries say what the rules say.
+ * preview is the newest message the viewer satisfies the `message_basis_scopes`
+ * of, a progress line is gated by `run_basis_scopes` — and a fake would only
+ * restate the code. What is proved is that the queries say what the rules say.
  *
  * Integration test against the local Postgres (see AGENTS.md). Every cleanup is
  * scoped to this seed and no global count is asserted: several suites create
@@ -598,7 +598,7 @@ runDatabaseTest('renaming: the starter may, a bystander may not, General cannot'
   })
 })
 
-runDatabaseTest('a preview fails closed on a restricted newest message', async () => {
+runDatabaseTest('a preview is null when the viewer does not satisfy the newest basis', async () => {
   await withSeed(async (prisma, s) => {
     const started = await startAgentConversation(prisma, {
       agentId: s.agentId,
@@ -629,12 +629,14 @@ runDatabaseTest('a preview fails closed on a restricted newest message', async (
       threadId: started.thread.id,
       userId: s.userA,
     })
+    // B's own DM as the lineage: a scope A holds no membership in, so A does
+    // not satisfy it.
     await prisma.messageBasisScope.create({
       data: {
         messageId: restricted,
         organizationId: s.organizationId,
-        scopeId: s.userA,
-        scopeType: 'user',
+        scopeId: s.paChannelB,
+        scopeType: 'channel',
       },
     })
 
@@ -643,10 +645,78 @@ runDatabaseTest('a preview fails closed on a restricted newest message', async (
       threadId: started.thread.id,
       userId: s.userA,
     })
-    // Even for the person the basis names: a preview never redacts, and the
-    // newest message is the only one it may quote.
+    // Null, not the older readable line underneath it: reaching past the
+    // withheld turn would tell A that something newer exists.
     assert.equal(withheld?.lastMessagePreview, null)
     assert.equal(withheld?.lastActivityAt, new Date('2026-01-02T00:00:00.000Z').toISOString())
+  })
+})
+
+runDatabaseTest('a preview is present when the viewer satisfies the newest basis', async () => {
+  await withSeed(async (prisma, s) => {
+    const started = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+      title: 'Asked through the assistant',
+    })
+    assert.equal(started.kind, 'created')
+    if (started.kind !== 'created') return
+
+    const answered = await postMessage(prisma, {
+      content: 'here is what I found',
+      createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      threadId: started.thread.id,
+      userId: s.userA,
+    })
+    // The lineage every assistant-started conversation's reply carries: the
+    // requester's own Personal Assistant DM. A is its only member.
+    await prisma.messageBasisScope.create({
+      data: {
+        messageId: answered,
+        organizationId: s.organizationId,
+        scopeId: s.paChannelA,
+        scopeType: 'channel',
+      },
+    })
+
+    // The person who asked reads their own answer.
+    const forA = await loadConversationForUser(prisma, {
+      organizationId: s.organizationId,
+      threadId: started.thread.id,
+      userId: s.userA,
+    })
+    assert.equal(forA?.lastMessagePreview, 'here is what I found')
+
+    // The same row in the same public room still says nothing to somebody the
+    // basis does not reach.
+    const forB = await loadConversationForUser(prisma, {
+      organizationId: s.organizationId,
+      threadId: started.thread.id,
+      userId: s.userB,
+    })
+    assert.equal(forB?.lastMessagePreview, null)
+
+    // And the list read applies the same predicate as the single read.
+    const listForA = await listAgentConversationsForUser(prisma, {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      userId: s.userA,
+    })
+    assert.equal(
+      listForA?.data.find((row) => row.id === started.thread.id)?.lastMessagePreview,
+      'here is what I found',
+    )
+    const listForB = await listAgentConversationsForUser(prisma, {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      userId: s.userB,
+    })
+    assert.equal(
+      listForB?.data.find((row) => row.id === started.thread.id)?.lastMessagePreview,
+      null,
+    )
   })
 })
 
@@ -821,3 +891,4 @@ runDatabaseTest('the list pages by activity without repeating a row', async () =
     assert.equal(seen.size, 4)
   })
 })
+
