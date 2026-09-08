@@ -77,6 +77,42 @@ where continuing would cause unsafe or destructive effects.
   live browser test. No production setup replay or additional UI work belongs
   in this batch.
 
+## Combined implementation review — PR 431 at `ae07d3c80`
+
+The first implementation batch is pushed. Worker typecheck passed; the author
+did not run the added database tests because its isolated fixture was unavailable.
+CI run `34271980606` is still collecting results. Review found these corrections
+to resolve together before deployment:
+
+- **Preserve every brief's disclosure and requester.** The new raw
+  `promptOverride` concatenates hidden messages, but `run-job.ts` admits only
+  the selected trigger message's lineage. Earlier messages' restrictions and
+  original authors therefore disappear. Their actor contexts may also differ.
+  Keep each consumed brief attached to its durable message and authorized
+  requester. Processing peer briefs separately is acceptable and may be simpler
+  than introducing a new combined-prompt mechanism.
+- **Keep mixed pending work intact.** Concatenation only happens when the latest
+  pending message is `system`; a later human turn still drops earlier hidden
+  briefs. It also applies to ordinary scheduled kickoffs whose latest-only
+  behavior is deliberate. Scope the repair structurally to peer work and retain
+  unconsumed pending markers for subsequent drains.
+- **Restore format-error recovery.** The switch modification made both `format`
+  and `empty_response` terminal. Only exhausted `empty_response` belongs in this
+  change; preserve the existing bounded format retry.
+- **Prove the promised lifecycle.** The new serialization test completes its
+  predecessor rather than failing it, and the failure test calls the handler
+  once while deleting the unattended-silence regression. Add meaningful checks
+  for failed-predecessor progress, mixed/private briefs, terminal redelivery,
+  ordinary unattended silence, and original-human credential selection.
+- **Finish the delivery evidence.** Update the affected standard and comments,
+  build the worker, run changed behavior through the documented Turbo/isolated
+  database path, and accurately describe both the original empty-output fix and
+  this runtime correction in the final PR body.
+
+Wait for the current CI results, append any relevant failures to this same
+brief, then return one correction package to the existing Terra agent. Do not
+start live sales runs against this unverified implementation.
+
 ## Fixture references
 
 - Project: `8c03c93d-0175-4b74-ba79-391da2e938be`
