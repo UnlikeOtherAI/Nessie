@@ -16,6 +16,13 @@ that have not passed the audited backfill. The backfill must run
 inconsistent rows; it may never infer an owner from a name, current session,
 or creation time.
 
+An operation that places something in a project takes both the selected
+`projectId` and `teamId` and resolves them through `Project.teamId`; it never
+defaults to a team's old anchor project. Team-only homes and system surfaces
+have no caller-selected project, so they retain that anchor as their temporary
+default until the audited backfill removes it. Do not use the latter exception
+to weaken an explicit placement check.
+
 ## The model
 
 UnlikeOtherAI (UOA), the SSO, owns two levels, and people are members of the

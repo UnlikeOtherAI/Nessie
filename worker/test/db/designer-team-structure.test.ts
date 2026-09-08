@@ -18,8 +18,8 @@ import type { BuiltinToolRuntimeContext } from '../../src/run/tool-types.js'
 import { runDatabaseTest } from './support.js'
 
 /**
- * The Agent Designer standing up a place to work: a project, a team in it, and
- * a channel in that team — against real rows, in its own bootstrapped home DM.
+ * The Agent Designer standing up a place to work: a project and a channel in
+ * its existing team — against real rows, in its own bootstrapped home DM.
  *
  * What a fake cannot prove and this does: the channel really lands in the
  * project (the hierarchy is three tables deep), each write leaves exactly ONE
@@ -76,8 +76,11 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   // requires a `TeamMember`/`ProjectMember` row (or org owner/admin) before a
   // channel can land in a team — `member` needs standing here for the
   // "channel_create mirrors its route" case below to still exercise a success.
-  await prisma.teamMember.create({
-    data: { role: 'member', teamId: team.id, userId: member.id },
+  await prisma.teamMember.createMany({
+    data: [
+      { role: 'owner', teamId: team.id, userId: owner.id },
+      { role: 'member', teamId: team.id, userId: member.id },
+    ],
   })
 
   // The real home DM: `system_agent`, the `gagent:` dmKey, the blueprint's own
@@ -167,23 +170,24 @@ const refusal = async (promise: Promise<unknown>): Promise<string> => {
   throw new Error('expected the tool to refuse')
 }
 
-runDatabaseTest('the Designer stands up a project, a team and a channel in it', async (t) => {
+runDatabaseTest('the Designer stands up a project and a channel in its team', async (t) => {
   const prisma = new PrismaClient()
   const team = await seed(prisma)
   t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
   const context = buildContext(prisma, team, team.ownerId)
 
-  const projectResult = await runProjectCreateTool(context, { name: 'Marketing' })
+  const projectResult = await runProjectCreateTool(context, {
+    name: 'Marketing',
+    teamId: team.teamId,
+  })
   const projectId = idFrom(projectResult.outputPreview, 'projectId')
-
-  const teamResult = await runTeamCreateTool(context, { name: 'Campaigns', projectId })
-  const teamId = idFrom(teamResult.outputPreview, 'teamId')
 
   // Deliberately no `visibility`: what the model omits must not publish a room
   // to the whole organisation.
   const channelResult = await runChannelCreateTool(context, {
     label: 'Launch plan',
-    teamId,
+    projectId,
+    teamId: team.teamId,
   })
   const channelId = idFrom(channelResult.outputPreview, 'channelId')
 
@@ -192,7 +196,7 @@ runDatabaseTest('the Designer stands up a project, a team and a channel in it', 
     select: { organizationId: true, projectId: true, teamId: true, visibility: true },
   })
   assert.equal(channel.projectId, projectId, 'the channel belongs to the new project')
-  assert.equal(channel.teamId, teamId)
+  assert.equal(channel.teamId, team.teamId)
   assert.equal(channel.organizationId, team.organizationId)
   assert.equal(channel.visibility, 'private')
 
@@ -205,13 +209,6 @@ runDatabaseTest('the Designer stands up a project, a team and a channel in it', 
     [{ role: 'owner', userId: team.ownerId }],
   )
   assert.deepEqual(
-    await prisma.teamMember.findMany({
-      where: { teamId },
-      select: { role: true, userId: true },
-    }),
-    [{ role: 'owner', userId: team.ownerId }],
-  )
-  assert.deepEqual(
     await prisma.channelMember.findMany({
       where: { channelId },
       select: { userId: true },
@@ -219,16 +216,18 @@ runDatabaseTest('the Designer stands up a project, a team and a channel in it', 
     [{ userId: team.ownerId }],
   )
 
-  // The resolving read finds both, so a NAME becomes the id the writes take.
+  // The resolving read finds the project and its owning team, so names become
+  // the ids the next write takes.
   const listed = await runProjectListTool(context, { query: 'campaigns' })
   assert.match(listed.outputPreview, new RegExp(`projectId=${projectId}`))
-  assert.match(listed.outputPreview, new RegExp(`teamId=${teamId}`))
+  assert.match(listed.outputPreview, new RegExp(`teamId=${team.teamId}`))
 
   // The mirroring claim, asserted: the same input through the function the
   // route calls produces the same row shape.
   const viaRoute = await createProjectForUser(prisma, {
     name: 'Marketing (clicked)',
     organizationId: team.organizationId,
+    teamId: team.teamId,
     userId: team.ownerId,
   })
   const projectShape = {
@@ -275,7 +274,7 @@ runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) 
   })
 
   const projectRefusal = await refusal(
-    runProjectCreateTool(context, { name: 'Marketing' }),
+    runProjectCreateTool(context, { name: 'Marketing', teamId: team.teamId }),
   )
   assert.match(projectRefusal, /Only an organisation owner can create a project/)
   assert.match(projectRefusal, /Ask an owner/)
@@ -303,6 +302,7 @@ runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) 
   // (seeded above), which is exactly the standing the route requires.
   const channelResult = await runChannelCreateTool(context, {
     label: 'Member room',
+    projectId: team.projectId,
     teamId: team.teamId,
   })
   const channelId = idFrom(channelResult.outputPreview, 'channelId')
@@ -330,7 +330,11 @@ runDatabaseTest('channel_create refuses a team the caller has no standing in', a
   const channelsBefore = await prisma.channel.count({ where: { teamId: strangeTeam.id } })
 
   const message = await refusal(
-    runChannelCreateTool(context, { label: 'Trespassing room', teamId: strangeTeam.id }),
+    runChannelCreateTool(context, {
+      label: 'Trespassing room',
+      projectId: team.projectId,
+      teamId: strangeTeam.id,
+    }),
   )
   assert.match(message, /not a member of that team/)
 
@@ -366,7 +370,10 @@ runDatabaseTest('project_list is scoped to the caller and their organisation', a
 
   const ownerContext = buildContext(prisma, team, team.ownerId)
   const ownerProject = idFrom(
-    (await runProjectCreateTool(ownerContext, { name: 'Owner only' })).outputPreview,
+    (await runProjectCreateTool(ownerContext, {
+      name: 'Owner only',
+      teamId: team.teamId,
+    })).outputPreview,
     'projectId',
   )
 

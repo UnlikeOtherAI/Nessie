@@ -37,12 +37,22 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const otherOrganization = await prisma.organization.create({
     data: { name: `project-delete-other-${suffix}` },
   })
+  const anchorProject = await prisma.project.create({
+    data: { name: `project-delete-anchor-${suffix}`, organizationId: organization.id },
+  })
+  const team = await prisma.team.create({
+    data: { name: `project-delete-team-${suffix}`, projectId: anchorProject.id },
+  })
   await prisma.organizationMember.create({
     data: { organizationId: organization.id, role: 'owner', userId: user.id },
+  })
+  await prisma.teamMember.create({
+    data: { role: 'owner', teamId: team.id, userId: user.id },
   })
   const project = await createProjectForUser(prisma, {
     name: `Deletable ${suffix}`,
     organizationId: organization.id,
+    teamId: team.id,
     userId: user.id,
   })
   return {

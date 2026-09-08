@@ -3,7 +3,7 @@ import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 import {
   ensureDefaultThread,
   externalAgentDmKey,
-  loadChannelTeamProject,
+  loadTeamProjectScope,
 } from '@nessie/team-admin'
 
 /**
@@ -198,7 +198,7 @@ export const ensureExternalAgentChannel = async (
     where: { dmKey: legacyDmKey, archivedAt: null },
     data: { archivedAt: new Date() },
   })
-  const teamProject = await loadChannelTeamProject(prisma, {
+  const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
   })

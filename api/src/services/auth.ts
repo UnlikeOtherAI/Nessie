@@ -109,7 +109,12 @@ export const loadUserMemberships = async (
       where: { userId },
       include: {
         team: {
-          select: { id: true, name: true, projectId: true, projects: { select: { id: true }, take: 2 } },
+          select: {
+            id: true,
+            name: true,
+            project: { select: { id: true, teamId: true } },
+            projects: { select: { id: true } },
+          },
         },
       },
     }),
@@ -120,7 +125,10 @@ export const loadUserMemberships = async (
   for (const tm of teamMembers) {
     // Canonical ownership wins. The old FK is only a transition reader for
     // records the audited backfill has not yet assigned.
-    const projectIds = [...new Set([tm.team.projectId, ...tm.team.projects.map((project) => project.id)])]
+    const projectIds = [
+      ...tm.team.projects.map((project) => project.id),
+      ...(tm.team.project.teamId ? [] : [tm.team.project.id]),
+    ]
     for (const projectId of projectIds) {
       const list = teamsByProject.get(projectId) ?? []
       list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })

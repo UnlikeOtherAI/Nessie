@@ -96,12 +96,12 @@ export const runProjectListTool = async (
     if (project.name.toLowerCase().includes(needle)) return true
     return teams.some(
       (team) =>
-        team.projectId === project.id && team.name.toLowerCase().includes(needle),
+        (team.projectIds ?? []).includes(project.id) && team.name.toLowerCase().includes(needle),
     )
   })
 
   const lines = matches.map((project) => {
-    const projectTeams = teams.filter((team) => team.projectId === project.id)
+    const projectTeams = teams.filter((team) => (team.projectIds ?? []).includes(project.id))
     const teamText = projectTeams.length === 0
       ? 'no teams yet — a channel needs one'
       : projectTeams
