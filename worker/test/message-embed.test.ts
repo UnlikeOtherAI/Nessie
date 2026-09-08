@@ -106,5 +106,5 @@ test('message embedding migration takes its vector width from the shared dimensi
     '../../api/prisma/migrations/20260911110002_message_embedding_projection/migration.sql',
     import.meta.url,
   ), 'utf8')
-  assert.match(migration, new RegExp(`embedding vector\\(${EMBEDDING_DIMENSIONS}\\)`))
+  assert.match(migration, new RegExp(`"embedding" vector\\(${EMBEDDING_DIMENSIONS}\\)`))
 })
