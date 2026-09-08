@@ -355,7 +355,9 @@ export const runAgentConversationStartTool = async (
         && destination.members.length === 1
         && destination.members[0]?.userId === member.userId)
     const viewer = destinationIsRequestersOwnRoom
-      ? await resolveDisclosureViewer(tx, member.organizationId, member.userId)
+      ? await resolveDisclosureViewer(tx, member.organizationId, member.userId, {
+        uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      })
       : null
     const openerBasis = computeDelegatedPostBasis({
       consumed: consumedSources.list(),
@@ -565,6 +567,7 @@ export const runAgentConversationsListTool = async (
   // First page, as the acting person: `null` is "you can see nothing of this
   // agent", which is the same answer as "no such agent" on purpose.
   const page = await listAgentConversationsForUser(context.prisma, {
+    uoaIdentity: context.actorContext.actionContext.uoaIdentity,
     agentId: target.id,
     organizationId: member.organizationId,
     userId: member.userId,
@@ -608,6 +611,7 @@ export const runConversationReferenceTool = async (
     // The acting person's own visibility, through the one predicate every
     // conversation read shares (`buildViewerThreadWhere`, inside this).
     const record = await loadConversationForUser(context.prisma, {
+    uoaIdentity: context.actorContext.actionContext.uoaIdentity,
       organizationId,
       threadId: args.conversation,
       userId: actingUserId,

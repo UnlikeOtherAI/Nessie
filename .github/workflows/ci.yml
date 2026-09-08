@@ -635,8 +635,9 @@ jobs:
       # to preserve, and preview serves the same code deterministically.
       NAV_E2E_ADMIN_MODE: preview
       # The isolated member-management fixture is a separate Vite entry only
-      # for this browser evaluation; release bundles never include it.
+      # for this browser evaluation; release bundles never include either one.
       NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE: '1'
+      NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE: '1'
 
     steps:
       - name: Checkout

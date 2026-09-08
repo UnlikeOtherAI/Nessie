@@ -252,7 +252,9 @@ test('executeKnowledgeExtractJob chunks plain text and enqueues knowledge.embed'
   assert.ok(executeRawCalls[0]!.values.includes(PAGE.id))
   assert.ok(executeRawCalls[1]!.sql.includes('INSERT INTO queue_jobs'))
   assert.ok(executeRawCalls[1]!.values.includes('knowledge.embed'))
-  assert.ok(executeRawCalls[1]!.values.includes(`kb-embed:${PAGE.id}:${VERSION_ID}`))
+  assert.ok(executeRawCalls[1]!.values.some((value) =>
+    typeof value === 'string' && value.startsWith(`kb-embed:${PAGE.id}:${VERSION_ID}:`),
+  ))
 })
 
 test('executeKnowledgeExtractJob is a no-op when chunks already exist for the version', async () => {

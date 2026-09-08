@@ -14,11 +14,11 @@ import {
 import {
   buildAccessibleChannelWhere,
   isSystemManagedAgent,
-  type AgentVisibilityScope,
 } from '@nessie/team-admin'
 
 import {
   canReadAgentMessage,
+  type DisclosureAgentVisibilityScope,
   filterReadableAgentRuns,
 } from './agent-read-disclosure.js'
 import {
@@ -51,7 +51,7 @@ const mapToolCall = (toolCall: {
 export const loadAgentStatus = async (
   prisma: PrismaClient,
   agentId: string,
-  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
+  options?: { includeSystemManaged?: boolean; visibility?: DisclosureAgentVisibilityScope },
 ): Promise<AgentStatusResponse | null> => {
   const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
   const taskVisibilityWhere = options?.visibility
@@ -125,6 +125,7 @@ export const loadAgentStatus = async (
     if (!childTask || !options?.visibility || !(await canUserReadRunDerivedRecord(prisma, {
       organizationId: options.visibility.organizationId,
       runId: childTask.runId,
+      uoaIdentity: options.visibility.uoaIdentity,
       userId: options.visibility.userId,
     }))) return null
     return { childAgent, childTask }
@@ -172,7 +173,7 @@ export const loadAgentStatus = async (
 export const loadAgentActivity = async (
   prisma: PrismaClient,
   agentId: string,
-  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
+  options?: { includeSystemManaged?: boolean; visibility?: DisclosureAgentVisibilityScope },
 ): Promise<AgentActivityResponse | null> => {
   const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
   const taskVisibilityWhere = options?.visibility
@@ -226,6 +227,7 @@ export const loadAgentActivity = async (
     if (!childTask || !options?.visibility || !(await canUserReadRunDerivedRecord(prisma, {
       organizationId: options.visibility.organizationId,
       runId: childTask.runId,
+      uoaIdentity: options.visibility.uoaIdentity,
       userId: options.visibility.userId,
     }))) return null
     return { childAgent, childTask }
@@ -273,7 +275,7 @@ export const loadAgentMessages = async (
   agentId: string,
   limit: number,
   offset = 0,
-  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
+  options?: { includeSystemManaged?: boolean; visibility?: DisclosureAgentVisibilityScope },
 ): Promise<AgentMessagePage> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
@@ -356,7 +358,7 @@ export const loadAgentMessages = async (
 export const loadAgentChildren = async (
   prisma: PrismaClient,
   agentId: string,
-  visibility: AgentVisibilityScope,
+  visibility: DisclosureAgentVisibilityScope,
   options?: { includeSystemManaged?: boolean },
 ): Promise<AgentChild[]> => {
   const organizationId = visibility.organizationId
@@ -401,7 +403,7 @@ export const loadRunToolCalls = async (
   prisma: PrismaClient,
   agentId: string,
   runId: string,
-  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
+  options?: { includeSystemManaged?: boolean; visibility?: DisclosureAgentVisibilityScope },
 ): Promise<ToolCallEntry[]> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },

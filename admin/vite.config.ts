@@ -28,6 +28,7 @@ export default defineConfig(({ command, mode }) => {
   const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') }
   const executorApiPublicUrl = resolveExecutorApiPublicUrl(env, apiPort, command === 'serve')
   const includeMemberManagementFixture = env.NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE === '1'
+  const includeAppConnectScopeFixture = env.NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -36,14 +37,19 @@ export default defineConfig(({ command, mode }) => {
       },
     } : {}),
   plugins: [react(), tailwindcss()],
-  // The CI-only member-management fixture must be a build input for preview
-  // mode. The explicit flag keeps it out of ordinary production bundles.
-  ...(includeMemberManagementFixture ? {
+  // CI-only browser fixtures must be explicit preview inputs. Their flags keep
+  // them out of ordinary production bundles.
+  ...(includeMemberManagementFixture || includeAppConnectScopeFixture ? {
     build: {
       rollupOptions: {
         input: {
           app: resolve(__dirname, 'index.html'),
-          memberManagement: resolve(__dirname, 'e2e/member-management/index.html'),
+          ...(includeMemberManagementFixture ? {
+            memberManagement: resolve(__dirname, 'e2e/member-management/index.html'),
+          } : {}),
+          ...(includeAppConnectScopeFixture ? {
+            appConnectScope: resolve(__dirname, 'e2e/app-connect-scope/index.html'),
+          } : {}),
         },
       },
     },

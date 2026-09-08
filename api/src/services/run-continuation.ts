@@ -100,6 +100,7 @@ export const continueRun = async (
           canUserReadRunBasis(prisma, {
             organizationId: input.organizationId,
             runId: run.id,
+            uoaIdentity: actorContext.actionContext.uoaIdentity,
             userId: actorContext.actor.actorId,
           }),
         interactive: actorContext.actor.actorType === 'user',

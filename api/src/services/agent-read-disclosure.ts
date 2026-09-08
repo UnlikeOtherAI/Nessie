@@ -1,8 +1,13 @@
 import type { PrismaClient } from '@prisma/client'
 import { canUserReadDisclosureBasis } from '@nessie/runtime'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 import type { AgentVisibilityScope } from '@nessie/team-admin'
 
 import { canUserReadRunBasis } from './run-disclosure.js'
+
+export type DisclosureAgentVisibilityScope = AgentVisibilityScope & {
+  uoaIdentity: UoaSessionIdentity | undefined
+}
 
 /**
  * Agent ownership and ordinary channel visibility decide whether a person can
@@ -11,7 +16,7 @@ import { canUserReadRunBasis } from './run-disclosure.js'
 export const filterReadableAgentRuns = async <TRun extends { id: string }>(
   prisma: PrismaClient,
   runs: readonly TRun[],
-  visibility?: AgentVisibilityScope,
+  visibility?: DisclosureAgentVisibilityScope,
 ): Promise<TRun[]> => {
   if (runs.length === 0) return []
 
@@ -32,6 +37,7 @@ export const filterReadableAgentRuns = async <TRun extends { id: string }>(
     readable: await canUserReadRunBasis(prisma, {
       organizationId: visibility.organizationId,
       runId: run.id,
+      uoaIdentity: visibility.uoaIdentity,
       userId: visibility.userId,
     }),
     run,
@@ -50,7 +56,7 @@ export type AgentMessageDisclosureCandidate = {
 export const canReadAgentMessage = async (
   prisma: PrismaClient,
   message: AgentMessageDisclosureCandidate,
-  visibility?: AgentVisibilityScope,
+  visibility?: DisclosureAgentVisibilityScope,
 ): Promise<boolean> => {
   if (message.basisScopes.length === 0) return true
   if (!visibility) return false
@@ -62,6 +68,7 @@ export const canReadAgentMessage = async (
     disclosureSources: message.disclosureSources,
     messageId: message.id,
     organizationId: visibility.organizationId,
+    uoaIdentity: visibility.uoaIdentity,
     userId: visibility.userId,
   })
 }

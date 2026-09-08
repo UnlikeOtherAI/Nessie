@@ -71,7 +71,9 @@ const makeApp = (viewerUserId: string) => {
       },
     },
     organizationMember: { findFirst: async () => ({ id: `membership-${viewerUserId}` }) },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
     projectMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
     run: {
       findUnique: async () => ({ agentId: AGENT_ID, thread: { channelId: CHANNEL_ID } }),
     },

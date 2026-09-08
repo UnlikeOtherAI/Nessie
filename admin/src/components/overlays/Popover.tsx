@@ -31,6 +31,7 @@ import type { PopoverAnchorRect, PopoverPlacement } from './placePopover'
  */
 
 export type PopoverRole = 'menu' | 'listbox' | 'dialog' | 'tooltip'
+export type PopoverLayer = 'popover' | 'modal'
 
 type PopoverProps = {
   /**
@@ -49,6 +50,8 @@ type PopoverProps = {
   id?: string
   /** The accessible name; also what the Back control announces on `single`. */
   label: string
+  /** A modal-owned menu sits above its modal but remains below blocking. */
+  layer?: PopoverLayer
   /** Sizes the panel to its anchor, the way a combobox listbox matches its input. */
   matchAnchorWidth?: boolean
   onClose: () => void
@@ -80,6 +83,7 @@ export const Popover = ({
   className,
   id,
   label,
+  layer = 'popover',
   matchAnchorWidth = false,
   onClose,
   onKeyDown,
@@ -95,6 +99,8 @@ export const Popover = ({
     label,
     onClose,
     open,
+    ownerKind: layer === 'modal' ? 'modal' : undefined,
+    escapeAnchorRef: anchorRef,
   })
   const { panelRef, requestClose } = overlay
   const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)
@@ -169,18 +175,20 @@ export const Popover = ({
     if (!open) return undefined
     const onPress = (event: Event) => {
       const target = event.target
-      if (!(target instanceof Node)) return
-      if (panelRef.current?.contains(target)) return
+      const panel = panelRef.current
+      const domNode = panel?.ownerDocument.defaultView?.Node
+      if (!panel || !domNode || !(target instanceof domNode)) return
+      if (panel.contains(target)) return
       if (anchorRef.current?.contains(target)) return
       // A modal or another popover can be portalled above this one. It is not
       // an "outside" press for the lower layer: closing this menu would
       // unmount the control that owns the higher overlay before its button's
       // click fires (the session-debug Copy action was the visible failure).
       // Direct children of the shared host are independent overlay trees.
-      const panel = panelRef.current
       const host = panel?.parentElement
       if (host?.classList.contains('admin-overlay-root')) {
-        let overlayTree = target instanceof Element ? target : target.parentElement
+        const domElement = panel.ownerDocument.defaultView?.Element
+        let overlayTree = domElement && target instanceof domElement ? target : target.parentElement
         while (overlayTree && overlayTree.parentElement !== host) {
           overlayTree = overlayTree.parentElement
         }

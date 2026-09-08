@@ -5,6 +5,7 @@ import {
   parseOrganizationId,
   parseRunId,
   type AuthorizedActionContext,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 import type { PlanRecord, PlanStepRecord } from '../contracts/plans-mailbox.js'
 import {
@@ -88,6 +89,7 @@ export const listPlans = async (
   prisma: PrismaClient,
   organizationId: string,
   userId: string,
+  uoaIdentity: UoaSessionIdentity | undefined,
   input: {
     agentId?: string
     status?: PlanRecord['status']
@@ -107,6 +109,7 @@ export const listPlans = async (
     readable: await canUserReadRunDerivedRecord(prisma, {
       organizationId,
       runId: plan.runId,
+      uoaIdentity,
       userId,
     }),
   })))
@@ -118,6 +121,7 @@ export const getPlan = async (
   organizationId: string,
   planId: string,
   userId: string,
+  uoaIdentity: UoaSessionIdentity | undefined,
 ): Promise<{ plan: PlanRecord; steps: PlanStepRecord[] } | null> => {
   const plan = await prisma.plan.findFirst({
     where: {
@@ -129,6 +133,7 @@ export const getPlan = async (
   if (!(await canUserReadRunDerivedRecord(prisma, {
     organizationId,
     runId: plan.runId,
+    uoaIdentity,
     userId,
   }))) return null
 

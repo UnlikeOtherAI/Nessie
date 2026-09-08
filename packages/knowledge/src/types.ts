@@ -53,6 +53,9 @@ export type KnowledgePageVersionRecord = {
   bodyRef: string | null
   // For file nodes: the stored object backing this version.
   attachmentId: string | null
+  // SHA-256 of the canonical Markdown attachment bytes. Null for rich-text
+  // pages and legacy file versions whose projection has not been backfilled.
+  sourceContentHash: string | null
   authorType: KnowledgeAuthorType
   authorId: string
   changeComment: string | null
@@ -199,6 +202,7 @@ export type HybridSearchPagesInput = {
   organizationId: string
   query: string
   queryEmbedding: number[] | null
+  embeddingModel?: string | null
   viewer?: SpaceViewer
   projectId?: string
   spaceId?: string
@@ -261,6 +265,9 @@ export type AddFileVersionInput = {
   authorId: string
   authorType: KnowledgeAuthorType
   changeComment?: string | null
+  // A downloaded Markdown editor pins the file version it edited. Ordinary
+  // upload remains append-only without this optional compare-and-swap fence.
+  expectedLatestVersionId?: string
 }
 
 /**

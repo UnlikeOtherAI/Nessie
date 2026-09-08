@@ -309,6 +309,7 @@ export const runReactTool = async (
       disclosureSources: message.disclosureSources,
       messageId: message.id,
       organizationId: context.channel.organizationId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
       userId: effectiveUserId,
     }))
   if (!readable) {

@@ -44,11 +44,13 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
-  - A provider `finish_reason: length` checkpoints the retained transcript and
-    gets one no-tools finalisation turn from completed evidence; incomplete
-    provider tool calls never dispatch. That attempt is carried in crash state,
-    so a resumed run neither repeats it nor replays a completed tool effect; a
-    second length result surfaces a truthful partial answer and checkpoint.
+  - A provider `finish_reason: length` — or a successful response with neither
+    visible text nor tool calls — checkpoints the retained transcript and gets
+    one no-tools finalisation turn from completed evidence; incomplete provider
+    tool calls never dispatch. That attempt is carried in crash state, so a
+    resumed run neither repeats it nor replays a completed tool effect; a
+    second length result surfaces a truthful partial answer and checkpoint, and
+    a second empty success names the provider response failure for the person.
   - Per-call output admission starts with the configured fallback, narrows to
     the selected provider capability's `maxOutputTokens` when it is present,
     and reserves that output together with the projected input before dispatch.

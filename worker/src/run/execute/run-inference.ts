@@ -201,6 +201,7 @@ export const createRunInference = (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
     agentModel: { model: string | null; provider: string | null },
+    allowEmptySuccess: boolean,
     streaming: boolean,
     maxOutputTokens?: number,
   ): Promise<InferenceResult> => {
@@ -225,6 +226,7 @@ export const createRunInference = (
     try {
       const mpr = await runInferenceGraph(deps.prisma, {
         actorContext: payload.actorContext,
+        ...(allowEmptySuccess ? { allowEmptySuccess: true } : {}),
         agent: {
           id: context.agent.id,
           model: agentModel.model,
@@ -290,10 +292,7 @@ export const createRunInference = (
           runId: parseRunId(context.run.id),
         })
       }
-      if (
-        mpr.status !== 'completed'
-        || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
-      ) {
+      if (mpr.status !== 'completed') {
         throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
       }
       return {
@@ -320,7 +319,7 @@ export const createRunInference = (
     mainOutputTokens,
     runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
-      return call(messages, tools, runModel, true, callOptions?.maxOutputTokens)
+      return call(messages, tools, runModel, true, true, callOptions?.maxOutputTokens)
     },
     runUtility: (messages, tools) =>
       call(
@@ -329,6 +328,7 @@ export const createRunInference = (
         options.utilityModel
           ? { model: options.utilityModel.model, provider: options.utilityModel.provider }
           : runModel,
+        false,
         false,
       ),
   }

@@ -360,6 +360,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         prisma,
         {
           organizationId: actorContext.tenant.organizationId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
           userId: actorContext.actor.actorId,
         },
         existingAgent,
@@ -409,6 +410,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         agentId,
         {
           organizationId: actorContext.tenant.organizationId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
           userId: actorContext.actor.actorId,
         },
         {
@@ -500,6 +502,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         agentId,
         {
           organizationId: actorContext.tenant.organizationId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
           userId: actorContext.actor.actorId,
         },
         body.avatarAttachmentId,
@@ -551,6 +554,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         prisma,
         {
           organizationId: actorContext.tenant.organizationId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
           userId: actorContext.actor.actorId,
         },
         existingAgent,

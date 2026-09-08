@@ -153,6 +153,65 @@ test('native provider rejects publishing archived pages', async () => {
   )
 })
 
+test('native provider rejects a body-only revision for a file node', async () => {
+  const tx = {
+    knowledgePage: {
+      findFirst: async () => ({
+        id: pageId,
+        kind: 'file',
+        revision: 0,
+        status: 'draft',
+      }),
+    },
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.updatePage(pageId, {
+      authorId: 'user-1',
+      authorType: 'user',
+      body: '# Competing body',
+      organizationId,
+    }),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'File versions must be created from their attachment bytes',
+  )
+})
+
+test('native provider rejects a file version whose downloaded base is stale', async () => {
+  const tx = {
+    knowledgePage: {
+      findFirst: async () => ({ id: pageId, kind: 'file', status: 'draft' }),
+    },
+    knowledgePageVersion: {
+      findFirst: async () => ({ id: 'newer-version' }),
+    },
+  }
+  const prisma = {
+    attachment: {
+      findUnique: async () => ({ filename: 'notes.txt', mime: 'text/plain', organizationId }),
+    },
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.addFileVersion({
+      attachmentId: 'attachment-1',
+      authorId: 'user-1',
+      authorType: 'user',
+      expectedLatestVersionId: 'opened-version',
+      organizationId,
+      pageId,
+    }),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'The file changed after this Markdown editor opened',
+  )
+})
+
 test('native search re-fetch remains scoped to active pages in the caller organization', async () => {
   const findManyCalls: QueryArgs[] = []
   const prisma = {

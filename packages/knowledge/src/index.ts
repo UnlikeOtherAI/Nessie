@@ -65,7 +65,21 @@ export {
 } from './chunking.js'
 export type { ChunkKnowledgePageBodyOptions, KnowledgePageChunkDraft } from './chunking.js'
 export { replaceKnowledgePageVersionChunks } from './native-chunks.js'
+export { knowledgeEmbeddingJobKey } from './embedding-job.js'
 export type { ChunkablePage } from './native-chunks.js'
+export {
+  isMarkdownAttachment,
+  isMarkdownFilename,
+  markdownToHtml,
+  MARKDOWN_IMPORT_MAX_BYTES,
+  readCanonicalMarkdownAttachment,
+  projectMarkdownAttachment,
+} from './markdown-projection.js'
+export type {
+  CanonicalMarkdownSource,
+  MarkdownAttachmentReader,
+  MarkdownProjection,
+} from './markdown-projection.js'
 export {
   ensureAgentDocsSpace,
   ensureMyDocsSpace,

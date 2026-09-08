@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 import {
   resolveGrantedDisclosureScopeKeys,
   resolveDisclosureViewer,
@@ -37,7 +38,12 @@ export const resolveGrantedScopeKeys = resolveGrantedDisclosureScopeKeys
  */
 export const canGrantDisclosure = async (
   prisma: DisclosureGrantPrisma,
-  input: { organizationId: string; userId: string; basis: readonly { scopeType: string; scopeId: string }[] },
+  input: {
+    basis: readonly { scopeType: string; scopeId: string }[]
+    organizationId: string
+    uoaIdentity?: UoaSessionIdentity
+    userId: string
+  },
 ): Promise<boolean> => {
   if (input.basis.length === 0) {
     return false
@@ -46,6 +52,7 @@ export const canGrantDisclosure = async (
     prisma,
     input.organizationId,
     input.userId,
+    { uoaIdentity: input.uoaIdentity },
   )
   return viewerSatisfiesBasis(input.basis, viewer)
 }
@@ -124,7 +131,7 @@ type GrantableMessage = {
  */
 const loadGrantableMessage = async (
   prisma: DisclosureGrantPrisma,
-  input: { organizationId: string; userId: string; messageId: string },
+  input: { organizationId: string; uoaIdentity?: UoaSessionIdentity; userId: string; messageId: string },
 ): Promise<GrantableMessage> => {
   // Organisation scope alone is not enough to be *in the room*. Satisfying a
   // message's basis (a team scope, say) does not imply membership of the
@@ -167,6 +174,7 @@ const loadGrantableMessage = async (
   const entitled = await canGrantDisclosure(prisma, {
     basis: message.basisScopes,
     organizationId: input.organizationId,
+    uoaIdentity: input.uoaIdentity,
     userId: input.userId,
   })
   if (!entitled) {
@@ -223,6 +231,7 @@ export type GrantMessageDisclosureInput = {
   /** Exact body the human reviewed before granting this one-message disclosure. */
   expectedContent: string
   organizationId: string
+  uoaIdentity?: UoaSessionIdentity
   userId: string
   messageId: string
   audienceKind?: 'user' | 'channel'
@@ -334,6 +343,7 @@ export const grantMessageDisclosure = async (
 
 export type GrantScopeDisclosureInput = {
   organizationId: string
+  uoaIdentity?: UoaSessionIdentity
   userId: string
   messageId: string
   duration?: GrantDuration

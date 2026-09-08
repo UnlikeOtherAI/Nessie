@@ -25,6 +25,7 @@ const now = new Date('2026-07-19T12:00:00.000Z')
 const visibility = {
   includeAllOrgChannels: true,
   organizationId,
+  uoaIdentity: undefined,
   userId,
 }
 
@@ -78,6 +79,8 @@ test('agent access requires the agent itself to belong to the actor organization
           : 0
       },
     },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'active-member' }) },
   } as unknown as PrismaClient
   const helpers = createRequestHelpers(prisma)
   const ownerContext: AuthorizedActionContext = {

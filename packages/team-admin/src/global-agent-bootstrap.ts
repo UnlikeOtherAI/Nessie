@@ -6,8 +6,7 @@ import {
   assertGenericAgentToolPolicyInput,
   mergeGenericAgentToolPolicy,
 } from './agent-tool-policy-core.js'
-import { ensureDefaultThread } from './channel-records.js'
-import { loadChannelTeamProject } from './channel-slugs.js'
+import { ensureDefaultThread, loadTeamProjectScope } from './channel-records.js'
 import {
   globalAgentHomeDmKey,
   listGlobalAgentBlueprints,
@@ -209,7 +208,9 @@ export const ensureGlobalAgentChannel = async (
     slug: input.blueprint.slug,
     userId: input.userId,
   })
-  const teamProject = await loadChannelTeamProject(prisma, {
+  // A global-agent home is a system surface with no caller-selected project.
+  // Its team anchor remains the temporary default during the ownership backfill.
+  const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
   })

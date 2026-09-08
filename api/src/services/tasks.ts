@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 import {
   archiveProjectDoneTasks,
   assignProjectTask,
@@ -33,12 +34,14 @@ export const listTasks = async (
   filters: Parameters<typeof listProjectTasks>[2],
   visibility: ProjectTaskVisibility | undefined,
   userId: string,
+  uoaIdentity: UoaSessionIdentity | undefined,
 ) => {
   const tasks = await listProjectTasks(prisma, organizationId, filters, visibility)
   const readable = await Promise.all(tasks.map(async (task) => ({
     readable: await canUserReadRunDerivedRecord(prisma, {
       organizationId,
       runId: task.runId,
+      uoaIdentity,
       userId,
     }),
     task,
@@ -52,11 +55,13 @@ export const getTask = async (
   organizationId: string,
   visibility: ProjectTaskVisibility | undefined,
   userId: string,
+  uoaIdentity: UoaSessionIdentity | undefined,
 ) => {
   const task = await getProjectTask(prisma, taskId, organizationId, visibility)
   if (!task || !(await canUserReadRunDerivedRecord(prisma, {
     organizationId,
     runId: task.runId,
+    uoaIdentity,
     userId,
   }))) return null
   return task

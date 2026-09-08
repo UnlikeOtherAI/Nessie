@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 import { type PgRealtimeTransport } from '@nessie/runtime'
@@ -6,14 +5,13 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
-  parseUserId,
-  parseRunId,
   parseTaskId,
   parseThreadId,
-  type AuthorizedActionContext,
+  parseRunId,
 } from '@nessie/schemas'
 import type { WsScope } from '@nessie/schemas'
 import { ensureDefaultThread } from './channels.js'
+import { buildMailboxActorContext } from './mailbox-actor-context.js'
 import { markDelegationStepQueued } from '../run/plans.js'
 import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
@@ -45,44 +43,11 @@ type ClaimedMailboxMessage = {
   subject: string | null
   threadId: string | null
   toAgentId: string
+  uoaIdentity: unknown
   workflowRunId: string | null
   workflowStepRunId: string | null
 }
 
-const buildMailboxActorContext = (input: {
-  actorId: string
-  actorType: 'agent' | 'service' | 'user'
-  channelId: string
-  organizationId: string
-  targetAgentId: string
-  peerDelegationDepth?: number | null
-  // Omitted while the (agent, thread) slot claim is still unresolved: the
-  // pending-marker path has no task, and the claimed path injects the fresh
-  // task id once the task exists.
-  taskId?: string
-  threadId: string
-}): AuthorizedActionContext => ({
-  actor: {
-    actorId: input.actorId,
-    actorType: input.actorType,
-    ...(input.actorType === 'agent' ? { roles: ['system'] } : {}),
-  },
-  actionContext: {
-    agentId: parseAgentId(input.targetAgentId),
-    channelId: parseChannelId(input.channelId),
-    correlationId: undefined,
-    purpose: 'mailbox.delivery',
-    requestId: randomUUID(),
-    ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
-    ...(input.peerDelegationDepth !== null && input.peerDelegationDepth !== undefined
-      ? { effectiveUserId: parseUserId(input.actorId), purpose: 'agent.peer_delegation', correlationId: String(input.peerDelegationDepth) }
-      : {}),
-    threadId: parseThreadId(input.threadId),
-  },
-  tenant: {
-    organizationId: parseOrganizationId(input.organizationId),
-  },
-})
 
 const buildScopes = (input: {
   agentId: string
@@ -144,6 +109,7 @@ const claimNextMailboxMessage = async (
         amm."subject" AS "subject",
         amm."thread_id" AS "threadId",
         amm."to_agent_id" AS "toAgentId",
+        amm."uoa_identity" AS "uoaIdentity",
         amm."workflow_run_id" AS "workflowRunId",
         amm."workflow_step_run_id" AS "workflowStepRunId"
     `,
@@ -232,6 +198,8 @@ export const dispatchNextMailboxMessage = async (
       channel: {
         select: {
           organizationId: true,
+          projectId: true,
+          teamId: true,
         },
       },
     },
@@ -322,9 +290,12 @@ export const dispatchNextMailboxMessage = async (
       actorType: resolveMailboxActorType(message),
       channelId: thread.channelId,
       organizationId: message.organizationId,
+      projectId: thread.channel.projectId,
       targetAgentId: message.toAgentId,
+      teamId: thread.channel.teamId,
       peerDelegationDepth: message.peerDelegationDepth,
       threadId: targetThreadId,
+      uoaIdentity: message.uoaIdentity,
     })
 
     // Same per-(agent, thread) claim as chat replies and trigger fires: with
@@ -349,6 +320,9 @@ export const dispatchNextMailboxMessage = async (
       run = await tx.run.create({
         data: {
           agentId: message.toAgentId,
+          // The hidden peer brief has no visible root message. Its terminal
+          // lifecycle result belongs in the channel, matching serialized mail.
+          replyPlacement: 'channel',
           status: 'pending',
           threadId: targetThreadId,
         },
@@ -386,10 +360,13 @@ export const dispatchNextMailboxMessage = async (
             actorType: resolveMailboxActorType(message),
             channelId: thread.channelId,
             organizationId: message.organizationId,
+            projectId: thread.channel.projectId,
             targetAgentId: message.toAgentId,
+            teamId: thread.channel.teamId,
             peerDelegationDepth: message.peerDelegationDepth,
             taskId: task.id,
             threadId: targetThreadId,
+            uoaIdentity: message.uoaIdentity,
           }),
           agentId: parseAgentId(message.toAgentId),
           messageId: promptMessage.id,

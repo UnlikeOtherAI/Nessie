@@ -23,6 +23,7 @@ import {
   type AgentConversationRecord,
   type PaginationMeta,
   type RunOutcome,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 
 import { isAgentVisibleToUser } from './access-checks.js'
@@ -210,7 +211,13 @@ type ConversationThreadRow = Prisma.ThreadGetPayload<{ select: typeof conversati
  */
 export const loadRunProgressLine = async (
   prisma: PrismaClient,
-  input: { organizationId: string; runId: string; userId: string },
+  input: {
+    organizationId: string
+    runId: string
+    /** The request's live UOA assertion; explicit undefined on a no-IdP read. */
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<string | null> => {
   if (!(await canUserReadRunBasis(prisma, input))) return null
 
@@ -287,7 +294,12 @@ type PreviewRow = { thread_id: string; id: string; content: string }
  */
 const loadLastMessagePreviews = async (
   prisma: PrismaClient,
-  input: { organizationId: string; threadIds: string[]; userId: string },
+  input: {
+    organizationId: string
+    threadIds: string[]
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<Map<string, string>> => {
   const previews = new Map<string, string>()
   if (input.threadIds.length === 0) return previews
@@ -317,7 +329,9 @@ const loadLastMessagePreviews = async (
   }
   // Resolved once for the whole page, never once per row.
   const viewer = basisRows.length > 0
-    ? await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
+    ? await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
+      uoaIdentity: input.uoaIdentity,
+    })
     : null
 
   for (const row of rows) {
@@ -341,7 +355,12 @@ type ActiveRunRow = {
 
 const loadActiveRuns = async (
   prisma: PrismaClient,
-  input: { organizationId: string; scopes: ConversationScope[]; userId: string },
+  input: {
+    organizationId: string
+    scopes: ConversationScope[]
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<Map<string, NonNullable<AgentConversationRecord['activeRun']>>> => {
   const active = new Map<string, NonNullable<AgentConversationRecord['activeRun']>>()
   if (input.scopes.length === 0) return active
@@ -370,6 +389,7 @@ const loadActiveRuns = async (
           ? await loadRunProgressLine(prisma, {
             organizationId: input.organizationId,
             runId: row.id,
+            uoaIdentity: input.uoaIdentity,
             userId: input.userId,
           })
           : null,
@@ -420,6 +440,7 @@ const buildConversationRecords = async (
     lastActivityByThread?: Map<string, string>
     organizationId: string
     rows: ConversationThreadRow[]
+    uoaIdentity: UoaSessionIdentity | undefined
     userId: string
   },
 ): Promise<AgentConversationRecord[]> => {
@@ -443,11 +464,13 @@ const buildConversationRecords = async (
       : loadLastMessageAtByThread(prisma, threadIds),
     loadUnreadCountsByThread(prisma, threadIds, input.userId),
     loadLastMessagePreviews(prisma, {
+    uoaIdentity: input.uoaIdentity,
       organizationId: input.organizationId,
       threadIds,
       userId: input.userId,
     }),
     loadActiveRuns(prisma, {
+    uoaIdentity: input.uoaIdentity,
       organizationId: input.organizationId,
       scopes,
       userId: input.userId,
@@ -499,7 +522,13 @@ const buildConversationRecords = async (
  */
 export const loadConversationForUser = async (
   prisma: PrismaClient,
-  input: { organizationId: string; threadId: string; userId: string },
+  input: {
+    organizationId: string
+    threadId: string
+    /** The caller's live UOA assertion, when the request carried one. */
+    uoaIdentity?: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<AgentConversationRecord | null> => {
   const row = await prisma.thread.findFirst({
     where: {
@@ -511,6 +540,7 @@ export const loadConversationForUser = async (
   if (!row) return null
 
   const [record] = await buildConversationRecords(prisma, {
+    uoaIdentity: input.uoaIdentity,
     organizationId: input.organizationId,
     rows: [row],
     userId: input.userId,
@@ -534,6 +564,8 @@ export const listAgentConversationsForUser = async (
     cursor?: string | undefined
     limit?: number | undefined
     organizationId: string
+    /** The caller's live UOA assertion, when the request carried one. */
+    uoaIdentity?: UoaSessionIdentity | undefined
     userId: string
   },
 ): Promise<{ data: AgentConversationRecord[]; meta: PaginationMeta } | null> => {
@@ -605,6 +637,7 @@ export const listAgentConversationsForUser = async (
   const rowsById = new Map(candidates.map((row) => [row.id, row]))
   return {
     data: await buildConversationRecords(prisma, {
+    uoaIdentity: input.uoaIdentity,
       // This is agent X's list, so every row in it is a conversation with X —
       // including the General row of a room X shares with another agent, whose
       // oldest binding may well be somebody else's.

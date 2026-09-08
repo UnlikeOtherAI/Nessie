@@ -143,7 +143,11 @@ const main = async () => {
   let browser; let desktop; let phone; let tablet; let desktopPage; let phonePage; let tabletPage
   let project; let sourceBoard; let boardAId; let boardBId
   try {
-    project = await api('/api/projects', { body: { name: `Project usability ${runId}` }, method: 'POST', token: seed.token })
+    project = await api('/api/projects', {
+      body: { name: `Project usability ${runId}`, teamId: seed.team.id },
+      method: 'POST',
+      token: seed.token,
+    })
     const boards = await call(`/api/projects/${project.id}/boards`, { token: seed.token })
     sourceBoard = boards.find((board) => board.isDefault) ?? boards[0]
     assert.ok(sourceBoard, 'the disposable project has a default board')
@@ -175,9 +179,38 @@ const main = async () => {
     const [firstColumn, secondColumn, boardBFirstColumn] = [boardA.columns[0], boardA.columns[1], boardB.columns[0]]
     assert.ok(firstColumn && secondColumn && boardBFirstColumn, 'the boards have lifecycle columns')
     const createdTitle = `QA flow ${runId}`; const editedTitle = `QA edited ${runId}`; const touchTitle = `QA touch ${runId}`; const boardBTitle = `QA board B ${runId}`
+    const excerptTitle = `QA excerpt ${runId}`
+    const excerptTask = await api('/api/tasks', {
+      body: {
+        boardId: boardA.id,
+        detail: 'Long implementation detail must not replace the explicit excerpt.',
+        projectId: project.id,
+        purpose: 'Explicit card excerpt wins.',
+        title: excerptTitle,
+      },
+      method: 'POST',
+      token: seed.token,
+    })
+    createdTaskIds.add(excerptTask.id)
     await goto(desktopPage.page, `/projects/${project.id}/board?board=${boardA.id}`)
+    const excerptCard = desktopPage.page.locator('[data-kanban-card]').filter({ hasText: excerptTitle })
+    await excerptCard.getByText('Explicit card excerpt wins.', { exact: true }).waitFor()
+    assert.equal(await excerptCard.getByText('Long implementation detail must not replace the explicit excerpt.', { exact: true }).count(), 0)
     await createTask(desktopPage.page, createdTitle, 'A durable browser flow')
     createdTaskIds.add((await waitForBoardTask(seed.token, project.id, boardA.id, createdTitle, firstColumn.id)).id)
+    const createdCard = desktopPage.page.locator('[data-kanban-card]').filter({ hasText: createdTitle }).first()
+    await createdCard.click()
+    const existingDialog = desktopPage.page.getByRole('dialog', { name: 'Task details' })
+    await existingDialog.getByRole('tab', { name: 'Checklist', exact: true }).click()
+    await desktopPage.page.waitForURL(/taskTab=checklist/)
+    await existingDialog.getByRole('button', { name: 'Close', exact: true }).first().click()
+    await existingDialog.waitFor({ state: 'hidden' })
+    assert.match(desktopPage.page.url(), /taskTab=checklist/, 'the existing task retains its selected tab')
+    const retainedTabNewTask = await openNewTask(desktopPage.page)
+    await retainedTabNewTask.getByRole('textbox', { name: 'Title' }).waitFor()
+    await retainedTabNewTask.getByRole('button', { name: 'Create task', exact: true }).waitFor()
+    await shot(desktopPage.page, 'desktop-new-task-after-checklist')
+    await retainedTabNewTask.getByRole('button', { name: 'Close', exact: true }).first().click()
     await editTask(desktopPage.page, createdTitle, editedTitle, secondColumn)
     createdTaskIds.add((await waitForBoardTask(seed.token, project.id, boardA.id, editedTitle, secondColumn.id)).id)
     await shot(desktopPage.page, 'desktop-lifecycle')

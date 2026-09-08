@@ -60,8 +60,11 @@ const makeContext = (
       },
     },
     organizationMember: {
+      findFirst: async () => ({ id: 'membership-1' }),
       findUnique: async () => ({ deactivatedAt: null, role: 'owner' }),
     },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    productAccountLink: { findUnique: async () => null },
     team: { findFirst: async () => ({ id: TEAM_ID }) },
     thread: { findFirst: async () => ({ id: THREAD_ID }) },
   }

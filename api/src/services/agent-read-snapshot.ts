@@ -3,10 +3,9 @@ import { parseAgentId, parseRunId, type WsScope, type WsSnapshot } from '@nessie
 import {
   buildAccessibleChannelWhere,
   isSystemManagedAgent,
-  type AgentVisibilityScope,
 } from '@nessie/team-admin'
 
-import { filterReadableAgentRuns } from './agent-read-disclosure.js'
+import { filterReadableAgentRuns, type DisclosureAgentVisibilityScope } from './agent-read-disclosure.js'
 import {
   buildAccessibleRunWhere,
   buildDisclosureReadableThreadWhere,
@@ -16,7 +15,7 @@ import {
 export const buildSnapshotForScopes = async (
   prisma: PrismaClient,
   scopes: WsScope[],
-  options?: { visibility?: AgentVisibilityScope },
+  options?: { visibility?: DisclosureAgentVisibilityScope },
 ): Promise<WsSnapshot> => {
   if (scopes.length === 0) return { agents: [] }
 

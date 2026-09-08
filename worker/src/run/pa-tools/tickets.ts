@@ -72,6 +72,7 @@ export const runTicketListTool = async (
     readable: await canUserReadRunDerivedRecord(context.prisma, {
       organizationId: member.organizationId,
       runId: ticket.runId ?? null,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
       userId: member.userId,
     }),
     ticket,

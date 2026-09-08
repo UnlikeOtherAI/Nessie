@@ -208,7 +208,11 @@ export const runAgentUpdateTool = async (
   const agent = await updateAgentRecord(
     context.prisma,
     agentId,
-    { organizationId: member.organizationId, userId: member.userId },
+    {
+      organizationId: member.organizationId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      userId: member.userId,
+    },
     {
       ...patch,
       ...(modelSubscriptionId === undefined ? {} : { modelSubscriptionId }),
@@ -325,7 +329,11 @@ export const runAgentAvatarUpdateTool = async (
   const agent = await updateAgentAvatar(
     context.prisma,
     args.agentId,
-    { organizationId: member.organizationId, userId: member.userId },
+    {
+      organizationId: member.organizationId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      userId: member.userId,
+    },
     args.avatarAttachmentId ?? null,
     args.avatarBackgroundColor,
   )
@@ -400,7 +408,11 @@ export const runAgentAvatarGenerateTool = async (
   }
   await assertAgentEditAuthority(
     context.prisma,
-    { organizationId: member.organizationId, userId: member.userId },
+    {
+      organizationId: member.organizationId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      userId: member.userId,
+    },
     agent,
   )
 
@@ -438,7 +450,11 @@ export const runAgentAvatarGenerateTool = async (
   const updated = await updateAgentAvatar(
     context.prisma,
     args.agentId,
-    { organizationId: member.organizationId, userId: member.userId },
+    {
+      organizationId: member.organizationId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      userId: member.userId,
+    },
     generated.avatarAttachmentId,
     generated.avatarBackgroundColor,
   )

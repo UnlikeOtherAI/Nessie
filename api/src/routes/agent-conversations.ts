@@ -67,6 +67,7 @@ export const registerAgentConversationRoutes = (
     if (!query) return reply
 
     const page = await listAgentConversationsForUser(prisma, {
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       agentId,
       cursor: query.cursor,
       limit: query.limit,
@@ -185,6 +186,7 @@ export const registerAgentConversationRoutes = (
       : null
 
     const conversation = await loadConversationForUser(prisma, {
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       organizationId: actorContext.tenant.organizationId,
       threadId: started.thread.id,
       userId: actorContext.actor.actorId,
@@ -249,6 +251,7 @@ export const registerAgentConversationRoutes = (
     }
 
     const conversation = await loadConversationForUser(prisma, {
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       organizationId: actorContext.tenant.organizationId,
       threadId: outcome.threadId,
       userId: actorContext.actor.actorId,
@@ -272,6 +275,7 @@ export const registerAgentConversationRoutes = (
     }
 
     const conversation = await loadConversationForUser(prisma, {
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       organizationId: actorContext.tenant.organizationId,
       threadId,
       userId: actorContext.actor.actorId,

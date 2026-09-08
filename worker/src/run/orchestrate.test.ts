@@ -294,6 +294,9 @@ const decideFixture = (thread: { agentId: string | null; startedByUserId: string
       // Reached only on the model-judged path, where the window is
       // disclosure-filtered before the engagement judgement is formed. A
       // missing delegate here is a runtime TypeError, not a skipped read.
+      // Live entitlements read the organisation first: no `externalOrgId` and
+      // no IdP configured is the local-membership branch this fixture stands in.
+      organization: { findUnique: async () => ({ externalOrgId: null }) },
       organizationMember: { findFirst: async () => null },
       // The claim/run/task/enqueue unit is `@nessie/db`'s and has its own
       // Postgres suite; here it only has to record that a reply decision got

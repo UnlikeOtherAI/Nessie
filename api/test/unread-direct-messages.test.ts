@@ -38,9 +38,9 @@ const channel = (input: {
   // The room's General thread: `agentId: null`, as the channel list selects it.
   threads: [{ agentId: null, id: input.threadId }],
   members: [{ muted: false, role: 'member' }],
+  project: { channelRoot: false, id: projectId, name: 'Nessie' },
   team: {
     name: 'Core',
-    project: { channelRoot: false, id: projectId, name: 'Nessie' },
   },
   topic: null,
   type: input.type,
@@ -150,6 +150,11 @@ const makePrisma = (options: { unreadCount?: number; restricted?: boolean } = {}
     },
     organizationMember: {
       findFirst: async () => ({ id: 'membership' }),
+    },
+    organization: {
+      // These fixtures model an active no-IdP tenant, whose membership is the
+      // local authority. UOA tenants exercise the live resolver separately.
+      findUnique: async () => ({ externalOrgId: null }),
     },
     channelMember: {
       findMany: async () => [{ channelId: dmChannelId }],

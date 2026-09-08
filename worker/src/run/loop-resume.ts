@@ -11,6 +11,9 @@
 import type { InvocationRecord, ProviderMessage, ProviderToolCall } from '@nessie/runtime'
 import type { CompactionGovernor } from './context-window.js'
 import type { ExecuteToolFn, ExecutedToolResult, PrepareToolFn } from './tool-batch.js'
+import type { OutputFinalizationReason } from './output-finalization.js'
+
+export type { OutputFinalizationReason } from './output-finalization.js'
 
 /**
  * This worker is draining and ran out of the short grace it allows an in-flight
@@ -64,10 +67,19 @@ export type LoopResumeState = {
   budgetRecoveryAttempted: boolean
   compactionAttempts: number
   compactionLastIteration: number | null
-  /** A provider output-length response gets one no-tools finalisation turn per run. */
-  lengthFinalizationUsed: boolean
+  /** A response that could not yield a final answer gets one no-tools finalisation turn per run. */
+  outputFinalizationUsed: boolean
   /** The retained transcript is waiting for that no-tools turn after a crash. */
-  lengthFinalizationPending: boolean
+  outputFinalizationPending: boolean
+  /** Why the current or completed no-tools finalisation was needed. */
+  outputFinalizationReason: OutputFinalizationReason | null
+  /**
+   * Legacy crash-state fields used by workers before output finalisation was
+   * generalized. New checkpoints mirror the shared state into them during a
+   * rolling deployment, then new workers prefer the explicit fields above.
+   */
+  lengthFinalizationUsed?: boolean
+  lengthFinalizationPending?: boolean
   /** Wall-clock already spent by earlier executions of this run. */
   elapsedMs: number
   invocations: InvocationRecord[]

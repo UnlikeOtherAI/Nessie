@@ -15,7 +15,7 @@
     "@nessie/admin#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "build/**"],
-      "env": ["NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE"]
+      "env": ["NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE", "NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE"]
     },
     "lint": {
       "dependsOn": ["^lint"],

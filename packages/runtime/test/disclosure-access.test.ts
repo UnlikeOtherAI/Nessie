@@ -12,11 +12,14 @@ import { viewerSatisfiesBasis } from '../src/disclosure-predicate.js'
 
 const buildPrisma = (
   visibleAgentIds: readonly string[],
-  options: { liveMembership?: boolean } = {},
+  options: { agentExists?: boolean; liveMembership?: boolean } = {},
 ) => {
   const agentQueries: unknown[] = []
   const prisma = {
     agent: {
+      findFirst: async () => options.agentExists === false ? null : ({
+        bindings: [], id: 'agent-1', projectId: null, teamId: null,
+      }),
       findMany: async (args: unknown) => {
         agentQueries.push(args)
         return visibleAgentIds.map((id) => ({ id }))
@@ -26,12 +29,17 @@ const buildPrisma = (
     channelMember: {
       findMany: async () => [{ channelId: 'channel-1' }],
     },
+    organization: {
+      findUnique: async () => ({ externalOrgId: null }),
+    },
     organizationMember: {
       findFirst: async () => options.liveMembership === false ? null : { id: 'membership-1' },
     },
     projectMember: {
       findMany: async () => [{ projectId: 'project-1' }],
     },
+    productAccountLink: { findUnique: async () => null },
+    team: { findMany: async () => [] },
     teamMember: {
       findMany: async () => [{ teamId: 'team-1' }],
     },
@@ -69,7 +77,7 @@ test('an agent-scoped reply is visible only to a viewer who can see that agent',
   assert.equal(viewerSatisfiesBasis(basis, unentitled), false)
 })
 
-test('missing or inactive users stay autonomous and never query agent visibility', async () => {
+test('a human with no current membership is denied and never queries agent visibility', async () => {
   const missing = buildPrisma(['agent-1'])
   const inactive = buildPrisma(['agent-1'], { liveMembership: false })
 
@@ -77,10 +85,43 @@ test('missing or inactive users stay autonomous and never query agent visibility
   const withoutMembership = await resolveDisclosureViewer(inactive.prisma, 'org-1', 'user-1')
 
   assert.deepEqual(withoutUser, { kind: 'autonomous' })
-  assert.deepEqual(withoutMembership, { kind: 'autonomous' })
+  assert.deepEqual(withoutMembership, { kind: 'denied' })
+  assert.equal(viewerSatisfiesBasis([], withoutMembership), false)
   assert.equal(viewerSatisfiesBasis([{ scopeId: 'agent-1', scopeType: 'agent' }], withoutUser), false)
   assert.equal(missing.agentQueries.length, 0)
   assert.equal(inactive.agentQueries.length, 0)
+})
+
+test('an unknown autonomous agent is denied rather than treated as no-human automation', async () => {
+  const { prisma } = buildPrisma([], { agentExists: false })
+
+  const viewer = await resolveDisclosureViewer(prisma, 'org-1', null, { agentId: 'missing-agent' })
+
+  assert.deepEqual(viewer, { kind: 'denied' })
+  assert.equal(viewerSatisfiesBasis([], viewer), false)
+})
+
+test('a fresh entitlement proof is reusable only for its exact human and organization', async () => {
+  const { prisma } = buildPrisma([])
+  const proof = {
+    kind: 'local' as const,
+    organizationId: 'org-1',
+    userId: 'user-1',
+  }
+
+  const accepted = await resolveDisclosureViewer(prisma, 'org-1', 'user-1', {
+    liveEntitlements: proof,
+  })
+  const wrongUser = await resolveDisclosureViewer(prisma, 'org-1', 'user-2', {
+    liveEntitlements: proof,
+  })
+  const wrongOrg = await resolveDisclosureViewer(prisma, 'org-2', 'user-1', {
+    liveEntitlements: proof,
+  })
+
+  assert.equal(accepted.kind, 'user')
+  assert.deepEqual(wrongUser, { kind: 'denied' })
+  assert.deepEqual(wrongOrg, { kind: 'denied' })
 })
 
 /**
@@ -110,6 +151,7 @@ const buildGrantPrisma = (input: {
       findMany: async () => { calls.push('channel'); return input.channels ?? [] },
     },
     channelMember: { findMany: async () => { calls.push('channelMember'); return [{ channelId: 'channel-1' }, { channelId: 'private-channel' }, { channelId: 'public-channel' }] } },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
     disclosureGrant: {
       findMany: async (args: unknown) => {
         calls.push('disclosureGrant')
@@ -125,10 +167,12 @@ const buildGrantPrisma = (input: {
     projectMember: {
       findMany: async () => { calls.push('projectMember'); return [{ projectId: 'project-1' }] },
     },
+    productAccountLink: { findUnique: async () => null },
     scopeDisclosureGrant: {
       findMany: async () => { calls.push('scopeDisclosureGrant'); return input.scopeGrants ?? [] },
     },
     teamMember: { findMany: async () => { calls.push('teamMember'); return [] } },
+    team: { findMany: async () => [] },
   } as unknown as DisclosureAccessPrisma
   return { calls, messageGrantQueries, prisma }
 }

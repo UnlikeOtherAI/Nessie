@@ -258,7 +258,7 @@ dbTest('agent_update inherits every refusal canEditAgent makes', async () => {
           name: 'Hijacked',
         }),
       ),
-      /owned by Designer tools 0/,
+      /owned by another person/,
     )
 
     // A team-owned agent IS editable by an entitled member — the deliberate
@@ -320,7 +320,7 @@ dbTest('agent_avatar_update follows the same edit authority', async () => {
           avatarAttachmentId: null,
         }),
       ),
-      /owned by Designer tools 0/,
+      /owned by another person/,
     )
     const cleared = await runAgentAvatarUpdateTool(buildContext(prisma, stewardUserId), {
       agentId: personOwnedAgentId,
@@ -404,7 +404,7 @@ dbTest('agent_avatar_generate asks the edit question before it spends anything',
           agentId: personOwnedAgentId,
         }),
       ),
-      /owned by Designer tools 0/,
+      /owned by another person/,
     )
     // A built-in agent is `Agent not found` here, not the
     // "managed by Nessie itself" wording `agent_avatar_update` gives: the

@@ -75,10 +75,19 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   else if (path.endsWith('/reactivate')) members = members.map((member) => ({ ...member, status: 'ACTIVE' }))
   else if (method === 'DELETE') members = []
   else if (path.endsWith('/revoke')) invitations = []
-  else if (path.endsWith('/invitations') || path.endsWith('/member-invitations')) invitations.push({
-    inviteId: 'invite-new', email: String(body?.email), name: body?.name as string | undefined,
-    status: 'pending', team: { id: 'team-external', name: 'Design' },
-  })
+  else if (path.endsWith('/invitations') || path.endsWith('/member-invitations')) {
+    const email = String(body?.email)
+    // UOA, not this fixture or Nessie, owns the one-actionable-invitation rule
+    // for the exact target team and normalized email. A repeated form submit
+    // sends another request but keeps one pending row, modelling UOA's resend.
+    const hasPendingInvitation = invitations.some((invitation) =>
+      invitation.email?.trim().toLowerCase() === email.trim().toLowerCase()
+      && invitation.team?.id === 'team-external')
+    if (!hasPendingInvitation) invitations.push({
+      inviteId: 'invite-new', email, name: body?.name as string | undefined,
+      status: 'pending', team: { id: 'team-external', name: 'Design' },
+    })
+  }
   else if (path.endsWith('/members')) members.push({ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák', status: 'ACTIVE' })
   return { ok: true }
 }

@@ -168,6 +168,9 @@ const makeApp = (
           ? { deactivatedAt: null, role }
           : null,
     },
+    organization: {
+      findUnique: async () => ({ externalOrgId: null }),
+    },
     // Named in an edit refusal ("this agent is owned by <name>").
     user: {
       findUnique: async () => ({ displayName: 'Another member' }),

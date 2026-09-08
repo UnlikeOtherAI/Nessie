@@ -122,6 +122,7 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
                             { label: 'A channel', testId: 'app-connect-scope-channel', value: 'channel' },
                             { label: 'A project', testId: 'app-connect-scope-project', value: 'project' },
                           ]}
+                          menuLayer="modal"
                           onChange={setScopeChoice}
                           role="radiogroup"
                           size="sm"

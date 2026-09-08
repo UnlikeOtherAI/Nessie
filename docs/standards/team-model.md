@@ -9,6 +9,20 @@ with it backwards, as `Organisation → Project → Team → Channel`.
 **The schema currently contradicts this document** (§"What the schema does
 today"). Write code and copy for the model below, not for the foreign key.
 
+The inversion is now in its **expand phase**: `Project.teamId` is written for
+new person-created projects, while `Team.projectId` remains only to read rows
+that have not passed the audited backfill. The backfill must run
+`scripts/inspect-team-shape.sql` first and halt for orphaned, multi-team, or
+inconsistent rows; it may never infer an owner from a name, current session,
+or creation time.
+
+An operation that places something in a project takes both the selected
+`projectId` and `teamId` and resolves them through `Project.teamId`; it never
+defaults to a team's old anchor project. Team-only homes and system surfaces
+have no caller-selected project, so they retain that anchor as their temporary
+default until the audited backfill removes it. Do not use the latter exception
+to weaken an explicit placement check.
+
 ## The model
 
 UnlikeOtherAI (UOA), the SSO, owns two levels, and people are members of the
@@ -313,6 +327,17 @@ must therefore be able to *lose* rows, not only gain them:
 - Rows with no binding are never reconciled: a `Team` with no `externalTeamId`
   and an `Organization` with no `externalOrgId` have no upstream authority to be
   reconciled against.
+
+### Live entitlement readers
+
+Disclosure, memory recall and agent-edit checks resolve one fresh `GET /org/me`
+response through `@nessie/runtime` at their boundary. The response's exact
+`org_id`, active `teams` and role are translated to existing local IDs only for
+that decision; `team_directory`, retained membership rows and session context
+are not authority. A UOA-bound read without a current request identity fails
+closed, except for an intentional background recheck of the same user's linked
+subject and epoch. The result is bound to that local user and organisation and
+is never a reusable authorization token or a roster/profile write.
 
 ### Which door creates a team, and who may write membership locally
 

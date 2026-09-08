@@ -120,6 +120,17 @@ permits a researcher/coordinator review cycle without turning agent-authored
 messages into unbounded orchestration, widening a source audience, or letting
 ambient session scope decide what project an agent can change.
 
+Peer deliveries use the authorized destination channel's project and team
+attribution and retain the original human as the effective user. Their durable
+mail also carries that action's captured UOA subject/org/team/epoch tuple only
+as immutable run provenance: it is neither a credential nor a local identity
+record, and Ledger revalidates it against the original human's live link at
+admission. Missing or malformed provenance fails closed. When a target thread
+is busy, peer briefs drain one at a time in FIFO order: a later schedule or
+another peer cannot replace the selected hidden message, requester, or source
+basis. A terminal peer failure posts one useful result through the ordinary run
+lifecycle for the waiting conversation; it does not retry or acknowledge itself.
+
 The same project-channel binding is re-read for every delegated ticket call.
 Content-bearing ticket, board, and checklist writes share
 `assertProjectWriteDestination`: they refuse material the run consumed from a

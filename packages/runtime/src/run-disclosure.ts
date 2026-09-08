@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import {
   canUserReadDisclosureBasis,
@@ -13,6 +14,8 @@ export const canUserReadRunBasis = async (
   input: {
     organizationId: string
     runId: string
+    /** Current request/run assertion; explicit undefined for a no-IdP read. */
+    uoaIdentity: UoaSessionIdentity | undefined
     userId: string
   },
 ): Promise<boolean> => {
@@ -37,6 +40,7 @@ export const canUserReadRunBasis = async (
     channelId: run.thread.channelId,
     messageId: null,
     organizationId: input.organizationId,
+    uoaIdentity: input.uoaIdentity,
     userId: input.userId,
   })
 }
@@ -47,7 +51,13 @@ export const canUserReadRunBasis = async (
  */
 export const canUserReadRunDerivedRecord = async (
   prisma: RunDisclosurePrisma,
-  input: { organizationId: string; runId: string | null; userId: string },
+  input: {
+    organizationId: string
+    runId: string | null
+    /** Current request/run assertion; explicit undefined for a no-IdP read. */
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<boolean> => {
   if (!input.runId) return true
 
@@ -89,12 +99,14 @@ export const canUserReadRunDerivedRecord = async (
     disclosureSources: trigger.disclosureSources,
     messageId: trigger.id,
     organizationId: input.organizationId,
+    uoaIdentity: input.uoaIdentity,
     userId: input.userId,
   }))) return false
 
   return canUserReadRunBasis(prisma, {
     organizationId: input.organizationId,
     runId: run.id,
+    uoaIdentity: input.uoaIdentity,
     userId: input.userId,
   })
 }

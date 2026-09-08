@@ -9,6 +9,7 @@ import {
 } from '@nessie/team-admin'
 
 import { ProjectMemberRecordSchema, ProjectRecordSchema, UpdateProjectBodySchema } from '../contracts/team.js'
+import { z } from 'zod'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { canAccessAttachment } from '../services/attachments.js'
@@ -107,9 +108,9 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const body = request.body as { name?: string } | undefined
-    if (!body?.name) {
-      sendApiError(reply, 400, 'NAME_REQUIRED', 'Project name is required')
+    const body = z.object({ name: z.string().min(1), teamId: z.string().uuid() }).safeParse(request.body)
+    if (!body.success) {
+      sendApiError(reply, 400, 'PROJECT_TEAM_REQUIRED', 'A project name and an existing team are required')
       return reply
     }
 
@@ -118,8 +119,9 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     let project
     try {
       project = await createProjectForUser(prisma, {
-        name: body.name,
+        name: body.data.name,
         organizationId: actorContext.tenant.organizationId,
+        teamId: body.data.teamId,
         userId: actorContext.actor.actorId,
       })
     } catch (error) {

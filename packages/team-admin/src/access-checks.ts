@@ -1,6 +1,7 @@
 import type { ChannelSystemType, Prisma, PrismaClient } from '@prisma/client'
 import { buildAgentVisibilityWhere, buildVisibleAgentWhere } from '@nessie/db'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { resolveLiveEntitlements, type LiveEntitlements } from '@nessie/runtime'
 
 export type ChannelAccessRow = {
   systemChannelType?: ChannelSystemType
@@ -57,11 +58,12 @@ export const isAgentVisibleToUser = async (
   userId: string,
   organizationId: string,
   agentId: string,
+  uoaMembershipVerified = false,
 ): Promise<boolean> =>
   (await prisma.agent.count({
     where: {
       AND: [
-        buildVisibleAgentWhere({ organizationId, userId }),
+        buildVisibleAgentWhere({ organizationId, userId, uoaMembershipVerified }),
       ],
       id: agentId,
     },
@@ -76,8 +78,22 @@ export const isAgentAccessibleToActor = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   agentId: string,
+  verifiedEntitlements?: LiveEntitlements,
 ): Promise<boolean> => {
-  if (actorContext.actor.roles?.includes('owner')) {
+  const entitlements = verifiedEntitlements ?? await resolveLiveEntitlements(prisma, {
+    organizationId: actorContext.tenant.organizationId,
+    uoaIdentity: actorContext.actionContext.uoaIdentity,
+    userId: actorContext.actor.actorId,
+  })
+  if (
+    entitlements.kind === 'denied'
+    || entitlements.organizationId !== actorContext.tenant.organizationId
+    || entitlements.userId !== actorContext.actor.actorId
+  ) return false
+  const isOwner = entitlements.kind === 'uoa'
+    ? entitlements.organizationRole === 'owner'
+    : actorContext.actor.roles?.includes('owner') === true
+  if (isOwner) {
     return (
       await prisma.agent.count({
         where: {
@@ -85,6 +101,7 @@ export const isAgentAccessibleToActor = async (
             buildAgentVisibilityWhere({
               organizationId: actorContext.tenant.organizationId,
               userId: actorContext.actor.actorId,
+              uoaMembershipVerified: entitlements.kind === 'uoa',
             }),
           ],
           id: agentId,
@@ -100,5 +117,6 @@ export const isAgentAccessibleToActor = async (
     actorContext.actor.actorId,
     actorContext.tenant.organizationId,
     agentId,
+    entitlements.kind === 'uoa',
   )
 }

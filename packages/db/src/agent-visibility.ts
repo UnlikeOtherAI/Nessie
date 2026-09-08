@@ -1,12 +1,16 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 
 export type VisibleAgentWhereInput = {
   organizationId: string
   userId: string
+  /** UOA, rather than OrganizationMember, proved this owner is currently active. */
+  uoaMembershipVerified?: boolean
 }
 
 export type AgentVisibilityScope = VisibleAgentWhereInput & {
   includeAllOrgChannels?: boolean
+  uoaIdentity?: UoaSessionIdentity
 }
 
 /**
@@ -19,7 +23,7 @@ export type AgentVisibilityScope = VisibleAgentWhereInput & {
 export const buildOwnedAgentWhere = (
   visibility: AgentVisibilityScope,
 ): Prisma.AgentWhereInput => ({
-  ownerMembership: { deactivatedAt: null },
+  ...(visibility.uoaMembershipVerified ? {} : { ownerMembership: { deactivatedAt: null } }),
   ownerUserId: visibility.userId,
   parentAgentId: null,
 })

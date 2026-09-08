@@ -1528,12 +1528,16 @@ model Project {
   avatarEmoji              String?                   @map("avatar_emoji")
   avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
+  // Expand phase of the team-model inversion. This is nullable until the
+  // audited backfill can prove every existing non-root project has one team.
+  teamId                   String?                   @map("team_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA team and does not mirror any external team.
   channelRoot              Boolean                   @default(false) @map("channel_root")
   createdAt                DateTime                  @default(now()) @map("created_at")
   updatedAt                DateTime                  @updatedAt @map("updated_at")
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                     Team?                     @relation("ProjectOwningTeam", fields: [teamId], references: [id], onDelete: Restrict)
   channels                 Channel[]
   members                  ProjectMember[]
   teams                    Team[]
@@ -1555,6 +1559,7 @@ model Project {
 
   @@unique([id, organizationId])
   @@index([avatarAttachmentId])
+  @@index([teamId])
   @@map("projects")
 }
 
@@ -2009,6 +2014,7 @@ model Team {
   cloudBrowserConnections  CloudBrowserConnection[]  @relation("CloudBrowserConnectionTeam")
   scopedSettings           ScopedSetting[]           @relation("ScopedSettingTeam")
   automaticMembershipRules AutomaticMembershipRule[]
+  projects                 Project[]                 @relation("ProjectOwningTeam")
 
   @@map("teams")
 }
@@ -3827,6 +3833,10 @@ model AgentMailboxMessage {
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
   peerDelegationDepth Int?               @map("peer_delegation_depth")
+  /// Immutable UOA login proof captured by the peer-delegation tool. This is
+  /// run provenance, not a local identity or credential record: Ledger still
+  /// verifies its subject and epoch against the originating person's live link.
+  uoaIdentity       Json?                @map("uoa_identity")
   /// Provenance carried by a durable peer brief. Existing mailbox producers
   /// leave this empty; peer delivery stamps it on the prompt and target run.
   basis             Json                 @default("[]")
@@ -5666,6 +5676,9 @@ model KnowledgePageVersion {
   // For file nodes (KnowledgePage.kind = file): the stored object backing this
   // version. App-enforced (no FK relation), mirroring Attachment's other links.
   attachmentId  String?             @map("attachment_id") @db.Uuid
+  // SHA-256 of immutable Markdown attachment bytes when `body` is its derived
+  // projection. Null for rich-text pages and Markdown not yet backfilled.
+  sourceContentHash String?         @map("source_content_hash")
   authorType    KnowledgeAuthorType @map("author_type")
   authorId      String              @map("author_id")
   changeComment String?             @map("change_comment")

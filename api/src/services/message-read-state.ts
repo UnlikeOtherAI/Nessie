@@ -6,6 +6,7 @@ import {
   resolveGrantedScopeKeysForMessages,
   viewerSatisfiesBasis,
 } from '@nessie/runtime'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 import { buildViewerThreadWhere } from '@nessie/team-admin'
 
 /**
@@ -66,6 +67,7 @@ export const markThreadRead = async (
   prisma: PrismaClient,
   input: {
     organizationId: string
+    uoaIdentity?: UoaSessionIdentity
     rootMessageId?: string
     lastReadMessageId?: string
     threadId: string
@@ -151,7 +153,9 @@ export const markThreadRead = async (
     const disclosureMayApply = root.basisScopes.length > 0
       || candidates.some((message) => message.basisScopes.length > 0)
     const viewer = disclosureMayApply
-      ? await resolveDisclosureViewer(prisma, input.organizationId, input.userId)
+      ? await resolveDisclosureViewer(prisma, input.organizationId, input.userId, {
+        uoaIdentity: input.uoaIdentity,
+      })
       : null
     // Grants for every candidate the predicate would withhold, resolved once
     // for the whole set rather than per row inside the readability check.

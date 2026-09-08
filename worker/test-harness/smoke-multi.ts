@@ -16,14 +16,17 @@
 // that does and does not mean), and (d) the killed worker left a crash
 // checkpoint for its successor to resume from (phase 3.1). The CI job runs the
 // chaos step advisory-only.
-import { spawn, type ChildProcess } from 'node:child_process'
-import { generateKeyPairSync, randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import http from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
-import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
-import { getStorage } from '@nessie/runtime'
+import {
+  call,
+  createMultiInstanceLifecycle,
+  openSse,
+  type ManagedProcess,
+} from './smoke-multi-runtime.js'
+import { assertSharedStorageReachable } from './smoke-multi-storage.js'
+import { createSmokeUoaFixture } from './smoke-multi-uoa.js'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const CHAOS = process.argv.includes('--chaos')
@@ -63,6 +66,8 @@ const STORAGE_SECRET_ACCESS_KEY =
   process.env.SMOKE_MULTI_STORAGE_SECRET_ACCESS_KEY ?? 'nessie-multi-instance'
 process.env.DATABASE_URL = DATABASE_URL
 process.env.NESSIE_DB_URL = DATABASE_URL
+const lifecycle = createMultiInstanceLifecycle({ portBase: PORT_BASE, repoRoot: REPO_ROOT, verbose: VERBOSE })
+const uoaFixture = createSmokeUoaFixture({ authSecret: AUTH_SECRET, repoRoot: REPO_ROOT })
 
 const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms))
 type Probe = () => Promise<boolean> | boolean
@@ -76,185 +81,10 @@ const waitFor = async (label: string, probe: Probe, timeoutMs = 120_000): Promis
   throw new Error(`Timed out after ${timeoutMs}ms waiting for ${label}`)
 }
 
-type Managed = { child: ChildProcess; label: string; log: () => string }
-const started: Managed[] = []
-// A throw before teardown would orphan a process the next run would then adopt.
-process.once('exit', () => { for (const managed of started) managed.child.kill('SIGKILL') })
-const assertPortFree = (port: number): Promise<void> => new Promise((done, fail) => {
-  const probe = http.createServer()
-  probe.once('error', () => fail(new Error(`port ${port} is in use — move SMOKE_MULTI_PORT_BASE`)))
-  probe.listen(port, '127.0.0.1', () => probe.close(() => done()))
-})
-
-const startProcess = (label: string, entry: string, env: Record<string, string>): Managed => {
-  if (!existsSync(entry)) {
-    throw new Error(`${label} cannot start: ${entry} is missing — run pnpm exec turbo run build`)
-  }
-  const child = spawn(process.execPath, [entry], {
-    cwd: REPO_ROOT, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  const chunks: string[] = []
-  const record = (chunk: Buffer): void => {
-    chunks.push(String(chunk))
-    if (VERBOSE) process.stdout.write(`[${label}] ${String(chunk)}`)
-  }
-  child.stdout?.on('data', record)
-  child.stderr?.on('data', record)
-  const managed = { child, label, log: () => chunks.join('') }
-  started.push(managed)
-  return managed
-}
-
-// SIGTERM, then the escalation every platform performs: `docker stop` and Cloud
-// Run both SIGKILL once their grace expires, compressed here to two seconds. A
-// handler that outlives the grace would otherwise quietly finish its work.
-const signalProcess = async (managed: Managed, signal: NodeJS.Signals): Promise<void> => {
-  if (managed.child.exitCode !== null || managed.child.signalCode !== null) return
-  const exit = new Promise<void>((done) => managed.child.once('exit', () => done()))
-  managed.child.kill(signal)
-  await Promise.race([exit, sleep(2_000)])
-  if (managed.child.exitCode === null && managed.child.signalCode === null) managed.child.kill('SIGKILL')
-  await exit
-}
-
-type Proxy = { close: () => Promise<void>; routes: number[] }
-
-// Alternates every request between the two API instances and fails over when an
-// upstream refuses the connection — which is what lets a client survive the
-// chaos step's API kill and is what a real load balancer does.
-const startProxy = async (ports: number[]): Promise<Proxy> => {
-  const routes: number[] = []
-  let cursor = 0
-  const server = http.createServer((request, response) => {
-    const chunks: Buffer[] = []
-    request.on('data', (chunk: Buffer) => chunks.push(chunk))
-    request.on('end', () => {
-      const body = Buffer.concat(chunks)
-      const attempt = (remaining: number): void => {
-        const index = cursor % ports.length
-        cursor += 1
-        routes.push(index)
-        const port = ports[index]!
-        const upstream = http.request(
-          {
-            agent: false,
-            headers: { ...request.headers, host: `127.0.0.1:${port}` },
-            host: '127.0.0.1',
-            method: request.method,
-            path: request.url,
-            port,
-          },
-          (proxied) => {
-            response.writeHead(proxied.statusCode ?? 502, proxied.headers)
-            response.flushHeaders()
-            response.socket?.setNoDelay(true)
-            // An upstream that dies mid-response aborts without ending the pipe;
-            // a real proxy closes the client connection, so this one does too.
-            proxied.once('close', () => { if (!response.writableEnded) response.end() })
-            proxied.pipe(response)
-          },
-        )
-        upstream.once('error', () => {
-          if (response.headersSent) return response.end()
-          routes.pop()
-          if (remaining > 0) return attempt(remaining - 1)
-          response.writeHead(502)
-          response.end()
-        })
-        if (body.length > 0) upstream.write(body)
-        upstream.end()
-      }
-      attempt(ports.length)
-    })
-  })
-  await new Promise<void>((done) => { server.listen(PORT_BASE, '127.0.0.1', done) })
-  return {
-    close: () => new Promise<void>((done) => { server.closeAllConnections(); server.close(() => done()) }),
-    routes,
-  }
-}
-
-type ApiReply = { body: Record<string, unknown>; status: number }
-
-const call = async (method: string, path: string, token: string | null, body?: unknown): Promise<ApiReply> => {
-  const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (token) headers['authorization'] = `Bearer ${token}`
-  const response = await fetch(`${PROXY_URL}${path}`, {
-    body: body === undefined ? undefined : JSON.stringify(body), headers, method,
-  })
-  const text = await response.text()
-  return { body: text ? (JSON.parse(text) as Record<string, unknown>) : {}, status: response.status }
-}
-
-type SseClient = { close: () => void; ended: Promise<void>; ids: number[] }
-
-// Deliberately raw `http`: the assertion is about the `id:` sequence the server
-// actually put on the wire, which EventSource hides.
-const openSse = (path: string, token: string, lastEventId?: number): SseClient => {
-  const ids: number[] = []
-  let settle: () => void = () => undefined
-  const ended = new Promise<void>((done) => { settle = done })
-  const headers: Record<string, string> = { accept: 'text/event-stream', authorization: `Bearer ${token}` }
-  if (lastEventId !== undefined) headers['last-event-id'] = String(lastEventId)
-  let buffer = ''
-  const request = http.request(`${PROXY_URL}${path}`, { agent: false, headers }, (response) => {
-    response.setEncoding('utf8')
-    response.on('data', (chunk: string) => {
-      buffer += chunk
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-      for (const line of lines) {
-        if (line.startsWith('id:')) ids.push(Number(line.slice(3).trim()))
-      }
-    })
-    response.on('end', settle)
-    response.on('error', settle)
-  })
-  request.on('error', settle)
-  request.end()
-  return { close: () => { request.destroy(); settle() }, ended, ids }
-}
-
 type Check = { detail: string; name: string; ok: boolean }
 type Seed = { messageId: string; threadId: string }
 const checks: Check[] = []
 const check = (name: string, ok: boolean, detail: string): void => { checks.push({ detail, name, ok }) }
-
-// A boot timeout tells you nothing about why, and the commonest local failure is
-// simply that nobody started MinIO. An unauthenticated HEAD cannot tell a missing
-// bucket from a present one — MinIO answers 403 either way — so this does the real
-// round trip through the same client the API will use, which also proves the
-// credentials, the region and path-style addressing before two processes depend on
-// them.
-const assertSharedStorageReachable = async (): Promise<void> => {
-  const storage = getStorage({
-    accessKeyId: STORAGE_ACCESS_KEY_ID,
-    bucket: STORAGE_BUCKET,
-    endpoint: STORAGE_ENDPOINT,
-    forcePathStyle: true,
-    maxUploadBytes: 5 * 1024 * 1024 * 1024,
-    provider: 's3',
-    region: 'us-east-1',
-    secretAccessKey: STORAGE_SECRET_ACCESS_KEY,
-  })
-  const key = `smoke-multi/preflight-${randomUUID()}`
-  try {
-    await storage.putStream(key, Readable.from([Buffer.from('preflight')]), 'text/plain')
-    const read = await storage.getStream(key)
-    if (!read) throw new Error('the object could not be read back')
-    read.destroy()
-    await storage.delete(key)
-  } catch (error) {
-    throw new Error(
-      `Shared object storage is not usable at ${STORAGE_ENDPOINT}/${STORAGE_BUCKET}`
-      + ` (${error instanceof Error ? error.message : String(error)}). Two instances`
-      + ' must share one bucket; start it with `docker compose -f'
-      + ' infrastructure/compose/docker-compose.multi.yml up -d minio minio-setup`,'
-      + ' or point SMOKE_MULTI_STORAGE_ENDPOINT at your own S3-compatible endpoint.',
-      { cause: error },
-    )
-  }
-}
 
 const main = async (): Promise<void> => {
   const { createMockLlmServer, loadScenario } = await import('@nessie/mock-llm')
@@ -264,28 +94,24 @@ const main = async (): Promise<void> => {
     turns: base.turns.map((turn, index) =>
       (index === 0 && CHAOS ? { ...turn, latencyMs: CHAOS_TURN_LATENCY_MS } : turn)),
   }
-  for (const port of [PORT_BASE, ...API_PORTS]) await assertPortFree(port)
-  await assertSharedStorageReachable()
+  for (const port of [PORT_BASE, ...API_PORTS]) await lifecycle.assertPortFree(port)
+  await assertSharedStorageReachable({
+    accessKeyId: STORAGE_ACCESS_KEY_ID,
+    bucket: STORAGE_BUCKET,
+    endpoint: STORAGE_ENDPOINT,
+    secretAccessKey: STORAGE_SECRET_ACCESS_KEY,
+  })
   // One mock server per worker: its counter tells the chaos step who is running.
   const mocks = [await createMockLlmServer({ scenario }), await createMockLlmServer({ scenario })]
 
-  // Outside `local` the API and worker refuse to boot without a DeepSignal app key
-  // and a UOA delegated-identity configuration; neither is exercised here, so
-  // these ephemeral values exist only to clear that boot gate.
-  const pem = String(generateKeyPairSync('rsa', { modulusLength: 2048 })
-    .privateKey.export({ format: 'pem', type: 'pkcs8' }))
   // selfHosted, not local: local mode embeds a worker in every API process, which
   // would put four claimants on run.execute and make the chaos step meaningless.
   const shared = {
-    DEEPSIGNAL_MCP_APP_KEY: `dsk_${randomUUID().replaceAll('-', '')}`,
+    ...uoaFixture.environment,
     NESSIE_AUTH_SECRET: AUTH_SECRET,
     NESSIE_MODE: 'selfHosted',
     NESSIE_MODEL_API_KEY: 'multi-instance-smoke',
     NESSIE_MODEL_PROVIDER: 'openai',
-    UOA_CLIENT_SECRET: randomUUID(),
-    UOA_CONFIG_JWT_KID: 'multi-instance-smoke',
-    UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(pem).toString('base64'),
-    UOA_CONFIG_URL: 'http://127.0.0.1:1/config',
     NESSIE_STORAGE_ACCESS_KEY_ID: STORAGE_ACCESS_KEY_ID,
     NESSIE_STORAGE_BUCKET: STORAGE_BUCKET,
     NESSIE_STORAGE_ENDPOINT: STORAGE_ENDPOINT,
@@ -293,10 +119,9 @@ const main = async (): Promise<void> => {
     NESSIE_STORAGE_PROVIDER: 's3',
     NESSIE_STORAGE_REGION: 'us-east-1',
     NESSIE_STORAGE_SECRET_ACCESS_KEY: STORAGE_SECRET_ACCESS_KEY,
-    UOA_DOMAIN: 'multi-instance-smoke.invalid',
   }
   const apis = API_PORTS.map((port, index) =>
-    startProcess(`api-${index + 1}`, resolve(REPO_ROOT, 'api', 'dist', 'index.js'), {
+    lifecycle.startProcess(`api-${index + 1}`, resolve(REPO_ROOT, 'api', 'dist', 'index.js'), {
       ...shared,
       NESSIE_API_HOST: '127.0.0.1',
       NESSIE_API_PORT: String(port),
@@ -324,11 +149,11 @@ const main = async (): Promise<void> => {
     body: JSON.stringify(owner), headers: { 'content-type': 'application/json' }, method: 'POST',
   })
   const bootstrapBody = (await bootstrap.json()) as { data?: { token?: string } }
-  const token = bootstrapBody.data?.token
+  let token = bootstrapBody.data?.token
   if (!token) throw new Error(`bootstrap failed (${bootstrap.status}): ${JSON.stringify(bootstrapBody)}`)
 
   const workers = mocks.map((mock, index) =>
-    startProcess(`worker-${index + 1}`, resolve(REPO_ROOT, 'worker', 'dist', 'index.js'), {
+    lifecycle.startProcess(`worker-${index + 1}`, resolve(REPO_ROOT, 'worker', 'dist', 'index.js'), {
       ...shared,
       NESSIE_MODEL_BASE_URL: `${mock.url}/v1`,
       // The SIGKILL escalation below is compressed to two seconds, while the
@@ -340,10 +165,10 @@ const main = async (): Promise<void> => {
         ? { NESSIE_RUN_DRAIN_GRACE_MS: '300', NESSIE_WORKER_DRAIN_TIMEOUT_MS: '300' }
         : {}),
     }))
-  const ready = (w: Managed): boolean => /"status": "ready"/.test(w.log())
+  const ready = (w: ManagedProcess): boolean => /"status": "ready"/.test(w.log())
   await Promise.all(workers.map((w) => waitFor(`${w.label} ready`, () => ready(w), 180_000)))
 
-  const proxy = await startProxy(API_PORTS)
+  const proxy = await lifecycle.startProxy(API_PORTS)
   const { disconnectPrismaClient, enqueueQueueJob, getPrismaClient } = await import('@nessie/db')
   const { createPgPool } = await import('@nessie/runtime')
   const { RunExecuteJobPayloadSchema } = await import('@nessie/schemas')
@@ -355,10 +180,20 @@ const main = async (): Promise<void> => {
   const orgs = await prisma.organization.findMany({ select: { id: true } })
   if (orgs.length !== 1) throw new Error(`expected one organization on a fresh database, found ${orgs.length}`)
   const organizationId = orgs[0]!.id
-  const ownerId = (await prisma.user.findFirstOrThrow({ select: { id: true } })).id
+  const ownerUser = await prisma.user.findFirstOrThrow({ select: { id: true, tokenVersion: true } })
+  const ownerId = ownerUser.id
   const general = await prisma.channel.findFirstOrThrow({
     select: { projectId: true, teamId: true }, where: { organizationId, slug: 'general' },
   })
+  token = await uoaFixture.bindOwner({
+    bootstrapToken: token,
+    organizationId,
+    owner: ownerUser,
+    prisma,
+    projectId: general.projectId,
+    teamId: general.teamId,
+  })
+  const uoaIdentity = uoaFixture.identity
   const suffix = randomUUID().slice(0, 8)
   const agent = await prisma.agent.create({
     data: {
@@ -377,7 +212,7 @@ const main = async (): Promise<void> => {
   const seedThread = async (): Promise<Seed> => {
     const thread = await prisma.thread.create({ data: { channelId: channel.id } })
     const content = 'Which channels does this team have?'
-    const posted = await call('POST', `/api/threads/${thread.id}/messages`, token, { content })
+    const posted = await call(PROXY_URL, 'POST', `/api/threads/${thread.id}/messages`, token, { content })
     if (posted.status !== 201) throw new Error(`post failed (${posted.status}): ${JSON.stringify(posted.body)}`)
     const message = (posted.body['data'] as { message: { id: string } }).message
     return { messageId: message.id, threadId: thread.id }
@@ -400,7 +235,7 @@ const main = async (): Promise<void> => {
           actionContext: {
             agentId: agent.id, channelId: channel.id, correlationId: randomUUID(),
             effectiveUserId: ownerId, requestId: randomUUID(), taskId: task.id,
-            teamId: general.teamId, threadId: seed.threadId,
+            teamId: general.teamId, threadId: seed.threadId, uoaIdentity,
           },
           actor: { actorId: ownerId, actorType: 'user', roles: ['owner'] },
           tenant: {
@@ -439,7 +274,7 @@ const main = async (): Promise<void> => {
       return executor >= 0
     }, 30_000)
     console.log(`[smoke:multi] chaos: SIGTERM worker-${executor + 1} mid-run ${runId}`)
-    await signalProcess(workers[executor]!, 'SIGTERM')
+    await lifecycle.signalProcess(workers[executor]!, 'SIGTERM')
     const atKill = await pool.query(
       `SELECT status, locked_until FROM queue_jobs WHERE payload->>'runId' = $1`, [runId],
     )
@@ -486,18 +321,18 @@ const main = async (): Promise<void> => {
     const streamSeed = await seedThread()
     const path = `/api/threads/${streamSeed.threadId}/stream`
     const mark = proxy.routes.length
-    const stream = openSse(path, token)
+    const stream = openSse(PROXY_URL, path, token)
     await waitFor('stream to reach an instance', () => proxy.routes.length > mark, 15_000)
     const servedBy = proxy.routes[mark]!
     const streamRunId = await enqueueRun(streamSeed)
     await waitFor('stream events to flow', () => stream.ids.length >= 2, 60_000)
     console.log(`[smoke:multi] chaos: SIGTERM api-${servedBy + 1} mid-stream`)
-    await signalProcess(apis[servedBy]!, 'SIGTERM')
+    await lifecycle.signalProcess(apis[servedBy]!, 'SIGTERM')
     await stream.ended
     // Reconnect once the run finished, as a client would after losing its
     // instance: everything published in between has to arrive on the resume.
     await waitForTerminal(streamRunId)
-    const resumed = openSse(path, token, stream.ids.at(-1))
+    const resumed = openSse(PROXY_URL, path, token, stream.ids.at(-1))
     await sleep(2_000)
     resumed.close()
 
@@ -521,7 +356,7 @@ const main = async (): Promise<void> => {
     // row, so the recovery is checkable by id rather than assumed: every one the
     // resume passed over has to come back from the run's REST thought log.
     const thinking = await call(
-      'GET', `/api/threads/${streamSeed.threadId}/runs/${streamRunId}/thinking`, token)
+      PROXY_URL, 'GET', `/api/threads/${streamSeed.threadId}/runs/${streamRunId}/thinking`, token)
     const logged = new Set(
       ((thinking.body['data'] as { entries?: { id: string }[] } | undefined)?.entries ?? [])
         .map((entry) => entry.id))
@@ -538,7 +373,7 @@ const main = async (): Promise<void> => {
       orderBy: { createdAt: 'desc' },
       where: { role: 'assistant', threadId: streamSeed.threadId },
     })
-    const listed = await call('GET',
+    const listed = await call(PROXY_URL, 'GET',
       `/api/threads/${streamSeed.threadId}/messages?rootMessageId=${streamSeed.messageId}`, token)
     const terminator = persisted.rows.find((row) =>
       row.event_name === 'stream.done' && delivered.includes(Number(row.id)))
@@ -557,11 +392,11 @@ const main = async (): Promise<void> => {
   try {
     const seed = await seedThread()
     const runId = await enqueueRun(seed)
-    const stream = openSse(`/api/threads/${seed.threadId}/stream`, token)
+    const stream = openSse(PROXY_URL, `/api/threads/${seed.threadId}/stream`, token)
     const status = await waitForTerminal(runId)
     stream.close()
     const replies = `/api/threads/${seed.threadId}/messages?rootMessageId=${seed.messageId}`
-    const listed = await call('GET', replies, token)
+    const listed = await call(PROXY_URL, 'GET', replies, token)
 
     const answer = await prisma.message.findFirst({
       orderBy: { createdAt: 'desc' }, where: { agentId: agent.id, role: 'assistant', threadId: seed.threadId },
@@ -618,7 +453,7 @@ const main = async (): Promise<void> => {
     await proxy.close()
     await pool.end()
     await disconnectPrismaClient()
-    await Promise.all(started.map((managed) => signalProcess(managed, 'SIGKILL')))
+    await Promise.all(lifecycle.started.map((managed) => lifecycle.signalProcess(managed, 'SIGKILL')))
     await Promise.all(mocks.map((mock) => mock.close()))
   }
 }

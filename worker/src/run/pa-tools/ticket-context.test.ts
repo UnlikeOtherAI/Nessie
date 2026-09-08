@@ -51,8 +51,13 @@ const checklistContext = (visibleAgents: Set<string>) => {
       consumedSources,
       prisma: {
         agent: { count: async ({ where }: { where: { id: string } }) => Number(visibleAgents.has(where.id)) },
-        organizationMember: { findMany: async () => [{ role: 'member', userId: member.userId }] },
+        organization: { findUnique: async () => ({ externalOrgId: null }) },
+        organizationMember: {
+          findFirst: async () => ({ id: 'membership-1' }),
+          findMany: async () => [{ role: 'member', userId: member.userId }],
+        },
         projectMember: { findMany: async () => [{ userId: member.userId }] },
+        productAccountLink: { findUnique: async () => null },
       },
     } as unknown as BuiltinToolRuntimeContext,
   }

@@ -1,12 +1,12 @@
 import {
-  safeFetch,
+  requestUoaOrganization,
+  UoaOrgRequestRejectedError,
+  UoaOrgRequestUnavailableError,
   type PinnedFetch,
   type ResolveHost,
 } from '@nessie/runtime'
 
-import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from './uoa-settings.js'
-
-const ROSTER_TIMEOUT_MS = 10_000
+import { isUoaConfigured, loadUoaSettings, type UoaSettings } from './uoa-settings.js'
 
 /** The upstream could not be consulted, or answered with something unusable. */
 export class UoaRosterUnavailableError extends Error {
@@ -58,26 +58,6 @@ export const orgPath = (team: Pick<UoaRosterTeam, 'externalOrgId'>): string =>
 export const teamPath = (team: UoaRosterTeam): string =>
   `${orgPath(team)}/teams/${encodeURIComponent(team.externalTeamId)}`
 
-const rosterUrl = (
-  settings: UoaSettings,
-  path: string,
-  query: Record<string, string> = {},
-): URL => {
-  const url = new URL(`${settings.baseUrl}${path}`)
-  url.searchParams.set('domain', settings.domain)
-  url.searchParams.set('config_url', settings.configUrl)
-  for (const [key, value] of Object.entries(query)) {
-    url.searchParams.set(key, value)
-  }
-  return url
-}
-
-const fetchOptions = (deps: UoaRosterDeps) => ({
-  ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-  ...(deps.resolveHost ? { resolveHost: deps.resolveHost } : {}),
-  maxRedirects: 0,
-})
-
 /**
  * One `/org/*` call. The domain hash authenticates Nessie; a caller that has a
  * live UOA session also supplies its short-lived subject assertion so UOA can
@@ -89,59 +69,21 @@ export const rosterRequest = async (
   init: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; query?: Record<string, string> },
   deps: UoaRosterDeps,
 ): Promise<unknown> => {
-  let response: Response
   try {
-    response = await safeFetch(
-      rosterUrl(settings, path, init.query),
-      {
-        method: init.method,
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${clientHash(settings)}`,
-          ...(deps.subjectAssertion
-            ? { 'X-UOA-Subject-Assertion': deps.subjectAssertion }
-            : {}),
-          ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-        signal: AbortSignal.timeout(ROSTER_TIMEOUT_MS),
-      },
-      fetchOptions(deps),
-    )
-  } catch {
-    throw new UoaRosterUnavailableError('[uoa] the org API is temporarily unavailable')
-  }
-
-  if (!response.ok) {
-    if (response.status >= 400 && response.status < 500) {
-      let upstreamCode: string | undefined
-      try {
-        const body = JSON.parse(await response.text()) as unknown
-        const record = body && typeof body === 'object' && !Array.isArray(body)
-          ? body as Record<string, unknown>
-          : null
-        upstreamCode = typeof record?.code === 'string'
-          ? record.code.trim() || undefined
-          : undefined
-      } catch {
-        // A refusal without a readable code is still a caller-visible 4xx,
-        // not an org-directory outage.
-      }
-      throw new UoaRosterRejectedError(
-        `[uoa] the org API refused the request (${response.status})`,
-        response.status,
-        upstreamCode,
-      )
+    return await requestUoaOrganization({
+      authBaseUrl: settings.baseUrl,
+      clientSecret: settings.clientSecret,
+      configUrl: settings.configUrl,
+      sourceDomain: settings.domain,
+    }, path, init, deps)
+  } catch (error) {
+    if (error instanceof UoaOrgRequestRejectedError) {
+      throw new UoaRosterRejectedError(error.message, error.statusCode, error.upstreamCode)
     }
-    throw new UoaRosterUnavailableError(`[uoa] the org API returned ${response.status}`)
-  }
-
-  const text = await response.text()
-  if (text.trim().length === 0) return null
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new UoaRosterUnavailableError('[uoa] the org API returned a malformed body')
+    if (error instanceof UoaOrgRequestUnavailableError) {
+      throw new UoaRosterUnavailableError(error.message)
+    }
+    throw error
   }
 }
 

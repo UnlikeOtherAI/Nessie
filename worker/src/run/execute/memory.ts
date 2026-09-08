@@ -8,6 +8,7 @@ import {
   type ThoughtDisclosureLineage,
 } from '@nessie/memory'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 import {
   agentActsAsRequestingPerson,
   runDelegatesToRequestingPerson,
@@ -227,9 +228,17 @@ export const retrieveRelevantMemories = async (
       : 'autonomous'
 
   try {
+    const entitlements = effectiveUserId
+      ? await resolveLiveEntitlements(deps.prisma, {
+        organizationId: context.channel.organizationId,
+        uoaIdentity: payload.actorContext.actionContext.uoaIdentity,
+        userId: effectiveUserId,
+      })
+      : undefined
     const reachableScopes = await resolveAccessibleScopes(
       {
         agentId: context.agent.id,
+        entitlements,
         mode,
         organizationId: context.channel.organizationId,
         userId: effectiveUserId ?? null,
