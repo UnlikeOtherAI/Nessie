@@ -133,7 +133,13 @@ export const documentTools = (): McpToolDefinition[] => [
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canReadSpace(space, viewer)) return SPACE_UNREACHABLE
 
-      return { pages: await access.provider.listPages({ organizationId, spaceId }) }
+      return {
+        pages: await access.provider.listPages({
+          disclosureViewer: await access.buildDisclosureViewer(context.actorContext) ?? undefined,
+          organizationId,
+          spaceId,
+        }),
+      }
     },
   },
   {
@@ -154,6 +160,9 @@ export const documentTools = (): McpToolDefinition[] => [
       const space = await access.provider.getSpace(organizationId, page.spaceId)
       const viewer = await access.buildViewer(context.actorContext)
       if (!space || !canReadSpace(space, viewer)) return PAGE_UNREACHABLE
+      if ((await access.filterReadablePages(context.actorContext, [page])).length === 0) {
+        return PAGE_UNREACHABLE
+      }
 
       return { page }
     },

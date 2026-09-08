@@ -1,6 +1,7 @@
 import type { AgentAccessScope, PrismaClient } from '@prisma/client'
 import type { ZodTypeAny } from 'zod'
-import type { KnowledgeProvider, SpaceViewer } from '@nessie/knowledge'
+import type { KnowledgePageRecord, KnowledgeProvider, SpaceViewer } from '@nessie/knowledge'
+import type { DisclosureViewer } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 /**
@@ -69,7 +70,12 @@ export type TaskWithOrigin = {
  * can drift from the one that actually runs.
  */
 export type KnowledgeAccess = {
+  buildDisclosureViewer: (actorContext: AuthorizedActionContext) => Promise<DisclosureViewer | null>
   buildViewer: (actorContext: AuthorizedActionContext) => Promise<SpaceViewer>
+  filterReadablePages: (
+    actorContext: AuthorizedActionContext,
+    pages: readonly KnowledgePageRecord[],
+  ) => Promise<KnowledgePageRecord[]>
   provider: KnowledgeProvider
 }
 
