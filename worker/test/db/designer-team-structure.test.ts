@@ -218,7 +218,7 @@ runDatabaseTest('the Designer stands up a project and a channel in its team', as
 
   // The resolving read finds the project and its owning team, so names become
   // the ids the next write takes.
-  const listed = await runProjectListTool(context, { query: 'campaigns' })
+  const listed = await runProjectListTool(context, { query: 'marketing' })
   assert.match(listed.outputPreview, new RegExp(`projectId=${projectId}`))
   assert.match(listed.outputPreview, new RegExp(`teamId=${team.teamId}`))
 
