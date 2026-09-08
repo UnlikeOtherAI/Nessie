@@ -30,17 +30,18 @@ of this verification.
 
 | Item | Evidence and status | Batch decision |
 | --- | --- | --- |
-| Researcher execution after peer delivery | Two observed researcher runs failed immediately; exact cause is being collected in one read-only audit. | Required blocker: diagnose before another live run. |
-| Peer failure visibility | The thread showed the coordinator waiting without visible researcher failures. The notification path needs confirmation against records. | Include with execution fix if confirmed; no speculative UI work. |
-| Empty successful provider response | Setup completed ten tool calls, then the provider returned no visible answer or tool call. PR 431 adds bounded recovery and passed CI. | Review once, combine any necessary correction with the runtime batch. |
+| Researcher execution after peer delivery | Both executed researcher jobs failed with `Ledger-routed requests require non-empty team_id attribution.` Agent and channel had the same non-null team, but the peer job's actor tenant omitted it. No inference or KiloTalk call occurred. | Required: carry the authorized channel's team/project attribution into the peer run; preserve the original human effective user. |
+| Peer failure visibility | The coordinator showed only its initial waiting message. Peer jobs are non-interactive, and their failure path did not publish a result or failure to the waiting conversation. | Required: one visible terminal failure per affected delegation, with a useful remedy and no retry loop. |
+| Delivery/serialization accounting | Three briefs were marked delivered, while two runs/jobs were recorded. The Nordbeans brief has no independently recorded run. Coalescing versus unprocessed work remains to be verified. | Trace every brief to consumed input or a visible failure; do not assume one brief must equal one run. Test progress after predecessor failure. |
+| Empty successful provider response | PR 431 passed CI and review confirmed one no-tools attempt, preserved effects, legacy checkpoints, and failed rather than successful terminalization. Its generic `empty_response` retry arm is currently unreachable from that terminal path. | Keep the working patch. Make the classification explicitly terminal and add a focused regression; no second recovery mechanism. |
 | Custom-app authentication editor | Unfinished changes are preserved in `sales-custom-app-auth`. The current human-initiated peer chain can use its human's personal credential override. | Deferred; not a prerequisite unless the execution evidence proves otherwise. |
 | Test-run token ceilings | The original coordinator ceiling interrupted work before delegation. The saved limits were increased without increasing the cost, tool, cycle, or time ceilings. | Preserve current configuration; evaluate actual usage during the single-prospect acceptance test. |
 
 ## Next fix and verification batch
 
-1. Finish the read-only audit and replace the unknowns above with exact errors,
-   affected paths, and one minimal repair specification.
-2. Assign one coherent runtime fix package. Preserve all existing tickets and
+1. The read-only audit is complete. The combined runtime package is attribution,
+   failure visibility, brief accounting, and the small classification correction.
+2. Assign that package to one Terra coding agent. Preserve all existing tickets and
    completed tool effects; do not replay setup or start unrelated improvements.
 3. Run targeted checks for changed behavior and the required CI gate once.
    Reuse the already-green PR 431 evidence where its code remains unchanged.
@@ -54,6 +55,27 @@ of this verification.
 Any new observations during a test pass go into this report. They do not
 immediately trigger another coding agent. Conclude the pass first, except
 where continuing would cause unsafe or destructive effects.
+
+## Runtime batch specification
+
+- Reuse the already-authorized thread/channel context in
+  `worker/src/control/mailbox.ts`; the rejecting Ledger attribution validation
+  in `packages/runtime/src/ledger-attribution.ts` is correct and stays strict.
+- Verify attribution, original `effectiveUserId`, and personal credential
+  selection through a peer-delivered inference fixture. Use test credentials,
+  never production secrets.
+- Follow all three delivered message IDs through serialization and failure
+  cleanup. Repair only a demonstrated loss/stall; legitimate coalescing is
+  acceptable if all briefs enter the consumed input.
+- Connect terminal peer failure to the waiting coordinator/conversation using
+  the existing lifecycle machinery. Preserve disclosure boundaries, prevent
+  duplicate notices, and do not add an autonomous retry or acknowledgement loop.
+- Keep the empty-response fix on the existing finalization path. Treat its
+  exhausted recovery classification as terminal rather than advertising another
+  retry in the generic resolver.
+- Complete targeted regression checks and one required CI pass before the next
+  live browser test. No production setup replay or additional UI work belongs
+  in this batch.
 
 ## Fixture references
 
