@@ -14,10 +14,13 @@ const teamId = '00000000-0000-4000-8000-000000000006'
 
 const prismaFor = (canonical: { id: string; organizationId: string }[]) => ({
   team: {
-    findUnique: async ({ where }: { where: { id: string } }) => where.id === teamId
+    findUnique: async ({ where, select }: {
+      where: { id: string }
+      select: { projects: { where: { id: string } } }
+    }) => where.id === teamId
       ? {
           project: { id: legacyProjectId, organizationId },
-          projects: canonical,
+          projects: canonical.filter((project) => project.id === select.projects.where.id),
         }
       : null,
   },
