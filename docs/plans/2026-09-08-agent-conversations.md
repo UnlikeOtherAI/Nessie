@@ -596,3 +596,23 @@ no global count.
   `metadata.conversationRef`, and is the reason a card kind per thing is
   still not needed.
 - This file is updated to "as built" with anything that changed.
+
+## Later — named so nothing hides
+
+Decided out of scope for this run, each one change away:
+
+- **Peer delegation into a conversation.** `agent_peer_delegate`
+  (`worker/src/run/pa-tools/peer-delegation.ts`) delivers its brief into the
+  *same* thread through the agent mailbox. Once conversations exist, the
+  natural delivery is a new thread with the peer (`agent_id` = peer, started
+  by the requester), with a conversation card back in the origin — a fresh
+  context and a way in, instead of interleaving. Same grant, same depth bound,
+  same mailbox; only the destination changes.
+- **`Channel.lastMessageAt` across threads.** The sidebar's recency still
+  tracks the General thread only; `unreadCount` was widened, recency was not,
+  so a busy conversation does not lift its room in the sidebar. Widen it when
+  a person reports the room "not moving".
+- **Fold `agentHandoffDoorway` onto `conversationRef`.** The handoff doorway
+  points at a global agent's DM (a channel); a conversation ref points at a
+  thread. One renderer parameterised by target is the Rule-zero shape; kept
+  separate here so the handoff's own tests stay untouched.
