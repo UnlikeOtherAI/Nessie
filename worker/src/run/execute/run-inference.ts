@@ -1,10 +1,12 @@
 import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
+  type CapabilityResolution,
   createInferenceService,
   isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
+  type PinnedFetch,
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
@@ -14,6 +16,7 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
+import { findLedgerModelOutputTokenCap } from '@nessie/team-admin'
 import { runInferenceGraph } from '../inference.js'
 import { resolveRuntimeProvider, resolveStageProviderConfig } from '../inference-provider.js'
 import {
@@ -33,6 +36,16 @@ const runtimeModelConfig = loadConfig().model
 export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
   tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
 
+export const resolveAdvertisedOutputTokens = (input: {
+  configuredMaxTokens: number
+  staticMaxOutputTokens?: number
+  ledgerMaxOutputTokens?: number
+}): number => Math.min(
+  input.configuredMaxTokens,
+  input.staticMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+  input.ledgerMaxOutputTokens ?? Number.POSITIVE_INFINITY,
+)
+
 export const resolveMainOutputTokens = (input: {
   admittedMaxOutputTokens?: number
   composeAvailable: boolean
@@ -44,6 +57,25 @@ export const resolveMainOutputTokens = (input: {
     input.admittedMaxOutputTokens ?? Number.POSITIVE_INFINITY,
   )
 }
+
+type MainOutputProviderConfig = Pick<
+  Awaited<ReturnType<typeof resolveStageProviderConfig>>,
+  'apiKey' | 'baseUrl' | 'connectorKind' | 'extraHeaders' | 'model' | 'providerKey'
+>
+
+type StageProviderResolver = (
+  ...args: Parameters<typeof resolveStageProviderConfig>
+) => Promise<MainOutputProviderConfig>
+
+type MainOutputInferenceService = {
+  getCapabilities: (model?: string) => Promise<{
+    effectiveSnapshot: Pick<CapabilityResolution['effectiveSnapshot'], 'maxOutputTokens'>
+  }>
+}
+
+type MainOutputInferenceServiceFactory = (
+  input: Parameters<typeof createInferenceService>[0],
+) => MainOutputInferenceService
 
 /**
  * How this run calls the model. One construction point for every inference the
@@ -87,6 +119,10 @@ export const createRunInference = (
      * mixes a person's plan with the organization's credits.
      */
     subscription: RunSubscriptionBinding | null
+    /** Narrow test seams; production uses the imported resolvers. */
+    stageProviderResolver?: StageProviderResolver
+    inferenceServiceFactory?: MainOutputInferenceServiceFactory
+    ledgerCatalogFetch?: PinnedFetch
     thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
   },
@@ -108,7 +144,7 @@ export const createRunInference = (
   }
 
   const mainOutputTokens = async (): Promise<number> => {
-    const providerConfig = await resolveStageProviderConfig(deps.prisma, {
+    const providerConfig = await (options.stageProviderResolver ?? resolveStageProviderConfig)(deps.prisma, {
       modelConfig: runtimeModelConfig,
       organizationId: context.channel.organizationId,
       providerKey: runModel.provider ?? runtimeModelConfig.provider,
@@ -128,7 +164,7 @@ export const createRunInference = (
         ? 'openai-compatible'
         : null)
     if (!runtimeProvider) return runtimeModelConfig.maxTokens
-    const service = createInferenceService({
+    const service = (options.inferenceServiceFactory ?? createInferenceService)({
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
       ...(providerConfig.extraHeaders ? { extraHeaders: providerConfig.extraHeaders } : {}),
@@ -137,7 +173,28 @@ export const createRunInference = (
       serviceId: providerConfig.providerKey,
     })
     const capability = await service.getCapabilities(providerConfig.model)
-    return capability.effectiveSnapshot.maxOutputTokens ?? runtimeModelConfig.maxTokens
+    let ledgerMaxOutputTokens: number | undefined
+    if (providerConfig.baseUrl && isLedgerEndpoint(providerConfig.baseUrl) && providerConfig.model) {
+      try {
+        const requestHeaders = await requestHeadersForProvider(providerConfig)
+        ledgerMaxOutputTokens = await findLedgerModelOutputTokenCap({
+          config: { apiKey: providerConfig.apiKey, baseUrl: providerConfig.baseUrl },
+          ledgerPublicUrl: new URL(providerConfig.baseUrl).origin,
+          model: providerConfig.model,
+          provider: providerConfig.providerKey,
+          ...(requestHeaders ? { requestHeaders } : {}),
+          ...(options.ledgerCatalogFetch ? { fetchImpl: options.ledgerCatalogFetch } : {}),
+        })
+      } catch {
+        // Ledger metadata is advisory. Its absence or a transient listing failure
+        // must retain the configured cap rather than invent a provider limit.
+      }
+    }
+    return resolveAdvertisedOutputTokens({
+      configuredMaxTokens: runtimeModelConfig.maxTokens,
+      staticMaxOutputTokens: capability.effectiveSnapshot.maxOutputTokens,
+      ledgerMaxOutputTokens,
+    })
   }
 
   const call = async (

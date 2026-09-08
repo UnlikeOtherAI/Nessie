@@ -4,6 +4,7 @@ import { type AgentModelOption, AgentModelOptionSchema } from '@nessie/schemas'
 import {
   attributionFromActorContext,
   type LedgerIdentityService,
+  type PinnedFetch,
 } from '@nessie/runtime'
 import { z } from 'zod'
 import { compareAgentModelOptions } from './agent-model-order.js'
@@ -11,6 +12,7 @@ import { compareAgentModelOptions } from './agent-model-order.js'
 const DEFAULT_LEDGER_URL = 'https://ledger.unlikeotherai.com'
 const LEDGER_MODELS_PATH = '/v1/models'
 const LEDGER_MODELS_TIMEOUT_MS = 10_000
+const MAX_OUTPUT_TOKENS = 2_147_483_647
 
 const LedgerModelListSchema = z.object({
   data: z.array(z.object({
@@ -23,6 +25,9 @@ const LedgerModelListSchema = z.object({
       name: z.string(),
     }).optional(),
     endpoints: z.array(z.string()).optional(),
+    // Capability metadata is advisory. Keep a malformed provider value from
+    // invalidating otherwise usable model selection; the cap reader validates it.
+    max_output_tokens: z.unknown().optional(),
   })),
 })
 
@@ -51,7 +56,7 @@ type LedgerAgentModelCatalogConfig = Pick<ModelConfig, 'apiKey' | 'baseUrl'>
 
 type ListLedgerAgentModelsOptions = {
   config: LedgerAgentModelCatalogConfig
-  fetchImpl?: typeof fetch
+  fetchImpl?: PinnedFetch
   ledgerPublicUrl?: string
   requestHeaders?: Record<string, string>
 }
@@ -158,14 +163,10 @@ const toAgentModelOptions = (
   return [...options.values()].sort(compareAgentModelOptions)
 }
 
-/**
- * Load only models that can power the agentic loop. Ledger also lists models
- * for embeddings, images, and incompatible protocols; those cannot service
- * Nessie's OpenAI chat-completions loop and are intentionally excluded.
- */
-export const listLedgerAgentModels = async (
+/** Load the authenticated Ledger catalog without filtering its model kinds. */
+const loadLedgerModelCatalog = async (
   input: ListLedgerAgentModelsOptions,
-): Promise<AgentModelOption[]> => {
+): Promise<z.infer<typeof LedgerModelListSchema>> => {
   const apiKey = trimmed(input.config.apiKey)
   if (!apiKey) {
     throw new LedgerAgentModelCatalogError(
@@ -211,9 +212,38 @@ export const listLedgerAgentModels = async (
       'Ledger model catalog returned an invalid response.',
     )
   }
-
-  return toAgentModelOptions(parsed.data)
+  return parsed.data
 }
+
+/**
+ * Read Ledger's advertised completion ceiling for one direct service model.
+ * A missing field remains unknown; callers must retain their configured cap.
+ */
+export const findLedgerModelOutputTokenCap = async (
+  input: ListLedgerAgentModelsOptions & { model: string; provider: string },
+): Promise<number | undefined> => {
+  const catalog = await loadLedgerModelCatalog(input)
+  const value = catalog.data.find((entry) => (
+    entry.kind === 'service'
+    && entry.id === input.model
+    && entry.service?.id === input.provider
+  ))?.max_output_tokens
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value > 0
+    && value <= MAX_OUTPUT_TOKENS
+    ? value
+    : undefined
+}
+
+/**
+ * Load only models that can power the agentic loop. Ledger also lists models
+ * for embeddings, images, and incompatible protocols; those cannot service
+ * Nessie's OpenAI chat-completions loop and are intentionally excluded.
+ */
+export const listLedgerAgentModels = async (
+  input: ListLedgerAgentModelsOptions,
+): Promise<AgentModelOption[]> => toAgentModelOptions(await loadLedgerModelCatalog(input))
 
 export const assertLedgerAgentModelSelection = async (input: {
   config: LedgerAgentModelCatalogConfig

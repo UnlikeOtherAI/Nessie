@@ -26,6 +26,11 @@ summary and points here; **this file is the rule**.
   - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
     `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
     (`budget-stop.ts`); member-visible copy carries **no currency figures**.
+  - For Ledger-routed models, main-turn admission reads the authenticated
+    `GET /v1/models` `max_output_tokens` field when Ledger advertises it and
+    uses the smaller of that value, the static connector capability, and the
+    configured cap. Missing or unavailable catalog metadata remains unknown;
+    it never becomes an inferred provider ceiling.
   - The cache-read weight resolves once per run from the org
     `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
     [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25).
