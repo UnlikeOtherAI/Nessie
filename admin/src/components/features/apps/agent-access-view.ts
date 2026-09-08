@@ -93,11 +93,12 @@ export const projectAppAccessTools = (
   }
   for (const tool of tools) {
     if (!tool.mcpInstanceId || !connections.has(tool.mcpInstanceId)) continue
-    if (!tool.enabled || tool.status !== 'active') {
+    if (tool.status === 'pending_review') {
       projection.waiting += 1
       projection.waitingConnectionId ??= tool.mcpInstanceId
       continue
     }
+    if (!tool.enabled || tool.status !== 'active') continue
     const entry = { policyKey: tool.policyKey, registryEntryId: tool.id }
     if (tool.requiresExplicitGrant) projection.grantable.push(entry)
     else projection.open.push(entry)
@@ -108,12 +109,18 @@ export const projectAppAccessTools = (
 // ─── What control this viewer gets ──────────────────────────────────────────
 
 export type AppAccessControl =
-  | { kind: 'manageable'; open: AppAccessTool[]; tools: AppAccessTool[] }
+  | {
+    kind: 'manageable'
+    open: AppAccessTool[]
+    tools: AppAccessTool[]
+    waiting: number
+    waitingConnectionId: string | null
+  }
   | { kind: 'not-connected' }
   | { kind: 'owner-only' }
   | { kind: 'awaiting-review'; connectionId: string }
   | { kind: 'no-capabilities' }
-  | { kind: 'open-to-everyone'; openCount: number }
+  | { kind: 'open-to-everyone'; openCount: number; waiting: number; waitingConnectionId: string | null }
 
 /**
  * `projection` is null for a viewer who cannot read the capability rows at all
@@ -131,8 +138,12 @@ export const resolveAppAccessControl = (input: {
   if (input.connectionIds.length === 0) return { kind: 'not-connected' }
   if (!input.canManage || !input.projection) return { kind: 'owner-only' }
   const { grantable, open, waiting, waitingConnectionId } = input.projection
-  if (grantable.length > 0) return { kind: 'manageable', open, tools: grantable }
-  if (open.length > 0) return { kind: 'open-to-everyone', openCount: open.length }
+  if (grantable.length > 0) {
+    return { kind: 'manageable', open, tools: grantable, waiting, waitingConnectionId }
+  }
+  if (open.length > 0) {
+    return { kind: 'open-to-everyone', openCount: open.length, waiting, waitingConnectionId }
+  }
   return waiting > 0 && waitingConnectionId
     ? { connectionId: waitingConnectionId, kind: 'awaiting-review' }
     : { kind: 'no-capabilities' }
@@ -173,6 +184,18 @@ export const appAccessNotice = (
         hrefLabel: null,
       }
     case 'manageable':
+      // A second connection can still be waiting for review while this one
+      // has switchable rows. Keep its review doorway visible rather than
+      // letting the usable account imply every connected scope is callable.
+      if (control.waiting > 0 && control.waitingConnectionId) {
+        return {
+          body:
+            `${control.waiting} of this app's capabilities are waiting to be reviewed. `
+            + 'Approve them before giving the connected account to an agent.',
+          href: toolsHref(control.waitingConnectionId),
+          hrefLabel: 'Review capabilities',
+        }
+      }
       // Silent when every row is switchable; otherwise the count is the only
       // thing that keeps the switches below from over-claiming.
       return control.open.length === 0
@@ -186,6 +209,15 @@ export const appAccessNotice = (
           hrefLabel: null,
         }
     case 'open-to-everyone':
+      if (control.waiting > 0 && control.waitingConnectionId) {
+        return {
+          body:
+            `${control.waiting} of this app's capabilities are waiting to be reviewed. `
+            + 'Approve them before giving the connected account to an agent.',
+          href: toolsHref(control.waitingConnectionId),
+          hrefLabel: 'Review capabilities',
+        }
+      }
       return {
         body:
           `This app's ${control.openCount} capabilities need no per-agent grant, `

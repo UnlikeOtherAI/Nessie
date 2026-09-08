@@ -4,6 +4,7 @@ import type { AgentToolPolicyTarget } from '@nessie/schemas'
 
 import {
   useAgentToolPolicyTargets,
+  invalidateAgentToolPolicy,
   useMcpToolRegistry,
   useSetAgentToolPolicyEntry,
   type McpToolRegistryRecord,
@@ -81,6 +82,26 @@ export class AppAgentAccessWriteError extends Error {
   }
 }
 
+export const writeAppAgentAccess = async (
+  input: SetAppAgentAccessInput,
+  writeEntry: (toolRegistryEntryId: string) => Promise<void>,
+): Promise<SetAppAgentAccessResult> => {
+  let landed = 0
+  for (const toolRegistryEntryId of input.toolRegistryEntryIds) {
+    try {
+      await writeEntry(toolRegistryEntryId)
+    } catch (caught) {
+      throw new AppAgentAccessWriteError(
+        landed,
+        input.toolRegistryEntryIds.length,
+        caught instanceof Error ? caught.message : 'the change could not be saved.',
+      )
+    }
+    landed += 1
+  }
+  return { landed, total: input.toolRegistryEntryIds.length }
+}
+
 /**
  * One switch, one write per capability.
  *
@@ -96,33 +117,21 @@ export const useSetAppAgentAccess = () => {
   const setPolicyEntry = useSetAgentToolPolicyEntry()
 
   return useMutation<SetAppAgentAccessResult, Error, SetAppAgentAccessInput>({
-    mutationFn: async (input) => {
-      const total = input.toolRegistryEntryIds.length
-      let landed = 0
-      for (const toolRegistryEntryId of input.toolRegistryEntryIds) {
-        try {
-          await setPolicyEntry.mutateAsync({
+    mutationFn: (input) => writeAppAgentAccess(input, async (toolRegistryEntryId) => {
+      await setPolicyEntry.mutateAsync({
             agentId: input.agentId,
             enabled: input.enabled,
+            invalidate: false,
             toolRegistryEntryId,
-          })
-        } catch (caught) {
-          throw new AppAgentAccessWriteError(
-            landed,
-            total,
-            caught instanceof Error ? caught.message : 'the change could not be saved.',
-          )
-        }
-        landed += 1
-      }
-      return { landed, total }
-    },
+      })
+    }),
     // Whether an agent can now *reach* the app is the server's answer, not this
     // client's: the detail record is refetched so `agentsWithAccess` and the tab
     // count come back from the same rule the worker enforces. Failures refetch
     // too — a partial fan-out changed real state.
-    onSettled: () => {
+    onSettled: (_data, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
+      invalidateAgentToolPolicy(queryClient, input.agentId)
     },
   })
 }
