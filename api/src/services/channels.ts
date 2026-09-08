@@ -109,7 +109,7 @@ export const listChannelsForUser = async (
   })
 
   const needsThread = channels.filter(
-    (channel) => !channel.threads.some((thread) => thread.agentId === null),
+    (channel) => !channel.threads.some((thread) => !thread.agentId),
   )
   if (needsThread.length > 0) {
     await prisma.thread.createMany({
@@ -142,7 +142,7 @@ export const listChannelsForUser = async (
   const defaultThreadIdByChannel = new Map(
     channels.map((channel) => [
       channel.id,
-      (channel.threads.find((thread) => thread.agentId === null) ?? channel.threads[0]!).id,
+      (channel.threads.find((thread) => !thread.agentId) ?? channel.threads[0]!).id,
     ]),
   )
   const defaultThreadIds = [...defaultThreadIdByChannel.values()]
