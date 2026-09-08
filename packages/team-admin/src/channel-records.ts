@@ -33,6 +33,11 @@ type ThreadLastMessageRow = {
   last_message_at: Date | null
 }
 
+type ChannelLastMessageRow = {
+  channel_id: string
+  last_message_at: Date | null
+}
+
 export type TeamProjectScope = {
   projectId: string
   projectName: string
@@ -227,6 +232,46 @@ export const loadLastMessageAtByThread = async (
   for (const row of rows) {
     if (row.last_message_at) {
       activity.set(row.thread_id, row.last_message_at.toISOString())
+    }
+  }
+  return activity
+}
+
+// The same aggregate one level up: `MAX(created_at)` per *channel*, across
+// every thread in it. Same shape and the same ISO-8601 contract as
+// `loadLastMessageAtByThread`, so a caller can hand either straight to a sort.
+//
+// It exists because "which room did this person last talk to this agent in" is
+// a question about rooms, and answering it by selecting each candidate's
+// threads and scoring them in memory fetches a set bounded by nothing — one
+// row per thread of up to `AGENT_CONVERSATION_CANDIDATE_LIMIT` channels. One
+// grouped query is a fixed cost whatever a room's thread count is. Tombstoned
+// messages are excluded here (a deleted message is not activity a room should
+// be ranked by); the per-thread aggregate counts them, matching its own unread
+// computation.
+export const loadLastMessageAtByChannel = async (
+  prisma: PrismaClient | Prisma.TransactionClient,
+  channelIds: string[],
+): Promise<Map<string, string>> => {
+  if (channelIds.length === 0) {
+    return new Map()
+  }
+
+  const rows = await prisma.$queryRaw<ChannelLastMessageRow[]>(Prisma.sql`
+    SELECT
+      t.channel_id AS channel_id,
+      MAX(m.created_at) AS last_message_at
+    FROM "messages" m
+    JOIN "threads" t ON t.id = m.thread_id
+    WHERE t.channel_id IN (${Prisma.join(channelIds.map((channelId) => Prisma.sql`${channelId}::uuid`))})
+      AND m.deleted_at IS NULL
+    GROUP BY t.channel_id
+  `)
+
+  const activity = new Map<string, string>()
+  for (const row of rows) {
+    if (row.last_message_at) {
+      activity.set(row.channel_id, row.last_message_at.toISOString())
     }
   }
   return activity

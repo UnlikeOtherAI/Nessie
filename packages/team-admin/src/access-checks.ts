@@ -1,4 +1,4 @@
-import type { ChannelSystemType, PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, Prisma, PrismaClient } from '@prisma/client'
 import { buildAgentVisibilityWhere, buildVisibleAgentWhere } from '@nessie/db'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
@@ -51,7 +51,9 @@ export const getChannelIfMember = async (
  * documents) cannot drift from the owning surface.
  */
 export const isAgentVisibleToUser = async (
-  prisma: PrismaClient,
+  // Widened to the transaction client so a caller inside `$transaction` asks
+  // the same question with the same answer; the read itself is unchanged.
+  prisma: PrismaClient | Prisma.TransactionClient,
   userId: string,
   organizationId: string,
   agentId: string,

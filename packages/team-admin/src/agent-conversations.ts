@@ -25,9 +25,14 @@ import {
   type RunOutcome,
 } from '@nessie/schemas'
 
+import { isAgentVisibleToUser } from './access-checks.js'
 import { buildAccessibleChannelWhere } from './agent-record.js'
 import { canManageChannel } from './channel-manage.js'
-import { loadLastMessageAtByThread, loadUnreadCountsByThread } from './channel-records.js'
+import {
+  loadLastMessageAtByChannel,
+  loadLastMessageAtByThread,
+  loadUnreadCountsByThread,
+} from './channel-records.js'
 
 /**
  * Conversations with an agent.
@@ -46,8 +51,19 @@ import { loadLastMessageAtByThread, loadUnreadCountsByThread } from './channel-r
  * make the two drift.
  */
 
-/** A conversation whose thread has no title of its own and no room to borrow. */
+/**
+ * What an *unnamed* conversation is called when it is read.
+ *
+ * A projection, never a stored value: `threads.title IS NULL` is the one
+ * marker of "nobody has named this yet", so a person who deliberately types
+ * "New conversation" owns that name and the first-message rule leaves it
+ * alone. Writing the sentinel would make the two indistinguishable, which is
+ * exactly the bug this constant used to carry.
+ */
 export const DEFAULT_CONVERSATION_TITLE = 'New conversation'
+
+/** Every door here reads the same rows inside a transaction or outside one. */
+type PrismaLike = PrismaClient | Prisma.TransactionClient
 
 /**
  * How many of a viewer's candidate threads one list read considers.
@@ -131,9 +147,15 @@ const truncateTitle = (value: string): string =>
  * The title a new conversation carries.
  *
  * Text, not intent: the caller's title, else the first non-empty line of the
- * opening message with its whitespace collapsed, else a plain default. No model
- * call — a derived title that took an inference would make opening a
- * conversation cost one, and the person can rename it in a keystroke.
+ * opening message with its whitespace collapsed. No model call — a derived
+ * title that took an inference would make opening a conversation cost one, and
+ * the person can rename it in a keystroke.
+ *
+ * `null` is "there was nothing to derive", which is a different fact from any
+ * particular string: it is what the caller stores as `threads.title` to mean
+ * unnamed, and what tells the first-message rule that naming is still open.
+ * Returning `DEFAULT_CONVERSATION_TITLE` here instead would collide with a
+ * person who typed those very words.
  *
  * It lives here rather than at either door so the person's "New conversation"
  * button and the assistant's `agent_conversation_start` name things the same
@@ -142,7 +164,7 @@ const truncateTitle = (value: string): string =>
 export const deriveConversationTitle = (input: {
   message?: string | null | undefined
   title?: string | null | undefined
-}): string => {
+}): string | null => {
   const given = input.title?.trim()
   if (given) return truncateTitle(given)
 
@@ -152,7 +174,7 @@ export const deriveConversationTitle = (input: {
     .find((line) => line.length > 0)
   if (firstLine) return truncateTitle(firstLine)
 
-  return DEFAULT_CONVERSATION_TITLE
+  return null
 }
 
 const conversationThreadSelect = {
@@ -204,11 +226,12 @@ export const loadRunProgressLine = async (
 }
 
 /**
- * The agent a General thread is listed under.
+ * The agent a General thread is listed under when nobody asked for one.
  *
  * A conversation names its agent; a General row borrows one from the room's
  * bindings, oldest first so the answer is the same on every read. A presence
- * binding placed by somebody else is not this viewer's.
+ * binding placed by somebody else is not this viewer's. Inside an agent's own
+ * list the requested agent wins over this — see `buildConversationRecords`.
  */
 const resolveGeneralThreadAgentId = (
   row: ConversationThreadRow,
@@ -220,6 +243,22 @@ const resolveGeneralThreadAgentId = (
 
 const uuidList = (ids: string[]): Prisma.Sql =>
   Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))
+
+/**
+ * One row of the list, once its agent is known.
+ *
+ * A run belongs to an *agent in a thread*, not to a thread: a room bound to two
+ * agents holds both their runs in its one General thread, so a row keyed on the
+ * thread alone would show one agent's card the other's work — "Running" under a
+ * name that is not running anything.
+ */
+type ConversationScope = { agentId: string; threadId: string }
+
+/** `(thread_id, agent_id)` as one SQL tuple list, so both loads stay one query. */
+const scopeTuples = (scopes: ConversationScope[]): Prisma.Sql =>
+  Prisma.join(
+    scopes.map((scope) => Prisma.sql`(${scope.threadId}::uuid, ${scope.agentId}::uuid)`),
+  )
 
 type PreviewRow = { thread_id: string; id: string; content: string }
 
@@ -302,10 +341,10 @@ type ActiveRunRow = {
 
 const loadActiveRuns = async (
   prisma: PrismaClient,
-  input: { organizationId: string; threadIds: string[]; userId: string },
+  input: { organizationId: string; scopes: ConversationScope[]; userId: string },
 ): Promise<Map<string, NonNullable<AgentConversationRecord['activeRun']>>> => {
   const active = new Map<string, NonNullable<AgentConversationRecord['activeRun']>>()
-  if (input.threadIds.length === 0) return active
+  if (input.scopes.length === 0) return active
 
   const rows = await prisma.$queryRaw<ActiveRunRow[]>(Prisma.sql`
     SELECT DISTINCT ON (r.thread_id)
@@ -314,7 +353,7 @@ const loadActiveRuns = async (
       r.status AS status,
       r.started_at AS started_at
     FROM "runs" r
-    WHERE r.thread_id IN (${uuidList(input.threadIds)})
+    WHERE (r.thread_id, r.agent_id) IN (${scopeTuples(input.scopes)})
       AND r.status::text IN (${Prisma.join(ACTIVE_RUN_STATUSES.map((status) => Prisma.sql`${status}`))})
     ORDER BY r.thread_id, r.created_at DESC, r.id DESC
   `)
@@ -343,17 +382,17 @@ type OutcomeRow = { thread_id: string; status: RunOutcome }
 
 const loadLastRunOutcomes = async (
   prisma: PrismaClient,
-  threadIds: string[],
+  scopes: ConversationScope[],
 ): Promise<Map<string, RunOutcome>> => {
   const outcomes = new Map<string, RunOutcome>()
-  if (threadIds.length === 0) return outcomes
+  if (scopes.length === 0) return outcomes
 
   const rows = await prisma.$queryRaw<OutcomeRow[]>(Prisma.sql`
     SELECT DISTINCT ON (r.thread_id)
       r.thread_id AS thread_id,
       r.status AS status
     FROM "runs" r
-    WHERE r.thread_id IN (${uuidList(threadIds)})
+    WHERE (r.thread_id, r.agent_id) IN (${scopeTuples(scopes)})
       AND r.status::text IN (${Prisma.join(TERMINAL_RUN_STATUSES.map((status) => Prisma.sql`${status}`))})
     ORDER BY r.thread_id, r.finished_at DESC NULLS LAST, r.created_at DESC, r.id DESC
   `)
@@ -369,6 +408,14 @@ const loadLastRunOutcomes = async (
 const buildConversationRecords = async (
   prisma: PrismaClient,
   input: {
+    /**
+     * The agent whose list this is, when the read had one. A General row is
+     * listed under the agent that was asked for — it is in *that* agent's list
+     * because that agent is bound to the room — and its active run and last
+     * outcome are that agent's too. Absent for a single conversation read,
+     * where nobody named an agent and the oldest binding is the only answer.
+     */
+    agentId?: string | undefined
     /** Precomputed by the list, which already needed it to order the page. */
     lastActivityByThread?: Map<string, string>
     organizationId: string
@@ -376,7 +423,20 @@ const buildConversationRecords = async (
     userId: string
   },
 ): Promise<AgentConversationRecord[]> => {
-  const threadIds = input.rows.map((row) => row.id)
+  // Which agent each row belongs to is settled before anything is loaded,
+  // because it decides which runs are the row's own.
+  const scoped = input.rows.flatMap((row) => {
+    const agentId =
+      row.agentId ?? input.agentId ?? resolveGeneralThreadAgentId(row, input.userId)
+    // A General thread of a room with no agent this viewer can see is not a
+    // conversation with anybody. It is absent rather than rendered agentless.
+    return agentId ? [{ agentId, row }] : []
+  })
+  const threadIds = scoped.map(({ row }) => row.id)
+  const scopes: ConversationScope[] = scoped.map(({ agentId, row }) => ({
+    agentId,
+    threadId: row.id,
+  }))
   const [lastActivity, unread, previews, activeRuns, outcomes] = await Promise.all([
     input.lastActivityByThread
       ? Promise.resolve(input.lastActivityByThread)
@@ -389,20 +449,15 @@ const buildConversationRecords = async (
     }),
     loadActiveRuns(prisma, {
       organizationId: input.organizationId,
-      threadIds,
+      scopes,
       userId: input.userId,
     }),
-    loadLastRunOutcomes(prisma, threadIds),
+    loadLastRunOutcomes(prisma, scopes),
   ])
 
   const records: AgentConversationRecord[] = []
-  for (const row of input.rows) {
+  for (const { agentId, row } of scoped) {
     const isGeneral = row.agentId === null
-    const agentId = row.agentId ?? resolveGeneralThreadAgentId(row, input.userId)
-    // A General thread of a room with no agent this viewer can see is not a
-    // conversation with anybody. It is absent rather than rendered agentless.
-    if (!agentId) continue
-
     const project = row.channel.team.project
     records.push({
       id: parseThreadId(row.id),
@@ -438,6 +493,9 @@ const buildConversationRecords = async (
  * `null` means "not visible", in the same words `findThreadForUser` uses, so a
  * thread id confirms nothing. A General thread of a channel with no agent the
  * viewer can see is null too: that is a room, not a conversation with anyone.
+ *
+ * Nobody named an agent here, so a General thread keeps the oldest-binding rule
+ * and a conversation keeps its own `agentId`.
  */
 export const loadConversationForUser = async (
   prisma: PrismaClient,
@@ -547,6 +605,10 @@ export const listAgentConversationsForUser = async (
   const rowsById = new Map(candidates.map((row) => [row.id, row]))
   return {
     data: await buildConversationRecords(prisma, {
+      // This is agent X's list, so every row in it is a conversation with X —
+      // including the General row of a room X shares with another agent, whose
+      // oldest binding may well be somebody else's.
+      agentId: input.agentId,
       lastActivityByThread,
       organizationId: input.organizationId,
       rows: page.data.flatMap((row) => {
@@ -590,7 +652,7 @@ const roomWhere = (input: {
 })
 
 const resolveNamedRoom = async (
-  prisma: PrismaClient,
+  prisma: PrismaLike,
   input: {
     agentId: string
     channelId: string
@@ -613,29 +675,27 @@ const resolveNamedRoom = async (
 }
 
 /**
- * Where a conversation goes when the caller named no room, in order: their own
- * DM with this agent, else the room they may post in that has been active most
- * recently.
+ * The caller's own DM with this agent, whatever `dmKey` shape provisioned it
+ * (`pa:`, `gagent:`, `agent:`, `extagent:`, the shared-agent key).
+ *
+ * Keying on the *bindings* rather than on the key's spelling keeps this one
+ * rule instead of five: a DM the caller belongs to whose only bound agent is
+ * this one is the conversation they already have. It is also the second half of
+ * "can this person see this agent at all" — `buildVisibleAgentWhere` does not
+ * admit a system-managed agent, and a person's Personal Assistant is one.
  */
-const resolveDefaultRoom = async (
-  prisma: PrismaClient,
+const resolveCallerHomeDm = async (
+  prisma: PrismaLike,
   input: { agentId: string; organizationId: string; startedByUserId: string },
 ): Promise<string | null> => {
-  const where = roomWhere({
-    agentId: input.agentId,
-    organizationId: input.organizationId,
-    userId: input.startedByUserId,
-  })
-
-  // The caller's own DM with this agent, whatever `dmKey` shape provisioned it
-  // (`pa:`, `gagent:`, `agent:`, `extagent:`, the shared-agent key). Keying on
-  // the *bindings* rather than on the key's spelling keeps this one rule
-  // instead of five: a DM the caller belongs to whose only bound agent is this
-  // one is the conversation they already have.
   const dm = await prisma.channel.findFirst({
     where: {
       AND: [
-        where,
+        roomWhere({
+          agentId: input.agentId,
+          organizationId: input.organizationId,
+          userId: input.startedByUserId,
+        }),
         { agentBindings: { every: { agentId: input.agentId } } },
       ],
       type: 'dm',
@@ -644,30 +704,55 @@ const resolveDefaultRoom = async (
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     select: { id: true },
   })
-  if (dm) return dm.id
+  return dm?.id ?? null
+}
+
+/**
+ * Where a conversation goes when the caller named no room, in order: their own
+ * DM with this agent, else the room they may post in that has been active most
+ * recently.
+ */
+const resolveDefaultRoom = async (
+  prisma: PrismaLike,
+  input: { agentId: string; organizationId: string; startedByUserId: string },
+): Promise<string | null> => {
+  const dm = await resolveCallerHomeDm(prisma, input)
+  if (dm) return dm
 
   const candidates = await prisma.channel.findMany({
-    where,
+    where: roomWhere({
+      agentId: input.agentId,
+      organizationId: input.organizationId,
+      userId: input.startedByUserId,
+    }),
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: AGENT_CONVERSATION_CANDIDATE_LIMIT,
-    select: { id: true, threads: { select: { id: true } } },
+    select: { createdAt: true, id: true },
   })
   if (candidates.length === 0) return null
 
-  const lastActivity = await loadLastMessageAtByThread(
+  // One grouped query for the whole candidate set. Selecting each candidate's
+  // threads to score them instead would fetch a set bounded by nothing — every
+  // thread of up to `AGENT_CONVERSATION_CANDIDATE_LIMIT` rooms, and a busy room
+  // now holds one thread per conversation ever opened in it.
+  const lastActivity = await loadLastMessageAtByChannel(
     prisma,
-    candidates.flatMap((channel) => channel.threads.map((thread) => thread.id)),
+    candidates.map((channel) => channel.id),
   )
   // ISO-8601 strings compare lexicographically in instant order, which is why
-  // `loadLastMessageAtByThread` can hand them straight to a sort.
-  const scored = candidates.map((channel) => ({
-    id: channel.id,
-    at: channel.threads.reduce<string>((newest, thread) => {
-      const at = lastActivity.get(thread.id) ?? ''
-      return at > newest ? at : newest
-    }, ''),
-  }))
-  scored.sort((left, right) => right.at.localeCompare(left.at))
+  // `loadLastMessageAtByChannel` can hand them straight to a sort. A room
+  // nobody has said anything in yet has no instant at all and sorts last; ties
+  // (including a set of silent rooms) fall back to the newest room.
+  const scored = [...candidates].sort((left, right) => {
+    const byActivity = (lastActivity.get(right.id) ?? '').localeCompare(
+      lastActivity.get(left.id) ?? '',
+    )
+    if (byActivity !== 0) return byActivity
+    return (
+      right.createdAt.getTime() - left.createdAt.getTime()
+      || right.id.localeCompare(left.id)
+    )
+  })
   return scored[0]?.id ?? null
 }
 
@@ -678,9 +763,14 @@ const resolveDefaultRoom = async (
  * binding. `no_room` is the honest answer to "this agent is nowhere you can
  * talk to it"; creating a room to make the call succeed would be placement,
  * which is owner-gated and is a different decision entirely.
+ *
+ * Takes a transaction client as readily as the base one, because a caller that
+ * writes the opener and claims the run in one transaction must be able to put
+ * the thread inside it too — otherwise a failure there leaves an orphan
+ * conversation behind (`agent_conversation_start`, worker).
  */
 export const startAgentConversation = async (
-  prisma: PrismaClient,
+  prisma: PrismaLike,
   input: {
     agentId: string
     channelId?: string | undefined
@@ -708,9 +798,27 @@ export const startAgentConversation = async (
     ? await resolveNamedRoom(prisma, { ...input, channelId: input.channelId })
     : await resolveDefaultRoom(prisma, input)
   if (!channelId) {
+    // A POST must never confirm what a GET would 404. The tenant lookup above
+    // is not visibility: for an agent this person cannot see, `no_room` and
+    // `channel_not_allowed` both say "that agent exists", which is exactly the
+    // thing `listAgentConversationsForUser` refuses to say. Visible is the
+    // list's own predicate plus the home-DM arm the default-room resolution
+    // already understands, so a person with a DM with the assistant keeps the
+    // room-shaped answer for a room-shaped mistake.
+    const visible =
+      (await isAgentVisibleToUser(
+        prisma,
+        input.startedByUserId,
+        input.organizationId,
+        input.agentId,
+      ))
+      || (await resolveCallerHomeDm(prisma, input)) !== null
+    if (!visible) return { kind: 'agent_not_found' }
     return input.channelId ? { kind: 'channel_not_allowed' } : { kind: 'no_room' }
   }
 
+  // `null`, never the sentinel: an unnamed conversation is one the first
+  // message may still name, and a person who typed "New conversation" is not.
   const title = deriveConversationTitle({ message: input.message, title: input.title })
   const thread = await prisma.thread.create({
     data: {
@@ -721,7 +829,9 @@ export const startAgentConversation = async (
     },
     select: { id: true, channelId: true },
   })
-  return { kind: 'created', thread: { ...thread, title } }
+  // The outcome carries the *displayed* name, the same projection the record
+  // makes, so a caller announcing what it just opened need not know the marker.
+  return { kind: 'created', thread: { ...thread, title: title ?? DEFAULT_CONVERSATION_TITLE } }
 }
 
 export type RenameThreadOutcome =
