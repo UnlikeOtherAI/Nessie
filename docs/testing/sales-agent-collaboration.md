@@ -162,6 +162,53 @@ The reusable driver and PowerShell instructions are in
 [`admin/e2e/sales-real-ui-catalog`](../../admin/e2e/sales-real-ui-catalog/README.md).
 This establishes checklist persistence, not live model research or consensus.
 
+## Resumed live verification, 8 September 2026
+
+Calendar and Google Meet are explicitly deferred by the user for this test.
+No client outreach, invitations, or paid rescans are part of this walkthrough.
+
+Nessie PRs 401, 403, 404, 405, and 406 are merged. Successful
+[Deploy run 34242931714](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34242931714)
+deployed commit `574a67afc0884aacefc30feb18c7704eae25fecd`, which contains those
+changes. The private Deep.Agent dependency therefore no longer blocks that
+deployment. This does not establish that a live run invoked compaction.
+
+The production Agent Tools UI now passed Save/reload checks for the researcher
+and coordinator's peer and project-ticket grants. The researcher's **Ask Bound
+Peer** grant additionally passed enable, revoke, and restore checks after reload.
+The researcher's four browser grants remain enabled. The coordinator has no
+browser grants; its browser panel incorrectly displays a load failure instead
+of explaining that access is disabled. That usability defect remains under repair.
+
+The coordinator's six-step template was corrected through the UI: apply it only
+to the planning ticket, and have the researcher apply its eight-step template
+to prospect tickets. Its meeting step now records the Calendar/Meet deferral.
+Both changes persisted after reload. After the failed run below, the Behavior
+tab still showed 40,000 tokens, 50 tool calls, 20 cycles, ten minutes, and 30 cents.
+
+A fresh, structured-mention coordinator request at 17:09 used the three cached
+customer IDs directly: Eska 28, Nordbeans 25, and Můj šálek kávy 40. The tool log
+showed successful reads of all three records and the default General board.
+`ticket_board_create` then failed with **I cannot copy restricted research into
+this shared project**. The channel-scoped MCP source does not authorize copying
+its results into the wider project audience; this denial must remain enforced.
+The intended sales project still needs its proper team/channel relationship and
+a connector audience consistent with the board destination.
+
+The run stopped at 14,483 tokens without an answer. Source inspection identified
+a recovery defect: run-budget clamping can reduce requested output to zero before
+the compaction predicate is evaluated, preventing a potentially useful forced
+compaction. The deferred-tool wrapper also appends the full argument schema to
+policy failures. These are confirmed code defects, but the exact projected input
+size for this live stop was not available; do not present it as measured evidence.
+No new board, prospect tickets, peer handoff, or consensus was confirmed.
+
+KiloTalk PR 21 was also verified in the deployed browser: Eska's Intelligence tab
+starts with **20 complete · 1 needs attention**, and **View all 21 source checks**
+expands readable source names and statuses. Collapsing the operational detail
+keeps the research summary visible without removing access to evidence. This
+verification read the cached record and did not start another scan.
+
 ## Compaction verification
 
 The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
