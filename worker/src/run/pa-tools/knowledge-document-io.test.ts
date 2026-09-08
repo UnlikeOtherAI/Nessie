@@ -14,7 +14,7 @@ const SPACE_ID = '00000000-0000-4000-8000-000000000004'
 const PAGE_ID = '00000000-0000-4000-8000-000000000005'
 const ATTACHMENT_ID = '00000000-0000-4000-8000-000000000006'
 
-test('a markdown read records its space scope before attachment bytes enter the run', async () => {
+test('a Markdown read records its page and private-source basis before attachment bytes enter the run', async () => {
   const sink = createConsumedSourceSink()
   const prisma = {
     knowledgePage: {
@@ -22,7 +22,6 @@ test('a markdown read records its space scope before attachment bytes enter the 
         id: PAGE_ID,
         kind: 'file',
         parentPageId: null,
-        publishedVersion: null,
         space: {
           channelId: null,
           organizationId: ORGANIZATION_ID,
@@ -36,16 +35,27 @@ test('a markdown read records its space scope before attachment bytes enter the 
         title: 'Private notes.md',
         versions: [{
           attachmentId: ATTACHMENT_ID,
-          basisScopes: [],
-          disclosureSources: [],
+          basisScopes: [
+            { scopeId: 'private-channel', scopeType: 'channel' },
+            { scopeId: 'private-project', scopeType: 'project' },
+          ],
+          disclosureSources: [{ sourceAuthorUserId: 'original-author', sourceChannelId: 'private-channel' }],
         }],
       }),
     },
   } as unknown as PrismaClient
   const fileService = {
     openStream: async () => ({
+      attachment: { filename: 'extensionless', mime: 'text/markdown' },
       stream: Readable.from((async function* () {
-        assert.deepEqual(sink.list(), [{ scopeId: USER_ID, scopeType: 'user' }])
+        assert.deepEqual(sink.list(), [
+          { scopeId: USER_ID, scopeType: 'user' },
+          { scopeId: 'private-channel', scopeType: 'channel' },
+          { scopeId: 'private-project', scopeType: 'project' },
+        ])
+        assert.deepEqual(sink.privateConversationSources(), [
+          { sourceAuthorUserId: 'original-author', sourceChannelId: 'private-channel' },
+        ])
         yield Buffer.from('classified body', 'utf8')
       })()),
     }),
@@ -58,12 +68,26 @@ test('a markdown read records its space scope before attachment bytes enter the 
     PAGE_ID,
     {
       consumedSources: sink,
-      disclosureViewer: { agentId: 'agent-1', kind: 'agent', scopes: [] },
+      disclosureViewer: {
+        kind: 'user',
+        scopes: [
+          { scopeId: 'private-channel', scopeType: 'channel' },
+          { scopeId: 'private-project', scopeType: 'project' },
+        ],
+        userId: USER_ID,
+      },
     },
   )
 
   assert.equal(document?.content, 'classified body')
-  assert.deepEqual(sink.list(), [{ scopeId: USER_ID, scopeType: 'user' }])
+  assert.deepEqual(sink.list(), [
+    { scopeId: USER_ID, scopeType: 'user' },
+    { scopeId: 'private-channel', scopeType: 'channel' },
+    { scopeId: 'private-project', scopeType: 'project' },
+  ])
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'original-author', sourceChannelId: 'private-channel' },
+  ])
 })
 
 test('a live document load with unknown private lineage opens no attachment bytes', async () => {
@@ -74,7 +98,6 @@ test('a live document load with unknown private lineage opens no attachment byte
         id: PAGE_ID,
         kind: 'file',
         parentPageId: null,
-        publishedVersion: null,
         space: {
           channelId: null,
           organizationId: ORGANIZATION_ID,
