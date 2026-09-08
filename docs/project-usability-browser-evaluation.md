@@ -31,6 +31,10 @@ evaluation does not infer board-local field definitions.
 
 The evaluation covers:
 
+- two projects created through the sidebar under one existing team, then a
+  channel created through the second project's action menu; the live team and
+  channel records, the destination URL, and the reloaded sidebar must all keep
+  that channel in the selected project;
 - create and edit a ticket, then move it between lifecycle columns;
 - board isolation on desktop and through the phone board switcher;
 - vertical scrolling through a populated column;

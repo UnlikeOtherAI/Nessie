@@ -3,7 +3,7 @@ import type { ChannelRecord } from '../contracts/team.js'
 import {
   channelTeamInclude,
   ensureSharedAgentDm,
-  loadChannelTeamProject,
+  loadTeamProjectScope,
   mapChannelRecord,
   validateChannelLabel,
 } from '@nessie/team-admin'
@@ -40,7 +40,7 @@ export const findOrCreateDmChannel = async (
     targetUserId: string
   },
 ): Promise<ChannelRecord | null> => {
-  const teamProject = await loadChannelTeamProject(prisma, {
+  const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
   })
@@ -232,7 +232,7 @@ export const findOrCreateAgentDmChannel = async (
     teamId: string
   },
 ): Promise<ChannelRecord | null> => {
-  const teamProject = await loadChannelTeamProject(prisma, {
+  const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
   })
@@ -323,7 +323,7 @@ export const findOrCreatePrivateConversationChannel = async (
     })
   }
 
-  const teamProject = await loadChannelTeamProject(prisma, {
+  const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
   })

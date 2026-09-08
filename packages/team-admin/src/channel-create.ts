@@ -123,6 +123,7 @@ export const createChannelForUser = async (
   input: {
     label: string
     organizationId: string
+    projectId?: string
     scope?: 'standalone'
     teamId?: string
     userId: string
@@ -135,6 +136,7 @@ export const createChannelForUser = async (
     : input.teamId
       ? await loadChannelTeamProject(prisma, {
           organizationId: input.organizationId,
+          projectId: input.projectId ?? '',
           teamId: input.teamId,
         })
       : null

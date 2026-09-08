@@ -1,4 +1,5 @@
 import type { PrismaClient, User } from '@prisma/client'
+import { resolveTeamProject } from '@nessie/team-admin'
 
 import type { SessionTokenClaims } from '../auth/session.js'
 import type { createSessionIssuers } from './session-issuers.js'
@@ -79,18 +80,19 @@ export const switchActorContext = async (
     )
   }
 
-  const [project, projectMember, team, teamMember] = await Promise.all([
+  const [project, projectMember, team, teamMember, ownership] = await Promise.all([
     prisma.project.findUnique({ where: { id: projectId } }),
     prisma.projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } }),
     prisma.team.findUnique({ where: { id: teamId } }),
     prisma.teamMember.findUnique({ where: { teamId_userId: { teamId, userId } } }),
+    resolveTeamProject(prisma, { organizationId, projectId, teamId }),
   ])
   if (
     !project
     || project.organizationId !== organizationId
     || !projectMember
     || !team
-    || team.projectId !== projectId
+    || !ownership
     || !teamMember
   ) {
     throw new ActorContextSwitchError(

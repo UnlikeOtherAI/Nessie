@@ -70,12 +70,23 @@ const ensureChannels = async (token) => {
 
 const ensureProject = async (token) => {
   const projects = await call('/api/projects', { token })
-  if (projects.length > 0) return projects[0]
-  return call('/api/projects', {
-    body: { name: 'Navigation E2E Project' },
+  const teams = await call('/api/teams', { token })
+  if (projects.length > 0) {
+    const project = projects.find((candidate) =>
+      teams.some((team) => team.projectIds?.includes(candidate.id)))
+    if (!project) throw new Error('the fixture has projects but none has an owning team')
+    const team = teams.find((candidate) => candidate.projectIds?.includes(project.id))
+    if (!team) throw new Error(`the fixture project ${project.id} has no owning team`)
+    return { project, team }
+  }
+  const team = teams[0]
+  if (!team) throw new Error('the fixture needs an existing team before creating a project')
+  const project = await call('/api/projects', {
+    body: { name: 'Navigation E2E Project', teamId: team.id },
     method: 'POST',
     token,
   })
+  return { project, team }
 }
 
 /**
@@ -97,7 +108,7 @@ export const ensureSecondBoard = async (token, projectId, name) => {
 export const seedTeam = async (apiServer) => {
   const session = await signIn(apiServer)
   const channels = await ensureChannels(session.token)
-  const project = await ensureProject(session.token)
+  const { project, team } = await ensureProject(session.token)
   if (channels.length < 2) {
     throw new Error('the suite needs two reachable channels; the seed produced fewer')
   }
@@ -110,6 +121,7 @@ export const seedTeam = async (apiServer) => {
     })),
     origin: session.origin,
     project: { id: project.id, name: project.name },
+    team: { id: team.id },
     token: session.token,
   }
 }

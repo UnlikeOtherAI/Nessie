@@ -64,8 +64,8 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
 
   // Included-relation lookups for the membership findMany below. Production
   // `loadUserMemberships` (services/auth.ts) reads `organization.name`,
-  // `project.organizationId`, and `team.projectId`, so the fake must project
-  // those objects from the seeded orgs/projects/teams rather than returning
+  // `project.organizationId`, `team.project`, and `team.projects`, so the fake
+  // must project those objects from the seeded orgs/projects/teams rather than returning
   // bare flat membership rows. Orgs/projects/teams seeded without a name get
   // a stable synthesized one.
   const orgRecord = (orgId: unknown, index: number): Row => {
@@ -78,8 +78,15 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
       ? { name: `Project ${index + 1}`, ...project }
       : undefined
   }
-  const teamRecord = (teamId: unknown): Row | undefined =>
-    teams.find((team) => team.id === teamId)
+  const teamRecord = (teamId: unknown): Row | undefined => {
+    const team = teams.find((candidate) => candidate.id === teamId)
+    if (!team) return undefined
+    return {
+      ...team,
+      project: projectRecord(team.projectId, 0),
+      projects: projects.filter((project) => project.teamId === team.id),
+    }
+  }
 
   /**
    * A team's project as the *caller's* select asked for it.

@@ -107,16 +107,33 @@ export const loadUserMemberships = async (
     }),
     prisma.teamMember.findMany({
       where: { userId },
-      include: { team: { select: { id: true, name: true, projectId: true } } },
+      include: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+            project: { select: { id: true, teamId: true } },
+            projects: { select: { id: true } },
+          },
+        },
+      },
     }),
   ])
 
   type MeTeam = MeMembership['projects'][number]['teams'][number]
   const teamsByProject = new Map<string, MeTeam[]>()
   for (const tm of teamMembers) {
-    const list = teamsByProject.get(tm.team.projectId) ?? []
-    list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })
-    teamsByProject.set(tm.team.projectId, list)
+    // Canonical ownership wins. The old FK is only a transition reader for
+    // records the audited backfill has not yet assigned.
+    const projectIds = [
+      ...tm.team.projects.map((project) => project.id),
+      ...(tm.team.project.teamId ? [] : [tm.team.project.id]),
+    ]
+    for (const projectId of projectIds) {
+      const list = teamsByProject.get(projectId) ?? []
+      list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })
+      teamsByProject.set(projectId, list)
+    }
   }
 
   const projectsByOrganization = new Map<string, MeMembership['projects']>()
