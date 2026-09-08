@@ -312,11 +312,9 @@ test('organization invitations enforce UOA’s 120-character optional name limit
       })
       assert.equal(rejected.statusCode, 400)
       assert.equal(rejected.json().error.code, 'VALIDATION_ERROR')
-      // The required administration check is read-only; the invalid payload
-      // must never create a second invitation POST upstream.
-      assert.equal(calls.length, 3)
-      assert.equal(calls[2]?.method, 'GET')
-      assert.equal(new URL(calls[2]?.url ?? '').pathname, '/org/me')
+      // Route validation runs before any UOA authorization or invitation
+      // egress, so an invalid payload cannot consume an upstream request.
+      assert.equal(calls.length, 2)
     } finally {
       await app.close()
     }
