@@ -176,7 +176,10 @@ runDatabaseTest('checkpoints preserve known authors, fail closed for legacy rows
     where: { checkpointId: modernCheckpoint.id },
   })
   assert.deepEqual(rows, [
-    { sourceAuthorUserId: fixture.authorAId, sourceChannelId: fixture.channelId },
-    { sourceAuthorUserId: fixture.authorBId, sourceChannelId: fixture.channelId },
-  ])
+    fixture.authorAId,
+    fixture.authorBId,
+  ].sort().map((sourceAuthorUserId) => ({
+    sourceAuthorUserId,
+    sourceChannelId: fixture.channelId,
+  })))
 })
