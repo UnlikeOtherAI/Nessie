@@ -129,7 +129,30 @@ test('searchNativePagesHybrid issues only the lexical query when queryEmbedding 
   assert.deepEqual(result, { data: [], meta: { cursor: null, hasMore: false } })
 })
 
-test('searchNativePagesHybrid issues both channels when queryEmbedding is present', async () => {
+test('searchNativePagesHybrid issues both channels when the query has embedding model identity', async () => {
+  const queries: string[] = []
+  const prisma = {
+    $queryRaw: async (query: { sql: string }) => {
+      queries.push(query.sql)
+      return []
+    },
+    knowledgePage: { findMany: async () => [] },
+  } as unknown as PrismaClient
+
+  await searchNativePagesHybrid(prisma, {
+    organizationId,
+    query: 'runbook',
+    queryEmbedding: [0.1, 0.2, 0.3],
+    embeddingModel: 'test-embedding-v1',
+  })
+
+  assert.equal(queries.length, 2)
+  assert.match(queries[0] ?? '', /websearch_to_tsquery/)
+  assert.match(queries[1] ?? '', /embedding <=>/)
+  assert.match(queries[1] ?? '', /c\.embedding_model =/)
+})
+
+test('searchNativePagesHybrid keeps only lexical retrieval when a vector has no model identity', async () => {
   const queries: string[] = []
   const prisma = {
     $queryRaw: async (query: { sql: string }) => {
@@ -145,9 +168,8 @@ test('searchNativePagesHybrid issues both channels when queryEmbedding is presen
     queryEmbedding: [0.1, 0.2, 0.3],
   })
 
-  assert.equal(queries.length, 2)
+  assert.equal(queries.length, 1)
   assert.match(queries[0] ?? '', /websearch_to_tsquery/)
-  assert.match(queries[1] ?? '', /embedding <=>/)
 })
 
 test('searchNativePagesHybrid filters chunks to a ticket when taskId is supplied', async () => {

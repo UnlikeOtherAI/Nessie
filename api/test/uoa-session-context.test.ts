@@ -98,6 +98,7 @@ class FakeBindingPrisma {
         id: '00000000-0000-4000-8000-000000000020',
         projectId: '00000000-0000-4000-8000-000000000030',
         project: {
+          id: '00000000-0000-4000-8000-000000000030',
           organizationId: '00000000-0000-4000-8000-000000000040',
           organization: { members: [{ role: this.orgRole }] },
         },
@@ -114,8 +115,11 @@ class FakeBindingPrisma {
       id: '00000000-0000-4000-8000-000000000020',
       projectId: '00000000-0000-4000-8000-000000000030',
       project: {
+        id: '00000000-0000-4000-8000-000000000030',
+        teamId: null,
         organization: { externalOrgId: IDENTITY.organizationId as string },
       },
+      projects: [],
     },
   }]
   organizationDeactivatedAt: Date | null = null

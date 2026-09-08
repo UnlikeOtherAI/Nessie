@@ -21,6 +21,7 @@
     "test:smoke:multi": "tsx test-harness/smoke-multi.ts",
     "test:e2e:mail-agent": "node test-harness/mail-agent-e2e.mjs",
     "test:triggers": "tsx test-harness/trigger-smoke.ts",
+    "knowledge:backfill-markdown": "tsx src/control/knowledge-markdown-backfill-cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

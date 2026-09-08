@@ -21,9 +21,11 @@
     "@nessie/db": "workspace:*",
     "@nessie/retrieval": "workspace:*",
     "@nessie/schemas": "workspace:*",
-    "@prisma/client": "^6.17.1"
+    "@prisma/client": "^6.17.1",
+    "markdown-it": "^14.2.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^20.19.24"
   }
 }

@@ -78,6 +78,7 @@ const create = (prisma: PrismaClient, userId: string, label: string) =>
   createChannelForUser(prisma, {
     label,
     organizationId: orgId,
+    projectId,
     teamId,
     userId,
     visibility: 'public',

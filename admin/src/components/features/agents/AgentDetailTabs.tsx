@@ -241,13 +241,12 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
 
         {activeTab === 'tools' && (
           <div className="grid gap-6">
-            {/* `AgentAvailableTools` already resolves to its read-only list for
-                an agent this viewer may not edit — the same ToolPicker, without
-                the switches. The cloud browser is one of the closed operational
-                reads, so it is left off a Nessie-managed agent rather than
-                rendering "no browser yet" over a 404. */}
+            {/* `browserEnabled` is the server projection of the explicit
+                browser_open grant. The browser record stays a closed
+                operational read without that capability, so do not mount a
+                panel whose expected 404 would look like a service failure. */}
             <AgentAvailableTools agent={agent} />
-            {isSystemManaged ? null : <AgentBrowserPanel agent={agent} />}
+            {isSystemManaged || agent.browserEnabled !== true ? null : <AgentBrowserPanel agent={agent} />}
           </div>
         )}
 

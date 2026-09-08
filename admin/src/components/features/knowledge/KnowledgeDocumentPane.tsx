@@ -8,7 +8,6 @@ import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { useKnowledge } from './KnowledgeProvider'
-import { KnowledgePane } from './KnowledgePane'
 import { PagePreview } from './PagePreview'
 
 type KnowledgeDocumentPaneProps = {
@@ -17,9 +16,6 @@ type KnowledgeDocumentPaneProps = {
   bodyQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   breadcrumbPages: KnowledgePageRecord[]
   canWrite: boolean
-  // A markdown file node being converted into a real document: the pane says
-  // so rather than briefly rendering the raw file.
-  converting: boolean
   // The open page's position in the browse path — what "Back to parent page"
   // pops to, and where a drilled child is appended.
   depth: number
@@ -37,7 +33,6 @@ export const KnowledgeDocumentPane = ({
   bodyQuery,
   breadcrumbPages,
   canWrite,
-  converting,
   depth,
   fullPage,
   onBack,
@@ -65,10 +60,7 @@ export const KnowledgeDocumentPane = ({
   const [versionError, setVersionError] = useState<string | null>(null)
 
   const pageAttachmentUpload = useUploadPageAttachment(page.id)
-  const fileVersionUpload = useUploadFileVersion(
-    versionDialogOpen ? page.id : undefined,
-    selectedSpaceId,
-  )
+  const fileVersionUpload = useUploadFileVersion(page.id, selectedSpaceId)
 
   const uploadAttachment = (file: File) => {
     setAttachmentsOpen(true)
@@ -82,17 +74,17 @@ export const KnowledgeDocumentPane = ({
 
   return (
     <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
-      {converting ? (
-        <KnowledgePane onBack={onBack} title={page.title}>
-          <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
-            Opening as document…
-          </div>
-        </KnowledgePane>
-      ) : page.kind === 'file' ? (
+      {page.kind === 'file' ? (
         <FileNodeViewer
           canWrite={canWrite}
           onBack={onBack}
           onOpenHistory={() => openHistory(page.id)}
+          onSaveMarkdown={async (markdown, baseVersionId) => {
+            await fileVersionUpload.mutateAsync({
+              baseVersionId,
+              file: new File([markdown], page.title, { type: 'text/markdown' }),
+            })
+          }}
           onToggleAttachments={() => setAttachmentsOpen(true)}
           onUploadVersion={() => setVersionDialogOpen(true)}
           page={page}

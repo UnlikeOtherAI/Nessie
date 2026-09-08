@@ -91,13 +91,11 @@ export const listChannelsForUser = async (
           agent: { select: { avatarAttachmentId: true } },
         },
       },
+      project: {
+        select: { channelRoot: true, id: true, name: true },
+      },
       team: {
-        select: {
-          name: true,
-          project: {
-            select: { channelRoot: true, id: true, name: true },
-          },
-        },
+        select: { name: true },
       },
     },
   })
@@ -200,9 +198,9 @@ export const listChannelsForUser = async (
     dmUserId: resolveDmUserId(channel, userId),
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
-    scope: channel.team.project.channelRoot ? 'standalone' : 'project',
-    projectId: parseProjectId(channel.team.project.id),
-    projectName: channel.team.project.name,
+    scope: channel.project.channelRoot ? 'standalone' : 'project',
+    projectId: parseProjectId(channel.project.id),
+    projectName: channel.project.name,
     teamId: parseTeamId(channel.teamId),
     teamName: channel.team.name,
     defaultThreadId: parseThreadId(channel.threads[0]!.id),

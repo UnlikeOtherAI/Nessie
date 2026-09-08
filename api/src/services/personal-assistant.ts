@@ -4,7 +4,7 @@ import {
   acquireAgentToolPolicyLock,
   assertGenericAgentToolPolicyInput,
   ensureDefaultThread,
-  loadChannelTeamProject,
+  loadTeamProjectScope,
   mergeGenericAgentToolPolicy,
 } from '@nessie/team-admin'
 
@@ -203,7 +203,7 @@ export const ensurePersonalAssistantChannel = async (
   },
 ): Promise<string> => {
   const dmKey = `pa:${input.organizationId}:${input.userId}`
-  const teamProject = await loadChannelTeamProject(prisma, {
+  const teamProject = await loadTeamProjectScope(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
   })

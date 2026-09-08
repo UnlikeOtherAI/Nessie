@@ -145,14 +145,18 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     description:
       'Create a new channel in the current organization, owned by the user. '
-      + 'The channel lands in the current team unless teamId says otherwise, and '
-      + 'the name must be unique within its project. Any member can do this.',
+      + 'Pass the projectId and teamId returned by project_list. The name must '
+      + 'be unique within its project. Any member can do this.',
     parameters: {
       type: 'object',
       properties: {
         label: {
           type: 'string',
           description: 'The channel name, e.g. "Release planning".',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project that owns the channel, from project_list.',
         },
         visibility: {
           type: 'string',
@@ -165,11 +169,10 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         teamId: {
           type: 'string',
-          description:
-            'Team to create the channel in. Defaults to the team of this conversation.',
+          description: 'Team that owns the selected project, from project_list.',
         },
       },
-      required: ['label'],
+      required: ['label', 'projectId', 'teamId'],
     },
     safe: false,
   },

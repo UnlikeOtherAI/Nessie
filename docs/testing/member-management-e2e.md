@@ -18,3 +18,7 @@ managed API/admin lifecycle and retains screenshots in
 entry. Ordinary production builds omit that entry; Turbo includes the flag in
 the admin-build cache key so those two artifacts cannot be reused for each
 other.
+
+The same Navigation Transitions build sets
+`NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE=1` for its isolated App connection
+scope fixture. It follows the same preview-only and cache-key rules.

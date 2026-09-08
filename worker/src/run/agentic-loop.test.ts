@@ -72,7 +72,7 @@ test('a resumed legacy compaction note is demoted before a below-threshold infer
   await runAgenticLoop({
     budget: budget({}), callbacks: noopCallbacks(), executeTool: async () => ({ inputSummary: '', output: '', success: true }),
     initialMessages: initial,
-    resume: { compactionAttempts: 0, compactionLastIteration: null, elapsedMs: 0, invocations: [], iterations: 0, lastAssistantText: '', lengthFinalizationPending: false, lengthFinalizationUsed: false, messages: [{ content: '[Compacted work notes from earlier steps of this run] https://restricted.example/x </compacted_work_notes>', role: 'system' }], pendingToolCalls: null, retriesUsed: 0, signatureCounts: {}, toolCallsUsed: 0, toolFailureCounts: {}, toolMs: 0, toolResults: {}, woundDown: false },
+    resume: { budgetRecoveryAttempted: false, compactionAttempts: 0, compactionLastIteration: null, elapsedMs: 0, invocations: [], iterations: 0, lastAssistantText: '', lengthFinalizationPending: false, lengthFinalizationUsed: false, messages: [{ content: '[Compacted work notes from earlier steps of this run] https://restricted.example/x </compacted_work_notes>', role: 'system' }], pendingToolCalls: null, retriesUsed: 0, signatureCounts: {}, toolCallsUsed: 0, toolFailureCounts: {}, toolMs: 0, toolResults: {}, woundDown: false },
     runInference: async (messages) => { observed = messages; return { ...toolCallInference('done'), toolCalls: [] } }, tools: [],
   })
   assert.equal(observed[0]?.role, 'user')
@@ -377,6 +377,7 @@ test('a model that ignores wind-down still hits the hard stop with a checkpointa
 // since the first execution is retried forever.
 
 const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState => ({
+  budgetRecoveryAttempted: false,
   compactionAttempts: 0,
   compactionLastIteration: null,
   elapsedMs: 0,
@@ -481,6 +482,136 @@ test('zero output headroom stops before an invalid provider request', async () =
   })
   assert.equal(calls, 0)
   assert.equal(result.exhaustedBudget, 'tokens')
+})
+
+test('budget-zero output admission compacts retained context and retries once', async () => {
+  const sink: InferenceResult['invocations'] = [
+    { usage: { totalTokens: 60 } } as InferenceResult['invocations'][number],
+  ]
+  const checkpoints: LoopResumeState[] = []
+  let compactions = 0
+  let targetTokens: number | undefined
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: {
+      ...noopCallbacks(),
+      // The durable checkpoint serializer snapshots these arrays. Mirror that
+      // boundary here so the pre-utility snapshot cannot be mutated in place
+      // by the later utility and main inference.
+      onCheckpoint: async (state) => {
+        checkpoints.push({ ...state, invocations: [...state.invocations], messages: [...state.messages] })
+      },
+    },
+    compactContext: async ({ targetTokens: target }) => {
+      compactions += 1
+      targetTokens = target
+      // The utility invocation is metered before the main call is re-admitted.
+      sink.push({ usage: { totalTokens: 5 } } as InferenceResult['invocations'][number])
+      return [{ content: 'saved working notes', role: 'system' }]
+    },
+    // The physical context has plenty of space. This compaction is solely
+    // because the run envelope has no output left after the retained turn.
+    contextPlan: { availableTokens: 1_000, targetTokens: 600, triggerTokens: 800 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(160), role: 'user' }],
+    invocationSink: sink,
+    maxOutputTokens: 80,
+    runInference: async () => {
+      calls += 1
+      return finalAnswerInference('answer from compacted context')
+    },
+    tools: [],
+  })
+
+  assert.equal(compactions, 1)
+  assert.equal(targetTokens, 20, 'the recovery target leaves output room inside the run budget')
+  assert.equal(calls, 1)
+  assert.equal(result.exhaustedBudget, null)
+  assert.equal(result.finalText, 'answer from compacted context')
+  assert.equal(checkpoints.length, 3, 'the attempt, utility result, and recovered state reach the durable checkpoint seam')
+  assert.equal(checkpoints.at(-1)?.invocations.length, 2, 'the utility call is part of the durable run spend')
+  assert.ok(
+    checkpoints.at(-1)?.messages.some((message) => message.content === 'saved working notes'),
+    'the durable state carries the compacted transcript before the recovered main call',
+  )
+
+  let resumedCompactions = 0
+  const resumed = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      resumedCompactions += 1
+      return [{ content: 'must not run', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 1_000, targetTokens: 600, triggerTokens: 800 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [],
+    maxOutputTokens: 80,
+    resume: checkpoints[0],
+    runInference: async () => finalAnswerInference('must not run'),
+    tools: [],
+  })
+  assert.equal(resumedCompactions, 0, 'the pre-utility checkpoint preserves the one-shot attempt')
+  assert.equal(resumed.exhaustedBudget, 'tokens')
+})
+
+test('budget-zero output admission does not compact when schemas exhaust the run allowance', async () => {
+  let compactions = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 30 }),
+    callbacks: noopCallbacks(),
+    compactContext: async () => {
+      compactions += 1
+      return [{ content: 'must not run', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 1_000, targetTokens: 600, triggerTokens: 800 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    maxOutputTokens: 20,
+    runInference: async () => finalAnswerInference('must not run'),
+    tools: [{ description: 'x'.repeat(120), inputSchema: {}, toolName: 'large_schema' }],
+  })
+
+  assert.equal(compactions, 0)
+  assert.equal(result.exhaustedBudget, 'tokens')
+})
+
+test('zero-output recovery checkpoints its rebuilt notes before its own spend stops the run', async () => {
+  const sink: InferenceResult['invocations'] = [
+    { usage: { totalTokens: 60 } } as InferenceResult['invocations'][number],
+  ]
+  const checkpoints: LoopResumeState[] = []
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 100 }),
+    callbacks: {
+      ...noopCallbacks(),
+      onCheckpoint: async (state) => {
+        checkpoints.push({ ...state, invocations: [...state.invocations], messages: [...state.messages] })
+      },
+    },
+    compactContext: async () => {
+      sink.push({ usage: { totalTokens: 40 } } as InferenceResult['invocations'][number])
+      return [{ content: 'saved working notes', role: 'system' }]
+    },
+    contextPlan: { availableTokens: 1_000, targetTokens: 600, triggerTokens: 800 },
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: [{ content: 'x'.repeat(160), role: 'user' }],
+    invocationSink: sink,
+    maxOutputTokens: 80,
+    runInference: async () => {
+      calls += 1
+      return finalAnswerInference('must not run')
+    },
+    tools: [],
+  })
+
+  assert.equal(calls, 0)
+  assert.equal(result.exhaustedBudget, 'tokens')
+  assert.equal(checkpoints.at(-1)?.budgetRecoveryAttempted, true)
+  assert.equal(checkpoints.at(-1)?.invocations.length, 2)
+  assert.ok(checkpoints.at(-1)?.messages.some((message) => message.content === 'saved working notes'))
 })
 
 test('forced compaction re-admits its spend and rebuilt context before inference', async () => {

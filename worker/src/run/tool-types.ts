@@ -41,6 +41,8 @@ export type AgenticToolResult = {
   inputSummary: string
   output: string
   pendingInput?: AgentCardSuspension
+  /** Present only when the tool rejected its structured arguments. */
+  failureKind?: 'invalid_arguments'
   success: boolean
   /** A pre-created durable ToolCall used by an executor command. */
   toolCallRecordId?: string

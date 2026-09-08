@@ -17,6 +17,7 @@ once in `navigation/overlay.ts` and mirrored as tokens:
 | Popover | `--layer-popover` 50 | owns Back on `single` only | fade + 4 px rise, `popoverMs` |
 | Sheet | `--layer-sheet` 60 | owns Back | slide from its edge, `drawerMs` |
 | Modal | `--layer-modal` 70 | owns Back | fade + 4 px rise, `modalMs` |
+| Modal-owned Popover | `--layer-modal-popover` 75 | after its modal, before blocking | fade + 4 px rise, `popoverMs` |
 | blocking | `--layer-blocking` 80 | outranks the modal beneath | as modal |
 
 `--layer-stack` (1) is the navigation stack's own layer, and `--layer-tooltip`
@@ -139,6 +140,12 @@ overflow menus, the alerts bell, the reaction "who reacted" popover, the status
 and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
 hover hint, not a dismissible anchored surface.
+
+An anchored control inside a modal passes `layer="modal"`: it takes the
+modal-owned popover layer (75), above its owner and below `blocking` (80).
+It also owns Back ahead of that modal, but yields to blocking. Its focus
+behavior remains unchanged. Escape is captured by a portalled Popover before
+the owning modal's focus trap, so it closes the focused menu first.
 
 **`OverlayCard`** (`components/overlays/OverlayCard.tsx`) is the ambient kind, and one
 **`CardViewport`** per shell (mounted by `ToastProvider`) is the region it lives

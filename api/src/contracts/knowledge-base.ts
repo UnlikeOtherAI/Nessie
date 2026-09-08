@@ -37,6 +37,9 @@ export const KnowledgePageVersionRecordSchema = z.object({
   versionNumber: z.number().int().positive(),
   body: z.string().nullable(),
   bodyRef: z.string().nullable(),
+  // SHA-256 of canonical Markdown attachment bytes. The admin uses this
+  // persisted proof to keep Markdown editing available after a display rename.
+  sourceContentHash: z.string().nullable(),
   authorType: KnowledgeAuthorTypeSchema,
   authorId: NonEmptyStringSchema,
   changeComment: z.string().nullable(),

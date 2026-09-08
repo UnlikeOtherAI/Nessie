@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { faDownload, faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -15,6 +16,7 @@ import {
   previewKindForFilename,
 } from '../../shared/file-icons'
 import { KnowledgePane } from './KnowledgePane'
+import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
@@ -25,6 +27,7 @@ type FileNodeViewerProps = {
   // registry and passes no onBack; wider layouts keep the pane's own Back.
   onBack?: () => void
   onOpenHistory: () => void
+  onSaveMarkdown?: (markdown: string, baseVersionId: string) => Promise<void>
   onUploadVersion: () => void
   onToggleAttachments: () => void
 }
@@ -34,17 +37,24 @@ export const FileNodeViewer = ({
   page,
   onBack,
   onOpenHistory,
+  onSaveMarkdown,
   onUploadVersion,
   onToggleAttachments,
 }: FileNodeViewerProps) => {
   const { token } = useAuthSession()
   const version = page.latestVersion
-  const previewKind = previewKindForFilename(page.title)
+  const titlePreviewKind = previewKindForFilename(page.title)
+  // A verified canonical projection is authoritative even after the display
+  // title is renamed to another extension (or has no extension).
+  const previewKind = version?.sourceContentHash ? 'text' : titlePreviewKind
   // A `.md` file node is a document that happens to be stored as a file — a
   // streamed document saves exactly this way — so it renders as markdown
   // through the message renderer (not TipTap, which owns *editing* documents).
   // Remote images are never fetched: the bytes may be model-authored.
-  const markdownPreview = previewKind === 'text' && isMarkdownFilename(page.title)
+  const markdownPreview = previewKind === 'text'
+    && (Boolean(version?.sourceContentHash) || isMarkdownFilename(page.title))
+  const [markdownEditorOpen, setMarkdownEditorOpen] = useState(false)
+  const [markdownEditorBaseVersionId, setMarkdownEditorBaseVersionId] = useState<string | null>(null)
   // Pin the PDF preview blob's MIME to application/pdf so a file with an
   // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
   // never render as executable HTML in the same-origin iframe. Image previews
@@ -87,6 +97,18 @@ export const FileNodeViewer = ({
           label: 'Upload new version',
           onSelect: onUploadVersion,
           priority: 40,
+        } satisfies PageHeaderAction]
+      : []),
+    ...(canWrite && markdownPreview && downloadPath && onSaveMarkdown
+      ? [{
+          id: 'edit-markdown',
+          label: 'Edit',
+          onSelect: () => {
+            if (!version) return
+            setMarkdownEditorBaseVersionId(version.id)
+            setMarkdownEditorOpen(true)
+          },
+          priority: 70,
         } satisfies PageHeaderAction]
       : []),
     {
@@ -218,6 +240,19 @@ export const FileNodeViewer = ({
 
         <CommentsSection canResolve={canWrite} pageId={page.id} />
       </div>
+      {markdownEditorOpen && markdownEditorBaseVersionId && onSaveMarkdown ? (
+        <MarkdownFileEditorDialog
+          baseVersionId={markdownEditorBaseVersionId}
+          downloadPath={versionDownloadPath(page.id, markdownEditorBaseVersionId)}
+          filename={page.title}
+          onClose={() => {
+            setMarkdownEditorOpen(false)
+            setMarkdownEditorBaseVersionId(null)
+          }}
+          onSave={onSaveMarkdown}
+          token={token}
+        />
+      ) : null}
     </KnowledgePane>
   )
 }

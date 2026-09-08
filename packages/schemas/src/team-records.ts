@@ -131,6 +131,7 @@ export const TeamRecordSchema = z.object({
   id: TeamIdSchema,
   name: NonEmptyStringSchema,
   projectId: ProjectIdSchema,
+  projectIds: z.array(ProjectIdSchema).optional(),
   // Which provider a call in this team is minted with. Whether that provider is
   // *configured* on this deployment is answered by the API alone, so it is not
   // part of the record.

@@ -3,6 +3,7 @@ import type { AppSummaryRecord } from '@nessie/schemas'
 
 import { useAppConnectFlow } from '../../../facades/apps/connect-hooks'
 import { useChannels } from '../../../facades/channels/hooks'
+import { useProjects } from '../../../facades/projects/hooks'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 import { KeyValueList } from '../../shared/KeyValueList'
@@ -27,7 +28,7 @@ import { ConnectProgress } from './ConnectProgress'
  * starts `useAppConnectFlow`: the step list while probing, the provider's
  * sign-in window, and the app-owned encrypted key dialog when needed. Personal
  * scope is the default; a person may deliberately bind a separate connection
- * to one channel they can access.
+ * to one channel or project they can access.
  */
 
 type AppConnectDialogProps = {
@@ -47,9 +48,14 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   // the tab of whatever page the dialog was opened from.
   const [scopeChoice, setScopeChoice] = useState<AppConnectScopeChoice>('user')
   const [channelId, setChannelId] = useState('')
+  const [projectId, setProjectId] = useState('')
   const channels = useChannels({ enabled: open && scopeChoice === 'channel' })
+  const projects = useProjects(open && scopeChoice === 'project')
   const selectedChannel = channels.data?.find((channel) => channel.id === channelId)
-  const scope = buildAppConnectScope(scopeChoice, channelId)
+  const selectedProject = projects.data?.find((project) => project.id === projectId)
+  const scope = scopeChoice === 'project' && !selectedProject
+    ? null
+    : buildAppConnectScope(scopeChoice, scopeChoice === 'channel' ? channelId : projectId)
 
   // Closing mid-flow abandons it: the OAuth window is closed and the pending
   // marker forgotten, so the page does not resume a sign-in nobody is looking
@@ -59,6 +65,7 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
     connect.dismiss()
     setScopeChoice('user')
     setChannelId('')
+    setProjectId('')
     setSecretConnectionId(null)
     onClose()
   }
@@ -113,7 +120,9 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
                           items={[
                             { label: 'Just you', testId: 'app-connect-scope-user', value: 'user' },
                             { label: 'A channel', testId: 'app-connect-scope-channel', value: 'channel' },
+                            { label: 'A project', testId: 'app-connect-scope-project', value: 'project' },
                           ]}
+                          menuLayer="modal"
                           onChange={setScopeChoice}
                           role="radiogroup"
                           size="sm"
@@ -146,8 +155,36 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
                             </select>
                           </label>
                         ) : null}
-                        <span data-testid="app-connect-scope-copy" id="app-connect-channel-scope-copy">
-                          {appConnectScopeCopy(scopeChoice, selectedChannel?.label)}
+                        {scopeChoice === 'project' ? (
+                          <label className="grid gap-1.5 text-sm font-medium text-[color:var(--tx)]" htmlFor="app-connect-project">
+                            Project
+                            <select
+                              aria-describedby="app-connect-scope-copy"
+                              className="admin-input"
+                              data-testid="app-connect-project-picker"
+                              disabled={projects.isPending || projects.isError}
+                              id="app-connect-project"
+                              onChange={(event) => setProjectId(event.target.value)}
+                              value={projectId}
+                            >
+                              <option value="">
+                                {projects.isPending
+                                  ? 'Loading projects…'
+                                  : projects.isError
+                                    ? 'Projects could not be loaded'
+                                    : 'Choose a project'}
+                              </option>
+                              {(projects.data ?? []).map((project) => (
+                                <option key={project.id} value={project.id}>{project.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <span data-testid="app-connect-scope-copy" id="app-connect-scope-copy">
+                          {appConnectScopeCopy(
+                            scopeChoice,
+                            scopeChoice === 'channel' ? selectedChannel?.label : selectedProject?.name,
+                          )}
                         </span>
                       </span>
                     ),

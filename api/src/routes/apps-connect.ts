@@ -58,8 +58,8 @@ import type { RouteDeps } from './types.js'
 const ConnectBodySchema = z
   .object({
     scopeType: McpServerScopeTypeSchema,
-    // Optional because the two scopes people actually pick are implied by who
-    // is asking; anything else names its own target.
+    // Optional because user and organisation scopes are implied by the caller;
+    // channel, project, and team scopes name their explicit target.
     scopeId: z.string().uuid().optional(),
   })
   .strict()

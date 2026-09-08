@@ -120,6 +120,7 @@
   --layer-popover: 50;
   --layer-sheet: 60;
   --layer-modal: 70;
+  --layer-modal-popover: 75;
   --layer-blocking: 80;
 }
 

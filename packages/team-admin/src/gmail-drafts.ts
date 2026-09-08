@@ -3,6 +3,7 @@ import {
   createPreparedGmailDraft,
   getGmailDraft,
   type GmailDraftContent,
+  type FetchLike,
   type PreparedGmailDraft,
   updatePreparedGmailDraft,
 } from '@nessie/comms-google'
@@ -78,7 +79,9 @@ export type GmailDraftDeps = {
   fetchImpl?: typeof safeFetch
   now?: () => Date
 }
-export const gmailFetch = (deps: GmailDraftDeps) => {
+// Keep the public type on the connector-owned transport shape. Inferring the
+// native response leaked pnpm's private undici path into declaration output.
+export const gmailFetch = (deps: GmailDraftDeps): FetchLike => {
   const impl = deps.fetchImpl ?? safeFetch
   return async (
     url: string,

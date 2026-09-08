@@ -284,7 +284,7 @@ export type ExecutionEnvironmentTerminateJobPayload = z.infer<
 // `knowledge.embed` queue job — enqueued in the same transaction that chunks a
 // knowledge page version, consumed by the worker to fill the version's NULL
 // chunk embeddings (copy-by-content-hash first, then batched provider calls).
-// Idempotency key: kb-embed:<pageId>:<versionId>.
+// Idempotency key: kb-embed:<pageId>:<versionId>:<target-model/source-hash>.
 export const KNOWLEDGE_EMBED_TOPIC = 'knowledge.embed'
 
 export const KnowledgeInferenceOriginSchema = z.object({

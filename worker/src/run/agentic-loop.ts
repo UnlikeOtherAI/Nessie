@@ -101,6 +101,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // the attempt ceiling and the two-iteration cooldown.
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
+  let budgetRecoveryAttempted = resume?.budgetRecoveryAttempted ?? false
   let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
   let lengthFinalizationPending = resume?.lengthFinalizationPending ?? false
   // The most recent assistant text seen. On a budget-cap stop this is the run's
@@ -131,6 +132,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
 
   const checkpoint = async (): Promise<void> => {
     await callbacks.onCheckpoint?.({
+      budgetRecoveryAttempted,
       compactionAttempts,
       compactionLastIteration,
       elapsedMs: elapsed(),
@@ -211,7 +213,11 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // only here: the previous tool batch has fully settled, so no group is open.
   // A failed or unavailable compaction degrades to emergency truncation rather
   // than letting the transcript grow into a provider overflow.
-  const maintainContext = async (iteration: number, force = false): Promise<void> => {
+  const maintainContext = async (
+    iteration: number,
+    force = false,
+    targetTokens = contextPlan.targetTokens,
+  ): Promise<void> => {
     // The plan's thresholds already exclude the tool schemas, so only the
     // transcript is measured against them.
     const transcriptTokens = estimateMessagesTokens(messages)
@@ -220,12 +226,14 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     compactionGovernor.recordAttempt(iteration)
     compactionAttempts += 1
     compactionLastIteration = iteration
+    // Persist before utility work so a crash cannot repeat recovery spending.
+    await checkpoint()
     const compacted = input.compactContext
       ? await input
-        .compactContext({ messages, targetTokens: contextPlan.targetTokens })
+        .compactContext({ messages, targetTokens })
         .catch(() => null)
       : null
-    const rebuilt = compacted ?? trimConversationToFit(messages, contextPlan.targetTokens)
+    const rebuilt = compacted ?? trimConversationToFit(messages, targetTokens)
     messages.length = 0
     messages.push(...rebuilt)
   }
@@ -303,14 +311,21 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         toolSchemaTokens: activeToolSchemaTokens,
       })
       let currentAdmission = admission()
-      // Context compaction normally starts at 80%; an answer reserve can make
-      // a smaller retained transcript unsafe before that threshold, so compact
-      // here while all prior tool pairs are intact.
-      if (currentAdmission.requiresCompaction && compactionLastIteration !== iterations) {
-        await maintainContext(iterations, true)
-        // Compaction is itself inference. Its invocation sink changes spend,
-        // and its rebuilt note changes input; both must be re-admitted.
+      // Compact before inference when the answer reserve makes the transcript unsafe.
+      if (currentAdmission.requiresCompaction
+        // Do not trim away a caller's sole prompt when no compactor is available.
+        && (currentAdmission.requestedOutputTokens !== 0 || input.compactContext)
+        && (currentAdmission.requestedOutputTokens !== 0 || !budgetRecoveryAttempted)
+        && compactionLastIteration !== iterations) {
+        if (currentAdmission.requestedOutputTokens === 0) budgetRecoveryAttempted = true
+        await maintainContext(
+          iterations,
+          true,
+          currentAdmission.compactionTargetTokens ?? contextPlan.targetTokens,
+        )
+        // Re-admit the utility spend and rebuilt note before the main call.
         spend = meterSpend(allInvocations, cacheReadWeight)
+        await checkpoint()
         const forcedCompactionSpendStop = stopAfterInference(budget, spend)
         if (forcedCompactionSpendStop) return stop(forcedCompactionSpendStop)
         const forcedCompactionTimeStop = stopBeforeIteration(budget, {
@@ -320,7 +335,6 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         if (forcedCompactionTimeStop) return stop(forcedCompactionTimeStop)
         currentAdmission = admission()
       }
-
       if (currentAdmission.requestedOutputTokens !== undefined
         && currentAdmission.requestedOutputTokens < 1) return stop('tokens')
 

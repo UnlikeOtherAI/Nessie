@@ -12,6 +12,7 @@ export type KnowledgeVersionRecord = {
   body: string | null
   bodyRef: string | null
   attachmentId: string | null
+  sourceContentHash: string | null
   authorType: 'user' | 'agent'
   authorId: string
   changeComment: string | null

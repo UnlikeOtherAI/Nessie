@@ -259,7 +259,10 @@ export const reconcileUoaMembershipProjection = async (
     where: {
       team: {
         externalTeamId: { not: null },
-        project: { organization: { externalOrgId: { not: null } } },
+        OR: [
+          { project: { organization: { externalOrgId: { not: null } } } },
+          { projects: { some: { organization: { externalOrgId: { not: null } } } } },
+        ],
       },
       userId: input.userId,
     },
@@ -268,21 +271,37 @@ export const reconcileUoaMembershipProjection = async (
         select: {
           externalTeamId: true,
           id: true,
-          projectId: true,
-          project: { select: { organization: { select: { externalOrgId: true } } } },
+          project: {
+            select: {
+              id: true,
+              teamId: true,
+              organization: { select: { externalOrgId: true } },
+            },
+          },
+          projects: { select: { id: true, organization: { select: { externalOrgId: true } } } },
         },
       },
     },
   })
-  const revoked = memberships.filter(({ team }) => {
-    const externalOrgId = team.project.organization.externalOrgId
+  const resolvedMemberships = memberships.flatMap(({ team }) => {
+    const projects = [
+      ...team.projects,
+      ...(team.project.teamId ? [] : [team.project]),
+    ]
+    return [{
+      team,
+      externalOrgId: team.project.organization.externalOrgId,
+      projectIds: [...new Set(projects.map((project) => project.id))],
+    }]
+  })
+  const revoked = resolvedMemberships.filter(({ externalOrgId, team }) => {
     if (!externalOrgId || !team.externalTeamId) return false
     return !input.asserted.get(externalOrgId)?.has(team.externalTeamId)
-  }).map(({ team }) => team)
+  })
 
   if (revoked.length > 0) {
     await tx.teamMember.deleteMany({
-      where: { teamId: { in: revoked.map((team) => team.id) }, userId: input.userId },
+      where: { teamId: { in: revoked.map(({ team }) => team.id) }, userId: input.userId },
     })
     // A project row is the team row's other half (`ensureTeamMemberships`
     // writes them together), so it follows the team out — unless another team
@@ -290,9 +309,19 @@ export const reconcileUoaMembershipProjection = async (
     // still permits (`Team.projectId` has no `@unique`).
     const stillHeld = new Set((await tx.teamMember.findMany({
       where: { userId: input.userId },
-      select: { team: { select: { projectId: true } } },
-    })).map(({ team }) => team.projectId))
-    const orphanedProjectIds = [...new Set(revoked.map((team) => team.projectId))]
+      select: {
+        team: {
+          select: {
+            project: { select: { id: true, teamId: true } },
+            projects: { select: { id: true } },
+          },
+        },
+      },
+    })).flatMap(({ team }) => [
+      ...team.projects.map((project) => project.id),
+      ...(team.project.teamId ? [] : [team.project.id]),
+    ]))
+    const orphanedProjectIds = [...new Set(revoked.flatMap(({ projectIds }) => projectIds))]
       .filter((projectId) => !stillHeld.has(projectId))
     if (orphanedProjectIds.length > 0) {
       await tx.projectMember.deleteMany({
@@ -334,6 +363,6 @@ export const reconcileUoaMembershipProjection = async (
 
   return {
     deactivatedOrganizationIds,
-    revokedTeamIds: revoked.map((team) => team.id),
+    revokedTeamIds: revoked.map(({ team }) => team.id),
   }
 }
