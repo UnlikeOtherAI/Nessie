@@ -11,7 +11,11 @@ import {
 import { useResizeHandleReveal } from '../../../../hooks/useResizeHandleReveal'
 import { useViewport } from '../../../../hooks/useViewport'
 import { ColumnResizeHandle } from '../../../primitives/ColumnResizeHandle'
-import { SIDE_PANEL_MIN_WIDTH } from '../../../../hooks/useSidePanelGeometry'
+import {
+  registerFullScreenSidePanel,
+  sidePanelCoversScreen,
+  SIDE_PANEL_MIN_WIDTH,
+} from '../../../../hooks/useSidePanelGeometry'
 
 const KEYBOARD_RESIZE_STEP = 16
 
@@ -64,6 +68,18 @@ export const SidePanelShell = ({
   } = useResizeHandleReveal(coarsePointer)
   const resizeCleanup = useRef<(() => void) | null>(null)
   useEffect(() => () => resizeCleanup.current?.(), [])
+
+  // Below 900px this frame is `inset-0`: it is not beside the shell, it is over
+  // it. Say so for as long as that is true, so the shell can stand down the
+  // chrome it has covered — the sidebar's resize separator overhangs the column
+  // edge and otherwise takes every pointer along its line, through the panel
+  // (`useSidePanelGeometry`). Published while closing too: the panel is still
+  // covering the screen for the length of its exit.
+  const coversScreen = sidePanelCoversScreen(viewportWidth)
+  useEffect(() => {
+    if (!coversScreen) return undefined
+    return registerFullScreenSidePanel()
+  }, [coversScreen])
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return

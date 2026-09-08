@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ColumnResizeHandle } from '../../components/primitives/ColumnResizeHandle'
 import { useResizeHandleReveal } from '../../hooks/useResizeHandleReveal'
+import { useFullScreenSidePanelOpen } from '../../hooks/useSidePanelGeometry'
 import { useViewport } from '../../hooks/useViewport'
 import { getCookie, setCookie } from '../../lib/storage'
 import { useNativeListColumnBridge } from './native-list-column'
@@ -96,6 +97,13 @@ const SectionResizableSidebar = ({
   useNativeListColumnBridge(sidebarRef, section)
   const [isResizing, setIsResizing] = useState(false)
   const { capabilities: { coarsePointer } } = useViewport()
+  // A side panel narrow enough to cover the screen is drawn inside the detail
+  // column's own stacking context, so no layer on the overlay scale
+  // (docs/navigation/overlays.md §7) can lift it over this separator. The
+  // separator stands down instead — it resizes a column the reader can no
+  // longer see, and left up it takes every pointer along a full-height line
+  // drawn through the panel.
+  const sidePanelCoversShell = useFullScreenSidePanelOpen()
   const {
     hideHandle,
     isHandleRevealed,
@@ -233,7 +241,7 @@ const SectionResizableSidebar = ({
       }}
     >
       {children}
-      {!fixed ? (
+      {!fixed && !sidePanelCoversShell ? (
         <div
           aria-label="Resize sidebar"
           aria-orientation="vertical"

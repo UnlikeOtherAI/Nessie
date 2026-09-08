@@ -1,7 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 export const SIDE_PANEL_DEFAULT_WIDTH = 400
 export const SIDE_PANEL_MIN_WIDTH = 320
+
+/**
+ * Below this width a side panel stops being a panel: `SidePanelShell` pins it
+ * to `inset-0` and it takes the whole screen. The number is the panel-local
+ * 900px family the responsive-coherence gate allows in that one file
+ * (`scripts/lint-breakpoints.mjs`), named here because the shell chrome
+ * underneath has to know when it has been covered.
+ */
+export const SIDE_PANEL_FULL_SCREEN_MAX_WIDTH = 900
+
+/** Whether a side panel at this viewport width covers the screen rather than sharing it. */
+export const sidePanelCoversScreen = (viewportWidth: number): boolean =>
+  Number.isFinite(viewportWidth) && viewportWidth < SIDE_PANEL_FULL_SCREEN_MAX_WIDTH
 
 // Drag-resize bounds for a right-hand side panel: never narrower than the
 // Slack-style minimum and never wider than half the viewport.
@@ -60,6 +80,51 @@ export const registerSidePanel = (storageKey: string, link: SidePanelLink): (() 
     }
   }
 }
+
+/**
+ * The full-screen side panels on screen right now.
+ *
+ * A panel that covers the screen is drawn *inside* the detail column's own
+ * stacking context (`.phone-navigation-viewport` isolates), so no layer on the
+ * overlay scale can lift it over the shell chrome standing beside that column
+ * — the sidebar's resize separator overhangs the column edge and would keep
+ * taking the pointer along a full-height line down the middle of the panel.
+ * The answer is not a bigger z-index: a control for a column nobody can see is
+ * not a control, so the shell stands its separator down for as long as a panel
+ * is covering it. Published as a count rather than a flag because two panels
+ * can be mounted at once and the first to close must not un-cover the screen.
+ */
+const fullScreenPanels = new Set<symbol>()
+const fullScreenListeners = new Set<() => void>()
+
+const announceFullScreenPanels = (): void => {
+  for (const listener of [...fullScreenListeners]) listener()
+}
+
+/** Declare that a panel is covering the screen, until the returned function runs. */
+export const registerFullScreenSidePanel = (): (() => void) => {
+  const token = Symbol('full-screen-side-panel')
+  fullScreenPanels.add(token)
+  announceFullScreenPanels()
+  return () => {
+    fullScreenPanels.delete(token)
+    announceFullScreenPanels()
+  }
+}
+
+const subscribeFullScreenSidePanels = (listener: () => void): (() => void) => {
+  fullScreenListeners.add(listener)
+  return () => {
+    fullScreenListeners.delete(listener)
+  }
+}
+
+/** Whether any panel is covering the screen right now, read between renders. */
+export const fullScreenSidePanelOpen = (): boolean => fullScreenPanels.size > 0
+
+/** Whether a side panel is currently covering the whole screen. */
+export const useFullScreenSidePanelOpen = (): boolean =>
+  useSyncExternalStore(subscribeFullScreenSidePanels, fullScreenSidePanelOpen, () => false)
 
 /** The panel registered under `storageKey`, or null while none is on screen. */
 export const findLinkedSidePanel = (storageKey: string | undefined): SidePanelLink | null =>
