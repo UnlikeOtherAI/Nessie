@@ -345,6 +345,21 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
+    if (body.systemPrompt !== undefined || body.speakingStyle !== undefined) {
+      const migratedCore = await prisma.agentCoreDocumentMigration.findUnique({
+        where: { agentId },
+        select: { id: true },
+      })
+      if (migratedCore) {
+        sendApiError(
+          reply,
+          409,
+          'AGENT_CORE_DOCUMENT_EDIT_REQUIRED',
+          'Edit this agent’s Identity and Working style documents from Documents.',
+        )
+        return reply
+      }
+    }
     // Who may rewrite this agent is decided by the agent's ownership state and
     // the actor's LIVE membership row — not by the organization owner role this
     // route used to demand, which locked every ordinary member out of even the
