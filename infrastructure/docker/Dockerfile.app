@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Single backend image for both the API and the worker.
 #
 # Why one image for both: the workspace is tightly interlinked (`@nessie/api`
@@ -13,8 +14,10 @@ WORKDIR /app
 
 # openssl + ca-certificates: Prisma's query engine needs libssl to load, and the
 # slim base omits it (otherwise Prisma warns and falls back to the wrong engine).
+# git fetches the pinned private Deep.Agent package through a
+# BuildKit secret that never enters an image layer.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
@@ -24,7 +27,10 @@ RUN corepack enable
 # build output, git, screenshots, and other non-build cruft from the context.
 COPY . .
 
-RUN pnpm install --frozen-lockfile --filter='!@nessie/mobile' --filter='!@nessie/desktop' --filter='!@nessie/gateway'
+RUN --mount=type=secret,id=deep_agent_read_token,required=true \
+  DEEP_AGENT_READ_TOKEN="$(cat /run/secrets/deep_agent_read_token)" \
+  scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile \
+    --filter='!@nessie/mobile' --filter='!@nessie/desktop' --filter='!@nessie/gateway'
 
 # Generate the Prisma client into node_modules before building any package that
 # imports it (@nessie/db → @prisma/client).

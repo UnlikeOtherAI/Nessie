@@ -1,0 +1,15 @@
+name: Install dependencies
+description: Install dependencies with the scoped Deep.Agent read token.
+inputs:
+  deep-agent-read-token:
+    description: Fine-grained Contents:read token for UnlikeOtherAI/deep.agent.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        DEEP_AGENT_READ_TOKEN: ${{ inputs.deep-agent-read-token }}
+      run: |
+        bash scripts/with-deep-agent-token.test.sh
+        scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile

@@ -5,6 +5,7 @@ import type { ProviderMessage } from '@nessie/runtime'
 import {
   buildCompactionPrompt,
   COMPACTION_NOTE_MARKER,
+  normalizeLegacyCompactionNotes,
   runContextCompaction,
   selectCompactionSlice,
 } from './context-compaction.js'
@@ -107,6 +108,43 @@ test('a failed note call leaves the caller to fall back', async () => {
     targetTokens: 1_200,
   })
   assert.equal(result, null)
+})
+
+test('a legacy system checkpoint note is lowered before any compaction pass', () => {
+  const normalized = normalizeLegacyCompactionNotes([{
+    content: `${COMPACTION_NOTE_MARKER} prior restricted source`,
+    role: 'system',
+  }])
+  assert.equal(normalized[0]?.role, 'user')
+  assert.match(normalized[0]?.content ?? '', /compacted_work_notes/)
+})
+
+test('the shared helper leaves checkpoint input intact and retains image-bearing tail turns', async () => {
+  const messages: ProviderMessage[] = [
+    { content: 'You are an agent.', role: 'system' },
+    ...toolGroup('call-1', 8_000),
+    {
+      content: 'Use this photo in the final answer.',
+      images: [{ dataBase64: 'aW1hZ2U=', mime: 'image/png' }],
+      role: 'user',
+    },
+  ]
+  const checkpointInput = structuredClone(messages)
+  let utilityCalls = 0
+
+  const result = await runContextCompaction({
+    generateNote: async () => {
+      utilityCalls += 1
+      return '## State\n- Tool work is complete.\n\n## Sources\n- none'
+    },
+    messages,
+    targetTokens: 1_200,
+  })
+
+  assert.equal(utilityCalls, 1, 'the caller owns utility invocation metering')
+  assert.deepEqual(messages, checkpointInput, 'the caller retains checkpoint state')
+  assert.ok(result)
+  assert.deepEqual(result.at(-1), checkpointInput.at(-1), 'the recent user turn stays complete')
 })
 
 test('context windows are per model with a conservative default', () => {

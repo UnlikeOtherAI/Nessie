@@ -46,7 +46,9 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Validate release source
         run: |
@@ -100,7 +102,9 @@ jobs:
           token: ${{ env.EXPO_TOKEN }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Trigger build and App Store Connect submission
         working-directory: mobile
@@ -138,7 +142,9 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Install App Store signing assets
         run: |

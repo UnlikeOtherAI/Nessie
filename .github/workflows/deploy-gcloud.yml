@@ -128,6 +128,8 @@ jobs:
           file: ${{ matrix.image.dockerfile }}
           push: true
           tags: ${{ needs.preflight.outputs.registry }}/nessie-${{ matrix.image.name }}:${{ github.sha }}
+          secrets: |
+            "deep_agent_read_token=${{ secrets.DEEP_AGENT_READ_TOKEN }}"
           # Scoped per image so the matrix legs don't evict each other.
           cache-from: type=gha,scope=gcloud-${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=gcloud-${{ matrix.image.name }}

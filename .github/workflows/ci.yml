@@ -59,7 +59,9 @@ jobs:
           restore-keys: ${{ runner.os }}-turbo-lint-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       # Deliberately NOT narrowed by scope. Lint is the cheapest job and the
       # one every other gate leans on, and the root lint scripts
@@ -98,7 +100,9 @@ jobs:
           restore-keys: ${{ runner.os }}-turbo-typecheck-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Generate Prisma client
         run: pnpm --filter @nessie/api prisma:generate
@@ -154,7 +158,9 @@ jobs:
           restore-keys: ${{ runner.os }}-turbo-build-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       # Still the lint-gated root build, per AGENTS.md — the gate is inside
       # `pnpm build` and must not be swapped for a raw turbo invocation.
@@ -211,7 +217,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.scope.outputs.desktop == '1'
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build Linux desktop packages
         if: steps.scope.outputs.desktop == '1'
@@ -284,7 +292,9 @@ jobs:
           restore-keys: ${{ runner.os }}-turbo-test-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       # Serialized before the concurrent phase on purpose: concurrent Prisma
       # generators can temporarily erase exports while sibling packages compile.
@@ -355,7 +365,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.scope.outputs.code == '1'
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Generate Prisma client
         if: steps.scope.outputs.code == '1'
@@ -433,7 +445,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.scope.outputs.code == '1'
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Generate Prisma client
         if: steps.scope.outputs.code == '1'
@@ -516,7 +530,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.scope.outputs.code == '1'
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Generate Prisma client
         if: steps.scope.outputs.code == '1'
@@ -647,7 +663,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.scope.outputs.code == '1'
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Generate Prisma client
         if: steps.scope.outputs.code == '1'

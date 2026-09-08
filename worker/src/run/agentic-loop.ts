@@ -47,6 +47,7 @@ import {
   type AgenticLoopInput,
   type LoopResult,
 } from './agentic-loop-types.js'
+import { normalizeLegacyCompactionNotes } from './context-compaction.js'
 
 export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
   'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
@@ -67,7 +68,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // Covers every caller, including delegated agents whose initial prompt does
   // not pass through buildModelPrompt. Raw values never remain in the loop's
   // retained context or its eventual checkpoint input.
-  const messages: ProviderMessage[] = (resume?.messages ?? initialMessages)
+  const messages: ProviderMessage[] = normalizeLegacyCompactionNotes(resume?.messages ?? initialMessages)
     .map(redactMessageContent)
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   if (resume) allInvocations.push(...resume.invocations)

@@ -101,7 +101,6 @@ export const runExecutionAgentLoop = async (
   // the initial plan record was created. Make that complete basis durable before
   // this loop can write a thought, a tool record, or any model-derived state.
   await persistCurrentRunBasis(deps.prisma, context)
-
   const mainOutputTokens = await input.inference.mainOutputTokens?.()
     ?? loadConfig().model.maxTokens
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)

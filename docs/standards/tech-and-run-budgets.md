@@ -60,18 +60,6 @@ summary and points here; **this file is the rule**.
     `max_tokens`/`max_completion_tokens` value without capability metadata is
     an ordinary provider failure, not an adaptive fallback signal.
 
-## Deep.Agent compaction extraction
-
-Nessie currently owns its durable compaction path: `runContextCompaction` uses
-the run's inference lane and the caller retains disclosure lineage, checkpoint
-state, whole tool-call/result groups, untrusted-note framing, and source URLs.
-The private `@deep/agent` `0.0.0` workspace already contains and exports a
-model-authored compaction helper, and its loop automatically uses it when a
-host supplies `generateNote`; without that callback it falls back to trimming.
-It is neither published nor consumed by Nessie. Do not call it over HTTP or
-copy its loop into Nessie. Any dependency adoption must use a pinned, versioned
-library contract while Nessie continues to own its inference adapter, run
-checkpoints, disclosure basis, and durable lifecycle.
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the
     prompt-cache prefix survives. Builtin sets above
@@ -83,6 +71,7 @@ checkpoints, disclosure basis, and durable lifecycle.
     runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
     toolCount }`, no cost data (`run-timing.ts`), written after the status flip
     so it can never fail a finished run. Owners: `GET /api/ledger/runs/timing`.
+
 - **Budget and storage-quota admission are atomic, and say what they promise.**
   A run enters through `admitRunToBudget` (`packages/runtime/src/budget.ts`),
   not `evaluateBudget`: for an `enforce`/`degrade` budget with a limit it takes
@@ -208,3 +197,22 @@ checkpoints, disclosure basis, and durable lifecycle.
   API-only).
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
+
+## Deep.Agent compaction
+
+Nessie consumes only `@deep/agent`'s commit-pinned, pure
+`runContextCompaction` helper. Nessie still owns utility inference and its
+invocation sink, checkpoint persistence, disclosure basis and durable state.
+The helper preserves complete tool groups, fences its rolling note and retains
+source URLs.
+
+Compaction runs automatically at the context threshold and when output admission
+requires more space. It uses the run's utility model when configured, otherwise
+the run model. This is deliberately machine-only: no separate page, user action,
+or HTTP service is required. People receive the normal answer or saved checkpoint;
+the internal summary is context for the next inference.
+
+CI and Docker require the externally managed `DEEP_AGENT_READ_TOKEN`: a
+fine-grained token scoped only to `deep.agent` Contents:Read, rotated before
+expiry. It is supplied only to installation and is never committed, persisted
+in an image layer, or exposed at runtime.

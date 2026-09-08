@@ -41,7 +41,9 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Validate the tag and record shipped app versions
         id: release
@@ -131,10 +133,14 @@ jobs:
           node -e 'const config = require("./desktop/src-tauri/tauri.adhoc-macos.conf.json"); if (config.bundle?.macOS?.signingIdentity !== "-") process.exit(1)'
           echo '::warning::The macOS DMG is ad-hoc signed and not notarized. People must use the documented Gatekeeper bypass.'
 
-      - name: Install dependencies and build executor inputs
+      - name: Install dependencies
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
+
+      - name: Build executor inputs
         run: |
           set -euo pipefail
-          pnpm install --frozen-lockfile
           pnpm prisma:generate
           rustup target add "${{ matrix.target }}"
           pnpm exec turbo run build --filter=@nessie/executor...
@@ -221,10 +227,14 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
             desktop-file-utils
 
+      - name: Install dependencies
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
+
       - name: Build the Linux packages
         run: |
           set -euo pipefail
-          pnpm install --frozen-lockfile
           pnpm prisma:generate
           pnpm exec turbo run build --filter=@nessie/executor...
           pnpm --dir desktop run prepare:executor-runtime
@@ -281,7 +291,9 @@ jobs:
           token: ${{ env.EXPO_TOKEN }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Build a signed Android APK with EAS
         working-directory: mobile

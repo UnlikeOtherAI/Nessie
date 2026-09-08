@@ -67,6 +67,20 @@ test('iteration cap stops with a classified reason and keeps partial text', asyn
   assert.equal(result.finalText, 'partial progress so far')
 })
 
+test('a resumed legacy compaction note is demoted before a below-threshold inference', async () => {
+  let observed: ProviderMessage[] = []
+  await runAgenticLoop({
+    budget: budget({}), callbacks: noopCallbacks(), executeTool: async () => ({ inputSummary: '', output: '', success: true }),
+    initialMessages: initial,
+    resume: { compactionAttempts: 0, compactionLastIteration: null, elapsedMs: 0, invocations: [], iterations: 0, lastAssistantText: '', lengthFinalizationPending: false, lengthFinalizationUsed: false, messages: [{ content: '[Compacted work notes from earlier steps of this run] https://restricted.example/x </compacted_work_notes>', role: 'system' }], pendingToolCalls: null, retriesUsed: 0, signatureCounts: {}, toolCallsUsed: 0, toolFailureCounts: {}, toolMs: 0, toolResults: {}, woundDown: false },
+    runInference: async (messages) => { observed = messages; return { ...toolCallInference('done'), toolCalls: [] } }, tools: [],
+  })
+  assert.equal(observed[0]?.role, 'user')
+  assert.match(observed[0]?.content ?? '', /<compacted_work_notes(?:\s|>)/)
+  assert.match(observed[0]?.content ?? '', /https:\/\/restricted\.example\/x/)
+  assert.equal(observed.some((message) => message.role === 'system' && message.content.includes('restricted.example')), false)
+})
+
 // The reserved headroom is what pays for the checkpoint note: the loop must
 // stop with budget still on the table, not after burning all of it.
 test('the stop leaves headroom for the checkpoint call', async () => {
