@@ -6,9 +6,11 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseProjectId,
   parseUserId,
   parseRunId,
   parseTaskId,
+  parseTeamId,
   parseThreadId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
@@ -54,7 +56,9 @@ const buildMailboxActorContext = (input: {
   actorType: 'agent' | 'service' | 'user'
   channelId: string
   organizationId: string
+  projectId: string | null
   targetAgentId: string
+  teamId: string | null
   peerDelegationDepth?: number | null
   // Omitted while the (agent, thread) slot claim is still unresolved: the
   // pending-marker path has no task, and the claimed path injects the fresh
@@ -81,6 +85,8 @@ const buildMailboxActorContext = (input: {
   },
   tenant: {
     organizationId: parseOrganizationId(input.organizationId),
+    ...(input.projectId ? { projectId: parseProjectId(input.projectId) } : {}),
+    ...(input.teamId ? { teamId: parseTeamId(input.teamId) } : {}),
   },
 })
 
@@ -232,6 +238,8 @@ export const dispatchNextMailboxMessage = async (
       channel: {
         select: {
           organizationId: true,
+          projectId: true,
+          teamId: true,
         },
       },
     },
@@ -322,7 +330,9 @@ export const dispatchNextMailboxMessage = async (
       actorType: resolveMailboxActorType(message),
       channelId: thread.channelId,
       organizationId: message.organizationId,
+      projectId: thread.channel.projectId,
       targetAgentId: message.toAgentId,
+      teamId: thread.channel.teamId,
       peerDelegationDepth: message.peerDelegationDepth,
       threadId: targetThreadId,
     })
@@ -386,7 +396,9 @@ export const dispatchNextMailboxMessage = async (
             actorType: resolveMailboxActorType(message),
             channelId: thread.channelId,
             organizationId: message.organizationId,
+            projectId: thread.channel.projectId,
             targetAgentId: message.toAgentId,
+            teamId: thread.channel.teamId,
             peerDelegationDepth: message.peerDelegationDepth,
             taskId: task.id,
             threadId: targetThreadId,

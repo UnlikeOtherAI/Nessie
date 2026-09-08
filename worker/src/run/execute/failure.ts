@@ -80,7 +80,7 @@ export const handleRunExecutionFailure = async (
   // page delivery row now shows that outcome, and the error is logged — it
   // simply stops being announced to a room that did not ask.
   const announceFailure =
-    isInteractiveRun(payload)
+    (isInteractiveRun(payload) || payload.actorContext.actionContext.purpose === 'agent.peer_delegation')
     && failureReason !== 'private_agent_placement'
     && failureReason !== 'global_agent_placement'
 

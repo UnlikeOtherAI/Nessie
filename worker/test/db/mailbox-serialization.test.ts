@@ -28,6 +28,7 @@ type Seed = {
   organizationId: string
   projectId: string
   requesterId: string
+  secondRequesterId: string
   teamId: string
   channelId: string
   threadId: string
@@ -38,7 +39,9 @@ type Seed = {
 const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `mbx-ser ${randomUUID()}` } })
   const requester = await prisma.user.create({ data: { displayName: 'Requester', email: `mbx-${randomUUID()}@example.test` } })
+  const secondRequester = await prisma.user.create({ data: { displayName: 'Second requester', email: `mbx-${randomUUID()}@example.test` } })
   await prisma.organizationMember.create({ data: { organizationId: org.id, role: 'owner', userId: requester.id } })
+  await prisma.organizationMember.create({ data: { organizationId: org.id, role: 'member', userId: secondRequester.id } })
   const project = await prisma.project.create({
     data: { name: 'p', organizationId: org.id },
   })
@@ -64,6 +67,7 @@ const seedTeam = async (prisma: PrismaClient): Promise<Seed> => {
     organizationId: org.id,
     projectId: project.id,
     requesterId: requester.id,
+    secondRequesterId: secondRequester.id,
     teamId: team.id,
     channelId: channel.id,
     threadId: thread.id,
@@ -87,7 +91,7 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
   await prisma.team.deleteMany({ where: { id: seed.teamId } })
   await prisma.project.deleteMany({ where: { id: seed.projectId } })
   await prisma.organization.deleteMany({ where: { id: seed.organizationId } })
-  await prisma.user.deleteMany({ where: { id: seed.requesterId } })
+  await prisma.user.deleteMany({ where: { id: { in: [seed.requesterId, seed.secondRequesterId] } } })
 }
 
 const realtime = {
@@ -110,6 +114,7 @@ const queueMail = async (
   peerDelegationDepth?: number,
   basis: { scopeId: string; scopeType: string }[] = [],
   disclosureSources: { sourceAuthorUserId: string | null; sourceChannelId: string }[] = [],
+  actorId?: string,
 ): Promise<{ id: string }> => {
   return prisma.agentMailboxMessage.create({
     data: {
@@ -118,7 +123,7 @@ const queueMail = async (
       toAgentId: seed.toAgentId,
       channelId: seed.channelId,
       threadId: seed.threadId,
-      actorId: peerDelegationDepth === undefined ? seed.fromAgentId : seed.requesterId,
+      actorId: peerDelegationDepth === undefined ? seed.fromAgentId : (actorId ?? seed.requesterId),
       actorType: peerDelegationDepth === undefined ? 'agent' : 'user',
       basis,
       disclosureSources,
@@ -165,8 +170,12 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
     data: { agentId: seed.toAgentId, threadId: seed.threadId, status: 'running' },
   })
 
-  const mail = await queueMail(prisma, seed, 'subtask result payload')
+  const mail = await queueMail(prisma, seed, 'subtask result payload one', 1)
+  const mailTwo = await queueMail(prisma, seed, 'subtask result payload two', 1, [], [], seed.secondRequesterId)
+  const mailThree = await queueMail(prisma, seed, 'subtask result payload three', 1)
   await dispatchSeededMail(prisma, mail)
+  await dispatchSeededMail(prisma, mailTwo)
+  await dispatchSeededMail(prisma, mailThree)
 
   // No concurrent run: the delivery is a durable pending marker instead.
   const runs = await prisma.run.findMany({
@@ -178,7 +187,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
   const pendings = await prisma.runThreadPendingMessage.findMany({
     where: { agentId: seed.toAgentId, threadId: seed.threadId },
   })
-  assert.equal(pendings.length, 1)
+  assert.equal(pendings.length, 3)
   assert.equal(pendings[0]?.channelId, seed.channelId)
   assert.equal(pendings[0]?.interactive, false)
 
@@ -187,29 +196,44 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
   const promptMessage = await prisma.message.findUnique({
     where: { id: pendings[0]!.messageId },
   })
-  assert.equal(promptMessage?.content, 'subtask result payload')
+  assert.equal(promptMessage?.content, 'subtask result payload one')
   const delivered = await prisma.agentMailboxMessage.findUnique({ where: { id: mail.id } })
   assert.equal(delivered?.status, 'delivered')
   assert.ok(delivered?.deliveredAt)
 
-  // When the in-flight run goes terminal, the drain delivers the pended mail
-  // as the batched follow-up run.
-  await prisma.run.update({
-    where: { id: activeRun.id },
-    data: { status: 'completed', finishedAt: new Date() },
-  })
+  // A failed predecessor drains each peer brief in arrival order. Each successor
+  // keeps the hidden message and human authority that admitted it; neither a
+  // later human turn nor another peer's restricted basis can replace either.
   const { drainPendingThreadMessages } = await import('../../src/run/thread-serialization.js')
-  const followUpRunId = await drainPendingThreadMessages(prisma, {
-    agentId: seed.toAgentId,
-    threadId: seed.threadId,
-  })
-  assert.ok(followUpRunId)
+  let predecessorId = activeRun.id
+  const successorIds: string[] = []
+  for (const expectedUserId of [seed.requesterId, seed.secondRequesterId, seed.requesterId]) {
+    await prisma.run.update({
+      where: { id: predecessorId },
+      data: { status: 'failed', finishedAt: new Date() },
+    })
+    const followUpRunId = await drainPendingThreadMessages(prisma, {
+      agentId: seed.toAgentId,
+      threadId: seed.threadId,
+    })
+    assert.ok(followUpRunId)
+    successorIds.push(followUpRunId)
+    const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { effectiveUserId?: string; purpose?: string } } } }[]>`
+      SELECT payload FROM queue_jobs WHERE payload->>'runId' = ${followUpRunId}
+    `
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.payload.actorContext.actionContext.purpose, 'agent.peer_delegation')
+    assert.equal(rows[0]?.payload.actorContext.actionContext.effectiveUserId, expectedUserId)
+    predecessorId = followUpRunId
+  }
   assert.equal(
     await prisma.runThreadPendingMessage.count({
       where: { agentId: seed.toAgentId, threadId: seed.threadId },
     }),
     0,
+    'all delivered peer briefs make progress after each failed predecessor',
   )
+  assert.equal(new Set(successorIds).size, 3)
 })
 
 runDatabaseTest('peer delivery keeps a restricted research basis through the coordinator reply ACL', async (t) => {
@@ -236,13 +260,15 @@ runDatabaseTest('peer delivery keeps a restricted research basis through the coo
   )
   await dispatchSeededMail(prisma, mail)
 
-  const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { correlationId?: string; effectiveUserId?: string; purpose?: string } } } }[]>`
+  const rows = await prisma.$queryRaw<{ payload: { actorContext: { actionContext: { correlationId?: string; effectiveUserId?: string; purpose?: string }; tenant: { projectId?: string; teamId?: string } } } }[]>`
     SELECT payload FROM queue_jobs WHERE idempotency_key = ${`mailbox:${mail.id}`}
   `
   assert.equal(rows.length, 1)
   assert.equal(rows[0]?.payload.actorContext.actionContext.purpose, 'agent.peer_delegation')
   assert.equal(rows[0]?.payload.actorContext.actionContext.correlationId, '2')
   assert.equal(rows[0]?.payload.actorContext.actionContext.effectiveUserId, seed.requesterId)
+  assert.equal(rows[0]?.payload.actorContext.tenant.projectId, seed.projectId)
+  assert.equal(rows[0]?.payload.actorContext.tenant.teamId, seed.teamId)
 
   const prompt = await prisma.message.findFirstOrThrow({
     where: { content: 'review the prospect evidence', threadId: seed.threadId },
@@ -289,6 +315,101 @@ runDatabaseTest('peer delivery keeps a restricted research basis through the coo
   // The delivery row is terminal; replaying the sweep cannot create a second run.
   assert.equal(await dispatchNextMailboxMessage(prisma, realtime), false)
   assert.equal(await prisma.run.count({ where: { agentId: seed.toAgentId, threadId: seed.threadId } }), 1)
+})
+
+runDatabaseTest('a later scheduled marker cannot replace a selected peer brief', async (t) => {
+  const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
+  const seed = await seedTeam(prisma)
+  t.after(async () => {
+    await cleanup(prisma, seed)
+    await prisma.$disconnect()
+  })
+
+  const activeRun = await prisma.run.create({
+    data: { agentId: seed.toAgentId, threadId: seed.threadId, status: 'running' },
+  })
+  const basis = [{ scopeId: seed.requesterId, scopeType: 'user' }]
+  const peerMail = await queueMail(prisma, seed, 'restricted peer brief', 1, basis)
+  await dispatchSeededMail(prisma, peerMail)
+  const peerPending = await prisma.runThreadPendingMessage.findFirstOrThrow({
+    where: { agentId: seed.toAgentId, threadId: seed.threadId },
+  })
+
+  const template = await prisma.agentTodoTemplate.create({
+    data: {
+      agentId: seed.toAgentId,
+      authorType: 'user',
+      name: 'Later schedule',
+      organizationId: seed.organizationId,
+      status: 'active',
+      steps: [{ instructions: 'Check later.', key: 'later', title: 'Later' }],
+    },
+  })
+  const trigger = await prisma.agentTrigger.create({
+    data: {
+      agentId: seed.toAgentId,
+      config: { interval_minutes: 15 },
+      targetChannelId: seed.channelId,
+      targetThreadId: seed.threadId,
+      type: 'interval',
+    },
+  })
+  const scheduledMessage = await prisma.message.create({
+    data: {
+      content: 'later scheduled kickoff',
+      createdAt: new Date(Date.now() + 1_000),
+      role: 'system',
+      threadId: seed.threadId,
+    },
+  })
+  await prisma.runThreadPendingMessage.create({
+    data: {
+      actorContext: peerPending.actorContext,
+      agentId: seed.toAgentId,
+      channelId: seed.channelId,
+      interactive: false,
+      messageId: scheduledMessage.id,
+      threadId: seed.threadId,
+      todoTemplateId: template.id,
+      triggerId: trigger.id,
+    },
+  })
+
+  const beforeDrain = await prisma.runThreadPendingMessage.findMany({
+    where: { agentId: seed.toAgentId, threadId: seed.threadId },
+    orderBy: [{ message: { createdAt: 'asc' } }, { seq: 'asc' }],
+    include: { message: { select: { content: true } } },
+  })
+  assert.deepEqual(beforeDrain.map((pending) => pending.messageId), [peerPending.messageId, scheduledMessage.id])
+
+  await prisma.run.update({ where: { id: activeRun.id }, data: { status: 'failed', finishedAt: new Date() } })
+  const { drainPendingThreadMessages } = await import('../../src/run/thread-serialization.js')
+  const successorId = await drainPendingThreadMessages(prisma, {
+    agentId: seed.toAgentId,
+    threadId: seed.threadId,
+  })
+  assert.ok(successorId)
+  const jobs = await prisma.$queryRaw<{ payload: { messageId: string } }[]>`
+    SELECT payload FROM queue_jobs WHERE payload->>'runId' = ${successorId}
+  `
+  assert.equal(jobs.length, 1)
+  assert.equal(jobs[0]?.payload.messageId, peerPending.messageId)
+  const run = await prisma.run.findUniqueOrThrow({
+    where: { id: successorId },
+    select: { triggerMessageId: true },
+  })
+  assert.equal(run.triggerMessageId, peerPending.messageId)
+  const selectedPrompt = await prisma.message.findUniqueOrThrow({
+    where: { id: peerPending.messageId },
+    select: { basisScopes: { select: { scopeId: true, scopeType: true } }, content: true },
+  })
+  assert.equal(selectedPrompt.content, 'restricted peer brief')
+  assert.deepEqual(selectedPrompt.basisScopes, basis)
+  const remaining = await prisma.runThreadPendingMessage.findMany({
+    where: { agentId: seed.toAgentId, threadId: seed.threadId },
+  })
+  assert.deepEqual(remaining.map((pending) => pending.messageId), [scheduledMessage.id])
 })
 
 runDatabaseTest('mailbox delivery on a free thread claims the slot and enqueues the run', async (t) => {
