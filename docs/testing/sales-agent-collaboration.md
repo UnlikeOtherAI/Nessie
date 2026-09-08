@@ -209,6 +209,38 @@ expands readable source names and statuses. Collapsing the operational detail
 keeps the research summary visible without removing access to evidence. This
 verification read the cached record and did not start another scan.
 
+### Follow-up repairs and bounded research setup
+
+PR 419 removes the false browser-load error when an agent has no browser grant.
+Its final CI browser screenshot showed the settled Tools surface, and successful
+[Deploy run 34254211932](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34254211932)
+landed the change. A production walkthrough then expanded the coordinator's
+Browser category and confirmed its six disabled tools without the false error.
+
+PR 421 adds the missing **A project** choice to app connection setup. All nine
+CI checks passed before merge. A real local API and Vite walkthrough verified
+that Connect stays disabled without a project, becomes available after choosing
+one, and shows the correct audience after switching Project → Channel → Project.
+That local walkthrough did not connect an external account.
+
+PR 422 repairs zero-output admission recovery and passed all nine CI checks
+before merge. Recovery has its own durable attempt marker, so earlier ordinary
+compaction does not disable it. Checkpoints preserve the recovery result and
+utility spend even when the utility call exhausts the run budget. Full argument
+schemas are now attached only to structural argument failures. These regression
+tests establish recovery behavior; a new production run is still required to
+prove the sales workflow and any live compaction invocation.
+
+Both agents' prompts were updated through the production editor and verified
+after reload. The coordinator now creates the board and tickets before loading
+large research records and delegates one prospect per bounded peer request.
+The researcher saves findings and source URLs throughout the run, keeps missing
+evidence explicit, and returns a short recommendation referencing its ticket.
+The prompts identify the peer agents directly, preserve the reusable templates,
+and explicitly defer Calendar/Meet and client outreach. A separate read-only
+KiloTalk research credential was created through Settings → API keys for the
+project-scoped connection; its value is not recorded in this document.
+
 ## Compaction verification
 
 The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
