@@ -46,6 +46,8 @@ export type MemberRosterPermissions = {
   searchMemberCandidates?: boolean
   /** UOA's live, assignable team-role vocabulary (never ownership). */
   teamRoleOptions?: string[]
+  /** UOA's live, assignable organisation roles (never ownership). */
+  orgRoleOptions?: string[]
 }
 
 /** A stateless UOA list response, retaining its keyset pagination contract. */

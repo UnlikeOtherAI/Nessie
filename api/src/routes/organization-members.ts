@@ -57,7 +57,9 @@ type RelayAudit = {
 }
 
 const OrgRoleBodySchema = z.object({
-  role: z.enum(['owner', 'admin', 'member']),
+  // UOA validates the configured role vocabulary. Nessie only rejects the
+  // ownership role, whose transfer has a separate upstream flow.
+  role: z.string().trim().min(1).max(100).refine((role) => role !== 'owner'),
 })
 
 const RosterQuerySchema = z.object({

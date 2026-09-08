@@ -126,6 +126,12 @@ export const listOrganisationMembers = async (
       deactivateMember: permissions?.deactivateMember === true,
       reactivateMember: permissions?.reactivateMember === true,
       viewMemberEmail: permissions?.viewMemberEmail === true,
+      ...(Array.isArray(permissions?.orgRoleOptions)
+        ? {
+            orgRoleOptions: permissions.orgRoleOptions.flatMap((role) =>
+              typeof role === 'string' && role.trim() && role.trim() !== 'owner' ? [role.trim()] : []),
+          }
+        : {}),
     },
   }
 }
