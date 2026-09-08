@@ -229,7 +229,10 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
       prisma,
       actorContext.tenant.organizationId,
       userId,
-      { uoaIdentity: actorContext.actionContext.uoaIdentity },
+      {
+        ...(actorContext.actor.actorType === 'agent' ? { agentId: actorContext.actor.actorId } : {}),
+        uoaIdentity: actorContext.actionContext.uoaIdentity,
+      },
     )
   }
 
@@ -243,12 +246,14 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     version: NonNullable<KnowledgePageRecord['latestVersion']>,
   ): Promise<boolean> => canReadVersionWithViewer(version, await disclosureViewerFor(actorContext))
 
-  const canReadPageVersionsWithViewer = (
+  const canReadPageVersionsWithViewer = async (
     page: KnowledgePageRecord,
     disclosureViewer: DisclosureViewer | null,
-  ): boolean => {
-    const versions = [page.latestVersion, page.publishedVersion]
-      .filter((version): version is NonNullable<typeof version> => version !== null)
+  ): Promise<boolean> => {
+    const versions = await provider.listVersions(
+      page.organizationId,
+      page.id,
+    )
     return versions.every((version) => canReadVersionWithViewer(version, disclosureViewer))
   }
 
@@ -301,7 +306,9 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     pages: readonly KnowledgePageRecord[],
   ): Promise<KnowledgePageRecord[]> => {
     const disclosureViewer = await disclosureViewerFor(actorContext)
-    return pages.filter((page) => canReadPageVersionsWithViewer(page, disclosureViewer))
+    const readable = await Promise.all(pages.map(async (page) =>
+      (await canReadPageVersionsWithViewer(page, disclosureViewer)) ? page : null))
+    return readable.filter((page): page is KnowledgePageRecord => page !== null)
   }
 
   return {

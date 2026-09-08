@@ -73,6 +73,7 @@ export const runKbDocumentEditTool = async (
     throw new Error(`Knowledge space not found: ${page.spaceId}`)
   }
   const principal = buildSpaceViewerPrincipal(context)
+  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
   if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
     throw new Error('Agents may not write to a restricted knowledge space.')
   }
@@ -83,12 +84,11 @@ export const runKbDocumentEditTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
-  if (!(await canReadPageVersions(context, page))) {
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
     throw new Error('You do not have access to this knowledge page.')
   }
   recordPageVersionRead(context, page)
 
-  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
   const document = await (dependencies.readDocument ?? readMarkdownDocument)(
     context.prisma,
     fileService,

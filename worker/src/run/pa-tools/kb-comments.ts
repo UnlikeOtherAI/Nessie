@@ -12,7 +12,11 @@ import {
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
 import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
-import { canReadPageVersions, recordPageVersionRead } from './knowledge.js'
+import {
+  canReadPageVersions,
+  recordPageVersionRead,
+  resolveKnowledgeDisclosureViewer,
+} from './knowledge.js'
 import { truncate } from './tool-output.js'
 
 // A delegating PA authors as its owning user (with the agent recorded); an
@@ -31,8 +35,9 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   if (!page) throw new Error(`Knowledge page not found: ${pageId}`)
   const space = await provider.getSpace(organizationId, page.spaceId)
   if (!space) throw new Error(`Knowledge space not found for page: ${pageId}`)
+  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
   const viewer = await loadSpaceViewer(context.prisma, organizationId, buildSpaceViewerPrincipal(context))
-  if (!(await canReadPageVersions(context, page))) {
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
     throw new Error('You do not have access to this knowledge page.')
   }
   const access: AnnotationAccess = {

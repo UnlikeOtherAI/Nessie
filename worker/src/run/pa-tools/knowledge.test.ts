@@ -131,10 +131,17 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
       },
       findMany: async () => [],
     },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1' }) },
+    channelMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
     projectMember: { findMany: async () => [] },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
+    },
+    knowledgePageVersion: {
+      findMany: async () => options.page?.versions ?? [],
     },
     knowledgeSpace: {
       count: async () => (options.space ? 1 : 0),

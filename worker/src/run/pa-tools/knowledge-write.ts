@@ -7,7 +7,11 @@ import {
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
-import { canReadPageVersions, recordPageVersionRead } from './knowledge.js'
+import {
+  canReadPageVersions,
+  recordPageVersionRead,
+  resolveKnowledgeDisclosureViewer,
+} from './knowledge.js'
 
 const MAX_BODY_CHARS = 200_000
 const MAX_LABELS = 16
@@ -69,6 +73,7 @@ export const runKbDraftWriteTool = async (
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
+  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
   const author = resolveAuthor(context)
 
   const existingPage = input.pageId ? await provider.getPage(organizationId, input.pageId) : null
@@ -96,7 +101,7 @@ export const runKbDraftWriteTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
-  if (existingPage && !(await canReadPageVersions(context, existingPage))) {
+  if (existingPage && !(await canReadPageVersions(context, existingPage, disclosureViewer))) {
     throw new Error('You do not have access to this knowledge page.')
   }
   if (existingPage) recordPageVersionRead(context, existingPage)
@@ -185,6 +190,7 @@ export const runKbFileTool = async (
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
+  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
   if (!page) {
@@ -200,7 +206,7 @@ export const runKbFileTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
-  if (!(await canReadPageVersions(context, page))) {
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
     throw new Error('You do not have access to this knowledge page.')
   }
   recordPageVersionRead(context, page)
@@ -267,6 +273,7 @@ export const runKbPublishRequestTool = async (
   const organizationId = String(context.channel.organizationId)
   const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
+  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
   if (!page) {
@@ -282,7 +289,7 @@ export const runKbPublishRequestTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
-  if (!(await canReadPageVersions(context, page))) {
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
     throw new Error('You do not have access to this knowledge page.')
   }
   recordPageVersionRead(context, page)
