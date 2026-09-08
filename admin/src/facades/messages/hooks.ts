@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { AgentMention } from '@nessie/schemas'
+import type { AgentConversationRecord, AgentMention } from '@nessie/schemas'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
+import { agentKeys } from '../agents/keys'
 import { channelKeys } from '../channels/keys'
 import { threadKeys } from '../threads/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -17,6 +18,31 @@ export interface PendingAgentInvite {
 export interface SendMessageResponse {
   message: ThreadMessageRecord
   pendingAgentInvites: PendingAgentInvite[]
+  /**
+   * The name this send just gave the conversation, reported by the 201 on
+   * exactly the send that named a still-unnamed thread — the first top-level
+   * message (`api/src/routes/thread-message-create.ts`). Additive and
+   * optional: every other send omits it.
+   */
+  conversationTitle?: string
+}
+
+/**
+ * The conversation record a naming send implies, given what is cached.
+ *
+ * Pure so the rule is checkable without a client: the title lands on a record
+ * that is already there, an absent cache stays absent (the next read fetches
+ * the whole record rather than inventing one from a title), and a send that
+ * named nothing changes nothing. Returning the same reference when the title
+ * already agrees keeps the header from re-rendering for no reason.
+ */
+export const applyConversationTitle = <Record extends { title: string }>(
+  cached: Record | undefined,
+  title: string | undefined,
+): Record | undefined => {
+  if (!title || cached === undefined) return cached
+  if (cached.title === title) return cached
+  return { ...cached, title }
 }
 
 /** Extra routing fields for posting a reply into a message thread (#233). */
@@ -39,10 +65,34 @@ export const useSendMessage = (threadId?: string) => {
       clientMessageId?: string
     } & SendMessageThreadExtras) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
-    onSuccess: () => {
+    onSuccess: (response) => {
       void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
       void queryClient.invalidateQueries({ queryKey: threadKeys.replies(threadId) })
+      // Stronger than the invalidation the naming case below would otherwise
+      // ask for, and it runs on every send: a new message can move records
+      // across keyset page boundaries.
       void queryClient.resetQueries({ queryKey: threadKeys.activityRoot })
+      // The send that named the conversation is the only reader told the name
+      // at the moment it exists. Without this the header goes on saying "New
+      // conversation" to the very person who just named it, until the list's
+      // poll or a reload catches up — `threadKeys.conversation` is otherwise
+      // written only by `useRenameThread`.
+      const title = response?.conversationTitle
+      if (title) {
+        const key = threadKeys.conversation(threadId)
+        queryClient.setQueryData<AgentConversationRecord>(
+          key,
+          (cached) => applyConversationTitle(cached, title),
+        )
+        // The rail beside the conversation and the agent page's own tab list
+        // the same rows. The agent is read from the record the header is
+        // already rendering; with no record cached there is nothing to read it
+        // from, so the whole agent family is refreshed instead.
+        const agentId = queryClient.getQueryData<AgentConversationRecord>(key)?.agentId
+        void queryClient.invalidateQueries({
+          queryKey: agentId ? agentKeys.conversations(agentId) : agentKeys.all,
+        })
+      }
     },
   })
 }
