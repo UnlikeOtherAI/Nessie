@@ -101,7 +101,11 @@ export const AgentDesignerForm = ({
   const selectedModel = modelOptions.find(
     (option) => option.model === state.model && option.provider === state.provider,
   )
-  const hasUnavailableSelection = Boolean(state.model && state.provider && !selectedModel)
+  // Either half missing is the same dead end for the person: the field renders
+  // empty and nothing says why. A stored model with no provider is the shape a
+  // pre-provider agent row has, and it used to render as a silently blank
+  // picker with no hint at all.
+  const hasUnavailableSelection = Boolean((state.model || state.provider) && !selectedModel)
 
   return (
     <div className="grid gap-5">
@@ -188,7 +192,11 @@ export const AgentDesignerForm = ({
             />
             {hasUnavailableSelection ? (
               <p className="text-xs text-[color:var(--tx3)]">
-                Current model ({state.model}) is no longer available — select a replacement.
+                {state.model
+                  ? `Current model (${state.model}) is no longer available`
+                    + ' — select a replacement.'
+                  : 'This agent’s stored model could not be matched'
+                    + ' — select a replacement.'}
               </p>
             ) : null}
             {selectedModel ? (

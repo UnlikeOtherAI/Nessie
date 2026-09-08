@@ -6,6 +6,8 @@ import {
   findModelOption,
   modelOptionLabel,
   modelOptionSubtitle,
+  orderModelOptionsForPicker,
+  readTypedQuery,
 } from '../src/components/features/agents/designer/model-options.js'
 
 const option = (
@@ -75,4 +77,50 @@ test('a model resolves only when its provider matches too', () => {
 test('the field label repeats the model id only when it differs from the name', () => {
   assert.equal(modelOptionLabel(option({})), 'GPT-5 mini (gpt-5-mini)')
   assert.equal(modelOptionLabel(option({ displayName: 'gpt-5-mini' })), 'gpt-5-mini')
+})
+
+test('the picker leads with a person’s own subscriptions, order otherwise intact', () => {
+  const ledgerFirst = option({})
+  const ledgerSecond = option({ displayName: 'GPT-5', model: 'gpt-5' })
+  const subFirst = option({
+    displayName: 'GPT-5 Codex',
+    model: 'gpt-5-codex',
+    provider: 'subscription/openai_codex',
+    providerDisplayName: 'ChatGPT Codex',
+    source: 'subscription',
+  })
+  const subSecond = option({
+    displayName: 'Grok 4',
+    model: 'grok-4',
+    provider: 'subscription/xai_grok',
+    providerDisplayName: 'Grok (SuperGrok)',
+    source: 'subscription',
+  })
+
+  assert.deepEqual(
+    orderModelOptionsForPicker([ledgerFirst, subFirst, ledgerSecond, subSecond]),
+    [subFirst, subSecond, ledgerFirst, ledgerSecond],
+  )
+  // An option from before personal subscriptions existed carries no source at
+  // all, and is Ledger's.
+  assert.deepEqual(
+    orderModelOptionsForPicker([ledgerFirst, ledgerSecond]),
+    [ledgerFirst, ledgerSecond],
+  )
+  assert.deepEqual(orderModelOptionsForPicker([]), [])
+})
+
+test('a search typed over the selected model reads as the search alone', () => {
+  const shown = 'GPT-5 mini (gpt-5-mini)'
+
+  // The common case: the caret sits at the end of the name already in the field.
+  assert.equal(readTypedQuery(shown, `${shown}g`), 'g')
+  assert.equal(readTypedQuery(shown, `${shown}grok`), 'grok')
+  // A keystroke landing where the person clicked, mid-name.
+  assert.equal(readTypedQuery(shown, 'GPT-5 mxini (gpt-5-mini)'), 'x')
+  // Deleting is "clear this and show me everything", not a search for the rest.
+  assert.equal(readTypedQuery(shown, shown.slice(0, -1)), '')
+  assert.equal(readTypedQuery(shown, ''), '')
+  // Nothing selected yet: the field holds the search and nothing else.
+  assert.equal(readTypedQuery('', 'grok'), 'grok')
 })

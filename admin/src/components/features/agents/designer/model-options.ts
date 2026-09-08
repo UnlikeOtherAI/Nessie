@@ -68,3 +68,46 @@ export const filterModelOptions = (
     return terms.every((term) => haystack.includes(term))
   })
 }
+
+/**
+ * Picker order: a person's own linked subscriptions first, the Ledger
+ * catalogue after them, each side keeping the order the server sent.
+ *
+ * The catalogue arrives Ledger-first and stays that way everywhere the order
+ * carries meaning — the preselection a new agent gets, and the shortlist the
+ * Design Assistant is shown — because a default must never move spend onto
+ * somebody's personal plan. This is presentation only: a Ledger catalogue runs
+ * to hundreds of models, and a person who linked their own plan had to scroll
+ * past every one of them to reach the handful they pay for.
+ */
+export const orderModelOptionsForPicker = (
+  options: AgentModelOption[],
+): AgentModelOption[] => [
+  ...options.filter((option) => modelOptionSource(option) === 'subscription'),
+  ...options.filter((option) => modelOptionSource(option) !== 'subscription'),
+]
+
+/**
+ * What a person actually typed into a field that was still showing the model
+ * they had selected.
+ *
+ * The picker keeps the selected model's name in the field while the list is
+ * open — blanking it back to the placeholder reads as having thrown the choice
+ * away — so the first keystroke arrives as the whole name plus one character.
+ * No caret trick can avoid that: the list opens over the field and swallows the
+ * rest of the press, so a selection made on the way down is gone by the time
+ * the person types. One insertion is simply the difference between the two
+ * strings; deleting instead means "clear this and show me everything".
+ */
+export const readTypedQuery = (shown: string, next: string): string => {
+  if (shown === '') return next
+  if (next.length <= shown.length) return ''
+  let prefix = 0
+  while (prefix < shown.length && shown[prefix] === next[prefix]) prefix += 1
+  let suffix = 0
+  while (
+    suffix < shown.length - prefix
+    && shown[shown.length - 1 - suffix] === next[next.length - 1 - suffix]
+  ) suffix += 1
+  return next.slice(prefix, next.length - suffix)
+}

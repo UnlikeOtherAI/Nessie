@@ -68,6 +68,16 @@ organization's Ledger credits. Rules that must not drift:
   `modelSubscriptionId` decide it, never the absence of a pricing profile.
   Attribution follows the subscription **owner**, not whoever posted, and the
   writer reads the run's own pin so no terminal path can forget to stamp it.
+- **The picker leads with a person's own plans; nothing else does.** The model
+  list a person browses puts their linked subscriptions above the Ledger
+  catalogue, under a "Your subscriptions" heading — a Ledger catalogue runs to
+  hundreds of models and their own handful was unreachable at the bottom of it.
+  Order carries meaning everywhere else, and there it stays Ledger-first: the
+  model a new agent is preselected with, and the shortlist the Design Assistant
+  is shown, both come off the Ledger entries, because a default nobody chose
+  must never put an agent's spend on somebody's personal plan. So the
+  presentation order is the client's (`orderModelOptionsForPicker`), never the
+  catalogue's.
 - **One validator, every write path.** `assertAgentModelSelection`
   (`@nessie/team-admin`) gates create, update, clone and the PA
   `agent_create` tool; ownership transfer and clone strip the selection,
