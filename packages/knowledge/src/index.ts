@@ -1,4 +1,17 @@
 export {
+  CORE_DOCUMENT_ROLES,
+  CoreDocumentIntegrityError,
+  isAgentCoreDocumentPage,
+  loadActiveAgentCoreDocuments,
+} from './agent-core-documents.js'
+export { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
+export { readCanonicalAgentCore, writeCanonicalAgentCore } from './agent-core-write.js'
+export type { CanonicalAgentCore } from './agent-core-write.js'
+export type {
+  ActiveCoreDocument,
+  CoreDocumentRole,
+} from './agent-core-documents.js'
+export {
   buildNativeSourceRef,
   buildSpaceSourceRef,
   createNativeKnowledgeProvider,
@@ -7,6 +20,11 @@ export type {
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
+export type {
+  AgentCoreMigrationDraft,
+  AgentCoreMigrationInput,
+  AgentCoreMigrationResult,
+} from './types.js'
 export {
   canReadSpace,
   canWriteSpace,
@@ -112,6 +130,9 @@ export type {
   CreatePageInput,
   CreateSpaceInput,
   KnowledgeAuthorType,
+  KnowledgeDocumentOrigin,
+  KnowledgeDocumentRole,
+  KnowledgeDocumentTrust,
   KnowledgePageKind,
   KnowledgePageRecord,
   KnowledgePageStatus,

@@ -41,6 +41,20 @@ import type { RunContext, StoredConversationMessage } from './types.js'
 
 export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
 
+const coreInstructionBlock = (context: RunContext): string => {
+  const coreDocuments = context.coreDocuments ?? []
+  if (coreDocuments.length === 0) {
+    return [
+      context.agent.systemPrompt?.trim() ?? '',
+      buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
+    ].filter(Boolean).join('\n\n')
+  }
+  return coreDocuments.map((document) => {
+    const label = document.role === 'identity' ? 'Identity' : 'Working rules'
+    return `${label}:\n${document.markdown}`
+  }).join('\n\n')
+}
+
 // A turn's text as the model sees it: what was written, plus the inventory of
 // any files that came with it. The note is what makes an image-only message a
 // message at all, and what tells the model which attachments it can reach with
@@ -147,10 +161,7 @@ export const buildModelPrompt = (
       'earlier replies appear with no prefix. Never attribute another agent\'s',
       'message to yourself, and do not add a name prefix to your own reply.',
     ].join(' '),
-    context.agent.systemPrompt?.trim() ?? '',
-    // The person's own words for how this agent should talk, rendered by the
-    // one shared builder the voice call uses too.
-    buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
+    coreInstructionBlock(context),
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
     AGENT_SECRET_SAFETY_INSTRUCTION,

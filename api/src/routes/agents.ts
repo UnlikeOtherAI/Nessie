@@ -11,6 +11,8 @@ import {
   UpdateAgentAvatarBodySchema,
 } from '../contracts/agents.js'
 import { AgentMessagePageSchema, parseAgentId } from '@nessie/schemas'
+import { canReadSpace, readCanonicalAgentCore, writeCanonicalAgentCore } from '@nessie/knowledge'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { canAccessAttachment } from '../services/attachments.js'
@@ -54,6 +56,8 @@ import {
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
 import { registerAgentDocumentRoutes } from './agent-documents.js'
+import { createKnowledgeAccess } from './knowledge-base-access.js'
+import { migrateLegacyAgentCoreDocuments } from '../services/agent-core-documents.js'
 
 const validateAgentAvatarAttachment = async (input: {
   actorContext: NonNullable<ReturnType<RouteDeps['requireActorContext']>>
@@ -91,6 +95,11 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     isAgentAccessibleToActor,
     createAgentVisibilityScope,
   } = deps
+
+  // The agent route is an in-context doorway to the same core Markdown
+  // authority as Documents. Reuse the normal provider so indexing and
+  // publication hooks remain in the one writer pipeline.
+  const coreKnowledge = createKnowledgeAccess(deps)
 
   registerAgentDocumentRoutes(app, deps)
 
@@ -293,6 +302,31 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       throw error
     }
 
+    // New agents cross the same boundary immediately. Their creation fields
+    // seed the first Markdown versions; no later Designer save is allowed to
+    // revive a second writable prompt column.
+    const createdProject = await prisma.agent.findUnique({
+      where: { id: agent.id }, select: { projectId: true },
+    })
+    if (createdProject?.projectId) {
+      await coreKnowledge.buildViewer(actorContext)
+      const migration = await migrateLegacyAgentCoreDocuments(
+        prisma,
+        coreKnowledge.provider,
+        deps.fileService,
+        {
+          agentId: agent.id,
+          attribution: attributionFromActorContext(actorContext),
+          organizationId: actorContext.tenant.organizationId,
+          projectId: createdProject.projectId,
+          userId: actorContext.actor.actorId,
+        },
+      )
+      if (migration.state === 'oversized') {
+        throw new Error('New agent core instructions exceed the configured token budget')
+      }
+    }
+
     // Provenance: a column transfer overwrites the current steward, so who
     // originally created an agent survives only in the tamper-evident chain.
     // Nothing emitted this before, which is exactly why no honest ownership
@@ -332,6 +366,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         modelSubscriptionId: true,
         organizationId: true,
         ownerUserId: true,
+        projectId: true,
         provider: true,
         systemManaged: true,
         todosEnabled: true,
@@ -375,6 +410,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     let agent
+    let canonicalCore: Awaited<ReturnType<typeof writeCanonicalAgentCore>> | null = null
     try {
       // Validated as the RESULTING pair, not the patch, and against the agent's
       // owner-to-be rather than the editor: a subscription is the owner's to
@@ -405,6 +441,56 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         })
         modelSubscriptionId = selection.modelSubscriptionId
       }
+      // A migrated agent has no writable prompt columns. The exact field
+      // authority above (and again in the core service) protects this human
+      // action before FileService stages its new canonical Markdown bytes.
+      if (body.systemPrompt !== undefined || body.speakingStyle !== undefined) {
+        if (!existingAgent.projectId) throw new Error('Agent has no document project')
+        await coreKnowledge.buildViewer(actorContext)
+        const marker = await prisma.agentCoreDocumentMigration.findUnique({
+          where: { agentId }, select: { id: true },
+        })
+        if (!marker) {
+          const migration = await migrateLegacyAgentCoreDocuments(
+            prisma,
+            coreKnowledge.provider,
+            deps.fileService,
+            {
+              agentId,
+              attribution: attributionFromActorContext(actorContext),
+              organizationId: actorContext.tenant.organizationId,
+              projectId: existingAgent.projectId,
+              userId: actorContext.actor.actorId,
+            },
+          )
+          if (migration.state === 'oversized') {
+            sendApiError(reply, 409, 'AGENT_CORE_BUDGET_EXCEEDED', 'Core instructions exceed the configured token budget')
+            return reply
+          }
+        }
+        canonicalCore = await writeCanonicalAgentCore(
+          prisma,
+          coreKnowledge.provider,
+          deps.fileService,
+          {
+            actor: {
+              organizationId: actorContext.tenant.organizationId,
+              uoaIdentity: actorContext.actionContext.uoaIdentity,
+              userId: actorContext.actor.actorId,
+            },
+            agentId,
+            attribution: attributionFromActorContext(actorContext),
+            organizationId: actorContext.tenant.organizationId,
+            projectId: existingAgent.projectId,
+            ...(body.speakingStyle === undefined ? {} : { speakingStyle: body.speakingStyle }),
+            ...(body.systemPrompt === undefined ? {} : { systemPrompt: body.systemPrompt }),
+            userId: actorContext.actor.actorId,
+          },
+        )
+      }
+      const recordPatch = { ...body }
+      delete recordPatch.speakingStyle
+      delete recordPatch.systemPrompt
       agent = await updateAgentRecord(
         prisma,
         agentId,
@@ -414,7 +500,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
           userId: actorContext.actor.actorId,
         },
         {
-          ...body,
+          ...recordPatch,
           ...(modelSubscriptionId === undefined ? {} : { modelSubscriptionId }),
           organizationId: actorContext.tenant.organizationId,
         },
@@ -456,7 +542,13 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       )
     }
 
-    return createApiResponse(AgentRecordSchema.parse(agent))
+    return createApiResponse(AgentRecordSchema.parse({
+      ...agent,
+      ...(canonicalCore ? {
+        speakingStyle: canonicalCore.speakingStyle || null,
+        systemPrompt: canonicalCore.systemPrompt,
+      } : {}),
+    }))
   })
 
   app.patch('/api/agents/:agentId/avatar', async (request, reply) => {
@@ -750,15 +842,55 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
+    const sourceCore = await readCanonicalAgentCore(prisma, deps.fileService, {
+      agentId,
+      organizationId: actorContext.tenant.organizationId,
+    })
+    const coreViewer = await coreKnowledge.buildViewer(actorContext)
+    if (sourceCore) {
+      const corePage = await prisma.agentCoreDocument.findFirst({
+        where: { agentId }, select: { page: { select: { spaceId: true } } },
+      })
+      const space = corePage
+        ? await coreKnowledge.provider.getSpace(actorContext.tenant.organizationId, corePage.page.spaceId)
+        : null
+      if (!space || !canReadSpace(space, coreViewer)) {
+        sendApiError(reply, 403, 'AGENT_CORE_DOCUMENT_READ_DENIED', 'You cannot copy this agent’s core instructions')
+        return reply
+      }
+    }
+
     const cloned = await cloneAgentRecord(
       prisma,
       agentId,
       actorContext.tenant.organizationId,
       actorContext.actor.actorId,
+      sourceCore ? { speakingStyle: sourceCore.speakingStyle, systemPrompt: sourceCore.systemPrompt } : undefined,
     )
     if (!cloned) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
+    }
+
+    const clonedProject = await prisma.agent.findUnique({
+      where: { id: cloned.id }, select: { projectId: true },
+    })
+    if (clonedProject?.projectId) {
+      const migration = await migrateLegacyAgentCoreDocuments(
+        prisma,
+        coreKnowledge.provider,
+        deps.fileService,
+        {
+          agentId: cloned.id,
+          attribution: attributionFromActorContext(actorContext),
+          organizationId: actorContext.tenant.organizationId,
+          projectId: clonedProject.projectId,
+          userId: actorContext.actor.actorId,
+        },
+      )
+      if (migration.state === 'oversized') {
+        throw new Error('Cloned agent core instructions exceed the configured token budget')
+      }
     }
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(cloned)))

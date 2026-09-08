@@ -148,6 +148,7 @@ export const createPage = async (
         title: input.title,
         summary: input.summary ?? null,
         metadata: input.metadata as Prisma.InputJsonValue,
+        documentRole: input.documentRole ?? 'knowledge',
         kind: input.kind ?? 'document',
         spaceId: input.spaceId,
         parentPageId: input.parentPageId ?? null,
@@ -181,10 +182,16 @@ export const createPage = async (
         authorType: input.authorType,
         authorId: input.authorId,
         changeComment: input.changeComment ?? null,
+        origin: input.origin ?? 'user_authored',
+        trust: input.trust ?? 'unverified_import',
       },
       include: versionInclude,
     })
-    await persistVersionDisclosure(tx, { disclosure: input, organizationId: input.organizationId, versionId: version.id })
+    await persistVersionDisclosure(tx, {
+      disclosure: input,
+      organizationId: input.organizationId,
+      versionId: version.id,
+    })
     await indexVersionChunks(tx, options, page, version)
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     const created = await fetchPage(tx, input.organizationId, page.id)
@@ -329,6 +336,8 @@ export const restoreVersion = async (
         authorType: input.authorType,
         authorId: input.authorId,
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
+        origin: input.origin ?? version.origin,
+        trust: input.trust ?? version.trust,
       },
     })
     await persistVersionDisclosure(tx, {
@@ -373,6 +382,8 @@ export const addFileVersion = async (
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
+          origin: input.origin ?? 'user_authored',
+          trust: input.trust ?? 'unverified_import',
         },
         include: versionInclude,
       })
@@ -419,6 +430,8 @@ export const updatePage = async (
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
+          origin: input.origin ?? 'user_authored',
+          trust: input.trust ?? 'unverified_import',
         },
       })
       await persistVersionDisclosure(tx, {

@@ -40,6 +40,7 @@ const page = (status: 'draft' | 'published'): KnowledgePageRecord => ({
   createdAt: '2026-08-31T00:00:00.000Z',
   createdBy: 'agent-1',
   deletedAt: null,
+  documentRole: 'knowledge',
   id: 'page-1',
   kind: 'file',
   labels: [],

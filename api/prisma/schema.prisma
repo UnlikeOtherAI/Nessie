@@ -583,6 +583,44 @@ enum KnowledgeAuthorType {
   agent
 }
 
+// A document's role is typed service data, never inferred from its name or
+// Markdown. Only identity and working_rules are deterministic run context.
+enum KnowledgeDocumentRole {
+  identity
+  working_rules
+  knowledge
+  template
+  example
+  procedure
+  experience
+}
+
+enum KnowledgeDocumentTrust {
+  observed
+  explicitly_confirmed
+  inferred
+  unverified_import
+}
+
+enum KnowledgeDocumentOrigin {
+  user_authored
+  agent_authored
+  legacy_migration
+  import
+}
+
+enum KnowledgeDocumentEvidenceSourceType {
+  message
+  document_version
+  run
+  outcome
+}
+
+enum AgentCoreDocumentRole {
+  identity
+  working_rules
+}
+
 enum KnowledgeAnnotationKind {
   comment
   note
@@ -1078,10 +1116,10 @@ model User {
 
   resolvedAgentCards AgentCard[] @relation("AgentCardResolvedBy")
 
-  agentHandoffRequests     AgentHandoffRequest[]
-  boardSourceConnections   BoardSourceConnection[]   @relation("BoardSourceConnectionOwner")
-  boardSourceIdentityLinks BoardSourceIdentityLink[] @relation("BoardSourceIdentityLinkUser")
-  boardWatchers            BoardWatcher[]            @relation("BoardWatcherUser")
+  agentHandoffRequests        AgentHandoffRequest[]
+  boardSourceConnections      BoardSourceConnection[]      @relation("BoardSourceConnectionOwner")
+  boardSourceIdentityLinks    BoardSourceIdentityLink[]    @relation("BoardSourceIdentityLinkUser")
+  boardWatchers               BoardWatcher[]               @relation("BoardWatcherUser")
   browserPersonalAccessGrants BrowserPersonalAccessGrant[] @relation("BrowserPersonalAccessGrantUser")
 
   @@map("users")
@@ -1353,14 +1391,14 @@ model Organization {
   gmailDraftActions       GmailDraftAction[]
   sendAuthorizationGrants SendAuthorizationGrant[]
 
-  cloudBrowserConnections CloudBrowserConnection[]
-  scopedSettings          ScopedSetting[]
-  cloudBrowserSessions    CloudBrowserSession[]
-  agentBrowsers           AgentBrowser[]
-  browserCookieImports    BrowserCookieImport[]
+  cloudBrowserConnections     CloudBrowserConnection[]
+  scopedSettings              ScopedSetting[]
+  cloudBrowserSessions        CloudBrowserSession[]
+  agentBrowsers               AgentBrowser[]
+  browserCookieImports        BrowserCookieImport[]
   browserPersonalAccessGrants BrowserPersonalAccessGrant[]
-  agentBrowserTabs        AgentBrowserTab[]
-  agentBrowserLogins      AgentBrowserLogin[]
+  agentBrowserTabs            AgentBrowserTab[]
+  agentBrowserLogins          AgentBrowserLogin[]
 
   voiceInstallations     VoiceInstallation[]
   voiceSessions          VoiceSession[]
@@ -1490,31 +1528,31 @@ model ProductIntegrationRun {
 }
 
 model OrganizationMember {
-  id                      String                   @id @default(uuid()) @db.Uuid
-  organizationId          String                   @map("organization_id") @db.Uuid
-  userId                  String                   @map("user_id") @db.Uuid
-  role                    MemberRole               @default(member)
+  id                          String                       @id @default(uuid()) @db.Uuid
+  organizationId              String                       @map("organization_id") @db.Uuid
+  userId                      String                       @map("user_id") @db.Uuid
+  role                        MemberRole                   @default(member)
   // When set, the membership is deactivated: the user is denied access to this
   // organisation (enforced in authenticateRequest) but the row + audit history
   // are kept so an owner can reactivate. Reversible — no hard delete.
-  deactivatedAt           DateTime?                @map("deactivated_at")
-  createdAt               DateTime                 @default(now()) @map("created_at")
-  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deactivatedAt               DateTime?                    @map("deactivated_at")
+  createdAt                   DateTime                     @default(now()) @map("created_at")
+  organization                Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Agents this member stewards. Tenancy only — a retained deactivated row
   /// still satisfies the FK, so readers re-derive liveness.
-  ownedAgents             Agent[]                  @relation("AgentOwner")
+  ownedAgents                 Agent[]                      @relation("AgentOwner")
   /// Personal model subscriptions this member has linked. Same tenancy-only
   /// contract as `ownedAgents`: liveness is re-derived, never assumed.
-  modelSubscriptions      ModelSubscription[]      @relation("ModelSubscriptionOwner")
+  modelSubscriptions          ModelSubscription[]          @relation("ModelSubscriptionOwner")
   /// Personal Browserbase connections. Tenancy only, exactly as `ownedAgents`.
-  cloudBrowserConnections CloudBrowserConnection[] @relation("CloudBrowserConnectionOwner")
-  scopedSettings          ScopedSetting[]          @relation("ScopedSettingOwner")
-  agentBrowserLogins      AgentBrowserLogin[]      @relation("AgentBrowserLoginMember")
-  agentBrowsers      AgentBrowser[]      @relation("AgentBrowserPrincipal")
+  cloudBrowserConnections     CloudBrowserConnection[]     @relation("CloudBrowserConnectionOwner")
+  scopedSettings              ScopedSetting[]              @relation("ScopedSettingOwner")
+  agentBrowserLogins          AgentBrowserLogin[]          @relation("AgentBrowserLoginMember")
+  agentBrowsers               AgentBrowser[]               @relation("AgentBrowserPrincipal")
   /// Personal SMTP/IMAP mailboxes. Tenancy only, exactly as `ownedAgents`.
-  mailboxConnections      MailboxConnection[]      @relation("MailboxConnectionOwner")
-  browserCookieImports    BrowserCookieImport[]    @relation("BrowserCookieImportActor")
+  mailboxConnections          MailboxConnection[]          @relation("MailboxConnectionOwner")
+  browserCookieImports        BrowserCookieImport[]        @relation("BrowserCookieImportActor")
   browserPersonalAccessGrants BrowserPersonalAccessGrant[] @relation("BrowserPersonalAccessGrantMember")
 
   @@unique([organizationId, userId])
@@ -1662,8 +1700,8 @@ model BoardWatcher {
   launchOrigin   Json?    @map("launch_origin")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  user  User? @relation("BoardWatcherUser", fields: [userId], references: [id], onDelete: Cascade)
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User?  @relation("BoardWatcherUser", fields: [userId], references: [id], onDelete: Cascade)
   agent Agent? @relation("BoardWatcherAgent", fields: [agentId], references: [id], onDelete: Cascade)
 
   @@unique([boardId, userId])
@@ -1727,8 +1765,8 @@ model TaskBoardPlacement {
   position  Int      @default(0)
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  task   Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  board  Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
   // COMPOSITE, on (columnId, boardId): the storage layer, not the one writer,
   // is what guarantees a placement's column belongs to the placement's board.
   // Cascade rather than the SetNull default for the reason spelled out on
@@ -1763,7 +1801,7 @@ model BoardSourceConnection {
   /// token spans sites, so the container carries the cloudId) and for Trello.
   externalTenantId  String                      @default("") @map("external_tenant_id")
   status            BoardSourceConnectionStatus @default(active)
-  authMethod        BoardSourceAuthMethod        @default(oauth) @map("auth_method")
+  authMethod        BoardSourceAuthMethod       @default(oauth) @map("auth_method")
   grantedScopes     Json                        @default("[]") @map("granted_scopes")
   lastVerifiedAt    DateTime?                   @map("last_verified_at")
   createdAt         DateTime                    @default(now()) @map("created_at")
@@ -1854,16 +1892,16 @@ model BoardSource {
   /// SyncCheckpoint — { cursor?, since?, phase: 'initial' | 'incremental' }.
   checkpoint          Json              @default("{}")
 
-  webhookExternalId String?   @map("webhook_external_id")
-  webhookExpiresAt  DateTime? @map("webhook_expires_at")
+  webhookExternalId       String?   @map("webhook_external_id")
+  webhookExpiresAt        DateTime? @map("webhook_expires_at")
   /// SHA-256 of the per-source callback token, for providers that do not sign
   /// their deliveries (Jira).
-  webhookTokenHash  String?   @map("webhook_token_hash")
+  webhookTokenHash        String?   @map("webhook_token_hash")
   /// The signing secret for this source's own webhook, sealed with the same
   /// `sealSecret` seam credentials use. Present when the registration is
   /// per-source rather than app-level: Linear mints one and returns it exactly
   /// once, GitHub takes the one we offered. Never leaves the worker.
-  webhookSecretCiphertext String? @map("webhook_secret_ciphertext")
+  webhookSecretCiphertext String?   @map("webhook_secret_ciphertext")
 
   createdByUserId String   @map("created_by_user_id") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at")
@@ -2035,44 +2073,44 @@ model TeamMember {
 }
 
 model Channel {
-  id                     String                    @id @default(uuid()) @db.Uuid
-  label                  String
-  slug                   String?
-  type                   ChannelType               @default(standard)
-  systemChannelType      ChannelSystemType?        @map("system_channel_type")
-  organizationId         String                    @map("organization_id") @db.Uuid
-  projectId              String                    @map("project_id") @db.Uuid
-  teamId                 String                    @map("team_id") @db.Uuid
-  visibility             ChannelVisibility         @default(public)
-  dmKey                  String?                   @unique @map("dm_key")
+  id                          String                          @id @default(uuid()) @db.Uuid
+  label                       String
+  slug                        String?
+  type                        ChannelType                     @default(standard)
+  systemChannelType           ChannelSystemType?              @map("system_channel_type")
+  organizationId              String                          @map("organization_id") @db.Uuid
+  projectId                   String                          @map("project_id") @db.Uuid
+  teamId                      String                          @map("team_id") @db.Uuid
+  visibility                  ChannelVisibility               @default(public)
+  dmKey                       String?                         @unique @map("dm_key")
   // sp-channels: channel lifecycle metadata + soft-archive
-  topic                  String?
-  description            String?
-  archivedAt             DateTime?                 @map("archived_at")
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  organization           Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  team                   Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  members                ChannelMember[]
-  workflowRunOrigins     WorkflowRun[]             @relation("WorkflowRunOriginChannel")
-  calls                  Call[]
-  agentBindings          AgentBinding[]
-  scopeDisclosureGrants  ScopeDisclosureGrant[]
-  triggerTargets         AgentTrigger[]            @relation("TriggerTargetChannel")
-  threads                Thread[]
-  plans                  Plan[]
-  approvalRequests       ApprovalRequest[]
-  statusRules            UserStatusRule[]
-  userAlerts             UserAlert[]
-  productIntegrationRuns ProductIntegrationRun[]
-  pushSurfacePresences   UserPushSurfacePresence[]
-  demonstrations         Demonstration[]
-  agentMailbox           AgentMailbox?
-  agentHandoffRequests   AgentHandoffRequest[]
-  disclosureSources      MessageDisclosureSource[]
+  topic                       String?
+  description                 String?
+  archivedAt                  DateTime?                       @map("archived_at")
+  createdAt                   DateTime                        @default(now()) @map("created_at")
+  updatedAt                   DateTime                        @updatedAt @map("updated_at")
+  organization                Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                     Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team                        Team                            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members                     ChannelMember[]
+  workflowRunOrigins          WorkflowRun[]                   @relation("WorkflowRunOriginChannel")
+  calls                       Call[]
+  agentBindings               AgentBinding[]
+  scopeDisclosureGrants       ScopeDisclosureGrant[]
+  triggerTargets              AgentTrigger[]                  @relation("TriggerTargetChannel")
+  threads                     Thread[]
+  plans                       Plan[]
+  approvalRequests            ApprovalRequest[]
+  statusRules                 UserStatusRule[]
+  userAlerts                  UserAlert[]
+  productIntegrationRuns      ProductIntegrationRun[]
+  pushSurfacePresences        UserPushSurfacePresence[]
+  demonstrations              Demonstration[]
+  agentMailbox                AgentMailbox?
+  agentHandoffRequests        AgentHandoffRequest[]
+  disclosureSources           MessageDisclosureSource[]
   checkpointDisclosureSources RunCheckpointDisclosureSource[]
-  thoughtDisclosureSources ThoughtDisclosureSource[]
+  thoughtDisclosureSources    ThoughtDisclosureSource[]
   knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
 
   agentCards AgentCard[]
@@ -2125,9 +2163,9 @@ model Thread {
 
   agentCards AgentCard[]
 
-  cloudBrowserSessions CloudBrowserSession[]
+  cloudBrowserSessions        CloudBrowserSession[]
   browserPersonalAccessGrants BrowserPersonalAccessGrant[]
-  browserCookieImports BrowserCookieImport[]
+  browserCookieImports        BrowserCookieImport[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -2614,14 +2652,14 @@ model MessageDisclosureSource {
   messageId          String       @map("message_id") @db.Uuid
   organizationId     String       @map("organization_id") @db.Uuid
   sourceChannelId    String       @map("source_channel_id") @db.Uuid
-    // Null marks private material whose original human author was not
-    // durably recorded. It is a denial marker, never an anonymous consent.
-    sourceAuthorUserId String?      @map("source_author_user_id") @db.Uuid
+  // Null marks private material whose original human author was not
+  // durably recorded. It is a denial marker, never an anonymous consent.
+  sourceAuthorUserId String?      @map("source_author_user_id") @db.Uuid
   createdAt          DateTime     @default(now()) @map("created_at")
   message            Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
   organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sourceChannel      Channel      @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
-    sourceAuthor       User?        @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+  sourceAuthor       User?        @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
 
   @@unique([messageId, sourceChannelId, sourceAuthorUserId], map: "message_disclosure_sources_message_channel_author_key")
   @@index([organizationId], map: "message_disclosure_sources_org_idx")
@@ -2845,6 +2883,9 @@ model Agent {
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
+  coreDocuments                  AgentCoreDocument[]
+  coreDocumentMigration          AgentCoreDocumentMigration?
+  personalCoreOverlays           PersonalAgentCoreOverlay[]
   userAlertActivity              UserAlert[]
   callsCreatedVia                Call[]                          @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
@@ -2869,13 +2910,16 @@ model Agent {
   agentCards AgentCard[]
   mailbox    AgentMailbox?
 
-  cloudBrowserSessions     CloudBrowserSession[]
-  agentBrowsers            AgentBrowser[]
-  browserCookieImports     BrowserCookieImport[]
+  cloudBrowserSessions        CloudBrowserSession[]
+  agentBrowsers               AgentBrowser[]
+  browserCookieImports        BrowserCookieImport[]
   browserPersonalAccessGrants BrowserPersonalAccessGrant[]
-  sendAuthorizationGrants  SendAuthorizationGrant[]
-  mailboxAccess            MailboxConnectionAgentAccess[]
-  boardSourceIdentityLinks BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
+  sendAuthorizationGrants     SendAuthorizationGrant[]
+  mailboxAccess               MailboxConnectionAgentAccess[]
+  boardSourceIdentityLinks    BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
+  // "which agents does this person steward" — the first non-channel-derived
+  // agent read, and the tree's level-3 query.
+  boardWatchers               BoardWatcher[]                 @relation("BoardWatcherAgent")
 
   @@unique([organizationId, id])
   @@unique([organizationId, systemSlug])
@@ -2884,9 +2928,6 @@ model Agent {
   @@index([avatarAttachmentId])
   @@index([organizationId, agentKind, systemManaged])
   @@index([routingProfileId])
-  // "which agents does this person steward" — the first non-channel-derived
-  // agent read, and the tree's level-3 query.
-  boardWatchers            BoardWatcher[]            @relation("BoardWatcherAgent")
   @@index([organizationId, ownerUserId])
   @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
   @@map("agents")
@@ -3074,6 +3115,10 @@ model Run {
   // executor that resumes it can claim it cleanly.
   executorToken                       String?                         @map("executor_token") @db.Uuid
   executorHeartbeatAt                 DateTime?                       @map("executor_heartbeat_at")
+  // Admission records whether this run had core sources. A resume must never
+  // rebuild a deleted snapshot from whichever version happens to be current.
+  coreDocumentsAdmittedAt             DateTime?                       @map("core_documents_admitted_at")
+  coreDocumentCount                   Int                             @default(0) @map("core_document_count")
   modelSubscription                   ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
   agent                               Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                              Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -3107,20 +3152,21 @@ model Run {
   originAppConnectionRequests         AgentAppConnectionRequest[]     @relation("AgentAppConnectionRequestOriginRun")
   continuationForAppConnectionRequest AgentAppConnectionRequest?      @relation("AgentAppConnectionRequestContinuationRun")
   originAgentHandoffRequests          AgentHandoffRequest[]
+  coreDocumentSnapshots               RunCoreDocumentSnapshot[]
 
   postedAgentCards     AgentCard[] @relation("AgentCardPostingRun")
   waitingAgentCard     AgentCard?  @relation("AgentCardWaitRun")
   resumedFromAgentCard AgentCard?  @relation("AgentCardResumedByRun")
 
-  cloudBrowserSessions CloudBrowserSession[]
+  cloudBrowserSessions        CloudBrowserSession[]
   browserPersonalAccessGrants BrowserPersonalAccessGrant[]
 
   budgetReservation BudgetReservation?
 
+  @@unique([id, agentId, threadId])
   @@index([agentId, status])
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
-  @@unique([id, agentId, threadId])
   @@index([restartOfRunId])
   @@index([continuationOfRunId])
   @@map("runs")
@@ -3311,22 +3357,22 @@ model AgentHandoffRequest {
 // `consumedByRunId` (set-once); see
 // docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §5.
 model RunCheckpoint {
-  id              String       @id @default(uuid()) @db.Uuid
-  organizationId  String       @map("organization_id") @db.Uuid
-  runId           String       @unique @map("run_id") @db.Uuid
-  taskId          String?      @map("task_id") @db.Uuid
-  agentId         String       @map("agent_id") @db.Uuid
-  threadId        String       @map("thread_id") @db.Uuid
-  rootMessageId   String?      @map("root_message_id") @db.Uuid
+  id                 String                          @id @default(uuid()) @db.Uuid
+  organizationId     String                          @map("organization_id") @db.Uuid
+  runId              String                          @unique @map("run_id") @db.Uuid
+  taskId             String?                         @map("task_id") @db.Uuid
+  agentId            String                          @map("agent_id") @db.Uuid
+  threadId           String                          @map("thread_id") @db.Uuid
+  rootMessageId      String?                         @map("root_message_id") @db.Uuid
   // 1-based continuation depth along the continuationOfRunId chain; the
   // worker's non-interactive auto-continue stops after
   // NESSIE_RUN_AUTO_CONTINUATIONS generations.
-  generation      Int          @default(1)
+  generation         Int                             @default(1)
   // The RunStopReason that produced this checkpoint (string, not enum, so the
   // worker's classification can evolve without migrations).
-  reason          String
-  note            String
-  sources         Json?
+  reason             String
+  note               String
+  sources            Json?
   // Machine-readable crash-resume state (horizontal scaling, phase 3.1), quite
   // separate from `note`/`sources` above: those are the model-written resume
   // affordance a budget stop or an approval suspension leaves for a person,
@@ -3341,19 +3387,19 @@ model RunCheckpoint {
   // run, whichever kind of checkpoint wrote it first. `reason` is 'crash' while
   // the row carries only crash state; a later budget stop or suspension
   // overwrites `reason`/`note` in place and the row becomes continuable.
-  crashState      Json?        @map("crash_state")
+  crashState         Json?                           @map("crash_state")
   // The `runs.executor_token` held by the executor that wrote `crashState`.
   // Every write above is conditional on the run STILL carrying this token, so a
   // fenced-out executor's checkpoint write matches zero rows instead of
   // clobbering the live executor's state.
-  crashExecutorToken String?   @map("crash_executor_token") @db.Uuid
-  crashUpdatedAt  DateTime?    @map("crash_updated_at")
-  consumedByRunId String?      @map("consumed_by_run_id") @db.Uuid
-  consumedAt      DateTime?    @map("consumed_at")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  run             Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  disclosureSources RunCheckpointDisclosureSource[]
+  crashExecutorToken String?                         @map("crash_executor_token") @db.Uuid
+  crashUpdatedAt     DateTime?                       @map("crash_updated_at")
+  consumedByRunId    String?                         @map("consumed_by_run_id") @db.Uuid
+  consumedAt         DateTime?                       @map("consumed_at")
+  createdAt          DateTime                        @default(now()) @map("created_at")
+  run                Run                             @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization       Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  disclosureSources  RunCheckpointDisclosureSource[]
 
   @@index([threadId, rootMessageId, createdAt])
   @@map("run_checkpoints")
@@ -3822,39 +3868,39 @@ model PlanStep {
 }
 
 model AgentMailboxMessage {
-  id                String               @id @default(uuid()) @db.Uuid
-  organizationId    String               @map("organization_id") @db.Uuid
-  planId            String?              @map("plan_id") @db.Uuid
-  planStepId        String?              @map("plan_step_id") @db.Uuid
-  workflowRunId     String?              @map("workflow_run_id") @db.Uuid
-  workflowStepRunId String?              @map("workflow_step_run_id") @db.Uuid
-  actorId           String?              @map("actor_id") @db.Uuid
-  actorType         String?              @map("actor_type")
-  fromAgentId       String?              @map("from_agent_id") @db.Uuid
-  toAgentId         String?              @map("to_agent_id") @db.Uuid
-  channelId         String?              @map("channel_id") @db.Uuid
-  threadId          String?              @map("thread_id") @db.Uuid
-  subject           String?
-  body              String
-  correlationId     String?              @map("correlation_id")
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String               @map("organization_id") @db.Uuid
+  planId              String?              @map("plan_id") @db.Uuid
+  planStepId          String?              @map("plan_step_id") @db.Uuid
+  workflowRunId       String?              @map("workflow_run_id") @db.Uuid
+  workflowStepRunId   String?              @map("workflow_step_run_id") @db.Uuid
+  actorId             String?              @map("actor_id") @db.Uuid
+  actorType           String?              @map("actor_type")
+  fromAgentId         String?              @map("from_agent_id") @db.Uuid
+  toAgentId           String?              @map("to_agent_id") @db.Uuid
+  channelId           String?              @map("channel_id") @db.Uuid
+  threadId            String?              @map("thread_id") @db.Uuid
+  subject             String?
+  body                String
+  correlationId       String?              @map("correlation_id")
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
-  peerDelegationDepth Int?               @map("peer_delegation_depth")
+  peerDelegationDepth Int?                 @map("peer_delegation_depth")
   /// Provenance carried by a durable peer brief. Existing mailbox producers
   /// leave this empty; peer delivery stamps it on the prompt and target run.
-  basis             Json                 @default("[]")
+  basis               Json                 @default("[]")
   /// Original private-conversation authors carried independently from scope.
   /// A null author is an intentional unknown marker and must never be dropped.
-  disclosureSources Json                 @default("[]") @map("disclosure_sources")
-  status            MailboxMessageStatus @default(queued)
-  attempts          Int                  @default(0)
-  visibleAt         DateTime             @default(now()) @map("visible_at")
-  claimedAt         DateTime?            @map("claimed_at")
-  deliveredAt       DateTime?            @map("delivered_at")
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  thread            Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
-  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  disclosureSources   Json                 @default("[]") @map("disclosure_sources")
+  status              MailboxMessageStatus @default(queued)
+  attempts            Int                  @default(0)
+  visibleAt           DateTime             @default(now()) @map("visible_at")
+  claimedAt           DateTime?            @map("claimed_at")
+  deliveredAt         DateTime?            @map("delivered_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  thread              Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([toAgentId, correlationId])
   @@index([organizationId, status, visibleAt])
@@ -4563,58 +4609,58 @@ model TemporaryContextSession {
 }
 
 model Task {
-  id                  String               @id @default(uuid()) @db.Uuid
-  runId               String?              @map("run_id") @db.Uuid
-  agentId             String?              @map("agent_id") @db.Uuid
-  organizationId      String               @map("organization_id") @db.Uuid
-  projectId           String?              @map("project_id") @db.Uuid
+  id                      String                   @id @default(uuid()) @db.Uuid
+  runId                   String?                  @map("run_id") @db.Uuid
+  agentId                 String?                  @map("agent_id") @db.Uuid
+  organizationId          String                   @map("organization_id") @db.Uuid
+  projectId               String?                  @map("project_id") @db.Uuid
   /// The board this task lives on. A board owns its tasks: a project's boards
   /// no longer share one pool, so work created on "Dev" is not also on "Board".
   /// `null` means the project's default board — that is what the seventeen
   /// task-creating call sites (agent runs, triggers, mailbox, source sync)
   /// produce, and it is where a deleted board's work returns to.
-  boardId             String?              @map("board_id") @db.Uuid
-  iterationId         String?              @map("iteration_id") @db.Uuid
+  boardId                 String?                  @map("board_id") @db.Uuid
+  iterationId             String?                  @map("iteration_id") @db.Uuid
   /// `{ "<taskFieldDefinitionId>": <value> }` — an absent key is no value.
   /// One JSONB column rather than an EAV table: the board already reads whole
   /// tasks, and the only server-side filter (a board's select-option clause) is
   /// served by the `tasks_field_values_gin` index.
-  fieldValues         Json                 @default("{}") @map("field_values")
-  storyPoints         Int?                 @map("story_points")
-  parentTaskId        String?              @map("parent_task_id") @db.Uuid
-  status              TaskStatus           @default(inbox)
-  priority            TaskPriority         @default(medium)
-  dueDate             DateTime?            @map("due_date")
-  archivedAt          DateTime?            @map("archived_at")
-  title               String?
-  purpose             String?
-  detail              String?
-  assigneeUserId      String?              @map("assignee_user_id") @db.Uuid
-  assigneeAgentId     String?              @map("assignee_agent_id") @db.Uuid
-  ownerUserId         String?              @map("owner_user_id") @db.Uuid
-  createdByUserId     String?              @map("created_by_user_id") @db.Uuid
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  run                 Run?                 @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent               Agent?               @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  board               Board?               @relation(fields: [boardId], references: [id], onDelete: SetNull)
-  iteration           Iteration?           @relation(fields: [iterationId], references: [id], onDelete: SetNull)
-  assignee            User?                @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
-  assigneeAgent       Agent?               @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
-  owner               User?                @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  createdBy           User?                @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  parentTask          Task?                @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  childTasks          Task[]               @relation("TaskHierarchy")
-  events              TaskEvent[]
-  approvalRequests    ApprovalRequest[]
-  pushAttentionAlerts UserAlert[]          @relation("PushAttentionAlertTask")
-  workflowStepRuns    WorkflowStepRun[]    @relation("WorkflowTask")
-  placements          TaskBoardPlacement[]
-  externalLink        TaskExternalLink?
-  boardWatchNotifications  BoardWatchNotification[]
-  checklist          TaskChecklist?
+  fieldValues             Json                     @default("{}") @map("field_values")
+  storyPoints             Int?                     @map("story_points")
+  parentTaskId            String?                  @map("parent_task_id") @db.Uuid
+  status                  TaskStatus               @default(inbox)
+  priority                TaskPriority             @default(medium)
+  dueDate                 DateTime?                @map("due_date")
+  archivedAt              DateTime?                @map("archived_at")
+  title                   String?
+  purpose                 String?
+  detail                  String?
+  assigneeUserId          String?                  @map("assignee_user_id") @db.Uuid
+  assigneeAgentId         String?                  @map("assignee_agent_id") @db.Uuid
+  ownerUserId             String?                  @map("owner_user_id") @db.Uuid
+  createdByUserId         String?                  @map("created_by_user_id") @db.Uuid
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
+  run                     Run?                     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent                   Agent?                   @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                 Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  board                   Board?                   @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  iteration               Iteration?               @relation(fields: [iterationId], references: [id], onDelete: SetNull)
+  assignee                User?                    @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  assigneeAgent           Agent?                   @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
+  owner                   User?                    @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdBy               User?                    @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  parentTask              Task?                    @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks              Task[]                   @relation("TaskHierarchy")
+  events                  TaskEvent[]
+  approvalRequests        ApprovalRequest[]
+  pushAttentionAlerts     UserAlert[]              @relation("PushAttentionAlertTask")
+  workflowStepRuns        WorkflowStepRun[]        @relation("WorkflowTask")
+  placements              TaskBoardPlacement[]
+  externalLink            TaskExternalLink?
+  boardWatchNotifications BoardWatchNotification[]
+  checklist               TaskChecklist?
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -4652,15 +4698,15 @@ model TaskChecklist {
 }
 
 model TaskChecklistStep {
-  id          String   @id @default(uuid()) @db.Uuid
-  checklistId String   @map("checklist_id") @db.Uuid
-  sequence    Int
-  key         String
-  title       String
+  id           String        @id @default(uuid()) @db.Uuid
+  checklistId  String        @map("checklist_id") @db.Uuid
+  sequence     Int
+  key          String
+  title        String
   instructions String
-  completedAt DateTime? @map("completed_at")
-  result      String?
-  checklist   TaskChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  completedAt  DateTime?     @map("completed_at")
+  result       String?
+  checklist    TaskChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
 
   @@unique([checklistId, sequence])
   @@unique([checklistId, key])
@@ -4768,8 +4814,8 @@ model Executor {
   availabilityCandidates ExecutorAvailabilityCandidate[]
   browserCookieImports   BrowserCookieImport[]
 
-  @@index([organizationId, scopeKind, status])
   @@unique([organizationId, id])
+  @@index([organizationId, scopeKind, status])
   @@index([projectId])
   @@index([pairingOwnerUserId])
   @@map("executors")
@@ -5042,65 +5088,65 @@ model PolicyBinding {
 }
 
 model ApprovalRequest {
-  id                     String         @id @default(uuid()) @db.Uuid
-  organizationId         String         @map("organization_id") @db.Uuid
-  projectId              String?        @map("project_id") @db.Uuid
-  teamId                 String?        @map("team_id") @db.Uuid
-  channelId              String?        @map("channel_id") @db.Uuid
-  taskId                 String?        @map("task_id") @db.Uuid
-  runId                  String?        @map("run_id") @db.Uuid
+  id                      String                 @id @default(uuid()) @db.Uuid
+  organizationId          String                 @map("organization_id") @db.Uuid
+  projectId               String?                @map("project_id") @db.Uuid
+  teamId                  String?                @map("team_id") @db.Uuid
+  channelId               String?                @map("channel_id") @db.Uuid
+  taskId                  String?                @map("task_id") @db.Uuid
+  runId                   String?                @map("run_id") @db.Uuid
   /// The agent that asked. Null exactly when `agentAccessCredentialId` is set:
   /// a request from a paired MCP agent has no `Agent` row to point at, because
   /// the thing holding the credential is a program on somebody's machine and
   /// not a configured agent in this organisation. Exactly one of the two is
   /// always set — see the CHECK in the migration.
-  agentId                String?        @map("agent_id") @db.Uuid
+  agentId                 String?                @map("agent_id") @db.Uuid
   /// The paired credential that asked, for a request opened through the MCP
   /// endpoint. Its owner is the `requiredApproverUserId`: the person who lent
   /// their account is the only person who may answer for it.
-  agentAccessCredentialId String?       @map("agent_access_credential_id") @db.Uuid
+  agentAccessCredentialId String?                @map("agent_access_credential_id") @db.Uuid
   /// Who asked, for the self-approval check. An agent request carries the agent
   /// id; a credential request carries the credential id, never the human it
   /// acts as — otherwise the one person allowed to answer would be refused as
   /// the requester.
-  requesterId            String         @map("requester_id")
-  action                 String
-  reason                 String
-  context                Json?
-  status                 ApprovalStatus @default(pending)
-  resolverId             String?        @map("resolver_id")
-  resolvedAt             DateTime?      @map("resolved_at")
-  resolution             String?
-  resolutionNote         String?        @map("resolution_note")
-  requiredApproverRole   String?        @map("required_approver_role")
+  requesterId             String                 @map("requester_id")
+  action                  String
+  reason                  String
+  context                 Json?
+  status                  ApprovalStatus         @default(pending)
+  resolverId              String?                @map("resolver_id")
+  resolvedAt              DateTime?              @map("resolved_at")
+  resolution              String?
+  resolutionNote          String?                @map("resolution_note")
+  requiredApproverRole    String?                @map("required_approver_role")
   /// The exact person who must resolve this request. Set for a send-as-you
   /// gate: approval visibility otherwise reaches any member who can read a
   /// public channel, which would let a colleague authorise an email sent in
   /// somebody else's name. Falls back to `requiredApproverRole` when no such
   /// person resolves — an inbound-email run has no requesting user — so a
   /// request never becomes unanswerable.
-  requiredApproverUserId String?        @map("required_approver_user_id") @db.Uuid
-  continuationToken      String         @map("continuation_token")
+  requiredApproverUserId  String?                @map("required_approver_user_id") @db.Uuid
+  continuationToken       String                 @map("continuation_token")
   // Server-authored tool-gate identity. These values are deliberately absent
   // from approval presenters: a human sees the bounded `context` summary,
   // while the exact arguments and original run identity stay server-side.
-  toolCallId             String?        @map("tool_call_id")
-  toolName               String?        @map("tool_name")
-  argsHash               String?        @map("args_hash")
-  resumeState            Json?          @map("resume_state")
-  proofConsumedAt        DateTime?      @map("proof_consumed_at")
-  expiresAt              DateTime       @map("expires_at") @db.Timestamptz(6)
-  createdAt              DateTime       @default(now()) @map("created_at")
-  updatedAt              DateTime       @updatedAt @map("updated_at")
-  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project                Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  team                   Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  channel                Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
-  task                   Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  run                    Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent                  Agent?         @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  agentAccessCredential  AgentAccessCredential? @relation(fields: [agentAccessCredentialId], references: [id], onDelete: Cascade)
-  userAlerts             UserAlert[]
+  toolCallId              String?                @map("tool_call_id")
+  toolName                String?                @map("tool_name")
+  argsHash                String?                @map("args_hash")
+  resumeState             Json?                  @map("resume_state")
+  proofConsumedAt         DateTime?              @map("proof_consumed_at")
+  expiresAt               DateTime               @map("expires_at") @db.Timestamptz(6)
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
+  organization            Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                 Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team                    Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  channel                 Channel?               @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  task                    Task?                  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  run                     Run?                   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent                   Agent?                 @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentAccessCredential   AgentAccessCredential? @relation(fields: [agentAccessCredentialId], references: [id], onDelete: Cascade)
+  userAlerts              UserAlert[]
 
   @@index([organizationId, status])
   @@index([agentId, status])
@@ -5505,11 +5551,11 @@ model Thought {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  reasonings ThoughtReasoning[]
-  linksFrom  ThoughtLink[]      @relation("ThoughtLinksFrom")
-  linksTo    ThoughtLink[]      @relation("ThoughtLinksTo")
-  auditLogs  ThoughtAuditLog[]
-  recalls    ThoughtRecall[]
+  reasonings        ThoughtReasoning[]
+  linksFrom         ThoughtLink[]             @relation("ThoughtLinksFrom")
+  linksTo           ThoughtLink[]             @relation("ThoughtLinksTo")
+  auditLogs         ThoughtAuditLog[]
+  recalls           ThoughtRecall[]
   disclosureSources ThoughtDisclosureSource[]
 
   @@index([organizationId, visibility, createdAt])
@@ -5599,11 +5645,14 @@ model KnowledgeSpaceMember {
 }
 
 model KnowledgePage {
-  id       String  @id @default(uuid()) @db.Uuid
-  spaceId  String  @map("space_id") @db.Uuid
-  title    String
-  summary  String?
-  metadata Json?
+  id           String                @id @default(uuid()) @db.Uuid
+  spaceId      String                @map("space_id") @db.Uuid
+  title        String
+  summary      String?
+  metadata     Json?
+  // Instruction authority is assigned here by a service operation. A rename,
+  // upload or free-form metadata edit cannot promote a page into the core.
+  documentRole KnowledgeDocumentRole @default(knowledge) @map("document_role")
 
   kind               KnowledgePageKind   @default(document)
   parentPageId       String?             @map("parent_page_id") @db.Uuid
@@ -5653,6 +5702,8 @@ model KnowledgePage {
   incomingLinks          KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
   productIntegrationRuns ProductIntegrationRun[]
   pushAttentionAlerts    UserAlert[]               @relation("PushAttentionAlertKnowledgePage")
+  coreDocumentFor        AgentCoreDocument?        @relation("AgentCoreDocumentPage")
+  personalCoreOverlayFor PersonalAgentCoreOverlay? @relation("PersonalAgentCoreOverlayPage")
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([taskId], map: "knowledge_pages_task_id_idx")
@@ -5662,6 +5713,7 @@ model KnowledgePage {
   @@index([spaceId, parentPageId, position], map: "knowledge_pages_space_parent_position_idx")
   @@index([publishedVersionId], map: "knowledge_pages_published_version_id_idx")
   @@index([privateToAgentId], map: "knowledge_pages_private_to_agent_id_idx")
+  @@index([spaceId, documentRole], map: "knowledge_pages_space_role_idx")
   // Trigram GIN indexes back the ILIKE '%q%' search (native-search.ts) so it
   // doesn't sequentially scan every page per query. Requires the pg_trgm
   // extension, created in the same migration.
@@ -5671,32 +5723,129 @@ model KnowledgePage {
 }
 
 model KnowledgePageVersion {
-  id            String              @id @default(uuid()) @db.Uuid
-  pageId        String              @map("page_id") @db.Uuid
-  versionNumber Int                 @map("version_number")
-  body          String?             @db.Text
-  bodyRef       String?             @map("body_ref")
+  id                String                  @id @default(uuid()) @db.Uuid
+  pageId            String                  @map("page_id") @db.Uuid
+  versionNumber     Int                     @map("version_number")
+  body              String?                 @db.Text
+  bodyRef           String?                 @map("body_ref")
   // For file nodes (KnowledgePage.kind = file): the stored object backing this
   // version. App-enforced (no FK relation), mirroring Attachment's other links.
-  attachmentId  String?             @map("attachment_id") @db.Uuid
+  attachmentId      String?                 @map("attachment_id") @db.Uuid
   // SHA-256 of immutable Markdown attachment bytes when `body` is its derived
   // projection. Null for rich-text pages and Markdown not yet backfilled.
-  sourceContentHash String?         @map("source_content_hash")
-  authorType    KnowledgeAuthorType @map("author_type")
-  authorId      String              @map("author_id")
-  changeComment String?             @map("change_comment")
-  createdAt     DateTime            @default(now()) @map("created_at")
+  sourceContentHash String?                 @map("source_content_hash")
+  authorType        KnowledgeAuthorType     @map("author_type")
+  authorId          String                  @map("author_id")
+  changeComment     String?                 @map("change_comment")
+  trust             KnowledgeDocumentTrust  @default(unverified_import)
+  origin            KnowledgeDocumentOrigin @default(user_authored)
+  createdAt         DateTime                @default(now()) @map("created_at")
 
-  page             KnowledgePage        @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
-  publishedForPage KnowledgePage?       @relation("KnowledgePagePublishedVersion")
-  chunks           KnowledgePageChunk[]
-  basisScopes      KnowledgePageVersionBasisScope[]
-  disclosureSources KnowledgePageVersionDisclosureSource[]
+  page                  KnowledgePage                         @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedForPage      KnowledgePage?                        @relation("KnowledgePagePublishedVersion")
+  chunks                KnowledgePageChunk[]
+  evidence              KnowledgeDocumentEvidence[]
+  coreDocumentSnapshots RunCoreDocumentSnapshot[]
+  basisScopes           KnowledgePageVersionBasisScope[]
+  disclosureSources     KnowledgePageVersionDisclosureSource[]
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
   @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
   @@index([attachmentId], map: "knowledge_page_versions_attachment_id_idx")
   @@map("knowledge_page_versions")
+}
+
+// Source relationships are immutable provenance for a version. The source is
+// opaque here because each source family's authorization remains in its own
+// service; callers must recheck it before loading this version into a run.
+model KnowledgeDocumentEvidence {
+  id              String                              @id @default(uuid()) @db.Uuid
+  versionId       String                              @map("version_id") @db.Uuid
+  sourceType      KnowledgeDocumentEvidenceSourceType @map("source_type")
+  sourceId        String                              @map("source_id")
+  sourceVersionId String?                             @map("source_version_id") @db.Uuid
+  createdAt       DateTime                            @default(now()) @map("created_at")
+
+  version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  // PostgreSQL NULLS NOT DISTINCT uniqueness is declared in the immutable
+  // migration so a null source version cannot bypass deduplication.
+  @@index([sourceType, sourceId])
+  @@map("knowledge_document_evidence")
+}
+
+// The durable bridge from an agent to its two active core documents. The page
+// itself owns publication; this mapping makes the role and legacy migration
+// provenance explicit and prevents filename-based instruction loading.
+model AgentCoreDocument {
+  id               String                @id @default(uuid()) @db.Uuid
+  agentId          String                @map("agent_id") @db.Uuid
+  pageId           String                @unique @map("page_id") @db.Uuid
+  role             AgentCoreDocumentRole
+  legacySourceHash String?               @map("legacy_source_hash")
+  migratedAt       DateTime?             @map("migrated_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  agent Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  page  KnowledgePage @relation("AgentCoreDocumentPage", fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, role])
+  @@index([agentId])
+  @@map("agent_core_documents")
+}
+
+// System blueprints are immutable. A person's preferences for one are mapped
+// to that person's My Docs, never to an organisation-shared notebook.
+model PersonalAgentCoreOverlay {
+  id             String                @id @default(uuid()) @db.Uuid
+  agentId        String                @map("agent_id") @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  userId         String                @map("user_id") @db.Uuid
+  pageId         String                @unique @map("page_id") @db.Uuid
+  role           AgentCoreDocumentRole
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  agent Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  page  KnowledgePage @relation("PersonalAgentCoreOverlayPage", fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, userId, role])
+  @@index([organizationId, userId])
+  @@map("personal_agent_core_overlays")
+}
+
+// Admission pins exact published revisions. A continuation may use this same
+// snapshot only after its sources remain readable; it never re-resolves drafts.
+model RunCoreDocumentSnapshot {
+  id        String                @id @default(uuid()) @db.Uuid
+  runId     String                @map("run_id") @db.Uuid
+  versionId String                @map("version_id") @db.Uuid
+  role      AgentCoreDocumentRole
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  run     Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, role])
+  @@index([versionId])
+  @@map("run_core_document_snapshots")
+}
+
+// A marker makes a blank legacy configuration a durable cutover too. Without
+// it, a concurrent request could mistake no mappings for an unfinished import.
+model AgentCoreDocumentMigration {
+  id             String       @id @default(uuid()) @db.Uuid
+  agentId        String       @unique @map("agent_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  documentCount  Int          @map("document_count")
+  sourceHash     String       @map("source_hash")
+  migratedAt     DateTime     @default(now()) @map("migrated_at")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("agent_core_document_migrations")
 }
 
 model KnowledgePageVersionBasisScope {
@@ -7805,7 +7954,7 @@ model CloudBrowserConnection {
   /// created before that keep theirs, and it is still sent on their
   /// requests: their sessions and profiles are already scoped to it, and a
   /// silent change of project would strand the contexts holding their logins.
-  projectId      String?                      @map("project_id")
+  projectId      String?                     @map("project_id")
   /// Server-minted `secret_browserbase_*` ref into the encrypted secret
   /// store. Never caller-chosen, never returned to a client: the key plus a
   /// context id is session-equivalent material.
@@ -7899,18 +8048,18 @@ model CloudBrowserSession {
 
   /// A one-time private session can be sized without mutating an agent's
   /// durable browser. NULL remains the shared laptop default for old rows.
-  viewportWidth      Int?      @map("viewport_width")
-  viewportHeight     Int?      @map("viewport_height")
+  viewportWidth  Int? @map("viewport_width")
+  viewportHeight Int? @map("viewport_height")
 
   /// Hard TTL, mirrored into Browserbase's own session timeout so a dead
   /// worker cannot run a browser past it.
-  expiresAt  DateTime  @map("expires_at")
-  startedAt  DateTime  @default(now()) @map("started_at")
-  endedAt    DateTime? @map("ended_at")
+  expiresAt            DateTime                         @map("expires_at")
+  startedAt            DateTime                         @default(now()) @map("started_at")
+  endedAt              DateTime?                        @map("ended_at")
   /// `run_terminal` | `tool` | `reaper` | `expiry` | `control_release` —
   /// which writer released it, for diagnosing leaks.
-  releasedBy String?   @map("released_by")
-  lastError  String?   @map("last_error")
+  releasedBy           String?                          @map("released_by")
+  lastError            String?                          @map("last_error")
   /// Legacy rows may have issued a provider viewer URL. Only sessions opened
   /// after the mediated-input cutover can be controlled through Nessie.
   interactionTransport CloudBrowserInteractionTransport @default(legacy) @map("interaction_transport")
@@ -7918,12 +8067,12 @@ model CloudBrowserSession {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  connection   CloudBrowserConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  run          Run?                   @relation(fields: [runId], references: [id], onDelete: Cascade)
-  thread       Thread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  agentBrowser AgentBrowser?          @relation(fields: [agentBrowserId], references: [id], onDelete: SetNull)
+  organization        Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection          CloudBrowserConnection      @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  run                 Run?                        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  thread              Thread                      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent               Agent                       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentBrowser        AgentBrowser?               @relation(fields: [agentBrowserId], references: [id], onDelete: SetNull)
   personalAccessGrant BrowserPersonalAccessGrant? @relation("BrowserPersonalAccessGrantSession")
 
   @@index([organizationId, status])
@@ -7973,20 +8122,20 @@ enum CloudBrowserInteractionTransport {
 /// facts only: Browserbase owns the ephemeral cookie state and Nessie never
 /// stores it. Origins, user, agent, run and thread are immutable after create.
 model BrowserPersonalAccessGrant {
-  id             String                          @id @default(uuid()) @db.Uuid
-  organizationId String                          @map("organization_id") @db.Uuid
-  userId         String                          @map("user_id") @db.Uuid
-  agentId        String                          @map("agent_id") @db.Uuid
-  runId          String                          @map("run_id") @db.Uuid
-  threadId       String                          @map("thread_id") @db.Uuid
+  id             String                           @id @default(uuid()) @db.Uuid
+  organizationId String                           @map("organization_id") @db.Uuid
+  userId         String                           @map("user_id") @db.Uuid
+  agentId        String                           @map("agent_id") @db.Uuid
+  runId          String                           @map("run_id") @db.Uuid
+  threadId       String                           @map("thread_id") @db.Uuid
   origins        String[]
   status         BrowserPersonalAccessGrantStatus @default(pending)
-  expiresAt      DateTime                        @map("expires_at")
-  sessionId      String?                         @unique @map("session_id") @db.Uuid
-  activatedAt    DateTime?                       @map("activated_at")
-  revokedAt      DateTime?                       @map("revoked_at")
-  createdAt      DateTime                        @default(now()) @map("created_at")
-  updatedAt      DateTime                        @updatedAt @map("updated_at")
+  expiresAt      DateTime                         @map("expires_at")
+  sessionId      String?                          @unique @map("session_id") @db.Uuid
+  activatedAt    DateTime?                        @map("activated_at")
+  revokedAt      DateTime?                        @map("revoked_at")
+  createdAt      DateTime                         @default(now()) @map("created_at")
+  updatedAt      DateTime                         @updatedAt @map("updated_at")
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, map: "browser_personal_access_grants_organization_id_fkey")
   user         User                 @relation("BrowserPersonalAccessGrantUser", fields: [userId], references: [id], onDelete: Cascade, map: "browser_personal_access_grants_user_id_fkey")
@@ -8022,11 +8171,11 @@ model BrowserCookieImport {
   createdAt      DateTime                 @default(now()) @map("created_at")
   updatedAt      DateTime                 @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actorMembership OrganizationMember @relation("BrowserCookieImportActor", fields: [organizationId, actorId], references: [organizationId, userId], onDelete: Cascade, onUpdate: NoAction)
-  agent        Agent        @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
-  thread       Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  executor     Executor     @relation(fields: [organizationId, executorId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+  agent           Agent              @relation(fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+  thread          Thread             @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  executor        Executor           @relation(fields: [organizationId, executorId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([organizationId, actorId, state])
   @@index([executorId, state, expiresAt])
@@ -8041,15 +8190,15 @@ model BrowserCookieImport {
 /// structurally impossible; the only contention left is one agent running in
 /// two threads at once, which the single-live-session index refuses.
 model AgentBrowser {
-  id                   String @id @default(uuid()) @db.Uuid
-  organizationId       String @map("organization_id") @db.Uuid
-  agentId              String @map("agent_id") @db.Uuid
+  id                   String  @id @default(uuid()) @db.Uuid
+  organizationId       String  @map("organization_id") @db.Uuid
+  agentId              String  @map("agent_id") @db.Uuid
   /// Load-bearing: a Browserbase context belongs to the account that created
   /// it, so a browser is only usable through its own connection. When an
   /// organisation subscribes after personal connections were in use, the
   /// agent starts a fresh browser rather than migrating — one login per
   /// service again, which the UI says out loud.
-  connectionId         String @map("connection_id") @db.Uuid
+  connectionId         String  @map("connection_id") @db.Uuid
   /// Whose browser this is, for an agent every person meets as their own.
   ///
   /// The Personal Assistant is one agent row per organisation and every global
@@ -8066,7 +8215,7 @@ model AgentBrowser {
   principalUserId      String? @map("principal_user_id") @db.Uuid
   /// The persistent Browserbase context holding cookies and localStorage.
   /// Retained on a tombstoned row so the delete job still has its target.
-  browserbaseContextId String @map("browserbase_context_id")
+  browserbaseContextId String  @map("browserbase_context_id")
 
   /// Who last handed this browser back, and when.
   ///
@@ -8077,15 +8226,15 @@ model AgentBrowser {
   /// kickoff that has to queue behind an in-flight run is batched into a
   /// follow-up, and a payload field is silently lost on that path while a
   /// column is not.
-  handedBackByUserId   String?   @map("handed_back_by_user_id") @db.Uuid
-  handedBackAt         DateTime? @map("handed_back_at")
+  handedBackByUserId String?   @map("handed_back_by_user_id") @db.Uuid
+  handedBackAt       DateTime? @map("handed_back_at")
 
   /// The window the browser opens at, remembered per browser so an agent whose
   /// work needs a wider page keeps it across sessions. NULL means the default
   /// laptop window (`DEFAULT_BROWSER_VIEWPORT`); a pair is always set or
   /// cleared together, which the CHECK below enforces.
-  viewportWidth        Int?    @map("viewport_width")
-  viewportHeight       Int?    @map("viewport_height")
+  viewportWidth  Int? @map("viewport_width")
+  viewportHeight Int? @map("viewport_height")
 
   status       AgentBrowserStatus @default(active)
   createdAt    DateTime           @default(now()) @map("created_at")
@@ -8544,27 +8693,27 @@ model AgentAuthorizationRequest {
 
   /// What the agent calls itself, for the approval screen. Untrusted display
   /// text — it is whatever the client sent.
-  clientName     String            @map("client_name")
+  clientName      String             @map("client_name")
   requestedScopes AgentAccessScope[] @map("requested_scopes")
 
   status AgentAuthorizationStatus @default(pending)
 
   /// Set only on approval, and the source of the minted credential's scope:
   /// the human may approve less than was asked for.
-  approvedByUserId   String?            @map("approved_by_user_id") @db.Uuid
-  approvedScopes     AgentAccessScope[] @map("approved_scopes")
-  approvedOrganizationId String?        @map("approved_organization_id") @db.Uuid
-  approvedProjectId  String?            @map("approved_project_id") @db.Uuid
-  approvedTeamId     String?            @map("approved_team_id") @db.Uuid
+  approvedByUserId       String?            @map("approved_by_user_id") @db.Uuid
+  approvedScopes         AgentAccessScope[] @map("approved_scopes")
+  approvedOrganizationId String?            @map("approved_organization_id") @db.Uuid
+  approvedProjectId      String?            @map("approved_project_id") @db.Uuid
+  approvedTeamId         String?            @map("approved_team_id") @db.Uuid
   /// The approver's UOA workspace at the moment they approved, carried onto the
   /// credential the redeem step mints. See `AgentAccessCredential.uoaIdentity`.
-  approvedUoaIdentity Json?             @map("approved_uoa_identity")
-  approvedAt         DateTime?          @map("approved_at")
+  approvedUoaIdentity    Json?              @map("approved_uoa_identity")
+  approvedAt             DateTime?          @map("approved_at")
 
   /// Single use: the poll that mints the credential stamps this, so a replayed
   /// device code returns nothing even inside the expiry window.
-  redeemedAt DateTime? @map("redeemed_at")
-  expiresAt  DateTime  @map("expires_at")
+  redeemedAt   DateTime? @map("redeemed_at")
+  expiresAt    DateTime  @map("expires_at")
   /// Enforces RFC 8628's `slow_down`: a client polling faster than the
   /// interval is told to back off rather than served.
   lastPolledAt DateTime? @map("last_polled_at")
@@ -8592,10 +8741,10 @@ model AgentAccessCredential {
   /// The human this credential acts as. Their entitlements are the ceiling.
   userId         String @map("user_id") @db.Uuid
 
-  tokenHash String @unique @map("token_hash")
+  tokenHash   String @unique @map("token_hash")
   /// Shown in the credential list so an operator can tell two agents apart
   /// without holding either secret.
-  label     String
+  label       String
   /// First characters of the token, for the same reason.
   tokenPrefix String @map("token_prefix")
 
@@ -8628,8 +8777,8 @@ model AgentAccessCredential {
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation("AgentAccessCredentialUser", fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User              @relation("AgentAccessCredentialUser", fields: [userId], references: [id], onDelete: Cascade)
   approvalRequests ApprovalRequest[]
 
   @@index([userId, revokedAt])

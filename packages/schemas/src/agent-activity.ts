@@ -96,5 +96,19 @@ export const AgentDocumentsResponseSchema = z.object({
       name: NonEmptyStringSchema,
     }),
   ]).nullable(),
+  core: z.object({
+    estimatedTokens: z.number().int().nonnegative(),
+    state: z.enum(['active', 'oversized']),
+    tokenBudget: z.number().int().positive().optional(),
+  }).optional(),
+  // The exact published core versions that the Designer and chat edit. They
+  // are returned only after the normal agent-home/document read decision.
+  coreDocuments: z.array(z.object({
+    pageId: z.string().uuid(),
+    role: z.enum(['identity', 'working_rules']),
+    versionId: z.string().uuid(),
+    versionNumber: z.number().int().positive(),
+    markdown: z.string(),
+  })).optional(),
 })
 export type AgentDocumentsResponse = z.infer<typeof AgentDocumentsResponseSchema>

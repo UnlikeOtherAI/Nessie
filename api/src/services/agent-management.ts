@@ -52,6 +52,7 @@ export const cloneAgentRecord = async (
   sourceAgentId: string,
   organizationId: string,
   clonedByUserId?: string,
+  core?: { speakingStyle: string; systemPrompt: string },
 ): Promise<AgentRecord | null> => {
   const source = await prisma.agent.findFirst({
     where: {
@@ -106,10 +107,11 @@ export const cloneAgentRecord = async (
     projectId: source.projectId ?? undefined,
     role: source.role,
     runLimits: readAgentRunLimits(source.runLimits),
-    systemPrompt: source.systemPrompt ?? undefined,
+    systemPrompt: core?.systemPrompt ?? source.systemPrompt ?? undefined,
     teamId: source.teamId ?? undefined,
     todosEnabled: source.todosEnabled,
     toolPolicy,
+    ...(core ? { speakingStyle: core.speakingStyle } : {}),
     visibility: source.visibility,
   })
 }

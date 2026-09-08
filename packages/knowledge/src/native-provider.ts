@@ -14,6 +14,7 @@ import {
   updatePage,
   type NativeKnowledgeProviderOptions,
 } from './native-version-writer.js'
+import { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
 import {
   archiveSpace,
   createSpace,
@@ -216,6 +217,8 @@ export const createNativeKnowledgeProvider = (
   getPage: fetchPage.bind(null, prisma),
   getSpace: (organizationId, spaceId) => getSpace(prisma, organizationId, spaceId),
   listPages: (input) => listPages(prisma, input),
+  migrateAgentCoreDocuments: (input) => migrateAgentCoreDocuments(prisma, options, input),
+  updateAgentCoreDocuments: (input) => updateAgentCoreDocuments(prisma, options, input),
   listRecentPages: (input) => listNativeRecentPages(prisma, input),
   listSpaces: (input) => listSpaces(prisma, input),
   listVersions: async (organizationId, pageId) => {

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
+import { loadActiveAgentCoreDocuments, readCanonicalMarkdownAttachment } from '@nessie/knowledge'
 import { applyReplyBookkeeping } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
 import { parseAgentRunLimits } from '../run-budget.js'
@@ -13,6 +14,7 @@ import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
 import { releaseAgentTodosForTerminalRun } from '@nessie/team-admin'
+import { fileServiceFor } from '../file-service.js'
 
 /**
  * This executor no longer owns the run: another one claimed it (our heartbeat
@@ -451,6 +453,56 @@ export const loadRunContext = async (
     return null
   }
 
+  // Admission is the only moment a run chooses its core. A concurrent worker
+  // may race this insert, so always re-read the durable snapshot after the
+  // idempotent write and use that winner rather than this process's candidate.
+  if (!run.coreDocumentsAdmittedAt) {
+    const admittedCore = await loadActiveAgentCoreDocuments(prisma, {
+      agentId: run.agent.id,
+      organizationId: run.thread.channel.organizationId,
+      readMarkdownAttachment: async (attachmentId, organizationId) => {
+        const opened = await fileServiceFor(prisma).openStream(attachmentId, organizationId)
+        return opened?.stream ?? null
+      },
+    })
+    await prisma.runCoreDocumentSnapshot.createMany({
+      data: admittedCore.map((document) => ({
+        role: document.role,
+        runId: run.id,
+        versionId: document.versionId,
+      })),
+      skipDuplicates: true,
+    })
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { coreDocumentCount: admittedCore.length, coreDocumentsAdmittedAt: new Date() },
+    })
+  }
+  const coreSnapshots = await prisma.runCoreDocumentSnapshot.findMany({
+    where: { runId: run.id },
+    orderBy: { role: 'asc' },
+    select: {
+      role: true,
+      version: { select: { attachmentId: true, id: true, sourceContentHash: true } },
+    },
+  })
+  if (run.coreDocumentsAdmittedAt && coreSnapshots.length !== run.coreDocumentCount) {
+    throw new Error('A core instruction source was deleted or revoked; start a new run after resolving it')
+  }
+  const coreDocuments = await Promise.all(coreSnapshots.map(async (snapshot) => {
+    if (!snapshot.version.attachmentId || !snapshot.version.sourceContentHash) {
+      throw new Error(`Core snapshot ${snapshot.role} has no canonical Markdown source`)
+    }
+    const source = await readCanonicalMarkdownAttachment(async (attachmentId, organizationId) => {
+      const opened = await fileServiceFor(prisma).openStream(attachmentId, organizationId)
+      return opened?.stream ?? null
+    }, snapshot.version.attachmentId, run.thread.channel.organizationId)
+    if (source.sourceContentHash !== snapshot.version.sourceContentHash) {
+      throw new Error(`Core snapshot ${snapshot.role} no longer matches its approved version`)
+    }
+    return { markdown: source.content, role: snapshot.role, versionId: snapshot.version.id }
+  }))
+
   // One indexed lookup, cached on the context. The live stream gate calls the
   // disclosure predicate for every delta and must never perform IO itself.
   const [boundAgents, activeDemonstration, emailConversation] = await Promise.all([
@@ -480,6 +532,7 @@ export const loadRunContext = async (
 
   return {
     agent: { ...run.agent, runLimits: parseAgentRunLimits(run.agent.runLimits) },
+    coreDocuments,
     activeDemonstrationId: activeDemonstration?.id ?? null,
     boundAgentIds: boundAgents.map((binding) => binding.agentId),
     emailConversationId: emailConversation?.id ?? null,
