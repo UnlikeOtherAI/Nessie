@@ -300,106 +300,90 @@ export const runAgentConversationStartTool = async (
     ? await resolveNamedRoom(context, member, args.channel)
     : null
 
-  const outcome = await startAgentConversation(context.prisma, {
-    agentId: target.id,
-    ...(namedRoom ? { channelId: namedRoom.id } : {}),
-    message: args.message,
-    organizationId: member.organizationId,
-    startedByUserId: member.userId,
-    ...(args.title ? { title: args.title } : {}),
-  })
-  if (outcome.kind === 'agent_not_found') {
-    throw agentNotFound(args.agent)
-  }
-  if (outcome.kind === 'no_room') {
-    throw new Error(
-      `"${target.name}" is not in any channel you can post in, so there is nowhere to `
-      + 'hold a conversation with it. An owner can put it in a channel '
-      + '(agent_bind_channel), and then this will work.',
+  // One transaction: the conversation itself, the opener, the run it starts,
+  // and the doorway back here. The card must exist exactly when the job does —
+  // a doorway pointing at a conversation whose run never started is a card that
+  // says "Not started" forever, and an opener with no doorway is work nobody
+  // can see. The thread is inside it for the same reason: created outside, a
+  // failure below leaves an orphan unnamed conversation in somebody's list.
+  //
+  // The destination read and the sole-audience decision are inside too, so the
+  // audience the opener's basis was computed for is the audience the opener was
+  // committed to — a membership change between the two would otherwise publish
+  // to a room the basis never saw.
+  const started = await context.prisma.$transaction(async (tx) => {
+    const outcome = await startAgentConversation(tx, {
+      agentId: target.id,
+      ...(namedRoom ? { channelId: namedRoom.id } : {}),
+      message: args.message,
+      organizationId: member.organizationId,
+      startedByUserId: member.userId,
+      ...(args.title ? { title: args.title } : {}),
+    })
+    if (outcome.kind !== 'created') return { failure: outcome }
+    const conversation = outcome.thread
+
+    const destination = await tx.channel.findUniqueOrThrow({
+      where: { id: conversation.channelId },
+      select: {
+        id: true,
+        label: true,
+        organizationId: true,
+        projectId: true,
+        systemChannelType: true,
+        teamId: true,
+        type: true,
+        members: { select: { userId: true }, take: 2 },
+        team: { select: { project: { select: { channelRoot: true, name: true } } } },
+      },
+    })
+
+    /**
+     * Whether the destination's whole audience is the person who asked.
+     *
+     * This is the condition `agent_handoff`'s second subtraction silently
+     * assumes and this tool cannot: a handoff always lands in the requester's
+     * own single-member DM, while a conversation can be opened in a shared
+     * room. In that room, subtracting the scopes one person satisfies would
+     * publish restricted material to everyone else in it. Structural — a
+     * system DM's own type, or a DM with exactly one member who is the
+     * requester.
+     */
+    const destinationIsRequestersOwnRoom =
+      isDelegatedSystemDmChannelType(destination.systemChannelType)
+      || (destination.type === 'dm'
+        && destination.members.length === 1
+        && destination.members[0]?.userId === member.userId)
+    const viewer = destinationIsRequestersOwnRoom
+      ? await resolveDisclosureViewer(tx, member.organizationId, member.userId)
+      : null
+    const openerBasis = computeDelegatedPostBasis({
+      consumed: consumedSources.list(),
+      destination: {
+        channelId: destination.id,
+        organizationId: destination.organizationId,
+        projectId: destination.projectId,
+        teamId: destination.teamId,
+      },
+      requesterScopes: viewer?.kind === 'user' ? viewer.scopes : [],
+      targetAgentIds: [target.id],
+    })
+
+    // The target run acts as the person who asked, so its own tools are gated
+    // as that person's ask — and `withDelegatedSystemDmIdentity` adds the
+    // `effectiveUserId` stamp exactly when the destination is a single-member
+    // system DM, which is the difference between the target having its
+    // identity-delegated tools and silently reporting that it cannot do
+    // anything (docs/standards/global-agents.md).
+    const destinationActorContext = withDelegatedSystemDmIdentity(
+      withActionContext(member.actorContext, {
+        agentId: parseAgentId(target.id),
+        channelId: parseChannelId(destination.id),
+        threadId: parseThreadId(conversation.id),
+      }),
+      { systemChannelType: destination.systemChannelType },
     )
-  }
-  if (outcome.kind === 'channel_not_allowed') {
-    throw new Error(
-      `"${target.name}" does not work in ${namedRoom ? `#${namedRoom.label}` : 'that channel'}, `
-      + 'or you cannot post there. Name a channel you can both reach, or leave it out '
-      + 'and I will use your own conversation with it.',
-    )
-  }
-  const conversation = outcome.thread
 
-  const destination = await context.prisma.channel.findUniqueOrThrow({
-    where: { id: conversation.channelId },
-    select: {
-      id: true,
-      label: true,
-      organizationId: true,
-      projectId: true,
-      systemChannelType: true,
-      teamId: true,
-      type: true,
-      members: { select: { userId: true }, take: 2 },
-      team: { select: { project: { select: { channelRoot: true, name: true } } } },
-    },
-  })
-  const room = describeRoom({
-    label: destination.label,
-    projectName:
-      destination.type === 'dm' || destination.team.project.channelRoot
-        ? null
-        : destination.team.project.name,
-    type: destination.type,
-  })
-
-  /**
-   * Whether the destination's whole audience is the person who asked.
-   *
-   * This is the condition `agent_handoff`'s second subtraction silently assumes
-   * and this tool cannot: a handoff always lands in the requester's own
-   * single-member DM, while a conversation can be opened in a shared room. In
-   * that room, subtracting the scopes one person satisfies would publish
-   * restricted material to everyone else in it. Structural — a system DM's own
-   * type, or a DM with exactly one member who is the requester.
-   */
-  const destinationIsRequestersOwnRoom =
-    isDelegatedSystemDmChannelType(destination.systemChannelType)
-    || (destination.type === 'dm'
-      && destination.members.length === 1
-      && destination.members[0]?.userId === member.userId)
-  const viewer = destinationIsRequestersOwnRoom
-    ? await resolveDisclosureViewer(context.prisma, member.organizationId, member.userId)
-    : null
-  const openerBasis = computeDelegatedPostBasis({
-    consumed: consumedSources.list(),
-    destination: {
-      channelId: destination.id,
-      organizationId: destination.organizationId,
-      projectId: destination.projectId,
-      teamId: destination.teamId,
-    },
-    requesterScopes: viewer?.kind === 'user' ? viewer.scopes : [],
-    targetAgentIds: [target.id],
-  })
-
-  // The target run acts as the person who asked, so its own tools are gated as
-  // that person's ask — and `withDelegatedSystemDmIdentity` adds the
-  // `effectiveUserId` stamp exactly when the destination is a single-member
-  // system DM, which is the difference between the target having its
-  // identity-delegated tools and silently reporting that it cannot do anything
-  // (docs/standards/global-agents.md).
-  const destinationActorContext = withDelegatedSystemDmIdentity(
-    withActionContext(member.actorContext, {
-      agentId: parseAgentId(target.id),
-      channelId: parseChannelId(destination.id),
-      threadId: parseThreadId(conversation.id),
-    }),
-    { systemChannelType: destination.systemChannelType },
-  )
-
-  // One transaction: the opener, the run it starts, and the doorway back here.
-  // The card must exist exactly when the job does — a doorway pointing at a
-  // conversation whose run never started is a card that says "Not started"
-  // forever, and an opener with no doorway is work nobody can see.
-  const committed = await context.prisma.$transaction(async (tx) => {
     const opener = await createAgentMessage(tx, runContext, {
       agentId: context.agentId,
       basis: openerBasis,
@@ -454,9 +438,11 @@ export const runAgentConversationStartTool = async (
           taskId: parseTaskId(task.id),
           threadId: parseThreadId(conversation.id),
         },
-        // A redelivery of this run's tool call converges on the job already
-        // enqueued rather than starting the conversation's work twice.
-        `agent-conversation:${runContext.run.id}:${conversation.id}`,
+        // Keyed on the tool *call*, exactly as peer delegation's
+        // `correlationId` is: the thread id is minted by this very attempt, so
+        // a key carrying it is different on every redelivery and dedupes
+        // nothing. The call is the same across redeliveries of this run.
+        `agent-conversation:${runContext.run.id}:${context.toolCallId ?? conversation.id}`,
       )
     }
 
@@ -478,19 +464,50 @@ export const runAgentConversationStartTool = async (
         : {}),
     })
 
-    return { claim, doorway, opener }
+    return { claim, conversation, destination, doorway, opener }
+  })
+
+  // Refused, in the words this door owns. Stated out here rather than inside so
+  // a refusal is never a rolled-back transaction carrying a message for a
+  // person, and so the transaction holds nothing while the text is composed.
+  if (started.failure) {
+    if (started.failure.kind === 'agent_not_found') {
+      throw agentNotFound(args.agent)
+    }
+    if (started.failure.kind === 'no_room') {
+      throw new Error(
+        `"${target.name}" is not in any channel you can post in, so there is nowhere to `
+        + 'hold a conversation with it. An owner can put it in a channel '
+        + '(agent_bind_channel), and then this will work.',
+      )
+    }
+    throw new Error(
+      `"${target.name}" does not work in ${namedRoom ? `#${namedRoom.label}` : 'that channel'}, `
+      + 'or you cannot post there. Name a channel you can both reach, or leave it out '
+      + 'and I will use your own conversation with it.',
+    )
+  }
+
+  const { conversation, destination } = started
+  const room = describeRoom({
+    label: destination.label,
+    projectName:
+      destination.type === 'dm' || destination.team.project.channelRoot
+        ? null
+        : destination.team.project.name,
+    type: destination.type,
   })
 
   // Post-commit, exactly as the handoff doorway publishes: a listener must
   // never observe an uncommitted message id.
   const reply = runContext.replyRootMessageId
-    ? await applyRunReplyBookkeeping(context.prisma, runContext, committed.doorway.createdAt)
+    ? await applyRunReplyBookkeeping(context.prisma, runContext, started.doorway.createdAt)
     : undefined
   await publishMessageCreated(context.realtimeTransport, runContext, {
-    content: committed.doorway.content,
-    messageId: committed.doorway.id,
+    content: started.doorway.content,
+    messageId: started.doorway.id,
     role: 'assistant',
-    ...(committed.doorway.basis.length > 0 ? { restricted: true } : {}),
+    ...(started.doorway.basis.length > 0 ? { restricted: true } : {}),
     ...(reply ? { reply } : {}),
   })
   // The opener lands in another thread, so `publishMessageCreated` (which
@@ -506,10 +523,10 @@ export const runAgentConversationStartTool = async (
       data: {
         agentId: parseAgentId(context.agentId),
         channelId: parseChannelId(destination.id),
-        ...(committed.opener.basis.length > 0
+        ...(started.opener.basis.length > 0
           ? { restricted: true as const }
           : { contentPreview: args.message.slice(0, 200) }),
-        messageId: committed.opener.id,
+        messageId: started.opener.id,
         role: 'assistant' as const,
         threadId: parseThreadId(conversation.id),
       },
@@ -520,7 +537,7 @@ export const runAgentConversationStartTool = async (
   const output = AgentConversationStartToolOutputSchema.parse({
     agentId: target.id,
     channelId: destination.id,
-    status: committed.claim === 'claimed' ? 'started' : 'pended',
+    status: started.claim === 'claimed' ? 'started' : 'pended',
     threadId: conversation.id,
     title: conversation.title,
     where: room,

@@ -105,6 +105,13 @@ export const resolveSystemDmDecisions = (
  * - the agent still being bound to the room — if it was unbound since, this
  *   returns `null` and the model-driven path decides, exactly as it would for
  *   any other room.
+ *
+ * The order of the first three is the rule, not a formality. The role bound
+ * comes before the top-level one because it is about *who wrote this*, not
+ * about where it sits: an agent-authored reply inside a conversation must
+ * engage nobody, and asking "is this top-level?" first let exactly that turn
+ * fall through to the model-judged path, which is free to answer it and close
+ * the loop the bound exists to open.
  */
 export const resolveConversationDecisions = (input: {
   agentMentions?: AgentMention[] | undefined
@@ -114,11 +121,14 @@ export const resolveConversationDecisions = (input: {
   thread: { agentId: string | null; startedByUserId: string | null } | null
 }): OrchestratorDecision[] | null => {
   const conversationAgentId = input.thread?.agentId
-  if (!conversationAgentId || !input.isTopLevelTrigger) {
+  if (!conversationAgentId) {
     return null
   }
   if (input.role !== 'user') {
     return []
+  }
+  if (!input.isTopLevelTrigger) {
+    return null
   }
 
   // A Personal Assistant presence in a shared room is one Agent row per member,
@@ -198,7 +208,9 @@ export const executeOrchestrateDecideJob = async (
     where: { id: messageId },
     select: {
       id: true,
+      role: true,
       rootMessageId: true,
+      threadId: true,
       thread: { select: { agentId: true, startedByUserId: true } },
     },
   })
@@ -246,14 +258,23 @@ export const executeOrchestrateDecideJob = async (
   // The sibling structural rule: a conversation thread addresses its own agent.
   // Only consulted when the DM rule declined, so a conversation inside a
   // single-agent system DM keeps that DM's already-structural answer.
+  // The thread the conversation branch reads is the trigger's own, read from
+  // the row rather than taken from the payload. The payload is server-written,
+  // so this is consistency between two reads of the same send, not a trust
+  // boundary: a mismatch means the branch would be deciding about one thread
+  // from another thread's columns, and the model-judged path is the answer.
+  const triggerInConversationThread =
+    triggerMessage !== null && triggerMessage.threadId === threadId
   decisions ??= resolveConversationDecisions({
     agentMentions,
     channelAgents,
     // A message inside a reply thread is a side discussion; it keeps today's
     // behaviour whatever the containing thread is.
     isTopLevelTrigger: triggerMessage ? triggerMessage.rootMessageId === null : false,
-    role,
-    thread: triggerMessage?.thread ?? null,
+    // The persisted role, not the payload's: the anti-loop bound is about who
+    // actually wrote the row.
+    role: triggerMessage?.role ?? role,
+    thread: triggerInConversationThread ? triggerMessage.thread : null,
   })
   if (!decisions) {
     // Fetch the last 6 messages for orchestrator context. The most recent one
