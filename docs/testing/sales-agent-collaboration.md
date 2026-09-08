@@ -224,7 +224,9 @@ one, and shows the correct audience after switching Project → Channel → Proj
 That local walkthrough did not connect an external account.
 
 PR 422 repairs zero-output admission recovery and passed all nine CI checks
-before merge. Recovery has its own durable attempt marker, so earlier ordinary
+before merge. Successful
+[Deploy run 34255063666](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34255063666)
+landed that repair. Recovery has its own durable attempt marker, so earlier ordinary
 compaction does not disable it. Checkpoints preserve the recovery result and
 utility spend even when the utility call exhausts the run budget. Full argument
 schemas are now attached only to structural argument failures. These regression
@@ -240,6 +242,27 @@ The prompts identify the peer agents directly, preserve the reusable templates,
 and explicitly defer Calendar/Meet and client outreach. A separate read-only
 KiloTalk research credential was created through Settings → API keys for the
 project-scoped connection; its value is not recorded in this document.
+
+Peer delegation is asynchronous mail, not a result RPC. A normal researcher
+reply does not wake the coordinator. The saved prompts therefore require one
+explicit `agent_peer_delegate` return handoff after research, carrying the
+ticket reference and a concise recommendation. The coordinator reviews and
+records the decision directly. At most one focused clarification round is
+allowed; a final result or acknowledgement must not start another assignment.
+The runtime preserves the original human's authority, serializes each
+agent/thread, and caps delegation depth at four. The earlier stopping rule is
+a prompt protocol, not a separate structural depth-three guard.
+
+After successful
+[Deploy run 34256544180](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34256544180),
+the production connection review offered the project audience. Its compact
+TabBar menu exposed a separate layering defect: options existed in the DOM but
+rendered behind the dialog. At the center of **A project**, browser hit-testing
+returned the underlying **Connect KiloTalk Sales Research** button. Clicking
+that position started an unintended personal connection. That new, unconfigured
+connection was disconnected through the UI; no credential was added and the
+original channel connection remained connected. The compact menu requires a
+layering repair before the project connection can be accepted.
 
 ## Compaction verification
 
