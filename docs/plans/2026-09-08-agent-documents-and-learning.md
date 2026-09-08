@@ -1,9 +1,10 @@
 # Agent documents, conversation recall and learning from work
 
 Status: implementation in progress, 2026-09-08. Product direction requested by
-Ondrej. The reusable learning proposal/verification helpers have landed in
-deep.agent; Nessie's document, recall and automatic-learning migrations have
-not shipped. This document covers both repositories.
+Ondrej. Canonical Markdown storage and editing have landed in Nessie. The shared
+learning helpers and procedure-artifact guards have landed in deep.agent.
+Document disclosure, core instructions, conversation recall and automatic
+learning remain in progress. This document covers both repositories.
 
 ### Implementation record
 
@@ -14,11 +15,21 @@ not shipped. This document covers both repositories.
   tests passed. Nessie has not adopted these new exports yet; this is the
   shared-library portion of Phase 4, not an enabled learning loop or a measured
   improvement result.
-- [Nessie PR #424](https://github.com/UnlikeOtherAI/Nessie/pull/424) is a draft
-  for canonical Markdown storage, projection repair and editing. It remains
-  gated on structural refactoring, required checks and browser verification.
-  Document disclosure and live UOA entitlement work are separate in-progress
-  foundations. Current destination containment remains in place.
+- [deep.agent PR #3](https://github.com/UnlikeOtherAI/deep.agent/pull/3) merged
+  at `1fd3d43406eac02632f1f8a452896e865f4a5fb1`: required scanning of authored
+  instructions and instruction references, explicit data/citation roles,
+  immutable artifact validation and bounded nested materialization. Local lint,
+  build and workspace tests passed; the agent package's 143 tests also passed
+  during independent review. Nessie has not yet adopted procedure activation.
+- [Nessie PR #424](https://github.com/UnlikeOtherAI/Nessie/pull/424) merged
+  at `ed3f8d6dea9e69af292ecb87f197453fd0a5cb36`: canonical FileService Markdown,
+  hash-bound HTML/chunk projections, resumable repair, model-aware indexing and
+  version-fenced editing. All nine CI jobs passed. Authenticated headless
+  Playwright verified upload/edit/download byte and hash equality, extensionless
+  rename/reopen, and concurrent editors retaining the stale draft while
+  preserving the newer version. This is the Markdown portion of Phase 1;
+  document disclosure and live UOA entitlement changes are separate foundations.
+  Existing destination containment remains in place.
 
 ## Outcome and product decisions
 
@@ -497,7 +508,7 @@ as proof of the latter. Rebuild the worker after worker changes.
   release budgets from baseline measurements, not borrowed vendor benchmarks.
 
 Release gates: all deterministic disclosure/authority/deletion tests pass with
-zero forbidden reads/writes, all eight required CI checks are green, UI doorways
+zero forbidden reads/writes, all nine required CI checks are green, UI doorways
 are visually verified, and the paired live-model report demonstrates the intended
 gain. Keep low-risk learning paused for cohorts without a passing quality report.
 Do not claim self-improvement based only on growing memory/document counts.
