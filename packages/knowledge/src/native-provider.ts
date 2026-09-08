@@ -8,6 +8,12 @@ import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
 import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
 import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js'
+import {
+  isMarkdownAttachment,
+  projectMarkdownAttachment,
+  type MarkdownAttachmentReader,
+  type MarkdownProjection,
+} from './markdown-projection.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import { KnowledgePageRevisionConflictError } from './types.js'
 import type {
@@ -39,6 +45,10 @@ export type KnowledgePagePublishedEvent = {
 }
 
 export type NativeKnowledgeProviderOptions = {
+  // FileService is the sole byte authority. The native provider uses this
+  // reader to derive Markdown projections and never accepts caller text next
+  // to an attachment id as proof of what was stored.
+  readMarkdownAttachment?: MarkdownAttachmentReader
   // Invoked inside the same transaction that wrote a version's chunk rows —
   // the api wires this to enqueue the `knowledge.embed` job, so a failed
   // enqueue rolls the save back instead of silently losing the embedding pass.
@@ -53,6 +63,28 @@ export type NativeKnowledgeProviderOptions = {
     tx: Prisma.TransactionClient,
     event: KnowledgePagePublishedEvent,
   ) => Promise<void>
+}
+
+type AttachmentLookupClient = Pick<Prisma.TransactionClient, 'attachment'>
+
+const markdownProjectionForAttachment = async (
+  client: AttachmentLookupClient,
+  options: NativeKnowledgeProviderOptions,
+  organizationId: string,
+  attachmentId: string,
+): Promise<MarkdownProjection | null> => {
+  const attachment = await client.attachment.findUnique({
+    where: { id: attachmentId },
+    select: { filename: true, mime: true, organizationId: true },
+  })
+  if (!attachment || attachment.organizationId !== organizationId) {
+    throw new KnowledgeConflictError('Knowledge file attachment was not found in this organization')
+  }
+  if (!isMarkdownAttachment(attachment)) return null
+  if (!options.readMarkdownAttachment) {
+    throw new KnowledgeConflictError('Markdown file versions require a FileService reader')
+  }
+  return projectMarkdownAttachment(options.readMarkdownAttachment, attachmentId, organizationId)
 }
 
 const nativeCapabilities = {
@@ -238,6 +270,7 @@ const getMutablePage = async (
       privateToAgentId: true,
       publishedVersionId: true,
       revision: true,
+      kind: true,
       taskId: true,
     },
   })
@@ -453,13 +486,17 @@ const restoreVersion = async (
       },
     })
     if (!version) return null
+    const projection = version.attachmentId
+      ? await markdownProjectionForAttachment(tx, options, input.organizationId, version.attachmentId)
+      : null
     const restored = await tx.knowledgePageVersion.create({
       data: {
         pageId: input.pageId,
         versionNumber: await nextVersionNumber(tx, input.pageId),
-        body: version.body,
-        bodyRef: version.bodyRef,
+        body: projection?.body ?? version.body,
+        bodyRef: projection ? null : version.bodyRef,
         attachmentId: version.attachmentId,
+        sourceContentHash: projection?.sourceContentHash ?? version.sourceContentHash,
         authorType: input.authorType,
         authorId: input.authorId,
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
@@ -477,26 +514,45 @@ const restoreVersion = async (
 // Mirrors the version-creation path but carries an attachmentId instead of body.
 const addFileVersion = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   input: AddFileVersionInput,
 ): Promise<KnowledgePageVersionRecord | null> =>
-  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
-    const page = await getMutablePage(tx, input.organizationId, input.pageId)
-    if (!page) return null
-    const version = await tx.knowledgePageVersion.create({
-      data: {
-        pageId: input.pageId,
-        versionNumber: await nextVersionNumber(tx, input.pageId),
-        body: null,
-        attachmentId: input.attachmentId,
-        authorType: input.authorType,
-        authorId: input.authorId,
-        changeComment: input.changeComment ?? null,
-      },
+  withVersionNumberRetry(async () => {
+    const projection = await markdownProjectionForAttachment(
+      prisma,
+      options,
+      input.organizationId,
+      input.attachmentId,
+    )
+    return prisma.$transaction(async (tx) => {
+      const page = await getMutablePage(tx, input.organizationId, input.pageId)
+      if (!page) return null
+      const latest = await tx.knowledgePageVersion.findFirst({
+        where: { pageId: input.pageId },
+        orderBy: { versionNumber: 'desc' },
+        select: { id: true },
+      })
+      if (input.expectedLatestVersionId && latest?.id !== input.expectedLatestVersionId) {
+        throw new KnowledgeConflictError('The file changed after this Markdown editor opened')
+      }
+      const version = await tx.knowledgePageVersion.create({
+        data: {
+          pageId: input.pageId,
+          versionNumber: await nextVersionNumber(tx, input.pageId),
+          body: projection?.body ?? null,
+          attachmentId: input.attachmentId,
+          sourceContentHash: projection?.sourceContentHash ?? null,
+          authorType: input.authorType,
+          authorId: input.authorId,
+          changeComment: input.changeComment ?? null,
+        },
+      })
+      // Touch the page so updatedAt reflects the new version.
+      await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
+      await indexVersionChunks(tx, options, page, version)
+      return mapVersion(version)
     })
-    // Touch the page so updatedAt reflects the new version.
-    await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
-    return mapVersion(version)
-  }))
+  })
 
 const updatePage = async (
   prisma: PrismaClient,
@@ -507,6 +563,9 @@ const updatePage = async (
   withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
     const existing = await getMutablePage(tx, input.organizationId, pageId)
     if (!existing) return null
+    if (existing.kind === 'file' && (input.body !== undefined || input.bodyRef !== undefined)) {
+      throw new KnowledgeConflictError('File versions must be created from their attachment bytes')
+    }
     // Optimistic concurrency: an auto-saving editor states the revision it
     // edited, and a stale one is refused rather than overwriting a colleague.
     if (
@@ -583,7 +642,7 @@ export const createNativeKnowledgeProvider = (
   id: 'native:first-party',
   kind: 'first_party',
 
-  addFileVersion: (input) => addFileVersion(prisma, input),
+  addFileVersion: (input) => addFileVersion(prisma, options, input),
 
   archivePage: (organizationId, pageId) => archivePage(prisma, organizationId, pageId),
 
@@ -600,8 +659,14 @@ export const createNativeKnowledgeProvider = (
     return space ? mapSpace(space) : null
   },
 
-  createPage: async (input) =>
-    prisma.$transaction(async (tx) => {
+  createPage: async (input) => {
+    const projection = input.attachmentId
+      ? await markdownProjectionForAttachment(prisma, options, input.organizationId, input.attachmentId)
+      : null
+    if (projection && (input.body !== undefined || input.bodyRef !== undefined)) {
+      throw new KnowledgeConflictError('Markdown attachment versions cannot supply an independent body')
+    }
+    return prisma.$transaction(async (tx) => {
       const space = await tx.knowledgeSpace.findFirst({
         where: { id: input.spaceId, organizationId: input.organizationId, deletedAt: null },
       })
@@ -661,9 +726,10 @@ export const createNativeKnowledgeProvider = (
         data: {
           pageId: page.id,
           versionNumber: 1,
-          body: input.body ?? null,
-          bodyRef: input.bodyRef ?? null,
+          body: projection?.body ?? input.body ?? null,
+          bodyRef: projection ? null : input.bodyRef ?? null,
           attachmentId: input.attachmentId ?? null,
+          sourceContentHash: projection?.sourceContentHash ?? null,
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
@@ -678,7 +744,8 @@ export const createNativeKnowledgeProvider = (
       const created = await fetchPage(tx, input.organizationId, page.id)
       if (!created) throw new Error('Created page could not be loaded')
       return created
-    }),
+    })
+  },
 
   createSpace: async (input) => {
     const memberUserIds = Array.from(new Set(input.memberUserIds ?? []))

@@ -334,6 +334,7 @@ export const registerKnowledgeBaseRoutes = (
         organizationId,
         query,
         queryEmbedding,
+        embeddingModel: deps.sharedModelClient?.embeddingModel ?? null,
         viewer,
         projectId,
         spaceId: body.spaceId,

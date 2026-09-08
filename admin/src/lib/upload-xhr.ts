@@ -10,9 +10,13 @@ export const uploadFileWithProgress = <T>(
   file: File,
   token: string | null,
   onProgress?: (progress: UploadProgress) => void,
+  fields?: Record<string, string>,
 ): Promise<T> =>
   new Promise<T>((resolve, reject) => {
     const form = new FormData()
+    for (const [key, value] of Object.entries(fields ?? {})) {
+      form.append(key, value)
+    }
     form.append('file', file)
 
     const xhr = new XMLHttpRequest()

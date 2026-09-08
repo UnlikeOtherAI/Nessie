@@ -44,11 +44,13 @@ const copySameHashEmbeddings = async (
         AND embedding_model = ${embeddingModel}
         AND content_hash IN (
           SELECT content_hash FROM knowledge_page_chunks
-          WHERE version_id = ${payload.versionId}::uuid AND embedding IS NULL
+          WHERE version_id = ${payload.versionId}::uuid
+            AND (embedding IS NULL OR embedding_model IS DISTINCT FROM ${embeddingModel})
         )
       ORDER BY content_hash, created_at DESC
     ) src
-    WHERE c.version_id = ${payload.versionId}::uuid AND c.embedding IS NULL
+    WHERE c.version_id = ${payload.versionId}::uuid
+      AND (c.embedding IS NULL OR c.embedding_model IS DISTINCT FROM ${embeddingModel})
       AND c.content_hash = src.content_hash
   `)
 }
@@ -56,10 +58,12 @@ const copySameHashEmbeddings = async (
 const loadPendingChunks = async (
   prisma: PrismaClient,
   payload: KnowledgeEmbedJobPayload,
+  embeddingModel: string,
 ): Promise<PendingChunk[]> =>
   prisma.$queryRaw<PendingChunk[]>(Prisma.sql`
     SELECT id, content FROM knowledge_page_chunks
-    WHERE version_id = ${payload.versionId}::uuid AND embedding IS NULL
+    WHERE version_id = ${payload.versionId}::uuid
+      AND (embedding IS NULL OR embedding_model IS DISTINCT FROM ${embeddingModel})
     ORDER BY chunk_index
   `)
 
@@ -169,7 +173,11 @@ export const executeKnowledgeEmbedJob = async (
     deps.modelClient.embeddingModel,
   )
 
-  const pending = await loadPendingChunks(deps.prisma, payload)
+  const pending = await loadPendingChunks(
+    deps.prisma,
+    payload,
+    deps.modelClient.embeddingModel,
+  )
 
   if (pending.length > 0) {
     const attribution: LedgerAttribution = {
