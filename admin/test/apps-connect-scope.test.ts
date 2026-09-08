@@ -11,6 +11,7 @@ import {
   canShareAppConnectionKey,
 } from '../src/components/features/apps/app-connect-scope.js'
 import { channelKeys } from '../src/facades/channels/keys.js'
+import { projectKeys } from '../src/facades/projects/keys.js'
 import type { ChannelRecord } from '../src/lib/api-client.js'
 
 const CHANNEL_ID = '22222222-2222-2222-2222-222222222222'
@@ -60,11 +61,20 @@ const channel: ChannelRecord = {
   visibility: 'private',
 }
 
+const project = {
+  id: '55555555-5555-5555-5555-555555555555',
+  name: 'Operations',
+}
+
 test('personal remains the default scope and a channel needs an explicit id', () => {
   assert.deepEqual(buildAppConnectScope('user', CHANNEL_ID), { scopeType: 'user' })
   assert.deepEqual(buildAppConnectScope('channel', CHANNEL_ID), {
     scopeId: CHANNEL_ID,
     scopeType: 'channel',
+  })
+  assert.deepEqual(buildAppConnectScope('project', project.id), {
+    scopeId: project.id,
+    scopeType: 'project',
   })
   assert.equal(buildAppConnectScope('channel', ''), null)
   assert.equal(
@@ -72,8 +82,12 @@ test('personal remains the default scope and a channel needs an explicit id', ()
     'Just you. You can choose which agents may use it after it connects.',
   )
   assert.equal(
+    appConnectScopeCopy('project', project.name),
+    'A separate connection for Operations. Only agents working in this project can use it after access is granted.',
+  )
+  assert.equal(
     appConnectScopeCopy('channel', channel.label),
-    'A separate connection will be created for Customer support. You will add your own credential; only agents acting in that channel can use this connection.',
+    'A separate connection for Customer support. Only agents working in this channel can use it after access is granted.',
   )
 })
 
@@ -163,7 +177,7 @@ const mount = async () => {
   const calls: ConnectCall[] = []
   const apiClient = {
     delete: async () => undefined,
-    get: async () => [channel],
+    get: async (path: string) => path === '/api/projects' ? [project] : [channel],
     patch: async () => undefined,
     post: async (path: string, body: unknown) => {
       calls.push({ body, path })
@@ -173,6 +187,7 @@ const mount = async () => {
   } as unknown as ApiClient
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   queryClient.setQueryData(channelKeys.all, [channel])
+  queryClient.setQueryData(projectKeys.all, [project])
   const container = dom.window.document.createElement('div')
   dom.window.document.body.appendChild(container)
   const root = createRoot(container)
@@ -208,7 +223,7 @@ const mount = async () => {
   }
 }
 
-test('the dialog posts personal scope by default and only posts channel scope after selection', async () => {
+test('the dialog posts personal scope by default and posts only the explicitly selected shared scope', async () => {
   const harness = await mount()
 
   try {
@@ -257,10 +272,9 @@ test('the dialog posts personal scope by default and only posts channel scope af
     assert.equal(confirm.disabled, false)
     assert.match(
       channelHarness.scope.textContent ?? '',
-      /A separate connection will be created for Customer support\./,
+      /A separate connection for Customer support\./,
     )
-    assert.match(channelHarness.scope.textContent ?? '', /You will add your own credential/)
-    assert.match(channelHarness.scope.textContent ?? '', /only agents acting in that channel can use this connection\./)
+    assert.match(channelHarness.scope.textContent ?? '', /Only agents working in this channel can use it after access is granted\./)
 
     await act(async () => confirm.click())
     await settle()
@@ -270,5 +284,69 @@ test('the dialog posts personal scope by default and only posts channel scope af
     })
   } finally {
     await channelHarness.unmount()
+  }
+
+  const projectHarness = await mount()
+  try {
+    const chooseProject = projectHarness.scope.querySelector<HTMLButtonElement>(
+      '[data-testid="app-connect-scope-project"]',
+    )
+    assert.ok(chooseProject)
+    await act(async () => chooseProject.click())
+    await settle()
+
+    const confirm = projectHarness.scope.querySelector<HTMLButtonElement>(
+      '[data-testid="app-connect-confirm"]',
+    )
+    const picker = projectHarness.scope.querySelector<HTMLSelectElement>(
+      '[data-testid="app-connect-project-picker"]',
+    )
+    assert.ok(confirm)
+    assert.ok(picker)
+    assert.equal(confirm.disabled, true)
+    assert.match(projectHarness.scope.textContent ?? '', /Select a project\./)
+
+    picker.value = project.id
+    await act(async () => {
+      picker.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    })
+    assert.equal(confirm.disabled, false)
+    assert.match(projectHarness.scope.textContent ?? '', /Only agents working in this project can use it after access is granted\./)
+
+    await act(async () => confirm.click())
+    await settle()
+    assert.deepEqual(projectHarness.calls[0], {
+      body: { scopeId: project.id, scopeType: 'project' },
+      path: '/api/apps/kilo-support/connect',
+    })
+  } finally {
+    await projectHarness.unmount()
+  }
+
+  const switchHarness = await mount()
+  try {
+    const chooseChannel = switchHarness.scope.querySelector<HTMLButtonElement>(
+      '[data-testid="app-connect-scope-channel"]',
+    )
+    assert.ok(chooseChannel)
+    await act(async () => chooseChannel.click())
+    await settle()
+    const channelPicker = switchHarness.scope.querySelector<HTMLSelectElement>(
+      '[data-testid="app-connect-channel-picker"]',
+    )
+    assert.ok(channelPicker)
+    channelPicker.value = CHANNEL_ID
+    await act(async () => channelPicker.dispatchEvent(new dom.window.Event('change', { bubbles: true })))
+
+    const chooseProject = switchHarness.scope.querySelector<HTMLButtonElement>(
+      '[data-testid="app-connect-scope-project"]',
+    )
+    assert.ok(chooseProject)
+    await act(async () => chooseProject.click())
+    await settle()
+    assert.match(switchHarness.scope.textContent ?? '', /Select a project\./)
+    assert.doesNotMatch(switchHarness.scope.textContent ?? '', /Customer support/)
+  } finally {
+    await switchHarness.unmount()
   }
 })
