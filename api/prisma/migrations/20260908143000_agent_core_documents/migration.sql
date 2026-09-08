@@ -31,7 +31,7 @@ CREATE TABLE "knowledge_document_evidence" (
   CONSTRAINT "knowledge_document_evidence_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "knowledge_document_evidence_version_id_source_type_source_id_source_version_id_key"
-  ON "knowledge_document_evidence"("version_id", "source_type", "source_id", "source_version_id");
+  ON "knowledge_document_evidence"("version_id", "source_type", "source_id", "source_version_id") NULLS NOT DISTINCT;
 CREATE INDEX "knowledge_document_evidence_source_type_source_id_idx"
   ON "knowledge_document_evidence"("source_type", "source_id");
 ALTER TABLE "knowledge_document_evidence"
@@ -74,7 +74,11 @@ ALTER TABLE "run_core_document_snapshots"
   ADD CONSTRAINT "run_core_document_snapshots_run_id_fkey"
   FOREIGN KEY ("run_id") REFERENCES "runs"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT "run_core_document_snapshots_version_id_fkey"
-  FOREIGN KEY ("version_id") REFERENCES "knowledge_page_versions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("version_id") REFERENCES "knowledge_page_versions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "runs"
+  ADD COLUMN "core_documents_admitted_at" TIMESTAMP(3),
+  ADD COLUMN "core_document_count" INTEGER NOT NULL DEFAULT 0;
 
 CREATE INDEX "knowledge_pages_space_role_idx" ON "knowledge_pages"("space_id", "document_role");
 

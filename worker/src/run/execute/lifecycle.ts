@@ -456,15 +456,15 @@ export const loadRunContext = async (
   // Admission is the only moment a run chooses its core. A concurrent worker
   // may race this insert, so always re-read the durable snapshot after the
   // idempotent write and use that winner rather than this process's candidate.
-  const admittedCore = await loadActiveAgentCoreDocuments(prisma, {
-    agentId: run.agent.id,
-    organizationId: run.thread.channel.organizationId,
-    readMarkdownAttachment: async (attachmentId, organizationId) => {
-      const opened = await fileServiceFor(prisma).openStream(attachmentId, organizationId)
-      return opened?.stream ?? null
-    },
-  })
-  if (admittedCore.length > 0) {
+  if (!run.coreDocumentsAdmittedAt) {
+    const admittedCore = await loadActiveAgentCoreDocuments(prisma, {
+      agentId: run.agent.id,
+      organizationId: run.thread.channel.organizationId,
+      readMarkdownAttachment: async (attachmentId, organizationId) => {
+        const opened = await fileServiceFor(prisma).openStream(attachmentId, organizationId)
+        return opened?.stream ?? null
+      },
+    })
     await prisma.runCoreDocumentSnapshot.createMany({
       data: admittedCore.map((document) => ({
         role: document.role,
@@ -472,6 +472,10 @@ export const loadRunContext = async (
         versionId: document.versionId,
       })),
       skipDuplicates: true,
+    })
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { coreDocumentCount: admittedCore.length, coreDocumentsAdmittedAt: new Date() },
     })
   }
   const coreSnapshots = await prisma.runCoreDocumentSnapshot.findMany({
@@ -482,6 +486,9 @@ export const loadRunContext = async (
       version: { select: { attachmentId: true, id: true, sourceContentHash: true } },
     },
   })
+  if (run.coreDocumentsAdmittedAt && coreSnapshots.length !== run.coreDocumentCount) {
+    throw new Error('A core instruction source was deleted or revoked; start a new run after resolving it')
+  }
   const coreDocuments = await Promise.all(coreSnapshots.map(async (snapshot) => {
     if (!snapshot.version.attachmentId || !snapshot.version.sourceContentHash) {
       throw new Error(`Core snapshot ${snapshot.role} has no canonical Markdown source`)

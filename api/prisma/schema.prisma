@@ -3082,6 +3082,10 @@ model Run {
   // executor that resumes it can claim it cleanly.
   executorToken                       String?                         @map("executor_token") @db.Uuid
   executorHeartbeatAt                 DateTime?                       @map("executor_heartbeat_at")
+  // Admission records whether this run had core sources. A resume must never
+  // rebuild a deleted snapshot from whichever version happens to be current.
+  coreDocumentsAdmittedAt             DateTime?                       @map("core_documents_admitted_at")
+  coreDocumentCount                   Int                             @default(0) @map("core_document_count")
   modelSubscription                   ModelSubscription?              @relation(fields: [modelSubscriptionId], references: [id], onDelete: SetNull)
   agent                               Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                              Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -5729,7 +5733,8 @@ model KnowledgeDocumentEvidence {
 
   version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
-  @@unique([versionId, sourceType, sourceId, sourceVersionId])
+  // PostgreSQL NULLS NOT DISTINCT uniqueness is declared in the immutable
+  // migration so a null source version cannot bypass deduplication.
   @@index([sourceType, sourceId])
   @@map("knowledge_document_evidence")
 }
