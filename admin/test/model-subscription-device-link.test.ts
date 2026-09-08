@@ -189,9 +189,13 @@ test('a phone opens the provider page through the native authorization bridge', 
       (candidate) => candidate.textContent?.trim() === 'Open sign-in page',
     )
     assert.ok(link)
+    let navigationWasPrevented = false
     await act(async () => {
-      link.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
+      navigationWasPrevented = !link.dispatchEvent(
+        new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }),
+      )
     })
+    assert.equal(navigationWasPrevented, true)
     assert.deepEqual(messages.map((message) => JSON.parse(message)), [{
       authorizationUrl: 'https://auth.openai.com/codex/device',
       type: 'nessie:connector-authorization',
