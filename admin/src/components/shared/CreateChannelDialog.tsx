@@ -24,6 +24,7 @@ export const CreateChannelDialog = (
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const createChannel = useCreateChannel()
+  const projectTeamIsLoading = projectId !== undefined && scope !== 'standalone' && !teamId
 
   const [name, setName] = useState('')
   const [visibility, setVisibility] = useState<
@@ -43,7 +44,7 @@ export const CreateChannelDialog = (
   ) => {
     event.preventDefault()
     const label = toChannelSlug(name)
-    if (!label) return
+    if (!label || projectTeamIsLoading) return
 
     try {
       const created = await createChannel.mutateAsync({
@@ -137,6 +138,12 @@ export const CreateChannelDialog = (
           </select>
         </div>
 
+        {projectTeamIsLoading ? (
+          <p className="text-xs text-[color:var(--tx3)]" role="status">
+            Loading this project&apos;s team…
+          </p>
+        ) : null}
+
         <div className="flex justify-end gap-2 pt-1">
           <button
             className="admin-button admin-button-secondary"
@@ -147,7 +154,7 @@ export const CreateChannelDialog = (
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={!toChannelSlug(name)}
+            disabled={!toChannelSlug(name) || projectTeamIsLoading}
             type="submit"
           >
             Create channel
