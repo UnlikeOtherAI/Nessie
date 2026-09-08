@@ -145,6 +145,19 @@ describe('chat tool doorway', () => {
     )
   })
 
+  it('the doorways are icon-only, so the screen keeps its own title', () => {
+    // Two labelled pills at 96px each leave a 390px phone header no room for
+    // the conversation's name — measured in the browser, then pinned here.
+    for (const action of chatToolHeaderActions({
+      agent: agent(),
+      onOpenTool: () => undefined,
+      single: true,
+    })) {
+      assert.equal(action.compact, true, `${action.id} is not compact`)
+      assert.ok(action.label.length > 0, `${action.id} lost its accessible name`)
+    }
+  })
+
   it('keeps the doorway in the web header rather than inside More', () => {
     // The narrowest realistic action lane on a phone, and every other
     // conversation control fighting it for room: `partitionPageHeaderActions`
@@ -158,7 +171,10 @@ describe('chat tool doorway', () => {
       id: action.id,
       primary: action.primary,
       priority: action.priority,
-      width: 96,
+      // The measured width of a compact action (`w-11`), which is what these
+      // are: two labelled pills squeezed the conversation's own title to zero
+      // width on a 390px phone.
+      width: 44,
     }))
     const crowded = [
       { id: 'favorite', priority: 90, width: 40 },

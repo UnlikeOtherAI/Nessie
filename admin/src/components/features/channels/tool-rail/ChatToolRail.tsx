@@ -85,7 +85,11 @@ export const ChatToolRail = ({
   <aside
     aria-label="Agent tools"
     className={[
-      'flex h-full w-[65px] flex-shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto',
+      // 84px rather than the shell rail's 65: this rail clips its overflow, and
+      // "Conversations" is 69px at the rail's 10px label size, so at 65 the
+      // widest label was cut off mid-word — a control whose name is half a word
+      // names no decision at all.
+      'flex h-full w-[84px] flex-shrink-0 flex-col items-center overflow-x-hidden overflow-y-auto',
       'border-l border-[color:var(--sep)] bg-[color:var(--rail)] px-2 py-2',
     ].join(' ')}
   >

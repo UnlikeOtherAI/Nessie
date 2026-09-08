@@ -134,6 +134,12 @@ export const chatToolHeaderActions = ({
         // both carry it; the web header draws each tool's own glyph, and
         // `label` stays the accessible name everywhere.
         barIcon: 'panel-right' as const,
+        // Icon-only, like every other control in this header. Two labelled
+        // pills squeezed the conversation's own title to zero width on a
+        // 390px phone — measured, not guessed — and a header that names the
+        // tools but not the screen is the wrong trade. The label stays the
+        // accessible name and the tooltip.
+        compact: true,
         icon: tool.icon,
         id: `chat-tool-${tool.id}`,
         label: tool.label,

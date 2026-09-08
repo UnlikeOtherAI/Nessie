@@ -153,7 +153,7 @@ export const AgentConversationList = ({
                     <span className="text-[11px] text-[color:var(--tx3)]">{age}</span>
                   ) : null}
                   {elsewhere ? (
-                    <Pill radius="chip" size="sm" tone="muted">
+                    <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
                       {conversationRoomLabel(conversation.channel)}
                     </Pill>
                   ) : null}
