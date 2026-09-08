@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Pill } from '../../primitives/Pill'
 import { useGmailDraft, type GmailDraftView } from '../../../facades/gmail/hooks'
+import { ChatCardShell } from './ChatCardShell'
 
 /**
  * The email draft card.
@@ -52,10 +53,7 @@ export const GmailDraftCardView = ({
 }) => {
   const [expanded, setExpanded] = useState(false)
   return (
-    <div
-      className="mt-2 max-w-2xl rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3"
-      data-testid="gmail-draft-card"
-    >
+    <ChatCardShell className="gmail-draft-card" testId="gmail-draft-card">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase text-[color:var(--tx3)]">
           Email draft
@@ -81,17 +79,13 @@ export const GmailDraftCardView = ({
         <AddressRow label="Bcc" values={data.bcc} />
       </div>
 
-      <div className="mt-2 text-sm font-semibold text-[color:var(--tx)]">
+      <div className="gmail-draft-subject">
         {data.subject || '(no subject)'}
       </div>
       {/* Clamped, never an inner scroll region: a scrollbar inside the feed's
           own scroll is a trap, and a live decision is allowed to be tall. */}
       <div
-        className={[
-          'mt-1 whitespace-pre-wrap rounded border border-[color:var(--sep)]',
-          'bg-[color:var(--overlay-weak)] p-2 text-xs leading-5 text-[color:var(--tx2)]',
-          expanded ? '' : 'line-clamp-[12]',
-        ].join(' ')}
+        className={`gmail-draft-body${expanded ? '' : ' line-clamp-[12]'}`}
       >
         {data.body}
       </div>
@@ -106,7 +100,7 @@ export const GmailDraftCardView = ({
       ) : null}
 
       {data.attachments.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="gmail-draft-attachments">
           {/* Keyed by index: two attachments can share a filename. */}
           {data.attachments.map((attachment, index) => (
             <span
@@ -122,7 +116,7 @@ export const GmailDraftCardView = ({
         </div>
       ) : null}
       {actions ? <div className="mt-3 flex flex-wrap gap-2">{actions}</div> : null}
-    </div>
+    </ChatCardShell>
   )
 }
 
@@ -145,7 +139,7 @@ export const GmailDraftCard = ({
     const status = (draft.error as { status?: number } | null)?.status
     if (status === 404 || status === undefined) return null
     return (
-      <div className="mt-2 max-w-2xl rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 text-xs text-[color:var(--tx3)]">
+      <ChatCardShell className="gmail-draft-card text-xs text-[color:var(--tx3)]">
         Couldn’t load this draft.{' '}
         <button
           className="font-semibold text-[color:var(--accent)]"
@@ -154,14 +148,14 @@ export const GmailDraftCard = ({
         >
           Retry
         </button>
-      </div>
+      </ChatCardShell>
     )
   }
   if (!draft.data) {
     return (
-      <div className="mt-2 max-w-2xl rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 text-xs text-[color:var(--tx3)]">
+      <ChatCardShell className="gmail-draft-card text-xs text-[color:var(--tx3)]">
         Loading draft…
-      </div>
+      </ChatCardShell>
     )
   }
 

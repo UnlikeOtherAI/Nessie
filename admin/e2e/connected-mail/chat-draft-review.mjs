@@ -223,6 +223,18 @@ const agentCardMailDraft = async ({ adminUrl, assert, browser, expectNoErrors, f
     assert(await card.getByRole('textbox', { name: 'Bcc', exact: true }).inputValue() === 'audit@acme.example', 'mail card did not show Bcc')
     assert(await card.getByRole('textbox', { name: /^Subject/ }).inputValue() === 'Launch plan', 'mail card did not show the selected subject')
     assert(await card.getByRole('textbox', { name: /^Message/ }).inputValue() === 'Please review the attached launch plan.', 'mail card did not show the selected body')
+    const compactCard = await card.evaluate((node) => {
+      const control = node.querySelector('input')
+      return {
+        controlHeight: control?.getBoundingClientRect().height ?? 0,
+        fontSize: getComputedStyle(node).fontSize,
+        surface: getComputedStyle(node).backgroundColor,
+      }
+    })
+    assert(compactCard.fontSize === '12px', `mail card did not use compact type (${compactCard.fontSize})`)
+    assert(compactCard.controlHeight <= 32, `mail card controls are no longer dense (${compactCard.controlHeight}px)`)
+    assert(compactCard.surface !== 'rgba(0, 0, 0, 0)', 'mail card has no distinct theme surface')
+    await shot(page, 'agent-card-mail-draft-open')
 
     // Edit is a same-app route with an opaque card id. No mail content enters
     // the URL; the destination repeats the viewer-scoped card lookup before
