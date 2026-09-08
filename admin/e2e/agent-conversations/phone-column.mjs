@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 
+import { RENAMED_TITLE } from './fixture.mjs'
 import { shot } from './viewports.mjs'
 
 /**
@@ -36,12 +37,12 @@ export const exercisePhoneColumn = async ({ fixture, goto, page, screenshots }) 
   assert.ok(await rows.count() >= 4, 'the full-screen column lists every conversation')
   await shot(page, screenshots, 'phone', '2-column')
 
-  const target = rows.filter({ hasText: 'Alpha thread' }).first()
+  const target = rows.filter({ hasText: RENAMED_TITLE }).first()
   await target.click()
   await page.waitForURL(/\/channels\/[^/]+\/threads\/[0-9a-f-]{36}$/u)
   await page.waitForFunction(() => document.body.innerText.includes('Alpha question one'),
     undefined, { timeout: 60_000 })
-  await expectHeading(page, 'Alpha thread',
+  await expectHeading(page, RENAMED_TITLE,
     'the conversation names itself in the header, not the room it lives in')
   await shot(page, screenshots, 'phone', '3-conversation')
 

@@ -1,8 +1,11 @@
-// One organisation, two people, one ordinary agent and the Personal Assistant.
+// One organisation, two people, two ordinary agents and the Personal Assistant.
 //
 // The shape the cases need: A can see everything, B can see only the public
-// room, and agent X is bound to both — so "the list shows only what the viewer
-// is privy to" has something to withhold. Every row is written through the
+// room, and agent X is bound to all three rooms — so "the list shows only what
+// the viewer is privy to" has something to withhold. Agent Y is bound to the
+// public room alone, which is what gives that room the two agents the rail's
+// strip exists for, and what lets "a conversation's audience is its room, not
+// its starter" be asserted from B's side. Every row is written through the
 // same functions the product writes them with (`seedScope`,
 // `ensurePersonalAssistantBootstrap`); nothing here re-implements a rule the
 // suite then proves.
@@ -13,6 +16,12 @@ import { randomUUID } from 'node:crypto'
 export const ALPHA_QUESTION = 'Alpha question one'
 /** Sent in the second conversation; must never appear in the first. */
 export const BETA_QUESTION = 'Beta question two'
+/**
+ * What the first conversation is renamed to, through the header's own door.
+ * Deliberately unlike anything said in it, so an assertion on the title cannot
+ * pass on the strength of a message.
+ */
+export const RENAMED_TITLE = 'Alpha renamed'
 
 export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBootstrap) => {
   const prisma = pipeline.prisma
@@ -31,14 +40,11 @@ export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBo
   // A's own room with the agent — a two-party `dm` whose bindings are exactly
   // this agent, which is the first room `startAgentConversation` resolves to.
   //
-  // The browser cases live here rather than in the standard room below because
-  // the standard room has no doorway at all: `ChannelsPage.tsx:146` makes
-  // `isConversationSurface` true only for a DM or the assistant, and
-  // `resolveConversationAgent` (`channel-tabs.ts:67`) returns null without it,
-  // so the rail, the header doorway and the "New conversation" button are all
-  // absent from an ordinary channel an agent works in. Both files predate this
-  // branch, and `privateRoom` below keeps the gap on screen rather than hiding
-  // it (`run.mjs` → the `standard-room` case).
+  // Most cases live here because a DM is the narrowest surface: exactly one
+  // agent, so the rail names it without a strip and the panel's accessible name
+  // is a fixed string. The ordinary rooms below carry the two cases a DM cannot
+  // state — a room the agent merely works in (`room-rail`) and a room with two
+  // of them (`room-strip`).
   const dmRoom = await prisma.channel.create({
     data: {
       dmKey: `agent:${scope.organizationId}:${owner.id}:${scope.agentId}`,
@@ -64,8 +70,10 @@ export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBo
       visibility: 'private',
     },
   })
-  // Public: both people are members. Only the withheld-card proof uses it — one
-  // doorway, two readers, two different renderings.
+  // Public: both people are members, and both agents are bound. Three cases
+  // stand on it — the withheld card (one doorway, two readers, two different
+  // renderings), the rail's agent strip, and B's read of a conversation A
+  // started, which is the room's audience rather than the starter's.
   const publicRoom = await prisma.channel.create({
     data: {
       label: 'Team desk',
@@ -148,9 +156,36 @@ export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBo
       data: [
         { agentId: scope.agentId, channelId: dmRoom.id },
         { agentId: scope.agentId, channelId: privateRoom.id },
+        { agentId: scope.agentId, channelId: publicRoom.id },
       ],
     }),
   ])
+
+  // Y: a second ordinary agent, in the public room alone. Inserted directly for
+  // the same reason X is — the agent route generates an avatar, which is a
+  // model call this suite has no business scripting — and *after* the
+  // transaction above, because `agents_organization_id_owner_user_id_fkey`
+  // requires the owner's organisation membership to exist first. Its creation
+  // being later than X's is what makes X the first agent `GET /api/agents`
+  // returns (`orderBy: createdAt asc`), so the strip opens on X and selecting Y
+  // is a real change of subject.
+  const secondAgentName = `Copy Reviewer ${suffix}`
+  const secondAgent = await prisma.agent.create({
+    data: {
+      agentKind: 'shared',
+      bindings: { create: [{ channelId: publicRoom.id }] },
+      model: 'mock-model',
+      name: secondAgentName,
+      organizationId: scope.organizationId,
+      ownerUserId: owner.id,
+      projectId: scope.projectId,
+      provider: 'openai',
+      systemManaged: false,
+      systemPrompt: 'You are a deterministic smoke-test assistant. Keep answers short.',
+      teamId: scope.teamId,
+      visibility: 'team',
+    },
+  })
 
   // The Personal Assistant, through the very function every sign-in calls. Its
   // DM, its thread and its default tool grants come with it — including
@@ -173,6 +208,7 @@ export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBo
     publicRoom,
     publicThread,
     scope,
+    secondAgent: { id: secondAgent.id, name: secondAgentName },
   }
 }
 

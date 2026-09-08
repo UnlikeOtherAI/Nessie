@@ -26,6 +26,7 @@ import { saveFailureEvidence } from './failure-evidence.mjs'
 import {
   ALPHA_QUESTION,
   BETA_QUESTION,
+  RENAMED_TITLE,
   seedFixture,
   tokenFor,
   waitForRun,
@@ -41,7 +42,7 @@ const SCREENSHOTS = resolve(
 )
 
 /** Long enough to photograph a run in flight, short enough to finish inside the budget. */
-const ECHO_LATENCY_MS = 1_500
+const ECHO_LATENCY_MS = 2_500
 const CONVERSATION_TITLE = 'Pricing page copy'
 
 const api = async (path, token, options = {}) => {
@@ -155,6 +156,160 @@ const openConversationsColumn = async (page, viewport, agentName) => {
   await page.locator('[data-testid="start-agent-conversation"]').waitFor({ timeout: 30_000 })
 }
 
+/** The conversations column, whichever width drew it. */
+const conversationsPanel = (page) => page.locator('[aria-label^="Conversations with "]')
+
+/**
+ * The heading of the screen actually on top.
+ *
+ * `h1:visible` is enough only because the header's measuring copy is
+ * `visibility: hidden`; the *last* one is required because a phone retains the
+ * layer being left underneath the layer arriving. The title itself lands with
+ * `GET /api/threads/:id/conversation`, not with the navigation, so this waits
+ * for it rather than reading once and calling it a verdict.
+ */
+const expectTopHeading = async (page, expected, message) => {
+  await page.waitForFunction((needle) => {
+    const nodes = [...document.querySelectorAll('h1')]
+      .filter((node) => node.getClientRects().length > 0)
+    return nodes.length > 0 && nodes[nodes.length - 1].textContent?.trim() === needle
+  }, expected, { timeout: 30_000 }).catch(() => {})
+  assert.equal(
+    (await page.locator('h1:visible').last().innerText()).trim(), expected, message,
+  )
+}
+
+/**
+ * Send the first thing said in a conversation and read the send's own answer.
+ *
+ * The claim is the 201 body, not the screen: `POST /api/threads/:id/messages`
+ * reports `conversationTitle` on exactly the send that named a still-unnamed
+ * conversation, and a client reading it must not have to guess. The listener is
+ * armed before the composer is touched, because the request is in flight before
+ * the sent text has finished rendering.
+ */
+const sendNamingMessage = async (page, threadId, text) => {
+  const created = page.waitForResponse(
+    (response) => response.request().method() === 'POST'
+      && response.url().endsWith(`/api/threads/${threadId}/messages`),
+    { timeout: 90_000 },
+  )
+  await sendMessage(page, text)
+  const response = await created
+  assert.equal(response.status(), 201, `the send was accepted (${text})`)
+  const payload = await response.json()
+  return payload?.data?.conversationTitle ?? null
+}
+
+/**
+ * The agents the column is offering, through whichever control this width drew.
+ *
+ * `TabBar` lays the names out as a `radiogroup` when they fit and collapses to
+ * one trigger plus a `listbox` when they do not — a real difference on a 390 px
+ * phone, and one the case must read rather than assume either way.
+ *
+ * Read by accessible name, never by `innerText`: each item draws the agent's
+ * avatar beside the name, and the avatar's fallback glyph is inside the text —
+ * `aria-hidden`, so it is correctly absent from the name a screen reader is
+ * given, and correctly present in the string the DOM holds.
+ *
+ * At every width this suite uses the panel sits at its 320 px minimum, which
+ * is narrower than two agent names, so what actually renders is the collapsed
+ * form. The strip branch is kept and exercised the moment a reader has widened
+ * the panel; forcing that here (a seeded
+ * `nessie.agentConversationsPanelWidth`) was tried and reverted — the widened
+ * panel squeezes the shell enough for its sidebar resize handle to sit over
+ * the strip and swallow the click, which is a defect of the synthetic width
+ * rather than of the strip.
+ */
+const expectStripAgents = async (page, agents, viewport) => {
+  const panel = conversationsPanel(page)
+  const trigger = panel.locator('button.tabbar-trigger[aria-label="Agent"]')
+  const collapsed = await trigger.count() > 0
+  if (collapsed) await trigger.first().click()
+  // The collapsed menu is a popover at the document root, so its options are
+  // not inside the panel the strip lives in.
+  const scope = collapsed ? page : panel
+  const role = collapsed ? 'option' : 'radio'
+  assert.equal(await scope.getByRole(role).count(), agents.length,
+    `the strip offers exactly the room's agents (${viewport})`)
+  for (const agent of agents) {
+    assert.equal(
+      await scope.getByRole(role, { exact: true, name: agent.name }).count(), 1,
+      `${agent.name} is on offer under its own name alone (${viewport})`,
+    )
+    assert.equal(
+      await scope.locator(`[data-testid="chat-tool-agent-${agent.id}"]`).count(), 1,
+      `and is addressable by its id (${viewport})`,
+    )
+  }
+  if (collapsed) await page.keyboard.press('Escape')
+  return collapsed
+}
+
+/** Point the column at one of the room's agents, through either control. */
+const selectStripAgent = async (page, agent) => {
+  const panel = conversationsPanel(page)
+  const trigger = panel.locator('button.tabbar-trigger[aria-label="Agent"]')
+  const collapsed = await trigger.count() > 0
+  if (collapsed) {
+    await trigger.first().click()
+    await page.locator(`[role="option"][data-testid="chat-tool-agent-${agent.id}"]`).click()
+  } else {
+    // Driven from the keyboard rather than clicked. `TabBar` roves a
+    // radiogroup with the arrow keys, so this is a real path — and it is the
+    // only one that works at the width where the strip lays its names out:
+    // there the panel is a full-screen layer and the shell's sidebar resize
+    // handle is painted over it, swallowing the click (pinned in `room-strip`).
+    await panel.getByRole('radio', { checked: true }).first().focus()
+    for (let step = 0; step <= 8; step += 1) {
+      const landed = await panel
+        .getByRole('radio', { checked: true, exact: true, name: agent.name }).count()
+      if (landed === 1) break
+      assert.notEqual(step, 8, `the strip would not rove to ${agent.name}`)
+      await page.keyboard.press('ArrowRight')
+    }
+  }
+  await page.locator(`[aria-label="Conversations with ${agent.name}"]`)
+    .waitFor({ timeout: 30_000 })
+  // The control says which one it is, not only the panel it narrows: the
+  // strip marks its `radiogroup` with `aria-checked`, and the collapsed form
+  // names the selection on its own face.
+  if (collapsed) {
+    assert.ok(
+      (await trigger.first().innerText()).includes(agent.name),
+      `the collapsed strip names ${agent.name} on its trigger`,
+    )
+  } else {
+    assert.equal(
+      await panel.getByRole('radio', { checked: true, exact: true, name: agent.name }).count(),
+      1,
+      `the strip marks ${agent.name} as the one chosen`,
+    )
+  }
+  return collapsed
+}
+
+/**
+ * Open the rename dialog from the header action a person can actually press.
+ *
+ * The action is deliberately not `primary` (`rename-conversation.ts`), so a
+ * narrow header sweeps it into "More" rather than dropping it — which is the
+ * behaviour worth pinning: both routes reach the same dialog.
+ */
+const openRenameDialog = async (page) => {
+  const direct = page.locator('[data-page-header-action="rename-conversation"]:visible')
+  if (await direct.count() > 0) {
+    await direct.last().click()
+  } else {
+    await page.getByRole('button', { name: 'More page actions' }).last().click()
+    await page.getByRole('menuitem', { name: 'Rename' }).click()
+  }
+  const dialog = page.getByRole('dialog').filter({ hasText: 'Rename conversation' }).last()
+  await dialog.waitFor({ timeout: 30_000 })
+  return dialog
+}
+
 const main = async () => {
   process.env.DATABASE_URL ??= 'postgresql://nessie:nessie@127.0.0.1:55453/nessie'
   process.env.NESSIE_DB_URL ??= process.env.DATABASE_URL
@@ -211,8 +366,8 @@ const main = async () => {
     outsiderContext = await openViewportContext(browser, { name: 'desktop', token: outsiderToken })
     outsiderPage = (await outsiderContext.newPage()).page
     const desktop = gallery.pages.desktop
-    // Agent X's own room with A. The doorway exists only here — see the
-    // `standard-room` case at the end for the room where it does not.
+    // Agent X's own room with A: one agent, so the rail names it without a
+    // strip. The ordinary rooms get their own cases at the end.
     const room = `/channels/${fixture.dmRoom.id}`
 
     // ---- rail -------------------------------------------------------------
@@ -243,15 +398,17 @@ const main = async () => {
           `the rail offers only the tools this agent has (${viewport})`)
       }
       await openConversationsColumn(page, viewport, fixture.agent.name)
-      // Two General rows and no conversations yet: the list rule's second arm
-      // is what puts a room the agent merely works in on the list, so the
-      // standard room appears here even though it offers no doorway of its own.
-      const titles = await settledRows(page, 2,
-        `both rooms the agent is bound to are listed (${viewport})`)
+      // Three General rows and no conversations yet: the list rule's second arm
+      // is what puts a room the agent merely works in on the list, so both
+      // ordinary rooms appear here beside this DM.
+      const titles = await settledRows(page, 3,
+        `every room the agent is bound to is listed (${viewport})`)
       assert.ok(titles.some((title) => title.includes(fixture.agent.name)),
         'this room’s own General row is named by the room')
       assert.ok(titles.some((title) => title.includes('Pricing room')),
-        'and so is the standard room the agent is also bound to')
+        'and so is the private room the agent is also bound to')
+      assert.ok(titles.some((title) => title.includes('Team desk')),
+        'and the public room it shares with a second agent')
     })
 
     // ---- start-two --------------------------------------------------------
@@ -285,19 +442,43 @@ const main = async () => {
         `Message ${fixture.agent.name}`,
         'the composer names the one agent this conversation reaches',
       )
-      await sendMessage(desktop, question)
+      // Nothing renames these: the first thing said in an empty conversation
+      // is its name (`titleConversationFromFirstMessage`), which is what makes
+      // two "New conversation" rows tellable apart without anybody typing a
+      // title. Asserted three times over, because three different readers
+      // depend on it — the send's own response, the header, and the list.
+      const named = await sendNamingMessage(desktop, threadId, question)
+      assert.equal(named, question,
+        'the send that named the conversation reports the name it chose')
+      // GAP, pinned rather than glossed — once, on the first conversation:
+      // the header goes on saying "New conversation" to the very person who
+      // just named it. Not repeated for the second, because the wait it needs
+      // would close the window the live-dot case wants a run to still be in.
+      //
+      // Why: `ChannelsPage` takes the title from `useConversation(threadId)`
+      // (`admin/src/facades/threads/hooks.ts`) and nothing on the send path
+      // touches that key — `threadKeys.conversation` is written only by
+      // `useRenameThread`, and the 201's `conversationTitle` is not read
+      // anywhere in the admin. The name IS real (asserted on reload below and
+      // in the list), so this is a cache-invalidation gap, not a server one.
+      if (started.length === 0) {
+        // A settle first, so "still the placeholder" means still.
+        await desktop.waitForTimeout(1_500)
+        assert.equal(
+          (await desktop.locator('h1:visible').last().innerText()).trim(),
+          'New conversation',
+          'GAP: the conversation header does not take the name its first message'
+          + ' just gave it — nothing invalidates threadKeys.conversation on send,'
+          + ' and the 201’s conversationTitle is read by nobody. If this now reads'
+          + ' the title, the gap is closed: assert `question` instead.',
+        )
+      }
       started.push(threadId)
     }
     const [alphaThreadId, betaThreadId] = started
 
-    // Renaming is the door that makes two "New conversation" rows tellable
-    // apart — and the same door the suite checks refuses a General thread.
-    await apiOk(`/api/threads/${alphaThreadId}`, ownerToken, {
-      body: JSON.stringify({ title: 'Alpha thread' }), method: 'PATCH',
-    })
-    await apiOk(`/api/threads/${betaThreadId}`, ownerToken, {
-      body: JSON.stringify({ title: 'Beta thread' }), method: 'PATCH',
-    })
+
+    // The same door, refusing the thread that may not be renamed.
     const generalRename = await api(`/api/threads/${fixture.privateThread.id}`, ownerToken, {
       body: JSON.stringify({ title: 'Not allowed' }), method: 'PATCH',
     })
@@ -328,6 +509,17 @@ const main = async () => {
     assert.equal(terminal.get(alphaRun.id), 'completed', 'the first conversation’s run completes')
     assert.equal(terminal.get(betaRun.id), 'completed', 'the second conversation’s run completes')
 
+    // The name is real, and a reader who arrives after it is shown it. This is
+    // the positive half of the GAP above: the server named the thread, the
+    // header simply never re-read it.
+    for (const [namedThreadId, question] of [
+      [alphaThreadId, ALPHA_QUESTION], [betaThreadId, BETA_QUESTION],
+    ]) {
+      await goto(desktop, `${room}/threads/${namedThreadId}`)
+      await expectTopHeading(desktop, question,
+        'a conversation opened after its first message is named by it')
+    }
+
     // Every message of the thread, replies included. `GET /api/threads/:id/messages`
     // returns the top-level feed and summarises a reply thread as a count, and
     // an answer to a conversation's opening message lands *under* it: a
@@ -354,10 +546,11 @@ const main = async () => {
       await page.waitForFunction((needle) => document.body.innerText.includes(needle),
         BETA_QUESTION, { timeout: 60_000 })
       await openConversationsColumn(page, viewport, fixture.agent.name)
-      const titles = await settledRows(page, 4,
-        `two conversations and two General rows (${viewport})`)
-      assert.ok(titles.some((title) => title.includes('Alpha thread')), 'the first is listed')
-      assert.ok(titles.some((title) => title.includes('Beta thread')), 'the second is listed')
+      const titles = await settledRows(page, 5,
+        `two conversations and three General rows (${viewport})`)
+      assert.ok(titles.some((title) => title.includes(ALPHA_QUESTION)),
+        `the first is listed under the name its first message gave it (${viewport})`)
+      assert.ok(titles.some((title) => title.includes(BETA_QUESTION)), 'and so is the second')
       if (viewport === 'phone') return
       // Only a layout that shows both at once can mark the one on screen. On a
       // phone the list *is* the screen, so its `aria-current` is the room's
@@ -365,8 +558,57 @@ const main = async () => {
       const open = await page.locator(
         '[data-testid="agent-conversation-row"][aria-current="true"]',
       ).innerText()
-      assert.ok(open.includes('Beta thread'), 'the conversation on screen is the marked row')
+      assert.ok(open.includes(BETA_QUESTION), 'the conversation on screen is the marked row')
     })
+
+    // ---- rename -----------------------------------------------------------
+    // The doorway, not the endpoint. `PATCH /api/threads/:id` has always taken
+    // a rename and `useRenameThread` has always been wired to it; until the
+    // header action existed there was nothing a person could press that reached
+    // either, which is exactly what Rule zero calls unfinished. So the case
+    // presses the control, at every width — on a phone that means through
+    // "More", because the action is deliberately not primary.
+    await gallery.capture('rename', async (page, viewport) => {
+      await goto(page, `${room}/threads/${alphaThreadId}`)
+      await expectTopHeading(page, ALPHA_QUESTION, `the header shows the current name (${viewport})`)
+      const dialog = await openRenameDialog(page)
+      const field = dialog.locator('input').first()
+      assert.equal(await field.inputValue(), ALPHA_QUESTION,
+        `the field arrives holding the name being changed (${viewport})`)
+      assert.equal(await field.getAttribute('maxlength'), '80',
+        'and holds the server’s own bound rather than letting a refusal be typed')
+      assert.equal(
+        await dialog.getByRole('button', { name: 'Save' }).isDisabled(), true,
+        'Save commits nothing until something has changed',
+      )
+    })
+    // Cancel closes the desktop copy; the rename itself is done once, there.
+    await desktop.getByRole('dialog').last().getByRole('button', { name: 'Cancel' }).click()
+    const renameDialog = await openRenameDialog(desktop)
+    const renameField = renameDialog.locator('input').first()
+    await renameField.press('ControlOrMeta+A')
+    await renameField.pressSequentially(RENAMED_TITLE)
+    const save = renameDialog.getByRole('button', { name: 'Save' })
+    assert.equal(await save.isDisabled(), false, 'a changed title enables Save')
+    await save.click()
+    await renameDialog.waitFor({ state: 'detached', timeout: 30_000 })
+    await expectTopHeading(desktop, RENAMED_TITLE, 'the header takes the new name')
+    await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
+    await desktop.waitForFunction((needle) => [...document.querySelectorAll(
+      '[data-testid="agent-conversation-row"]',
+    )].some((row) => row.textContent?.includes(needle)), RENAMED_TITLE, { timeout: 30_000 })
+    await desktop.screenshot({ path: resolve(SCREENSHOTS, 'rename', 'desktop-renamed.png') })
+    const renamed = await apiOk(`/api/threads/${alphaThreadId}/conversation`, ownerToken)
+    assert.equal(renamed.title, RENAMED_TITLE, 'and so does the record behind it')
+    // The rule is the server's, not the header's: a reader who cannot see the
+    // conversation cannot rename it either, however the request is made.
+    const outsiderRename = await api(`/api/threads/${alphaThreadId}`, outsiderToken, {
+      body: JSON.stringify({ title: 'Not yours' }), method: 'PATCH',
+    })
+    assert.ok([403, 404].includes(outsiderRename.status),
+      `a reader outside the room may not rename it: ${outsiderRename.status}`)
+    assert.equal(outsiderRename.body.includes(RENAMED_TITLE), false,
+      'and the refusal leaks no title')
 
     // ---- isolation --------------------------------------------------------
     // The honest proof is on the inference side: not "the feeds differ", which
@@ -421,20 +663,34 @@ const main = async () => {
     })
 
     // ---- visibility -------------------------------------------------------
-    const outsiderList = await api(`/api/agents/${fixture.agent.id}/conversations`, outsiderToken)
-    assert.equal(outsiderList.status, 404,
-      'an agent whose rooms this reader cannot see is not confirmed to exist')
-    assert.equal(outsiderList.payload?.error?.code, 'AGENT_NOT_FOUND',
+    // The same agent, two readers, two lists. B can see X at all only because
+    // X is bound to the public room, and what B gets is that room and nothing
+    // else: a conversation's audience is its own room's.
+    const outsiderList = await apiOk(
+      `/api/agents/${fixture.agent.id}/conversations`, outsiderToken,
+    )
+    assert.equal(outsiderList.length, 1,
+      `B sees only the room B is in: ${JSON.stringify(outsiderList.map((row) => row.title))}`)
+    assert.equal(outsiderList[0]?.isGeneral, true, 'and sees it as the room’s own thread')
+    assert.equal(outsiderList[0]?.channel.id, fixture.publicRoom.id, 'the public room')
+    // An agent B may not see at all is not confirmed to exist. A's Personal
+    // Assistant is that agent: system-managed, and bound only to A's own DM.
+    const outsiderAssistant = await api(
+      `/api/agents/${fixture.assistant.agentId}/conversations`, outsiderToken,
+    )
+    assert.equal(outsiderAssistant.status, 404,
+      'another person’s assistant is not confirmed to exist')
+    assert.equal(outsiderAssistant.payload?.error?.code, 'AGENT_NOT_FOUND',
       'the refusal is the ordinary not-found, not a forbidden')
     for (const threadId of [alphaThreadId, betaThreadId]) {
       const read = await api(`/api/threads/${threadId}/conversation`, outsiderToken)
       assert.equal(read.status, 404, 'a conversation in a private room reads as absent')
       assert.equal(read.payload?.error?.code, 'THREAD_NOT_FOUND', 'in the same words as every thread read')
-      assert.equal(read.body.includes('Alpha thread') || read.body.includes('Beta thread'), false,
+      assert.equal(read.body.includes(RENAMED_TITLE) || read.body.includes(BETA_QUESTION), false,
         'the refusal leaks no title')
     }
-    // The preview path works when nothing carries a basis — which is what
-    // localises the withheld preview on the card case to the delegated path.
+    // A person-started conversation previews its newest message, which is the
+    // control for the delegated path the card case reads.
     const started2 = await apiOk(`/api/threads/${alphaThreadId}/conversation`, ownerToken)
     assert.equal(started2.lastMessagePreview, `Echo: ${ALPHA_QUESTION}`,
       'a person-started conversation previews its newest message')
@@ -444,11 +700,11 @@ const main = async () => {
     const ownerConversations = await apiOk(
       `/api/agents/${fixture.agent.id}/conversations`, ownerToken,
     )
-    assert.equal(ownerConversations.length, 4,
-      'the member sees both conversations and both rooms the agent works in')
+    assert.equal(ownerConversations.length, 5,
+      'the member sees both conversations and all three rooms the agent works in')
     assert.equal(
-      ownerConversations.filter((record) => record.isGeneral).length, 2,
-      'the two General rows arrive through the binding arm of the list rule',
+      ownerConversations.filter((record) => record.isGeneral).length, 3,
+      'the three General rows arrive through the binding arm of the list rule',
     )
     for (const threadId of [alphaThreadId, betaThreadId]) {
       const record = await apiOk(`/api/threads/${threadId}/conversation`, ownerToken)
@@ -462,14 +718,14 @@ const main = async () => {
       const body = await page.locator('body').innerText()
       // The owner's own three widths carry the positive half of the claim; the
       // negative half is the outsider's page, photographed once below.
-      assert.ok(body.includes('Alpha thread'), `the member can read it (${viewport})`)
+      assert.ok(body.includes(RENAMED_TITLE), `the member can read it (${viewport})`)
     })
     await goto(outsiderPage, `${room}/threads/${alphaThreadId}`)
     await outsiderPage.waitForTimeout(2_500)
     const outsiderBody = await outsiderPage.locator('body').innerText()
     assert.equal(outsiderBody.includes(ALPHA_QUESTION), false,
       'a non-member’s browser is shown none of the conversation')
-    assert.equal(outsiderBody.includes('Alpha thread'), false,
+    assert.equal(outsiderBody.includes(RENAMED_TITLE), false,
       'a non-member’s browser is not even shown its title')
     await outsiderPage.screenshot({ path: resolve(SCREENSHOTS, 'visibility', 'outsider.png') })
 
@@ -503,49 +759,178 @@ const main = async () => {
     await gallery.capture('agent-page', async (page, viewport) => {
       await goto(page, `/agents/${fixture.agent.id}?agentTab=conversations`)
       await page.locator('[data-testid="agent-conversation-row"]').first().waitFor({ timeout: 60_000 })
-      const titles = await settledRows(page, 5,
+      const titles = await settledRows(page, 6,
         `the agent's page lists every conversation the reader may see (${viewport})`)
-      assert.ok(titles.some((title) => title.includes('Alpha thread')),
+      assert.ok(titles.some((title) => title.includes(RENAMED_TITLE)),
         `the agent's own page lists the same conversations (${viewport})`)
-      assert.ok(titles.some((title) => title.includes('Beta thread')), 'both of them')
-      assert.ok(titles.some((title) => title.includes(card.title)),
-        'including the one the assistant started')
+      assert.ok(titles.some((title) => title.includes(BETA_QUESTION)), 'both of them')
+      const assistantStarted = titles.find((title) => title.includes(card.title))
+      assert.ok(assistantStarted, 'including the one the assistant started')
+      // The row and the card agree, because they read the same record: the
+      // preview is the newest message *this viewer* may read, and the person
+      // who asked for the work may read the answer to it.
+      assert.ok(assistantStarted.includes(card.preview),
+        `the row previews the target's reply (${viewport}): ${JSON.stringify(assistantStarted)}`)
     })
 
-    // ---- standard-room ----------------------------------------------------
-    // A room the agent works in, and no way into its conversations from it.
+    // ---- room-rail --------------------------------------------------------
+    // A room the agent merely works in, and its own way in.
     //
-    // This case pins a GAP, not a wanted behaviour. `ChannelsPage.tsx:146` sets
-    // `isConversationSurface` from `activeChannel.type === 'dm' ||
-    // isPersonalAssistantConversation`, and `resolveConversationAgent`
-    // (`admin/src/components/features/channels/channel-tabs.ts:67`) returns
-    // null without it — so an ordinary channel with exactly one bound agent has
-    // no rail, no header doorway, no "New conversation" button, and its
-    // `/tools/conversations` URL renders nothing. Both files predate this
-    // branch. Whoever widens `isConversationSurface` will land here: the room
-    // IS listed by the API (asserted above), so the only thing missing is the
-    // door, and this assertion should be inverted rather than deleted.
-    await gallery.capture('standard-room', async (page, viewport) => {
-      await goto(page, `/channels/${fixture.privateRoom.id}/tools/conversations`)
+    // This case used to pin the opposite: an ordinary channel had no rail, no
+    // header doorway and no "New conversation", because `resolveChatToolAgents`
+    // did not exist and the rail insisted on the single subject only a DM has.
+    // The rail's agents are now a set, so the room the API has always listed
+    // (asserted in `rail`) is reachable from inside itself.
+    await gallery.capture('room-rail', async (page, viewport) => {
+      await goto(page, `/channels/${fixture.privateRoom.id}`)
       await composer(page).waitFor({ timeout: 60_000 })
-      // Long enough for the agent read the doorway depends on to have landed:
-      // "absent" has to mean absent, not "not yet".
-      await page.waitForTimeout(3_000)
+      if (viewport !== 'phone') {
+        // The rail here is derived from the room's *bindings*, so it lands with
+        // `GET /api/agents` rather than with the channel: a rendered composer
+        // does not mean the rail has been decided. Reading it without this wait
+        // passed on the dev server and failed against the built bundle.
+        const labels = page.locator('aside[aria-label="Agent tools"] .admin-rail-btn-label')
+        await labels.first().waitFor({ timeout: 30_000 })
+        assert.deepEqual(await labels.allInnerTexts(), ['Conversations'],
+          `an ordinary room offers the tools its one bound agent has (${viewport})`)
+      }
+      // Presses this width's own doorway and waits for the panel, the list and
+      // the start button — on a phone that press navigates, so the assertion
+      // that `/channels/:id/tools/conversations` renders the list is the URL
+      // wait inside it.
+      await openConversationsColumn(page, viewport, fixture.agent.name)
       assert.equal(
-        await page.locator('[data-testid="start-agent-conversation"]').count(), 0,
-        'GAP: a standard channel the agent is bound to still offers no conversations'
-        + ` doorway (${viewport}) — ChannelsPage.tsx:146 / channel-tabs.ts:67.`
-        + ' If this now renders, the gap is closed: invert this assertion.',
+        await conversationsPanel(page).getByRole('radiogroup').count(), 0,
+        'a room with one bound agent needs no strip to say whose list this is',
       )
-      assert.equal(
-        await page.locator('aside[aria-label="Agent tools"]').count(), 0,
-        'GAP: and no rail either, at any width',
-      )
+      const titles = await settledRows(page, 6,
+        `the room's own doorway opens the agent's whole list (${viewport})`)
+      assert.ok(titles.some((title) => title.includes('Pricing room')),
+        'including this room’s own General row')
     })
+
+    // ---- room-strip -------------------------------------------------------
+    // Two agents in one room: the column is about one of them at a time, and
+    // the strip is how a person says which.
+    const publicRoom = `/channels/${fixture.publicRoom.id}`
+    await gallery.capture('room-strip', async (page, viewport) => {
+      await goto(page, publicRoom)
+      await composer(page).waitFor({ timeout: 60_000 })
+      // It opens on the first-bound agent, so the strip is a real change of
+      // subject rather than a confirmation of one.
+      await openConversationsColumn(page, viewport, fixture.agent.name)
+      await expectStripAgents(page, [fixture.agent, fixture.secondAgent], viewport)
+      // GAP, pinned rather than worked around: where this panel opens as a
+      // full-screen layer — the tablet band, `split` shell but layered panel —
+      // the shell's own sidebar resize handle is still painted over it. It is a
+      // full-height rule down the middle of the panel, and it takes the pointer
+      // events of everything under its line: here the strip's second agent and
+      // part of "New conversation". Reproduced by clicking a strip item whose
+      // centre falls on the line; the click times out with the separator named
+      // as the interceptor. This is why `selectStripAgent` roves the strip from
+      // the keyboard instead.
+      const handleOverPanel = await page.evaluate(() => {
+        const panel = document.querySelector('[aria-label^="Conversations with "]')
+        const handle = document.querySelector('[aria-label="Resize sidebar"]')
+        if (!panel || !handle) return null
+        const panelBox = panel.getBoundingClientRect()
+        const handleBox = handle.getBoundingClientRect()
+        return {
+          handle: { left: Math.round(handleBox.left), right: Math.round(handleBox.right) },
+          over: handleBox.left < panelBox.right && handleBox.right > panelBox.left
+            && handleBox.top < panelBox.bottom && handleBox.bottom > panelBox.top,
+          panel: { left: Math.round(panelBox.left), right: Math.round(panelBox.right) },
+        }
+      })
+      if (viewport === 'tablet') {
+        assert.equal(handleOverPanel?.over, true,
+          'GAP: the shell’s sidebar resize handle is drawn over the full-screen'
+          + ' conversations panel and swallows every click along its line'
+          + ` (${JSON.stringify(handleOverPanel)}). If this is now false the gap`
+          + ' is closed: assert false, and click the strip rather than roving it.')
+      }
+      if (viewport === 'desktop') {
+        assert.equal(handleOverPanel?.over ?? false, false,
+          'beside a wide conversation the handle stands to the panel’s left')
+      }
+      await selectStripAgent(page, fixture.secondAgent)
+      // The panel's accessible name follows the selection, which is the whole
+      // claim: everything below the strip is about the agent it names.
+      assert.equal(
+        await page.locator(
+          `[aria-label="Conversations with ${fixture.agent.name}"]`,
+        ).count(), 0,
+        `the column stops being about the other agent (${viewport})`,
+      )
+      await page.locator('[data-testid="start-agent-conversation"]').waitFor({ timeout: 30_000 })
+      // The strip's own mark is a pill that *slides*, so a shot taken the
+      // instant it is clicked catches it between the two names. The DOM is
+      // already correct by then (asserted above); this is for the photograph.
+      await page.waitForTimeout(400)
+    })
+
+    // Starting one goes to the *selected* agent, not to the room's first.
+    const beforeStart = desktop.url()
+    await desktop.locator('[data-testid="start-agent-conversation"]').click()
+    await desktop.waitForURL((url) => url.href !== beforeStart
+      && new RegExp(`${fixture.publicRoom.id}/threads/[0-9a-f-]{36}$`, 'u').test(url.pathname))
+    const stripThreadId = desktop.url().split('/threads/')[1]
+    const stripThread = await pipeline.prisma.thread.findUniqueOrThrow({
+      where: { id: stripThreadId }, select: { agentId: true, channelId: true },
+    })
+    assert.equal(stripThread.agentId, fixture.secondAgent.id,
+      'the new conversation is with the agent the strip named, not the room’s first')
+    assert.equal(stripThread.channelId, fixture.publicRoom.id, 'and lives in the room it started from')
+
+    // The choice survives a reload: it is stored per room
+    // (`nessie.chatToolAgent.<channelId>`), and the gallery clears only the
+    // open-tool key, so reopening the column here reads the stored selection.
+    await goto(desktop, publicRoom)
+    await composer(desktop).waitFor({ timeout: 60_000 })
+    await openConversationsColumn(desktop, 'desktop', fixture.secondAgent.name)
+
+    // A message in a conversation engages that thread's agent structurally —
+    // no mention, no judgement — even in a room several agents share.
+    await goto(desktop, `${publicRoom}/threads/${stripThreadId}`)
+    const STRIP_QUESTION = 'Gamma question three'
+    const stripNamed = await sendNamingMessage(desktop, stripThreadId, STRIP_QUESTION)
+    assert.equal(stripNamed, STRIP_QUESTION, 'the first message names this one too')
+    const stripRun = await waitForRun(pipeline, {
+      agentId: fixture.secondAgent.id, threadId: stripThreadId,
+    })
+    runIds.push(stripRun.id)
+    const stripTerminal = await pipeline.waitForTerminalRuns([stripRun.id], 90_000)
+    assert.equal(stripTerminal.get(stripRun.id), 'completed',
+      'the second agent answered in a room it shares')
+    await desktop.waitForFunction((needle) => document.body.innerText.includes(needle),
+      `Echo: ${STRIP_QUESTION}`, { timeout: 60_000 })
+    const stripReplies = await pipeline.prisma.message.findMany({
+      select: { agentId: true, content: true, role: true },
+      where: { threadId: stripThreadId, role: 'assistant' },
+    })
+    assert.ok(stripReplies.length > 0, 'the conversation holds an answer')
+    for (const reply of stripReplies) {
+      assert.equal(reply.agentId, fixture.secondAgent.id,
+        'and only the conversation’s own agent wrote in it — the other bound agent stayed out')
+    }
+    await desktop.screenshot({ path: resolve(SCREENSHOTS, 'room-strip', 'desktop-answered.png') })
+
+    // Visibility is the room's, not the starter's: B never touched this
+    // conversation and is not its starter, and B is in the room.
+    const outsiderStrip = await apiOk(
+      `/api/agents/${fixture.secondAgent.id}/conversations`, outsiderToken,
+    )
+    const outsiderStripRow = outsiderStrip.find((record) => record.id === stripThreadId)
+    assert.ok(outsiderStripRow,
+      `a member of the room reads a conversation somebody else started: ${
+        JSON.stringify(outsiderStrip.map((row) => row.title))}`)
+    assert.equal(outsiderStripRow.title, STRIP_QUESTION, 'under the name its first message gave it')
+    assert.equal(outsiderStripRow.startedByUserId, fixture.owner.id, 'and says who opened it')
 
     console.log(
-      '[agent-conversations e2e] PASS: rail → two isolated conversations → concurrent runs'
-      + ' → scoped visibility → live card → phone column → agent page',
+      '[agent-conversations e2e] PASS: rail → two isolated conversations, named by their'
+      + ' first message → rename → concurrent runs → scoped visibility → live card'
+      + ' → phone column → agent page → an ordinary room’s own doorway → the agent strip',
     )
   } catch (error) {
     await saveFailureEvidence({

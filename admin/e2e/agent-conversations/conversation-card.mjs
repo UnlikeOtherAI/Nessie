@@ -8,12 +8,13 @@ import { CONVERSATION_ROUTING_MARKER, START_PHRASE } from './mock-server.mjs'
  * The assistant opens a conversation with another agent, and says so with a
  * card.
  *
- * Four claims, in order: the assistant was *told* it could (the routing block
+ * Five claims, in order: the assistant was *told* it could (the routing block
  * and the tool are in its request, so nothing here is a lucky guess by a
  * scripted model); the doorway is server-written metadata rather than model
  * text; the card renders the run's live state and then its outcome without
- * holding either; and a reader who is not privy to the destination gets the
- * withheld idiom instead of a silent gap.
+ * holding either; the person who asked for the work is shown the answer to it,
+ * which is the viewer-relative preview rule; and a reader who is not privy to
+ * the destination gets the withheld idiom instead of a silent gap.
  */
 export const exerciseConversationCard = async ({
   api,
@@ -129,6 +130,19 @@ export const exerciseConversationCard = async ({
   )
   assert.equal(terminal.get(targetRun.id), 'completed', 'the conversation the assistant started completes')
 
+  // What the preview must be, taken from the thread rather than composed here:
+  // the newest thing said in it, projected the way the record projects it.
+  const { CONVERSATION_PREVIEW_MAX_CHARS } = await import('@nessie/schemas')
+  const newest = await pipeline.prisma.message.findFirst({
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { content: true },
+    where: { deletedAt: null, NOT: { role: 'system' }, threadId: reference.threadId },
+  })
+  const preview = (newest?.content ?? '').replace(/\s+/gu, ' ').trim()
+    .slice(0, CONVERSATION_PREVIEW_MAX_CHARS)
+  assert.ok(preview.startsWith('Echo: '),
+    `the target answered, and its answer is the newest line: ${JSON.stringify(preview)}`)
+
   // Done — the same card, no reload of its own state, just the record moving on.
   await gallery.capture('card-done', async (page, viewport) => {
     await goto(page, cardSurface)
@@ -140,25 +154,21 @@ export const exerciseConversationCard = async ({
     }, undefined, { timeout: 60_000 })
     const text = await card.innerText()
     assert.ok(text.includes('Done'), `a finished conversation reads Done (${viewport})`)
-    // GAP, pinned rather than glossed: the body line should be the newest
-    // readable message and instead reads "Nothing said yet" for every
-    // conversation the assistant starts.
+    // The card says what was said, to the person who asked for it.
     //
-    // Why: this tool stamps the opener with the requester's PA-DM lineage
+    // This is the half the preview rule turns on. The start tool stamps the
+    // opener with the requester's PA-DM lineage
     // (`insertPrivateConversationSources`, worker/src/run/pa-tools/agent-conversations.ts),
     // the target's run consumes that source when it reads the opener
-    // (worker/src/run/execute/prompt.ts:392), and its reply therefore carries a
-    // `message_basis_scopes` row for the assistant's DM — a scope this very
+    // (worker/src/run/execute/prompt.ts), and its reply therefore carries a
+    // `message_basis_scopes` row for the assistant's own DM — a scope this very
     // reader satisfies. `loadLastMessagePreviews`
-    // (packages/team-admin/src/agent-conversations.ts:241) then fails closed on
-    // *any* basis rather than on an unsatisfied one, so the preview is null.
-    // A person-started conversation is unaffected (see `start-two`), which is
-    // what localises this to the delegated path.
+    // (packages/team-admin/src/agent-conversations.ts) asks whether the viewer
+    // satisfies the basis rather than whether one exists, so the answer reaches
+    // the person who asked for the work instead of reading "Nothing said yet".
     assert.ok(
-      text.includes('Nothing said yet'),
-      'GAP: an assistant-started conversation shows no preview on its own card'
-      + ` (${viewport}); if this now shows the reply, the gap is closed —`
-      + ` assert the reply instead. Card read: ${JSON.stringify(text)}`,
+      text.includes(preview),
+      `the card previews the target's reply (${viewport}): ${JSON.stringify(text)}`,
     )
   })
 
@@ -175,9 +185,8 @@ export const exerciseConversationCard = async ({
   assert.equal(ownerRead.title, title, 'and as itself to the person it belongs to')
   assert.equal(ownerRead.lastRunOutcome, 'completed', 'carrying the outcome the card shows')
   assert.equal(
-    ownerRead.lastMessagePreview, null,
-    'GAP (the record behind the card): the preview the reader is entitled to is'
-    + ' withheld — see the note on the card-done case',
+    ownerRead.lastMessagePreview, preview,
+    'the record behind the card carries the same line the card drew',
   )
 
   await plantConversationRef(pipeline.prisma, {
@@ -212,7 +221,7 @@ export const exerciseConversationCard = async ({
   assert.equal(withheld.includes(title), false, 'and is not told the title through the placeholder')
   await outsiderPage.screenshot({ path: resolve(screenshots, 'card-withheld', 'outsider.png') })
 
-  return { threadId: reference.threadId, title }
+  return { preview, threadId: reference.threadId, title }
 }
 
 const waitForDoorway = async (pipeline, threadId, timeoutMs = 90_000) => {
