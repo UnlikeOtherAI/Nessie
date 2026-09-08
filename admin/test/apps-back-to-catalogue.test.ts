@@ -146,6 +146,7 @@ const client = {
     if (/^\/api\/apps\/[^?]/.test(path)) {
       return { ...ALL[0], capabilities: { tools: [] }, connections: [], agentsWithAccess: [] }
     }
+    if (path === '/api/projects') return []
     return catalogue(path.includes('installed=true'))
   },
   getPage: async () => ({ data: [], meta: {} }),

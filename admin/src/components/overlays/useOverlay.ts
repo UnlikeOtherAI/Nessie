@@ -106,8 +106,11 @@ export const useOverlay = ({
       if (event.key !== 'Escape') return
       if (ownerKind === 'modal') {
         const target = event.target
-        const inMenu = target instanceof Node && panelRef.current?.contains(target)
-        const onAnchor = target instanceof Node && escapeAnchorRef?.current?.contains(target)
+        const panel = panelRef.current
+        const domNode = panel?.ownerDocument.defaultView?.Node
+        if (!panel || !domNode || !(target instanceof domNode)) return
+        const inMenu = panel.contains(target)
+        const onAnchor = escapeAnchorRef?.current?.contains(target)
         if (!inMenu && !onAnchor) return
       }
       event.preventDefault()
