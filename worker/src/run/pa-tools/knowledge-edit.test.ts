@@ -16,6 +16,7 @@ const space = (ownerAgentId: string | null): KnowledgeSpaceRecord => ({
   createdAt: '2026-08-31T00:00:00.000Z',
   createdBy: ownerAgentId ?? 'user-1',
   deletedAt: null,
+  documentRole: 'knowledge',
   description: null,
   id: 'space-1',
   memberAgentIds: [],

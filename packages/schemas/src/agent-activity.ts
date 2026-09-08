@@ -96,5 +96,10 @@ export const AgentDocumentsResponseSchema = z.object({
       name: NonEmptyStringSchema,
     }),
   ]).nullable(),
+  core: z.object({
+    estimatedTokens: z.number().int().nonnegative(),
+    state: z.enum(['active', 'oversized']),
+    tokenBudget: z.number().int().positive().optional(),
+  }).optional(),
 })
 export type AgentDocumentsResponse = z.infer<typeof AgentDocumentsResponseSchema>

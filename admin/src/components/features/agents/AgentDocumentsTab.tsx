@@ -8,7 +8,7 @@ import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
 import { useIsOwner } from '../../../facades/auth/hooks'
 
-const AgentDocumentsTeam = () => {
+const AgentDocumentsTeam = ({ core }: { core?: { estimatedTokens: number; state: 'active' | 'oversized'; tokenBudget?: number } }) => {
   const isOwner = useIsOwner()
   const { selectedSpace, spacesLoaded, spacesLoadFailed } = useKnowledge()
 
@@ -27,7 +27,11 @@ const AgentDocumentsTeam = () => {
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[color:var(--sep)] p-3">
         <Notice className="flex flex-wrap items-center gap-2" size="sm" tone="warning">
-          <span>These documents are visible to everyone who can see this agent. Don’t store secrets here.</span>
+          <span>
+            {core?.state === 'oversized'
+              ? `Core instructions estimate ${core.estimatedTokens} tokens, above the ${core.tokenBudget} token limit. Shorten them before they can be activated.`
+              : 'Published Identity and Working style documents shape new runs. Other documents remain available as knowledge.'}
+          </span>
           {!selectedSpace.canWrite ? <Pill tone="warning">Read-only</Pill> : null}
         </Notice>
       </div>
@@ -69,7 +73,7 @@ export const AgentDocumentsTab = ({ agent }: { agent: AgentRecord }) => {
 
         return (
           <KnowledgeProvider agentId={agent.id} spaceId={space.id}>
-            <AgentDocumentsTeam />
+            <AgentDocumentsTeam core={documentsQuery.data?.core} />
           </KnowledgeProvider>
         )
       }}

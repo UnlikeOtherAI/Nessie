@@ -19,6 +19,7 @@ import {
   actorAuthorType,
   attachPageEnvelope,
   createKnowledgeAccess,
+  requireAgentCoreDocumentEditAuthority,
   requireKnowledgePolicy,
   requestIds,
   type KnowledgeRouteDeps,
@@ -256,6 +257,7 @@ export const registerKnowledgeBaseFileRoutes = (
     }
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
 
     const file = await requireFilePart(request, reply)
     if (!file) return reply

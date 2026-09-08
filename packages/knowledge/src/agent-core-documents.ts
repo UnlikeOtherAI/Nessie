@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 
+import { readCanonicalMarkdownAttachment, type MarkdownAttachmentReader } from './markdown-projection.js'
 import type { KnowledgeProvider, KnowledgePageRecord } from './types.js'
 
 export const CORE_DOCUMENT_ROLES = ['identity', 'working_rules'] as const
@@ -11,7 +12,14 @@ export type ActiveCoreDocument = {
   title: string
   versionId: string
   versionNumber: number
-  body: string
+  markdown: string
+}
+
+export class CoreDocumentIntegrityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'CoreDocumentIntegrityError'
+  }
 }
 
 const coreTitle = (role: CoreDocumentRole): string =>
@@ -23,7 +31,7 @@ const coreTitle = (role: CoreDocumentRole): string =>
  */
 export const loadActiveAgentCoreDocuments = async (
   prisma: PrismaClient,
-  input: { agentId: string; organizationId: string },
+  input: { agentId: string; organizationId: string; readMarkdownAttachment: MarkdownAttachmentReader },
 ): Promise<ActiveCoreDocument[]> => {
   const rows = await prisma.agentCoreDocument.findMany({
     where: {
@@ -39,26 +47,36 @@ export const loadActiveAgentCoreDocuments = async (
         select: {
           id: true,
           title: true,
-          publishedVersion: { select: { body: true, id: true, versionNumber: true } },
+          publishedVersion: {
+            select: { attachmentId: true, id: true, sourceContentHash: true, versionNumber: true },
+          },
         },
       },
       role: true,
     },
   })
-  return rows.flatMap((row) => {
+  return Promise.all(rows.map(async (row) => {
     const version = row.page.publishedVersion
-    // A Markdown page's body is the projection of FileService bytes. Rich text
-    // has the same rendered projection; null cannot be an active instruction.
-    if (!version?.body) return []
-    return [{
+    if (!version?.attachmentId || !version.sourceContentHash) {
+      throw new CoreDocumentIntegrityError(`Published ${row.role} instructions have no canonical Markdown source`)
+    }
+    const source = await readCanonicalMarkdownAttachment(
+      input.readMarkdownAttachment,
+      version.attachmentId,
+      input.organizationId,
+    )
+    if (source.sourceContentHash !== version.sourceContentHash) {
+      throw new CoreDocumentIntegrityError(`Published ${row.role} instructions no longer match their approved version`)
+    }
+    return {
       pageId: row.page.id,
       role: row.role,
       title: row.page.title,
       versionId: version.id,
       versionNumber: version.versionNumber,
-      body: version.body,
-    }]
-  })
+      markdown: source.content,
+    }
+  }))
 }
 
 export type CreateAgentCoreDocumentInput = {

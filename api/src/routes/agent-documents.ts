@@ -1,14 +1,17 @@
 import type { FastifyInstance } from 'fastify'
 import {
   canReadSpace,
-  createNativeKnowledgeProvider,
+  ensureAgentDocsSpace,
   loadSpaceViewer,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { AgentDocumentsResponseSchema } from '@nessie/schemas'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
+import { createKnowledgeAccess } from './knowledge-base-access.js'
+import { migrateLegacyAgentCoreDocuments } from '../services/agent-core-documents.js'
 
 type AgentDocumentRouteDeps = RouteDeps & {
   knowledgeProvider?: KnowledgeProvider
@@ -24,7 +27,7 @@ export const registerAgentDocumentRoutes = (
   deps: AgentDocumentRouteDeps,
 ): void => {
   const { prisma, requireActorContext, isAgentAccessibleToActor } = deps
-  const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma)
+  const { provider, buildViewer } = createKnowledgeAccess(deps)
 
   app.get('/api/agents/:agentId/docs', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -36,20 +39,36 @@ export const registerAgentDocumentRoutes = (
       return reply
     }
 
-    // GET never provisions. The worker owns lazy home creation at run setup;
-    // before that happens, null is the honest state of this sub-resource.
-    const reference = await prisma.knowledgeSpace.findFirst({
-      where: {
-        deletedAt: null,
-        organizationId: actorContext.tenant.organizationId,
-        ownerAgentId: agentId,
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, name: true },
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, organizationId: actorContext.tenant.organizationId },
+      select: { id: true, name: true, projectId: true, systemManaged: true },
     })
-    if (!reference) {
+    if (!agent || agent.systemManaged || !agent.projectId) {
       return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))
     }
+    // Documents are a human doorway, not a side-effect of whether an agent has
+    // a complete tool configuration. Opening the tab provisions the existing
+    // home and attempts the one-time legacy core migration.
+    const ensured = await ensureAgentDocsSpace(prisma, {
+      agentId: agent.id,
+      agentName: agent.name,
+      organizationId: actorContext.tenant.organizationId,
+      projectId: agent.projectId,
+    })
+    // Establish the request's durable inference origin before the provider
+    // transaction queues its derived Markdown projection for indexing.
+    await buildViewer(actorContext)
+    const core = await migrateLegacyAgentCoreDocuments(prisma, provider, deps.fileService, {
+      agentId: agent.id,
+      attribution: attributionFromActorContext(actorContext),
+      organizationId: actorContext.tenant.organizationId,
+      projectId: agent.projectId,
+      userId: actorContext.actor.actorId,
+    })
+    const reference = await prisma.knowledgeSpace.findUnique({
+      where: { id: ensured.spaceId }, select: { id: true, name: true },
+    })
+    if (!reference) return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))
 
     // Agent visibility and document readability are separate entitlements.
     // Resolve the canonical knowledge read verdict so the tab can explain an
@@ -72,6 +91,7 @@ export const registerAgentDocumentRoutes = (
     }
 
     return createApiResponse(AgentDocumentsResponseSchema.parse({
+      core,
       space: {
         ...reference,
         canRead: true,

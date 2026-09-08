@@ -33,6 +33,7 @@ import {
   createKnowledgeAccess,
   policyTrace,
   requireKnowledgePolicy,
+  requireAgentCoreDocumentEditAuthority,
   requireProjectId,
   requestIds,
   toKnowledgePaginationMeta,
@@ -399,6 +400,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     // The auto-saving editor states the revision it edited; a stale save is
     // refused so the client can offer the choice in place, never resolved by
     // taking the last write (docs/navigation/overview.md → "Drafts").
@@ -451,6 +453,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     // Free the page's stored files (file-node versions + drawer attachments) and
     // decrement storage usage before archiving, so deletion always updates usage.
     await deps.fileService.purgeKnowledgePageFiles(
@@ -492,6 +495,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     let page: KnowledgePageRecord | null
     try {
       page = await provider.publishPage({
@@ -531,6 +535,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     const ifMatch = readIfMatchRevision(request)
     if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply)
     let page: KnowledgePageRecord | null
@@ -601,6 +606,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     let page: KnowledgePageRecord | null
     try {
       page = await provider.restoreVersion({

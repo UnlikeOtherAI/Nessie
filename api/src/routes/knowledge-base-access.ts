@@ -5,6 +5,7 @@ import {
   canReadSpace,
   canWriteSpace,
   createNativeKnowledgeProvider,
+  isAgentCoreDocumentPage,
   knowledgeEmbeddingJobKey,
   loadSpaceViewer,
   type KnowledgePageRecord,
@@ -13,6 +14,7 @@ import {
   type SpaceViewer,
   type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
+import { AgentEditAuthorityError, assertAgentFieldAuthority } from '@nessie/runtime'
 import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
@@ -249,4 +251,55 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     (await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) !== null
 
   return { provider, buildViewer, denyAccess, accessSpace, accessPageSpace }
+}
+
+/**
+ * Generic Knowledge paths remain the one editor/history surface, but a page
+ * mapped as an agent core document takes the agent's live, field-sensitive
+ * authority with it. Space write access alone can never rewrite a persona.
+ */
+export const requireAgentCoreDocumentEditAuthority = async (
+  deps: KnowledgeRouteDeps,
+  actorContext: AuthorizedActionContext,
+  pageId: string,
+  reply: FastifyReply,
+): Promise<boolean> => {
+  const core = await isAgentCoreDocumentPage(deps.prisma, pageId)
+  if (!core) return true
+  if (actorContext.actor.actorType !== 'user') {
+    sendApiError(reply, 403, 'AGENT_CORE_HUMAN_EDIT_REQUIRED', 'Only an authorized person may edit active agent instructions')
+    return false
+  }
+  const agent = await deps.prisma.agent.findFirst({
+    where: { id: core.agentId, organizationId: actorContext.tenant.organizationId },
+    select: {
+      id: true,
+      organizationId: true,
+      ownerUserId: true,
+      systemManaged: true,
+      todosEnabled: true,
+      visibility: true,
+    },
+  })
+  if (!agent) {
+    sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+    return false
+  }
+  try {
+    // `assertAgentFieldAuthority` resolves the live entitlement before the
+    // provider begins its write transaction. The mutable page writer then uses
+    // a revision CAS, preventing a stale editor from racing a newer human edit.
+    await assertAgentFieldAuthority(deps.prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
+      userId: actorContext.actor.actorId,
+    }, agent, {})
+    return true
+  } catch (error) {
+    if (error instanceof AgentEditAuthorityError) {
+      sendApiError(reply, 403, error.code, error.message)
+      return false
+    }
+    throw error
+  }
 }

@@ -1,5 +1,6 @@
 export {
   CORE_DOCUMENT_ROLES,
+  CoreDocumentIntegrityError,
   createAgentCoreDocument,
   isAgentCoreDocumentPage,
   loadActiveAgentCoreDocuments,

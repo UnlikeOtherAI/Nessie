@@ -2852,6 +2852,7 @@ model Agent {
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
   coreDocuments                  AgentCoreDocument[]
+  personalCoreOverlays           PersonalAgentCoreOverlay[]
   userAlertActivity              UserAlert[]
   callsCreatedVia                Call[]                          @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
@@ -5665,6 +5666,7 @@ model KnowledgePage {
   productIntegrationRuns ProductIntegrationRun[]
   pushAttentionAlerts    UserAlert[]               @relation("PushAttentionAlertKnowledgePage")
   coreDocumentFor        AgentCoreDocument?        @relation("AgentCoreDocumentPage")
+  personalCoreOverlayFor PersonalAgentCoreOverlay? @relation("PersonalAgentCoreOverlayPage")
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([taskId], map: "knowledge_pages_task_id_idx")
@@ -5751,6 +5753,26 @@ model AgentCoreDocument {
   @@unique([agentId, role])
   @@index([agentId])
   @@map("agent_core_documents")
+}
+
+// System blueprints are immutable. A person's preferences for one are mapped
+// to that person's My Docs, never to an organisation-shared notebook.
+model PersonalAgentCoreOverlay {
+  id             String                @id @default(uuid()) @db.Uuid
+  agentId        String                @map("agent_id") @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  userId         String                @map("user_id") @db.Uuid
+  pageId         String                @unique @map("page_id") @db.Uuid
+  role           AgentCoreDocumentRole
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  agent Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  page  KnowledgePage @relation("PersonalAgentCoreOverlayPage", fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, userId, role])
+  @@index([organizationId, userId])
+  @@map("personal_agent_core_overlays")
 }
 
 // Admission pins exact published revisions. A continuation may use this same

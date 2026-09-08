@@ -88,6 +88,13 @@ export type RunContext = {
      */
     systemSlug?: string | null
   }
+  // Exact published core revisions pinned when this run starts. A later draft
+  // or publication cannot alter an admitted run's instruction authority.
+  coreDocuments?: Array<{
+    role: 'identity' | 'working_rules'
+    versionId: string
+    markdown: string
+  }>
   channel: {
     id: string
     organizationId: string

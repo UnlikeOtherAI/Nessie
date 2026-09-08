@@ -77,3 +77,25 @@ ALTER TABLE "run_core_document_snapshots"
   FOREIGN KEY ("version_id") REFERENCES "knowledge_page_versions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE INDEX "knowledge_pages_space_role_idx" ON "knowledge_pages"("space_id", "document_role");
+
+CREATE TABLE "personal_agent_core_overlays" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "agent_id" UUID NOT NULL,
+  "organization_id" UUID NOT NULL,
+  "user_id" UUID NOT NULL,
+  "page_id" UUID NOT NULL,
+  "role" "AgentCoreDocumentRole" NOT NULL,
+  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "personal_agent_core_overlays_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "personal_agent_core_overlays_page_id_key" ON "personal_agent_core_overlays"("page_id");
+CREATE UNIQUE INDEX "personal_agent_core_overlays_agent_id_user_id_role_key"
+  ON "personal_agent_core_overlays"("agent_id", "user_id", "role");
+CREATE INDEX "personal_agent_core_overlays_organization_id_user_id_idx"
+  ON "personal_agent_core_overlays"("organization_id", "user_id");
+ALTER TABLE "personal_agent_core_overlays"
+  ADD CONSTRAINT "personal_agent_core_overlays_agent_id_fkey"
+  FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT "personal_agent_core_overlays_page_id_fkey"
+  FOREIGN KEY ("page_id") REFERENCES "knowledge_pages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
