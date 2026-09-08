@@ -15,7 +15,8 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 
 test('the layer tokens in styles.css mirror OVERLAY_LAYER exactly', () => {
   for (const [name, value] of Object.entries(OVERLAY_LAYER)) {
-    assert.match(styles, new RegExp(`--layer-${name}: ${value};`), name)
+    const cssName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+    assert.match(styles, new RegExp(`--layer-${cssName}: ${value};`), name)
   }
 })
 
@@ -27,7 +28,8 @@ test('an overlay outranks every nested stage and column for Back, and blocking o
   assert.ok(OVERLAY_BACK_PRIORITY.blocking > OVERLAY_BACK_PRIORITY.modal)
   assert.ok(OVERLAY_LAYER.card < OVERLAY_LAYER.tooltip && OVERLAY_LAYER.tooltip < OVERLAY_LAYER.popover)
   assert.ok(OVERLAY_LAYER.popover < OVERLAY_LAYER.sheet)
-  assert.ok(OVERLAY_LAYER.sheet < OVERLAY_LAYER.modal && OVERLAY_LAYER.modal < OVERLAY_LAYER.blocking)
+  assert.ok(OVERLAY_LAYER.sheet < OVERLAY_LAYER.modal && OVERLAY_LAYER.modal < OVERLAY_LAYER.modalPopover)
+  assert.ok(OVERLAY_LAYER.modalPopover < OVERLAY_LAYER.blocking)
 })
 
 test('each kind moves on its own token; reduced motion is 0 ms through the same path', () => {

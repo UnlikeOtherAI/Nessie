@@ -50,7 +50,7 @@ type PopoverProps = {
   id?: string
   /** The accessible name; also what the Back control announces on `single`. */
   label: string
-  /** A modal-owned menu shares the modal layer but remains below blocking. */
+  /** A modal-owned menu sits above its modal but remains below blocking. */
   layer?: PopoverLayer
   /** Sizes the panel to its anchor, the way a combobox listbox matches its input. */
   matchAnchorWidth?: boolean
@@ -99,6 +99,8 @@ export const Popover = ({
     label,
     onClose,
     open,
+    ownerKind: layer === 'modal' ? 'modal' : undefined,
+    escapeAnchorRef: anchorRef,
   })
   const { panelRef, requestClose } = overlay
   const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)
@@ -214,7 +216,6 @@ export const Popover = ({
         style={{
           position: 'fixed',
           ...overlay.layerStyle,
-          ...(layer === 'modal' ? { zIndex: 'var(--layer-modal)' } : undefined),
           // Until the first measurement the panel is laid out but not painted:
           // it has to be in the DOM at its natural size to be measured at all.
           ...(placed

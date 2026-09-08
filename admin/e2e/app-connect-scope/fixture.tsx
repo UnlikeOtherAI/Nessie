@@ -43,7 +43,6 @@ createRoot(root).render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <ApiClientProvider client={apiClient}>
       <main className="min-h-screen bg-[color:var(--bg)] p-8 text-[color:var(--tx)]">
-        <style>{'.tabbar-shell { width: 80px !important; }'}</style>
         <AppConnectDialog app={app} onClose={() => undefined} open />
       </main>
     </ApiClientProvider>

@@ -5,7 +5,7 @@ import { NAV_MOTION, OVERLAY_MOTION } from './motion'
 // one motion. Every number here is mirrored as a token in styles.css
 // (`--layer-*`); admin/test/navigation-overlay.test.ts pins the two equal.
 
-export type OverlayKind = 'modal' | 'sheet' | 'popover' | 'card' | 'blocking'
+export type OverlayKind = 'modal' | 'sheet' | 'popover' | 'modalPopover' | 'card' | 'blocking'
 
 // The layer scale. A card never covers a modal; a confirm over a modal (the
 // one sanctioned nesting) sits in `blocking`; the navigation stack's own
@@ -24,6 +24,7 @@ export const OVERLAY_LAYER = Object.freeze({
   popover: 50,
   sheet: 60,
   modal: 70,
+  modalPopover: 75,
   blocking: 80,
 })
 
@@ -34,6 +35,7 @@ export const OVERLAY_BACK_PRIORITY = Object.freeze({
   popover: 70,
   sheet: 80,
   modal: 90,
+  modalPopover: 95,
   blocking: 100,
 })
 
@@ -48,6 +50,7 @@ export const overlayDurationMs = (kind: OverlayKind, reducedMotion: boolean): nu
     case 'blocking':
       return OVERLAY_MOTION.modalMs
     case 'popover':
+    case 'modalPopover':
       return OVERLAY_MOTION.popoverMs
     case 'sheet':
       return OVERLAY_MOTION.drawerMs
