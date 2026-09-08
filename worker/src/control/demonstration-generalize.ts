@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { loadConfig } from '@nessie/config'
 import { writeAuditEntry } from '@nessie/db'
-import { attributionFromActorContext, type LedgerIdentityService, WORKFLOW_TOOL_IDS } from '@nessie/runtime'
+import {
+  attributionFromActorContext,
+  createApprovalUserAlerts,
+  type LedgerIdentityService,
+  WORKFLOW_TOOL_IDS,
+} from '@nessie/runtime'
 import {
   acquireAgentTodoAgentLock,
   validateWorkflowGraph,
@@ -277,7 +282,7 @@ export const generalizeDemonstration = async (
           if (pending >= 10) {
             throw new Error('This agent already has 10 learned workflow proposals awaiting review.')
           }
-          await tx.approvalRequest.create({
+          const approval = await tx.approvalRequest.create({
             data: {
               action: 'workflow.template.adopt',
               agentId: demonstration.agentId,
@@ -291,6 +296,16 @@ export const generalizeDemonstration = async (
               requiredApproverRole: 'owner',
               status: 'pending',
             },
+            select: { id: true },
+          })
+          // Owners answer this one, so owners are told. Thirty minutes is a
+          // short window to notice a badge in.
+          await createApprovalUserAlerts(tx, {
+            actorAgentId: demonstration.agentId,
+            approvalId: approval.id,
+            channelId: demonstration.channelId,
+            organizationId: demonstration.organizationId,
+            requiredApproverRole: 'owner',
           })
         }
         return created

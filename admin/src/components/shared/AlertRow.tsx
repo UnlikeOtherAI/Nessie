@@ -62,7 +62,13 @@ const describeAlert = (alert: UserAlertRecord): string => {
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
     // waiting for approval is exactly the thing that must not travel there.
-    return `${actor} needs your approval`
+    //
+    // A request from a paired agent has no actor to name — the credential acts
+    // as the reader themselves, so "Someone needs your approval" would be both
+    // vague and, read literally, wrong.
+    return alert.actorDisplayName
+      ? `${alert.actorDisplayName} needs your approval`
+      : 'An agent needs your approval'
   }
   if (alert.kind === 'task_assigned') return `${actor} assigned work to you`
   if (alert.kind === 'knowledge_published') return `${actor} published knowledge for you`
