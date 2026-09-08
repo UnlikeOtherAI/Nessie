@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { MemberRosterPermissions, TeamMemberRecord } from '@nessie/schemas'
 
 import { Checkbox } from '../../primitives/Checkbox'
@@ -50,10 +50,12 @@ export const MemberDetailsDialog = ({
   )
   const [role, setRole] = useState('')
   const [teamIds, setTeamIds] = useState<string[]>([])
+  const [initialTeamIds, setInitialTeamIds] = useState<string[]>([])
+  const initializedTeamAccessKey = useRef<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const teams = teamAccess.data?.data.items ?? EMPTY_WORKSPACES
-  const initialTeamIds = useMemo(
+  const loadedTeamIds = useMemo(
     () => teams.filter((team) => team.hasAccess).map((team) => team.id),
     [teams],
   )
@@ -68,6 +70,9 @@ export const MemberDetailsDialog = ({
       : options
   }, [member?.orgRole, member?.teamRole, organizationRoleOptions, permissions?.teamRoleOptions, scope])
   const currentRole = scope === 'team' ? member?.teamRole : member?.orgRole
+  const teamAccessKey = open && scope === 'organization' && member
+    ? `${member.uoaSub}:${scope}`
+    : null
   // Ownership moves through UOA's separate transfer workflow. A member's
   // current owner role is therefore information, never an editable option.
   const canChangeRole = permissions?.changeMemberRole === true
@@ -84,8 +89,17 @@ export const MemberDetailsDialog = ({
   }, [member?.orgRole, member?.teamRole, member?.uoaSub, open, scope])
 
   useEffect(() => {
-    setTeamIds(initialTeamIds)
-  }, [initialTeamIds])
+    setInitialTeamIds([])
+    initializedTeamAccessKey.current = null
+    setTeamIds([])
+  }, [teamAccessKey])
+
+  useEffect(() => {
+    if (!teamAccessKey || !teamAccess.isSuccess || initializedTeamAccessKey.current === teamAccessKey) return
+    initializedTeamAccessKey.current = teamAccessKey
+    setInitialTeamIds(loadedTeamIds)
+    setTeamIds(loadedTeamIds)
+  }, [loadedTeamIds, teamAccess.isSuccess, teamAccessKey])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

@@ -14,6 +14,7 @@ const readOnly = params.has('readOnly')
 const fail = params.get('fail')
 const noPermissions = params.has('noPermissions')
 const pendingApproval = params.has('pendingApproval')
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 const permissions = {
   addMember: !readOnly && !noPermissions, changeMemberRole: !readOnly && !noPermissions,
   removeMember: !readOnly && !noPermissions, deactivateMember: !readOnly && !noPermissions,
@@ -31,7 +32,10 @@ let invitations: TeamInvitationRecord[] = [
 ]
 let access = true
 const calls: { method: string; path: string; body?: unknown }[] = []
-Object.assign(window, { memberManagementCalls: calls })
+Object.assign(window, {
+  memberManagementCalls: calls,
+  refetchMemberManagementQueries: () => queryClient.refetchQueries(),
+})
 const page = (items: unknown[], grants: unknown) => ({
   data: { items, permissions: grants },
   meta: { hasMore: false, limit: 25, total: items.length },
@@ -84,7 +88,7 @@ const root = document.querySelector('#root')
 if (!(root instanceof HTMLElement)) throw new Error('Fixture root missing')
 document.documentElement.dataset.theme = 'sandstone'
 createRoot(root).render(
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  <QueryClientProvider client={queryClient}>
     <AuthSessionProvider><ApiClientProvider client={client}><BrowserRouter>
       <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]"><MembersRosterPanel scope={scope} /></main>
     </BrowserRouter></ApiClientProvider></AuthSessionProvider>

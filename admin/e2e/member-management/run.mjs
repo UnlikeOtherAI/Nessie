@@ -99,7 +99,19 @@ try {
       && call.body.role === 'admin'))
     await member().click()
     assert.equal(await page.getByLabel('Organization role', { exact: true }).inputValue(), 'admin')
-    await page.getByRole('checkbox', { name: 'Design', exact: true }).uncheck()
+    const designTeam = page.getByRole('checkbox', { name: 'Design', exact: true })
+    for (let attempt = 0; attempt < 40 && !(await designTeam.isChecked()); attempt += 1) {
+      await page.waitForTimeout(25)
+    }
+    assert.equal(await designTeam.isChecked(), true)
+    await designTeam.uncheck()
+    const teamAccessCalls = (await calls(page)).filter((call) =>
+      call.method === 'GET' && new URL(call.path, 'http://localhost').pathname.endsWith('/teams')).length
+    await page.evaluate(() => window.refetchMemberManagementQueries())
+    assert.equal((await calls(page)).filter((call) =>
+      call.method === 'GET' && new URL(call.path, 'http://localhost').pathname.endsWith('/teams')).length > teamAccessCalls, true)
+    assert.equal(await designTeam.isChecked(), false)
+    assert.equal(await page.getByRole('button', { name: 'Save changes', exact: true }).isDisabled(), false)
     await page.getByRole('button', { name: 'Save changes', exact: true }).click()
     await dialogClosed()
     await member().click()
