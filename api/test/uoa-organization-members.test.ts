@@ -407,9 +407,14 @@ test('team access never writes a team UOA did not authorize for the caller', asy
         payload: { teamIds: ['team_secret'] },
       })
 
-      assert.equal(response.statusCode, 400)
+      assert.equal(response.statusCode, 403)
+      assert.equal(response.json().error.code, 'ORGANIZATION_MEMBERS_REJECTED')
+      assert.equal(
+        response.json().error.message,
+        'You no longer have permission to make this change. Refresh the members list to see your current access.',
+      )
       assert.equal(calls.length, 2)
-      assert.equal(calls[1]?.method, 'GET')
+      assert.deepEqual(calls.map((call) => call.method), ['GET', 'GET'])
     } finally {
       await app.close()
     }
