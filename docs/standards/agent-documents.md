@@ -18,3 +18,8 @@ person's My Docs. When `kb_list`, `kb_search`, `kb_document_compose`, and
 block injects that home id and title so the model never invents a `spaceId`.
 
 Spec: [docs/plans/2026-08-31-agent-documents.md](../plans/2026-08-31-agent-documents.md).
+
+Forward changes to Markdown authority, document roles, history retrieval and
+learning are specified in the
+[agent documents and learning plan](../plans/2026-09-08-agent-documents-and-learning.md);
+the provisioning behavior above remains current until those phases ship.
