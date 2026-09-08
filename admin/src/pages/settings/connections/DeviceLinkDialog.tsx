@@ -64,7 +64,7 @@ export const DeviceLinkDialog = ({
   const confirmLink = useConfirmDeviceLink()
   const cancelLink = useCancelDeviceLink()
   const [phase, setPhase] = useState<Phase>({ kind: 'starting' })
-  const [copied, setCopied] = useState(false)
+  const [copyAnnouncement, setCopyAnnouncement] = useState('')
   // Held in a ref as well as state so the unmount cleanup can abandon the flow
   // without re-running the effect every time the phase changes.
   const stateTokenRef = useRef<string | null>(null)
@@ -182,12 +182,15 @@ export const DeviceLinkDialog = ({
   const copyCode = async (userCode: string) => {
     try {
       await copyToClipboard(userCode)
-      setCopied(true)
+      // iOS WebKit can leave the old button label painted behind a replacement
+      // label inside an inline WebView. Keep the visible control stable and
+      // announce success to assistive technology instead.
+      setCopyAnnouncement('Code copied.')
     } catch {
       // A WebView can deny the modern API even while supporting the legacy
       // user-gesture copy command. The code stays visible either way, so a
       // denied clipboard permission never changes the dialog's layout.
-      setCopied(false)
+      setCopyAnnouncement('Could not copy the code. Select it and copy manually.')
     }
   }
 
@@ -214,8 +217,11 @@ export const DeviceLinkDialog = ({
                 onClick={() => void copyCode(phase.start.userCode)}
                 type="button"
               >
-                {copied ? 'Copied' : 'Copy code'}
+                Copy code
               </button>
+              <span aria-live="polite" className="sr-only" role="status">
+                {copyAnnouncement}
+              </span>
             </div>
             <a
               className="admin-button admin-button-primary admin-button-compact self-start"

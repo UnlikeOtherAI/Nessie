@@ -14,11 +14,11 @@ try {
   await page.goto('http://localhost:5455/e2e/model-subscription-device-link/index.html')
   await page.getByText('ABCD-1234').waitFor()
   await page.getByRole('button', { name: 'Copy code' }).click()
-  await page.getByRole('button', { name: 'Copied' }).waitFor()
+  await page.getByRole('status').getByText('Code copied.').waitFor()
 
   const viewport = page.viewportSize()
   const code = await page.getByText('ABCD-1234').boundingBox()
-  const copy = await page.getByRole('button', { name: 'Copied' }).boundingBox()
+  const copy = await page.getByRole('button', { name: 'Copy code' }).boundingBox()
   assert.ok(viewport && code && copy, 'device code and copy action are measurable')
   assert.ok(code.x >= 0 && code.x + code.width <= viewport.width, 'device code stays on-screen')
   assert.ok(copy.x >= 0 && copy.x + copy.width <= viewport.width, 'copy action stays on-screen')

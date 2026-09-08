@@ -8,17 +8,31 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
+# pnpm's frozen lockfile resolution invokes Git for its pinned private package
+# entries, including when the installed workspace graph does not import them.
+# The read token is supplied as a BuildKit secret for that one install layer.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/*
+
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json turbo.json eslint.config.js ./
+COPY scripts/with-deep-agent-token.sh scripts/with-deep-agent-token.sh
 COPY packages/ packages/
 COPY admin/ admin/
 COPY mobile/package.json mobile/package.json
 COPY desktop/package.json desktop/package.json
 COPY gateway/package.json gateway/package.json
 
-RUN corepack enable && pnpm install --frozen-lockfile --filter='!@nessie/mobile' --filter='!@nessie/desktop' --filter='!@nessie/gateway'
+# Keep the admin image scoped to the admin dependency graph. A negative filter
+# installs every other workspace package, although pnpm still resolves the
+# lockfile's pinned private Git entries during a frozen install.
+RUN --mount=type=secret,id=deep_agent_read_token,required=true \
+  corepack enable \
+  && DEEP_AGENT_READ_TOKEN="$(cat /run/secrets/deep_agent_read_token)" \
+    scripts/with-deep-agent-token.sh pnpm install --frozen-lockfile --filter=@nessie/admin...
 
 # Admin imports runtime values (not just types) from its workspace packages
 # (@nessie/schemas, @nessie/config, @nessie/client-core, …) through their dist
