@@ -13,6 +13,7 @@ import {
 import { KnowledgePageRevisionConflictError } from './types.js'
 import type {
   AddFileVersionInput,
+  CreatePageInput,
   KnowledgePageRecord,
   KnowledgePageVersionRecord,
   RestorePageVersionInput,
@@ -57,6 +58,20 @@ export type NativeKnowledgeProviderOptions = {
 
 type AttachmentLookupClient = Pick<Prisma.TransactionClient, 'attachment'>
 
+const assertTaskBelongsToSpaceProject = async (
+  client: Prisma.TransactionClient,
+  organizationId: string,
+  projectId: string,
+  taskId: string | null | undefined,
+): Promise<void> => {
+  if (!taskId) return
+  const task = await client.task.findFirst({
+    where: { id: taskId, organizationId, projectId },
+    select: { id: true },
+  })
+  if (!task) throw new KnowledgeConflictError('Ticket not found in this knowledge space project')
+}
+
 export const markdownProjectionForAttachment = async (
   client: AttachmentLookupClient,
   options: NativeKnowledgeProviderOptions,
@@ -90,6 +105,89 @@ export const fetchPage = async (
     include: pageInclude,
   })
   return page ? mapPage(page) : null
+}
+
+/** Create a page and its initial version through the canonical writer path. */
+export const createPage = async (
+  prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
+  input: CreatePageInput,
+): Promise<KnowledgePageRecord> => {
+  const projection = input.attachmentId
+    ? await markdownProjectionForAttachment(
+        prisma, options, input.organizationId, input.attachmentId,
+      )
+    : null
+  if (projection && (input.body !== undefined || input.bodyRef !== undefined)) {
+    throw new KnowledgeConflictError(
+      'Markdown attachment versions cannot supply an independent body',
+    )
+  }
+  return prisma.$transaction(async (tx) => {
+    const space = await tx.knowledgeSpace.findFirst({
+      where: { id: input.spaceId, organizationId: input.organizationId, deletedAt: null },
+    })
+    if (!space) throw new Error('Knowledge space not found')
+    await assertTaskBelongsToSpaceProject(tx, input.organizationId, space.projectId, input.taskId)
+    if (input.parentPageId) {
+      const parent = await tx.knowledgePage.findFirst({
+        where: {
+          id: input.parentPageId, organizationId: input.organizationId, spaceId: input.spaceId,
+          deletedAt: null, status: { not: 'archived' },
+        },
+        select: { id: true },
+      })
+      if (!parent) throw new Error('Parent page not found')
+    }
+    const position = input.position ?? await tx.knowledgePage.count({
+      where: { parentPageId: input.parentPageId ?? null, spaceId: input.spaceId },
+    })
+    const page = await tx.knowledgePage.create({
+      data: {
+        title: input.title,
+        summary: input.summary ?? null,
+        metadata: input.metadata as Prisma.InputJsonValue,
+        kind: input.kind ?? 'document',
+        spaceId: input.spaceId,
+        parentPageId: input.parentPageId ?? null,
+        position,
+        organizationId: input.organizationId,
+        projectId: space.projectId,
+        teamId: input.teamId ?? space.teamId,
+        channelId: input.channelId ?? space.channelId,
+        threadId: input.threadId ?? space.threadId,
+        userId: input.userId ?? space.userId,
+        visibility: input.visibility ?? space.visibility,
+        sensitivityTier: input.sensitivityTier ?? space.sensitivityTier,
+        privateToAgentId: input.privateToAgentId ?? space.privateToAgentId,
+        taskId: input.taskId ?? null,
+        createdBy: input.createdBy,
+      },
+    })
+    await resolveLinksToPage(tx, {
+      organizationId: input.organizationId,
+      pageId: page.id,
+      title: page.title,
+    })
+    const version = await tx.knowledgePageVersion.create({
+      data: {
+        pageId: page.id,
+        versionNumber: 1,
+        body: projection?.body ?? input.body ?? null,
+        bodyRef: projection ? null : input.bodyRef ?? null,
+        attachmentId: input.attachmentId ?? null,
+        sourceContentHash: projection?.sourceContentHash ?? null,
+        authorType: input.authorType,
+        authorId: input.authorId,
+        changeComment: input.changeComment ?? null,
+      },
+    })
+    await indexVersionChunks(tx, options, page, version)
+    await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
+    const created = await fetchPage(tx, input.organizationId, page.id)
+    if (!created) throw new Error('Created page could not be loaded')
+    return created
+  })
 }
 
 export const nextVersionNumber = async (

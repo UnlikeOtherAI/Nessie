@@ -6,6 +6,7 @@ import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
 import {
   addFileVersion,
+  createPage,
   fetchPage,
   getMutablePage,
   indexVersionChunks,
@@ -15,7 +16,6 @@ import {
 } from './native-version-writer.js'
 import {
   archiveSpace,
-  createPage,
   createSpace,
   getSpace,
   listSpaces,
