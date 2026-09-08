@@ -18,10 +18,16 @@ const userViewer = (scopes: BasisScopeRow[]): DisclosureViewer => ({
 })
 
 const AUTONOMOUS: DisclosureViewer = { kind: 'autonomous' }
+const DENIED: DisclosureViewer = { kind: 'denied' }
 
 test('an unstamped message is visible to everyone, including autonomous runs', () => {
   assert.equal(viewerSatisfiesBasis([], userViewer([])), true)
   assert.equal(viewerSatisfiesBasis([], AUTONOMOUS), true)
+})
+
+test('a denied human cannot read even an unstamped message', () => {
+  assert.equal(viewerSatisfiesBasis([], DENIED), false)
+  assert.equal(viewerSatisfiesBasis([scope('project', 'p1')], DENIED), false)
 })
 
 test('a viewer holding every basis scope may read it', () => {

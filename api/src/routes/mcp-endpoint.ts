@@ -106,6 +106,7 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
             actorContext.tenant.organizationId,
             visibility,
             actorContext.actor.actorId,
+            actorContext.actionContext.uoaIdentity,
           ) as never
         },
         isProjectAccessibleToActor,

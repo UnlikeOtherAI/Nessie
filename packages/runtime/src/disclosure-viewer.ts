@@ -24,8 +24,21 @@ export type DisclosureAccessPrisma = Pick<PrismaClient,
 export type DisclosureViewerAuthority = {
   agentId?: string
   allowStoredUoaIdentity?: boolean
+  /**
+   * One fresh entitlement may serve several reads in the same request. It is
+   * accepted only for the exact human and organization it was resolved for.
+   */
+  liveEntitlements?: LiveEntitlements
   uoaIdentity?: UoaSessionIdentity
 }
+
+const entitlementMatches = (
+  entitlements: LiveEntitlements,
+  organizationId: string,
+  userId: string,
+): boolean => entitlements.kind !== 'denied'
+  && entitlements.organizationId === organizationId
+  && entitlements.userId === userId
 
 /** An agent has only its product bindings and configured hierarchy. */
 const agentScopes = async (
@@ -42,7 +55,7 @@ const agentScopes = async (
       bindings: { select: { channelId: true } },
     },
   })
-  if (!agent) return { kind: 'autonomous' }
+  if (!agent) return { kind: 'denied' }
   return {
     agentId,
     kind: 'agent',
@@ -62,7 +75,7 @@ const userScopes = async (
   userId: string,
   entitlements: LiveEntitlements,
 ): Promise<DisclosureViewer> => {
-  if (entitlements.kind === 'denied') return { kind: 'autonomous' }
+  if (entitlements.kind === 'denied') return { kind: 'denied' }
   const uoa = entitlements.kind === 'uoa'
   const [channels, teams, projects, visibleAgentIds] = await Promise.all([
     prisma.channelMember.findMany({
@@ -117,11 +130,15 @@ export const resolveDisclosureViewer = async (
       ? agentScopes(prisma, organizationId, authority.agentId)
       : { kind: 'autonomous' }
   }
-  const entitlements = await resolveLiveEntitlements(prisma, {
-    allowStoredIdentity: authority.allowStoredUoaIdentity,
-    organizationId,
-    uoaIdentity: authority.uoaIdentity,
-    userId,
-  })
+  const entitlements = authority.liveEntitlements
+    ? entitlementMatches(authority.liveEntitlements, organizationId, userId)
+      ? authority.liveEntitlements
+      : { kind: 'denied' } as const
+    : await resolveLiveEntitlements(prisma, {
+      allowStoredIdentity: authority.allowStoredUoaIdentity,
+      organizationId,
+      uoaIdentity: authority.uoaIdentity,
+      userId,
+    })
   return userScopes(prisma, organizationId, userId, entitlements)
 }

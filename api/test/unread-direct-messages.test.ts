@@ -150,6 +150,11 @@ const makePrisma = (options: { unreadCount?: number; restricted?: boolean } = {}
     organizationMember: {
       findFirst: async () => ({ id: 'membership' }),
     },
+    organization: {
+      // These fixtures model an active no-IdP tenant, whose membership is the
+      // local authority. UOA tenants exercise the live resolver separately.
+      findUnique: async () => ({ externalOrgId: null }),
+    },
     channelMember: {
       findMany: async () => [{ channelId: dmChannelId }],
     },

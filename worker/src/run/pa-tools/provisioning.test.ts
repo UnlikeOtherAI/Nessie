@@ -53,12 +53,14 @@ const buildContext = (
     channel: { id: RUN_CHANNEL_ID, organizationId: ORG_ID },
     ledgerIdentity: null,
     prisma: {
+      organization: { findUnique: async () => ({ externalOrgId: null }) },
       organizationMember: {
         // `findUnique` resolves the acting member; `findFirst` is the
         // active-membership check the owner stamp runs before creating an agent.
         findFirst: async () => ({ id: 'membership-1' }),
         findUnique: async () => ({ role, deactivatedAt: null }),
       },
+      productAccountLink: { findUnique: async () => null },
       ...prisma,
     },
     realtimeTransport: {},

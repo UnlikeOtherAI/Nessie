@@ -142,6 +142,7 @@ runDatabaseTest("a run's thought log is withheld from viewers its reply would be
     await canUserReadRunBasis(prisma, {
       organizationId: s.organizationId,
       runId: run.id,
+      uoaIdentity: undefined,
       userId: s.outsiderId,
     }),
     false,
@@ -150,6 +151,7 @@ runDatabaseTest("a run's thought log is withheld from viewers its reply would be
     await canUserReadRunBasis(prisma, {
       organizationId: s.organizationId,
       runId: run.id,
+      uoaIdentity: undefined,
       userId: s.insiderId,
     }),
     true,
@@ -159,6 +161,7 @@ runDatabaseTest("a run's thought log is withheld from viewers its reply would be
   // something is happening — but carries no entries for the outsider.
   const outsiderView = await loadThreadThinking(prisma, s.threadId, {
     organizationId: s.organizationId,
+    uoaIdentity: undefined,
     userId: s.outsiderId,
   })
   assert.equal(outsiderView.runs.length, 1, 'the run should still be listed')
@@ -166,6 +169,7 @@ runDatabaseTest("a run's thought log is withheld from viewers its reply would be
 
   const insiderView = await loadThreadThinking(prisma, s.threadId, {
     organizationId: s.organizationId,
+    uoaIdentity: undefined,
     userId: s.insiderId,
   })
   assert.equal(insiderView.runs[0]?.entries.length, 1)
@@ -192,6 +196,7 @@ runDatabaseTest('a run that consumed nothing privileged keeps its thought log re
     await canUserReadRunBasis(prisma, {
       organizationId: s.organizationId,
       runId: run.id,
+      uoaIdentity: undefined,
       userId: s.outsiderId,
     }),
     true,
@@ -245,10 +250,12 @@ runDatabaseTest('agent history and tool activity use the same live disclosure ga
 
   const outsiderVisibility = {
     organizationId: s.organizationId,
+    uoaIdentity: undefined,
     userId: s.outsiderId,
   }
   const insiderVisibility = {
     organizationId: s.organizationId,
+    uoaIdentity: undefined,
     userId: s.insiderId,
   }
   const outsiderHistory = await loadAgentMessages(

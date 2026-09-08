@@ -14,6 +14,7 @@ import {
   type DocumentStreamTarget,
   type SseEvent,
   type StreamDocumentTargetEvent,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 import { canUserReadRunBasis } from './run-disclosure.js'
 
@@ -191,7 +192,11 @@ const toSummary = (row: SessionRow, names: TargetNames): DocumentStreamSummary =
  */
 const filterRowsByRunBasis = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string },
+  input: {
+    organizationId: string
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
   rows: SessionRow[],
 ): Promise<SessionRow[]> => {
   const runIds = [...new Set(rows.map((row) => row.runId))]
@@ -200,6 +205,7 @@ const filterRowsByRunBasis = async (
     await canUserReadRunBasis(prisma, {
       organizationId: input.organizationId,
       runId,
+      uoaIdentity: input.uoaIdentity,
       userId: input.userId,
     }),
   ] as const)))
@@ -214,7 +220,13 @@ const filterRowsByRunBasis = async (
  */
 export const listThreadDocumentStreams = async (
   prisma: PrismaClient,
-  input: { activeOnly?: boolean; organizationId: string; threadId: string; userId: string },
+  input: {
+    activeOnly?: boolean
+    organizationId: string
+    threadId: string
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<DocumentStreamSummary[]> => {
   const rows = await prisma.runDocumentSession.findMany({
     where: {
@@ -261,7 +273,13 @@ const findSession = async (
  */
 export const getThreadDocumentStream = async (
   prisma: PrismaClient,
-  input: { organizationId: string; sessionId: string; threadId: string; userId: string },
+  input: {
+    organizationId: string
+    sessionId: string
+    threadId: string
+    uoaIdentity: UoaSessionIdentity | undefined
+    userId: string
+  },
 ): Promise<DocumentStreamDetailResponse | null> => {
   const session = await findSession(prisma, input)
   if (!session) {
@@ -270,6 +288,7 @@ export const getThreadDocumentStream = async (
   const readable = await canUserReadRunBasis(prisma, {
     organizationId: input.organizationId,
     runId: session.runId,
+    uoaIdentity: input.uoaIdentity,
     userId: input.userId,
   })
   if (!readable) {
@@ -349,6 +368,7 @@ export const retargetDocumentStream = async (
   const readable = await canUserReadRunBasis(prisma, {
     organizationId: input.organizationId,
     runId: session.runId,
+    uoaIdentity: ctx.actorContext.actionContext.uoaIdentity,
     userId: input.userId,
   })
   if (!readable) {

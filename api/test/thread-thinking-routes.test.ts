@@ -94,6 +94,7 @@ const makeApp = (input: {
     // project/visible-agent rows satisfies nothing, so a restricted run is
     // withheld.
     organizationMember: { findFirst: async () => ({ id: 'member-row' }) },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
     agent: { findMany: async () => [] },
     channelMember: { findMany: async () => [] },
     teamMember: { findMany: async () => [] },

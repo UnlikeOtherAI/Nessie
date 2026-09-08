@@ -60,6 +60,7 @@ export const projectTicketFor = async (
   if (!ticket?.projectId || !(await canUserReadRunDerivedRecord(context.prisma, {
     organizationId: member.organizationId,
     runId: ticket.runId ?? null,
+    uoaIdentity: context.actorContext.actionContext.uoaIdentity,
     userId: member.userId,
   }))) {
     throw new Error('Ticket not found. Resolve it with ticket_list first.')

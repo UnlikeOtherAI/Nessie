@@ -87,6 +87,7 @@ runDatabaseTest('an org-owner agent creator cannot read a private human source c
   const ownerVisibility = {
     includeAllOrgChannels: true,
     organizationId: organization.id,
+    uoaIdentity: undefined,
     userId: creator.id,
   }
   const history = await loadAgentMessages(prisma, agent.id, 25, 0, {

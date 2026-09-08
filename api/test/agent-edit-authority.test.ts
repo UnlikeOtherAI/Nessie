@@ -217,12 +217,12 @@ dbTest('a person-owned team agent refuses another member and admits an org owner
     await prisma.agentBinding.create({ data: { agentId: agent.id, channelId: publicChannelId } })
     const row = await rowFor(prisma, agent.id)
 
-    // Entitled to SEE it (public channel binding) but not to rewrite it, and
-    // the refusal names the person to ask.
+    // Entitled to SEE it (public channel binding) but not to rewrite it. The
+    // refusal remains content-free rather than reading a duplicate local name.
     const authority = await resolveAgentEditAuthority(prisma, actor(otherMemberUserId), row)
     assert.equal(authority.canEdit, false)
     assert.equal(authority.refusal?.code, AGENT_EDIT_AUTHORITY_ERROR_CODES.OWNER_ONLY)
-    assert.match(authority.refusal?.message ?? '', /Edit authority 0/)
+    assert.match(authority.refusal?.message ?? '', /owned by another person/)
 
     await assert.rejects(
       () => updateAgentRecord(prisma, agent.id, actor(otherMemberUserId), {

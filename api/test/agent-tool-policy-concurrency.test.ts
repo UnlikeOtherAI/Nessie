@@ -128,6 +128,8 @@ test('targeted grant and stale generic PUT serialize without losing either chang
     toolRegistryEntry: {
       findFirst: async () => registryEntry,
     },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'active-member' }) },
   } as unknown as PrismaClient
 
   const targetedGrant = setAgentToolPolicyForRegistryEntry(prisma, {

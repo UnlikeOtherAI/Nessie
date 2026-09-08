@@ -120,6 +120,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         await loadThreadThinking(prisma, thread.id, {
           organizationId: actorContext.tenant.organizationId,
           userId: actorContext.actor.actorId,
+          uoaIdentity: actorContext.actionContext.uoaIdentity,
         }),
       ),
     )
@@ -156,6 +157,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const readable = await canUserReadRunBasis(prisma, {
       organizationId: actorContext.tenant.organizationId,
       runId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
       userId: actorContext.actor.actorId,
     })
     if (!readable) {

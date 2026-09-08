@@ -25,7 +25,7 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
     actor: Parameters<RouteDeps['listAccessibleProjectIds']>[0], taskId: string, reply: FastifyReply,
   ) => {
     const task = await getTask(deps.prisma, taskId, actor.tenant.organizationId,
-      await taskVisibilityFor(actor), actor.actor.actorId)
+      await taskVisibilityFor(actor), actor.actor.actorId, actor.actionContext.uoaIdentity)
     if (task) return true
     sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
     return false
@@ -61,6 +61,7 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
       actor.tenant.organizationId,
       await taskVisibilityFor(actor),
       actor.actor.actorId,
+      actor.actionContext.uoaIdentity,
     )
     if (task) {
       await publishTaskUpdated(deps.realtimeHub, [
@@ -93,6 +94,7 @@ export const registerTaskChecklistRoutes = (app: FastifyInstance, deps: RouteDep
       actor.tenant.organizationId,
       await taskVisibilityFor(actor),
       actor.actor.actorId,
+      actor.actionContext.uoaIdentity,
     )
     if (task) {
       await publishTaskUpdated(deps.realtimeHub, [{ kind: 'organization', organizationId: actor.tenant.organizationId }], taskId, task.status)

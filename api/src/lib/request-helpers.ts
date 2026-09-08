@@ -454,6 +454,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
   const createAgentVisibilityScope = (actorContext: AuthorizedActionContext) => ({
     includeAllOrgChannels: actorContext.actor.roles?.includes('owner') ?? false,
     organizationId: actorContext.tenant.organizationId,
+    uoaIdentity: actorContext.actionContext.uoaIdentity,
     userId: actorContext.actor.actorId,
   })
 

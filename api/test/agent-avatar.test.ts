@@ -102,9 +102,13 @@ const makeApp = (attachments: AttachmentRow[]) => {
     user: { count: async () => 0, findUnique: async () => ({ displayName: 'QA member' }) },
     // Edit authority re-derives the acting role from the live membership row.
     organizationMember: {
+      findFirst: async () => ({ id: 'active-member' }),
       findUnique: async () => ({ deactivatedAt: null, role: 'member' }),
     },
-    organization: { count: async () => 0 },
+    organization: {
+      count: async () => 0,
+      findUnique: async () => ({ externalOrgId: null }),
+    },
     feedback: { count: async () => 0 },
   } as unknown as PrismaClient
 
@@ -133,7 +137,7 @@ test('PATCH /api/agents/:agentId/avatar sets an accessible image attachment', as
       payload: { avatarAttachmentId: imageAttachmentId },
     })
 
-    assert.equal(response.statusCode, 200)
+    assert.equal(response.statusCode, 200, response.body)
     assert.equal(response.json().data.avatarAttachmentId, imageAttachmentId)
     assert.equal(getSavedAvatar(), imageAttachmentId)
   } finally {

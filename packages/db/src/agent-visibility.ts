@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import type { UoaSessionIdentity } from '@nessie/schemas'
 
 export type VisibleAgentWhereInput = {
   organizationId: string
@@ -9,6 +10,7 @@ export type VisibleAgentWhereInput = {
 
 export type AgentVisibilityScope = VisibleAgentWhereInput & {
   includeAllOrgChannels?: boolean
+  uoaIdentity?: UoaSessionIdentity
 }
 
 /**
