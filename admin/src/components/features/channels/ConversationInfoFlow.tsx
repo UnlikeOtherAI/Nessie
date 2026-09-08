@@ -10,7 +10,7 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { UserAvatar } from '../../shared/UserAvatar'
 import { IdentityTile } from '../../primitives/IdentityTile'
 import { RAIL_POLL_MS, useThreadBrowserSessions } from '../../../facades/browser-cloud/hooks'
-import { CHAT_TOOLS, type ChatToolId } from './tool-rail/chat-tools'
+import { type ChatTool, type ChatToolId } from './tool-rail/chat-tools'
 
 type ConversationInfoFlowProps = {
   activeChannel: ChannelRecord
@@ -19,8 +19,13 @@ type ConversationInfoFlowProps = {
   allUsers: UserRecord[]
   canAddPeople: boolean
   channelUsers: UserRecord[]
-  /** This conversation has one agent, so the agent's tools apply to it. */
-  hasAgentTools: boolean
+  /**
+   * The tools this conversation's agent actually has (`availableChatTools`),
+   * or empty where the conversation has no single agent. A list rather than a
+   * flag: an agent with conversations but no browser must be offered the one
+   * it has and not the one it does not.
+   */
+  agentTools: readonly ChatTool[]
   me: MeResponse
   onGroupCreated: (channelId: string) => void
   onOpenTool: (tool: ChatToolId) => void
@@ -69,15 +74,17 @@ const Disclosure = ({
 const ChatToolDisclosures = ({
   onOpenTool,
   threadId,
+  tools,
 }: {
   onOpenTool: (tool: ChatToolId) => void
   threadId: string | null
+  tools: readonly ChatTool[]
 }) => {
   const sessions = useThreadBrowserSessions(threadId, { refetchInterval: RAIL_POLL_MS })
   const browsing = (sessions.data?.sessions.length ?? 0) > 0
   return (
     <>
-      {CHAT_TOOLS.map((tool) => (
+      {tools.map((tool) => (
         <Disclosure
           detail={
             tool.id === 'browser' && browsing
@@ -95,8 +102,8 @@ const ChatToolDisclosures = ({
 
 const ConversationOverview = ({
   activeChannel,
+  agentTools,
   channelUsers,
-  hasAgentTools,
   memberCount,
   canAddPeople,
   onOpenMembers,
@@ -107,8 +114,8 @@ const ConversationOverview = ({
   threadId,
 }: {
   activeChannel: ChannelRecord
+  agentTools: readonly ChatTool[]
   channelUsers: UserRecord[]
-  hasAgentTools: boolean
   memberCount: number
   canAddPeople: boolean
   onOpenMembers: () => void
@@ -158,8 +165,12 @@ const ConversationOverview = ({
       </div>
 
       <div className="mt-3 border-y border-[color:var(--sep)]">
-        {hasAgentTools ? (
-          <ChatToolDisclosures onOpenTool={onOpenTool} threadId={threadId} />
+        {agentTools.length > 0 ? (
+          <ChatToolDisclosures
+            onOpenTool={onOpenTool}
+            threadId={threadId}
+            tools={agentTools}
+          />
         ) : null}
         <Disclosure label="Messages" onClick={onOpenMessages} />
         <Disclosure label="Files and links" onClick={onOpenFiles} />
@@ -312,9 +323,9 @@ export const ConversationInfoFlow = ({
   activeChannel,
   activeThreadId,
   allUsers,
+  agentTools,
   canAddPeople,
   channelUsers,
-  hasAgentTools,
   me,
   onGroupCreated,
   onOpenTool,
@@ -360,9 +371,9 @@ export const ConversationInfoFlow = ({
       {route.step === 'info' ? (
         <ConversationOverview
           activeChannel={activeChannel}
+          agentTools={agentTools}
           canAddPeople={canManageMembers}
           channelUsers={members}
-          hasAgentTools={hasAgentTools}
           memberCount={memberCount}
           onOpenAddPeople={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
           onOpenFiles={() => void navigate(`/channels/${activeChannel.id}?tab=files`)}

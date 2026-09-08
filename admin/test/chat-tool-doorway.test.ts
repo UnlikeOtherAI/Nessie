@@ -5,6 +5,7 @@ import type { AgentRecord } from '../src/lib/api-client'
 import { resolveConversationAgent } from '../src/components/features/channels/channel-tabs'
 import {
   CHAT_TOOLS,
+  availableChatTools,
   chatToolDoorway,
   chatToolHeaderActions,
   type ChatToolId,
@@ -22,6 +23,7 @@ import { toScreenBarActions } from '../src/components/shared/screen-bar-actions'
  */
 
 const agent = (overrides: Partial<AgentRecord> = {}): AgentRecord => ({
+  browserEnabled: true,
   channelIds: [],
   id: 'agent-1',
   lastActivityAt: new Date(0).toISOString(),
@@ -58,7 +60,7 @@ describe('chat tool doorway', () => {
       const doorway = doorwayFor([agent()], single)
       const railDrawn = doorway === 'rail'
       const headerActions = chatToolHeaderActions({
-        hasConversationAgent: true,
+        agent: agent(),
         onOpenTool: () => undefined,
         single,
       })
@@ -91,7 +93,7 @@ describe('chat tool doorway', () => {
     )
     assert.deepEqual(
       chatToolHeaderActions({
-        hasConversationAgent: false,
+        agent: null,
         onOpenTool: () => undefined,
         single: true,
       }),
@@ -99,10 +101,10 @@ describe('chat tool doorway', () => {
     )
   })
 
-  it('carries every tool in the table, and opens the one that was pressed', () => {
+  it('carries every tool the agent has, and opens the one that was pressed', () => {
     const opened: ChatToolId[] = []
     const actions = chatToolHeaderActions({
-      hasConversationAgent: true,
+      agent: agent(),
       onOpenTool: (tool) => opened.push(tool),
       single: true,
     })
@@ -118,13 +120,38 @@ describe('chat tool doorway', () => {
     assert.deepEqual(opened, CHAT_TOOLS.map((tool) => tool.id))
   })
 
+  it('an agent with no browser is offered its conversations, and nothing else', () => {
+    // The capability is read from the record, so a rail button never opens a
+    // door onto a room the agent does not have.
+    const withoutBrowser = agent({ browserEnabled: false })
+    assert.deepEqual(
+      availableChatTools(withoutBrowser).map((tool) => tool.id),
+      ['conversations'],
+    )
+    assert.deepEqual(availableChatTools(null), [])
+    assert.deepEqual(
+      chatToolHeaderActions({
+        agent: withoutBrowser,
+        onOpenTool: () => undefined,
+        single: true,
+      }).map((action) => action.id),
+      ['chat-tool-conversations'],
+    )
+    // …and the doorway still exists: a conversation with an agent always has
+    // at least its own list to offer.
+    assert.equal(
+      chatToolDoorway({ hasConversationAgent: true, single: true }),
+      'header',
+    )
+  })
+
   it('keeps the doorway in the web header rather than inside More', () => {
     // The narrowest realistic action lane on a phone, and every other
     // conversation control fighting it for room: `partitionPageHeaderActions`
     // sheds by priority but never sheds a primary, which is the whole reason
     // these actions are primary.
     const actions = chatToolHeaderActions({
-      hasConversationAgent: true,
+      agent: agent(),
       onOpenTool: () => undefined,
       single: true,
     }).map((action) => ({
@@ -161,7 +188,7 @@ describe('chat tool doorway', () => {
     // still buried in a menu.
     const bar = toScreenBarActions(
       chatToolHeaderActions({
-        hasConversationAgent: true,
+        agent: agent(),
         onOpenTool: () => undefined,
         single: true,
       }),

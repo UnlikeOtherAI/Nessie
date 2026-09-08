@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 
-import { CHAT_TOOLS, type ChatToolId } from './chat-tools'
+import type { ChatTool, ChatToolId } from './chat-tools'
 
 type ChatToolRailProps = {
   /**
@@ -12,6 +12,12 @@ type ChatToolRailProps = {
   /** Tools with something happening right now get a live dot. */
   liveTools: ReadonlySet<ChatToolId>
   openTool: ChatToolId | null
+  /**
+   * The tools this agent has (`availableChatTools`), in table order. The rail
+   * draws exactly these: a button for a capability the agent does not have is
+   * a door onto an empty room.
+   */
+  tools: readonly ChatTool[]
   onToggle: (tool: ChatToolId) => void
 }
 
@@ -30,8 +36,31 @@ const BrowserMark = () => (
   </svg>
 )
 
+const ConversationsMark = () => (
+  <svg
+    aria-hidden="true"
+    className="h-5 w-5"
+    fill="none"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="1.6"
+    viewBox="0 0 24 24"
+  >
+    <path d="M8.5 15.5H6l-3 3v-11a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H8.5Z" />
+    <path d="M9.5 11.5v2a2 2 0 0 0 2 2h5l2.5 2.5v-8a2 2 0 0 0-2-2h-2" />
+  </svg>
+)
+
 const TOOL_MARKS: Record<ChatToolId, () => ReactElement> = {
   browser: BrowserMark,
+  conversations: ConversationsMark,
+}
+
+/** What a live dot on each tool means, read out to a screen reader. */
+const LIVE_LABELS: Record<ChatToolId, string> = {
+  browser: 'Browsing now',
+  conversations: 'Another conversation is running',
 }
 
 /**
@@ -51,6 +80,7 @@ export const ChatToolRail = ({
   liveTools,
   onToggle,
   openTool,
+  tools,
 }: ChatToolRailProps) => (
   <aside
     aria-label="Agent tools"
@@ -59,7 +89,7 @@ export const ChatToolRail = ({
       'border-l border-[color:var(--sep)] bg-[color:var(--rail)] px-2 py-2',
     ].join(' ')}
   >
-    {CHAT_TOOLS.map((tool) => {
+    {tools.map((tool) => {
       const Mark = TOOL_MARKS[tool.id]
       const live = liveTools.has(tool.id)
       return (
@@ -86,7 +116,7 @@ export const ChatToolRail = ({
             ) : null}
           </span>
           <span className="admin-rail-btn-label">{tool.label}</span>
-          {live ? <span className="sr-only">Browsing now</span> : null}
+          {live ? <span className="sr-only">{LIVE_LABELS[tool.id]}</span> : null}
           {blockedReason === null ? null : <span className="sr-only">{blockedReason}</span>}
         </button>
       )

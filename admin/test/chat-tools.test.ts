@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import type { AgentRecord } from '../src/lib/api-client'
 import {
   CHAT_TOOLS,
+  CHAT_TOOL_IDS,
+  availableChatTools,
   chatToolStorageKey,
   parseOpenChatTool,
   readOpenChatTool,
@@ -58,6 +61,17 @@ const withStorage = (run: (state: FakeStorage) => void): void => {
   }
 }
 
+const agent = (overrides: Partial<AgentRecord> = {}): AgentRecord => ({
+  channelIds: [],
+  id: 'agent-1',
+  name: 'Researcher',
+  role: 'Researches things',
+  status: 'idle',
+  systemManaged: false,
+  todosEnabled: false,
+  ...overrides,
+} as AgentRecord)
+
 describe('chat tools', () => {
   it('every tool says which question it answers', () => {
     // Rule zero check 3: a rail button with no stated decision is decoration.
@@ -65,6 +79,32 @@ describe('chat tools', () => {
       assert.ok(tool.label.length > 0, `${tool.id} has no label`)
       assert.ok(tool.description.length > 0, `${tool.id} has no description`)
     }
+  })
+
+  it('the list comes first — it is the agent\u2019s work, the browser is a tool it uses', () => {
+    assert.deepEqual([...CHAT_TOOL_IDS], ['conversations', 'browser'])
+    assert.deepEqual(CHAT_TOOLS.map((tool) => tool.id), [...CHAT_TOOL_IDS])
+  })
+
+  it('availability is read from the agent record, never guessed', () => {
+    // Conversations exist for every agent that can be talked to; the browser
+    // exists only where the explicit browser_open grant does, which is exactly
+    // what `browserEnabled` projects.
+    assert.deepEqual(
+      availableChatTools(agent({ browserEnabled: true })).map((tool) => tool.id),
+      ['conversations', 'browser'],
+    )
+    assert.deepEqual(
+      availableChatTools(agent({ browserEnabled: false })).map((tool) => tool.id),
+      ['conversations'],
+    )
+    // An absent flag is not a browser: a missing grant is an unavailable
+    // capability, not a read that failed.
+    assert.deepEqual(
+      availableChatTools(agent()).map((tool) => tool.id),
+      ['conversations'],
+    )
+    assert.deepEqual(availableChatTools(null), [])
   })
 
   it('reads back the tool it stored, per agent', () => {
@@ -94,6 +134,7 @@ describe('chat tools', () => {
     assert.equal(parseOpenChatTool(null), null)
     assert.equal(parseOpenChatTool(''), null)
     assert.equal(parseOpenChatTool('browser'), 'browser')
+    assert.equal(parseOpenChatTool('conversations'), 'conversations')
   })
 
   it('survives storage being blocked', () => {

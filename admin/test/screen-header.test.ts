@@ -212,6 +212,7 @@ const HAND_ROLLED_HEADER_ALLOWLIST = new Map<string, string>([
   ['components/shared/ResponsivePageHeader.tsx', 'the one sanctioned <header> element ScreenHeader composes'],
   ['components/features/settings/AutomaticMembershipDomainRow.tsx', "a roster row's own header grouping a domain and its status pill, not a screen"],
   ['components/features/browser-cloud/AgentScreenPanel.tsx', "the agent-screen side panel's own h2 bar (an overlay panel, not a route screen)"],
+  ['components/features/agents/conversations/AgentConversationsPanel.tsx', "the conversations side panel's own h2 bar — the same overlay-panel idiom as its sibling AgentScreenPanel, not a route screen"],
   ['components/features/projects/DashboardSectionCard.tsx', "a dashboard card's own header row (h2 SectionLabel), sectioning content inside the card"],
   ['components/features/agents/AgentDetailDrawer.tsx', "a drawer's own header row; the drawer is an overlay, not a route screen"],
   ['components/features/dashboards/DashboardWorkspacePanel.tsx', "the dashboard workspace side panel's own h2 bar (an overlay panel, not a route screen)"],
@@ -342,6 +343,7 @@ test('every screen-level phone header publishes the native bar', () => {
   // through `useNativeBarHeader` instead. The list only ever shrinks: a new
   // entry means a new way to draw a header, which is the fork Rule zero names.
   const PUBLISHERS = [
+    'components/features/agents/conversations/AgentConversationsPanel.tsx',
     'components/features/browser-cloud/AgentScreenPanel.tsx',
     'components/features/channels/thread-panel/ThreadReplyPanel.tsx',
     'components/features/dashboards/DashboardWorkspacePanel.tsx',

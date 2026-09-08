@@ -7,10 +7,15 @@
  * needs its mark in `ChatToolRail` and the column it opens in `ChatToolDock`.
  */
 
-import { faTableColumns } from '@fortawesome/free-solid-svg-icons'
+import { faComments, faTableColumns } from '@fortawesome/free-solid-svg-icons'
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import type { AgentRecord } from '../../../../lib/api-client'
 import type { PageHeaderAction } from '../../../shared/ResponsivePageHeader'
 
-export const CHAT_TOOL_IDS = ['browser'] as const
+// The list first, the browser second: one is *the agent's work* and the other
+// is a tool it uses. The order is the rail's order, the header doorway's order,
+// and the order the iOS bar picks its one inline slot from.
+export const CHAT_TOOL_IDS = ['conversations', 'browser'] as const
 
 export type ChatToolId = (typeof CHAT_TOOL_IDS)[number]
 
@@ -23,15 +28,44 @@ export type ChatTool = {
    * nothing the column cannot deliver.
    */
   description: string
+  /**
+   * Whether this agent has this tool at all. A capability, read from the agent
+   * record — never a guess and never a layout question: the browser exists only
+   * where the explicit `browser_open` grant does, while every agent that can be
+   * talked to has conversations.
+   */
+  available: (agent: AgentRecord) => boolean
+  /** The web header's glyph on a layout with no rail to draw the mark in. */
+  icon: IconDefinition
 }
 
 export const CHAT_TOOLS: readonly ChatTool[] = [
   {
+    available: () => true,
+    description:
+      'Every conversation with this agent you can see — switch between them or start another.',
+    icon: faComments,
+    id: 'conversations',
+    label: 'Conversations',
+  },
+  {
+    // This is the API's projection of the explicit `browser_open` grant. A
+    // missing grant is an unavailable capability, never a browser read that
+    // failed.
+    available: (agent) => agent.browserEnabled === true,
     description: 'Its own browser — watch it work, or pick up where it left off.',
+    icon: faTableColumns,
     id: 'browser',
     label: 'Browser',
   },
 ]
+
+/**
+ * The tools this agent actually has, in table order. An agent with no browser
+ * gets a rail of one rather than a button that explains it cannot open.
+ */
+export const availableChatTools = (agent: AgentRecord | null): readonly ChatTool[] =>
+  agent === null ? [] : CHAT_TOOLS.filter((tool) => tool.available(agent))
 
 /** Which control carries the tools on a given layout. */
 export type ChatToolDoorway = 'header' | 'none' | 'rail'
@@ -81,24 +115,26 @@ export const CHAT_TOOL_ACTION_PRIORITY = 95
  * implementation of "open this agent's tool" (`ChannelsPage`).
  */
 export const chatToolHeaderActions = ({
-  hasConversationAgent,
+  agent,
   onOpenTool,
   single,
 }: {
-  hasConversationAgent: boolean
+  /** The one agent this conversation is with, or null where there is none. */
+  agent: AgentRecord | null
   onOpenTool: (tool: ChatToolId) => void
   single: boolean
 }): PageHeaderAction[] =>
-  chatToolDoorway({ hasConversationAgent, single }) === 'header'
-    ? CHAT_TOOLS.map((tool) => ({
-        // The two-pane glyph, in both vocabularies: the conversation on the
-        // left and the panel it opens on the right, which is what pressing it
-        // does — the screen arrives from the right over the conversation
-        // (`navigation/motion.ts`, `topAt(1)` = translate3d(100%, 0, 0)).
-        // `label` stays the accessible name and the fallback anywhere the
-        // glyph is unknown.
+  chatToolDoorway({ hasConversationAgent: agent !== null, single }) === 'header'
+    ? availableChatTools(agent).map((tool) => ({
+        // The two-pane glyph, in the native bar's one vocabulary: the
+        // conversation on the left and the panel it opens on the right, which
+        // is what pressing it does — the screen arrives from the right over the
+        // conversation (`navigation/motion.ts`, `topAt(1)` =
+        // translate3d(100%, 0, 0)). Both tools open a panel from the right, so
+        // both carry it; the web header draws each tool's own glyph, and
+        // `label` stays the accessible name everywhere.
         barIcon: 'panel-right' as const,
-        icon: faTableColumns,
+        icon: tool.icon,
         id: `chat-tool-${tool.id}`,
         label: tool.label,
         onSelect: () => onOpenTool(tool.id),

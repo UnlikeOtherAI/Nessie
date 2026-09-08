@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import type { AgentRecord } from '../../../../lib/api-client'
+import { useAgentConversations } from '../../../../facades/agents/hooks'
 import {
   RAIL_POLL_MS,
   WATCHING_POLL_MS,
@@ -9,12 +10,17 @@ import {
 import { useViewport } from '../../../../hooks/useViewport'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
 import { AgentScreenPanel } from '../../browser-cloud/AgentScreenPanel'
+import { AgentConversationsPanel } from '../../agents/conversations/AgentConversationsPanel'
 import { ChatToolRail } from './ChatToolRail'
-import { chatToolDoorway, type ChatToolId } from './chat-tools'
+import { availableChatTools, chatToolDoorway, type ChatToolId } from './chat-tools'
 
 type ChatToolDockProps = {
   /** The one agent this conversation is with; the rail is per agent. */
   agent: AgentRecord
+  /** The room the reader is standing in — where a new conversation is started. */
+  activeChannelId: string | null
+  /** The conversation on screen, so its own row is never the reason for a dot. */
+  activeThreadId: string | null
   onClose: () => void
   onToggle: (tool: ChatToolId) => void
   openTool: ChatToolId | null
@@ -46,6 +52,8 @@ const CROWDED_REASON =
  * becomes a full screen with its own Back.
  */
 export const ChatToolDock = ({
+  activeChannelId,
+  activeThreadId,
   agent,
   onClose,
   onToggle,
@@ -56,10 +64,12 @@ export const ChatToolDock = ({
 }: ChatToolDockProps) => {
   const single = useNavigationLayout() === 'single'
   const { atLeast } = useViewport()
-  // This is the API's projection of the explicit browser_open grant. The
-  // Browser dock must use the same fact as the Tools page: a missing grant is
-  // an unavailable capability, never a browser read that failed.
-  const browserEnabled = agent.browserEnabled === true
+  // This is the API's projection of the explicit browser_open grant, stated
+  // once in the tool table: the Browser dock must use the same fact as the
+  // Tools page — a missing grant is an unavailable capability, never a browser
+  // read that failed.
+  const tools = useMemo(() => availableChatTools(agent), [agent])
+  const browserEnabled = tools.some((tool) => tool.id === 'browser')
   // Two 400px panels plus the shell's own 389px of chrome leave a 1280px
   // window 91px of conversation, and below `xl` they are not columns at all —
   // each is a layer over the chat, so a second one means two scrims and a
@@ -69,6 +79,7 @@ export const ChatToolDock = ({
   // must not erase what the reader chose.
   const crowded = otherPanelOpen && !atLeast['2xl'] && !routed
   const browserOpen = browserEnabled && openTool === 'browser' && !crowded
+  const conversationsOpen = openTool === 'conversations' && !crowded
 
   // Watching wants a fresh answer; a rail dot does not, and a layout with no
   // rail wants none at all. Both callers share one query key, so a
@@ -83,13 +94,36 @@ export const ChatToolDock = ({
   const liveSessionId =
     sessions.data?.sessions.find((row) => row.agentId === agent.id)?.id ?? null
 
-  const liveTools = useMemo(
-    () => new Set<ChatToolId>(liveSessionId === null ? [] : ['browser']),
-    [liveSessionId],
+  // The same list the column renders, under the same key: the dot and the rows
+  // can never disagree, and opening the column costs no second request.
+  const conversations = useAgentConversations(agent.id, {
+    enabled: conversationsOpen || !single,
+    refetchInterval: conversationsOpen ? WATCHING_POLL_MS : RAIL_POLL_MS,
+  })
+  // "Something is happening *elsewhere*": the conversation on screen already
+  // shows its own run in the thinking bubble, so counting it would leave the
+  // dot lit for the thread the reader is looking at.
+  const otherConversationRunning = conversations.data.some(
+    (conversation) => conversation.activeRun !== null && conversation.id !== activeThreadId,
   )
+
+  const liveTools = useMemo(() => {
+    const live = new Set<ChatToolId>()
+    if (liveSessionId !== null) live.add('browser')
+    if (otherConversationRunning) live.add('conversations')
+    return live
+  }, [liveSessionId, otherConversationRunning])
 
   return (
     <>
+      {conversationsOpen ? (
+        <AgentConversationsPanel
+          activeChannelId={activeChannelId}
+          activeThreadId={activeThreadId}
+          agent={agent}
+          onClose={onClose}
+        />
+      ) : null}
       {browserOpen ? (
         <AgentScreenPanel
           agent={agent}
@@ -103,12 +137,13 @@ export const ChatToolDock = ({
         down on a phone is the same statement as the header picking them up:
         they can neither double up nor both vanish.
       */}
-      {chatToolDoorway({ hasConversationAgent: browserEnabled, single }) === 'rail' ? (
+      {chatToolDoorway({ hasConversationAgent: true, single }) === 'rail' ? (
         <ChatToolRail
           blockedReason={crowded ? CROWDED_REASON : null}
           liveTools={liveTools}
           onToggle={onToggle}
           openTool={crowded ? null : openTool}
+          tools={tools}
         />
       ) : null}
     </>
