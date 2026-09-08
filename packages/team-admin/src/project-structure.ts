@@ -33,7 +33,7 @@ import { defaultBoardCreateData } from './board-structure.js'
 export const projectCountsInclude = {
   members: { select: { userId: true, role: true } },
   teams: { select: { _count: { select: { channels: true } } } },
-  team: { select: { _count: { select: { channels: true } } } },
+  team: { select: { id: true } },
 } as const
 
 type ProjectWithCounts = {
@@ -45,7 +45,7 @@ type ProjectWithCounts = {
   createdAt: Date
   members: { userId: string; role: string }[]
   teams: { _count: { channels: number } }[]
-  team: { _count: { channels: number } } | null
+  team: { id: string } | null
 }
 
 export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => ({
@@ -56,9 +56,7 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
   organizationId: parseOrganizationId(project.organizationId),
   memberCount: project.members.length,
   teamCount: project.team ? 1 : project.teams.length,
-  channelCount: project.team
-    ? project.team._count.channels
-    : project.teams.reduce((total, team) => total + team._count.channels, 0),
+  channelCount: project.teams.reduce((total, team) => total + team._count.channels, 0),
   createdAt: project.createdAt.toISOString(),
 })
 
@@ -143,9 +141,8 @@ export const listTeamsForOrganization = async (
     orderBy: { createdAt: 'asc' },
   })
   return teams.flatMap((team) => {
-    const projectId = team.projects[0]?.id ?? team.projectId
-    if (input.projectIds && !input.projectIds.includes(projectId)) return []
-    return [{
+    const projectIds = team.projects.length > 0 ? team.projects.map((project) => project.id) : [team.projectId]
+    return projectIds.filter((projectId) => !input.projectIds || input.projectIds.includes(projectId)).map((projectId) => ({
     callProvider: team.callProvider as TeamRecord['callProvider'],
     createdAt: team.createdAt.toISOString(),
     // UOA holds a bound team's name, so a rename here is relayed to UOA
@@ -156,7 +153,7 @@ export const listTeamsForOrganization = async (
     memberCount: team.members.length,
     name: team.name,
     projectId: parseProjectId(projectId),
-    }]
+    }))
   })
 }
 

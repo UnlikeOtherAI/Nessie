@@ -120,13 +120,14 @@ export const loadUserMemberships = async (
   for (const tm of teamMembers) {
     // Canonical ownership wins. The old FK is only a transition reader for
     // records the audited backfill has not yet assigned.
-    const projectId = tm.team.projects.length === 1
-      ? tm.team.projects[0]!.id
-      : tm.team.projectId
-    if (tm.team.projects.length > 1) continue
-    const list = teamsByProject.get(projectId) ?? []
-    list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })
-    teamsByProject.set(projectId, list)
+    const projectIds = tm.team.projects.length > 0
+      ? tm.team.projects.map((project) => project.id)
+      : [tm.team.projectId]
+    for (const projectId of projectIds) {
+      const list = teamsByProject.get(projectId) ?? []
+      list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })
+      teamsByProject.set(projectId, list)
+    }
   }
 
   const projectsByOrganization = new Map<string, MeMembership['projects']>()

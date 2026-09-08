@@ -279,9 +279,12 @@ export const reconcileUoaMembershipProjection = async (
     },
   })
   const resolvedMemberships = memberships.flatMap(({ team }) => {
-    if (team.projects.length > 1) return []
-    const project = team.projects[0] ?? team.project
-    return [{ projectId: project.id, team, externalOrgId: project.organization.externalOrgId }]
+    const projects = team.projects.length > 0 ? team.projects : [team.project]
+    return projects.map((project) => ({
+      projectId: project.id,
+      team,
+      externalOrgId: project.organization.externalOrgId,
+    }))
   })
   const revoked = resolvedMemberships.filter(({ externalOrgId, team }) => {
     if (!externalOrgId || !team.externalTeamId) return false
@@ -299,7 +302,9 @@ export const reconcileUoaMembershipProjection = async (
     const stillHeld = new Set((await tx.teamMember.findMany({
       where: { userId: input.userId },
       select: { team: { select: { projectId: true, projects: { select: { id: true }, take: 2 } } } },
-    })).map(({ team }) => team.projects[0]?.id ?? team.projectId))
+    })).flatMap(({ team }) => team.projects.length > 0
+      ? team.projects.map((project) => project.id)
+      : [team.projectId]))
     const orphanedProjectIds = [...new Set(revoked.map(({ projectId }) => projectId))]
       .filter((projectId) => !stillHeld.has(projectId))
     if (orphanedProjectIds.length > 0) {

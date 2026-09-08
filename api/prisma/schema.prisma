@@ -1529,7 +1529,7 @@ model Project {
   organizationId           String                    @map("organization_id") @db.Uuid
   // Expand phase of the team-model inversion. This is nullable until the
   // audited backfill can prove every existing non-root project has one team.
-  teamId                   String?                   @unique @map("team_id") @db.Uuid
+  teamId                   String?                   @map("team_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA team and does not mirror any external team.
   channelRoot              Boolean                   @default(false) @map("channel_root")
@@ -1558,6 +1558,7 @@ model Project {
 
   @@unique([id, organizationId])
   @@index([avatarAttachmentId])
+  @@index([teamId])
   @@map("projects")
 }
 

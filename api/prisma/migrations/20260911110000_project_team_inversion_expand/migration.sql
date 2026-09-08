@@ -9,5 +9,4 @@ ALTER TABLE "projects"
   FOREIGN KEY ("team_id") REFERENCES "teams"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
 
-CREATE UNIQUE INDEX "projects_team_id_key"
-  ON "projects"("team_id") WHERE "team_id" IS NOT NULL;
+CREATE INDEX "projects_team_id_idx" ON "projects"("team_id");
