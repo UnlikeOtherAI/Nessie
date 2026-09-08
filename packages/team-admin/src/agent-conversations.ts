@@ -250,7 +250,10 @@ const loadLastMessagePreviews = async (
 
   for (const row of rows) {
     if (row.restricted) continue
-    const preview = row.content.trim()
+    // One line, always: a row and a card each give this a single line, and a
+    // preview that carried the message's own newlines would either be clipped
+    // by CSS or push the row's height around.
+    const preview = row.content.replace(/\s+/g, ' ').trim()
     if (preview) previews.set(row.thread_id, preview.slice(0, CONVERSATION_PREVIEW_MAX_CHARS))
   }
   return previews
