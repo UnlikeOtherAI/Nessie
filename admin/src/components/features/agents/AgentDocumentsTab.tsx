@@ -27,7 +27,7 @@ const AgentDocumentsTeam = () => {
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[color:var(--sep)] p-3">
         <Notice className="flex flex-wrap items-center gap-2" size="sm" tone="warning">
-          <span>These documents are visible to everyone who can see this agent. Don’t store secrets here.</span>
+          <span>Documents can have narrower access than this agent. Don’t store secrets here.</span>
           {!selectedSpace.canWrite ? <Pill tone="warning">Read-only</Pill> : null}
         </Notice>
       </div>

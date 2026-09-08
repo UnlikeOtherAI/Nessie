@@ -12,9 +12,8 @@ import type { RunContext } from './types.js'
 const UNSCOPED_CONTENT_SINKS = new Set([
   'kb_comment_add',
   'kb_comment_reply',
-  'kb_document_edit',
-  'kb_draft_write',
   'kb_note_add',
+  'kb_publish_request',
   // A private source can be placed in a URL or typed into an external page.
   // Neither browser verb has an original-author-bound disclosure protocol.
   BROWSER_ACT_TOOL_ID,

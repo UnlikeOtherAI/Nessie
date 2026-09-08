@@ -7,8 +7,14 @@ import type {
 
 export const pageInclude = {
   labels: { orderBy: { normalizedName: 'asc' as const } },
-  publishedVersion: true,
-  versions: { orderBy: { versionNumber: 'desc' as const }, take: 1 },
+  publishedVersion: {
+    include: { basisScopes: true, disclosureSources: true },
+  },
+  versions: {
+    orderBy: { versionNumber: 'desc' as const },
+    take: 1,
+    include: { basisScopes: true, disclosureSources: true },
+  },
 } satisfies Prisma.KnowledgePageInclude
 
 export type PageRow = Prisma.KnowledgePageGetPayload<{ include: typeof pageInclude }>
@@ -31,11 +37,15 @@ const toJsonRecord = (value: unknown): Record<string, unknown> | null =>
 
 const toIso = (value: Date | null): string | null => value?.toISOString() ?? null
 
-export const mapVersion = (
-  version: Prisma.KnowledgePageVersionGetPayload<Record<string, never>> | null,
-): KnowledgePageVersionRecord | null =>
-  version
-    ? {
+export const versionInclude = {
+  basisScopes: true,
+  disclosureSources: true,
+} satisfies Prisma.KnowledgePageVersionInclude
+
+type VersionRow = Prisma.KnowledgePageVersionGetPayload<{ include: typeof versionInclude }>
+
+export const mapVersion = (version: VersionRow | null): KnowledgePageVersionRecord | null =>
+  version ? {
         id: version.id,
         pageId: version.pageId,
         versionNumber: version.versionNumber,
@@ -47,6 +57,28 @@ export const mapVersion = (
         authorId: version.authorId,
         changeComment: version.changeComment,
         createdAt: version.createdAt.toISOString(),
+  // A native reader that omitted these relations cannot establish whether the
+  // version is ordinary legacy content or private-derived with lost lineage.
+  // Throw before mapping so a new projection fails closed instead of silently
+  // treating missing metadata as an unrestricted empty basis.
+  basisScopes: (() => {
+    if (!Array.isArray(version.basisScopes)) {
+      throw new Error('Knowledge version disclosure basis projection is missing.')
+    }
+    return version.basisScopes.map((scope) => ({
+    scopeId: scope.scopeId,
+    scopeType: scope.scopeType,
+    }))
+  })(),
+  disclosureSources: (() => {
+    if (!Array.isArray(version.disclosureSources)) {
+      throw new Error('Knowledge version disclosure source projection is missing.')
+    }
+    return version.disclosureSources.map((source) => ({
+    sourceAuthorUserId: source.sourceAuthorUserId,
+    sourceChannelId: source.sourceChannelId,
+    }))
+  })(),
       }
     : null
 

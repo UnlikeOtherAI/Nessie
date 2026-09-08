@@ -34,7 +34,11 @@ test('a markdown read records its space scope before attachment bytes enter the 
         },
         spaceId: SPACE_ID,
         title: 'Private notes.md',
-        versions: [{ attachmentId: ATTACHMENT_ID }],
+        versions: [{
+          attachmentId: ATTACHMENT_ID,
+          basisScopes: [],
+          disclosureSources: [],
+        }],
       }),
     },
   } as unknown as PrismaClient
@@ -52,9 +56,59 @@ test('a markdown read records its space scope before attachment bytes enter the 
     fileService,
     ORGANIZATION_ID,
     PAGE_ID,
-    { consumedSources: sink },
+    {
+      consumedSources: sink,
+      disclosureViewer: { agentId: 'agent-1', kind: 'agent', scopes: [] },
+    },
   )
 
   assert.equal(document?.content, 'classified body')
   assert.deepEqual(sink.list(), [{ scopeId: USER_ID, scopeType: 'user' }])
+})
+
+test('a live document load with unknown private lineage opens no attachment bytes', async () => {
+  let opened = false
+  const prisma = {
+    knowledgePage: {
+      findFirst: async () => ({
+        id: PAGE_ID,
+        kind: 'file',
+        parentPageId: null,
+        publishedVersion: null,
+        space: {
+          channelId: null,
+          organizationId: ORGANIZATION_ID,
+          ownerAgentId: null,
+          projectId: PROJECT_ID,
+          teamId: null,
+          userId: USER_ID,
+          visibility: 'private',
+        },
+        spaceId: SPACE_ID,
+        title: 'Restricted notes.md',
+        versions: [{
+          attachmentId: ATTACHMENT_ID,
+          basisScopes: [{ scopeId: 'private-channel', scopeType: 'channel' }],
+          disclosureSources: [{ sourceAuthorUserId: null, sourceChannelId: 'private-channel' }],
+        }],
+      }),
+    },
+  } as unknown as PrismaClient
+  const fileService = {
+    openStream: async () => { opened = true; return null },
+  } as unknown as FileService
+
+  const document = await readMarkdownDocument(
+    prisma,
+    fileService,
+    ORGANIZATION_ID,
+    PAGE_ID,
+    {
+      consumedSources: createConsumedSourceSink(),
+      disclosureViewer: { agentId: 'agent-1', kind: 'agent', scopes: [] },
+    },
+  )
+
+  assert.equal(document, null)
+  assert.equal(opened, false)
 })

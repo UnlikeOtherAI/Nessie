@@ -23,6 +23,23 @@ export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
 export type KnowledgePageKind = 'document' | 'file'
 export type KnowledgeAuthorType = 'user' | 'agent'
 
+/** One source scope a version must retain in addition to its document home. */
+export type KnowledgePageVersionBasisScope = {
+  scopeId: string
+  scopeType: string
+}
+
+/** A private-conversation author whose material informed this exact version. */
+export type KnowledgePageVersionDisclosureSource = {
+  sourceAuthorUserId: string | null
+  sourceChannelId: string
+}
+
+export type KnowledgePageVersionDisclosureInput = {
+  basisScopes?: KnowledgePageVersionBasisScope[]
+  disclosureSources?: KnowledgePageVersionDisclosureSource[]
+}
+
 export type KnowledgeProviderCapabilities = {
   canWrite: boolean
   canIncrementalSync: boolean
@@ -60,7 +77,7 @@ export type KnowledgePageVersionRecord = {
   authorId: string
   changeComment: string | null
   createdAt: string
-}
+} & Required<KnowledgePageVersionDisclosureInput>
 
 export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   id: string
@@ -167,12 +184,14 @@ export type ListSpacesInput = {
 }
 
 export type ListPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   organizationId: string
   spaceId: string
   includeArchived?: boolean
 }
 
 export type ListRecentPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   organizationId: string
   // Required: this list is always "this project's recent documents".
   projectId: string
@@ -184,6 +203,7 @@ export type ListRecentPagesInput = {
 }
 
 export type SearchPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   cursor?: string
   labels?: string[]
   limit?: number
@@ -199,6 +219,7 @@ export type SearchPagesInput = {
 }
 
 export type HybridSearchPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   organizationId: string
   query: string
   queryEmbedding: number[] | null
@@ -236,7 +257,7 @@ export type UpdateSpaceInput = Partial<{
   writeRestricted: boolean
 }>
 
-export type CreatePageInput = KnowledgeScopeInput & {
+export type CreatePageInput = KnowledgeScopeInput & KnowledgePageVersionDisclosureInput & {
   authorId: string
   authorType: KnowledgeAuthorType
   body?: string | null
@@ -258,7 +279,7 @@ export type CreatePageInput = KnowledgeScopeInput & {
 }
 
 // Add a new version to a file node, backed by a freshly stored attachment.
-export type AddFileVersionInput = {
+export type AddFileVersionInput = KnowledgePageVersionDisclosureInput & {
   organizationId: string
   pageId: string
   attachmentId: string
@@ -282,7 +303,7 @@ export class KnowledgePageRevisionConflictError extends Error {
   }
 }
 
-export type UpdatePageInput = Partial<{
+export type UpdatePageInput = KnowledgePageVersionDisclosureInput & Partial<{
   body: string | null
   bodyRef: string | null
   changeComment: string | null
@@ -319,7 +340,7 @@ export type PublishPageInput = {
   pageId: string
 }
 
-export type RestorePageVersionInput = {
+export type RestorePageVersionInput = KnowledgePageVersionDisclosureInput & {
   authorId: string
   authorType: KnowledgeAuthorType
   changeComment?: string | null

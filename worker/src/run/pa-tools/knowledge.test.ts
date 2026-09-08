@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { computeReplyBasis, createConsumedSourceSink } from '../execute/disclosure-basis.js'
+import { mergeCurrentWorkerVersionDisclosure } from './knowledge-provider.js'
 import {
   clampKbSearchLimit,
   runKbListTool,
@@ -45,6 +46,8 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
       authorId: 'user-1',
       changeComment: null,
       createdAt: now,
+      basisScopes: [],
+      disclosureSources: [],
     },
   ],
   publishedVersion: null,
@@ -394,4 +397,25 @@ test('a delegated bare kb_list catalogue includes the acting user\'s My Docs', a
   const filters = listCalls[0]?.where?.AND
   assert.ok(Array.isArray(filters))
   assert.equal(filters.length, 1)
+})
+
+test('a worker version mutation sees sources read after its provider was constructed', () => {
+  const consumedSources = createConsumedSourceSink()
+  const context = { consumedSources } as Pick<BuiltinToolRuntimeContext, 'consumedSources'>
+
+  // Provider construction is intentionally before the page read in several
+  // tools. The source acquired by that later read must still reach the version.
+  consumedSources.add({ scopeId: 'private-channel', scopeType: 'channel' })
+  consumedSources.addPrivateConversationSource({
+    sourceAuthorUserId: 'source-user',
+    sourceChannelId: 'private-channel',
+  })
+
+  assert.deepEqual(mergeCurrentWorkerVersionDisclosure(context, {}), {
+    basisScopes: [{ scopeId: 'private-channel', scopeType: 'channel' }],
+    disclosureSources: [{
+      sourceAuthorUserId: 'source-user',
+      sourceChannelId: 'private-channel',
+    }],
+  })
 })

@@ -7,6 +7,7 @@ import {
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
+import { canReadPageVersions, recordPageVersionRead } from './knowledge.js'
 
 const MAX_BODY_CHARS = 200_000
 const MAX_LABELS = 16
@@ -95,6 +96,10 @@ export const runKbDraftWriteTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (existingPage && !(await canReadPageVersions(context, existingPage))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  if (existingPage) recordPageVersionRead(context, existingPage)
 
   if (existingPage) {
     const updated = await provider.updatePage(existingPage.id, {
@@ -195,6 +200,10 @@ export const runKbFileTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (!(await canReadPageVersions(context, page))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  recordPageVersionRead(context, page)
 
   // An agent keeps its authorship limits even when it is delegated to a person
   // for space access. `principal` deliberately becomes that person in a PA or
@@ -273,6 +282,10 @@ export const runKbPublishRequestTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (!(await canReadPageVersions(context, page))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  recordPageVersionRead(context, page)
 
   if (
     page.status !== 'draft'
@@ -280,6 +293,13 @@ export const runKbPublishRequestTool = async (
     || page.latestVersion.authorId !== context.agentId
   ) {
     throw new Error('Only agent-authored drafts can be submitted for publication with this tool.')
+  }
+
+  // Approval reasons and the title copied into its context are durable output
+  // outside the version reader. Keep private-derived drafts there until the
+  // exact-content authorization route exists.
+  if (context.consumedSources?.privateConversationSources().length) {
+    throw new Error('Private conversation-derived drafts cannot be submitted for publication yet.')
   }
 
   const versionId = page.latestVersion.id

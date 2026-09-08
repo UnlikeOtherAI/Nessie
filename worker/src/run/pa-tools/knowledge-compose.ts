@@ -9,7 +9,7 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-typ
 import { settleDocumentSession } from '../execute/document-session-claim.js'
 import { fileServiceFor } from '../file-service.js'
 import { buildSpaceViewerPrincipal } from './access.js'
-import { sourcesOutsideAgentDocumentAudience } from './knowledge-basis.js'
+import { versionDisclosureFromConsumedSources } from './knowledge-basis.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -135,27 +135,6 @@ export const runKbDocumentComposeTool = async (
     if (!task) throw new Error('Ticket not found in this knowledge space project.')
   }
 
-  if (
-    space.ownerAgentId !== null
-    && sourcesOutsideAgentDocumentAudience(context, {
-      organizationId: space.organizationId,
-      ownerAgentId: space.ownerAgentId,
-    }).length > 0
-  ) {
-    // Knowledge-base reads do not gate on page status, so a draft would expose
-    // its body and attachment to the agent's whole audience. Refuse before any
-    // attachment, page, or version can be written instead.
-    await recorder?.finalizeOutstanding('save_failed')
-    return {
-      inputSummary: `spaceId=${spaceId} title=${toMarkdownFilename(input.title)}`,
-      outputPreview:
-        'I cannot save this document because this run used material that its audience cannot '
-        + 'access. Write a version without that material, or choose a destination whose audience '
-        + 'already has access to it. Nothing was saved.',
-      toolName: 'kb_document_compose',
-    }
-  }
-
   // Claim the session before writing anything. A Stop that already flipped the
   // run loses the claim and nothing is saved; a Stop arriving after it only
   // cancels the rest of the run. Fenced on the session's claim too, so an
@@ -200,6 +179,7 @@ export const runKbDocumentComposeTool = async (
       changeComment: input.changeComment ?? null,
       createdBy: context.agentId,
       kind: 'file',
+      ...versionDisclosureFromConsumedSources(context),
       labels: input.labels,
       organizationId,
       parentPageId: parentPageId ?? undefined,
@@ -210,8 +190,8 @@ export const runKbDocumentComposeTool = async (
       title: filename,
     })
 
-    // The covered-audience check above rejects unsafe agent-owned writes.
-    // Ordinary private spaces retain their historical auto-publish behaviour.
+    // The immutable version has the run's source basis, so publish remains safe
+    // for the subset of this home that may read it.
     const published = space.visibility === 'private'
     if (published) {
       await provider.publishPage({

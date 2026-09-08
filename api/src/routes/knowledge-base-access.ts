@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import {
   buildNativeSourceRef,
   buildSpaceSourceRef,
+  canReadKnowledgePageVersion,
   canReadSpace,
   canWriteSpace,
   createNativeKnowledgeProvider,
@@ -13,6 +14,7 @@ import {
   type SpaceViewer,
   type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
+import { resolveDisclosureViewer, type DisclosureViewer } from '@nessie/runtime'
 import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
@@ -217,6 +219,44 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   const denyAccess = (reply: FastifyReply, reason: string) =>
     sendApiError(reply, 403, 'POLICY_DENIED', `Knowledge base access denied: ${reason}`)
 
+  const disclosureViewerFor = async (
+    actorContext: AuthorizedActionContext,
+  ): Promise<DisclosureViewer | null> => {
+    if (actorContext.actor.actorType === 'service') return null
+    const userId = actorContext.actionContext.effectiveUserId
+      ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null)
+    return resolveDisclosureViewer(
+      prisma,
+      actorContext.tenant.organizationId,
+      userId,
+      { uoaIdentity: actorContext.actionContext.uoaIdentity },
+    )
+  }
+
+  const canReadVersionWithViewer = (
+    version: NonNullable<KnowledgePageRecord['latestVersion']>,
+    disclosureViewer: DisclosureViewer | null,
+  ): boolean => disclosureViewer === null || canReadKnowledgePageVersion(version, disclosureViewer)
+
+  const canReadVersion = async (
+    actorContext: AuthorizedActionContext,
+    version: NonNullable<KnowledgePageRecord['latestVersion']>,
+  ): Promise<boolean> => canReadVersionWithViewer(version, await disclosureViewerFor(actorContext))
+
+  const canReadPageVersionsWithViewer = (
+    page: KnowledgePageRecord,
+    disclosureViewer: DisclosureViewer | null,
+  ): boolean => {
+    const versions = [page.latestVersion, page.publishedVersion]
+      .filter((version): version is NonNullable<typeof version> => version !== null)
+    return versions.every((version) => canReadVersionWithViewer(version, disclosureViewer))
+  }
+
+  const canReadPageVersion = async (
+    actorContext: AuthorizedActionContext,
+    page: KnowledgePageRecord,
+  ): Promise<boolean> => canReadPageVersionsWithViewer(page, await disclosureViewerFor(actorContext))
+
   // Loads a space and enforces read/write access; sends 404/403 and returns null
   // when the caller may not proceed.
   const accessSpace = async (
@@ -245,8 +285,33 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     viewer: SpaceViewer,
     mode: 'read' | 'write',
     reply: FastifyReply,
-  ): Promise<boolean> =>
-    (await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) !== null
+  ): Promise<boolean> => {
+    if ((await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) === null) return false
 
-  return { provider, buildViewer, denyAccess, accessSpace, accessPageSpace }
+    // Every human/API actor has to satisfy the current version's source
+    // boundary for reads AND writes: permitting an editor to replace an
+    // unreadable version would be a disclosure bypass.
+    if (await canReadPageVersion(actorContext, page)) return true
+    denyAccess(reply, 'VERSION_SOURCE_RESTRICTED')
+    return false
+  }
+
+  const filterReadablePages = async (
+    actorContext: AuthorizedActionContext,
+    pages: readonly KnowledgePageRecord[],
+  ): Promise<KnowledgePageRecord[]> => {
+    const disclosureViewer = await disclosureViewerFor(actorContext)
+    return pages.filter((page) => canReadPageVersionsWithViewer(page, disclosureViewer))
+  }
+
+  return {
+    provider,
+    buildViewer,
+    denyAccess,
+    accessSpace,
+    accessPageSpace,
+    canReadVersion,
+    buildDisclosureViewer: disclosureViewerFor,
+    filterReadablePages,
+  }
 }

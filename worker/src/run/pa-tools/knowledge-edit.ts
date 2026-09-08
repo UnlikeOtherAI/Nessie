@@ -11,10 +11,12 @@ import { settleDocumentSession } from '../execute/document-session-claim.js'
 import { applyDocumentEdits } from '../execute/document-stream-edit.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
+import { recordKnowledgeSpaceRead, versionDisclosureFromConsumedSources } from './knowledge-basis.js'
 import {
-  recordKnowledgeSpaceRead,
-  sourcesOutsideAgentDocumentAudience,
-} from './knowledge-basis.js'
+  canReadPageVersions,
+  recordPageVersionRead,
+  resolveKnowledgeDisclosureViewer,
+} from './knowledge.js'
 import { readMarkdownDocument } from './knowledge-document-io.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -61,20 +63,6 @@ export const runKbDocumentEditTool = async (
 
   const organizationId = String(context.channel.organizationId)
   const fileService = dependencies.files ?? fileServiceFor(context.prisma)
-  const document = await (dependencies.readDocument ?? readMarkdownDocument)(
-    context.prisma,
-    fileService,
-    organizationId,
-    pageId,
-    context,
-  )
-  if (!document) {
-    throw new Error(
-      `No markdown document found for pageId=${pageId}. `
-      + 'kb_document_edit only edits .md file documents.',
-    )
-  }
-
   const provider = dependencies.provider ?? createWorkerKnowledgeProvider(context)
   const page = await provider.getPage(organizationId, pageId)
   if (!page) {
@@ -95,25 +83,24 @@ export const runKbDocumentEditTool = async (
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
   }
+  if (!(await canReadPageVersions(context, page))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
+  recordPageVersionRead(context, page)
 
-  if (
-    space.ownerAgentId !== null
-    && sourcesOutsideAgentDocumentAudience(context, {
-      organizationId: space.organizationId,
-      ownerAgentId: space.ownerAgentId,
-    }).length > 0
-  ) {
-    // Knowledge-base reads do not gate on page status, so neither a draft nor
-    // a new unpublished version can safely hold a wider-audience disclosure.
-    await context.documentStream?.finalizeOutstanding('save_failed')
-    return {
-      inputSummary: `pageId=${pageId} edits=${edits.length}`,
-      outputPreview:
-        'I cannot save this version because this run used material that the document audience '
-        + 'cannot access. Write a version without that material, or choose a destination whose '
-        + 'audience already has access to it. The existing document is unchanged.',
-      toolName: 'kb_document_edit',
-    }
+  const disclosureViewer = await resolveKnowledgeDisclosureViewer(context)
+  const document = await (dependencies.readDocument ?? readMarkdownDocument)(
+    context.prisma,
+    fileService,
+    organizationId,
+    pageId,
+    { ...context, disclosureViewer },
+  )
+  if (!document) {
+    throw new Error(
+      `No markdown document found for pageId=${pageId}. `
+      + 'kb_document_edit only edits .md file documents.',
+    )
   }
 
   // Applied independently of the streaming preview, so the two agreeing is a
@@ -176,11 +163,12 @@ export const runKbDocumentEditTool = async (
       authorId: context.agentId,
       authorType: 'agent',
       changeComment: input.changeComment ?? null,
+      ...versionDisclosureFromConsumedSources(context),
       organizationId,
       pageId,
     })
     const versionNumber = version?.versionNumber ?? null
-    // Unsafe agent-owned writes returned above. A page that was already a draft
+    // The saved version retains the run basis. A page that was already a draft
     // never becomes published here.
     const published = space.ownerAgentId !== null
       && page.status === 'published'

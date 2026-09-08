@@ -56,7 +56,7 @@ export const createRunRecorders = (
       fileServiceFor(deps.prisma),
       organizationId,
       pageId,
-      context,
+      { agentId: context.agent.id, consumedSources: context.consumedSources },
     ),
     prisma: deps.prisma,
     persistRestrictionBasis: (basis) => persistRunBasis(deps.prisma, {
