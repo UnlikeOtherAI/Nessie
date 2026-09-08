@@ -30,6 +30,14 @@ import type { SecretRecord } from '../../../facades/secrets/hooks'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
+  /**
+   * The thread this composer posts into — the conversation on screen, which is
+   * the room's General thread only when no other one is open. Explicit rather
+   * than derived from the channel: a channel now holds many threads, and a
+   * composer that resolved its own would post into General from inside a
+   * conversation (docs/plans/2026-09-08-agent-conversations.md).
+   */
+  activeThreadId: string | undefined
   threadMessages: ThreadMessageRecord[]
   currentUserId: string | undefined
   // Optional per-send extras (reply-thread routing, #233) read at send time so
@@ -83,12 +91,13 @@ export type SecretCapture = {
 
 export const useChannelComposer = ({
   activeChannel,
+  activeThreadId,
   threadMessages,
   currentUserId,
   draftKey,
   getSendExtras,
 }: UseChannelComposerParams): UseChannelComposerResult => {
-  const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
+  const sendMessage = useSendMessage(activeThreadId)
   const uploadAttachment = useUploadAttachment()
   const attachments = useComposerAttachments()
   const bindAgent = useBindAgent()
@@ -177,10 +186,12 @@ export const useChannelComposer = ({
     setInviteErrors({})
     setSendError(null)
     setSecretCapture(null)
-    // A different conversation is a different post: never carry one channel's
-    // idempotency key into the next.
+    // A different conversation is a different post: never carry one thread's
+    // idempotency key into the next. A second conversation with the same agent
+    // in the same room is a different thread, not a different channel, so the
+    // thread is part of this identity too.
     clientMessageIdRef.current = null
-  }, [activeChannel?.id])
+  }, [activeChannel?.id, activeThreadId])
 
   const sendText = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {

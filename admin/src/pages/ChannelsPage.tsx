@@ -10,7 +10,7 @@ import {
   isPersonalAssistantChannel,
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
-import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { useConversation, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { usePersonalAssistantCall, useVoiceCapability } from '../facades/voice/hooks'
 import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useUsers } from '../facades/users/hooks'
@@ -31,7 +31,10 @@ import { useChannelComposer } from '../components/features/channels/useChannelCo
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useShareRestrictedMessage } from '../facades/messages/hooks'
 import { ChatToolDock } from '../components/features/channels/tool-rail/ChatToolDock'
+import { conversationRoomEyebrow } from '../components/features/agents/conversations/conversation-presentation'
+import { readFocusComposerIntent } from '../components/features/agents/conversations/conversation-intent'
 import {
+  availableChatTools,
   parseOpenChatTool,
   type ChatToolId,
 } from '../components/features/channels/tool-rail/chat-tools'
@@ -57,7 +60,7 @@ export const ChannelsPage = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const phoneLayout = usePhoneLayout()
-  const { channelId, dashboardId, toolId } = useParams()
+  const { channelId, dashboardId, threadId, toolId } = useParams()
   const { me, token } = useAuthSession()
   const { onSelectAgent } = useShellActions()
   const { data: channels = [], isPending: channelsPending } = useChannels()
@@ -87,6 +90,13 @@ export const ChannelsPage = () => {
     agents,
     allUsers,
   )
+  // The thread on screen. A channel now holds many threads — its General one
+  // and a conversation per piece of work with its agent — so every read that
+  // means "the thread being looked at" comes from here rather than from the
+  // channel record (docs/plans/2026-09-08-agent-conversations.md). The route
+  // names it; a bare channel route is the room's General thread.
+  const activeThreadId = threadId ?? activeChannel?.defaultThreadId
+  const inConversation = Boolean(threadId) && threadId !== activeChannel?.defaultThreadId
   const {
     data: threadMessages = [],
     fetchNextPage: fetchOlderThreadMessages,
@@ -96,12 +106,20 @@ export const ChannelsPage = () => {
     isFetchingNextPage: isLoadingOlderThreadMessages,
     isPlaceholderData: threadMessagesArePlaceholder,
     pageCount: threadMessagePageCount,
-  } = useThreadMessages(activeChannel?.defaultThreadId)
+  } = useThreadMessages(activeThreadId)
   const { data: personalAssistantState, isPending: personalAssistantPending } =
     usePersonalAssistant(isPersonalAssistantActiveChannel)
-  const { documentSessions, documentStore, pendingMessages } = useThreadStream(
-    activeChannel?.defaultThreadId,
-  )
+  const { documentSessions, documentStore, pendingMessages } = useThreadStream(activeThreadId)
+  // The conversation's own record — its title and the room it lives in — read
+  // only when one is open. A General thread is the room and needs no read.
+  const conversationQuery = useConversation(inConversation ? threadId : undefined)
+  const conversationRecord = conversationQuery.data ?? null
+  const conversationHeader = inConversation && conversationRecord
+    ? {
+        eyebrow: conversationRoomEyebrow(conversationRecord.channel),
+        title: conversationRecord.title,
+      }
+    : null
 
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
@@ -137,17 +155,18 @@ export const ChannelsPage = () => {
       && !(isPersonalAssistantConversation && personalAssistantPending),
     personalAssistantAgent,
   })
-  const browserAgent = conversationAgent?.browserEnabled === true ? conversationAgent : null
   // The tools this conversation puts within reach, and which one is open.
   // Keyed by the agent rather than the room: its browser is its browser
-  // wherever you reached it from.
+  // wherever you reached it from — and so is its list of conversations, which
+  // is why the rail is keyed on the conversation's agent rather than on
+  // whether that agent happens to have a browser.
   // Two ways for a tool to be open, one state each. Beside a wide
   // conversation the rail owns it in component state — remembered per agent,
   // and no URL churn for a column. A single-column layout has no rail: its
   // doorway is the conversation info screen, which pushes a real screen, so
   // the tool is a route there and Back, deep links and the phone stack all
   // resolve without this page having to hold state across a pop.
-  const toolRail = useChatToolRail(browserAgent?.id ?? null, { remember: !phoneLayout })
+  const toolRail = useChatToolRail(conversationAgent?.id ?? null, { remember: !phoneLayout })
   const routeTool = parseOpenChatTool(toolId ?? null)
   const openTool = routeTool ?? toolRail.openTool
   const conversationPath = `/channels/${activeChannel?.id ?? ''}`
@@ -177,11 +196,15 @@ export const ChannelsPage = () => {
     personalAssistantState?.channel ?? activeChannel
   const callEligible =
     !isPersonalAssistantConversation && channelUsers.length >= 2
-  const composePlaceholder = isPersonalAssistantConversation
-    ? 'Message Personal Assistant'
-    : activeChannel?.type === 'dm'
-      ? `Message ${activeChannel.label}`
-      : `Message #${activeChannel?.label ?? 'channel'} or @mention an agent`
+  // In a conversation the message reaches exactly one agent — that is what a
+  // conversation is — so the placeholder names it rather than the room.
+  const composePlaceholder = inConversation && conversationAgent
+    ? `Message ${conversationAgent.name}`
+    : isPersonalAssistantConversation
+      ? 'Message Personal Assistant'
+      : activeChannel?.type === 'dm'
+        ? `Message ${activeChannel.label}`
+        : `Message #${activeChannel?.label ?? 'channel'} or @mention an agent`
 
   const {
     activeCall,
@@ -237,7 +260,7 @@ export const ChannelsPage = () => {
     : null
   const browserThreadId = routedBrowserThreadId
     ?? replyThread.activeThreadId
-    ?? activeChannel?.defaultThreadId
+    ?? activeThreadId
   const visibleConversationMessages = useMemo(() => {
     if (!replyThread.openRootMessageId) return threadMessages
     const root = replyThread.rootQuery.data?.message
@@ -294,9 +317,13 @@ export const ChannelsPage = () => {
     dismissSecretCapture,
   } = useChannelComposer({
     activeChannel,
+    activeThreadId,
     threadMessages,
     currentUserId: me?.user.id,
-    draftKey: channelComposerDraftKey(activeChannel?.id),
+    // A conversation is its own unsent draft: two threads with the same agent
+    // in one room must not share one. A room's General thread keeps the key it
+    // has always had, so nobody's half-written message is orphaned by this.
+    draftKey: channelComposerDraftKey(inConversation ? threadId : activeChannel?.id),
   })
   // Dropping files anywhere over the conversation column stages them in the
   // composer. The reply panel is a sibling with its own zone, so the two never
@@ -316,9 +343,9 @@ export const ChannelsPage = () => {
     startEdit,
     submitEdit,
     updatePending,
-  } = useChannelMessageActions(activeChannel?.defaultThreadId)
+  } = useChannelMessageActions(activeThreadId)
   // Answering the acknowledgement card on a reply that used restricted sources.
-  const shareRestricted = useShareRestrictedMessage(activeChannel?.defaultThreadId)
+  const shareRestricted = useShareRestrictedMessage(activeThreadId)
   const {
     closeSearch,
     jumpToMessage,
@@ -332,7 +359,7 @@ export const ChannelsPage = () => {
   // (media decoding, streaming replies, growing thinking bubbles), so nothing
   // is left hiding behind the composer.
   const feedScroll = useStickToBottom(
-    `${activeChannel?.id ?? ''}:${visibleActiveTab}`,
+    `${activeThreadId ?? activeChannel?.id ?? ''}:${visibleActiveTab}`,
     visibleActiveTab === 'messages',
     {
       failed: olderThreadMessagesFailed,
@@ -364,7 +391,17 @@ export const ChannelsPage = () => {
     setShowChannelSettings(false)
     setSelectedMessageUser(null)
     setSelectedMessageAgent(null)
-  }, [activeChannel?.id, cancelEdit, closeSearch])
+  }, [activeChannel?.id, activeThreadId, cancelEdit, closeSearch])
+
+  // Arriving in a conversation that was just started from the rail: it is
+  // empty, and saying the first thing is the only reason the reader is here,
+  // so the composer takes the caret. `preventScroll` because a focus call on
+  // mount inside a screen parked off to the right would scroll its stack
+  // container sideways (docs/navigation/overview.md §2).
+  const focusComposerOnArrival = readFocusComposerIntent(location.state)
+  useEffect(() => {
+    if (focusComposerOnArrival) mentionRef.current?.focus()
+  }, [activeThreadId, focusComposerOnArrival, mentionRef])
 
   // History hydration (DeepSignal §6): when an external-agent channel is opened,
   // pull any turns the user made on the product's own surfaces into the channel.
@@ -372,6 +409,10 @@ export const ChannelsPage = () => {
   const syncExternalAgentChannel = useSyncExternalAgentChannel()
   const syncExternalAgentMutate = syncExternalAgentChannel.mutate
   const activeChannelId = activeChannel?.id
+  // Deliberately the room's General thread, not the thread on screen: this
+  // pulls the turns a person made on the product's own surfaces into the room
+  // they belong to, which is the room — never into whichever conversation
+  // happens to be open in front of it.
   const activeChannelThreadId = activeChannel?.defaultThreadId
   useEffect(() => {
     if (isExternalAgentActiveChannel && activeChannelId) {
@@ -416,7 +457,7 @@ export const ChannelsPage = () => {
     meUserId: me?.user.id ?? '',
     messages: threadMessages,
     pendingMessages,
-    surfaceKey: activeChannel?.defaultThreadId,
+    surfaceKey: activeThreadId,
   })
   const markChannelSent = channelLiveness.markSent
   const executorLauncher = useExecutorRunLauncher({
@@ -428,7 +469,7 @@ export const ChannelsPage = () => {
       markChannelSent()
     },
     projectId: activeChannel?.projectId,
-    threadId: activeChannel?.defaultThreadId,
+    threadId: activeThreadId,
   })
 
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
@@ -456,6 +497,8 @@ export const ChannelsPage = () => {
       <ChannelConversationSurface
         activeCall={activeCall}
         activeChannel={activeChannel}
+        activeThreadId={activeThreadId ?? null}
+        conversation={conversationHeader}
         agentMap={agentMap}
         boundAgents={boundAgents}
         callEligible={callEligible}
@@ -562,6 +605,7 @@ export const ChannelsPage = () => {
       <ChannelOverlays
         activeCall={activeCall}
         activeChannel={activeChannel}
+        activeThreadId={activeThreadId ?? null}
         agentMap={agentMap}
         agents={agents}
         allUsers={allUsers}
@@ -638,9 +682,11 @@ export const ChannelsPage = () => {
         onSelectAgent={onSelectAgent}
         onSendAsFile={sendAsFile}
       />
-      {browserAgent ? (
+      {conversationAgent ? (
         <ChatToolDock
-          agent={browserAgent}
+          activeChannelId={activeChannel?.id ?? null}
+          activeThreadId={activeThreadId ?? null}
+          agent={conversationAgent}
           onClose={closeTool}
           onToggle={toggleTool}
           openTool={openTool}
@@ -656,7 +702,7 @@ export const ChannelsPage = () => {
           allUsers={allUsers}
           canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
-          hasAgentTools={browserAgent !== null}
+          agentTools={availableChatTools(conversationAgent)}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
           onOpenTool={openToolScreen}

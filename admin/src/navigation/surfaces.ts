@@ -198,6 +198,26 @@ export const SURFACES: Surface[] = [
     type: 'nested',
   },
   {
+    // One conversation with the room's agent — a second thread in the same
+    // channel (docs/plans/2026-09-08-agent-conversations.md). It is a pushed
+    // detail under the room on `single`, so Back returns to the room's General
+    // thread rather than to the Channels root; on `split` the page swaps the
+    // feed in place, which is what `splitInline` says.
+    depth: 2,
+    fillsViewport: true,
+    identityOf: (match) => `channel:${match[1]}`,
+    keyScope: () => 'channel',
+    parentOf: (match) => ({
+      label: 'Back to conversation',
+      pathname: `/channels/${match[1]}`,
+    }),
+    pattern: /^\/channels\/([^/]+)\/threads\/([^/]+)$/,
+    root: CHANNELS_ROOT,
+    section: 'channels',
+    splitInline: true,
+    type: 'nested',
+  },
+  {
     // The conversation. Its Messages / Files / Automations / Agents strip is
     // component state, not routes, so there is nothing to classify beneath it.
     // It fills the viewport: a fixed header and bottom-anchored composer with a

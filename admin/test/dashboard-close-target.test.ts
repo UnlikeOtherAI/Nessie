@@ -36,14 +36,15 @@ test('the dashboard panel closes to a route the router actually declares', () =>
 
 test('the destination is the channel, as the sibling reply panel already does', () => {
   assert.equal(dashboardCloseTarget('abc'), '/channels/abc')
+  assert.equal(dashboardCloseTarget('abc', null), '/channels/abc')
 })
 
-test('the bare thread path the panel used to close to is still not a route', () => {
-  // Kept as the regression's shape. Should a bare-thread route ever be added,
-  // this fails and whoever adds it decides deliberately whether Close should go
-  // there — rather than the panel silently starting to work again by accident.
+test('a dashboard presented inside a conversation closes back into it', () => {
+  // The decision the gate below demanded when the bare thread route arrived
+  // (agent conversations): closing a panel must not also leave the thread.
+  assert.equal(dashboardCloseTarget('abc', 'thr'), '/channels/abc/threads/thr')
   assert.ok(
-    !routerPaths.includes('/channels/:channelId/threads/:threadId'),
-    'a bare thread route now exists — revisit the dashboard panel close target',
+    routerPaths.includes(dashboardCloseTarget(':channelId', ':threadId')),
+    `close target ${dashboardCloseTarget(':channelId', ':threadId')} is not a declared route`,
   )
 })

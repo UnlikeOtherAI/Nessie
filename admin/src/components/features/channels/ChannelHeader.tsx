@@ -28,6 +28,13 @@ interface ChannelHeaderProps {
    * the header on a layout with no rail beside the chat to hold them.
    */
   conversationAgent: AgentRecord | null
+  /**
+   * The conversation on screen when it is *not* the room's General thread: its
+   * own title becomes the heading and the room drops to the eyebrow, because a
+   * header that still said "#design" would name the container rather than the
+   * thing being read. Null in a room's General thread, which is the room.
+   */
+  conversation: { eyebrow: string; title: string } | null
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -66,6 +73,7 @@ export const ChannelHeader = ({
   callMeetingUri,
   callStarting,
   channelUsers,
+  conversation,
   conversationAgent,
   externalAgentIdentity,
   isExternalAgentConversation,
@@ -87,11 +95,12 @@ export const ChannelHeader = ({
   titleFavorite,
 }: ChannelHeaderProps) => {
   const single = usePhoneLayout()
-  const title = isPersonalAssistantConversation
+  const roomTitle = isPersonalAssistantConversation
     ? 'Personal Assistant'
     : isExternalAgentConversation
       ? externalAgentIdentity?.name ?? activeChannel?.label ?? 'Channels'
       : activeChannel?.label ?? 'Channels'
+  const title = conversation?.title ?? roomTitle
   const canManageChannel = Boolean(
     activeChannel && activeChannel.type !== 'dm' && !isPersonalAssistantConversation,
   )
@@ -156,7 +165,7 @@ export const ChannelHeader = ({
     // (Join is a public channel, which has no single conversation agent), the
     // iOS bar's one inline slot still goes to Join.
     ...chatToolHeaderActions({
-      hasConversationAgent: conversationAgent?.browserEnabled === true,
+      agent: conversationAgent,
       onOpenTool: onOpenChatTool,
       single,
     }),
@@ -223,11 +232,13 @@ export const ChannelHeader = ({
     <ScreenHeader
       actions={actions}
       eyebrow={
-        isPersonalAssistantConversation
-          ? 'System managed'
-          : isExternalAgentConversation
-            ? externalAgentIdentity?.description ?? undefined
-            : undefined
+        conversation
+          ? conversation.eyebrow
+          : isPersonalAssistantConversation
+            ? 'System managed'
+            : isExternalAgentConversation
+              ? externalAgentIdentity?.description ?? undefined
+              : undefined
       }
       title={title}
     />

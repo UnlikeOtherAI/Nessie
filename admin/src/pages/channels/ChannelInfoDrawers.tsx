@@ -17,6 +17,8 @@ import type { OlderContentLoader } from '../../hooks/useStickToBottom'
 
 interface ChannelInfoDrawersProps {
   activeChannel: ChannelRecord | null
+  /** The thread on screen, which the agent drawer's feed and composer share. */
+  activeThreadId: string | null
   agents: AgentRecord[]
   allUsers: UserRecord[]
   me: MeResponse
@@ -38,6 +40,7 @@ interface ChannelInfoDrawersProps {
 // ChannelsPage so the page stays under the file-size cap.
 export const ChannelInfoDrawers = ({
   activeChannel,
+  activeThreadId,
   agents,
   allUsers,
   me,
@@ -63,6 +66,7 @@ export const ChannelInfoDrawers = ({
     <>
       <ChannelAgentInfoDrawer
         activeChannel={activeChannel}
+        activeThreadId={activeThreadId}
         agent={selectedMessageAgent}
         agents={agents}
         meAvatar={meAvatar}

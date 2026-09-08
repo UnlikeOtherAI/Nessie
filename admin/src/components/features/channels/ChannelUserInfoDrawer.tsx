@@ -137,6 +137,9 @@ export const ChannelUserInfoDrawer = ({
     secretCapture,
   } = useChannelComposer({
     activeChannel: dmChannel,
+    // A different channel's DM, opened over this conversation: its General
+    // thread is the only thread this drawer ever shows.
+    activeThreadId: dmChannel?.defaultThreadId,
     currentUserId: meUserId,
     draftKey: channelComposerDraftKey(dmChannel?.id),
     threadMessages,

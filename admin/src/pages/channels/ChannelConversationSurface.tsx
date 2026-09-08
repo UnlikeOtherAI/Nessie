@@ -53,6 +53,13 @@ import type { useReplyThread } from '../../components/features/channels/useReply
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
   activeChannel: ChannelRecord | null
+  /**
+   * The thread on screen: the room's General thread, or the conversation the
+   * route names (docs/plans/2026-09-08-agent-conversations.md).
+   */
+  activeThreadId: string | null
+  /** Set only inside a conversation; the header then names it, not the room. */
+  conversation: { eyebrow: string; title: string } | null
   agentMap: Map<string, AgentRecord>
   agentTabAvailable: boolean
   agentsTabAvailable: boolean
@@ -153,6 +160,8 @@ interface ChannelConversationSurfaceProps {
 export const ChannelConversationSurface = ({
   activeCall,
   activeChannel,
+  activeThreadId,
+  conversation,
   agentMap,
   agentTabAvailable,
   agentsTabAvailable,
@@ -226,7 +235,6 @@ export const ChannelConversationSurface = ({
   const { data: ownDemonstrations = [] } = useDemonstrations()
   const startDemonstration = useStartDemonstration()
   const stopDemonstration = useStopDemonstration()
-  const activeThreadId = activeChannel?.defaultThreadId
   const recording = activeDemonstrations.find(
     (entry) => entry.threadId === activeThreadId && entry.status === 'recording',
   )
@@ -258,6 +266,7 @@ export const ChannelConversationSurface = ({
         voiceCallActive={voiceCallActive}
         voiceCallSupported={voiceCallSupported}
         channelUsers={channelUsers}
+        conversation={conversation}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
@@ -342,7 +351,7 @@ export const ChannelConversationSurface = ({
               pendingMessages={pendingMessages}
               renderContent={renderContent}
               showLivenessHint={channelLiveness.visible}
-              threadId={activeChannel?.defaultThreadId}
+              threadId={activeThreadId ?? undefined}
               token={token}
               updatePending={updatePending}
               emptyState={

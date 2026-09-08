@@ -46,6 +46,8 @@ interface ChannelOverlaysProps {
   agentMap: Map<string, AgentRecord>
   agents: AgentRecord[]
   allUsers: UserRecord[]
+  /** The thread on screen; the agent drawer feeds and posts into it. */
+  activeThreadId: string | null
   boundAgents: AgentRecord[]
   channelUsers: UserRecord[]
   callerCallActionError: unknown
@@ -105,6 +107,7 @@ interface ChannelOverlaysProps {
 export const ChannelOverlays = ({
   activeCall,
   activeChannel,
+  activeThreadId,
   agentMap,
   agents,
   allUsers,
@@ -153,7 +156,15 @@ export const ChannelOverlays = ({
   const navigate = useNavigate()
   const closeDashboard = () => {
     if (activeChannel) {
-      void navigate(dashboardCloseTarget(activeChannel.id))
+      // Only a conversation is named in the destination: closing a dashboard
+      // presented in a room's General thread returns to the room, exactly as
+      // it always has.
+      void navigate(dashboardCloseTarget(
+        activeChannel.id,
+        activeThreadId !== null && activeThreadId !== activeChannel.defaultThreadId
+          ? activeThreadId
+          : null,
+      ))
     }
   }
 
@@ -255,6 +266,7 @@ export const ChannelOverlays = ({
 
     <ChannelInfoDrawers
       activeChannel={activeChannel}
+      activeThreadId={activeThreadId}
       agents={agents}
       allUsers={allUsers}
       me={me}

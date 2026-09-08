@@ -296,6 +296,13 @@ export const router = createBrowserRouter([
             path: ':channelId/threads/:threadId/dashboards/:dashboardId',
           },
           {
+            // One conversation with the room's agent: a second, isolated
+            // thread in the same channel (docs/plans/2026-09-08-agent-conversations.md).
+            // Listed after the two panels that hang off a thread, so those keep
+            // their more specific rows.
+            path: ':channelId/threads/:threadId',
+          },
+          {
             // An agent tool opened from the conversation info screen. The rail
             // beside a wide conversation keeps its choice in component state;
             // a single-column layout has no rail and pushes a real screen, so
