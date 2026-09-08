@@ -279,7 +279,7 @@ export const reconcileUoaMembershipProjection = async (
     },
   })
   const resolvedMemberships = memberships.flatMap(({ team }) => {
-    const projects = team.projects.length > 0 ? team.projects : [team.project]
+    const projects = [team.project, ...team.projects]
     return projects.map((project) => ({
       projectId: project.id,
       team,
@@ -302,9 +302,7 @@ export const reconcileUoaMembershipProjection = async (
     const stillHeld = new Set((await tx.teamMember.findMany({
       where: { userId: input.userId },
       select: { team: { select: { projectId: true, projects: { select: { id: true }, take: 2 } } } },
-    })).flatMap(({ team }) => team.projects.length > 0
-      ? team.projects.map((project) => project.id)
-      : [team.projectId]))
+    })).flatMap(({ team }) => [team.projectId, ...team.projects.map((project) => project.id)]))
     const orphanedProjectIds = [...new Set(revoked.map(({ projectId }) => projectId))]
       .filter((projectId) => !stillHeld.has(projectId))
     if (orphanedProjectIds.length > 0) {

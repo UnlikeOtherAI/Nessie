@@ -143,7 +143,7 @@ export const listTeamsForOrganization = async (
     orderBy: { createdAt: 'asc' },
   })
   return teams.flatMap((team) => {
-    const projectIds = team.projects.length > 0 ? team.projects.map((project) => project.id) : [team.projectId]
+    const projectIds = [...new Set([team.projectId, ...team.projects.map((project) => project.id)])]
     return projectIds.filter((projectId) => !input.projectIds || input.projectIds.includes(projectId)).map((projectId) => ({
     callProvider: team.callProvider as TeamRecord['callProvider'],
     createdAt: team.createdAt.toISOString(),

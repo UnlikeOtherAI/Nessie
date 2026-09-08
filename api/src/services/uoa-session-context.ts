@@ -129,9 +129,14 @@ const loadBinding = async (
       },
     },
   })
-  const canonicalProject = team?.projects[0] ?? team?.project
-  const role = canonicalProject?.organization.members[0]?.role
-  if (!team || !canonicalProject || team.projects.length > 1 || !role) {
+  // A UOA session proves a team, not one of its projects. Until a person
+  // selects a canonical project through the normal context-switch door, use
+  // the team's existing legacy project as its stable default. Never take the
+  // first canonical project: a team can own many, and that would make one
+  // project visible by query order alone.
+  const defaultProject = team?.project
+  const role = defaultProject?.organization.members[0]?.role
+  if (!team || !defaultProject || !role) {
     throw new UoaLocalSessionBindingError(
       'The UnlikeOtherAI team is no longer available in Nessie.',
     )
@@ -140,7 +145,7 @@ const loadBinding = async (
   const link = await prisma.productAccountLink.findUnique({
     where: {
       organizationId_userId_productSlug: {
-        organizationId: canonicalProject.organizationId,
+        organizationId: defaultProject.organizationId,
         productSlug: 'nessie',
         userId: input.userId,
       },
@@ -165,8 +170,8 @@ const loadBinding = async (
 
   return {
     linkId: link.id,
-    organizationId: canonicalProject.organizationId,
-    projectId: canonicalProject.id,
+    organizationId: defaultProject.organizationId,
+    projectId: defaultProject.id,
     role,
     teamId: team.id,
   }
