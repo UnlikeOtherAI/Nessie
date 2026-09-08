@@ -86,6 +86,45 @@ export const selectFollowingAgentIds = (
 }
 
 /**
+ * The decisions an explicit composer @mention makes on its own.
+ *
+ * The API validated each entity before it entered the payload, so the selected
+ * id is the exact structural address — never a name read out of the message
+ * text. PA presences additionally match on their owner because several members
+ * share the one agent row inside a channel.
+ *
+ * Exported because it has a second caller: the conversation branch of the
+ * orchestrator (`worker/src/run/orchestrate.ts`) composes a thread's own agent
+ * with whoever the person also addressed, and a second mention resolver written
+ * beside this one is a resolver that drifts from it.
+ */
+export const resolveMentionedAgentDecisions = (
+  agents: readonly OrchestratorAgent[],
+  agentMentions: readonly AgentMention[] | undefined,
+): OrchestratorDecision[] => {
+  const decisions: OrchestratorDecision[] = []
+  const addressed = new Set<string>()
+  for (const mention of agentMentions ?? []) {
+    const candidate = agents.find(
+      (agent) =>
+        agent.id === mention.agentId
+        && agent.principalUserId === mention.principalUserId,
+    )
+    if (!candidate) continue
+    const engagementId = engagementIdFor(candidate)
+    if (addressed.has(engagementId)) continue
+    addressed.add(engagementId)
+    decisions.push({
+      action: 'reply',
+      agentId: candidate.id,
+      ...(mention.principalUserId ? { principalUserId: mention.principalUserId } : {}),
+      replyPlacement: 'thread',
+    })
+  }
+  return decisions
+}
+
+/**
  * Invisible channel orchestrator. Reads a user message, considers which
  * bound agents are present and what they do, and decides if/how an agent
  * should engage.
@@ -138,30 +177,8 @@ export const decideAgentEngagement = async (
     return []
   }
 
-  // The API validated each entity before it entered the payload, so the
-  // selected id is the exact structural address. PA presences additionally
-  // match on their owner because several members share the one agent row.
   if (input.agentMentions && input.agentMentions.length > 0) {
-    const decisions: OrchestratorDecision[] = []
-    const addressed = new Set<string>()
-    for (const mention of input.agentMentions) {
-      const candidate = input.agents.find(
-        (agent) =>
-          agent.id === mention.agentId
-          && agent.principalUserId === mention.principalUserId,
-      )
-      if (!candidate) continue
-      const engagementId = engagementIdFor(candidate)
-      if (addressed.has(engagementId)) continue
-      addressed.add(engagementId)
-      decisions.push({
-        action: 'reply',
-        agentId: candidate.id,
-        ...(mention.principalUserId ? { principalUserId: mention.principalUserId } : {}),
-        replyPlacement: 'thread',
-      })
-    }
-    return decisions
+    return resolveMentionedAgentDecisions(input.agents, input.agentMentions)
   }
 
   // Fast path: collect every agent explicitly @mentioned.

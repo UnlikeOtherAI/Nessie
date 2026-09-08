@@ -20,12 +20,21 @@ type MessageDestinationContext = Pick<
   run: { threadId: string }
 }
 
+/**
+ * The destination channel's General thread — `agentId: null`, the same pin the
+ * control-plane copy carries (`worker/src/control/channels.ts`).
+ *
+ * A channel holds many threads now, and all but General are conversations with
+ * an agent. Ordering by creation without the pin would deliver a tool's post
+ * into whichever thread happened to exist first, which for a room whose General
+ * row was written after a conversation is the conversation.
+ */
 const ensureThreadForChannel = async (
   prisma: PrismaClient,
   channelId: string,
 ): Promise<string> => {
   const existingThread = await prisma.thread.findFirst({
-    where: { channelId },
+    where: { agentId: null, channelId },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   })
@@ -45,7 +54,7 @@ const ensureThreadForChannel = async (
     return thread.id
   } catch {
     const fallback = await prisma.thread.findFirst({
-      where: { channelId },
+      where: { agentId: null, channelId },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     })
