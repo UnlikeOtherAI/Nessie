@@ -755,6 +755,17 @@ inverted and assert the behaviour instead.
   `room-strip`, which now asserts non-overlap at every width and selects the
   strip by click, with the keyboard rove kept as a second assertion.
 
+### The agent page's Messages tab is the Conversations tab
+
+Adding a ninth tab pushed `AgentDetailTabs`' strip past `TabBar`'s fit width
+— with the Agent Designer panel open it collapsed to a dropdown on a 1440 px
+desktop, and the browser-cloud suite's `getByRole('tab', { name: 'Tools' })`
+found nothing. The count goes back to eight by replacing **Messages** (a
+flat, paginated list of the agent's messages with no way into where they
+were said) with **Conversations** (the same content organised by conversation,
+each row a door). One surface parameterised, not two; `GET /api/agents/:id/messages`
+and `useAgentMessages` stay for the moment and are on the Later list.
+
 ## Cross-model review (2026-09-08)
 
 Codex Sol reviewed the committed tip read-only in three briefs (server
