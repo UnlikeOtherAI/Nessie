@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { PrismaClient } from '@prisma/client'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
 import { API_URL, ADMIN_PORT } from '../navigation/lib/config.mjs'
@@ -37,6 +38,19 @@ const createProjectThroughSidebar = async ({ name, page, teamId }) => {
   await dialog.getByRole('button', { name: 'Create project' }).click()
   await dialog.waitFor({ state: 'hidden' })
   await page.locator('#sidebar-nav-projects').getByRole('button', { name, exact: true }).waitFor()
+}
+
+// `DELETE /api/channels/:id` deliberately archives recoverable conversation
+// history. This disposable test must then remove its one channel before it can
+// prove project deletion's empty-project guard, so teardown uses the scoped id
+// it just created. Every creation and assertion above remains on the live API.
+const removeFixtureChannel = async (channelId) => {
+  const prisma = new PrismaClient()
+  try {
+    await prisma.channel.delete({ where: { id: channelId } })
+  } finally {
+    await prisma.$disconnect()
+  }
 }
 
 const main = async () => {
@@ -133,7 +147,7 @@ const main = async () => {
     if (page) await page.close()
     if (context) await context.close()
     if (browser) await browser.close()
-    if (createdChannel) await api(`/api/channels/${createdChannel.id}`, { method: 'DELETE', token: seed.token })
+    if (createdChannel) await removeFixtureChannel(createdChannel.id)
     for (const project of createdProjects.reverse()) {
       await api(`/api/projects/${project.id}`, { method: 'DELETE', token: seed.token })
     }
