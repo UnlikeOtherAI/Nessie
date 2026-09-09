@@ -76,6 +76,35 @@ const waitForBoardTask = async (token, projectId, boardId, title, expectedColumn
   }
   throw new Error(`board ${boardId} did not expose ${JSON.stringify(title)}`)
 }
+const waitForTaskDetail = async (page, task) => {
+  const dialog = page.getByRole('dialog', { name: 'Task details' })
+  await dialog.getByRole('textbox', { name: 'Title' }).waitFor()
+  assert.equal(
+    await dialog.getByRole('textbox', { name: 'Title' }).inputValue(),
+    task.title,
+    'the shared task dialog shows the ticket selected by navigation',
+  )
+  return dialog
+}
+const waitForTaskLocation = async (page, projectId, boardId, taskId, taskPresent, explicitBoard = true) => {
+  await page.waitForFunction(
+    ({ expectedBoardId, expectedPathname, expectedTaskId, taskPresent, explicitBoard }) => {
+      const url = new URL(window.location.href)
+      return url.pathname === expectedPathname
+        && (explicitBoard
+          ? url.searchParams.get('board') === expectedBoardId
+          : !url.searchParams.has('board'))
+        && (taskPresent ? url.searchParams.get('task') === expectedTaskId : !url.searchParams.has('task'))
+    },
+    {
+      expectedBoardId: boardId,
+      expectedPathname: `/projects/${projectId}/board`,
+      expectedTaskId: taskId,
+      explicitBoard,
+      taskPresent,
+    },
+  )
+}
 const touchSwipe = async (page, { fromX, fromY, toX, toY = fromY }) => {
   const client = await page.context().newCDPSession(page)
   try {
@@ -104,7 +133,7 @@ const captureFailure = async (target, name) => {
     console.error(`project-usability e2e: could not capture ${name}: ${error.message}`)
   })
 }
-const clearFixtureKnowledge = async (projectId, taskIds) => {
+const clearFixtureKnowledge = async (projectId) => {
   const prisma = new PrismaClient()
   try {
     const [pages, spaces] = await Promise.all([
@@ -117,11 +146,10 @@ const clearFixtureKnowledge = async (projectId, taskIds) => {
         select: { id: true, name: true },
       }),
     ])
-    const unexpectedPage = pages.find((page) => !page.taskId || !taskIds.has(page.taskId))
-    const unexpectedSpace = spaces.find((space) => space.name !== 'Project Documents')
-    if (unexpectedPage || unexpectedSpace) {
-      throw new Error(`unexpected knowledge fixture: ${JSON.stringify({ unexpectedPage, unexpectedSpace })}`)
-    }
+    // This runner creates the project itself. Task detail now reaches the
+    // shared TaskDocuments surface, which legitimately provisions pages for
+    // any task opened in the journey, so cleanup owns this project's complete
+    // knowledge subtree rather than assuming one task created every page.
     if (pages.length > 0) {
       await prisma.knowledgePage.deleteMany({ where: { id: { in: pages.map((page) => page.id) } } })
     }
@@ -141,7 +169,7 @@ const main = async () => {
   const cleanupFailures = []
   const createdTaskIds = new Set()
   let browser; let desktop; let phone; let tablet; let desktopPage; let phonePage; let tabletPage
-  let project; let sourceBoard; let boardAId; let boardBId
+  let project; let redirectedProject; let sourceBoard; let boardAId; let boardBId
   try {
     project = await api('/api/projects', {
       body: { name: `Project usability ${runId}`, teamId: seed.team.id },
@@ -197,14 +225,17 @@ const main = async () => {
     await excerptCard.getByText('Explicit card excerpt wins.', { exact: true }).waitFor()
     assert.equal(await excerptCard.getByText('Long implementation detail must not replace the explicit excerpt.', { exact: true }).count(), 0)
     await createTask(desktopPage.page, createdTitle, 'A durable browser flow')
-    createdTaskIds.add((await waitForBoardTask(seed.token, project.id, boardA.id, createdTitle, firstColumn.id)).id)
+    const createdTask = await waitForBoardTask(seed.token, project.id, boardA.id, createdTitle, firstColumn.id)
+    createdTaskIds.add(createdTask.id)
     const createdCard = desktopPage.page.locator('[data-kanban-card]').filter({ hasText: createdTitle }).first()
     await createdCard.click()
+    await waitForTaskLocation(desktopPage.page, project.id, boardA.id, createdTask.id, true)
     const existingDialog = desktopPage.page.getByRole('dialog', { name: 'Task details' })
     await existingDialog.getByRole('tab', { name: 'Checklist', exact: true }).click()
     await desktopPage.page.waitForURL(/taskTab=checklist/)
     await existingDialog.getByRole('button', { name: 'Close', exact: true }).first().click()
     await existingDialog.waitFor({ state: 'hidden' })
+    await waitForTaskLocation(desktopPage.page, project.id, boardA.id, createdTask.id, false)
     assert.match(desktopPage.page.url(), /taskTab=checklist/, 'the existing task retains its selected tab')
     const retainedTabNewTask = await openNewTask(desktopPage.page)
     await retainedTabNewTask.getByRole('textbox', { name: 'Title' }).waitFor()
@@ -218,10 +249,142 @@ const main = async () => {
     await desktopPage.page.locator('[data-kanban-card]').filter({ hasText: editedTitle }).waitFor({ state: 'detached' })
     assert.equal(await desktopPage.page.locator('[data-kanban-card]').filter({ hasText: editedTitle }).count(), 0, 'board B excludes board A work')
     await createTask(desktopPage.page, boardBTitle)
-    createdTaskIds.add((await waitForBoardTask(
+    const boardBTask = await waitForBoardTask(
       seed.token, project.id, boardB.id, boardBTitle, boardBFirstColumn.id,
-    )).id)
+    )
+    createdTaskIds.add(boardBTask.id)
     await shot(desktopPage.page, 'desktop-isolated-board')
+
+    // Opening a second task after a first was closed must use the exact
+    // second id rather than a retained query result from the first dialog.
+    await desktopPage.page.locator('[data-kanban-card]').filter({ hasText: boardBTitle }).first().click()
+    await waitForTaskLocation(desktopPage.page, project.id, boardB.id, boardBTask.id, true)
+    const secondDialog = await waitForTaskDetail(desktopPage.page, boardBTask)
+    await secondDialog.getByRole('button', { name: 'Close', exact: true }).first().click()
+    await secondDialog.waitFor({ state: 'hidden' })
+    await waitForTaskLocation(desktopPage.page, project.id, boardB.id, boardBTask.id, false)
+
+    // The watcher message stores only a ticket pointer. Its old board value is
+    // deliberately wrong here: the click must resolve the live ticket and land
+    // on the board it occupies now, through the normal project detail route.
+    const chatTask = await api('/api/tasks', {
+      body: { boardId: boardA.id, projectId: project.id, title: `Chat ticket ${runId}` },
+      method: 'POST',
+      token: seed.token,
+    })
+    createdTaskIds.add(chatTask.id)
+    const messagePrisma = new PrismaClient()
+    try {
+      await messagePrisma.message.create({
+        data: {
+          content: `Ticket update ${chatTask.title}`,
+          metadata: {
+            taskPresentation: {
+              boardId: boardA.id,
+              changes: ['status'],
+              schemaVersion: 1,
+              taskId: chatTask.id,
+            },
+          },
+          role: 'assistant',
+          threadId: seed.channels[0].defaultThreadId,
+        },
+      })
+    } finally {
+      await messagePrisma.$disconnect()
+    }
+    await desktopPage.page.goto(`${ADMIN_URL}/channels/${seed.channels[0].id}`, { waitUntil: 'domcontentloaded' })
+    const chatTicket = desktopPage.page.locator('a').filter({ hasText: chatTask.title })
+    await chatTicket.waitFor({ timeout: 60_000 })
+    // The card is already mounted and has read the task on board A. Moving it
+    // now proves the project entry refreshes that shared id-keyed query rather
+    // than opening the card's minute-old cached placement.
+    await api(`/api/tasks/${chatTask.id}/move`, {
+      body: { columnId: boardBFirstColumn.id }, method: 'POST', token: seed.token,
+    })
+    const chatTaskDetail = await api(`/api/tasks/${chatTask.id}`, { token: seed.token })
+    assert.equal(chatTaskDetail.boardPlacement?.boardId, boardB.id)
+    assert.equal(chatTaskDetail.boardPlacement?.columnId, boardBFirstColumn.id)
+    assert.equal(
+      typeof chatTaskDetail.boardPlacement?.position,
+      'number',
+      'the entitled detail endpoint returns the server placement pin for cold navigation',
+    )
+    await chatTicket.click()
+    await waitForTaskLocation(desktopPage.page, project.id, boardB.id, chatTask.id, true)
+    await waitForTaskDetail(desktopPage.page, chatTask)
+    await shot(desktopPage.page, 'desktop-chat-ticket-detail')
+    await desktopPage.page.goBack()
+    await desktopPage.page.waitForURL(new RegExp(`/channels/${seed.channels[0].id}$`, 'u'))
+    assert.equal(
+      await desktopPage.page.getByRole('dialog', { name: 'Task details' }).count(),
+      0,
+      'Back closes the ticket detail once and returns to the chat card',
+    )
+
+    // A cold ticket link must not depend on the board page's capped, filtered
+    // list. An archived ticket behind a deliberately different board still
+    // resolves through the entitled detail endpoint and opens the same dialog.
+    const archivedTask = await api('/api/tasks', {
+      body: { boardId: boardB.id, projectId: project.id, title: `Archived ticket ${runId}` },
+      method: 'POST',
+      token: seed.token,
+    })
+    await api(`/api/tasks/${archivedTask.id}/transition`, {
+      body: { status: 'cancelled' }, method: 'POST', token: seed.token,
+    })
+    assert.deepEqual(
+      (await api(`/api/tasks/${archivedTask.id}`, { token: seed.token })).boardPlacement,
+      { boardId: boardB.id, columnId: null, position: null },
+      'an archived ticket keeps its actual board while correctly resolving to no column',
+    )
+    await desktopPage.page.goto(
+      `${ADMIN_URL}/projects/${project.id}/board?board=${boardA.id}&assignee=unassigned&task=${archivedTask.id}`,
+      { waitUntil: 'domcontentloaded' },
+    )
+    await waitForTaskLocation(desktopPage.page, project.id, boardB.id, archivedTask.id, true)
+    const archivedDialog = await waitForTaskDetail(desktopPage.page, archivedTask)
+    await archivedDialog.getByRole('button', { name: 'Close', exact: true }).first().click()
+    await archivedDialog.waitFor({ state: 'hidden' })
+    await waitForTaskLocation(desktopPage.page, project.id, boardB.id, archivedTask.id, false)
+
+    await desktopPage.page.goto(
+      `${ADMIN_URL}/projects/${project.id}/board?task=00000000-0000-4000-8000-000000000999`,
+      { waitUntil: 'domcontentloaded' },
+    )
+    await desktopPage.page.getByText('That ticket is no longer available to you.').waitFor()
+    await desktopPage.page.getByRole('button', { name: 'Close ticket' }).click()
+    await desktopPage.page.getByText('That ticket is no longer available to you.').waitFor({ state: 'hidden' })
+
+    redirectedProject = await api('/api/projects', {
+      body: { name: `Task redirect ${runId}`, teamId: seed.team.id },
+      method: 'POST',
+      token: seed.token,
+    })
+    const redirectBoards = await api(`/api/projects/${redirectedProject.id}/boards`, { token: seed.token })
+    const redirectBoard = redirectBoards.find((candidate) => candidate.isDefault) ?? redirectBoards[0]
+    assert.ok(redirectBoard, 'the redirected project has a default board')
+    const redirectedTask = await api('/api/tasks', {
+      body: { projectId: redirectedProject.id, title: `Moved project ticket ${runId}` },
+      method: 'POST',
+      token: seed.token,
+    })
+    createdTaskIds.add(redirectedTask.id)
+    await desktopPage.page.goto(
+      `${ADMIN_URL}/projects/${project.id}/board?board=${boardA.id}&task=${redirectedTask.id}`,
+      { waitUntil: 'domcontentloaded' },
+    )
+    await waitForTaskLocation(
+      desktopPage.page,
+      redirectedProject.id,
+      redirectBoard.id,
+      redirectedTask.id,
+      true,
+      false,
+    )
+    const redirectedDialog = await waitForTaskDetail(desktopPage.page, redirectedTask)
+    await redirectedDialog.getByRole('button', { name: 'Close', exact: true }).first().click()
+    await redirectedDialog.waitFor({ state: 'hidden' })
     await goto(phonePage.page, `/projects/${project.id}/board?board=${boardA.id}`)
     const touchTitles = [touchTitle, ...Array.from({ length: 7 }, (_, index) => `${touchTitle}-${index + 2}`)]
     for (const title of touchTitles) {
@@ -282,7 +445,9 @@ const main = async () => {
     for (const taskId of createdTaskIds) await api(`/api/tasks/${taskId}/transition`, { body: { status: 'cancelled' }, method: 'POST', token: seed.token }).catch((error) => cleanupFailures.push(`cancel task ${taskId}: ${error.message}`))
     if (sourceBoard && boardAId) await api(`/api/projects/${project.id}/boards/${sourceBoard.id}`, { body: { isDefault: true }, method: 'PATCH', token: seed.token }).catch((error) => cleanupFailures.push(`restore default board: ${error.message}`))
     for (const boardId of [boardBId, boardAId]) if (boardId) await api(`/api/projects/${project.id}/boards/${boardId}?newDefaultBoardId=${sourceBoard.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete board ${boardId}: ${error.message}`))
-    if (project) await clearFixtureKnowledge(project.id, createdTaskIds).catch((error) => cleanupFailures.push(`delete fixture knowledge: ${error.message}`))
+    if (redirectedProject) await clearFixtureKnowledge(redirectedProject.id).catch((error) => cleanupFailures.push(`delete redirect fixture knowledge: ${error.message}`))
+    if (project) await clearFixtureKnowledge(project.id).catch((error) => cleanupFailures.push(`delete fixture knowledge: ${error.message}`))
+    if (redirectedProject) await api(`/api/projects/${redirectedProject.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete redirect project: ${error.message}`))
     if (project) await api(`/api/projects/${project.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete disposable project: ${error.message}`))
   }
   if (cleanupFailures.length > 0) throw new Error(`project-usability cleanup failed:\n  ${cleanupFailures.join('\n  ')}`)
