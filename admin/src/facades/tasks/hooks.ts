@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   TaskChecklistRecord,
+  TaskDetailRecord,
   TaskPriority,
   TaskRecord as SharedTaskRecord,
   TaskStatus,
@@ -18,6 +19,7 @@ export type { TaskPriority, TaskStatus }
 // createdByUserId, …) reaches this client automatically instead of silently
 // drifting out of the hand-written copy.
 export type TaskRecord = SharedTaskRecord
+export type PresentedTask = TaskDetailRecord
 
 export type AssignableUser = {
   id: string
@@ -269,13 +271,16 @@ export const useTransitionTask = () => {
  */
 export const usePresentedTask = (taskId?: string) => {
   const apiClient = useApiClient()
-  return useQuery<TaskRecord>({
+  return useQuery<PresentedTask>({
     // Id-keyed: a second card in the same conversation must not flash the
-    // previous ticket while its own load is in flight.
-    placeholderData: keepPreviousData,
+    // previous ticket while its own load is in flight. A stale ticket could
+    // otherwise be opened or rendered after the reader's access changed.
     queryKey: taskKeys.presented(taskId),
     queryFn: () => apiClient.get(`/api/tasks/${taskId}`),
     enabled: Boolean(taskId),
+    // A card can stay mounted in chat while its ticket is moved elsewhere.
+    // Opening its link always refreshes the shared, entitlement-gated record.
+    refetchOnMount: 'always',
     staleTime: 60_000,
     retry: false,
   })

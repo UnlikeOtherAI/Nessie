@@ -2,10 +2,12 @@ import {
   AgentIdSchema,
   ProjectIdSchema,
   TaskFieldValuesPatchSchema,
+  TaskDetailRecordSchema,
   TaskPrioritySchema,
   TaskRecordSchema,
   TaskStatusSchema,
   UserIdSchema,
+  type TaskDetailRecord,
   type TaskPriority,
   type TaskRecord,
 } from '@nessie/schemas'
@@ -18,7 +20,14 @@ import { NonEmptyStringSchema } from './shared.js'
 // The task record the admin renders directly lives in `@nessie/schemas`
 // (`task-records.ts`) because the admin has no import path into `api/src`.
 // Re-exported here so route modules keep one contract import.
-export { TaskPrioritySchema, TaskRecordSchema, type TaskPriority, type TaskRecord }
+export {
+  TaskPrioritySchema,
+  TaskDetailRecordSchema,
+  TaskRecordSchema,
+  type TaskDetailRecord,
+  type TaskPriority,
+  type TaskRecord,
+}
 
 export const CreateTaskBodySchema = z.object({
   title: NonEmptyStringSchema,

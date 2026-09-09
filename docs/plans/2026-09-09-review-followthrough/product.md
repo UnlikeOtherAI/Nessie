@@ -14,6 +14,11 @@ chat ticket card, cold task URL and subsequently Search.
    loaded column page or hidden by a board filter. Handle removed/denied tasks.
 4. Preserve the original project/board context when detail closes.
 
+The entitled detail response carries the server-resolved board and column.
+When a task's explicit board is absent, the UI offers Retry instead of opening
+it in the project default board; a null `boardId` still resolves to the
+project's default board by the established ownership contract.
+
 **Acceptance:** headless chat-card click and cold URL open the exact task;
 archived/off-page tasks work; denial shows a refusal; Back closes detail once.
 Extend existing navigation/project-usability tests and navigation docs.

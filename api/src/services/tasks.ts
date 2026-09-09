@@ -12,6 +12,7 @@ import {
   listProjectTasks,
   moveProjectTaskToColumn,
   projectTaskVisibilityWhere,
+  resolveProjectTaskDetailPlacement,
   setProjectTaskIteration,
   transitionProjectTask,
   updateProjectTask,
@@ -65,6 +66,26 @@ export const getTask = async (
     userId,
   }))) return null
   return task
+}
+
+/**
+ * The detail projection remains entitlement-gated before its board lookup.
+ * The board/column comes from the same resolver used to draw board cards.
+ */
+export const getTaskDetail = async (
+  prisma: PrismaClient,
+  taskId: string,
+  organizationId: string,
+  visibility: ProjectTaskVisibility | undefined,
+  userId: string,
+  uoaIdentity: UoaSessionIdentity | undefined,
+) => {
+  const task = await getTask(prisma, taskId, organizationId, visibility, userId, uoaIdentity)
+  if (!task) return null
+  return {
+    ...task,
+    boardPlacement: await resolveProjectTaskDetailPlacement(prisma, task),
+  }
 }
 export const listAssignableUsers = listAssignableProjectTaskUsers
 export const isValidTransition = isProjectTaskTransitionValid

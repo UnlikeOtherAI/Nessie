@@ -9,6 +9,7 @@ import {
   MoveTaskBodySchema,
   SetTaskIterationBodySchema,
   TaskRecordSchema,
+  TaskDetailRecordSchema,
   TransitionTaskBodySchema,
   UpdateTaskBodySchema,
 } from '../contracts/tasks-board.js'
@@ -18,6 +19,7 @@ import {
   assignTask,
   createHumanTask,
   getTask,
+  getTaskDetail,
   listAssignableUsers,
   listTasks,
   moveTaskToColumn,
@@ -243,7 +245,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     if (!actorContext) return reply
 
     const { taskId } = request.params as { taskId: string }
-    const task = await getTask(
+    const task = await getTaskDetail(
       prisma,
       taskId,
       actorContext.tenant.organizationId,
@@ -256,7 +258,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    return createApiResponse(TaskRecordSchema.parse(task))
+    return createApiResponse(TaskDetailRecordSchema.parse(task))
   })
 
 
