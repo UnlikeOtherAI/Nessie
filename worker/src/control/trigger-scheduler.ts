@@ -12,7 +12,6 @@ import { queueTriggerRun } from './trigger-run.js'
 import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
 const DEFAULT_SCHEDULER_LEASE_MS = 60_000
-const DEFAULT_SCHEDULER_RETRY_DELAY_MS = 60_000
 
 type ClaimedScheduledTrigger = {
   agentId: string | null
@@ -105,10 +104,12 @@ const finalizeScheduledTriggerClaim = async (
   input: {
     claimId: string
     nextRunAt: Date | null
+    preserveNonActiveStatus?: boolean
     status?: 'active' | 'error' | 'paused'
     triggerId: string
   },
 ): Promise<void> => {
+  const preserveNonActiveStatus = input.preserveNonActiveStatus ?? false
   await prisma.$executeRaw(
     Prisma.sql`
       UPDATE "agent_triggers"
@@ -116,11 +117,83 @@ const finalizeScheduledTriggerClaim = async (
         "next_run_at" = ${input.nextRunAt},
         "scheduler_claim_id" = NULL,
         "scheduler_claimed_at" = NULL,
-        "status" = COALESCE(${input.status}::"AgentTriggerStatus", "status")
+        "status" = CASE
+          WHEN ${input.status}::"AgentTriggerStatus" IS NULL THEN "status"
+          WHEN ${preserveNonActiveStatus} AND "status" <> 'active'::"AgentTriggerStatus"
+            THEN "status"
+          ELSE ${input.status}::"AgentTriggerStatus"
+        END
       WHERE "id" = ${input.triggerId}::uuid
         AND "scheduler_claim_id" = ${input.claimId}::uuid
     `,
   )
+}
+
+/**
+ * Keep a scheduler-owned transient failure on the same occurrence.
+ *
+ * `next_run_at` is both the cadence anchor and part of the delivery key. Moving
+ * it to a retry instant creates a second occurrence, so a successful delivery
+ * retry can be followed by a duplicate scheduler fire. Retaining the claim
+ * until its normal lease expires backs off the scheduler without changing that
+ * identity. The next claimant still fences this one by replacing claim id.
+ */
+const deferScheduledTriggerClaim = async (
+  prisma: PrismaClient,
+  input: { claimId: string; now: Date; triggerId: string },
+): Promise<void> => {
+  await prisma.$executeRaw(
+    Prisma.sql`
+      UPDATE "agent_triggers"
+      SET "scheduler_claimed_at" = ${input.now}
+      WHERE "id" = ${input.triggerId}::uuid
+        AND "scheduler_claim_id" = ${input.claimId}::uuid
+    `,
+  )
+}
+
+/**
+ * Any persisted delivery is the durable authority for its occurrence. It owns
+ * the same dedupe key the scheduler uses, so the scheduler must settle cadence
+ * even if a retry completed between dispatch throwing and this lookup.
+ */
+const deliveryOwnsScheduledOccurrence = async (
+  prisma: PrismaClient,
+  input: { dedupeKey: string; triggerId: string },
+): Promise<boolean> => {
+  const delivery = await prisma.agentTriggerDelivery.findFirst({
+    where: {
+      dedupeKey: input.dedupeKey,
+      triggerId: input.triggerId,
+    },
+    select: { id: true },
+  })
+  return delivery !== null
+}
+
+const settleDeliveryOwnedScheduledClaim = async (
+  prisma: PrismaClient,
+  input: {
+    claimId: string
+    config: unknown
+    from: Date
+    now: Date
+    triggerId: string
+    type: Parameters<typeof buildNextScheduledRunAt>[0]['type']
+  },
+): Promise<void> => {
+  const settled = settleRecurringClaim(input)
+  await finalizeScheduledTriggerClaim(prisma, {
+    claimId: input.claimId,
+    nextRunAt: settled.nextRunAt,
+    // A terminal recurring schedule must stop producing future occurrences,
+    // but an earlier dispatch may already have put the trigger in `error`.
+    // Never revive that classified state just to settle its cadence.
+    ...(settled.status === 'paused'
+      ? { preserveNonActiveStatus: true, status: 'paused' as const }
+      : {}),
+    triggerId: input.triggerId,
+  })
 }
 
 export const sweepDueScheduledTriggers = async (
@@ -218,11 +291,23 @@ export const sweepDueScheduledTriggers = async (
           }),
           error,
         )
-        await finalizeScheduledTriggerClaim(prisma, {
-          claimId: trigger.schedulerClaimId,
-          nextRunAt: new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
-          triggerId: trigger.id,
-        })
+        const dedupeKey = `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`
+        if (await deliveryOwnsScheduledOccurrence(prisma, { dedupeKey, triggerId: trigger.id })) {
+          await settleDeliveryOwnedScheduledClaim(prisma, {
+            claimId: trigger.schedulerClaimId,
+            config: trigger.config,
+            from: trigger.nextRunAt,
+            now,
+            triggerId: trigger.id,
+            type: trigger.type,
+          })
+        } else {
+          await deferScheduledTriggerClaim(prisma, {
+            claimId: trigger.schedulerClaimId,
+            now,
+            triggerId: trigger.id,
+          })
+        }
       }
       continue
     }
@@ -340,11 +425,22 @@ export const sweepDueScheduledTriggers = async (
         }),
         error,
       )
-      await finalizeScheduledTriggerClaim(prisma, {
-        claimId: trigger.schedulerClaimId,
-        nextRunAt: new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
-        triggerId: trigger.id,
-      })
+      if (await deliveryOwnsScheduledOccurrence(prisma, { dedupeKey, triggerId: trigger.id })) {
+        await settleDeliveryOwnedScheduledClaim(prisma, {
+          claimId: trigger.schedulerClaimId,
+          config: trigger.config,
+          from: trigger.nextRunAt,
+          now,
+          triggerId: trigger.id,
+          type: trigger.type,
+        })
+      } else {
+        await deferScheduledTriggerClaim(prisma, {
+          claimId: trigger.schedulerClaimId,
+          now,
+          triggerId: trigger.id,
+        })
+      }
     }
   }
 }

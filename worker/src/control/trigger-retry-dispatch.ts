@@ -46,9 +46,20 @@ export const reattemptTriggerDelivery = async (
     },
   })
 
-  // If the trigger has been removed or disabled since the failure, give up on
-  // the retry: clear nextRetryAt so the poller stops scanning it.
-  if (!trigger || !trigger.enabled || trigger.status !== 'active') {
+  // A terminal scheduled occurrence has no next run and can be paused while
+  // its already-persisted delivery is retrying. That delivery predates the
+  // pause, so it remains owed. Other disabled/error/paused triggers stop
+  // retries as before, including an operator pause that retains nextRunAt.
+  const terminalScheduledOccurrence =
+    trigger?.enabled
+    && trigger.status === 'paused'
+    && trigger.nextRunAt === null
+    && (trigger.type === 'scheduled' || trigger.type === 'interval')
+  if (
+    !trigger
+    || !trigger.enabled
+    || (trigger.status !== 'active' && !terminalScheduledOccurrence)
+  ) {
     await prisma.agentTriggerDelivery.update({
       where: { id: input.reuseDeliveryId },
       data: { nextRetryAt: null },

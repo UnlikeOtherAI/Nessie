@@ -222,3 +222,39 @@ test('updateAgentTrigger cannot overwrite persisted launch identity', async () =
     launchOrigin,
   })
 })
+
+test('an explicit generic pause always disables the trigger', async () => {
+  let persisted: { enabled?: boolean; nextRunAt?: Date | null; status?: string } | null = null
+  const prisma = {
+    agentTrigger: {
+      findFirst: async () => ({
+        agentId: AGENT_ID,
+        config: { interval_minutes: 60 },
+        id: TRIGGER_ID,
+        targetChannelId: CHANNEL_ID,
+        targetThreadId: THREAD_ID,
+        type: 'interval',
+        workflowInstallationId: null,
+      }),
+      update: async (args: {
+        data: { enabled?: boolean; nextRunAt?: Date | null; status?: string }
+      }) => {
+        persisted = args.data
+        return triggerRecord({ interval_minutes: 60 })
+      },
+    },
+  } as unknown as PrismaClient
+
+  await updateAgentTrigger(prisma, {
+    organizationId: launchOrigin.organizationId,
+    triggerId: TRIGGER_ID,
+  }, {
+    enabled: true,
+    nextRunAt: null,
+    status: 'paused',
+  })
+
+  assert.equal(persisted?.enabled, false)
+  assert.equal(persisted?.status, 'paused')
+  assert.equal(persisted?.nextRunAt, null)
+})
