@@ -61,6 +61,20 @@ Additional review findings are a separate backlog until assigned.
 
 ## Status
 
-Planning and initial implementation dispatch are in progress. Items 1/2 and 3
-are assigned. The other items are queued in the order above. A second review
-for ten additional findings runs independently and does not expand this scope.
+The plans landed in [PR 438](https://github.com/UnlikeOtherAI/Nessie/pull/438).
+Implementation status on 10 September 2026:
+
+- **1/2 — Sol:** fenced run handback is committed; atomic completion and
+  durable follow-up delivery are in progress in the same lifecycle branch.
+- **3 — Terra:** [PR 440](https://github.com/UnlikeOtherAI/Nessie/pull/440)
+  landed as `688859ed3` after all nine CI checks passed. Scheduled retries now
+  retain one occurrence owner, and an explicit pause cancels pending retries.
+- **4 — Terra:** bounded, authorized history pagination is assigned in its
+  own worktree after the scheduling implementation.
+- **5 — Terra:** exact ticket navigation and shared dialog placement are in
+  progress, including the server detail contract and browser evaluation.
+- **6–12:** queued in the execution order above; they are not implemented.
+
+The [ten additional findings](../../reviews/2026-09-09-additional-ten.md)
+landed in [PR 439](https://github.com/UnlikeOtherAI/Nessie/pull/439). They remain
+a separate review backlog and do not expand the approved implementation scope.
