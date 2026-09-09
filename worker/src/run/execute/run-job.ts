@@ -18,7 +18,10 @@ import {
 } from '../deepwater-handoff-guard.js'
 import { resolveDeepWaterHandoffMarker } from '../deepwater-handoff-metadata.js'
 import { ensureRunPlanContext, markRunPlanStarted } from '../plans.js'
-import type { QueueAttempt } from '../tool-execution-errors.js'
+import {
+  shouldRetryRunWithoutTerminalizing,
+  type QueueAttempt,
+} from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
 import { RunDrainedError } from '../loop-resume.js'
 import { resolveCacheReadWeight, resolveEffectiveRunBudget } from '../run-budget.js'
@@ -45,7 +48,7 @@ import {
   assertExecutorHoldsRun,
   claimRunForExecution,
   loadRunContext,
-  releaseRunForDrain,
+  handBackRunExecution,
   RunFencedError,
   setAgentStatus,
   startExecutorHeartbeat,
@@ -561,9 +564,38 @@ const runJobUnderFence = async (
         // the boundary the loop stopped at, but a write that was skipped, fenced
         // out or failed leaves an older one, or none, and then the run replays
         // from its prompt (`createCrashCheckpointWriter`).
-        await releaseRunForDrain(deps.prisma, context.run.id)
+        heartbeat?.stop()
+        heartbeat = null
+        const handedBack = await handBackRunExecution(deps.prisma, context.run.id)
+        if (!handedBack) {
+          console.warn(
+            `[worker] run ${context.run.id} was already handed to another executor during drain`,
+          )
+          return
+        }
         console.log(
           `[worker] draining: handed run ${context.run.id} back at its crash checkpoint`,
+        )
+        throw failureError
+      }
+      if (shouldRetryRunWithoutTerminalizing(failureError, queueAttempt)) {
+        // This throw deliberately nacks the queue job. Stop this execution's
+        // heartbeat and release its fenced run claim first, otherwise the
+        // immediately re-delivered queue attempt sees a fresh heartbeat,
+        // mistakes this stopped executor for a live one, and acknowledges the
+        // retry without doing any work. The hand-back leaves both crash state
+        // and tool-effect claims intact for the successor.
+        heartbeat?.stop()
+        heartbeat = null
+        const handedBack = await handBackRunExecution(deps.prisma, context.run.id)
+        if (!handedBack) {
+          console.warn(
+            `[worker] run ${context.run.id} was already claimed by another executor during retry`,
+          )
+          return
+        }
+        console.log(
+          `[worker] retrying: handed run ${context.run.id} back at its crash checkpoint`,
         )
         throw failureError
       }

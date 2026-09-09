@@ -12,7 +12,7 @@ import {
 } from '../../src/run/execute/crash-checkpoint.js'
 import {
   claimRunForExecution,
-  releaseRunForDrain,
+  handBackRunExecution,
   updateRunStatus,
   withRunExecutorFence,
 } from '../../src/run/execute/lifecycle.js'
@@ -244,7 +244,7 @@ runDatabaseTest('a drained run is immediately claimable by the next worker', asy
     await withRunExecutorFence(fixture.runId, async () => {
       const claim = await claimRunForExecution(prisma, fixture.runId)
       await persistCrashCheckpoint(prisma, targetOf(fixture), claim.token!, stateAt(2))
-      await releaseRunForDrain(prisma, fixture.runId)
+      await handBackRunExecution(prisma, fixture.runId)
     })
 
     const row = await prisma.run.findUniqueOrThrow({

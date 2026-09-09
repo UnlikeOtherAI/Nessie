@@ -166,7 +166,8 @@ summary and points here; **this file is the rule**.
     (`worker/src/index.ts` → `executeRunJob` → `runAgenticLoop`). When it fires,
     whatever is in flight gets `NESSIE_RUN_DRAIN_GRACE_MS` (default 5 s) and the
     loop then throws `RunDrainedError`; the run keeps its `running` status, its
-    executor token and heartbeat are cleared so the next worker claims it on its
+    executor token and heartbeat are cleared through the same fenced hand-back
+    used by every intentional queue retry, so the next worker claims it on its
     very next poll, and the job is nacked with reason `worker_drain`. Nothing is
     announced in the thread: a drain is this worker stopping, not this run
     failing. A re-entered batch re-emits `agent.tool.start`/`end` and writes a

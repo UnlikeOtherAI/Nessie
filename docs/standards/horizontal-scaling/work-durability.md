@@ -385,6 +385,13 @@ matches no row. Beside it:
   `RunDrainedError`. The run stays `running`, its token and heartbeat are
   cleared so the next worker claims it on its next poll rather than waiting out
   the takeover window, and the job is nacked with reason `worker_drain`.
+- **An intentional retry hands the run claim back before it nacks the job.** A
+  non-final `FatalToolExecutionError` keeps the run `running`, along with its
+  crash checkpoint and tool-effect rows, but stops the heartbeat and clears the
+  executor token through `handBackRunExecution` before rethrowing. The update is
+  fenced on the current token, so a superseded executor cannot release its
+  successor. The next queue attempt can therefore claim the same run immediately
+  instead of acknowledging a retry against the previous attempt's fresh heartbeat.
 - **Row state a run leaves outside the run gets an out-of-process reaper.** A
   status only the executing process can advance is a status a `SIGKILL` freezes
   for ever, and under autoscaling that kill is routine. `run_document_sessions`
@@ -397,7 +404,7 @@ matches no row. Beside it:
   dead before the run claim would — reaping on age alone kills a legitimately
   long generation. **A heartbeat is a claim's liveness, not a process's:** it
   stops whenever the executor token is nulled, which `updateRunStatus` does on
-  every suspension and `releaseRunForDrain` on every orderly hand-back, so a
+  every suspension and `handBackRunExecution` on every orderly hand-back, so a
   stale or null heartbeat says "parked" or "draining" as readily as "dead".
   Hence `pending`, `waiting_approval`, `waiting_input` and a `running` run with a
   NULL heartbeat are never reaped out of; each leaves that state eventually, and
@@ -443,7 +450,7 @@ What this finding still owes, proved by the two-instance chaos smoke:
   and waits; the per-job `AbortSignal` fires only when the deadline passes and
   `subscription.abandon` runs, and `stop()` then closes the pool without waiting
   for the abandoned handler to unwind. So the loop reaches its checkpoint path
-  with the process already exiting, and `releaseRunForDrain` never lands: the
+  with the process already exiting, and `handBackRunExecution` never lands: the
   successor claims the released job, finds the run still carrying a fresh
   heartbeat, and skips it. The chaos smoke's check (b) fails on exactly this,
   and did before this phase too. The fix is a second `AbortController` for

@@ -91,7 +91,8 @@ export const currentExecutorToken = (runId: string): string | null =>
   heldFence(runId)?.token ?? null
 
 /**
- * Hand a run back mid-flight, for a worker that is draining.
+ * Hand a run back mid-flight when this execution intentionally asks the queue
+ * to retry it.
  *
  * Clearing the heartbeat alongside the token is the point: `claimRunForExecution`
  * admits a `running` run only once its executor has gone silent for the takeover
@@ -103,18 +104,19 @@ export const currentExecutorToken = (runId: string): string | null =>
  * Conditional on still holding the run, so a fenced-out executor cannot release
  * the winner's claim on its way out.
  */
-export const releaseRunForDrain = async (
+export const handBackRunExecution = async (
   prisma: PrismaClient,
   runId: string,
-): Promise<void> => {
+): Promise<boolean> => {
   const token = currentExecutorToken(runId)
-  if (!token) return
-  await prisma.$executeRaw`
+  if (!token) return false
+  const released = await prisma.$executeRaw`
     UPDATE runs
     SET executor_token = NULL, executor_heartbeat_at = NULL
     WHERE id = ${runId}::uuid AND executor_token = ${token}::uuid
   `
   releaseExecutorFence(runId)
+  return released === 1
 }
 
 /**
