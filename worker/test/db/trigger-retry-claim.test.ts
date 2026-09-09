@@ -11,6 +11,7 @@ import {
 } from '../../src/control/trigger-delivery-retry.js'
 import { reattemptTriggerDelivery } from '../../src/control/trigger-retry-dispatch.js'
 import { sweepDueScheduledTriggers } from '../../src/control/trigger-scheduler.js'
+import { assertGlobalQueuesQuiet } from './support.js'
 
 // The delivery-retry poller used a plain `findMany`, so two worker replicas
 // selected the same due rows and re-attempted them concurrently. It now claims
@@ -186,6 +187,7 @@ const failFirstDispatchBeforeDeliveryRecord = (prisma: PrismaClient): PrismaClie
 
 runDatabaseTest('concurrent pollers never claim the same delivery twice', async () => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const seed = await seedFailedDeliveries(prisma, 4)
   const claimed: string[] = []
 
@@ -255,6 +257,7 @@ runDatabaseTest('an exhausted delivery keeps no due retry timestamp', async () =
 
 runDatabaseTest('a scheduled delivery retry owns its occurrence and preserves cadence', async () => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const now = new Date()
   const scheduledFor = new Date(now.getTime() - 120_000)
   const schedules: Array<{
@@ -381,6 +384,7 @@ runDatabaseTest('a scheduled delivery retry owns its occurrence and preserves ca
 
 runDatabaseTest('a scheduler-owned transient reclaims the original occurrence', async () => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const now = new Date()
   const scheduledFor = new Date(now.getTime() - 120_000)
   const seed = await seedScheduledTrigger(prisma, {
@@ -427,6 +431,7 @@ runDatabaseTest('a scheduler-owned transient reclaims the original occurrence', 
 
 runDatabaseTest('delivery-owned cadence settlement preserves classified trigger health', async () => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const now = new Date()
   const scheduledFor = new Date(now.getTime() - 120_000)
   const config = { interval_minutes: 10_080 }

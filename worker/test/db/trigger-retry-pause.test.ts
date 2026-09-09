@@ -9,11 +9,13 @@ import {
   retryFailedTriggerDeliveries,
 } from '../../src/control/trigger-delivery-retry.js'
 import { reattemptTriggerDelivery } from '../../src/control/trigger-retry-dispatch.js'
+import { assertGlobalQueuesQuiet } from './support.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
 runDatabaseTest('an operator pause cancels an already-recorded scheduled retry', async () => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const suffix = randomUUID()
   const now = new Date()
   const organization = await prisma.organization.create({ data: { name: `retry pause ${suffix}` } })
