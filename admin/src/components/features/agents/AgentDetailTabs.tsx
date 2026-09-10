@@ -1,17 +1,19 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { DEFAULT_PAGE_LIMIT } from '@nessie/schemas'
+import { type ReactNode, useEffect, useMemo } from 'react'
+import type { AgentMessage, AgentMessagePage } from '@nessie/schemas'
 import {
   useAgentActivity,
   useAgentChildren,
-  useAgentMessages,
   useAgentStatus,
 } from '../../../facades/agents/hooks'
+import { agentKeys } from '../../../facades/agents/keys'
+import { usePagedList, usePagedListReset } from '../../../facades/pagination/usePagedList'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
 import { PaginationFooter } from '../../shared/PaginationFooter'
+import { QueryState } from '../../shared/QueryState'
 import { AgentBrowserPanel } from '../browser-cloud/AgentBrowserPanel'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentDocumentsTab } from './AgentDocumentsTab'
@@ -141,9 +143,6 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
     tabValues,
     tabs[0]?.value ?? FIRST_DETAIL_TAB,
   )
-  const [messagePage, setMessagePage] = useState(0)
-  const [messagePageSize, setMessagePageSize] = useState(DEFAULT_PAGE_LIMIT)
-
   // The operational reads are closed for a Nessie-managed agent (see
   // `SYSTEM_AGENT_TABS`), and their tabs are not rendered. Passing no id leaves
   // the queries idle rather than firing four requests that can only 404.
@@ -151,13 +150,15 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
   const { data: status } = useAgentStatus(operationalAgentId)
   const { data: activity } = useAgentActivity(operationalAgentId)
   const { data: childAgents = [] } = useAgentChildren(operationalAgentId)
-  const messageQuery = useAgentMessages(
-    operationalAgentId,
-    messagePageSize,
-    messagePage * messagePageSize,
-  )
-  const messageTotalPages = Math.max(1, Math.ceil((messageQuery.data?.total ?? 0) / messagePageSize))
-  const visibleMessagePage = Math.min(messagePage, messageTotalPages - 1)
+  const resetMessagePage = usePagedListReset('agentMessages-')
+  const messageList = usePagedList<AgentMessage, AgentMessagePage>({
+    enabled: Boolean(operationalAgentId),
+    items: (page) => page.items,
+    paramPrefix: 'agentMessages-',
+    path: `/api/agents/${operationalAgentId ?? ''}/messages`,
+    queryKey: agentKeys.messages(operationalAgentId ?? ''),
+    scope: operationalAgentId,
+  })
 
   const toolEntries = useMemo(() => {
     if (!activity) return []
@@ -166,16 +167,11 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
       : activity.currentRun?.toolCalls ?? []
   }, [activity])
 
-  const messages = messageQuery.data?.items ?? []
+  const messages = messageList.items
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab)
-    setMessagePage(0)
   }
-
-  useEffect(() => {
-    setMessagePage((current) => Math.min(current, messageTotalPages - 1))
-  }, [messageTotalPages])
 
   useEffect(() => {
     assistantPanel?.setPageContext(pageContextForTab[activeTab])
@@ -254,23 +250,37 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
 
             {activeTab === 'messages' && (
           <div className="grid gap-4">
-            <AgentMessagePreview messages={messages} />
+            <QueryState
+              errorLabel="This message page is no longer available. Restart from newest or retry."
+              loadingLabel="Loading messages…"
+              query={messageList.query}
+            >
+              {() => <AgentMessagePreview messages={messages} />}
+            </QueryState>
+            {messageList.query.isError ? (
+              <button
+                className="admin-button admin-button-secondary w-fit"
+                onClick={resetMessagePage}
+                type="button"
+              >
+                Restart from newest
+              </button>
+            ) : null}
             <PaginationFooter
-              canNext={visibleMessagePage < messageTotalPages - 1}
-              canPrevious={visibleMessagePage > 0}
+              canNext={messageList.canNext}
+              canPrevious={messageList.canPrevious}
               className="pt-4"
               hideWhenSinglePage
-              label={messageQuery.data
-                ? `${visibleMessagePage * messagePageSize + 1}–${visibleMessagePage * messagePageSize + messages.length} of ${messageQuery.data.total}`
-                : 'Loading messages'}
-              onPageChange={setMessagePage}
-              onPageSizeChange={(nextPageSize) => {
-                setMessagePageSize(nextPageSize)
-                setMessagePage(0)
-              }}
-              page={visibleMessagePage}
-              pageCount={messageTotalPages}
-              pageSize={messagePageSize}
+              label={messageList.query.isPending
+                ? 'Loading messages'
+                : messages.length === 0
+                  ? 'No visible messages on this page'
+                  : `${messages.length} visible message${messages.length === 1 ? '' : 's'} on this page`}
+              onPageChange={messageList.onPageChange}
+              onPageSizeChange={messageList.onPageSizeChange}
+              page={messageList.page}
+              pageCount={messageList.pageCount}
+              pageSize={messageList.pageSize}
             />
           </div>
             )}

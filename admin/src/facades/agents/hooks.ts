@@ -4,7 +4,6 @@ export {
   useAgentActivity,
   useAgentChildren,
   useAgentDocuments,
-  useAgentMessages,
   useAgentModelOptions,
   useAgents,
   useAgentStatus,

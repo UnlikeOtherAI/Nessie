@@ -13,8 +13,6 @@ export const agentKeys = {
   children: (agentId?: string) => ['agents', agentId, 'children'] as const,
   documents: (agentId?: string) => ['agents', agentId, 'documents'] as const,
   messages: (agentId: string) => ['agents', agentId, 'messages'] as const,
-  messagePage: (agentId: string | undefined, limit: number, offset: number) =>
-    ['agents', agentId, 'messages', limit, offset] as const,
   models: ['agents', 'models'] as const,
   runTools: (agentId?: string, runId?: string) =>
     ['agents', agentId, 'runs', runId, 'tools'] as const,

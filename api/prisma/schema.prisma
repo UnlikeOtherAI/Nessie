@@ -2511,8 +2511,8 @@ model Message {
   conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
   @@unique([threadId, clientMessageId], map: "messages_thread_id_client_message_id_key")
-  @@index([threadId, createdAt])
-  @@index([agentId, createdAt])
+  @@index([threadId, createdAt(sort: Desc), id(sort: Desc)], map: "messages_thread_id_created_at_id_keyset_idx")
+  @@index([agentId, createdAt(sort: Desc), id(sort: Desc)], map: "messages_agent_id_created_at_id_keyset_idx")
   @@index([rootMessageId, createdAt])
   @@map("messages")
 }
@@ -3092,6 +3092,7 @@ model Run {
   budgetReservation BudgetReservation?
 
   @@index([agentId, status])
+  @@index([agentId, threadId], map: "runs_agent_id_thread_id_history_idx")
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
   @@unique([id, agentId, threadId])
