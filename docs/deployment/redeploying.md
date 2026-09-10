@@ -4,8 +4,30 @@ Chapter of [deployment.md](../deployment.md). Images build on GitHub and the hos
 
 ## Redeploying a new version
 
-**Automatic (default):** every push to `main` triggers
-`.github/workflows/deploy.yml`, which rsyncs the tree to `/srv/nessie` and runs
+**Automatic (default):** a completed `CI` run for `main` wakes
+`.github/workflows/deploy.yml`. Before the build job receives package-write
+permission or the deploy job receives SSH secrets, its read-only gate resolves
+the current `main` tip and requires a successful `push` CI run for that exact
+SHA from this repository. It then checks out, builds, tags, syncs and promotes
+only that SHA. A failed, cancelled, forked, wrong-branch or stale CI event
+cannot promote an image.
+
+The `deploy-production` lock stays serialized with `cancel-in-progress: false`.
+GitHub retains the newest *event* while a run is pending, which may be a
+delayed CI completion for an older commit. Failed, cancelled, untrusted and
+non-`main` events use per-run ignored groups, so they cannot evict an eligible
+pending deploy. Resolving eligibility after the shared lock is acquired prevents
+the remaining queue inversion: an older successful event deploys the newer
+current tip only after that tip's CI succeeds; if the current tip is still
+unverified, the run stops and waits for its own CI completion. Production never
+falls back to an older verified commit.
+
+**Manual:** use **Run workflow** for `Deploy` from `main`. It uses the same
+current-tip CI gate and does not promote the UI-selected revision or bypass a
+failed/cancelled CI run. Routine production promotion must not use direct host
+commands.
+
+After the gate, the workflow rsyncs the proven tree to `/srv/nessie` and runs
 `infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
 the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
 `~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
@@ -29,10 +51,6 @@ mcp-manage extraction broke every build until this was added). rsync never
 deletes excluded paths, so `infrastructure/compose/.env` (and any `.env`) is
 preserved apart from that explicit single-key update, and the Postgres/MinIO
 data live in named Docker volumes outside the synced tree.
-
-**Manual:** from the dev machine `rsync` the tree to `/srv/nessie`, then on the
-host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
-migrations, rolls the containers). Postgres and its volume are untouched.
 
 ### Images are built on GitHub, never on the production host
 
@@ -58,12 +76,6 @@ file serves both. Because every deploy pulls a distinct SHA tag and tagged
 images are never *dangling*, the post-deploy reclaim explicitly removes Nessie
 release images other than the one just deployed — otherwise the shared disk
 grows by a full image per deploy.
-
-To deploy a specific build by hand:
-
-```sh
-cd /srv/nessie && NESSIE_IMAGE_TAG=<sha> bash infrastructure/compose/redeploy.sh
-```
 
 ### Zero-downtime rollout (health-gated blue-green swap)
 
