@@ -300,9 +300,9 @@ export const searchProjectTasks = async (
           nextCursor: cursor && (last
             ? cursorFor(lastAnchor)
             : hasBudgetContinuation ? cursorFor(lastScanned) : null),
-          prevCursor: hasBudgetContinuation
-            ? cursorFor(lastScanned)
-            : hasAdjacentReadable ? cursorFor(firstAnchor) : null,
+          prevCursor: hasAdjacentReadable
+            ? cursorFor(firstAnchor)
+            : hasBudgetContinuation ? cursorFor(lastScanned) : null,
         },
       }
     : {
