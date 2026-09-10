@@ -184,7 +184,10 @@ runDatabaseTest('authenticated cursors bind viewer, tenant, query, entitlement, 
     await rejects(randomUUID(), { ...filters, cursor }, [seeded.projectId], seeded.userId)
     await rejects(seeded.organizationId, { ...filters, cursor, text: 'Other' }, [seeded.projectId], seeded.userId)
     await rejects(seeded.organizationId, { ...filters, cursor }, [randomUUID()], seeded.userId)
-    const tampered = `${cursor.slice(0, -1)}${cursor.endsWith('A') ? 'B' : 'A'}`
+    const tamperIndex = Math.floor(cursor.length / 2)
+    const tampered = cursor.slice(0, tamperIndex)
+      + (cursor[tamperIndex] === 'A' ? 'B' : 'A')
+      + cursor.slice(tamperIndex + 1)
     await rejects(seeded.organizationId, { ...filters, cursor: tampered }, [seeded.projectId], seeded.userId)
 
     t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 10 * 60_000 + 1 })
