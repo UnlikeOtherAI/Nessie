@@ -1,6 +1,11 @@
 /* Nessie admin service worker — web push delivery + notification clicks. */
 
 const CALL_PUSH_PROTOCOL_VERSION = '1'
+let activePushUserId
+let pushOwnerGeneration = 0
+let pushOwnerWrite = Promise.resolve()
+const PUSH_OWNER_CACHE = 'nessie-web-push-owner-v1'
+const PUSH_OWNER_KEY = '/.well-known/nessie-web-push-owner'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -9,6 +14,60 @@ self.addEventListener('install', () => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
+
+// The browser endpoint survives a login. Only the person the SPA most recently
+// authenticated may render a payload addressed to them; an absent owner fails
+// closed while the page reconnects after a worker restart.
+self.addEventListener('message', (event) => {
+  const message = event.data
+  if (!isObject(message) || message.type !== 'nessie.web-push-user') return
+  const userId = typeof message.userId === 'string' && message.userId.length > 0
+    ? message.userId
+    : null
+  activePushUserId = userId
+  const generation = ++pushOwnerGeneration
+  event.waitUntil?.(Promise.all([
+    storePushOwner(userId, generation),
+    closeNotificationsForOtherOwners(userId),
+  ]))
+})
+
+const closeNotificationsForOtherOwners = async (userId) => {
+  const notifications = await self.registration.getNotifications()
+  // An older owner-change cleanup can resume after a new login. Re-read the
+  // synchronous owner it must protect before closing anything from that tray.
+  const currentUserId = activePushUserId === undefined ? userId : activePushUserId
+  notifications.forEach((notification) => {
+    const recipientUserId = isObject(notification.data) ? notification.data.recipientUserId : null
+    if (!currentUserId || recipientUserId !== currentUserId) notification.close()
+  })
+}
+
+const storePushOwner = (userId, generation) => {
+  pushOwnerWrite = pushOwnerWrite.catch(() => undefined).then(async () => {
+    if (generation !== pushOwnerGeneration) return
+    const cache = await caches.open(PUSH_OWNER_CACHE)
+    if (generation !== pushOwnerGeneration) return
+    if (userId) await cache.put(PUSH_OWNER_KEY, new Response(userId))
+    else await cache.delete(PUSH_OWNER_KEY)
+  })
+  return pushOwnerWrite
+}
+
+const currentPushOwner = async () => {
+  if (activePushUserId !== undefined) return activePushUserId
+  const generation = pushOwnerGeneration
+  try {
+    const cached = await (await caches.open(PUSH_OWNER_CACHE)).match(PUSH_OWNER_KEY)
+    const cachedUserId = cached ? await cached.text() : null
+    if (generation !== pushOwnerGeneration) return activePushUserId
+    activePushUserId = cachedUserId
+  } catch {
+    if (generation !== pushOwnerGeneration) return activePushUserId
+    activePushUserId = null
+  }
+  return activePushUserId
+}
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -141,18 +200,22 @@ self.addEventListener('push', (event) => {
     payload = { title: 'Nessie', body: event.data.text() }
   }
 
-  const data = isObject(payload.data) ? payload.data : {}
-  if (isCallPush(data)) {
+  event.waitUntil((async () => {
+    const data = isObject(payload.data) ? payload.data : {}
+    const recipientUserId = data.recipientUserId
+    if (typeof recipientUserId !== 'string' || recipientUserId !== await currentPushOwner()) {
+      return
+    }
+    if (isCallPush(data)) {
     // A stale worker must never mistake a future cancel payload for a visible
     // generic notification, so unsupported call protocol versions are ignored.
     if (!isSupportedCallPush(data)) return
     if (data.kind === 'call.cancel') {
-      event.waitUntil(Promise.all([badgeUpdateFor(payload), closeCallRing(data)]))
+      await Promise.all([badgeUpdateFor(payload), closeCallRing(data)])
       return
     }
 
-    event.waitUntil(
-      Promise.all([
+    await Promise.all([
         badgeUpdateFor(payload),
         self.registration.showNotification(titleFor(payload), {
           ...notificationOptions(payload, data, callTag(data)),
@@ -163,24 +226,29 @@ self.addEventListener('push', (event) => {
           requireInteraction: true,
           renotify: true,
         }),
-      ]),
-    )
+      ])
+    if (recipientUserId !== await currentPushOwner()) await closeNotificationsWithTag(callTag(data))
     return
-  }
+    }
 
   // Coalesce at the conversation chosen by the server: the main channel feed
   // stays compact, while independent reply conversations remain visible.
   const tag = data.tag || payload.collapseId || data.rootMessageId || data.channelId || 'nessie'
-  event.waitUntil(
-    Promise.all([
+    await Promise.all([
       badgeUpdateFor(payload),
       self.registration.showNotification(titleFor(payload), notificationOptions(payload, data, tag)),
-    ]),
-  )
+    ])
+    if (recipientUserId !== await currentPushOwner()) await closeNotificationsWithTag(tag)
+  })())
 })
 
 self.addEventListener('notificationclick', (event) => {
   const data = isObject(event.notification.data) ? event.notification.data : {}
+  event.waitUntil((async () => {
+    if (typeof data.recipientUserId !== 'string' || data.recipientUserId !== await currentPushOwner()) {
+      event.notification.close()
+      return
+    }
   if (isCallPush(data)) {
     if (!isSupportedCallPush(data)) {
       event.notification.close()
@@ -191,27 +259,28 @@ self.addEventListener('notificationclick', (event) => {
       // activation can be lost by awaiting even one promise before openWindow.
       const openedMeeting = self.clients.openWindow(data.meetingUri)
       event.notification.close()
-      event.waitUntil(Promise.all([
+      await Promise.all([
         openMeetingOrFallback(openedMeeting, callChannelUrl(data, 'acceptCall')),
         postCallResponse(data, 'accept'),
-      ]))
+      ])
       return
     }
     if (event.action === 'decline') {
       event.notification.close()
-      event.waitUntil(postCallResponse(data, 'decline'))
+      await postCallResponse(data, 'decline')
       return
     }
 
     // A notification body click only opens the incoming-call dialog. It must
     // not become an implicit accept merely because action buttons are absent.
     event.notification.close()
-    event.waitUntil(focusOrOpen(callChannelUrl(data, 'incomingCall')))
+    await focusOrOpen(callChannelUrl(data, 'incomingCall'))
     return
   }
 
   event.notification.close()
-  event.waitUntil(focusOrOpen(data.url || '/'))
+  await focusOrOpen(data.url || '/')
+  })())
 })
 
 self.addEventListener('notificationclose', () => {

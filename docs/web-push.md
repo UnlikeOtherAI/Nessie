@@ -32,7 +32,7 @@ The browser path uses the standard W3C Push API + Service Worker stack:
 | Stage | Where | Responsibility |
 |-------|-------|----------------|
 | Subscribe | Admin SPA (`/settings/notifications`) | User opts in; browser mints a `PushSubscription` and the SPA registers it with the API |
-| Store | API (`/api/push/web/*`) | Persists/removes the user's subscription, scoped to the caller |
+| Store | API (`/api/push/web/*`) | Persists/removes the caller's tenant/user enrollment of a browser subscription |
 | Encrypt + sign | Worker (`@nessie/push`) | Builds an RFC 8291 encrypted payload and an RFC 8292 VAPID JWT |
 | Relay | Browser's push service | The endpoint URL in the subscription (Apple/Google/Mozilla-operated) |
 | Display | Service worker (`admin/public/sw.js`) | Receives the `push` event, shows the notification, opens the deep link on click |
@@ -105,8 +105,11 @@ per browser subscription:
 | `last_seen_at` | refreshed on each (re)subscribe |
 | `created_at` | first seen |
 
-Uniqueness is `(user_id, endpoint)`, so re-subscribing is an idempotent upsert
-and a user can only ever touch their own row.
+Uniqueness is `(organization_id, user_id, endpoint)`. The browser-level
+`PushSubscription` is shared state, while this row is one person's enrollment
+of that endpoint in one organization. Re-subscribing in the same organization
+is an idempotent upsert; the same person may explicitly enroll the same browser
+in another organization without either enrollment overwriting the other.
 
 The `PushProvider` enum gains a `webpush` member alongside `apns` and `fcm`;
 every browser delivery attempt is logged to `push_deliveries` with
@@ -119,9 +122,10 @@ All three are authenticated and scoped to the calling user within their tenant
 
 | Method + path | Body | Behaviour |
 |---------------|------|-----------|
-| `GET /api/push/web/config` | — | Returns `{ enabled, publicKey }`. `publicKey` is `null` when web push is off. The SPA reads this before showing the opt-in. |
-| `POST /api/push/web/subscribe` | the browser's `PushSubscription.toJSON()` (`{ endpoint, keys: { p256dh, auth } }`) | Validates the endpoint (`https` only, SSRF-guarded — see Security) and the key sizes (65-byte `p256dh`, 16-byte `auth`), then upserts the caller's subscription by `(userId, endpoint)`, records the UA, and evicts the caller's oldest rows beyond the per-user cap. Returns `201` with the stored record. |
-| `POST /api/push/web/unsubscribe` | `{ endpoint }` | Deletes the caller's matching subscription. Idempotent (missing row is not an error); returns `204`. A user can never delete another user's subscription. |
+| `GET /api/push/web/config` | — | Returns `{ enabled, publicKey, registeredEndpoints }`. `registeredEndpoints` lists only the caller's current-organization enrollments, so the SPA can distinguish an existing browser `PushSubscription` from this tenant's registration. `publicKey` is `null` when web push is off. |
+| `POST /api/push/web/subscribe` | the browser's `PushSubscription.toJSON()` (`{ endpoint, keys: { p256dh, auth } }`) | Validates the endpoint (`https` only, SSRF-guarded — see Security) and the key sizes (65-byte `p256dh`, 16-byte `auth`), then upserts the caller's enrollment by `(organizationId, userId, endpoint)`, records the UA, and evicts only this tenant/user's oldest rows beyond the cap. Returns `201` with the stored record. |
+| `POST /api/push/web/unsubscribe` | `{ endpoint }` | Removes the caller's matching current-organization enrollment. Idempotent (missing row is not an error); returns `204`. It deliberately does not call browser `PushSubscription.unsubscribe()`, so removing organization A leaves an explicit organization B enrollment usable. |
+| `POST /api/push/web/logout` | `{ endpoint }` | Removes every enrollment of that endpoint for the authenticated person before their session ends. A later person on the same browser starts unregistered and cannot receive the former person's payloads. |
 
 ## Worker delivery
 
@@ -283,9 +287,10 @@ it never clears every notification card to cancel one call.
 - **Input bounds.** `endpoint`, `p256dh`, and `auth` are length- and
   format-validated at subscribe time, so structurally-invalid subscriptions
   (which could never be encrypted for) are rejected rather than failing forever.
-- **Per-user cap.** A user keeps at most a small number of subscriptions
-  (`MAX_SUBSCRIPTIONS_PER_USER`); the oldest are evicted, bounding table growth
-  and worker fan-out amplification.
+- **Per-tenant/user cap.** A tenant/user enrollment keeps at most a small number
+  of subscriptions (`MAX_WEB_PUSH_SUBSCRIPTIONS_PER_USER`); the oldest in that
+  scope are evicted, bounding table growth and worker fan-out amplification
+  without deleting another organization's enrollment.
 - **Tenant isolation.** Subscribe/unsubscribe are scoped to the calling
   `userId` + `organizationId`; the delivery query is org-scoped too. A user can
   never read, clobber, or delete another user's subscription.
@@ -294,11 +299,14 @@ it never clears every notification card to cancel one call.
   deliberate choice: it is one non-tenant key the worker needs at process start,
   not a per-tenant secret. If per-tenant VAPID keys are ever needed, move them
   into the secret store.
-- **Shared browsers.** Subscriptions are keyed by `(userId, endpoint)`, so two
-  users on one browser get separate rows. A user who does not toggle web push
-  off before another signs in leaves a row that keeps delivering to that browser
-  until they disable it; the per-user cap and dead-subscription pruning bound the
-  blast radius.
+- **Shared browsers.** Settings never treats `PushManager.getSubscription()` as
+  tenant enrollment. It enables an existing endpoint only after that signed-in
+  person explicitly registers it for the current organization, and the config
+  response never reveals another person's rows. Removing a tenant enrollment
+  keeps the browser subscription alive for another enrolled tenant; a person
+  who signs in later starts disabled until they explicitly enroll it. Existing
+  rows for a former person continue only until that person removes their own
+  enrollment or the push service reports the endpoint dead.
 
 ## Admin UI
 
@@ -311,14 +319,17 @@ it never clears every notification card to cancel one call.
   display, icons) makes the admin installable as a PWA, which is required for
   Web Push on iOS.
 - **Opt-in toggle** — a "Browser notifications" control on
-  `/settings/notifications`. It reads `GET /api/push/web/config`, and on enable
-  (from a user gesture) registers the service worker, calls
-  `Notification.requestPermission()`, subscribes via the Push API with the
-  instance public key, and POSTs the subscription to
-  `/api/push/web/subscribe`. Disabling unsubscribes locally and calls
-  `/api/push/web/unsubscribe`. Browser helpers live in
-  `admin/src/lib/web-push.ts`; the API hooks in
+  `/settings/notifications`. It reads `GET /api/push/web/config`, compares its
+  current browser endpoint with `registeredEndpoints`, and posts the JSON
+  subscription only when the current person explicitly enables that tenant.
+  Disabling removes the current tenant's API registration but leaves the shared
+  browser `PushSubscription` intact for another explicit enrollment. Browser
+  helpers live in `admin/src/lib/web-push.ts`; the API hooks in
   `admin/src/facades/web-push/hooks.ts`.
+- **Account boundary** — logout removes the ending person's registrations for
+  this browser endpoint and clears the service worker's active recipient. The
+  worker renders only payloads addressed to that current recipient, so a later
+  sign-in cannot inherit a former person's notification body.
 
 ## Local development
 

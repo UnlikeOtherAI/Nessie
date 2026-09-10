@@ -8,7 +8,6 @@ import {
   getExistingSubscription,
   isWebPushSupported,
   subscribeBrowser,
-  unsubscribeBrowser,
 } from '../../../lib/web-push'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
 import { Switch } from '../../../components/primitives/Switch'
@@ -19,9 +18,10 @@ const getNotificationPermission = (): NotificationPermission | null =>
 
 /**
  * Browser (Web Push) notifications. Independent from the saved push
- * preferences form: this manages the per-browser PushManager subscription and
- * mirrors it to the API. Gracefully degrades when the browser lacks support or
- * when web push is not configured on this instance.
+ * preferences form: this registers the browser's PushManager subscription with
+ * the current tenant. Browser subscriptions outlive login, so the visible
+ * state comes from this tenant's server enrollment rather than PushManager
+ * alone. Gracefully degrades when web push is unavailable.
  */
 export const BrowserNotificationsSection = () => {
   const { data: config, isLoading: configLoading } = useWebPushConfig()
@@ -29,7 +29,7 @@ export const BrowserNotificationsSection = () => {
   const unsubscribeWebPush = useUnsubscribeWebPush()
 
   const [supported] = useState(() => isWebPushSupported())
-  const [subscribed, setSubscribed] = useState(false)
+  const [browserEndpoint, setBrowserEndpoint] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
 
@@ -40,7 +40,7 @@ export const BrowserNotificationsSection = () => {
     let cancelled = false
     void getExistingSubscription().then((subscription) => {
       if (!cancelled) {
-        setSubscribed(Boolean(subscription))
+        setBrowserEndpoint(subscription?.endpoint ?? null)
       }
     })
     return () => {
@@ -52,6 +52,9 @@ export const BrowserNotificationsSection = () => {
   const publicKey = config?.publicKey ?? null
   const denied = supported && getNotificationPermission() === 'denied'
   const toggleDisabled = !supported || configLoading || !configEnabled || denied || busy
+  const subscribed = Boolean(
+    browserEndpoint && config?.registeredEndpoints.includes(browserEndpoint),
+  )
 
   const describeState = (): string => {
     if (!supported) {
@@ -66,7 +69,9 @@ export const BrowserNotificationsSection = () => {
     if (denied) {
       return 'Notifications are blocked. Allow them in your browser settings to enable.'
     }
-    return subscribed ? 'Enabled on this browser' : 'Disabled'
+    return subscribed
+      ? 'Enabled for this organization on this browser'
+      : 'Disabled for this organization'
   }
 
   const handleToggle = async (next: boolean) => {
@@ -79,15 +84,13 @@ export const BrowserNotificationsSection = () => {
         }
         const subscription = await subscribeBrowser(publicKey)
         await subscribeWebPush.mutateAsync(subscription)
-        setSubscribed(true)
+        setBrowserEndpoint(subscription.endpoint)
         setFeedback({ kind: 'success', message: 'Browser notifications enabled.' })
       } else {
-        const endpoint = await unsubscribeBrowser()
-        if (endpoint) {
-          await unsubscribeWebPush.mutateAsync({ endpoint })
+        if (browserEndpoint) {
+          await unsubscribeWebPush.mutateAsync({ endpoint: browserEndpoint })
         }
-        setSubscribed(false)
-        setFeedback({ kind: 'success', message: 'Browser notifications disabled.' })
+        setFeedback({ kind: 'success', message: 'Browser notifications disabled for this organization.' })
       }
     } catch (error) {
       setFeedback({

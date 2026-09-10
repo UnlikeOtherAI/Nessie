@@ -6196,13 +6196,12 @@ model DeviceToken {
 }
 
 // ─── Web Push subscription registry (browser push targeting) ────────────────
-// One row per (user, browser PushSubscription). The admin SPA subscribes via
-// the Push API and POSTs the resulting endpoint + keys here; the worker fans a
-// notification out to a user's browser subscriptions exactly like device
-// tokens. `endpoint` is unique per browser; `p256dh`/`auth` are the per-
-// subscription public key and secret used for RFC 8291 payload encryption.
-// `organization_id`-scoped like every child table; integrity enforced at the
-// application layer to keep the slice additive.
+// One row per tenant/user enrollment of a browser PushSubscription. The admin
+// SPA subscribes via the Push API and POSTs the resulting endpoint + keys here;
+// the worker fans a tenant's enrollment out exactly like device tokens. A
+// browser endpoint can be explicitly enrolled by the same user in more than
+// one organization, while p256dh/auth remain the subscription's RFC 8291
+// public key and secret.
 model WebPushSubscription {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
@@ -6215,9 +6214,8 @@ model WebPushSubscription {
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, endpoint])
-  @@index([organizationId])
-  @@index([userId])
+  @@unique([organizationId, userId, endpoint])
+  @@index([organizationId, userId])
   @@map("web_push_subscriptions")
 }
 
