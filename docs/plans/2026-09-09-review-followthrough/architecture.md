@@ -42,7 +42,7 @@ Existing durable profile writes violate the current UOA authority invariant.
 1. Reconcile the existing UOA unification/SSO plans with current code. Inventory
    available UOA profile, membership, invitation and hierarchy API operations,
    all local writers/readers, system containers and no-IdP behavior. Verify the
-   API contract before deleting a required capability; record external gaps.
+   API contract before deleting a required capability; record upstream work.
 2. Establish one API-backed identity/hierarchy read boundary with a bounded,
    revocation-aware in-memory cache. Use stable UOA subject/org/team references
    and product-owned extension data only. Do not add durable compatibility
@@ -67,6 +67,13 @@ are rejected; upgrade fixtures cover real legacy shapes and preserve all
 product-owned documents, tasks and grants. Verify login/switching, member
 management and project navigation in headless browser flows. Update the UOA
 plans, team standard, affected contracts and the stated identity invariant.
+
+**Staged handoff, 10 September 2026:** the active directory landed in PR 444.
+The [remaining implementation plan](../2026-09-10-uoa-authority-next-slices.md)
+assigns Sol the purpose-bound UOA grants, commit-ordered outbox, profile and
+revocation APIs, followed by Nessie's reader/FK migration and hierarchy contract.
+These are implementable cross-repository dependencies, not an external blocker.
+Existing bound profile and membership copies remain explicit unfinished work.
 
 ## 12. Deploy only the verified commit
 
