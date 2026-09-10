@@ -4,6 +4,7 @@ import { KnowledgeProvider, useKnowledge } from '../../components/features/knowl
 import { KnowledgeSpaceList } from '../../components/features/knowledge/KnowledgeSpaceList'
 import { KnowledgeWorkspace } from '../../components/features/knowledge/KnowledgeWorkspace'
 import { useKnowledgePageDeepLink } from '../../components/features/knowledge/useKnowledgePageDeepLink'
+import { QueryState } from '../../components/shared/QueryState'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 
 // The project's own documents: the same knowledge team the Knowledge
@@ -16,6 +17,7 @@ const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
     spacePagination,
     spacesLoaded,
     spacesLoadFailed,
+    refetchSpaces,
     selectedSpaceId,
     selectSpace,
     createSpace,
@@ -28,60 +30,71 @@ const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
   useKnowledgePageDeepLink()
 
   return (
-    <div className="flex h-full min-h-0">
-      <aside
-        className={[
-          'flex h-full w-[208px] flex-shrink-0 flex-col overflow-hidden',
-          'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
-        ].join(' ')}
-      >
-        <div className="admin-sec-row">
-          <span className="admin-sec-hdr" style={{ cursor: 'default' }}>
-            Spaces
-          </span>
-          <button
-            aria-label="Create space"
-            className="admin-sidebar-plus"
-            onClick={() => setCreateOpen(true)}
-            type="button"
+    <QueryState
+      errorLabel="Failed to load this project’s document spaces."
+      loadingLabel="Loading project documents…"
+      query={{
+        isError: spacesLoadFailed,
+        isLoading: !spacesLoaded && !spacesLoadFailed,
+        refetch: refetchSpaces,
+      }}
+    >
+      {() => (
+        <div className="flex h-full min-h-0">
+          <aside
+            className={[
+              'flex h-full w-[208px] flex-shrink-0 flex-col overflow-hidden',
+              'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
+            ].join(' ')}
           >
-            +
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-          <KnowledgeSpaceList
-            compactPagination
-            emptyLabel="No documents filed under this project yet"
-            isPending={!spacesLoaded && !spacesLoadFailed}
-            onSelect={selectSpace}
-            pagination={spacePagination}
-            selectedSpaceId={selectedSpaceId}
-            spaces={spaces}
+            <div className="admin-sec-row">
+              <span className="admin-sec-hdr" style={{ cursor: 'default' }}>
+                Spaces
+              </span>
+              <button
+                aria-label="Create space"
+                className="admin-sidebar-plus"
+                onClick={() => setCreateOpen(true)}
+                type="button"
+              >
+                +
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+              <KnowledgeSpaceList
+                compactPagination
+                emptyLabel="No documents filed under this project yet"
+                isPending={false}
+                onSelect={selectSpace}
+                pagination={spacePagination}
+                selectedSpaceId={selectedSpaceId}
+                spaces={spaces}
+              />
+            </div>
+          </aside>
+
+          <div className="min-w-0 flex-1">
+            {selectedSpaceId ? (
+              <KnowledgeWorkspace />
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-sm text-[color:var(--tx3)]">
+                {spaces.length === 0
+                  ? 'This project has no document spaces yet. Create one to file its docs here.'
+                  : 'Select a space to browse this project’s documents.'}
+              </div>
+            )}
+          </div>
+          <CreateSpaceDialog
+            onClose={() => setCreateOpen(false)}
+            onCreate={async (name, memberAgentIds, visibility) => {
+              await createSpace(name, memberAgentIds, visibility)
+            }}
+            open={createOpen}
+            pending={createSpacePending}
           />
         </div>
-      </aside>
-
-      <div className="min-w-0 flex-1">
-        {selectedSpaceId ? (
-          <KnowledgeWorkspace />
-        ) : (
-          <div className="flex h-full items-center justify-center px-6 text-sm text-[color:var(--tx3)]">
-            {spaces.length === 0
-              ? 'This project has no document spaces yet. Create one to file its docs here.'
-              : 'Select a space to browse this project’s documents.'}
-          </div>
-        )}
-      </div>
-
-      <CreateSpaceDialog
-        onClose={() => setCreateOpen(false)}
-        onCreate={async (name, memberAgentIds, visibility) => {
-          await createSpace(name, memberAgentIds, visibility)
-        }}
-        open={createOpen}
-        pending={createSpacePending}
-      />
-    </div>
+      )}
+    </QueryState>
   )
 }
 

@@ -55,7 +55,12 @@ for it. Four pieces, plus one cache underneath them all.
   (both its sidebar and the project Documents tab), the triggers column, and
   the workflows column. Each takes the fact from its own query, and a *disabled*
   query — the non-owner case, whose refusal is the page's own gate — is
-  deliberately not "loading".
+  deliberately not "loading". A project's Board host treats a previous
+  project's placeholder as loading too, so a project switch never paints the
+  former board under the destination URL. The Board and project Documents
+  surfaces route initial errors through `QueryState` and its Retry action;
+  their successful empty guidance runs only after the same scoped read has
+  settled.
 - **One `Skeleton`, four page types** —
   `admin/src/components/primitives/Skeleton.tsx`: `list`, `detail`, `feed`,
   `board`, plus `SkeletonBlock` for the placeholders that are one sized
