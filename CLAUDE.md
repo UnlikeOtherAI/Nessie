@@ -10,7 +10,7 @@ distribution.
 ## Read [AGENTS.md](AGENTS.md) before you do anything
 
 [`AGENTS.md`](AGENTS.md) is the authoritative standards file and the project
-map: Rule zero, workflow, ports, the build and deployment story, and the
+map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
