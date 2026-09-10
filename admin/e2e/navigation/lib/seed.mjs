@@ -7,6 +7,11 @@ import { readBootstrapToken } from './servers.mjs'
 import { PrismaClient } from '@prisma/client'
 
 const CHANNEL_LABELS = ['Design Review', 'Release Notes']
+const ISOLATED_BROWSER_PUSH_USER = {
+  displayName: 'Browser Push E2E',
+  email: 'navigation-browser-push@example.com',
+  password: 'navigation-browser-push-password',
+}
 
 const request = async (path, { body, method = 'GET', token } = {}) => {
   const response = await fetch(`${API_URL}${path}`, {
@@ -124,6 +129,29 @@ export const seedTeam = async (apiServer) => {
     team: { id: team.id },
     token: session.token,
   }
+}
+
+/**
+ * Give the logout case its own account. Logout bumps a user's token version,
+ * so even a second session for the suite owner would revoke every later case.
+ */
+export const seedBrowserPushSession = async (ownerToken) => {
+  const users = await call('/api/users', { token: ownerToken })
+  if (!users.some((user) => user.email === ISOLATED_BROWSER_PUSH_USER.email)) {
+    await call('/api/users', {
+      body: { ...ISOLATED_BROWSER_PUSH_USER, role: 'member' },
+      method: 'POST',
+      token: ownerToken,
+    })
+  }
+  const session = await call('/api/auth/session', {
+    body: {
+      email: ISOLATED_BROWSER_PUSH_USER.email,
+      password: ISOLATED_BROWSER_PUSH_USER.password,
+    },
+    method: 'POST',
+  })
+  return session.token
 }
 
 /**

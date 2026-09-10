@@ -8,6 +8,7 @@ import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
 import { phoneColdStart } from './phone-cold-start.mjs'
 import { phoneIntentStrip } from './phone-intent-strip.mjs'
 import { desktopChatHistory } from './desktop-chat-history.mjs'
+import { desktopBrowserPushTenant } from './desktop-browser-push-tenant.mjs'
 import { desktopAgentMessageHistory } from './desktop-agent-message-history.mjs'
 import { desktopDashboardExit } from './desktop-dashboard-exit.mjs'
 import { desktopKnowledgeCrossNavigation } from './desktop-knowledge-cross-navigation.mjs'
@@ -26,6 +27,7 @@ export const CASES = [
   phoneColdStart,
   phoneIntentStrip,
   desktopChatHistory,
+  desktopBrowserPushTenant,
   desktopAgentMessageHistory,
   desktopDashboardExit,
   desktopKnowledgeCrossNavigation,
