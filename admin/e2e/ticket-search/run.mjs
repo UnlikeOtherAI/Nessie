@@ -91,6 +91,8 @@ const main = async () => {
     await page.page.goto(`${ADMIN_URL}/search?${expired}`, { waitUntil: 'domcontentloaded' })
     const restart = page.page.getByRole('button', { name: 'Restart task search' })
     await restart.waitFor()
+    assert.equal(await page.page.getByText('No task results on this page.').count(), 0)
+    assert.equal(await page.page.getByText('Page 2 of 2').count(), 0)
     if (process.env.PROJECT_USABILITY_SCREENSHOTS === '1') {
       await mkdir(SCREENSHOTS, { recursive: true })
       await page.page.screenshot({ path: `${SCREENSHOTS}/ticket-search-expired-cursor.png`, fullPage: false })

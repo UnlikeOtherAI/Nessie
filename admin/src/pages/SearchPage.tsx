@@ -101,7 +101,7 @@ export const SearchPage = () => {
   const results = useGlobalSearch(query, mode)
 
   const active = query.trim().length >= 2
-  const hasTaskPage = mode === 'text' && active && (
+  const hasTaskPage = mode === 'text' && active && !results.taskPagination.query.isError && (
     results.tasks.length > 0
     || results.taskPagination.page > 0
     || results.taskPagination.canNext
