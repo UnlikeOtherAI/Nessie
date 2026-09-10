@@ -113,6 +113,10 @@ const KEEP_PREVIOUS_EXEMPT = [
   // prior task. Replaying them while a different task resolves would disclose
   // private work under a new ticket identity.
   'src/facades/tasks/hooks.ts',
+  // Project membership is an entitlement decision. Replaying the preceding
+  // project's roles could briefly grant board or sprint controls in the next
+  // project, so the new project's decision deliberately loads closed first.
+  'src/facades/projects/hooks.ts',
 ]
 
 test('every per-id facade query keeps its previous data', () => {

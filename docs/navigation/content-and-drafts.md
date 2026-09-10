@@ -38,7 +38,11 @@ for it. Four pieces, plus one cache underneath them all.
   private third-party content and must never briefly paint under a new account,
   provider or entitlement identity. Task checklists are also exempt: their
   instructions and results may contain private research evidence, so changing a
-  task id clears the panel until the next entitled read finishes.
+  task id clears the panel until the next entitled read finishes. Project
+  membership is likewise exempt because it is an authorization decision:
+  switching projects clears the preceding role list until the destination
+  project's entitlement read resolves, so a prior project's role can never
+  briefly reveal board or sprint administration controls.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
