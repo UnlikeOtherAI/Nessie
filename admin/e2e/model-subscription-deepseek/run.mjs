@@ -21,6 +21,19 @@ try {
   if (!await page.getByRole('button', { name: 'Link DeepSeek API' }).count()) {
     throw new Error(`DeepSeek fixture did not render: ${errors.join(' | ')}\n${await page.locator('body').innerText()}`)
   }
+
+  // DeepSeek is an addition, not a replacement: the four providers that
+  // already shipped must still offer their own link button beside it.
+  for (const provider of [
+    'ChatGPT Codex',
+    'DeepSeek API',
+    'GLM Coding Plan',
+    'Grok (SuperGrok)',
+    'Kimi for Coding',
+  ]) {
+    await page.getByRole('button', { name: `Link ${provider}` }).waitFor()
+  }
+
   await page.getByRole('button', { name: 'Link DeepSeek API' }).waitFor()
   await page.getByRole('button', { name: 'Link DeepSeek API' }).click()
   await page.getByText('own DeepSeek API balance').waitFor()
