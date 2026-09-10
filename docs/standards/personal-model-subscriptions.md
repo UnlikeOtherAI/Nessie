@@ -122,7 +122,10 @@ Facts not restated there:
   checkpoint notes follow the run's lane. Engagement decisions (made on the
   boot-time model client before a run exists), embeddings and memory, avatar
   generation, and demonstration generalisation stay deployment-billed — a
-  "subscription-only" agent still produces some Ledger events by design.
+  "subscription-only" agent still produces some Ledger events by design. The
+  model-judged post-run memory extractor is part of this memory lane: it uses
+  the deployment utility route and never reads or changes the source run's
+  personal-subscription pin.
 - **Utility model is explicitly null** for a subscription run, not a lookup
   miss: `NESSIE_UTILITY_MODEL` names a Ledger-catalogue model a subscription
   backend may not serve.

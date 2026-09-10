@@ -28,6 +28,12 @@ restricted evidence remains restricted. Test metering, bounded outputs and
 failure recovery. Scripted evaluations prove orchestration, while any live
 semantic evaluation is reported separately. Update memory/consolidation docs.
 
+**Implemented, 10 September 2026:** consolidation now uses one bounded,
+deployment-billed utility inference with strict candidate validation, Unicode
+identity and inference-wide disclosure lineage. Scripted multilingual,
+malformed/provider-failure, source-membership, metering, bounds and personal-pin
+isolation tests cover the contract. No live provider evaluation was run.
+
 ## 11. Complete UOA authority and hierarchy
 
 **Owner:** Sol. This is a dedicated migration track, not a quick mirror patch.
