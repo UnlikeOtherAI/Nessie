@@ -17,6 +17,8 @@ import {
   exerciseRichBoardAssignees,
   exerciseRichBoardAssigneesPhone,
 } from './rich-assignees.mjs'
+import { exerciseProjectAdministrationPermissions } from './project-administration-permissions.mjs'
+import { exerciseProjectLoadFailures } from './project-load-failures.mjs'
 
 const ADMIN_URL = `http://localhost:${ADMIN_PORT}`
 const SCREENSHOTS = fileURLToPath(new URL('../../../e2e/screenshots/project-usability/', import.meta.url))
@@ -169,7 +171,7 @@ const main = async () => {
   const cleanupFailures = []
   const createdTaskIds = new Set()
   let browser; let desktop; let phone; let tablet; let desktopPage; let phonePage; let tabletPage
-  let project; let redirectedProject; let sourceBoard; let boardAId; let boardBId
+  let project; let loadFailureProject; let redirectedProject; let sourceBoard; let boardAId; let boardBId
   try {
     project = await api('/api/projects', {
       body: { name: `Project usability ${runId}`, teamId: seed.team.id },
@@ -179,6 +181,9 @@ const main = async () => {
     const boards = await call(`/api/projects/${project.id}/boards`, { token: seed.token })
     sourceBoard = boards.find((board) => board.isDefault) ?? boards[0]
     assert.ok(sourceBoard, 'the disposable project has a default board')
+    // The seeded project is already present in the sidebar. Switching to it
+    // through that real control keeps this browser's QueryClient alive.
+    loadFailureProject = seed.project
     browser = await launchBrowser()
     desktop = await openViewportContext(browser, { name: 'desktop', token: seed.token })
     phone = await openViewportContext(browser, { name: 'phone', token: seed.token })
@@ -204,6 +209,21 @@ const main = async () => {
     })
     const boardB = await api(`/api/projects/${project.id}/boards`, { body: { copyColumnsFromBoardId: boardA.id, name: `Isolation proof ${runId}` }, method: 'POST', token: seed.token })
     boardBId = boardB.id
+    const loadFailureTask = await exerciseProjectLoadFailures({
+      adminUrl: ADMIN_URL,
+      api,
+      browser,
+      destinationProject: loadFailureProject,
+      project,
+      runId,
+      shot,
+      sourceBoard: boardA,
+      token: seed.token,
+    })
+    createdTaskIds.add(loadFailureTask.id)
+    await exerciseProjectAdministrationPermissions({
+      adminUrl: ADMIN_URL, api, browser, project, runId, shot, token: seed.token,
+    })
     const [firstColumn, secondColumn, boardBFirstColumn] = [boardA.columns[0], boardA.columns[1], boardB.columns[0]]
     assert.ok(firstColumn && secondColumn && boardBFirstColumn, 'the boards have lifecycle columns')
     const createdTitle = `QA flow ${runId}`; const editedTitle = `QA edited ${runId}`; const touchTitle = `QA touch ${runId}`; const boardBTitle = `QA board B ${runId}`
@@ -451,7 +471,7 @@ const main = async () => {
     if (project) await api(`/api/projects/${project.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete disposable project: ${error.message}`))
   }
   if (cleanupFailures.length > 0) throw new Error(`project-usability cleanup failed:\n  ${cleanupFailures.join('\n  ')}`)
-  console.log('project-usability e2e: passed (board management, lifecycle, isolation, phone touch scroll)')
+  console.log('project-usability e2e: passed (project load recovery, administration permissions, lifecycle, isolation, phone touch scroll)')
 }
 
 await main()

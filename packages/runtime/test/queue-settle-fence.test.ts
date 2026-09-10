@@ -7,6 +7,7 @@ import { Pool } from 'pg'
 import {
   LOCK_RENEWAL_FAILED_REASON,
   PgQueueProvider,
+  QueueRetryAfterError,
   type QueueJob,
   type QueueSubscription,
 } from '../src/queue.js'
@@ -67,6 +68,41 @@ const withPool = async (run: (pool: Pool) => Promise<void>): Promise<void> => {
     await pool.end()
   }
 }
+
+runIfDatabase('a retry-after failure preserves retry capacity and stays pending until due', async () => {
+  await withPool(async (pool) => {
+    const topic = uniqueTopic()
+    const provider = new PgQueueProvider(pool)
+    const jobId = await seedPendingJob(pool, topic)
+    let subscription: QueueSubscription | undefined
+    subscription = provider.subscribe(
+      topic,
+      async () => {
+        subscription?.stop()
+        throw new QueueRetryAfterError('wait for a stale external lease', 2_000)
+      },
+      { pollIntervalMs: 25 },
+    )
+
+    try {
+      await subscription.done
+      const result = await pool.query<JobRow & { enqueued_at: Date; max_attempts: number }>(
+        `SELECT id, status, attempt, max_attempts, error_message, locked_until, enqueued_at
+         FROM queue_jobs WHERE id = $1`,
+        [jobId],
+      )
+      const row = result.rows[0]!
+      assert.equal(row.status, 'pending')
+      assert.equal(row.attempt, 1)
+      assert.equal(row.max_attempts, 6)
+      assert.equal(row.error_message, 'wait for a stale external lease')
+      assert.ok(row.enqueued_at.getTime() > Date.now() + 1_000)
+    } finally {
+      subscription.stop()
+      await pool.query('DELETE FROM queue_jobs WHERE topic = $1', [topic])
+    }
+  })
+})
 
 const deferred = <T = void>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolve: (value: T) => void = () => undefined

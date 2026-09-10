@@ -221,6 +221,34 @@ export const seedMessageHistory = async (token, threadId) => {
   }
 }
 
+/** Seed an agent-owned history that crosses the Messages tab's first-page boundary. */
+export const seedAgentMessageHistory = async (seed) => {
+  const suffix = Date.now().toString(36)
+  const createAgent = (name) => call('/api/agents', {
+    body: { name, systemPrompt: 'Navigation pagination proof.' },
+    method: 'POST',
+    token: seed.token,
+  })
+  const [first, second] = await Promise.all([
+    createAgent(`History pager A ${suffix}`),
+    createAgent(`History pager B ${suffix}`),
+  ])
+  const prisma = new PrismaClient()
+  try {
+    await prisma.message.createMany({
+      data: Array.from({ length: 30 }, (_, index) => ({
+        agentId: first.id,
+        content: `Agent pagination proof ${String(index + 1).padStart(2, '0')}`,
+        role: 'assistant',
+        threadId: seed.channels[0].defaultThreadId,
+      })),
+    })
+  } finally {
+    await prisma.$disconnect()
+  }
+  return { first, second }
+}
+
 const ensureKnowledgePage = async (token, spaceId, title) => {
   const pages = await call(`/api/knowledge-base/spaces/${spaceId}/pages`, { token })
   const existing = pages.find((page) => page.title === title)

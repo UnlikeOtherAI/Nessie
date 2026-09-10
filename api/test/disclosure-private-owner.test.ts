@@ -90,10 +90,12 @@ runDatabaseTest('an org-owner agent creator cannot read a private human source c
     uoaIdentity: undefined,
     userId: creator.id,
   }
-  const history = await loadAgentMessages(prisma, agent.id, 25, 0, {
+  const history = await loadAgentMessages(prisma, agent.id, {
+    cursorSecret: 'test-history-secret',
+    limit: 25,
     visibility: ownerVisibility,
   })
-  assert.equal(history.total, 0)
+  assert.equal(history.data.items.length, 0)
   assert.doesNotMatch(JSON.stringify(history), new RegExp(privateCanary))
   const activity = await loadAgentActivity(prisma, agent.id, { visibility: ownerVisibility })
   assert.equal(activity?.recentToolCalls.length, 0)

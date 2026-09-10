@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
+import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
 import {
   configureExecutorBrowserSandbox,
@@ -13,7 +14,12 @@ import {
   enableExecutorService,
   executorServiceStatus,
 } from './service-linux.js'
-import { loadExecutorState, loadExecutorStatesFromRoot } from './state-store.js'
+import {
+  loadExecutorDeepTestSourceGrant,
+  loadExecutorState,
+  loadExecutorStatesFromRoot,
+  publishExecutorDeepTestSourceGrant,
+} from './state-store.js'
 
 type ParsedCommand =
   | {
@@ -53,6 +59,7 @@ type ParsedCommand =
     vmHelperPath: string
   }
   | { kind: 'connect'; stateDir: string }
+  | { kind: 'deeptest-source'; sourceGrantFile: string }
   | { kind: 'heartbeat'; stateDir: string }
   | {
     callerOrigin: string
@@ -62,6 +69,7 @@ type ParsedCommand =
     stateRoot: string
   }
   | { kind: 'serve'; parentLivenessFromStandardInput?: true; stateDir: string }
+  | { kind: 'publish-deeptest-source-grant'; stateDir: string }
   | { assumeYes: boolean; executorId: string; kind: 'enable'; stateDir?: string }
   | { executorId: string; kind: 'disable' }
   | { executorId?: string; kind: 'status'; stateRoot?: string }
@@ -89,6 +97,8 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor deeptest-source --source-grant-file <absolute-owner-only-file>\n'
+    + '       nessie-executor publish-deeptest-source-grant --state-dir <owner-only-path>\n'
     + '       nessie-executor native-browser-cookie-import --state-root <owner-only-path> '
     + '--extension-origin <chrome-extension://release-id/> --caller-origin <chrome-extension://release-id/>\n'
     + '       nessie-executor enable <executorId> [--state-dir <owner-only-path>] [--yes]\n'
@@ -270,6 +280,12 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
+  if (command === 'deeptest-source') {
+    return { kind: command, sourceGrantFile: option(args, '--source-grant-file') }
+  }
+  if (command === 'publish-deeptest-source-grant') {
+    return { kind: command, stateDir: option(args, '--state-dir') }
+  }
   if (command === 'native-browser-cookie-import') {
     return {
       callerOrigin: option(args, '--caller-origin'),
@@ -345,6 +361,22 @@ export const run = async (args: string[]): Promise<void> => {
       requireDevelopmentLocalApi: command.requireDevelopmentLocalApi,
       states: await loadExecutorStatesFromRoot(command.stateRoot),
     })
+    return
+  }
+  if (command.kind === 'publish-deeptest-source-grant') {
+    const grantPath = await publishExecutorDeepTestSourceGrant(command.stateDir)
+    process.stdout.write(`${grantPath}\n`)
+    return
+  }
+  if (command.kind === 'deeptest-source') {
+    await assertPackagedExecutorRuntime()
+    const grant = await loadExecutorDeepTestSourceGrant(command.sourceGrantFile)
+    await serveDeepTestSourceAdapter(
+      grant,
+      process.stdin,
+      process.stdout,
+      () => loadExecutorDeepTestSourceGrant(command.sourceGrantFile),
+    )
     return
   }
   const state = await loadExecutorState(command.stateDir)

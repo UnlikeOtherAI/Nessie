@@ -13,8 +13,10 @@ import { useRedirect } from '../../navigation/redirect'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
+import { useCanAdministerProject } from '../../facades/projects/administration'
 import { usePresentedTask } from '../../facades/tasks/hooks'
 import { Notice } from '../../components/primitives/Notice'
+import { QueryState } from '../../components/shared/QueryState'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectDocsTab } from './ProjectDocsTab'
@@ -28,8 +30,13 @@ export const ProjectView = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const { data: projects = [] } = useProjects()
+  const canAdminister = useCanAdministerProject(projectId ?? null)
   const boardsQuery = useProjectBoards(projectId)
-  const boards = boardsQuery.data ?? []
+  // A previous project's boards are useful only while that project remains on
+  // screen. Once the route changes, hold the destination in its loading state
+  // rather than rendering the prior project's authorized board under this URL.
+  const hasCurrentBoards = !boardsQuery.isPlaceholderData
+  const boards = hasCurrentBoards ? boardsQuery.data ?? [] : []
   // No pinned sidebar on the single column, so the board strip stays there —
   // see `BoardSwitcher`. Read above the `projectId` guard: it is a hook.
   const singleColumn = usePhoneLayout()
@@ -76,7 +83,7 @@ export const ProjectView = () => {
     requestedTaskId
     && taskIsInProject
     && requestedTask
-    && (!requestedTask.boardPlacement || (!taskBoard && !boardsQuery.isLoading)),
+    && (!requestedTask.boardPlacement || (!taskBoard && hasCurrentBoards && !boardsQuery.isLoading)),
   )
 
   const project = projects.find((p) => p.id === projectId)
@@ -135,11 +142,12 @@ export const ProjectView = () => {
     void boardsQuery.refetch()
     void taskQuery.refetch()
   }
+  const boardsFailedWithContent = Boolean(boardsQuery.isError && hasCurrentBoards && boardsQuery.data)
 
   const headerActions: PageHeaderAction[] = [
     // The doorways to board administration, from the screen a person is
     // standing on when they want them — not only from Settings.
-    ...(tab === 'board'
+    ...(tab === 'board' && canAdminister
       ? [
           {
             id: 'board-admin',
@@ -214,7 +222,31 @@ export const ProjectView = () => {
         ) : tab === 'overview' ? (
           <ProjectDashboard projectId={projectId} />
         ) : (
-          <ProjectBoardTab board={board} onOpenTask={openTask} projectId={projectId} />
+          <QueryState
+            emptyLabel="This project has no boards yet."
+            errorLabel="Failed to load boards."
+            isEmpty={boards.length === 0}
+            loadingLabel="Loading boards…"
+            query={{
+              isError: boardsQuery.isError && !boardsFailedWithContent,
+              isLoading: boardsQuery.isLoading || !hasCurrentBoards,
+              refetch: boardsQuery.refetch,
+            }}
+          >
+            {() => (
+              <>
+                {boardsFailedWithContent ? (
+                  <Notice className="m-4" role="alert" size="sm" tone="danger">
+                    Couldn&apos;t refresh boards.
+                    <button className="ml-2 underline" onClick={() => void boardsQuery.refetch()} type="button">
+                      Retry
+                    </button>
+                  </Notice>
+                ) : null}
+                <ProjectBoardTab board={board} onOpenTask={openTask} projectId={projectId} />
+              </>
+            )}
+          </QueryState>
         )}
       </div>
       {taskUnavailable ? (

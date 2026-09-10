@@ -284,8 +284,10 @@ because it has no acting-person assertion. The
 the configured organisation-admin role, and reads the caller's fresh
 `GET /org/me` role before showing or serving that section. UOA's `owner` role
 holds every declared capability structurally. A local `OrganizationMember` row
-is therefore a binding and compatibility projection, never authority for an
-UOA-bound organisation; a failed role read answers retryably and fails closed.
+is intended to retain only Nessie-owned linkage or extension data. The current
+authentication path still reads its role and activation fields, so those fields
+remain a migration gap and a second authority until the live boundary below
+replaces them. A failed live role read answers retryably and fails closed.
 
 ### Who may ask, and who authorizes it
 
@@ -293,7 +295,7 @@ The relay admits an authenticated caller with a current UOA subject assertion;
 **UOA authorizes the exact target**. It re-resolves the person's live
 membership and capability for every write, so a demoted or removed
 administrator stops being able to change membership upstream even if a local
-projection still says otherwise. A team administrator need not have an
+row still says otherwise. A team administrator need not have an
 organisation-admin role, so `requireOrgAdmin` must not gate team membership
 routes. Roster reads remain available to people entitled by UOA to see that
 team.
@@ -302,14 +304,15 @@ The organisation-wide Members section is distinct: its declared
 `nessie.organisation.manage` capability is checked from fresh `GET /org/me`
 standing before its roster or mutations run. Neither path may relay with only a
 domain-hash bearer, because that would replace UOA's live authorization with a
-local membership projection.
+local membership decision.
 
-### The projection has a revocation half
+### The current durable projection is a migration gap
 
-`OrganizationMember`, `TeamMember` and `ProjectMember` are a projection of UOA's
-claims, and `authenticateRequest` re-resolves the acting role from the live
-`OrganizationMember` row — which makes the projection the enforcement point. It
-must therefore be able to *lose* rows, not only gain them:
+`OrganizationMember`, `TeamMember` and UOA-derived `ProjectMember` rows currently
+copy UOA claims. `authenticateRequest` re-resolves the acting role from the
+durable `OrganizationMember` row, making that copy an enforcement authority.
+Session-time reconciliation narrows the gap but does not make the copy an
+acceptable cache:
 
 - Every session rotation carries a verified team directory, and
   `reconcileUoaMembershipProjection`
@@ -318,7 +321,7 @@ must therefore be able to *lose* rows, not only gain them:
   deactivates an `OrganizationMember` for a bound organisation UOA no longer
   places the person in at all. Deactivation keeps the row and its history, and
   `ensureTeamMemberships` clears it again the moment UOA re-asserts a team
-  there — in a bound organisation `deactivatedAt` is a projection too.
+  there — in a bound organisation `deactivatedAt` is copied UOA state too.
 - In a UOA-bound organisation, a session whose `OrganizationMember` row is gone
   is refused (`ORGANIZATION_MEMBERSHIP_REQUIRED`) rather than passed through:
   every session there was minted from a proven UOA membership, so an absent row
@@ -327,6 +330,14 @@ must therefore be able to *lose* rows, not only gain them:
 - Rows with no binding are never reconciled: a `Team` with no `externalTeamId`
   and an `Organization` with no `externalOrgId` have no upstream authority to be
   reconciled against.
+
+The target state removes these UOA-owned roles and memberships from durable
+authorization. Bound-tenant consumers call one UOA API-backed boundary and may
+reuse a result only in bounded process memory with a short freshness deadline,
+credential-epoch scoping and prompt invalidation. No webhook, snapshot or delta
+materialises a durable member or hierarchy projection. Stable UOA references
+and Nessie-owned extension data may remain; the no-IdP organisation keeps its
+local membership model.
 
 ### Live entitlement readers
 
@@ -370,6 +381,20 @@ and profile and team names are still mirrored locally. The binding keys (`Organi
 makes asking UOA possible. That rule, and the outstanding gaps against it, are
 in the plan linked above.
 
+The first identity-read migration slice is deliberately narrower than that
+target. In a UOA-bound organisation, legacy `GET /api/users` now reads the live
+ACTIVE UOA organisation roster through the current actor's subject assertion,
+paginates it to completion, and joins only product-owned fields by
+`User.uoaSub`. Its 30-second in-memory display cache is scoped by organisation,
+actor, active team and credential epoch; it has entry and total-member bounds,
+coalesces same-key misses under a bounded in-flight set, prevents invalidated
+loads from refilling it, never serves expired data after an upstream failure,
+and is never an authorization input. A missing legacy subject binding is a migration error,
+never an email/name join. The unbound organisation retains the local route.
+Other renderers and authorization checks still read the mirrors/projections
+named above, so this slice does not complete the authority migration; the
+audited sequence and upstream blockers are recorded in the unification plan.
+
 ### Nessie policy may decide placement; UOA still authorizes it
 
 There is exactly one place where a Nessie-side rule causes someone to join a
@@ -391,7 +416,8 @@ the subject assertion is the *entire* authorization of `POST /api/team/members`
 — the local owner/admin gate in front of it (§"Who may ask, and who authorizes
 it") is a consistency check on who may ask, not a substitute — so relaying with
 the domain-hash bearer alone would remove the real check and rebuild a weaker
-one on the `TeamMember` projection this document is trying to demote to a cache.
+one on the durable `TeamMember` copy this document requires the migration to
+remove.
 The automatic-membership grants do not pass through that route at all: they call
 `addTeamMember` directly with the authorizing administrator's own assertion.
 And **no automatic path may name a role or remove a membership**: membership is

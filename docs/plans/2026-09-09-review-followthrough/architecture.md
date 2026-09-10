@@ -8,10 +8,14 @@ post-run consolidation; it is separate from conversation-history PR 434.
 
 1. Replace English sentence classification with bounded structured extraction
    through the existing utility-inference path. Inventory its Ledger/personal
-   subscription attribution and accounting before adding a model call.
+   subscription attribution and accounting before adding a model call. Memory
+   remains deployment-billed even when the source run uses a personal plan,
+   as required by the personal-model-subscriptions standard.
 2. Validate a closed candidate schema with source-message ids, category and
    importance. The model judges meaning; deterministic code enforces budgets,
-   schema, source membership, size and disclosure lineage.
+   schema, source membership, size and disclosure lineage. Every semantic
+   output inherits all private sources supplied to its inference; model-cited
+   ids are trace metadata and cannot narrow that authorization lineage.
 3. Preserve Unicode for candidate identity. Do not introduce language detection
    or a regex fallback. Empty/malformed/provider-error outcomes are explicit
    and cannot turn a completed user run into failure.
@@ -23,6 +27,12 @@ equivalent facts/preferences/constraints; unsupported source ids are refused;
 restricted evidence remains restricted. Test metering, bounded outputs and
 failure recovery. Scripted evaluations prove orchestration, while any live
 semantic evaluation is reported separately. Update memory/consolidation docs.
+
+**Implemented, 10 September 2026:** consolidation now uses one bounded,
+deployment-billed utility inference with strict candidate validation, Unicode
+identity and inference-wide disclosure lineage. Scripted multilingual,
+malformed/provider-failure, source-membership, metering, bounds and personal-pin
+isolation tests cover the contract. No live provider evaluation was run.
 
 ## 11. Complete UOA authority and hierarchy
 
@@ -85,5 +95,12 @@ on `d07254158` in [PR 442](https://github.com/UnlikeOtherAI/Nessie/pull/442).
 It was then appended to `main`'s required checks with the existing GitHub
 Actions integration id `15368`. Readback verified all nine contexts and
 preserved every other protection field, including `strict: false`, admin
-enforcement and the prohibition on force pushes. The deployment workflow
-portion remains unimplemented.
+enforcement and the prohibition on force pushes.
+
+**Workflow delivered:** [PR 449](https://github.com/UnlikeOtherAI/Nessie/pull/449)
+landed as `51b48c18c` after all nine checks passed. The gate resolves the current
+main SHA only after acquiring the shared production concurrency slot and
+requires successful CI for that exact SHA. Failed or untrusted events use
+separate ignored groups. Deterministic tests cover the actual workflow's
+concurrency expression, manual dispatch and delayed CI completion; image tags
+and every production checkout use the gate's output.

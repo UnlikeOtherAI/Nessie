@@ -296,6 +296,9 @@ jobs:
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
+      - name: Test deployment gate policy
+        run: node --test scripts/deploy-gate.test.mjs
+
       # Serialized before the concurrent phase on purpose: concurrent Prisma
       # generators can temporarily erase exports while sibling packages compile.
       - name: Generate Prisma client

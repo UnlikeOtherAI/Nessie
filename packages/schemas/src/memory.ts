@@ -165,6 +165,23 @@ export type MemoryConsolidationSource = z.infer<
   typeof MemoryConsolidationSourceSchema
 >
 
+export const MemoryConsolidationCandidateSchema = z.object({
+  content: z.string().trim().min(1).max(320),
+  importance: z.number().min(0).max(1),
+  memoryCategory: z.enum(['intent', 'reason', 'constraint', 'preference', 'fact']),
+  sourceMessageIds: z.array(z.string().uuid()).min(1).max(12).refine(
+    (ids) => new Set(ids).size === ids.length,
+    'Memory candidate sourceMessageIds must be unique',
+  ),
+}).strict()
+
+export const MemoryConsolidationExtractionSchema = z.object({
+  candidates: z.array(MemoryConsolidationCandidateSchema).max(4),
+}).strict()
+export type MemoryConsolidationExtraction = z.infer<
+  typeof MemoryConsolidationExtractionSchema
+>
+
 export const RunMemoryConsolidateJobPayloadSchema = z
   .object({
     runId: RunIdSchema,

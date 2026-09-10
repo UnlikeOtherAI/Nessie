@@ -45,7 +45,7 @@ const makeContext = (basisScopes: Array<{ scopeId: string; scopeType: string }>)
       agent: { findMany: async () => [] },
       // The message is in a private channel. A disclosure grant cannot use the
       // public-channel audience exception for this fixture.
-      channel: { findFirst: async () => null },
+      channel: { findFirst: async () => null, findMany: async () => [] },
       channelMember: { findMany: async () => [] },
       disclosureGrant: { findMany: async () => [] },
       message: {

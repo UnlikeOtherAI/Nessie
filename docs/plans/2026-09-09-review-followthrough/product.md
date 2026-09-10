@@ -55,6 +55,12 @@ the controls; members/viewers do not. Test role changes without reloading and
 server refusal after revocation. Extend the existing project browser fixture;
 document the effective permissions beside the board/iteration contract.
 
+**Delivered:** Project board configuration and the Backlog's sprint lifecycle
+share `useCanAdministerProject`. Its membership read has no previous-project
+placeholder and fails closed while it loads, refetches or fails. Board and
+iteration mutations invalidate that decision after a 403, removing stale
+controls while project read and task work remain available.
+
 ## 8. Explicit project load failures
 
 **Owner:** Terra. Home: existing project Board and Docs tabs.
@@ -70,6 +76,15 @@ document the effective permissions beside the board/iteration contract.
 Retry; retry recovers; successful empty responses retain intended guidance.
 Test project switches and prevent stale data from a prior project appearing.
 Retain headless board/docs evidence and update knowledge/project UX docs.
+
+**Delivered:** Project Board keeps the query result's identity and treats a
+previous project's placeholder as loading, while project Docs exposes the
+shared knowledge-space retry. Both use `QueryState` for initial load failure
+and only show empty guidance after their scoped list succeeds; an ordinary
+same-project refresh keeps its authorized board on screen. The project
+usability browser journey injects board and document-space failures, retries
+them, and holds a destination-board read during a project switch to prove the
+prior board does not paint.
 
 ## 9. Browser push tenant ownership
 

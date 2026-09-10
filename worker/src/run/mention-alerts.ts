@@ -36,6 +36,8 @@ type AlertTarget = {
   actorUserId?: string | null
   actorAgentId?: string | null
   scopes: WsScope[]
+  /** Required replay mode for a durable completion follow-up. */
+  durableEventKey?: string
 }
 
 /**
@@ -66,6 +68,7 @@ const alertRecipients = async (
       actorUserId: target.actorUserId ?? null,
       actorAgentId: target.actorAgentId ?? null,
       mentionedUserIds: recipientUserIds,
+      ...(target.durableEventKey ? { eventKey: target.durableEventKey } : {}),
     })
     // Agent replies use the same durable participation model as human
     // messages. Alert state is separate attention state, never the source of
@@ -81,6 +84,7 @@ const alertRecipients = async (
       })
     }
   } catch (error) {
+    if (target.durableEventKey) throw error
     console.error(
       '[mention-alerts] failed to persist alerts for message',
       target.messageId,
@@ -103,8 +107,15 @@ const alertRecipients = async (
           createdAt: target.messageCreatedAt.toISOString(),
         },
         event: 'alert.created',
+        ...(target.durableEventKey
+          ? {
+              idempotencyKey: `${target.durableEventKey}:${userId}`,
+              ts: target.messageCreatedAt.toISOString(),
+            }
+          : {}),
       })
     } catch (error) {
+      if (target.durableEventKey) throw error
       console.error(
         '[mention-alerts] failed to publish alert.created for message',
         target.messageId,
@@ -135,6 +146,7 @@ export const createMessageMentionAlerts = async (
       })),
     }).userIds
   } catch (error) {
+    if (input.durableEventKey) throw error
     console.error(
       '[mention-alerts] failed to resolve mentions for message',
       input.messageId,

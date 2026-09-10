@@ -58,6 +58,8 @@ type UsePagedListOptions<TData, TItem> = {
    * lists. Defaults to unprefixed, which is what a page with one list wants.
    */
   paramPrefix?: string
+  /** Identifies the record a prefixed cursor belongs to, when one screen switches records. */
+  scope?: string
   /** Path without a query string, e.g. `/api/audit`. */
   path: string
   /** React Query key. The resolved query string is appended automatically. */
@@ -101,6 +103,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
   limit: configuredLimit = DEFAULT_PAGE_LIMIT,
   params = {},
   paramPrefix = '',
+  scope,
   path,
   queryKey,
 }: UsePagedListOptions<TData, TItem>): PagedList<TItem, TData> => {
@@ -111,11 +114,13 @@ export const usePagedList = <TItem, TData = TItem[]>({
   const pageKey = `${paramPrefix}page`
   const directionKey = `${paramPrefix}direction`
   const limitKey = `${paramPrefix}limit`
-  const cursor = searchParams.get(cursorKey) ?? undefined
+  const scopeKey = `${paramPrefix}scope`
+  const scopeMatches = !scope || searchParams.get(scopeKey) === scope
+  const cursor = scopeMatches ? searchParams.get(cursorKey) ?? undefined : undefined
   const savedLimit = Number(searchParams.get(limitKey))
   const limit = resolvePageSize(Number.isFinite(savedLimit) ? savedLimit : configuredLimit)
-  const direction = searchParams.get(directionKey) === 'backward' ? 'backward' : 'forward'
-  const page = Number(searchParams.get(pageKey) ?? '0') || 0
+  const direction = scopeMatches && searchParams.get(directionKey) === 'backward' ? 'backward' : 'forward'
+  const page = scopeMatches ? Number(searchParams.get(pageKey) ?? '0') || 0 : 0
 
   // Serialised so the query key and the reset check both compare by value; two
   // objects with the same filters are the same page of the same list.
@@ -136,7 +141,10 @@ export const usePagedList = <TItem, TData = TItem[]>({
   // page in the URL, but there is no row from which the server can derive a
   // reverse cursor. Return to the first page explicitly instead of trapping
   // a person behind a disabled Previous control.
-  const isStalePage = query.isSuccess && page > 0 && items.length === 0
+  const isStalePage = query.isSuccess
+    && page > 0
+    && items.length === 0
+    && !meta?.prevCursor
 
   const onPageChange = useCallback(
     (next: number) => {
@@ -167,6 +175,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
           updated.set(cursorKey, target)
           updated.set(pageKey, String(Math.max(next, 0)))
           updated.set(directionKey, forward ? 'forward' : 'backward')
+          if (scope) updated.set(scopeKey, scope)
           return updated
         },
         { replace: false },
@@ -181,6 +190,8 @@ export const usePagedList = <TItem, TData = TItem[]>({
       page,
       pageKey,
       setSearchParams,
+      scope,
+      scopeKey,
     ],
   )
 
@@ -193,6 +204,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
         (current) => {
           const updated = new URLSearchParams(current)
           updated.set(limitKey, String(next))
+          if (scope) updated.set(scopeKey, scope)
           updated.delete(cursorKey)
           updated.delete(directionKey)
           updated.delete(pageKey)
@@ -201,11 +213,17 @@ export const usePagedList = <TItem, TData = TItem[]>({
         { replace: false },
       )
     },
-    [cursorKey, directionKey, limit, limitKey, pageKey, setSearchParams],
+    [cursorKey, directionKey, limit, limitKey, pageKey, scope, scopeKey, setSearchParams],
   )
 
   const total = meta?.total
-  const pageCount = Math.max(1, Math.ceil((total ?? items.length) / limit))
+  // A count is intentionally absent from disclosure-filtered history. Keep
+  // the footer's page position truthful without inventing a terminal page:
+  // when another cursor exists, the next page is known to exist; otherwise
+  // this current page is the end of the walk.
+  const pageCount = total === undefined
+    ? Math.max(1, page + (meta?.hasMore ? 2 : 1))
+    : Math.max(1, Math.ceil(total / limit))
 
   return {
     canNext: Boolean(meta?.hasMore),
@@ -242,6 +260,7 @@ export const usePagedListReset = (paramPrefix = ''): (() => void) => {
         updated.delete(`${paramPrefix}direction`)
         updated.delete(`${paramPrefix}page`)
         updated.delete(`${paramPrefix}limit`)
+        updated.delete(`${paramPrefix}scope`)
         return updated
       },
       { replace: true },

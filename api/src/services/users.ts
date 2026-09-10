@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
-import { parseChannelId, parseUserId } from '@nessie/schemas'
+import { parseChannelId, parseUserId, type TeamMemberRecord } from '@nessie/schemas'
 import type { UserRecord } from '../contracts/users-presence.js'
 import { assertNotLastOwner } from './organization-owner-lock.js'
 import { revokeUserRefreshFamilies } from './refresh-session-management.js'
@@ -103,6 +103,85 @@ export const listUsersForOrganization = async (
   })
 
   return users.map(mapUserRecord)
+}
+
+export class UoaIdentityMappingError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UoaIdentityMappingError'
+  }
+}
+
+/**
+ * Product principals whose identity and active org membership UOA just
+ * returned to this actor. Channel membership, status, and timestamps remain
+ * Nessie-owned; profile fields and the org role come only from the live
+ * directory. A local principal with no stable subject is an audited migration
+ * problem and cannot be joined by email or name.
+ */
+export const listUoaUsersForOrganization = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  directoryMembers: readonly TeamMemberRecord[],
+): Promise<UserRecord[]> => {
+  const users = await prisma.user.findMany({
+    where: { organizationMembers: { some: { organizationId } } },
+    select: {
+      channelMembers: {
+        where: { channel: { organizationId } },
+        select: { channelId: true },
+      },
+      createdAt: true,
+      id: true,
+      statuses: {
+        where: { organizationId },
+        include: { schedules: true, rules: true },
+        orderBy: { createdAt: 'asc' },
+      },
+      uoaSub: true,
+      updatedAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const unbound = users.filter((user) => user.uoaSub === null)
+  if (unbound.length > 0) {
+    throw new UoaIdentityMappingError(
+      `${unbound.length} local principal(s) have no UOA subject in this bound organisation`,
+    )
+  }
+
+  const directoryBySubject = new Map<string, TeamMemberRecord>()
+  for (const member of directoryMembers) {
+    if (directoryBySubject.has(member.uoaSub)) {
+      throw new UoaIdentityMappingError(
+        `UOA returned the subject ${member.uoaSub} more than once`,
+      )
+    }
+    directoryBySubject.set(member.uoaSub, member)
+  }
+  return users.flatMap((user) => {
+    const member = user.uoaSub ? directoryBySubject.get(user.uoaSub) : undefined
+    // UOA no longer reports this local row as an active organisation member.
+    // It must disappear from product selectors even while later slices retain
+    // the local row for product history and authorization migration.
+    if (!member) return []
+    if (!member.email || !member.orgRole) {
+      throw new UoaIdentityMappingError(
+        `UOA returned an incomplete identity for subject ${member.uoaSub}`,
+      )
+    }
+    return [{
+      activeStatus: resolveActiveStatus(user.statuses),
+      avatarUrl: member.avatarImageUrl,
+      channelIds: user.channelMembers.map((entry) => parseChannelId(entry.channelId)),
+      createdAt: user.createdAt.toISOString(),
+      displayName: member.displayName ?? member.email,
+      email: member.email,
+      id: parseUserId(user.id),
+      role: member.orgRole,
+      updatedAt: user.updatedAt.toISOString(),
+    }]
+  })
 }
 
 export const getOrganizationUserRecord = async (
