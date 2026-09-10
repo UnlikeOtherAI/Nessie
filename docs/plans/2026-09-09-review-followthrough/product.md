@@ -40,6 +40,11 @@ projects; private tasks remain absent; a result opens its exact task. Add API
 authorization tests and a headless Search-to-task evaluation. Update search
 and board-source product docs to match actual supported behavior.
 
+**Delivered:** Search uses the shared ticket keyset query and the existing
+task-detail navigation contract. It pages entitled project tickets only and
+applies run disclosure before returning a row or continuation; the assistant
+uses the same query and guard.
+
 ## 7. Project administration permissions
 
 **Owner:** Terra, sequential with 5/8 because `ProjectView` is shared.

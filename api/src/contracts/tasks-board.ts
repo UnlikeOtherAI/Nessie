@@ -4,6 +4,7 @@ import {
   TaskFieldValuesPatchSchema,
   TaskDetailRecordSchema,
   TaskPrioritySchema,
+  PaginationParamsSchema,
   TaskRecordSchema,
   TaskStatusSchema,
   UserIdSchema,
@@ -77,6 +78,11 @@ export const AssignTaskBodySchema = z.object({
   assigneeUserId: UserIdSchema.nullable().optional(),
   assigneeAgentId: AgentIdSchema.nullable().optional(),
 })
+
+/** A human's global ticket lookup. Access is decided at the route, not by a UI scope. */
+export const SearchTasksQuerySchema = z.object({
+  query: z.string().trim().min(2).max(200),
+}).merge(PaginationParamsSchema)
 
 export const TransitionTaskBodySchema = z.object({
   status: TaskStatusSchema,

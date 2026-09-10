@@ -6,10 +6,12 @@ import type {
   ProjectRecord,
   UserRecord,
 } from '../lib/api-client'
+import type { TaskRecord } from '../facades/tasks/hooks'
 import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
 import {
   GLOBAL_SEARCH_MODES,
   readStoredSearchMode,
@@ -99,17 +101,27 @@ export const SearchPage = () => {
   const results = useGlobalSearch(query, mode)
 
   const active = query.trim().length >= 2
+  const hasTaskPage = mode === 'text' && active && (
+    results.tasks.length > 0
+    || results.taskPagination.page > 0
+    || results.taskPagination.canNext
+  )
   const hasResults =
     results.channels.length > 0 ||
     results.people.length > 0 ||
     results.projects.length > 0 ||
     results.messages.length > 0 ||
+    results.tasks.length > 0 ||
     results.knowledge.length > 0 ||
-    results.thoughts.length > 0
+    results.thoughts.length > 0 ||
+    hasTaskPage
 
   const openChannel = (channel: ChannelRecord) => navigate(`/channels/${channel.id}`)
   const openProject = (project: ProjectRecord) => navigate(`/projects/${project.id}`)
   const openMessage = (message: MessageSearchResult) => navigate(`/channels/${message.channelId}`)
+  const openTask = (task: TaskRecord) => {
+    if (task.projectId) navigate(`/projects/${task.projectId}/board?task=${encodeURIComponent(task.id)}`)
+  }
   const openKnowledge = (hit: KnowledgeSearchHit) =>
     navigate(`/knowledge-base?spaceId=${hit.page.spaceId}&pageId=${hit.page.id}`)
 
@@ -238,6 +250,35 @@ export const SearchPage = () => {
                       secondary={`${message.authorName} · ${message.channelLabel}`}
                     />
                   ))}
+                </SearchSection>
+              ) : null}
+
+              {hasTaskPage ? (
+                <SearchSection title="Tasks">
+                  {results.tasks.map((task) => (
+                    <SearchResultRow
+                      key={task.id}
+                      subject={{ kind: 'task' }}
+                      onClick={task.projectId ? () => openTask(task) : undefined}
+                      primary={task.title ?? 'Untitled task'}
+                      secondary={task.externalLink?.externalKey ?? task.purpose ?? undefined}
+                    />
+                  ))}
+                  {results.tasks.length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-[color:var(--tx3)]">No task results on this page.</p>
+                  ) : null}
+                  <PaginationFooter
+                    canNext={results.taskPagination.canNext}
+                    canPrevious={results.taskPagination.canPrevious}
+                    className="mx-3"
+                    hideWhenSinglePage
+                    label={results.taskPagination.label}
+                    onPageChange={results.taskPagination.onPageChange}
+                    onPageSizeChange={results.taskPagination.onPageSizeChange}
+                    page={results.taskPagination.page}
+                    pageCount={results.taskPagination.pageCount}
+                    pageSize={results.taskPagination.pageSize}
+                  />
                 </SearchSection>
               ) : null}
 

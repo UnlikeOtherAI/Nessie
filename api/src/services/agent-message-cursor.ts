@@ -1,13 +1,7 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from 'node:crypto'
+import { openOpaqueCursor, sealOpaqueCursor } from '@nessie/runtime'
 
 const CURSOR_PREFIX = 'amc1.'
-const IV_BYTES = 12
-const AUTH_TAG_BYTES = 16
+const CURSOR_KEY_PURPOSE = 'nessie.agent-message-cursor.v1\0'
 export const AGENT_MESSAGE_CURSOR_TTL_MS = 10 * 60 * 1000
 
 type AgentMessageCursor = {
@@ -27,12 +21,6 @@ export class AgentMessageCursorError extends Error {
     super('Invalid agent message cursor')
   }
 }
-
-const cursorKey = (secret: string): Buffer =>
-  createHash('sha256')
-    .update('nessie.agent-message-cursor.v1\0')
-    .update(secret)
-    .digest()
 
 const parseCursor = (value: unknown): AgentMessageCursor | null => {
   if (!value || typeof value !== 'object') return null
@@ -71,17 +59,11 @@ export const encodeAgentMessageCursor = (
   secret: string,
   now = new Date(),
 ): string => {
-  const iv = randomBytes(IV_BYTES)
-  const cipher = createCipheriv('aes-256-gcm', cursorKey(secret), iv)
-  const payload = Buffer.concat([
-    cipher.update(JSON.stringify({
-      ...cursor,
-      expiresAt: now.getTime() + AGENT_MESSAGE_CURSOR_TTL_MS,
-      version: 1,
-    } satisfies AgentMessageCursor), 'utf8'),
-    cipher.final(),
-  ])
-  return `${CURSOR_PREFIX}${Buffer.concat([iv, cipher.getAuthTag(), payload]).toString('base64url')}`
+  return sealOpaqueCursor({ keyPurpose: CURSOR_KEY_PURPOSE, prefix: CURSOR_PREFIX, secret }, {
+    ...cursor,
+    expiresAt: now.getTime() + AGENT_MESSAGE_CURSOR_TTL_MS,
+    version: 1,
+  } satisfies AgentMessageCursor)
 }
 
 export const decodeAgentMessageCursor = (
@@ -93,17 +75,11 @@ export const decodeAgentMessageCursor = (
   if (!token.startsWith(CURSOR_PREFIX)) throw new AgentMessageCursorError()
 
   try {
-    const encrypted = Buffer.from(token.slice(CURSOR_PREFIX.length), 'base64url')
-    if (encrypted.length <= IV_BYTES + AUTH_TAG_BYTES) throw new AgentMessageCursorError()
-    const iv = encrypted.subarray(0, IV_BYTES)
-    const tag = encrypted.subarray(IV_BYTES, IV_BYTES + AUTH_TAG_BYTES)
-    const payload = encrypted.subarray(IV_BYTES + AUTH_TAG_BYTES)
-    const decipher = createDecipheriv('aes-256-gcm', cursorKey(input.secret), iv)
-    decipher.setAuthTag(tag)
-    const cursor = parseCursor(JSON.parse(Buffer.concat([
-      decipher.update(payload),
-      decipher.final(),
-    ]).toString('utf8')))
+    const cursor = parseCursor(openOpaqueCursor({
+      keyPurpose: CURSOR_KEY_PURPOSE,
+      prefix: CURSOR_PREFIX,
+      secret: input.secret,
+    }, token))
     if (
       !cursor
       || cursor.agentId !== input.agentId

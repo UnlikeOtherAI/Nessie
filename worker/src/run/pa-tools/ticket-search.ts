@@ -5,6 +5,7 @@ import {
   searchProjectTasks,
   searchRemoteTickets,
 } from '@nessie/team-admin'
+import { canUserReadRunDerivedRecord, runIsSearchSafe } from '@nessie/runtime'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -29,36 +30,24 @@ import {
  */
 
 /**
- * Which projects this search may see, asked the same way the routes ask it:
- * an owner reaches everything, everybody else reaches their memberships plus
- * the projectless, owned and assigned work `projectTaskVisibilityWhere` adds.
- * A search is the one ticket read with no explicit project to gate, so the
- * gate has to travel with the query instead of preceding it.
- */
-const searchVisibilityFor = async (
-  context: BuiltinToolRuntimeContext,
-  member: ActingMember,
-) => {
-  const accessible = await listAccessibleProjectIds(context.prisma, member)
-  return accessible === 'all'
-    ? undefined
-    : { accessibleProjectIds: accessible, actorUserId: member.userId }
-}
-
-/**
- * The same authority as `searchVisibilityFor`, resolved to a concrete list.
+ * The same project authority as the human Search route, resolved to a concrete list.
  *
- * Not a second spelling of it: a local search pushes visibility into the query,
- * where it can also admit the projectless, owned and assigned work a task row
- * carries on its own. A provider search has no such rows to reason about — it
- * asks a `BoardSource`, which always belongs to exactly one project — so the
- * gate has to be the project list itself.
+ * A task result always names the board it opens, so projectless and personal
+ * cross-project rows stay out of both the human and assistant searches.
  */
 const searchableProjectIds = async (
   context: BuiltinToolRuntimeContext,
   member: ActingMember,
   projectId?: string,
 ): Promise<string[]> => {
+  const boundProjectId = context.agentKind === 'shared' ? context.channel.projectId : null
+  if (boundProjectId) {
+    if (projectId && projectId !== boundProjectId) {
+      throw new Error('This project agent can only search tickets in its own project.')
+    }
+    await projectFor(context, member, boundProjectId)
+    return [boundProjectId]
+  }
   if (projectId) {
     await projectFor(context, member, projectId)
     return [projectId]
@@ -91,14 +80,25 @@ export const runTicketSearchTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = SearchInput.parse(input)
   const member = await resolveActingMember(context)
-  if (args.projectId) await projectFor(context, member, args.projectId)
 
-  const tickets = await searchProjectTasks(
+  const page = await searchProjectTasks(
     context.prisma,
     member.organizationId,
     args,
-    await searchVisibilityFor(context, member),
+    {
+      projectIds: await searchableProjectIds(context, member, args.projectId),
+      isReadable: async (task) => (
+        await runIsSearchSafe(context.prisma, task.runId)
+        && canUserReadRunDerivedRecord(context.prisma, {
+          organizationId: member.organizationId,
+          runId: task.runId,
+          uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+          userId: member.userId,
+        })
+      ),
+    },
   )
+  const tickets = page.data
 
   // A search crosses projects, so the basis is every project it actually
   // answered from — not the one project a caller happened to name.
@@ -111,7 +111,9 @@ export const runTicketSearchTool = async (
     .join(' ') || 'everything'
   const output = tickets.length
     ? `Tickets (${tickets.length})\n${tickets.map(ticketLine).join('\n')}`
-    : 'No tickets matched.'
+    : page.meta.hasMore
+      ? 'The search needs a narrower query before it can finish.'
+      : 'No tickets matched.'
   return result('ticket_search', summary, output)
 }
 

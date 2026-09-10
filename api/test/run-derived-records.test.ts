@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { loadAgentActivity, loadAgentStatus } from '../src/services/agent-read-model.js'
 import { listPlans, getPlan } from '../src/services/plans.js'
-import { getTask, listTasks } from '../src/services/tasks.js'
+import { getTask, listTasks, searchTasksForUser } from '../src/services/tasks.js'
 import { seed } from './disclosure-read-fixtures.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
@@ -144,6 +144,36 @@ runDatabaseTest('run-derived task and plan records require source-channel access
     data: { agentId: s.agentId, organizationId: s.organizationId, purpose: 'B-ACTIVE-METADATA-CANARY', runId: activeRestrictedRun.id, status: 'inbox' },
   })
   const humanTask = await prisma.task.create({ data: { organizationId: s.organizationId, purpose: 'ordinary projectless task', status: 'inbox' } })
+  const privateSearchTask = await prisma.task.create({
+    data: {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      projectId: s.projectId,
+      runId: privateRun.id,
+      status: 'inbox',
+      title: 'B-PRIVATE-SEARCH-CANARY',
+    },
+  })
+  const activeSearchTask = await prisma.task.create({
+    data: {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      projectId: s.projectId,
+      runId: activeRestrictedRun.id,
+      status: 'inbox',
+      title: 'B-ACTIVE-SEARCH-CANARY',
+    },
+  })
+  const publicSearchTask = await prisma.task.create({
+    data: {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      projectId: s.projectId,
+      runId: publicRun.id,
+      status: 'inbox',
+      title: 'public search task',
+    },
+  })
   const privatePlan = await prisma.plan.create({ data: { agentId: s.agentId, channelId: privateChannel.id, createdByActorId: s.insiderId, createdByActorType: 'user', goal: 'B-PRIVATE-PLAN-CANARY', organizationId: s.organizationId, runId: privateRun.id } })
   await prisma.planStep.create({ data: { payload: { task: 'B-PRIVATE-STEP-CANARY' }, planId: privatePlan.id, sequence: 1, title: 'B-PRIVATE-STEP-CANARY', type: 'spawn_task' } })
   const publicPlan = await prisma.plan.create({ data: { agentId: s.agentId, channelId: s.channelId, createdByActorId: s.insiderId, createdByActorType: 'user', goal: 'public plan', organizationId: s.organizationId, runId: publicRun.id } })
@@ -154,6 +184,19 @@ runDatabaseTest('run-derived task and plan records require source-channel access
   assert.equal(await getTask(prisma, restrictedPublicTask.id, s.organizationId, undefined, ownerId, undefined), null)
   assert.equal(await getTask(prisma, activeRestrictedTask.id, s.organizationId, undefined, ownerId, undefined), null)
   assert.equal((await getTask(prisma, publicTask.id, s.organizationId, undefined, ownerId, undefined))?.purpose, 'public task')
+  const search = await searchTasksForUser(
+    prisma,
+    s.organizationId,
+    { text: 'search', limit: 10 },
+    'all',
+    'run-derived-records-test-secret',
+    ownerId,
+    undefined,
+  )
+  assert.deepEqual(search.data.map((task) => task.id), [publicSearchTask.id])
+  assert.equal(search.data.some((task) => task.id === privateSearchTask.id), false)
+  assert.equal(search.data.some((task) => task.id === activeSearchTask.id), false)
+  assert.equal(search.data.some((task) => task.id === humanTask.id), false)
   assert.equal(
     (await listPlans(prisma, s.organizationId, ownerId, undefined, {})).some((plan) => plan.id === privatePlan.id),
     false,

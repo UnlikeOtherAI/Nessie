@@ -13,6 +13,7 @@ import {
 } from '../src/index.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
+const allowAll = { isReadable: async () => true }
 
 type Seed = {
   organizationId: string
@@ -117,10 +118,10 @@ runDatabaseTest('text matches a ticket by the provider key a person says out lou
       item({ externalKey: 'ENG-999', title: 'Something else' }),
     )
 
-    const byKey = await searchProjectTasks(prisma, seeded.organizationId, { text: 'eng-214' })
+    const byKey = (await searchProjectTasks(prisma, seeded.organizationId, { text: 'eng-214' }, allowAll)).data
     assert.deepEqual(byKey.map((ticket) => ticket.externalLink?.externalKey), ['ENG-214'])
 
-    const byTitle = await searchProjectTasks(prisma, seeded.organizationId, { text: 'mirror' })
+    const byTitle = (await searchProjectTasks(prisma, seeded.organizationId, { text: 'mirror' }, allowAll)).data
     assert.equal(byTitle.length, 1)
     assert.equal(byTitle[0]?.title, 'Ship the mirror')
   } finally {
@@ -144,15 +145,15 @@ runDatabaseTest('a provider person with no Nessie account can be searched for', 
     )
     await applyInboundItem(prisma, context(seeded), item({ title: 'Nobody holds this' }))
 
-    const byExternalId = await searchProjectTasks(prisma, seeded.organizationId, {
+    const byExternalId = (await searchProjectTasks(prisma, seeded.organizationId, {
       unmappedAssignee: 'lin_ada',
-    })
+    }, allowAll)).data
     assert.deepEqual(byExternalId.map((ticket) => ticket.title), ['Ada holds this'])
 
     // A person asking will say the name, not the provider's id for it.
-    const byName = await searchProjectTasks(prisma, seeded.organizationId, {
+    const byName = (await searchProjectTasks(prisma, seeded.organizationId, {
       unmappedAssignee: 'ada love',
-    })
+    }, allowAll)).data
     assert.deepEqual(byName.map((ticket) => ticket.title), ['Ada holds this'])
   } finally {
     await cleanup(prisma, seeded)
@@ -174,9 +175,9 @@ runDatabaseTest('a ticket the provider says Ada holds is not "unassigned"', asyn
     )
     await applyInboundItem(prisma, context(seeded), item({ title: 'Nobody holds this' }))
 
-    const unassigned = await searchProjectTasks(prisma, seeded.organizationId, {
+    const unassigned = (await searchProjectTasks(prisma, seeded.organizationId, {
       unassigned: true,
-    })
+    }, allowAll)).data
     assert.deepEqual(unassigned.map((ticket) => ticket.title), ['Nobody holds this'])
   } finally {
     await cleanup(prisma, seeded)
@@ -201,9 +202,9 @@ runDatabaseTest('a mapped person is a colleague, and disappears from the unmappe
     const people = await listUnmappedTicketPeople(prisma, seeded.organizationId)
     assert.deepEqual(people, [])
 
-    const byUser = await searchProjectTasks(prisma, seeded.organizationId, {
+    const byUser = (await searchProjectTasks(prisma, seeded.organizationId, {
       assigneeUserId: seeded.userId,
-    })
+    }, allowAll)).data
     assert.deepEqual(byUser.map((ticket) => ticket.title), ['Ada holds this'])
   } finally {
     await cleanup(prisma, seeded)
@@ -248,22 +249,124 @@ runDatabaseTest('a search never reaches a project the caller cannot open', async
   const seeded = await seed(prisma)
   try {
     await applyInboundItem(prisma, context(seeded), item({ title: 'Ship the mirror' }))
+    await applyInboundItem(prisma, context(seeded), item({ title: 'Unrelated accessible work' }))
 
     const withoutMembership = await searchProjectTasks(
       prisma,
       seeded.organizationId,
       { text: 'mirror' },
-      { accessibleProjectIds: [], actorUserId: randomUUID() },
+      { ...allowAll, projectIds: [] },
     )
-    assert.deepEqual(withoutMembership, [])
+    assert.deepEqual(withoutMembership.data, [])
 
     const withMembership = await searchProjectTasks(
       prisma,
       seeded.organizationId,
       { text: 'mirror' },
-      { accessibleProjectIds: [seeded.projectId], actorUserId: seeded.userId },
+      { ...allowAll, projectIds: [seeded.projectId] },
     )
-    assert.equal(withMembership.length, 1)
+    assert.equal(withMembership.data.length, 1)
+    assert.equal(withMembership.data[0]?.title, 'Ship the mirror')
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('search pages only readable entitled project tickets', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    for (const title of ['Visible alpha', 'Hidden canary', 'Visible beta']) {
+      await applyInboundItem(prisma, context(seeded), item({ title }))
+    }
+    const otherProject = await prisma.project.create({
+      data: { name: `other-${randomUUID()}`, organizationId: seeded.organizationId },
+    })
+    const inaccessible = await prisma.task.create({
+      data: { organizationId: seeded.organizationId, projectId: otherProject.id, status: 'inbox', title: 'Visible private project' },
+    })
+    const projectless = await prisma.task.create({
+      data: { organizationId: seeded.organizationId, status: 'inbox', title: 'Visible personal task' },
+    })
+    const readable = (task: { title: string | null }) => !task.title?.includes('Hidden')
+    const first = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { limit: 1 },
+      { isReadable: async (task) => readable(task), projectIds: [seeded.projectId] },
+    )
+    assert.equal(first.data.length, 1)
+    assert.equal(first.meta.hasMore, true, 'a readable row beyond a hidden candidate keeps paging reachable')
+    assert.ok(first.meta.nextCursor, 'continuation is derived from the visible row')
+    assert.equal(first.data.some((task) => task.id === inaccessible.id || task.id === projectless.id), false)
+
+    const second = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { cursor: first.meta.nextCursor ?? undefined, direction: 'forward', limit: 1 },
+      { isReadable: async (task) => readable(task), projectIds: [seeded.projectId] },
+    )
+    assert.equal(second.data.length, 1)
+    assert.notEqual(second.data[0]?.id, first.data[0]?.id, 'the visible cursor never repeats a row')
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('an authenticated continuation reaches a readable ticket after a hidden scan budget', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const visible = await prisma.task.create({
+      data: { organizationId: seeded.organizationId, projectId: seeded.projectId, status: 'inbox', title: 'Visible after hidden scan' },
+    })
+    await prisma.task.createMany({
+      data: Array.from({ length: 201 }, (_, index) => ({
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        status: 'inbox' as const,
+        title: `Hidden scan canary ${index}`,
+      })),
+    })
+    const options = {
+      continuation: { secret: 'ticket-search-test-secret', userId: seeded.userId },
+      isReadable: async (task: { title: string | null }) => task.title === visible.title,
+      projectIds: [seeded.projectId],
+    }
+    const first = await searchProjectTasks(prisma, seeded.organizationId, { limit: 10 }, options)
+    assert.deepEqual(first.data, [])
+    assert.equal(first.meta.hasMore, true)
+    assert.match(first.meta.nextCursor ?? '', /^tsc1\./u, 'the hidden anchor is encrypted')
+
+    const second = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { cursor: first.meta.nextCursor ?? undefined, limit: 10 },
+      options,
+    )
+    assert.deepEqual(second.data.map((task) => task.id), [visible.id])
+
+    // Going back from the visible row crosses the same hidden stretch in the
+    // other direction. Its authenticated cursor must advance even though the
+    // intermediary page cannot show a row.
+    const backward = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { cursor: second.meta.prevCursor ?? undefined, direction: 'backward', limit: 10 },
+      options,
+    )
+    assert.deepEqual(backward.data, [])
+    assert.match(backward.meta.prevCursor ?? '', /^tsc1\./u)
+    const backwardTail = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { cursor: backward.meta.prevCursor ?? undefined, direction: 'backward', limit: 10 },
+      options,
+    )
+    assert.deepEqual(backwardTail.data, [])
+    assert.equal(backwardTail.meta.prevCursor, null)
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
