@@ -55,6 +55,12 @@ the controls; members/viewers do not. Test role changes without reloading and
 server refusal after revocation. Extend the existing project browser fixture;
 document the effective permissions beside the board/iteration contract.
 
+**Delivered:** Project board configuration and the Backlog's sprint lifecycle
+share `useCanAdministerProject`. Its membership read has no previous-project
+placeholder and fails closed while it loads, refetches or fails. Board and
+iteration mutations invalidate that decision after a 403, removing stale
+controls while project read and task work remain available.
+
 ## 8. Explicit project load failures
 
 **Owner:** Terra. Home: existing project Board and Docs tabs.

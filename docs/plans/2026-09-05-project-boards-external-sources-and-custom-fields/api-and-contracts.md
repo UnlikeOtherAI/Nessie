@@ -95,8 +95,12 @@ mutations keep `requireUserActor` + project access; the new refusals are
 service errors mapped in the route, never decided in the route.
 
 `ProjectMember` is Nessie-owned (a project has no UOA counterpart), so gating
-on its role creates no second identity authority. The iteration routes keep
-`requireOwner` untouched — out of scope, and a separate decision.
+on its role creates no second identity authority. Iteration create, start,
+complete and delete use that same `requireProjectAdmin` gate: an organisation
+owner or a project `owner`/`admin` can shape a board and its sprint plan;
+members and viewers retain their read and task-working access. The admin
+surface reads one fail-closed membership decision for these controls and
+refreshes it after a server 403, while the routes remain authoritative.
 
 ### 7.4 Realtime
 

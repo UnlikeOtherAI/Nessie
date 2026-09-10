@@ -20,7 +20,7 @@ import {
   useTasks,
   useUpdateTaskPoints,
 } from '../../facades/tasks/hooks'
-import { useIsOwner } from '../../facades/auth/hooks'
+import { useCanAdministerProject } from '../../facades/projects/administration'
 
 const PointsInput = ({ task }: { task: TaskRecord }) => {
   const update = useUpdateTaskPoints()
@@ -83,13 +83,13 @@ const TaskRow = ({
 const IterationCard = ({
   iteration,
   projectId,
-  isOwner,
+  canAdminister,
   tasks,
   moveTargets,
 }: {
   iteration: Iteration
   projectId: string
-  isOwner: boolean
+  canAdminister: boolean
   tasks: TaskRecord[]
   moveTargets: { id: string; name: string }[]
 }) => {
@@ -106,7 +106,7 @@ const IterationCard = ({
           <span className="text-xs text-[color:var(--tx3)]">
             {iteration.pointsDone}/{iteration.pointsTotal} pts · {iteration.taskCount} tasks
           </span>
-          {isOwner ? (
+          {canAdminister ? (
             <div className="ml-auto flex gap-2">
               {iteration.status === 'planned' ? (
                 <button
@@ -159,7 +159,7 @@ const IterationCard = ({
           setDeleteOpen(false)
           remove.mutate(iteration.id)
         }}
-        open={deleteOpen}
+        open={canAdminister && deleteOpen}
         title={`Delete "${iteration.name}"?`}
       />
     </>
@@ -171,7 +171,7 @@ type ProjectBacklogTabProps = {
 }
 
 export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
-  const isOwner = useIsOwner()
+  const canAdminister = useCanAdministerProject(projectId)
   const iterationsQuery = useIterations(projectId)
   const tasksQuery = useTasks(projectId)
   // Memoised so the empty-array fallback is not a fresh literal every render;
@@ -230,7 +230,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
                   {planning.map((iteration) => (
                     <IterationCard
                       key={iteration.id}
-                      isOwner={isOwner}
+                      canAdminister={canAdminister}
                       iteration={iteration}
                       moveTargets={moveTargets}
                       projectId={projectId}
@@ -239,7 +239,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
                   ))}
                 </div>
               )}
-              {isOwner ? (
+              {canAdminister ? (
                 <form
                   className="flex items-center gap-2"
                   onSubmit={(event) => {
