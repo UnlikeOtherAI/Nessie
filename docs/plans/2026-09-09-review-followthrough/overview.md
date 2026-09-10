@@ -66,24 +66,40 @@ Additional review findings are a separate backlog until assigned.
 The plans landed in [PR 438](https://github.com/UnlikeOtherAI/Nessie/pull/438).
 Implementation status on 10 September 2026:
 
-- **1/2 — Sol:** fenced run handback is committed; atomic completion and
-  durable follow-up delivery are in progress in the same lifecycle branch.
+- **1/2 — Sol:** [PR 448](https://github.com/UnlikeOtherAI/Nessie/pull/448)
+  implements fenced handback, atomic completion and durable follow-up. Review
+  added a row-lock settlement barrier for a lost COMMIT acknowledgement;
+  required CI is running on that correction before merge.
 - **3 — Terra:** [PR 440](https://github.com/UnlikeOtherAI/Nessie/pull/440)
   landed as `688859ed3` after all nine CI checks passed. Scheduled retries now
   retain one occurrence owner, and an explicit pause cancels pending retries.
-- **4 — Terra:** cursor pagination and batched disclosure are implemented and
-  being verified. Indexed retrieval is bounded per distinct run conversation;
-  its remaining cost scales with the number of conversations, not messages.
+- **4 — Terra:** [PR 447](https://github.com/UnlikeOtherAI/Nessie/pull/447)
+  landed as `396900b3c` after all nine checks passed. Encrypted cursors, batched
+  disclosure and indexed retrieval bound work per distinct run conversation;
+  its remaining cost scales with conversation count, not message count.
 - **5 — Terra:** [PR 442](https://github.com/UnlikeOtherAI/Nessie/pull/442)
   landed as `31811ff51` after all nine CI checks passed. Chat cards and cold
   links open the exact task in the shared dialog with its current placement.
-- **6/7/8/9 — Terra:** queued; the project-permissions worktree is prepared.
-- **10 — Sol:** queued after run-lifecycle verification.
-- **11 — Sol:** the UOA capability inventory is complete; a first live-directory
-  slice and the audited migration plan are being verified. Full authority
-  removal remains dependent on upstream contracts and the hierarchy audit.
-- **12 — Terra/coordinator:** Multi-Instance Smoke is now required on `main`.
-  The exact verified-SHA deployment gate is next after history pagination.
+- **6 — Terra:** queued after project recovery; its worktree is prepared on
+  the merged exact-task navigation contract.
+- **7 — Terra:** [PR 446](https://github.com/UnlikeOtherAI/Nessie/pull/446)
+  landed as `c0f7dd3a0` after all nine checks passed. Board and sprint controls
+  share effective project administration and remove stale controls after 403.
+- **8 — Terra:** Board/Docs failure and Retry states are implemented; headless
+  verification includes an actual SPA project switch with the response held.
+- **9 — Terra:** tenant enrollment is implemented. Verification also covers
+  browser logout and account switching without breaking background delivery.
+- **10 — Sol:** structured utility extraction is in progress, with inference-wide
+  private-source lineage and the existing deployment-billed memory policy.
+- **11 — Sol, partial:** [PR 444](https://github.com/UnlikeOtherAI/Nessie/pull/444)
+  landed as `bbb0b6386` after all nine checks passed. The active user directory
+  reads UOA through a bounded, invalidation-safe cache. Existing durable
+  profile/hierarchy copies remain explicit gaps; full removal depends on
+  upstream profile/background/revocation contracts and the audited migration.
+- **12 — Terra/coordinator:** [PR 449](https://github.com/UnlikeOtherAI/Nessie/pull/449)
+  landed as `51b48c18c` after all nine checks passed. Automatic and manual
+  deployment share the exact verified-main-SHA gate, and Multi-Instance Smoke
+  is required on `main`.
 
 The [ten additional findings](../../reviews/2026-09-09-additional-ten.md)
 landed in [PR 439](https://github.com/UnlikeOtherAI/Nessie/pull/439). They remain
