@@ -12,7 +12,7 @@ mode, DeepTest launches the packaged Node runtime and fixed bundle as a child
 of its local connector.
 
 ```text
-<packaged-node> <runtime>/nessie-executor.cjs deeptest-source --state-dir <owner-only paired executor state>
+<packaged-node> <runtime>/nessie-executor.cjs deeptest-source --source-grant-file <absolute owner-only deeptest-source-grant.json>
 ```
 
 The command is part of the same bundled `nessie-executor.cjs` entry point as the
@@ -22,6 +22,42 @@ root whose local policy contains `file.list` and `file.read`; it does not imply
 that Hyper-V, browser, command, coding, or network capabilities are present.
 Linked Git worktrees are not supported in protocol version 1 because their
 object database is outside the approved root.
+
+The source child receives one credential-free projection, never the paired
+executor state or its directory. `deeptest-source-grant.json` contains exactly
+`executorId`, `workspaceRoot`, and `descriptor`; the descriptor contains only
+its limits, operation keys, profiles, and revision. The file and its parent
+must be owner-only, and the adapter accepts only that fixed filename by an
+absolute path. It contains no API URL, connection epoch, machine key, native
+helper path, or browser/Codex sandbox configuration.
+
+Pairing and local-policy saves publish this projection under a cross-process
+state mutation lock. A changed projection is removed before the authoritative
+state changes and replaced only after that save succeeds. A connection-only
+save preserves an existing valid, identical projection. If a failed policy save
+or publication left the grant absent, later connection-only saves keep it absent.
+Forgetting a pairing removes the projection before the paired state. Confirmed
+Desktop cleanup also handles an orphan grant and removes remaining runtime drafts.
+An existing pairing created by
+an older release can publish or recover its projection through the same lock:
+
+```text
+"/absolute/path/to/nessie-runtime/node" \
+  "/absolute/path/to/nessie-runtime/nessie-executor.cjs" \
+  publish-deeptest-source-grant --state-dir "/absolute/path/to/paired-state"
+```
+
+Replace the runtime and paired-state paths first. The command prints the absolute
+source-grant path for DeepTest configuration and requires no global executable
+or pre-existing shell variables.
+Each existing-state write also compares the paired state it originally read
+with the state inside the lock. A delayed connection or configuration write
+therefore cannot restore policy after a newer update or recreate a forgotten
+pairing. An interrupted writer may leave `executor-state-mutation.lock` behind;
+it blocks further mutations. After confirming that Nessie Desktop, its executor
+daemon, and executor configuration commands are stopped, the owner may remove
+that exact lock file and run the publication command again. The implementation
+never guesses that a lock is stale or removes one automatically.
 
 ## Transport and binding
 
@@ -133,7 +169,7 @@ none disappear from the answer.
 ## Authorization ownership
 
 The paired Nessie root and local `file.list`/`file.read` policy are the source
-grant ceiling. The adapter rereads local state for every request and between
+grant ceiling. The adapter rereads the credential-free source grant for every request and between
 blob loads; a changed root, executor, policy revision, or withdrawn capability
 invalidates access. Revocation clears retained snapshots, and transport closure
 releases them. These grants allow no provider inference and no live execution. DeepTest
