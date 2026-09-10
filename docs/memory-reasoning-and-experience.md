@@ -212,6 +212,13 @@ Total per-thought cost: ~$0.0003. At 1000 thoughts/day: ~$0.30/day.
 
 The reasoning extraction only fires for thoughts classified as decisions/preferences/constraints, so real volume is lower.
 
+Completed-run consolidation performs one additional bounded utility inference
+before these per-thought enrichments. It replaces the former English keyword
+classifier with a strict structured candidate list and is metered even when the
+provider's completed response is malformed. Candidate meaning is model-judged;
+schema, source membership, disclosure union, input/output limits and Unicode
+deduplication remain deterministic.
+
 ---
 
 ## 4. Supersession Chains: How Decisions Evolve

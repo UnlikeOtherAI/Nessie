@@ -598,6 +598,8 @@ export const startWorker = async (
             modelClient,
             pool,
           },
+          ledgerIdentity,
+          prisma,
         },
         job.payload,
       )

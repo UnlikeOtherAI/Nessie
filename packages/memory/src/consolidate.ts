@@ -7,12 +7,16 @@ import type {
   ThoughtMemoryType,
 } from './capture.js'
 import { captureThought } from './capture.js'
+import {
+  extractConsolidationCandidates,
+  normalizeConsolidationCandidateKey,
+  type ConsolidationCandidateExtractor,
+} from './consolidation-candidates.js'
 import { attachConsolidationDisclosureSources } from './consolidation-disclosure-sources.js'
 import { parseAndVerifyMemoryConsolidationJobPayload } from './consolidation-origin.js'
 import type { PrivateConversationSource } from './disclosure-sources.js'
 
 const DEFAULT_THREAD_TAIL_LIMIT = 12
-const MAX_SEMANTIC_MEMORIES = 4
 const MAX_SOURCE_PREVIEW_CHARS = 320
 
 export type ConsolidationRunContext = {
@@ -56,6 +60,10 @@ export type ConsolidateRunMemoriesInput = RunMemoryConsolidateJobPayload & {
   threadTailLimit?: number
 }
 
+export type ConsolidationConfig = CaptureConfig & {
+  extractCandidates: ConsolidationCandidateExtractor
+}
+
 export type ConsolidatedRunMemory = {
   thought: CapturedThought
   memoryCategory: ThoughtMemoryCategory
@@ -81,38 +89,11 @@ const truncateText = (value: string, maxChars = MAX_SOURCE_PREVIEW_CHARS): strin
   return `${collapsed.slice(0, maxChars - 3).trimEnd()}...`
 }
 
-const sentenceCandidates = (content: string): string[] =>
-  collapseWhitespace(content)
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.replace(/^[-*0-9.)\s]+/, '').trim())
-    .filter((sentence) => sentence.length >= 30 && sentence.length <= 280)
-
-const classifySentence = (
-  sentence: string,
-): Pick<ConsolidationMemoryCandidate, 'importance' | 'memoryCategory'> | null => {
-  const lower = sentence.toLowerCase()
-
-  if (/\b(because|due to|rationale|reason|so that|why)\b/.test(lower)) {
-    return { importance: 0.78, memoryCategory: 'reason' }
+const boundedTailLimit = (requested: number | undefined): number => {
+  if (requested === undefined || !Number.isFinite(requested) || requested < 1) {
+    return DEFAULT_THREAD_TAIL_LIMIT
   }
-
-  if (/\b(must|required|requires|cannot|can't|deadline|budget|constraint)\b/.test(lower)) {
-    return { importance: 0.8, memoryCategory: 'constraint' }
-  }
-
-  if (/\b(prefer|prefers|preference|likes|wants|would rather)\b/.test(lower)) {
-    return { importance: 0.76, memoryCategory: 'preference' }
-  }
-
-  if (/\b(agreed|decided|goal|implement|plan|ship|use|will)\b/.test(lower)) {
-    return { importance: 0.68, memoryCategory: 'intent' }
-  }
-
-  if (/\b(are|depends|has|is|runs|supports|uses)\b/.test(lower)) {
-    return { importance: 0.58, memoryCategory: 'fact' }
-  }
-
-  return null
+  return Math.min(DEFAULT_THREAD_TAIL_LIMIT, Math.floor(requested))
 }
 
 const buildTaskDescription = (run: ConsolidationRunContext): string => {
@@ -171,55 +152,21 @@ const buildEpisodicCandidate = (
   }
 }
 
-const buildSemanticCandidates = (
-  messages: ConsolidationThreadMessage[],
-): ConsolidationMemoryCandidate[] => {
-  const candidates: ConsolidationMemoryCandidate[] = []
-
-  for (const message of messages) {
-    if (message.role !== 'assistant' && message.role !== 'user') {
-      continue
-    }
-
-    for (const sentence of sentenceCandidates(message.content)) {
-      const classification = classifySentence(sentence)
-      if (!classification) {
-        continue
-      }
-
-      candidates.push({
-        content: sentence,
-        importance: classification.importance,
-        memoryCategory: classification.memoryCategory,
-        memoryType: 'semantic',
-        privateConversationSources: message.privateConversationSources ?? [],
-        sourceMessageIds: [message.id],
-      })
-    }
-  }
-
-  return candidates
-}
-
-const normalizeCandidateKey = (candidate: ConsolidationMemoryCandidate): string =>
-  collapseWhitespace(candidate.content)
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, '')
-
 export const selectConsolidationCandidates = (
   run: ConsolidationRunContext,
   messages: ConsolidationThreadMessage[],
+  extracted: Omit<ConsolidationMemoryCandidate, 'memoryType'>[],
 ): ConsolidationMemoryCandidate[] => {
   const candidates = [
     buildEpisodicCandidate(run, messages),
-    ...buildSemanticCandidates(messages)
+    ...extracted
       .sort((left, right) => right.importance - left.importance)
-      .slice(0, MAX_SEMANTIC_MEMORIES),
+      .map((candidate) => ({ ...candidate, memoryType: 'semantic' as const })),
   ].filter((candidate): candidate is ConsolidationMemoryCandidate => Boolean(candidate))
 
   const byKey = new Map<string, ConsolidationMemoryCandidate>()
   for (const candidate of candidates) {
-    const key = normalizeCandidateKey(candidate)
+    const key = normalizeConsolidationCandidateKey(candidate.content)
     if (!key || byKey.has(key)) {
       continue
     }
@@ -303,7 +250,7 @@ const loadThreadTail = async (
 
 export const consolidateRunMemories = async (
   input: ConsolidateRunMemoriesInput,
-  config: CaptureConfig,
+  config: ConsolidationConfig,
 ): Promise<ConsolidateRunMemoriesOutput> => {
   const payload = parseAndVerifyMemoryConsolidationJobPayload(input)
   const { origin, source } = payload
@@ -369,10 +316,14 @@ export const consolidateRunMemories = async (
 
   const messages = await loadThreadTail(
     run,
-    input.threadTailLimit ?? DEFAULT_THREAD_TAIL_LIMIT,
+    boundedTailLimit(input.threadTailLimit),
     config,
   )
-  const candidates = selectConsolidationCandidates(run, messages)
+  const extracted = await extractConsolidationCandidates({
+    extract: config.extractCandidates,
+    messages,
+  })
+  const candidates = selectConsolidationCandidates(run, messages, extracted)
   const captured: ConsolidatedRunMemory[] = []
   let duplicateCount = 0
 
