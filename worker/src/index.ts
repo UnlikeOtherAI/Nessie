@@ -63,6 +63,8 @@ import {
   DemonstrationGeneralizeJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
+  RUN_COMPLETION_FOLLOWUP_TOPIC,
+  RunCompletionFollowupJobPayloadSchema,
   RunExecuteJobPayloadSchema,
   TRIGGER_WEBHOOK_DISPATCH_TOPIC,
   TriggerEventDispatchJobPayloadSchema,
@@ -129,6 +131,7 @@ import { runDeepSignalInsightFanout } from './control/deepsignal-insight.js'
 import { executeWorkflowRun } from './control/workflows.js'
 import { reapStuckWorkflowSteps } from './control/workflow-step-reaper.js'
 import { executeRunJob } from './run/execute.js'
+import { executeRunCompletionFollowup } from './run/execute/completion-followup.js'
 import {
   executeRunMemoryConsolidationJob,
   MEMORY_CONSOLIDATION_TOPIC,
@@ -399,6 +402,30 @@ export const startWorker = async (
     {
       signal: abortController.signal,
     },
+  )
+
+  subscribe(
+    RUN_COMPLETION_FOLLOWUP_TOPIC,
+    async (job) => {
+      const payload = RunCompletionFollowupJobPayloadSchema.parse(job.payload)
+      await executeRunCompletionFollowup(
+        {
+          cloudBrowser,
+          deepSignalMcpIdentity,
+          executorCommandEncryptionSecret: config.auth.secret ?? undefined,
+          ledgerIdentity,
+          mcpSecrets,
+          modelClient,
+          prisma,
+          queueProvider,
+          realtimeTransport,
+          searchConfig: { modelClient, pool },
+          subscriptionSecrets,
+        },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
   )
 
   subscribe(

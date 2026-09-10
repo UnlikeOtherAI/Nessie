@@ -173,6 +173,26 @@ summary and points here; **this file is the rule**.
     failing. A re-entered batch re-emits `agent.tool.start`/`end` and writes a
     second `ToolCall` telemetry row for a tool that did not re-run; the tool's
     effect on the world happens once, which is the invariant that matters.
+  - **Completion.** The final answer/fold, reply metadata, completed run, done
+    task, idle agent and a keyed completion-follow-up job share one database
+    transaction. Realtime publication, terminal cleanup and parent
+    plan/delegation/workflow transitions run from that durable job with stable
+    per-audience event keys. A fault after the answer therefore redelivers the
+    remaining work without changing the terminal status or posting the answer
+    again; a newer run's active agent state is never reset by the replay. The
+    worker verifies the completed run and its keyed follow-up after an ambiguous
+    transaction acknowledgement before entering any failure path. If that
+    readback is unavailable, it hands the claim back and asks the queue for a
+    delayed retry without spending retry capacity. The
+    parent workflow's non-terminal continuation has its own stable queue key,
+    so replay after finishing its step cannot schedule it twice. Mention alerts
+    and interactive reply pushes use stable keys and retry transient persistence
+    or publication failures without duplicate notifications. Workflow
+    terminal event/card announcements retain the workflow subsystem's existing
+    best-effort contract and are outside this completion guarantee. Memory-job
+    enqueue failures redeliver the completion follow-up; only structurally
+    missing user/team attribution is a permanent skip. Pending-message drain
+    also has an independent `sweepPendingThreadMessages` recovery owner.
 - Active run lifecycle controls (`api/src/routes/runs.ts` +
   `api/src/services/runs.ts`): org-scoped `GET /api/runs/active` lists live runs
   (+ recently-ended restartable ones); `POST /api/runs/:id/cancel` cancels — a

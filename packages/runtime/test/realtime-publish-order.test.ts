@@ -17,7 +17,7 @@ import {
   resolveRealtimeNotification,
   type RealtimeNotificationEnvelope,
 } from '../src/realtime.js'
-import { publishThreadStreamEvent, publishWsEvent } from '../src/realtime-publish.js'
+import { publishThreadStreamEvent, publishWsEvent } from '../src/realtime-durable-publish.js'
 
 const runIfDatabase = process.env.DATABASE_URL ? test : test.skip
 
@@ -131,6 +131,61 @@ const assertNoLeakedClients = (pool: Pool, label: string): void => {
     `${label}: a pooled client was never released`,
   )
 }
+
+runIfDatabase('keyed ws replay normalizes undefined fields and rejects changed payloads', async () => {
+  const connectionString = process.env.DATABASE_URL!
+  const channel = `nessie_realtime_test_${randomUUID().replaceAll('-', '')}`
+  const pool = new Pool({ connectionString, max: 5 })
+  const listener = await startListener(connectionString, channel)
+  const seed = await seedTenant(pool)
+  const organizationId = parseOrganizationId(seed.organizationId)
+  const channelId = parseChannelId(seed.channelId)
+  const scopes: WsScope[] = [
+    { kind: 'organization', organizationId },
+    { kind: 'channel', channelId },
+  ]
+  const idempotencyKey = `test:event:${randomUUID()}`
+  const message = {
+    data: {
+      agentId: randomUUID(),
+      currentToolName: undefined,
+      since: '2026-09-10T10:00:00.000Z',
+      status: 'idle',
+    },
+    event: 'agent.status',
+    ts: '2026-09-10T10:00:00.000Z',
+    type: 'event' as const,
+  }
+
+  try {
+    const first = await publishWsEvent(pool, channel, { idempotencyKey, message, scopes })
+    const replay = await publishWsEvent(pool, channel, { idempotencyKey, message, scopes })
+    assert.equal(replay?.id, first?.id)
+    await waitForNotifications(listener.received, 1)
+    assert.equal(listener.received.length, 1, 'a replay must not announce the row again')
+    const rows = await pool.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM realtime_events WHERE idempotency_key = $1',
+      [idempotencyKey],
+    )
+    assert.equal(rows.rows[0]?.count, '1')
+
+    await assert.rejects(
+      publishWsEvent(pool, channel, {
+        idempotencyKey,
+        message: {
+          ...message,
+          data: { ...message.data, since: '2026-09-10T10:00:01.000Z' },
+        },
+        scopes,
+      }),
+      /idempotency key reused for another audience or event/,
+    )
+  } finally {
+    await listener.stop()
+    await dropTenant(pool, seed.organizationId)
+    await pool.end()
+  }
+})
 
 /**
  * The ordering defect this locks out: publisher A inserts id 100, publisher B

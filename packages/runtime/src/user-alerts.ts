@@ -73,6 +73,8 @@ export type MentionUserAlertInput = {
   actorUserId?: string | null
   actorAgentId?: string | null
   mentionedUserIds: string[]
+  /** Stable source generation for callers whose work may be replayed. */
+  eventKey?: string
 }
 
 /**
@@ -101,7 +103,9 @@ export const createMentionUserAlerts = async (
       channelId: input.channelId,
       actorUserId: input.actorUserId ?? null,
       actorAgentId: input.actorAgentId ?? null,
+      ...(input.eventKey ? { eventKey: input.eventKey } : {}),
     })),
+    skipDuplicates: input.eventKey !== undefined,
   })
 
   return recipientIds

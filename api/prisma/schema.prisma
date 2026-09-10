@@ -2259,6 +2259,7 @@ model ThreadStreamEvent {
   eventName String   @map("event_name")
   data      Json     @db.JsonB
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  idempotencyKey String? @unique(map: "thread_stream_events_idempotency_key_key") @map("idempotency_key")
   thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, id], map: "idx_thread_stream_events_replay")
@@ -2277,6 +2278,7 @@ model RealtimeEvent {
   eventType       String       @map("event_type")
   payload         Json         @db.JsonB
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  idempotencyKey  String?      @unique(map: "realtime_events_idempotency_key_key") @map("idempotency_key")
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")

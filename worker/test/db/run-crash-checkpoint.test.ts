@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
+import { Pool } from 'pg'
 
 import {
   clearCrashCheckpoint,
@@ -10,12 +11,16 @@ import {
   persistCrashCheckpoint,
   type CrashCheckpointTarget,
 } from '../../src/run/execute/crash-checkpoint.js'
+import { commitSuccessfulRun } from '../../src/run/execute/completion-commit.js'
 import {
   claimRunForExecution,
   handBackRunExecution,
+  handBackRunExecutionForRetry,
   updateRunStatus,
   withRunExecutorFence,
 } from '../../src/run/execute/lifecycle.js'
+import { PgQueueProvider, QueueRetryAfterError, type QueueSubscription } from '@nessie/runtime'
+import { FatalToolExecutionError } from '../../src/run/tool-execution-errors.js'
 import type { LoopResumeState } from '../../src/run/loop-resume.js'
 import { runDatabaseTest } from './support.js'
 
@@ -210,6 +215,45 @@ runDatabaseTest('a terminal transition deletes the crash checkpoint', async () =
   }
 })
 
+runDatabaseTest('a takeover completion clears the previous executor checkpoint', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  try {
+    await withRunExecutorFence(fixture.runId, async () => {
+      const firstClaim = await claimRunForExecution(prisma, fixture.runId)
+      await persistCrashCheckpoint(prisma, targetOf(fixture), firstClaim.token!, stateAt(3))
+    })
+    await prisma.run.update({
+      data: { executorHeartbeatAt: new Date(0) },
+      where: { id: fixture.runId },
+    })
+
+    await withRunExecutorFence(fixture.runId, async () => {
+      const takeover = await claimRunForExecution(prisma, fixture.runId)
+      assert.equal(takeover.claimed, true)
+      await commitSuccessfulRun(
+        prisma,
+        {
+          agentId: fixture.agentId,
+          completedAt: new Date(),
+          runId: fixture.runId,
+          taskId: fixture.taskId,
+        },
+        async () => undefined,
+      )
+    })
+
+    assert.equal(
+      await prisma.runCheckpoint.count({ where: { runId: fixture.runId } }),
+      0,
+      'the held run-row fence authorizes clearing state stamped by the previous executor',
+    )
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
 runDatabaseTest('a resume checkpoint survives the terminal transition that sheds crash state', async () => {
   const prisma = new PrismaClient()
   const fixture = await seed(prisma)
@@ -268,6 +312,130 @@ runDatabaseTest('a drained run is immediately claimable by the next worker', asy
     assert.equal((await loadCrashCheckpoint(prisma, fixture.runId))?.iterations, 2)
   } finally {
     await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a superseded executor cannot hand the successor claim back', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  const winnerToken = randomUUID()
+  try {
+    await withRunExecutorFence(fixture.runId, async () => {
+      const claim = await claimRunForExecution(prisma, fixture.runId)
+      assert.equal(claim.claimed, true)
+      await prisma.$executeRawUnsafe(
+        'UPDATE runs SET executor_token = $2::uuid, executor_heartbeat_at = now() '
+          + 'WHERE id = $1::uuid',
+        fixture.runId,
+        winnerToken,
+      )
+
+      assert.equal(await handBackRunExecution(prisma, fixture.runId), false)
+      const run = await prisma.run.findUniqueOrThrow({
+        select: { executorHeartbeatAt: true, executorToken: true },
+        where: { id: fixture.runId },
+      })
+      assert.equal(run.executorToken, winnerToken)
+      assert.notEqual(run.executorHeartbeatAt, null)
+    })
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a failed hand-back requests one delayed queue redelivery', async () => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  try {
+    await withRunExecutorFence(fixture.runId, async () => {
+      const claim = await claimRunForExecution(prisma, fixture.runId)
+      assert.equal(claim.claimed, true)
+      const unavailable = {
+        $executeRaw: async () => { throw new Error('database unavailable') },
+      } as unknown as PrismaClient
+      await assert.rejects(
+        handBackRunExecutionForRetry(unavailable, fixture.runId),
+        (error: unknown) => {
+          assert.ok(error instanceof QueueRetryAfterError)
+          assert.ok(error.delayMs > 2 * 60 * 1_000)
+          return true
+        },
+      )
+    })
+  } finally {
+    await cleanup(prisma, fixture)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a fatal first queue attempt immediately resumes the same run once', async () => {
+  const prisma = new PrismaClient()
+  const pool = new Pool({ connectionString: process.env['DATABASE_URL'], max: 4 })
+  const fixture = await seed(prisma)
+  const topic = `test.run-fatal-resume.${randomUUID()}`
+  let subscription: QueueSubscription | undefined
+  let dispatches = 0
+  const attempts: number[] = []
+  const startedAt = Date.now()
+  try {
+    await prisma.queueJob.create({
+      data: { maxAttempts: 3, payload: {}, topic },
+    })
+    const provider = new PgQueueProvider(pool)
+    subscription = provider.subscribe(
+      topic,
+      async (job) => withRunExecutorFence(fixture.runId, async () => {
+        attempts.push(job.attempt)
+        const claim = await claimRunForExecution(prisma, fixture.runId)
+        assert.equal(claim.claimed, true)
+        if (job.attempt === 1) {
+          dispatches += 1
+          await persistCrashCheckpoint(prisma, targetOf(fixture), claim.token!, stateAt(2))
+          await prisma.runToolEffect.create({
+            data: {
+              result: { inputSummary: 'send once', output: 'sent', success: true },
+              runId: fixture.runId,
+              settledAt: new Date(),
+              state: 'completed',
+              toolCallId: 'call-once',
+              toolName: 'send_message',
+            },
+          })
+          const fatal = new FatalToolExecutionError('retryable tool infrastructure failure')
+          await handBackRunExecutionForRetry(prisma, fixture.runId)
+          throw fatal
+        }
+
+        assert.equal(claim.priorStatus, 'running')
+        assert.equal((await loadCrashCheckpoint(prisma, fixture.runId))?.iterations, 2)
+        assert.equal(
+          await prisma.runToolEffect.count({ where: { runId: fixture.runId } }),
+          1,
+          'the successor observes the first dispatch instead of dispatching it again',
+        )
+        await updateRunStatus(prisma, fixture.runId, 'completed')
+        subscription?.stop()
+      }),
+      { pollIntervalMs: 25 },
+    )
+    await subscription.done
+
+    assert.deepEqual(attempts, [1, 2])
+    assert.equal(dispatches, 1)
+    assert.ok(Date.now() - startedAt < 5_000, 'the successor waited for the stale-lease window')
+    assert.equal(await prisma.runCheckpoint.count({ where: { runId: fixture.runId } }), 0)
+    assert.equal(await prisma.runToolEffect.count({ where: { runId: fixture.runId } }), 0)
+    assert.equal(
+      (await prisma.run.findUniqueOrThrow({ where: { id: fixture.runId } })).status,
+      'completed',
+    )
+  } finally {
+    subscription?.stop()
+    await pool.query('DELETE FROM queue_jobs WHERE topic = $1', [topic])
+    await cleanup(prisma, fixture)
+    await pool.end()
     await prisma.$disconnect()
   }
 })

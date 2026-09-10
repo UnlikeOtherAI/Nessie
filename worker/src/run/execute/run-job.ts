@@ -2,6 +2,7 @@ import {
   failDeepWaterHandoffStart,
   findDeepWaterHandoffRun,
   markDeepWaterHandoffRecoveryNeeded,
+  QueueRetryAfterError,
   type DeepWaterHandoffRunLocator,
   type InvocationRecord,
 } from '@nessie/runtime'
@@ -48,7 +49,7 @@ import {
   assertExecutorHoldsRun,
   claimRunForExecution,
   loadRunContext,
-  handBackRunExecution,
+  handBackRunExecutionForRetry,
   RunFencedError,
   setAgentStatus,
   startExecutorHeartbeat,
@@ -566,7 +567,7 @@ const runJobUnderFence = async (
         // from its prompt (`createCrashCheckpointWriter`).
         heartbeat?.stop()
         heartbeat = null
-        const handedBack = await handBackRunExecution(deps.prisma, context.run.id)
+        const handedBack = await handBackRunExecutionForRetry(deps.prisma, context.run.id)
         if (!handedBack) {
           console.warn(
             `[worker] run ${context.run.id} was already handed to another executor during drain`,
@@ -578,7 +579,10 @@ const runJobUnderFence = async (
         )
         throw failureError
       }
-      if (shouldRetryRunWithoutTerminalizing(failureError, queueAttempt)) {
+      if (
+        failureError instanceof QueueRetryAfterError
+        || shouldRetryRunWithoutTerminalizing(failureError, queueAttempt)
+      ) {
         // This throw deliberately nacks the queue job. Stop this execution's
         // heartbeat and release its fenced run claim first, otherwise the
         // immediately re-delivered queue attempt sees a fresh heartbeat,
@@ -587,7 +591,7 @@ const runJobUnderFence = async (
         // and tool-effect claims intact for the successor.
         heartbeat?.stop()
         heartbeat = null
-        const handedBack = await handBackRunExecution(deps.prisma, context.run.id)
+        const handedBack = await handBackRunExecutionForRetry(deps.prisma, context.run.id)
         if (!handedBack) {
           console.warn(
             `[worker] run ${context.run.id} was already claimed by another executor during retry`,

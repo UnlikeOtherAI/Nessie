@@ -392,6 +392,35 @@ matches no row. Beside it:
   fenced on the current token, so a superseded executor cannot release its
   successor. The next queue attempt can therefore claim the same run immediately
   instead of acknowledging a retry against the previous attempt's fresh heartbeat.
+  If the hand-back UPDATE itself fails, `QueueRetryAfterError` leaves that one
+  attempt pending until just after the two-minute takeover window. The provider
+  advances the attempt only on a real claim, so waiting cannot exhaust retries;
+  the successor then either takes the stale run or observes a live newer holder
+  without releasing or failing it.
+- **Success is one terminal commit plus replayable follow-up.** The answer (or
+  rolling-watch fold), reply bookkeeping, `completed` run, done task, idle
+  agent and keyed `run.completion.followup` queue row commit together. A later
+  phase cannot turn that completed run into `failed` or append a second answer.
+  The follow-up carries immutable answer, reply and completion timestamps and
+  replays plan/delegation/workflow completion, terminal cleanup and realtime.
+  Realtime keys include organization, channel, thread and run; insertion holds
+  the existing per-scope advisory lock through commit and accepts a collision
+  only when both the persisted JSON payload and audience match. A replay never
+  notifies an existing event again, and an older follow-up never writes an
+  agent idle after a newer run has started. An ambiguous COMMIT acknowledgement
+  is resolved by reading back both the completed run and its keyed follow-up
+  before any failure message; an unavailable readback is a delayed retry that
+  preserves retry capacity. A parent workflow continuation uses
+  its stable workflow/step queue key, so a retry can reapply the non-terminal
+  transition without scheduling the continuation twice. Mention alerts and
+  interactive reply pushes use stable keys and propagate transient enqueue or
+  publication failures so the completion job retries them without ringing or
+  notifying twice. Workflow terminal
+  event/card announcements remain best-effort within the workflow subsystem;
+  they are outside this completion guarantee. Memory enqueue is retryable on
+  infrastructure failure and skips only when immutable launch attribution is
+  structurally incomplete. Pending-message draining retains its independent
+  periodic `sweepPendingThreadMessages` recovery path.
 - **Row state a run leaves outside the run gets an out-of-process reaper.** A
   status only the executing process can advance is a status a `SIGKILL` freezes
   for ever, and under autoscaling that kill is routine. `run_document_sessions`
