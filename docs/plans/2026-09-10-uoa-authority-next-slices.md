@@ -62,6 +62,8 @@ kind and occurrence time, with no profile text. Webhook delivery is durable and
 at least once, with bounded retry, an event/subscription idempotency key and HMAC
 over the exact body. Rotate signing material with an explicit overlap. Follow
 the service's outbound egress policy for callback registration and delivery.
+Every delivery attempt re-reads the active credential, exact-org grant and
+subscription; revocation blocks queued retries as well as incoming API calls.
 
 Home: the U1 connection controls expose delivery health and repair. Delta and
 snapshot reads are machine-only integration contracts. Test pagination, deletion,
@@ -106,11 +108,23 @@ first; then shared packages, disclosure, worker dispatch, triggers, workflows,
 approvals and PA tools. Require current UOA standing while preserving verified
 product-owned permissions. Deny-only product suspensions never grant membership.
 
+`ProjectMember` currently has no provenance discriminator. Inventory every writer
+and introduce explicit product-grant/projection provenance, or a separate product
+grant table, in an expand migration. Audit/backfill existing rows and halt on
+ambiguous origins; never infer them from role, name or timestamp. Only proven
+UOA projections can be deleted. Every API and worker predicate intersects live
+UOA org/owning-team standing with the product grant for a restricted resource.
+
 Move auth/me, message/activity/call/alert/DM/push displays and owner selectors to
 the same directory boundary. Replace product foreign keys to `OrganizationMember`
-with a stable attribution anchor containing no role or membership state. Include
-agent ownership, subscriptions, settings, browser grants and mailbox ownership.
-Each slice must update all of its API, worker and UI callers together.
+with a stable attribution anchor: an immutable unique organisation plus UOA
+subject/reference binding in bound mode, or organisation plus local user in
+no-IdP mode. It contains no email, name, avatar, role or membership state and
+cannot be rebound by email. It survives removal only for product/audit attribution;
+its existence never grants access. Expand, audit/backfill with orphan, duplicate
+and cross-org refusal, migrate FKs, then cut over consumers before deleting old
+membership rows. Include agent ownership, subscriptions, settings, browser grants
+and mailbox ownership. Update each slice's API, worker and UI callers together.
 
 ## N3 — stop mirrors and finish the hierarchy contract
 

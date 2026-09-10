@@ -86,9 +86,9 @@ Implementation status on 10 September 2026:
   landed as `c0f7dd3a0` after all nine checks passed. Board and sprint controls
   share effective project administration and remove stale controls after 403.
 - **8 — Terra:** [PR 453](https://github.com/UnlikeOtherAI/Nessie/pull/453)
-  implements Board/Docs failure and Retry states. Headless verification and
-  screenshot review cover the actual active project while its read is held;
-  final required checks are running.
+  landed as `041855273` after all nine checks passed. Board/Docs failures offer
+  Retry; headless verification and screenshot review cover the actual active
+  project while its read is held.
 - **9 — Terra/Sol:** [PR 452](https://github.com/UnlikeOtherAI/Nessie/pull/452)
   implements tenant enrollment, logout/account ownership and authorized call
   notification clicks. Isolated logout and the following navigation case pass;

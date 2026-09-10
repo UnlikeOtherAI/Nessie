@@ -268,9 +268,10 @@ Nessie's tenants'.
 
 So the authorization mode is a **first-class deliverable of §3**, not an
 afterthought: a dedicated relying-party credential whose reach UOA restricts to
-organisations that granted this product access — the same fact
-`/billing/v1/service-access/confirm` already evaluates — with the snapshot
-refusing any `orgId` outside that set.
+exact organisations whose owners explicitly approved the product's directory
+scopes. `/billing/v1/service-access/confirm` may establish product eligibility;
+it neither creates nor substitutes for directory permission. Snapshot, delta
+and webhook delivery refuse any `orgId` without that active directory grant.
 
 ### `changedSince` over `updated_at` fails OPEN, which is the one direction that matters
 
