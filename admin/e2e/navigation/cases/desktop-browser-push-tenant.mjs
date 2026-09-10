@@ -3,6 +3,7 @@
 // the browser and break another organization that deliberately registered it.
 import { createChecks } from '../lib/expect.mjs'
 import { gotoPath, shot } from '../lib/page.mjs'
+import { call, seedBrowserPushSession } from '../lib/seed.mjs'
 
 const ENDPOINT = 'https://push.fixture.test/shared-browser'
 
@@ -49,8 +50,9 @@ const installPushFixture = async (page) => {
 }
 
 export const desktopBrowserPushTenant = {
+  isolatedSession: (seed) => seedBrowserPushSession(seed.token),
   name: 'desktop-browser-push-tenant',
-  run: async ({ page }) => {
+  run: async ({ page, seed }) => {
     const checks = createChecks('desktop-browser-push-tenant')
     let registrations = [ENDPOINT]
     let removals = 0
@@ -108,6 +110,11 @@ export const desktopBrowserPushTenant = {
       const messages = window.__webPushFixture.messages()
       return messages.length > 0 ? messages.at(-1).userId : 'missing'
     }), null)
+    const sharedChannels = await call('/api/channels', { token: seed.token })
+    checks.ok(
+      'logout leaves the shared suite session authorized for the next case',
+      sharedChannels.some((channel) => channel.id === seed.channels[0].id),
+    )
     checks.close()
     return { checks: checks.checks, frames }
   },
