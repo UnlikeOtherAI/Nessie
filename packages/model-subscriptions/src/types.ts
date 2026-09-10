@@ -68,6 +68,12 @@ export type SubscriptionProviderAdapter = {
       | 'codex-subscription'
     /** Code constant. The one allowed origin for this adapter's dispatch. */
     baseUrl: string
+    /**
+     * DeepSeek's tool-result protocol needs either its private reasoning
+     * history or the documented nonthinking mode. This code-declared setting
+     * travels only on the personal DeepSeek lane.
+     */
+    deepseekThinkingMode?: 'disabled'
   }
   models: SubscriptionModelOption[]
   /** Rendered verbatim in the linking UI before a person commits. */

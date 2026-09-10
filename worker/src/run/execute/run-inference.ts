@@ -60,7 +60,13 @@ export const resolveMainOutputTokens = (input: {
 
 type MainOutputProviderConfig = Pick<
   Awaited<ReturnType<typeof resolveStageProviderConfig>>,
-  'apiKey' | 'baseUrl' | 'connectorKind' | 'extraHeaders' | 'model' | 'providerKey'
+  | 'apiKey'
+  | 'baseUrl'
+  | 'connectorKind'
+  | 'deepseekThinkingMode'
+  | 'extraHeaders'
+  | 'model'
+  | 'providerKey'
 >
 
 type StageProviderResolver = (
@@ -167,6 +173,9 @@ export const createRunInference = (
     const service = (options.inferenceServiceFactory ?? createInferenceService)({
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
+      ...(providerConfig.deepseekThinkingMode
+        ? { deepseekThinkingMode: providerConfig.deepseekThinkingMode }
+        : {}),
       ...(providerConfig.extraHeaders ? { extraHeaders: providerConfig.extraHeaders } : {}),
       modelName: providerConfig.model,
       provider: runtimeProvider,

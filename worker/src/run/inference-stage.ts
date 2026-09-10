@@ -252,6 +252,9 @@ export const executeStage = async (
     const serviceConfig: ModelProviderConfig = {
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
+      ...(providerConfig.deepseekThinkingMode
+        ? { deepseekThinkingMode: providerConfig.deepseekThinkingMode }
+        : {}),
       ...(providerConfig.extraHeaders
         ? { extraHeaders: providerConfig.extraHeaders }
         : {}),
