@@ -43,7 +43,11 @@ and board-source product docs to match actual supported behavior.
 **Delivered:** Search uses the shared ticket keyset query and the existing
 task-detail navigation contract. It pages entitled project tickets only and
 applies run disclosure before returning a row or continuation; the assistant
-uses the same query and guard.
+uses the same query and guard. Its authenticated cursor records whether the
+anchor was displayed: ordinary continuations remain exclusive, while reversing
+from an empty page includes a displayed anchor and excludes a hidden scan
+anchor. This keeps both directions reachable without repeating visible rows or
+spending the bounded scan twice on a withheld row.
 
 ## 7. Project administration permissions
 

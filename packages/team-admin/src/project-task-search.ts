@@ -102,10 +102,12 @@ const TICKET_SEARCH_CURSOR_KEY_PURPOSE = 'nessie.ticket-search-cursor.v1\0'
 const TICKET_SEARCH_CURSOR_TTL_MS = 10 * 60 * 1000
 
 type TicketSearchCursor = {
+  anchorVisible: boolean
   createdAt: string
   expiresAt: number
   filterKey: string
   id: string
+  inclusive: boolean
   organizationId: string
   userId: string
   version: 1
@@ -131,10 +133,12 @@ const parseCursor = (value: unknown): TicketSearchCursor | null => {
   if (!value || typeof value !== 'object') return null
   const cursor = value as Partial<TicketSearchCursor>
   if (
-    typeof cursor.createdAt !== 'string'
+    typeof cursor.anchorVisible !== 'boolean'
+    || typeof cursor.createdAt !== 'string'
     || typeof cursor.expiresAt !== 'number'
     || typeof cursor.filterKey !== 'string'
     || typeof cursor.id !== 'string'
+    || typeof cursor.inclusive !== 'boolean'
     || typeof cursor.organizationId !== 'string'
     || typeof cursor.userId !== 'string'
     || cursor.version !== 1
@@ -175,7 +179,10 @@ export const searchProjectTasks = async (
   const text = filters.text?.trim()
   const unmapped = filters.unmappedAssignee?.trim()
   const filterKey = cursorFilterKey(filters, options.projectIds)
-  let cursor = decodeKeysetCursor(filters.cursor)
+  const decodedKeysetCursor = decodeKeysetCursor(filters.cursor)
+  let cursor = decodedKeysetCursor
+    ? { ...decodedKeysetCursor, anchorVisible: false, inclusive: false }
+    : null
   if (filters.cursor && options.continuation) {
     try {
       const decoded = parseCursor(openOpaqueCursor({
@@ -190,7 +197,12 @@ export const searchProjectTasks = async (
         || decoded.organizationId !== organizationId
         || decoded.userId !== options.continuation.userId
       ) throw new TicketSearchCursorError('Invalid task search cursor')
-      cursor = { createdAt: new Date(decoded.createdAt), id: decoded.id }
+      cursor = {
+        anchorVisible: decoded.anchorVisible,
+        createdAt: new Date(decoded.createdAt),
+        id: decoded.id,
+        inclusive: decoded.inclusive,
+      }
     } catch (error) {
       if (error instanceof TicketSearchCursorError) throw error
       throw new TicketSearchCursorError('Invalid task search cursor')
@@ -209,11 +221,14 @@ export const searchProjectTasks = async (
 
   while (readable.length <= limit && scanned < TICKET_SEARCH_SCAN_LIMIT) {
     const take = Math.min(limit + 1, TICKET_SEARCH_SCAN_LIMIT - scanned)
+    const idCompare = direction === 'backward'
+      ? scanCursor?.inclusive ? 'gte' : 'gt'
+      : scanCursor?.inclusive ? 'lte' : 'lt'
     const cursorWhere: Prisma.TaskWhereInput | undefined = scanCursor
       ? {
           OR: [
             { updatedAt: { [compare]: scanCursor.createdAt } },
-            { updatedAt: scanCursor.createdAt, id: { [compare]: scanCursor.id } },
+            { updatedAt: scanCursor.createdAt, id: { [idCompare]: scanCursor.id } },
           ],
         }
       : undefined
@@ -257,7 +272,7 @@ export const searchProjectTasks = async (
     const scannedTask = tasks.at(-1)
     if (!scannedTask) break
     lastScanned = { createdAt: scannedTask.updatedAt, id: scannedTask.id }
-    scanCursor = lastScanned
+    scanCursor = { ...lastScanned, anchorVisible: false, inclusive: false }
   }
 
   const hasAdjacentReadable = readable.length > limit
@@ -267,7 +282,10 @@ export const searchProjectTasks = async (
     : readable.slice(0, limit)
   const first = data.at(0)
   const last = data.at(-1)
-  const cursorFor = (anchor: { createdAt: Date; id: string } | undefined): string | null => {
+  const cursorFor = (
+    anchor: { createdAt: Date; id: string } | undefined,
+    cursorOptions: { anchorVisible?: boolean; inclusive?: boolean } = {},
+  ): string | null => {
     if (!anchor) return null
     if (!options.continuation) return encodeKeysetCursor(anchor)
     return sealOpaqueCursor({
@@ -275,10 +293,12 @@ export const searchProjectTasks = async (
       prefix: TICKET_SEARCH_CURSOR_PREFIX,
       secret: options.continuation.secret,
     }, {
+      anchorVisible: Boolean(cursorOptions.anchorVisible),
       createdAt: anchor.createdAt.toISOString(),
       expiresAt: Date.now() + TICKET_SEARCH_CURSOR_TTL_MS,
       filterKey,
       id: anchor.id,
+      inclusive: Boolean(cursorOptions.inclusive),
       organizationId,
       userId: options.continuation.userId,
       version: 1,
@@ -287,6 +307,10 @@ export const searchProjectTasks = async (
   const firstAnchor = first ? { createdAt: new Date(first.updatedAt), id: first.id } : undefined
   const lastAnchor = last ? { createdAt: new Date(last.updatedAt), id: last.id } : undefined
   const nextAnchor = hasAdjacentReadable ? lastAnchor : lastScanned
+  const sameAnchor = (
+    left: { createdAt: Date; id: string } | undefined,
+    right: { createdAt: Date; id: string } | undefined,
+  ): boolean => Boolean(left && right && left.id === right.id && left.createdAt.getTime() === right.createdAt.getTime())
 
   return direction === 'backward'
     ? {
@@ -300,22 +324,36 @@ export const searchProjectTasks = async (
           // when its preceding candidates were all filtered out.
           hasMore: Boolean(cursor),
           nextCursor: cursor && (last
-            ? cursorFor(lastAnchor)
-            : hasBudgetContinuation ? cursorFor(lastScanned) : cursorFor(cursor)),
+            ? cursorFor(lastAnchor, { anchorVisible: true })
+            : hasBudgetContinuation
+              ? cursorFor(lastScanned)
+              : cursorFor(cursor, {
+                  anchorVisible: cursor.anchorVisible,
+                  inclusive: cursor.anchorVisible,
+                })),
           prevCursor: hasAdjacentReadable
-            ? cursorFor(firstAnchor)
-            : hasBudgetContinuation ? cursorFor(lastScanned) : null,
+            ? cursorFor(firstAnchor, { anchorVisible: true })
+            : hasBudgetContinuation
+              ? cursorFor(lastScanned, { anchorVisible: sameAnchor(lastScanned, firstAnchor) })
+              : null,
         },
       }
     : {
         data,
         meta: {
           hasMore: hasAdjacentReadable || hasBudgetContinuation,
-          nextCursor: hasAdjacentReadable || hasBudgetContinuation ? cursorFor(nextAnchor) : null,
+          nextCursor: hasAdjacentReadable || hasBudgetContinuation
+            ? cursorFor(nextAnchor, { anchorVisible: sameAnchor(nextAnchor, lastAnchor) })
+            : null,
           // A budget-limited page can contain only hidden candidates. Its
           // input cursor is still the reverse doorway; without it the generic
           // pager treats the page as stale and strands the search at page 0.
-          prevCursor: cursor && (first ? cursorFor(firstAnchor) : cursorFor(cursor)),
+          prevCursor: cursor && (first
+            ? cursorFor(firstAnchor, { anchorVisible: true })
+            : cursorFor(cursor, {
+                anchorVisible: cursor.anchorVisible,
+                inclusive: cursor.anchorVisible,
+              })),
         },
       }
 }
