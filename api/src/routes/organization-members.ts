@@ -27,6 +27,7 @@ import {
   type UoaRosterPage,
 } from '../services/uoa-org-roster.js'
 import { resolveOrganizationAdministrationAccess } from '../services/uoa-organization-administration.js'
+import { uoaIdentityDirectory } from '../services/uoa-identity-directory.js'
 import { sendMemberManagementError } from './member-management-errors.js'
 import type { RouteDeps } from './types.js'
 
@@ -178,6 +179,9 @@ export const registerOrganizationMembersRoutes = (
         ),
         actorContext,
       )
+      // A mutation that can change the organisation roster must make this
+      // process forget its short-lived display projection immediately.
+      uoaIdentityDirectory.invalidateOrganization(orgId)
       if (options.audit) {
         await emitAuditEvent(deps.prisma, {
           actorContext,
