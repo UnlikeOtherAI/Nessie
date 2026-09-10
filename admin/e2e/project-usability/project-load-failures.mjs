@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { openViewportContext } from '../navigation/lib/browser.mjs'
+import { waitForStackSettled } from '../navigation/lib/freeze.mjs'
 
 const boardPath = (projectId) => `/api/projects/${projectId}/boards`
 const spacePath = '/api/knowledge-base/spaces'
@@ -101,10 +102,11 @@ export const exerciseProjectLoadFailures = async ({
       (projectId) => window.location.pathname === `/projects/${projectId}/board`,
       destinationProject.id,
     )
+    await waitForStackSettled(page)
     const destinationLayer = page
-      .locator('[data-phone-navigation-layer="current"]')
-      .filter({ hasText: 'Loading boards…' })
+      .locator('[data-phone-navigation-layer="current"][data-phone-navigation-route="projects:project"]')
     await destinationLayer.waitFor()
+    await destinationLayer.getByText('Loading boards…', { exact: true }).waitFor()
     assert.equal(
       await destinationLayer.getByText(sourceTask.title, { exact: true }).count(),
       0,
@@ -117,7 +119,7 @@ export const exerciseProjectLoadFailures = async ({
     )
     await shot(page, 'desktop-project-destination-load-pending')
     releaseDestinationBoards?.()
-    await page.locator('[data-kanban-board-viewport]').waitFor()
+    await destinationLayer.locator('[data-kanban-board-viewport]').waitFor()
     holdDestinationBoards = false
   } finally {
     releaseDestinationBoards?.()
