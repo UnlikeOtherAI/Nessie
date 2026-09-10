@@ -181,7 +181,9 @@ summary and points here; **this file is the rule**.
     remaining work without changing the terminal status or posting the answer
     again; a newer run's active agent state is never reset by the replay. The
     worker verifies the completed run and its keyed follow-up after an ambiguous
-    transaction acknowledgement before entering any failure path. If that
+    transaction acknowledgement before entering any failure path. Verification
+    locks the run row and reads the follow-up in the same transaction, which
+    waits for an in-flight COMMIT and cannot combine two snapshots. If that
     readback is unavailable, it hands the claim back and asks the queue for a
     delayed retry without spending retry capacity. The
     parent workflow's non-terminal continuation has its own stable queue key,

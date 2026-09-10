@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import { QueueRetryAfterError } from '@nessie/runtime'
 
 import {
@@ -15,6 +15,31 @@ import { cleanupRunResumeState } from './terminal-cleanup.js'
  * without the durable intent that finishes its required side effects.
  */
 const UNCERTAIN_COMMIT_RETRY_MS = 1_000
+
+const verifySuccessfulCommit = async (
+  prisma: PrismaClient,
+  runId: string,
+): Promise<boolean> => prisma.$transaction(async (tx) => {
+  // This lock is the settlement barrier for an ambiguous COMMIT. It cannot be
+  // granted while the original terminal transaction still owns the run row,
+  // so the follow-up read below observes the same committed decision rather
+  // than racing it on a second connection.
+  const rows = await tx.$queryRaw<Array<{ status: string }>>(
+    Prisma.sql`
+      SELECT status::text AS status
+      FROM runs
+      WHERE id = ${runId}::uuid
+      FOR UPDATE
+    `,
+  )
+  if (rows[0]?.status !== 'completed') return false
+
+  const followup = await tx.queueJob.findUnique({
+    select: { id: true },
+    where: { idempotencyKey: `run-completion-followup:${runId}` },
+  })
+  return followup !== null
+})
 
 export const commitSuccessfulRun = async (
   prisma: PrismaClient,
@@ -68,20 +93,11 @@ export const commitSuccessfulRun = async (
     })
   } catch (transactionError) {
     // COMMIT can succeed while its acknowledgement is lost. Before the generic
-    // failure path posts an error answer, read the atomic decision back. The
-    // keyed follow-up is part of that decision, so both facts prove success.
+    // failure path posts an error answer, wait on the run row and read the
+    // atomic decision back in one transaction. The keyed follow-up is part of
+    // that decision, so both facts prove success.
     try {
-      const [run, followup] = await Promise.all([
-        prisma.run.findUnique({
-          select: { status: true },
-          where: { id: input.runId },
-        }),
-        prisma.queueJob.findUnique({
-          select: { id: true },
-          where: { idempotencyKey: `run-completion-followup:${input.runId}` },
-        }),
-      ])
-      if (run?.status === 'completed' && followup) {
+      if (await verifySuccessfulCommit(prisma, input.runId)) {
         releaseExecutorFence(input.runId)
         return
       }

@@ -191,15 +191,44 @@ runDatabaseTest('completion commit survives a follow-up fault and replays withou
     realtimeTransport: realtime,
     searchConfig: { pool },
   } as unknown as ExecutionDependencies
+  let terminalTransactionCalls = 0
+  let releaseCommit: () => void = () => undefined
+  let markWritesFinished: () => void = () => undefined
+  let ambiguousReadbackStarted = false
+  let topLevelDecisionReads = 0
+  const commitGate = new Promise<void>((resolve) => { releaseCommit = resolve })
+  const writesFinished = new Promise<void>((resolve) => { markWritesFinished = resolve })
   const commitAckLostPrisma = new Proxy(prisma, {
     get(target, property) {
       if (property === '$transaction') {
         return async (...args: unknown[]) => {
-          await (target.$transaction as unknown as (
+          terminalTransactionCalls += 1
+          if (terminalTransactionCalls > 1) {
+            return (target.$transaction as unknown as (
+              ...callArgs: unknown[]
+            ) => Promise<unknown>)(...args)
+          }
+          const callback = args[0] as (tx: unknown) => Promise<unknown>
+          const unsettledCommit = (target.$transaction as unknown as (
             ...callArgs: unknown[]
-          ) => Promise<unknown>)(...args)
+          ) => Promise<unknown>)(async (tx: unknown) => {
+            const result = await callback(tx)
+            markWritesFinished()
+            await commitGate
+            return result
+          }, ...args.slice(1))
+          await writesFinished
+          // Verification starts while this transaction still holds the run-row
+          // lock. Releasing on the next timer turn makes its FOR UPDATE the
+          // deterministic settlement barrier before it can inspect follow-up.
+          setTimeout(releaseCommit, 25)
+          void unsettledCommit.catch(() => undefined)
+          ambiguousReadbackStarted = true
           throw new Error('injected lost COMMIT acknowledgement')
         }
+      }
+      if (ambiguousReadbackStarted && (property === 'run' || property === 'queueJob')) {
+        topLevelDecisionReads += 1
       }
       return Reflect.get(target, property, target)
     },
@@ -228,6 +257,16 @@ runDatabaseTest('completion commit survives a follow-up fault and replays withou
 
     const committed = await prisma.run.findUniqueOrThrow({ where: { id: run.id } })
     assert.equal(committed.status, 'completed')
+    assert.equal(
+      terminalTransactionCalls,
+      2,
+      'the lost acknowledgement is resolved through one verification transaction',
+    )
+    assert.equal(
+      topLevelDecisionReads,
+      0,
+      'run and follow-up are not read independently across snapshots',
+    )
     assert.equal((await prisma.agent.findUniqueOrThrow({ where: { id: agent.id } })).status, 'idle')
     assert.equal(await prisma.message.count({ where: { threadId: thread.id } }), 1)
     assert.equal(
