@@ -159,7 +159,7 @@ export const exerciseProjectAdministrationPermissions = async ({
         'a server 403 did not remove the stale sprint control',
       )
       await boardControls.configure.waitFor({ state: 'hidden' })
-      await page.getByText(sprintName, { exact: true }).waitFor()
+      await page.locator('span.font-semibold').filter({ hasText: sprintName }).waitFor()
       assert.equal(await page.getByRole('button', { name: 'Start', exact: true }).count(), 0)
     } finally {
       await memberPage.close()
