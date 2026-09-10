@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 
 import {
   AgentModelOptionSchema,
@@ -27,6 +28,7 @@ import {
   validateAgentCreateInput,
 } from '../services/agents.js'
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
+import { AgentMessageCursorError } from '../services/agent-message-cursor.js'
 import { countPausedPrivateAgents } from '../services/private-agent-lifecycle.js'
 import {
   AGENT_BINDING_ERROR_CODES,
@@ -54,6 +56,12 @@ import {
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
 import { registerAgentDocumentRoutes } from './agent-documents.js'
+
+const AgentMessagesQuerySchema = z.object({
+  cursor: z.string().min(1).max(2048).optional(),
+  direction: z.enum(['backward', 'forward']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+})
 
 const validateAgentAvatarAttachment = async (input: {
   actorContext: NonNullable<ReturnType<RouteDeps['requireActorContext']>>
@@ -815,18 +823,31 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     const { agentId } = request.params as { agentId: string }
-    const query = request.query as { limit?: string; offset?: string }
-    const limit = Math.min(Math.max(Number(query.limit ?? '25'), 1), 100)
-    const offset = Math.max(Number(query.offset ?? '0'), 0)
+    const query = parseInput(AgentMessagesQuerySchema, request.query, reply, 'query')
+    if (!query) return reply
     const visibility = createAgentVisibilityScope(actorContext)
     if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    return createApiResponse(
-      AgentMessagePageSchema.parse(await loadAgentMessages(prisma, agentId, limit, offset, { visibility })),
-    )
+    let page
+    try {
+      page = await loadAgentMessages(prisma, agentId, {
+        cursor: query.cursor,
+        cursorSecret: deps.authSecret,
+        direction: query.direction,
+        limit: query.limit ?? 25,
+        visibility,
+      })
+    } catch (error) {
+      if (error instanceof AgentMessageCursorError) {
+        sendApiError(reply, 400, 'AGENT_MESSAGE_CURSOR_INVALID', 'Invalid message history cursor', 'query')
+        return reply
+      }
+      throw error
+    }
+    return createApiResponse(AgentMessagePageSchema.parse(page.data), page.meta)
   })
 
   app.get('/api/agents/:agentId/children', async (request, reply) => {

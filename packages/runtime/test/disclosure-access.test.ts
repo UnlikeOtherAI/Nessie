@@ -147,8 +147,10 @@ const buildGrantPrisma = (input: {
   const prisma = {
     agent: { findMany: async () => [] },
     channel: {
-      findFirst: async () => input.publicDestination ? { id: 'channel-1' } : null,
-      findMany: async () => { calls.push('channel'); return input.channels ?? [] },
+      findMany: async () => {
+        calls.push('channel')
+        return input.channels ?? (input.publicDestination ? [{ id: 'channel-1', visibility: 'public' }] : [])
+      },
     },
     channelMember: { findMany: async () => { calls.push('channelMember'); return [{ channelId: 'channel-1' }, { channelId: 'private-channel' }, { channelId: 'public-channel' }] } },
     organization: { findUnique: async () => ({ externalOrgId: null }) },
@@ -203,6 +205,28 @@ test('a page of withheld rows costs the same number of queries however long it i
 
   assert.deepEqual(short, ['disclosureGrant', 'scopeDisclosureGrant'])
   assert.deepEqual(long, short)
+})
+
+test('mixed-destination pages still resolve grants in one bounded batch', async () => {
+  const { calls, prisma } = buildGrantPrisma({
+    channels: Array.from({ length: 25 }, (_unused, index) => ({
+      id: `destination-${index}`,
+      visibility: 'public',
+    })),
+  })
+  const granted = await resolveGrantedScopeKeysForMessages(prisma, {
+    channelId: 'unused-default',
+    messages: withheldPage(25).map((message, index) => ({
+      ...message,
+      destinationChannelId: `destination-${index}`,
+    })),
+    organizationId: 'org-1',
+    viewerChannelIds: [],
+    viewerUserId: 'user-1',
+  })
+
+  assert.equal(granted.size, 25)
+  assert.deepEqual(calls, ['channel', 'disclosureGrant', 'scopeDisclosureGrant'])
 })
 
 test('one granter is re-checked once for a page, and its grant lifts every row it covers', async () => {

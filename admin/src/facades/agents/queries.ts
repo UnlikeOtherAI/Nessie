@@ -5,7 +5,6 @@ import type {
   AgentActivityResponse,
   AgentChild,
   AgentDocumentsResponse,
-  AgentMessagePage,
   AgentStatusResponse,
   ToolCallEntry,
 } from '@nessie/schemas'
@@ -121,17 +120,6 @@ export const useAgentActivity = (agentId?: string) => {
     placeholderData: keepPreviousData,
     queryKey: agentKeys.activity(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/activity`),
-    enabled: Boolean(agentId),
-  })
-}
-
-export const useAgentMessages = (agentId?: string, limit = 25, offset = 0) => {
-  const apiClient = useApiClient()
-
-  return useQuery<AgentMessagePage>({
-    placeholderData: keepPreviousData,
-    queryKey: agentKeys.messagePage(agentId, limit, offset),
-    queryFn: () => apiClient.get(`/api/agents/${agentId}/messages?limit=${limit}&offset=${offset}`),
     enabled: Boolean(agentId),
   })
 }
