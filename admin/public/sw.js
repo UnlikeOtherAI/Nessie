@@ -103,14 +103,17 @@ const titleFor = (payload) =>
     ? `${payload.title || 'Nessie'} · ${payload.subtitle}`
     : (payload.title || 'Nessie')
 
-const closeNotificationsWithTag = async (tag) => {
+const closeNotificationsWithTag = async (tag, recipientUserId) => {
   const notifications = await self.registration.getNotifications({ tag })
-  notifications.forEach((notification) => notification.close())
+  notifications.forEach((notification) => {
+    const notificationRecipient = isObject(notification.data) ? notification.data.recipientUserId : null
+    if (notificationRecipient === recipientUserId) notification.close()
+  })
 }
 
 const closeCallRing = async (data) => {
   const tag = callTag(data)
-  await closeNotificationsWithTag(tag)
+  await closeNotificationsWithTag(tag, data.recipientUserId)
 
   // Chromium expects each push to show a notification. This low-volume cancel
   // cleanup is allowed to use a silent notification that closes immediately;
@@ -122,7 +125,7 @@ const closeCallRing = async (data) => {
     silent: true,
     tag,
   })
-  await closeNotificationsWithTag(tag)
+  await closeNotificationsWithTag(tag, data.recipientUserId)
 }
 
 const callChannelUrl = (data, queryKey) => {
@@ -227,7 +230,7 @@ self.addEventListener('push', (event) => {
           renotify: true,
         }),
       ])
-    if (recipientUserId !== await currentPushOwner()) await closeNotificationsWithTag(callTag(data))
+    if (recipientUserId !== await currentPushOwner()) await closeNotificationsWithTag(callTag(data), recipientUserId)
     return
     }
 
@@ -238,7 +241,7 @@ self.addEventListener('push', (event) => {
       badgeUpdateFor(payload),
       self.registration.showNotification(titleFor(payload), notificationOptions(payload, data, tag)),
     ])
-    if (recipientUserId !== await currentPushOwner()) await closeNotificationsWithTag(tag)
+    if (recipientUserId !== await currentPushOwner()) await closeNotificationsWithTag(tag, recipientUserId)
   })())
 })
 

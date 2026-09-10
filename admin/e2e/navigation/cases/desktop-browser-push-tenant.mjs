@@ -88,7 +88,7 @@ export const desktopBrowserPushTenant = {
     await gotoPath(page, '/settings/account?tab=notifications')
     await page.getByText('Enabled for this organization on this browser').waitFor()
     await page.getByRole('switch', { name: 'Toggle browser notifications' }).click()
-    await page.getByText('Disabled for this organization').waitFor()
+    await page.getByText('Disabled for this organization', { exact: true }).waitFor()
     const frames = [await shot(page, 'desktop-browser-push-tenant', '00-disabled-current-tenant')]
 
     checks.equal('the current tenant registration is removed once', removals, 1)
