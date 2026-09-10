@@ -1,1 +1,1 @@
-export { canUserReadRunDerivedRecord } from '@nessie/runtime'
+export { canUserReadRunDerivedRecord, runIsSearchSafe } from '@nessie/runtime'

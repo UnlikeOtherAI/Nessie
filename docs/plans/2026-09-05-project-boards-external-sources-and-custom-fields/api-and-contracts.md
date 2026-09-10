@@ -136,7 +136,7 @@ search surface, and a person looking at one can see it.
 
 | tool | what it answers | gate |
 |---|---|---|
-| `ticket_search` | text over title, purpose, detail and the provider key (`ENG-214`), narrowed by project, board, status, priority, colleague, unmapped provider person, or nobody at all | no project to gate, so `listAccessibleProjectIds` travels *with* the query; the disclosure basis is stamped for every project it actually answered from |
+| `ticket_search` / human Search | text over title, purpose, detail and the provider key (`ENG-214`), narrowed by project, board, status, priority, colleague, unmapped provider person, or nobody at all | `listAccessibleProjectIds` becomes an explicit project set before the one shared keyset search; projectless, channel-root, and personal cross-project tasks have no board doorway, and a human run-derived result is withheld until the canonical disclosure read allows it. Assistant search additionally excludes every non-public or provenance-carrying run until its tool output can record all source lineage. |
 | `ticket_people_read` | who a ticket can be attributed to: colleagues, and the provider users a mirrored ticket names that Nessie has no account for, with the count each holds | the named project, when one is given |
 | `ticket_search_remote` | the connected providers asked live, for items the mirror does not hold (§5.13) | the projects whose sources may be asked, resolved to a list because a `BoardSource` belongs to exactly one project |
 

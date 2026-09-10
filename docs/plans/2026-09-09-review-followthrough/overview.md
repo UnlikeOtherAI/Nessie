@@ -80,8 +80,10 @@ Implementation status on 10 September 2026:
 - **5 — Terra:** [PR 442](https://github.com/UnlikeOtherAI/Nessie/pull/442)
   landed as `31811ff51` after all nine CI checks passed. Chat cards and cold
   links open the exact task in the shared dialog with its current placement.
-- **6 — Terra:** implementing the Search doorway over shared task search,
-  including text/entitlement composition, disclosure filtering and pagination.
+- **6 — Terra:** entitled native and mirrored ticket search now uses the
+  shared project-task query, disclosure-aware continuation paging, and the
+  existing task dialog doorway. Turbo package tests and the headless
+  search-to-dialog fixture passed locally.
 - **7 — Terra:** [PR 446](https://github.com/UnlikeOtherAI/Nessie/pull/446)
   landed as `c0f7dd3a0` after all nine checks passed. Board and sprint controls
   share effective project administration and remove stale controls after 403.

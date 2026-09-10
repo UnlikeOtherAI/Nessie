@@ -10,6 +10,7 @@ import {
   isProjectTaskTransitionValid,
   listAssignableProjectTaskUsers,
   listProjectTasks,
+  searchProjectTasks,
   moveProjectTaskToColumn,
   projectTaskVisibilityWhere,
   resolveProjectTaskDetailPlacement,
@@ -19,9 +20,10 @@ import {
   type CreateProjectTaskInput,
   type ProjectTaskUpdateFields,
   type ProjectTaskVisibility,
+  type TicketSearchFilters,
 } from '@nessie/team-admin'
 
-import { canUserReadRunDerivedRecord } from './run-derived-read.js'
+import { canUserReadRunDerivedRecord, runIsSearchSafe } from './run-derived-read.js'
 
 // These route-facing names keep their established API while the work itself is
 // shared with the personal assistant in @nessie/team-admin.
@@ -86,6 +88,37 @@ export const getTaskDetail = async (
     ...task,
     boardPlacement: await resolveProjectTaskDetailPlacement(prisma, task),
   }
+}
+
+/**
+ * Search that powers the human Search page. It deliberately accepts only the
+ * caller's entitled project ids: generic task visibility also includes
+ * projectless and personally owned work, neither of which has this surface's
+ * promised board doorway. Run-derived rows take the same disclosure decision
+ * as list/detail before their title or provider key reaches the browser.
+ */
+export const searchTasksForUser = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  filters: TicketSearchFilters,
+  accessibleProjectIds: string[] | 'all',
+  cursorSecret: string,
+  userId: string,
+  uoaIdentity: UoaSessionIdentity | undefined,
+) => {
+  return searchProjectTasks(prisma, organizationId, filters, {
+    ...(accessibleProjectIds === 'all' ? {} : { projectIds: accessibleProjectIds }),
+    continuation: { secret: cursorSecret, userId },
+      isReadable: async (task) => (
+        await runIsSearchSafe(prisma, task.runId)
+        && canUserReadRunDerivedRecord(prisma, {
+          organizationId,
+          runId: task.runId,
+          uoaIdentity,
+          userId,
+        })
+      ),
+  })
 }
 export const listAssignableUsers = listAssignableProjectTaskUsers
 export const isValidTransition = isProjectTaskTransitionValid

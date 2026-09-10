@@ -110,3 +110,57 @@ export const canUserReadRunDerivedRecord = async (
     userId: input.userId,
   })
 }
+
+/**
+ * A search result has no place to carry a run's private basis into a model
+ * response. Tool search therefore excludes any run that carries one, even
+ * when the acting person could read it, unless the caller explicitly records
+ * that provenance before presenting the row.
+ */
+export const runCarriesDisclosureBasis = async (
+  prisma: Pick<PrismaClient, 'run'>,
+  runId: string | null,
+): Promise<boolean> => {
+  if (!runId) return false
+  return Boolean(await prisma.run.findFirst({
+    where: {
+      id: runId,
+      OR: [
+        { basisScopes: { some: {} } },
+        {
+          triggerMessage: {
+            OR: [
+              { basisScopes: { some: {} } },
+              { disclosureSources: { some: {} } },
+            ],
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  }))
+}
+
+/**
+ * A tool-search result cannot itself carry channel or run provenance into the
+ * model response. Keep that doorway to public, basis-free runs until the tool
+ * result has a consumed-source sink that records every returned lineage.
+ */
+export const runIsSearchSafe = async (
+  prisma: Pick<PrismaClient, 'run'>,
+  runId: string | null,
+): Promise<boolean> => {
+  if (!runId) return true
+  return Boolean(await prisma.run.findFirst({
+    where: {
+      id: runId,
+      thread: { channel: { visibility: 'public' } },
+      NOT: [
+        { basisScopes: { some: {} } },
+        { triggerMessage: { basisScopes: { some: {} } } },
+        { triggerMessage: { disclosureSources: { some: {} } } },
+      ],
+    },
+    select: { id: true },
+  }))
+}
