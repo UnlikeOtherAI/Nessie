@@ -23,7 +23,7 @@ Additional review findings are a separate backlog until assigned.
 | [7](product.md#7-project-administration-permissions) | Project controls reflect effective permissions | Terra | Coordinate edits with 5 and 8 |
 | [8](product.md#8-explicit-project-load-failures) | Load failures offer recovery, not false empty states | Terra | Coordinate edits with 5 and 7 |
 | [9](product.md#9-browser-push-tenant-ownership) | Browser subscriptions work across organizations | Terra | Serialize migrations with 11 |
-| [10](architecture.md#10-model-judged-memory-extraction) | Semantic memory works across languages | Terra; Sol if inference integration expands | Coordinate with memory/recall PR 434 |
+| [10](architecture.md#10-model-judged-memory-extraction) | Semantic memory works across languages | Sol | Coordinate with memory/recall PR 434 |
 | [11](architecture.md#11-complete-uoa-authority-and-hierarchy) | UOA owns identity and hierarchy without durable copies | Sol | Audited migration; staged rollout |
 | [12](architecture.md#12-deploy-only-the-verified-commit) | Deployment uses a verified merged commit | Terra | Add required check after a successful run exists |
 
@@ -34,7 +34,9 @@ Additional review findings are a separate backlog until assigned.
 2. Run the product track 5, 7 and 8 in one agent's sequential worktrees, then
    6 on the merged task-navigation contract. These remain coherent PRs rather
    than concurrent edits to `ProjectView`.
-3. Dispatch 4, 9, 10 and 12 as capacity frees. Scope each worktree to one item.
+3. Dispatch 4, then 12 ahead of 9 so deployment gating protects subsequent
+   merges. Give 10 to Sol after the run-lifecycle work because it spans utility
+   inference, billing and disclosure. Scope each worktree to one item.
 4. Give 11 to Sol for an API capability inventory and migration decomposition,
    then execute the verified slices. Do not retain new compatibility mirrors.
 5. The coordinator reviews evidence, handles integration conflicts, waits for
@@ -69,11 +71,19 @@ Implementation status on 10 September 2026:
 - **3 — Terra:** [PR 440](https://github.com/UnlikeOtherAI/Nessie/pull/440)
   landed as `688859ed3` after all nine CI checks passed. Scheduled retries now
   retain one occurrence owner, and an explicit pause cancels pending retries.
-- **4 — Terra:** bounded, authorized history pagination is assigned in its
-  own worktree after the scheduling implementation.
-- **5 — Terra:** exact ticket navigation and shared dialog placement are in
-  progress, including the server detail contract and browser evaluation.
-- **6–12:** queued in the execution order above; they are not implemented.
+- **4 — Terra:** cursor pagination and batched disclosure are implemented and
+  being verified. Indexed retrieval is bounded per distinct run conversation;
+  its remaining cost scales with the number of conversations, not messages.
+- **5 — Terra:** [PR 442](https://github.com/UnlikeOtherAI/Nessie/pull/442)
+  landed as `31811ff51` after all nine CI checks passed. Chat cards and cold
+  links open the exact task in the shared dialog with its current placement.
+- **6/7/8/9 — Terra:** queued; the project-permissions worktree is prepared.
+- **10 — Sol:** queued after run-lifecycle verification.
+- **11 — Sol:** the UOA capability inventory is complete; a first live-directory
+  slice and the audited migration plan are being verified. Full authority
+  removal remains dependent on upstream contracts and the hierarchy audit.
+- **12 — Terra/coordinator:** Multi-Instance Smoke is now required on `main`.
+  The exact verified-SHA deployment gate is next after history pagination.
 
 The [ten additional findings](../../reviews/2026-09-09-additional-ten.md)
 landed in [PR 439](https://github.com/UnlikeOtherAI/Nessie/pull/439). They remain

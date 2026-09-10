@@ -2,7 +2,8 @@
 
 ## 10. Model-judged memory extraction
 
-**Owner:** Terra, escalate inference integration to Sol if needed. This is
+**Owner:** Sol, because the implementation spans inference, billing and
+disclosure boundaries. This is
 post-run consolidation; it is separate from conversation-history PR 434.
 
 1. Replace English sentence classification with bounded structured extraction
@@ -78,3 +79,11 @@ wrong branch/repository and out-of-order completion through workflow validation
 and deterministic gate tests. Verify all images and checkout use the gated SHA;
 read back branch protection after updating it. Update deployment docs and
 `AGENTS.md`/`CLAUDE.md` because this changes the release workflow.
+
+**Repository gate completed, 10 September 2026:** Multi-Instance Smoke passed
+on `d07254158` in [PR 442](https://github.com/UnlikeOtherAI/Nessie/pull/442).
+It was then appended to `main`'s required checks with the existing GitHub
+Actions integration id `15368`. Readback verified all nine contexts and
+preserved every other protection field, including `strict: false`, admin
+enforcement and the prohibition on force pushes. The deployment workflow
+portion remains unimplemented.
