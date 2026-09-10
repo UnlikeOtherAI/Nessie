@@ -83,8 +83,8 @@ export const BrowserNotificationsSection = () => {
           throw new Error('Browser notifications are not configured on this instance.')
         }
         const subscription = await subscribeBrowser(publicKey)
-        await subscribeWebPush.mutateAsync(subscription)
-        setBrowserEndpoint(subscription.endpoint)
+        const registration = await subscribeWebPush.mutateAsync(subscription)
+        setBrowserEndpoint(registration.endpoint)
         setFeedback({ kind: 'success', message: 'Browser notifications enabled.' })
       } else {
         if (browserEndpoint) {

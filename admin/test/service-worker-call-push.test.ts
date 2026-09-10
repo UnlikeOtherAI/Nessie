@@ -13,17 +13,40 @@ type PushEvent = {
 
 type PushHandler = (event: PushEvent) => void
 type MessageHandler = (event: { data: unknown; waitUntil: (promise: Promise<unknown>) => void }) => void
+type NotificationClickHandler = (event: {
+  action: string
+  notification: { close: () => void; data: unknown }
+  waitUntil: (promise: Promise<unknown>) => void
+}) => void
+
+type NotificationClickResult = {
+  closed: () => boolean
+  completion: Promise<unknown>
+}
 
 const loadWorker = (cacheEntries = new Map<string, string>(), cacheRead?: Promise<void>): {
+  activity: string[]
+  clickNotification: (data: unknown, action: string) => NotificationClickResult
   dispatchPush: (payload: unknown) => Promise<void>
   notifications: NotificationRecord[]
   setPushUser: (userId: string | null) => Promise<void>
 } => {
-  const handlers = new Map<string, PushHandler | MessageHandler>()
+  const handlers = new Map<string, PushHandler | MessageHandler | NotificationClickHandler>()
+  const activity: string[] = []
   const notifications: NotificationRecord[] = []
   const worker = {
-    addEventListener: (name: string, handler: PushHandler | MessageHandler) => handlers.set(name, handler),
-    clients: { claim: async () => undefined, matchAll: async () => [], openWindow: async () => null },
+    addEventListener: (
+      name: string,
+      handler: PushHandler | MessageHandler | NotificationClickHandler,
+    ) => handlers.set(name, handler),
+    clients: {
+      claim: async () => undefined,
+      matchAll: async () => [],
+      openWindow: async (url: string) => {
+        activity.push(`open:${url}`)
+        return {}
+      },
+    },
     location: { href: 'https://app.nessie.example/sw.js', origin: 'https://app.nessie.example' },
     navigator: {},
     registration: {
@@ -54,11 +77,25 @@ const loadWorker = (cacheEntries = new Map<string, string>(), cacheRead?: Promis
         },
       put: async (key: string, value: Response) => { cacheEntries.set(key, await value.text()) },
     }) },
-    fetch: async () => new Response(),
+    fetch: async (url: URL) => {
+      activity.push(`fetch:${url.href}`)
+      return new Response()
+    },
     self: worker,
   })
 
   return {
+    activity,
+    clickNotification: (data: unknown, action: string) => {
+      const waits: Promise<unknown>[] = []
+      let closed = false
+      ;(handlers.get('notificationclick') as NotificationClickHandler | undefined)?.({
+        action,
+        notification: { close: () => { closed = true }, data },
+        waitUntil: (promise) => waits.push(promise),
+      })
+      return { closed: () => closed, completion: Promise.all(waits) }
+    },
     dispatchPush: async (payload: unknown) => {
       const waits: Promise<unknown>[] = []
       ;(handlers.get('push') as PushHandler | undefined)?.({
@@ -115,6 +152,59 @@ test('renders a supported ring with stable interactive call notification options
     },
     title: 'Incoming call',
   }])
+})
+
+const callRingData = (recipientUserId: string) => ({
+  acceptToken: 'accept-token',
+  callId: 'call-1',
+  kind: 'call.ring',
+  meetingUri: 'https://meet.example/call-1',
+  path: '/channels/channel-1',
+  recipientUserId,
+  version: '1',
+})
+
+test('a warm owner accept opens the meeting synchronously before posting the response token', async () => {
+  const worker = loadWorker()
+  await worker.setPushUser('user-a')
+
+  const click = worker.clickNotification(callRingData('user-a'), 'accept')
+
+  assert.equal(click.closed(), true)
+  assert.deepEqual(worker.activity, [
+    'open:https://meet.example/call-1',
+    'fetch:https://app.nessie.example/api/calls/call-1/respond',
+  ])
+  await click.completion
+  assert.equal(worker.activity.length, 2)
+})
+
+test('a cold owner accept opens only the non-mutating authenticated call doorway', async () => {
+  const ownerCache = new Map<string, string>([
+    ['/.well-known/nessie-web-push-owner', 'user-a'],
+  ])
+  const worker = loadWorker(ownerCache)
+
+  const click = worker.clickNotification(callRingData('user-a'), 'accept')
+
+  assert.equal(click.closed(), true)
+  assert.deepEqual(worker.activity, [
+    'open:https://app.nessie.example/channels/channel-1?incomingCall=call-1',
+  ])
+  await click.completion
+  assert.equal(worker.activity.length, 1)
+})
+
+test('a stale owner accept closes without opening a window or posting a response token', async () => {
+  const worker = loadWorker()
+  await worker.setPushUser('user-b')
+
+  const click = worker.clickNotification(callRingData('user-a'), 'accept')
+
+  assert.equal(click.closed(), true)
+  assert.deepEqual(worker.activity, [])
+  await click.completion
+  assert.deepEqual(worker.activity, [])
 })
 
 test('does not render a former user payload after logout or another login', async () => {

@@ -190,6 +190,12 @@ const openMeetingOrFallback = async (openedMeeting, fallbackUrl) => {
   await self.clients.openWindow(new URL(fallbackUrl, self.location.origin).href).catch(() => undefined)
 }
 
+const openAuthenticatedCallDoorway = (data) => {
+  if (!self.clients.openWindow) return Promise.resolve(undefined)
+  const fallbackUrl = new URL(callChannelUrl(data, 'incomingCall'), self.location.origin).href
+  return self.clients.openWindow(fallbackUrl).catch(() => undefined)
+}
+
 self.addEventListener('push', (event) => {
   if (!event.data) {
     return
@@ -247,25 +253,43 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   const data = isObject(event.notification.data) ? event.notification.data : {}
+  const recipientUserId = data.recipientUserId
+  const knownOwner = activePushUserId
+
+  // Accept needs notification activation to open a provider URL. A warm worker
+  // has a synchronous owner assertion; a cold worker cannot await CacheStorage
+  // without losing activation, so it opens the authenticated incoming-call
+  // doorway and requires a fresh press after that surface authorizes the user.
+  if (isSupportedCallPush(data) && data.kind === 'call.ring' && event.action === 'accept') {
+    if (typeof recipientUserId !== 'string'
+      || (knownOwner !== undefined && recipientUserId !== knownOwner)) {
+      event.notification.close()
+      return
+    }
+    if (knownOwner === undefined) {
+      const openedDoorway = openAuthenticatedCallDoorway(data)
+      event.notification.close()
+      event.waitUntil(openedDoorway)
+      return
+    }
+
+    const openedMeeting = self.clients.openWindow(data.meetingUri)
+    event.notification.close()
+    event.waitUntil(Promise.all([
+      openMeetingOrFallback(openedMeeting, callChannelUrl(data, 'acceptCall')),
+      postCallResponse(data, 'accept'),
+    ]))
+    return
+  }
+
   event.waitUntil((async () => {
-    if (typeof data.recipientUserId !== 'string' || data.recipientUserId !== await currentPushOwner()) {
+    if (typeof recipientUserId !== 'string' || recipientUserId !== await currentPushOwner()) {
       event.notification.close()
       return
     }
   if (isCallPush(data)) {
     if (!isSupportedCallPush(data)) {
       event.notification.close()
-      return
-    }
-    if (event.action === 'accept') {
-      // This is deliberately the first operation: notification-click user
-      // activation can be lost by awaiting even one promise before openWindow.
-      const openedMeeting = self.clients.openWindow(data.meetingUri)
-      event.notification.close()
-      await Promise.all([
-        openMeetingOrFallback(openedMeeting, callChannelUrl(data, 'acceptCall')),
-        postCallResponse(data, 'accept'),
-      ])
       return
     }
     if (event.action === 'decline') {

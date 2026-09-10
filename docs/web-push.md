@@ -248,16 +248,27 @@ notification. Ring notifications use a stable `call-<callId>` tag, show
 notification is deliberately local-only: it neither declines the invite nor
 sends an action token.
 
-On an **Accept** notification action, the service worker calls
-`clients.openWindow(meetingUri)` synchronously before starting any async work,
-then posts the supplied accept token to the response route under
-`event.waitUntil`. The worker is registered with the admin bundle's configured
-API origin in its script URL, so this token response reaches the API even when
-the admin and API have separate production origins and the SPA is not running.
-If cross-origin `openWindow` returns `null` or rejects, the worker opens the
-same-origin `/channels/:channelId?acceptCall=:callId` fallback, where the app
-can offer a real-click join. A body click is never an implied accept; it opens
-`/channels/:channelId?incomingCall=:callId` for the incoming-call dialog.
+On an **Accept** notification action, a warm service worker whose synchronous
+active-recipient assertion matches the payload calls
+`clients.openWindow(meetingUri)` before starting any async work, then posts the
+supplied accept token to the response route under `event.waitUntil`. The worker
+is registered with the admin bundle's configured API origin in its script URL,
+so this token response reaches the API even when the admin and API have separate
+production origins and the SPA is not running. If cross-origin `openWindow`
+returns `null` or rejects, the worker opens the same-origin
+`/channels/:channelId?acceptCall=:callId` fallback, where the app can offer a
+real-click join.
+
+After a service-worker restart the durable owner can be read only
+asynchronously, after notification activation may already be lost. That cold
+path synchronously opens the authenticated `?incomingCall=` doorway instead;
+the signed-in app loads the call and verifies the invitee, but does not accept
+it. The person must press **Accept** again in the incoming-call dialog, because
+the notification recipient cannot be established synchronously after a worker
+restart. A known different or logged-out recipient opens nothing and sends no
+response token. A body click is never an implied accept; it opens
+`/channels/:channelId?incomingCall=:callId` for the incoming-call dialog after
+the owner check.
 
 A cancel push closes all displayed notifications with its matching call tag.
 Some Chromium push implementations require a notification per delivered push,
