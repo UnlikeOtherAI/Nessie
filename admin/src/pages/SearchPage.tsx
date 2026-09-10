@@ -159,7 +159,7 @@ export const SearchPage = () => {
               placeholder={
                 mode === 'semantic'
                   ? 'Search semantic memory and knowledge...'
-                  : 'Search channels, people, projects, messages, knowledge...'
+                : 'Search channels, people, projects, messages, tasks, knowledge...'
               }
               type="search"
               value={query}
@@ -179,7 +179,7 @@ export const SearchPage = () => {
             <p className="px-3 text-sm text-[color:var(--tx3)]">
               {mode === 'semantic'
                 ? 'Search memory and knowledge by meaning.'
-                : 'Search channels, people, projects, messages, and knowledge.'}
+                : 'Search channels, people, projects, messages, tasks, and knowledge.'}
             </p>
           ) : results.isLoading ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">Searching…</p>
