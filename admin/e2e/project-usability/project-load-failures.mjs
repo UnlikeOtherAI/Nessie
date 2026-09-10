@@ -101,17 +101,21 @@ export const exerciseProjectLoadFailures = async ({
       (projectId) => window.location.pathname === `/projects/${projectId}/board`,
       destinationProject.id,
     )
-    await page.locator('main').getByText('Loading boards…', { exact: true }).waitFor()
+    const destinationLayer = page
+      .locator('[data-phone-navigation-layer="current"]')
+      .filter({ hasText: 'Loading boards…' })
+    await destinationLayer.waitFor()
     assert.equal(
-      await page.getByText(sourceTask.title, { exact: true }).count(),
+      await destinationLayer.getByText(sourceTask.title, { exact: true }).count(),
       0,
-      'the destination never renders a prior project’s board while its own read is pending',
+      'the active destination never renders a prior project’s task while its own board read is pending',
     )
     assert.equal(
-      await page.locator('[data-kanban-board-viewport]').count(),
+      await destinationLayer.locator('[data-kanban-board-viewport]').count(),
       0,
-      'the prior project board is not retained during the destination read',
+      'the active destination does not retain a prior project board during its own read',
     )
+    await shot(page, 'desktop-project-destination-load-pending')
     releaseDestinationBoards?.()
     await page.locator('[data-kanban-board-viewport]').waitFor()
     holdDestinationBoards = false
