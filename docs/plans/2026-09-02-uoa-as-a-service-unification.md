@@ -1,6 +1,6 @@
 # UOA as a service: unifying organisation, workspace, team and project
 
-Status: audited migration track v4, 2026-09-10. Partly implemented — see
+Status: audited migration track v5, 2026-09-10. Partly implemented — see
 "Audited current state" and "Shipped" below. Completion still depends on new
 UOA contracts; no local mirror is an acceptable substitute.
 v1 was reviewed by two independent reviewers who converged on six findings, all
@@ -47,8 +47,11 @@ profile routes, but there is no corresponding route or service in `API/src`.
 The snapshot, delta and webhook contracts below are likewise required upstream
 work, not capabilities Nessie may assume.
 
-This blocks removal of all durable render mirrors and all local authorization
-copies. Nessie must fail closed where a live contract is required; it must
+These are implementation dependencies, not external blockers: the UOA repository
+is available for the work. The [staged handoff](2026-09-10-uoa-authority-next-slices.md)
+selects the credential, commit-order and migration boundaries for the next slices.
+Complete those contracts before removing their dependent render mirrors and
+authorization copies. Nessie must fail closed where a live contract is required; it must
 not fill the gap with another copied profile, membership table, background use
 of the estate-wide domain credential, or a local-password SSO fallback.
 
@@ -265,9 +268,10 @@ Nessie's tenants'.
 
 So the authorization mode is a **first-class deliverable of §3**, not an
 afterthought: a dedicated relying-party credential whose reach UOA restricts to
-organisations that granted this product access — the same fact
-`/billing/v1/service-access/confirm` already evaluates — with the snapshot
-refusing any `orgId` outside that set.
+exact organisations whose owners explicitly approved the product's directory
+scopes. `/billing/v1/service-access/confirm` may establish product eligibility;
+it neither creates nor substitutes for directory permission. Snapshot, delta
+and webhook delivery refuse any `orgId` without that active directory grant.
 
 ### `changedSince` over `updated_at` fails OPEN, which is the one direction that matters
 
@@ -299,15 +303,16 @@ instances.
 
 **So the delta must not be ordered by wall clock.** UOA gains a transactional
 outbox (`org_change_events`) written in the same transaction as every
-org/team/member mutation, with a `bigserial` id as the cursor — and visibility
-ordered at *commit*, not at insert, either through a single serialized publisher
-stamping a published sequence or by only reading up to
-`min(pg_snapshot_xmin(pg_current_snapshot()))`, so an id is never handed out
-while an earlier transaction is still in flight. Every entity row gains a
-`revision bigint` bumped from that same write, giving §4.4's per-row revision a
-real source. The cheaper fallback — a DB-side `clock_timestamp()` trigger plus a
-mandatory overlap window and an inclusive bound — is acceptable only if written
-into the plan as a stated bound rather than left implicit.
+org/team/member mutation. The selected contract uses one transaction advisory
+lock per organisation, held across mutation, organisation-revision allocation,
+outbox insertion and commit. Multi-org changes acquire locks in sorted ID order.
+The unique `(orgId, revision)` cursor therefore follows that organisation's
+commit order; aborted transactions publish neither a revision nor an event.
+Snapshot reads take the corresponding shared lock and return a consistent
+high-water revision. Delta pages retain a stable upper bound. An unprotected
+serial, transaction-ID watermark or timestamp/overlap fallback is not this
+contract. The [next-slices handoff](2026-09-10-uoa-authority-next-slices.md)
+specifies the implementation and concurrency acceptance.
 
 ## 4. Proposal
 

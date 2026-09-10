@@ -22,7 +22,7 @@ Additional review findings are a separate backlog until assigned.
 | [6](product.md#6-tickets-in-human-search) | Search finds accessible native and mirrored tickets | Terra | 5 |
 | [7](product.md#7-project-administration-permissions) | Project controls reflect effective permissions | Terra | Coordinate edits with 5 and 8 |
 | [8](product.md#8-explicit-project-load-failures) | Load failures offer recovery, not false empty states | Terra | Coordinate edits with 5 and 7 |
-| [9](product.md#9-browser-push-tenant-ownership) | Browser subscriptions work across organizations | Terra | Serialize migrations with 11 |
+| [9](product.md#9-browser-push-tenant-ownership) | Browser subscriptions work across organizations | Terra/Sol | Serialize migrations with 11 |
 | [10](architecture.md#10-model-judged-memory-extraction) | Semantic memory works across languages | Sol | Coordinate with memory/recall PR 434 |
 | [11](architecture.md#11-complete-uoa-authority-and-hierarchy) | UOA owns identity and hierarchy without durable copies | Sol | Audited migration; staged rollout |
 | [12](architecture.md#12-deploy-only-the-verified-commit) | Deployment uses a verified merged commit | Terra | Add required check after a successful run exists |
@@ -67,9 +67,9 @@ The plans landed in [PR 438](https://github.com/UnlikeOtherAI/Nessie/pull/438).
 Implementation status on 10 September 2026:
 
 - **1/2 — Sol:** [PR 448](https://github.com/UnlikeOtherAI/Nessie/pull/448)
-  implements fenced handback, atomic completion and durable follow-up. Review
-  added a row-lock settlement barrier for a lost COMMIT acknowledgement;
-  required CI is running on that correction before merge.
+  landed as `c91064634` after all nine checks passed. Fenced handback, atomic
+  completion and durable follow-up include a row-lock settlement barrier for
+  a lost COMMIT acknowledgement.
 - **3 — Terra:** [PR 440](https://github.com/UnlikeOtherAI/Nessie/pull/440)
   landed as `688859ed3` after all nine CI checks passed. Scheduled retries now
   retain one occurrence owner, and an explicit pause cancels pending retries.
@@ -80,22 +80,28 @@ Implementation status on 10 September 2026:
 - **5 — Terra:** [PR 442](https://github.com/UnlikeOtherAI/Nessie/pull/442)
   landed as `31811ff51` after all nine CI checks passed. Chat cards and cold
   links open the exact task in the shared dialog with its current placement.
-- **6 — Terra:** queued after project recovery; its worktree is prepared on
-  the merged exact-task navigation contract.
+- **6 — Terra:** implementing the Search doorway over shared task search,
+  including text/entitlement composition, disclosure filtering and pagination.
 - **7 — Terra:** [PR 446](https://github.com/UnlikeOtherAI/Nessie/pull/446)
   landed as `c0f7dd3a0` after all nine checks passed. Board and sprint controls
   share effective project administration and remove stale controls after 403.
-- **8 — Terra:** Board/Docs failure and Retry states are implemented; headless
-  verification includes an actual SPA project switch with the response held.
-- **9 — Terra:** tenant enrollment is implemented. Verification also covers
-  browser logout and account switching without breaking background delivery.
-- **10 — Sol:** structured utility extraction is in progress, with inference-wide
-  private-source lineage and the existing deployment-billed memory policy.
+- **8 — Terra:** [PR 453](https://github.com/UnlikeOtherAI/Nessie/pull/453)
+  landed as `041855273` after all nine checks passed. Board/Docs failures offer
+  Retry; headless verification and screenshot review cover the actual active
+  project while its read is held.
+- **9 — Terra/Sol:** [PR 452](https://github.com/UnlikeOtherAI/Nessie/pull/452)
+  landed as `975f1fc93` after all nine checks passed. Tenant enrollment,
+  logout/account ownership and authorized call notification clicks have
+  isolated browser coverage; final API/worker tests include database coverage.
+- **10 — Sol:** [PR 451](https://github.com/UnlikeOtherAI/Nessie/pull/451)
+  landed as `e2e7276e9` after all nine checks passed. Structured utility extraction
+  retains inference-wide private-source lineage and deployment billing.
 - **11 — Sol, partial:** [PR 444](https://github.com/UnlikeOtherAI/Nessie/pull/444)
   landed as `bbb0b6386` after all nine checks passed. The active user directory
   reads UOA through a bounded, invalidation-safe cache. Existing durable
-  profile/hierarchy copies remain explicit gaps; full removal depends on
-  upstream profile/background/revocation contracts and the audited migration.
+  profile/hierarchy copies remain explicit gaps. The
+  [staged Sol handoff](../2026-09-10-uoa-authority-next-slices.md) covers the
+  implementable upstream contracts and the audited Nessie migration.
 - **12 — Terra/coordinator:** [PR 449](https://github.com/UnlikeOtherAI/Nessie/pull/449)
   landed as `51b48c18c` after all nine checks passed. Automatic and manual
   deployment share the exact verified-main-SHA gate, and Multi-Instance Smoke
