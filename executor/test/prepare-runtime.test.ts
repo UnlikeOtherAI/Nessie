@@ -35,7 +35,9 @@ test('the shared preparation writes the exact runtime layout both supervisors ve
       assert.equal((await lstat(prepared.nodePath)).mode & 0o111, 0o111)
     }
     assert.ok((await readFile(join(prepared.runtimeDirectory, 'NODE_LICENSE'), 'utf8')).length > 0)
-    assert.match(await readFile(prepared.executorBundlePath, 'utf8'), /nessie-executor/)
+    const bundledExecutor = await readFile(prepared.executorBundlePath, 'utf8')
+    assert.match(bundledExecutor, /nessie-executor/)
+    assert.match(bundledExecutor, /deeptest-source/)
 
     // The producer and the verifier agree by construction, not by two
     // constants happening to match: ownership is a packaged-install rule, so

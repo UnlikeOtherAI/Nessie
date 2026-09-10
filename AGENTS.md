@@ -423,6 +423,14 @@ attachments through the same chokepoint.
 Read [`docs/standards/file-storage.md`](docs/standards/file-storage.md)
 before writing code here.
 
+## DeepTest native source adapter — local read-only boundary
+
+DeepTest may read one locally approved Nessie workspace through the packaged
+child-process adapter; source and results never use Nessie's hosted command
+path, and DeepTest retains separate inference and active-testing approvals.
+Read [`docs/standards/deeptest-native-adapter.md`](docs/standards/deeptest-native-adapter.md)
+before changing this boundary.
+
 ## Agent documents — one shared home provisioner
 
 Knowledge-space provisioning lives in `@nessie/knowledge`

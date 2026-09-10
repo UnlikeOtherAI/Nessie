@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
+import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
 import {
   configureExecutorBrowserSandbox,
@@ -53,6 +54,7 @@ type ParsedCommand =
     vmHelperPath: string
   }
   | { kind: 'connect'; stateDir: string }
+  | { kind: 'deeptest-source'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | {
     callerOrigin: string
@@ -89,6 +91,7 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor deeptest-source --state-dir <owner-only-path>\n'
     + '       nessie-executor native-browser-cookie-import --state-root <owner-only-path> '
     + '--extension-origin <chrome-extension://release-id/> --caller-origin <chrome-extension://release-id/>\n'
     + '       nessie-executor enable <executorId> [--state-dir <owner-only-path>] [--yes]\n'
@@ -270,6 +273,9 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
+  if (command === 'deeptest-source') {
+    return { kind: command, stateDir: option(args, '--state-dir') }
+  }
   if (command === 'native-browser-cookie-import') {
     return {
       callerOrigin: option(args, '--caller-origin'),
@@ -348,6 +354,11 @@ export const run = async (args: string[]): Promise<void> => {
     return
   }
   const state = await loadExecutorState(command.stateDir)
+  if (command.kind === 'deeptest-source') {
+    await assertPackagedExecutorRuntime()
+    await serveDeepTestSourceAdapter(state, process.stdin, process.stdout, () => loadExecutorState(command.stateDir))
+    return
+  }
   if (command.kind === 'configure') {
     const input = command.configurationInputFromStandardInput
       ? await readConfigurationInput()
