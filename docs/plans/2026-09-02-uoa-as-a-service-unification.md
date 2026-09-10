@@ -1,6 +1,8 @@
 # UOA as a service: unifying organisation, workspace, team and project
 
-Status: proposal v3, 2026-09-03. Partly implemented — see "Shipped" below.
+Status: audited migration track v4, 2026-09-10. Partly implemented — see
+"Audited current state" and "Shipped" below. Completion still depends on new
+UOA contracts; no local mirror is an acceptable substitute.
 v1 was reviewed by two independent reviewers who converged on six findings, all
 folded in. v2 then went through a six-lens review with three refuters per
 finding; **that run degraded** — 140 of its 235 agents died on a session usage
@@ -9,7 +11,119 @@ infrastructure failure and only the two findings in §3a can be treated as
 adjudicated. The rest are unadjudicated, not cleared, and a re-run is owed
 before the remaining work is trusted.
 
-### Shipped already
+## Audited current state (2026-09-10)
+
+This inventory was verified against Nessie `355d67b62` and
+UnlikeOtherAuthenticator `00fe760`. File references below name the source that
+exists at those revisions, rather than a proposed API document.
+
+### UOA operations Nessie can call today
+
+| Area | Available `/org/*` operations | Verified source |
+|---|---|---|
+| Current standing | `GET /org/me`, including the selected organisation, `team_directory`, roles and pending invitations | UOA `API/src/routes/org/me.ts` |
+| Organisation | create/read/update/delete and ownership transfer under a user subject; estate-wide list is backend-only | UOA `API/src/routes/org/organisations.ts`, `API/src/routes/org/organisation-members.ts` |
+| Organisation roster | paginated member list, add, role change, remove, deactivate/reactivate, and per-member team access | UOA `API/src/routes/org/organisation-members.ts` |
+| Team hierarchy | paginated team list, create/read/update/delete; member list/add/role change/remove and self-join | UOA `API/src/routes/org/teams.ts`, `API/src/routes/org/team-self-join.ts` |
+| Invitations | create/list/read/resend/review/revoke, organisation invitation targets/history, invite links, and hosted accept/decline flows | UOA `API/src/routes/org/team-invitations.ts`, `API/src/routes/org/member-invitations.ts`, `API/src/routes/org/team-invite-links.ts`, `API/src/routes/auth/email-team-invite.ts`, `API/src/routes/auth/auth-select-team.ts` |
+| Profile pictures | current-user avatar read/write/delete and team avatar read/write/delete | UOA `API/src/routes/avatar/me.ts`, `API/src/routes/org/team-avatar.ts` |
+
+Roster responses already include the stable subject plus display name, avatar
+URL, and email when the live UOA permission allows it
+(`API/src/services/organisation.service.roster.ts` and
+`team.service.roster.ts`). Nessie's existing relay is
+`packages/team-admin/src/uoa-org-roster.ts` and `uoa-org-members.ts`; it carries
+a short-lived subject assertion and never uses the domain bearer as a roster
+authorization substitute.
+
+### Upstream operations that do not exist yet
+
+At `00fe760`, UOA has no shipped `GET/PATCH /profile/me` for a current user's
+name or email, no exact member-profile read, no product relying-party credential
+for background reconciliation, no organisation snapshot or delta endpoint, no
+identity/hierarchy webhook stream, and no transactional org-change outbox or
+org/team/member revision columns. `docs/api-2.0-implementation-plan.md` describes
+profile routes, but there is no corresponding route or service in `API/src`.
+The snapshot, delta and webhook contracts below are likewise required upstream
+work, not capabilities Nessie may assume.
+
+This blocks removal of all durable render mirrors and all local authorization
+copies. Nessie must fail closed where a live contract is required; it must
+not fill the gap with another copied profile, membership table, background use
+of the estate-wide domain credential, or a local-password SSO fallback.
+
+### Nessie storage and call-site audit
+
+The durable bindings that stay are `User.uoaSub`,
+`Organization.externalOrgId`, and `Team.externalTeamId`. Product-owned user
+extensions such as preferences, statuses and local object references also
+stay. The remaining UOA-owned copies are:
+
+- `User.email`, `User.displayName`, and `User.avatarUrl`, written at UOA
+  principal materialisation and refreshed by `uoa-profile-mirror.ts`; read by
+  `/api/auth/me`, legacy `/api/users`, message/activity/call/alert/DM/push
+  projections and several owner selectors.
+- `Organization.name`, `Team.name`, and redundant `Team.externalOrgId`.
+  Rename routes relay upstream, but login/materialisation and cache fallback
+  still persist or read these values.
+- `OrganizationMember`, `TeamMember`, and `ProjectMember`. Bound-tenant local
+  mutation routes are gated, and login/rotation reconciles the affected user,
+  but these rows still authorize ordinary requests between rotations.
+- The 30-minute per-process team-directory cache in
+  `api/src/services/uoa-directory-cache.ts`. On a cold or expired entry it can
+  derive the directory from local Team/TeamMember rows. That is a known
+  hierarchy/profile fallback and must retire after the upstream read boundary
+  can cover the same use cases.
+
+Live organisation/team Members and invitation surfaces already use UOA. Local
+account, membership and team creation are refused according to the acting
+organisation's binding, not deployment mode. `Project.teamId` is in the expand
+phase (`20260911110000_project_team_inversion_expand`), and new person-created
+projects write it; `Team.projectId` remains the required legacy anchor for rows
+not yet audited. `systemManaged` teams and the `channelRoot` project are
+deliberate Nessie-only containers. An organisation with `externalOrgId = null`
+is the explicit no-IdP mode and retains local identity management.
+
+### Deployable migration slices
+
+1. **Active identity directory (this slice).** `GET /api/users` in a UOA-bound
+   organisation reads every page of the live ACTIVE UOA organisation roster,
+   under the current actor's subject assertion, and joins it to product-owned
+   local fields by `User.uoaSub`. Its in-memory display cache is keyed by actor,
+   organisation, active team and credential epoch, expires after 30 seconds,
+   has entry and total-member bounds, and never serves expired data after an
+   upstream error. Same-key misses share one load, at most 20 loads are tracked,
+   and invalidation prevents an older load from refilling the cache. It is not
+   an authorization cache. Missing subject bindings,
+   duplicate subjects and incomplete pagination fail explicitly. The unbound
+   `/api/users` behavior is unchanged. Historical records keep stable local
+   author references; this active selector does not establish the final
+   historical-profile rendering contract.
+2. **Upstream revocation substrate.** Add a product relying-party credential,
+   transactional change outbox and row revisions in UOA, followed by signed
+   webhooks, a complete snapshot and an outbox-ordered delta. Prove the
+   credential cannot read organisations that did not grant the product access.
+3. **Fail-closed membership consumer.** Route bound-tenant membership and
+   hierarchy reads through one UOA API boundary. Reuse a response only in a
+   bounded process-memory cache, invalidate it from signed change events and
+   credential-epoch changes, and require a live read after its short freshness
+   deadline. Events and deltas carry invalidation/version facts; Nessie does not
+   materialise their UOA-owned payload into durable rows. Remove the existing
+   local membership rows from authorization as this boundary reaches each
+   consumer; until then those rows remain a named migration gap, not a cache.
+4. **Hierarchy backfill and contract.** Run `scripts/inspect-team-shape.sql`
+   against each deployment and halt on orphaned, multi-team, inconsistent or
+   cross-tenant rows. Backfill `Project.teamId` only for unambiguous rows,
+   handle `systemManaged`/`channelRoot` containers explicitly, add coherence
+   constraints, migrate readers, then remove `Team.projectId` and fabricated
+   anchor projects. Never infer ownership from name, session or creation time.
+5. **Profile and hierarchy contract.** Add the missing exact profile/name reads
+   upstream; move `/api/auth/me` and remaining message/activity/call/alert/DM/
+   push renderers onto the one directory boundary. Then remove profile/name
+   mirrors and `Team.externalOrgId`. Each removal lands only after its caller
+   inventory is empty and its upgrade path preserves product-owned data.
+
+### Shipped already before this audit
 
 - **UOA** (`31d0faf`): the founder owns their first workspace, and
   `POST /org/organisations/:orgId/teams` takes `join_creator` to put the creator
@@ -22,7 +136,11 @@ before the remaining work is trusted.
   `OrganizationSummary.nameManagedExternally` with a guard test; and
   `scripts/inspect-workspace-shape.sql` to size the migration below.
 
-Everything after §4.1 is still unbuilt.
+The sentence that previously said everything after §4.1 was unbuilt was stale:
+live rosters/invitations, bound-tenant mutation gates, the team vocabulary pass,
+the split member surfaces, and the relationship expand phase have shipped. The
+revocation substrate, audited backfill/contract, and profile/name mirror removal
+have not.
 
 The owner's instruction: **treat UOA as a service.** Store no duplicated data
 locally; ask its API. And, as of this revision: **UOA may be extended** — if the
@@ -118,9 +236,11 @@ not fixed. **Three additions to UOA**, which is a parallel project we own:
 - **A delta read** — `?changedSince=` on that snapshot, so the periodic
   safety-net sweep is cheap and a missed webhook self-heals.
 
-Webhooks are the primary path, the sweep is the backstop, and neither is trusted
-alone: at-least-once delivery plus a periodic delta is the standard shape and it
-degrades correctly when one half fails.
+Webhooks are the primary cache-invalidation path and a periodic delta detects a
+missed invalidation. Nessie may retain only an outbox cursor or last-seen
+revision as product integration state; it must not persist the returned member,
+profile, role, organisation or team payload. A cache refill always comes from a
+UOA API response into bounded process memory.
 
 ## 3a. Two findings that change §3, both verified against source
 
@@ -171,12 +291,11 @@ Three separate breakages follow, and they compound:
 - **Rounding ties.** `TIMESTAMP(3)` collisions make an exclusive `>` bound drop
   boundary rows, and the plan specified neither bound nor overlap.
 
-The consequence is not a stale cache. The sweep *succeeds*, so §4.4 refreshes
-the checked-at stamp and the organisation stays inside its staleness horizon,
-while a removed member keeps full access indefinitely and every surface reports
-the cache as fresh. That is a silent fail-**open** of exactly the revocation
-this plan exists to deliver, hitting any multi-replica deployment or any removal
-whose transaction spans a sweep tick — routinely, from the day it ships.
+The consequence is a missed invalidation. A consumer can advance its cursor and
+continue serving an in-memory result until its freshness deadline even though a
+removal committed. The short deadline still forces a live read, but an ordered
+cursor is required so invalidation remains prompt and deterministic across
+instances.
 
 **So the delta must not be ordered by wall clock.** UOA gains a transactional
 outbox (`org_change_events`) written in the same transaction as every
@@ -291,28 +410,33 @@ since organisation-wide membership currently has no surface at all.
   request-scoped identity directory; `email` stops being a login match key.
 - **`Team.externalOrgId` is dropped** in favour of the derivable path.
 
-### 4.4 Membership becomes a cache with a real invalidator
+### 4.4 Membership reads move behind one live boundary
 
 This replaces v1's loophole. For a UOA-bound organisation:
 
-- Local membership rows are a **cache**, written only from UOA responses and
-  webhook events, never from a Nessie mutation. No local route may grant a role
-  or a membership.
-- **Webhook events apply immediately** — a removal or downgrade lands without
-  waiting for the affected person to do anything, which is precisely what v1
-  could not promise.
-- **Every row carries the `revision` it was written from and a checked-at
-  stamp.** Past a bounded staleness horizon with no webhook and no successful
-  sweep, authorization **fails closed** for that organisation rather than
-  trusting an old row. Fail-closed is what makes it a cache rather than an
-  authority.
-- **A Nessie-only suspension stays available as a deny-only overlay.** It may
-  refuse access; it may never grant membership or a role.
+- One UOA API-backed boundary answers identity, organisation, team and
+  membership questions. No local route may grant a UOA role or membership.
+- Reusable results live only in bounded process memory. Cache keys include the
+  organisation, actor, selected team where relevant, credential epoch and UOA
+  revision. Entries have a short freshness deadline and are never served stale
+  after a failed refresh.
+- Signed webhook events invalidate affected in-memory entries immediately. The
+  ordered delta is a missed-invalidation check, not a source for a durable
+  member or hierarchy projection. Nessie may durably retain the opaque cursor
+  needed to resume that integration, because it describes product delivery
+  progress rather than a person's identity or membership.
+- Past the freshness deadline, authorization performs a live UOA read and fails
+  closed if UOA cannot answer. No persistent snapshot extends that deadline.
+- Existing `OrganizationMember`, `TeamMember` and UOA-derived
+  `ProjectMember` rows remain an authority violation until each consumer moves
+  to this boundary and the rows are removed. Calling them a projection or cache
+  does not bless them.
+- A Nessie-only suspension may stay as product-owned deny-only extension data.
+  It can refuse access; it can never grant membership or a role.
 
-The cost is stated rather than hidden: UOA joins the availability path for
-authorization at the horizon boundary. That is the price of one authority, and
-the webhook plus sweep is what keeps the horizon from being hit in normal
-operation.
+The cost is stated rather than hidden: UOA is in the availability path whenever
+an in-memory entry expires. Prompt invalidation and a short bounded TTL reduce
+calls without creating another durable authority.
 
 ### 4.5 The upstream bugs, and the third piece
 
@@ -351,7 +475,8 @@ cleanup, and v1 scheduled it last.
    `revision` columns, then webhooks, bulk snapshot and the outbox-ordered delta
    (§3, §3a). The credential and the outbox come first: without them the sweep
    is either estate-wide or fails open.
-3. **Nessie**: consume them — membership becomes a fail-closed cache (§4.4).
+3. **Nessie**: consume them through a live API boundary with bounded in-memory
+   reuse, then remove the durable local membership authorities (§4.4).
 4. **Nessie**: invert `Team.projectId` into `Project.teamId` (§4.1). This must
    land *before* any rename work, because until it does a project-scoped rename
    has no single workspace to target.
