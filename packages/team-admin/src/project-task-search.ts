@@ -296,10 +296,12 @@ export const searchProjectTasks = async (
           // return trip at the last scanned row. A forward query from that
           // private, authenticated boundary rescans the hidden stretch and
           // reaches the visible page without exposing a candidate id.
-          hasMore: Boolean(cursor && (last || hasBudgetContinuation)),
+          // A backwards request always has a known page to return to, even
+          // when its preceding candidates were all filtered out.
+          hasMore: Boolean(cursor),
           nextCursor: cursor && (last
             ? cursorFor(lastAnchor)
-            : hasBudgetContinuation ? cursorFor(lastScanned) : null),
+            : hasBudgetContinuation ? cursorFor(lastScanned) : cursorFor(cursor)),
           prevCursor: hasAdjacentReadable
             ? cursorFor(firstAnchor)
             : hasBudgetContinuation ? cursorFor(lastScanned) : null,
@@ -313,9 +315,7 @@ export const searchProjectTasks = async (
           // A budget-limited page can contain only hidden candidates. Its
           // input cursor is still the reverse doorway; without it the generic
           // pager treats the page as stale and strands the search at page 0.
-          prevCursor: cursor && (first
-            ? cursorFor(firstAnchor)
-            : hasBudgetContinuation ? cursorFor(cursor) : null),
+          prevCursor: cursor && (first ? cursorFor(firstAnchor) : cursorFor(cursor)),
         },
       }
 }
