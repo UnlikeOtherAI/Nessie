@@ -111,10 +111,11 @@ export const runTicketSearchTool = async (
     .join(' ') || 'everything'
   const output = tickets.length
     ? `Tickets (${tickets.length})\n${tickets.map(ticketLine).join('\n')}`
-    : page.meta.hasMore
-      ? 'The search needs a narrower query before it can finish.'
-      : 'No tickets matched.'
-  return result('ticket_search', summary, output)
+    : 'No tickets matched.'
+  const completeOutput = page.meta.hasMore
+    ? `${output}\n\nThe search needs a narrower query before it can finish.`
+    : output
+  return result('ticket_search', summary, completeOutput)
 }
 
 const PeopleInput = z.object({ projectId: IdSchema.optional() })

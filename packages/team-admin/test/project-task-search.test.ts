@@ -359,6 +359,15 @@ runDatabaseTest('an authenticated continuation reaches a readable ticket after a
     )
     assert.deepEqual(backward.data, [])
     assert.match(backward.meta.prevCursor ?? '', /^tsc1\./u)
+    assert.equal(backward.meta.hasMore, true)
+    assert.match(backward.meta.nextCursor ?? '', /^tsc1\./u)
+    const returned = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { cursor: backward.meta.nextCursor ?? undefined, direction: 'forward', limit: 10 },
+      options,
+    )
+    assert.deepEqual(returned.data.map((task) => task.id), [visible.id], 'the empty backwards page returns forward')
     const backwardTail = await searchProjectTasks(
       prisma,
       seeded.organizationId,

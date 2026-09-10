@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type {
   ChannelRecord,
   MessageSearchResult,
@@ -14,7 +15,7 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 import { useChannels } from '../channels/hooks'
 import { useProjects } from '../projects/hooks'
 import { useUsers } from '../users/hooks'
-import { usePagedList, type PagedList } from '../pagination/usePagedList'
+import { usePagedList, usePagedListReset, type PagedList } from '../pagination/usePagedList'
 
 const MIN_QUERY_LENGTH = 2
 const DEBOUNCE_MS = 250
@@ -72,6 +73,8 @@ export interface GlobalSearchResults {
   thoughts: ThoughtSearchHit[]
   tasks: TaskRecord[]
   taskPagination: PagedList<TaskRecord>
+  invalidTaskCursor: boolean
+  restartTaskSearch: () => void
   isLoading: boolean
   errorMessage: string | null
 }
@@ -113,6 +116,9 @@ export const usePersistedGlobalSearchMode = (): readonly [GlobalSearchMode, (nex
 
 const queryErrorMessage = (error: unknown): string | null =>
   error instanceof Error ? error.message : null
+
+export const isInvalidTaskSearchCursor = (error: unknown): boolean =>
+  error instanceof ApiClientError && error.code === 'TASK_SEARCH_CURSOR_INVALID'
 
 /**
  * Global search across channels, people, projects (filtered client-side from
@@ -182,6 +188,8 @@ export const useGlobalSearch = (
     queryKey: searchKeys.tasks(trimmed),
     scope: `task-search:${trimmed}`,
   })
+  const restartTaskSearch = usePagedListReset('tasks-')
+  const invalidTaskCursor = isInvalidTaskSearchCursor(taskPagination.query.error)
 
   // Text mode uses keyword search; semantic mode uses hybrid search so
   // knowledge results (with highlighted passages) surface alongside thoughts.
@@ -214,6 +222,8 @@ export const useGlobalSearch = (
     messages: active && textMode ? messagesQuery.data ?? [] : [],
     tasks: active && textMode ? taskPagination.items : [],
     taskPagination,
+    invalidTaskCursor,
+    restartTaskSearch,
     knowledge: active ? knowledgeQuery.data ?? [] : [],
     thoughts: active && semanticMode ? thoughtsQuery.data ?? [] : [],
     isLoading:

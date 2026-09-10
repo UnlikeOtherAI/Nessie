@@ -23,7 +23,7 @@ import {
   type TicketSearchFilters,
 } from '@nessie/team-admin'
 
-import { canUserReadRunDerivedRecord } from './run-derived-read.js'
+import { canUserReadRunDerivedRecord, runIsSearchSafe } from './run-derived-read.js'
 
 // These route-facing names keep their established API while the work itself is
 // shared with the personal assistant in @nessie/team-admin.
@@ -109,12 +109,15 @@ export const searchTasksForUser = async (
   return searchProjectTasks(prisma, organizationId, filters, {
     ...(accessibleProjectIds === 'all' ? {} : { projectIds: accessibleProjectIds }),
     continuation: { secret: cursorSecret, userId },
-    isReadable: (task) => canUserReadRunDerivedRecord(prisma, {
-      organizationId,
-      runId: task.runId,
-      uoaIdentity,
-      userId,
-    }),
+      isReadable: async (task) => (
+        await runIsSearchSafe(prisma, task.runId)
+        && canUserReadRunDerivedRecord(prisma, {
+          organizationId,
+          runId: task.runId,
+          uoaIdentity,
+          userId,
+        })
+      ),
   })
 }
 export const listAssignableUsers = listAssignableProjectTaskUsers

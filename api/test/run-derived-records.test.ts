@@ -215,6 +215,21 @@ runDatabaseTest('run-derived task and plan records require source-channel access
 
   const sourceAuthorTasks = await listTasks(prisma, s.organizationId, {}, undefined, s.insiderId, undefined)
   assert.equal(sourceAuthorTasks.some((task) => task.id === privateTask.id), true)
+  const sourceAuthorSearch = await searchTasksForUser(
+    prisma,
+    s.organizationId,
+    { text: 'search', limit: 10 },
+    'all',
+    'run-derived-records-test-secret',
+    s.insiderId,
+    undefined,
+  )
+  assert.equal(
+    sourceAuthorSearch.data.some((task) => task.id === privateSearchTask.id),
+    false,
+    'Search excludes private/basis-bearing snippets even for the source author.',
+  )
+  assert.deepEqual(sourceAuthorSearch.data.map((task) => task.id), [publicSearchTask.id])
   assert.equal(
     (await getPlan(prisma, s.organizationId, privatePlan.id, s.insiderId, undefined))?.steps[0]?.title,
     'B-PRIVATE-STEP-CANARY',

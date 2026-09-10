@@ -184,14 +184,28 @@ export const SearchPage = () => {
           ) : results.isLoading ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">Searching…</p>
           ) : !hasResults ? (
-            results.errorMessage ? (
+            results.invalidTaskCursor ? (
+              <p className="px-3 text-sm text-[color:var(--danger-text)]">
+                This task-search page expired.{' '}
+                <button className="admin-link" onClick={results.restartTaskSearch} type="button">
+                  Restart task search
+                </button>
+              </p>
+            ) : results.errorMessage ? (
               <p className="px-3 text-sm text-[color:var(--danger-text)]">{results.errorMessage}</p>
             ) : (
               <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
             )
           ) : (
             <>
-              {results.errorMessage ? (
+              {results.invalidTaskCursor ? (
+                <p className="px-3 text-sm text-[color:var(--danger-text)]">
+                  This task-search page expired.{' '}
+                  <button className="admin-link" onClick={results.restartTaskSearch} type="button">
+                    Restart task search
+                  </button>
+                </p>
+              ) : results.errorMessage ? (
                 // One section failing (e.g. memory search without an embedding
                 // model) must not hide the sections that did return results.
                 <p className="px-3 text-sm text-[color:var(--danger-text)]">

@@ -292,8 +292,14 @@ export const searchProjectTasks = async (
     ? {
         data,
         meta: {
-          hasMore: Boolean(cursor && last),
-          nextCursor: cursor && last ? cursorFor(lastAnchor) : null,
+          // With only hidden rows in this bounded backwards walk, anchor the
+          // return trip at the last scanned row. A forward query from that
+          // private, authenticated boundary rescans the hidden stretch and
+          // reaches the visible page without exposing a candidate id.
+          hasMore: Boolean(cursor && (last || hasBudgetContinuation)),
+          nextCursor: cursor && (last
+            ? cursorFor(lastAnchor)
+            : hasBudgetContinuation ? cursorFor(lastScanned) : null),
           prevCursor: hasBudgetContinuation
             ? cursorFor(lastScanned)
             : hasAdjacentReadable ? cursorFor(firstAnchor) : null,
