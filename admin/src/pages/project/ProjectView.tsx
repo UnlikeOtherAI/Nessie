@@ -13,6 +13,7 @@ import { useRedirect } from '../../navigation/redirect'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
+import { useCanAdministerProject } from '../../facades/projects/administration'
 import { usePresentedTask } from '../../facades/tasks/hooks'
 import { Notice } from '../../components/primitives/Notice'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
@@ -28,6 +29,7 @@ export const ProjectView = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const { data: projects = [] } = useProjects()
+  const canAdminister = useCanAdministerProject(projectId ?? null)
   const boardsQuery = useProjectBoards(projectId)
   const boards = boardsQuery.data ?? []
   // No pinned sidebar on the single column, so the board strip stays there —
@@ -139,7 +141,7 @@ export const ProjectView = () => {
   const headerActions: PageHeaderAction[] = [
     // The doorways to board administration, from the screen a person is
     // standing on when they want them — not only from Settings.
-    ...(tab === 'board'
+    ...(tab === 'board' && canAdminister
       ? [
           {
             id: 'board-admin',

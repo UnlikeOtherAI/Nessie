@@ -17,6 +17,7 @@ import {
   exerciseRichBoardAssignees,
   exerciseRichBoardAssigneesPhone,
 } from './rich-assignees.mjs'
+import { exerciseProjectAdministrationPermissions } from './project-administration-permissions.mjs'
 
 const ADMIN_URL = `http://localhost:${ADMIN_PORT}`
 const SCREENSHOTS = fileURLToPath(new URL('../../../e2e/screenshots/project-usability/', import.meta.url))
@@ -204,6 +205,9 @@ const main = async () => {
     })
     const boardB = await api(`/api/projects/${project.id}/boards`, { body: { copyColumnsFromBoardId: boardA.id, name: `Isolation proof ${runId}` }, method: 'POST', token: seed.token })
     boardBId = boardB.id
+    await exerciseProjectAdministrationPermissions({
+      adminUrl: ADMIN_URL, api, browser, project, runId, shot, token: seed.token,
+    })
     const [firstColumn, secondColumn, boardBFirstColumn] = [boardA.columns[0], boardA.columns[1], boardB.columns[0]]
     assert.ok(firstColumn && secondColumn && boardBFirstColumn, 'the boards have lifecycle columns')
     const createdTitle = `QA flow ${runId}`; const editedTitle = `QA edited ${runId}`; const touchTitle = `QA touch ${runId}`; const boardBTitle = `QA board B ${runId}`
@@ -451,7 +455,7 @@ const main = async () => {
     if (project) await api(`/api/projects/${project.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete disposable project: ${error.message}`))
   }
   if (cleanupFailures.length > 0) throw new Error(`project-usability cleanup failed:\n  ${cleanupFailures.join('\n  ')}`)
-  console.log('project-usability e2e: passed (board management, lifecycle, isolation, phone touch scroll)')
+  console.log('project-usability e2e: passed (board administration permissions, lifecycle, isolation, phone touch scroll)')
 }
 
 await main()

@@ -39,6 +39,13 @@ export const ProjectBoardsPage = () => {
     if (createIntent.value === 'board' && canAdminister) setCreateOpen(true)
   }, [canAdminister, createIntent.serial, createIntent.value])
 
+  // A failed create can be the first signal that the server revoked the role
+  // after this page's membership read. Do not leave a now-forbidden dialog
+  // open once the shared entitlement query catches up.
+  useEffect(() => {
+    if (!canAdminister) setCreateOpen(false)
+  }, [canAdminister])
+
   if (!projectId) return null
 
   const actions: PageHeaderAction[] = canAdminister

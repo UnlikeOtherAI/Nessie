@@ -8,6 +8,7 @@ import type {
 } from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
 import { projectKeys } from '../projects/keys'
+import { refreshProjectAdministrationAfterForbidden } from '../projects/administration'
 import { taskKeys } from '../tasks/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { TaskRecord } from '../tasks/hooks'
@@ -78,6 +79,7 @@ export const useCreateBoard = (projectId: string) => {
       style?: BoardStyle
       copyColumnsFromBoardId?: string
     }) => apiClient.post<BoardRecord>(`/api/projects/${projectId}/boards`, input),
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
@@ -103,6 +105,7 @@ export const useUpdateBoard = (projectId: string) => {
         body,
       )
     },
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
@@ -119,6 +122,7 @@ export const useDeleteBoard = (projectId: string) => {
             : ''
         }`,
       ),
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
@@ -132,6 +136,7 @@ export const useCreateColumn = (projectId: string, boardId: string) => {
         `/api/projects/${projectId}/boards/${boardId}/columns`,
         input,
       ),
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
@@ -153,6 +158,7 @@ export const useUpdateColumn = (projectId: string, boardId: string) => {
         body,
       )
     },
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
@@ -165,6 +171,7 @@ export const useDeleteColumn = (projectId: string, boardId: string) => {
       apiClient.delete<{ ok: true }>(
         `/api/projects/${projectId}/boards/${boardId}/columns/${columnId}`,
       ),
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => invalidateBoards(queryClient, projectId),
   })
 }
