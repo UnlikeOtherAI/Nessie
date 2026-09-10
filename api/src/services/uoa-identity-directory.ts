@@ -12,6 +12,7 @@ import {
 const DEFAULT_TTL_MS = 30_000
 const DEFAULT_MAX_ENTRIES = 100
 const DEFAULT_MAX_CACHED_MEMBERS = 20_000
+const DEFAULT_MAX_IN_FLIGHT = 20
 const PAGE_SIZE = 100
 const MAX_PAGES = 50
 
@@ -34,6 +35,7 @@ export type UoaIdentityDirectoryOptions = {
   ) => Promise<DirectoryPage>
   maxCachedMembers?: number
   maxEntries?: number
+  maxInFlight?: number
   now?: () => number
   rosterDeps?: UoaRosterDeps
   ttlMs?: number
@@ -45,6 +47,12 @@ type CacheEntry = {
   expiresAt: number
   externalOrgId: string
   members: TeamMemberRecord[]
+}
+
+type InFlightEntry = {
+  externalOrgId: string
+  invalidated: boolean
+  promise: Promise<TeamMemberRecord[]>
 }
 
 const copyMembers = (members: readonly TeamMemberRecord[]): TeamMemberRecord[] =>
@@ -81,8 +89,11 @@ export const createUoaIdentityDirectory = (
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES
   const maxCachedMembers = options.maxCachedMembers ?? DEFAULT_MAX_CACHED_MEMBERS
+  const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT
   const loadPage: LoadDirectoryPage = options.loadPage ?? defaultLoadPage(options.rosterDeps ?? {})
   const cache = new Map<string, CacheEntry>()
+  const inFlight = new Map<string, InFlightEntry>()
+  const activeLoads = new Set<InFlightEntry>()
   let cachedMemberCount = 0
 
   const deleteCached = (key: string): void => {
@@ -90,6 +101,27 @@ export const createUoaIdentityDirectory = (
     if (!cached) return
     cachedMemberCount -= cached.members.length
     cache.delete(key)
+  }
+
+  const setCached = (
+    key: string,
+    input: UoaIdentityDirectoryInput,
+    members: readonly TeamMemberRecord[],
+  ): void => {
+    // Replacement accounting is deliberate: a superseded request may finish
+    // after a newer request for the same key has already populated the cache.
+    deleteCached(key)
+    cache.set(key, {
+      expiresAt: now() + ttlMs,
+      externalOrgId: input.externalOrgId,
+      members: copyMembers(members),
+    })
+    cachedMemberCount += members.length
+    while (cache.size > maxEntries || cachedMemberCount > maxCachedMembers) {
+      const oldest = cache.keys().next()
+      if (oldest.done) break
+      deleteCached(oldest.value)
+    }
   }
 
   const loadAll = async (input: UoaIdentityDirectoryInput): Promise<TeamMemberRecord[]> => {
@@ -134,33 +166,51 @@ export const createUoaIdentityDirectory = (
   return {
     async list(input) {
       const key = cacheKey(input)
-      const timestamp = now()
       const cached = cache.get(key)
-      if (cached && cached.expiresAt > timestamp) {
+      if (cached && cached.expiresAt > now()) {
         cache.delete(key)
         cache.set(key, cached)
         return copyMembers(cached.members)
       }
       deleteCached(key)
 
-      const members = await loadAll(input)
-      cache.set(key, {
-        expiresAt: timestamp + ttlMs,
-        externalOrgId: input.externalOrgId,
-        members: copyMembers(members),
-      })
-      cachedMemberCount += members.length
-      while (cache.size > maxEntries || cachedMemberCount > maxCachedMembers) {
-        const oldest = cache.keys().next()
-        if (oldest.done) break
-        deleteCached(oldest.value)
+      const currentLoad = inFlight.get(key)
+      if (currentLoad) return copyMembers(await currentLoad.promise)
+      if (activeLoads.size >= maxInFlight) {
+        throw new UoaRosterUnavailableError(
+          '[uoa] too many organization directory reads are already in progress',
+        )
       }
-      return copyMembers(members)
+
+      // Defer loadAll until after the entry is registered. That closes the
+      // synchronous invalidation window before loadPage returns its promise.
+      const entry: InFlightEntry = {
+        externalOrgId: input.externalOrgId,
+        invalidated: false,
+        promise: Promise.resolve()
+          .then(() => loadAll(input))
+          .then((members) => {
+            if (!entry.invalidated) setCached(key, input, members)
+            return members
+          })
+          .finally(() => {
+            activeLoads.delete(entry)
+            if (inFlight.get(key) === entry) inFlight.delete(key)
+          }),
+      }
+      inFlight.set(key, entry)
+      activeLoads.add(entry)
+      return copyMembers(await entry.promise)
     },
 
     invalidateOrganization(externalOrgId) {
       for (const [key, entry] of cache) {
         if (entry.externalOrgId === externalOrgId) deleteCached(key)
+      }
+      for (const [key, entry] of inFlight) {
+        if (entry.externalOrgId !== externalOrgId) continue
+        entry.invalidated = true
+        inFlight.delete(key)
       }
     },
   }

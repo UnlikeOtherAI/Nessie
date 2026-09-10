@@ -92,7 +92,9 @@ is the explicit no-IdP mode and retains local identity management.
    local fields by `User.uoaSub`. Its in-memory display cache is keyed by actor,
    organisation, active team and credential epoch, expires after 30 seconds,
    has entry and total-member bounds, and never serves expired data after an
-   upstream error. It is not an authorization cache. Missing subject bindings,
+   upstream error. Same-key misses share one load, at most 20 loads are tracked,
+   and invalidation prevents an older load from refilling the cache. It is not
+   an authorization cache. Missing subject bindings,
    duplicate subjects and incomplete pagination fail explicitly. The unbound
    `/api/users` behavior is unchanged. Historical records keep stable local
    author references; this active selector does not establish the final

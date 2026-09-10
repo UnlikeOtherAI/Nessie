@@ -387,8 +387,9 @@ ACTIVE UOA organisation roster through the current actor's subject assertion,
 paginates it to completion, and joins only product-owned fields by
 `User.uoaSub`. Its 30-second in-memory display cache is scoped by organisation,
 actor, active team and credential epoch; it has entry and total-member bounds,
-never serves expired data after an upstream failure, and is never an
-authorization input. A missing legacy subject binding is a migration error,
+coalesces same-key misses under a bounded in-flight set, prevents invalidated
+loads from refilling it, never serves expired data after an upstream failure,
+and is never an authorization input. A missing legacy subject binding is a migration error,
 never an email/name join. The unbound organisation retains the local route.
 Other renderers and authorization checks still read the mirrors/projections
 named above, so this slice does not complete the authority migration; the
