@@ -157,3 +157,23 @@ test('a persistence failure is swallowed (best-effort, never breaks delivery)', 
 
   assert.equal(deps.published.length, 0)
 })
+
+test('a durable completion mention propagates persistence failure for replay', async () => {
+  const deps = makeDeps({
+    members: [{ id: MEMBER, displayName: 'Mentioned One' }],
+    failCreateMany: true,
+  })
+
+  await assert.rejects(
+    createMessageMentionAlerts(
+      { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+      {
+        ...baseInput,
+        actorAgentId: AGENT,
+        content: '@Mentioned One hi',
+        durableEventKey: `run-completion:${MESSAGE}:mention-alert`,
+      },
+    ),
+    /db down/,
+  )
+})

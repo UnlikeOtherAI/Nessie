@@ -6,9 +6,12 @@ export const publishTaskUpdated = async (
   scopes: WsScope[],
   taskId: string,
   status: TaskStatus,
+  options: { idempotencyKey?: string; timestamp?: string } = {},
 ): Promise<void> => {
   await transport.publishWs(scopes, {
     data: { taskId: parseTaskId(taskId), status },
     event: 'task.updated',
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    ...(options.timestamp ? { ts: options.timestamp } : {}),
   })
 }

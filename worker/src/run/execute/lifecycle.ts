@@ -2,17 +2,13 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import { applyReplyBookkeeping } from '@nessie/runtime'
+import { applyReplyBookkeeping, QueueRetryAfterError } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
 import { parseAgentRunLimits } from '../run-budget.js'
 import type { PgRealtimeTransport } from '@nessie/runtime'
-import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
-import { clearCrashCheckpoint, clearCrashCheckpointForUnheldRun } from './crash-checkpoint.js'
-import { clearRunToolEffects } from './tool-effect-ledger.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
-import { clearWorking } from './working-marker.js'
-import { releaseAgentTodosForTerminalRun } from '@nessie/team-admin'
+import { cleanupRunResumeState, cleanupTerminalRun } from './terminal-cleanup.js'
 
 /**
  * This executor no longer owns the run: another one claimed it (our heartbeat
@@ -36,6 +32,7 @@ export class RunFencedError extends Error {
  * is between machines whose clocks drift.
  */
 const EXECUTOR_TAKEOVER_INTERVAL = '2 minutes'
+export const EXECUTOR_TAKEOVER_MS = 2 * 60 * 1000
 const EXECUTOR_HEARTBEAT_MS = 30_000
 
 type ExecutorFence = { fenced: boolean; runId: string; token: string | null }
@@ -91,7 +88,8 @@ export const currentExecutorToken = (runId: string): string | null =>
   heldFence(runId)?.token ?? null
 
 /**
- * Hand a run back mid-flight, for a worker that is draining.
+ * Hand a run back mid-flight when this execution intentionally asks the queue
+ * to retry it.
  *
  * Clearing the heartbeat alongside the token is the point: `claimRunForExecution`
  * admits a `running` run only once its executor has gone silent for the takeover
@@ -103,18 +101,40 @@ export const currentExecutorToken = (runId: string): string | null =>
  * Conditional on still holding the run, so a fenced-out executor cannot release
  * the winner's claim on its way out.
  */
-export const releaseRunForDrain = async (
+export const handBackRunExecution = async (
   prisma: PrismaClient,
   runId: string,
-): Promise<void> => {
+): Promise<boolean> => {
   const token = currentExecutorToken(runId)
-  if (!token) return
-  await prisma.$executeRaw`
+  if (!token) return false
+  const released = await prisma.$executeRaw`
     UPDATE runs
     SET executor_token = NULL, executor_heartbeat_at = NULL
     WHERE id = ${runId}::uuid AND executor_token = ${token}::uuid
   `
   releaseExecutorFence(runId)
+  return released === 1
+}
+
+/**
+ * Hand back a retrying run, deferring the queue claim past the lease takeover
+ * window when the hand-back statement itself cannot reach Postgres. The queue
+ * claim version still advances, but the delayed nack adds the matching retry
+ * capacity while it waits for the live-looking claim to become safely stale.
+ */
+export const handBackRunExecutionForRetry = async (
+  prisma: PrismaClient,
+  runId: string,
+): Promise<boolean> => {
+  try {
+    return await handBackRunExecution(prisma, runId)
+  } catch (error) {
+    throw new QueueRetryAfterError(
+      `run ${runId} claim hand-back failed; retry after takeover window`,
+      EXECUTOR_TAKEOVER_MS + 1_000,
+      { cause: error },
+    )
+  }
 }
 
 /**
@@ -242,28 +262,11 @@ export const updateRunStatus = async (
   // executor is still writing. The unfenced variant is only for a status
   // written from outside any execution, which is the run's ending, not a
   // competitor for it.
-  if (terminal || suspended) {
-    try {
-      await (fenceToken
-        ? clearCrashCheckpoint(prisma, runId, fenceToken)
-        : clearCrashCheckpointForUnheldRun(prisma, runId))
-    } catch (error) {
-      console.warn('[worker] could not clear crash checkpoint for run', runId, error)
-    }
-    // The run's tool-effect claims go with it, and here for the same reason:
-    // there is one row per side-effecting tool call, so without a chokepoint
-    // that sheds them the table grows with every call the platform ever makes.
-    // A terminal run is never resumed, and a suspended one is continued by a
-    // NEW run whose tool calls carry new ids — so from this statement onwards
-    // nothing can consult these rows, which is exactly when they stop being
-    // worth keeping. Unfenced, unlike the crash state above: a competing
-    // executor cannot lose anything that matters by deleting claims for a run
-    // this caller is declaring over. See `tool-effect-ledger.ts`.
-    try {
-      await clearRunToolEffects(prisma, runId)
-    } catch (error) {
-      console.warn('[worker] could not clear tool-effect claims for run', runId, error)
-    }
+  if (suspended) {
+    await cleanupRunResumeState(prisma, runId, {
+      executorToken: fenceToken,
+      mode: 'best-effort',
+    })
   }
 
   // Clearing the "looking at this" reaction is fused to the terminal
@@ -272,27 +275,10 @@ export const updateRunStatus = async (
   // crashed run is re-delivered by the queue and ends up here too, which is
   // what keeps the marker from outliving the work.
   if (!terminal) return
-  // Wrapped: the run is already terminal in the database, and a decoration
-  // must never be able to turn that into a thrown error.
-  try {
-    const run = await prisma.run.findUnique({
-      select: { agentId: true, principalUserId: true, threadId: true, triggerMessageId: true },
-      where: { id: runId },
-    })
-    await releaseAgentTodosForTerminalRun(prisma, runId)
-    // Browser-hours are money, so this sits above the trigger-message
-    // early-return: a run with no trigger message still opened a real browser.
-    await releaseRunCloudBrowsers(runId)
-    if (!run?.triggerMessageId) return
-    await clearWorking(prisma, transport ?? null, {
-      agentId: run.agentId,
-      messageId: run.triggerMessageId,
-      ...(run.principalUserId ? { onBehalfOfUserId: run.principalUserId } : {}),
-      threadId: run.threadId,
-    })
-  } catch (error) {
-    console.warn('[worker] could not clear working reaction for run', runId, error)
-  }
+  await cleanupTerminalRun(prisma, runId, transport ?? null, {
+    executorToken: fenceToken,
+    mode: 'best-effort',
+  })
 }
 
 export type RunClaim =
@@ -379,7 +365,7 @@ export const setAgentStatus = async (
 // unit of work and return it for realtime fan-out. A bookkeeping failure
 // propagates exactly like a message-create failure — no silent fallback.
 export const applyRunReplyBookkeeping = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, '$queryRaw'>,
   context: RunContext,
   replyCreatedAt: Date,
 ): Promise<ReplyPlacement | undefined> => {

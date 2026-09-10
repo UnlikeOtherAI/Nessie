@@ -165,7 +165,7 @@ export const loadCrashCheckpoint = async (
  * the live executor's checkpoint and force a replay from the prompt.
  */
 export const clearCrashCheckpoint = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   runId: string,
   executorToken: string,
 ): Promise<void> => {
@@ -212,7 +212,7 @@ export const clearCrashCheckpoint = async (
  * accident reads wrong.
  */
 export const clearCrashCheckpointForUnheldRun = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   runId: string,
 ): Promise<void> => {
   await prisma.runCheckpoint.deleteMany({

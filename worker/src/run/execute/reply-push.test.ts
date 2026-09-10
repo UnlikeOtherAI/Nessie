@@ -143,3 +143,20 @@ test('does not notify for background automation', async () => {
 
   assert.deepEqual(calls, [])
 })
+
+test('a required completion push propagates enqueue failure for replay', async () => {
+  const deps = {
+    prisma: { $executeRaw: async () => { throw new Error('db down') } },
+  } as unknown as Pick<ExecutionDependencies, 'prisma'>
+
+  await assert.rejects(
+    enqueueInteractiveReplyPush(
+      deps,
+      payload({ interactive: true }),
+      context,
+      { content: 'Answer.', id: MESSAGE_ID },
+      { required: true },
+    ),
+    /db down/,
+  )
+})
