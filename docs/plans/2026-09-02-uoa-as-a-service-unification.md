@@ -25,7 +25,7 @@ exists at those revisions, rather than a proposed API document.
 | Organisation | create/read/update/delete and ownership transfer under a user subject; estate-wide list is backend-only | UOA `API/src/routes/org/organisations.ts`, `API/src/routes/org/organisation-members.ts` |
 | Organisation roster | paginated member list, add, role change, remove, deactivate/reactivate, and per-member team access | UOA `API/src/routes/org/organisation-members.ts` |
 | Team hierarchy | paginated team list, create/read/update/delete; member list/add/role change/remove and self-join | UOA `API/src/routes/org/teams.ts`, `API/src/routes/org/team-self-join.ts` |
-| Invitations | create/list/read/resend/review/revoke, organisation invitation targets/history, invite links, and hosted accept/decline flows | UOA `API/src/routes/org/team-invitations.ts`, `member-invitations.ts`, `team-invite-links.ts`; hosted flows under `API/src/routes/auth/` |
+| Invitations | create/list/read/resend/review/revoke, organisation invitation targets/history, invite links, and hosted accept/decline flows | UOA `API/src/routes/org/team-invitations.ts`, `API/src/routes/org/member-invitations.ts`, `API/src/routes/org/team-invite-links.ts`, `API/src/routes/auth/email-team-invite.ts`, `API/src/routes/auth/auth-select-team.ts` |
 | Profile pictures | current-user avatar read/write/delete and team avatar read/write/delete | UOA `API/src/routes/avatar/me.ts`, `API/src/routes/org/team-avatar.ts` |
 
 Roster responses already include the stable subject plus display name, avatar
