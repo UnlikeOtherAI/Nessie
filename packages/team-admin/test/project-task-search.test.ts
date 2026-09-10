@@ -376,6 +376,18 @@ runDatabaseTest('an authenticated continuation reaches a readable ticket after a
     )
     assert.deepEqual(backwardTail.data, [])
     assert.equal(backwardTail.meta.prevCursor, null)
+    assert.ok(backwardTail.meta.nextCursor)
+    const returnedFromHiddenAnchor = await searchProjectTasks(
+      prisma,
+      seeded.organizationId,
+      { cursor: backwardTail.meta.nextCursor ?? undefined, direction: 'forward', limit: 10 },
+      options,
+    )
+    assert.deepEqual(
+      returnedFromHiddenAnchor.data.map((task) => task.id),
+      [visible.id],
+      'a terminal hidden anchor reverses exclusively and does not consume the scan budget twice',
+    )
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
