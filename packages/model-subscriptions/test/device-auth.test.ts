@@ -92,11 +92,23 @@ test('the OAuth providers are linked by sign-in, the key providers by paste', ()
   assert.equal(requireSubscriptionAdapter('grok').authStrategy, 'oauth_device')
   assert.equal(requireSubscriptionAdapter('kimi').authStrategy, 'api_key')
   assert.equal(requireSubscriptionAdapter('glm').authStrategy, 'api_key')
+  assert.equal(requireSubscriptionAdapter('deepseek').authStrategy, 'api_key')
 
   assert.notEqual(deviceFlowForAdapter('openai_codex'), null)
   assert.notEqual(deviceFlowForAdapter('grok'), null)
   assert.equal(deviceFlowForAdapter('kimi'), null)
   assert.equal(deviceFlowForAdapter('glm'), null)
+  assert.equal(deviceFlowForAdapter('deepseek'), null)
+})
+
+test('DeepSeek uses the personal API balance endpoint and canonical Flash model', () => {
+  const deepseek = requireSubscriptionAdapter('deepseek')
+  assert.equal(deepseek.displayName, 'DeepSeek API')
+  assert.equal(deepseek.transport.baseUrl, 'https://api.deepseek.com/v1')
+  assert.equal(deepseek.transport.runtimeProvider, 'deepseek')
+  assert.deepEqual(deepseek.models.map((model) => model.model), ['deepseek-flash'])
+  assert.match(deepseek.termsNote, /own DeepSeek API balance/)
+  assert.equal(deepseek.termsNote.includes('Ledger fallback'), false)
 })
 
 test('every OAuth adapter can refresh, and dispatches to its own pinned origin', () => {

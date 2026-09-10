@@ -19,6 +19,7 @@
     "test:e2e:knowledge-markdown": "node e2e/knowledge-markdown/run.mjs",
     "test:e2e:member-management": "node e2e/member-management/run.mjs",
     "test:e2e:model-subscription-device-link": "node e2e/model-subscription-device-link/run.mjs",
+    "test:e2e:model-subscription-deepseek": "node e2e/model-subscription-deepseek/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
     "test:e2e:organization-theme": "node e2e/organization-theme/run.mjs",
     "test:e2e:page-header": "node e2e/page-header/run.mjs",

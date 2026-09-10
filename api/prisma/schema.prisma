@@ -7469,6 +7469,7 @@ enum ModelSubscriptionProvider {
   glm
   openai_codex @map("openai-codex")
   grok
+  deepseek
 }
 
 enum ModelSubscriptionStatus {
