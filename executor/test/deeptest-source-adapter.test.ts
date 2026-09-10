@@ -76,10 +76,14 @@ const repository = async (): Promise<string> => {
 
 test('DeepTest native source command is a packaged executor entry point', () => {
   assert.deepEqual(
-    parseCommand(['deeptest-source', '--state-dir', '/private/nessie/executor']),
-    { kind: 'deeptest-source', stateDir: '/private/nessie/executor' },
+    parseCommand(['deeptest-source', '--source-grant-file', '/private/nessie/deeptest-source-grant.json']),
+    { kind: 'deeptest-source', sourceGrantFile: '/private/nessie/deeptest-source-grant.json' },
   )
-  assert.throws(() => parseCommand(['deeptest-source']), /state-dir/u)
+  assert.throws(() => parseCommand(['deeptest-source']), /source-grant-file/u)
+  assert.deepEqual(
+    parseCommand(['publish-deeptest-source-grant', '--state-dir', '/private/nessie/executor']),
+    { kind: 'publish-deeptest-source-grant', stateDir: '/private/nessie/executor' },
+  )
 })
 
 test('protocol parsing rejects extra keys, unbounded pages, and malformed identities', () => {

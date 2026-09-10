@@ -7,7 +7,8 @@ mod runtime;
 
 use runtime::{
     companion_availability, companion_root, daemon_status, executor_state_dir, forget_local_pairing,
-    has_executor_state, local_policy_summary, run_configure_workspace, run_pair, start_daemon,
+    has_deeptest_source_grant, has_executor_state, local_policy_summary, run_configure_workspace,
+    run_pair, start_daemon,
     stop_daemon,
 };
 
@@ -190,6 +191,10 @@ fn paired_executors(
         }
     }
     result
+}
+
+fn has_local_pairing_material(state_dir: &std::path::Path) -> bool {
+    has_executor_state(state_dir) || has_deeptest_source_grant(state_dir)
 }
 
 #[tauri::command]
@@ -379,7 +384,8 @@ pub async fn executor_companion_forget(
     require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
     let state_dir = executor_state_dir(&app, &executor_id)?;
-    if !has_executor_state(&state_dir) {
+    let has_paired_state = has_executor_state(&state_dir);
+    if !has_local_pairing_material(&state_dir) {
         return Err("This executor has not been paired on this Nessie Desktop device.".to_owned());
     }
     if !confirm(
@@ -389,25 +395,43 @@ pub async fn executor_companion_forget(
     ).await? {
         return Err("Forgetting the local executor pairing was cancelled.".to_owned());
     }
-    match daemon_status(&state, &executor_id, &state_dir)? {
-        "running" => { stop_daemon(&state, &executor_id)?; },
-        "stopping" => return Err(
-            "The local daemon is still stopping. Wait for it to finish before forgetting the pairing.".to_owned(),
-        ),
-        _ => {},
+    if has_paired_state {
+        match daemon_status(&state, &executor_id, &state_dir)? {
+            "running" => { stop_daemon(&state, &executor_id)?; },
+            "stopping" => return Err(
+                "The local daemon is still stopping. Wait for it to finish before forgetting the pairing.".to_owned(),
+            ),
+            _ => {},
+        }
     }
     forget_local_pairing(&state_dir)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{approved_api_base_url, identifier, runtime::pair_arguments, workspace_operation_keys};
-    use std::path::Path;
+    use super::{
+        approved_api_base_url, has_local_pairing_material, identifier, runtime::pair_arguments,
+        workspace_operation_keys,
+    };
+    use std::{fs, path::Path};
 
     #[test]
     fn accepts_only_safe_executor_identifiers() {
         assert!(identifier("00000000-0000-4000-8000-000000000001", "executor id").is_ok());
         assert!(identifier("../state", "executor id").is_err());
+    }
+
+    #[test]
+    fn orphaned_source_grant_keeps_forget_available() {
+        let directory = std::env::temp_dir().join(format!(
+            "nessie-forget-eligibility-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).expect("directory");
+        fs::write(directory.join("deeptest-source-grant.json"), "grant").expect("grant");
+
+        assert!(has_local_pairing_material(&directory));
+        fs::remove_dir_all(directory).ok();
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import type { Readable, Writable } from 'node:stream'
 
-import type { ExecutorLocalState } from './state-store.js'
+import type { ExecutorDeepTestSourceGrant } from './state-store.js'
 import {
   DEEPTEST_SOURCE_CAPABILITIES,
   DEEPTEST_SOURCE_PROTOCOL_VERSION,
@@ -65,8 +65,8 @@ const requestIdFrom = (value: unknown): string => {
 }
 
 export const createDeepTestSourceAdapter = (
-  state: ExecutorLocalState,
-  refreshState: () => Promise<ExecutorLocalState> = async () => state,
+  state: ExecutorDeepTestSourceGrant,
+  refreshState: () => Promise<ExecutorDeepTestSourceGrant> = async () => state,
 ) => {
   let binding: DeepTestSourceBinding | undefined
   const snapshots = new Map<string, DeepTestSourceSnapshot>()
@@ -214,10 +214,10 @@ const frames = async function* (input: Readable): AsyncGenerator<string> {
 }
 
 export const serveDeepTestSourceAdapter = async (
-  state: ExecutorLocalState,
+  state: ExecutorDeepTestSourceGrant,
   input: Readable = process.stdin,
   output: Writable = process.stdout,
-  refreshState: () => Promise<ExecutorLocalState> = async () => state,
+  refreshState: () => Promise<ExecutorDeepTestSourceGrant> = async () => state,
 ): Promise<void> => {
   const adapter = createDeepTestSourceAdapter(state, async () => {
     if (input.destroyed || input.readableEnded) throw new Error('INPUT_CLOSED')
