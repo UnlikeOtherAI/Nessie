@@ -1,5 +1,6 @@
 import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import { isLedgerEndpoint } from '../../ledger-identity.js'
+import { safeFetch, type SafeFetchOptions } from '../../url-safety.js'
 import type {
   ModelCapabilitySnapshot,
   ModelProviderConfig,
@@ -36,9 +37,15 @@ import {
   usageFromOpenAi,
 } from './openai-chat-protocol.js'
 
+/** Internal test seam for the pinned personal DeepSeek transport. */
+export type OpenAiLikeConnectorOptions = {
+  personalDeepSeekSafeFetchOptions?: SafeFetchOptions
+}
+
 export const createOpenAiLikeConnector = (
   provider: ModelProviderName,
   config: ModelProviderConfig,
+  options: OpenAiLikeConnectorOptions = {},
 ): ProviderConnector => {
   if (!config.apiKey) {
     throw new Error('OPENAI_API_KEY / OPENAI_CHAT_API_KEY is not set')
@@ -59,18 +66,55 @@ export const createOpenAiLikeConnector = (
   // through Ledger — take inline image parts. DeepSeek's chat API is text-only
   // and rejects them, so its turns stay plain strings.
   const supportsVision = provider !== 'deepseek'
+  const isPersonalDeepSeek =
+    provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+
+  // `fetchCompletion` is a raw body escape hatch used by the Designer. Keep
+  // the personal DeepSeek contract at the transport boundary too, so a future
+  // caller cannot re-enable thinking or send OpenAI's incompatible cap field.
+  const normalizePersonalDeepSeekBody = (
+    body: Record<string, unknown>,
+  ): Record<string, unknown> => {
+    if (!isPersonalDeepSeek) return body
+    const maxCompletionTokens = body.max_completion_tokens
+    const maxTokens = body.max_tokens
+    const rest = { ...body }
+    Reflect.deleteProperty(rest, 'max_completion_tokens')
+    Reflect.deleteProperty(rest, 'max_tokens')
+    Reflect.deleteProperty(rest, 'thinking')
+    return {
+      ...rest,
+      ...(typeof maxTokens === 'number'
+        ? { max_tokens: maxTokens }
+        : typeof maxCompletionTokens === 'number'
+          ? { max_tokens: maxCompletionTokens }
+          : {}),
+      thinking: { type: 'disabled' },
+    }
+  }
 
   const invokeRequest = async (
     body: Record<string, unknown>,
     requestHeaders?: Record<string, string>,
     signal?: AbortSignal,
   ): Promise<Response> => {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      body: JSON.stringify(body),
+    const init: RequestInit = {
+      body: JSON.stringify(normalizePersonalDeepSeekBody(body)),
       headers: { ...requestHeaders, ...headers },
       method: 'POST',
       signal,
-    })
+    }
+    const response = isPersonalDeepSeek
+      ? await safeFetch(
+        new URL('chat/completions', `${baseUrl.replace(/\/+$/, '')}/`),
+        init,
+        {
+          ...options.personalDeepSeekSafeFetchOptions,
+          credentialsPresent: true,
+          maxRedirects: 0,
+        },
+      )
+      : await fetch(`${baseUrl}/chat/completions`, init)
 
     if (!response.ok) {
       throw await providerHttpError({
@@ -91,12 +135,23 @@ export const createOpenAiLikeConnector = (
       const startedAt = Date.now()
 
       try {
-        const response = await fetch(`${baseUrl}/models`, {
+        const init: RequestInit = {
           headers: {
             Authorization: `Bearer ${config.apiKey}`,
           },
           method: 'GET',
-        })
+        }
+        const response = isPersonalDeepSeek
+          ? await safeFetch(
+            new URL('/models', `${baseUrl.replace(/\/+$/, '')}/`),
+            init,
+            {
+              ...options.personalDeepSeekSafeFetchOptions,
+              credentialsPresent: true,
+              maxRedirects: 0,
+            },
+          )
+          : await fetch(`${baseUrl}/models`, init)
 
         const latencyMs = Date.now() - startedAt
         if (response.ok) {
@@ -298,10 +353,21 @@ export const createOpenAiLikeConnector = (
 
       try {
         const tools = mapToolsToOpenAi(request.tools)
+        const maxTokens = request.maxOutputTokens ?? 1024
         const response = await invokeRequest({
-          max_completion_tokens: request.maxOutputTokens ?? 1024,
+          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+            ? { max_tokens: maxTokens }
+            : { max_completion_tokens: maxTokens }),
           messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
+          // DeepSeek defaults to thinking mode. Its API requires the returned
+          // reasoning content to be replayed before a later tool-result turn;
+          // the shared OpenAI message contract deliberately does not persist
+          // that private provider field, so use DeepSeek's documented
+          // nonthinking mode for this connector's tool-capable protocol.
+          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+            ? { thinking: { type: 'disabled' } }
+            : {}),
           // Routes requests with the same prefix to the same prompt cache for a
           // higher hit rate (undefined is dropped by JSON.stringify).
           prompt_cache_key: request.promptCacheKey,
@@ -365,10 +431,16 @@ export const createOpenAiLikeConnector = (
 
       try {
         const tools = mapToolsToOpenAi(request.tools)
+        const maxTokens = request.maxOutputTokens ?? 1024
         const response = await invokeRequest({
-          max_completion_tokens: request.maxOutputTokens ?? 1024,
+          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+            ? { max_tokens: maxTokens }
+            : { max_completion_tokens: maxTokens }),
           messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
+          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+            ? { thinking: { type: 'disabled' } }
+            : {}),
           prompt_cache_key: request.promptCacheKey,
           reasoning_effort: request.reasoningEffort,
           response_format: request.responseFormat,

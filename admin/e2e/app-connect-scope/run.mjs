@@ -10,6 +10,7 @@ const screenshotDirectory = 'e2e/screenshots/project-usability/app-connect-scope
 const screenshots = resolve(REPO_ROOT, screenshotDirectory)
 const menuScreenshotPath = resolve(screenshots, 'project-audience-compact-menu.png')
 const projectScreenshotPath = resolve(screenshots, 'project-audience-compact-project.png')
+const reviewScreenshotPath = resolve(screenshots, 'mixed-pending-review-doorway.png')
 const admin = await startAdmin()
 const browser = await launchBrowser()
 let page
@@ -50,8 +51,47 @@ try {
   assert.equal(await page.getByTestId('app-connect-confirm').isDisabled(), true)
   assert.equal(await page.evaluate(() => window.__appConnectScopeFixture.calls.length), 0)
   await page.screenshot({ fullPage: true, path: projectScreenshotPath })
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('heading', { name: 'Review connection to KiloTalk fixture' }).waitFor({ state: 'hidden' })
+  const review = page.getByRole('link', { name: 'Review capabilities' })
+  await review.waitFor()
+  assert.equal(
+    await review.getAttribute('href'),
+    '/agents/tools?status=pending_review&instance=44444444-4444-4444-8444-444444444444',
+  )
+  await page.screenshot({ fullPage: true, path: reviewScreenshotPath })
+  await page.evaluate(() => { window.__appConnectScopeFixture.policyCalls.length = 0 })
+  await page.getByRole('switch').click()
+  await page.waitForFunction(() => window.__appConnectScopeFixture.policyCalls.length >= 3)
+  await page.waitForTimeout(150)
+  const policyCalls = await page.evaluate(() => window.__appConnectScopeFixture.policyCalls)
+  assert.deepEqual(
+    policyCalls,
+    [
+      '/api/mcp/tools/tool-active-a/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/tool-active-b/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/tool-active-c/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/policy-targets',
+    ],
+  )
+  await page.evaluate(() => {
+    window.__appConnectScopeFixture.failPolicyPatchAt = 2
+    window.__appConnectScopeFixture.policyCalls.length = 0
+  })
+  await page.getByRole('switch').click()
+  await page.waitForFunction(() => window.__appConnectScopeFixture.policyCalls.length >= 3)
+  await page.waitForTimeout(150)
+  assert.deepEqual(
+    await page.evaluate(() => window.__appConnectScopeFixture.policyCalls),
+    [
+      '/api/mcp/tools/tool-active-a/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/tool-active-b/policy-targets/99999999-9999-4999-8999-999999999999',
+      '/api/mcp/tools/policy-targets',
+    ],
+  )
+  await page.getByRole('alert').waitFor()
   await context.close()
-  console.log(`App connection compact audience proof passed: ${menuScreenshotPath}, ${projectScreenshotPath}`)
+  console.log(`App connection scope proofs passed: ${menuScreenshotPath}, ${projectScreenshotPath}, ${reviewScreenshotPath}`)
 } finally {
   await browser.close()
   await stopProcess(admin)

@@ -755,16 +755,18 @@ inverted and assert the behaviour instead.
   `room-strip`, which now asserts non-overlap at every width and selects the
   strip by click, with the keyboard rove kept as a second assertion.
 
-### The agent page's Messages tab is the Conversations tab
+### Conversations live on the agent page's Activity tab
 
-Adding a ninth tab pushed `AgentDetailTabs`' strip past `TabBar`'s fit width
-— with the Agent Designer panel open it collapsed to a dropdown on a 1440 px
+A ninth tab pushed `AgentDetailTabs`' strip past `TabBar`'s fit width — with
+the Agent Designer panel open it collapsed to a dropdown on a 1440 px
 desktop, and the browser-cloud suite's `getByRole('tab', { name: 'Tools' })`
-found nothing. The count goes back to eight by replacing **Messages** (a
-flat, paginated list of the agent's messages with no way into where they
-were said) with **Conversations** (the same content organised by conversation,
-each row a door). One surface parameterised, not two; `GET /api/agents/:id/messages`
-and `useAgentMessages` stay for the moment and are on the Later list.
+found nothing. Replacing the Messages tab was the first answer; `main`
+rebuilt that tab while this branch was open (`cbd978240`, bounded authorised
+message history), so it stays. The agent page's door is instead the first
+section of **Activity** — the tab that already answers "what is this agent
+doing" — rendering the same `AgentConversationList` the rail column uses
+(`/agents/:id?agentTab=activity`). Eight tabs, one list component, no
+collapse.
 
 ## Cross-model review (2026-09-08)
 

@@ -71,7 +71,7 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
  */
 const PROJECT_INTENT: SurfaceIntent = {
   consume: [...KNOWLEDGE_INTENT.consume ?? [], 'connect'],
-  state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source'],
+  state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source', 'task'],
 }
 
 export const SURFACES: Surface[] = [

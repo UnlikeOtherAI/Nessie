@@ -7,6 +7,11 @@ import { readBootstrapToken } from './servers.mjs'
 import { PrismaClient } from '@prisma/client'
 
 const CHANNEL_LABELS = ['Design Review', 'Release Notes']
+const ISOLATED_BROWSER_PUSH_USER = {
+  displayName: 'Browser Push E2E',
+  email: 'navigation-browser-push@example.com',
+  password: 'navigation-browser-push-password',
+}
 
 const request = async (path, { body, method = 'GET', token } = {}) => {
   const response = await fetch(`${API_URL}${path}`, {
@@ -127,6 +132,29 @@ export const seedTeam = async (apiServer) => {
 }
 
 /**
+ * Give the logout case its own account. Logout bumps a user's token version,
+ * so even a second session for the suite owner would revoke every later case.
+ */
+export const seedBrowserPushSession = async (ownerToken) => {
+  const users = await call('/api/users', { token: ownerToken })
+  if (!users.some((user) => user.email === ISOLATED_BROWSER_PUSH_USER.email)) {
+    await call('/api/users', {
+      body: { ...ISOLATED_BROWSER_PUSH_USER, role: 'member' },
+      method: 'POST',
+      token: ownerToken,
+    })
+  }
+  const session = await call('/api/auth/session', {
+    body: {
+      email: ISOLATED_BROWSER_PUSH_USER.email,
+      password: ISOLATED_BROWSER_PUSH_USER.password,
+    },
+    method: 'POST',
+  })
+  return session.token
+}
+
+/**
  * Seed through the public dashboard routes, then add the one agent-authored
  * message pointer that production creates through `dashboard_present`. The
  * pointer itself is intentionally not a public user-message field, so direct
@@ -191,6 +219,34 @@ export const seedMessageHistory = async (token, threadId) => {
       token,
     })
   }
+}
+
+/** Seed an agent-owned history that crosses the Messages tab's first-page boundary. */
+export const seedAgentMessageHistory = async (seed) => {
+  const suffix = Date.now().toString(36)
+  const createAgent = (name) => call('/api/agents', {
+    body: { name, systemPrompt: 'Navigation pagination proof.' },
+    method: 'POST',
+    token: seed.token,
+  })
+  const [first, second] = await Promise.all([
+    createAgent(`History pager A ${suffix}`),
+    createAgent(`History pager B ${suffix}`),
+  ])
+  const prisma = new PrismaClient()
+  try {
+    await prisma.message.createMany({
+      data: Array.from({ length: 30 }, (_, index) => ({
+        agentId: first.id,
+        content: `Agent pagination proof ${String(index + 1).padStart(2, '0')}`,
+        role: 'assistant',
+        threadId: seed.channels[0].defaultThreadId,
+      })),
+    })
+  } finally {
+    await prisma.$disconnect()
+  }
+  return { first, second }
 }
 
 const ensureKnowledgePage = async (token, spaceId, title) => {

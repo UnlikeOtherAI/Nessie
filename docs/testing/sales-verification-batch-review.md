@@ -190,6 +190,49 @@ is preserved, and the fresh active ticket is **Eska — research and contact
 decision**. No paid research kickoff, live KiloTalk read, or compaction run was
 performed during validation. Production remains pending CI, merge, and deploy.
 
+## Eska research-progress follow-up — local batch in review
+
+The deployed Eska peer run stopped at its token ceiling across three bounded
+parts. The first part had channel reply placement and a null checkpoint root;
+automatic continuations failed to copy that placement, so their replies were
+threaded under the hidden peer brief. The continuation checkpoint was already
+claimed by its new run id, so the load query remains eligible regardless of the
+reply root; the repeated discovery needs transcript-level diagnosis rather than
+a false checkpoint-root explanation. The repair preserves the original
+placement for every automatic part. It keeps the existing checkpoint note,
+source basis, peer payload, captured UOA provenance, and final lifecycle
+outcome; it does not invent a completion or an automatic peer return.
+
+The project-scoped KiloTalk connection was active but its ten shared-scope
+capabilities were correctly awaiting explicit owner review, so the worker
+offered no KiloTalk tools during the pilot. A separate channel-scoped instance
+had active rows and made the App detail's app-wide access summary misleading.
+The owner reviewed exactly the ten project rows through the existing Tools
+surface; no credential, grant, or other instance changed. The App access view
+now retains the existing filtered Tools doorway whenever a mixed set of
+connections includes pending-review capabilities, without weakening the review
+gate. The pilot had no observable compaction invocation: its one extra model
+call per part was the checkpoint note, and Nessie continues to use only the
+existing `@deep/agent` compaction helper. Astro markup in a `web_fetch` result
+was not the demonstrated cause and is outside this repair.
+
+Local validation for this follow-up passed: the full worker Turbo run recorded
+1,090 unit passes and four expected skips, followed by 171 database passes.
+Admin unit tests passed 1,459/1,459. The reusable headless App fixture verifies
+the mixed-review doorway and a real access toggle: three serialized policy
+PATCHes are followed by one final policy-target refresh, avoiding the former
+per-capability PATCH/GET burst.
+
+After review, the exact ten project KiloTalk capabilities were active, but the
+two sales agents initially showed partial access because the App toggle sent
+one policy PATCH per capability and invalidated the active policy-target query
+after every success. Production logs showed the resulting PATCH/GET burst,
+followed by rate limiting and a partial prefix. The fan-out remains serialized
+through the same single-entry route and now defers all invalidation until its
+one settled outcome, including a partial failure. A bounded UI retry confirmed
+both coordinator and researcher at 20 of 20 capabilities. No authentication,
+credential, grant scope, or live run changed.
+
 ## Fixture references
 
 - Project: `8c03c93d-0175-4b74-ba79-391da2e938be`

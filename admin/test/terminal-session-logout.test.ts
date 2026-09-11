@@ -113,3 +113,20 @@ test('the latest winning payload overrides the bearer captured at logout start',
 
   assert.deepEqual(logoutBearers, ['winning-bearer'])
 })
+
+test('starts browser enrollment removal before the session clears', async () => {
+  const events: string[] = []
+  await performTerminalSessionLogout({
+    currentBearer: 'captured-bearer',
+    isNative: false,
+    unregisterBrowser: async () => { events.push('browser-start') },
+    unregisterNative: async () => { throw new Error('native cleanup must not run') },
+    terminate: async (finalize) => {
+      events.push('local-clear')
+      await finalize(null)
+    },
+    logout: async () => { events.push('logout') },
+  })
+
+  assert.deepEqual(events, ['browser-start', 'local-clear', 'logout'])
+})

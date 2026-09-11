@@ -26,6 +26,12 @@ export type ModelProviderConfig = {
    * never become a way to steer a request somewhere else.
    */
   extraHeaders?: Record<string, string>
+  /**
+   * Code-declared only for a personal DeepSeek subscription. This avoids
+   * DeepSeek's default thinking mode, whose reasoning history must otherwise
+   * be replayed before a tool-result round.
+   */
+  deepseekThinkingMode?: 'disabled'
 }
 
 export type ProviderHealthStatus =

@@ -37,7 +37,7 @@ export const TaskPresentation = ({
       <SkeletonBlock className="mt-2 h-24 w-full max-w-sm rounded-lg border border-[color:var(--sep)]" />
     )
   }
-  if (!taskQuery.data) {
+  if (taskQuery.isError || !taskQuery.data) {
     return (
       <div className="mt-2 max-w-sm rounded-lg border border-[color:var(--sep)] px-3 py-2 text-sm text-[color:var(--tx3)]">
         That ticket is no longer available to you.
@@ -57,11 +57,10 @@ export const TaskPresentation = ({
       ) : null}
       <Link
         className="block"
-        to={
-          presentation.boardId
-            ? `/projects/${task.projectId}/board?board=${presentation.boardId}&task=${task.id}`
-            : `/projects/${task.projectId}/board?task=${task.id}`
-        }
+        // The presentation's board is historical: a ticket can be moved after
+        // this message was written. The project resolves the ticket through its
+        // entitled detail endpoint, then selects its current board.
+        to={`/projects/${task.projectId}/board?task=${task.id}`}
       >
         <KanbanCardContent projectName={null} showProject={false} task={task} />
       </Link>

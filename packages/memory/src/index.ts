@@ -15,11 +15,19 @@ export {
   selectConsolidationCandidates,
   type ConsolidatedRunMemory,
   type ConsolidationMemoryCandidate,
+  type ConsolidationConfig,
   type ConsolidateRunMemoriesInput,
   type ConsolidateRunMemoriesOutput,
   type ConsolidationRunContext,
   type ConsolidationThreadMessage,
 } from './consolidate.js'
+export {
+  MAX_CONSOLIDATION_CANDIDATES,
+  MAX_CONSOLIDATION_MESSAGE_CHARS,
+  type ConsolidationCandidateExtractor,
+  type ConsolidationExtractionInput,
+  type ConsolidationExtractionMessage,
+} from './consolidation-candidates.js'
 export {
   deriveMemoryConsolidationInferenceOrigin,
   MemoryConsolidationIdentityError,

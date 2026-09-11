@@ -69,6 +69,20 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- The agent Messages tab merges at most 100 ordered candidates from two
+  independently indexed history arms. Direct messages read at most 101 rows;
+  run-derived messages read at most 101 rows for each distinct conversation the
+  agent ran in, then merge in the database service. This bounds work by the
+  agent's conversations rather than by any conversation's complete history; a
+  very widely deployed agent therefore costs proportionally more per page. It
+  resolves the viewer once, checks destination-channel reach in that same
+  bounded read, and uses the runtime's page-wide grant accessor, including
+  histories whose rows land in different destination channels. Its encrypted
+  continuation is bound to the current agent, organization and user, so it may
+  advance past withheld candidates without exposing their keys, counts, or
+  metadata. A later page always re-evaluates live membership, grants and grant
+  expiry; a revoked grant therefore withholds the row on that request rather
+  than trusting a prior page.
 - A manual share publishes the content-free `message.disclosure.changed` event
   to the destination channel scopes. Open readers refetch the reply through
   the current predicate; granting it never puts its text on the realtime wire.

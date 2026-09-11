@@ -2277,6 +2277,7 @@ model ThreadStreamEvent {
   eventName String   @map("event_name")
   data      Json     @db.JsonB
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  idempotencyKey String? @unique(map: "thread_stream_events_idempotency_key_key") @map("idempotency_key")
   thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, id], map: "idx_thread_stream_events_replay")
@@ -2295,6 +2296,7 @@ model RealtimeEvent {
   eventType       String       @map("event_type")
   payload         Json         @db.JsonB
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  idempotencyKey  String?      @unique(map: "realtime_events_idempotency_key_key") @map("idempotency_key")
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")
@@ -2529,8 +2531,8 @@ model Message {
   conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
   @@unique([threadId, clientMessageId], map: "messages_thread_id_client_message_id_key")
-  @@index([threadId, createdAt])
-  @@index([agentId, createdAt])
+  @@index([threadId, createdAt(sort: Desc), id(sort: Desc)], map: "messages_thread_id_created_at_id_keyset_idx")
+  @@index([agentId, createdAt(sort: Desc), id(sort: Desc)], map: "messages_agent_id_created_at_id_keyset_idx")
   @@index([rootMessageId, createdAt])
   @@map("messages")
 }
@@ -3111,6 +3113,7 @@ model Run {
   budgetReservation BudgetReservation?
 
   @@index([agentId, status])
+  @@index([agentId, threadId], map: "runs_agent_id_thread_id_history_idx")
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
   @@unique([id, agentId, threadId])
@@ -6215,13 +6218,12 @@ model DeviceToken {
 }
 
 // ─── Web Push subscription registry (browser push targeting) ────────────────
-// One row per (user, browser PushSubscription). The admin SPA subscribes via
-// the Push API and POSTs the resulting endpoint + keys here; the worker fans a
-// notification out to a user's browser subscriptions exactly like device
-// tokens. `endpoint` is unique per browser; `p256dh`/`auth` are the per-
-// subscription public key and secret used for RFC 8291 payload encryption.
-// `organization_id`-scoped like every child table; integrity enforced at the
-// application layer to keep the slice additive.
+// One row per tenant/user enrollment of a browser PushSubscription. The admin
+// SPA subscribes via the Push API and POSTs the resulting endpoint + keys here;
+// the worker fans a tenant's enrollment out exactly like device tokens. A
+// browser endpoint can be explicitly enrolled by the same user in more than
+// one organization, while p256dh/auth remain the subscription's RFC 8291
+// public key and secret.
 model WebPushSubscription {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
@@ -6234,9 +6236,8 @@ model WebPushSubscription {
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, endpoint])
-  @@index([organizationId])
-  @@index([userId])
+  @@unique([organizationId, userId, endpoint])
+  @@index([organizationId, userId])
   @@map("web_push_subscriptions")
 }
 
@@ -7487,6 +7488,7 @@ enum ModelSubscriptionProvider {
   glm
   openai_codex @map("openai-codex")
   grok
+  deepseek
 }
 
 enum ModelSubscriptionStatus {

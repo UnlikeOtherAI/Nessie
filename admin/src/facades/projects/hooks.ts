@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   ProjectMemberRecord,
   ProjectRecord,
@@ -24,10 +24,14 @@ export const useProjectMembers = (projectId: string | null) => {
   const apiClient = useApiClient()
 
   return useQuery<ProjectMemberRecord[]>({
-    placeholderData: keepPreviousData,
     enabled: Boolean(projectId),
     queryKey: projectKeys.members(projectId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/members`),
+    // Membership is an entitlement, not display data. Do not carry a previous
+    // project's role into a new route, and re-check a mounted surface when it
+    // regains focus so a role change takes effect without a page reload.
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   })
 }
 

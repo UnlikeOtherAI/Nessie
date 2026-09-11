@@ -12,6 +12,7 @@ type TerminalSessionLogoutInput = {
     finalize: (latestPayload: TerminalPayload | null) => Promise<void>,
   ) => Promise<void>
   unregisterNative: () => Promise<void>
+  unregisterBrowser?: () => Promise<void>
 }
 
 const waitForNativeCleanup = (nativeCleanup: Promise<void> | null): Promise<void> => {
@@ -37,11 +38,19 @@ export const performTerminalSessionLogout = ({
   logout,
   terminate,
   unregisterNative,
+  unregisterBrowser,
 }: TerminalSessionLogoutInput): Promise<void> => {
   let nativeCleanup: Promise<void> | null = null
   if (isNative) {
     try {
       nativeCleanup = unregisterNative().catch(() => undefined)
+    } catch {
+      nativeCleanup = Promise.resolve()
+    }
+  }
+  if (!isNative && unregisterBrowser) {
+    try {
+      nativeCleanup = unregisterBrowser().catch(() => undefined)
     } catch {
       nativeCleanup = Promise.resolve()
     }

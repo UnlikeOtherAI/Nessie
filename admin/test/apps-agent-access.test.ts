@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schemas'
+import { AppAgentAccessWriteError, writeAppAgentAccess } from '../src/facades/apps/agent-access-hooks.js'
 
 import {
   agentAccessConsequence,
@@ -108,6 +109,22 @@ const controlFor = (tools: AppAccessToolInput[], connectionIds = ['conn-1']) =>
     projection: projectAppAccessTools(tools, connectionIds),
   })
 
+test('a fan-out writes every capability once and retains its partial prefix on failure', async () => {
+  const writes: string[] = []
+  const input = { agentId: 'agent-1', enabled: true, toolRegistryEntryIds: ['a', 'b', 'c'] }
+  assert.deepEqual(await writeAppAgentAccess(input, async (id) => { writes.push(id) }), {
+    landed: 3, total: 3,
+  })
+  assert.deepEqual(writes, ['a', 'b', 'c'])
+  await assert.rejects(
+    writeAppAgentAccess(input, async (id) => {
+      writes.push(id)
+      if (id === 'b') throw new Error('rate limited')
+    }),
+    (error: unknown) => error instanceof AppAgentAccessWriteError && error.landed === 1,
+  )
+})
+
 // ─── Which rows are even callable ───────────────────────────────────────────
 
 test('only enabled, active rows of this app\'s own connections are callable', () => {
@@ -126,7 +143,7 @@ test('only enabled, active rows of this app\'s own connections are callable', ()
   assert.deepEqual(projection.open, [])
   // Rows belonging to another app are not this app's business at all, so they
   // are neither callable nor counted as waiting.
-  assert.equal(projection.waiting, 2)
+  assert.equal(projection.waiting, 1)
 })
 
 test('callable rows split by whether the write route would take them', () => {
@@ -216,6 +233,23 @@ test('capabilities nobody has reviewed point at the connection holding them', ()
   // open a filtered list with nothing in it.
   const notice = appAccessNotice(control, (id) => `/agents/tools?instance=${id}`)
   assert.equal(notice?.href, '/agents/tools?instance=conn-2')
+})
+
+test('a reviewed connection does not hide another connection awaiting review', () => {
+  const control = controlFor(
+    [
+      tool({ id: 'active', policyKey: 'active', mcpInstanceId: 'conn-1' }),
+      tool({ id: 'waiting-a', policyKey: 'waiting-a', mcpInstanceId: 'conn-2', status: 'pending_review' }),
+      tool({ id: 'waiting-b', policyKey: 'waiting-b', mcpInstanceId: 'conn-2', status: 'pending_review' }),
+    ],
+    ['conn-1', 'conn-2'],
+  )
+  assert.equal(control.kind, 'manageable')
+
+  const notice = appAccessNotice(control, (id) => `/agents/tools?instance=${id}`)
+  assert.match(String(notice?.body), /2 of this app's capabilities are waiting to be reviewed/)
+  assert.equal(notice?.href, '/agents/tools?instance=conn-2')
+  assert.equal(notice?.hrefLabel, 'Review capabilities')
 })
 
 test('a disconnected app offers no control and no notice', () => {

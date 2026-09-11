@@ -10,7 +10,7 @@ import {
   type AssigneeFilter,
 } from '../../components/features/projects/kanban/board-assignee-filter'
 import type { BoardColumnView } from '../../components/features/projects/kanban/kanban-config'
-import type { BoardRecord } from '../../facades/boards/hooks'
+import type { BoardRecord, BoardTaskRecord } from '../../facades/boards/hooks'
 import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
@@ -24,10 +24,11 @@ import { EmptyState } from '../../components/shared/EmptyState'
 
 type ProjectBoardTabProps = {
   board: BoardRecord | null
+  onOpenTask: (task: BoardTaskRecord) => void
   projectId: string
 }
 
-export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
+export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
   const { data: sources = [] } = useProjectSources(projectId, board?.id)
@@ -179,6 +180,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             columns={columns}
             key={board.id}
             onMoveTask={handleMove}
+            onOpenTask={onOpenTask}
             projectId={projectId}
             projectNameById={projectNameById}
             showProject={false}

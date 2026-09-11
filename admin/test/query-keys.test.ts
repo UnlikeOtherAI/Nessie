@@ -37,10 +37,6 @@ test('agent keys keep the arrays the call sites used', () => {
   assert.deepEqual(agentKeys.activity('a-1'), ['agents', 'a-1', 'activity'])
   assert.deepEqual(agentKeys.children('a-1'), ['agents', 'a-1', 'children'])
   assert.deepEqual(agentKeys.messages('a-1'), ['agents', 'a-1', 'messages'])
-  assert.deepEqual(
-    agentKeys.messagePage('a-1', 25, 50),
-    ['agents', 'a-1', 'messages', 25, 50],
-  )
   assert.deepEqual(agentKeys.triggers('a-1'), ['agents', 'a-1', 'triggers'])
   assert.deepEqual(agentKeys.triggers(undefined), ['agents', undefined, 'triggers'])
   assert.deepEqual(agentTodoKeys.instances('a-1'), ['agents', 'a-1', 'todos'])

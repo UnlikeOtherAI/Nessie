@@ -6,10 +6,11 @@ session. `AGENTS.md` carries the one-line invariant and points here; **this
 file is the rule**.
 
 
-A person links a consumer AI plan they already pay for — Kimi and GLM with a
-pasted console key, **OpenAI Codex and xAI Grok with Nessie's own device-code
-sign-in** — and the agents **they own** run on it instead of the
-organization's Ledger credits. Rules that must not drift:
+A person links an AI provider connection they control — Kimi and GLM with a
+pasted console key, **OpenAI Codex and xAI Grok with Nessie's own
+device-code sign-in**, and a **DeepSeek API key charged to that person's own
+topped-up or granted API balance** — and the agents **they own** run on it
+instead of the organization's Ledger credits. Rules that must not drift:
 
 - **A link is Nessie's own grant.** Never read, import, or accept a vendor
   CLI's stored credentials (`~/.codex/auth.json`, `~/.grok/auth.json`, keychain
@@ -98,10 +99,11 @@ Rationale, field lessons and phasing:
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Personal model subscriptions — run your own agents on your own plan".
 
 
-A person links a plan they already pay for and the agents **they own** run on
-it instead of the organisation's Ledger credits. Phase 1 ships Kimi and GLM
-(pasted subscription keys); OpenAI Codex and xAI Grok arrive with the
-device-code OAuth phase. Anthropic is deliberately excluded — subscription
+A person links a plan or API balance they control and the agents **they own**
+run on it instead of the organisation's Ledger credits. Kimi and GLM use
+pasted console keys, DeepSeek uses a pasted API key against the person's
+own topped-up or granted balance, and OpenAI Codex and xAI Grok use the
+device-code OAuth flow. Anthropic is deliberately excluded — subscription
 credentials are not licensed for third-party agent platforms, and Nessie
 already serves Claude through Ledger. The invariants (own grant never a CLI
 import, vault-only token storage in a dedicated project, run-admission pinning
@@ -118,11 +120,25 @@ Facts not restated there:
   person's token. Signing needs no special case: the effective URL is not a
   Ledger origin, so `createProviderRequestHeadersResolver` already declines to
   attach `X-Nessie-Context`/`X-UOA-Delegation`.
+- **DeepSeek is an API-balance connection, not a consumer plan.** Its key is
+  verified with the documented no-generation
+  [`GET https://api.deepseek.com/models`](https://api-docs.deepseek.com/api/list-models/)
+  route, while inference is pinned to `https://api.deepseek.com/v1`. The
+  default is the canonical `deepseek-flash` (DeepSeek-V4.1-Flash); the older
+  `deepseek-v4-flash` spelling is an upstream alias, never the default Nessie
+  advertises. DeepSeek thinking is explicitly disabled because the shared
+  tool-turn history does not carry provider `reasoning_content`; this uses the
+  provider's documented supported nonthinking mode and keeps tool-result
+  rounds valid. It sends the documented `max_tokens` field, not
+  `max_completion_tokens`, to preserve the run's output budget.
 - **Generative inference only.** Main turns, delegates, compaction and
   checkpoint notes follow the run's lane. Engagement decisions (made on the
   boot-time model client before a run exists), embeddings and memory, avatar
   generation, and demonstration generalisation stay deployment-billed — a
-  "subscription-only" agent still produces some Ledger events by design.
+  "subscription-only" agent still produces some Ledger events by design. The
+  model-judged post-run memory extractor is part of this memory lane: it uses
+  the deployment utility route and never reads or changes the source run's
+  personal-subscription pin.
 - **Utility model is explicitly null** for a subscription run, not a lookup
   miss: `NESSIE_UTILITY_MODEL` names a Ledger-catalogue model a subscription
   backend may not serve.

@@ -66,7 +66,11 @@ export interface QueueProvider {
   // overload: a caller that cannot name the attempt it claimed is not entitled
   // to settle the job.
   acknowledge(claim: QueueJobClaim): Promise<boolean>
-  nack(claim: QueueJobClaim, reason?: string): Promise<boolean>
+  nack(
+    claim: QueueJobClaim,
+    reason?: string,
+    options?: { retryAfterMs?: number },
+  ): Promise<boolean>
   subscribe(
     topic: string,
     handler: QueueHandler,
@@ -80,3 +84,19 @@ export const LOCK_EXPIRED_AT_MAX_ATTEMPTS_REASON = 'lock_expired_at_max_attempts
 // a lost lock or an exhausted deadline. A handler that wants to tell "wind down
 // and hand the work back" apart from "you no longer hold this row" reads it.
 export const DRAIN_STARTED_REASON = 'worker_drain_started'
+
+/**
+ * Ask the queue to make this claim visible again after a durable delay without
+ * consuming its retry budget. The attempt number still advances, preserving
+ * the settle fence; the provider adds one matching max-attempt slot instead of
+ * decrementing the claim version and creating an ABA race.
+ */
+export class QueueRetryAfterError extends Error {
+  readonly delayMs: number
+
+  constructor(message: string, delayMs: number, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'QueueRetryAfterError'
+    this.delayMs = delayMs
+  }
+}

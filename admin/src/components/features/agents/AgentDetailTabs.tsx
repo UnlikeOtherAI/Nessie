@@ -1,20 +1,26 @@
 import { type ReactNode, useEffect, useMemo } from 'react'
+import type { AgentMessage, AgentMessagePage } from '@nessie/schemas'
 import {
   useAgentActivity,
   useAgentChildren,
   useAgentStatus,
 } from '../../../facades/agents/hooks'
+import { agentKeys } from '../../../facades/agents/keys'
+import { usePagedList, usePagedListReset } from '../../../facades/pagination/usePagedList'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
+import { PaginationFooter } from '../../shared/PaginationFooter'
+import { QueryState } from '../../shared/QueryState'
 import { AgentBrowserPanel } from '../browser-cloud/AgentBrowserPanel'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentDocumentsTab } from './AgentDocumentsTab'
+import { AgentConversationList } from './conversations/AgentConversationList'
+import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
-import { AgentConversationList } from './conversations/AgentConversationList'
 import { SubAgentTree } from './SubAgentTree'
 import { AgentEmailSection } from './AgentEmailSection'
 import { ToolExecutionLog } from './ToolExecutionLog'
@@ -25,9 +31,9 @@ import type { DesignerPageContext } from '../../../facades/designer/types'
 type Tab =
   | 'edit'
   | 'activity'
-  | 'conversations'
   | 'sub-agents'
   | 'tools'
+  | 'messages'
   | 'documents'
   | 'email'
   | 'to-dos'
@@ -39,9 +45,9 @@ const FIRST_DETAIL_TAB: Tab = 'to-dos'
 const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'To-dos', value: FIRST_DETAIL_TAB },
   { label: 'Activity', value: 'activity' },
-  { label: 'Conversations', value: 'conversations' },
   { label: 'Sub-Agents', value: 'sub-agents' },
   { label: 'Tools', value: 'tools' },
+  { label: 'Messages', value: 'messages' },
   { label: 'Documents', value: 'documents' },
   { label: 'Email', value: 'email' },
 ]
@@ -72,14 +78,8 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
   },
   activity: {
     actions: [],
-    description: 'Review this agent’s current run, triggers, recent tool calls, and thought stream.',
+    description: 'Every conversation this agent is in that you can see — open one or start another — then its current run, triggers, recent tool calls, and thought stream.',
     title: 'Activity',
-  },
-  conversations: {
-    actions: [],
-    description:
-      'Every conversation this agent is in that you can see — open one or start another.',
-    title: 'Conversations',
   },
   'sub-agents': {
     actions: [],
@@ -90,6 +90,11 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
     actions: ['enable or disable tools, then save the changes'],
     description: 'Review this agent’s available tools and change its tool access.',
     title: 'Tools',
+  },
+  messages: {
+    actions: [],
+    description: 'Review messages this agent has sent or received.',
+    title: 'Messages',
   },
   documents: {
     actions: ['review and edit the agent’s documents and manage its document space'],
@@ -139,7 +144,6 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
     tabValues,
     tabs[0]?.value ?? FIRST_DETAIL_TAB,
   )
-
   // The operational reads are closed for a Nessie-managed agent (see
   // `SYSTEM_AGENT_TABS`), and their tabs are not rendered. Passing no id leaves
   // the queries idle rather than firing four requests that can only 404.
@@ -147,6 +151,15 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
   const { data: status } = useAgentStatus(operationalAgentId)
   const { data: activity } = useAgentActivity(operationalAgentId)
   const { data: childAgents = [] } = useAgentChildren(operationalAgentId)
+  const resetMessagePage = usePagedListReset('agentMessages-')
+  const messageList = usePagedList<AgentMessage, AgentMessagePage>({
+    enabled: Boolean(operationalAgentId),
+    items: (page) => page.items,
+    paramPrefix: 'agentMessages-',
+    path: `/api/agents/${operationalAgentId ?? ''}/messages`,
+    queryKey: agentKeys.messages(operationalAgentId ?? ''),
+    scope: operationalAgentId,
+  })
 
   const toolEntries = useMemo(() => {
     if (!activity) return []
@@ -155,11 +168,11 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
       : activity.currentRun?.toolCalls ?? []
   }, [activity])
 
+  const messages = messageList.items
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab)
   }
-
 
   useEffect(() => {
     assistantPanel?.setPageContext(pageContextForTab[activeTab])
@@ -197,6 +210,17 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
           >
         {activeTab === 'activity' && (
           <div className="grid gap-6">
+            {/* Every conversation this agent is in that the viewer can see — the
+                agent page's door into them. A section here rather than a ninth
+                tab: one more tab collapsed the strip to a dropdown on a desktop
+                with the designer panel open, and "what is this agent doing"
+                is the question this tab already answers. */}
+            <section className="admin-card p-4">
+              <SectionLabel>Conversations</SectionLabel>
+              <div className="mt-3">
+                <AgentConversationList agentId={agent.id} />
+              </div>
+            </section>
             <section className="admin-card p-4">
               <SectionLabel>Current activity</SectionLabel>
               {status?.currentToolName || activity?.currentRun ? (
@@ -214,13 +238,6 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
             <AgentThoughtStream />
           </div>
         )}
-
-        {/*
-          What this agent is working on and where — the same rows as the rail's
-          column, at page width. Not offered for a system-managed agent: its
-          operational reads are closed, and this tab would only ever 404.
-        */}
-        {activeTab === 'conversations' && <AgentConversationList agentId={agent.id} />}
 
         {activeTab === 'sub-agents' && (
           <SubAgentTree
@@ -243,6 +260,42 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
 
         {activeTab === 'to-dos' && <AgentTodosTab agent={agent} />}
 
+            {activeTab === 'messages' && (
+          <div className="grid gap-4">
+            <QueryState
+              errorLabel="This message page is no longer available. Restart from newest or retry."
+              loadingLabel="Loading messages…"
+              query={messageList.query}
+            >
+              {() => <AgentMessagePreview messages={messages} />}
+            </QueryState>
+            {messageList.query.isError ? (
+              <button
+                className="admin-button admin-button-secondary w-fit"
+                onClick={resetMessagePage}
+                type="button"
+              >
+                Restart from newest
+              </button>
+            ) : null}
+            <PaginationFooter
+              canNext={messageList.canNext}
+              canPrevious={messageList.canPrevious}
+              className="pt-4"
+              hideWhenSinglePage
+              label={messageList.query.isPending
+                ? 'Loading messages'
+                : messages.length === 0
+                  ? 'No visible messages on this page'
+                  : `${messages.length} visible message${messages.length === 1 ? '' : 's'} on this page`}
+              onPageChange={messageList.onPageChange}
+              onPageSizeChange={messageList.onPageSizeChange}
+              page={messageList.page}
+              pageCount={messageList.pageCount}
+              pageSize={messageList.pageSize}
+            />
+          </div>
+            )}
             {activeTab === 'documents' && <AgentDocumentsTab agent={agent} />}
             {activeTab === 'email' && (
               <AgentEmailSection agentId={agent.id} canManage={Boolean(editSlot)} />

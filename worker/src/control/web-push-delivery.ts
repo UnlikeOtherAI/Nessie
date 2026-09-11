@@ -110,10 +110,11 @@ const resultFromError = (error: unknown): PushResult => ({
  * Build the Web Push payload: the same notification plus a `data.url` deep link
  * the service worker focuses/opens. All `data` values stay strings.
  */
-const buildWebPayload = (payload: PushPayload, deepLinkUrl: string): PushPayload => ({
+const buildWebPayload = (payload: PushPayload, deepLinkUrl: string, recipientUserId: string): PushPayload => ({
   ...payload,
   data: {
     ...(payload.data ?? {}),
+    recipientUserId,
     url: deepLinkUrl,
   },
 })
@@ -150,7 +151,6 @@ export const deliverWebPush = async (
   }
 
   const send = input.sender ?? defaultWebPushSender(input.fetchOptions)
-  const webPayload = buildWebPayload(input.payload, input.deepLinkUrl)
   const deadSubscriptionIds: string[] = []
 
   for (const subscription of subscriptions) {
@@ -178,7 +178,7 @@ export const deliverWebPush = async (
           p256dh: subscription.p256dh,
           auth: subscription.auth,
         },
-        webPayload,
+        buildWebPayload(input.payload, input.deepLinkUrl, subscription.userId),
       )
     } catch (err) {
       // A guard failure means we simply do NOT POST (SSRF-safe either way). Do
@@ -230,7 +230,7 @@ export const deliverWebPush = async (
 
   if (deadSubscriptionIds.length > 0) {
     await input.prisma.webPushSubscription.deleteMany({
-      where: { id: { in: deadSubscriptionIds } },
+      where: { organizationId: input.organizationId, id: { in: deadSubscriptionIds } },
     })
     summary.pruned = deadSubscriptionIds.length
   }

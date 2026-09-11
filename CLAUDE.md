@@ -10,7 +10,7 @@ distribution.
 ## Read [AGENTS.md](AGENTS.md) before you do anything
 
 [`AGENTS.md`](AGENTS.md) is the authoritative standards file and the project
-map: Rule zero, workflow, ports, the build and deployment story, and the
+map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
@@ -76,6 +76,10 @@ sentence changes only if the invariant itself did.
   project usability suite.
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
+- **Production promotion uses the exact-SHA gate:** Deploy resolves the current
+  `main` tip only after successful trusted main CI, including manual dispatch.
+  Read [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md)
+  before changing deployment automation.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is
   protected — every change lands through a pull request and only a green one can
   merge**, but no human approval is needed: merge as soon as CI passes. Full

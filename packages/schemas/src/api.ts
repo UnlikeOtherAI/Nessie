@@ -46,7 +46,9 @@ export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 
 export const PaginationParamsSchema = z.object({
   cursor: z.string().optional(),
-  limit: z.number().int().min(1).max(MAX_PAGE_LIMIT).optional(),
+  // Query-string values arrive as strings; route contracts compose this
+  // schema directly, so coerce at the shared wire boundary.
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE_LIMIT).optional(),
   direction: PaginationDirectionSchema.optional(),
 })
 export type PaginationParams = z.infer<typeof PaginationParamsSchema>

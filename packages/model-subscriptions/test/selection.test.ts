@@ -15,6 +15,14 @@ test('a subscription provider column round-trips through the namespace', () => {
   assert.equal(isSubscriptionProviderColumn(column), true)
 })
 
+test('DeepSeek is personal only through the subscription namespace', () => {
+  const column = subscriptionProviderKeyToColumn('deepseek')
+  assert.equal(column, 'subscription/deepseek')
+  assert.equal(parseSubscriptionProviderColumn(column), 'deepseek')
+  assert.equal(parseSubscriptionProviderColumn('deepseek'), null)
+  assert.equal(looksLikeSubscriptionProviderColumn('deepseek'), false)
+})
+
 test('an ordinary Ledger service id is never mistaken for a subscription', () => {
   for (const provider of ['openai', 'deepseek', 'kimi', 'jina', null, undefined, '']) {
     assert.equal(parseSubscriptionProviderColumn(provider), null, `${provider}`)

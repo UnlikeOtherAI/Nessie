@@ -69,10 +69,9 @@ export const AgentMessageSchema = z.object({
 })
 export type AgentMessage = z.infer<typeof AgentMessageSchema>
 
-/** The bounded message activity slice plus the count used by its pager. */
+/** One authorized history page. Pagination metadata stays in the API envelope. */
 export const AgentMessagePageSchema = z.object({
   items: z.array(AgentMessageSchema),
-  total: z.number().int().nonnegative(),
 })
 export type AgentMessagePage = z.infer<typeof AgentMessagePageSchema>
 

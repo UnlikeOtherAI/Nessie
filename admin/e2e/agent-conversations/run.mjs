@@ -759,7 +759,7 @@ const main = async () => {
 
     // ---- agent-page -------------------------------------------------------
     await gallery.capture('agent-page', async (page, viewport) => {
-      await goto(page, `/agents/${fixture.agent.id}?agentTab=conversations`)
+      await goto(page, `/agents/${fixture.agent.id}?agentTab=activity`)
       await page.locator('[data-testid="agent-conversation-row"]').first().waitFor({ timeout: 60_000 })
       const titles = await settledRows(page, 6,
         `the agent's page lists every conversation the reader may see (${viewport})`)
