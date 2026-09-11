@@ -281,9 +281,11 @@ const main = async () => {
         await mobileSubscription
         assert.equal(await page.getByRole('button', { name: 'Browser', exact: true }).count(), 0)
         await grantBrowser(seed.token, mobileAgent.id)
-        await page.waitForFunction(() =>
-          [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Browser'),
-        null, { timeout: 10_000 })
+        // The phone's doorway is the compact header action: its name is its
+        // `aria-label`, not its text, so ask for the accessible name — visible
+        // only, so the header's hidden measuring copy cannot answer for it.
+        await page.getByRole('button', { name: 'Browser', exact: true }).first()
+          .waitFor({ state: 'visible', timeout: 10_000 })
         const state = { controller: false, homeFailure: true }
         const fixture = {
           agentId: mobileAgent.id,

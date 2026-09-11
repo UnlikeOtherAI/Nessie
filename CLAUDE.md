@@ -61,6 +61,15 @@ sentence changes only if the invariant itself did.
   building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
   the same fixed ports; details and limits are in
   [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
+- **Agent-conversations browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:agent-conversations`.
+  CI runs it in Navigation Transitions after the connected-mail suite, on the
+  same fixed ports. It brings up its own scripted inference endpoint
+  (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
+  reads that server's request log. It covers the DM rail, two isolated
+  conversations named by their first message, the rename doorway, an ordinary
+  room's own doorway and a two-agent room's agent strip; two assertions
+  deliberately pin known gaps and say so in their own message.
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the

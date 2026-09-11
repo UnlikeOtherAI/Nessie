@@ -1034,6 +1034,7 @@ model User {
   messages                            Message[]
   reactions                           MessageReaction[]
   threadReadStates                    ThreadReadState[]
+  startedThreads                      Thread[]                            @relation("ThreadStartedBy")
   messageConversationReadStates       MessageConversationReadState[]
   userAlerts                          UserAlert[]
   disclosureGrants                    DisclosureGrant[]
@@ -2098,10 +2099,22 @@ model Thread {
   id                         String                      @id @default(uuid()) @db.Uuid
   channelId                  String                      @map("channel_id") @db.Uuid
   title                      String?
+  /// The agent this thread is a conversation *with*. NULL is the channel's own
+  /// General thread, which is not "with" anyone; every "the channel's thread"
+  /// resolution pins `agentId: null` so a conversation created before a
+  /// channel's General row can never be mistaken for it.
+  /// SetNull, never Cascade: deleting an agent must not delete the record of
+  /// what was said to it.
+  agentId                    String?                     @map("agent_id") @db.Uuid
+  /// Who opened the conversation. Also the rename authority beside
+  /// `canManageChannel`. SetNull for the same reason.
+  startedByUserId            String?                     @map("started_by_user_id") @db.Uuid
   metadata                   Json?                       @default("{}")
   createdAt                  DateTime                    @default(now()) @map("created_at")
   updatedAt                  DateTime                    @updatedAt @map("updated_at")
   channel                    Channel                     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  agent                      Agent?                      @relation("AgentConversationThreads", fields: [agentId], references: [id], onDelete: SetNull)
+  startedBy                  User?                       @relation("ThreadStartedBy", fields: [startedByUserId], references: [id], onDelete: SetNull)
   mailboxMessages            AgentMailboxMessage[]
   messages                   Message[]
   workflowRunOrigins         WorkflowRun[]               @relation("WorkflowRunOriginThread")
@@ -2126,6 +2139,11 @@ model Thread {
   browserCookieImports BrowserCookieImport[]
 
   @@index([channelId, createdAt])
+  /// Partial index `threads_agent_updated_idx` on (agent_id, updated_at DESC)
+  /// WHERE agent_id IS NOT NULL is created in the migration and deliberately
+  /// absent here: Prisma cannot express a partial index, and every row it would
+  /// otherwise carry is a General thread the agent list never reads.
+  @@index([channelId, agentId], map: "threads_channel_agent_idx")
   @@map("threads")
 }
 
@@ -2852,6 +2870,7 @@ model Agent {
   sendAuthorizationGrants  SendAuthorizationGrant[]
   mailboxAccess            MailboxConnectionAgentAccess[]
   boardSourceIdentityLinks BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
+  conversationThreads      Thread[]                       @relation("AgentConversationThreads")
 
   @@unique([organizationId, id])
   @@unique([organizationId, systemSlug])

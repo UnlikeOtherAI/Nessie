@@ -1,7 +1,10 @@
 import { markRecallsInjected } from '@nessie/memory'
 import { loadActivePersonalBrowserAccessForRun } from '@nessie/browser-cloud'
 import {
+  AGENT_CONVERSATIONS_LIST_TOOL_ID,
+  AGENT_CONVERSATION_START_TOOL_ID,
   AGENT_HANDOFF_TOOL_ID,
+  CONVERSATION_REFERENCE_TOOL_ID,
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
   TODO_TOOL_DEFINITIONS,
@@ -414,6 +417,11 @@ export const prepareRunExecution = async (
         hasDelegate: resolvedToolIds.has('delegate'),
       },
       handoff: { hasHandoffTool: resolvedToolIds.has(AGENT_HANDOFF_TOOL_ID) },
+      conversations: {
+        hasListTool: resolvedToolIds.has(AGENT_CONVERSATIONS_LIST_TOOL_ID),
+        hasReferenceTool: resolvedToolIds.has(CONVERSATION_REFERENCE_TOOL_ID),
+        hasStartTool: resolvedToolIds.has(AGENT_CONVERSATION_START_TOOL_ID),
+      },
       hasCardTool: hasCardPromptTools(resolvedToolIds),
       hasBrowserLoginRequestTool: browserLoginRequestPromptTools(resolvedToolIds),
       temporaryBrowserAccess,

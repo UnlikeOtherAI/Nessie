@@ -82,7 +82,7 @@ shrinks.
 | an app (`AppDetailPage`) | `tab` | `overview` · `capabilities` · `accounts` · `agents` (as the app offers) |
 | an executor (`ExecutorDetailPanels`) | `tab` | `overview` · `access` · `operations` · `sessions` · `attention` |
 | Appearance (`/settings/appearance`) | `tab` | `colours` · `type` |
-| an agent (`AgentDetailTabs`) | `agentTab` | `edit` · `to-dos` · `activity` · `sub-agents` · `tools` · `messages` · `documents` |
+| an agent (`AgentDetailTabs`) | `agentTab` | `edit` · `to-dos` · `activity` · `sub-agents` · `tools` · `messages` · `documents` · `email` |
 | the apps catalogue (`AppsPage`) | `filter` | `all` · `installed` (default: this device's last view) |
 | the agents list (`AgentsList`) | `scope` | `personal` · `team` · `global` (default: the session ledger) |
 | the tool registry (`ToolsPage`) | `source` | `all` · `builtin` · `custom` · `mcp-remote` · `interactive-session` |

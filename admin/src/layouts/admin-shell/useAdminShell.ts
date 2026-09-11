@@ -15,7 +15,11 @@ import { useUsers } from '../../facades/users/hooks';
 import { useCurrentOrganization } from '../../facades/organization/hooks';
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { newChannelComposeLocationState } from '../../lib/channel-compose-navigation';
-import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
+import {
+  parseChannelIdFromPath,
+  parseChannelProjectIdFromPath,
+  parseThreadIdFromPath,
+} from '../../lib/channel-route';
 import { useIsOwner } from '../../facades/auth/hooks';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from '../../navigation/nav-items';
@@ -90,8 +94,11 @@ export const useAdminShell = () => {
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
     channelIds: personalAssistantChannel ? [personalAssistantChannel.id] : [],
+    // The thread on screen: the conversation the route names, else the room's
+    // own General thread (docs/plans/2026-09-08-agent-conversations.md).
     threadId: currentChannelId
-      ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
+      ? parseThreadIdFromPath(location.pathname)
+        ?? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,
   });
   const activeDmChannel = currentChannelId

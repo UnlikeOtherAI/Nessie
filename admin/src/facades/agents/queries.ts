@@ -1,11 +1,19 @@
 import { useMemo } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import {
+  infiniteQueryOptions,
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  type InfiniteData,
+} from '@tanstack/react-query'
 import type {
   AgentModelOption,
   AgentActivityResponse,
   AgentChild,
+  AgentConversationRecord,
   AgentDocumentsResponse,
   AgentStatusResponse,
+  ApiResponse,
   ToolCallEntry,
 } from '@nessie/schemas'
 import type { AgentRecord, ApiClient } from '../../lib/api-client'
@@ -144,6 +152,96 @@ export const useAgentDocuments = (agentId?: string) => {
     queryFn: () => apiClient.get(`/api/agents/${agentId}/docs`),
     enabled: Boolean(agentId),
   })
+}
+
+export type AgentConversationPage = ApiResponse<AgentConversationRecord[]>
+export type AgentConversationPages = InfiniteData<AgentConversationPage, string | undefined>
+
+const agentConversationsPath = (agentId: string, cursor?: string): string => {
+  const search = new URLSearchParams()
+  if (cursor) search.set('cursor', cursor)
+  const suffix = search.size > 0 ? `?${search.toString()}` : ''
+  return `/api/agents/${encodeURIComponent(agentId)}/conversations${suffix}`
+}
+
+/**
+ * The keyset page contract for an agent's conversations, in one place: the
+ * rail's column and the agent page's tab are the same list, so they must not
+ * describe it twice.
+ */
+export const agentConversationsInfiniteQueryOptions = (
+  apiClient: ApiClient,
+  agentId: string,
+) => infiniteQueryOptions<
+  AgentConversationPage,
+  Error,
+  AgentConversationPages,
+  ReturnType<typeof agentKeys.conversations>,
+  string | undefined
+>({
+  getNextPageParam: (lastPage) =>
+    lastPage.meta?.hasMore ? lastPage.meta.nextCursor ?? undefined : undefined,
+  initialPageParam: undefined as string | undefined,
+  queryFn: ({ pageParam }) =>
+    apiClient.getPage<AgentConversationRecord[]>(agentConversationsPath(agentId, pageParam)),
+  queryKey: agentKeys.conversations(agentId),
+})
+
+/** Every page fetched so far, in the order the server returned them. */
+export const flattenAgentConversationPages = (
+  pages: AgentConversationPages | undefined,
+): AgentConversationRecord[] => {
+  if (!pages) return []
+  const byId = new Map<string, AgentConversationRecord>()
+  for (const page of pages.pages) {
+    for (const conversation of page.data) {
+      if (!byId.has(conversation.id)) byId.set(conversation.id, conversation)
+    }
+  }
+  return [...byId.values()]
+}
+
+/**
+ * The conversations this agent is in that the caller may see.
+ *
+ * The caller picks the cadence from what it is doing with the answer, exactly
+ * as `useThreadBrowserSessions` does: `RAIL_POLL_MS` for a rail dot,
+ * `WATCHING_POLL_MS` while the column is open. `placeholderData` is
+ * `keepPreviousData` because the key carries an id — switching agents must not
+ * blank a list that is about to be replaced.
+ */
+export const useAgentConversations = (
+  agentId?: string,
+  options: {
+    enabled?: boolean
+    /**
+     * A number, or a function of the rows so far — a list watches closely only
+     * while a row is running (`conversationListCadence`).
+     */
+    refetchInterval?: number | ((conversations: AgentConversationRecord[]) => number)
+  } = {},
+) => {
+  const apiClient = useApiClient()
+  const { refetchInterval } = options
+
+  const query = useInfiniteQuery({
+    ...agentConversationsInfiniteQueryOptions(apiClient, agentId ?? ''),
+    enabled: Boolean(agentId) && (options.enabled ?? true),
+    placeholderData: keepPreviousData,
+    ...(refetchInterval === undefined
+      ? {}
+      : {
+          refetchInterval: typeof refetchInterval === 'function'
+            ? (query: { state: { data?: Parameters<typeof flattenAgentConversationPages>[0] } }) =>
+                refetchInterval(flattenAgentConversationPages(query.state.data))
+            : refetchInterval,
+        }),
+  })
+  const conversations = useMemo(
+    () => flattenAgentConversationPages(query.data),
+    [query.data],
+  )
+  return { ...query, data: conversations }
 }
 
 export const useRunToolCalls = (agentId?: string, runId?: string) => {

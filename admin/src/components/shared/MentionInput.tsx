@@ -242,7 +242,10 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         onChange?.('')
       },
       focus() {
-        editorRef.current?.focus()
+        // `preventScroll` because this can be called as a screen mounts, and a
+        // focus inside a layer parked off to the right scrolls its stack
+        // container sideways (docs/navigation/overview.md §2, "the bounce").
+        editorRef.current?.focus({ preventScroll: true })
       },
       getText() {
         return editorRef.current ? extractEditorText(editorRef.current) : ''

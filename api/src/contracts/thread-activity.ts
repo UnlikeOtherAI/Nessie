@@ -21,6 +21,14 @@ const ActivityMessageSchema = z.object({
 export const ThreadActivityRecordSchema = z.object({
   rootMessageId: z.string().uuid(),
   threadId: ThreadIdSchema,
+  /**
+   * The container thread's own title and agent, so the inbox can name a
+   * conversation ("Q3 pricing review") instead of only its room, and link
+   * straight to `/channels/:channelId/threads/:threadId`. Both are null on a
+   * General row, which is every row that existed before conversations.
+   */
+  threadTitle: z.string().nullable(),
+  threadAgentId: AgentIdSchema.nullable(),
   channelId: ChannelIdSchema,
   channelLabel: z.string(),
   root: ActivityMessageSchema,

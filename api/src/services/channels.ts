@@ -61,10 +61,16 @@ export const listChannelsForUser = async (
     where,
     orderBy: { createdAt: 'asc' },
     include: {
+      // The room's General thread, and every thread of it.
+      //
+      // `defaultThreadId` is the General row and nothing else — pinned on
+      // `agentId: null` so a conversation started before the room's General
+      // thread was materialised can never become the room's feed. The full set
+      // is what the unread badge counts: a conversation is a thread in this
+      // room, and something new inside one still has to say so in the sidebar.
       threads: {
         orderBy: { createdAt: 'asc' },
-        take: 1,
-        select: { id: true },
+        select: { agentId: true, id: true },
       },
       members: {
         where: { userId },
@@ -100,7 +106,9 @@ export const listChannelsForUser = async (
     },
   })
 
-  const needsThread = channels.filter((channel) => channel.threads.length === 0)
+  const needsThread = channels.filter(
+    (channel) => !channel.threads.some((thread) => !thread.agentId),
+  )
   if (needsThread.length > 0) {
     await prisma.thread.createMany({
       data: needsThread.map((channel) => ({ channelId: channel.id, title: 'General' })),
@@ -108,15 +116,18 @@ export const listChannelsForUser = async (
     })
 
     const createdThreads = await prisma.thread.findMany({
-      where: { channelId: { in: needsThread.map((channel) => channel.id) } },
+      where: { agentId: null, channelId: { in: needsThread.map((channel) => channel.id) } },
       orderBy: { createdAt: 'asc' },
       distinct: ['channelId'],
-      select: { id: true, channelId: true },
+      select: { agentId: true, id: true, channelId: true },
     })
     const threadMap = new Map(createdThreads.map((thread) => [thread.channelId, thread.id]))
     for (const channel of needsThread) {
       const threadId = threadMap.get(channel.id)
-      channel.threads = [{ id: threadId ?? await ensureDefaultThread(prisma, channel.id) }]
+      channel.threads = [
+        { agentId: null, id: threadId ?? await ensureDefaultThread(prisma, channel.id) },
+        ...channel.threads,
+      ]
     }
   }
 
@@ -126,8 +137,18 @@ export const listChannelsForUser = async (
     return leftPriority - rightPriority || left.createdAt.getTime() - right.createdAt.getTime()
   })
 
-  const defaultThreadIds = channels.map((channel) => channel.threads[0]!.id)
-  const unreadCountsByThread = await loadUnreadCountsByThread(prisma, defaultThreadIds, userId)
+  const defaultThreadIdByChannel = new Map(
+    channels.map((channel) => [
+      channel.id,
+      (channel.threads.find((thread) => !thread.agentId) ?? channel.threads[0]!).id,
+    ]),
+  )
+  const defaultThreadIds = [...defaultThreadIdByChannel.values()]
+  const unreadCountsByThread = await loadUnreadCountsByThread(
+    prisma,
+    channels.flatMap((channel) => channel.threads.map((thread) => thread.id)),
+    userId,
+  )
   const lastMessageAtByThread = await loadLastMessageAtByThread(prisma, defaultThreadIds)
 
   // `viewerCanManage` mirrors `canManageChannel` (`@nessie/team-admin`), batched
@@ -203,9 +224,14 @@ export const listChannelsForUser = async (
     projectName: channel.project.name,
     teamId: parseTeamId(channel.teamId),
     teamName: channel.team.name,
-    defaultThreadId: parseThreadId(channel.threads[0]!.id),
-    unreadCount: unreadCountsByThread.get(channel.threads[0]!.id) ?? 0,
-    lastMessageAt: lastMessageAtByThread.get(channel.threads[0]!.id) ?? null,
+    defaultThreadId: parseThreadId(defaultThreadIdByChannel.get(channel.id)!),
+    // Every thread of the room, not only General: the badge is the room's.
+    unreadCount: channel.threads.reduce(
+      (total, thread) => total + (unreadCountsByThread.get(thread.id) ?? 0),
+      0,
+    ),
+    lastMessageAt:
+      lastMessageAtByThread.get(defaultThreadIdByChannel.get(channel.id)!) ?? null,
     topic: channel.topic ?? null,
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,

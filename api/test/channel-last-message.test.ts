@@ -55,14 +55,16 @@ test('the channel list carries lastMessageAt, null for a channel with no message
       findMany: async () => [
         {
           ...channelRow(),
-          threads: [{ id: threadId }],
+          // `agentId: null` is what makes this the room's General thread — the
+          // channel list now selects it and pins `defaultThreadId` to it.
+          threads: [{ agentId: null, id: threadId }],
           members: [{ role: 'member', muted: false }],
           project: projectShape,
           team: teamShape,
         },
         {
           ...channelRow({ id: quietChannelId, label: 'empty', slug: 'empty' }),
-          threads: [{ id: quietThreadId }],
+          threads: [{ agentId: null, id: quietThreadId }],
           members: [{ role: 'member', muted: false }],
           project: projectShape,
           team: teamShape,

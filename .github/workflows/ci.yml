@@ -724,6 +724,13 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:connected-mail
 
+      # Many isolated conversations with one agent, on the same real stack:
+      # two runs for one agent at once, a request log that proves neither saw
+      # the other's turns, and the live doorway card at three widths.
+      - name: Run agent conversations browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:agent-conversations
+
       - name: Upload transition frames
         if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
@@ -770,6 +777,14 @@ jobs:
         with:
           name: private-conversation-disclosure-screenshots
           path: e2e/screenshots/disclosure
+          if-no-files-found: warn
+
+      - name: Upload agent conversations screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-conversations-screenshots
+          path: e2e/screenshots/agent-conversations
           if-no-files-found: warn
 
       - name: Report skip

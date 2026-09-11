@@ -9,7 +9,10 @@ import {
   type ReplyRootMetadata,
 } from '@nessie/runtime'
 import type { AgentMention } from '@nessie/schemas'
-import { buildAgentVisibilityWhere } from '@nessie/team-admin'
+import {
+  buildAgentVisibilityWhere,
+  deriveConversationTitle,
+} from '@nessie/team-admin'
 
 import { messageInclude, type MessageWithReactions } from './message-read-model.js'
 
@@ -42,6 +45,56 @@ const findMessageByClientKey = async (
 // would read as "your message failed".
 const isDuplicateClientKey = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+
+// ─── A conversation takes its first message as its title ───────────────────
+//
+// "New conversation" opens an empty thread, so it has no title at all and two
+// of them are indistinguishable in a list. The first thing said in one is its
+// name. The derivation is `deriveConversationTitle` — the same helper
+// `startAgentConversation` uses for a conversation opened *with* an opening
+// line, so there is one title rule and not two.
+//
+// Every condition is structural, never a reading of the content: the thread is
+// a conversation with an agent (`agent_id` set, so a room's General thread is
+// never touched), its title is still NULL, and the message is a top-level
+// `user` post (the caller passes only that branch). NULL is the whole marker:
+// `DEFAULT_CONVERSATION_TITLE` is a legal title a person may type, and while it
+// doubled as the "unnamed" sentinel their explicit "New conversation" was
+// overwritten by whatever they said first. Rows written before that change
+// carry the sentinel and stay named "New conversation" — deliberately, since
+// nothing can now tell those two cases apart.
+//
+// "The first such message" is enforced by the write rather than by a count —
+// the conditional `updateMany` carries `title: null` in its WHERE and runs
+// inside the send's own transaction, so a second message finds a named
+// conversation and two racing first messages cannot both win.
+const titleConversationFromFirstMessage = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    content: string
+    thread: { agentId: string | null; title: string | null }
+    threadId: string
+  },
+): Promise<string | undefined> => {
+  if (!input.thread.agentId) return undefined
+  if (input.thread.title !== null) return undefined
+
+  // An attachment-only send has no line to take (`null` here). Leaving the
+  // conversation unnamed keeps the naming with the first message that actually
+  // says something.
+  const title = deriveConversationTitle({ message: input.content })
+  if (!title) return undefined
+
+  const renamed = await tx.thread.updateMany({
+    where: {
+      id: input.threadId,
+      agentId: { not: null },
+      title: null,
+    },
+    data: { title },
+  })
+  return renamed.count > 0 ? title : undefined
+}
 
 export type ChannelAgent = {
   id: string
@@ -78,6 +131,11 @@ export type CreateThreadMessageResult =
       replyRoot?: { rootMessageId: string; metadata: ReplyRootMetadata }
       // Slack-parity "Also send to #channel": the top-level copy of a reply.
       broadcastMessage?: MessageWithReactions
+      // Set only when this message named its conversation (the first top-level
+      // user message in an agent thread still carrying the default title), so
+      // the client can show the new name without a re-read. Additive: absent on
+      // every other send.
+      conversationTitle?: string
     }
   | {
       kind: 'thread_not_found'
@@ -148,6 +206,11 @@ export const createThreadMessage = async (
           systemChannelType: true,
         },
       },
+      // The conversation this send may name: `agentId` says whether the thread
+      // is a conversation with an agent at all, `title` whether it still
+      // carries the placeholder one.
+      agentId: true,
+      title: true,
     },
   })
 
@@ -261,6 +324,7 @@ export const createThreadMessage = async (
   let message: MessageWithReactions
   let alertedUserIds: string[] = []
   let broadcastMessage: MessageWithReactions | undefined
+  let conversationTitle: string | undefined
   let replyRoot: { rootMessageId: string; metadata: ReplyRootMetadata } | undefined
 
   if (input.rootMessageId) {
@@ -391,11 +455,30 @@ export const createThreadMessage = async (
         actorUserId: input.userId,
         mentionedUserIds: mentions.userIds,
       })
-      return { message: created, alertedUserIds: alerted, raced: null }
+      // Inside this transaction on purpose: a conversation named by a message
+      // that then failed to commit would be named after nothing.
+      const namedTitle = await titleConversationFromFirstMessage(tx, {
+        content: input.content,
+        thread: { agentId: thread.agentId, title: thread.title },
+        threadId: input.threadId,
+      })
+      return {
+        message: created,
+        alertedUserIds: alerted,
+        conversationTitle: namedTitle,
+        raced: null,
+      }
     }).catch(async (error: unknown) => {
       if (input.clientMessageId && isDuplicateClientKey(error)) {
         const won = await findMessageByClientKey(prisma, input.threadId, input.clientMessageId)
-        if (won) return { alertedUserIds: [] as string[], message: won, raced: won }
+        if (won) {
+          return {
+            alertedUserIds: [] as string[],
+            conversationTitle: undefined,
+            message: won,
+            raced: won,
+          }
+        }
       }
       throw error
     })
@@ -404,6 +487,7 @@ export const createThreadMessage = async (
     }
     message = txResult.message
     alertedUserIds = txResult.alertedUserIds
+    conversationTitle = txResult.conversationTitle
   }
 
   // An @mention of an agent that is NOT a member (bound) of this channel does
@@ -459,5 +543,6 @@ export const createThreadMessage = async (
     ...(agentMentions.length > 0 ? { agentMentions } : {}),
     ...(replyRoot ? { replyRoot } : {}),
     ...(broadcastMessage ? { broadcastMessage } : {}),
+    ...(conversationTitle ? { conversationTitle } : {}),
   }
 }

@@ -1,7 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AgentAvatarBackgroundColor, AgentRunLimits } from '@nessie/schemas'
-import type { AgentRecord } from '../../lib/api-client'
+import type {
+  AgentAvatarBackgroundColor,
+  AgentConversationRecord,
+  AgentRunLimits,
+} from '@nessie/schemas'
+import type { AgentRecord, ThreadMessageRecord } from '../../lib/api-client'
 import { agentKeys } from './keys'
+import { channelKeys } from '../channels/keys'
+import { threadKeys } from '../threads/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useCreateAgent = () => {
@@ -139,6 +145,52 @@ export const useUnbindAgent = () => {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+    },
+  })
+}
+
+export type StartAgentConversationResult = {
+  conversation: AgentConversationRecord
+  /** Null when the conversation was started empty, which is the rail's case. */
+  message: ThreadMessageRecord | null
+}
+
+/**
+ * Start a fresh conversation with an agent.
+ *
+ * The body is the shared `StartAgentConversationBodySchema`, which is
+ * `.strict()` and `.optional()` throughout: a field that is not being sent is
+ * *omitted*, never sent as `null` (see `zod .strict() .optional() rejects
+ * null`). The three lists a new thread changes are refreshed — the agent's own
+ * conversations, the Threads inbox, and the channel list, whose unread counts
+ * now sum every thread of a room.
+ */
+export const useStartAgentConversation = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    // Plain strings rather than the wire schema's branded ids: this is the
+    // JSON body, and the server is the one that parses it. Every field is
+    // omitted rather than sent as `null` when absent — the body schema is
+    // `.strict()` and `.optional()`, which rejects an explicit null.
+    mutationFn: (input: {
+      agentId: string
+      channelId?: string
+      title?: string
+      message?: string
+      clientMessageId?: string
+    }) => {
+      const { agentId, ...body } = input
+      return apiClient.post<StartAgentConversationResult>(
+        `/api/agents/${encodeURIComponent(agentId)}/conversations`,
+        body,
+      )
+    },
+    onSuccess: (_result, input) => {
+      void queryClient.invalidateQueries({ queryKey: agentKeys.conversations(input.agentId) })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.activityRoot })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }

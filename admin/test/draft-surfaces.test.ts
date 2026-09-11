@@ -82,8 +82,14 @@ test('the channel composer keys its draft per channel and the reply panel per ro
   assert.match(draftKeys, /attachments: StagedAttachment\[\]/)
   assert.match(draftKeys, /text: string/)
 
+  // A conversation is its own unsent draft (agent conversations): the key is
+  // the thread inside one, and the channel — unchanged — in a room's General
+  // thread, so no existing draft is orphaned.
   const channelsPage = read('pages/ChannelsPage.tsx')
-  assert.match(channelsPage, /draftKey: channelComposerDraftKey\(activeChannel\?\.id\)/)
+  assert.match(
+    channelsPage,
+    /draftKey: channelComposerDraftKey\(inConversation \? threadId : activeChannel\?\.id\)/,
+  )
   const replyPanel = read('components/features/channels/thread-panel/ThreadReplyPanel.tsx')
   assert.match(replyPanel, /draftKey: replyComposerDraftKey\(openRootMessageId\)/)
 })

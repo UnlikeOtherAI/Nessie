@@ -12,6 +12,8 @@ import {
   runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
   runAgentBindChannelTool,
+  runAgentConversationStartTool,
+  runAgentConversationsListTool,
   runAgentCreateTool,
   runAgentListTool,
   runAgentReadTool,
@@ -27,6 +29,7 @@ import {
   runChannelListTool,
   runChannelUpdateTool,
   runCommsConnectCardTool,
+  runConversationReferenceTool,
   runDeepWaterRunUpdateTool,
   runDemonstrationStartTool,
   runDemonstrationStopTool,
@@ -156,6 +159,11 @@ const executeBuiltinToolUncorrected = async (
   switch (toolName) {
     case 'card_post':
       return wrapTool(inputSummary, () => runCardPostTool(context, args))
+    // Default-on for every agent that can talk, exactly like `card_post`: what
+    // a viewer sees is decided per viewer by the card's own read, and the
+    // handler bounds which conversations may be pointed at.
+    case 'conversation_reference':
+      return wrapTool(inputSummary, () => runConversationReferenceTool(context, args))
     case 'app_search':
       return wrapTool(inputSummary, () => runAppSearchTool(context, args))
     case 'app_connect_request':
@@ -328,6 +336,13 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    // Conversations with an agent: open one and hand it a job, or list the ones
+    // this person can see. `agent_conversations_list` is to a thread id what
+    // `agent_list` is to an agent id.
+    case 'agent_conversation_start':
+      return wrapTool(inputSummary, () => runAgentConversationStartTool(context, args))
+    case 'agent_conversations_list':
+      return wrapTool(inputSummary, () => runAgentConversationsListTool(context, args))
     // Available to every agent by default; its loop bounds are structural (a
     // global agent and a subtask child never see it — see tool-policy.ts).
     case 'agent_handoff':

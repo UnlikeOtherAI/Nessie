@@ -33,6 +33,11 @@ type ThreadLastMessageRow = {
   last_message_at: Date | null
 }
 
+type ChannelLastMessageRow = {
+  channel_id: string
+  last_message_at: Date | null
+}
+
 export type TeamProjectScope = {
   projectId: string
   projectName: string
@@ -108,20 +113,21 @@ export const loadTeamProjectScope = async (
   }
 }
 
-export const loadUnreadCountsByThread = async (
+/**
+ * Unread per thread, over whichever threads the caller's filter names.
+ *
+ * One statement of the rule, two ways in: by thread id (the channel list,
+ * which already holds them) and by channel (one room's badge). A reply panel
+ * is an exact conversation, not the container thread, so each message resolves
+ * its root — a top-level post is its own root — and reads that root's cursor
+ * first. The old container cursor remains a deployment-safe baseline for roots
+ * that have not been opened since this more precise model shipped.
+ */
+const loadUnreadCounts = async (
   prisma: PrismaClient,
-  threadIds: string[],
+  threadFilter: Prisma.Sql,
   userId: string,
 ): Promise<Map<string, number>> => {
-  if (threadIds.length === 0) {
-    return new Map()
-  }
-
-  // A reply panel is an exact conversation, not the container thread. Each
-  // message therefore resolves its root (a top-level post is its own root) and
-  // reads that root's cursor first. The old container cursor remains a
-  // deployment-safe baseline for roots that have not been opened since this
-  // more precise model shipped.
   const rows = await prisma.$queryRaw<ThreadUnreadRow[]>(Prisma.sql`
     SELECT
       t.id AS thread_id,
@@ -139,7 +145,7 @@ export const loadUnreadCountsByThread = async (
     LEFT JOIN "message_conversation_read_states" mcrs
       ON mcrs.user_id = ${userId}::uuid
       AND mcrs.root_message_id = COALESCE(m.root_message_id, m.id)
-    WHERE t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
+    WHERE ${threadFilter}
     GROUP BY t.id
   `)
 
@@ -151,6 +157,50 @@ export const loadUnreadCountsByThread = async (
         : row.unread_count,
     ]),
   )
+}
+
+export const loadUnreadCountsByThread = async (
+  prisma: PrismaClient,
+  threadIds: string[],
+  userId: string,
+): Promise<Map<string, number>> => {
+  if (threadIds.length === 0) {
+    return new Map()
+  }
+  return loadUnreadCounts(
+    prisma,
+    Prisma.sql`t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})`,
+    userId,
+  )
+}
+
+/**
+ * Everything unread in a channel, across every thread of it.
+ *
+ * A conversation is a thread in the room, so the sidebar's badge counts the
+ * room and not only its General thread — otherwise a job an agent is doing
+ * inside a conversation makes no mark anywhere a person looks. Thread
+ * visibility *is* channel visibility (`buildViewerThreadWhere`), so a viewer
+ * who can see the channel can see all of its threads and no further filter is
+ * owed here.
+ *
+ * Shared with the channel list on purpose: the admin patches its cached list
+ * in place from single-record responses, so a second rule here would blank a
+ * badge the moment anyone renamed or joined a channel.
+ */
+export const loadChannelUnreadCount = async (
+  prisma: PrismaClient,
+  channelId: string,
+  userId: string,
+): Promise<number> => {
+  const counts = await loadUnreadCounts(
+    prisma,
+    Prisma.sql`t.channel_id = ${channelId}::uuid`,
+    userId,
+  )
+  let total = 0
+  for (const count of counts.values()) total += count
+  return total
 }
 
 // Last activity per thread: `MAX(created_at)` over the thread's messages, the
@@ -187,12 +237,60 @@ export const loadLastMessageAtByThread = async (
   return activity
 }
 
+// The same aggregate one level up: `MAX(created_at)` per *channel*, across
+// every thread in it. Same shape and the same ISO-8601 contract as
+// `loadLastMessageAtByThread`, so a caller can hand either straight to a sort.
+//
+// It exists because "which room did this person last talk to this agent in" is
+// a question about rooms, and answering it by selecting each candidate's
+// threads and scoring them in memory fetches a set bounded by nothing — one
+// row per thread of up to `AGENT_CONVERSATION_CANDIDATE_LIMIT` channels. One
+// grouped query is a fixed cost whatever a room's thread count is. Tombstoned
+// messages are excluded here (a deleted message is not activity a room should
+// be ranked by); the per-thread aggregate counts them, matching its own unread
+// computation.
+export const loadLastMessageAtByChannel = async (
+  prisma: PrismaClient | Prisma.TransactionClient,
+  channelIds: string[],
+): Promise<Map<string, string>> => {
+  if (channelIds.length === 0) {
+    return new Map()
+  }
+
+  const rows = await prisma.$queryRaw<ChannelLastMessageRow[]>(Prisma.sql`
+    SELECT
+      t.channel_id AS channel_id,
+      MAX(m.created_at) AS last_message_at
+    FROM "messages" m
+    JOIN "threads" t ON t.id = m.thread_id
+    WHERE t.channel_id IN (${Prisma.join(channelIds.map((channelId) => Prisma.sql`${channelId}::uuid`))})
+      AND m.deleted_at IS NULL
+    GROUP BY t.channel_id
+  `)
+
+  const activity = new Map<string, string>()
+  for (const row of rows) {
+    if (row.last_message_at) {
+      activity.set(row.channel_id, row.last_message_at.toISOString())
+    }
+  }
+  return activity
+}
+
+/**
+ * The channel's own General thread — `agent_id IS NULL`, always.
+ *
+ * The pin is load-bearing now that a channel can hold many threads: a
+ * conversation started before the room's General row was ever materialised
+ * would otherwise be the oldest thread in the channel and become its
+ * `defaultThreadId`, which is the room's feed for everybody.
+ */
 export const ensureDefaultThread = async (
   prisma: PrismaClient | Prisma.TransactionClient,
   channelId: string,
 ): Promise<string> => {
   const existingThread = await prisma.thread.findFirst({
-    where: { channelId },
+    where: { agentId: null, channelId },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   })
@@ -208,7 +306,7 @@ export const ensureDefaultThread = async (
     return thread.id
   } catch {
     const fallback = await prisma.thread.findFirst({
-      where: { channelId },
+      where: { agentId: null, channelId },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     })
@@ -226,7 +324,7 @@ export const mapChannelRecord = async (
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
-    ? (await loadUnreadCountsByThread(prisma, [defaultThreadId], userId)).get(defaultThreadId) ?? 0
+    ? await loadChannelUnreadCount(prisma, channel.id, userId)
     : 0
   // Every emission of a channel record carries lastMessageAt, not just the list
   // read: single-channel reads and post-mutation responses flow through here

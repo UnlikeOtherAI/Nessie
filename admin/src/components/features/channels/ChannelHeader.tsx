@@ -13,6 +13,10 @@ import { usePhoneLayout } from '../../../navigation/mobile-shell'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { ChannelTitleFavorite } from './ChannelFavoriteButton'
+import {
+  renameConversationHeaderActions,
+  type ConversationRenameDoorway,
+} from './rename-conversation'
 import { chatToolHeaderActions, type ChatToolId } from './tool-rail/chat-tools'
 
 interface ChannelHeaderProps {
@@ -24,10 +28,26 @@ interface ChannelHeaderProps {
   callStarting: boolean
   channelUsers: UserRecord[]
   /**
-   * The one agent this conversation is with, when it has one. Its tools reach
-   * the header on a layout with no rail beside the chat to hold them.
+   * The agents whose tools this room offers (`resolveChatToolAgents`) — the
+   * thread's own agent inside a conversation, the subject of a DM, or every
+   * agent bound to an ordinary room. They reach the header on a layout with no
+   * rail beside the chat to hold them.
    */
-  conversationAgent: AgentRecord | null
+  chatToolAgents: readonly AgentRecord[]
+  /**
+   * The conversation on screen when it is *not* the room's General thread: its
+   * own title becomes the heading and the room drops to the eyebrow, because a
+   * header that still said "#design" would name the container rather than the
+   * thing being read. Null in a room's General thread, which is the room.
+   */
+  conversation: { eyebrow: string; title: string } | null
+  /**
+   * Renaming the conversation whose title this header is showing: the record,
+   * who is looking, and what opening the dialog does. Null where there is
+   * nothing to rename; the rule that turns it into an action (or into nothing)
+   * is `rename-conversation.ts`, never spelt out here.
+   */
+  conversationRename: ConversationRenameDoorway | null
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -66,7 +86,9 @@ export const ChannelHeader = ({
   callMeetingUri,
   callStarting,
   channelUsers,
-  conversationAgent,
+  chatToolAgents,
+  conversation,
+  conversationRename,
   externalAgentIdentity,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -87,11 +109,12 @@ export const ChannelHeader = ({
   titleFavorite,
 }: ChannelHeaderProps) => {
   const single = usePhoneLayout()
-  const title = isPersonalAssistantConversation
+  const roomTitle = isPersonalAssistantConversation
     ? 'Personal Assistant'
     : isExternalAgentConversation
       ? externalAgentIdentity?.name ?? activeChannel?.label ?? 'Channels'
       : activeChannel?.label ?? 'Channels'
+  const title = conversation?.title ?? roomTitle
   const canManageChannel = Boolean(
     activeChannel && activeChannel.type !== 'dm' && !isPersonalAssistantConversation,
   )
@@ -129,6 +152,9 @@ export const ChannelHeader = ({
       priority: 90,
       selected: titleFavorite.isFavorite,
     } satisfies PageHeaderAction] : []),
+    // Directly under the star, and above the room's own controls: it acts on
+    // the thing the title names, which is what this header is showing.
+    ...renameConversationHeaderActions(conversationRename),
     ...(canOpenConversationInfo ? [{
       compact: true,
       icon: faCircleInfo,
@@ -156,7 +182,7 @@ export const ChannelHeader = ({
     // (Join is a public channel, which has no single conversation agent), the
     // iOS bar's one inline slot still goes to Join.
     ...chatToolHeaderActions({
-      hasConversationAgent: conversationAgent?.browserEnabled === true,
+      agents: chatToolAgents,
       onOpenTool: onOpenChatTool,
       single,
     }),
@@ -223,11 +249,13 @@ export const ChannelHeader = ({
     <ScreenHeader
       actions={actions}
       eyebrow={
-        isPersonalAssistantConversation
-          ? 'System managed'
-          : isExternalAgentConversation
-            ? externalAgentIdentity?.description ?? undefined
-            : undefined
+        conversation
+          ? conversation.eyebrow
+          : isPersonalAssistantConversation
+            ? 'System managed'
+            : isExternalAgentConversation
+              ? externalAgentIdentity?.description ?? undefined
+              : undefined
       }
       title={title}
     />

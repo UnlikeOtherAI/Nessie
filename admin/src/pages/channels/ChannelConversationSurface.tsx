@@ -25,6 +25,7 @@ import { Dialog } from '../../components/shared/Dialog'
 import { ChannelTabPanels } from '../../components/features/channels/ChannelTabPanels'
 import { ExternalAgentIntro } from '../../components/features/channels/ExternalAgentIntro'
 import type { ChannelTitleFavorite } from '../../components/features/channels/ChannelFavoriteButton'
+import type { ConversationRenameDoorway } from '../../components/features/channels/rename-conversation'
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { type ChannelAgentParticipant, type MessageUserIdentity } from '../../components/features/channels/channel-participants'
 import { type ChannelTab } from '../../components/features/channels/channel-tabs'
@@ -53,6 +54,15 @@ import type { useReplyThread } from '../../components/features/channels/useReply
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
   activeChannel: ChannelRecord | null
+  /**
+   * The thread on screen: the room's General thread, or the conversation the
+   * route names (docs/plans/2026-09-08-agent-conversations.md).
+   */
+  activeThreadId: string | null
+  /** Set only inside a conversation; the header then names it, not the room. */
+  conversation: { eyebrow: string; title: string } | null
+  /** The header's rename doorway; the page owns the rule and the dialog. */
+  conversationRename: ConversationRenameDoorway | null
   agentMap: Map<string, AgentRecord>
   agentTabAvailable: boolean
   agentsTabAvailable: boolean
@@ -60,6 +70,10 @@ interface ChannelConversationSurfaceProps {
   // The single agent a direct conversation is with, when there is one. Its
   // To-dos and Triggers sections hang off it.
   conversationAgent: AgentRecord | null
+  // The agents whose tools this room offers — a set, because an ordinary room
+  // an agent works in has a conversations doorway too. Deliberately not
+  // `conversationAgent`: the sections above need one subject, the tools do not.
+  chatToolAgents: readonly AgentRecord[]
   callEligible: boolean
   callStarting: boolean
   voiceCallActive: boolean
@@ -122,7 +136,7 @@ interface ChannelConversationSurfaceProps {
   >
   me: MeResponse
   onCallButton: () => void
-  /** Opens one of `conversationAgent`'s tools; the page owns the route. */
+  /** Opens one of `chatToolAgents`' tools; the page owns the route. */
   onOpenChatTool: (tool: ChatToolId) => void
   onCreateAgent: () => void
   onJoin: () => void
@@ -153,6 +167,8 @@ interface ChannelConversationSurfaceProps {
 export const ChannelConversationSurface = ({
   activeCall,
   activeChannel,
+  activeThreadId,
+  conversation,
   agentMap,
   agentTabAvailable,
   agentsTabAvailable,
@@ -164,9 +180,11 @@ export const ChannelConversationSurface = ({
   channelLiveness,
   channelUsers,
   chatDrop,
+  chatToolAgents,
   composePlaceholder,
   composer,
   conversationAgent,
+  conversationRename,
   deepWaterLauncher,
   documentSessions,
   documentStore,
@@ -226,7 +244,6 @@ export const ChannelConversationSurface = ({
   const { data: ownDemonstrations = [] } = useDemonstrations()
   const startDemonstration = useStartDemonstration()
   const stopDemonstration = useStopDemonstration()
-  const activeThreadId = activeChannel?.defaultThreadId
   const recording = activeDemonstrations.find(
     (entry) => entry.threadId === activeThreadId && entry.status === 'recording',
   )
@@ -258,6 +275,7 @@ export const ChannelConversationSurface = ({
         voiceCallActive={voiceCallActive}
         voiceCallSupported={voiceCallSupported}
         channelUsers={channelUsers}
+        conversation={conversation}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
@@ -265,7 +283,8 @@ export const ChannelConversationSurface = ({
         joinPending={joinPending}
         searchOpen={search.searchOpen}
         titleFavorite={titleFavorite}
-        conversationAgent={conversationAgent}
+        chatToolAgents={chatToolAgents}
+        conversationRename={conversationRename}
         onCallButton={onCallButton}
         onOpenChatTool={onOpenChatTool}
         onJoin={onJoin}
@@ -342,7 +361,7 @@ export const ChannelConversationSurface = ({
               pendingMessages={pendingMessages}
               renderContent={renderContent}
               showLivenessHint={channelLiveness.visible}
-              threadId={activeChannel?.defaultThreadId}
+              threadId={activeThreadId ?? undefined}
               token={token}
               updatePending={updatePending}
               emptyState={

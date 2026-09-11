@@ -17,6 +17,7 @@ import { QueryState } from '../../shared/QueryState'
 import { AgentBrowserPanel } from '../browser-cloud/AgentBrowserPanel'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentDocumentsTab } from './AgentDocumentsTab'
+import { AgentConversationList } from './conversations/AgentConversationList'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
@@ -77,7 +78,7 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
   },
   activity: {
     actions: [],
-    description: 'Review this agent’s current run, triggers, recent tool calls, and thought stream.',
+    description: 'Every conversation this agent is in that you can see — open one or start another — then its current run, triggers, recent tool calls, and thought stream.',
     title: 'Activity',
   },
   'sub-agents': {
@@ -209,6 +210,17 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
           >
         {activeTab === 'activity' && (
           <div className="grid gap-6">
+            {/* Every conversation this agent is in that the viewer can see — the
+                agent page's door into them. A section here rather than a ninth
+                tab: one more tab collapsed the strip to a dropdown on a desktop
+                with the designer panel open, and "what is this agent doing"
+                is the question this tab already answers. */}
+            <section className="admin-card p-4">
+              <SectionLabel>Conversations</SectionLabel>
+              <div className="mt-3">
+                <AgentConversationList agentId={agent.id} />
+              </div>
+            </section>
             <section className="admin-card p-4">
               <SectionLabel>Current activity</SectionLabel>
               {status?.currentToolName || activity?.currentRun ? (

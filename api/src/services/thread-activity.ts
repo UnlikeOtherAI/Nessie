@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { buildAccessibleChannelWhere } from '@nessie/team-admin'
+import { buildAccessibleChannelWhere, DEFAULT_CONVERSATION_TITLE } from '@nessie/team-admin'
 import { decodeKeysetCursor, encodeKeysetCursor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 
@@ -91,6 +91,8 @@ export const listThreadActivity = async (
           thread: {
             select: {
               id: true,
+              agentId: true,
+              title: true,
               readStates: { where: { userId: input.userId }, select: { lastReadAt: true } },
               channel: { select: { id: true, label: true } },
             },
@@ -133,6 +135,15 @@ export const listThreadActivity = async (
     records.push({
       rootMessageId: root.id,
       threadId: parseThreadId(root.thread.id),
+      // A conversation row is named by its thread; a General row has no title
+      // of its own and keeps saying only where it is. An unnamed conversation
+      // (`title IS NULL`, nothing said in it yet) is projected the same way the
+      // conversation record projects it, so a row here and a card there cannot
+      // disagree — and so null keeps meaning "a room", not "not named yet".
+      threadTitle: root.thread.agentId
+        ? root.thread.title?.trim() || DEFAULT_CONVERSATION_TITLE
+        : null,
+      threadAgentId: root.thread.agentId ? parseAgentId(root.thread.agentId) : null,
       channelId: parseChannelId(channel.id),
       channelLabel: channel.label,
       root: toActivityMessage(root),

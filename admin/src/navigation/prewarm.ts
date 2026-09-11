@@ -86,11 +86,28 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     pattern: /^\/channels\/([^/]+)$/,
     run: (channelId, context) => {
       const channels = context.queryClient.getQueryData<ChannelRecord[]>(channelKeys.all)
+      // A bare channel route shows the room's own General thread; a route that
+      // names a thread has its own entry below and needs no lookup at all.
       const threadId = channels?.find((channel) => channel.id === channelId)?.defaultThreadId
       if (!threadId) return
       // This destination is an infinite query, so prewarm its exact options;
       // `prefetchQuery` would cache one envelope where the screen expects
       // `InfiniteData` and make the landed feed unreadable.
+      void context.queryClient
+        .prefetchInfiniteQuery(threadMessagesInfiniteQueryOptions(
+          context.apiClient,
+          threadId,
+        ))
+        .catch(() => undefined)
+    },
+  },
+  {
+    // One conversation with a room's agent. The thread is *in the path*, so
+    // this is the one channel destination that needs no cached channel row —
+    // the capture is deliberately the thread rather than the channel
+    // (docs/plans/2026-09-08-agent-conversations.md).
+    pattern: /^\/channels\/[^/]+\/threads\/([^/]+)$/,
+    run: (threadId, context) => {
       void context.queryClient
         .prefetchInfiniteQuery(threadMessagesInfiniteQueryOptions(
           context.apiClient,

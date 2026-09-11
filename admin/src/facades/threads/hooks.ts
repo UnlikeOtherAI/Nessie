@@ -7,7 +7,9 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { AgentConversationRecord, RenameThreadBody } from '@nessie/schemas'
 import type { ThreadMessageRecord } from '../../lib/api-client'
+import { agentKeys } from '../agents/keys'
 import { readSseStream, type SseFrame } from '../../lib/sse'
 import { channelKeys } from '../channels/keys'
 import { threadKeys } from './keys'
@@ -124,6 +126,76 @@ export const useThreadMessage = (threadId?: string, messageId?: string) => {
     queryKey: threadKeys.message(threadId, messageId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages/${messageId}`),
     enabled: Boolean(threadId) && Boolean(messageId),
+  })
+}
+
+/**
+ * One thread read as a conversation with an agent.
+ *
+ * The read behind a conversation card and behind the conversation header's
+ * title. It carries no state of its own: the card renders whatever this says
+ * right now, which is why a status is never stored in the message metadata
+ * that pointed at it. A 404 is the honest answer for a thread this viewer
+ * cannot see, and the card renders the withheld idiom for it rather than
+ * retrying.
+ */
+export const useConversation = (
+  threadId?: string,
+  options: {
+    enabled?: boolean
+    /**
+     * A number, or a function of the record so far: a card watches a running
+     * conversation closely and a finished one slowly, and deriving that from
+     * the answer keeps it one query rather than two observers arguing about
+     * the cadence of one key.
+     */
+    refetchInterval?:
+      | number
+      | ((record: AgentConversationRecord | undefined, error: unknown) => number | false)
+  } = {},
+) => {
+  const apiClient = useApiClient()
+  const { refetchInterval } = options
+
+  return useQuery<AgentConversationRecord>({
+    enabled: Boolean(threadId) && (options.enabled ?? true),
+    placeholderData: keepPreviousData,
+    queryKey: threadKeys.conversation(threadId),
+    queryFn: () =>
+      apiClient.get(`/api/threads/${encodeURIComponent(threadId ?? '')}/conversation`),
+    ...(refetchInterval === undefined
+      ? {}
+      : {
+          refetchInterval: typeof refetchInterval === 'function'
+            ? (query: { state: { data?: AgentConversationRecord; error?: unknown } }) =>
+                refetchInterval(query.state.data, query.state.error)
+            : refetchInterval,
+        }),
+  })
+}
+
+/**
+ * Rename a conversation. Refused by the server (400 `THREAD_TITLE_FIXED`) for
+ * a room's General thread, so the caller renders the message rather than
+ * deciding for itself which threads are renameable.
+ */
+export const useRenameThread = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { threadId: string } & RenameThreadBody) => {
+      const { threadId, ...body } = input
+      return apiClient.patch<AgentConversationRecord>(
+        `/api/threads/${encodeURIComponent(threadId)}`,
+        body,
+      )
+    },
+    onSuccess: (conversation) => {
+      queryClient.setQueryData(threadKeys.conversation(conversation.id), conversation)
+      void queryClient.invalidateQueries({ queryKey: agentKeys.conversations(conversation.agentId) })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.activityRoot })
+    },
   })
 }
 

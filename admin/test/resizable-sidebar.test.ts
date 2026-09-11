@@ -68,7 +68,23 @@ test('the large-phone landscape sidebar is fixed and exposes no resize control',
 
   assert.match(source, /fixed\?: boolean/)
   assert.match(source, /fixed\s*\? `\$\{DEFAULT_SIDEBAR_WIDTH_PX\}px`/)
-  assert.match(source, /\{!fixed \? \(/)
+  assert.match(source, /\{!fixed && !sidePanelCoversShell \? \(/)
+})
+
+test('a side panel covering the screen stands the separator down', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
+    'utf8',
+  )
+
+  // Below 900px a side panel is `inset-0` inside the detail column's own
+  // stacking context, so no layer on the overlay scale reaches over this
+  // separator — and a separator left up resizes a column nobody can see while
+  // taking every pointer along its line, straight through the panel. The
+  // answer is the control standing down, never a z-index of its own
+  // (docs/navigation/overlays.md §7).
+  assert.match(source, /useFullScreenSidePanelOpen/)
+  assert.doesNotMatch(source, /z-index|zIndex/)
 })
 
 // The right-hand panels do not each own a divider: `SidePanelShell` is the one
