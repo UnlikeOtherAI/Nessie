@@ -330,7 +330,10 @@ export const WorkflowsPage = () => {
         showBack
         title={`Run ${selectedRunId.slice(0, 8)}`}
       >
-        <WorkflowRunDetail workflowRunId={selectedRunId} />
+        <WorkflowRunDetail
+          isWorkflowAdmin={isWorkflowAdmin}
+          workflowRunId={selectedRunId}
+        />
       </ColumnBrowserColumn>,
     )
   }
@@ -343,7 +346,10 @@ export const WorkflowsPage = () => {
         showBack
         title={`Run ${selectedRunId.slice(0, 8)}`}
       >
-        <WorkflowRunDetail workflowRunId={selectedRunId} />
+        <WorkflowRunDetail
+          isWorkflowAdmin={isWorkflowAdmin}
+          workflowRunId={selectedRunId}
+        />
       </ColumnBrowserColumn>,
     )
   }
