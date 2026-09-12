@@ -428,11 +428,12 @@ attachments through the same chokepoint.
 Read [`docs/standards/file-storage.md`](docs/standards/file-storage.md)
 before writing code here.
 
-## DeepTest native source adapter — local read-only boundary
+## DeepTest native adapters — local source and scoped execution
 
-DeepTest may read one locally approved Nessie workspace through the packaged
-child-process adapter; source and results never use Nessie's hosted command
-path, and DeepTest retains separate inference and active-testing approvals.
+DeepTest may read one locally approved workspace and, under a separate grant,
+validate in its disposable copy through packaged child-process adapters;
+source and results never use Nessie's hosted command path. DeepTest retains
+separate inference and per-run active-testing approvals.
 Read [`docs/standards/deeptest-native-adapter.md`](docs/standards/deeptest-native-adapter.md)
 before changing this boundary.
 
