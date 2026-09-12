@@ -4,7 +4,7 @@ import {
   type BoardSourceProvider,
   resolveBoardSourceAdapter,
 } from '@nessie/board-sources'
-import { openSecret } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, openSecret } from '@nessie/runtime'
 import {
   applyInboundItem,
   autoMatchItemAssignees,
@@ -151,7 +151,13 @@ const webhookSecrets = (
 ) => ({
   ...(source.webhookTokenHash ? { tokenHash: source.webhookTokenHash } : {}),
   ...(source.webhookSecretCiphertext
-    ? { signingSecret: openSecret(deps.encryptionSecret, source.webhookSecretCiphertext) }
+    ? {
+      signingSecret: openSecret(
+        deps.encryptionSecret,
+        source.webhookSecretCiphertext,
+        AT_REST_SECRET_PURPOSE.boardSourceWebhook,
+      ),
+    }
     : {}),
   ...(deps.publicApiUrl && job.token
     ? { callbackUrl: webhookCallbackUrl(deps.publicApiUrl, job.provider, job.token) }

@@ -14,7 +14,7 @@ import {
   BOARD_SOURCE_BACKOFF_CEILING_MS,
   BOARD_SOURCE_CLAIM_TIMEOUT_MS,
 } from '@nessie/schemas'
-import { sealSecret } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, sealSecret } from '@nessie/runtime'
 import {
   applyInboundItem,
   autoMatchItemAssignees,
@@ -266,7 +266,11 @@ const ensureWebhook = async (
         // forge a delivery.
         webhookTokenHash: createHash('sha256').update(token).digest('hex'),
         webhookSecretCiphertext: registration.signingSecret
-          ? sealSecret(deps.encryptionSecret, registration.signingSecret)
+          ? sealSecret(
+            deps.encryptionSecret,
+            registration.signingSecret,
+            AT_REST_SECRET_PURPOSE.boardSourceWebhook,
+          )
           : null,
       },
     })

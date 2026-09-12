@@ -31,7 +31,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { authSecret, config, prisma, rateLimiter, requireActorContext, requireUserActor } = deps
+  const { authSecret, config, encryptionKeyRing, prisma, rateLimiter, requireActorContext, requireUserActor } = deps
 
   app.get('/api/executor-workspace-reviews/mine', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

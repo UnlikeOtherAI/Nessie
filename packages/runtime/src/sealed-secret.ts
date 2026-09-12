@@ -44,10 +44,14 @@ export const openSecret = (
   purpose = 'sealed.secret',
 ): string => {
   const parts = packed.split(PACK_SEPARATOR)
-  if (parts.length !== 3) {
+  if (parts.length < 3) {
     throw new Error('[sealed-secret] malformed sealed secret')
   }
-  const [iv, authTag, ciphertext] = parts as [string, string, string]
+  const [iv, authTag, ...ciphertextParts] = parts
+  const ciphertext = ciphertextParts.join(PACK_SEPARATOR)
+  if (!iv || !authTag || !ciphertext) {
+    throw new Error('[sealed-secret] malformed sealed secret')
+  }
   return decryptWithKeyRing(
     toEncryptionKeyRing(encryption),
     purpose,

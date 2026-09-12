@@ -2,6 +2,8 @@ import type { PrismaClient } from '@prisma/client'
 import {
   computeScopeHash,
   sealSecret,
+  AT_REST_SECRET_PURPOSE,
+  toEncryptionKeyRing,
   type ConnectResult,
   type CommsProviderId,
 } from '@nessie/comms-connect'
@@ -41,14 +43,20 @@ export const persistConnectedAccount = async (
   const accessTokenCiphertext = sealSecret(
     encryptionSecret,
     connect.credential.accessToken,
+    AT_REST_SECRET_PURPOSE.commsCredential,
   )
   const refreshTokenCiphertext = connect.credential.refreshToken
-    ? sealSecret(encryptionSecret, connect.credential.refreshToken)
+    ? sealSecret(
+      encryptionSecret,
+      connect.credential.refreshToken,
+      AT_REST_SECRET_PURPOSE.commsCredential,
+    )
     : null
   const expiresAt = connect.credential.expiresAt
     ? new Date(connect.credential.expiresAt)
     : null
   const scopeHash = computeScopeHash(connect.credential.scopes)
+  const keyVersion = toEncryptionKeyRing(encryptionSecret).activeVersion
   const requestedCapabilities = toInputJson([
     ...(input.requestedCapabilities ?? []),
   ])
@@ -98,12 +106,14 @@ export const persistConnectedAccount = async (
         accessTokenCiphertext,
         refreshTokenCiphertext,
         expiresAt,
+        keyVersion,
         scopeHash,
       },
       update: {
         accessTokenCiphertext,
         ...(refreshTokenCiphertext ? { refreshTokenCiphertext } : {}),
         expiresAt,
+        keyVersion,
         scopeHash,
       },
     })

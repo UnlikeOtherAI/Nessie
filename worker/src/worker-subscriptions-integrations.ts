@@ -61,6 +61,7 @@ export const registerWorkerIntegrationSubscriptions = async (
   const {
     abortSignal,
     config,
+    encryptionKeyRing,
     fileService,
     prisma,
     realtimeTransport,
@@ -74,7 +75,7 @@ export const registerWorkerIntegrationSubscriptions = async (
 // run the sync phase, and persist normalized events idempotently.
 const commsSyncDeps = {
   prisma,
-  encryptionSecret: config.auth.secret ?? '',
+  encryptionSecret: encryptionKeyRing,
 }
 
 // Register the communications connector adapters into the shared registry so
@@ -99,7 +100,7 @@ console.log(
 
 const boardSourceDeps = {
   prisma,
-  encryptionSecret: config.auth.secret ?? '',
+  encryptionSecret: encryptionKeyRing,
   publicApiUrl: config.api.publicUrl ?? null,
   enqueueHealthAlert: async (payload: { sourceId: string; revision: number }) => {
     await enqueueBoardSourceHealthAlert(prisma, payload)

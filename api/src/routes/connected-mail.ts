@@ -83,7 +83,10 @@ const requireMailMutationRequest = (
 
 export const registerConnectedMailRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
-  const serviceDeps = { encryptionSecret: deps.encryptionKeyRing }
+  const serviceDeps = {
+    encryptionSecret: deps.encryptionKeyRing,
+    threadTokenSecret: deps.authSecret,
+  }
   const actor = (request: FastifyRequest, reply: Parameters<typeof sendApiError>[0]) => {
     const context = requireActorContext(request, reply)
     if (!context || !requireUserActor(context, reply)) return null

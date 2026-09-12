@@ -50,7 +50,7 @@ export const registerBrowserCloudCanvasRoutes = (
   app: FastifyInstance,
   deps: BrowserCloudCanvasRouteDeps,
 ): void => {
-  const { authSecret, prisma } = deps
+  const { encryptionKeyRing, prisma } = deps
   const hasBrowserOpenGrant = deps.browserCanvasOperations?.agentHasBrowserOpenGrant
     ?? agentHasBrowserOpenGrant
   const claimControl = deps.browserCanvasOperations?.claimSessionControl ?? claimSessionControl

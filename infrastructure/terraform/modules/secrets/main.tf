@@ -2,8 +2,8 @@
 #
 # Two kinds of secret live here and they are handled differently on purpose.
 #
-# GENERATED — the database URL, the auth secret and the two halves of the GCS
-# interoperability key. Terraform mints them and writes the version, because
+# GENERATED — the database URL, auth secret, at-rest encryption ring and the
+# two halves of the GCS interoperability key. Terraform mints them and writes the version, because
 # nothing outside this tree knows them and a human copying them by hand is a
 # human pasting them somewhere they persist.
 #
@@ -20,6 +20,7 @@ resource "google_secret_manager_secret" "generated" {
   for_each = toset([
     "database-url",
     "auth-secret",
+    "encryption-key-ring",
     "storage-access-key-id",
     "storage-secret-access-key",
   ])
@@ -57,10 +58,16 @@ resource "google_secret_manager_secret" "gateway" {
   }
 }
 
-# 32 bytes of hex. Signs sessions and bootstrap tokens and encrypts MCP OAuth
-# secrets, so it must be stable across replicas and across deploys — an
+# 32 bytes of hex. Signs sessions and bootstrap tokens, so it must be stable
+# across replicas and across deploys — an
 # ephemeral one invalidates every session on every revision.
 resource "random_id" "auth_secret" {
+  byte_length = 32
+}
+
+# A separate generated root, serialized only inside the runtime's key-ring
+# secret. Never derive durable encryption from the auth signing secret.
+resource "random_id" "encryption_root" {
   byte_length = 32
 }
 
@@ -72,6 +79,11 @@ resource "google_secret_manager_secret_version" "database_url" {
 resource "google_secret_manager_secret_version" "auth_secret" {
   secret      = google_secret_manager_secret.generated["auth-secret"].id
   secret_data = random_id.auth_secret.hex
+}
+
+resource "google_secret_manager_secret_version" "encryption_key_ring" {
+  secret      = google_secret_manager_secret.generated["encryption-key-ring"].id
+  secret_data = jsonencode({ "2026-09" = random_id.encryption_root.hex })
 }
 
 resource "google_secret_manager_secret_version" "storage_access_key_id" {

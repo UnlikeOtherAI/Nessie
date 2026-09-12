@@ -32,15 +32,20 @@ const makePrisma = (): {
         return data
       },
       findUnique: async ({ where }: { where: { ref: string } }) => rows.get(where.ref) ?? null,
-      update: async ({ where, data }: {
-        where: { ref: string }
+      updateMany: async ({ where, data }: {
+        where: { ref: string; ciphertext: string; iv: string; authTag: string }
         data: { ciphertext: string; iv: string; authTag: string }
       }) => {
-        state.updates += 1
         const existing = rows.get(where.ref)
-        if (!existing) throw new Error('not found')
+        if (
+          !existing
+          || existing.ciphertext !== where.ciphertext
+          || existing.iv !== where.iv
+          || existing.authTag !== where.authTag
+        ) return { count: 0 }
+        state.updates += 1
         rows.set(where.ref, { ...existing, ...data })
-        return rows.get(where.ref)
+        return { count: 1 }
       },
     },
   } as unknown as PrismaClient

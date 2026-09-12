@@ -18,6 +18,12 @@ if ! flock -w 1800 9; then
   exit 1
 fi
 
+# Existing hosts predate the dedicated at-rest ring. Stage a newly generated
+# root and retain the former signing root before Compose can start an image that
+# requires the ring. The helper never prints key material and refuses partial
+# configuration, so a bad host .env fails before migrations or the rollout.
+infrastructure/compose/ensure-encryption-key-ring.sh infrastructure/compose/.env
+
 # Image source. With NESSIE_IMAGE_TAG set (the Deploy workflow always sets it)
 # the images were built on GitHub runners and are pulled here; the host
 # compiles nothing. Unset, the script falls back to building locally, which is

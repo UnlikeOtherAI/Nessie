@@ -42,7 +42,15 @@ const sendStateError = (reply: FastifyReply, error: CallStateError): void => {
 }
 
 export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { authSecret, prisma, realtimeHub, requireActorContext, getChannelIfMember, getVisibleChannel } = deps
+  const {
+    authSecret,
+    encryptionKeyRing,
+    prisma,
+    realtimeHub,
+    requireActorContext,
+    getChannelIfMember,
+    getVisibleChannel,
+  } = deps
 
   const publishStarted = async (callId: string): Promise<void> => {
     try {

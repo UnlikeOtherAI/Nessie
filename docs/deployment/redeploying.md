@@ -45,6 +45,15 @@ the Ledger installer because raw reporting is now UOA-only. The Ledger caller,
 DeepSignal caller, UOA, session, webhook, and sibling-product keys are separate
 principals, not fallbacks.
 
+Before images, migrations, or a replacement container start, `redeploy.sh`
+runs `ensure-encryption-key-ring.sh` against the host-only Compose `.env`.
+For an older host it generates a distinct at-rest root, writes an active opaque
+version and retains the old signing root only as `NESSIE_ENCRYPTION_LEGACY_KEY`;
+it never prints either value. A partial ring fails the deploy before migrations.
+After the new API and worker are serving, follow the operator-only rotation
+procedure in [configuration.md](configuration.md#at-rest-encryption-rotation):
+run the command, verify/retry to zero conflicts, then remove the legacy root.
+
 The workflow rsyncs with `--delete` so files removed from the repo don't linger
 on the host and get compiled into the image (a stale `api/src` copy left by the
 mcp-manage extraction broke every build until this was added). rsync never

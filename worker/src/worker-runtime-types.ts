@@ -8,6 +8,7 @@ import {
   createPgPool,
   PgQueueProvider,
   PgRealtimeTransport,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 import { getPrismaClient } from '@nessie/db'
 import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
@@ -21,6 +22,7 @@ export type WorkerCoreSubscriptionDeps = {
   cloudBrowser: CloudBrowserDeps
   config: WorkerConfig
   deepSignalMcpIdentity: ReturnType<typeof createDeepSignalMcpIdentityServiceFromEnv>
+  encryptionKeyRing: EncryptionKeyRingInput
   fileService: ReturnType<typeof createFileService>
   ledgerIdentity: ReturnType<typeof createLedgerIdentityServiceFromEnv>
   mcpSecrets: RunDependencies['mcpSecrets']
@@ -36,10 +38,10 @@ export type WorkerCoreSubscriptionDeps = {
 
 export type WorkerIntegrationSubscriptionDeps = Pick<
   WorkerCoreSubscriptionDeps,
-  'abortSignal' | 'config' | 'fileService' | 'prisma' | 'realtimeTransport' | 'runnerLabelPrefix' | 'subscribe'
+  'abortSignal' | 'config' | 'encryptionKeyRing' | 'fileService' | 'prisma' | 'realtimeTransport' | 'runnerLabelPrefix' | 'subscribe'
 >
 
 export type WorkerSweepDeps = Pick<
   WorkerCoreSubscriptionDeps,
-  'abortSignal' | 'cloudBrowser' | 'pool' | 'prisma' | 'realtimeTransport' | 'runnerLabelPrefix'
+  'abortSignal' | 'cloudBrowser' | 'encryptionKeyRing' | 'pool' | 'prisma' | 'realtimeTransport' | 'runnerLabelPrefix'
 > & { automaticMembershipEnabled: boolean }

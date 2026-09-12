@@ -15,7 +15,11 @@ import type {
   MailboxConnectionRecord,
   MailboxConnectionScope,
 } from '@nessie/schemas'
-import { sealSecret } from '@nessie/comms-connect'
+import {
+  AT_REST_SECRET_PURPOSE,
+  sealSecret,
+  toEncryptionKeyRing,
+} from '@nessie/comms-connect'
 
 import {
   mailboxDialOptions,
@@ -254,7 +258,12 @@ export const createMailboxConnection = async (
       await tx.mailboxConnectionCredential.create({
         data: {
           connectionId: connection.id,
-          secretCiphertext: sealSecret(options.encryptionSecret, input.password),
+          secretCiphertext: sealSecret(
+            options.encryptionSecret,
+            input.password,
+            AT_REST_SECRET_PURPOSE.mailboxCredential,
+          ),
+          keyVersion: toEncryptionKeyRing(options.encryptionSecret).activeVersion,
         },
       })
       return connection

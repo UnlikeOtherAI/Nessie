@@ -93,7 +93,7 @@ export const registerCommsOAuthRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { config, prisma, requireActorContext, authSecret } = deps
+  const { config, prisma, requireActorContext, encryptionKeyRing } = deps
 
   const adminBaseUrl = (): string => {
     const configured =

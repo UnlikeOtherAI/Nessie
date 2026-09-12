@@ -28,6 +28,7 @@ export const createDashboardCredentialStore = (
 ): CredentialStore => {
   const store = createPgSecretStore(prisma, encryptionSecret, {
     refPrefix: 'secret_dashboard_',
+    purpose: 'dashboard.credential',
   })
   const resolver = createPgSecretResolver(prisma, encryptionSecret)
 

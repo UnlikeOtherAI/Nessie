@@ -6,6 +6,7 @@ import {
   decryptWithKeyRing,
   encryptWithKeyRing,
   toEncryptionKeyRing,
+  AT_REST_SECRET_PURPOSE,
   type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
@@ -23,8 +24,8 @@ import {
  * The in-memory stub (`inMemorySecretStoreStub`) only mints opaque refs and
  * drops the token material, which is why `registerMcpRoutes` refuses to boot
  * with it under `NODE_ENV=production`. This store persists the token bundle in
- * Postgres, encrypted at rest with AES-256-GCM under a key derived from the
- * deployment's auth secret, so completing an OAuth handshake durably stores the
+ * Postgres, encrypted at rest with AES-256-GCM under a versioned, purpose-bound
+ * deployment key ring, so completing an OAuth handshake durably stores the
  * credentials instead of silently losing them.
  *
  * **Automatic refresh:** OAuth bundles carry their refresh metadata
@@ -66,12 +67,19 @@ export const createPgSecretStore = (
      * assistant-collected credentials use `secret_mcp_`.
      */
     refPrefix?: string
+    /** Stable at-rest domain for this opaque-reference family. */
+    purpose?: string
   } = {},
 ): SecretStore => {
   const refPrefix = options.refPrefix ?? 'secret_oauth_'
   if (!refPrefix.startsWith('secret_')) {
     throw new Error(`Secret ref prefix must start with "secret_", got "${refPrefix}"`)
   }
+  const purpose = options.purpose ?? (
+    refPrefix === 'secret_mcp_'
+      ? AT_REST_SECRET_PURPOSE.mcpCredential
+      : AT_REST_SECRET_PURPOSE.mcpOauth
+  )
   const keyRing = toEncryptionKeyRing(encryption)
   return {
     put: async (input) => {
@@ -92,7 +100,7 @@ export const createPgSecretStore = (
       }
       const { ciphertext, iv, authTag } = encryptWithKeyRing(
         keyRing,
-        'mcp.oauth',
+        purpose,
         JSON.stringify(bundle),
       )
       await prisma.mcpOAuthSecret.create({
@@ -105,6 +113,14 @@ export const createPgSecretStore = (
 
 /** Refresh when the token is within this window of expiry (or already past). */
 const REFRESH_SKEW_MS = 60_000
+
+const purposeForStoredRef = (ref: string): string => {
+  if (ref.startsWith('secret_oauth_')) return AT_REST_SECRET_PURPOSE.mcpOauth
+  if (ref.startsWith('secret_mcp_')) return AT_REST_SECRET_PURPOSE.mcpCredential
+  if (ref.startsWith('secret_browserbase_')) return AT_REST_SECRET_PURPOSE.browserConnection
+  if (ref.startsWith('secret_dashboard_')) return AT_REST_SECRET_PURPOSE.dashboardCredential
+  throw new Error('[mcp-secret-store] unrecognised persistent secret reference.')
+}
 
 const shouldRefresh = (bundle: StoredBundle): boolean =>
   typeof bundle.expiresAt === 'number'
@@ -195,7 +211,8 @@ export const createPgSecretResolver = (
       if (!row) {
         return null
       }
-      const opened = decryptWithKeyRing(keyRing, 'mcp.oauth', {
+      const purpose = purposeForStoredRef(ref)
+      const opened = decryptWithKeyRing(keyRing, purpose, {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
@@ -203,9 +220,17 @@ export const createPgSecretResolver = (
       const bundle = JSON.parse(opened.plaintext) as StoredBundle
 
       if (opened.needsReencryption) {
-        const replacement = encryptWithKeyRing(keyRing, 'mcp.oauth', JSON.stringify(bundle))
+        const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(bundle))
         await prisma.mcpOAuthSecret
-          .update({ where: { ref }, data: replacement })
+          .updateMany({
+            where: {
+              ref,
+              ciphertext: row.ciphertext,
+              iv: row.iv,
+              authTag: row.authTag,
+            },
+            data: replacement,
+          })
           .catch(() => undefined)
       }
 
@@ -221,11 +246,19 @@ export const createPgSecretResolver = (
       }
       const { ciphertext, iv, authTag } = encryptWithKeyRing(
         keyRing,
-        'mcp.oauth',
+        purpose,
         JSON.stringify(renewed),
       )
       await prisma.mcpOAuthSecret
-        .update({ where: { ref }, data: { ciphertext, iv, authTag } })
+        .updateMany({
+          where: {
+            ref,
+            ciphertext: row.ciphertext,
+            iv: row.iv,
+            authTag: row.authTag,
+          },
+          data: { ciphertext, iv, authTag },
+        })
         .catch(() => undefined)
       return renewed.accessToken
     },

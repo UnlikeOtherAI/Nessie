@@ -24,7 +24,7 @@ production settings:
 | UOA commercial billing boundary | `UOA_BILLING_APP_KEY_NESSIE`, `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`, `UOA_BASE_URL` | Nessie's own `uoa_app_` customer-lifecycle key bound in UOA to the `nessie` service, exact actor issuer/audience/key, public half of the dedicated RS256 actor key, and `https://app.nessie.works` return origin. The app key and private JWK are separate GitHub Actions secrets. The deploy runner cryptographically validates both before its dependency-free host installer atomically updates the root-readable `.env`; neither may be reused by Ledger or another product. Every credits/add-on read, top-up/automatic-top-up/add-on action, customer-statement, Checkout, Portal, cancellation-preview, cancellation-confirm, and direct-session access-confirmation request carries a fresh 45-second actor JWT for the exact linked UOA user/org/team, with the audience pinned to the exact endpoint path that request hits (derived from the validated request path at the point the request is built, never a hard-coded list). Direct access is confirmed only after direct SSO exchange and before local session issuance; UOA failure blocks login and indirect product use never calls the seam. Nessie fixed-allowlists UOA's action id/path/body and renders UOA's display-ready remaining-credit model; browsers cannot provide upstream paths, action bodies, return URLs, app keys, actor assertions, balances, or commercial calculations. |
 | DeepSignal MCP boundary | `DEEPSIGNAL_MCP_APP_KEY` | DeepSignal-issued, Nessie-only `dsk_` application key. Required at API and worker startup in hosted/self-hosted modes and installed into the production host `.env` from the same-named GitHub Actions secret. It must differ from every configured secret-bearing environment credential (Ledger/model/billing, UOA signing/client, auth/session, DB, storage, email/admin, provider, push, or webhook credentials) and every encrypted per-org DeepSignal webhook signing secret; API and worker startup validate both boundaries. The user-scoped managed instance stores only this env reference; each outbound chat/history/digest/action request adds exact `ai.invoke` UOA delegation and fresh signed Nessie provenance independently. There is no OAuth or personal-credential fallback. |
 | Auth signing secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions and bootstrap tokens. It is not an at-rest encryption root. |
-| At-rest encryption key ring | `NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION`, `NESSIE_ENCRYPTION_KEY_RING` (JSON object), optional `NESSIE_ENCRYPTION_LEGACY_KEY` | Required outside local mode. The active version selects a distinct root for purpose-bound AES-GCM envelopes used by UOA refresh, MCP OAuth, and push credentials. Retain former version entries until every ciphertext has been read and re-encrypted; retain the legacy auth root only for the same migration period. |
+| At-rest encryption key ring | `NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION`, `NESSIE_ENCRYPTION_KEY_RING` (JSON object), optional `NESSIE_ENCRYPTION_LEGACY_KEY` | Required outside local mode. The active version selects a distinct root for purpose-bound AES-GCM envelopes across every durable auth-secret store (UOA, connector, mailbox, browser, webhook, dashboard, push, board and executor data). Retain former version entries until the rotation command reports zero conflicts; retain the legacy auth root only for the same migration period. |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](../deployment-modes-and-auth-spec/overview.md) |
 | Model (chat) | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat through Ledger; direct provider keys are not used by Nessie. A Ledger `NESSIE_MODEL_BASE_URL` always takes its bearer from `NESSIE_MODEL_API_KEY` and never inherits `OPENAI_API_KEY`/`OPENAI_CHAT_API_KEY`; startup fails if a Ledger URL is set with no key at all. |
 | Agent avatar images | `NESSIE_LEDGER_IMAGE_PURPOSE_API_ID` | Optional. When set, agent-avatar "Generate with AI" routes image generation through this Ledger **Purpose API** (`/v1/purpose/:id/images/generations`) on `NESSIE_MODEL_BASE_URL`'s Ledger host, so Ledger owns the image provider fallback chain (e.g. Gemini image primary, OpenAI `gpt-image-2` fallback) behind one endpoint. Unset keeps the direct `/v1/openai/images/generations` service route, which fails when OpenAI's key is exhausted. Uses the same `NESSIE_MODEL_API_KEY` bearer and signed identity as chat; the token must hold a grant for that Purpose API. |
@@ -68,17 +68,34 @@ Startup logs one line listing the registered providers (no secrets).
 
 ### At-rest encryption rotation
 
-Set a new opaque version in `NESSIE_ENCRYPTION_KEY_RING`, retain the old version
-in that same JSON object, and point `NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION` at the
-new version. Restart API and worker. Reads of UOA refresh, MCP OAuth, and push
-credentials decrypt with their recorded version and rewrite them with the active
-purpose key. Exercise each credential-bearing flow (or run the supported
-rotation maintenance procedure) until monitoring shows no old envelopes. Only
-then remove the old version. For deployments migrating legacy ciphertext, retain
-the old `NESSIE_AUTH_SECRET` in `NESSIE_ENCRYPTION_LEGACY_KEY` until every legacy
-row has been read and rewritten, then remove it. Removing either retained root
-early fails closed for its remaining ciphertext; it does not fall back to a
-signing key or another purpose.
+This is a deliberate **machine-only operator maintenance capability**; it has no
+customer UI. Its executable entry point is:
+
+```sh
+pnpm --filter @nessie/api rotate:at-rest-secrets [--batch-size 1..1000]
+```
+
+It authenticates and conditionally rewrites every durable encrypted-at-rest
+store: UOA refresh credentials, `mcp_oauth_secret` OAuth/MCP/push/browser and
+dashboard references, product webhook secrets, board-source credentials and
+webhook secrets, communications credentials, mailbox passwords, cloud-browser
+session capabilities, and executor command payloads/results. It prints only a
+per-store `{rotated, conflicts}` report, never plaintext or root material. A
+conflict exits `2`; authentication/configuration failure exits `1`. There is no
+dry run because the report is a verified result of authenticated conditional
+writes, and a rerun is safe.
+
+Follow this exact sequence: deploy API and worker with the old and new roots in
+`NESSIE_ENCRYPTION_KEY_RING`, with
+`NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION` selecting the new opaque label; run the
+command; verify zero failures and zero conflicts (rerun after concurrent writes
+until conflicts are zero); then remove the old ring entry. For legacy ciphertext,
+also retain the old `NESSIE_AUTH_SECRET` only as
+`NESSIE_ENCRYPTION_LEGACY_KEY` through that verification, then remove it. The
+three credential `key_version` columns are string metadata mirrors of the
+authenticated envelope, updated in the same write; they never choose a key.
+Removing a retained root early fails closed for its remaining ciphertext; it
+does not fall back to a signing key or another purpose.
 
 ### Single-host settings refused outside `local`
 
@@ -275,8 +292,9 @@ deleted address is retired permanently).
 
 The other half of agent email needs **no deployment configuration at all**: a
 person or a team connects a mailbox that already exists, the provider keeps the
-mail, and nothing is stored here but a password sealed with `NESSIE_AUTH_SECRET`
-and an audit trail. The only setting is `NESSIE_MAILBOX_TIMEOUT_MS` (default
+mail, and nothing is stored here but a password sealed with the purpose-bound
+at-rest encryption key ring and an audit trail. The only setting is
+`NESSIE_MAILBOX_TIMEOUT_MS` (default
 `20000`), which bounds how long a mail server may take per read.
 
 The address-first discovery route uses the reviewed provider registry, MX
@@ -298,15 +316,13 @@ Guide: [docs/connected-mailboxes.md](../connected-mailboxes.md).
 
 ### MCP OAuth secret store
 
-`api/src/services/mcp-oauth-secret-store.ts` provides a persistent,
+`packages/mcp-manage/src/mcp-oauth-secret-store.ts` provides a persistent,
 AES-256-GCM-encrypted Postgres-backed `SecretStore` (table `mcp_oauth_secret`,
-keyed off `NESSIE_AUTH_SECRET`). The API requires this in production — the MCP
+under the deployment's versioned at-rest encryption key ring). The API requires this in production — the MCP
 route registrar refuses to boot with the in-memory stub under
-`NODE_ENV=production`. **Known follow-up:** the read side
-(`createPgSecretResolver`) is implemented but the worker/API tool dispatchers
-still default to `NullSecretResolver` (a pre-existing phase-3 deferral), so
-OAuth-authorized MCP connector tokens are stored securely but not yet consumed by
-the agent loop.
+`NODE_ENV=production`. The same resolver is wired into API and worker dispatch,
+so an authorized connector receives its decrypted credential only at the
+provider boundary.
 
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The API
 and worker reject stdio process execution from catalog or instance data, and
@@ -368,9 +384,10 @@ Where the provider mints the signing secret rather than accepting ours — Linea
 hands it back exactly once, at creation — it is sealed onto the source row with
 the same envelope credentials use and decrypted only to verify a delivery.
 
-Credentials are encrypted at rest with the deployment's `NESSIE_AUTH_SECRET`
-through the same sealed-secret seam the communications connector and the MCP
-secret store use, in `board_source_connection_credentials`. No route returns
+Credentials are encrypted at rest with the deployment's purpose-bound,
+versioned key ring through the same sealed-secret seam the communications
+connector and the MCP secret store use, in `board_source_connection_credentials`.
+No route returns
 them, and only `loadBoardSourceConnectionContext` decrypts one.
 
 Jira's webhooks are unsigned and expire after 30 days, so a Jira source carries

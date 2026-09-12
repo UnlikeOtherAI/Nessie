@@ -4,10 +4,12 @@ import {
   type GoogleCapabilityId,
 } from '@nessie/schemas'
 import {
+  AT_REST_SECRET_PURPOSE,
   computeScopeHash,
   openSecret,
   resolveConnector,
   sealSecret,
+  toEncryptionKeyRing,
   type CommunicationsConnector,
   type ConnectorConnectionContext,
   type CredentialBundle,
@@ -64,11 +66,13 @@ export const buildCommsConnectorContext = (
       accessToken: openSecret(
         encryptionSecret,
         connection.credential.accessTokenCiphertext,
+        AT_REST_SECRET_PURPOSE.commsCredential,
       ),
       refreshToken: connection.credential.refreshTokenCiphertext
         ? openSecret(
             encryptionSecret,
             connection.credential.refreshTokenCiphertext,
+            AT_REST_SECRET_PURPOSE.commsCredential,
           )
         : undefined,
       expiresAt: connection.credential.expiresAt?.toISOString(),
@@ -158,11 +162,17 @@ const storeRefreshedCredential = async (
         accessTokenCiphertext: sealSecret(
           input.encryptionSecret,
           input.refreshed.accessToken,
+          AT_REST_SECRET_PURPOSE.commsCredential,
         ),
         refreshTokenCiphertext: input.refreshed.refreshToken
-          ? sealSecret(input.encryptionSecret, input.refreshed.refreshToken)
+          ? sealSecret(
+            input.encryptionSecret,
+            input.refreshed.refreshToken,
+            AT_REST_SECRET_PURPOSE.commsCredential,
+          )
           : null,
         expiresAt: parseExpiry(input.refreshed.expiresAt),
+        keyVersion: toEncryptionKeyRing(input.encryptionSecret).activeVersion,
         scopeHash: computeScopeHash(input.refreshed.scopes),
       },
     })

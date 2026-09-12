@@ -121,7 +121,7 @@ const buildApp = async (input: {
         externalTenantId: 'tenant-1',
         grantedScopes: [],
         credential: {
-          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'lin_api_key'),
+          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'lin_api_key', 'board-source.credential'),
           refreshTokenCiphertext: null,
           expiresAt: null,
         },

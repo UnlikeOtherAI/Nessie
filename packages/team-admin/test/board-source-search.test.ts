@@ -102,7 +102,7 @@ const seed = async (
       provider: 'linear',
       externalAccountId: `acct-${suffix}`,
       externalTenantId: `org-${suffix}`,
-      credential: { create: { accessTokenCiphertext: sealSecret(SECRET, 'token') } },
+      credential: { create: { accessTokenCiphertext: sealSecret(SECRET, 'token', 'board-source.credential') } },
     },
   })
   const source = await prisma.boardSource.create({

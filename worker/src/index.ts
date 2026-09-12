@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { createSubscriptionSecretStoreFromEnv } from '@nessie/model-subscriptions'
-import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
+import { deriveRuntimeCapabilities, loadConfig, resolveEncryptionKeyRing } from '@nessie/config'
 import {
   createDeepSignalMcpIdentityServiceFromEnv,
   createFileService,
@@ -30,6 +30,7 @@ import { registerWorkerIntegrationSubscriptions } from './worker-subscriptions-i
 import { startWorkerSweeps } from './worker-sweeps.js'
 
 const config = loadConfig()
+const encryptionKeyRing = resolveEncryptionKeyRing(config, config.auth.secret)
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = config.database.url
 }
@@ -91,7 +92,7 @@ export const startWorker = async (
   // a call supplies attribution.
   const ledgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
   const deepSignalMcpIdentity =
-    createDeepSignalMcpIdentityServiceFromEnv(prisma)
+    createDeepSignalMcpIdentityServiceFromEnv(prisma, process.env, { encryptionKeyRing })
   await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
   // A signer, when this deployment has one, signs every Ledger call below.
   // Without one the Ledger API key stands alone and Ledger enforces whatever
@@ -144,10 +145,10 @@ export const startWorker = async (
   // carries the public OAuth callback URL so the assistant can mint sign-in
   // links (config NESSIE_API_PUBLIC_URL in prod; localhost in dev).
   const mcpSecrets = {
-    store: createPgSecretStore(prisma, config.auth.secret ?? '', {
+    store: createPgSecretStore(prisma, encryptionKeyRing, {
       refPrefix: 'secret_mcp_',
     }),
-    resolver: createMcpSecretResolver(prisma, config.auth.secret ?? ''),
+    resolver: createMcpSecretResolver(prisma, encryptionKeyRing),
     oauthCallbackUrl: `${
       config.api.publicUrl ?? `http://localhost:${config.api.port}`
     }/api/mcp/oauth/callback`,
@@ -161,7 +162,7 @@ export const startWorker = async (
     resolveSecret: (ref) => mcpSecrets.resolver.resolve(ref),
     // Lets the reaper write a resumed session's last state before stopping
     // it: nothing drives that session, so the capture dials the capability.
-    encryptionSecret: config.auth.secret ?? '',
+    encryptionSecret: encryptionKeyRing,
   }
   setCloudBrowserReleaseHook(async (runId) => {
     // The terminal transition is the last moment the pages exist, and the
@@ -192,6 +193,7 @@ export const startWorker = async (
     cloudBrowser,
     config,
     deepSignalMcpIdentity,
+    encryptionKeyRing,
     fileService,
     ledgerIdentity,
     mcpSecrets,
@@ -207,6 +209,7 @@ export const startWorker = async (
   await registerWorkerIntegrationSubscriptions({
     abortSignal: abortController.signal,
     config,
+    encryptionKeyRing,
     fileService,
     prisma,
     realtimeTransport,
@@ -217,6 +220,7 @@ export const startWorker = async (
     abortSignal: abortController.signal,
     automaticMembershipEnabled,
     cloudBrowser,
+    encryptionKeyRing,
     pool,
     prisma,
     realtimeTransport,

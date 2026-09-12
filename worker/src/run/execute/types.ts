@@ -8,6 +8,7 @@ import type { ConsumedSourceSink } from './disclosure-basis.js'
 import type { DocumentStreamRecorder } from './document-stream.js'
 import type {
   DeepSignalMcpIdentityService,
+  EncryptionKeyRingInput,
   LedgerIdentityService,
   ModelClient,
   PgRealtimeTransport,
@@ -23,10 +24,10 @@ export type ExecutionDependencies = {
    */
   cloudBrowser?: CloudBrowserDeps
   deepSignalMcpIdentity?: DeepSignalMcpIdentityService | null
-  /** Deployment secret used solely to encrypt executor payloads at rest. */
+  /** Deployment key ring used solely to encrypt executor payloads at rest. */
   /** Per-run live document stream, created alongside the thinking recorder. */
   documentStream?: DocumentStreamRecorder
-  executorCommandEncryptionSecret?: string
+  executorCommandEncryptionSecret?: EncryptionKeyRingInput
   ledgerIdentity?: LedgerIdentityService | null
   /**
    * MCP credential plumbing: `store` encrypts assistant-collected secrets into

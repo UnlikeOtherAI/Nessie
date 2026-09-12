@@ -30,8 +30,8 @@ export type BudgetAlertDispatchPrisma = PushDeliveryPrisma &
 
 export type BudgetAlertDispatchDeps = {
   prisma: BudgetAlertDispatchPrisma
-  /** Deployment auth secret — the key the secret store encrypted creds under. */
-  authSecret: string
+  /** Independently rotated key ring for stored APNs/FCM credentials. */
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   /** VAPID credentials for browser Web Push (when configured). */
   webPush?: WebPushCredentials
   /** Push senders, injected so tests can stub them (default: real network). */

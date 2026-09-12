@@ -344,7 +344,6 @@ export const createServerContext = () => {
   const isSessionRevokedById = createAuthSessionRevocationChecker(prisma)
   const authenticateRequest = createRequestAdmission({
     authSecret,
-    encryptionKeyRing,
     config,
     getAuthorizationToken,
     isSessionRevokedById,
@@ -393,6 +392,7 @@ export const createServerContext = () => {
     prisma,
     databaseUrl,
     authSecret,
+    encryptionKeyRing,
     allowedCorsOrigins,
     teamHostBaseDomain,
     tlsCheckKey,

@@ -1,7 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
 import type { ConnectionContext, CredentialBundle } from '@nessie/board-sources'
 import { resolveBoardSourceAdapter } from '@nessie/board-sources'
-import { openSecret, sealSecret } from '@nessie/runtime'
+import {
+  AT_REST_SECRET_PURPOSE,
+  openSecret,
+  sealSecret,
+  toEncryptionKeyRing,
+} from '@nessie/runtime'
 
 /**
  * Decrypting a board-source credential, and refreshing it when it is close to
@@ -62,12 +67,17 @@ export const loadBoardSourceConnectionContext = async (
   if (ownerActive === 0) return { error: 'OWNER_INACTIVE' }
 
   let bundle: CredentialBundle = {
-    accessToken: openSecret(encryptionSecret, connection.credential.accessTokenCiphertext),
+    accessToken: openSecret(
+      encryptionSecret,
+      connection.credential.accessTokenCiphertext,
+      AT_REST_SECRET_PURPOSE.boardSourceCredential,
+    ),
     ...(connection.credential.refreshTokenCiphertext
       ? {
           refreshToken: openSecret(
             encryptionSecret,
             connection.credential.refreshTokenCiphertext,
+            AT_REST_SECRET_PURPOSE.boardSourceCredential,
           ),
         }
       : {}),
@@ -127,15 +137,24 @@ const refreshCredential = async (
     await prisma.boardSourceConnectionCredential.update({
       where: { connectionId },
       data: {
-        accessTokenCiphertext: sealSecret(encryptionSecret, refreshed.accessToken),
+        accessTokenCiphertext: sealSecret(
+          encryptionSecret,
+          refreshed.accessToken,
+          AT_REST_SECRET_PURPOSE.boardSourceCredential,
+        ),
         // A provider that omits a replacement refresh token means "keep the one
         // you have"; overwriting it with null would end the connection.
         ...(refreshed.refreshToken
           ? {
-              refreshTokenCiphertext: sealSecret(encryptionSecret, refreshed.refreshToken),
+              refreshTokenCiphertext: sealSecret(
+                encryptionSecret,
+                refreshed.refreshToken,
+                AT_REST_SECRET_PURPOSE.boardSourceCredential,
+              ),
             }
           : {}),
         expiresAt: refreshed.expiresAt ? new Date(refreshed.expiresAt) : null,
+        keyVersion: toEncryptionKeyRing(encryptionSecret).activeVersion,
       },
     })
     return refreshed
@@ -155,11 +174,20 @@ export const storeBoardSourceCredential = async (
   encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): Promise<void> => {
   const data = {
-    accessTokenCiphertext: sealSecret(encryptionSecret, credential.accessToken),
+    accessTokenCiphertext: sealSecret(
+      encryptionSecret,
+      credential.accessToken,
+      AT_REST_SECRET_PURPOSE.boardSourceCredential,
+    ),
     refreshTokenCiphertext: credential.refreshToken
-      ? sealSecret(encryptionSecret, credential.refreshToken)
+      ? sealSecret(
+        encryptionSecret,
+        credential.refreshToken,
+        AT_REST_SECRET_PURPOSE.boardSourceCredential,
+      )
       : null,
     expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : null,
+    keyVersion: toEncryptionKeyRing(encryptionSecret).activeVersion,
   }
   await prisma.boardSourceConnectionCredential.upsert({
     where: { connectionId },

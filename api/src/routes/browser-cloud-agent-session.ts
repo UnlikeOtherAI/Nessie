@@ -45,7 +45,7 @@ export const registerBrowserCloudAgentSessionRoutes = (
   },
 ): void => {
   const { deps, operations, secretResolver, sendCloudBrowserError } = input
-  const { prisma, authSecret, requireActorContext, requireUserActor } = deps
+  const { prisma, encryptionKeyRing, requireActorContext, requireUserActor } = deps
 
 /**
  * The tabs the agent's browser was last seen with — the chat's Browser column

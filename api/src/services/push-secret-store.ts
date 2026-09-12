@@ -6,6 +6,7 @@ import {
   decryptWithKeyRing,
   encryptWithKeyRing,
   toEncryptionKeyRing,
+  AT_REST_SECRET_PURPOSE,
   type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
@@ -13,7 +14,7 @@ import {
  * Encrypted store for raw push-credential secret bytes (the APNs `.p8` key
  * contents, the FCM service-account JSON). Reuses the AES-256-GCM scheme and
  * the `mcp_oauth_secret` table from the OAuth SecretStore, keyed off the
- * deployment's auth secret. Entries carry a `secret_push_` ref prefix so they
+ * deployment's versioned at-rest key ring. Entries carry a `secret_push_` ref prefix so they
  * never collide with `secret_oauth_` entries.
  *
  * Unlike the OAuth store (write-only `put`), push credentials must be re-read
@@ -42,7 +43,7 @@ export const createPushSecretStore = (
       const ref = `${PUSH_REF_PREFIX}${crypto.randomBytes(16).toString('hex')}`
       const { ciphertext, iv, authTag } = encryptWithKeyRing(
         keyRing,
-        'push.credentials',
+        AT_REST_SECRET_PURPOSE.pushCredential,
         plaintext,
       )
       await prisma.mcpOAuthSecret.create({
@@ -58,15 +59,22 @@ export const createPushSecretStore = (
       if (!row) {
         return null
       }
-      const opened = decryptWithKeyRing(keyRing, 'push.credentials', {
+      const opened = decryptWithKeyRing(keyRing, AT_REST_SECRET_PURPOSE.pushCredential, {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
       })
       if (opened.needsReencryption) {
-        const replacement = encryptWithKeyRing(keyRing, 'push.credentials', opened.plaintext)
+        const replacement = encryptWithKeyRing(
+          keyRing,
+          AT_REST_SECRET_PURPOSE.pushCredential,
+          opened.plaintext,
+        )
         await prisma.mcpOAuthSecret
-          .update({ where: { ref }, data: replacement })
+          .updateMany({
+            where: { ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.authTag },
+            data: replacement,
+          })
           .catch(() => undefined)
       }
       return opened.plaintext

@@ -86,7 +86,6 @@ export const buildApp = async (
     config,
     prisma,
     databaseUrl,
-    authSecret,
     encryptionKeyRing,
     allowedCorsOrigins,
     teamHostBaseDomain,
@@ -288,7 +287,7 @@ export const buildApp = async (
     signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
   const deepSignalMcpIdentity =
-    createDeepSignalMcpIdentityServiceFromEnv(prisma)
+    createDeepSignalMcpIdentityServiceFromEnv(prisma, process.env, { encryptionKeyRing })
   await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
 
   // Wire the Individual Communications Connector adapters into the shared

@@ -38,7 +38,7 @@ const cancelWaitingGrantRun = async (
 
 /** Private, task-scoped browser access for a waiting login card. */
 export const registerBrowserPersonalAccessRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const resolver = createMcpSecretResolver(deps.prisma, deps.authSecret ?? '')
+  const resolver = createMcpSecretResolver(deps.prisma, deps.encryptionKeyRing)
   const browserDeps = {
     encryptionSecret: deps.encryptionKeyRing,
     prisma: deps.prisma,

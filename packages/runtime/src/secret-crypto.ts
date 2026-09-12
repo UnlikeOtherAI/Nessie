@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
  * Lives in `@nessie/runtime` so both the api's secret stores
  * (`mcp-oauth-secret-store`, `push-secret-store`) and the worker's push
  * dispatch can encrypt/decrypt raw secret bytes at rest with the exact same
- * scheme (a key derived from the deployment's auth secret) instead of
+ * scheme (a versioned, purpose-bound deployment key ring) instead of
  * duplicating crypto. Secrets persist to the `mcp_oauth_secret` table; the ref
  * prefix distinguishes their entries.
  */
@@ -57,6 +57,29 @@ export type OpenedSecret = {
 }
 
 const ENVELOPE_MARKER = 'nsk1'
+
+/**
+ * Stable domains for every durable encrypted-at-rest value Nessie owns.
+ *
+ * A domain is intentionally data-store specific rather than a caller-supplied
+ * label. Reusing ciphertext between these stores must fail authentication even
+ * when both rows live in the same Postgres table.
+ */
+export const AT_REST_SECRET_PURPOSE = {
+  boardSourceCredential: 'board-source.credential',
+  boardSourceWebhook: 'board-source.webhook',
+  browserConnection: 'browser.connection',
+  browserSessionCapability: 'browser.session-capability',
+  commsCredential: 'comms.credential',
+  dashboardCredential: 'dashboard.credential',
+  executorCommand: 'executor.command',
+  mailboxCredential: 'mailbox.credential',
+  mcpCredential: 'mcp.credential',
+  mcpOauth: 'mcp.oauth',
+  productWebhook: 'product.webhook',
+  pushCredential: 'push.credential',
+  uoaRefresh: 'uoa.refresh',
+} as const
 
 const keyForPurpose = (
   root: string,
@@ -203,8 +226,7 @@ export const decryptWithKeyRing = (
 export const deriveSecretKey = (secret: string): Buffer => {
   if (!secret) {
     throw new Error(
-      '[secret-crypto] requires a non-empty encryption secret '
-        + '(config.auth.secret / NESSIE_AUTH_SECRET).',
+      '[secret-crypto] requires a non-empty legacy encryption root.',
     )
   }
   return crypto.createHash('sha256').update(secret, 'utf8').digest()

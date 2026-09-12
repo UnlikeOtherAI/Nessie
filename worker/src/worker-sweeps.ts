@@ -51,6 +51,7 @@ export const startWorkerSweeps = (
     abortSignal,
     automaticMembershipEnabled,
     cloudBrowser,
+    encryptionKeyRing,
     pool,
     prisma,
     realtimeTransport,
@@ -81,11 +82,9 @@ const triggerSweepInterval = setInterval(async () => {
 let gmailSendSweepInFlight = false
 const gmailSendSweepInterval = setInterval(async () => {
   if (gmailSendSweepInFlight || abortSignal.aborted) return
-  const encryptionSecret = process.env.NESSIE_AUTH_SECRET
-  if (!encryptionSecret) return
   gmailSendSweepInFlight = true
   try {
-    await sweepDueGmailSends(prisma, { encryptionSecret })
+    await sweepDueGmailSends(prisma, { encryptionSecret: encryptionKeyRing })
   } catch (error) {
     console.error('[worker.gmail-send-sweep] failed', error)
   } finally {

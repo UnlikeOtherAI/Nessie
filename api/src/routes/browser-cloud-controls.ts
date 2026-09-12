@@ -36,7 +36,7 @@ export const registerBrowserCloudControlRoutes = (
   },
 ): void => {
   const { deps, operations } = input
-  const { prisma, authSecret, requireActorContext, requireUserActor } = deps
+  const { prisma, encryptionKeyRing, requireActorContext, requireUserActor } = deps
 
 /**
  * Take the controls, or renew a claim the viewer is still holding.

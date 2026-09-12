@@ -40,6 +40,18 @@ before that root is retired. This is the migration concern named under
 inference-provider keys and the deployment model key are environment variables
 and are likewise unaffected.
 
+The durable at-rest inventory is intentionally explicit: UOA session refresh
+credentials; MCP OAuth, MCP credential, push, browser and dashboard references;
+product webhook secrets; board-source credentials and webhook secrets;
+communications credentials; connected-mail passwords; cloud-browser session
+capabilities; and executor command payloads/results. The operator-only
+`pnpm --filter @nessie/api rotate:at-rest-secrets` command authenticates and
+rewrites that complete inventory. Its required deploy-old-and-new, report,
+zero-conflict, and retirement sequence is the authoritative configuration
+runbook in [deployment/configuration.md](deployment/configuration.md#at-rest-encryption-rotation).
+
+One-way verifier hashes, including `ownershipProofHash`, are intentionally outside this inventory: they cannot be decrypted or re-encrypted and are not encrypted-at-rest secret material.
+
 ## Security invariant
 
 A language model may know that a secret exists and may be authorised to use it,

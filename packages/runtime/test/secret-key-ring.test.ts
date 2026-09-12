@@ -8,6 +8,7 @@ import {
   encryptWithKey,
   encryptWithKeyRing,
 } from '../src/secret-crypto.js'
+import { openSecret, sealSecret } from '../src/sealed-secret.js'
 
 const legacyRoot = 'legacy-at-rest-root'
 const firstRoot = 'first-independent-at-rest-root'
@@ -65,5 +66,21 @@ test('the purpose key cannot be used as the old generic encryption key', () => {
   const encrypted = encryptWithKeyRing(rotatingRing, 'uoa.refresh', 'opaque-refresh-token')
   assert.throws(
     () => decryptWithKey(deriveSecretKey(secondRoot), encrypted),
+  )
+})
+
+test('packed durable ciphertext preserves the versioned envelope and its purpose', () => {
+  const packed = sealSecret(
+    rotatingRing,
+    'mailbox-password',
+    'mailbox.credential',
+  )
+  assert.equal(
+    openSecret(rotatingRing, packed, 'mailbox.credential'),
+    'mailbox-password',
+  )
+  assert.throws(
+    () => openSecret(rotatingRing, packed, 'comms.credential'),
+    /purpose/i,
   )
 })

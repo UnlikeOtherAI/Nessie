@@ -13,7 +13,9 @@ import {
   BudgetAlertDispatchJobPayloadSchema,
   CallRingCancelJobPayloadSchema,
   CallRingDispatchJobPayloadSchema,
+  DEEPSIGNAL_INSIGHT_FANOUT_TOPIC,
   DEMONSTRATION_GENERALIZE_TOPIC,
+  DeepSignalInsightFanoutJobPayloadSchema,
   DemonstrationGeneralizeJobPayloadSchema,
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
@@ -37,20 +39,12 @@ import { DASHBOARD_REFRESH_TOPIC } from '@nessie/dashboard'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
 import { refreshDashboardDataSource } from './control/dashboard-refresh.js'
 import { runDeepSignalInsightFanout } from './control/deepsignal-insight.js'
-import { DEEPSIGNAL_INSIGHT_FANOUT_TOPIC, DeepSignalInsightFanoutJobPayloadSchema } from '@nessie/schemas'
 import { MEMORY_CONSOLIDATION_TOPIC } from './run/memory-consolidation.js'
-import {
-  allocateExecutionEnvironmentInstance,
-  terminateExecutionEnvironmentInstance,
-} from './control/execution.js'
+import { allocateExecutionEnvironmentInstance, terminateExecutionEnvironmentInstance } from './control/execution.js'
 import { executeAttachmentThumbnailJob } from './control/attachment-thumbnail.js'
 import { generalizeDemonstration } from './control/demonstration-generalize.js'
-import {
-  executeAutomaticMembershipProvisionJob,
-} from './control/automatic-membership/provision.js'
-import {
-  executeAutomaticMembershipReconcileJob,
-} from './control/automatic-membership/reconcile.js'
+import { executeAutomaticMembershipProvisionJob } from './control/automatic-membership/provision.js'
+import { executeAutomaticMembershipReconcileJob } from './control/automatic-membership/reconcile.js'
 import { executeAutomaticMembershipRevalidateJob } from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
@@ -76,6 +70,7 @@ export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps
     cloudBrowser,
     config,
     deepSignalMcpIdentity,
+    encryptionKeyRing,
     fileService,
     ledgerIdentity,
     mcpSecrets,
@@ -109,7 +104,7 @@ subscribe(
       {
         cloudBrowser,
         deepSignalMcpIdentity,
-        executorCommandEncryptionSecret: config.auth.secret ?? undefined,
+        executorCommandEncryptionSecret: encryptionKeyRing,
         ledgerIdentity,
         mcpSecrets,
         modelClient,
@@ -139,7 +134,7 @@ subscribe(
       {
         cloudBrowser,
         deepSignalMcpIdentity,
-        executorCommandEncryptionSecret: config.auth.secret ?? undefined,
+        executorCommandEncryptionSecret: encryptionKeyRing,
         ledgerIdentity,
         mcpSecrets,
         modelClient,
@@ -157,7 +152,7 @@ subscribe(
 subscribe(
   EXECUTOR_COMMAND_TOPIC,
   async (job) => {
-    await executeExecutorCommandJob(prisma, config.auth.secret ?? '', job.payload)
+    await executeExecutorCommandJob(prisma, encryptionKeyRing, job.payload)
   },
   { signal: abortSignal },
 )
@@ -201,6 +196,7 @@ subscribe(
     const payload = CallRingDispatchJobPayloadSchema.parse(job.payload)
     await handleCallRingDispatch({
       authSecret: config.auth.secret ?? '',
+      encryptionKeyRing,
       prisma,
       ...(webPushCreds ? { webPush: webPushCreds } : {}),
     }, payload)
@@ -213,6 +209,7 @@ subscribe(
     const payload = CallRingCancelJobPayloadSchema.parse(job.payload)
     await handleCallRingCancel({
       authSecret: config.auth.secret ?? '',
+      encryptionKeyRing,
       prisma,
       ...(webPushCreds ? { webPush: webPushCreds } : {}),
     }, payload)
@@ -227,7 +224,7 @@ subscribe(
     await handleAttentionDispatch(
       {
         prisma,
-        authSecret: config.auth.secret ?? '',
+        encryptionKeyRing,
         ...(webPushCreds ? { webPush: webPushCreds } : {}),
       },
       payload,
@@ -235,7 +232,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 // Every `push.dispatch` enqueue carries a deterministic idempotency key
 // (`push:<messageId>` from the API, `push:reply:<runId>` from a run's
 // interactive reply), so two enqueues collapse to one job; the handler then
@@ -254,7 +250,7 @@ subscribe(
     await handlePushDispatch(
       {
         prisma,
-        authSecret: config.auth.secret ?? '',
+        encryptionKeyRing,
         ...(webPushCreds ? { webPush: webPushCreds } : {}),
       },
       payload,
@@ -262,7 +258,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   BUDGET_ALERT_DISPATCH_TOPIC,
   async (job) => {
@@ -270,7 +265,7 @@ subscribe(
     await handleBudgetAlertDispatch(
       {
         prisma,
-        authSecret: config.auth.secret ?? '',
+        encryptionKeyRing,
         ...(webPushCreds ? { webPush: webPushCreds } : {}),
       },
       payload,
@@ -278,7 +273,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   'trigger.health-alert',
   async (job) => {
@@ -286,7 +280,7 @@ subscribe(
     await handleTriggerHealthAlert(
       {
         prisma,
-        authSecret: config.auth.secret ?? '',
+        encryptionKeyRing,
         ...(webPushCreds ? { webPush: webPushCreds } : {}),
       },
       payload,
@@ -302,7 +296,7 @@ subscribe(
     await handleWorkflowRunFailureDispatch(
       {
         prisma,
-        authSecret: config.auth.secret ?? '',
+        encryptionKeyRing,
         ...(webPushCreds ? { webPush: webPushCreds } : {}),
       },
       payload,
@@ -397,7 +391,7 @@ subscribe(
 const dashboardEgressPolicy = {
   deniedOrigins: [config.api.publicUrl].filter((value): value is string => Boolean(value)),
 }
-const dashboardSecretResolver = createMcpSecretResolver(prisma, config.auth.secret ?? '')
+const dashboardSecretResolver = createMcpSecretResolver(prisma, encryptionKeyRing)
 const dashboardRefreshDeps = {
   prisma,
   fileService,

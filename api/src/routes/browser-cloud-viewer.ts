@@ -19,7 +19,7 @@ export const registerBrowserCloudViewerRoutes = (
   app: FastifyInstance,
   deps: BrowserCloudViewerRouteDeps,
 ): void => {
-  const { authSecret, prisma, requireActorContext } = deps
+  const { encryptionKeyRing, prisma, requireActorContext } = deps
   const hasBrowserOpenGrant = deps.browserViewerOperations?.agentHasBrowserOpenGrant
     ?? agentHasBrowserOpenGrant
   const captureScreenshot = deps.browserViewerOperations?.captureLiveBrowserScreenshot

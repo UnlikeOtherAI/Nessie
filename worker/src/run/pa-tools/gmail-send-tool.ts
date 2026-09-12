@@ -1,5 +1,6 @@
 import { sendDraftForUser } from '@nessie/team-admin'
 import { z } from 'zod'
+import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
@@ -85,7 +86,7 @@ export const runGmailDraftSendTool = async (
           ? { holdMs: UNDO_WINDOW_MS }
           : {}),
       },
-      { encryptionSecret: process.env.NESSIE_AUTH_SECRET ?? '' },
+      { encryptionSecret: resolveWorkerAtRestKeyRing() },
     )
     return {
       inputSummary: `draftId=${args.draftId}`,

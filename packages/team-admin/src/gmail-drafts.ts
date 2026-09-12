@@ -13,6 +13,8 @@ import {
   loadUserGoogleCommsCredential,
 } from './comms-credential-coordinator.js'
 import { dispatchClaimedDraft } from './gmail-draft-dispatch.js'
+import { gmailFetch } from './gmail-draft-transport.js'
+
 export { gmailFetch } from './gmail-draft-transport.js'
 import { fingerprintMessage, fingerprintOf } from './gmail-draft-fingerprint.js'
 import { preflightGmailDraft } from './gmail-draft-preflight.js'

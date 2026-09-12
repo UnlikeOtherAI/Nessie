@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import {
   DEEPSIGNAL_MCP_CREDENTIAL_REF,
+  AT_REST_SECRET_PURPOSE,
   decryptWithKeyRing,
   encryptWithKeyRing,
   toEncryptionKeyRing,
@@ -15,8 +16,8 @@ import {
  *
  * A product (DeepSignal) returns a signing secret exactly once when a webhook is
  * registered on its side; a Nessie org admin pastes it here. It is stored
- * encrypted at rest (AES-256-GCM under a key derived from the deployment auth
- * secret) and only ever read to verify an inbound HMAC. `resolveSignedWebhookOrg`
+ * encrypted at rest (AES-256-GCM under a versioned, purpose-bound deployment
+ * key ring) and only ever read to verify an inbound HMAC. `resolveSignedWebhookOrg`
  * identifies which org a signed request belongs to by finding the stored secret
  * that reproduces the request signature — so a single unauthenticated receiver
  * URL serves every org without leaking which org a request targeted.
@@ -65,7 +66,7 @@ export const setProductWebhookSecret = async (
   const keyRing = toEncryptionKeyRing(encryption)
   const { ciphertext, iv, authTag } = encryptWithKeyRing(
     keyRing,
-    'product.webhook',
+    AT_REST_SECRET_PURPOSE.productWebhook,
     input.secret,
   )
   await prisma.productWebhookSecret.upsert({
@@ -111,17 +112,27 @@ export const resolveSignedWebhookOrg = async (
   for (const row of rows) {
     let secret: string
     try {
-      const opened = decryptWithKeyRing(keyRing, 'product.webhook', {
+      const opened = decryptWithKeyRing(keyRing, AT_REST_SECRET_PURPOSE.productWebhook, {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
       })
       secret = opened.plaintext
       if (opened.needsReencryption) {
-        const replacement = encryptWithKeyRing(keyRing, 'product.webhook', secret)
+        const replacement = encryptWithKeyRing(
+          keyRing,
+          AT_REST_SECRET_PURPOSE.productWebhook,
+          secret,
+        )
         await prisma.productWebhookSecret
           .updateMany({
-            where: { organizationId: row.organizationId, productSlug: input.productSlug },
+            where: {
+              organizationId: row.organizationId,
+              productSlug: input.productSlug,
+              ciphertext: row.ciphertext,
+              iv: row.iv,
+              authTag: row.authTag,
+            },
             data: replacement,
           })
           .catch(() => undefined)

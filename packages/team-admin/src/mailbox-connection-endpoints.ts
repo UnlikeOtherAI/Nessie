@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { MailboxClientOptions, MailboxEndpoints } from '@nessie/agent-mail'
-import { openSecret } from '@nessie/comms-connect'
+import { AT_REST_SECRET_PURPOSE, openSecret } from '@nessie/comms-connect'
 
 /**
  * The one place a stored mailbox connection becomes a dialable set of endpoints.
@@ -48,7 +48,11 @@ export const mailboxEndpointsFor = async (
       port: connection.imapPort,
       security: connection.imapSecurity,
     },
-    password: openSecret(encryptionSecret, credential.secretCiphertext),
+    password: openSecret(
+      encryptionSecret,
+      credential.secretCiphertext,
+      AT_REST_SECRET_PURPOSE.mailboxCredential,
+    ),
     smtp: {
       host: connection.smtpHost,
       port: connection.smtpPort,

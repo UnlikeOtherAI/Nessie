@@ -45,12 +45,16 @@ Requires SSH access to the host and the Cloudflare full-token env var.
 3. **Create `/srv/nessie/infrastructure/compose/.env`** from
    `.env.prod.example`. Set a strong `NESSIE_DB_PASSWORD` (bound to the Postgres
    volume on first boot — do not change it afterwards), a 32-byte
-   `NESSIE_AUTH_SECRET` (`openssl rand -hex 32`), `NESSIE_MODEL_PROVIDER`, and
-   the model/tool API keys.
+   `NESSIE_AUTH_SECRET` (`openssl rand -hex 32`), a separate
+   `NESSIE_ENCRYPTION_KEY_RING` JSON root and matching
+   `NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION`, `NESSIE_MODEL_PROVIDER`, and the
+   model/tool API keys. The example file has the exact shape; do not reuse the
+   signing secret as the encryption root.
 
 4. **Build, migrate, start** (see `redeploy.sh` for the scripted version):
    ```sh
    cd /srv/nessie
+   infrastructure/compose/ensure-encryption-key-ring.sh infrastructure/compose/.env
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
    docker compose -f infrastructure/compose/docker-compose.prod.yml build nessie-api nessie-admin nessie-web
    docker compose -f infrastructure/compose/docker-compose.prod.yml \

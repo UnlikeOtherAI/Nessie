@@ -4,6 +4,7 @@ import {
   decryptWithKeyRing,
   encryptWithKeyRing,
   toEncryptionKeyRing,
+  AT_REST_SECRET_PURPOSE,
 } from '@nessie/runtime'
 import { canonicalExecutorJson } from '@nessie/schemas'
 
@@ -17,7 +18,7 @@ export const encryptExecutorCommandJson = (
   value: unknown,
 ): string => JSON.stringify(encryptWithKeyRing(
   toEncryptionKeyRing(encryptionSecret),
-  'executor.command',
+  AT_REST_SECRET_PURPOSE.executorCommand,
   JSON.stringify(value),
 ))
 
@@ -33,7 +34,7 @@ export const decryptExecutorCommandJson = (
     }
     const parsed = JSON.parse(decryptWithKeyRing(
       toEncryptionKeyRing(encryptionSecret),
-      'executor.command',
+      AT_REST_SECRET_PURPOSE.executorCommand,
       parts,
     ).plaintext)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
