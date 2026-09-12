@@ -659,7 +659,7 @@ jobs:
             fi
             sleep 2
           done
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+          docker run --rm --network host --entrypoint sh quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z -c \
             "mc alias set local http://127.0.0.1:9010 nessie nessie-multi-instance \
              && mc mb --ignore-existing local/nessie"
 

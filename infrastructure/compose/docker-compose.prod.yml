@@ -72,7 +72,7 @@ services:
 
   # One-shot: create the bucket on (re)deploy, then exit.
   nessie-minio-setup:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z
     container_name: nessie-minio-setup
     depends_on:
       - nessie-minio
