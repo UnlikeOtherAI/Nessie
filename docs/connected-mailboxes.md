@@ -216,7 +216,7 @@ account. Two settings exist for tuning:
 | Variable | Meaning |
 |---|---|
 | `NESSIE_MAILBOX_TIMEOUT_MS` | How long to wait on a mail server, per read (default 20000). |
-| `NESSIE_AUTH_SECRET` | Already required. Passwords are sealed with it, in a table separate from the connection. |
+| `NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION`, `NESSIE_ENCRYPTION_KEY_RING` | Required outside local mode. Mailbox passwords are sealed under the purpose-bound, versioned at-rest key ring in a table separate from the connection. See [configuration](deployment/configuration.md#at-rest-encryption-rotation) for the operator rotation procedure. |
 
 Security properties worth knowing, since this is the one place Nessie opens a
 raw socket to an address somebody typed:

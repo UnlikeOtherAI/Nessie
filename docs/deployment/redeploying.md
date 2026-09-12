@@ -45,6 +45,15 @@ the Ledger installer because raw reporting is now UOA-only. The Ledger caller,
 DeepSignal caller, UOA, session, webhook, and sibling-product keys are separate
 principals, not fallbacks.
 
+Before images, migrations, or a replacement container start, `redeploy.sh`
+runs `ensure-encryption-key-ring.sh` against the host-only Compose `.env`.
+For an older host it generates a distinct at-rest root, writes an active opaque
+version and retains the old signing root only as `NESSIE_ENCRYPTION_LEGACY_KEY`;
+it never prints either value. A partial ring fails the deploy before migrations.
+After the new API and worker are serving, follow the operator-only rotation
+procedure in [configuration.md](configuration.md#at-rest-encryption-rotation):
+run the command, verify/retry to zero conflicts, then remove the legacy root.
+
 The workflow rsyncs with `--delete` so files removed from the repo don't linger
 on the host and get compiled into the image (a stale `api/src` copy left by the
 mcp-manage extraction broke every build until this was added). rsync never
@@ -113,9 +122,21 @@ Consequences worth knowing:
   workflow run. The workflow additionally serializes its own runs through the
   `deploy-production` GitHub concurrency group; queued runs it shows as
   "cancelled" were subsumed by a newer run that deploys their commits too.
-- Migrations still run **before** the swap, while the old API is serving, so a
-  schema change must remain compatible with the previous code for the length of
-  the build+swap window (this was already true of the old recreate flow).
+- Migrations normally run **before** the swap, while the old API is serving, so
+  a schema change must remain compatible with the previous code for the length of
+  the build+swap window. The one-time
+  `20260912090000_versioned_at_rest_key_metadata` migration is deliberately the
+  exception: it changes three Prisma-visible `key_version` columns from integer
+  to text. After encryption preflight succeeds, `redeploy.sh` detects it while
+  pending and stops every current and pre-rename API/worker container. It checks
+  that no matching container remains running before Prisma applies the
+  migration, then starts only the compatible generation. This intentional
+  maintenance gap prevents old integer clients and new opaque-version clients
+  from reading or writing the same column concurrently; later deploys remain
+  health-gated blue-green. If that migration or the subsequent compatible boot
+  fails, the script exits with the API and worker still stopped: do not roll an
+  old image back onto the text schema. Fix and roll forward, or restore the
+  database backup before starting the previous release.
 - **The reconcile job runs between the migrations and the swap**, as a one-shot
   `$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile`.
   It seeds each organisation's default policy rules, backfills protected-MCP

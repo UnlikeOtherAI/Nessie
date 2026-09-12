@@ -105,7 +105,10 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   // Dashboard HTTP and dashboard secret-card presses need the same namespaced
   // credential store. Construct it once so both routes preserve the exact same
   // write-only boundary.
-  const dashboardCredentials = createDashboardCredentialStore(deps.prisma, deps.authSecret ?? '')
+  const dashboardCredentials = createDashboardCredentialStore(
+    deps.prisma,
+    deps.encryptionKeyRing,
+  )
 
   registerHealthRoutes(app, deps)
   registerAuthRoutes(app, deps)

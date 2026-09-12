@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, encryptWithKeyRing } from '@nessie/runtime'
 import type { ApnsCredentials, PushPayload, PushResult, PushTarget } from '@nessie/push'
 
 import {
@@ -10,6 +10,11 @@ import {
 } from '../src/control/call-ring-dispatch.js'
 
 const AUTH_SECRET = 'call-ring-test-secret'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test-key',
+  keys: { 'test-key': 'test-at-rest-encryption-root' },
+  legacyKey: AUTH_SECRET,
+} as const
 const ids = {
   call: '00000000-0000-4000-8000-000000000001',
   channel: '00000000-0000-4000-8000-000000000002',
@@ -18,7 +23,7 @@ const ids = {
 }
 
 test('a ring bypasses foreground surface suppression and native payloads never carry the meeting URL', async () => {
-  const encrypted = encryptWithKey(deriveSecretKey(AUTH_SECRET), '-----P8-----')
+  const encrypted = encryptWithKeyRing(ENCRYPTION_KEY_RING, AT_REST_SECRET_PURPOSE.pushCredential, '-----P8-----')
   const nativePayloads: PushPayload[] = []
   const prisma = {
     // The exactly-once claim (`push_send_claims`); a fresh fake always wins it.
@@ -63,7 +68,7 @@ test('a ring bypasses foreground surface suppression and native payloads never c
   } as unknown as CallRingDispatchPrisma
 
   const summary = await handleCallRingDispatch({
-    authSecret: AUTH_SECRET,
+    authSecret: AUTH_SECRET, encryptionKeyRing: ENCRYPTION_KEY_RING,
     now: () => new Date('2026-09-01T09:00:00.000Z'),
     prisma,
     retryDelayMs: () => 0,
@@ -109,7 +114,7 @@ test('a queued ring does not reach an invitee who has already responded', async 
   } as unknown as CallRingDispatchPrisma
 
   const summary = await handleCallRingDispatch({
-    authSecret: AUTH_SECRET,
+    authSecret: AUTH_SECRET, encryptionKeyRing: ENCRYPTION_KEY_RING,
     now: () => new Date('2026-09-01T09:00:00.000Z'),
     prisma,
   }, { callId: ids.call, userId: ids.user })

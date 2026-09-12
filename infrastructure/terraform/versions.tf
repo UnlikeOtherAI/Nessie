@@ -22,7 +22,8 @@ terraform {
     }
   }
 
-  # State holds the generated database password, the generated auth secret and
+  # State holds the generated database password, the generated auth secret, the
+  # independent at-rest encryption root and
   # the GCS HMAC key material, so the state bucket must be private, versioned
   # and access-logged. Bucket name is supplied at init time so no project
   # identifier is committed:

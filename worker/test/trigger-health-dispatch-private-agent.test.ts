@@ -5,6 +5,11 @@ import type { PrismaClient } from '@prisma/client'
 
 import { handleTriggerHealthAlert } from '../src/control/trigger-health-dispatch.js'
 
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test-key',
+  keys: { 'test-key': 'test-at-rest-encryption-root' },
+} as const
+
 const organizationId = '10000000-0000-4000-8000-000000000001'
 const triggerId = '10000000-0000-4000-8000-000000000002'
 const privateOwnerId = '10000000-0000-4000-8000-000000000003'
@@ -46,7 +51,7 @@ test('a private agent health alert reaches its active owner alone', async () => 
   } as unknown as PrismaClient
 
   await handleTriggerHealthAlert(
-    { authSecret: 'test-secret', prisma },
+    { prisma },
     {
       healthRevision: 1,
       reason: 'uoa_identity_unverifiable',

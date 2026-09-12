@@ -3,10 +3,12 @@ import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import {
   DEEPSIGNAL_MCP_CREDENTIAL_REF,
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  AT_REST_SECRET_PURPOSE,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
   verifyHmacSignature,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
 /**
@@ -14,8 +16,8 @@ import {
  *
  * A product (DeepSignal) returns a signing secret exactly once when a webhook is
  * registered on its side; a Nessie org admin pastes it here. It is stored
- * encrypted at rest (AES-256-GCM under a key derived from the deployment auth
- * secret) and only ever read to verify an inbound HMAC. `resolveSignedWebhookOrg`
+ * encrypted at rest (AES-256-GCM under a versioned, purpose-bound deployment
+ * key ring) and only ever read to verify an inbound HMAC. `resolveSignedWebhookOrg`
  * identifies which org a signed request belongs to by finding the stored secret
  * that reproduces the request signature — so a single unauthenticated receiver
  * URL serves every org without leaking which org a request targeted.
@@ -57,12 +59,16 @@ const assertWebhookSecretIsIndependent = (
 
 export const setProductWebhookSecret = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   input: { organizationId: string; productSlug: string; secret: string },
 ): Promise<void> => {
   assertWebhookSecretIsIndependent(input)
-  const key = deriveSecretKey(encryptionSecret)
-  const { ciphertext, iv, authTag } = encryptWithKey(key, input.secret)
+  const keyRing = toEncryptionKeyRing(encryption)
+  const { ciphertext, iv, authTag } = encryptWithKeyRing(
+    keyRing,
+    AT_REST_SECRET_PURPOSE.productWebhook,
+    input.secret,
+  )
   await prisma.productWebhookSecret.upsert({
     where: {
       organizationId_productSlug: {
@@ -89,7 +95,7 @@ export const setProductWebhookSecret = async (
  */
 export const resolveSignedWebhookOrg = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   input: { productSlug: string; rawBody: Buffer; signatureHeader: string | undefined },
 ): Promise<string | null> => {
   if (!input.signatureHeader || input.signatureHeader.trim().length === 0) {
@@ -100,17 +106,37 @@ export const resolveSignedWebhookOrg = async (
     where: { productSlug: input.productSlug },
     select: { organizationId: true, ciphertext: true, iv: true, authTag: true },
   })
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
 
   let matchedOrg: string | null = null
   for (const row of rows) {
     let secret: string
     try {
-      secret = decryptWithKey(key, {
+      const opened = decryptWithKeyRing(keyRing, AT_REST_SECRET_PURPOSE.productWebhook, {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
       })
+      secret = opened.plaintext
+      if (opened.needsReencryption) {
+        const replacement = encryptWithKeyRing(
+          keyRing,
+          AT_REST_SECRET_PURPOSE.productWebhook,
+          secret,
+        )
+        await prisma.productWebhookSecret
+          .updateMany({
+            where: {
+              organizationId: row.organizationId,
+              productSlug: input.productSlug,
+              ciphertext: row.ciphertext,
+              iv: row.iv,
+              authTag: row.authTag,
+            },
+            data: replacement,
+          })
+          .catch(() => undefined)
+      }
     } catch {
       continue
     }

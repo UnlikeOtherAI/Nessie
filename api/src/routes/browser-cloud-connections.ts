@@ -18,13 +18,16 @@ const sendConnectionError = (reply: FastifyReply, error: unknown): boolean => {
 }
 
 export const registerBrowserCloudConnectionRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { authSecret, prisma, requireActorContext, requireOwner, requireUserActor } = deps
+  const { encryptionKeyRing, prisma, requireActorContext, requireOwner, requireUserActor } = deps
   const connectionDeps = {
     prisma,
     storeSecret: (tx: PrismaClient | Prisma.TransactionClient, apiKey: string) => createPgSecretStore(
       tx,
-      authSecret ?? '',
-      { refPrefix: 'secret_browserbase_' },
+      encryptionKeyRing,
+      {
+        purpose: 'browser.connection',
+        refPrefix: 'secret_browserbase_',
+      },
     ).put({ accessToken: apiKey }),
   }
   app.get('/api/browser-cloud/connections', async (request, reply) => {

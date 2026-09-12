@@ -318,7 +318,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       assigneeUserId: body.assigneeUserId,
       assigneeAgentId: body.assigneeAgentId,
       actorContext,
-    }, deps.authSecret)
+    }, deps.encryptionKeyRing)
 
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
@@ -349,7 +349,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       columnId: body.columnId,
       actorId: actorContext.actor.actorId,
       position: body.position,
-    }, deps.authSecret)
+    }, deps.encryptionKeyRing)
 
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
@@ -430,7 +430,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       organizationId: actorContext.tenant.organizationId,
       fields,
-    }, deps.authSecret)
+    }, deps.encryptionKeyRing)
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
       // A refused custom field value says which field and why; anything else

@@ -103,7 +103,7 @@ const seed = async (
     data: {
       connectionId: connection.id,
       // Sealed with the same secret the tests pass in; never a real token.
-      accessTokenCiphertext: sealSecret('test-secret', 'token'),
+      accessTokenCiphertext: sealSecret('test-secret', 'token', 'board-source.credential'),
     },
   })
   const source = await prisma.boardSource.create({

@@ -14,6 +14,7 @@ import {
 } from '@nessie/team-admin'
 import { safeFetch } from '@nessie/runtime'
 import { z } from 'zod'
+import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { createAgentMessage } from '../execute/agent-message.js'
@@ -51,11 +52,7 @@ const gmailFetch = async (
   }
 }
 
-const encryptionSecret = (): string => {
-  const secret = process.env.NESSIE_AUTH_SECRET
-  if (!secret) throw new Error('NESSIE_AUTH_SECRET is not configured')
-  return secret
-}
+const encryptionSecret = () => resolveWorkerAtRestKeyRing()
 
 const SearchSchema = z.object({
   query: z.string().max(500).optional(),

@@ -3,16 +3,18 @@ import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 
 import {
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  AT_REST_SECRET_PURPOSE,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
 /**
  * Encrypted store for raw push-credential secret bytes (the APNs `.p8` key
  * contents, the FCM service-account JSON). Reuses the AES-256-GCM scheme and
  * the `mcp_oauth_secret` table from the OAuth SecretStore, keyed off the
- * deployment's auth secret. Entries carry a `secret_push_` ref prefix so they
+ * deployment's versioned at-rest key ring. Entries carry a `secret_push_` ref prefix so they
  * never collide with `secret_oauth_` entries.
  *
  * Unlike the OAuth store (write-only `put`), push credentials must be re-read
@@ -33,13 +35,17 @@ const PUSH_REF_PREFIX = 'secret_push_'
 
 export const createPushSecretStore = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
 ): PushSecretStore => {
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
   return {
     put: async (plaintext) => {
       const ref = `${PUSH_REF_PREFIX}${crypto.randomBytes(16).toString('hex')}`
-      const { ciphertext, iv, authTag } = encryptWithKey(key, plaintext)
+      const { ciphertext, iv, authTag } = encryptWithKeyRing(
+        keyRing,
+        AT_REST_SECRET_PURPOSE.pushCredential,
+        plaintext,
+      )
       await prisma.mcpOAuthSecret.create({
         data: { ref, ciphertext, iv, authTag },
       })
@@ -53,11 +59,25 @@ export const createPushSecretStore = (
       if (!row) {
         return null
       }
-      return decryptWithKey(key, {
+      const opened = decryptWithKeyRing(keyRing, AT_REST_SECRET_PURPOSE.pushCredential, {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
       })
+      if (opened.needsReencryption) {
+        const replacement = encryptWithKeyRing(
+          keyRing,
+          AT_REST_SECRET_PURPOSE.pushCredential,
+          opened.plaintext,
+        )
+        await prisma.mcpOAuthSecret
+          .updateMany({
+            where: { ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.authTag },
+            data: replacement,
+          })
+          .catch(() => undefined)
+      }
+      return opened.plaintext
     },
     remove: async (ref) => {
       if (!ref.startsWith(PUSH_REF_PREFIX)) {

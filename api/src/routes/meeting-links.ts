@@ -19,7 +19,7 @@ export const registerMeetingLinkRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { authSecret, prisma, requireActorContext, requireUserActor } = deps
+  const { encryptionKeyRing, prisma, requireActorContext, requireUserActor } = deps
 
   // Deliberately machine-only in Slice 1. The in-product call flow and the
   // mirrored personal-assistant tool are the planned doorways in later slices.
@@ -44,7 +44,7 @@ export const registerMeetingLinkRoutes = (
           userId: actorContext.actor.actorId,
           ...(body.provider ? { provider: body.provider } : {}),
         },
-        { encryptionSecret: authSecret },
+        { encryptionSecret: encryptionKeyRing },
       )
       return reply.code(201).send(createApiResponse(result))
     } catch (error) {

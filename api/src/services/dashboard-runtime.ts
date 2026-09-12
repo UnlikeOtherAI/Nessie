@@ -24,10 +24,11 @@ import type { DashboardEgressPolicy, CredentialStore } from '@nessie/dashboard'
  */
 export const createDashboardCredentialStore = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): CredentialStore => {
   const store = createPgSecretStore(prisma, encryptionSecret, {
     refPrefix: 'secret_dashboard_',
+    purpose: 'dashboard.credential',
   })
   const resolver = createPgSecretResolver(prisma, encryptionSecret)
 

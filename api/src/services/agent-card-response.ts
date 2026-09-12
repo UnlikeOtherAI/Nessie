@@ -15,7 +15,6 @@ import {
   createSystemAuthoredReply,
   inheritAgentCardResponseBasis,
 } from "@nessie/team-admin";
-
 import { toInputJson } from "../db/prisma-json.js";
 import { emitAuditEvent } from "./audit.js";
 import {
@@ -42,7 +41,7 @@ import { ResumeRollback, resumeSuspendedRun } from "./run-resume-core.js";
 import type { RouteDeps } from "../routes/types.js";
 type ResponseDeps = Pick<
   RouteDeps,
-  | "authSecret"
+  | "encryptionKeyRing"
   | "buildChannelRealtimeScopes"
   | "mcpSecretStore"
   | "messageMemoryCaptureConfig"
@@ -71,7 +70,12 @@ type PreparedResponse = {
   secretKeys: string[];
   values: Record<string, string | number | boolean>;
 };
-
+const storeBrowserConnectionSecret = (deps: ResponseDeps) =>
+  async (tx: Prisma.TransactionClient, apiKey: string): Promise<string> =>
+    createPgSecretStore(tx, deps.encryptionKeyRing, {
+      purpose: "browser.connection",
+      refPrefix: "secret_browserbase_",
+    }).put({ accessToken: apiKey });
 const prepareResponse = async (
   deps: ResponseDeps,
   input: {
@@ -139,10 +143,7 @@ const prepareResponse = async (
           ...(deps.browserCloudClientFactory
             ? { clientFactory: deps.browserCloudClientFactory }
             : {}),
-          storeSecret: async (tx, apiKey) =>
-            createPgSecretStore(tx, deps.authSecret ?? "", {
-              refPrefix: "secret_browserbase_",
-            }).put({ accessToken: apiKey }),
+          storeSecret: storeBrowserConnectionSecret(deps),
         },
         isOwner: input.isOwner,
         organizationId: card.organizationId,
@@ -279,10 +280,7 @@ export const respondToAgentCard = async (
       }
       const secretOutcomes = await storeAgentCardSecrets(tx, {
         browserCloud: {
-          storeSecret: async (secretTx, apiKey) =>
-            createPgSecretStore(secretTx, deps.authSecret ?? "", {
-              refPrefix: "secret_browserbase_",
-            }).put({ accessToken: apiKey }),
+          storeSecret: storeBrowserConnectionSecret(deps),
         },
         dashboardCredentials: deps.dashboardCredentials,
         mcpSecretStore: deps.mcpSecretStore,

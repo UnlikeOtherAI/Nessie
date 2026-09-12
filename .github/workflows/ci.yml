@@ -484,6 +484,10 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test
+      # Hosted-mode imports must exercise the same dedicated-ring startup
+      # contract as production. This deterministic test root is not a secret.
+      NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION: ci-test
+      NESSIE_ENCRYPTION_KEY_RING: '{"ci-test":"ci-test-dedicated-encryption-root-material"}'
 
     steps:
       - name: Checkout

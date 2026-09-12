@@ -241,7 +241,7 @@ export const boardTools = (): McpToolDefinition[] => [
           organizationId: context.actorContext.tenant.organizationId,
           taskId: input.taskId as string,
         } as Parameters<typeof updateTask>[1],
-        context.authSecret,
+        context.encryptionKeyRing,
       )
       if ('error' in result) return describeWriteFailure(result)
       return { task: result }
@@ -273,7 +273,7 @@ export const boardTools = (): McpToolDefinition[] => [
           taskId: input.taskId as string,
           ...(input.position !== undefined ? { position: input.position as number } : {}),
         } as Parameters<typeof moveTaskToColumn>[1],
-        context.authSecret,
+        context.encryptionKeyRing,
       )
       if ('error' in result) return describeWriteFailure(result)
       return { task: result }

@@ -30,6 +30,7 @@ import {
 } from '@nessie/dashboard'
 import type { DashboardLayout, DashboardDeltaOperation } from '@nessie/schemas'
 import type { FileService } from '@nessie/runtime'
+import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { randomUUID } from 'node:crypto'
 
@@ -196,12 +197,14 @@ export const resolveDashboardToolServices = async (
     maxUploadBytes: config.storage.maxUploadBytes,
     signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
-  const resolver = mcpManage.createPgSecretResolver(prisma, config.auth.secret ?? '')
+  const encryptionKeyRing = resolveWorkerAtRestKeyRing()
+  const resolver = mcpManage.createPgSecretResolver(prisma, encryptionKeyRing)
 
   const credentials: CredentialStore = {
     put: async (_organizationId, plaintext) =>
       mcpManage
-        .createPgSecretStore(prisma, config.auth.secret ?? '', {
+        .createPgSecretStore(prisma, encryptionKeyRing, {
+          purpose: 'dashboard.credential',
           refPrefix: 'secret_dashboard_',
         })
         .put({ accessToken: plaintext }),

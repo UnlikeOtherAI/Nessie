@@ -28,7 +28,7 @@ export type WorkflowFailureDispatchPrisma = PushDeliveryPrisma &
 
 export type WorkflowFailureDispatchDeps = {
   prisma: WorkflowFailureDispatchPrisma
-  authSecret: string
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   webPush?: WebPushCredentials
   senders?: PushSenders
   now?: () => Date

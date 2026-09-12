@@ -88,7 +88,7 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
 
       const server = buildNessieMcpServer({
         actorContext,
-        authSecret: deps.authSecret,
+        encryptionKeyRing: deps.encryptionKeyRing,
         checkPolicy: (client, actor, resourceType, action) =>
           checkPolicy(client, actor, resourceType, action),
         // The same narrowing the task routes apply. Owners see the whole

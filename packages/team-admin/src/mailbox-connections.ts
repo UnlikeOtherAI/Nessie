@@ -15,7 +15,11 @@ import type {
   MailboxConnectionRecord,
   MailboxConnectionScope,
 } from '@nessie/schemas'
-import { sealSecret } from '@nessie/comms-connect'
+import {
+  AT_REST_SECRET_PURPOSE,
+  sealSecret,
+  toEncryptionKeyRing,
+} from '@nessie/comms-connect'
 
 import {
   mailboxDialOptions,
@@ -194,7 +198,7 @@ export type CreateMailboxConnectionInput = {
 export const createMailboxConnection = async (
   prisma: PrismaClient,
   input: CreateMailboxConnectionInput,
-  options: { encryptionSecret: string },
+  options: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<MailboxConnectionRecord> => {
   if (input.scope === 'team' && !MANAGER_ROLES.has(input.actor.role)) {
     throw new MailboxConnectionError(
@@ -254,7 +258,12 @@ export const createMailboxConnection = async (
       await tx.mailboxConnectionCredential.create({
         data: {
           connectionId: connection.id,
-          secretCiphertext: sealSecret(options.encryptionSecret, input.password),
+          secretCiphertext: sealSecret(
+            options.encryptionSecret,
+            input.password,
+            AT_REST_SECRET_PURPOSE.mailboxCredential,
+          ),
+          keyVersion: toEncryptionKeyRing(options.encryptionSecret).activeVersion,
         },
       })
       return connection
@@ -343,7 +352,7 @@ export const loadManageableMailboxConnection = async (
 export const verifyMailboxConnection = async (
   prisma: PrismaClient,
   connection: MailboxConnectionRow,
-  options: { encryptionSecret: string },
+  options: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<{
   ok: boolean
   detail: string

@@ -57,9 +57,9 @@ export const registerBrowserCloudRoutes = (
   deps: RouteDeps & { dashboardCredentials: CredentialStore },
 ): void => {
   registerBrowserCloudCanvasRoutes(app, deps)
-  const { prisma, authSecret } = deps
+  const { prisma, encryptionKeyRing } = deps
 
-  const secretResolver = createMcpSecretResolver(prisma, authSecret ?? '')
+  const secretResolver = createMcpSecretResolver(prisma, encryptionKeyRing)
 
   registerBrowserCloudConnectionRoutes(app, deps)
 

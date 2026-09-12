@@ -120,8 +120,8 @@ export const registerGmailDraftRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, authSecret } = deps
-  const draftDeps = { encryptionSecret: authSecret }
+  const { prisma, requireActorContext, encryptionKeyRing } = deps
+  const draftDeps = { encryptionSecret: encryptionKeyRing }
 
   const fail = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
     if (error instanceof GmailDraftError) {

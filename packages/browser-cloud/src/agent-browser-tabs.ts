@@ -319,14 +319,14 @@ export const captureUndrivenSessionTabs = async (
   prisma: Pick<PrismaClient, 'cloudBrowserSession' | '$transaction'>,
   input: {
     sessionId: string
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     connect?: (connectUrl: string) => Promise<CdpClient>
   },
 ): Promise<boolean> => {
   if (!input.encryptionSecret) {
     // Silent skipping here would look, from the panel, like a browser that
     // never saves — so the misconfiguration is named where an operator reads.
-    console.warn('[browser-cloud] no auth secret configured; a resumed session’s tabs cannot be captured')
+    console.warn('[browser-cloud] no at-rest key ring configured; a resumed session’s tabs cannot be captured')
     return false
   }
   const capability = await loadSessionCapability(prisma, {

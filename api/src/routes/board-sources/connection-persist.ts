@@ -18,7 +18,7 @@ export type PersistConnectionInput = {
   provider: BoardSourceProvider
   authMethod: 'oauth' | 'api_key'
   result: ConnectResult
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
 }
 
 export const persistBoardSourceConnection = async (

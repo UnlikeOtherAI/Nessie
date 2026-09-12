@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { openSecret, sealSecret } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, openSecret, sealSecret } from '@nessie/runtime'
 
 /**
  * The session capability at rest.
@@ -13,10 +13,10 @@ import { openSecret, sealSecret } from '@nessie/runtime'
  *
  * So the URL is persisted, and because it is a live-session bearer capability
  * it is persisted **sealed**: the same AES-256-GCM packing executor command
- * payloads use (`sealSecret`/`openSecret`, keyed off `config.auth.secret`).
+ * payloads use (`sealSecret`/`openSecret`, keyed by the at-rest key ring).
  * What an operator must assume follows from that and is stated in
  * docs/plans/2026-09-02-browserbase-cloud-browsers.md § 5a: a database read
- * plus the auth secret yields a live browser handle, until the session is
+ * plus the retained at-rest root yields a live browser handle, until the session is
  * released or its TTL expires — which is why the columns are cleared the
  * moment the row stops being `active`, rather than at `released`.
  *
@@ -33,20 +33,24 @@ export type PersistedSessionCapability = {
 
 /** Seal a connect URL for the `connect_capability_ciphertext` column. */
 export const sealConnectCapability = (
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   connectUrl: string,
-): string => sealSecret(encryptionSecret, connectUrl)
+): string => sealSecret(
+  encryptionSecret,
+  connectUrl,
+  AT_REST_SECRET_PURPOSE.browserSessionCapability,
+)
 
 /**
  * What a worker needs to re-attach, or null when this session cannot be driven
  * from anywhere: not `active`, past its TTL, no capability stored, or a
- * ciphertext this deployment's secret cannot open. Null is deliberately the
+ * ciphertext this deployment's key ring cannot open. Null is deliberately the
  * same answer for all four — the caller's job is to stop pretending it holds a
  * browser, not to explain which of them happened.
  */
 export const loadSessionCapability = async (
   prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
-  input: { sessionId: string; encryptionSecret: string; now?: Date },
+  input: { sessionId: string; encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput; now?: Date },
 ): Promise<PersistedSessionCapability | null> => {
   const row = await prisma.cloudBrowserSession.findFirst({
     where: { id: input.sessionId, status: 'active' },
@@ -56,11 +60,15 @@ export const loadSessionCapability = async (
   if (row.expiresAt.getTime() <= (input.now ?? new Date()).getTime()) return null
   try {
     return {
-      connectUrl: openSecret(input.encryptionSecret, row.connectCapabilityCiphertext),
+      connectUrl: openSecret(
+        input.encryptionSecret,
+        row.connectCapabilityCiphertext,
+        AT_REST_SECRET_PURPOSE.browserSessionCapability,
+      ),
       originGate: row.originGate ?? null,
     }
   } catch {
-    // A rotated auth secret, or a truncated column. Either way this worker
+    // A retired at-rest root, or a truncated column. Either way this worker
     // cannot drive the session; the gate then reads as absent, which escalates.
     return null
   }

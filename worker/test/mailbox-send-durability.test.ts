@@ -20,6 +20,11 @@ const ids = {
 
 const runId = '00000000-0000-4000-8000-000000000206'
 const toolCallId = 'provider-call:durable-1'
+const encryptionRing = {
+  activeVersion: 'test-rotation',
+  keys: { 'test-rotation': 'test-secret-for-mailbox-ring-root' },
+  legacyKey: 'test-secret-for-mailbox-ring-root',
+} as const
 
 const connection = {
   address: 'support@example.test',
@@ -68,7 +73,7 @@ test('agent mailbox_send replays one stable Message-ID and never resends an ambi
     mailboxConnectionCredential: {
       findUnique: async () => {
         credentialReads += 1
-        return { secretCiphertext: sealSecret('test-secret', 'password') }
+        return { secretCiphertext: sealSecret(encryptionRing, 'password', 'mailbox.credential') }
       },
     },
     mailboxSendAction: {
@@ -86,7 +91,11 @@ test('agent mailbox_send replays one stable Message-ID and never resends an ambi
     },
   } as unknown as PrismaClient
   const previousSecret = process.env.NESSIE_AUTH_SECRET
+  const previousActiveVersion = process.env.NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION
+  const previousKeyRing = process.env.NESSIE_ENCRYPTION_KEY_RING
   process.env.NESSIE_AUTH_SECRET = 'test-secret'
+  process.env.NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION = encryptionRing.activeVersion
+  process.env.NESSIE_ENCRYPTION_KEY_RING = JSON.stringify(encryptionRing.keys)
   try {
     const send = () => runMailboxSendTool(buildContext(prisma), {
       subject: 'Status', text: 'Hello', to: ['recipient@example.test'],
@@ -103,6 +112,10 @@ test('agent mailbox_send replays one stable Message-ID and never resends an ambi
   } finally {
     if (previousSecret === undefined) delete process.env.NESSIE_AUTH_SECRET
     else process.env.NESSIE_AUTH_SECRET = previousSecret
+    if (previousActiveVersion === undefined) delete process.env.NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION
+    else process.env.NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION = previousActiveVersion
+    if (previousKeyRing === undefined) delete process.env.NESSIE_ENCRYPTION_KEY_RING
+    else process.env.NESSIE_ENCRYPTION_KEY_RING = previousKeyRing
   }
 })
 
