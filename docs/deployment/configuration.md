@@ -210,8 +210,11 @@ container on the `db` network (the shared host has no S3); `nessie-minio-setup`
 creates the bucket on each deploy. Set `NESSIE_STORAGE_ACCESS_KEY_ID` /
 `NESSIE_STORAGE_SECRET_ACCESS_KEY` (and optionally `NESSIE_STORAGE_BUCKET`) in the
 host `.env` — they are the MinIO root credentials and the app's S3 credentials.
-Local dev keeps `filesystem` (zero setup); to exercise the S3 path locally, run a
-MinIO container and set the `NESSIE_STORAGE_*` vars.
+The Compose and CI server image is pinned to
+`quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z`; do not switch it back to the
+withdrawn Docker Hub `minio/minio:latest` tag. Local dev keeps `filesystem` (zero
+setup); to exercise the S3 path locally, run a MinIO container and set the
+`NESSIE_STORAGE_*` vars.
 
 Uploads that can be previewed also get a small WebP **thumbnail** stored beside
 the original (`<key>.thumb.webp`) so chat feeds never transfer a full-resolution
