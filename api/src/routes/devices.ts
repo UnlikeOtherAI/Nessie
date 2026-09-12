@@ -5,6 +5,7 @@ import {
 } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { registerDeviceToken } from '../services/device-token-registration.js'
 import { nextPushRegistrationGeneration } from '../services/push-registration-generation.js'
 import type { RouteDeps } from './types.js'
 
@@ -36,55 +37,12 @@ export const registerDeviceRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const userId = actorContext.actor.actorId
 
     const registrationVersion = BigInt(actorContext.actionContext.pushRegistrationVersion ?? '0')
-    const create = {
-      organizationId,
-      userId,
-      platform: body.platform,
-      token: body.token,
-      appVersion: body.appVersion,
-      registrationVersion,
-      inactiveAt: null,
-      apnsEnvironment: body.platform === 'ios' ? body.apnsEnvironment : null,
+    const result = await registerDeviceToken(prisma, { ...body, organizationId, registrationVersion, userId })
+    if (result.kind === 'ownership_proof_required') {
+      sendApiError(reply, 403, 'DEVICE_OWNERSHIP_PROOF_REQUIRED', 'This device must approve its account switch.')
+      return reply
     }
-    const update = {
-      organizationId,
-      userId,
-      platform: body.platform,
-      appVersion: body.appVersion ?? null,
-      registrationVersion,
-      inactiveAt: null,
-      apnsEnvironment: body.platform === 'ios' ? body.apnsEnvironment ?? null : null,
-      lastSeenAt: new Date(),
-    }
-
-    // An older WebView request can finish after an account or team switch.
-    // The signed, globally server-issued generation decides whether its write is
-    // newer; a client cannot advance or pin that value.
-    const updateIfNewer = async () => prisma.deviceToken.updateMany({
-      where: {
-        token: body.token,
-        registrationVersion: { lte: registrationVersion },
-      },
-      data: update,
-    })
-    const changed = await updateIfNewer()
-    if (changed.count === 0) {
-      const current = await prisma.deviceToken.findUnique({ where: { token: body.token } })
-      if (!current) {
-        try {
-          await prisma.deviceToken.create({ data: create })
-        } catch (error) {
-          if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')) {
-            throw error
-          }
-          await updateIfNewer()
-        }
-      }
-    }
-    const device = await prisma.deviceToken.findUnique({ where: { token: body.token } })
-    if (!device) {
-      throw new Error('Device token was not persisted')
-    }
+    const { device } = result
 
     return reply.code(201).send(
       createApiResponse(
@@ -94,6 +52,7 @@ export const registerDeviceRoutes = (app: FastifyInstance, deps: RouteDeps): voi
           token: device.token,
           appVersion: device.appVersion ?? undefined,
           apnsEnvironment: device.apnsEnvironment ?? undefined,
+          ownershipProof: result.kind === 'registered' ? result.ownershipProof : undefined,
           lastSeenAt: device.lastSeenAt.toISOString(),
           createdAt: device.createdAt.toISOString(),
         }),
