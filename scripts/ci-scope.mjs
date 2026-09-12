@@ -23,12 +23,15 @@
 //   full          '1' when the whole repo must run; '' otherwise
 //   code          '1' when any non-documentation file changed
 //   desktop       '1' when the Tauri desktop bundle's inputs changed
+//   windows_native '1' when Windows-native verification inputs changed
 //   turbo_scope   '--affected' when narrowing is safe; '' when it is not
 //
 // Local use: `node scripts/ci-scope.mjs` prints the decision and the reason.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Root-level paths that no package directory owns. A change to any of them
 // invalidates the whole graph, so `--affected` must not be trusted.
@@ -57,6 +60,13 @@ const DOCS_SUFFIXES = ['.md'];
 // admin/api/worker changes cannot affect it. The Rust crate does pull in
 // executor/windows-provenance through a Cargo path dependency.
 const DESKTOP_PREFIXES = ['desktop/', 'executor/windows-provenance/', 'assets/'];
+
+// Inputs to the Windows-native Rust and installer-authoring checks. This is
+// intentionally wider than DESKTOP_PREFIXES: the standalone executor service,
+// tray, Hyper-V bridge, guest payload, and WiX authoring all live under
+// executor/. Root and workflow changes already force `full` above, so they
+// cannot silently bypass this gate.
+const WINDOWS_NATIVE_PREFIXES = ['desktop/', 'executor/', 'assets/'];
 
 function git(args) {
   return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
@@ -92,6 +102,10 @@ function isDocs(file) {
 
 function isDesktop(file) {
   return DESKTOP_PREFIXES.some((p) => file.startsWith(p));
+}
+
+export function isWindowsNative(file) {
+  return WINDOWS_NATIVE_PREFIXES.some((p) => file.startsWith(p));
 }
 
 function decide() {
@@ -131,28 +145,36 @@ function decide() {
   };
 }
 
-const decision = decide();
-const files = decision.files ?? [];
-const code = decision.full || files.some((f) => !isDocs(f));
-const desktop = decision.full || files.some(isDesktop);
+function run() {
+  const decision = decide();
+  const files = decision.files ?? [];
+  const code = decision.full || files.some((f) => !isDocs(f));
+  const desktop = decision.full || files.some(isDesktop);
+  const windowsNative = decision.full || files.some(isWindowsNative);
 
-const outputs = {
-  full: decision.full ? '1' : '',
-  code: code ? '1' : '',
-  desktop: desktop ? '1' : '',
-  turbo_scope: decision.full ? '' : '--affected',
-};
+  const outputs = {
+    full: decision.full ? '1' : '',
+    code: code ? '1' : '',
+    desktop: desktop ? '1' : '',
+    windows_native: windowsNative ? '1' : '',
+    turbo_scope: decision.full ? '' : '--affected',
+  };
 
-process.stderr.write(`CI scope: ${decision.reason}\n`);
-for (const [key, value] of Object.entries(outputs)) {
-  process.stderr.write(`  ${key.padEnd(12)} ${value === '' ? '(empty)' : value}\n`);
+  process.stderr.write(`CI scope: ${decision.reason}\n`);
+  for (const [key, value] of Object.entries(outputs)) {
+    process.stderr.write(`  ${key.padEnd(15)} ${value === '' ? '(empty)' : value}\n`);
+  }
+
+  if (process.env.GITHUB_OUTPUT) {
+    fs.appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      Object.entries(outputs)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n') + '\n',
+    );
+  }
 }
 
-if (process.env.GITHUB_OUTPUT) {
-  fs.appendFileSync(
-    process.env.GITHUB_OUTPUT,
-    Object.entries(outputs)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n') + '\n',
-  );
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  run();
 }

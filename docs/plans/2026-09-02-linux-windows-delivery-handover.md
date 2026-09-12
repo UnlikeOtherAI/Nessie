@@ -227,6 +227,7 @@ cargo check --release --target x86_64-pc-windows-msvc --all-targets
 
 | Workflow | Trigger | Jobs | Needs |
 | --- | --- | --- | --- |
+| `ci.yml` | every branch push | `Windows Native` (windows-latest: all Windows Rust crates and WiX installer-authoring tests when `desktop/`, `executor/`, or `assets/` changes; explicit reported skip otherwise) | no signing secrets or release artifacts; failures block the affected pull request |
 | `desktop-linux.yml` | `workflow_dispatch`, tags `desktop-v*` | `build` (ubuntu-24.04: cargo test, shell deb + AppImage, executor deb, checksums, install smoke under xvfb), `firecracker-conformance` | a self-hosted runner labelled `[self-hosted, linux, kvm]`; apt repository signing is a commented placeholder |
 | `desktop-windows.yml` | `workflow_dispatch`, tags `desktop-v*` | `guest-kernel` (Linux, builds `bzImage`), `build` (windows-latest: cargo test, tauri build, executor MSI, signing, checksums, silent-install smokes), `hyperv-conformance` | secrets `WINDOWS_SIGN_COMMAND` (Tauri `signCommand` with `%1`), `WINDOWS_SIGNER_THUMBPRINT`, `WINDOWS_SIGNER_SUBJECT`, optional `WINDOWS_SIGN_TOOL_INSTALL`, and for Azure Artifact Signing `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`; a runner labelled `[self-hosted, windows, hyperv]` |
 
