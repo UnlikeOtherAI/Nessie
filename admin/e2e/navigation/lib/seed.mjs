@@ -4,9 +4,12 @@
 // seeding path to drift from them.
 import { API_URL } from './config.mjs'
 import { readBootstrapToken } from './servers.mjs'
+import { randomBytes, scrypt as nodeScrypt } from 'node:crypto'
+import { promisify } from 'node:util'
 import { PrismaClient } from '@prisma/client'
 
 const CHANNEL_LABELS = ['Design Review', 'Release Notes']
+const scrypt = promisify(nodeScrypt)
 const ISOLATED_BROWSER_PUSH_USER = {
   displayName: 'Browser Push E2E',
   email: 'navigation-browser-push@example.com',
@@ -138,20 +141,66 @@ export const seedTeam = async (apiServer) => {
  * navigation fixture owns the person-facing bell -> exact recovery control
  * journey, so it seeds that already-failed state directly.
  */
+const seedTriggerOwner = async (seed, suffix) => {
+  const email = `navigation-trigger-owner-${suffix}@example.com`
+  const password = `navigation-trigger-owner-${suffix}`
+  const me = await call('/api/auth/me', { token: seed.token })
+  if (me.user.roleIds.includes('owner')) {
+    return { organizationId: me.context.organizationId, token: seed.token, userId: me.user.id }
+  }
+
+  // A developer database can have an older non-owner as its dev-login user.
+  // CI bootstraps an owner above; this local-only fallback keeps the owner-only
+  // Trigger list available without changing an existing person's entitlement.
+  const prisma = new PrismaClient()
+  try {
+    const organization = await prisma.organization.findUnique({
+      select: { externalOrgId: true },
+      where: { id: me.context.organizationId },
+    })
+    if (organization?.externalOrgId) {
+      throw new Error('trigger navigation fixture requires an unbound local organization')
+    }
+    const salt = randomBytes(16).toString('hex')
+    const key = (await scrypt(password, salt, 64)).toString('hex')
+    const user = await prisma.user.create({
+      data: { displayName: 'Trigger Navigation Owner', email, passwordHash: `scrypt$${salt}$${key}` },
+    })
+    await Promise.all([
+      prisma.organizationMember.create({
+        data: { organizationId: me.context.organizationId, role: 'owner', userId: user.id },
+      }),
+      prisma.projectMember.create({
+        data: { projectId: seed.project.id, role: 'owner', userId: user.id },
+      }),
+      prisma.teamMember.create({
+        data: { teamId: seed.team.id, role: 'owner', userId: user.id },
+      }),
+    ])
+    const session = await call('/api/auth/session', {
+      body: { email, password },
+      method: 'POST',
+    })
+    return { organizationId: me.context.organizationId, token: session.token, userId: user.id }
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
 export const seedTriggerHealthAlert = async (seed) => {
   const suffix = Date.now().toString(36)
   const title = `Reauthorize schedule ${suffix}`
+  const owner = await seedTriggerOwner(seed, suffix)
   const agent = await call('/api/agents', {
     body: { name: `Trigger health ${suffix}`, systemPrompt: 'Navigation alert proof.' },
     method: 'POST',
-    token: seed.token,
+    token: owner.token,
   })
-  const me = await call('/api/auth/me', { token: seed.token })
   const prisma = new PrismaClient()
   let triggerId
   try {
     await prisma.userAlert.deleteMany({
-      where: { eventKey: { startsWith: 'navigation-trigger-health:' }, userId: me.user.id },
+      where: { eventKey: { startsWith: 'navigation-trigger-health:' }, userId: owner.userId },
     })
     const trigger = await prisma.agentTrigger.create({
       data: {
@@ -171,16 +220,16 @@ export const seedTriggerHealthAlert = async (seed) => {
       data: {
         eventKey: `navigation-trigger-health:${trigger.id}`,
         kind: 'trigger_health',
-        organizationId: me.context.organizationId,
+        organizationId: owner.organizationId,
         triggerId: trigger.id,
-        userId: me.user.id,
+        userId: owner.userId,
       },
     })
     triggerId = trigger.id
   } finally {
     await prisma.$disconnect()
   }
-  return { title, triggerId }
+  return { title, token: owner.token, triggerId }
 }
 
 /**

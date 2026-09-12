@@ -35,8 +35,11 @@ means section 7, wherever it now lives.
 The Navigation Transitions suite includes a desktop durable-attention journey:
 it seeds a worker-classified trigger failure, opens it from the shared bell,
 and proves the durable trigger selection opens that exact schedule's health
-and Reauthorize controls after a reload. The worker and alert-dispatch suites retain ownership of
-the failure transition and delivery; this browser case owns the doorway.
+and Reauthorize controls after a reload. It also selects that real schedule
+from the list, takes its detail Back, then browser Back, proving durable
+selection does not create a stale history entry that reopens the detail. The
+worker and alert-dispatch suites retain ownership of the failure transition and
+delivery; this browser case owns the doorway.
 
 ## 16. Still planned
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { useTriggers } from '../../../facades/triggers/hooks'
 import { useAgents } from '../../../facades/agents/hooks'
@@ -112,20 +112,24 @@ export const useTriggersPageState = (): TriggersPageState => {
   // linkable and survives a refresh, and Back leaves the page rather than
   // undoing the filter (docs/navigation/overview.md §1).
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   // Selecting a trigger answers which recovery controls the person is
   // inspecting. It is durable URL state, so a cold alert link and a refresh
   // both retain the exact selected row.
   const selectedTriggerId = searchParams.get('trigger') ?? undefined
   const setSelectedTriggerId = useCallback(
     (triggerId: string | undefined) => {
-      setSearchParams((current) => {
-        const params = new URLSearchParams(current)
-        if (triggerId) params.set('trigger', triggerId)
-        else params.delete('trigger')
-        return params
-      })
+      setSearchParams(
+        (current) => {
+          const params = new URLSearchParams(current)
+          if (triggerId) params.set('trigger', triggerId)
+          else params.delete('trigger')
+          return params
+        },
+        { replace: true, state: location.state },
+      )
     },
-    [setSearchParams],
+    [location.state, setSearchParams],
   )
   const searchQuery = searchParams.get('search') ?? ''
   const setSearchQuery = useCallback(
