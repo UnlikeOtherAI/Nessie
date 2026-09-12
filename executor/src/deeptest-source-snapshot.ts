@@ -39,7 +39,7 @@ export type DeepTestSourceInventoryEntry = {
   status: 'excluded' | 'readable'
 }
 
-type SnapshotFile = DeepTestSourceInventoryEntry & { content?: Buffer }
+export type DeepTestSourceSnapshotFile = DeepTestSourceInventoryEntry & { content?: Buffer }
 
 export type DeepTestSourceSnapshot = {
   commit: string
@@ -51,7 +51,7 @@ export type DeepTestSourceSnapshot = {
     readable_files: number
     working_tree_changes_excluded: boolean
   }
-  files: readonly SnapshotFile[]
+  files: readonly DeepTestSourceSnapshotFile[]
   manifest_digest: string
   snapshot_id: string
   working_tree_state: 'clean' | 'dirty'
@@ -181,7 +181,7 @@ const exclusionFor = (
   return null
 }
 
-const parseTree = (output: Buffer): SnapshotFile[] => {
+const parseTree = (output: Buffer): DeepTestSourceSnapshotFile[] => {
   if (output.byteLength === 0) return []
   const records = output.subarray(0, output.at(-1) === 0 ? -1 : undefined).toString('binary').split('\0')
   if (records.length > MAX_TREE_ENTRIES) {
@@ -225,7 +225,7 @@ const parseTree = (output: Buffer): SnapshotFile[] => {
 
 const loadBlobs = async (
   root: string,
-  files: SnapshotFile[],
+  files: DeepTestSourceSnapshotFile[],
   assertActive: () => Promise<void>,
 ): Promise<void> => {
   const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -269,7 +269,7 @@ const loadBlobs = async (
 }
 
 const coverageFor = (
-  files: readonly SnapshotFile[],
+  files: readonly DeepTestSourceSnapshotFile[],
   workingTreeDirty: boolean,
 ): DeepTestSourceSnapshot['coverage'] => {
   let excludedBytes = 0

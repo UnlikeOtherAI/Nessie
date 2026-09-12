@@ -7,8 +7,9 @@ import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } fr
 import {
   createGuestWorkspaceLease,
   releaseGuestWorkspaceLeaseIfCurrent,
+  type GuestWorkspaceLease,
 } from './guest-workspace-lease.js'
-import type { ExecutorLocalState } from './state-store.js'
+import type { ExecutorGuestVmExecutionConfig } from './state-store.js'
 
 const COMMAND_SESSION_MAX_MS = 10 * 60 * 1_000
 const COMMAND_RESULT_MAX_BYTES = 8_192
@@ -26,6 +27,10 @@ type OpeningCommandSession = {
 }
 
 type CommandSessionStarter = (input: GuestVmSessionInput) => Promise<GuestVmSession>
+type PreparedLeaseSource = {
+  release: () => Promise<void>
+  workspaceRoot: string
+}
 
 export type ExecutorCommandSessionManager = {
   run: (command: ExecutorCommandEnvelope, runId: string) => Promise<Record<string, unknown>>
@@ -44,8 +49,12 @@ const denied = (): Record<string, unknown> => ({ code: 'EXECUTOR_COMMAND_DENIED'
  */
 export const createExecutorCommandSessionManager = (
   stateDir: string,
-  state: ExecutorLocalState,
-  dependencies: { startSession?: CommandSessionStarter } = {},
+  state: ExecutorGuestVmExecutionConfig,
+  dependencies: {
+    prepareLeaseSource?: (command: ExecutorCommandEnvelope) => Promise<PreparedLeaseSource>
+    startSession?: CommandSessionStarter
+    verifyLease?: (lease: GuestWorkspaceLease, command: ExecutorCommandEnvelope) => Promise<boolean>
+  } = {},
 ): ExecutorCommandSessionManager => {
   const activeByRun = new Map<string, ActiveCommandSession>()
   const openingByRun = new Map<string, OpeningCommandSession>()
@@ -84,6 +93,7 @@ export const createExecutorCommandSessionManager = (
     }
     openingByRun.set(runId, opening)
     let lease: Awaited<ReturnType<typeof createGuestWorkspaceLease>> | undefined
+    let prepared: PreparedLeaseSource | undefined
     let session: GuestVmSession | undefined
     const stopSessionAndReleaseLease = async (): Promise<void> => {
       try {
@@ -93,11 +103,26 @@ export const createExecutorCommandSessionManager = (
       }
     }
     try {
-      lease = await createGuestWorkspaceLease(stateDir, state.workspaceRoot, {
+      prepared = await dependencies.prepareLeaseSource?.(command)
+      lease = await createGuestWorkspaceLease(stateDir, prepared?.workspaceRoot ?? state.workspaceRoot, {
         bindingFence: command.bindingFence,
         commandId: command.commandId,
         runId,
       })
+      await prepared?.release()
+      prepared = undefined
+      if (opening.cancelled) {
+        await stopSessionAndReleaseLease()
+        return null
+      }
+      if (dependencies.verifyLease && !(await dependencies.verifyLease(lease, command))) {
+        await stopSessionAndReleaseLease()
+        return null
+      }
+      if (opening.cancelled) {
+        await stopSessionAndReleaseLease()
+        return null
+      }
       session = await startSession({
         guestInitrdBuilderPath: sandbox.guestInitrdBuilderPath,
         guestRuntimeBundlePath: sandbox.guestRuntimeBundlePath,
@@ -114,6 +139,7 @@ export const createExecutorCommandSessionManager = (
       await stopSessionAndReleaseLease().catch(() => undefined)
       return null
     } finally {
+      await prepared?.release().catch(() => undefined)
       if (openingByRun.get(runId) === opening) openingByRun.delete(runId)
       opening.finish()
     }
