@@ -105,9 +105,15 @@ attempted once repository branch protection lists **Windows Native** from the
 GitHub Actions app (ID `15368`) among required checks; preserve strict branch
 protection as disabled when adding it alongside the existing nine checks. Before
 testing the desktop crate it generates Prisma, then prepares the unsigned
-packaged runtime that Tauri's resource manifest requires. This source check
-receives no signing secrets and creates no release artifacts; the signed build
-and install smoke remain the release workflow's separate responsibility.
+packaged runtime that Tauri's resource manifest requires. Each Cargo command is
+an isolated fail-fast PowerShell step. Windows then builds the unsigned NSIS
+and MSI desktop installers, runs WiX validation, and uses the same install,
+launch, and uninstall smoke script as the release workflow. The standalone
+executor MSI needs a Linux-built Hyper-V guest kernel, so its build and service
+smoke remain in the independent release workflow rather than serializing CI.
+These are temporary CI inputs: the source check receives no signing secrets and
+neither uploads nor publishes them; signing remains the release workflow's
+separate responsibility.
 
 Signing is a deployment fact, configured through repository secrets. The
 recommended configuration is **Azure Artifact Signing** (formerly Azure Trusted

@@ -491,147 +491,16 @@ jobs:
         shell: pwsh
         run: |
           $installer = Get-ChildItem artifacts -Filter '*-setup.exe' | Select-Object -First 1
-          Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
-          # The sign-in callback returns through nessie://, so the scheme has to
-          # be registered for the installing user.
-          if (-not (Test-Path 'HKCU:\Software\Classes\nessie')) {
-            throw 'the nessie:// scheme was not registered'
-          }
-          $install = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            ForEach-Object { Get-ItemProperty $_.PSPath } |
-            Where-Object { $_.DisplayName -eq 'Nessie' } |
-            Select-Object -First 1
-          if (-not $install) { throw 'the Nessie uninstall registration was not found' }
-          $installRoot = $install.InstallLocation.Trim('"')
-          $appPath = Join-Path $installRoot 'nessie-desktop.exe'
-          if (-not (Test-Path -LiteralPath $appPath)) {
-            throw "the installed nessie-desktop.exe was not found at $appPath"
-          }
-          $app = Get-Item -LiteralPath $appPath
-
-          # No console: the PE subsystem must be GUI (2). A console subsystem
-          # binary flashes a terminal at every launch, which is the defect this
-          # asserts against rather than hoping nobody notices.
-          $bytes = [System.IO.File]::ReadAllBytes($app.FullName)
-          $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
-          $subsystem = [BitConverter]::ToUInt16($bytes, $peOffset + 0x5C)
-          if ($subsystem -ne 2) { throw "nessie-desktop.exe is not a GUI subsystem binary (got $subsystem)" }
-
-          $process = Start-Process -FilePath $app.FullName -PassThru
-          Start-Sleep -Seconds 10
-          $running = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-          if (-not $running) { throw 'Nessie exited within ten seconds' }
-          $running.Refresh()
-          if ($running.MainWindowTitle -ne 'Nessie') {
-            throw "expected a window titled Nessie, found '$($running.MainWindowTitle)'"
-          }
-          Stop-Process -Id $process.Id -Force
-
-          $uninstall = $install.UninstallString.Trim('"')
-          Start-Process -FilePath $uninstall -ArgumentList '/S' -Wait
-          Start-Sleep -Seconds 5
-          if (Test-Path -LiteralPath $app.FullName) { throw 'the desktop app was not uninstalled' }
+          & desktop/scripts/windows-installer-smoke.ps1 -InstallerPath $installer.FullName
 
       - name: Executor package install, service, and uninstall
         shell: pwsh
         run: |
           $package = Get-ChildItem artifacts -Filter 'NessieExecutor_*_x64.msi' | Select-Object -First 1
-          $install = Start-Process msiexec `
-            -ArgumentList "/i `"$($package.FullName)`" /qn /norestart /l*v $PWD\msi-install.log" `
-            -Wait -PassThru
-          if ($install.ExitCode -ne 0) {
-            Get-Content msi-install.log -Tail 80
-            throw "the executor MSI install failed with code $($install.ExitCode)"
-          }
-          $service = Get-CimInstance Win32_Service -Filter "Name='NessieExecutor'"
-          if (-not $service) { Get-Content msi-install.log -Tail 60; throw 'the service was not registered' }
-          # The virtual account: no password, no interactive logon, its own SID.
-          if ($service.StartName -ne 'NT SERVICE\NessieExecutor') {
-            throw "the service runs as $($service.StartName)"
-          }
-          if ($service.StartMode -ne 'Auto') { throw 'the service does not start at boot' }
-
-          # A signed release supervises; an unsigned development build keeps the
-          # service running and refuses in words, which is the behaviour the
-          # tamper case in the acceptance checklist depends on.
-          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
-            if ($service.State -ne 'Running') { throw 'the service is not running' }
-          } else {
-            Write-Host "unsigned build: service state is $($service.State)"
-          }
-
-          $stateRoot = Join-Path $env:ProgramData 'Nessie Executor'
-          if (-not (Test-Path $stateRoot)) { throw 'the state root was not created' }
-          $stateAcl = Get-Acl $stateRoot
-          $stateAcl.Access | Format-Table IdentityReference, FileSystemRights, IsInherited
-          if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
-            $serviceAccount = New-Object System.Security.Principal.NTAccount('NT SERVICE', 'NessieExecutor')
-            $serviceSid = $serviceAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
-            $systemSid = 'S-1-5-18'
-            $ownerSid = (New-Object System.Security.Principal.NTAccount($stateAcl.Owner)).Translate(
-              [System.Security.Principal.SecurityIdentifier]
-            ).Value
-            if ($ownerSid -ne $serviceSid) {
-              throw "the state root owner is $ownerSid instead of the executor service"
-            }
-            if ($stateAcl.AreAccessRulesProtected -ne $true) {
-              throw 'the state root inherits access rules from ProgramData'
-            }
-            $stateRules = @($stateAcl.Access)
-            if ($stateRules.Count -ne 2) {
-              throw "the state root has $($stateRules.Count) access rules instead of two"
-            }
-            foreach ($rule in $stateRules) {
-              $ruleSid = $rule.IdentityReference.Translate(
-                [System.Security.Principal.SecurityIdentifier]
-              ).Value
-              if ($ruleSid -notin @($serviceSid, $systemSid)) {
-                throw "the state root grants access to unexpected identity $ruleSid"
-              }
-              if ($rule.IsInherited) {
-                throw "the state root has an inherited rule for $ruleSid"
-              }
-              if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
-                throw "the state root has a deny rule for $ruleSid"
-              }
-              $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
-              if (($rule.FileSystemRights -band $fullControl) -ne $fullControl) {
-                throw "the state root does not grant full control to $ruleSid"
-              }
-            }
-          }
-
-          # The Run entry starts the tray at the installing user's next logon;
-          # there is no logon here, so the tray is started directly and must
-          # survive with no window of its own.
-          $run = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name NessieExecutorTray
-          if (-not $run.NessieExecutorTray) { throw 'the tray autostart entry is missing' }
-          $tray = Start-Process -FilePath "$env:ProgramFiles\Nessie Executor\nessie-executor-tray.exe" -PassThru
-          Start-Sleep -Seconds 10
-          $trayRunning = Get-Process -Id $tray.Id -ErrorAction SilentlyContinue
-          if (-not $trayRunning) { throw 'the tray exited within ten seconds' }
-          $trayRunning.Refresh()
-          if ($trayRunning.MainWindowTitle -ne '') {
-            throw "the tray opened a window at launch: '$($trayRunning.MainWindowTitle)'"
-          }
-          Stop-Process -Id $tray.Id -Force
-
-          $uninstall = Start-Process msiexec `
-            -ArgumentList "/x `"$($package.FullName)`" /qn /norestart /l*v $PWD\msi-uninstall.log" `
-            -Wait -PassThru
-          if ($uninstall.ExitCode -ne 0) {
-            Get-Content msi-uninstall.log -Tail 80
-            throw "the executor MSI uninstall failed with code $($uninstall.ExitCode)"
-          }
-          if (Get-Service NessieExecutor -ErrorAction SilentlyContinue) {
-            throw 'the service was not removed'
-          }
-          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name NessieExecutorTray -ErrorAction SilentlyContinue) {
-            throw 'the tray autostart entry was not removed'
-          }
-          # Deliberate: a pairing is a machine key and a signed policy revision,
-          # and uninstalling a program is not a request to destroy them.
-          if (-not (Test-Path $stateRoot)) { throw 'the state root was removed by uninstall' }
+          $requireSignedService = '${{ steps.signing.outputs.signed }}' -eq 'true'
+          & executor/packaging/windows/installer-smoke.ps1 `
+            -PackagePath $package.FullName `
+            -RequireSignedService:$requireSignedService
 
   hyperv-conformance:
     name: Hyper-V backend conformance

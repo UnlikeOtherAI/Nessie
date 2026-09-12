@@ -245,6 +245,8 @@ jobs:
   windows-native:
     name: Windows Native
     runs-on: windows-latest
+    env:
+      WIX_VERSION: "5.0.2"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,12 +261,12 @@ jobs:
         run: node scripts/ci-scope.mjs
 
       - name: Test Windows-native scope
-        run: node --test scripts/ci-scope.test.mjs
+        run: node --test scripts/ci-scope.test.mjs scripts/windows-native-ci.test.mjs
 
       # Keep source verification separate from release signing. Pull requests
-      # receive no signing secrets and this job never creates release artifacts.
-      # It does fail on any Rust or WiX-authoring regression before a release
-      # workflow can build, sign, or install an artifact.
+      # receive no signing secrets. The installers below are temporary unsigned
+      # validation inputs only: this job neither signs, uploads, nor publishes
+      # them; the signed release workflow remains a separate deployment gate.
       - name: Setup pnpm
         if: steps.scope.outputs.windows_native == '1'
         uses: pnpm/action-setup@v4
@@ -283,6 +285,27 @@ jobs:
           rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
           rustup default stable-x86_64-pc-windows-msvc
           rustc --version
+
+      - name: Cache Cargo
+        if: steps.scope.outputs.windows_native == '1'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+            executor/native/target
+            executor/service-windows/target
+            executor/tray-windows/src-tauri/target
+            executor/hyperv-bridge/target
+          key: >-
+            windows-native-cargo-${{ hashFiles(
+              'desktop/src-tauri/Cargo.lock',
+              'executor/native/Cargo.lock',
+              'executor/service-windows/Cargo.lock',
+              'executor/hyperv-bridge/Cargo.lock',
+              'executor/tray-windows/src-tauri/Cargo.lock') }}
+          restore-keys: windows-native-cargo-
 
       - name: Install dependencies
         if: steps.scope.outputs.windows_native == '1'
@@ -310,20 +333,96 @@ jobs:
         if: steps.scope.outputs.windows_native == '1'
         run: pnpm --dir desktop run prepare:executor-runtime
 
-      - name: Run Windows-native Rust tests
+      # GitHub Actions' PowerShell wrapper only propagates the final native
+      # command's exit code. Each crate gets its own step and repeats the exit
+      # check, so a failure can never be hidden by a later passing Cargo test.
+      - name: Test desktop Rust crate
         if: steps.scope.outputs.windows_native == '1'
         shell: pwsh
         run: |
           cargo test --manifest-path desktop/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test executor native helper crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
           cargo test --manifest-path executor/native/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test Windows provenance crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
           cargo test --manifest-path executor/windows-provenance/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test executor service crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
           cargo test --manifest-path executor/service-windows/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test Hyper-V bridge crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
           cargo test --manifest-path executor/hyperv-bridge/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test executor tray crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
           cargo test --manifest-path executor/tray-windows/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run Windows installer-authoring tests
         if: steps.scope.outputs.windows_native == '1'
         run: node --test executor/packaging/windows/msi-plan.test.mjs
+
+      - name: Install the WiX toolset
+        if: steps.scope.outputs.windows_native == '1'
+        run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
+
+      - name: Enable VBScript for MSI validation
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $capability = Get-WindowsCapability -Online -Name 'VBSCRIPT~~~~' -ErrorAction SilentlyContinue
+          if ($capability -and $capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name | Out-Null
+          }
+          if (-not (Test-Path "$env:SystemRoot\System32\vbscript.dll")) {
+            throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
+          }
+
+      - name: Build unsigned Windows desktop installers
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          pnpm --dir desktop exec tauri build --bundles nsis,msi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate unsigned Windows desktop MSI
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem desktop/src-tauri/target/release/bundle/msi -Filter '*.msi' |
+            Select-Object -First 1
+          if (-not $package) { throw 'Tauri did not produce a Windows MSI' }
+          wix msi validate $package.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Smoke-test unsigned Windows desktop installer
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' |
+            Select-Object -First 1
+          if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer' }
+          & desktop/scripts/windows-installer-smoke.ps1 -InstallerPath $installer.FullName
 
       - name: Report skip
         if: steps.scope.outputs.windows_native != '1'
