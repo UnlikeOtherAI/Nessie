@@ -6,7 +6,7 @@ import { alertKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useEventStream } from '../realtime/event-stream'
-import { triggerUrl } from '../../navigation/trigger-url'
+import { triggerUrl } from './trigger-url'
 
 // The server-enforced shape (`UserAlertRecordSchema`, parsed on every
 // response in `api/src/routes/alerts.ts`) rather than a hand-copied type —

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { AgentRecord, AgentTriggerRecord, ChannelRecord } from '../../../../lib/api-client'
 import { useCreateAgentTrigger } from '../../../../facades/triggers/hooks'
-import { triggerUrl } from '../../../../navigation/trigger-url'
+import { triggerUrl } from '../../../../facades/alerts/trigger-url'
 
 type ScheduledTodoTemplateProps = {
   agent: AgentRecord

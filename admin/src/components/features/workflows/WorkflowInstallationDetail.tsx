@@ -13,7 +13,7 @@ import {
 } from '../../../facades/workflows/hooks'
 import { usePagedList } from '../../../facades/pagination/usePagedList'
 import { workflowKeys } from '../../../facades/workflows/keys'
-import { triggerUrl } from '../../../navigation/trigger-url'
+import { triggerUrl } from '../../../facades/alerts/trigger-url'
 import { EmptyState } from '../../shared/EmptyState'
 import { KeyValueList } from '../../shared/KeyValueList'
 import { PaginationFooter } from '../../shared/PaginationFooter'
