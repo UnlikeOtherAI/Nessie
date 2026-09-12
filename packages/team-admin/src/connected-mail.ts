@@ -60,6 +60,8 @@ export class ConnectedMailError extends Error {
 
 export type ConnectedMailDeps = {
   encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
+  /** Signing-only token root for IMAP thread delivery; never used at rest. */
+  threadTokenSecret?: string
   fetchImpl?: typeof safeFetch
   /** Injectable only at the transport boundary; action claiming stays durable. */
   sendMailbox?: typeof sendFromMailbox
@@ -254,7 +256,7 @@ export const listConnectedMailThreads = async (
     const page = await listMailboxMailThreads(
       await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret),
       input,
-      mailboxDialOptions(deps.encryptionSecret),
+      mailboxDialOptions(deps.threadTokenSecret),
     )
     return validatedPage({ ...page, items: mapThreads(page.items) })
   } catch (error) {
@@ -299,7 +301,7 @@ export const readConnectedMailConversation = async (
   try {
     const conversation = await readMailboxMailConversation(
       await mailboxEndpointsFor(prisma, connection, deps.encryptionSecret), input,
-      mailboxDialOptions(deps.encryptionSecret))
+      mailboxDialOptions(deps.threadTokenSecret))
     if (!conversation) throw new ConnectedMailError('NOT_FOUND')
     return ConnectedMailConversationSchema.parse(
       mapConversation(conversation, conversation.earlierMessagesMayExist),
