@@ -88,6 +88,64 @@ export const visibleUserAlertWhere = (input: {
       approvalRequest: { is: { status: 'pending' } },
     },
     {
+      // Workflow failures only remain visible while the run is still failed
+      // and the recipient can still read its installation. This mirrors the
+      // run route's channel entitlement without trusting the alert row's
+      // original audience after membership changes.
+      kind: 'workflow_run_failed',
+      AND: [
+        { workflowRun: { is: { status: 'failed' } } },
+        {
+          OR: [
+            {
+              workflowRun: {
+                is: {
+                  organization: {
+                    is: {
+                      members: {
+                        some: {
+                          deactivatedAt: null,
+                          role: { in: ['owner', 'admin'] },
+                          userId: input.userId,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              workflowRun: {
+                is: {
+                  installation: {
+                    is: { channelId: null },
+                  },
+                },
+              },
+            },
+            {
+              workflowRun: {
+                is: {
+                  installation: {
+                    is: {
+                      channel: {
+                        is: {
+                          OR: [
+                            { visibility: 'public' },
+                            { members: { some: { userId: input.userId } } },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
       // The foreign key cascade removes this row on deletion, while this
       // relation check keeps a concurrent source deletion from leaking a stale
       // bell item through a read/count/write query.

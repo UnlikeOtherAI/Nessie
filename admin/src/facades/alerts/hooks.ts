@@ -160,6 +160,9 @@ export const getAlertLink = (
       to: `/projects/${alert.projectId}/settings?section=sources&source=${alert.boardSourceId}`,
     }
   }
+  if (alert.kind === 'workflow_run_failed' && alert.workflowRunId) {
+    return { to: `/agents/workflows?failedRuns=1&run=${alert.workflowRunId}` }
+  }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }
   }

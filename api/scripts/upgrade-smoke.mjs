@@ -64,6 +64,17 @@ async function main() {
       orderBy: { createdAt: 'desc' },
       include: { thread: true },
     });
+    const orphanId = process.env.UPGRADE_WORKFLOW_INSTALLATION_ORPHAN_ID;
+    if (orphanId) {
+      const installation = await prisma.workflowInstallation.findUnique({
+        select: { channelId: true },
+        where: { id: orphanId },
+      });
+      if (!installation || installation.channelId !== null) {
+        fail('legacy workflow installation channel was not detached before the FK was added');
+      }
+      console.log('legacy workflow installation orphan detached');
+    }
     console.log(`core queries OK: ${JSON.stringify(counts)}`);
     console.log('upgrade-smoke: PASS');
   } finally {

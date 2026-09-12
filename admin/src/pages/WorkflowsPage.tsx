@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type {
@@ -191,24 +191,31 @@ export const WorkflowsPage = () => {
     return `/agents/workflows${query ? `?${query}` : ''}`
   }, [searchQuery, selectedInstallationId, selectedRunId, selectedTemplate])
 
-  const columns = []
+  const columns: ReactNode[] = []
+  const columnIndexes = new Map<string, number>()
+  const addColumn = (name: string, column: ReactNode) => {
+    columnIndexes.set(name, columns.length)
+    columns.push(column)
+  }
 
   if (showFailedRuns) {
-    columns.push(
+    addColumn(
+      'failed-runs',
       <WorkflowFailedRunsColumn
         failedRuns={failedRuns}
         failedRunsList={failedRunsList}
         key="failed-runs"
-        onBack={() => setShowFailedRuns(false)}
+        onBack={() => updateParams({ failedRuns: null, run: null })}
         onSelectRun={(run) =>
-          updateParams({ failedRuns: null, installation: run.installationId, run: run.id })
+          updateParams({ failedRuns: '1', installation: null, run: run.id })
         }
       />,
     )
   }
 
   if (showDemonstrationDrafts) {
-    columns.push(
+    addColumn(
+      'demonstration-drafts',
       <DemonstrationDraftsColumn
         demonstrations={demonstrations}
         key="demonstration-drafts"
@@ -225,7 +232,8 @@ export const WorkflowsPage = () => {
     )
   }
 
-  columns.push(
+  addColumn(
+    'workflows',
     <WorkflowsListColumn
       demonstrations={demonstrations}
       failedRunsCount={failedRuns.length}
@@ -252,7 +260,8 @@ export const WorkflowsPage = () => {
   )
 
   if (selectedTemplate) {
-    columns.push(
+    addColumn(
+      'template',
       <ColumnBrowserColumn
         key={`template-${selectedTemplate.id}`}
         onBack={() => updateParams({ template: null })}
@@ -291,7 +300,8 @@ export const WorkflowsPage = () => {
   }
 
   if (selectedInstallation) {
-    columns.push(
+    addColumn(
+      'installation',
       <ColumnBrowserColumn
         key={`installation-${selectedInstallation.id}`}
         onBack={() => updateParams({ installation: null, run: null })}
@@ -312,7 +322,8 @@ export const WorkflowsPage = () => {
   }
 
   if (selectedInstallation && selectedRunId) {
-    columns.push(
+    addColumn(
+      'run',
       <ColumnBrowserColumn
         key={`run-${selectedRunId}`}
         onBack={() => setSelectedRunId(undefined)}
@@ -326,14 +337,37 @@ export const WorkflowsPage = () => {
       </ColumnBrowserColumn>,
     )
   }
+  if (showFailedRuns && selectedRunId && !selectedInstallation) {
+    addColumn(
+      'failed-run',
+      <ColumnBrowserColumn
+        key={`failed-run-${selectedRunId}`}
+        onBack={() => setSelectedRunId(undefined)}
+        showBack
+        title={`Run ${selectedRunId.slice(0, 8)}`}
+      >
+        <WorkflowRunDetail
+          isWorkflowAdmin={isWorkflowAdmin}
+          workflowRunId={selectedRunId}
+        />
+      </ColumnBrowserColumn>,
+    )
+  }
 
-  const activeColumn = selectedRunId && selectedInstallation
-    ? 3
-    : selectedInstallation
-      ? 2
-      : selectedTemplate && selectedTemplateId
-        ? 1
-        : 0
+  // Optional lanes prepend columns and an eligible template is selected for
+  // reading even without a `?template=` selection. Resolve the visible stage
+  // from the panes that were actually composed so a cold failed-run doorway
+  // always lands on its run instead of an auto-selected template beside it.
+  const activeColumn =
+    (selectedRunId
+      ? columnIndexes.get(selectedInstallation ? 'run' : 'failed-run')
+      : undefined)
+    ?? (selectedInstallation ? columnIndexes.get('installation') : undefined)
+    ?? (selectedTemplateId ? columnIndexes.get('template') : undefined)
+    ?? columnIndexes.get('failed-runs')
+    ?? columnIndexes.get('demonstration-drafts')
+    ?? columnIndexes.get('workflows')
+    ?? 0
 
   return (
     <div className="h-full w-full">
