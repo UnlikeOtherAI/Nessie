@@ -148,6 +148,7 @@ export const seedTriggerHealthAlert = async (seed) => {
   })
   const me = await call('/api/auth/me', { token: seed.token })
   const prisma = new PrismaClient()
+  let triggerId
   try {
     const trigger = await prisma.agentTrigger.create({
       data: {
@@ -172,10 +173,11 @@ export const seedTriggerHealthAlert = async (seed) => {
         userId: me.user.id,
       },
     })
+    triggerId = trigger.id
   } finally {
     await prisma.$disconnect()
   }
-  return { title, triggerId: trigger.id }
+  return { title, triggerId }
 }
 
 /**
