@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto'
 
-import { decryptWithKey, deriveSecretKey, encryptWithKey } from '@nessie/runtime'
+import {
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+} from '@nessie/runtime'
 import { canonicalExecutorJson } from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
@@ -11,9 +15,11 @@ export const executorCommandDigest = (value: unknown): string =>
 export const encryptExecutorCommandJson = (
   encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   value: unknown,
-): string => JSON.stringify(
-  encryptWithKey(deriveSecretKey(encryptionSecret), JSON.stringify(value)),
-)
+): string => JSON.stringify(encryptWithKeyRing(
+  toEncryptionKeyRing(encryptionSecret),
+  'executor.command',
+  JSON.stringify(value),
+))
 
 export const decryptExecutorCommandJson = (
   encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
@@ -25,7 +31,11 @@ export const decryptExecutorCommandJson = (
       ciphertext: string
       iv: string
     }
-    const parsed = JSON.parse(decryptWithKey(deriveSecretKey(encryptionSecret), parts))
+    const parsed = JSON.parse(decryptWithKeyRing(
+      toEncryptionKeyRing(encryptionSecret),
+      'executor.command',
+      parts,
+    ).plaintext)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new Error('not a record')
     }
