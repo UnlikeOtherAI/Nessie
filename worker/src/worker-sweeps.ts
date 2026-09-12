@@ -44,8 +44,18 @@ import { maybeSyncRegistry } from './control/registry-sync-sweep.js'
 import { sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import type { WorkerSweepDeps } from './worker-runtime-types.js'
 
-export const startWorkerSweeps = (deps: WorkerSweepDeps): { stop: () => void } => {
-  const { abortSignal, automaticMembershipEnabled, cloudBrowser, pool, prisma, realtimeTransport, runnerLabelPrefix } = deps
+export const startWorkerSweeps = (
+  deps: WorkerSweepDeps,
+): { stop: () => void } => {
+  const {
+    abortSignal,
+    automaticMembershipEnabled,
+    cloudBrowser,
+    pool,
+    prisma,
+    realtimeTransport,
+    runnerLabelPrefix,
+  } = deps
 
 let triggerSweepInFlight = false
 const triggerSweepInterval = setInterval(async () => {
@@ -138,7 +148,11 @@ const boardSourceSweepInterval = setInterval(async () => {
   try {
     const claimed = await sweepDueBoardSources(prisma, { limit: 20 })
     for (const source of claimed) {
-      await enqueueBoardSourceSync(prisma, { sourceId: source.sourceId }, source.claimedAt)
+      await enqueueBoardSourceSync(
+        prisma,
+        { sourceId: source.sourceId },
+        source.claimedAt,
+      )
     }
     // A webhook due inside three days is renewed now. The idempotency key is
     // bucketed by day, so ticking every 30 seconds still queues one job.

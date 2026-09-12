@@ -71,7 +71,23 @@ import { handleCallRingDispatch, handleCallRingCancel } from './control/call-rin
 import { handleCallRingTimeout } from './control/call-lifecycle.js'
 import type { WorkerCoreSubscriptionDeps } from './worker-runtime-types.js'
 export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps): boolean => {
-  const { abortSignal, cloudBrowser, config, deepSignalMcpIdentity, fileService, ledgerIdentity, mcpSecrets, modelClient, pool, prisma, queueProvider, realtimeTransport, runnerLabelPrefix, subscribe, subscriptionSecrets } = deps
+  const {
+    abortSignal,
+    cloudBrowser,
+    config,
+    deepSignalMcpIdentity,
+    fileService,
+    ledgerIdentity,
+    mcpSecrets,
+    modelClient,
+    pool,
+    prisma,
+    queueProvider,
+    realtimeTransport,
+    runnerLabelPrefix,
+    subscribe,
+    subscriptionSecrets,
+  } = deps
 subscribe(
   'call.ring-timeout',
   async (job) => {
@@ -321,7 +337,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   KNOWLEDGE_EXTRACT_TOPIC,
   async (job) => {
@@ -330,7 +345,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   ATTACHMENT_THUMBNAIL_TOPIC,
   async (job) => {
@@ -339,7 +353,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 // Automatic team access after sign-in
 // (docs/plans/2026-09-04-automatic-team-membership-by-verified-domain.md).
 // The instance flag reaches every handler and the sweep, so switching it off
@@ -357,7 +370,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   AUTOMATIC_MEMBERSHIP_RECONCILE_TOPIC,
   async (job) => {
@@ -369,7 +381,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   AUTOMATIC_MEMBERSHIP_REVALIDATE_TOPIC,
   async (job) => {
@@ -381,7 +392,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 // Dashboards: one cache per source, refreshed here and nowhere else, so
 // viewing a dashboard never causes an outbound request.
 const dashboardEgressPolicy = {
@@ -396,7 +406,6 @@ const dashboardRefreshDeps = {
     ref.startsWith('secret_dashboard_') ? dashboardSecretResolver.resolve(ref) : null,
   realtimeTransport,
 }
-
 subscribe(
   DASHBOARD_REFRESH_TOPIC,
   async (job) => {
@@ -406,7 +415,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   'trigger.event.dispatch',
   async (job) => {
@@ -417,7 +425,6 @@ subscribe(
     signal: abortSignal,
   },
 )
-
 // Inbound webhook deliveries. The intake route verifies and acks; the fire
 // happens here, on the same seam the scheduler and event dispatch use
 // (docs/standards/horizontal-scaling/overview.md § 3).
@@ -431,7 +438,6 @@ subscribe(
     signal: abortSignal,
   },
 )
-
 // DeepSignal proactive insights: the receiver verifies and routes, the
 // per-recipient digest fan-out runs here.
 subscribe(
@@ -444,7 +450,6 @@ subscribe(
     signal: abortSignal,
   },
 )
-
 subscribe(
   'workflow.run.execute',
   async (job) => {
@@ -460,7 +465,6 @@ subscribe(
     signal: abortSignal,
   },
 )
-
 subscribe(
   DEMONSTRATION_GENERALIZE_TOPIC,
   async (job) => {
@@ -469,7 +473,6 @@ subscribe(
   },
   { signal: abortSignal },
 )
-
 subscribe(
   'execution.environment.allocate',
   async (job) => {
@@ -483,7 +486,6 @@ subscribe(
     signal: abortSignal,
   },
 )
-
 subscribe(
   'execution.environment.terminate',
   async (job) => {
@@ -494,6 +496,5 @@ subscribe(
     signal: abortSignal,
   },
 )
-
   return automaticMembershipEnabled
 }

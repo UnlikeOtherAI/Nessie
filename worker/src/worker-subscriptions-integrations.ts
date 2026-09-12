@@ -1,4 +1,7 @@
-import { createAgentMailTransport, resolveAgentMailReadiness } from '@nessie/agent-mail'
+import {
+  createAgentMailTransport,
+  resolveAgentMailReadiness,
+} from '@nessie/agent-mail'
 import { registerBoardSourceAdaptersFromEnv } from '@nessie/board-source-providers'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import {
@@ -52,8 +55,18 @@ import { enqueueBoardSourceHealthAlert } from './queue.js'
 import { registerExecutionRunners } from './control/execution.js'
 import type { WorkerIntegrationSubscriptionDeps } from './worker-runtime-types.js'
 
-export const registerWorkerIntegrationSubscriptions = async (deps: WorkerIntegrationSubscriptionDeps): Promise<void> => {
-  const { abortSignal, config, fileService, prisma, realtimeTransport, runnerLabelPrefix, subscribe } = deps
+export const registerWorkerIntegrationSubscriptions = async (
+  deps: WorkerIntegrationSubscriptionDeps,
+): Promise<void> => {
+  const {
+    abortSignal,
+    config,
+    fileService,
+    prisma,
+    realtimeTransport,
+    runnerLabelPrefix,
+    subscribe,
+  } = deps
 
 // Individual Communications Connector sync pipeline. Provider adapters plug
 // into the shared @nessie/comms-connect registry later; these handlers load a
