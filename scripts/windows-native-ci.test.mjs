@@ -9,13 +9,15 @@ import { fileURLToPath } from "node:url";
 const repositoryDirectory = resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
-const ciWorkflow = await readFile(
+const normalizeLineEndings = (text) => text.replace(/\r\n?/g, "\n");
+const readWorkflow = async (path) =>
+  normalizeLineEndings(await readFile(path, "utf8"));
+
+const ciWorkflow = await readWorkflow(
   resolve(repositoryDirectory, ".github/workflows/ci.yml"),
-  "utf8",
 );
-const releaseWorkflow = await readFile(
+const releaseWorkflow = await readWorkflow(
   resolve(repositoryDirectory, ".github/workflows/desktop-windows.yml"),
-  "utf8",
 );
 const desktopInstallerSmoke = await readFile(
   resolve(repositoryDirectory, "desktop/scripts/windows-installer-smoke.ps1"),
@@ -67,6 +69,14 @@ function stepBlock(job, stepName) {
   const nextStep = remainder.search(/\n      - name: |\n  [a-z][a-z0-9-]*:\n/);
   return nextStep === -1 ? remainder : remainder.slice(0, nextStep);
 }
+
+test("workflow parsing accepts Windows CRLF checkouts", () => {
+  const windowsCheckout = ciWorkflow.replaceAll("\n", "\r\n");
+  assert.match(
+    jobBlock(normalizeLineEndings(windowsCheckout), "windows-native"),
+    /name: Windows Native/,
+  );
+});
 
 test("each Windows-native Cargo test has its own explicit exit-enforcing step", () => {
   const windowsNative = jobBlock(ciWorkflow, "windows-native");
