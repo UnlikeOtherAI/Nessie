@@ -77,3 +77,22 @@ test('team invitation alerts name the inviter and expose acceptance', () => {
   assert.match(withoutInviter, />Research</)
   assert.doesNotMatch(withoutInviter, /invited you/)
 })
+
+test('automatic-membership health alerts name the remedy and exact rule setting', () => {
+  const alert: UserAlertRecord = {
+    ...missedCall,
+    actorDisplayName: null,
+    automaticMembershipRuleId: '55555555-5555-4555-8555-555555555555',
+    automaticMembershipRuleTeamName: 'Research',
+    channelId: null,
+    channelLabel: null,
+    kind: 'automatic_membership_health',
+    messageId: null,
+  }
+  const html = renderToStaticMarkup(createElement(AlertRow, { alert }))
+
+  assert.match(html, /Automatic access to Research needs reauthorization/)
+  assert.deepEqual(getAlertLink(alert), {
+    to: '/settings/members?membersTab=automatic&automaticMembershipRule=55555555-5555-4555-8555-555555555555',
+  })
+})

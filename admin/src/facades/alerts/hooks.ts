@@ -154,6 +154,14 @@ export const getAlertLink = (
     // stopped rather than a list the reader has to search.
     return { to: triggerUrl(alert.triggerId) }
   }
+  if (alert.kind === 'automatic_membership_health' && alert.automaticMembershipRuleId) {
+    // Automatic access has one home: Organization -> Members -> Automatic
+    // logins. The rule id is retained as URL state so the shared panel can put
+    // the precise reauthorization control in view after a cold bell click.
+    return {
+      to: `/settings/members?membersTab=automatic&automaticMembershipRule=${alert.automaticMembershipRuleId}`,
+    }
+  }
   if (alert.kind === 'board_source_health' && alert.projectId && alert.boardSourceId) {
     // Straight to the source that stopped, with its remedy on screen — not to
     // a settings page the reader then has to search.

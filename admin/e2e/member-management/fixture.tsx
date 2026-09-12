@@ -2,10 +2,17 @@ import { ApiClientError, ApiClientProvider, type ApiClient } from '@nessie/clien
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import type { TeamMemberRecord, TeamInvitationRecord } from '@nessie/schemas'
+import type {
+  AutomaticMembershipResponse,
+  TeamMemberRecord,
+  TeamInvitationRecord,
+  UserAlertRecord,
+} from '@nessie/schemas'
 
 import { MembersRosterPanel } from '../../src/components/features/settings/MembersRosterPanel'
+import { AlertsBell } from '../../src/layouts/admin-shell/AlertsBell'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
+import { FocusModeProvider } from '../../src/providers/FocusModeProvider'
 import '../../src/styles.css'
 
 const params = new URLSearchParams(location.search)
@@ -32,6 +39,34 @@ let invitations: TeamInvitationRecord[] = [
 ]
 let access = true
 const calls: { method: string; path: string; body?: unknown }[] = []
+const failedRuleId = '10000000-0000-4000-8000-000000000015'
+const automaticMembership: AutomaticMembershipResponse = {
+  domains: [{
+    challengeExpiresAt: '2026-09-13T00:00:00.000Z',
+    domain: 'example.test',
+    id: '10000000-0000-4000-8000-000000000016',
+    recordName: '_nessie-domain-verification.example.test',
+    rules: [{
+      createdScope: 'organization', enabled: true, grantedCount: 4,
+      health: 'needs_reauthorization', healthReason: 'The original grant expired.',
+      id: failedRuleId, manageable: true, teamId: '10000000-0000-4000-8000-000000000017',
+      teamName: 'Design',
+    }],
+    status: 'active',
+  }],
+  permissions: { manageDomains: true, manageReconciliation: true, manageRules: true },
+  provisioningEnabled: true,
+  teamOptions: [{ id: '10000000-0000-4000-8000-000000000017', name: 'Design' }],
+}
+let alerts: UserAlertRecord[] = [{
+  actorAgentId: null, actorDisplayName: null, actorUserId: null,
+  automaticMembershipRuleId: failedRuleId, automaticMembershipRuleTeamName: 'Design',
+  boardSourceId: null, callId: null, channelId: null, channelLabel: null,
+  createdAt: '2026-09-12T10:00:00.000Z', id: '10000000-0000-4000-8000-000000000018',
+  kind: 'automatic_membership_health', knowledgePageId: null, messageId: null,
+  metadata: null, projectId: null, readAt: null, rootMessageId: null, taskId: null,
+  threadId: null, triggerId: null,
+}]
 Object.assign(window, {
   memberManagementCalls: calls,
   refetchMemberManagementQueries: () => queryClient.refetchQueries(),
@@ -43,6 +78,15 @@ const page = (items: unknown[], grants: unknown) => ({
 const getPage = async (path: string) => {
   calls.push({ method: 'GET', path })
   const url = new URL(path, location.origin)
+  if (url.pathname === '/api/alerts') return alerts
+  if (url.pathname === '/api/alerts/summary') {
+    return {
+      assignedWork: { projects: {}, total: 0 },
+      knowledge: { projects: {}, total: 0 },
+      unreadCount: alerts.filter((alert) => alert.readAt === null).length,
+    }
+  }
+  if (url.pathname.endsWith('/automatic-membership')) return automaticMembership
   if (path.includes('/candidates')) {
     if (fail === 'search') throw new Error('Directory unavailable')
     return page([{ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák' }],
@@ -89,17 +133,25 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
     })
   }
   else if (path.endsWith('/members')) members.push({ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák', status: 'ACTIVE' })
+  else if (path === '/api/alerts/read') alerts = alerts.map((alert) => (
+    body?.ids?.includes(alert.id) || body?.all === true
+      ? { ...alert, readAt: '2026-09-12T10:01:00.000Z' }
+      : alert
+  ))
   return { ok: true }
 }
-const client = { getPage, get: async () => ({}), post: mutate('POST'), put: mutate('PUT'),
+const client = { getPage, get: getPage, post: mutate('POST'), put: mutate('PUT'),
   delete: mutate('DELETE'), patch: mutate('PATCH') } as unknown as ApiClient
 const root = document.querySelector('#root')
 if (!(root instanceof HTMLElement)) throw new Error('Fixture root missing')
 document.documentElement.dataset.theme = 'sandstone'
 createRoot(root).render(
   <QueryClientProvider client={queryClient}>
-    <AuthSessionProvider><ApiClientProvider client={client}><BrowserRouter>
-      <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]"><MembersRosterPanel scope={scope} /></main>
-    </BrowserRouter></ApiClientProvider></AuthSessionProvider>
+    <AuthSessionProvider><ApiClientProvider client={client}><FocusModeProvider><BrowserRouter>
+      <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
+        <div className="flex justify-end p-3"><AlertsBell /></div>
+        <MembersRosterPanel scope={scope} />
+      </main>
+    </BrowserRouter></FocusModeProvider></ApiClientProvider></AuthSessionProvider>
   </QueryClientProvider>,
 )

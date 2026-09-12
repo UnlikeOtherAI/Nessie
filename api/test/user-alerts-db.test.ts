@@ -134,3 +134,95 @@ runDatabaseTest('mention alerts persist in the message-create transaction and dr
   const reread = await prisma.userAlert.findUniqueOrThrow({ where: { id: row.id } })
   assert.ok(reread.readAt instanceof Date)
 })
+
+runDatabaseTest('automatic-membership health alerts retain their rule doorway until repair or revocation', async (t) => {
+  const prisma = new PrismaClient()
+  const seed = await seedTeam(prisma)
+  t.after(() => cleanup(prisma, seed).then(() => prisma.$disconnect()))
+
+  await prisma.organizationMember.update({
+    data: { role: 'owner' },
+    where: {
+      organizationId_userId: {
+        organizationId: seed.organizationId,
+        userId: seed.mentionedId,
+      },
+    },
+  })
+  const team = await prisma.team.findFirstOrThrow({
+    where: { project: { organizationId: seed.organizationId } },
+  })
+  const now = new Date()
+  const domain = await prisma.automaticMembershipDomain.create({
+    data: {
+      challenge: `challenge-${randomUUID()}`,
+      challengeExpiresAt: new Date(now.getTime() + 60_000),
+      challengeIssuedAt: now,
+      domain: `alerts-${randomUUID()}.example.com`,
+      organizationId: seed.organizationId,
+      status: 'active',
+    },
+  })
+  const rule = await prisma.automaticMembershipRule.create({
+    data: {
+      authorizedAt: now,
+      authorizedByUoaSub: `uoa-${randomUUID()}`,
+      authorizedTeamId: `team-${randomUUID()}`,
+      authorizedTokenVersion: 1,
+      createdScope: 'organization',
+      domainId: domain.id,
+      healthReason: 'The administrator authorization was rejected.',
+      healthState: 'needs_reauthorization',
+      healthRevision: 1,
+      teamId: team.id,
+    },
+  })
+  await prisma.userAlert.create({
+    data: {
+      automaticMembershipRuleId: rule.id,
+      eventKey: `automatic-membership:rule:${rule.id}:1`,
+      kind: 'automatic_membership_health',
+      organizationId: seed.organizationId,
+      userId: seed.mentionedId,
+    },
+  })
+
+  const beforeRepair = await listUserAlerts(prisma, {
+    organizationId: seed.organizationId,
+    userId: seed.mentionedId,
+  })
+  assert.equal(beforeRepair.data.length, 1)
+  assert.equal(beforeRepair.data[0]?.automaticMembershipRuleId, rule.id)
+  assert.equal(beforeRepair.data[0]?.automaticMembershipRuleTeamName, team.name)
+
+  // Reauthorization is explicit: the repaired health state removes the
+  // durable signal rather than leaving a bell item whose action is complete.
+  await prisma.automaticMembershipRule.update({
+    data: { healthReason: null, healthState: 'ok' },
+    where: { id: rule.id },
+  })
+  assert.equal((await listUserAlerts(prisma, {
+    organizationId: seed.organizationId,
+    userId: seed.mentionedId,
+  })).data.length, 0)
+
+  // A rule can fail again, but a recipient who loses the repair role no longer
+  // sees its alert even if the old row still exists for audit/history.
+  await prisma.automaticMembershipRule.update({
+    data: { healthState: 'needs_reauthorization' },
+    where: { id: rule.id },
+  })
+  await prisma.organizationMember.update({
+    data: { role: 'member' },
+    where: {
+      organizationId_userId: {
+        organizationId: seed.organizationId,
+        userId: seed.mentionedId,
+      },
+    },
+  })
+  assert.equal((await listUserAlerts(prisma, {
+    organizationId: seed.organizationId,
+    userId: seed.mentionedId,
+  })).data.length, 0)
+})

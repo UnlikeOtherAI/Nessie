@@ -18,6 +18,7 @@ const alertInclude = {
   channel: { select: { label: true } },
   actorUser: { select: { displayName: true } },
   actorAgent: { select: { name: true } },
+  automaticMembershipRule: { select: { team: { select: { name: true } } } },
 } satisfies Prisma.UserAlertInclude
 
 type AlertWithRelations = Prisma.UserAlertGetPayload<{ include: typeof alertInclude }>
@@ -42,6 +43,8 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   taskId: alert.taskId ?? null,
   knowledgePageId: alert.knowledgePageId ?? null,
   triggerId: alert.triggerId ?? null,
+  automaticMembershipRuleId: alert.automaticMembershipRuleId ?? null,
+  automaticMembershipRuleTeamName: alert.automaticMembershipRule?.team.name ?? null,
   boardSourceId: alert.boardSourceId ?? null,
   workflowRunId: alert.workflowRunId ?? null,
   callId: alert.callId ?? null,

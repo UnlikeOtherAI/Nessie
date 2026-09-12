@@ -944,8 +944,11 @@ review and fixed rather than papered over.
   with them — while sign-in and the workers kept granting on existing rules.
 - **A lapsed rule writes `UserAlert` rows** for the organisation's owners and
   admins, once per `healthRevision`, linked to the rule so the alert clears
-  itself on re-authorization. The plan described the state and the audit entry
-  but no alert, which is the exact failure
+  itself on re-authorization. The durable row projects the rule and team name
+  and opens Organization → Members → Automatic logins with that rule's
+  re-authorization control selected; its visibility rechecks that the
+  recipient still has an owner/admin repair role. The plan described the state
+  and the audit entry but no alert, which is the exact failure
   `docs/standards/capability-health-alerts.md` was written after.
 - **The team surface lists every proven domain**, not only those already
   granting that team. Filtering to attached domains made the toggle one-way and
