@@ -12,8 +12,8 @@ export const desktopTriggerHealthAlert = {
 
     await gotoPath(page, '/channels')
     await page.getByRole('button', { name: 'Alerts', exact: true }).click()
-    await page.getByRole('button', { name: 'A scheduled task stopped running', exact: true }).first().click()
-    await page.waitForURL(/\/agents\/triggers$/u)
+    await page.getByText('A scheduled task stopped running', { exact: true }).click()
+    await page.waitForURL(new RegExp(`/agents/triggers#${health.triggerId}$`, 'u'))
     await page.getByRole('heading', { name: health.title, exact: true }).waitFor()
     await page.getByText('This schedule has stopped', { exact: true }).waitFor()
     const reauthorize = page.getByRole('button', { name: 'Reauthorize', exact: true })
