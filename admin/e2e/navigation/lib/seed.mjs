@@ -133,9 +133,10 @@ export const seedTeam = async (apiServer) => {
 
 /**
  * A worker-classified trigger health transition is seeded after the ordinary
- * owner routes create the agent, binding and trigger. The worker's transition
- * and alert-dispatch tests own how those two rows are written; this navigation
- * fixture owns the person-facing bell -> exact recovery control journey.
+ * owner route creates the agent. The worker's transition and alert-dispatch
+ * tests own how the classified trigger and alert rows are written; this
+ * navigation fixture owns the person-facing bell -> exact recovery control
+ * journey, so it seeds that already-failed state directly.
  */
 export const seedTriggerHealthAlert = async (seed) => {
   const suffix = Date.now().toString(36)
@@ -145,27 +146,22 @@ export const seedTriggerHealthAlert = async (seed) => {
     method: 'POST',
     token: seed.token,
   })
-  await call(`/api/agents/${agent.id}/bindings`, {
-    body: { channelId: seed.channels[0].id },
-    method: 'POST',
-    token: seed.token,
-  })
-  const trigger = await call(`/api/agents/${agent.id}/triggers`, {
-    body: { name: title, targetChannelId: seed.channels[0].id, type: 'manual' },
-    method: 'POST',
-    token: seed.token,
-  })
   const me = await call('/api/auth/me', { token: seed.token })
   const prisma = new PrismaClient()
   try {
-    await prisma.agentTrigger.update({
+    const trigger = await prisma.agentTrigger.create({
       data: {
+        agentId: agent.id,
+        config: {},
         healthDetail: 'The captured authority needs to be renewed.',
         healthReason: 'launch_origin_invalid',
         healthRevision: 1,
+        name: title,
         status: 'needs_reauthorization',
+        targetChannelId: seed.channels[0].id,
+        targetThreadId: seed.channels[0].defaultThreadId,
+        type: 'manual',
       },
-      where: { id: trigger.id },
     })
     await prisma.userAlert.create({
       data: {
