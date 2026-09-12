@@ -84,11 +84,15 @@ const connectionErrorMessage = (
 export const presentAppConnection = (
   instance: AppConnectionInstance,
   appName: string,
-  canDisconnect: boolean,
+  controls: {
+    canDisconnect: boolean
+    canReconnect: boolean
+    canRefreshCapabilities: boolean
+  },
 ): AppConnectionSummaryRecord => {
   const status = deriveConnectionStatus(instance.lifecycleState)
   return {
-    canDisconnect,
+    ...controls,
     id: instance.id,
     displayName: SCOPE_LABELS[instance.scopeType],
     scopeType: instance.scopeType,

@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import type { AppSummaryRecord } from '@nessie/schemas'
+import { useEffect, useRef, useState } from 'react'
+import type { AppConnectionSummaryRecord, AppSummaryRecord } from '@nessie/schemas'
 
 import { useAppConnectFlow } from '../../../facades/apps/connect-hooks'
 import { useChannels } from '../../../facades/channels/hooks'
@@ -35,9 +35,16 @@ type AppConnectDialogProps = {
   app: AppSummaryRecord
   onClose: () => void
   open: boolean
+  /** An existing row to reauthorize through the same progress surface. */
+  reconnectConnection?: AppConnectionSummaryRecord | null
 }
 
-export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) => {
+export const AppConnectDialog = ({
+  app,
+  onClose,
+  open,
+  reconnectConnection = null,
+}: AppConnectDialogProps) => {
   const connect = useAppConnectFlow({ slug: app.slug ?? app.id })
   const confirmRef = useRef<HTMLButtonElement>(null)
   const [secretConnectionId, setSecretConnectionId] = useState<string | null>(null)
@@ -56,6 +63,12 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
   const scope = scopeChoice === 'project' && !selectedProject
     ? null
     : buildAppConnectScope(scopeChoice, scopeChoice === 'channel' ? channelId : projectId)
+
+  useEffect(() => {
+    if (open && reconnectConnection && connect.state.phase === 'idle') {
+      connect.reconnect(reconnectConnection.id)
+    }
+  }, [connect, open, reconnectConnection])
 
   // Closing mid-flow abandons it: the OAuth window is closed and the pending
   // marker forgotten, so the page does not resume a sign-in nobody is looking
@@ -91,10 +104,14 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
         onClose={handleClose}
         open={open}
         title={
-          phase === 'idle' ? `Review connection to ${app.displayName}` : `Connect ${app.displayName}`
+          reconnectConnection
+            ? `Reconnect ${app.displayName}`
+            : phase === 'idle'
+              ? `Review connection to ${app.displayName}`
+              : `Connect ${app.displayName}`
         }
       >
-        {phase === 'idle' ? (
+        {phase === 'idle' && !reconnectConnection ? (
           <div className="grid gap-4" data-testid="app-connect-review">
             <p className="text-sm text-[color:var(--tx2)]">
               Review how this app connects before Nessie creates an account for it.
@@ -214,7 +231,9 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
         ) : (
           <div className="grid gap-4">
             <p className="text-sm text-[color:var(--tx2)]">
-              {phase === 'connected'
+              {phase === 'idle' || phase === 'probing'
+                ? `Starting the sign-in for ${app.displayName}.`
+                : phase === 'connected'
                 ? `${app.displayName} is connected. It is ready to use.`
                 : phase === 'needs_secret'
                   ? `${app.displayName} needs an API key to finish connecting.`

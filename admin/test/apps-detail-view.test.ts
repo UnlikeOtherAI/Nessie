@@ -4,6 +4,9 @@ import test from 'node:test'
 import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schemas'
 
 import {
+  connectionRecoveryActions,
+} from '../src/components/features/apps/app-connection-presentation.js'
+import {
   agentsAccessEmptyMessage,
   appCanBeRemoved,
   appCapabilityCount,
@@ -34,6 +37,8 @@ const connection = (
   overrides: Partial<AppConnectionSummaryRecord> = {},
 ): AppConnectionSummaryRecord => ({
   canDisconnect: true,
+  canReconnect: true,
+  canRefreshCapabilities: true,
   displayName: 'Ada Lovelace',
   errorMessage: null,
   id: 'conn-1',
@@ -137,6 +142,21 @@ test('Remove appears only when the caller can disconnect every connected account
       }),
     ),
     false,
+  )
+})
+
+test('a connected-account row offers only its own server-authorized recovery actions', () => {
+  assert.deepEqual(
+    connectionRecoveryActions(connection({ status: 'error' })),
+    ['reconnect', 'refresh_capabilities'],
+  )
+  assert.deepEqual(
+    connectionRecoveryActions(connection({ canReconnect: false, status: 'error' })),
+    ['refresh_capabilities'],
+  )
+  assert.deepEqual(
+    connectionRecoveryActions(connection({ canRefreshCapabilities: false })),
+    [],
   )
 })
 

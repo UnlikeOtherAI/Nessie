@@ -46,6 +46,15 @@ file is the rule**.
   projects open and silently widens the app — and the worker's existing
   `isExposed` enforces default-OFF. Never add a grant table: `ToolGrant` rows
   exist and the worker never reads them.
+- **Account recovery stays on its existing connection row.** An expired or
+  failed account can start the same OAuth completion flow from its Apps account
+  row, and a scope manager can refresh that row's capability projection. The
+  detail presenter supplies separate, live `canReconnect` and
+  `canRefreshCapabilities` decisions because reauthorizing a reachable account
+  and changing a shared account have different authority. Reconnect reuses the
+  existing `McpServerInstance`; it never creates a duplicate, and capability
+  refresh preserves `requiresExplicitToolGrant` so newly discovered tools stay
+  unavailable until someone grants them.
 
 ## Detail
 

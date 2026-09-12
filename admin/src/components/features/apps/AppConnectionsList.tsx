@@ -4,8 +4,12 @@ import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { EmptyState } from '../../shared/EmptyState'
-import { useDisconnectAppConnection } from '../../../facades/apps/connect-hooks'
 import {
+  useDisconnectAppConnection,
+  useRefreshAppConnectionCapabilities,
+} from '../../../facades/apps/connection-hooks'
+import {
+  connectionRecoveryActions,
   connectionConnectedLabel,
   connectionStatusPill,
 } from './app-connection-presentation'
@@ -14,6 +18,7 @@ import { connectionsEmptyMessage } from './app-detail-view'
 type AppConnectionsListProps = {
   app: AppDetailRecord
   onConnectAnother: () => void
+  onReconnect: (connection: AppConnectionSummaryRecord) => void
 }
 
 // The accounts this app is reachable through, and who each one works for.
@@ -23,10 +28,15 @@ type AppConnectionsListProps = {
 // `displayName` is already the server's wording for who the account works for,
 // so each row says it once: the name, the status pill, and — only when there is
 // one — how recently it was reached.
-export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsListProps) => {
+export const AppConnectionsList = ({ app, onConnectAnother, onReconnect }: AppConnectionsListProps) => {
   const now = Date.now()
   const disconnect = useDisconnectAppConnection()
+  const refreshCapabilities = useRefreshAppConnectionCapabilities()
   const [disconnecting, setDisconnecting] = useState<AppConnectionSummaryRecord | null>(null)
+  const [refreshResult, setRefreshResult] = useState<{
+    connectionId: string
+    toolCount: number
+  } | null>(null)
 
   const closeDisconnect = () => {
     if (disconnect.isPending) return
@@ -49,6 +59,8 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
         {app.connections.map((connection) => {
           const pill = connectionStatusPill(connection.status)
           const connectedLabel = connectionConnectedLabel(connection, now)
+          const recoveryActions = connectionRecoveryActions(connection)
+          const refreshed = refreshResult?.connectionId === connection.id ? refreshResult : null
           return (
             <li
               className={[
@@ -63,6 +75,37 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
                 </span>
                 <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                   <Pill tone={pill.tone}>{pill.label}</Pill>
+                  {recoveryActions.includes('reconnect') ? (
+                    <button
+                      className="admin-button admin-button-secondary admin-button-compact"
+                      data-testid={`app-reconnect-${connection.id}`}
+                      onClick={() => onReconnect(connection)}
+                      type="button"
+                    >
+                      Reconnect
+                    </button>
+                  ) : null}
+                  {recoveryActions.includes('refresh_capabilities') ? (
+                    <button
+                      className="admin-button admin-button-secondary admin-button-compact"
+                      data-testid={`app-refresh-capabilities-${connection.id}`}
+                      disabled={refreshCapabilities.isPending}
+                      onClick={() => {
+                        setRefreshResult(null)
+                        refreshCapabilities.mutate(connection.id, {
+                          onSuccess: (result) => {
+                            setRefreshResult({
+                              connectionId: result.connectionId,
+                              toolCount: result.toolCount,
+                            })
+                          },
+                        })
+                      }}
+                      type="button"
+                    >
+                      {refreshCapabilities.isPending ? 'Refreshing…' : 'Refresh capabilities'}
+                    </button>
+                  ) : null}
                   {connection.canDisconnect ? (
                     <button
                       className="admin-button admin-button-secondary admin-button-danger admin-button-compact"
@@ -94,6 +137,11 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
                 <Notice className="mt-2" role="alert" size="sm" tone="danger">
                   {connection.errorMessage}
                 </Notice>
+              ) : null}
+              {refreshed ? (
+                <div className="mt-2 text-xs text-[color:var(--tx2)]" role="status">
+                  Capabilities updated: {refreshed.toolCount} available.
+                </div>
               ) : null}
             </li>
           )

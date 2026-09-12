@@ -11,6 +11,7 @@ const screenshots = resolve(REPO_ROOT, screenshotDirectory)
 const menuScreenshotPath = resolve(screenshots, 'project-audience-compact-menu.png')
 const projectScreenshotPath = resolve(screenshots, 'project-audience-compact-project.png')
 const reviewScreenshotPath = resolve(screenshots, 'mixed-pending-review-doorway.png')
+const recoveryScreenshotPath = resolve(screenshots, 'account-recovery-actions.png')
 const admin = await startAdmin()
 const browser = await launchBrowser()
 let page
@@ -89,9 +90,25 @@ try {
       '/api/mcp/tools/policy-targets',
     ],
   )
-  await page.getByRole('alert').waitFor()
+  await page.getByText('Only 1 of 3 capabilities changed — rate limited').waitFor()
+  const recovery = page.getByLabel('Account recovery fixture')
+  await recovery.getByRole('button', { name: 'Reconnect' }).waitFor()
+  await page.screenshot({ fullPage: true, path: recoveryScreenshotPath })
+  await recovery.getByRole('button', { name: 'Reconnect' }).click()
+  await page.getByRole('heading', { name: 'Reconnect KiloTalk fixture' }).waitFor()
+  await page.waitForFunction(
+    () => window.__appConnectScopeFixture.calls.some((call) => call.path.endsWith('/reconnect')),
+  )
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('heading', { name: 'Reconnect KiloTalk fixture' }).waitFor({ state: 'hidden' })
+  await recovery.getByRole('button', { name: 'Refresh capabilities' }).click()
+  await page.getByRole('status', { name: 'Capabilities updated: 3 available.' }).waitFor()
+  assert.ok(
+    (await page.evaluate(() => window.__appConnectScopeFixture.calls))
+      .some((call) => call.path.endsWith('/refresh-capabilities')),
+  )
   await context.close()
-  console.log(`App connection scope proofs passed: ${menuScreenshotPath}, ${projectScreenshotPath}, ${reviewScreenshotPath}`)
+  console.log(`App connection scope proofs passed: ${menuScreenshotPath}, ${projectScreenshotPath}, ${reviewScreenshotPath}, ${recoveryScreenshotPath}`)
 } finally {
   await browser.close()
   await stopProcess(admin)
