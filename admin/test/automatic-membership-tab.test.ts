@@ -36,11 +36,13 @@ const reconcileStatus = read(
 test('the tab lives in the one shared roster panel, not a second component', () => {
   assert.match(rosterPanel, /'automatic'/)
   assert.match(rosterPanel, /label: 'Automatic logins', value: 'automatic'/)
-  assert.match(rosterPanel, /<AutomaticMembershipRulesPanel scope=\{scope\} \/>/)
+  assert.match(rosterPanel, /<AutomaticMembershipRulesPanel/)
+  assert.match(rosterPanel, /highlightedRuleId=\{searchParams\.get\('automaticMembershipRule'\)\}/)
 })
 
 test('the rules panel is parameterised by scope, serving both surfaces', () => {
-  assert.match(rulesPanel, /scope,\s*\}: \{\s*scope: AutomaticMembershipScope\s*\}/)
+  assert.match(rulesPanel, /highlightedRuleId\?: string \| null/)
+  assert.match(rulesPanel, /scope: AutomaticMembershipScope/)
   assert.match(rulesPanel, /useAutomaticMembership\(scope\)/)
 })
 
@@ -132,6 +134,11 @@ test('a rule that lost its authorization offers the remedy, not a bare error', (
   assert.match(domainRow, /needs_reauthorization/)
   assert.match(domainRow, /Re-authorize \$\{rule\.teamName\}/)
   assert.match(domainRow, /Nobody has lost access/)
+})
+
+test('an automatic-access alert selects its exact reauthorization control', () => {
+  assert.match(domainRow, /data-alert-target=\{rule\.id === highlightedRuleId \? 'true' : undefined\}/)
+  assert.match(domainRow, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/)
 })
 
 test('status is conveyed by text, not colour alone', () => {

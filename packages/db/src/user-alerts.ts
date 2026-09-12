@@ -59,9 +59,27 @@ export const visibleUserAlertWhere = (input: {
       // trigger: the moment an administrator re-authorizes it, the bell item
       // stops surfacing without anything having to remember to delete it.
       kind: 'automatic_membership_health',
-      automaticMembershipRule: {
-        is: { healthState: 'needs_reauthorization' },
-      },
+      AND: [
+        {
+          automaticMembershipRule: {
+            is: { healthState: 'needs_reauthorization' },
+          },
+        },
+        // Repair permission is live, not something the alert remembered when
+        // it was created. A demoted administrator must not retain a durable
+        // doorway into a rule they can no longer re-authorize.
+        {
+          user: {
+            organizationMembers: {
+              some: {
+                deactivatedAt: null,
+                organizationId: input.organizationId,
+                role: { in: ['owner', 'admin'] },
+              },
+            },
+          },
+        },
+      ],
     },
     {
       // A project board's source that stopped syncing. Revalidated against the

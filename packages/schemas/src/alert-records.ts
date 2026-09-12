@@ -62,6 +62,11 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  // An automatic-membership health alert is actionable only when the bell can
+  // name the exact rule that failed. The optional shape preserves old rows
+  // created before this relationship was projected through the alert API.
+  automaticMembershipRuleId: z.string().uuid().nullable().optional(),
+  automaticMembershipRuleTeamName: z.string().min(1).nullable().optional(),
   boardSourceId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),

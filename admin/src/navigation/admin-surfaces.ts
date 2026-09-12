@@ -31,7 +31,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     // Every settings page shares one screen identity, so page A → page B swaps
     // in place exactly as it does today.
     depth: 1,
-    intent: { state: ['tab'] },
+    intent: { state: ['tab', 'membersTab', 'automaticMembershipRule'] },
     parentOf: toAdmin,
     pattern: /^\/settings\/([^/]+)$/,
     root: adminRoot,

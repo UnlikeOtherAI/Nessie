@@ -49,6 +49,12 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // No actor: nobody did this, a schedule stopped being able to run.
     return 'A scheduled task stopped running'
   }
+  if (alert.kind === 'automatic_membership_health') {
+    const team = alert.automaticMembershipRuleTeamName
+    return team
+      ? `Automatic access to ${team} needs reauthorization`
+      : 'Automatic access needs reauthorization'
+  }
   if (alert.kind === 'board_source_health') {
     // Also no actor, and deliberately without the provider's name: what is
     // wrong belongs on the source's own page, where the remedy is a button.

@@ -4,6 +4,7 @@
  * Status is carried by the chip's text, never by its colour alone.
  */
 
+import { useEffect, useRef } from 'react'
 import type {
   AutomaticMembershipDomainRecord,
   AutomaticMembershipDomainStatus,
@@ -47,6 +48,7 @@ export type DomainRowActions = {
 
 type Props = {
   domain: AutomaticMembershipDomainRecord
+  highlightedRuleId?: string | null
   scope: 'organization' | 'team'
   teamOptions: AutomaticMembershipTeamOption[]
   canManageDomains: boolean
@@ -60,16 +62,24 @@ export const AutomaticMembershipDomainRow = ({
   canManageDomains,
   canManageRules,
   domain,
+  highlightedRuleId,
   pending,
   scope,
   teamOptions,
 }: Props) => {
+  const highlightedRuleRef = useRef<HTMLDivElement>(null)
   const needsReauthorization = domain.rules.filter(
     (rule) => rule.health === 'needs_reauthorization',
   )
   const attached = domain.rules.length > 0
   const showDns = canManageDomains
     && (domain.status === 'pending' || domain.status === 'suspended')
+
+  useEffect(() => {
+    if (!highlightedRuleRef.current) return
+    highlightedRuleRef.current.focus({ preventScroll: true })
+    highlightedRuleRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlightedRuleId])
 
   return (
     <article className="grid gap-3 rounded-lg border border-[color:var(--border)] p-4">
@@ -113,15 +123,21 @@ export const AutomaticMembershipDomainRow = ({
                 + `new is being added. Nobody has lost access.`}
             </span>
             {needsReauthorization.map((rule) => (
-              <button
-                className="admin-button admin-button-secondary admin-button-sm justify-self-start"
-                disabled={pending || !rule.manageable}
+              <div
+                data-alert-target={rule.id === highlightedRuleId ? 'true' : undefined}
                 key={rule.id}
-                onClick={() => actions.onReauthorize(rule.id)}
-                type="button"
+                ref={rule.id === highlightedRuleId ? highlightedRuleRef : undefined}
+                tabIndex={rule.id === highlightedRuleId ? -1 : undefined}
               >
-                {`Re-authorize ${rule.teamName}`}
-              </button>
+                <button
+                  className="admin-button admin-button-secondary admin-button-sm justify-self-start"
+                  disabled={pending || !rule.manageable}
+                  onClick={() => actions.onReauthorize(rule.id)}
+                  type="button"
+                >
+                  {`Re-authorize ${rule.teamName}`}
+                </button>
+              </div>
             ))}
           </div>
         </Notice>
