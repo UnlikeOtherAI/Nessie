@@ -114,14 +114,30 @@ export const visibleUserAlertWhere = (input: {
                 },
               },
             },
-            { workflowRun: { is: { installation: { is: { channelId: null } } } } },
             {
-              channel: {
+              workflowRun: {
                 is: {
-                  OR: [
-                    { visibility: 'public' },
-                    { members: { some: { userId: input.userId } } },
-                  ],
+                  installation: {
+                    is: { channelId: null },
+                  },
+                },
+              },
+            },
+            {
+              workflowRun: {
+                is: {
+                  installation: {
+                    is: {
+                      channel: {
+                        is: {
+                          OR: [
+                            { visibility: 'public' },
+                            { members: { some: { userId: input.userId } } },
+                          ],
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },

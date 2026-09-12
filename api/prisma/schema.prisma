@@ -2053,6 +2053,7 @@ model Channel {
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   team                   Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members                ChannelMember[]
+  workflowInstallations  WorkflowInstallation[]     @relation("WorkflowInstallationChannel")
   workflowRunOrigins     WorkflowRun[]             @relation("WorkflowRunOriginChannel")
   calls                  Call[]
   agentBindings          AgentBinding[]
@@ -3927,6 +3928,7 @@ model WorkflowInstallation {
   createdAt               DateTime                   @default(now()) @map("created_at")
   updatedAt               DateTime                   @updatedAt @map("updated_at")
   workflowTemplate        WorkflowTemplate           @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
+  channel                 Channel?                   @relation("WorkflowInstallationChannel", fields: [channelId], references: [id], onDelete: SetNull)
   runs                    WorkflowRun[]
   triggers                AgentTrigger[]
   stateEntries            WorkflowStateEntry[]       @relation("WorkflowInstallationStateEntries")
@@ -3935,6 +3937,7 @@ model WorkflowInstallation {
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
   @@index([workflowTemplateId, createdAt(sort: Desc)])
+  @@index([channelId])
   @@map("workflow_installations")
 }
 

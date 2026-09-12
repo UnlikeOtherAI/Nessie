@@ -71,8 +71,9 @@ restated there:
 - A failed workflow run writes one `workflow_run_failed` `UserAlert` per live
   recipient before attempting optional push delivery. Its `(user_id, event_key)`
   key is `workflow-run-failure:<run id>`, so a redelivered job cannot ring the
-  bell twice. The alert relates to the failed run and stores its installation
-  channel: alert reads re-check the run's failed status and the same current
-  workflow-read entitlement as the run route. Its doorway is the exact run in
-  the Failed runs surface (`/agents/workflows?failedRuns=1&run=<id>`), which is
-  safe to open cold and does not depend on a registered device.
+  bell twice. The alert relates to the failed run and retains its delivery
+  channel, while reads traverse the run's installation and its **current**
+  channel to re-check the same workflow-read entitlement as the run route. Its
+  doorway is the exact run in the Failed runs surface
+  (`/agents/workflows?failedRuns=1&run=<id>`), which is safe to open cold and
+  does not depend on a registered device.

@@ -132,6 +132,83 @@ export const seedTeam = async (apiServer) => {
 }
 
 /**
+ * A failed run is seeded after the ordinary owner bootstrap has established
+ * the organisation. The workflow and alert-dispatch suites own creation and
+ * delivery; this fixture owns the two readers' cold doorway to that run.
+ */
+export const seedWorkflowFailureAlert = async (seed) => {
+  const suffix = Date.now().toString(36)
+  const readerEmail = `workflow-reader-${suffix}@example.com`
+  const readerPassword = `workflow-reader-${suffix}-password`
+  const reader = await call('/api/users', {
+    body: {
+      displayName: `Workflow reader ${suffix}`,
+      email: readerEmail,
+      password: readerPassword,
+      role: 'member',
+    },
+    method: 'POST',
+    token: seed.token,
+  })
+  const readerSession = await call('/api/auth/session', {
+    body: { email: readerEmail, password: readerPassword },
+    method: 'POST',
+  })
+  const me = await call('/api/auth/me', { token: seed.token })
+  const prisma = new PrismaClient()
+  try {
+    await prisma.channelMember.create({
+      data: { channelId: seed.channels[0].id, userId: reader.id },
+    })
+    const template = await prisma.workflowTemplate.create({
+      data: {
+        createdByActorId: me.user.id,
+        createdByActorType: 'user',
+        graphJson: { steps: [] },
+        name: `Failed-run doorway ${suffix}`,
+        organizationId: me.context.organizationId,
+      },
+    })
+    const installation = await prisma.workflowInstallation.create({
+      data: {
+        channelId: seed.channels[0].id,
+        createdByActorId: me.user.id,
+        createdByActorType: 'user',
+        organizationId: me.context.organizationId,
+        status: 'active',
+        workflowTemplateId: template.id,
+        workflowTemplateVersion: 1,
+      },
+    })
+    const run = await prisma.workflowRun.create({
+      data: {
+        errorMessage: 'The workflow failed for navigation coverage.',
+        finishedAt: new Date(),
+        installationId: installation.id,
+        organizationId: me.context.organizationId,
+        startedAt: new Date(),
+        startedByActorId: me.user.id,
+        startedByActorType: 'user',
+        status: 'failed',
+      },
+    })
+    await prisma.userAlert.createMany({
+      data: [me.user.id, reader.id].map((userId) => ({
+        channelId: seed.channels[0].id,
+        eventKey: `navigation-workflow-failure:${run.id}:${userId}`,
+        kind: 'workflow_run_failed',
+        organizationId: me.context.organizationId,
+        userId,
+        workflowRunId: run.id,
+      })),
+    })
+    return { readerToken: readerSession.token, runId: run.id }
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+/**
  * Give the logout case its own account. Logout bumps a user's token version,
  * so even a second session for the suite owner would revoke every later case.
  */
