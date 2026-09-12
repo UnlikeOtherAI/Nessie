@@ -21,6 +21,10 @@ const userId = '00000000-0000-4000-8000-000000000004'
 const connectionId = '00000000-0000-4000-8000-000000000009'
 const boardId = '00000000-0000-4000-8000-000000000010'
 const ENCRYPTION_SECRET = 'test-encryption-secret'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test',
+  keys: { test: ENCRYPTION_SECRET },
+} as const
 
 const sourceRow = (over: Record<string, unknown> = {}) => ({
   id: sourceId,
@@ -121,7 +125,11 @@ const buildApp = async (input: {
         externalTenantId: 'tenant-1',
         grantedScopes: [],
         credential: {
-          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'lin_api_key', 'board-source.credential'),
+          accessTokenCiphertext: sealSecret(
+            ENCRYPTION_KEY_RING,
+            'lin_api_key',
+            'board-source.credential',
+          ),
           refreshTokenCiphertext: null,
           expiresAt: null,
         },
@@ -134,6 +142,7 @@ const buildApp = async (input: {
   registerBoardSourceAdapter('linear', () => stubAdapter(input.removals))
 
   registerBoardSourceRoutes(app, {
+    encryptionKeyRing: ENCRYPTION_KEY_RING,
     prisma,
     config: { auth: { secret: ENCRYPTION_SECRET }, api: { publicUrl: 'http://localhost:5454' } },
     requireActorContext: () => ({

@@ -40,6 +40,7 @@ export const createBuiltinToolExecutor = ({
   ) => ({
     agentId: context.agent.id,
     agentKind: context.agent.agentKind,
+    atRestEncryptionKeyRing: deps.atRestEncryptionKeyRing,
     actorContext: toolActorContext,
     ...authorization,
     demonstrationControl: {

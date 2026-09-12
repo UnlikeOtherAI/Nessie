@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { withMcpOAuthSecretLock } from '@nessie/mcp-manage'
 import {
   AT_REST_SECRET_PURPOSE,
   decryptWithKeyRing,
@@ -161,14 +162,24 @@ export const rotateDurableAtRestSecrets = async (
       select: { authTag: true, ciphertext: true, iv: true, ref: true },
       take: batchSize,
     })).map((row) => ({ id: row.ref, row })),
-    async (row) => {
-      const replacement = envelopeReplacement(encryption, mcpSecretPurpose(row.ref), row)
-      const update = await prisma.mcpOAuthSecret.updateMany({
-        where: { ref: row.ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.authTag },
+    async (row) => withMcpOAuthSecretLock(prisma, row.ref, async (tx) => {
+      // Re-read under the same lock as automatic provider refresh. A page can
+      // be stale while waiting, but it must never replace a newly rotated
+      // refresh token with the earlier bundle it originally observed.
+      const current = await tx.mcpOAuthSecret.findUnique({ where: { ref: row.ref } })
+      if (!current) return false
+      const replacement = envelopeReplacement(encryption, mcpSecretPurpose(row.ref), current)
+      const update = await tx.mcpOAuthSecret.updateMany({
+        where: {
+          ref: current.ref,
+          ciphertext: current.ciphertext,
+          iv: current.iv,
+          authTag: current.authTag,
+        },
         data: replacement,
       })
       return update.count === 1
-    },
+    }),
     countsFor(result, 'mcp_oauth_secret'),
   )
 

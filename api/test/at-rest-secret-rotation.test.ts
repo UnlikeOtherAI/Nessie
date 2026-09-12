@@ -8,6 +8,7 @@ import {
   encryptWithKey,
   encryptWithKeyRing,
 } from '@nessie/runtime'
+import { createPgSecretResolver } from '@nessie/mcp-manage'
 
 import {
   AtRestSecretRotationError,
@@ -281,4 +282,87 @@ test('fails closed when a required root is missing or ciphertext belongs to anot
     (error: unknown) => error instanceof AtRestSecretRotationError
       && error.message.includes('uoa_session_credentials'),
   )
+})
+
+test('serializes an expired prior-version MCP refresh with maintenance rotation and a rerun', async () => {
+  const rotationRing = {
+    ...ring,
+    keys: { '2026-06': 'prior-root-for-mcp-refresh-race', ...ring.keys },
+  }
+  const priorWriteRing = { ...rotationRing, activeVersion: '2026-06' }
+  const ref = 'secret_oauth_refresh-race'
+  const initial = encryptWithKeyRing(
+    priorWriteRing,
+    AT_REST_SECRET_PURPOSE.mcpOauth,
+    JSON.stringify({
+      accessToken: 'stale-token',
+      clientId: 'client-1',
+      expiresAt: 0,
+      refreshToken: 'refresh-1',
+      tokenEndpoint: 'https://93.184.216.35/token',
+    }),
+  )
+  let row = { ref, ...initial }
+  let transactionTail = Promise.resolve()
+  const refreshStarted = Promise.withResolvers<void>()
+  const allowRefresh = Promise.withResolvers<void>()
+  const prisma = basePrisma({ findMany: emptyFindMany }, {
+    $executeRaw: async () => 0,
+    $transaction: async <T>(work: (tx: unknown) => Promise<T>) => {
+      const previous = transactionTail
+      const release = Promise.withResolvers<void>()
+      transactionTail = release.promise
+      await previous
+      try {
+        return await work(prisma)
+      } finally {
+        release.resolve()
+      }
+    },
+    mcpOAuthSecret: {
+      findMany: async (args: { where?: { ref?: { gt: string } } }) =>
+        args.where?.ref ? [] : [row],
+      findUnique: async () => row,
+      updateMany: async (args: {
+        data: Omit<typeof row, 'ref'>
+        where: typeof row
+      }) => {
+        if (
+          args.where.authTag !== row.authTag
+          || args.where.ciphertext !== row.ciphertext
+          || args.where.iv !== row.iv
+        ) return { count: 0 }
+        row = { ref, ...args.data }
+        return { count: 1 }
+      },
+    },
+  })
+  const resolver = createPgSecretResolver(prisma as never, rotationRing, {
+    fetchImpl: (async () => {
+      refreshStarted.resolve()
+      await allowRefresh.promise
+      return new Response(JSON.stringify({
+        access_token: 'fresh-token', expires_in: 3600, refresh_token: 'refresh-2',
+      }), { headers: { 'content-type': 'application/json' }, status: 200 })
+    }) as typeof fetch,
+  })
+
+  const refresh = resolver.resolve(ref)
+  await refreshStarted.promise
+  const maintenance = rotateDurableAtRestSecrets(prisma as never, rotationRing)
+  allowRefresh.resolve()
+
+  assert.equal(await refresh, 'fresh-token')
+  const first = await maintenance
+  assert.deepEqual(first.mcp_oauth_secret, { conflicts: 0, rotated: 1 })
+  const opened = decryptWithKeyRing(rotationRing, AT_REST_SECRET_PURPOSE.mcpOauth, row)
+  const bundle = JSON.parse(opened.plaintext) as { accessToken: string; refreshToken: string }
+  assert.equal(opened.keyVersion, rotationRing.activeVersion)
+  assert.equal(bundle.accessToken, 'fresh-token')
+  assert.equal(bundle.refreshToken, 'refresh-2')
+
+  const rerun = await rotateDurableAtRestSecrets(prisma as never, rotationRing)
+  assert.deepEqual(rerun.mcp_oauth_secret, { conflicts: 0, rotated: 1 })
+  const afterRerun = decryptWithKeyRing(rotationRing, AT_REST_SECRET_PURPOSE.mcpOauth, row)
+  assert.equal((JSON.parse(afterRerun.plaintext) as { refreshToken: string }).refreshToken, 'refresh-2')
 })

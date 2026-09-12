@@ -104,6 +104,7 @@ subscribe(
       {
         cloudBrowser,
         deepSignalMcpIdentity,
+        atRestEncryptionKeyRing: encryptionKeyRing,
         executorCommandEncryptionSecret: encryptionKeyRing,
         ledgerIdentity,
         mcpSecrets,
@@ -134,6 +135,7 @@ subscribe(
       {
         cloudBrowser,
         deepSignalMcpIdentity,
+        atRestEncryptionKeyRing: encryptionKeyRing,
         executorCommandEncryptionSecret: encryptionKeyRing,
         ledgerIdentity,
         mcpSecrets,

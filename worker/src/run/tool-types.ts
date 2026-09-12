@@ -52,6 +52,8 @@ export type AgenticToolResult = {
 export type BuiltinToolRuntimeContext = {
   agentId: string
   agentKind: 'personal_assistant' | 'shared'
+  /** Dedicated deployment ring for the tool's durable at-rest credentials. */
+  atRestEncryptionKeyRing?: EncryptionKeyRingInput
   actorContext: RunExecuteJobPayload['actorContext']
   /**
    * Private execution capability added only by the authorizer after its

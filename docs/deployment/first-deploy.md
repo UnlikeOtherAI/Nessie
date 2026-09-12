@@ -54,7 +54,7 @@ Requires SSH access to the host and the Cloudflare full-token env var.
 4. **Build, migrate, start** (see `redeploy.sh` for the scripted version):
    ```sh
    cd /srv/nessie
-   infrastructure/compose/ensure-encryption-key-ring.sh infrastructure/compose/.env
+   bash infrastructure/compose/ensure-encryption-key-ring.sh infrastructure/compose/.env
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
    docker compose -f infrastructure/compose/docker-compose.prod.yml build nessie-api nessie-admin nessie-web
    docker compose -f infrastructure/compose/docker-compose.prod.yml \

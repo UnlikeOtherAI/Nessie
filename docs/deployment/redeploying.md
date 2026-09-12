@@ -122,9 +122,21 @@ Consequences worth knowing:
   workflow run. The workflow additionally serializes its own runs through the
   `deploy-production` GitHub concurrency group; queued runs it shows as
   "cancelled" were subsumed by a newer run that deploys their commits too.
-- Migrations still run **before** the swap, while the old API is serving, so a
-  schema change must remain compatible with the previous code for the length of
-  the build+swap window (this was already true of the old recreate flow).
+- Migrations normally run **before** the swap, while the old API is serving, so
+  a schema change must remain compatible with the previous code for the length of
+  the build+swap window. The one-time
+  `20260912090000_versioned_at_rest_key_metadata` migration is deliberately the
+  exception: it changes three Prisma-visible `key_version` columns from integer
+  to text. After encryption preflight succeeds, `redeploy.sh` detects it while
+  pending and stops every current and pre-rename API/worker container. It checks
+  that no matching container remains running before Prisma applies the
+  migration, then starts only the compatible generation. This intentional
+  maintenance gap prevents old integer clients and new opaque-version clients
+  from reading or writing the same column concurrently; later deploys remain
+  health-gated blue-green. If that migration or the subsequent compatible boot
+  fails, the script exits with the API and worker still stopped: do not roll an
+  old image back onto the text schema. Fix and roll forward, or restore the
+  database backup before starting the previous release.
 - **The reconcile job runs between the migrations and the swap**, as a one-shot
   `$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile`.
   It seeds each organisation's default policy rules, backfills protected-MCP

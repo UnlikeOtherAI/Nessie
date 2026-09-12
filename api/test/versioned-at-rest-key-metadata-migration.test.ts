@@ -12,6 +12,11 @@ const migrationSql = readFileSync(
   'utf8',
 )
 
+const redeployScript = readFileSync(
+  new URL('../../infrastructure/compose/redeploy.sh', import.meta.url),
+  'utf8',
+)
+
 const credentialTables = [
   'board_source_connection_credentials',
   'comms_connection_credentials',
@@ -65,4 +70,19 @@ test('executes the upgrade over legacy integer metadata and normalizes every sto
   } finally {
     await client.end()
   }
+})
+
+test('stages the incompatible metadata migration without old and new credential readers', () => {
+  const preflight = redeployScript.indexOf('ensure-encryption-key-ring.sh infrastructure/compose/.env')
+  const gate = redeployScript.indexOf("AT_REST_KEY_METADATA_MIGRATION='20260912090000_versioned_at_rest_key_metadata'")
+  const migration = redeployScript.indexOf('==> Applying database migrations')
+  assert.ok(preflight >= 0 && preflight < gate, 'preflight must succeed before any stop')
+  assert.ok(gate >= 0 && gate < migration, 'the drain must run before migrations')
+  assert.match(redeployScript, /\$COMPOSE stop nessie-api nessie-worker/u)
+  assert.doesNotMatch(redeployScript, /\$COMPOSE stop nessie-api nessie-worker \|\| true/u)
+  assert.match(redeployScript, /for legacy in api worker; do/u)
+  assert.match(redeployScript, /for service in nessie-api nessie-worker api worker; do/u)
+  assert.match(redeployScript, /API or worker containers remained running; refusing incompatible migration/u)
+  assert.match(redeployScript, /legacy_service_containers worker/u)
+  assert.match(redeployScript, /to_regclass\('_prisma_migrations'\)/u)
 })

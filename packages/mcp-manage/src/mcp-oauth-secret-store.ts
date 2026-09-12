@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 
 import {
   decryptWithKeyRing,
@@ -52,6 +52,31 @@ type StoredBundle = {
   clientSecret?: string
   resource?: string
 }
+
+type StoredSecretRow = {
+  authTag: string
+  ciphertext: string
+  iv: string
+  ref: string
+}
+
+const MCP_SECRET_LOCK_TIMEOUT_MS = 15_000
+
+/**
+ * Serializes one durable MCP secret across API and worker replicas. The lock is
+ * held while a provider can rotate the refresh token, so a maintenance
+ * re-encryption cannot win the ciphertext CAS and discard that new credential.
+ */
+export const withMcpOAuthSecretLock = async <T>(
+  prisma: PrismaClient,
+  ref: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> => prisma.$transaction(async (tx) => {
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`mcp-oauth-secret:${ref}`}, 0))`,
+  )
+  return work(tx)
+}, { timeout: MCP_SECRET_LOCK_TIMEOUT_MS })
 
 /**
  * Build a Postgres-backed, encrypted {@link SecretStore}. Inject the result as
@@ -188,6 +213,47 @@ const refreshBundle = async (
   }
 }
 
+const sameBundle = (left: StoredBundle, right: StoredBundle): boolean =>
+  left.accessToken === right.accessToken
+  && left.clientId === right.clientId
+  && left.clientSecret === right.clientSecret
+  && left.expiresAt === right.expiresAt
+  && left.expiresIn === right.expiresIn
+  && left.refreshToken === right.refreshToken
+  && left.resource === right.resource
+  && left.tokenEndpoint === right.tokenEndpoint
+  && left.tokenType === right.tokenType
+
+const loadBundle = (
+  keyRing: ReturnType<typeof toEncryptionKeyRing>,
+  purpose: string,
+  row: StoredSecretRow,
+) => {
+  const opened = decryptWithKeyRing(keyRing, purpose, {
+    authTag: row.authTag,
+    ciphertext: row.ciphertext,
+    iv: row.iv,
+  })
+  return { bundle: JSON.parse(opened.plaintext) as StoredBundle, opened }
+}
+
+const replaceCurrentBundle = async (
+  tx: Prisma.TransactionClient,
+  row: StoredSecretRow,
+  data: { authTag: string; ciphertext: string; iv: string },
+): Promise<boolean> => {
+  const update = await tx.mcpOAuthSecret.updateMany({
+    where: {
+      ref: row.ref,
+      ciphertext: row.ciphertext,
+      iv: row.iv,
+      authTag: row.authTag,
+    },
+    data,
+  })
+  return update.count === 1
+}
+
 /**
  * Read side of {@link createPgSecretStore}. Resolves a `secret_*` ref to the
  * plaintext access token (the value the dispatcher injects into the MCP
@@ -204,63 +270,61 @@ export const createPgSecretResolver = (
   const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   return {
     resolve: async (ref) => {
-      if (!ref.startsWith('secret_')) {
+      if (!ref.startsWith('secret_')) return null
+      let purpose: string
+      try {
+        purpose = purposeForStoredRef(ref)
+      } catch {
         return null
       }
-      const row = await prisma.mcpOAuthSecret.findUnique({ where: { ref } })
-      if (!row) {
-        return null
-      }
-      const purpose = purposeForStoredRef(ref)
-      const opened = decryptWithKeyRing(keyRing, purpose, {
-        ciphertext: row.ciphertext,
-        iv: row.iv,
-        authTag: row.authTag,
+      return withMcpOAuthSecretLock(prisma, ref, async (tx) => {
+        const row = await tx.mcpOAuthSecret.findUnique({ where: { ref } })
+        if (!row) return null
+        const { bundle, opened } = loadBundle(keyRing, purpose, row)
+
+        if (!shouldRefresh(bundle)) {
+          if (opened.needsReencryption) {
+            const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(bundle))
+            await replaceCurrentBundle(tx, row, replacement).catch(() => false)
+          }
+          return bundle.accessToken
+        }
+
+        const renewed = await refreshBundle(bundle, fetchImpl)
+        if (!renewed) {
+          // The provider refused the grant. Preserve its currently stored
+          // refresh token, but still migrate its authenticated ciphertext.
+          if (opened.needsReencryption) {
+            const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(bundle))
+            await replaceCurrentBundle(tx, row, replacement).catch(() => false)
+          }
+          return bundle.accessToken
+        }
+
+        const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(renewed))
+        if (await replaceCurrentBundle(tx, row, replacement).catch(() => false)) {
+          return renewed.accessToken
+        }
+
+        // A non-participating writer can still beat the conditional update.
+        // If it merely re-encrypted the exact bundle, retry against its current
+        // envelope so a provider-issued rotating refresh token is not dropped.
+        const current = await tx.mcpOAuthSecret.findUnique({ where: { ref } })
+        if (!current) return null
+        const latest = loadBundle(keyRing, purpose, current)
+        if (sameBundle(latest.bundle, bundle)) {
+          if (await replaceCurrentBundle(tx, current, replacement).catch(() => false)) {
+            return renewed.accessToken
+          }
+          const afterRetry = await tx.mcpOAuthSecret.findUnique({ where: { ref } })
+          if (!afterRetry) return null
+          return loadBundle(keyRing, purpose, afterRetry).bundle.accessToken
+        }
+
+        // A logical credential update wins over this refresh. Do not overwrite
+        // a newer provider token with material minted for the old credential.
+        return latest.bundle.accessToken
       })
-      const bundle = JSON.parse(opened.plaintext) as StoredBundle
-
-      if (opened.needsReencryption) {
-        const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(bundle))
-        await prisma.mcpOAuthSecret
-          .updateMany({
-            where: {
-              ref,
-              ciphertext: row.ciphertext,
-              iv: row.iv,
-              authTag: row.authTag,
-            },
-            data: replacement,
-          })
-          .catch(() => undefined)
-      }
-
-      if (!shouldRefresh(bundle)) {
-        return bundle.accessToken
-      }
-
-      const renewed = await refreshBundle(bundle, fetchImpl)
-      if (!renewed) {
-        // Best-effort: hand back the stale token so the server's 401 surfaces
-        // loudly instead of a silent resolver failure.
-        return bundle.accessToken
-      }
-      const { ciphertext, iv, authTag } = encryptWithKeyRing(
-        keyRing,
-        purpose,
-        JSON.stringify(renewed),
-      )
-      await prisma.mcpOAuthSecret
-        .updateMany({
-          where: {
-            ref,
-            ciphertext: row.ciphertext,
-            iv: row.iv,
-            authTag: row.authTag,
-          },
-          data: { ciphertext, iv, authTag },
-        })
-        .catch(() => undefined)
-      return renewed.accessToken
     },
   }
 }

@@ -1,6 +1,5 @@
 import { sendDraftForUser } from '@nessie/team-admin'
 import { z } from 'zod'
-import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
@@ -71,6 +70,10 @@ export const runGmailDraftSendTool = async (
         + '/settings/connections.',
     )
   }
+  const encryptionSecret = context.atRestEncryptionKeyRing
+  if (!encryptionSecret) {
+    throw new Error('Gmail sending is unavailable because the at-rest encryption key ring is not configured.')
+  }
 
   try {
     const result = await sendDraftForUser(
@@ -86,7 +89,7 @@ export const runGmailDraftSendTool = async (
           ? { holdMs: UNDO_WINDOW_MS }
           : {}),
       },
-      { encryptionSecret: resolveWorkerAtRestKeyRing() },
+      { encryptionSecret },
     )
     return {
       inputSummary: `draftId=${args.draftId}`,

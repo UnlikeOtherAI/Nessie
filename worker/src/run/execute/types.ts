@@ -18,6 +18,8 @@ import type {
 } from '@nessie/runtime'
 
 export type ExecutionDependencies = {
+  /** Dedicated deployment ring for every durable secret a builtin reads or writes. */
+  atRestEncryptionKeyRing?: EncryptionKeyRingInput
   /**
    * Browserbase transport plumbing for the `browser_*` builtins. Absent on a
    * deployment with no cloud browsing, which the tools report in words.

@@ -338,4 +338,3 @@ export const RuntimeCapabilitiesSchema = z.object({
   hasModelProvider: z.boolean(),
 })
 export type RuntimeCapabilities = z.infer<typeof RuntimeCapabilitiesSchema>
-
