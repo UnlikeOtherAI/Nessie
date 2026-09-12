@@ -1,6 +1,6 @@
-# DeepTest native source adapter
+# DeepTest native adapters
 
-Nessie's DeepTest adapter is a local, read-only source boundary. DeepTest owns
+Nessie's DeepTest source adapter is a local, read-only source boundary. DeepTest owns
 the authenticated connection to its service, the project and review authority,
 external-inference consent, active-testing authorization, findings, and report.
 The adapter never calls Nessie's API and never creates an `ExecutorCommand` or
@@ -176,3 +176,66 @@ releases them. These grants allow no provider inference and no live execution. D
 must retain its separate, user-visible provider/material policy and active-test
 authorization. This adapter cannot write, promote, run a command, open a
 browser, dial a URL, patch assessed code, or commit it.
+
+## Native execution grant
+
+Source access remains read-only. It never creates or implies a native execution
+capability. An owner must separately opt in to active testing before the local
+executor publishes `deeptest-execution-grant.json`. The owner-only file is read
+only through its absolute fixed filename and carries exactly the executor id,
+workspace root, descriptor (operations, profiles, limits, and revision), local
+VM runtime paths, and the browser allowed-origin policy. It contains no hosted
+API endpoint, machine key, connection epoch, provider credential, private browser
+profile, or Codex authentication material.
+
+The state mutation lock protects execution grants together with source grants.
+Any descriptor, workspace, VM runtime, or browser-policy change removes the
+execution grant before the paired state changes; forgetting the pairing does
+the same. A delayed paired-state save still compares its original state while
+holding that lock, so it cannot resurrect a revoked grant. Each native
+execution request carries per-run ROE scope, expiry, and stop metadata
+separately; those are not durable opt-in configuration.
+
+Publish with `publish-deeptest-execution-grant --state-dir <paired-state>
+--confirm-active-testing`; revoke with `revoke-deeptest-execution-grant
+--state-dir <paired-state>`. Both commands use the same packaged Node and
+executor bundle shown for source publication above. Revocation removes the
+execution grant without granting or withdrawing source access.
+
+## Local command and browser protocol
+
+The separate `deeptest-execution --execution-grant-file <absolute path>` command
+is a machine-only interface for DeepTest's connector. Its human doorway is
+DeepTest's active-testing setup; publishing the local grant does not authorize
+a particular assessment. The source command and grant remain unchanged.
+
+Execution uses the same version-1 account/project/review/session binding over
+standard input/output, with a 1 MiB input and 2 MiB output ceiling. `hello`
+reports enabled capabilities separately from the protocol's supported verbs.
+Requests select `execution.command.run`, `execution.browser.open`,
+`execution.browser.observe`, `execution.browser.act`, or `execution.release`.
+Commands use a program and argument array, never an interpolated shell string.
+Command guests have no network egress. Browser actions reuse the executor's
+closed action grammar and its restricted origin proxy.
+
+Starting a command or browser requires the reviewed commit, its exact
+`sha256:` manifest digest, and an unexpired ROE containing the run's scope,
+allowed origins, and stop id. The origin list may narrow the local grant;
+it cannot widen it. A run cannot replace its ROE, stop id, or snapshot tuple. A command or
+browser executes through the existing guest manager in a disposable workspace.
+The adapter admits only a clean, complete source snapshot matching that tuple.
+It materializes the snapshot's retained blob bytes into a temporary private
+tree, then gives the guest manager a copy of that tree. Ignored files, local
+credentials, Git configuration, hooks, and object history never enter the
+guest. The temporary source is removed before startup; the resulting lease's
+exact paths and bytes are checked against the snapshot. Changed copies and
+snapshots with exclusions are refused. Cancellation and failed preparation
+release temporary files and the lease.
+
+The child monitors grant revocation and ROE expiry, including while an opened
+browser is idle. Release and transport closure stop active managers. A failed
+release remains retryable cleanup work and does not report success. Denied
+capabilities and failed execution are incomplete validation, never a clean
+security result. Runtime availability remains a prerequisite; the protocol
+does not supply an unisolated host fallback. Tool results return directly to
+DeepTest and never enter Nessie's hosted command-result store.
