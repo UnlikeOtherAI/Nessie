@@ -290,6 +290,13 @@ jobs:
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
+      # Executor's dependency closure includes @nessie/db. Prisma's generated
+      # client is intentionally absent after a clean install, so generate it
+      # before Turbo asks that package to compile on Windows.
+      - name: Generate Prisma client
+        if: steps.scope.outputs.windows_native == '1'
+        run: pnpm --filter @nessie/api prisma:generate
+
       # Tauri's generated resource manifest rejects a missing runtime directory
       # before compiling the desktop crate. Build the executor's published
       # dependency closure first, then prepare the exact unsigned runtime the
@@ -644,7 +651,7 @@ jobs:
             -p 9010:9000 \
             -e MINIO_ROOT_USER=nessie \
             -e MINIO_ROOT_PASSWORD=nessie-multi-instance \
-            minio/minio:latest server /data
+            quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z server /data
           for attempt in $(seq 1 30); do
             if curl -sf http://127.0.0.1:9010/minio/health/live > /dev/null; then break; fi
             if [ "$attempt" -eq 30 ]; then

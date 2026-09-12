@@ -101,10 +101,13 @@ Every branch also reports the **Windows Native** CI check. It runs only when
 `desktop/`, `executor/`, or `assets/` changes (and reports an explicit skip
 otherwise), then tests every Windows Rust crate and the WiX installer authoring.
 Those failures block the affected pull request before a release build is
-attempted. Before testing the desktop crate it prepares the unsigned packaged
-runtime that Tauri's resource manifest requires. This source check receives no
-signing secrets and creates no release artifacts; the signed build and install
-smoke remain the release workflow's separate responsibility.
+attempted once repository branch protection lists **Windows Native** from the
+GitHub Actions app (ID `15368`) among required checks; preserve strict branch
+protection as disabled when adding it alongside the existing nine checks. Before
+testing the desktop crate it generates Prisma, then prepares the unsigned
+packaged runtime that Tauri's resource manifest requires. This source check
+receives no signing secrets and creates no release artifacts; the signed build
+and install smoke remain the release workflow's separate responsibility.
 
 Signing is a deployment fact, configured through repository secrets. The
 recommended configuration is **Azure Artifact Signing** (formerly Azure Trusted
