@@ -77,8 +77,9 @@ const buildTray = async () => {
  * host, which is why the two are cross-compiled for different targets.
  *
  * The kernel is not built here: it needs a Linux toolchain
- * (`executor/guest/kernel/build.sh`), so CI builds it in a Linux job and hands
- * it over through NESSIE_GUEST_KERNEL.
+ * (`executor/guest/kernel/build.sh`). The release workflow supplies its
+ * bootable artifact through NESSIE_GUEST_KERNEL; Windows PR CI supplies its
+ * verified non-bootable fixture to exercise this MSI path without a job edge.
  */
 const stageResources = async (destination) => {
   await mkdir(join(destination, 'guest'), { recursive: true })

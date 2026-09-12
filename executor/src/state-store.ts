@@ -17,6 +17,7 @@ const STATE_FILE = 'executor-state.json'
 const PAIRING_FILE = 'executor-pairing.json'
 const RUNTIME_DIRECTORY = 'runtime'
 export const DEEPTEST_SOURCE_GRANT_FILE = 'deeptest-source-grant.json'
+export const DEEPTEST_EXECUTION_GRANT_FILE = 'deeptest-execution-grant.json'
 const STATE_MUTATION_LOCK_FILE = 'executor-state-mutation.lock'
 
 export type ExecutorBrowserSandboxConfig = {
@@ -68,6 +69,44 @@ export type ExecutorDeepTestSourceGrant = Pick<
   'descriptor' | 'executorId' | 'workspaceRoot'
 >
 
+/**
+ * Credential-free local execution capability. This is deliberately separate
+ * from source access: publishing it requires an explicit active-testing opt-in.
+ * The browser policy and VM paths are local execution inputs, never targets or
+ * browser-profile state.
+ */
+export type ExecutorDeepTestExecutionGrant = ExecutorDeepTestSourceGrant & {
+  browser: { allowedOrigins: string[] }
+  runtime: {
+    guestInitrdBuilderPath: string
+    guestRuntimeBundlePath: string
+    kernelPath: string
+    vmHelperPath: string
+  }
+}
+
+/** The VM managers never need paired credentials or control-plane metadata. */
+export type ExecutorGuestVmExecutionConfig = Pick<ExecutorLocalState, 'descriptor' | 'workspaceRoot'> & {
+  browserSandbox?: ExecutorBrowserSandboxConfig
+}
+
+export const executorGuestVmExecutionConfig = (
+  grant: ExecutorDeepTestExecutionGrant,
+): ExecutorGuestVmExecutionConfig => ({
+  browserSandbox: {
+    allowedOrigins: [...grant.browser.allowedOrigins],
+    guestInitrdBuilderPath: grant.runtime.guestInitrdBuilderPath,
+    guestRuntimeBundlePath: grant.runtime.guestRuntimeBundlePath,
+    kernelPath: grant.runtime.kernelPath,
+    vmHelperPath: grant.runtime.vmHelperPath,
+  },
+  descriptor: grant.descriptor,
+  workspaceRoot: grant.workspaceRoot,
+})
+
+/** A literal is required so callers cannot publish by accidentally passing a truthy value. */
+export type ExecutorDeepTestExecutionGrantOptIn = { activeTesting: true }
+
 export type ExecutorStateSaveDependencies = {
   replaceJson?: (path: string, value: unknown) => Promise<void>
 }
@@ -84,6 +123,8 @@ const statePath = (stateDir: string): string => resolve(stateDir, STATE_FILE)
 const pairingPath = (stateDir: string): string => resolve(stateDir, PAIRING_FILE)
 export const deepTestSourceGrantPath = (stateDir: string): string =>
   resolve(stateDir, DEEPTEST_SOURCE_GRANT_FILE)
+export const deepTestExecutionGrantPath = (stateDir: string): string =>
+  resolve(stateDir, DEEPTEST_EXECUTION_GRANT_FILE)
 
 const validBrowserSandbox = (value: unknown): value is ExecutorBrowserSandboxConfig => (
   Boolean(value)
@@ -179,6 +220,9 @@ const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boo
 const validPositiveInteger = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) > 0
 
+const validAbsoluteLocalPath = (value: unknown): value is string =>
+  typeof value === 'string' && isAbsolute(value) && !value.includes('\0')
+
 const parseDeepTestSourceGrant = (value: unknown): ExecutorDeepTestSourceGrant => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid grant')
   const grant = value as Record<string, unknown>
@@ -207,11 +251,41 @@ const parseDeepTestSourceGrant = (value: unknown): ExecutorDeepTestSourceGrant =
     || descriptor.profiles.length > 2
     || !descriptor.profiles.every((profile) => ExecutorProfileSchema.safeParse(profile).success)
     || !ExecutorIdSchema.safeParse(grant.executorId).success
-    || typeof grant.workspaceRoot !== 'string'
-    || !isAbsolute(grant.workspaceRoot)
-    || grant.workspaceRoot.includes('\0')
+    || !validAbsoluteLocalPath(grant.workspaceRoot)
   ) throw new Error('invalid grant')
   return grant as unknown as ExecutorDeepTestSourceGrant
+}
+
+const parseDeepTestExecutionGrant = (value: unknown): ExecutorDeepTestExecutionGrant => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid grant')
+  const grant = value as Record<string, unknown>
+  if (!exactKeys(grant, ['browser', 'descriptor', 'executorId', 'runtime', 'workspaceRoot'])) {
+    throw new Error('invalid grant')
+  }
+  const source = parseDeepTestSourceGrant({
+    descriptor: grant.descriptor,
+    executorId: grant.executorId,
+    workspaceRoot: grant.workspaceRoot,
+  })
+  if (!grant.browser || typeof grant.browser !== 'object' || Array.isArray(grant.browser)) {
+    throw new Error('invalid grant')
+  }
+  const browser = grant.browser as Record<string, unknown>
+  if (
+    !exactKeys(browser, ['allowedOrigins'])
+    || !Array.isArray(browser.allowedOrigins)
+    || browser.allowedOrigins.some((origin) => typeof origin !== 'string' || origin.includes('\0'))
+    || !grant.runtime || typeof grant.runtime !== 'object' || Array.isArray(grant.runtime)
+  ) throw new Error('invalid grant')
+  const runtime = grant.runtime as Record<string, unknown>
+  if (
+    !exactKeys(runtime, ['guestInitrdBuilderPath', 'guestRuntimeBundlePath', 'kernelPath', 'vmHelperPath'])
+    || !validAbsoluteLocalPath(runtime.guestInitrdBuilderPath)
+    || !validAbsoluteLocalPath(runtime.guestRuntimeBundlePath)
+    || !validAbsoluteLocalPath(runtime.kernelPath)
+    || !validAbsoluteLocalPath(runtime.vmHelperPath)
+  ) throw new Error('invalid grant')
+  return { ...source, browser: { allowedOrigins: [...browser.allowedOrigins] as string[] }, runtime: runtime as ExecutorDeepTestExecutionGrant['runtime'] }
 }
 
 const sourceGrantFor = (state: ExecutorLocalState): ExecutorDeepTestSourceGrant => ({
@@ -228,6 +302,27 @@ const sourceGrantFor = (state: ExecutorLocalState): ExecutorDeepTestSourceGrant 
   executorId: state.executorId,
   workspaceRoot: state.workspaceRoot,
 })
+
+const executionGrantFor = (state: ExecutorLocalState): ExecutorDeepTestExecutionGrant => {
+  const browserSandbox = state.browserSandbox
+  const hasActiveExecution = state.descriptor.operationKeys.includes('command.run')
+    || ['browser.open', 'browser.observe', 'browser.act'].some(
+      (operation) => state.descriptor.operationKeys.includes(operation),
+    )
+  if (!browserSandbox || !hasActiveExecution) {
+    throw new Error('An active DeepTest execution grant requires configured local VM execution operations.')
+  }
+  return {
+    ...sourceGrantFor(state),
+    browser: { allowedOrigins: [...browserSandbox.allowedOrigins] },
+    runtime: {
+      guestInitrdBuilderPath: browserSandbox.guestInitrdBuilderPath,
+      guestRuntimeBundlePath: browserSandbox.guestRuntimeBundlePath,
+      kernelPath: browserSandbox.kernelPath,
+      vmHelperPath: browserSandbox.vmHelperPath,
+    },
+  }
+}
 
 const sameSourceGrant = (
   left: ExecutorDeepTestSourceGrant,
@@ -246,6 +341,19 @@ const sameSourceGrant = (
   && left.descriptor.profiles.every((profile, index) => profile === right.descriptor.profiles[index])
 )
 
+const sameExecutionGrant = (
+  left: ExecutorDeepTestExecutionGrant,
+  right: ExecutorDeepTestExecutionGrant,
+): boolean => (
+  sameSourceGrant(left, right)
+  && left.browser.allowedOrigins.length === right.browser.allowedOrigins.length
+  && left.browser.allowedOrigins.every((origin, index) => origin === right.browser.allowedOrigins[index])
+  && left.runtime.guestInitrdBuilderPath === right.runtime.guestInitrdBuilderPath
+  && left.runtime.guestRuntimeBundlePath === right.runtime.guestRuntimeBundlePath
+  && left.runtime.kernelPath === right.runtime.kernelPath
+  && left.runtime.vmHelperPath === right.runtime.vmHelperPath
+)
+
 export const loadExecutorDeepTestSourceGrant = async (
   sourceGrantFile: string,
 ): Promise<ExecutorDeepTestSourceGrant> => {
@@ -262,6 +370,25 @@ export const loadExecutorDeepTestSourceGrant = async (
   } catch (error) {
     if (missing(error)) throw error
     throw new Error('The DeepTest source grant is malformed.')
+  }
+}
+
+export const loadExecutorDeepTestExecutionGrant = async (
+  executionGrantFile: string,
+): Promise<ExecutorDeepTestExecutionGrant> => {
+  if (
+    !isAbsolute(executionGrantFile)
+    || basename(executionGrantFile) !== DEEPTEST_EXECUTION_GRANT_FILE
+    || executionGrantFile.includes('\0')
+  ) throw new Error('The DeepTest execution grant must be its absolute published grant file.')
+  const path = resolve(executionGrantFile)
+  await assertOwnerOnly(dirname(path), 'directory')
+  await assertOwnerOnly(path, 'file')
+  try {
+    return parseDeepTestExecutionGrant(JSON.parse(await readFile(path, 'utf8')))
+  } catch (error) {
+    if (missing(error)) throw error
+    throw new Error('The DeepTest execution grant is malformed.')
   }
 }
 
@@ -327,12 +454,22 @@ export const saveExecutorState = async (
       throw new Error('Executor state changed before this update could be saved.')
     }
     const grantPath = deepTestSourceGrantPath(stateDir)
+    const executionGrantPath = deepTestExecutionGrantPath(stateDir)
     const nextGrant = sourceGrantFor(state)
     const currentGrant = await loadExecutorDeepTestSourceGrant(grantPath).catch(() => null)
     const sourceGrantChanged = currentState === null
       || !sameSourceGrant(sourceGrantFor(currentState), nextGrant)
     const validCurrentGrant = currentGrant !== null && sameSourceGrant(currentGrant, nextGrant)
     if (sourceGrantChanged || !validCurrentGrant) await removeOwnerOnlyFile(grantPath)
+    const nextExecutionGrant = (() => {
+      try { return executionGrantFor(state) } catch { return null }
+    })()
+    const currentExecutionGrant = await loadExecutorDeepTestExecutionGrant(executionGrantPath).catch(() => null)
+    if (
+      nextExecutionGrant === null
+      || currentExecutionGrant === null
+      || !sameExecutionGrant(currentExecutionGrant, nextExecutionGrant)
+    ) await removeOwnerOnlyFile(executionGrantPath)
     const replaceJson = dependencies.replaceJson ?? replaceOwnerOnlyJson
     await replaceJson(statePath(stateDir), state)
     if (sourceGrantChanged) await replaceJson(grantPath, nextGrant)
@@ -351,10 +488,43 @@ export const publishExecutorDeepTestSourceGrant = async (stateDir: string): Prom
   })
 }
 
+/**
+ * Publish a separate capability only after the owner explicitly opts into
+ * active testing. Possessing a source grant cannot call or imply this action.
+ */
+export const publishExecutorDeepTestExecutionGrant = async (
+  stateDir: string,
+  optIn: ExecutorDeepTestExecutionGrantOptIn,
+): Promise<string> => {
+  if (optIn.activeTesting !== true || Object.keys(optIn).length !== 1) {
+    throw new Error('Publishing a DeepTest execution grant requires explicit active-testing opt-in.')
+  }
+  await assertSecureDirectory(stateDir)
+  return await withStateMutationLock(stateDir, async () => {
+    const state = await loadExecutorState(stateDir)
+    const sourceGrant = await loadExecutorDeepTestSourceGrant(deepTestSourceGrantPath(stateDir)).catch(() => null)
+    if (sourceGrant === null || !sameSourceGrant(sourceGrant, sourceGrantFor(state))) {
+      throw new Error('A current DeepTest source grant is required before active execution can be published.')
+    }
+    const path = deepTestExecutionGrantPath(stateDir)
+    await removeOwnerOnlyFile(path)
+    await replaceOwnerOnlyJson(path, executionGrantFor(state))
+    return path
+  })
+}
+
+export const revokeExecutorDeepTestExecutionGrant = async (stateDir: string): Promise<void> => {
+  await assertSecureDirectory(stateDir)
+  await withStateMutationLock(stateDir, async () => {
+    await removeOwnerOnlyFile(deepTestExecutionGrantPath(stateDir))
+  })
+}
+
 /** Remove the source grant before deleting the authoritative paired state. */
 export const clearExecutorState = async (stateDir: string): Promise<void> => {
   await assertSecureDirectory(stateDir)
   await withStateMutationLock(stateDir, async () => {
+    await removeOwnerOnlyFile(deepTestExecutionGrantPath(stateDir))
     await removeOwnerOnlyFile(deepTestSourceGrantPath(stateDir))
     await removeOwnerOnlyFile(statePath(stateDir))
   })

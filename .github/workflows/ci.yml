@@ -242,6 +242,226 @@ jobs:
         if: steps.scope.outputs.desktop != '1'
         run: echo "No desktop/, executor/windows-provenance/ or assets/ change — desktop bundle not rebuilt."
 
+  windows-native:
+    name: Windows Native
+    runs-on: windows-latest
+    env:
+      WIX_VERSION: "5.0.2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This job always reports. A Windows-native change runs the real Windows
+      # Rust suites and installer-authoring suite; every other change records a
+      # successful, explicit skip so the required check does not disappear.
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Test Windows-native scope
+        run: node --test scripts/ci-scope.test.mjs scripts/windows-native-ci.test.mjs
+
+      # Keep source verification separate from release signing. Pull requests
+      # receive no signing secrets. The installers below are temporary unsigned
+      # validation inputs only: this job neither signs, uploads, nor publishes
+      # them; the signed release workflow remains a separate deployment gate.
+      - name: Setup pnpm
+        if: steps.scope.outputs.windows_native == '1'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.scope.outputs.windows_native == '1'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
+          rustup default stable-x86_64-pc-windows-msvc
+          rustc --version
+
+      - name: Cache Cargo
+        if: steps.scope.outputs.windows_native == '1'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+            executor/native/target
+            executor/service-windows/target
+            executor/tray-windows/src-tauri/target
+            executor/hyperv-bridge/target
+          key: >-
+            windows-native-cargo-${{ hashFiles(
+              'desktop/src-tauri/Cargo.lock',
+              'executor/native/Cargo.lock',
+              'executor/service-windows/Cargo.lock',
+              'executor/hyperv-bridge/Cargo.lock',
+              'executor/tray-windows/src-tauri/Cargo.lock') }}
+          restore-keys: windows-native-cargo-
+
+      - name: Install dependencies
+        if: steps.scope.outputs.windows_native == '1'
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
+
+      # Executor's dependency closure includes @nessie/db. Prisma's generated
+      # client is intentionally absent after a clean install, so generate it
+      # before Turbo asks that package to compile on Windows.
+      - name: Generate Prisma client
+        if: steps.scope.outputs.windows_native == '1'
+        run: pnpm --filter @nessie/api prisma:generate
+
+      # Tauri's generated resource manifest rejects a missing runtime directory
+      # before compiling the desktop crate. Build the executor's published
+      # dependency closure first, then prepare the exact unsigned runtime the
+      # Rust tests inspect. Release signing is configured later in its own
+      # workflow; this preparation signs nothing when no signing command exists.
+      - name: Build executor bundle dependencies
+        if: steps.scope.outputs.windows_native == '1'
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
+      - name: Prepare desktop executor runtime
+        if: steps.scope.outputs.windows_native == '1'
+        run: pnpm --dir desktop run prepare:executor-runtime
+
+      # GitHub Actions' PowerShell wrapper only propagates the final native
+      # command's exit code. Each crate gets its own step and repeats the exit
+      # check, so a failure can never be hidden by a later passing Cargo test.
+      - name: Test desktop Rust crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path desktop/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test executor native helper crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path executor/native/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test Windows provenance crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path executor/windows-provenance/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test executor service crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path executor/service-windows/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test Hyper-V bridge crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path executor/hyperv-bridge/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test executor tray crate
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path executor/tray-windows/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Windows installer-authoring tests
+        if: steps.scope.outputs.windows_native == '1'
+        run: node --test executor/packaging/windows/msi-plan.test.mjs
+
+      # The release workflow builds and boots the production kernel in Linux.
+      # Hosted Windows runners cannot run Linux containers, so this checked-in,
+      # non-bootable fixture keeps the PR job self-contained while covering the
+      # real MSI's staging, WiX, install, service/tray, and uninstall paths.
+      - name: Create verified executor MSI CI kernel fixture
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $fixturePath = Join-Path $env:RUNNER_TEMP 'windows-native-ci-bzImage'
+          & executor/packaging/windows/create-ci-guest-kernel.ps1 -OutputPath $fixturePath
+
+      - name: Setup Go
+        if: steps.scope.outputs.windows_native == '1'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: executor/guest/go.sum
+
+      - name: Install the WiX toolset
+        if: steps.scope.outputs.windows_native == '1'
+        run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
+
+      - name: Enable VBScript for MSI validation
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $capability = Get-WindowsCapability -Online -Name 'VBSCRIPT~~~~' -ErrorAction SilentlyContinue
+          if ($capability -and $capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name | Out-Null
+          }
+          if (-not (Test-Path "$env:SystemRoot\System32\vbscript.dll")) {
+            throw 'VBScript is unavailable, so WiX cannot validate the MSI on this runner.'
+          }
+
+      - name: Build unsigned Windows desktop installers
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          pnpm --dir desktop exec tauri build --bundles nsis,msi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate unsigned Windows desktop MSI
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem desktop/src-tauri/target/release/bundle/msi -Filter '*.msi' |
+            Select-Object -First 1
+          if (-not $package) { throw 'Tauri did not produce a Windows MSI' }
+          wix msi validate $package.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build unsigned Windows executor MSI
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $env:NESSIE_GUEST_KERNEL = Join-Path $env:RUNNER_TEMP 'windows-native-ci-bzImage'
+          node executor/packaging/windows/build-msi.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Smoke-test unsigned Windows desktop installer
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' |
+            Select-Object -First 1
+          if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer' }
+          & desktop/scripts/windows-installer-smoke.ps1 -InstallerPath $installer.FullName
+
+      - name: Smoke-test unsigned Windows executor MSI
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem dist -Filter 'NessieExecutor_*_x64.msi' | Select-Object -First 1
+          if (-not $package) { throw 'the Windows executor build did not produce an MSI' }
+          & executor/packaging/windows/installer-smoke.ps1 -PackagePath $package.FullName
+
+      - name: Report skip
+        if: steps.scope.outputs.windows_native != '1'
+        run: echo "No desktop/, executor/ or assets/ change — Windows-native checks not required."
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -560,11 +780,11 @@ jobs:
       - name: Start shared object storage
         if: steps.scope.outputs.code == '1'
         run: |
-          docker run -d --name minio \
+          docker run --platform linux/amd64 -d --name minio \
             -p 9010:9000 \
             -e MINIO_ROOT_USER=nessie \
             -e MINIO_ROOT_PASSWORD=nessie-multi-instance \
-            minio/minio:latest server /data
+            quay.io/minio/minio@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2 server /data
           for attempt in $(seq 1 30); do
             if curl -sf http://127.0.0.1:9010/minio/health/live > /dev/null; then break; fi
             if [ "$attempt" -eq 30 ]; then
@@ -572,7 +792,7 @@ jobs:
             fi
             sleep 2
           done
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+          docker run --platform linux/amd64 --rm --network host --entrypoint sh quay.io/minio/mc@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780 -c \
             "mc alias set local http://127.0.0.1:9010 nessie nessie-multi-instance \
              && mc mb --ignore-existing local/nessie"
 
