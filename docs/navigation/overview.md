@@ -32,6 +32,12 @@ means section 7, wherever it now lives.
 - [Arriving with content, and drafts](content-and-drafts.md) — §14 Arriving
   with content, §15 Drafts.
 
+The Navigation Transitions suite includes a desktop durable-attention journey:
+it seeds a worker-classified trigger failure, opens it from the shared bell,
+and proves the trigger hash selects that exact schedule's health and
+Reauthorize controls. The worker and alert-dispatch suites retain ownership of
+the failure transition and delivery; this browser case owns the doorway.
+
 ## 16. Still planned
 
 Everything the plan

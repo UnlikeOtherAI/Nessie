@@ -132,6 +132,57 @@ export const seedTeam = async (apiServer) => {
 }
 
 /**
+ * A worker-classified trigger health transition is seeded after the ordinary
+ * owner routes create the agent, binding and trigger. The worker's transition
+ * and alert-dispatch tests own how those two rows are written; this navigation
+ * fixture owns the person-facing bell -> exact recovery control journey.
+ */
+export const seedTriggerHealthAlert = async (seed) => {
+  const suffix = Date.now().toString(36)
+  const title = `Reauthorize schedule ${suffix}`
+  const agent = await call('/api/agents', {
+    body: { name: `Trigger health ${suffix}`, systemPrompt: 'Navigation alert proof.' },
+    method: 'POST',
+    token: seed.token,
+  })
+  await call(`/api/agents/${agent.id}/bindings`, {
+    body: { channelId: seed.channels[0].id },
+    method: 'POST',
+    token: seed.token,
+  })
+  const trigger = await call(`/api/agents/${agent.id}/triggers`, {
+    body: { name: title, targetChannelId: seed.channels[0].id, type: 'manual' },
+    method: 'POST',
+    token: seed.token,
+  })
+  const me = await call('/api/auth/me', { token: seed.token })
+  const prisma = new PrismaClient()
+  try {
+    await prisma.agentTrigger.update({
+      data: {
+        healthDetail: 'The captured authority needs to be renewed.',
+        healthReason: 'launch_origin_invalid',
+        healthRevision: 1,
+        status: 'needs_reauthorization',
+      },
+      where: { id: trigger.id },
+    })
+    await prisma.userAlert.create({
+      data: {
+        eventKey: `navigation-trigger-health:${trigger.id}`,
+        kind: 'trigger_health',
+        organizationId: me.context.organizationId,
+        triggerId: trigger.id,
+        userId: me.user.id,
+      },
+    })
+  } finally {
+    await prisma.$disconnect()
+  }
+  return { title, triggerId: trigger.id }
+}
+
+/**
  * Give the logout case its own account. Logout bumps a user's token version,
  * so even a second session for the suite owner would revoke every later case.
  */
