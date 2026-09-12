@@ -20,8 +20,8 @@ export const registerDeviceRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   const { prisma, requireActorContext } = deps
 
   // POST /api/devices — register or refresh a native device token. A token is
-  // one physical installation, so re-registering atomically transfers it to
-  // the current user + organization rather than leaking a former user's alerts.
+  // one physical installation. A cross-account transfer requires its retained
+  // installation proof, then atomically moves it without leaking old alerts.
   app.post('/api/devices', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {

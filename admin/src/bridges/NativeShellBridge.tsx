@@ -6,6 +6,7 @@ import {
   readNativePushRegistration,
   shouldRegisterNativePush,
 } from '../lib/native-push-registration';
+import { registerNativePush } from '../lib/native-push-ownership';
 import { isReactNativeWebView, readNativePendingPushPath } from '../lib/native-shell';
 import { useApiClient } from '../providers/ApiClientProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
@@ -20,25 +21,6 @@ type RnWindow = Window & {
 };
 
 const NATIVE_PUSH_PATH_EVENT = 'nessie:native-push-path';
-const ownershipProofStorageKey = (token: string): string => `nessie:native-push-ownership:${token}`;
-
-const readOwnershipProof = (token: string): string | undefined => {
-  try {
-    return window.localStorage.getItem(ownershipProofStorageKey(token)) ?? undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const storeOwnershipProof = (token: string, ownershipProof: unknown): void => {
-  if (typeof ownershipProof !== 'string' || ownershipProof.length < 32) return;
-  try {
-    window.localStorage.setItem(ownershipProofStorageKey(token), ownershipProof);
-  } catch {
-    // A full or unavailable WebView store leaves the existing binding intact;
-    // the server still refuses a future cross-account transfer without proof.
-  }
-};
 
 // Decode a `data:image/...;base64,...` URI (sent by the native shell after a
 // screen capture) into a File the feedback composer can upload like any other
@@ -108,13 +90,8 @@ export const NativeShellBridge = () => {
         return;
       }
       pendingToken.current = registration.token;
-      const ownershipProof = readOwnershipProof(registration.token);
-      const registrationRequest: Promise<void> = apiClient.post<{ ownershipProof?: string }>('/api/devices', {
-        ...registration,
-        ...(ownershipProof ? { ownershipProof } : {}),
-      })
-        .then((result) => {
-          storeOwnershipProof(registration.token, result.ownershipProof);
+      const registrationRequest: Promise<void> = registerNativePush(apiClient, registration)
+        .then(() => {
           registeredToken.current = registration.token;
           registeredApiClient.current = apiClient;
         })

@@ -366,6 +366,56 @@ test('an installation proof transfers an account switch and rotates before a for
   await current.app.close()
 })
 
+test('a stale former session cannot revive a tombstone after a proofed transfer', async () => {
+  const rows: DeviceRow[] = []
+  const former = makeApp(userA, rows, organizationId, '1')
+  const currentOrganizationId = '00000000-0000-4000-8000-000000000099'
+  const current = makeApp(userB, rows, currentOrganizationId, '2')
+  const nextOrganizationId = '00000000-0000-4000-8000-000000000088'
+  const next = makeApp(userA, rows, nextOrganizationId, '4')
+
+  const initial = await former.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token' },
+  })
+  const initialProof = (initial.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof initialProof, 'string')
+  const transferred = await current.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token', ownershipProof: initialProof },
+  })
+  const transferredProof = (transferred.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof transferredProof, 'string')
+  assert.notEqual(transferredProof, initialProof)
+
+  const deleted = await current.app.inject({ method: 'DELETE', url: '/api/devices/transferred-tombstone-token' })
+  assert.equal(deleted.statusCode, 204)
+  const stale = await former.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token', ownershipProof: initialProof },
+  })
+  assert.equal(stale.statusCode, 201)
+  assert.ok(rows[0]?.inactiveAt instanceof Date)
+
+  const revived = await next.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token', ownershipProof: transferredProof },
+  })
+  assert.equal(revived.statusCode, 201)
+  const revivedProof = (revived.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof revivedProof, 'string')
+  assert.notEqual(revivedProof, transferredProof)
+  assert.equal(rows[0]?.inactiveAt, null)
+  assert.equal(rows[0]?.organizationId, nextOrganizationId)
+  await former.app.close()
+  await current.app.close()
+  await next.app.close()
+})
+
 test('registering in another organization transfers the device to that active team', async () => {
   const otherOrganizationId = '00000000-0000-4000-8000-000000000099'
   const rows: DeviceRow[] = []
