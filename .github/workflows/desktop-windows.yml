@@ -183,6 +183,13 @@ jobs:
       - name: Build executor bundle dependencies
         run: pnpm exec turbo run build --filter=@nessie/executor...
 
+      # Tauri's generated resource manifest needs the packaged runtime even for
+      # `cargo test`. Prepare it before the desktop crate compiles; signing is
+      # still resolved only below, so this is an unsigned source build unless a
+      # later trusted-release step supplies the signing command.
+      - name: Prepare desktop executor runtime
+        run: pnpm --dir desktop run prepare:executor-runtime
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

@@ -242,6 +242,86 @@ jobs:
         if: steps.scope.outputs.desktop != '1'
         run: echo "No desktop/, executor/windows-provenance/ or assets/ change — desktop bundle not rebuilt."
 
+  windows-native:
+    name: Windows Native
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This job always reports. A Windows-native change runs the real Windows
+      # Rust suites and installer-authoring suite; every other change records a
+      # successful, explicit skip so the required check does not disappear.
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Test Windows-native scope
+        run: node --test scripts/ci-scope.test.mjs
+
+      # Keep source verification separate from release signing. Pull requests
+      # receive no signing secrets and this job never creates release artifacts.
+      # It does fail on any Rust or WiX-authoring regression before a release
+      # workflow can build, sign, or install an artifact.
+      - name: Setup pnpm
+        if: steps.scope.outputs.windows_native == '1'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.scope.outputs.windows_native == '1'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
+          rustup default stable-x86_64-pc-windows-msvc
+          rustc --version
+
+      - name: Install dependencies
+        if: steps.scope.outputs.windows_native == '1'
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
+
+      # Tauri's generated resource manifest rejects a missing runtime directory
+      # before compiling the desktop crate. Build the executor's published
+      # dependency closure first, then prepare the exact unsigned runtime the
+      # Rust tests inspect. Release signing is configured later in its own
+      # workflow; this preparation signs nothing when no signing command exists.
+      - name: Build executor bundle dependencies
+        if: steps.scope.outputs.windows_native == '1'
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
+      - name: Prepare desktop executor runtime
+        if: steps.scope.outputs.windows_native == '1'
+        run: pnpm --dir desktop run prepare:executor-runtime
+
+      - name: Run Windows-native Rust tests
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          cargo test --manifest-path desktop/src-tauri/Cargo.toml
+          cargo test --manifest-path executor/native/Cargo.toml
+          cargo test --manifest-path executor/windows-provenance/Cargo.toml
+          cargo test --manifest-path executor/service-windows/Cargo.toml
+          cargo test --manifest-path executor/hyperv-bridge/Cargo.toml
+          cargo test --manifest-path executor/tray-windows/src-tauri/Cargo.toml
+
+      - name: Run Windows installer-authoring tests
+        if: steps.scope.outputs.windows_native == '1'
+        run: node --test executor/packaging/windows/msi-plan.test.mjs
+
+      - name: Report skip
+        if: steps.scope.outputs.windows_native != '1'
+        run: echo "No desktop/, executor/ or assets/ change — Windows-native checks not required."
+
   test:
     name: Test
     runs-on: ubuntu-latest
