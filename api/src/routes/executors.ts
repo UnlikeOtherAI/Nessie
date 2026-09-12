@@ -33,6 +33,7 @@ import {
   ExecutorRunLaunchBodySchema,
   ExecutorRunLaunchSchema,
   ExecutorWorkspaceReviewRecordSchema,
+  PendingExecutorEnrollmentSchema,
   PrepareExecutorAccessChangeBodySchema,
   PreparedExecutorAccessChangeSchema,
 } from '../contracts/executors.js'
