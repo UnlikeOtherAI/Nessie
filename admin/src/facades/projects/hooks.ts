@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ProjectRecordSchema } from '@nessie/schemas'
 import type {
   ProjectMemberRecord,
   ProjectRecord,
@@ -14,7 +15,7 @@ export const useProjects = (enabled = true) => {
 
   return useQuery<ProjectRecord[]>({
     queryKey: projectKeys.all,
-    queryFn: () => apiClient.get('/api/projects'),
+    queryFn: () => apiClient.get('/api/projects', ProjectRecordSchema.array()),
     enabled,
     staleTime: Infinity,
   })
@@ -64,7 +65,7 @@ export const useCreateProject = () => {
 
   return useMutation({
     mutationFn: (input: { name: string; teamId: string }) =>
-      apiClient.post<ProjectRecord>('/api/projects', input),
+      apiClient.post<ProjectRecord>('/api/projects', input, undefined, ProjectRecordSchema),
     onSuccess: async () => {
       // The sidebar resolves a project's explicit channel target from the
       // team's canonical `projectIds`. Refresh both directories together so a
@@ -124,11 +125,16 @@ export const useUpdateProject = () => {
       name: string
       projectId: string
     }) =>
-      apiClient.patch<ProjectRecord>(`/api/projects/${input.projectId}`, {
-        avatarAttachmentId: input.avatarAttachmentId,
-        avatarEmoji: input.avatarEmoji,
-        name: input.name,
-      }),
+      apiClient.patch<ProjectRecord>(
+        `/api/projects/${input.projectId}`,
+        {
+          avatarAttachmentId: input.avatarAttachmentId,
+          avatarEmoji: input.avatarEmoji,
+          name: input.name,
+        },
+        undefined,
+        ProjectRecordSchema,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })

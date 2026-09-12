@@ -152,7 +152,7 @@ export const getEditState = (
       ? trigger.config
       : {}
   const hasCron = typeof config.cron === 'string' && config.cron.trim().length > 0
-  const boundChannelIds = new Set(channels.map((candidate) => candidate.id))
+  const boundChannelIds = new Set<string>(channels.map((candidate) => candidate.id))
 
   return {
     name: trigger.name ?? '',

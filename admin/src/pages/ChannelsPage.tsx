@@ -731,10 +731,6 @@ export const ChannelsPage = () => {
         onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
         onCloseSelectedUser={() => setSelectedMessageUser(null)}
         onCloseSettings={() => setShowChannelSettings(false)}
-        onGroupCreated={(newChannelId) => {
-          setShowMembersPopup(false)
-          navigate(`/channels/${newChannelId}`)
-        }}
         onInsertTrimmed={(trimmed) => {
           setOversizePaste(null)
           mentionRef.current?.insertText(trimmed)
@@ -773,7 +769,6 @@ export const ChannelsPage = () => {
           channelUsers={channelUsers}
           agentTools={availableChatTools(chatToolAgents)}
           me={me}
-          onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}
           onOpenTool={openToolScreen}
         />
       ) : null}

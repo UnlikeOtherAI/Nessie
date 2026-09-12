@@ -64,7 +64,6 @@ export type {
   BuildMeProjectHandoffRequest,
   CallParticipantRecord,
   CallRecord,
-  ChannelMetadataRecord,
   ChannelRecord,
   AgentBrowserLoginRecord,
   AgentBrowserRecord,

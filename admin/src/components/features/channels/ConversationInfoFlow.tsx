@@ -25,10 +25,9 @@ type ConversationInfoFlowProps = {
    * conversations but no browser must be offered the one it has and not the
    * one it does not, and a room with several agents has conversations but no
    * one browser to name.
-   */
+  */
   agentTools: readonly ChatTool[]
   me: MeResponse
-  onGroupCreated: (channelId: string) => void
   onOpenTool: (tool: ChatToolId) => void
 }
 
@@ -257,13 +256,11 @@ const AddConversationMembers = ({
   allUsers,
   channelUsers,
   currentUserId,
-  onGroupCreated,
 }: {
   activeChannel: ChannelRecord
   allUsers: UserRecord[]
   channelUsers: UserRecord[]
   currentUserId: string
-  onGroupCreated: (channelId: string) => void
 }) => {
   const addMember = useAddChannelMember()
   const [query, setQuery] = useState('')
@@ -293,14 +290,7 @@ const AddConversationMembers = ({
           <AvailableUserRow
             addPending={addMember.isPending}
             key={person.id}
-            onAdd={(userId) => addMember.mutate(
-              { channelId: activeChannel.id, userId },
-              {
-                onSuccess: (channel) => {
-                  if (activeChannel.type === 'dm' && channel?.id) onGroupCreated(channel.id)
-                },
-              },
-            )}
+            onAdd={(userId) => addMember.mutate({ channelId: activeChannel.id, userId })}
             user={person}
           />
         ))}
@@ -328,7 +318,6 @@ export const ConversationInfoFlow = ({
   canAddPeople,
   channelUsers,
   me,
-  onGroupCreated,
   onOpenTool,
 }: ConversationInfoFlowProps) => {
   const location = useLocation()
@@ -399,7 +388,6 @@ export const ConversationInfoFlow = ({
           allUsers={allUsers}
           channelUsers={members}
           currentUserId={me.user.id}
-          onGroupCreated={onGroupCreated}
         />
       ) : null}
 

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { AgentRecordSchema } from '@nessie/schemas'
 import {
   infiniteQueryOptions,
   keepPreviousData,
@@ -39,7 +40,10 @@ export const useAgents = (options?: { scope?: AgentListScope }) => {
   return useQuery<AgentRecord[]>({
     queryKey: scope === 'all' ? agentKeys.allScopes : agentKeys.all,
     queryFn: () =>
-      apiClient.get(scope === 'all' ? '/api/agents?scope=all' : '/api/agents'),
+      apiClient.get(
+        scope === 'all' ? '/api/agents?scope=all' : '/api/agents',
+        AgentRecordSchema.array(),
+      ),
   })
 }
 
