@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { dirname } from 'node:path'
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
+import { serveDeepTestExecutionAdapter } from './deeptest-execution-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
 import {
   configureExecutorBrowserSandbox,
@@ -16,9 +18,12 @@ import {
 } from './service-linux.js'
 import {
   loadExecutorDeepTestSourceGrant,
+  loadExecutorDeepTestExecutionGrant,
   loadExecutorState,
   loadExecutorStatesFromRoot,
   publishExecutorDeepTestSourceGrant,
+  publishExecutorDeepTestExecutionGrant,
+  revokeExecutorDeepTestExecutionGrant,
 } from './state-store.js'
 
 type ParsedCommand =
@@ -60,6 +65,7 @@ type ParsedCommand =
   }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'deeptest-source'; sourceGrantFile: string }
+  | { executionGrantFile: string; kind: 'deeptest-execution' }
   | { kind: 'heartbeat'; stateDir: string }
   | {
     callerOrigin: string
@@ -70,6 +76,8 @@ type ParsedCommand =
   }
   | { kind: 'serve'; parentLivenessFromStandardInput?: true; stateDir: string }
   | { kind: 'publish-deeptest-source-grant'; stateDir: string }
+  | { kind: 'publish-deeptest-execution-grant'; stateDir: string }
+  | { kind: 'revoke-deeptest-execution-grant'; stateDir: string }
   | { assumeYes: boolean; executorId: string; kind: 'enable'; stateDir?: string }
   | { executorId: string; kind: 'disable' }
   | { executorId?: string; kind: 'status'; stateRoot?: string }
@@ -98,7 +106,10 @@ const usage = (): never => {
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
     + '       nessie-executor deeptest-source --source-grant-file <absolute-owner-only-file>\n'
+    + '       nessie-executor deeptest-execution --execution-grant-file <absolute-owner-only-file>\n'
     + '       nessie-executor publish-deeptest-source-grant --state-dir <owner-only-path>\n'
+    + '       nessie-executor publish-deeptest-execution-grant --state-dir <owner-only-path> --confirm-active-testing\n'
+    + '       nessie-executor revoke-deeptest-execution-grant --state-dir <owner-only-path>\n'
     + '       nessie-executor native-browser-cookie-import --state-root <owner-only-path> '
     + '--extension-origin <chrome-extension://release-id/> --caller-origin <chrome-extension://release-id/>\n'
     + '       nessie-executor enable <executorId> [--state-dir <owner-only-path>] [--yes]\n'
@@ -283,7 +294,17 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'deeptest-source') {
     return { kind: command, sourceGrantFile: option(args, '--source-grant-file') }
   }
+  if (command === 'deeptest-execution') {
+    return { executionGrantFile: option(args, '--execution-grant-file'), kind: command }
+  }
   if (command === 'publish-deeptest-source-grant') {
+    return { kind: command, stateDir: option(args, '--state-dir') }
+  }
+  if (command === 'publish-deeptest-execution-grant') {
+    if (!args.includes('--confirm-active-testing')) return usage()
+    return { kind: command, stateDir: option(args, '--state-dir') }
+  }
+  if (command === 'revoke-deeptest-execution-grant') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
   if (command === 'native-browser-cookie-import') {
@@ -368,6 +389,14 @@ export const run = async (args: string[]): Promise<void> => {
     process.stdout.write(`${grantPath}\n`)
     return
   }
+  if (command.kind === 'publish-deeptest-execution-grant') {
+    process.stdout.write(`${await publishExecutorDeepTestExecutionGrant(command.stateDir, { activeTesting: true })}\n`)
+    return
+  }
+  if (command.kind === 'revoke-deeptest-execution-grant') {
+    await revokeExecutorDeepTestExecutionGrant(command.stateDir)
+    return
+  }
   if (command.kind === 'deeptest-source') {
     await assertPackagedExecutorRuntime()
     const grant = await loadExecutorDeepTestSourceGrant(command.sourceGrantFile)
@@ -376,6 +405,18 @@ export const run = async (args: string[]): Promise<void> => {
       process.stdin,
       process.stdout,
       () => loadExecutorDeepTestSourceGrant(command.sourceGrantFile),
+    )
+    return
+  }
+  if (command.kind === 'deeptest-execution') {
+    await assertPackagedExecutorRuntime()
+    const grant = await loadExecutorDeepTestExecutionGrant(command.executionGrantFile)
+    await serveDeepTestExecutionAdapter(
+      dirname(command.executionGrantFile),
+      grant,
+      process.stdin,
+      process.stdout,
+      () => loadExecutorDeepTestExecutionGrant(command.executionGrantFile),
     )
     return
   }
