@@ -121,7 +121,10 @@ test('every stateful column-browser detail column owns exactly one Back action',
   assert.equal((workflows.match(/^        showBack$/gm) ?? []).length, 4, workflows)
   assert.match(
     workflows,
-    /if \(showFailedRuns && selectedRunId && !selectedInstallation\)[\s\S]*?onBack=\{\(\) => setSelectedRunId\(undefined\)\}/,
+    new RegExp(
+      'if \\(showFailedRuns && selectedRunId && !selectedInstallation\\)[\\s\\S]*?'
+        + 'onBack=\\{\\(\\) => setSelectedRunId\\(undefined\\)\\}',
+    ),
   )
   const failedRunsColumn = readSource('../src/components/features/workflows/WorkflowFailedRunsColumn.tsx')
   assert.match(failedRunsColumn, /showBack/)
