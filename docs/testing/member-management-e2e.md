@@ -6,7 +6,9 @@ never contacts UOA or sends email. The fixture proves desktop and phone flows
 for role changes, organisation activation, team removal, invitations (including
 a same-email, same-team resubmission sent through to UOA), explicit resend and
 cancellation, team access, live permission withdrawal, request refusal and
-list refreshes. UOA remains the authority for the atomic
+list refreshes. It also seeds one failed automatic-membership grant and proves
+the unread shared bell item opens the precise rule, focuses its Re-authorize
+control, and submits that repair. UOA remains the authority for the atomic
 one-actionable-invitation rule; the fixture retains one pending row after that
 second submission.
 

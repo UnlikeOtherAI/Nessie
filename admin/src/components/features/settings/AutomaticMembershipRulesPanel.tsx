@@ -46,8 +46,10 @@ const LEDE = 'When someone signs in with an email address at a domain you contro
   + 'signs anyone in.'
 
 export const AutomaticMembershipRulesPanel = ({
+  highlightedRuleId,
   scope,
 }: {
+  highlightedRuleId?: string | null
   scope: AutomaticMembershipScope
 }) => {
   const query = useAutomaticMembership(scope)
@@ -214,6 +216,7 @@ export const AutomaticMembershipRulesPanel = ({
                         canManageDomains={permissions.manageDomains}
                         canManageRules={permissions.manageRules}
                         domain={domain}
+                        highlightedRuleId={highlightedRuleId}
                         key={domain.id}
                         pending={pending}
                         scope={scope}

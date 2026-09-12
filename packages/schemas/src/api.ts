@@ -99,4 +99,11 @@ export const createApiResponseSchema = <TOutput>(
   z.object({
     data: dataSchema,
     meta: PaginationMetaSchema.optional(),
+  }).superRefine((response, context) => {
+    // `z.unknown()` accepts `undefined`, which makes a required object key
+    // appear optional. Every successful JSON response owns `data`; `null` is
+    // still a deliberate payload and remains valid when the domain permits it.
+    if (!Object.prototype.hasOwnProperty.call(response, 'data')) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Response data is required.' })
+    }
   })

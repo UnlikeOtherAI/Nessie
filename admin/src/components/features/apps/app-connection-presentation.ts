@@ -1,5 +1,28 @@
 import type { AppConnectionStatus, AppConnectionSummaryRecord } from '@nessie/schemas'
 
+export type AppConnectionRecoveryAction = 'reconnect' | 'refresh_capabilities'
+
+/**
+ * The row only offers the two remedies the server authorised for this specific
+ * account. A visible account is not necessarily an account someone may repair.
+ */
+export const connectionRecoveryActions = (
+  connection: Pick<
+    AppConnectionSummaryRecord,
+    'canReconnect' | 'canRefreshCapabilities' | 'status'
+  >,
+): AppConnectionRecoveryAction[] => {
+  const actions: AppConnectionRecoveryAction[] = []
+  if (
+    connection.canReconnect
+    && (connection.status === 'error' || connection.status === 'expired')
+  ) {
+    actions.push('reconnect')
+  }
+  if (connection.canRefreshCapabilities) actions.push('refresh_capabilities')
+  return actions
+}
+
 /**
  * A connected account, said in words a person recognises.
  *

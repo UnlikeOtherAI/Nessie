@@ -56,8 +56,8 @@ export type PushDispatchPrisma = PushDeliveryPrisma &
 
 export type PushDispatchDeps = {
   prisma: PushDispatchPrisma
-  /** Deployment auth secret — the key the secret store encrypted creds under. */
-  authSecret: string
+  /** Independently rotated key ring for stored APNs/FCM credentials. */
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   /**
    * VAPID credentials for browser Web Push, populated only when all three
    * config values are present. When set, recipients' browser subscriptions are

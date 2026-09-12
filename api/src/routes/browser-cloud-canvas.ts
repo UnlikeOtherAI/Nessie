@@ -50,7 +50,7 @@ export const registerBrowserCloudCanvasRoutes = (
   app: FastifyInstance,
   deps: BrowserCloudCanvasRouteDeps,
 ): void => {
-  const { authSecret, prisma } = deps
+  const { encryptionKeyRing, prisma } = deps
   const hasBrowserOpenGrant = deps.browserCanvasOperations?.agentHasBrowserOpenGrant
     ?? agentHasBrowserOpenGrant
   const claimControl = deps.browserCanvasOperations?.claimSessionControl ?? claimSessionControl
@@ -117,7 +117,7 @@ export const registerBrowserCloudCanvasRoutes = (
       return
     }
     const capability = await loadCapability(prisma, {
-      encryptionSecret: authSecret ?? '', sessionId: initial.id,
+      encryptionSecret: encryptionKeyRing, sessionId: initial.id,
     })
     if (!capability || closed) {
       close(1011, 'Browser connection unavailable')

@@ -455,7 +455,7 @@ export const TaskDialog = ({
           ) : null}
         </div>
 
-        {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
+        {isEdit && task ? <TaskDocuments projectId={task.projectId} taskId={task.id} /> : null}
 
         {/*
           One banner for four mutations (save, column move, status transition,

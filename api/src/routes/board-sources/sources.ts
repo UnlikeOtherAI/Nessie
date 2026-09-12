@@ -41,7 +41,7 @@ import type { RouteDeps } from '../types.js'
  * it, because a sync carries that person's delegated authority.
  */
 export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, config, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } =
+  const { prisma, encryptionKeyRing, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } =
     deps
 
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
@@ -93,7 +93,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
     const context = await loadBoardSourceConnectionContext(
       prisma,
       connectionId,
-      config.auth.secret ?? '',
+      encryptionKeyRing,
     )
     if (isBoardSourceCredentialError(context)) return null
     try {
@@ -128,7 +128,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       const context = await loadBoardSourceConnectionContext(
         prisma,
         source.connectionId,
-        config.auth.secret ?? '',
+        encryptionKeyRing,
       )
       if (isBoardSourceCredentialError(context)) return
       await adapter.removeWebhook(
@@ -254,7 +254,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       (await loadBoardSourceConnectionContext(
         prisma,
         connection.id,
-        config.auth.secret ?? '',
+        encryptionKeyRing,
       )) as Parameters<typeof adapter.listContainers>[0],
     )
     const descriptor = containers.find(

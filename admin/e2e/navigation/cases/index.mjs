@@ -13,6 +13,8 @@ import { desktopAgentMessageHistory } from './desktop-agent-message-history.mjs'
 import { desktopDashboardExit } from './desktop-dashboard-exit.mjs'
 import { desktopKnowledgeCrossNavigation } from './desktop-knowledge-cross-navigation.mjs'
 import { desktopDashboardLiveWorkspace } from './desktop-dashboard-live-workspace.mjs'
+import { desktopWorkflowFailureAlert } from './desktop-workflow-failure-alert.mjs'
+import { desktopTriggerHealthAlert } from './desktop-trigger-health-alert.mjs'
 
 export const CASES = [
   phonePush,
@@ -32,4 +34,6 @@ export const CASES = [
   desktopDashboardExit,
   desktopKnowledgeCrossNavigation,
   desktopDashboardLiveWorkspace,
+  desktopWorkflowFailureAlert,
+  desktopTriggerHealthAlert,
 ]

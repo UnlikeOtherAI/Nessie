@@ -53,7 +53,7 @@ export const writeGmailDraftDispatchAudit = async (
 
 export const sweepDueGmailSends = async (
   prisma: PrismaClient,
-  deps: { encryptionSecret: string; now?: () => Date },
+  deps: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput; now?: () => Date },
 ): Promise<{ dispatched: number; failed: number; deliveryUnknown: number }> => {
   const now = deps.now?.() ?? new Date()
   await resolveStaleGmailDraftUpdates(prisma, { now: () => now })

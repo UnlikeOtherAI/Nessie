@@ -108,7 +108,7 @@ const invitationColumns = (scope: MemberRosterScope): DataTableColumn<TeamInvita
 /** The single Members page used at organization and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const { me, token } = useAuthSession()
-  const [, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [selectedMember, setSelectedMember] = useState<TeamMemberRecord | null>(null)
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitationRecord | null>(null)
@@ -178,7 +178,12 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
           value={tab}
         />
         <section aria-labelledby={`members-${scope}-tab-${tab}`} id={tabPanelId} role="tabpanel">
-          {tab === 'automatic' ? <AutomaticMembershipRulesPanel scope={scope} /> : (
+          {tab === 'automatic' ? (
+            <AutomaticMembershipRulesPanel
+              highlightedRuleId={searchParams.get('automaticMembershipRule')}
+              scope={scope}
+            />
+          ) : (
             <>
           <QueryState
             errorLabel="Members could not be loaded."

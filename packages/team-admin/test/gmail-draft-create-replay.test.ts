@@ -87,7 +87,7 @@ const makePrisma = (options: {
         id: CONN, organizationId: ORG, ownerUserId: USER, provider: 'google',
         externalTenantId: 'me@example.com', externalUserId: 'me@example.com',
         grantedScopes: [SCOPE], credential: {
-          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'access-token'),
+          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'access-token', 'comms.credential'),
           refreshTokenCiphertext: null, expiresAt: new Date('2999-01-01T00:00:00.000Z'),
         },
       }),

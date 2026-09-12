@@ -90,4 +90,26 @@ test('routes each durable attention kind to its owning surface', () => {
     readAt: null,
     createdAt: '2026-08-12T10:00:00.000Z',
   }), { to: '/projects/00000000-0000-4000-8000-000000000011/docs?pageId=00000000-0000-4000-8000-000000000014' })
+  assert.deepEqual(getAlertLink({
+    id: '00000000-0000-4000-8000-000000000015',
+    kind: 'workflow_run_failed',
+    messageId: null,
+    rootMessageId: null,
+    threadId: null,
+    channelId: null,
+    channelLabel: null,
+    projectId: null,
+    taskId: null,
+    knowledgePageId: null,
+    triggerId: null,
+    boardSourceId: null,
+    callId: null,
+    workflowRunId: '00000000-0000-4000-8000-000000000016',
+    metadata: null,
+    actorUserId: null,
+    actorAgentId: null,
+    actorDisplayName: null,
+    readAt: null,
+    createdAt: '2026-09-12T10:00:00.000Z',
+  }), { to: '/agents/workflows?failedRuns=1&run=00000000-0000-4000-8000-000000000016' })
 })

@@ -69,13 +69,13 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     prisma,
     requireActorContext,
     requireUserActor,
-    authSecret,
+    encryptionKeyRing,
     isJsonContentType,
     deepSignalMcpIdentity,
     getChannelIfMember,
   } = deps
 
-  const secretResolver = createMcpSecretResolver(prisma, authSecret ?? '')
+  const secretResolver = createMcpSecretResolver(prisma, encryptionKeyRing)
 
   // ─── History hydration ────────────────────────────────────────────────────
   app.post('/api/channels/:channelId/external-sync', async (request, reply) => {
@@ -149,7 +149,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     if (!body) return reply
 
     try {
-      await setProductWebhookSecret(prisma, authSecret ?? '', {
+      await setProductWebhookSecret(prisma, encryptionKeyRing, {
         organizationId: actorContext.tenant.organizationId,
         productSlug: params.productSlug,
         secret: body.secret,
@@ -180,7 +180,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
         return reply
       }
 
-      const organizationId = await resolveSignedWebhookOrg(prisma, authSecret ?? '', {
+      const organizationId = await resolveSignedWebhookOrg(prisma, encryptionKeyRing, {
         productSlug: DEEPSIGNAL_SLUG,
         rawBody,
         signatureHeader: firstHeader(request.headers[SIGNATURE_HEADER]),

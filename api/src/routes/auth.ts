@@ -19,7 +19,7 @@ const createRefreshCookieIssuer = (deps: RouteDeps): IssueRefreshCookie => async
   reply: FastifyReply,
   params,
 ) => {
-  const { authSecret, config, prisma } = deps
+  const { config, encryptionKeyRing, prisma } = deps
   const { rawToken } = await issueRefreshToken(prisma, {
     userId: params.userId,
     organizationId: params.organizationId,
@@ -28,7 +28,7 @@ const createRefreshCookieIssuer = (deps: RouteDeps): IssueRefreshCookie => async
     providerType: params.providerType,
     ...(params.uoaSession
       ? {
-          encryptionSecret: authSecret,
+          encryption: encryptionKeyRing,
           uoaSession: {
             configUrl: params.uoaSession.exchange.configUrl,
             identity: params.uoaSession.identity,

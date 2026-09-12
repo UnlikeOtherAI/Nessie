@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { ChannelRecordSchema } from '@nessie/schemas'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useChannels } from '../channels/hooks'
@@ -381,7 +382,7 @@ export const useMessageNotifications = (input: {
       try {
         const freshChannels = await queryClient.fetchQuery<ChannelRecord[]>({
           queryKey: channelKeys.all,
-          queryFn: () => apiClient.get('/api/channels'),
+          queryFn: () => apiClient.get('/api/channels', ChannelRecordSchema.array()),
         })
         channel = resolveChannel(payload, buildChannelLookup(freshChannels))
       } catch {

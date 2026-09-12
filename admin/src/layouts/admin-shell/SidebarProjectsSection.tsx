@@ -36,7 +36,7 @@ export const retainCollapsedProjectIds = (
   collapsedProjectIds: ReadonlySet<string>,
   projects: readonly SidebarProject[],
 ): Set<string> => {
-  const projectIds = new Set(projects.map((project) => project.id));
+  const projectIds = new Set<string>(projects.map((project) => project.id));
   return new Set([...collapsedProjectIds].filter((projectId) => projectIds.has(projectId)));
 };
 

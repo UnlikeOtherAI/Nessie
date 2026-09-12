@@ -1,4 +1,9 @@
-import { decryptWithKey, deriveSecretKey, encryptWithKey } from './secret-crypto.js'
+import {
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
+} from './secret-crypto.js'
 
 /**
  * Packing a secret into one column.
@@ -14,22 +19,42 @@ import { decryptWithKey, deriveSecretKey, encryptWithKey } from './secret-crypto
  * a first one for a cryptographic helper — would have made the comms package a
  * dependency of everything that stores a token.
  *
- * Packed form: `iv.authTag.ciphertext`, each hex, `.`-delimited.
+ * Packed form: `iv.authTag.ciphertext`, each hex, `.`-delimited. The
+ * ciphertext is a versioned purpose-bound envelope, while older packed values
+ * remain readable through a retained legacy root.
  */
 const PACK_SEPARATOR = '.'
 
-export const sealSecret = (encryptionSecret: string, plaintext: string): string => {
-  const key = deriveSecretKey(encryptionSecret)
-  const { ciphertext, iv, authTag } = encryptWithKey(key, plaintext)
+export const sealSecret = (
+  encryption: EncryptionKeyRingInput,
+  plaintext: string,
+  purpose = 'sealed.secret',
+): string => {
+  const { ciphertext, iv, authTag } = encryptWithKeyRing(
+    toEncryptionKeyRing(encryption),
+    purpose,
+    plaintext,
+  )
   return [iv, authTag, ciphertext].join(PACK_SEPARATOR)
 }
 
-export const openSecret = (encryptionSecret: string, packed: string): string => {
+export const openSecret = (
+  encryption: EncryptionKeyRingInput,
+  packed: string,
+  purpose = 'sealed.secret',
+): string => {
   const parts = packed.split(PACK_SEPARATOR)
-  if (parts.length !== 3) {
+  if (parts.length < 3) {
     throw new Error('[sealed-secret] malformed sealed secret')
   }
-  const [iv, authTag, ciphertext] = parts as [string, string, string]
-  const key = deriveSecretKey(encryptionSecret)
-  return decryptWithKey(key, { ciphertext, iv, authTag })
+  const [iv, authTag, ...ciphertextParts] = parts
+  const ciphertext = ciphertextParts.join(PACK_SEPARATOR)
+  if (!iv || !authTag || !ciphertext) {
+    throw new Error('[sealed-secret] malformed sealed secret')
+  }
+  return decryptWithKeyRing(
+    toEncryptionKeyRing(encryption),
+    purpose,
+    { ciphertext, iv, authTag },
+  ).plaintext
 }

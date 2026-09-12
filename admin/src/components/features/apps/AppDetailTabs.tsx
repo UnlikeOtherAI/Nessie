@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { AppDetailRecord } from '@nessie/schemas'
+import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schemas'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { AppAgentAccessList } from './AppAgentAccessList'
 import { AppCapabilityList } from './AppCapabilityList'
@@ -11,6 +11,7 @@ type AppDetailTabsProps = {
   activeTab: AppDetailTab
   app: AppDetailRecord
   onConnectAnother: () => void
+  onReconnect: (connection: AppConnectionSummaryRecord) => void
   onSelectTab: (tab: AppDetailTab) => void
 }
 
@@ -32,6 +33,7 @@ export const AppDetailTabs = ({
   activeTab,
   app,
   onConnectAnother,
+  onReconnect,
   onSelectTab,
 }: AppDetailTabsProps) => {
   // Memoised because `TabBar` observes its items to keep the sliding pill under
@@ -70,7 +72,11 @@ export const AppDetailTabs = ({
         {activeTab === 'overview' ? <AppOverviewTab app={app} /> : null}
         {activeTab === 'capabilities' ? <AppCapabilityList app={app} /> : null}
         {activeTab === 'accounts' ? (
-          <AppConnectionsList app={app} onConnectAnother={onConnectAnother} />
+          <AppConnectionsList
+            app={app}
+            onConnectAnother={onConnectAnother}
+            onReconnect={onReconnect}
+          />
         ) : null}
         {activeTab === 'agents' ? <AppAgentAccessList app={app} /> : null}
       </div>

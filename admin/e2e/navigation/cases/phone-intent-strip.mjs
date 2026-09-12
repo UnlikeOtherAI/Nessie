@@ -1,8 +1,7 @@
-// Phone, a link that carries an instruction: `#trigger-<id>` on the Triggers
-// browser and `?messageId=` on a conversation are consumed intents
-// (docs/navigation/overview.md §8). Each is read once and stripped with a replacing
-// redirect, so the address the person stands on — and the one Back returns
-// to — is the screen, never the instruction.
+// Phone navigation keeps a trigger selection in the route while consuming a
+// one-shot conversation message intent (docs/navigation/overview.md §8).
+// The selected trigger survives Back and reload; the message pointer is read
+// once and stripped, leaving only the reader-selected tab.
 import { createChecks } from '../lib/expect.mjs'
 import { gotoPath, pushPath, shot } from '../lib/page.mjs'
 
@@ -26,13 +25,13 @@ export const phoneIntentStrip = {
     const checks = createChecks(caseName)
 
     await gotoPath(page, '/channels')
-    await pushPath(page, '/agents/triggers#trigger-does-not-matter')
+    await pushPath(page, '/agents/triggers?trigger=does-not-matter')
     checks.equal(
-      `${caseName}: the trigger anchor is consumed and stripped`,
-      await waitForLocation(page, '/agents/triggers'),
-      '/agents/triggers',
+      `${caseName}: the trigger selection stays reloadable`,
+      await waitForLocation(page, '/agents/triggers?trigger=does-not-matter'),
+      '/agents/triggers?trigger=does-not-matter',
     )
-    await shot(page, caseName, 'triggers-after-strip')
+    await shot(page, caseName, 'triggers-with-selection')
 
     const conversation = `/channels/${seed.channels[0].id}`
     await pushPath(page, `${conversation}?messageId=00000000-0000-4000-8000-000000000001&tab=files`)
@@ -43,13 +42,13 @@ export const phoneIntentStrip = {
     )
     await shot(page, caseName, 'conversation-after-strip')
 
-    // Replaced, not pushed: browser Back lands on the stripped Triggers
-    // address, not on the pre-strip one.
+    // Back returns to the exact durable trigger selection, rather than a
+    // generic list where the person must rediscover the recovery control.
     await page.goBack({ waitUntil: 'commit' }).catch(() => undefined)
     checks.equal(
-      `${caseName}: Back returns to the stripped address`,
-      await waitForLocation(page, '/agents/triggers'),
-      '/agents/triggers',
+      `${caseName}: Back returns to the selected trigger`,
+      await waitForLocation(page, '/agents/triggers?trigger=does-not-matter'),
+      '/agents/triggers?trigger=does-not-matter',
     )
 
     checks.close()

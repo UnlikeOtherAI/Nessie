@@ -62,7 +62,7 @@ export const registerMailboxConnectionRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, authSecret } = deps
+  const { prisma, requireActorContext, encryptionKeyRing } = deps
   // Classification alone must never promise an OAuth button that this process
   // cannot complete. `isCommsProviderConnectable` is the same question the
   // OAuth start route and `/api/comms/providers` ask, so discovery cannot
@@ -236,7 +236,7 @@ export const registerMailboxConnectionRoutes = (
           teamId: body.teamId ?? null,
           username: body.username,
         },
-        { encryptionSecret: authSecret },
+        { encryptionSecret: encryptionKeyRing },
       )
       await emitAuditEvent(prisma, {
         action: 'mailbox.connection.created',
@@ -265,7 +265,7 @@ export const registerMailboxConnectionRoutes = (
         organizationId: actorContext.tenant.organizationId,
       })
       const result = await verifyMailboxConnection(prisma, connection, {
-        encryptionSecret: authSecret,
+        encryptionSecret: encryptionKeyRing,
       })
       return reply.send(createApiResponse(result))
     } catch (error) {

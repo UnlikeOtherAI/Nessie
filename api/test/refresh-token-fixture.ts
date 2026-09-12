@@ -336,7 +336,7 @@ export const createRefreshFixture = async () => {
     providerId: 'uoa',
     providerType: 'uoa',
     ttlSeconds: TTL_SECONDS,
-    encryptionSecret: AUTH_SECRET,
+    encryption: AUTH_SECRET,
     uoaSession: {
       configUrl: UOA_CONFIG_URL,
       identity: UOA_IDENTITY,

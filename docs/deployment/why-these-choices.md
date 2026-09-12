@@ -104,7 +104,9 @@ this file contains a dedicated Infisical machine-identity access token. Set the
 corresponding `INFISICAL_*` values in the Compose `.env`; create the separate
 root-readable `.env.infisical` from
 `infrastructure/compose/.env.infisical.example` for the vault database URI,
-encryption key, and auth secret. The machine identity has `no-access` at the
+encryption key, and auth secret. Those are Infisical’s own values; Nessie’s
+separately versioned at-rest encryption ring remains in the application Compose
+`.env`. The machine identity has `no-access` at the
 Infisical organisation level and Developer membership only in the Nessie
 Secrets project. Its access token is mounted only into `nessie-api` as a Docker
 secret. Do not put any vault root material in

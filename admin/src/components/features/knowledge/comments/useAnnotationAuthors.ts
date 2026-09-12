@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { AgentRecord } from '../../../../lib/api-client'
 import { useAgents } from '../../../../facades/agents/queries'
 import { useUsers } from '../../../../facades/users/hooks'
 
@@ -21,7 +22,7 @@ export const useAnnotationAuthors = (): AuthorResolver => {
   const { data: agents } = useAgents()
   return useMemo(() => {
     const userMap = new Map((users ?? []).map((user) => [user.id, user]))
-    const agentMap = new Map((agents ?? []).map((agent) => [agent.id, agent]))
+    const agentMap = new Map<string, AgentRecord>((agents ?? []).map((agent) => [agent.id, agent]))
     return (authorType, authorId) => {
       if (authorType === 'agent') {
         return { displayName: agentMap.get(authorId)?.name ?? 'Agent', isAgent: true }

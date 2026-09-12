@@ -31,12 +31,12 @@ export const registerExecutorWorkspacePromotionRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { authSecret, config, prisma, rateLimiter, requireActorContext, requireUserActor } = deps
+  const { config, encryptionKeyRing, prisma, rateLimiter, requireActorContext, requireUserActor } = deps
 
   app.get('/api/executor-workspace-reviews/mine', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext || !requireUserActor(actorContext, reply)) return reply
-    const reviews = await listOriginatingExecutorWorkspaceReviews(prisma, authSecret, actorContext)
+    const reviews = await listOriginatingExecutorWorkspaceReviews(prisma, encryptionKeyRing, actorContext)
     return createApiResponse(OriginatingExecutorWorkspaceReviewRecordSchema.array().parse(reviews))
   })
 
@@ -48,7 +48,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
     try {
       const prepared = await prepareExecutorWorkspacePromotion(
         prisma,
-        authSecret,
+        encryptionKeyRing,
         actorContext,
         body,
       )
@@ -128,7 +128,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
       const confirmed = await confirmExecutorWorkspacePromotion(prisma, actorContext, {
         candidateHandle: candidate.handle,
         confirmationToken: body.confirmationToken,
-        encryptionSecret: authSecret,
+        encryptionSecret: encryptionKeyRing,
         freshVerificationSatisfied,
         promotionId,
       })

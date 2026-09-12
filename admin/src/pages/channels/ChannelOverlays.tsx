@@ -95,7 +95,6 @@ interface ChannelOverlaysProps {
   onCloseSelectedAgent: () => void
   onCloseSelectedUser: () => void
   onCloseSettings: () => void
-  onGroupCreated: (channelId: string) => void
   onInsertTrimmed: (trimmed: string) => void
   onCloseCallerDialog: () => void
   onCloseStartCallFailure: () => void
@@ -155,7 +154,6 @@ export const ChannelOverlays = ({
   onCloseSelectedAgent,
   onCloseSelectedUser,
   onCloseSettings,
-  onGroupCreated,
   onInsertTrimmed,
   onCloseCallerDialog,
   onCloseStartCallFailure,
@@ -217,13 +215,11 @@ export const ChannelOverlays = ({
         boundAgents={boundAgents}
         channelId={activeChannel.id}
         channelLabel={activeChannel.label}
-        channelType={activeChannel.type}
         channelUsers={channelUsers}
         currentUserId={me.user.id}
         personalAssistantPresences={personalAssistantPresences}
         viewerCanManage={activeChannel.viewerCanManage}
         onClose={onCloseMembers}
-        onGroupCreated={onGroupCreated}
         onSelectAgent={onSelectAgent}
       />
     ) : null}

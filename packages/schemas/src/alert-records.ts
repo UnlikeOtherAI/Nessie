@@ -35,6 +35,9 @@ export const UserAlertKindSchema = z.enum([
   // A ticket moved or changed on a board this person watches. Durable because
   // somebody explicitly asked to be told: a push is missable, the bell is not.
   'board_ticket_changed',
+  // A workflow run entered its terminal failed state. The linked run is the
+  // recovery doorway, and visibility is rechecked on every bell read.
+  'workflow_run_failed',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -62,7 +65,13 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  // An automatic-membership health alert is actionable only when the bell can
+  // name the exact rule that failed. The optional shape preserves old rows
+  // created before this relationship was projected through the alert API.
+  automaticMembershipRuleId: z.string().uuid().nullable().optional(),
+  automaticMembershipRuleTeamName: z.string().min(1).nullable().optional(),
   boardSourceId: z.string().uuid().nullable(),
+  workflowRunId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),

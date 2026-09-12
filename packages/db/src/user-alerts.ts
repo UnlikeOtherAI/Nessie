@@ -59,9 +59,27 @@ export const visibleUserAlertWhere = (input: {
       // trigger: the moment an administrator re-authorizes it, the bell item
       // stops surfacing without anything having to remember to delete it.
       kind: 'automatic_membership_health',
-      automaticMembershipRule: {
-        is: { healthState: 'needs_reauthorization' },
-      },
+      AND: [
+        {
+          automaticMembershipRule: {
+            is: { healthState: 'needs_reauthorization' },
+          },
+        },
+        // Repair permission is live, not something the alert remembered when
+        // it was created. A demoted administrator must not retain a durable
+        // doorway into a rule they can no longer re-authorize.
+        {
+          user: {
+            organizationMembers: {
+              some: {
+                deactivatedAt: null,
+                organizationId: input.organizationId,
+                role: { in: ['owner', 'admin'] },
+              },
+            },
+          },
+        },
+      ],
     },
     {
       // A project board's source that stopped syncing. Revalidated against the
@@ -86,6 +104,64 @@ export const visibleUserAlertWhere = (input: {
       // without anything having to remember to delete it.
       kind: 'approval_requested',
       approvalRequest: { is: { status: 'pending' } },
+    },
+    {
+      // Workflow failures only remain visible while the run is still failed
+      // and the recipient can still read its installation. This mirrors the
+      // run route's channel entitlement without trusting the alert row's
+      // original audience after membership changes.
+      kind: 'workflow_run_failed',
+      AND: [
+        { workflowRun: { is: { status: 'failed' } } },
+        {
+          OR: [
+            {
+              workflowRun: {
+                is: {
+                  organization: {
+                    is: {
+                      members: {
+                        some: {
+                          deactivatedAt: null,
+                          role: { in: ['owner', 'admin'] },
+                          userId: input.userId,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              workflowRun: {
+                is: {
+                  installation: {
+                    is: { channelId: null },
+                  },
+                },
+              },
+            },
+            {
+              workflowRun: {
+                is: {
+                  installation: {
+                    is: {
+                      channel: {
+                        is: {
+                          OR: [
+                            { visibility: 'public' },
+                            { members: { some: { userId: input.userId } } },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
     },
     {
       // The foreign key cascade removes this row on deletion, while this

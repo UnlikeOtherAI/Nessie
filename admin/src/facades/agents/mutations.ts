@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AgentRecordSchema } from '@nessie/schemas'
 import type {
   AgentAvatarBackgroundColor,
   AgentConversationRecord,
@@ -34,7 +35,7 @@ export const useCreateAgent = () => {
       toolPolicy?: Record<string, boolean>
       visibility?: AgentRecord['visibility']
     }) =>
-      apiClient.post<AgentRecord>('/api/agents', input),
+      apiClient.post<AgentRecord>('/api/agents', input, undefined, AgentRecordSchema),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
@@ -68,7 +69,12 @@ export const useUpdateAgent = () => {
       toolPolicy?: Record<string, boolean>
     }) => {
       const { agentId, ...body } = input
-      return apiClient.put<AgentRecord>(`/api/agents/${agentId}`, body)
+      return apiClient.put<AgentRecord>(
+        `/api/agents/${agentId}`,
+        body,
+        undefined,
+        AgentRecordSchema,
+      )
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
@@ -91,7 +97,7 @@ export const useUpdateAgentAvatar = () => {
         ...(input.avatarBackgroundColor
           ? { avatarBackgroundColor: input.avatarBackgroundColor }
           : {}),
-      }),
+      }, undefined, AgentRecordSchema),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
@@ -201,7 +207,12 @@ export const useCloneAgent = () => {
 
   return useMutation({
     mutationFn: (agentId: string) =>
-      apiClient.post<AgentRecord>(`/api/agents/${agentId}/clone`),
+      apiClient.post<AgentRecord>(
+        `/api/agents/${agentId}/clone`,
+        undefined,
+        undefined,
+        AgentRecordSchema,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },

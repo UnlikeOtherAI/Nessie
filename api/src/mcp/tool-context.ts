@@ -2,6 +2,7 @@ import type { AgentAccessScope, PrismaClient } from '@prisma/client'
 import type { ZodTypeAny } from 'zod'
 import type { KnowledgeProvider, SpaceViewer } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { EncryptionKeyRingInput } from '@nessie/runtime'
 
 /**
  * What a tool is handed, and what a tool is.
@@ -29,11 +30,11 @@ export type McpToolContext = {
    */
   actorContext: AuthorizedActionContext
   /**
-   * The deployment auth secret, which the task mutations need: they build the
-   * board-source write-back collaborator from it, and that collaborator is what
-   * pushes a change to Linear or refuses because the source is read-only.
+   * The deployment at-rest key ring. Task mutations build their board-source
+   * write-back collaborator from it so provider credentials stay separate from
+   * signing material.
    */
-  authSecret: string
+  encryptionKeyRing: EncryptionKeyRingInput
   /** The shared policy engine, exactly as the routes call it. */
   checkPolicy: (
     prisma: PrismaClient,

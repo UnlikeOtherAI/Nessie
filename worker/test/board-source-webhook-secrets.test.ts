@@ -94,7 +94,7 @@ test('a delivery verifies against the secret this source’s own registration re
   const rawBody = JSON.stringify({ action: 'update', data: { id: 'issue-1' } })
   const deps = buildDeps([
     sourceRow({
-      webhookSecretCiphertext: sealSecret(ENCRYPTION_SECRET, 'minted-by-linear'),
+      webhookSecretCiphertext: sealSecret(ENCRYPTION_SECRET, 'minted-by-linear', 'board-source.webhook'),
     }),
   ])
 

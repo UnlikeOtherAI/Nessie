@@ -149,12 +149,22 @@ device_tokens
 Endpoints (in `api/`):
 
 - `POST /api/devices` — register/refresh `{ platform, token, appVersion,
-  apnsEnvironment? }`; iOS supplies the host selected by its signed build.
-  A native token represents one installation, so registration transfers it to
-  the current user and organization rather than retaining a former login. The
+  apnsEnvironment?, ownershipProof?, deviceRecoveryKey? }`; iOS supplies the
+  host selected by its
+  signed build. A native token is routing data rather than proof that somebody
+  controls the physical installation. The first active registration receives a
+  high-entropy proof retained by the native WebView. The WebView also writes a
+  separate high-entropy recovery key before its first request, and the server
+  stores only its hash. If a proof response is lost, that installed WebView can
+  use its recovery key to receive a rotated proof and complete an account
+  switch; a copied provider token cannot. Legacy tombstones without a recovery
+  key can only be re-enrolled by their exact former owner with a newer session
+  generation. Moving that token to a different user or organization, or
+  reviving a logout tombstone, rotates the proof for the new binding. The
   server signs every access session with a strictly increasing global ownership
-  generation, then rejects a late former-session request — even from a
-  different account — rather than restoring stale ownership.
+  generation, then rejects
+  a late former-session request — even from a different account — rather than
+  restoring stale ownership.
 - `DELETE /api/devices/:token` — unregister (logout / token invalidated).
   This tombstones the installation with a newer server generation instead of
   deleting it, so an in-flight former-session registration remains rejected.
