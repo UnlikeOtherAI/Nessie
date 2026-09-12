@@ -102,7 +102,9 @@ try {
   await page.getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('heading', { name: 'Reconnect KiloTalk fixture' }).waitFor({ state: 'hidden' })
   await recovery.getByRole('button', { name: 'Refresh capabilities' }).click()
-  await page.getByRole('status', { name: 'Capabilities updated: 3 available.' }).waitFor()
+  const refreshStatus = page.getByText('Capabilities updated: 3 available.', { exact: true })
+  await refreshStatus.waitFor()
+  assert.equal(await refreshStatus.getAttribute('role'), 'status')
   assert.ok(
     (await page.evaluate(() => window.__appConnectScopeFixture.calls))
       .some((call) => call.path.endsWith('/refresh-capabilities')),
