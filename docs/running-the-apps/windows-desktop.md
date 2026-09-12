@@ -109,11 +109,15 @@ packaged runtime that Tauri's resource manifest requires. Each Cargo command is
 an isolated fail-fast PowerShell step. Windows then builds the unsigned NSIS
 and MSI desktop installers, runs WiX validation, and uses the same install,
 launch, and uninstall smoke script as the release workflow. The standalone
-executor MSI needs a Linux-built Hyper-V guest kernel, so its build and service
-smoke remain in the independent release workflow rather than serializing CI.
-These are temporary CI inputs: the source check receives no signing secrets and
-neither uploads nor publishes them; signing remains the release workflow's
-separate responsibility.
+executor MSI uses the same release service/tray smoke script. Hosted Windows
+runners cannot build the production Linux guest kernel, so the PR job writes a
+hash-verified, deliberately non-bootable fixture that carries the required
+command-line marker. That reaches the real MSI staging, WiX validation, and
+service/tray install–uninstall lifecycle without hiding a release-only kernel
+boot claim. The release workflow remains responsible for building and booting
+the pinned production kernel. These are temporary CI inputs: the source check
+receives no signing secrets and neither uploads nor publishes them; signing
+remains the release workflow's separate responsibility.
 
 Signing is a deployment fact, configured through repository secrets. The
 recommended configuration is **Azure Artifact Signing** (formerly Azure Trusted

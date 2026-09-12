@@ -1,8 +1,9 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import test from "node:test";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const repositoryDirectory = resolve(
@@ -25,6 +26,17 @@ const executorInstallerSmoke = await readFile(
     repositoryDirectory,
     "executor/packaging/windows/installer-smoke.ps1",
   ),
+  "utf8",
+);
+const executorCiKernelFixture = await readFile(
+  resolve(
+    repositoryDirectory,
+    "executor/packaging/windows/create-ci-guest-kernel.ps1",
+  ),
+  "utf8",
+);
+const executorMsiBuild = await readFile(
+  resolve(repositoryDirectory, "executor/packaging/windows/build-msi.mjs"),
   "utf8",
 );
 
@@ -104,9 +116,12 @@ test(
 test("Windows Native builds and smoke-tests unsigned installers without signing", () => {
   const windowsNative = jobBlock(ciWorkflow, "windows-native");
   for (const stepName of [
+    "Create verified executor MSI CI kernel fixture",
     "Build unsigned Windows desktop installers",
     "Validate unsigned Windows desktop MSI",
+    "Build unsigned Windows executor MSI",
     "Smoke-test unsigned Windows desktop installer",
+    "Smoke-test unsigned Windows executor MSI",
   ]) {
     assert.notEqual(
       windowsNative.indexOf(`      - name: ${stepName}\n`),
@@ -116,6 +131,30 @@ test("Windows Native builds and smoke-tests unsigned installers without signing"
   }
   assert.match(windowsNative, /wix msi validate/);
   assert.match(windowsNative, /desktop\/scripts\/windows-installer-smoke\.ps1/);
+  assert.match(
+    windowsNative,
+    /executor\/packaging\/windows\/installer-smoke\.ps1/,
+  );
+  assert.match(
+    windowsNative,
+    /create-ci-guest-kernel\.ps1 -OutputPath \$fixturePath/,
+  );
+  assert.match(windowsNative, /node executor\/packaging\/windows\/build-msi\.mjs/);
+  assert.match(executorMsiBuild, /'msi', 'validate'/);
+  assert.match(
+    executorCiKernelFixture,
+    /intentionally not a bootable kernel/,
+  );
+  assert.match(
+    executorCiKernelFixture,
+    /\$expectedSha256 = '[0-9a-f]{64}'/,
+  );
+  assert.match(
+    executorCiKernelFixture,
+    /Get-FileHash -LiteralPath \$absoluteOutputPath -Algorithm SHA256/,
+  );
+  assert.match(executorCiKernelFixture, /nessie\\\.args=initrd/);
+  assert.doesNotMatch(windowsNative, /\n    needs:/);
   assert.doesNotMatch(windowsNative, /WINDOWS_SIGN_|TAURI_SIGNING_/);
   assert.match(
     releaseWorkflow,
@@ -126,6 +165,38 @@ test("Windows Native builds and smoke-tests unsigned installers without signing"
     /executor\/packaging\/windows\/installer-smoke\.ps1/,
   );
 });
+
+test(
+  "the executor MSI fixture is deterministic and carries the required marker",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nessie-windows-native-"));
+    const outputPath = join(directory, "bzImage");
+    try {
+      const result = spawnSync(
+        "pwsh",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          resolve(
+            repositoryDirectory,
+            "executor/packaging/windows/create-ci-guest-kernel.ps1",
+          ),
+          "-OutputPath",
+          outputPath,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const fixture = await readFile(outputPath, "ascii");
+      assert.match(fixture, /nessie\.args=initrd/);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  },
+);
 
 test("shared installer smoke scripts propagate install and uninstall failures", () => {
   for (const smoke of [desktopInstallerSmoke, executorInstallerSmoke]) {

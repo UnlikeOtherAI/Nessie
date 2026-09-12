@@ -382,6 +382,24 @@ jobs:
         if: steps.scope.outputs.windows_native == '1'
         run: node --test executor/packaging/windows/msi-plan.test.mjs
 
+      # The release workflow builds and boots the production kernel in Linux.
+      # Hosted Windows runners cannot run Linux containers, so this checked-in,
+      # non-bootable fixture keeps the PR job self-contained while covering the
+      # real MSI's staging, WiX, install, service/tray, and uninstall paths.
+      - name: Create verified executor MSI CI kernel fixture
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $fixturePath = Join-Path $env:RUNNER_TEMP 'windows-native-ci-bzImage'
+          & executor/packaging/windows/create-ci-guest-kernel.ps1 -OutputPath $fixturePath
+
+      - name: Setup Go
+        if: steps.scope.outputs.windows_native == '1'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: executor/guest/go.sum
+
       - name: Install the WiX toolset
         if: steps.scope.outputs.windows_native == '1'
         run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
@@ -415,6 +433,14 @@ jobs:
           wix msi validate $package.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Build unsigned Windows executor MSI
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $env:NESSIE_GUEST_KERNEL = Join-Path $env:RUNNER_TEMP 'windows-native-ci-bzImage'
+          node executor/packaging/windows/build-msi.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Smoke-test unsigned Windows desktop installer
         if: steps.scope.outputs.windows_native == '1'
         shell: pwsh
@@ -423,6 +449,14 @@ jobs:
             Select-Object -First 1
           if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer' }
           & desktop/scripts/windows-installer-smoke.ps1 -InstallerPath $installer.FullName
+
+      - name: Smoke-test unsigned Windows executor MSI
+        if: steps.scope.outputs.windows_native == '1'
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem dist -Filter 'NessieExecutor_*_x64.msi' | Select-Object -First 1
+          if (-not $package) { throw 'the Windows executor build did not produce an MSI' }
+          & executor/packaging/windows/installer-smoke.ps1 -PackagePath $package.FullName
 
       - name: Report skip
         if: steps.scope.outputs.windows_native != '1'
