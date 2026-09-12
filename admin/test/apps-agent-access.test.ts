@@ -1,14 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schemas'
 import { AppAgentAccessWriteError, writeAppAgentAccess } from '../src/facades/apps/agent-access-hooks.js'
 
 import {
-  agentAccessConsequence,
-  agentAccessEmptyState,
-  agentAccessHeadline,
-  agentAccessToggleLabel,
   agentAccessWriteFailure,
   appAccessNotice,
   beginAgentAccessWrite,
@@ -27,51 +22,6 @@ import {
  * tests pin the row model that renders it — above all, the places where a
  * switch would otherwise disagree with the data underneath it.
  */
-
-const connection: AppConnectionSummaryRecord = {
-  canDisconnect: true,
-  displayName: 'Work',
-  errorMessage: null,
-  id: 'conn-1',
-  lastConnectedAt: '2026-08-01T00:00:00.000Z',
-  scopeId: '00000000-0000-4000-8000-000000000001',
-  scopeType: 'team',
-  status: 'connected',
-}
-
-const detail = (overrides: Partial<AppDetailRecord> = {}): AppDetailRecord => ({
-  agentsWithAccess: [],
-  aliases: [],
-  appSource: 'nessie',
-  capabilities: { tools: [] },
-  categories: ['development'],
-  connectionCount: 1,
-  connections: [connection],
-  displayName: 'GitHub',
-  distribution: 'remote',
-  documentationUrl: null,
-  featured: false,
-  featuredOrder: null,
-  iconUrl: null,
-  id: 'app-1',
-  locked: false,
-  longDescription: null,
-  managedByIntegration: false,
-  name: 'github',
-  primaryCategory: 'development',
-  promptCount: null,
-  repositoryUrl: null,
-  resourceCount: null,
-  shortDescription: 'Repositories, issues and pull requests.',
-  slug: 'github',
-  state: 'connected',
-  tags: [],
-  toolCount: 2,
-  trustLevel: 'nessie',
-  vendor: 'GitHub, Inc.',
-  websiteUrl: null,
-  ...overrides,
-})
 
 /**
  * The default is an App-Store-connected row: those project with
@@ -476,101 +426,4 @@ test('a fan-out that stops part way says how far it got', () => {
     agentAccessWriteFailure({ landed: 7, reason: 'Request failed.', total: 42 }),
     /Only 7 of 42 capabilities changed/,
   )
-})
-
-// ─── Copy ───────────────────────────────────────────────────────────────────
-
-test('the empty message becomes a notice once there are switches to use', () => {
-  const app = detail()
-  const managed = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: controlFor([tool()]),
-    targets: [target()],
-  })
-  const observed = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: { kind: 'owner-only' },
-    targets: [],
-  })
-
-  assert.equal(agentAccessEmptyState(app, managed)?.placement, 'notice')
-  assert.equal(agentAccessEmptyState(app, observed)?.placement, 'sole')
-  assert.equal(
-    agentAccessEmptyState(app, buildAgentAccessList({
-      agentsWithAccess: [],
-      control: controlFor([tool()]),
-      targets: [target({ toolPolicy: { 'entry-1': true } })],
-    })),
-    null,
-  )
-})
-
-test('"no agent can use this" is withheld when a row needs no grant', () => {
-  const list = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: controlFor([
-      tool({ id: 'a', policyKey: 'a' }),
-      openTool({ id: 'b', policyKey: 'b' }),
-    ]),
-    targets: [target()],
-  })
-
-  assert.equal(agentAccessEmptyState(detail(), list), null)
-  assert.equal(agentAccessHeadline(list), '1 of 1 agents allowed to use this app')
-})
-
-test('the headline counts what the rows mean in each mode', () => {
-  const managed = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: controlFor([tool()]),
-    targets: [target({ toolPolicy: { 'entry-1': true } }), target({ id: 'agent-2' })],
-  })
-
-  assert.equal(agentAccessHeadline(managed), '1 of 2 agents allowed to use this app')
-  assert.equal(
-    agentAccessHeadline(buildAgentAccessList({
-      agentsWithAccess: [{ agentId: 'agent-3', name: 'Release Notes', role: null }],
-      control: { kind: 'owner-only' },
-      targets: [],
-    })),
-    '1 agent can use this app',
-  )
-})
-
-test('the toggle label names the decision in both directions', () => {
-  const [granted, none] = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: controlFor([tool()]),
-    targets: [target({ toolPolicy: { 'entry-1': true } }), target({ id: 'agent-2', name: 'Support' })],
-  }).rows
-  assert.ok(granted && none)
-
-  assert.equal(agentAccessToggleLabel(none, 'GitHub'), 'Let Support use GitHub')
-  assert.equal(agentAccessToggleLabel(granted, 'GitHub'), "Remove Research's access to GitHub")
-})
-
-test('the consequence line states what an unchecked row means', () => {
-  const switchable = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: controlFor([tool()]),
-    targets: [target()],
-  })
-  const mixed = buildAgentAccessList({
-    agentsWithAccess: [],
-    control: controlFor([
-      tool({ id: 'a', policyKey: 'a' }),
-      openTool({ id: 'b', policyKey: 'b' }),
-    ]),
-    targets: [target()],
-  })
-  const observed = buildAgentAccessList({
-    agentsWithAccess: [{ agentId: 'agent-3', name: 'Release Notes', role: null }],
-    control: { kind: 'owner-only' },
-    targets: [],
-  })
-
-  assert.match(agentAccessConsequence(switchable), /cannot see or call this app at all/)
-  assert.match(agentAccessConsequence(observed), /cannot see or call this app at all/)
-  // The reassuring version would be false here, so it is not offered.
-  assert.match(agentAccessConsequence(mixed), /can still call the capabilities that need no grant/)
 })

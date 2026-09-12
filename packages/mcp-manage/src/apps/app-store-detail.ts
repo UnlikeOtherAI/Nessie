@@ -3,6 +3,7 @@ import { hasBoardSourceAdapter } from '@nessie/board-sources'
 import type { AppDetailRecord, AuthorizedActionContext } from '@nessie/schemas'
 
 import { listInstancesVisibleToUser, resolveMcpUserAccess } from '../mcp-instances.js'
+import { canStartOAuthForInstance } from '../mcp-oauth-completion.js'
 import {
   listAgentsWithAppAccess,
   type AppAccessRegistryRow,
@@ -130,17 +131,25 @@ export const getStoreApp = async (
     ),
     serverUnreachable: unreachable.has(row.id),
     capabilities: presentAppCapabilities(projections),
-    connections: await Promise.all(instances.map(async (instance) =>
-      presentAppConnection(
+    connections: await Promise.all(instances.map(async (instance) => {
+      const canManage = canManageAppConnectionScope(
+        { access, actorContext, prisma },
+        instance.scopeType,
+        instance.scopeId,
+      )
+      const canReconnect = canStartOAuthForInstance(
+        prisma,
+        organizationId,
+        actorContext.actor.actorId,
         instance,
-        appName,
-        await canManageAppConnectionScope(
-          { access, actorContext, prisma },
-          instance.scopeType,
-          instance.scopeId,
-        ),
-      ),
-    )),
+      )
+      const [canDisconnect, reconnectAllowed] = await Promise.all([canManage, canReconnect])
+      return presentAppConnection(instance, appName, {
+        canDisconnect,
+        canReconnect: reconnectAllowed,
+        canRefreshCapabilities: canDisconnect,
+      })
+    })),
     // The caller's own context, not just the tenant id: which agents this
     // names is an entitlement question, answered by the same rule
     // `GET /api/agents` answers it with.

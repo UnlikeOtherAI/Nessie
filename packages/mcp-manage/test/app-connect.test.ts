@@ -1,39 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type {
-  McpClientManager,
-  McpConnectionId,
-  McpToolDescriptor,
-} from '@nessie/mcp-client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
-import type { PrismaClient } from '@prisma/client'
-
+import type { McpToolDescriptor } from '@nessie/mcp-client'
 import {
   MCP_OAUTH_ERROR_CODES,
   McpOAuthError,
   completeOAuth,
-  createInMemoryStateStore,
-  type McpCatalogEntryRow,
-  type McpInstanceRow,
 } from '../src/index.js'
-// Addressed directly rather than through the package barrel: `apps/index.ts`
-// belongs to another change in flight, so this suite must not depend on its
-// export list having been updated yet.
 import {
   APP_CONNECT_ERROR_CODES,
   AppConnectError,
   chooseConnectStep,
-  disconnectAppConnection,
   mapHandshakeError,
-  reconnectAppConnection,
-  refreshAppConnectionCapabilities,
   resolveConnection,
   runConnectHandshake,
-  type AppConnectContext,
 } from '../src/apps/app-connect.js'
 import { deriveConnectionStatus } from '../src/apps/app-connections.js'
-import type { OAuthDiscoveryOptions } from '../src/oauth-discovery.js'
+import type { McpCatalogEntryRow } from '../src/index.js'
+import {
+  MEMBER,
+  ORG,
+  PROJECT,
+  catalogEntry,
+  instanceRow,
+  makeAppConnectStub,
+} from './app-connect-test-support.js'
 
 /**
  * The universal Connect flow.
@@ -51,223 +42,6 @@ import type { OAuthDiscoveryOptions } from '../src/oauth-discovery.js'
  * Endpoints are literal public IPs so the SSRF guard resolves nothing: every
  * test in this file is offline.
  */
-
-const ORG = '00000000-0000-4000-8000-00000000000a'
-const MEMBER = '00000000-0000-4000-8000-0000000000c1'
-const OTHER = '00000000-0000-4000-8000-0000000000c2'
-const PROJECT = '00000000-0000-4000-8000-0000000000d1'
-const ENDPOINT = 'https://93.184.216.34/mcp'
-
-const actor = (userId: string, roles: string[] = []): AuthorizedActionContext =>
-  ({
-    tenant: { organizationId: ORG },
-    actor: { actorId: userId, actorType: 'user', roles },
-    actionContext: {},
-  }) as unknown as AuthorizedActionContext
-
-const catalogEntry = (
-  overrides: Partial<McpCatalogEntryRow> = {},
-): McpCatalogEntryRow =>
-  ({
-    id: 'entry-1',
-    organizationId: ORG,
-    name: 'acme',
-    label: 'Acme',
-    description: '',
-    protocol: 'http',
-    authMethod: 'none',
-    authConfig: { method: 'none' },
-    defaultTransportConfig: { transport: 'http', url: ENDPOINT },
-    status: 'published',
-    visibility: 'private',
-    locked: false,
-    ownerUserId: MEMBER,
-    ...overrides,
-  }) as unknown as McpCatalogEntryRow
-
-const instanceRow = (overrides: Partial<McpInstanceRow> = {}): McpInstanceRow => ({
-  id: 'instance-1',
-  catalogEntryId: 'entry-1',
-  organizationId: ORG,
-  scopeType: 'user',
-  scopeId: MEMBER,
-  credentialRef: null,
-  transportConfig: {},
-  discoveredTools: [],
-  lifecycleState: 'pending_setup',
-  healthLastCheckedAt: null,
-  healthFailureCount: 0,
-  lastError: null,
-  installedBy: MEMBER,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  ...overrides,
-})
-
-const managerFactory = (
-  behaviour: { descriptors?: McpToolDescriptor[]; failWith?: string },
-) => () =>
-  ({
-    open: async () => 'connection-1' as McpConnectionId,
-    listTools: async () => {
-      if (behaviour.failWith) throw new Error(behaviour.failWith)
-      return behaviour.descriptors ?? []
-    },
-    close: async () => undefined,
-    closeAll: async () => undefined,
-  }) as unknown as McpClientManager
-
-type StubOptions = {
-  entry?: McpCatalogEntryRow
-  /** The instance an id lookup resolves, and what a scope lookup adopts. */
-  instance?: McpInstanceRow | null
-  /** Present only when a scope lookup should find something to adopt. */
-  instanceAtScope?: McpInstanceRow | null
-  credentialRef?: string | null
-  role?: 'owner' | 'admin' | 'member'
-  probe?: { descriptors?: McpToolDescriptor[]; failWith?: string }
-  actorId?: string
-  /** `mcp_registry` marks the row's `authMethod` as the ingest default. */
-  appSource?: string
-  /** What a failed probe learns the server wants; never a real network call. */
-  discoverAuthMethod?: 'none' | 'bearer' | 'api_key' | 'oauth2'
-  /** Dynamic OAuth's already-injected discovery transport. */
-  oauthDiscovery?: OAuthDiscoveryOptions
-}
-
-type Stub = {
-  catalogWrites: Record<string, unknown>[]
-  ctx: AppConnectContext
-  created: Record<string, unknown>[]
-  deleted: string[]
-  discoveryUrls: string[]
-  updates: Record<string, unknown>[]
-  /** The instance row as it stands now, after everything the flow wrote. */
-  connection: () => McpInstanceRow | null
-}
-
-const makeStub = (options: StubOptions = {}): Stub => {
-  let entry = options.entry ?? catalogEntry()
-  // Mutable, because `refreshInstance` re-reads the row after a failed probe to
-  // report the lifecycle state the failure just wrote. A stub that answered the
-  // pre-update row would hide exactly that behaviour.
-  let current: McpInstanceRow | null =
-    options.instance === undefined ? instanceRow() : options.instance
-  const catalogWrites: Record<string, unknown>[] = []
-  const created: Record<string, unknown>[] = []
-  const deleted: string[] = []
-  const discoveryUrls: string[] = []
-  const updates: Record<string, unknown>[] = []
-
-  const toolRegistry = {
-    findMany: async () => [],
-    upsert: async () => ({}),
-    updateMany: async () => ({ count: 0 }),
-  }
-
-  // `healthFailureCount: { increment: 1 }` is a Prisma atomic op, not a value;
-  // drop it rather than write the operator object into the row.
-  const applyUpdate = (data: Record<string, unknown>): McpInstanceRow => {
-    updates.push(data)
-    const plain = { ...data }
-    delete plain.healthFailureCount
-    current = { ...(current ?? instanceRow()), ...plain } as McpInstanceRow
-    return current
-  }
-
-  const discoverEndpoint = async (url: string) => {
-    discoveryUrls.push(url)
-    return {
-      input: url,
-      ok: true,
-      attempts: [],
-      proposal: options.discoverAuthMethod
-        ? { url, transport: 'http' as const, authMethod: options.discoverAuthMethod, toolNames: [], note: null }
-        : null,
-    }
-  }
-
-  const prisma = {
-    mcpCatalogEntry: {
-      // `isManagedIntegrationCatalogEntry` is the only reader that filters by
-      // name; answering null there keeps these fixtures user-managed.
-      findFirst: async (args: { where?: { name?: unknown } }) =>
-        args.where?.name === undefined ? entry : null,
-      // `learnAuthFromServer` reads only `appSource`, to decide whether the
-      // row's `authMethod` is somebody's statement or the ingest default.
-      // These fixtures are human-authored, so a failed probe stays a failed
-      // probe and every case below keeps its original meaning.
-      findUnique: async () => ({ appSource: options.appSource ?? 'nessie' }),
-      // What `learnAuthFromServer` persists when a server proves it wants OAuth.
-      update: async (args: { data: Record<string, unknown> }) => {
-        catalogWrites.push(args.data)
-        entry = { ...entry, ...args.data } as McpCatalogEntryRow
-        return entry
-      },
-      // The endpoint-lock sweep (`findApplicableLock`); nothing is locked here.
-      findMany: async () => [],
-      updateMany: async () => ({ count: 1 }),
-    },
-    mcpServerInstance: {
-      findFirst: async (args: { where?: { id?: string } }) =>
-        args.where?.id === undefined ? options.instanceAtScope ?? null : current,
-      findUnique: async () => current,
-      create: async (args: { data: Record<string, unknown> }) => {
-        created.push(args.data)
-        return { ...instanceRow(), ...args.data, id: 'instance-new' }
-      },
-      update: async (args: { data: Record<string, unknown> }) => applyUpdate(args.data),
-      delete: async (args: { where: { id: string } }) => {
-        deleted.push(args.where.id)
-        return current
-      },
-    },
-    mcpServerCredentialOverride: {
-      findUnique: async () =>
-        options.credentialRef ? { credentialRef: options.credentialRef } : null,
-    },
-    organizationMember: {
-      findUnique: async () => ({ role: options.role ?? 'member', deactivatedAt: null }),
-    },
-    teamMember: { findMany: async () => [] },
-    channelMember: { findMany: async () => [] },
-    projectMember: { findMany: async () => [] },
-    mcpOAuthState: { create: async () => ({}), deleteMany: async () => ({ count: 0 }) },
-    mcpOAuthClient: {
-      findUnique: async () => null,
-      upsert: async (args: { create: { clientId: string; clientSecretRef: string | null } }) =>
-        ({ clientId: args.create.clientId, clientSecretRef: args.create.clientSecretRef }),
-    },
-    $transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> =>
-      fn({
-        mcpServerInstance: {
-          update: async (args: { data: Record<string, unknown> }) => applyUpdate(args.data),
-        },
-        toolRegistryEntry: toolRegistry,
-      }),
-  } as unknown as PrismaClient
-
-  return {
-    created,
-    deleted,
-    discoveryUrls,
-    updates,
-    catalogWrites,
-    connection: () => current,
-    ctx: {
-      prisma,
-      actorContext: actor(options.actorId ?? MEMBER, options.role === 'owner' ? ['owner'] : []),
-      oauth: {
-        callbackUrl: 'https://93.184.216.34/api/mcp/oauth/callback',
-        stateStore: createInMemoryStateStore(),
-        discovery: options.oauthDiscovery,
-      },
-      managerFactory: managerFactory(options.probe ?? {}),
-      discoverEndpoint: discoverEndpoint as never,
-    },
-  }
-}
-
 // ─── The decision ───────────────────────────────────────────────────────────
 
 test('chooseConnectStep: an unauthenticated server just gets probed', () => {
@@ -300,7 +74,7 @@ test('chooseConnectStep: a credentialled server asks for its key exactly once', 
 // ─── Handshake ──────────────────────────────────────────────────────────────
 
 test('a clean handshake on an open server reports connected', async () => {
-  const { ctx } = makeStub({
+  const { ctx } = makeAppConnectStub({
     probe: { descriptors: [{ name: 'search', description: 'Search' } as McpToolDescriptor] },
   })
   const outcome = await runConnectHandshake(
@@ -312,7 +86,7 @@ test('a clean handshake on an open server reports connected', async () => {
 })
 
 test('a server that wants a key is not probed, and no connection is claimed', async () => {
-  const { ctx, updates } = makeStub()
+  const { ctx, updates } = makeAppConnectStub()
   const outcome = await runConnectHandshake(
     ctx,
     { label: 'Acme', authMethod: 'bearer' },
@@ -324,7 +98,7 @@ test('a server that wants a key is not probed, and no connection is claimed', as
 })
 
 test('an unreachable server never leaks the upstream transport message', async () => {
-  const { ctx } = makeStub({
+  const { ctx } = makeAppConnectStub({
     probe: { failWith: 'connect ECONNREFUSED https://internal.acme.example/mcp' },
   })
   await assert.rejects(
@@ -374,7 +148,7 @@ const oauthEntry = (): McpCatalogEntryRow =>
   })
 
 test('an OAuth server hands back an authorization URL instead of connecting', async () => {
-  const { ctx } = makeStub({ entry: oauthEntry() })
+  const { ctx } = makeAppConnectStub({ entry: oauthEntry() })
   const outcome = await runConnectHandshake(
     ctx,
     { label: 'Acme', authMethod: 'oauth2' },
@@ -395,7 +169,7 @@ test('coming back from the provider leaves a connected account, not a spinner', 
   // lands, the instance sits at `pending_setup` — `connecting` in the store's
   // vocabulary — so a successful sign-in reads as a failure to the one person
   // who knows it worked, and Capabilities stays empty.
-  const { ctx, connection } = makeStub({
+  const { ctx, connection } = makeAppConnectStub({
     entry: oauthEntry(),
     probe: { descriptors: [{ name: 'search', description: '' } as McpToolDescriptor] },
   })
@@ -427,7 +201,7 @@ test('coming back from the provider leaves a connected account, not a spinner', 
 
 test('connecting adopts the account already installed at that scope', async () => {
   const existing = instanceRow({ id: 'instance-shared', scopeType: 'organization', scopeId: ORG })
-  const { ctx, created } = makeStub({ instanceAtScope: existing, instance: existing })
+  const { ctx, created } = makeAppConnectStub({ instanceAtScope: existing, instance: existing })
   const resolved = await resolveConnection(ctx, 'entry-1', 'organization', ORG)
   assert.equal(resolved.id, 'instance-shared')
   // Adopting, not colliding: a second connect attempt creates nothing.
@@ -435,7 +209,7 @@ test('connecting adopts the account already installed at that scope', async () =
 })
 
 test('a member cannot install a new organisation-wide connection', async () => {
-  const { ctx, created } = makeStub({ instanceAtScope: null })
+  const { ctx, created } = makeAppConnectStub({ instanceAtScope: null })
   await assert.rejects(
     resolveConnection(ctx, 'entry-1', 'organization', ORG),
     (error: unknown) =>
@@ -446,7 +220,7 @@ test('a member cannot install a new organisation-wide connection', async () => {
 })
 
 test('a member cannot install a project connection by naming a stale project id', async () => {
-  const { ctx, created } = makeStub({ instanceAtScope: null })
+  const { ctx, created } = makeAppConnectStub({ instanceAtScope: null })
   await assert.rejects(
     resolveConnection(ctx, 'entry-1', 'project', PROJECT),
     (error: unknown) =>
@@ -457,95 +231,11 @@ test('a member cannot install a project connection by naming a stale project id'
 })
 
 test('a member installs their own connection at their own user scope', async () => {
-  const { ctx, created } = makeStub({ instanceAtScope: null })
+  const { ctx, created } = makeAppConnectStub({ instanceAtScope: null })
   const resolved = await resolveConnection(ctx, 'entry-1', 'user', MEMBER)
   assert.equal(resolved.id, 'instance-new')
   assert.equal(created.length, 1)
   assert.equal(created[0]?.scopeId, MEMBER)
-})
-
-test("reconnect refuses an account scoped to somebody else's identity", async () => {
-  const { ctx } = makeStub({ instance: instanceRow({ scopeType: 'user', scopeId: OTHER }) })
-  await assert.rejects(
-    reconnectAppConnection(ctx, 'instance-1'),
-    (error: unknown) =>
-      error instanceof AppConnectError
-      && error.code === APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN,
-  )
-})
-
-// ─── Managing one connected account ─────────────────────────────────────────
-
-test('refreshing capabilities reports what the server offers now', async () => {
-  const { ctx } = makeStub({
-    probe: {
-      descriptors: [
-        { name: 'search', description: '' } as McpToolDescriptor,
-        { name: 'create', description: '' } as McpToolDescriptor,
-      ],
-    },
-  })
-  const result = await refreshAppConnectionCapabilities(ctx, 'instance-1')
-  assert.equal(result.connectionId, 'instance-1')
-  assert.equal(result.status, 'connected')
-  assert.equal(result.toolCount, 2)
-})
-
-test('refreshing an unreachable connection answers rather than throwing', async () => {
-  const { ctx } = makeStub({ probe: { failWith: 'boom' } })
-  const result = await refreshAppConnectionCapabilities(ctx, 'instance-1')
-  assert.equal(result.status, 'error')
-  assert.equal(result.toolCount, 0)
-})
-
-test('disconnecting needs the scope manage right, not merely reach', async () => {
-  const shared = instanceRow({ scopeType: 'organization', scopeId: ORG })
-  const { ctx, deleted } = makeStub({ instance: shared })
-  await assert.rejects(
-    disconnectAppConnection(ctx, 'instance-1'),
-    (error: unknown) =>
-      error instanceof AppConnectError
-      && error.code === APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN,
-  )
-  assert.equal(deleted.length, 0)
-})
-
-test('disconnecting reads the live membership rather than a stale actor role', async () => {
-  const shared = instanceRow({ scopeType: 'organization', scopeId: ORG })
-  const { ctx, deleted } = makeStub({ instance: shared })
-  // A role captured when the request was enqueued is not an authority: the
-  // member may have been demoted before this destructive action is attempted.
-  ctx.actorContext = actor(MEMBER, ['owner'])
-
-  await assert.rejects(
-    disconnectAppConnection(ctx, 'instance-1'),
-    (error: unknown) =>
-      error instanceof AppConnectError
-      && error.code === APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN,
-  )
-  assert.equal(deleted.length, 0)
-})
-
-test('disconnecting reports the app and scope it removed, for the audit trail', async () => {
-  const { ctx, deleted } = makeStub()
-  const removed = await disconnectAppConnection(ctx, 'instance-1')
-  assert.deepEqual(removed, {
-    connectionId: 'instance-1',
-    catalogEntryId: 'entry-1',
-    scopeType: 'user',
-    scopeId: MEMBER,
-  })
-  assert.deepEqual(deleted, ['instance-1'])
-})
-
-test('a connection that is not this organisation’s is simply not found', async () => {
-  const { ctx } = makeStub({ instance: null })
-  await assert.rejects(
-    disconnectAppConnection(ctx, 'instance-1'),
-    (error: unknown) =>
-      error instanceof AppConnectError
-      && error.code === APP_CONNECT_ERROR_CODES.CONNECTION_NOT_FOUND,
-  )
 })
 
 test('a failed registry probe discovers OAuth through its catalog endpoint', async () => {
@@ -579,7 +269,7 @@ test('a failed registry probe discovers OAuth through its catalog endpoint', asy
     }
     return new Response('not found', { status: 404 })
   }) as typeof fetch
-  const { ctx, catalogWrites, discoveryUrls } = makeStub({
+  const { ctx, catalogWrites, discoveryUrls } = makeAppConnectStub({
     entry: catalogEntry({ defaultTransportConfig: { transport: 'http', url: endpoint } }),
     appSource: 'mcp_registry',
     discoverAuthMethod: 'oauth2',
@@ -600,7 +290,7 @@ test('a failed registry probe discovers OAuth through its catalog endpoint', asy
 })
 
 test('a server that wants a bearer token persists that before opening the key panel', async () => {
-  const { ctx, catalogWrites } = makeStub({
+  const { ctx, catalogWrites } = makeAppConnectStub({
     appSource: 'mcp_registry',
     discoverAuthMethod: 'bearer',
     probe: { failWith: 'connect ECONNREFUSED https://acme.example/mcp' },
@@ -622,7 +312,7 @@ test('a server that wants a bearer token persists that before opening the key pa
 test('a human-authored row is never re-derived, and a dead listing still reads as one', async () => {
   // `appSource` defaults to 'nessie' here: a declared `none` is a statement, so
   // the probe failure stands rather than being second-guessed.
-  const { ctx } = makeStub({
+  const { ctx } = makeAppConnectStub({
     discoverAuthMethod: 'oauth2',
     probe: { failWith: 'connect ECONNREFUSED https://acme.example/mcp' },
     role: 'owner',

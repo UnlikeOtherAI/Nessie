@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import type { AppConnectionSummaryRecord } from '@nessie/schemas'
 import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
@@ -11,7 +12,7 @@ import {
   appDetailTabs,
   appNotFoundMessage,
 } from '../components/features/apps/app-detail-view'
-import { useRemoveAppConnections } from '../facades/apps/connect-hooks'
+import { useRemoveAppConnections } from '../facades/apps/connection-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
 import { useConsumedIntent } from '../navigation/intent'
@@ -35,6 +36,7 @@ export const AppDetailPage = () => {
   const { slug } = useParams<{ slug?: string }>()
   const { data: app, isPending } = useApp(slug)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [reconnecting, setReconnecting] = useState<AppConnectionSummaryRecord | null>(null)
   const [removeOpen, setRemoveOpen] = useState(false)
   const removeApp = useRemoveAppConnections()
   const phoneNavigation = usePhoneNavigation()
@@ -135,11 +137,20 @@ export const AppDetailPage = () => {
             activeTab={activeTab}
             app={app}
             onConnectAnother={() => setConnectOpen(true)}
+            onReconnect={(connection) => setReconnecting(connection)}
             onSelectTab={selectTab}
           />
         </div>
       </div>
-      <AppConnectDialog app={app} onClose={() => setConnectOpen(false)} open={connectOpen} />
+      <AppConnectDialog
+        app={app}
+        onClose={() => {
+          setConnectOpen(false)
+          setReconnecting(null)
+        }}
+        open={connectOpen || reconnecting !== null}
+        reconnectConnection={reconnecting}
+      />
       <ConfirmDialog
         body={(
           <>
