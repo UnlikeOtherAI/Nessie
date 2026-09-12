@@ -21,6 +21,7 @@ import {
   startApi,
   stopProcess,
 } from '../navigation/lib/servers.mjs'
+import { waitForStackSettled } from '../navigation/lib/freeze.mjs'
 import { exerciseConversationCard } from './conversation-card.mjs'
 import { saveFailureEvidence } from './failure-evidence.mjs'
 import {
@@ -41,8 +42,11 @@ const SCREENSHOTS = resolve(
   import.meta.dirname, '..', '..', '..', 'e2e', 'screenshots', 'agent-conversations',
 )
 
-/** Long enough to photograph a run in flight, short enough to finish inside the budget. */
-const ECHO_LATENCY_MS = 2_500
+/**
+ * Long enough for two real browser submissions to overlap before either mock
+ * answer returns, and still short enough for the suite's four-minute budget.
+ */
+const ECHO_LATENCY_MS = 7_500
 const CONVERSATION_TITLE = 'Pricing page copy'
 
 const api = async (path, token, options = {}) => {
@@ -151,6 +155,10 @@ const openConversationsColumn = async (page, viewport, agentName) => {
     await rail.waitFor({ timeout: 30_000 })
     await rail.getByRole('button', { name: 'Conversations' }).click()
   }
+  // A phone column is a pushed screen. Its width is not final until that
+  // screen settles, and TabBar deliberately chooses its radio or listbox form
+  // from that measured width.
+  if (viewport === 'phone') await waitForStackSettled(page)
   await page.locator(`[aria-label="Conversations with ${agentName}"]`)
     .waitFor({ timeout: 30_000 })
   await page.locator('[data-testid="start-agent-conversation"]').waitFor({ timeout: 30_000 })
@@ -158,6 +166,39 @@ const openConversationsColumn = async (page, viewport, agentName) => {
 
 /** The conversations column, whichever width drew it. */
 const conversationsPanel = (page) => page.locator('[aria-label^="Conversations with "]')
+
+/**
+ * Wait for TabBar's measured single-select shape and its actual agent controls.
+ *
+ * The strip mounts as radios before its ResizeObserver can decide whether a
+ * narrow panel needs the listbox. Reading just one role during that hand-off
+ * asserts a DOM implementation detail, not the choice a person can use. The
+ * direct form must expose every expected radio; the compact form must expose
+ * its labelled trigger before its options are opened below.
+ */
+const settledAgentStripPresentation = async (page, agents) => {
+  const expectedTestIds = agents.map((agent) => `chat-tool-agent-${agent.id}`).sort()
+  const state = await page.waitForFunction((expected) => {
+    const visible = (element) => element.getClientRects().length > 0
+    const panel = [...document.querySelectorAll('[aria-label^="Conversations with "]')]
+      .filter(visible)
+      .at(-1)
+    if (!panel) return null
+
+    const trigger = panel.querySelector('button.tabbar-trigger[aria-label="Agent"]')
+    if (trigger && visible(trigger)) return 'collapsed'
+
+    const radios = [...panel.querySelectorAll('[role="radio"]')]
+    const radioTestIds = radios
+      .map((radio) => radio.getAttribute('data-testid'))
+      .filter((testId) => testId !== null)
+      .sort()
+    const hasEveryAgent = radioTestIds.length === expected.length
+      && radioTestIds.every((testId, index) => testId === expected[index])
+    return hasEveryAgent ? 'expanded' : null
+  }, expectedTestIds, { polling: 'raf', timeout: 30_000 })
+  return state.jsonValue()
+}
 
 /**
  * The heading of the screen actually on top.
@@ -220,8 +261,9 @@ const sendNamingMessage = async (page, threadId, text) => {
  */
 const expectStripAgents = async (page, agents, viewport) => {
   const panel = conversationsPanel(page)
+  const presentation = await settledAgentStripPresentation(page, agents)
   const trigger = panel.locator('button.tabbar-trigger[aria-label="Agent"]')
-  const collapsed = await trigger.count() > 0
+  const collapsed = presentation === 'collapsed'
   if (collapsed) await trigger.first().click()
   // The collapsed menu is a popover at the document root, so its options are
   // not inside the panel the strip lives in.
