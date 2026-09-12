@@ -118,7 +118,9 @@ const apiClient = {
   put: async () => undefined,
 } as unknown as ApiClient
 
-Object.assign(window, { __appConnectScopeFixture: { calls, failPolicyPatchAt: null, policyCalls, refreshFailure: null } })
+Object.assign(window, {
+  __appConnectScopeFixture: { calls, failPolicyPatchAt: null, policyCalls, refreshFailure: null },
+})
 window.localStorage.setItem('nessie.admin.token', 'app-connect-scope-e2e')
 window.fetch = async (input) => {
   const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin)
