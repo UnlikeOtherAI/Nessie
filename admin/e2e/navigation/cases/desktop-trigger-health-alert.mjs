@@ -21,7 +21,10 @@ export const desktopTriggerHealthAlert = {
     await gotoPath(page, '/channels')
     await pushPath(page, '/agents/triggers')
     await page.waitForURL(/\/agents\/triggers$/u)
-    const triggerRow = page.getByRole('button', { name: health.title })
+    const triggerList = page.getByRole('list', { name: 'Triggers', exact: true })
+    const triggerRow = triggerList.getByRole('button').filter({
+      has: page.getByText(health.title, { exact: true }),
+    })
     await triggerRow.waitFor()
     await triggerRow.click()
     await page.waitForURL(new RegExp(`/agents/triggers\\?trigger=${health.triggerId}$`, 'u'))
