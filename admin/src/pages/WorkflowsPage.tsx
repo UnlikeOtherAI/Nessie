@@ -199,9 +199,9 @@ export const WorkflowsPage = () => {
         failedRuns={failedRuns}
         failedRunsList={failedRunsList}
         key="failed-runs"
-        onBack={() => setShowFailedRuns(false)}
+        onBack={() => updateParams({ failedRuns: null, run: null })}
         onSelectRun={(run) =>
-          updateParams({ failedRuns: null, installation: run.installationId, run: run.id })
+          updateParams({ failedRuns: '1', installation: null, run: run.id })
         }
       />,
     )
@@ -323,9 +323,23 @@ export const WorkflowsPage = () => {
       </ColumnBrowserColumn>,
     )
   }
+  if (showFailedRuns && selectedRunId && !selectedInstallation) {
+    columns.push(
+      <ColumnBrowserColumn
+        key={`failed-run-${selectedRunId}`}
+        onBack={() => setSelectedRunId(undefined)}
+        showBack
+        title={`Run ${selectedRunId.slice(0, 8)}`}
+      >
+        <WorkflowRunDetail workflowRunId={selectedRunId} />
+      </ColumnBrowserColumn>,
+    )
+  }
 
   const activeColumn = selectedRunId && selectedInstallation
     ? 3
+    : selectedRunId && showFailedRuns
+      ? 2
     : selectedInstallation
       ? 2
       : selectedTemplate && selectedTemplateId

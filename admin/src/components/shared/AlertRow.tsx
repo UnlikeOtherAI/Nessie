@@ -59,6 +59,9 @@ const describeAlert = (alert: UserAlertRecord): string => {
     // the title is exactly what must not travel there. The row opens the card.
     return 'A ticket you watch changed'
   }
+  if (alert.kind === 'workflow_run_failed') {
+    return 'A workflow run failed'
+  }
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
     // waiting for approval is exactly the thing that must not travel there.

@@ -35,6 +35,9 @@ export const UserAlertKindSchema = z.enum([
   // A ticket moved or changed on a board this person watches. Durable because
   // somebody explicitly asked to be told: a push is missable, the bell is not.
   'board_ticket_changed',
+  // A workflow run entered its terminal failed state. The linked run is the
+  // recovery doorway, and visibility is rechecked on every bell read.
+  'workflow_run_failed',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -63,6 +66,7 @@ export const UserAlertRecordSchema = z.object({
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
   boardSourceId: z.string().uuid().nullable(),
+  workflowRunId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),
