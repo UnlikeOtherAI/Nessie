@@ -84,6 +84,14 @@ and parse responses at domain boundaries, starting with channels/projects/agents
 Keep the migration shared by web/mobile/desktop and test malformed envelopes,
 missing required fields and allowed additive fields.
 
+**Implemented, 12 September 2026.** `@nessie/client-core` now parses every
+successful response envelope and accepts a domain-owned response schema for its
+data. The shared web, desktop, and mobile client path supplies the authoritative
+channel, project, and agent schemas at those facades; their exported record
+types now come from `@nessie/schemas`. Client-core tests cover malformed and
+missing-data envelopes, error-only success objects, a missing required channel
+field, and an accepted additive field.
+
 ## 22. Windows-native PR verification
 
 **Verification follow-up.** All ordinary jobs in `.github/workflows/ci.yml`

@@ -1,8 +1,6 @@
 import type {
-  AgentAvatarBackgroundColor,
-  AgentRunLimits,
-  AgentStatusResponse,
-  AgentVisibility,
+  AgentRecord,
+  ChannelRecord,
   MailboxConnectionRecord,
   MailboxConnectionScope,
   MailboxTransportSecurity,
@@ -10,6 +8,11 @@ import type {
 } from '@nessie/schemas'
 
 export type {
+  AgentOwner,
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantPresenceParticipant,
+  ProjectRecord,
   UnreadDirectMessagePreview,
   UnreadDirectMessageRecord,
   UnreadDirectMessagesResponse,
@@ -27,75 +30,6 @@ export type AuthProviderDescriptor = {
 export type BootstrapModeResponse = {
   bootstrapMode: true
   bootstrapUrl: '/bootstrap'
-}
-
-export type ChannelMetadataRecord = {
-  ownerUserId?: string
-  systemChannelType?: 'personal_assistant' | string
-  [key: string]: unknown
-}
-
-export type ChannelRecord = {
-  createdAt: string
-  defaultThreadId: string
-  id: string
-  label: string
-  metadata?: ChannelMetadataRecord
-  organizationId: string
-  scope?: 'project' | 'standalone'
-  projectId: string
-  projectName: string
-  slug?: string | null
-  systemChannelType?: 'personal_assistant' | string
-  teamId: string
-  teamName: string
-  type: 'dm' | 'standard'
-  dmUserId?: string | null
-  isGroupDm?: boolean
-  unreadCount: number
-  // When the channel's default thread last received a message; null when it has
-  // none. Optional on the client so a UI stays functional against a server that
-  // predates the field.
-  lastMessageAt?: string | null
-  updatedAt: string
-  visibility: 'private' | 'protected' | 'public'
-  // sp-channels: channel lifecycle fields
-  topic?: string | null
-  description?: string | null
-  archivedAt?: string | null
-  memberRole?: 'owner' | 'admin' | 'member' | 'viewer' | null
-  // Whether the caller has muted notifications for this channel (per-member).
-  muted?: boolean
-  // Server-computed: may the viewer add or remove a member of this channel
-  // right now (`canManageChannel` — channel owner/admin, team owner/admin, or
-  // organisation owner/admin). Required, not optional, so a client can never
-  // default into showing a control the service will refuse.
-  viewerCanManage: boolean
-  // A channel-scoped PA participant is deliberately not an AgentRecord: other
-  // channel members never receive the singleton's private configuration.
-  personalAssistantPresences?: PersonalAssistantPresenceParticipant[]
-}
-
-export type PersonalAssistantPresenceParticipant = {
-  agentId: string
-  avatarAttachmentId?: string | null
-  displayName: string
-  id: string
-  isPersonalAssistant: true
-  mentionName: string
-  principalUserId: string
-}
-
-export type ProjectRecord = {
-  avatarAttachmentId: string | null
-  avatarEmoji: string | null
-  channelCount?: number
-  createdAt: string
-  id: string
-  memberCount: number
-  name: string
-  organizationId: string
-  teamCount?: number
 }
 
 export type ProjectMemberRecord = {
@@ -146,73 +80,6 @@ export type CallRecord = {
   startedByDisplayName: string
   startedById: string
   status: 'ringing' | 'active' | 'ended' | 'missed' | 'declined' | 'cancelled'
-}
-
-/**
- * The resolved steward of an agent. `ownerState` is re-derived server-side on
- * every read rather than implied by the stored pointer, because a deactivated
- * membership row is retained deliberately and would otherwise still read as a
- * present colleague.
- */
-export type AgentOwner = {
-  avatarAttachmentId?: string | null
-  displayName?: string
-  ownerState: 'active' | 'deactivated' | 'unknown'
-  userId: string
-}
-
-export type AgentRecord = {
-  avatarAttachmentId?: string | null
-  avatarBackgroundColor?: AgentAvatarBackgroundColor | null
-  channelIds: string[]
-  createdAt: string
-  currentRunId?: string
-  currentToolName?: string
-  currentToolStartedAt?: string
-  effort?: 'low' | 'medium' | 'high' | 'xhigh'
-  id: string
-  lastActivityAt: string
-  model?: string
-  name: string
-  parentAgentId?: string | null
-  provider?: string
-  agentKind?: 'shared' | 'personal_assistant'
-  delegationMode?: 'none' | 'act_as_requesting_user'
-  owner?: AgentOwner | null
-  ownerUserId?: string | null
-  role: string
-  runLimits?: AgentRunLimits | null
-  surfacePolicy?: 'shared' | 'dm_only'
-  systemManaged?: boolean
-  /**
-   * The global-agent blueprint this row instantiates, when it is one. Read-only
-   * and server-written: it is how a client says "this is the Agent Designer"
-   * structurally instead of matching a display name.
-   */
-  systemSlug?: string | null
-  /**
-   * Server-decided: addressing this system agent resolves to the caller's own
-   * pre-provisioned home DM instead of binding it into a new conversation.
-   * Present only when true — it is what puts the Personal Assistant and a
-   * global agent in the "New message" address book without a client naming a
-   * slug.
-   */
-  dmAddressable?: boolean
-  todosEnabled: boolean
-  /** Gemini Live voice for calls; null/absent = the deployment default. */
-  voiceName?: string | null
-  /** How the agent talks to people — prompt text, never a preset id. */
-  speakingStyle?: string | null
-  status: AgentStatusResponse['status']
-  systemPrompt?: string
-  /** Server-decided browser capability; never inferred from a connection. */
-  browserEnabled?: boolean
-  toolPolicy?: Record<string, boolean>
-  updatedAt: string
-  /** Stored scope: private agents are visible only to their owner. */
-  visibility: AgentVisibility
-  /** Owner-only home DM created atomically for a private agent. */
-  homeChannelId?: string
 }
 
 export type UserRecord = {

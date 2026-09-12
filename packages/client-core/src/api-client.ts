@@ -1,22 +1,52 @@
-import type { ApiError, ApiResponse } from '@nessie/schemas'
+import {
+  ApiErrorSchema,
+  createApiResponseSchema,
+  type ApiResponse,
+} from '@nessie/schemas'
+import { z } from 'zod'
+
+/** A response data schema supplied by the domain that owns the endpoint. */
+export type ApiResponseDataSchema<TData> = {
+  safeParse: (input: unknown) =>
+    | { data: TData; success: true }
+    | { error: { flatten: () => unknown }; success: false }
+}
 
 export type ApiClient = {
   delete: <TData>(path: string) => Promise<TData>
-  get: <TData>(path: string) => Promise<TData>
+  get: <TData>(path: string, schema?: ApiResponseDataSchema<TData>) => Promise<TData>
   /**
    * A GET that keeps the response envelope instead of unwrapping it, for a
    * paged list: `meta` is where the cursors and the total live, and `get`
    * throws them away.
    */
-  getPage: <TData>(path: string) => Promise<ApiResponse<TData>>
+  getPage: <TData>(
+    path: string,
+    schema?: ApiResponseDataSchema<TData>,
+  ) => Promise<ApiResponse<TData>>
   // `headers` exists for the conditional writes the auto-saving editors make:
   // `If-Match: <revision>` is what lets the server refuse a stale save instead
   // of taking the last write (docs/navigation/overview.md → "Drafts").
-  patch: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+  patch: <TData>(
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+    schema?: ApiResponseDataSchema<TData>,
+  ) =>
     Promise<TData>
-  post: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+  post: <TData>(
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+    schema?: ApiResponseDataSchema<TData>,
+  ) =>
     Promise<TData>
-  put: <TData>(path: string, body?: unknown, headers?: Record<string, string>) =>
+  put: <TData>(
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+    schema?: ApiResponseDataSchema<TData>,
+  ) =>
     Promise<TData>
 }
 
@@ -63,13 +93,13 @@ const toApiError = async (response: Response): Promise<ApiClientError> => {
   }
 
   try {
-    const payload = JSON.parse(text) as ApiError
-    if (payload.error?.message) {
+    const parsed = ApiErrorSchema.safeParse(JSON.parse(text))
+    if (parsed.success) {
       return new ApiClientError(
-        payload.error.message,
-        payload.error.code,
+        parsed.data.error.message,
+        parsed.data.error.code,
         response.status,
-        payload.error.details,
+        parsed.data.error.details,
       )
     }
   } catch {
@@ -77,6 +107,36 @@ const toApiError = async (response: Response): Promise<ApiClientError> => {
   }
 
   return new ApiClientError(text, undefined, response.status)
+}
+
+const parseResponseEnvelope = <TData>(
+  payload: unknown,
+  response: Response,
+  schema?: ApiResponseDataSchema<TData>,
+): ApiResponse<TData> => {
+  const envelope = createApiResponseSchema(z.unknown()).safeParse(payload)
+  if (!envelope.success) {
+    throw new ApiClientError(
+      'The server returned an invalid response.',
+      'INVALID_RESPONSE',
+      response.status,
+      envelope.error.flatten(),
+    )
+  }
+
+  if (!schema) return envelope.data as ApiResponse<TData>
+
+  const data = schema.safeParse(envelope.data.data)
+  if (!data.success) {
+    throw new ApiClientError(
+      'The server returned an invalid response.',
+      'INVALID_RESPONSE',
+      response.status,
+      data.error.flatten(),
+    )
+  }
+
+  return { data: data.data, ...(envelope.data.meta === undefined ? {} : { meta: envelope.data.meta }) }
 }
 
 export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientConfig): ApiClient => {
@@ -97,6 +157,7 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
   const requestEnvelope = async <TData>(
     path: string,
     init?: RequestInit,
+    schema?: ApiResponseDataSchema<TData>,
     retried = false,
   ): Promise<ApiResponse<TData>> => {
     const headers = new Headers(init?.headers)
@@ -119,7 +180,7 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
       const renewedToken = await onUnauthorized()
       if (renewedToken) {
         activeToken = renewedToken
-        return requestEnvelope<TData>(path, init, true)
+        return requestEnvelope<TData>(path, init, schema, true)
       }
     }
 
@@ -131,34 +192,37 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
       return { data: undefined as TData }
     }
 
-    return (await response.json()) as ApiResponse<TData>
+    return parseResponseEnvelope(await response.json(), response, schema)
   }
 
-  const request = async <TData>(path: string, init?: RequestInit): Promise<TData> =>
-    (await requestEnvelope<TData>(path, init)).data
+  const request = async <TData>(
+    path: string,
+    init?: RequestInit,
+    schema?: ApiResponseDataSchema<TData>,
+  ): Promise<TData> => (await requestEnvelope<TData>(path, init, schema)).data
 
   return {
-    getPage: (path) => requestEnvelope(path, { method: 'GET' }),
+    getPage: (path, schema) => requestEnvelope(path, { method: 'GET' }, schema),
     delete: (path) => request(path, { method: 'DELETE' }),
-    get: (path) => request(path, { method: 'GET' }),
-    patch: (path, body, headers) =>
+    get: (path, schema) => request(path, { method: 'GET' }, schema),
+    patch: (path, body, headers, schema) =>
       request(path, {
         method: 'PATCH',
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
-      }),
-    post: (path, body, headers) =>
+      }, schema),
+    post: (path, body, headers, schema) =>
       request(path, {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
-      }),
-    put: (path, body, headers) =>
+      }, schema),
+    put: (path, body, headers, schema) =>
       request(path, {
         method: 'PUT',
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
-      }),
+      }, schema),
   }
 }
 
@@ -173,7 +237,6 @@ export type {
   BootstrapModeResponse,
   CallParticipantRecord,
   CallRecord,
-  ChannelMetadataRecord,
   ChannelRecord,
   FavoriteRecord,
   FavoriteTargetType,
