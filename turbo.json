@@ -39,7 +39,15 @@
       // suite hits its `process.env.DATABASE_URL ? test : test.skip` gate and
       // reports `# SKIP` — `pnpm test` silently gave zero database coverage
       // while looking green (47 skipped in @nessie/api alone).
-      "env": ["DATABASE_URL", "NESSIE_TEST_PRISTINE_DATABASE"]
+      // Some API tests import the hosted worker entry. Its startup guard must
+      // receive CI's deterministic dedicated key ring through the same strict
+      // boundary, or the import correctly fails before the test can run.
+      "env": [
+        "DATABASE_URL",
+        "NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION",
+        "NESSIE_ENCRYPTION_KEY_RING",
+        "NESSIE_TEST_PRISTINE_DATABASE"
+      ]
     },
     // `test` depends only on `^build`, so Turbo — unlike `pnpm -r`, which is
     // topological — is free to run @nessie/api's and @nessie/worker's suites at
@@ -56,7 +64,12 @@
       "dependsOn": ["^build", "@nessie/worker#test"],
       "outputs": [],
       "cache": false,
-      "env": ["DATABASE_URL", "NESSIE_TEST_PRISTINE_DATABASE"]
+      "env": [
+        "DATABASE_URL",
+        "NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION",
+        "NESSIE_ENCRYPTION_KEY_RING",
+        "NESSIE_TEST_PRISTINE_DATABASE"
+      ]
     },
     "dev": {
       "cache": false,
