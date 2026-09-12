@@ -9,11 +9,7 @@ import {
   useWorkflowTemplates,
 } from '../../../facades/workflows/hooks'
 import { useIsOwner } from '../../../facades/auth/hooks'
-import {
-  parseHashAnchor,
-  useConsumedHashIntent,
-  useConsumedIntent,
-} from '../../../navigation/intent'
+import { useConsumedIntent } from '../../../navigation/intent'
 import { useTabParam } from '../../../navigation/useTabParam'
 import type {
   AgentRecord,
@@ -88,8 +84,6 @@ export type TriggersPageState = {
   workflowTemplates: WorkflowTemplateRecord[]
 }
 
-const parseTriggerHash = parseHashAnchor('trigger')
-
 export const useTriggersPageState = (): TriggersPageState => {
   // The three owner-only reads below stay gated on this flag; the page's
   // refusal is <OwnerGate>, which asks the same question of the same session.
@@ -103,9 +97,6 @@ export const useTriggersPageState = (): TriggersPageState => {
   const { data: channels = [] } = useChannels()
   const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
   const { data: workflowTemplates = [] } = useWorkflowTemplates(isOwner)
-  const [selectedTriggerId, setSelectedTriggerId] = useState<string | undefined>(
-    undefined,
-  )
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   // `/agents/triggers?create=<agentId>` — the "New trigger" button on an
   // agent's own Triggers panel. The doorway lands in the create form already
@@ -121,6 +112,21 @@ export const useTriggersPageState = (): TriggersPageState => {
   // linkable and survives a refresh, and Back leaves the page rather than
   // undoing the filter (docs/navigation/overview.md §1).
   const [searchParams, setSearchParams] = useSearchParams()
+  // Selecting a trigger answers which recovery controls the person is
+  // inspecting. It is durable URL state, so a cold alert link and a refresh
+  // both retain the exact selected row.
+  const selectedTriggerId = searchParams.get('trigger') ?? undefined
+  const setSelectedTriggerId = useCallback(
+    (triggerId: string | undefined) => {
+      setSearchParams((current) => {
+        const params = new URLSearchParams(current)
+        if (triggerId) params.set('trigger', triggerId)
+        else params.delete('trigger')
+        return params
+      })
+    },
+    [setSearchParams],
+  )
   const searchQuery = searchParams.get('search') ?? ''
   const setSearchQuery = useCallback(
     (next: string) => {
@@ -202,14 +208,6 @@ export const useTriggersPageState = (): TriggersPageState => {
       return haystack.includes(query)
     })
   }, [registry, searchQuery, sortedTriggers, statusFilter, typeFilter])
-
-  // A "scheduled" link (`/agents/triggers#trigger-<id>`) selects its row
-  // once; the fragment is consumed, so Back and a refresh keep the person's
-  // own later selection (docs/navigation/overview.md §8).
-  const linkedTrigger = useConsumedHashIntent('trigger', parseTriggerHash)
-  useEffect(() => {
-    if (linkedTrigger.value) setSelectedTriggerId(linkedTrigger.value)
-  }, [linkedTrigger])
 
   // Keyed on the capture, not its value: two arrivals of the same agent id are
   // two presses of the button and must each open the dialog.

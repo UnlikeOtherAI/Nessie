@@ -12,17 +12,19 @@ export const desktopTriggerHealthAlert = {
 
     await gotoPath(page, '/channels')
     await page.getByRole('button', { name: 'Alerts', exact: true }).click()
-    await page.getByText('A scheduled task stopped running', { exact: true }).click()
-    await page.waitForURL(new RegExp(`/agents/triggers#trigger-${health.triggerId}$`, 'u'))
-    await page.getByRole('heading', { name: health.title, exact: true }).waitFor()
+    await page.getByText('A scheduled task stopped running', { exact: true }).first().click()
+    await page.waitForURL(new RegExp(`/agents/triggers\\?trigger=${health.triggerId}$`, 'u'))
+    const detailHeading = page.getByRole('heading', { level: 2, name: health.title, exact: true })
+    await detailHeading.waitFor()
     await page.getByText('This schedule has stopped', { exact: true }).waitFor()
     const reauthorize = page.getByRole('button', { name: 'Reauthorize', exact: true })
     await reauthorize.waitFor()
+    await page.reload()
+    await detailHeading.waitFor()
+    await page.getByText('This schedule has stopped', { exact: true }).waitFor()
+    await reauthorize.waitFor()
 
-    checks.ok('the alert opens its exact broken trigger', await page.getByRole('heading', {
-      name: health.title,
-      exact: true,
-    }).isVisible())
+    checks.ok('the alert opens its exact broken trigger', await detailHeading.isVisible())
     checks.ok('the selected trigger exposes its health remedy', await reauthorize.isVisible())
     const frames = [await shot(page, 'desktop-trigger-health-alert', '00-recovery-control')]
     checks.close()

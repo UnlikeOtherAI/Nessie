@@ -150,6 +150,9 @@ export const seedTriggerHealthAlert = async (seed) => {
   const prisma = new PrismaClient()
   let triggerId
   try {
+    await prisma.userAlert.deleteMany({
+      where: { eventKey: { startsWith: 'navigation-trigger-health:' }, userId: me.user.id },
+    })
     const trigger = await prisma.agentTrigger.create({
       data: {
         agentId: agent.id,

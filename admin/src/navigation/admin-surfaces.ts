@@ -86,10 +86,10 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     depth: 1,
     intent: {
       consume: ['create', 'scopeProjectId'],
-      hash: ['confirmationToken', 'trigger'],
+      hash: ['confirmationToken'],
       state: [
         'executorId', 'accessChange', 'promotion', 'tab',
-        'status', 'search', 'source', 'instance', 'deepWaterInstance',
+        'status', 'search', 'source', 'instance', 'deepWaterInstance', 'trigger',
       ],
     },
     parentOf: toAdmin,
