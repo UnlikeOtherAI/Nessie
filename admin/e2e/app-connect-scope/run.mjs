@@ -12,6 +12,7 @@ const menuScreenshotPath = resolve(screenshots, 'project-audience-compact-menu.p
 const projectScreenshotPath = resolve(screenshots, 'project-audience-compact-project.png')
 const reviewScreenshotPath = resolve(screenshots, 'mixed-pending-review-doorway.png')
 const recoveryScreenshotPath = resolve(screenshots, 'account-recovery-actions.png')
+const recoveryFailureScreenshotPath = resolve(screenshots, 'account-recovery-failure.png')
 const admin = await startAdmin()
 const browser = await launchBrowser()
 let page
@@ -105,12 +106,20 @@ try {
   const refreshStatus = page.getByText('Capabilities updated: 3 available.', { exact: true })
   await refreshStatus.waitFor()
   assert.equal(await refreshStatus.getAttribute('role'), 'status')
+  await page.evaluate(() => { window.__appConnectScopeFixture.refreshFailure = 'probe' })
+  await recovery.getByRole('button', { name: 'Refresh capabilities' }).click()
+  await recovery.getByText('Capabilities could not be refreshed. Reconnect this account to repair it.').waitFor()
+  await recovery.getByRole('button', { name: 'Reconnect' }).waitFor()
+  await page.evaluate(() => { window.__appConnectScopeFixture.refreshFailure = 'request' })
+  await recovery.getByRole('button', { name: 'Refresh capabilities' }).click()
+  await recovery.getByText("We couldn't refresh capabilities. Try again.").waitFor()
+  await page.screenshot({ fullPage: true, path: recoveryFailureScreenshotPath })
   assert.ok(
     (await page.evaluate(() => window.__appConnectScopeFixture.calls))
       .some((call) => call.path.endsWith('/refresh-capabilities')),
   )
   await context.close()
-  console.log(`App connection scope proofs passed: ${menuScreenshotPath}, ${projectScreenshotPath}, ${reviewScreenshotPath}, ${recoveryScreenshotPath}`)
+  console.log(`App connection scope proofs passed: ${menuScreenshotPath}, ${projectScreenshotPath}, ${reviewScreenshotPath}, ${recoveryScreenshotPath}, ${recoveryFailureScreenshotPath}`)
 } finally {
   await browser.close()
   await stopProcess(admin)

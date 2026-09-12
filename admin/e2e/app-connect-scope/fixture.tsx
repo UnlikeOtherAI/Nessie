@@ -76,6 +76,7 @@ declare global {
       calls: Array<{ body: unknown; path: string }>
       failPolicyPatchAt: number | null
       policyCalls: string[]
+      refreshFailure: 'probe' | 'request' | null
     }
   }
 }
@@ -104,6 +105,12 @@ const apiClient = {
   post: async (path: string, body: unknown) => {
     calls.push({ body, path })
     if (path.endsWith('/refresh-capabilities')) {
+      if (window.__appConnectScopeFixture.refreshFailure === 'request') {
+        throw new Error('permission revoked')
+      }
+      if (window.__appConnectScopeFixture.refreshFailure === 'probe') {
+        return { connectionId: recoveryConnection.id, status: 'error', toolCount: 0 }
+      }
       return { connectionId: recoveryConnection.id, status: 'connected', toolCount: 3 }
     }
     return { connectionId: '33333333-3333-3333-3333-333333333333', status: 'needs_secret' }
@@ -111,7 +118,7 @@ const apiClient = {
   put: async () => undefined,
 } as unknown as ApiClient
 
-Object.assign(window, { __appConnectScopeFixture: { calls, failPolicyPatchAt: null, policyCalls } })
+Object.assign(window, { __appConnectScopeFixture: { calls, failPolicyPatchAt: null, policyCalls, refreshFailure: null } })
 window.localStorage.setItem('nessie.admin.token', 'app-connect-scope-e2e')
 window.fetch = async (input) => {
   const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin)
