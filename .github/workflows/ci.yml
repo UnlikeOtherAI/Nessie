@@ -780,11 +780,11 @@ jobs:
       - name: Start shared object storage
         if: steps.scope.outputs.code == '1'
         run: |
-          docker run -d --name minio \
+          docker run --platform linux/amd64 -d --name minio \
             -p 9010:9000 \
             -e MINIO_ROOT_USER=nessie \
             -e MINIO_ROOT_PASSWORD=nessie-multi-instance \
-            quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z server /data
+            quay.io/minio/minio@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2 server /data
           for attempt in $(seq 1 30); do
             if curl -sf http://127.0.0.1:9010/minio/health/live > /dev/null; then break; fi
             if [ "$attempt" -eq 30 ]; then
@@ -792,7 +792,7 @@ jobs:
             fi
             sleep 2
           done
-          docker run --rm --network host --entrypoint sh quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z -c \
+          docker run --platform linux/amd64 --rm --network host --entrypoint sh quay.io/minio/mc@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780 -c \
             "mc alias set local http://127.0.0.1:9010 nessie nessie-multi-instance \
              && mc mb --ignore-existing local/nessie"
 
