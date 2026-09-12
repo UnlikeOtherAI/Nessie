@@ -25,6 +25,12 @@ export const RegisterDeviceRequestSchema = z.object({
    * before the same physical push token can change people or organisations.
    */
   ownershipProof: z.string().min(32).max(256).optional(),
+  /**
+   * A high-entropy secret persisted by this WebView before it registers. The
+   * server stores only its hash, so the installation can recover a lost proof
+   * response without treating the provider token as possession evidence.
+   */
+  deviceRecoveryKey: z.string().min(32).max(256).optional(),
 })
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequestSchema>
 

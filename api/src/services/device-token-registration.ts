@@ -15,6 +15,9 @@ type RegistrationInput = RegisterDeviceRequest & {
 const ownershipProofHash = (proof: string): string =>
   createHash('sha256').update(proof).digest('base64url')
 
+const deviceRecoveryKeyHash = (key: string): string =>
+  createHash('sha256').update(key).digest('base64url')
+
 const proofMatches = (storedHash: string | null, suppliedProof: string | undefined): boolean => {
   if (!storedHash || !suppliedProof) return false
   const suppliedHash = ownershipProofHash(suppliedProof)
@@ -55,7 +58,14 @@ export const registerDeviceToken = async (
       const ownershipProof = issueOwnershipProof()
       try {
         const device = await prisma.deviceToken.create({
-          data: { ...updateData, ownershipProofHash: ownershipProofHash(ownershipProof), token: input.token },
+          data: {
+            ...updateData,
+            ...(input.deviceRecoveryKey
+              ? { deviceRecoveryKeyHash: deviceRecoveryKeyHash(input.deviceRecoveryKey) }
+              : {}),
+            ownershipProofHash: ownershipProofHash(ownershipProof),
+            token: input.token,
+          },
         })
         return { device, kind: 'registered', ownershipProof }
       } catch (error) {
@@ -70,14 +80,30 @@ export const registerDeviceToken = async (
 
     const sameOwner = current.organizationId === input.organizationId && current.userId === input.userId
     const requiresProof = !sameOwner || current.inactiveAt !== null
-    if (requiresProof && !proofMatches(current.ownershipProofHash, input.ownershipProof)) {
+    const recoveryKeyMatches = proofMatches(
+      current.deviceRecoveryKeyHash,
+      input.deviceRecoveryKey,
+    )
+    const canBootstrapLegacyTombstone = sameOwner
+      && current.inactiveAt !== null
+      && !current.deviceRecoveryKeyHash
+      && input.registrationVersion > current.registrationVersion
+    const proofMatchesCurrent = proofMatches(current.ownershipProofHash, input.ownershipProof)
+    if (requiresProof && !proofMatchesCurrent && !recoveryKeyMatches && !canBootstrapLegacyTombstone) {
       return { device: current, kind: 'ownership_proof_required' }
     }
 
     // Existing rows receive their first proof on an active same-owner refresh.
     // A transfer or tombstone revival rotates it so the former account cannot
     // rebind this physical installation later.
-    const ownershipProof = (!current.ownershipProofHash || requiresProof) ? issueOwnershipProof() : undefined
+    const recoveryKeyHash = !current.deviceRecoveryKeyHash && input.deviceRecoveryKey
+      ? deviceRecoveryKeyHash(input.deviceRecoveryKey)
+      : undefined
+    const ownershipProof = (!current.ownershipProofHash
+      || requiresProof
+      || (recoveryKeyMatches && !input.ownershipProof)
+      || recoveryKeyHash
+    ) ? issueOwnershipProof() : undefined
     const changed = await prisma.deviceToken.updateMany({
       where: {
         token: input.token,
@@ -86,10 +112,14 @@ export const registerDeviceToken = async (
           organizationId: input.organizationId,
           userId: input.userId,
         }),
+        ...(recoveryKeyHash ? { deviceRecoveryKeyHash: null } : {}),
       },
       data: {
         ...updateData,
         ...(ownershipProof ? { ownershipProofHash: ownershipProofHash(ownershipProof) } : {}),
+        ...(recoveryKeyHash
+          ? { deviceRecoveryKeyHash: recoveryKeyHash }
+          : {}),
       },
     })
     if (changed.count === 1) {

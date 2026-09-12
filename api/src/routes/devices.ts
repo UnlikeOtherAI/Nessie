@@ -21,7 +21,8 @@ export const registerDeviceRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
   // POST /api/devices — register or refresh a native device token. A token is
   // one physical installation. A cross-account transfer requires its retained
-  // installation proof, then atomically moves it without leaking old alerts.
+  // proof or its pre-registered recovery key, then atomically moves it without
+  // leaking old alerts.
   app.post('/api/devices', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
