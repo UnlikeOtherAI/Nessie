@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { AgentRecord, AgentTriggerRecord, ChannelRecord } from '../../../../lib/api-client'
 import { useCreateAgentTrigger } from '../../../../facades/triggers/hooks'
+import { triggerUrl } from '../../../../navigation/trigger-url'
 
 type ScheduledTodoTemplateProps = {
   agent: AgentRecord
@@ -23,7 +24,7 @@ export const ScheduledTodoTemplate = ({
     return (
       <Link
         className="text-xs text-[color:var(--accent)] hover:underline"
-        to={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
+        to={triggerUrl(trigger.id)}
       >
         {trigger.status === 'error' || trigger.status === 'needs_reauthorization'
           ? `Schedule needs repair · ${trigger.status}`

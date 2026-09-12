@@ -6,6 +6,7 @@ import { alertKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useEventStream } from '../realtime/event-stream'
+import { triggerUrl } from '../../navigation/trigger-url'
 
 // The server-enforced shape (`UserAlertRecordSchema`, parsed on every
 // response in `api/src/routes/alerts.ts`) rather than a hand-copied type —
@@ -151,7 +152,7 @@ export const getAlertLink = (
   if (alert.kind === 'trigger_health' && alert.triggerId) {
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
-    return { to: `/agents/triggers#${alert.triggerId}` }
+    return { to: triggerUrl(alert.triggerId) }
   }
   if (alert.kind === 'board_source_health' && alert.projectId && alert.boardSourceId) {
     // Straight to the source that stopped, with its remedy on screen — not to

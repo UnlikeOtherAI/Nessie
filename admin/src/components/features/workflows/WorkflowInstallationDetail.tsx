@@ -13,6 +13,7 @@ import {
 } from '../../../facades/workflows/hooks'
 import { usePagedList } from '../../../facades/pagination/usePagedList'
 import { workflowKeys } from '../../../facades/workflows/keys'
+import { triggerUrl } from '../../../navigation/trigger-url'
 import { EmptyState } from '../../shared/EmptyState'
 import { KeyValueList } from '../../shared/KeyValueList'
 import { PaginationFooter } from '../../shared/PaginationFooter'
@@ -153,7 +154,7 @@ export const WorkflowInstallationDetail = ({
           <RowList className="mt-3" label="Triggers">
             {sortedTriggers.map((trigger) => (
               <Row
-                href={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
+                href={triggerUrl(trigger.id)}
                 key={trigger.id}
                 leading={
                   <FontAwesomeIcon
