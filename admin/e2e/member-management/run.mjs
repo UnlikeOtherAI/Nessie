@@ -19,9 +19,8 @@ const tab = async (page, label) => {
 try {
   for (const width of [1280, 390]) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 })
-    // The only network the fixture can make is the auth provider's empty-session read.
-    // Every roster mutation is an isolated, stateful API fixture, never a real invitation.
-    await context.route('**/api/**', (route) => route.fulfill({ json: { data: {} } }))
+    // The fixture has no signed-in account; a 401 is the real anonymous session result.
+    await context.route('**/api/auth/me', (route) => route.fulfill({ status: 401 }))
     const page = await context.newPage()
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -32,8 +31,8 @@ try {
     const member = () => page.getByRole('button', { name: 'Open Jakub Rafaj', exact: true })
     const dialogClosed = () => page.getByRole('dialog').waitFor({ state: 'hidden' })
     await open()
-    await page.getByRole('button', { name: 'Alerts', exact: true }).click()
-    await page.getByRole('button', { name: 'Automatic access to Design needs reauthorization', exact: true }).click()
+    await page.locator('button[aria-label="Alerts"]').click()
+    await page.getByText('Automatic access to Design needs reauthorization', { exact: true }).click()
     await page.waitForFunction(() => (
       window.location.pathname === '/settings/members'
       && new URLSearchParams(window.location.search).get('membersTab') === 'automatic'
