@@ -6215,8 +6215,10 @@ model DeviceToken {
   token               String
   appVersion          String?              @map("app_version")
   apnsEnvironment     PushApnsEnvironment? @map("apns_environment")
-  registrationVersion BigInt               @default(0) @map("registration_version")
-  inactiveAt          DateTime?            @map("inactive_at")
+    registrationVersion BigInt               @default(0) @map("registration_version")
+    ownershipProofHash String?               @map("ownership_proof_hash")
+    deviceRecoveryKeyHash String?            @map("device_recovery_key_hash")
+    inactiveAt          DateTime?            @map("inactive_at")
   lastSeenAt          DateTime             @default(now()) @map("last_seen_at")
   createdAt           DateTime             @default(now()) @map("created_at")
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)

@@ -6,6 +6,7 @@ import {
   readNativePushRegistration,
   shouldRegisterNativePush,
 } from '../lib/native-push-registration';
+import { registerNativePush } from '../lib/native-push-ownership';
 import { isReactNativeWebView, readNativePendingPushPath } from '../lib/native-shell';
 import { useApiClient } from '../providers/ApiClientProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
@@ -89,7 +90,7 @@ export const NativeShellBridge = () => {
         return;
       }
       pendingToken.current = registration.token;
-      const registrationRequest: Promise<void> = apiClient.post('/api/devices', registration)
+      const registrationRequest: Promise<void> = registerNativePush(apiClient, registration)
         .then(() => {
           registeredToken.current = registration.token;
           registeredApiClient.current = apiClient;
