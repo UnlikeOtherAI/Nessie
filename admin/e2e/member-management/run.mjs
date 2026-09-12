@@ -44,6 +44,9 @@ try {
     await page.screenshot({ path: resolve(output, `${width}-automatic-membership-alert-repair.png`) })
     await repair.click()
     assert.ok((await calls(page)).some((call) => call.path.endsWith('/rules/10000000-0000-4000-8000-000000000015/reauthorize')))
+    // The repair stays on its owning Automatic access tab; resume the
+    // pre-existing roster assertions from their Active users home.
+    await open()
     await member().click()
     await page.getByLabel('Role', { exact: true }).selectOption('admin')
     await page.screenshot({ path: resolve(output, `${width}-role-change.png`) })
