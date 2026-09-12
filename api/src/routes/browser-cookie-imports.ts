@@ -250,7 +250,7 @@ export const registerBrowserCookieImportRoutes = (
       }
       try {
         await cookieImporter({
-          encryptionSecret: deps.authSecret,
+          encryptionSecret: deps.encryptionKeyRing,
           prisma: deps.prisma,
           resolveSecret: (ref) => resolver.resolve(ref),
         }, {

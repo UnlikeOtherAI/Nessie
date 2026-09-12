@@ -140,7 +140,7 @@ export const registerBrowserCloudViewerRoutes = (
     const live = session.status === 'allocating' || session.status === 'active'
     const imageDataUrl = live && session.browserbaseSessionId
       ? await captureScreenshot(prisma, {
-        encryptionSecret: authSecret ?? '', sessionId: session.id,
+        encryptionSecret: encryptionKeyRing, sessionId: session.id,
       })
       : null
     // CDP capture can take seconds. Do not return a frame captured under an

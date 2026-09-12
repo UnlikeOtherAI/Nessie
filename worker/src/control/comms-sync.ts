@@ -35,7 +35,7 @@ import {
 
 export type CommsSyncDeps = {
   prisma: PrismaClient
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
 }
 
 /** Safety valve so a misbehaving connector cannot loop forever inside one job. */

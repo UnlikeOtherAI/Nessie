@@ -43,7 +43,7 @@ const needsRefresh = (expiresAt: Date | null): boolean =>
 export const loadBoardSourceConnectionContext = async (
   prisma: PrismaClient,
   connectionId: string,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): Promise<ConnectionContext | BoardSourceCredentialError> => {
   const connection = await prisma.boardSourceConnection.findUnique({
     where: { id: connectionId },
@@ -111,7 +111,7 @@ const refreshCredential = async (
   connectionId: string,
   provider: ConnectionContext['provider'],
   bundle: CredentialBundle,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): Promise<CredentialBundle | BoardSourceCredentialError> => {
   const adapter = resolveBoardSourceAdapter(provider)
   const oauth = adapter.auth.oauth
@@ -152,7 +152,7 @@ export const storeBoardSourceCredential = async (
   prisma: PrismaClient,
   connectionId: string,
   credential: CredentialBundle,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): Promise<void> => {
   const data = {
     accessTokenCiphertext: sealSecret(encryptionSecret, credential.accessToken),

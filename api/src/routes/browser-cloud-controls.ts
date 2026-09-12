@@ -130,7 +130,7 @@ app.delete('/api/browser-sessions/:sessionId/control', async (request, reply) =>
   if (resumed) {
     await captureUndrivenSessionTabs(prisma, {
       sessionId,
-      encryptionSecret: authSecret ?? '',
+      encryptionSecret: encryptionKeyRing,
     })
   }
   return reply.code(204).send()

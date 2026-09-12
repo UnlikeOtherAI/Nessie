@@ -34,7 +34,7 @@ export const mailboxDialOptions = (threadTokenSecret?: string): MailboxClientOpt
 export const mailboxEndpointsFor = async (
   prisma: PrismaClient,
   connection: MailboxConnectionRow,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): Promise<MailboxEndpoints> => {
   const credential = await prisma.mailboxConnectionCredential.findUnique({
     select: { secretCiphertext: true },

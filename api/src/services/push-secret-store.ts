@@ -3,9 +3,10 @@ import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 
 import {
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
 /**
@@ -33,13 +34,17 @@ const PUSH_REF_PREFIX = 'secret_push_'
 
 export const createPushSecretStore = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
 ): PushSecretStore => {
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
   return {
     put: async (plaintext) => {
       const ref = `${PUSH_REF_PREFIX}${crypto.randomBytes(16).toString('hex')}`
-      const { ciphertext, iv, authTag } = encryptWithKey(key, plaintext)
+      const { ciphertext, iv, authTag } = encryptWithKeyRing(
+        keyRing,
+        'push.credentials',
+        plaintext,
+      )
       await prisma.mcpOAuthSecret.create({
         data: { ref, ciphertext, iv, authTag },
       })
@@ -53,11 +58,18 @@ export const createPushSecretStore = (
       if (!row) {
         return null
       }
-      return decryptWithKey(key, {
+      const opened = decryptWithKeyRing(keyRing, 'push.credentials', {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
       })
+      if (opened.needsReencryption) {
+        const replacement = encryptWithKeyRing(keyRing, 'push.credentials', opened.plaintext)
+        await prisma.mcpOAuthSecret
+          .update({ where: { ref }, data: replacement })
+          .catch(() => undefined)
+      }
+      return opened.plaintext
     },
     remove: async (ref) => {
       if (!ref.startsWith(PUSH_REF_PREFIX)) {

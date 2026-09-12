@@ -33,7 +33,7 @@ export type PersistedSessionCapability = {
 
 /** Seal a connect URL for the `connect_capability_ciphertext` column. */
 export const sealConnectCapability = (
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   connectUrl: string,
 ): string => sealSecret(encryptionSecret, connectUrl)
 
@@ -46,7 +46,7 @@ export const sealConnectCapability = (
  */
 export const loadSessionCapability = async (
   prisma: Pick<PrismaClient, 'cloudBrowserSession'>,
-  input: { sessionId: string; encryptionSecret: string; now?: Date },
+  input: { sessionId: string; encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput; now?: Date },
 ): Promise<PersistedSessionCapability | null> => {
   const row = await prisma.cloudBrowserSession.findFirst({
     where: { id: input.sessionId, status: 'active' },

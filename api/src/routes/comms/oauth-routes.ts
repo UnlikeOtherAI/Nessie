@@ -398,7 +398,7 @@ export const registerCommsOAuthRoutes = (
         }
 
         const connectionId = await persistConnectedAccount(prisma, {
-          encryptionSecret: authSecret,
+          encryptionSecret: encryptionKeyRing,
           organizationId: stateRow.organizationId,
           userId: stateRow.userId,
           provider,

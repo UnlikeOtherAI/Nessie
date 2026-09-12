@@ -115,7 +115,7 @@ export const disconnectOwnedCommsConnection = async (
   prisma: PrismaClient,
   input: {
     connectionId: string
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     organizationId: string
     userId: string
   },

@@ -121,7 +121,7 @@ export const registerGmailDraftRoutes = (
   deps: RouteDeps,
 ): void => {
   const { prisma, requireActorContext, authSecret } = deps
-  const draftDeps = { encryptionSecret: authSecret }
+  const draftDeps = { encryptionSecret: encryptionKeyRing }
 
   const fail = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
     if (error instanceof GmailDraftError) {

@@ -236,7 +236,7 @@ export const registerMailboxConnectionRoutes = (
           teamId: body.teamId ?? null,
           username: body.username,
         },
-        { encryptionSecret: authSecret },
+        { encryptionSecret: encryptionKeyRing },
       )
       await emitAuditEvent(prisma, {
         action: 'mailbox.connection.created',
@@ -265,7 +265,7 @@ export const registerMailboxConnectionRoutes = (
         organizationId: actorContext.tenant.organizationId,
       })
       const result = await verifyMailboxConnection(prisma, connection, {
-        encryptionSecret: authSecret,
+        encryptionSecret: encryptionKeyRing,
       })
       return reply.send(createApiResponse(result))
     } catch (error) {

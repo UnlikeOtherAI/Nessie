@@ -243,7 +243,7 @@ export const registerCommsConnectionRoutes = (
     try {
       disconnected = await disconnectOwnedCommsConnection(prisma, {
         connectionId: id,
-        encryptionSecret: authSecret,
+        encryptionSecret: encryptionKeyRing,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
       }, {

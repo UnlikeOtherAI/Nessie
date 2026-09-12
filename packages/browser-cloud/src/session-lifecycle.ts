@@ -35,7 +35,7 @@ export { openCloudBrowserSession, type OpenSessionInput, type OpenSessionResult 
  */
 export const adoptHandedBackSession = async (
   deps: CloudBrowserDeps,
-  input: { agentBrowserId: string; runId: string; encryptionSecret: string },
+  input: { agentBrowserId: string; runId: string; encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<{ sessionId: string; connectUrl: string } | null> => {
   const candidate = await deps.prisma.cloudBrowserSession.findFirst({
     where: {

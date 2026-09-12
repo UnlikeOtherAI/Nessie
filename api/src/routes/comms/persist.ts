@@ -19,7 +19,7 @@ import { toInputJson } from '../../db/prisma-json.js'
  * key) and re-activates a previously disconnected connection.
  */
 export type PersistConnectedAccountInput = {
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   organizationId: string
   userId: string
   provider: CommsProviderId

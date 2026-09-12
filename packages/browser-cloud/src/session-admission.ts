@@ -28,7 +28,7 @@ export type OpenSessionInput = {
    * beside the `active` flip, so a worker that did not open this session can
    * still re-attach — see `session-capability.ts`.
    */
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   /**
    * The cross-origin write gate to store with it, serialised by the caller
    * (the worker owns its shape). An `active` row always carries one, so a

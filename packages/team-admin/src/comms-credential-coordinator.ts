@@ -48,7 +48,7 @@ const toStringArray = (value: Prisma.JsonValue): string[] =>
  */
 export const buildCommsConnectorContext = (
   connection: ConnectionWithCredential,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): ConnectorConnectionContext => {
   if (!connection.credential) {
     throw new CommsCredentialCoordinatorError('CREDENTIAL_MISSING')
@@ -116,7 +116,7 @@ type LoadedCredential = {
  */
 const readConnectionCredential = async (
   prisma: PrismaClient,
-  input: { connectionId: string; encryptionSecret: string },
+  input: { connectionId: string; encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<LoadedCredential> => {
   const current = await prisma.commsConnection.findUnique({
     where: { id: input.connectionId },
@@ -146,7 +146,7 @@ const storeRefreshedCredential = async (
   prisma: PrismaClient,
   input: {
     connectionId: string
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     refreshed: CredentialBundle
     seenAt: Date
   },
@@ -204,7 +204,7 @@ const refreshSelectedConnection = async (
   input: {
     connectionId: string
     connector: CommunicationsConnector
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     now: Date
   },
 ): Promise<ConnectorConnectionContext> => {
@@ -264,7 +264,7 @@ export type LoadUserGoogleCredentialInput = {
    * recoverable mistake.
    */
   connectionId?: string
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   connector?: CommunicationsConnector
   now?: Date
 }

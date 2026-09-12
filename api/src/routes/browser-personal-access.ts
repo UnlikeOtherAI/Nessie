@@ -40,7 +40,7 @@ const cancelWaitingGrantRun = async (
 export const registerBrowserPersonalAccessRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const resolver = createMcpSecretResolver(deps.prisma, deps.authSecret ?? '')
   const browserDeps = {
-    encryptionSecret: deps.authSecret ?? '',
+    encryptionSecret: deps.encryptionKeyRing,
     prisma: deps.prisma,
     resolveSecret: (ref: string) => resolver.resolve(ref),
   }
@@ -77,7 +77,7 @@ export const registerBrowserPersonalAccessRoutes = (app: FastifyInstance, deps: 
       // immutable first approved origin before its controller sees a frame;
       // a blank tab makes Start look successful without a safe destination.
       const navigated = await withLiveBrowserSession(deps.prisma, {
-        encryptionSecret: deps.authSecret ?? '',
+        encryptionSecret: deps.encryptionKeyRing,
         sessionId: activated.sessionId,
       }, async (cdp) => {
         await cdp.call('Page.navigate', { url: activated.initialOrigin })

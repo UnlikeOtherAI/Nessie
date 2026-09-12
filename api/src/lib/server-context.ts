@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { loadConfig } from '@nessie/config'
+import { loadConfig, resolveEncryptionKeyRing } from '@nessie/config'
 import {
   isAdminActor,
   type AuthorizedActionContext,
@@ -128,6 +128,7 @@ export const createServerContext = () => {
         + ' Multi-instance deployments WILL fail without a shared persistent secret.',
     )
   })()
+  const encryptionKeyRing = resolveEncryptionKeyRing(config, authSecret)
 
   /**
    * The install's owner-bootstrap token, read from Postgres so every replica
@@ -343,6 +344,7 @@ export const createServerContext = () => {
   const isSessionRevokedById = createAuthSessionRevocationChecker(prisma)
   const authenticateRequest = createRequestAdmission({
     authSecret,
+    encryptionKeyRing,
     config,
     getAuthorizationToken,
     isSessionRevokedById,

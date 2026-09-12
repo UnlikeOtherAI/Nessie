@@ -9,14 +9,14 @@ export const executorCommandDigest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(canonicalExecutorJson(value)).digest('hex')}`
 
 export const encryptExecutorCommandJson = (
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   value: unknown,
 ): string => JSON.stringify(
   encryptWithKey(deriveSecretKey(encryptionSecret), JSON.stringify(value)),
 )
 
 export const decryptExecutorCommandJson = (
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   ciphertext: string,
 ): Record<string, unknown> => {
   try {

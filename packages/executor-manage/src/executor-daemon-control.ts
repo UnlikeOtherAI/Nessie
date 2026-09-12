@@ -29,7 +29,7 @@ type DaemonReceiptInput = DaemonControlIdentity & {
 
 export const pollAuthorizedExecutorCommand = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   input: DaemonPollInput,
   now = new Date(),
 ): Promise<ExecutorCommandEnvelope | null> => authorizeExecutorDaemonControlCall(
@@ -49,7 +49,7 @@ export const pollAuthorizedExecutorCommand = async (
 
 export const recordAuthorizedExecutorCommandReceipt = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   input: DaemonReceiptInput,
   now = new Date(),
 ): Promise<void> => authorizeExecutorDaemonControlCall(

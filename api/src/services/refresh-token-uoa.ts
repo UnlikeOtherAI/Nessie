@@ -1,8 +1,10 @@
 import type { Prisma } from '@prisma/client'
 import {
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptedParts,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 import {
   UoaSessionIdentitySchema,
@@ -34,7 +36,7 @@ export type UoaCredentialRecord = {
 
 export type RotatedUoaCredential = {
   credential: UoaCredentialRecord
-  encrypted: ReturnType<typeof encryptWithKey>
+  encrypted: EncryptedParts
   identity: UoaSessionIdentity
   refreshTokenExpiresAt: Date
   refreshTokenHash: string
@@ -118,7 +120,7 @@ export const loadBoundUoaCredential = async (
 export const prepareUoaRefresh = async (
   prisma: RefreshCredentialStore,
   input: {
-    authSecret: string
+    encryption: EncryptionKeyRingInput
     now: Date
     presented: RefreshTokenRecord
   },
@@ -135,11 +137,15 @@ export const prepareUoaRefresh = async (
   }
   let refreshToken: string
   try {
-    refreshToken = decryptWithKey(deriveSecretKey(input.authSecret), {
-      authTag: credential.refreshTokenAuthTag,
-      ciphertext: credential.refreshTokenCiphertext,
-      iv: credential.refreshTokenIv,
-    })
+    refreshToken = decryptWithKeyRing(
+      toEncryptionKeyRing(input.encryption),
+      'uoa.refresh',
+      {
+        authTag: credential.refreshTokenAuthTag,
+        ciphertext: credential.refreshTokenCiphertext,
+        iv: credential.refreshTokenIv,
+      },
+    ).plaintext
   } catch {
     throw new UoaRefreshBindingError(
       'The stored UnlikeOtherAI session credential is invalid.',
@@ -158,7 +164,7 @@ export const prepareUoaRefresh = async (
 }
 
 export const validateUoaRefresh = (input: {
-  authSecret: string
+  encryption: EncryptionKeyRingInput
   credential: UoaCredentialRecord
   expectedIdentity: UoaSessionIdentity
   identity: UoaSessionIdentity
@@ -203,8 +209,9 @@ export const validateUoaRefresh = (input: {
   }
   return {
     credential: input.credential,
-    encrypted: encryptWithKey(
-      deriveSecretKey(input.authSecret),
+    encrypted: encryptWithKeyRing(
+      toEncryptionKeyRing(input.encryption),
+      'uoa.refresh',
       input.refreshToken,
     ),
     identity: parsedIdentity.data,

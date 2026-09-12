@@ -332,7 +332,7 @@ export const startWorker = async (
     resolveSecret: (ref) => mcpSecrets.resolver.resolve(ref),
     // Lets the reaper write a resumed session's last state before stopping
     // it: nothing drives that session, so the capture dials the capability.
-    encryptionSecret: config.auth.secret ?? '',
+    encryptionSecret: encryptionKeyRing,
   }
   setCloudBrowserReleaseHook(async (runId) => {
     // The terminal transition is the last moment the pages exist, and the
@@ -795,7 +795,7 @@ export const startWorker = async (
   // run the sync phase, and persist normalized events idempotently.
   const commsSyncDeps = {
     prisma,
-    encryptionSecret: config.auth.secret ?? '',
+    encryptionSecret: encryptionKeyRing,
   }
 
   // Register the communications connector adapters into the shared registry so
@@ -820,7 +820,7 @@ export const startWorker = async (
 
   const boardSourceDeps = {
     prisma,
-    encryptionSecret: config.auth.secret ?? '',
+    encryptionSecret: encryptionKeyRing,
     publicApiUrl: config.api.publicUrl ?? null,
     enqueueHealthAlert: async (payload: { sourceId: string; revision: number }) => {
       await enqueueBoardSourceHealthAlert(prisma, payload)

@@ -58,6 +58,31 @@ test('an emptied mapped variable is skipped rather than written as ""', () => {
   assert.notEqual(config.model.provider, '')
 })
 
+test('the independent encryption key ring is parsed from its one JSON environment value', () => {
+  const config = load({
+    NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION: '2026-09',
+    NESSIE_ENCRYPTION_KEY_RING: JSON.stringify({
+      '2026-06': 'a'.repeat(32),
+      '2026-09': 'b'.repeat(32),
+    }),
+    NESSIE_ENCRYPTION_LEGACY_KEY: 'c'.repeat(32),
+  })
+
+  assert.equal(config.encryption.activeKeyVersion, '2026-09')
+  assert.equal(config.encryption.keys['2026-06'], 'a'.repeat(32))
+  assert.equal(config.encryption.legacyKey, 'c'.repeat(32))
+})
+
+test('an encryption ring cannot select a missing active key', () => {
+  assert.throws(
+    () => load({
+      NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION: 'missing',
+      NESSIE_ENCRYPTION_KEY_RING: JSON.stringify({ current: 'a'.repeat(32) }),
+    }),
+    /activeKeyVersion/i,
+  )
+})
+
 // Pool sizing had no env mapping at all: only `nessie.config.json` could move
 // it, so a containerised deployment was pinned to 10/2 and the per-replica
 // connection ceiling could not be tuned as replicas were added.

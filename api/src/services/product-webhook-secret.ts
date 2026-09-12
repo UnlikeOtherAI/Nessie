@@ -3,10 +3,11 @@ import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import {
   DEEPSIGNAL_MCP_CREDENTIAL_REF,
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
   verifyHmacSignature,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
 /**
@@ -57,12 +58,16 @@ const assertWebhookSecretIsIndependent = (
 
 export const setProductWebhookSecret = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   input: { organizationId: string; productSlug: string; secret: string },
 ): Promise<void> => {
   assertWebhookSecretIsIndependent(input)
-  const key = deriveSecretKey(encryptionSecret)
-  const { ciphertext, iv, authTag } = encryptWithKey(key, input.secret)
+  const keyRing = toEncryptionKeyRing(encryption)
+  const { ciphertext, iv, authTag } = encryptWithKeyRing(
+    keyRing,
+    'product.webhook',
+    input.secret,
+  )
   await prisma.productWebhookSecret.upsert({
     where: {
       organizationId_productSlug: {
@@ -89,7 +94,7 @@ export const setProductWebhookSecret = async (
  */
 export const resolveSignedWebhookOrg = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   input: { productSlug: string; rawBody: Buffer; signatureHeader: string | undefined },
 ): Promise<string | null> => {
   if (!input.signatureHeader || input.signatureHeader.trim().length === 0) {
@@ -100,17 +105,27 @@ export const resolveSignedWebhookOrg = async (
     where: { productSlug: input.productSlug },
     select: { organizationId: true, ciphertext: true, iv: true, authTag: true },
   })
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
 
   let matchedOrg: string | null = null
   for (const row of rows) {
     let secret: string
     try {
-      secret = decryptWithKey(key, {
+      const opened = decryptWithKeyRing(keyRing, 'product.webhook', {
         ciphertext: row.ciphertext,
         iv: row.iv,
         authTag: row.authTag,
       })
+      secret = opened.plaintext
+      if (opened.needsReencryption) {
+        const replacement = encryptWithKeyRing(keyRing, 'product.webhook', secret)
+        await prisma.productWebhookSecret
+          .updateMany({
+            where: { organizationId: row.organizationId, productSlug: input.productSlug },
+            data: replacement,
+          })
+          .catch(() => undefined)
+      }
     } catch {
       continue
     }

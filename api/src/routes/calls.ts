@@ -83,7 +83,7 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           expectedOrganizationId: actorContext.tenant.organizationId,
           ...(body.provider ? { provider: body.provider } : {}),
         },
-        { callLink: { encryptionSecret: authSecret } },
+        { callLink: { encryptionSecret: encryptionKeyRing } },
       )
       const call = CallRecordSchema.parse(mapCallRecord(created))
       await publishStarted(call.id)

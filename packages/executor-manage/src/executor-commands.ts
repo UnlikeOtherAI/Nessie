@@ -40,7 +40,7 @@ const booleanRecord = (value: unknown): Record<string, boolean> =>
 export type ExecutorCommandCreateInput = {
   bindingId: string
   commandId: string
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   expiresAt: Date
   queueJobId: string
   toolCallId: string
@@ -360,7 +360,7 @@ export const createExecutorCommand = async (
  */
 export const pollExecutorCommandInTransaction = async (
   tx: Prisma.TransactionClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   executorId: string,
   now = new Date(),
 ): Promise<ExecutorCommandEnvelope | null> => {
@@ -428,7 +428,7 @@ export const pollExecutorCommandInTransaction = async (
 
 export const pollExecutorCommand = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   executorId: string,
   now = new Date(),
 ): Promise<ExecutorCommandEnvelope | null> => prisma.$transaction(

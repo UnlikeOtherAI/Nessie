@@ -13,7 +13,7 @@ const LIVE_SESSION_TIMEOUT_MS = 10_000
  */
 export const withLiveBrowserSession = async <T>(
   prisma: RouteDeps['prisma'],
-  input: { encryptionSecret: string; sessionId: string },
+  input: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput; sessionId: string },
   drive: (cdp: CdpClient) => Promise<T>,
 ): Promise<T | null> => {
   let abandoned = false
@@ -58,7 +58,7 @@ export const withLiveBrowserSession = async <T>(
 
 export const captureLiveBrowserScreenshot = async (
   prisma: RouteDeps['prisma'],
-  input: { encryptionSecret: string; sessionId: string },
+  input: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput; sessionId: string },
 ): Promise<string | null> => withLiveBrowserSession(prisma, input, async (cdp) => {
   const screenshot = await cdp.call('Page.captureScreenshot', {
     format: 'png',

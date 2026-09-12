@@ -319,7 +319,7 @@ export const captureUndrivenSessionTabs = async (
   prisma: Pick<PrismaClient, 'cloudBrowserSession' | '$transaction'>,
   input: {
     sessionId: string
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     connect?: (connectUrl: string) => Promise<CdpClient>
   },
 ): Promise<boolean> => {

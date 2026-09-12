@@ -128,7 +128,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
       const confirmed = await confirmExecutorWorkspacePromotion(prisma, actorContext, {
         candidateHandle: candidate.handle,
         confirmationToken: body.confirmationToken,
-        encryptionSecret: authSecret,
+        encryptionSecret: encryptionKeyRing,
         freshVerificationSatisfied,
         promotionId,
       })

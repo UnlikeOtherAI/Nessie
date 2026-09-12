@@ -117,7 +117,7 @@ export const registerBrowserCloudCanvasRoutes = (
       return
     }
     const capability = await loadCapability(prisma, {
-      encryptionSecret: authSecret ?? '', sessionId: initial.id,
+      encryptionSecret: encryptionKeyRing, sessionId: initial.id,
     })
     if (!capability || closed) {
       close(1011, 'Browser connection unavailable')

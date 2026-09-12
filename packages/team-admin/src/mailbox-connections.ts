@@ -194,7 +194,7 @@ export type CreateMailboxConnectionInput = {
 export const createMailboxConnection = async (
   prisma: PrismaClient,
   input: CreateMailboxConnectionInput,
-  options: { encryptionSecret: string },
+  options: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<MailboxConnectionRecord> => {
   if (input.scope === 'team' && !MANAGER_ROLES.has(input.actor.role)) {
     throw new MailboxConnectionError(
@@ -343,7 +343,7 @@ export const loadManageableMailboxConnection = async (
 export const verifyMailboxConnection = async (
   prisma: PrismaClient,
   connection: MailboxConnectionRow,
-  options: { encryptionSecret: string },
+  options: { encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<{
   ok: boolean
   detail: string

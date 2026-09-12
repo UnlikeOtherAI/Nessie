@@ -59,7 +59,7 @@ export class ConnectedMailError extends Error {
 }
 
 export type ConnectedMailDeps = {
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   fetchImpl?: typeof safeFetch
   /** Injectable only at the transport boundary; action claiming stays durable. */
   sendMailbox?: typeof sendFromMailbox

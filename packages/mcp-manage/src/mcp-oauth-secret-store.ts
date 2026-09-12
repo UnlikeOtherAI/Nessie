@@ -3,9 +3,10 @@ import crypto from 'node:crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 import {
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
 import { assertMcpUrlSafe, pinnedMcpFetch } from './mcp-security.js'
@@ -57,7 +58,7 @@ type StoredBundle = {
  */
 export const createPgSecretStore = (
   prisma: PrismaClient | Prisma.TransactionClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   options: {
     /**
      * Ref prefix for minted secrets. Must start with `secret_` so refs stay
@@ -71,7 +72,7 @@ export const createPgSecretStore = (
   if (!refPrefix.startsWith('secret_')) {
     throw new Error(`Secret ref prefix must start with "secret_", got "${refPrefix}"`)
   }
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
   return {
     put: async (input) => {
       const ref = `${refPrefix}${crypto.randomBytes(16).toString('hex')}`
@@ -89,7 +90,11 @@ export const createPgSecretStore = (
         clientSecret: input.clientSecret,
         resource: input.resource,
       }
-      const { ciphertext, iv, authTag } = encryptWithKey(key, JSON.stringify(bundle))
+      const { ciphertext, iv, authTag } = encryptWithKeyRing(
+        keyRing,
+        'mcp.oauth',
+        JSON.stringify(bundle),
+      )
       await prisma.mcpOAuthSecret.create({
         data: { ref, ciphertext, iv, authTag },
       })
@@ -176,10 +181,10 @@ const refreshBundle = async (
  */
 export const createPgSecretResolver = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): SecretResolver => {
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
   const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   return {
     resolve: async (ref) => {
@@ -190,13 +195,19 @@ export const createPgSecretResolver = (
       if (!row) {
         return null
       }
-      const bundle = JSON.parse(
-        decryptWithKey(key, {
-          ciphertext: row.ciphertext,
-          iv: row.iv,
-          authTag: row.authTag,
-        }),
-      ) as StoredBundle
+      const opened = decryptWithKeyRing(keyRing, 'mcp.oauth', {
+        ciphertext: row.ciphertext,
+        iv: row.iv,
+        authTag: row.authTag,
+      })
+      const bundle = JSON.parse(opened.plaintext) as StoredBundle
+
+      if (opened.needsReencryption) {
+        const replacement = encryptWithKeyRing(keyRing, 'mcp.oauth', JSON.stringify(bundle))
+        await prisma.mcpOAuthSecret
+          .update({ where: { ref }, data: replacement })
+          .catch(() => undefined)
+      }
 
       if (!shouldRefresh(bundle)) {
         return bundle.accessToken
@@ -208,7 +219,11 @@ export const createPgSecretResolver = (
         // loudly instead of a silent resolver failure.
         return bundle.accessToken
       }
-      const { ciphertext, iv, authTag } = encryptWithKey(key, JSON.stringify(renewed))
+      const { ciphertext, iv, authTag } = encryptWithKeyRing(
+        keyRing,
+        'mcp.oauth',
+        JSON.stringify(renewed),
+      )
       await prisma.mcpOAuthSecret
         .update({ where: { ref }, data: { ciphertext, iv, authTag } })
         .catch(() => undefined)
@@ -225,9 +240,9 @@ export const createPgSecretResolver = (
  */
 export const createMcpSecretResolver = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
 ): SecretResolver =>
   createLayeredSecretResolver([
-    createPgSecretResolver(prisma, encryptionSecret),
+    createPgSecretResolver(prisma, encryption),
     new EnvSecretResolver(),
   ])

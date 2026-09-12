@@ -134,7 +134,7 @@ export const transitionTask = transitionProjectTask
 export const moveTaskToColumn = (
   prisma: PrismaClient,
   input: Parameters<typeof moveProjectTaskToColumn>[1],
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ) =>
   moveProjectTaskToColumn(
     prisma,
@@ -145,7 +145,7 @@ export const moveTaskToColumn = (
 export const updateTask = (
   prisma: PrismaClient,
   input: Parameters<typeof updateProjectTask>[1],
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ) =>
   updateProjectTask(prisma, input, createBoardSourceWriteBack({ prisma, encryptionSecret }))
 
@@ -157,7 +157,7 @@ export const createHumanTask = async (
 export const assignTask = async (
   prisma: PrismaClient,
   input: Parameters<typeof assignProjectTask>[1],
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ) =>
   assignProjectTask(
     prisma,

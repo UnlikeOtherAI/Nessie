@@ -44,7 +44,7 @@ import { notifyBoardWatchers } from './board-watch-notify.js'
 
 export type BoardSourceSyncDeps = {
   prisma: PrismaClient
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   /** Public callback base, for registering vendor webhooks. Null disables them. */
   publicApiUrl: string | null
   enqueueHealthAlert: (input: { sourceId: string; revision: number }) => Promise<void>

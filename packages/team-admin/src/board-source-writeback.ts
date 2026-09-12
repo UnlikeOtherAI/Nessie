@@ -68,7 +68,7 @@ export type BoardSourceWriteBack = {
 
 export type WriteBackDeps = {
   prisma: PrismaClient
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   resolveAdapter?: (provider: string) => BoardSourceAdapter
 }
 

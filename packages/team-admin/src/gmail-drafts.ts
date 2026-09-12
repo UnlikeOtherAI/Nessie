@@ -3,11 +3,9 @@ import {
   createPreparedGmailDraft,
   getGmailDraft,
   type GmailDraftContent,
-  type FetchLike,
   type PreparedGmailDraft,
   updatePreparedGmailDraft,
 } from '@nessie/comms-google'
-import { safeFetch } from '@nessie/runtime'
 import { getGoogleCapability, type GoogleCapabilityId } from '@nessie/schemas'
 
 import {
@@ -15,6 +13,7 @@ import {
   loadUserGoogleCommsCredential,
 } from './comms-credential-coordinator.js'
 import { dispatchClaimedDraft } from './gmail-draft-dispatch.js'
+import { gmailFetch } from './gmail-draft-transport.js'
 import { fingerprintMessage, fingerprintOf } from './gmail-draft-fingerprint.js'
 import { preflightGmailDraft } from './gmail-draft-preflight.js'
 import {
@@ -75,28 +74,9 @@ const knownDraftReplay = (
   throw new GmailDraftError('DELIVERY_UNKNOWN')
 }
 export type GmailDraftDeps = {
-  encryptionSecret: string
-  fetchImpl?: typeof safeFetch
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
+  fetchImpl?: typeof import('@nessie/runtime').safeFetch
   now?: () => Date
-}
-// Keep the public type on the connector-owned transport shape. Inferring the
-// native response leaked pnpm's private undici path into declaration output.
-export const gmailFetch = (deps: GmailDraftDeps): FetchLike => {
-  const impl = deps.fetchImpl ?? safeFetch
-  return async (
-    url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ) => {
-    const response = await impl(url, init ?? {})
-    return {
-      body: response.body,
-      headers: response.headers,
-      ok: response.ok,
-      status: response.status,
-      json: () => response.json(),
-      text: () => response.text(),
-    }
-  }
 }
 export const loadCredential = async (
   prisma: PrismaClient,
