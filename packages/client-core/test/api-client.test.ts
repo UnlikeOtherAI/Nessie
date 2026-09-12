@@ -166,6 +166,37 @@ test('rejects a malformed successful response envelope', async () => {
   )
 })
 
+for (const [description, payload] of [
+  ['a missing data property', {}],
+  ['an error-only object', { error: { code: 'NOPE', message: 'not a success envelope' } }],
+] as const) {
+  test(`generic get and getPage reject ${description}`, async () => {
+    await withMockFetch(
+      async () => Response.json(payload),
+      async () => {
+        const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+        const invalidResponse = (error: unknown): boolean => error instanceof ApiClientError
+          && error.code === 'INVALID_RESPONSE'
+          && error.status === 200
+
+        await assert.rejects(client.get('/api/thing'), invalidResponse)
+        await assert.rejects(client.getPage('/api/thing'), invalidResponse)
+      },
+    )
+  })
+}
+
+test('generic get and getPage accept an explicit null data payload', async () => {
+  await withMockFetch(
+    async () => Response.json({ data: null, futureEnvelopeField: 'accepted' }),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      assert.equal(await client.get<null>('/api/thing'), null)
+      assert.equal((await client.getPage<null>('/api/thing')).data, null)
+    },
+  )
+})
+
 test('rejects a record that omits an authoritative required field', async () => {
   const { label: _label, ...withoutLabel } = channelRecord
   await withMockFetch(
