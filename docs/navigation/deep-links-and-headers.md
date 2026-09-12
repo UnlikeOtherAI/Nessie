@@ -82,6 +82,11 @@ registry row lists what its route reads beyond the path under `intent`
 - **Presence reads the route, never an intent.** `resolvePushSurface` used
   to identify a knowledge space from `?spaceId=`, which the deep link strips
   the moment it opens the page; it reads `/knowledge-base/spaces/:id` now.
+- **Task documents keep their owning surface.** A task with a project opens
+  its document through `/projects/:projectId/docs?spaceId=&pageId=`, so the
+  shared Project Docs team receives the same document intent and browser Back
+  restores the task's board route. A task with no project uses Knowledge's
+  global route because it has no project Docs surface to enter.
 - Gate: `admin/test/navigation-intent.test.ts` — every consumed name is
   declared on a row and read nowhere but the hooks; every hook call names a
   declared intent; no `history.replaceState`/`pushState` and no
