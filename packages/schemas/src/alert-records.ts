@@ -43,9 +43,16 @@ export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
 export const TeamInvitationAlertMetadataSchema = z.object({
   inviteId: z.string().min(1),
+  // The invitation's OWN organisation, which is not necessarily the alert
+  // row's `organizationId` — that one is the bell this row appears in. A
+  // cross-organisation invitation is filed in the bell the recipient is
+  // looking at (they have no membership in the inviting organisation yet, so a
+  // row filed there would be invisible), and these two fields are what let the
+  // row still name where the invitation came from.
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
   teamName: z.string().min(1),
+  orgName: z.string().min(1).optional(),
   invitedBy: z.string().min(1).optional(),
   expiresAt: TimestampSchema.optional(),
 }).strict()
