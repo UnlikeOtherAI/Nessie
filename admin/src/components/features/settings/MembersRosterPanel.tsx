@@ -90,7 +90,11 @@ const invitationColumns = (scope: MemberRosterScope): DataTableColumn<TeamInvita
         <span className="block truncate font-medium">
           {memberDisplayName(invite.name, invite.email) ?? 'Invitation'}
         </span>
-        {invite.name && invite.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{invite.email}</span> : null}
+        {/* The label above is either the inviter's name or the address
+            humanised, never the address itself, so the address is always worth
+            showing underneath — an invitee is identified by where the mail
+            went. */}
+        {invite.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{invite.email}</span> : null}
       </span>
     ),
   },
