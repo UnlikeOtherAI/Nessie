@@ -24,7 +24,7 @@ const isEmailShaped = (value: string): boolean => /^[^\s@]+@[^\s@]+$/.test(value
 
 const capitalise = (word: string): string => {
   const [first, ...rest] = [...word]
-  return first === undefined ? '' : first.toLocaleUpperCase() + rest.join('')
+  return first === undefined ? '' : first.toUpperCase() + rest.join('')
 }
 
 /**
