@@ -5,6 +5,7 @@ import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { useMemberInvitationAction, type MemberRosterScope } from '../../../facades/users/member-roster'
+import { memberDisplayName } from '../../../lib/member-display-name'
 
 /** The pending invitation's actions share its exact team target at either scope. */
 export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, scope }: {
@@ -47,7 +48,7 @@ export const MemberInvitationDetailsDialog = ({ invitation, canManage, onClose, 
       <div className="space-y-4 p-4">
         <p className="text-sm text-[color:var(--tx)]">
           {confirmCancel ? 'Cancel the invitation for ' : 'Invitation for '}
-          {invitation?.name ?? invitation?.email ?? 'this person'}{confirmCancel ? '?' : '.'}
+          {memberDisplayName(invitation?.name, invitation?.email) ?? 'this person'}{confirmCancel ? '?' : '.'}
         </p>
         {confirmCancel ? <p className="text-sm text-[color:var(--tx3)]">
           This cannot be undone. You can send a new invitation later.

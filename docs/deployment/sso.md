@@ -38,9 +38,15 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
   the callback exchange reuses the same themed `config_url` that was sent to
   UOA during authorize. The API then reads `email`/`sub` from the returned
   access-token claims. If UOA omits a usable `name` claim, or sends the email
-  address as the name, Nessie stores a humanized email local part instead.
-  Session hydration also repairs legacy email-shaped display names so chat
-  messages do not render raw email addresses as sender names.
+  address as the name, **nothing is stored in its place** — manufacturing a name
+  is what made Nessie a second profile authority, so
+  `api/src/services/identity-display.ts` leaves the local mirror alone and the
+  row keeps the address. The admin humanizes that address at render time
+  instead (`admin/src/lib/member-display-name.ts`: `nessie-test-a@…` →
+  "Nessie Test A") wherever a person would otherwise read as "Unnamed member",
+  and the label disappears the moment UOA asserts a real name. Session
+  hydration also repairs legacy email-shaped display names so chat messages do
+  not render raw email addresses as sender names.
 - The **first** SSO user on a fresh instance bootstraps the default
   team and becomes its owner — there is no separate owner-account step.
   Bootstrap mode is automatically suppressed whenever an SSO provider is

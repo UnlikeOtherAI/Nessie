@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import { TabBar } from '../../primitives/TabBar'
 import { UserAvatar } from '../../shared/UserAvatar'
+import { memberDisplayName } from '../../../lib/member-display-name'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { Input, Select } from '../../shared/FormControls'
@@ -178,14 +179,14 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                 >
                   <UserAvatar
                     avatarUrl={candidate.avatarImageUrl}
-                    displayName={candidate.displayName ?? candidate.email ?? 'Member'}
+                    displayName={memberDisplayName(candidate.displayName, candidate.email) ?? 'Member'}
                     size={32}
                     token={token}
                     uoaSub={candidate.uoaSub}
                   />
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-[color:var(--tx)]">
-                      {candidate.displayName ?? candidate.email ?? 'Unnamed member'}
+                      {memberDisplayName(candidate.displayName, candidate.email) ?? 'Unnamed member'}
                     </span>
                     {candidate.email ? <span className="block truncate text-sm text-[color:var(--tx3)]">{candidate.email}</span> : null}
                   </span>
