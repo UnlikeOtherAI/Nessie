@@ -47,6 +47,12 @@ const DIRECTORY_TTL_MS = 30 * 60 * 1000
  * included — because `/api/auth/me` served the cached copy and nothing
  * refreshed it. `services/uoa-directory-refresh.ts` re-reads `/org/me` when the
  * copy is older than this and keeps the 30-minute copy when that read fails.
+ *
+ * It is also the cooldown between *attempts*, which is not the same thing. A
+ * failed read leaves the cached copy's `storedAt` untouched, so without a
+ * separate attempt stamp a stale copy plus an unreachable UOA would put a fresh
+ * 10-second upstream timeout on every single sequential `/api/auth/me` — the
+ * single-flight guard only collapses calls that overlap in time.
  */
 export const DIRECTORY_FRESH_MS = 60 * 1000
 
@@ -69,6 +75,75 @@ export type UoaTeamDirectoryFallback = {
 const directoryByUserId = new Map<string, CachedDirectory>()
 
 /**
+ * When this user's next on-demand refresh attempt is allowed, as an absolute
+ * timestamp. Separate from the directory entry above because the case that
+ * needs it hardest — a cold cache on a replica that cannot reach UOA — has no
+ * directory entry to stamp. Same insertion-ordered LRU and the same cap.
+ */
+const refreshCooldownByUserId = new Map<string, number>()
+
+const setRefreshCooldown = (userId: string, until: number): void => {
+  refreshCooldownByUserId.delete(userId)
+  refreshCooldownByUserId.set(userId, until)
+  while (refreshCooldownByUserId.size > DIRECTORY_MAX_USERS) {
+    const oldest = refreshCooldownByUserId.keys().next()
+    if (oldest.done) break
+    refreshCooldownByUserId.delete(oldest.value)
+  }
+}
+
+/**
+ * May an on-demand refresh ask UOA for this user right now?
+ *
+ * False during the cooldown a previous *attempt* started, whether that attempt
+ * succeeded, failed, or was refused. The cached copy is served either way.
+ */
+export const mayAttemptUoaDirectoryRefresh = (
+  userId: string,
+  now: number = Date.now(),
+): boolean => {
+  const until = refreshCooldownByUserId.get(userId)
+  if (until === undefined) return true
+  if (until <= now) {
+    refreshCooldownByUserId.delete(userId)
+    return true
+  }
+  return false
+}
+
+/**
+ * Record that a refresh is being attempted now. Called before the request, so a
+ * read that fails or hangs still costs at most one upstream call per cooldown.
+ */
+export const noteUoaDirectoryRefreshAttempt = (
+  userId: string,
+  now: number = Date.now(),
+): void => {
+  setRefreshCooldown(userId, now + DIRECTORY_FRESH_MS)
+}
+
+/**
+ * Stop attempting on-demand refreshes for this user until something writes a
+ * verified directory again (a login or a token rotation), or until the cached
+ * copy would have expired anyway.
+ *
+ * This is for UOA *refusing* the subject assertion — 401/403, meaning the epoch
+ * advanced or the account was deactivated. Retrying that every minute cannot
+ * succeed: only a new session can. The cached copy is deliberately kept rather
+ * than evicted, which is what this path did before the on-demand read existed.
+ */
+export const suppressUoaDirectoryRefreshUntilVerifiedRead = (
+  userId: string,
+  now: number = Date.now(),
+): void => {
+  const cached = directoryByUserId.get(userId)
+  setRefreshCooldown(
+    userId,
+    cached && cached.expiresAt > now ? cached.expiresAt : now + DIRECTORY_TTL_MS,
+  )
+}
+
+/**
  * Record a directory UOA just verified for this user. `undefined` means the
  * opportunistic UOA read failed, and — matching `fetchUoaTeamDirectory`'s
  * contract — the last verified copy is kept for the lifetime of this process.
@@ -79,6 +154,10 @@ export const rememberUoaTeamDirectory = (
   now: number = Date.now(),
 ): void => {
   if (!directory) return
+  // A verified directory ends any attempt cooldown, including the long one a
+  // refused assertion set: a login or rotation getting this far IS the new
+  // session that suppression was waiting for.
+  refreshCooldownByUserId.delete(userId)
   directoryByUserId.delete(userId)
   directoryByUserId.set(userId, {
     directory,
@@ -137,6 +216,9 @@ export const readUoaTeamDirectory = (
  */
 export const forgetUoaTeamDirectory = (userId: string): void => {
   directoryByUserId.delete(userId)
+  // Forgetting exists so the next read re-asks UOA; leaving a cooldown behind
+  // would be the one thing that stops it.
+  refreshCooldownByUserId.delete(userId)
 }
 
 /**
@@ -171,6 +253,7 @@ export const renameCachedUoaTeam = (
 /** Test seam: drop every cached directory. */
 export const clearUoaTeamDirectoryCache = (): void => {
   directoryByUserId.clear()
+  refreshCooldownByUserId.clear()
 }
 
 /**

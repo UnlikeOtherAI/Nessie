@@ -153,11 +153,14 @@ export const syncUoaProductAccountLinks = async (
   // The directory UOA returned with this login is display-only, UOA-owned data:
   // it goes to the bounded in-memory cache, never into the link row.
   rememberUoaTeamDirectory(input.userId, input.teamDirectory)
-  if (input.teamDirectory) {
+  // Same rule as every other reconciliation site: an answer that did not state
+  // its invitations must not delete the ones already on the bell.
+  const pendingInvites = input.teamDirectory?.pendingInvites
+  if (pendingInvites) {
     try {
       await syncTeamInviteAlerts(prisma, {
         organizationId: input.organizationId,
-        pendingInvites: input.teamDirectory.pendingInvites,
+        pendingInvites,
         userId: input.userId,
       })
     } catch (error) {
