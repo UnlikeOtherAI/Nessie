@@ -45,6 +45,15 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
   team and becomes its owner — there is no separate owner-account step.
   Bootstrap mode is automatically suppressed whenever an SSO provider is
   configured.
+- **Invitation mail returns to `UOA_REDIRECT_URL`** (`<admin>/login` in
+  production). Every invitation Nessie creates or resends, at team scope and at
+  organisation scope, sends `redirectUrl` set to that same registered value, so
+  UOA's hosted acceptance page can offer a way back into Nessie instead of
+  ending on "You can close this window". UOA validates the field byte-exactly
+  against the config JWT's `redirect_urls`, which is why it reuses
+  `UOA_REDIRECT_URL` rather than a second environment variable that could drift
+  out of step and have every invitation refused. The value is added server-side
+  in `packages/team-admin` and is never accepted from the client.
 
 **One-time onboarding (required before first login works)**
 

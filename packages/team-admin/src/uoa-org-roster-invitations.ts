@@ -1,6 +1,7 @@
 import type { CreateTeamInvitationsRequest, TeamInviteResult } from '@nessie/schemas'
 
 import {
+  invitationRedirectUrl,
   orgPath,
   requireSettings,
   rosterRequest,
@@ -30,12 +31,16 @@ export const createTeamInvitations = async (
   input: CreateTeamInvitationsRequest,
   deps: UoaRosterDeps = {},
 ): Promise<TeamInviteResult[]> => {
+  const settings = requireSettings()
   const payload = await rosterRequest(
-    requireSettings(),
+    settings,
     `${teamPath(team)}/invitations`,
     {
       method: 'POST',
       body: {
+        // Same registered login address the single-invite path sends, so a
+        // caller on this contract cannot mail an invitation with no way back.
+        redirectUrl: invitationRedirectUrl(settings),
         invites: input.invites.map((invite) => ({
           email: invite.email,
           ...(invite.name ? { name: invite.name } : {}),
@@ -62,10 +67,11 @@ export const resendTeamInvitation = async (
   inviteId: string,
   deps: UoaRosterDeps = {},
 ): Promise<void> => {
+  const settings = requireSettings()
   await rosterRequest(
-    requireSettings(),
+    settings,
     `${teamPath(team)}/invitations/${encodeURIComponent(inviteId)}/resend`,
-    { method: 'POST' },
+    { method: 'POST', body: { redirectUrl: invitationRedirectUrl(settings) } },
     deps,
   )
 }
