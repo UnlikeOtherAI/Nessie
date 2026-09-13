@@ -206,7 +206,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 expandable={false}
                 label="Pending invitations"
                 onRowClick={setSelectedInvitation}
-                rowActionLabel={(invite) => `Open invitation for ${memberDisplayName(invite.name, invite.email) ?? 'member'}`}
+                rowActionLabel={(invite) => `Open invitation for ${invite.name ?? invite.email ?? 'member'}`}
                 rowKey={(invite) => invite.inviteId}
                 rows={invitationsRows}
               />
