@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import type { TeamInvitationRecord, TeamMemberRecord } from '@nessie/schemas'
 
 import { UserAvatar } from '../../shared/UserAvatar'
+import { memberDisplayName } from '../../../lib/member-display-name'
 import { TabBar } from '../../primitives/TabBar'
 import { DataTable, type DataTableColumn } from '../../shared/DataTable'
 import { EmptyState } from '../../shared/EmptyState'
@@ -56,7 +57,7 @@ const memberColumns = (
     render: (member: TeamMemberRecord) => (
       <div className="flex min-w-0 items-center gap-3">
         <UserAvatar
-          displayName={member.displayName ?? member.email ?? 'Member'}
+          displayName={memberDisplayName(member.displayName, member.email) ?? 'Member'}
           size={32}
           token={token}
           avatarUrl={member.avatarImageUrl}
@@ -64,7 +65,9 @@ const memberColumns = (
           userId={member.userId}
         />
         <span className="min-w-0">
-          <span className="block truncate font-medium">{member.displayName ?? 'Unnamed member'}</span>
+          <span className="block truncate font-medium">
+            {memberDisplayName(member.displayName, member.email) ?? 'Unnamed member'}
+          </span>
           {member.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{member.email}</span> : null}
         </span>
       </div>
@@ -84,8 +87,14 @@ const invitationColumns = (scope: MemberRosterScope): DataTableColumn<TeamInvita
     key: 'invitee',
     render: (invite: TeamInvitationRecord) => (
       <span className="min-w-0">
-        <span className="block truncate font-medium">{invite.name ?? invite.email ?? 'Invitation'}</span>
-        {invite.name && invite.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{invite.email}</span> : null}
+        <span className="block truncate font-medium">
+          {memberDisplayName(invite.name, invite.email) ?? 'Invitation'}
+        </span>
+        {/* The label above is either the inviter's name or the address
+            humanised, never the address itself, so the address is always worth
+            showing underneath — an invitee is identified by where the mail
+            went. */}
+        {invite.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{invite.email}</span> : null}
       </span>
     ),
   },
@@ -208,7 +217,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 expandable={false}
                 label={tab === 'active' ? 'Active users' : 'Deactivated users'}
                 onRowClick={setSelectedMember}
-                rowActionLabel={(member) => `Open ${member.displayName ?? member.email ?? 'member'}`}
+                rowActionLabel={(member) => `Open ${memberDisplayName(member.displayName, member.email) ?? 'member'}`}
                 rowKey={(member) => member.uoaSub}
                 rows={members}
               />

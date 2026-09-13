@@ -70,8 +70,12 @@ test('UOA-authorized users drive the member and invitation mutations', async () 
           upstream: {
             method: 'POST',
             url: `${base}/teams/${externalTeamId}/invitations${query}`,
+            // The return address is added server-side, never sent by the
+            // client — see `uoa-invitation-redirect-url.test.ts`.
             body: JSON.stringify({
-              email: 'new@acme.test', teamRole: 'member',
+              email: 'new@acme.test',
+              teamRole: 'member',
+              redirectUrl: uoaEnv.UOA_REDIRECT_URL,
             }),
           },
         },
@@ -92,6 +96,7 @@ test('UOA-authorized users drive the member and invitation mutations', async () 
           upstream: {
             method: 'POST',
             url: `${base}/teams/${externalTeamId}/invitations/inv_1/resend${query}`,
+            body: JSON.stringify({ redirectUrl: uoaEnv.UOA_REDIRECT_URL }),
           },
         },
         {

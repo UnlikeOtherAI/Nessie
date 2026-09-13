@@ -12,6 +12,7 @@ const inviteMetadata = (
   organizationId: invite.organizationId,
   teamId: invite.teamId,
   teamName: invite.teamName,
+  ...(invite.orgName ? { orgName: invite.orgName } : {}),
   ...(invite.invitedBy ? { invitedBy: invite.invitedBy } : {}),
   ...(invite.expiresAt ? { expiresAt: invite.expiresAt } : {}),
 })
@@ -21,6 +22,17 @@ const inviteMetadata = (
  * directory response. Rows move to the current session organisation so the
  * bell the person is looking at owns the action. Vanished invites are deleted,
  * not marked read: UOA owns this data and Nessie must not retain a stale copy.
+ *
+ * `organizationId` is deliberately the recipient's CURRENT local organisation
+ * and never the invitation's own. An invitation can arrive from an
+ * organisation the recipient does not belong to yet — that is the ordinary
+ * cross-organisation case — and `visibleUserAlertWhere` requires an active
+ * membership of the row's organisation, so filing it under the inviting
+ * organisation would create a row nobody could ever see. The invitation's own
+ * organisation travels in the metadata (`organizationId`, `orgName`) and is
+ * what the switcher, bell and `/alerts` name on the row; acceptance posts that
+ * organisation to `/api/team/invitations/:inviteId/accept`, which never reads
+ * the session's active organisation.
  *
  * This row is the single named exception to "a UOA directory lives only in the
  * bounded in-memory cache" (`services/uoa-directory-cache.ts`, which states the

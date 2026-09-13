@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useUpdateAgent } from '../../../facades/agents/hooks'
+import { memberDisplayName } from '../../../lib/member-display-name'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import {
@@ -33,7 +34,7 @@ type AgentOwnershipStateProps = {
 
 export const agentOwnershipLabel = (agent: AgentRecord, viewer: AgentEditViewer): string => {
   const state = agentOwnershipState(agent)
-  const ownerName = agent.owner?.displayName ?? 'another member'
+  const ownerName = memberDisplayName(agent.owner?.displayName) ?? 'another member'
   const isViewerOwner = Boolean(viewer.userId) && agent.ownerUserId === viewer.userId
 
   return state === 'private' || state === 'person_owned'

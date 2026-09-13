@@ -87,6 +87,19 @@ export const rosterRequest = async (
   }
 }
 
+/**
+ * Where UOA sends the invitee once its hosted acceptance page is finished.
+ *
+ * UOA validates `redirectUrl` byte-exactly against the `redirect_urls` array in
+ * the config JWT, so this must be the *same* value the login flow registers —
+ * hence `UOA_REDIRECT_URL` rather than a second env var that could drift out of
+ * step with it and have every invitation rejected. Without it the invitee is
+ * left on "You can close this window" with no way back into the product
+ * (2026-09-13 invitation e2e run, F5).
+ */
+export const invitationRedirectUrl = (settings: UoaSettings): string =>
+  settings.redirectUrl
+
 export const requireSettings = (): UoaSettings => {
   const settings = rosterSettings()
   if (!settings) {

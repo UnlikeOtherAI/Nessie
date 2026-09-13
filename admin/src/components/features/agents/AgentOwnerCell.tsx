@@ -1,4 +1,5 @@
 import type { AgentOwner } from '../../../lib/api-client'
+import { memberDisplayName } from '../../../lib/member-display-name'
 import { UserAvatar } from '../../shared/UserAvatar'
 
 type AgentOwnerCellProps = {
@@ -43,7 +44,10 @@ export const AgentOwnerCell = ({
     )
   }
 
-  const name = owner.displayName ?? 'Unnamed member'
+  // `AgentOwner` carries no address, so an owner who never told UOA a name
+  // arrives with their e-mail *as* the display name — which is exactly the
+  // value `memberDisplayName` humanises.
+  const name = memberDisplayName(owner.displayName) ?? 'Unnamed member'
   const departed = owner.ownerState === 'deactivated'
 
   return (
