@@ -263,9 +263,12 @@ const addLocalTeamAvatarIds = async (
 // and they can be half an hour apart: an invitation created for someone already
 // signed in, or a membership accepted out of band through a mail link, used to
 // stay invisible for the whole TTL. So a copy older than `DIRECTORY_FRESH_MS`
-// is re-read from UOA here before it is served — bounded to one in-flight read
-// per user, never on every call, and falling back to the cached copy whenever
-// the read fails (`services/uoa-directory-refresh.ts`).
+// is re-read from UOA here before it is served, and the cached copy is served
+// whenever that read fails. The upstream cost is bounded twice over: one
+// in-flight read per user collapses overlapping calls, and an attempt cooldown
+// of the same 60 s bounds sequential ones — so a stale copy plus an unreachable
+// UOA costs one timed-out request a minute, not one per call. A 401/403 stops
+// attempts until a login or rotation (`services/uoa-directory-refresh.ts`).
 const loadUoaTeamDirectory = async (
   prisma: PrismaClient,
   userId: string,

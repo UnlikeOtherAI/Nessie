@@ -37,7 +37,22 @@ export type UoaPendingTeamInvite = {
 
 export type UoaTeamDirectory = {
   entries: UoaTeamDirectoryEntry[]
-  pendingInvites: UoaPendingTeamInvite[]
+  /**
+   * The invitations UOA verified for this person, or `undefined` when the
+   * answer did not actually state them.
+   *
+   * The distinction is load-bearing, because `syncTeamInviteAlerts` DELETES
+   * every durable invitation alert the list does not mention. `[]` is UOA
+   * saying "none pending" and must delete them; a missing or non-array
+   * `pending_invites`, or a non-empty array nothing in which could be parsed,
+   * is a structurally partial answer and must delete nothing. Collapsing the
+   * two would let one malformed deploy empty everybody's bell.
+   *
+   * A partial invitation list does NOT invalidate the rest of the answer: the
+   * team directory in the same body is still verified, so the read stays a
+   * success and only the reconciliation is skipped.
+   */
+  pendingInvites: UoaPendingTeamInvite[] | undefined
 }
 
 export type UoaSessionHttpDeps = {
@@ -137,12 +152,14 @@ const parseTeamDirectoryEntries = (
 
 const parsePendingTeamInvites = (
   payload: unknown,
-): UoaPendingTeamInvite[] => {
+): UoaPendingTeamInvite[] | undefined => {
   const org = orgBlock(payload)
-  if (!org) return []
+  if (!org) return undefined
   const pendingInvites = org.pending_invites
-  if (!Array.isArray(pendingInvites)) return []
-  return pendingInvites.flatMap((invite) => {
+  // Not stated at all: an older UOA build, a shape change, a truncated body.
+  // Not the same as "none pending", and must not delete anybody's alerts.
+  if (!Array.isArray(pendingInvites)) return undefined
+  const parsed = pendingInvites.flatMap((invite) => {
     if (!invite || typeof invite !== 'object' || Array.isArray(invite)) return []
     const entry = invite as Record<string, unknown>
     const inviteId = trimString(entry.inviteId)
@@ -163,6 +180,11 @@ const parsePendingTeamInvites = (
       ...(expiresAt ? { expiresAt } : {}),
     }]
   })
+  // Every entry of a non-empty list failing to parse is a shape problem, not a
+  // statement that nothing is pending. One bad entry among good ones still
+  // reconciles the good ones, which is the existing, deliberate behaviour.
+  if (pendingInvites.length > 0 && parsed.length === 0) return undefined
+  return parsed
 }
 
 /**

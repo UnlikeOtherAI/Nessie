@@ -274,7 +274,7 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
   })
 })
 
-test('exchangeUoaSession treats an absent pending_invites field as verified empty', async () => {
+test('exchangeUoaSession treats an absent pending_invites field as unstated, not empty', async () => {
   await withUoaEnv(async () => {
     const previousFetch = globalThis.fetch
     globalThis.fetch = async (input) => new URL(String(input)).pathname === '/org/me'
@@ -292,7 +292,11 @@ test('exchangeUoaSession treats an absent pending_invites field as verified empt
         codeVerifier: 'verifier',
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
       }, safeFetchTestOptions)
-      assert.deepEqual(exchange.teamDirectory, { entries: [], pendingInvites: [] })
+      // Not `[]`. Reconciliation DELETES every invitation the list does not
+      // mention, so a body that never stated them must reconcile nothing; a
+      // genuinely empty array is the one that means "none pending". The team
+      // list is verified either way, so the read itself still succeeds.
+      assert.deepEqual(exchange.teamDirectory, { entries: [], pendingInvites: undefined })
     } finally {
       globalThis.fetch = previousFetch
     }

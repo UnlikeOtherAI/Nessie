@@ -14,8 +14,11 @@ import {
 import { syncTeamInviteAlerts } from './team-invite-alerts.js'
 import {
   DIRECTORY_FRESH_MS,
+  mayAttemptUoaDirectoryRefresh,
+  noteUoaDirectoryRefreshAttempt,
   readUoaTeamDirectoryAge,
   rememberUoaTeamDirectory,
+  suppressUoaDirectoryRefreshUntilVerifiedRead,
 } from './uoa-directory-cache.js'
 import {
   parseUoaTeamDirectoryPayload,
@@ -30,9 +33,19 @@ import {
  * invitation created for someone already signed in, a membership accepted
  * through a mail link, another admin's change — stayed invisible for the whole
  * TTL, through page reloads included, until a sign-out and sign-in. This module
- * closes that window without turning every `/api/auth/me` into a UOA round
- * trip: the cached copy is believed for `DIRECTORY_FRESH_MS`, and only an older
+ * closes that window without turning `/api/auth/me` into a UOA round trip each
+ * time: the cached copy is believed for `DIRECTORY_FRESH_MS`, and only an older
  * one triggers a read.
+ *
+ * Two things bound the upstream traffic, and both are needed. The in-flight map
+ * collapses calls that OVERLAP. The attempt cooldown in
+ * `uoa-directory-cache.ts` bounds calls that follow one another: a failed read
+ * does not refresh `storedAt`, so without it a stale copy plus an unreachable
+ * UOA would hang a 10-second timeout off every sequential `/api/auth/me`. The
+ * cooldown is stamped before the request, so at most one attempt per user per
+ * `DIRECTORY_FRESH_MS` reaches UOA however the attempt ends — and a 401/403,
+ * which no amount of retrying can fix, suppresses attempts until a login or
+ * rotation writes a verified directory.
  *
  * The read is the same `/org/me` the login read uses, authorized the same way
  * every other on-demand `/org/*` read in this codebase is — a short-lived
@@ -74,11 +87,20 @@ export const clearUoaDirectoryRefreshState = (): void => {
   inFlightByUserId.clear()
 }
 
+/**
+ * A verified answer, an ordinary failure worth retrying after the cooldown, or
+ * UOA refusing this session's assertion — which only a new session can fix.
+ */
+type DirectoryReadResult =
+  | { kind: 'verified'; directory: UoaTeamDirectory }
+  | { kind: 'failed' }
+  | { kind: 'refused' }
+
 const readDirectoryFromUoa = async (
   settings: UoaDelegatedIdentitySettings,
   identity: UoaSessionIdentity & { tokenVersion: number },
   deps: UoaDirectoryRefreshDeps,
-): Promise<UoaTeamDirectory | undefined> => {
+): Promise<DirectoryReadResult> => {
   try {
     const payload = await requestUoaOrganization(
       settings,
@@ -102,16 +124,22 @@ const readDirectoryFromUoa = async (
     const directory = parseUoaTeamDirectoryPayload(payload, settings.authBaseUrl)
     if (!directory) {
       console.warn('[uoa] directory freshness read returned no organisation context')
-      return undefined
+      return { kind: 'failed' }
     }
-    return directory
+    return { kind: 'verified', directory }
   } catch (error) {
-    if (
-      error instanceof UoaOrgRequestRejectedError
-      || error instanceof UoaOrgRequestUnavailableError
-    ) {
+    if (error instanceof UoaOrgRequestRejectedError) {
+      console.warn(`[uoa] directory freshness read refused: ${error.message}`)
+      // 401/403 is UOA rejecting the subject assertion itself — the epoch moved
+      // on, or the account was deactivated. A minute later it will say the same
+      // thing. Any other refusal is treated as an ordinary failure.
+      return error.statusCode === 401 || error.statusCode === 403
+        ? { kind: 'refused' }
+        : { kind: 'failed' }
+    }
+    if (error instanceof UoaOrgRequestUnavailableError) {
       console.warn(`[uoa] directory freshness read failed: ${error.message}`)
-      return undefined
+      return { kind: 'failed' }
     }
     throw error
   }
@@ -125,16 +153,25 @@ const runRefresh = async (
   settings: UoaDelegatedIdentitySettings,
   deps: UoaDirectoryRefreshDeps,
 ): Promise<void> => {
-  const directory = await readDirectoryFromUoa(settings, input.identity, deps)
+  const result = await readDirectoryFromUoa(settings, input.identity, deps)
   // A failed read leaves the last verified copy in place and reconciles
-  // nothing. See the module comment: `undefined` is not a verified empty list.
-  if (!directory) return
+  // nothing. See the module comment: no answer is not a verified empty list.
+  if (result.kind === 'refused') {
+    suppressUoaDirectoryRefreshUntilVerifiedRead(input.userId, input.now ?? Date.now())
+    return
+  }
+  if (result.kind === 'failed') return
 
+  const directory = result.directory
   rememberUoaTeamDirectory(input.userId, directory)
+  // An answer that did not state its invitations reconciles none of them:
+  // `syncTeamInviteAlerts` deletes every row the list omits.
+  const pendingInvites = directory.pendingInvites
+  if (!pendingInvites) return
   try {
     await syncTeamInviteAlerts(prisma, {
       organizationId: input.organizationId,
-      pendingInvites: directory.pendingInvites,
+      pendingInvites,
       userId: input.userId,
     })
   } catch (error) {
@@ -147,8 +184,9 @@ const runRefresh = async (
 /**
  * Re-read the directory from UOA when the cached copy is older than
  * `DIRECTORY_FRESH_MS`, then rewrite the cache and reconcile the durable
- * invitation alerts. A fresh copy, a session with no UOA identity, and a
- * deployment with no UOA credentials all return without a request.
+ * invitation alerts. A fresh copy, an attempt cooldown still running, a session
+ * with no UOA identity, and a deployment with no UOA credentials all return
+ * without a request.
  */
 export const refreshStaleUoaTeamDirectory = async (
   prisma: PrismaClient,
@@ -160,8 +198,12 @@ export const refreshStaleUoaTeamDirectory = async (
   // refuses a subject assertion without one, so there is nothing to ask with.
   if (!identity || identity.tokenVersion === null) return
 
-  const age = readUoaTeamDirectoryAge(input.userId, input.now ?? Date.now())
+  const now = input.now ?? Date.now()
+  const age = readUoaTeamDirectoryAge(input.userId, now)
   if (age !== undefined && age < DIRECTORY_FRESH_MS) return
+  // A previous attempt — successful, failed, or refused — may still hold the
+  // cooldown. The cached copy is served either way.
+  if (!mayAttemptUoaDirectoryRefresh(input.userId, now)) return
 
   const settings = deps.settings === undefined
     ? loadUoaDelegatedIdentitySettings()
@@ -174,6 +216,9 @@ export const refreshStaleUoaTeamDirectory = async (
     return
   }
 
+  // Before the request, not after it: a read that fails or hangs must still
+  // cost one upstream call per cooldown, not one per `/api/auth/me`.
+  noteUoaDirectoryRefreshAttempt(input.userId, now)
   const tokenVersion = identity.tokenVersion
   const refresh = runRefresh(
     prisma,

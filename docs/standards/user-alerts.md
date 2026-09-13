@@ -29,10 +29,23 @@ active organisation.
 
 The verified read that reconciles these rows is no longer only login and token
 rotation. `GET /api/auth/me` re-reads `/org/me` when the cached directory is
-older than `DIRECTORY_FRESH_MS` (60 s, beside the 30-minute
-`DIRECTORY_TTL_MS` in `api/src/services/uoa-directory-cache.ts`), bounded to one
-in-flight read per user. A failed read still reconciles nothing: `undefined` is
-not a verified empty directory, and the cached copy is served unchanged.
+older than `DIRECTORY_FRESH_MS` (60 s, beside the 30-minute `DIRECTORY_TTL_MS`
+in `api/src/services/uoa-directory-cache.ts`). Two bounds keep that off the
+critical path, and both are needed: one in-flight read per user collapses
+overlapping calls, and an attempt cooldown of the same 60 s — stamped **before**
+the request, so it applies however the attempt ends — bounds sequential ones. A
+failed read does not refresh the copy's age, so without the second bound a stale
+copy plus an unreachable UOA would hang the upstream timeout off every call. A
+401/403 is UOA refusing the session's subject assertion; retrying cannot fix it,
+so attempts stop until a login or rotation writes a verified directory.
+
+A failed read still reconciles nothing, and neither does a structurally partial
+one. `pendingInvites` is `undefined` — not `[]` — when `/org/me` omits
+`pending_invites`, returns a non-array, or returns a non-empty array nothing in
+which parses; every caller of `syncTeamInviteAlerts` skips reconciliation on
+`undefined`, because reconciliation DELETES every row the list does not mention.
+A genuinely empty array is a verified "none pending" and does delete them. A
+partial invitation list never invalidates the team directory in the same body.
 
 Push transports (APNs/FCM and browser Web Push) are described in
 [docs/web-push.md](../web-push.md), including the two-layer contract every
