@@ -47,6 +47,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   const {
     me,
     reconcileSession,
+    refreshSession,
     sessionMode,
     switchContext,
     switchUoaTeam,
@@ -67,6 +68,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
   const [createOpen, setCreateOpen] = useState(false)
+  const refreshedForOpenRef = useRef(false)
 
   const teams = useMemo(() => teamsFromMe(me), [me])
   const invitations = me?.uoaPendingInvites ?? []
@@ -226,6 +228,23 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     }
     void startExternalSignIn(providerId, signInTheme)
   }
+
+  // Opening the switcher is the moment somebody asks "what teams do I have,
+  // and has anything invited me?", so it re-reads `/api/auth/me` rather than
+  // rendering whatever the session was told at sign-in. The server answers from
+  // its cached UOA directory unless that copy is over a minute old, so this
+  // costs a UOA read only when one is actually due. The ref makes it exactly
+  // one refresh per open: without it a `refreshSession` identity change while
+  // the menu is open would fire the effect again.
+  useEffect(() => {
+    if (!open) {
+      refreshedForOpenRef.current = false
+      return
+    }
+    if (refreshedForOpenRef.current) return
+    refreshedForOpenRef.current = true
+    void refreshSession()
+  }, [open, refreshSession])
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined
