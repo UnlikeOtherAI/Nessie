@@ -70,6 +70,27 @@ renders "<team> · <organisation>" in switcher/bell/alerts, and acceptance via
 `POST /api/team/invitations/:inviteId/accept` switches into the accepted
 organisation. Regression tests on both sides.
 
+**Resolution (Nessie side).** `orgName` is parsed as an optional field in
+`api/src/services/uoa-team-directory.ts` and carried on
+`UoaPendingTeamInviteSchema` / `TeamInvitationAlertMetadataSchema`
+(`packages/schemas/src/identity.ts`, `packages/schemas/src/alert-records.ts`),
+so `/api/auth/me` and every alert row expose it. The alert keeps being filed
+under the recipient's *current* local organisation
+(`api/src/services/team-invite-alerts.ts`) — filing it under the inviting
+organisation would fail `visibleUserAlertWhere`'s membership clause and hide it
+for good — and `docs/standards/user-alerts.md` now states that rule and where
+the invitation's own organisation lives instead. The switcher
+(`admin/src/layouts/admin-shell/TeamMenu.tsx`), bell and `/alerts`
+(`admin/src/components/shared/AlertRow.tsx`) render "<team> · <organisation>"
+through one helper, `admin/src/lib/team-invitation-label.ts`. The accept route
+(`api/src/routes/team-invitations.ts` → `acceptTeamInvitation`) was verified to
+address UOA purely from the posted `organizationId`/`teamId`, with no subject
+assertion pinned to the active organisation, and the client already switches
+into the accepted organisation via `switchUoaTeam`
+(`admin/src/facades/team/invitations.ts`) — neither needed a change. Tests:
+`api/test/uoa-directory-refresh.test.ts`, `api/test/auth-uoa-directory.test.ts`,
+`admin/test/team-invitation-label.test.ts`.
+
 ### F2 — P1 — Membership and invitation changes are stale for up to 30 minutes (Nessie)
 
 B accepted the organisation-level invitation into "General" through the mail
@@ -90,6 +111,20 @@ cached copy is older than a short bound (≈1 min) or when the client asks
 the fallback when UOA is unavailable. Keep the "verified read reconciles
 alerts" rule from `docs/standards/user-alerts.md`. Test: cache older than the
 bound → one UOA read; UOA down → cached answer, no alert reconciliation.
+
+**Resolution.** `DIRECTORY_FRESH_MS` (60 s) sits beside `DIRECTORY_TTL_MS` in
+`api/src/services/uoa-directory-cache.ts`, which also records when each copy was
+verified. `api/src/services/uoa-directory-refresh.ts` re-reads `/org/me` for a
+copy older than that — with the same short-lived subject assertion every other
+on-demand `/org/*` read uses, through the same payload parser as the login read
+— then rewrites the cache and reconciles alerts. A failed read keeps the cached
+copy and reconciles nothing, and one in-flight read per user collapses the burst
+of `/api/auth/me` calls a page load fires. `buildMeResponse`
+(`api/src/services/auth.ts`) calls it before answering. No `?refresh=1`
+parameter was needed: the admin simply re-reads `me` when the switcher opens
+(`admin/src/layouts/admin-shell/TeamSwitcher.tsx`), and the server decides
+whether that costs a UOA read. Tests:
+`api/test/uoa-directory-refresh.test.ts`, `api/test/auth-uoa-directory.test.ts`.
 
 ### F3 — P2 — First sign-in chooser names the organisation after the "Team name" field (UOA)
 
