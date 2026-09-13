@@ -139,6 +139,15 @@ Fix direction: Nessie sends `redirectUrl: <NESSIE_ADMIN_PUBLIC_URL>/login`
 terminal pages when `redirect_url` is present, and the mail's plain-text part
 mentions where to sign in. Keep the no-redirect behaviour unchanged.
 
+**Resolution (Nessie half):** `createTeamInvitation`
+(`packages/team-admin/src/uoa-org-roster-pages.ts`) and
+`resendTeamInvitation` (`uoa-org-roster.ts`, plus the legacy pair in
+`uoa-org-roster-invitations.ts`) now send `redirectUrl` from
+`invitationRedirectUrl` (`uoa-org-request.ts`, i.e. `UOA_REDIRECT_URL`) at
+both scopes; covered by `api/test/uoa-invitation-redirect-url.test.ts` and
+documented in `docs/deployment/sso.md` and `docs/functionality.md`. The UOA
+half (a "Continue to <product>" link on the terminal pages) is unchanged.
+
 ### F6 — P2 — People who register by e-mail appear as "Unnamed member" (Nessie + UOA)
 
 Neither the public sign-up nor the invitation registration asks for a name,
@@ -158,6 +167,16 @@ one shared helper; UOA adds an optional "Your name" field to invitation
 registration and set-password (stored as the user's name, backfilled from
 `inviteName` only when blank, which acceptance already does).
 
+**Resolution (Nessie half):** `admin/src/lib/member-display-name.ts`
+humanises the address at render time (nothing is stored — UOA owns
+identity), used by `MembersRosterPanel.tsx`, `MemberInvitationDialog.tsx`,
+`MemberDetailsDialog.tsx`, `MemberInvitationDetailsDialog.tsx`,
+`AgentOwnerCell.tsx`, `AgentOwnershipState.tsx` and
+`pages/settings/TeamMemberPeople.tsx`; covered by
+`admin/test/member-display-name.test.ts`, and `docs/deployment/sso.md` now
+describes the display fallback rather than a stored name. The UOA half (an
+optional "Your name" field at registration) is unchanged.
+
 ### F7 — P3 — "Add team" opens a dialog titled "Create an organisation" (Nessie)
 
 The switcher's "+ Add team" opens a dialog whose title is "Create an
@@ -171,6 +190,12 @@ create dialog under `admin/src/components/features/team/`. Default to the
 "In <org>" tab when the person may create a team there; title the dialog
 "Create a team" and rename the tab pair to "In <org>" / "New organisation".
 
+**Resolution:** `admin/src/layouts/admin-shell/CreateTeamDialog.tsx`
+defaults to the team tab (and so to the title "Create a team") for anybody
+who may create a team here, keeping the organisation tab and its copy; a
+person who may not still gets the organisation form, titled "Create an
+organisation". Covered by `admin/test/create-team-dialog-scope.test.ts`.
+
 ### F8 — P3 — Legacy team-invite form posts a body the route no longer accepts (Nessie)
 
 `admin/src/pages/settings/TeamMembersSection.tsx` (non-UOA sessions only)
@@ -179,6 +204,13 @@ still posts `{invites:[{email, teamRole}]}` through
 which validates the single-invite `CreateMemberInvitationRequestSchema`
 (`api/src/routes/team-members.ts:387`). Unreachable in production; either
 align the body or delete the legacy branch.
+
+**Resolution:** `admin/src/facades/users/team-members.ts` exposes
+`useCreateTeamInvitation`, posting the single-invite
+`CreateMemberInvitationRequest` body the route validates;
+`admin/src/pages/settings/TeamMembersSection.tsx` sends its one address that
+way and no longer relays a per-address verdict the route does not return.
+Covered by `admin/test/team-invite-legacy-form.test.ts`.
 
 ## Verified working (no change needed)
 
