@@ -1,4 +1,5 @@
 import type { UserAlertRecord } from '../../facades/alerts/hooks'
+import { teamInvitationLabel } from '../../lib/team-invitation-label'
 
 const formatRelativeTime = (value: string): string => {
   const timestamp = Date.parse(value)
@@ -41,9 +42,13 @@ const describeAlert = (alert: UserAlertRecord): string => {
   const actor = alert.actorDisplayName ?? 'Someone'
   if (alert.kind === 'team_invitation') {
     if (!alert.metadata) return 'Team invitation'
+    // The organisation is part of the name, not decoration: this row is often
+    // the only place a cross-organisation invitation is offered, and "General"
+    // on its own does not say which organisation invited you.
+    const target = teamInvitationLabel(alert.metadata)
     return alert.metadata.invitedBy
-      ? `${alert.metadata.invitedBy} invited you to ${alert.metadata.teamName}`
-      : alert.metadata.teamName
+      ? `${alert.metadata.invitedBy} invited you to ${target}`
+      : target
   }
   if (alert.kind === 'trigger_health') {
     // No actor: nobody did this, a schedule stopped being able to run.

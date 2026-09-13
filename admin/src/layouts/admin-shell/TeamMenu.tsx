@@ -5,6 +5,7 @@ import type { UoaPendingTeamInvite } from '@nessie/schemas'
 
 import { Popover } from '../../components/overlays/Popover'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
+import { teamInvitationLabel } from '../../lib/team-invitation-label'
 import {
   orderTeamsWithActiveFirst,
   type Team,
@@ -141,7 +142,9 @@ export const TeamMenu = ({
             return (
               <div className="flex items-center gap-3 rounded-lg px-2 py-2" key={invite.inviteId}>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-[color:var(--tx)]">{invite.teamName}</span>
+                  <span className="block truncate text-sm text-[color:var(--tx)]">
+                    {teamInvitationLabel(invite)}
+                  </span>
                   {invite.invitedBy ? (
                     <span className="block truncate text-xs text-[color:var(--tx3)]">
                       Invited by {invite.invitedBy}

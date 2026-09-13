@@ -228,6 +228,13 @@ export const UoaPendingTeamInviteSchema = z.object({
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
   teamName: z.string().min(1),
+  // The inviting ORGANISATION's name, when UOA supplies it. An invitation can
+  // come from an organisation the recipient does not belong to yet, and two
+  // organisations on one domain routinely both own a team called "General" —
+  // so a row that names only the team is ambiguous at best and unidentifiable
+  // at worst. Optional on the wire: older UOA builds omit it, and a missing
+  // name must degrade to the team name alone rather than hiding the row.
+  orgName: z.string().min(1).optional(),
   invitedBy: z.string().min(1).optional(),
   expiresAt: TimestampSchema.optional(),
 })

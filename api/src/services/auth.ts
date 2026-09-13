@@ -16,6 +16,10 @@ import {
   deriveUoaTeamDirectoryFromTeams,
   readUoaTeamDirectory,
 } from './uoa-directory-cache.js'
+import {
+  refreshStaleUoaTeamDirectory,
+  type UoaDirectoryRefreshDeps,
+} from './uoa-directory-refresh.js'
 
 export const LOCAL_AUTH_PROVIDER_ID = 'local'
 
@@ -254,16 +258,37 @@ const addLocalTeamAvatarIds = async (
 // process, or another replica that has not rotated this session yet) degrades
 // to the local Team → UOA team mapping rather than to nothing, so the
 // switcher keeps working until the next rotation restores the real thing.
+//
+// Logins and rotations are not the only moments the directory changes, though,
+// and they can be half an hour apart: an invitation created for someone already
+// signed in, or a membership accepted out of band through a mail link, used to
+// stay invisible for the whole TTL. So a copy older than `DIRECTORY_FRESH_MS`
+// is re-read from UOA here before it is served — bounded to one in-flight read
+// per user, never on every call, and falling back to the cached copy whenever
+// the read fails (`services/uoa-directory-refresh.ts`).
 const loadUoaTeamDirectory = async (
   prisma: PrismaClient,
   userId: string,
   claims: SessionTokenClaims,
+  deps: UoaDirectoryRefreshDeps,
 ): Promise<{
   uoaPendingInvites: MeResponse['uoaPendingInvites']
   uoaTeams: MeResponse['uoaTeams']
 }> => {
   if (claims.providerType !== 'uoa') {
     return { uoaPendingInvites: undefined, uoaTeams: undefined }
+  }
+  const activeOrganizationId = parseOrganizationId(claims.org)
+  try {
+    await refreshStaleUoaTeamDirectory(prisma, {
+      identity: claims.uoaIdentity,
+      organizationId: activeOrganizationId,
+      userId,
+    }, deps)
+  } catch (error) {
+    // Freshness is an improvement on the cached answer, never a precondition
+    // for it. `/api/auth/me` is the call every screen depends on.
+    console.warn('[uoa] directory freshness refresh failed', error)
   }
   const directory = readUoaTeamDirectory(userId)
     ?? await deriveUoaTeamDirectoryFromTeams(prisma, userId)
@@ -284,6 +309,9 @@ export const buildMeResponse = async (
   user: User,
   claims: SessionTokenClaims,
   config: NessieConfig,
+  // Only the UOA freshness read travels through here, and only so a test can
+  // pin the upstream it would otherwise reach. Production passes nothing.
+  uoaDirectoryRefreshDeps: UoaDirectoryRefreshDeps = {},
 ): Promise<MeResponse> => {
   // The profile is read straight off the mirror. This used to manufacture a
   // display name from the email local part and persist it on every call, which
@@ -293,7 +321,7 @@ export const buildMeResponse = async (
   // renders that way until the provider supplies a name.
   const [memberships, uoaDirectory] = await Promise.all([
     loadUserMemberships(prisma, user.id),
-    loadUoaTeamDirectory(prisma, user.id, claims),
+    loadUoaTeamDirectory(prisma, user.id, claims, uoaDirectoryRefreshDeps),
   ])
 
   // Surface the live per-org role for the active context org so the admin's

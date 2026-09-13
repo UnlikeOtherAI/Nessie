@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 
 import type { PrismaClient, User } from '@prisma/client'
+
+import { MeResponseSchema } from '@nessie/schemas'
 
 import type { SessionTokenClaims } from '../src/auth/session.js'
 import { buildMeResponse } from '../src/services/auth.js'
@@ -11,6 +14,7 @@ import {
   readUoaTeamDirectory,
   rememberUoaTeamDirectory,
 } from '../src/services/uoa-directory-cache.js'
+import { clearUoaDirectoryRefreshState } from '../src/services/uoa-directory-refresh.js'
 
 const userId = '00000000-0000-4000-8000-00000000000a'
 const organizationId = '00000000-0000-4000-8000-000000000001'
@@ -66,6 +70,16 @@ type TeamQuery = {
 }
 
 const makePrisma = (localTeams: LocalTeam[] = []) => ({
+  // The freshness read reconciles durable invitation alerts after it rewrites
+  // the cache. Accepting the writes keeps that path exercised and silent.
+  $transaction: async (run: (tx: unknown) => Promise<void>) => {
+    await run({
+      userAlert: {
+        upsert: async () => undefined,
+        deleteMany: async () => ({ count: 0 }),
+      },
+    })
+  },
   organizationMember: { findMany: async () => [] },
   projectMember: { findMany: async () => [] },
   teamMember: { findMany: async () => [] },
@@ -95,6 +109,25 @@ const config = {
   automaticMembership: { enabled: false },
   mode: 'hosted',
 } as Parameters<typeof buildMeResponse>[3]
+
+// A signing key and UOA credentials so the on-demand freshness read
+// (`services/uoa-directory-refresh.ts`) is configured; every test below pins
+// its upstream, so nothing here ever opens a socket.
+const privateKey = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+  format: 'pem', type: 'pkcs8',
+})
+// Deliberately no `UOA_BASE_URL`: the rest of this file asserts the default
+// avatar origin, and the freshness read's upstream is pinned per test anyway.
+Object.assign(process.env, {
+  UOA_CLIENT_SECRET: 'test-client-secret',
+  UOA_CONFIG_JWT_KID: 'test-kid',
+  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(privateKey).toString('base64'),
+  UOA_CONFIG_URL: 'https://nessie.test/uoa/config.jwt',
+  UOA_DOMAIN: 'nessie.test',
+})
+
+/** No UOA credentials in scope: the freshness read is skipped entirely. */
+const noUoaDeps = { settings: null } as const
 
 const verifiedDirectory = (
   entries: UoaTeamDirectory['entries'],
@@ -131,7 +164,7 @@ test('a cached directory is served without touching the account link', async () 
     organizationName: 'Active org',
   }])
 
-  const me = await buildMeResponse(prisma, user, claims, config)
+  const me = await buildMeResponse(prisma, user, claims, config, noUoaDeps)
 
   assert.deepEqual(me.uoaTeams, [
     {
@@ -162,6 +195,52 @@ test('a cached directory is served without touching the account link', async () 
   clearUoaTeamDirectoryCache()
 })
 
+test('an invitation from another organisation is served, and names it', async () => {
+  clearUoaTeamDirectoryCache()
+  // The production shape of F1: the session is active in "Alpha Team" and the
+  // invitation belongs to a different UOA organisation the person is not a
+  // member of. `/api/auth/me` must still offer it, with the organisation name
+  // that tells two "General" teams apart.
+  rememberUoaTeamDirectory(userId, verifiedDirectory(
+    [{
+      organizationId: 'uoa-org-active',
+      teamId: 'uoa-team-active',
+      label: 'General',
+      orgName: 'Alpha Team',
+    }],
+    [{
+      inviteId: 'invite-bravo-three',
+      organizationId: 'uoa-org-bravo',
+      teamId: 'uoa-team-bravo-three',
+      teamName: 'Bravo Three',
+      orgName: 'Bravo Org',
+      invitedBy: 'Test B',
+    }],
+  ))
+  const prisma = makePrisma([{
+    externalOrgId: 'uoa-org-active',
+    externalTeamId: 'uoa-team-active',
+    id: teamId,
+    name: 'General',
+    organizationName: 'Alpha Team',
+  }])
+
+  const me = await buildMeResponse(prisma, user, claims, config, noUoaDeps)
+
+  assert.deepEqual(me.uoaPendingInvites, [{
+    inviteId: 'invite-bravo-three',
+    organizationId: 'uoa-org-bravo',
+    teamId: 'uoa-team-bravo-three',
+    teamName: 'Bravo Three',
+    orgName: 'Bravo Org',
+    invitedBy: 'Test B',
+  }])
+  // The response is the wire contract the admin parses, so it has to survive
+  // the schema that guards it.
+  MeResponseSchema.parse(me)
+  clearUoaTeamDirectoryCache()
+})
+
 test('a cold cache degrades to the local Team → UOA team mapping', async () => {
   clearUoaTeamDirectoryCache()
   const prisma = makePrisma([{
@@ -172,7 +251,7 @@ test('a cold cache degrades to the local Team → UOA team mapping', async () =>
     organizationName: 'Nessie Works',
   }])
 
-  const me = await buildMeResponse(prisma, user, claims, config)
+  const me = await buildMeResponse(prisma, user, claims, config, noUoaDeps)
 
   // Label comes from the local team name and the avatar from UOA's
   // deterministic per-team image URL; the org name is simply unknown until the
@@ -192,7 +271,7 @@ test('a cold cache degrades to the local Team → UOA team mapping', async () =>
 
 test('a person with no locally materialized team gets no directory', async () => {
   clearUoaTeamDirectoryCache()
-  const me = await buildMeResponse(makePrisma(), user, claims, config)
+  const me = await buildMeResponse(makePrisma(), user, claims, config, noUoaDeps)
   assert.equal(me.uoaTeams, undefined)
 })
 
@@ -236,5 +315,97 @@ test('the cache is bounded and evicts the least recently used person', () => {
   assert.notEqual(readUoaTeamDirectory('user-0'), undefined)
   assert.equal(readUoaTeamDirectory('user-1'), undefined)
   assert.notEqual(readUoaTeamDirectory('user-overflow'), undefined)
+  clearUoaTeamDirectoryCache()
+})
+
+test('a directory older than the freshness bound is re-read before /auth/me answers', async () => {
+  clearUoaTeamDirectoryCache()
+  clearUoaDirectoryRefreshState()
+  // Exactly F2: the cached copy predates an invitation created while this
+  // person was already signed in. A page reload must not keep serving it.
+  rememberUoaTeamDirectory(userId, verifiedDirectory(
+    [{ organizationId: 'uoa-org-active', teamId: 'uoa-team-active', label: 'General' }],
+    [],
+  ), Date.now() - 61_000)
+  const prisma = makePrisma([{
+    externalOrgId: 'uoa-org-active',
+    externalTeamId: 'uoa-team-active',
+    id: teamId,
+    name: 'General',
+  }])
+  let calls = 0
+  const deps = {
+    fetchImpl: (async (url: string | URL) => {
+      calls += 1
+      assert.equal(new URL(url).pathname, '/org/me')
+      return new Response(JSON.stringify({
+        org: {
+          org_id: 'uoa-org-active',
+          team_directory: [{
+            orgId: 'uoa-org-active',
+            teamId: 'uoa-team-active',
+            name: 'General',
+            orgName: 'Alpha Team',
+          }],
+          pending_invites: [{
+            inviteId: 'invite-bravo-three',
+            orgId: 'uoa-org-bravo',
+            teamId: 'uoa-team-bravo-three',
+            teamName: 'Bravo Three',
+            orgName: 'Bravo Org',
+          }],
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as Parameters<typeof buildMeResponse>[4]['fetchImpl'],
+    resolveHost: async () => ['93.184.216.34'],
+  }
+
+  const me = await buildMeResponse(prisma, user, claims, config, deps)
+
+  assert.equal(calls, 1)
+  assert.deepEqual(me.uoaPendingInvites, [{
+    inviteId: 'invite-bravo-three',
+    organizationId: 'uoa-org-bravo',
+    teamId: 'uoa-team-bravo-three',
+    teamName: 'Bravo Three',
+    orgName: 'Bravo Org',
+  }])
+
+  // The rewritten copy is now current, so the next answer costs no UOA read.
+  const again = await buildMeResponse(prisma, user, claims, config, deps)
+  assert.equal(calls, 1)
+  assert.deepEqual(again.uoaPendingInvites, me.uoaPendingInvites)
+  clearUoaTeamDirectoryCache()
+})
+
+test('a UOA outage answers /auth/me from the cached copy', async () => {
+  clearUoaTeamDirectoryCache()
+  clearUoaDirectoryRefreshState()
+  const cached = verifiedDirectory(
+    [{ organizationId: 'uoa-org-active', teamId: 'uoa-team-active', label: 'General' }],
+    [{
+      inviteId: 'invite-known',
+      organizationId: 'uoa-org-bravo',
+      teamId: 'uoa-team-bravo-three',
+      teamName: 'Bravo Three',
+    }],
+  )
+  rememberUoaTeamDirectory(userId, cached, Date.now() - 61_000)
+  const prisma = makePrisma([{
+    externalOrgId: 'uoa-org-active',
+    externalTeamId: 'uoa-team-active',
+    id: teamId,
+    name: 'General',
+  }])
+
+  const me = await buildMeResponse(prisma, user, claims, config, {
+    fetchImpl: (async () => new Response('{}', {
+      status: 503, headers: { 'content-type': 'application/json' },
+    })) as Parameters<typeof buildMeResponse>[4]['fetchImpl'],
+    resolveHost: async () => ['93.184.216.34'],
+  })
+
+  assert.deepEqual(me.uoaPendingInvites, cached.pendingInvites)
+  assert.deepEqual(readUoaTeamDirectory(userId), cached)
   clearUoaTeamDirectoryCache()
 })

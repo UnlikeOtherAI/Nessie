@@ -22,6 +22,15 @@ export type UoaPendingTeamInvite = {
   organizationId: string
   teamId: string
   teamName: string
+  /**
+   * The inviting organisation's name. Optional on the wire — UOA builds before
+   * cross-organisation invitations shipped omit it — so it is parsed when
+   * present and never required. Without it the switcher, bell and `/alerts`
+   * fall back to the team name alone, which is exactly the ambiguity this
+   * field exists to remove when two organisations on one domain both own a
+   * team called "General".
+   */
+  orgName?: string
   invitedBy?: string
   expiresAt?: string
 }
@@ -140,6 +149,7 @@ const parsePendingTeamInvites = (
     const organizationId = trimString(entry.orgId)
     const teamId = trimString(entry.teamId)
     const teamName = trimString(entry.teamName)
+    const orgName = trimString(entry.orgName)
     const invitedBy = trimString(entry.invitedBy)
     const expiresAt = trimString(entry.expiresAt)
     if (!inviteId || !organizationId || !teamId || !teamName) return []
@@ -148,19 +158,32 @@ const parsePendingTeamInvites = (
       organizationId,
       teamId,
       teamName,
+      ...(orgName ? { orgName } : {}),
       ...(invitedBy ? { invitedBy } : {}),
       ...(expiresAt ? { expiresAt } : {}),
     }]
   })
 }
 
-const parseTeamDirectory = (
+/**
+ * Turn one `/org/me` body into a directory, or `undefined` when UOA returned
+ * no organisation block. The distinction is the whole contract: `undefined`
+ * means "not a verified answer, keep what you had", while a result — empty
+ * lists included — is a verified statement callers may cache and reconcile
+ * alerts against. Exported so the on-demand freshness read
+ * (`uoa-directory-refresh.ts`) parses the same body the login read parses,
+ * rather than growing a second, drifting reader of the same payload.
+ */
+export const parseUoaTeamDirectoryPayload = (
   payload: unknown,
   baseUrl: string,
-): UoaTeamDirectory => ({
-  entries: parseTeamDirectoryEntries(payload, baseUrl),
-  pendingInvites: parsePendingTeamInvites(payload),
-})
+): UoaTeamDirectory | undefined => {
+  if (!orgBlock(payload)) return undefined
+  return {
+    entries: parseTeamDirectoryEntries(payload, baseUrl),
+    pendingInvites: parsePendingTeamInvites(payload),
+  }
+}
 
 const uoaFetchOptions = (deps: UoaSessionHttpDeps) => ({
   ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
@@ -205,12 +228,13 @@ export const fetchUoaTeamDirectory = async (
     // keeps the last verified copy, and the caller falls back to the local
     // team-derived list. Caching an empty one instead would pin "you have no
     // teams" for the whole TTL and suppress that fallback.
-    if (!orgBlock(payload)) {
+    const directory = parseUoaTeamDirectoryPayload(payload, settings.baseUrl)
+    if (!directory) {
       console.warn('[uoa] team directory read returned no organisation context')
       return undefined
     }
 
-    return parseTeamDirectory(payload, settings.baseUrl)
+    return directory
   } catch (error) {
     // Never silent. A directory read that fails leaves the product showing a
     // locally derived team list, which can disagree with UnlikeOtherAI — the

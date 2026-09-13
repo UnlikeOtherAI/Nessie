@@ -36,12 +36,27 @@ import type {
 /** Entries older than this are discarded; the next rotation re-reads UOA. */
 const DIRECTORY_TTL_MS = 30 * 60 * 1000
 
+/**
+ * How long a cached directory is treated as current by an on-demand read.
+ *
+ * The TTL above is how long a copy may be *kept*; this is how long it may be
+ * *believed* without asking UOA again. They are different questions and the
+ * 30-minute answer is wrong for the second one: an invitation created for a
+ * signed-in person, or a membership accepted out of band through a mail link,
+ * was invisible in an open session for up to half an hour — a full page reload
+ * included — because `/api/auth/me` served the cached copy and nothing
+ * refreshed it. `services/uoa-directory-refresh.ts` re-reads `/org/me` when the
+ * copy is older than this and keeps the 30-minute copy when that read fails.
+ */
+export const DIRECTORY_FRESH_MS = 60 * 1000
+
 /** Hard bound on cached users. The oldest read/write is evicted past it. */
 const DIRECTORY_MAX_USERS = 10_000
 
 type CachedDirectory = {
   directory: UoaTeamDirectory
   expiresAt: number
+  storedAt: number
 }
 
 export type UoaTeamDirectoryFallback = {
@@ -65,12 +80,31 @@ export const rememberUoaTeamDirectory = (
 ): void => {
   if (!directory) return
   directoryByUserId.delete(userId)
-  directoryByUserId.set(userId, { directory, expiresAt: now + DIRECTORY_TTL_MS })
+  directoryByUserId.set(userId, {
+    directory,
+    expiresAt: now + DIRECTORY_TTL_MS,
+    storedAt: now,
+  })
   while (directoryByUserId.size > DIRECTORY_MAX_USERS) {
     const oldest = directoryByUserId.keys().next()
     if (oldest.done) break
     directoryByUserId.delete(oldest.value)
   }
+}
+
+/**
+ * How long ago this user's cached directory was verified, or `undefined` when
+ * the cache is cold or the entry has expired. Reading the age does not count as
+ * a use: it deliberately leaves the LRU order alone, so a freshness probe on
+ * every `/api/auth/me` cannot keep an otherwise idle entry alive.
+ */
+export const readUoaTeamDirectoryAge = (
+  userId: string,
+  now: number = Date.now(),
+): number | undefined => {
+  const cached = directoryByUserId.get(userId)
+  if (!cached || cached.expiresAt <= now) return undefined
+  return Math.max(0, now - cached.storedAt)
 }
 
 /** The cached directory for this user, or `undefined` when cold or expired. */

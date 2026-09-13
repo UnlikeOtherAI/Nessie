@@ -582,6 +582,7 @@ export default [
       'api/src/routes/agent-email-inbound.ts', // bounded read-through cache of Amazon's immutable SNS PEMs (audit: verified safe).
       'api/src/services/automatic-membership/signin.ts', // memoised `loadConfig()` rollout flag; config is immutable per process.
       'api/src/services/uoa-directory-cache.ts', // read-through LRU of UOA-verified directories; UOA stays the authority.
+      'api/src/services/uoa-directory-refresh.ts', // single-flight guard collapsing THIS process's concurrent /org/me freshness reads; a replica has its own, UOA stays the authority, and the worst N-instance outcome is N reads instead of one.
       'worker/src/control/knowledge-extract.ts', // `loggedSkips` — log-once dedupe; the worst N-instance outcome is N warnings.
       'worker/src/run/browser-cloud/release-hook.ts', // in-process wiring seam for the release chokepoint, set once at startup.
       'worker/src/run/browser-cloud/session-pool.ts', // 8.1 fixed in Phase 2.7 — now a read-through socket cache; the sealed capability on the session row is the authority, and a miss re-attaches from it.
