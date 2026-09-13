@@ -3,7 +3,7 @@ import type { TeamInvitationRecord } from '@nessie/schemas'
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import { useAgents } from '../../facades/agents/queries'
 import {
-  useCreateTeamInvitations,
+  useCreateTeamInvitation,
   useResendTeamInvitation,
   useReviewTeamInvitation,
   useRevokeTeamInvitation,
@@ -161,7 +161,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
 }
 
 const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
-  const createInvitations = useCreateTeamInvitations()
+  const createInvitation = useCreateTeamInvitation()
   const [email, setEmail] = useState('')
   const [teamRole, setTeamRole] = useState<string>('member')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -174,17 +174,13 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
     setFormError(undefined)
     setSuccess(undefined)
     try {
-      const response = await createInvitations.mutateAsync({
-        invites: [{ email: email.trim(), teamRole }],
-      })
+      await createInvitation.mutateAsync({ email: email.trim(), teamRole })
       setEmail('')
       setTeamRole('member')
-      // UOA decides the outcome per address (invited, already a member, …).
-      setSuccess(
-        response.results[0]?.status
-          ? `Invitation ${response.results[0].status.replace(/_/g, ' ')}.`
-          : 'Invitation sent.',
-      )
+      // UOA decides the outcome for the address (invited, already a member, …)
+      // and says so on its own hosted page; the route answers `{ok:true}` for
+      // every accepted outcome, so there is no per-address verdict to relay.
+      setSuccess('Invitation sent.')
     } catch (caught) {
       const { fieldErrors: nextFieldErrors, formError: nextFormError } = toFormErrors(caught)
       setFieldErrors(nextFieldErrors)
@@ -227,10 +223,10 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
       <FormActions>
         <button
           className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={createInvitations.isPending || email.trim().length === 0}
+          disabled={createInvitation.isPending || email.trim().length === 0}
           type="submit"
         >
-          {createInvitations.isPending ? 'Sending…' : 'Send invitation'}
+          {createInvitation.isPending ? 'Sending…' : 'Send invitation'}
         </button>
       </FormActions>
     </form>

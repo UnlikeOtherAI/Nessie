@@ -309,7 +309,10 @@ test('the org invite dialog receives only UOA-authorized targets and repeats the
         calls[3]?.url,
         `${base}/teams/team_product/invitations${query}`,
       )
-      assert.equal(calls[3]?.body, JSON.stringify({ email: 'new@acme.test' }))
+      assert.equal(
+        calls[3]?.body,
+        JSON.stringify({ email: 'new@acme.test', redirectUrl: uoaEnv.UOA_REDIRECT_URL }),
+      )
       assert.ok(calls[3]?.subjectAssertion)
 
       // UOA owns one actionable invitation for this exact team and normalized
@@ -322,7 +325,10 @@ test('the org invite dialog receives only UOA-authorized targets and repeats the
       })
       assert.equal(repeated.statusCode, 200)
       assert.equal(calls[5]?.url, `${base}/teams/team_product/invitations${query}`)
-      assert.equal(calls[5]?.body, JSON.stringify({ email: 'new@acme.test' }))
+      assert.equal(
+        calls[5]?.body,
+        JSON.stringify({ email: 'new@acme.test', redirectUrl: uoaEnv.UOA_REDIRECT_URL }),
+      )
       assert.ok(calls[5]?.subjectAssertion)
     } finally {
       await app.close()
@@ -352,7 +358,11 @@ test('organization invitations enforce UOA’s 120-character optional name limit
       assert.equal(calls.length, 2)
       assert.equal(
         calls[1]?.body,
-        JSON.stringify({ email: 'new@acme.test', name: 'a'.repeat(120) }),
+        JSON.stringify({
+          email: 'new@acme.test',
+          name: 'a'.repeat(120),
+          redirectUrl: uoaEnv.UOA_REDIRECT_URL,
+        }),
       )
 
       const rejected = await app.inject({

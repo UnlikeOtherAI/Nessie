@@ -25,6 +25,14 @@ import { TeamAddressField } from './TeamAddressField'
  * different authorization — but to the person they are the same question
  * ("where do I want to work?") asked at two scopes, so a second entry point
  * would be the look-alike surface Rule zero names.
+ *
+ * The doorway says "Add team", so the dialog opens on the team tab and is
+ * titled "Create a team" for anybody who may create one here. It used to open
+ * on the organisation tab, titled "Create an organisation": the door said
+ * "team" and the room said "organisation", and founding a whole organisation
+ * was one accidental Enter away (2026-09-13 invitation e2e run, F7). Somebody
+ * who may not create a team in this organisation still gets the organisation
+ * form — that is the only thing open to them — and the dialog says so.
  */
 
 type CreateScope = 'organization' | 'team'
@@ -44,7 +52,12 @@ export const CreateTeamDialog = ({
   open,
   organizationName,
 }: CreateTeamDialogProps) => {
-  const [scope, setScope] = useState<CreateScope>('organization')
+  // The chosen tab, or `null` for "whatever this person's authority defaults
+  // to". Not seeded into state at mount: `canCreateTeam` depends on a
+  // permissions read that can still be in flight when the shell first renders
+  // this dialog, and a default captured before that answer arrives would leave
+  // an administrator on the organisation tab.
+  const [chosenScope, setChosenScope] = useState<CreateScope | null>(null)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   // An address UOA would refuse must not be submittable; an empty one is fine,
@@ -54,6 +67,8 @@ export const CreateTeamDialog = ({
   // Held across retries so a second attempt is recognised as the same intent.
   const idempotencyKey = useRef(newIdempotencyKey())
   const nameRef = useRef<HTMLInputElement>(null)
+
+  const scope: CreateScope = chosenScope ?? (canCreateTeam ? 'team' : 'organization')
 
   const createOrganization = useCreateOrganization()
   const createTeam = useCreateTeamTeam()
@@ -65,7 +80,7 @@ export const CreateTeamDialog = ({
     setName('')
     setSlug('')
     setFormError(undefined)
-    setScope('organization')
+    setChosenScope(null)
     idempotencyKey.current = newIdempotencyKey()
     onClose()
   }
@@ -112,15 +127,15 @@ export const CreateTeamDialog = ({
             ariaLabel="What to create"
             fullWidth
             items={[
-              { label: 'New organisation', value: 'organization' },
               {
                 label: inOrganization ? `In ${inOrganization}` : 'In this organisation',
                 value: 'team',
               },
+              { label: 'New organisation', value: 'organization' },
             ]}
             onChange={(next) => {
               if (pending) return
-              setScope(next)
+              setChosenScope(next)
               setFormError(undefined)
             }}
             role="radiogroup"

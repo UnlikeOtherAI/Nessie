@@ -9,6 +9,7 @@ import {
 } from '../../components/features/members/PersonAgents'
 import type { PeopleAgentsTree } from '../../components/features/members/people-agents-tree'
 import type { AgentRecord } from '../../lib/api-client'
+import { memberDisplayName } from '../../lib/member-display-name'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   useRemoveTeamMember,
@@ -22,7 +23,7 @@ import { Select } from '../../components/shared/FormControls'
 import { formErrorMessage } from '../../facades/forms/form-errors'
 
 const memberLabel = (member: TeamMemberRecord): string =>
-  member.displayName ?? member.email ?? member.uoaSub
+  memberDisplayName(member.displayName, member.email) ?? member.uoaSub
 
 // UOA's own team-role vocabulary. Ownership transfer is a separate UOA
 // operation, so "owner" is shown but never offered as a change.

@@ -12,6 +12,7 @@ import {
 } from '@nessie/runtime'
 
 import {
+  invitationRedirectUrl,
   orgPath,
   requireSettings,
   rosterRequest,
@@ -378,16 +379,24 @@ export const setTeamMemberActivation = async (
  * Send invitations. Acceptance is hosted by UOA — Nessie never mints, stores or
  * renders an invitation token.
  */
-/** Resend a pending invitation email; UOA refreshes its 30-day expiry. */
+/**
+ * Resend a pending invitation email; UOA refreshes its 30-day expiry.
+ *
+ * The resent mail is a *new* mail and invalidates the earlier link, so it has
+ * to carry `redirectUrl` for the same reason the original does — otherwise a
+ * resend would quietly downgrade an invitation that had a way back into one
+ * that does not. Both scopes resend through here.
+ */
 export const resendTeamInvitation = async (
   team: UoaRosterTeam,
   inviteId: string,
   deps: UoaRosterDeps = {},
 ): Promise<void> => {
+  const settings = requireSettings()
   await rosterRequest(
-    requireSettings(),
+    settings,
     `${teamPath(team)}/invitations/${encodeURIComponent(inviteId)}/resend`,
-    { method: 'POST' },
+    { method: 'POST', body: { redirectUrl: invitationRedirectUrl(settings) } },
     deps,
   )
 }
