@@ -143,6 +143,7 @@ export const ChannelAgentInfoDrawer = ({
     dismissPendingAgent,
     confirmSecretCapture,
     dismissSecretCapture,
+    mentionInvite,
     secretCapture,
   } = useChannelComposer({
     activeChannel,
@@ -377,6 +378,7 @@ export const ChannelAgentInfoDrawer = ({
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onConfirmSecretCapture={confirmSecretCapture}
             onDismissSecretCapture={dismissSecretCapture}
+            mentionInvite={mentionInvite}
             onSubmitForm={(event) => {
               drawerScroll.pinToBottom()
               void sendAddressedForm(event)
