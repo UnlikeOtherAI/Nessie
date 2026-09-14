@@ -771,7 +771,7 @@ collapse.
 ## Cross-model review (2026-09-08)
 
 Codex Sol reviewed the committed tip read-only in three briefs (server
-contract, worker tools + orchestrator, admin rail/card/panel); Kimix was down
+contract, worker tools + orchestrator, admin rail/card/panel); the second reviewer was down
 for the whole evening (five runs, provider "high demand", no findings), so
 this round is Sol's. Findings were re-verified against the code before any
 were accepted — the roster's standing rule.

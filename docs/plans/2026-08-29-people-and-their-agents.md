@@ -5,9 +5,9 @@ entitlement decision; phase 4 not scheduled — see "What is missing".
 **Date:** 2026-08-29
 **Supersedes:** [docs/done/2026-08-29-org-chain-of-command-superseded.md](../done/2026-08-29-org-chain-of-command-superseded.md)
 (the rejected "chain of command" plan and its invented manager edge)
-**Reviewed:** two rounds of cross-model review (Codex Sol + kimix), plus a
+**Reviewed:** two rounds of cross-model review (Codex Sol + reviewer B), plus a
 five-way code-grounding sweep and adversarial synthesis. Round 2 on this plan:
-Sol "sound direction, four blockers"; kimix "fundamentally sound, approve after
+Sol "sound direction, four blockers"; reviewer B "fundamentally sound, approve after
 S1/S3/realtime". All findings verified against code before applying; where the
 two disagreed (the composite FK) the adjudication is recorded in-line.
 **Related:** [2026-08-15-uoa-org-tenancy.md](2026-08-15-uoa-org-tenancy.md)
@@ -127,7 +127,7 @@ CHECK (owner_user_id IS NULL
 ```
 
 **The two reviewers disagreed here, so the reasoning is recorded.** Sol asked for
-a composite FK plus live re-derivation; kimix argued the composite FK is
+a composite FK plus live re-derivation; reviewer B argued the composite FK is
 over-cautious and gives "false confidence", because `OrganizationMember` rows are
 **deliberately retained after deactivation** for audit history
 (`packages/runtime/src/disclosure-access.ts:28-31`), so the FK is satisfied even
@@ -142,7 +142,7 @@ by a deactivated member.
   cross-org ownership must be impossible at the storage boundary rather than
   merely unlikely in the intended service path.
 - **Liveness** — that membership is not deactivated. **No FK can express this**,
-  which is kimix's real point and it is correct. Only the read-time
+  which is reviewer B's real point and it is correct. Only the read-time
   re-derivation below provides it.
 
 So the FK is a *tenancy* constraint and must never be read as a liveness

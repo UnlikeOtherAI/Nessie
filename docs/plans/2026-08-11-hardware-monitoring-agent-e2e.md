@@ -60,7 +60,7 @@ control.
 ## Phase 3 — Fix what is broken
 
 - [x] Every defect found is logged below with evidence
-- [x] Each design decision is agreed by **Fable** and **Kimix** before implementing
+- [x] Each design decision is agreed by **Fable** and **Reviewer B** before implementing
 - [x] Fixes implemented on this worktree branch
 - [ ] Pushed to `main`, deployed, re-verified in production
 
@@ -92,7 +92,7 @@ Both consultants independently reviewed the evidence and **agreed on shape D**
   also the *drift* channel (a re-probe flips a changed tool back to
   `pending_review`), and rejected a single connector-level "approve all" as a
   blanket approval that hides destructive tools.
-- **Kimix** ratified, with four corrections that were adopted: put the service
+- **Reviewer B** ratified, with four corrections that were adopted: put the service
   in `@nessie/mcp-manage` (shared MCP management logic) rather than
   `api/src/services`; reuse the existing `McpInstanceError`
   /`MANAGED_BY_INTEGRATION` instead of a new error vocabulary; keep the new
@@ -111,7 +111,7 @@ alternatives:
   answer owed to the trigger" — and that it must be stamped *structurally* from
   the fact that it is a trigger run, never judged from content.
 - **(b) The kickoff message.** Both chose option A (`role: 'system'`, like the
-  Personal-Assistant path already did) over keeping it visible. **Kimix**
+  Personal-Assistant path already did) over keeping it visible. **Reviewer B**
   verified it breaks neither the audit trail (`AgentTriggerDelivery` +
   `Run.triggerId` carry provenance; the row persists, it is only filtered from
   rendering) nor cancel/restart/continue (`Run.triggerMessageId` is
@@ -153,7 +153,7 @@ an agent the user merely *named*. In the UI that id comes from a list, so
 `agent_list` (the same `listAgentsForUser` read `GET /api/agents` performs)
 shipped beside them.
 
-They disagreed on one point: Kimix wanted `agent_create` owner-only; Fable said
+They disagreed on one point: reviewer B wanted `agent_create` owner-only; Fable said
 member-level for route parity. **Checked in code — Fable is right:**
 `POST /api/agents` and `POST /api/channels` carry only `requireActorContext`,
 while `POST /api/agents/:id/bindings` adds `requireOwner` + channel membership
@@ -175,7 +175,7 @@ Fable added the observation that settles it: `buildSubjectAssertion` never uses
 a live user credential — it is Nessie's own RS256 assertion over
 `{sub, tv, active}` — so replaying a captured tuple is cryptographically
 identical to a live session, and every fail-closed gate is source-agnostic.
-Fable also **corrected Kimix on the backfill**: Kimix proposed a one-off script
+Fable also **corrected reviewer B on the backfill**: reviewer B proposed a one-off script
 seeding the tuple from the link's `active*` fields, which would have
 reintroduced exactly the non-authoritative source both had just rejected. No
 backfill was written; the one pre-existing trigger errored once with the

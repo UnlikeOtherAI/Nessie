@@ -10,8 +10,8 @@ scheduled provenance pends and coalesces before adoption, materializes pinned
 instances in the adopting run, classifies invalid templates as an owner-alerted
 trigger error, and exposes schedule creation and repair from each template.
 **Date:** 2026-08-31
-**Reviewed:** two independent adversarial reviews on the same repo — kimix
-(17 findings) and Codex Sol (18 findings, on the doc with kimix's round
+**Reviewed:** two independent adversarial reviews on the same repo — reviewer B
+(17 findings) and Codex Sol (18 findings, on the doc with reviewer B's round
 already folded). Every adopted claim was re-verified against code first;
 adjudications in §"Cross-model review".
 **Related:** [2026-08-30-agent-scopes-personal-team-global.md](2026-08-30-agent-scopes-personal-team-global.md)
@@ -748,13 +748,13 @@ Schema-shape bounds are constants stated once in
 only the proposal cap is deployment-tunable, because it is a behavioural
 heuristic rather than a contract.
 
-## Cross-model review — kimix and Codex Sol
+## Cross-model review — reviewer B and Codex Sol
 
-Both reviewers worked adversarially against the repo; kimix reviewed the first
-draft, Sol reviewed the doc with kimix's round folded in. Every claim below
+Both reviewers worked adversarially against the repo; reviewer B reviewed the first
+draft, Sol reviewed the doc with reviewer B's round folded in. Every claim below
 was re-verified against code before adoption.
 
-### Adopted from kimix (verified)
+### Adopted from reviewer B (verified)
 
 1. **`activeRunId` release cannot ride `updateRunStatus` alone** — the API's
    immediate-cancel flips a `pending` run terminal with a bare `updateMany`
@@ -772,7 +772,7 @@ was re-verified against code before adoption.
    the exact `enabled: true` in-use predicate, the config-readability
    adjudication, cancel semantics, and the per-step-assignee non-goal — all
    folded (§2–§4). **Refuted:** "the `safe:` flag is aspirational" —
-   `builtin-kb-tools.ts` sets it on every definition; kimix read the handler
+   `builtin-kb-tools.ts` sets it on every definition; reviewer B read the handler
    files, not the definitions.
 
 ### Adopted from Sol (verified)
@@ -810,6 +810,6 @@ was re-verified against code before adoption.
 - Sol's suggestion of an effect outbox/retry for approval activation —
   declined as new architecture; the version-pinned CAS plus owner-direct
   activation covers the crash window without it.
-- kimix's suggestion to index the cross-agent pending-proposal scan —
+- Reviewer B's suggestion to index the cross-agent pending-proposal scan —
   deferred; the `/approvals` page already paginates and v1 volume does not
   warrant it.

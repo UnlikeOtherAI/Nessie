@@ -11,7 +11,7 @@ Status: `todo` · `design` (proposal round out) · `doing` · `blocked` · `done
 | 1 | Archive/unarchive for channels + projects at every level | doing | Model decided (see Decisions); writing consolidated spec |
 | 2 | Channel names always lowercase-hyphenated, no special chars | done | chokepoint + both dialogs; landed on main 2026-08-15 |
 | 3 | No member selector in a 1:1 DM (API + UI) | done | API 403 + UI hidden (header and conversation-info Add people). See conflict note under task 4 |
-| 4 | `+` on Direct Messages opens a compose screen, not "Invite a user" | design | Kimix design consult running |
+| 4 | `+` on Direct Messages opens a compose screen, not "Invite a user" | design | design consult running |
 | 5 | Dialog dismisses when a drag started inside ends on the scrim | done | `useOverlayDismiss` across the legacy `onClick` scrims; dialogs added since use an equivalent `onMouseDown` guard |
 | 6 | Starred section: self-DM star state, agent DM shown as `#`, two rows active | todo | Three defects, one sidebar surface |
 | 7 | Channel tabs: drop Runs, drop Info, composer only on Messages | done | Runs/Info removed; Automations kept; composer gated to Messages |
@@ -34,7 +34,7 @@ Status: `todo` · `design` (proposal round out) · `doing` · `blocked` · `done
 > projects as well."
 
 Brief: [2026-08-12-archive-unarchive-brief.md](2026-08-12-archive-unarchive-brief.md).
-Proposals: `-fable.md`, `-kimix.md`, `-sol.md` (all three delivered).
+Proposals: `-fable.md`, `-review-b.md`, `-sol.md` (all three delivered).
 
 ### Decisions (owner-approved 2026-08-12)
 
@@ -50,7 +50,7 @@ All three proposals converged on the model, so it is settled:
 3. **Delete — owner picked the Fable/Sol model.** Delete is permanent and real,
    allowed **only on an object that is already archived**, **org owner only**,
    behind a typed confirmation naming the object and its blast radius. There is
-   **no retention timer** — Kimix's 30-day auto-purge was rejected: an
+   **no retention timer** — reviewer B's 30-day auto-purge was rejected: an
    invisible deadline on archived data is the opposite of "I don't want to
    delete it". Archive keeps history indefinitely.
 4. **Archive/unarchive permissions follow the object's existing manage rule**,
@@ -145,16 +145,16 @@ not touch them.
 > group DM channel. If I add a user to this GroupDM, it needs to ask me if I
 > want to create a new group or just add them to the existing one, in which case
 > they're going to see the full history. This task is design, so consult with
-> Kimix on how we're gonna implement this visually."
+> [a second model] on how we're gonna implement this visually."
 
-Design-first. Consult Kimix on the visual implementation. Must cover: the
+Design-first. Consult a second model on the visual implementation. Must cover: the
 recipient token row (users **and** agents), what happens with one recipient
 (existing 1:1 DM) vs several (group), and the new-group-vs-add-here question
 including the history-visibility consequence stated plainly to the person
 choosing.
 
 Brief: [2026-08-12-dm-compose-brief.md](2026-08-12-dm-compose-brief.md) —
-Kimix consult running, output to `2026-08-12-dm-compose-proposal-kimix.md`.
+Design consult output: `2026-08-12-dm-compose-proposal-review-b.md`.
 
 Grounding facts: the `+` calls `onNavigateSettings('members')`
 (`admin/src/layouts/admin-shell/SidebarDmSection.tsx:56`), which is the org

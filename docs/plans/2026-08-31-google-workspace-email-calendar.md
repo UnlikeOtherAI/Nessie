@@ -37,7 +37,7 @@ conversation**. A composed email appears in chat as a card showing recipients,
 CC, subject and body, with a Send button. A person may grant standing consent
 so agents can send on their behalf **when asked** without approving each one.
 
-> ## Review outcome (Fable + kimix + Codex Sol, 2026-08-31)
+> ## Review outcome (Fable + reviewer B + Codex Sol, 2026-08-31)
 >
 > v1 was reviewed by three models and **was not implementation-ready**. The
 > direction held — first-party builtins, one Google credential store, live
@@ -486,16 +486,16 @@ and makes today's connection self-service before any new Google surface lands.
 
 ## 14. Reviewer claims rejected
 
-- **"The approval flow is uncompletable by the asker" (kimix).** False:
+- **"The approval flow is uncompletable by the asker" (reviewer B).** False:
   `requesterId` is the agent ([tool-authorization.ts:259](worker/src/run/execute/tool-authorization.ts:259)),
   so SELF_APPROVAL never fires for a user, and in a DM the owner passes the
   channel-membership arm of `approvalVisibilityWhere`. The real defect is the
   **inverse** — the approver set is too broad (§7.2).
-- **"`email_received` correctly extends the trigger enum" (kimix).** The `event`
+- **"`email_received` correctly extends the trigger enum" (reviewer B).** The `event`
   type already matches a configurable `eventType`
   ([trigger-events.ts:19](worker/src/control/trigger-events.ts:19)); a new enum
   member forks that dispatch.
-- **safeFetch / IP pinning for the Google connector (kimix BLOCKER, Sol MAJOR).**
+- **safeFetch / IP pinning for the Google connector (reviewer B BLOCKER, Sol MAJOR).**
   Ruled out of scope by direction.
 
 ## 15. Verification

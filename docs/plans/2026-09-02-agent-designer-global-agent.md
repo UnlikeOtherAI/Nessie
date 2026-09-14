@@ -1,7 +1,7 @@
 # The Agent Designer — the first global agent
 
 **Status: built.** Phases 0, 1, 2a, 2b, 3 and 4 all implemented 2026-09-02.
-Revised 2026-09-02 after independent Kimix and Codex Sol code-aware reviews
+Revised 2026-09-02 after independent reviewer B and Codex Sol code-aware reviews
 (see "Cross-model review"); every adopted finding was re-verified against code
 first.
 
