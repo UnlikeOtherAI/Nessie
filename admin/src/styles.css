@@ -839,6 +839,13 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   padding-bottom: calc(var(--nessie-native-bottom-overlay, 0px) + env(safe-area-inset-bottom));
 }
 
+/* The rail keeps its account button off the window's bottom edge. Its spacing
+   lives here, not in a `pb-*` utility: the unlayered rule above beats every
+   layered Tailwind padding on this aside. */
+.admin-shell > aside.admin-sidebar-rail {
+  padding-bottom: calc(24px + var(--nessie-native-bottom-overlay, 0px) + env(safe-area-inset-bottom));
+}
+
 /* The pinned list column takes one clearance more than the surfaces above:
    the iPad shell floats its native creation control over this column's own
    floor (`--nessie-native-list-column-clearance`;
@@ -2042,11 +2049,11 @@ html[data-desktop-platform='linux'] #root {
    draws a bar: its spacer sizes the column to the viewport, so sub-pixel
    rounding alone overflowed it by 1px and painted a full-height scrollbar
    that also took 5px from a 65px column. */
-.admin-rail {
+.admin-sidebar-rail {
   scrollbar-width: none;
 }
 
-.admin-rail::-webkit-scrollbar {
+.admin-sidebar-rail::-webkit-scrollbar {
   display: none;
 }
 

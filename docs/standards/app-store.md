@@ -39,8 +39,14 @@ file is the rule**.
   stays a **constant HTML page that never redirects** (a caller-supplied return
   URL is an open redirect); it posts a fixed message to its opener at a
   server-resolved origin, and the popup carries `noopener` because its first
-  navigation is the third-party authorize URL, not ours. **Installing an app is
-  not granting it**: `McpServerInstance.requiresExplicitToolGrant` (default
+  navigation is the third-party authorize URL, not ours. **Publishing an app
+  shares it with its organisation**: `publishCatalogEntry` writes
+  `visibility: 'public'` (custom apps and library imports both publish), so a
+  colleague's app is on everyone's `/apps`. Public tenant names are unique per
+  organisation, instance-global names instance-wide. `visibility` stays because
+  private apps are planned — do not drop it. **Installing an app is
+  not granting it** (except on a person's own connection, which every agent may
+  use in that person's runs — see [mcp-connectors.md](mcp-connectors.md)): `McpServerInstance.requiresExplicitToolGrant` (default
   false) is carried into `projectMcpToolDescriptors` on both the create and
   update branches — update too, or a capability discovered by a later refresh
   projects open and silently widens the app — and the worker's existing
