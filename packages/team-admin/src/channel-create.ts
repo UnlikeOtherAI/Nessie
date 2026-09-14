@@ -73,6 +73,95 @@ const canPlaceChannelInTeam = async (
 }
 
 /**
+ * The shared channels every organisation starts with. They are seeded only
+ * into a root that has never held a standard channel — archived rows count —
+ * so deleting one is final: the root has held channels, and nothing re-seeds.
+ */
+export const DEFAULT_SHARED_CHANNEL_NAMES = ['general', 'random'] as const
+
+const seedDefaultSharedChannels = async (
+  transaction: Prisma.TransactionClient,
+  root: { organizationId: string; projectId: string; teamId: string },
+): Promise<void> => {
+  // Public and memberless: every organisation member reaches a public channel,
+  // and nobody in particular created these.
+  await transaction.channel.createMany({
+    data: DEFAULT_SHARED_CHANNEL_NAMES.map((name) => ({
+      label: name,
+      slug: name,
+      organizationId: root.organizationId,
+      projectId: root.projectId,
+      teamId: root.teamId,
+      visibility: 'public' as const,
+    })),
+  })
+}
+
+/**
+ * Resolve-or-create the organisation's shared-channel root (the `channelRoot`
+ * project and its `systemManaged` team), seeding the default shared channels
+ * into a root that has never held one — so a new organisation never shows an
+ * empty "Shared channels" section, including a root an older release created
+ * empty. Serialised per organisation by an advisory lock; call it inside the
+ * transaction that creates or signs in to the organisation.
+ */
+export const ensureSharedChannelRootInTransaction = async (
+  transaction: Prisma.TransactionClient,
+  organizationId: string,
+): Promise<{ projectId: string; teamId: string }> => {
+  await transaction.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(
+      hashtext(${organizationId}),
+      hashtext('standalone_channel_team')
+    )
+  `)
+
+  const existing = await transaction.team.findFirst({
+    where: {
+      project: { channelRoot: true, organizationId },
+      systemManaged: true,
+    },
+    select: { id: true, projectId: true },
+  })
+  if (existing) {
+    const everHeld = await transaction.channel.count({
+      where: { projectId: existing.projectId, type: 'standard' },
+    })
+    if (everHeld === 0) {
+      await seedDefaultSharedChannels(transaction, {
+        organizationId,
+        projectId: existing.projectId,
+        teamId: existing.id,
+      })
+    }
+    return { projectId: existing.projectId, teamId: existing.id }
+  }
+
+  const project = await transaction.project.create({
+    data: {
+      channelRoot: true,
+      name: STANDALONE_CHANNEL_PROJECT_NAME,
+      organizationId,
+    },
+    select: { id: true },
+  })
+  const team = await transaction.team.create({
+    data: {
+      name: STANDALONE_CHANNEL_TEAM_NAME,
+      projectId: project.id,
+      systemManaged: true,
+    },
+    select: { id: true },
+  })
+  await seedDefaultSharedChannels(transaction, {
+    organizationId,
+    projectId: project.id,
+    teamId: team.id,
+  })
+  return { projectId: project.id, teamId: team.id }
+}
+
+/**
  * The caller's verified organisation owner/admin standing when it has one
  * (`isAdminActor` on a REST request), otherwise the `OrganizationMember` row.
  */
@@ -94,43 +183,8 @@ const ensureStandaloneChannelTeam = async (
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<{ projectId: string; teamId: string }> =>
-  prisma.$transaction(async (transaction) => {
-    await transaction.$executeRaw(Prisma.sql`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${organizationId}),
-        hashtext('standalone_channel_team')
-      )
-    `)
-
-    const existing = await transaction.team.findFirst({
-      where: {
-        project: { channelRoot: true, organizationId },
-        systemManaged: true,
-      },
-      select: { id: true, projectId: true },
-    })
-    if (existing) {
-      return { projectId: existing.projectId, teamId: existing.id }
-    }
-
-    const project = await transaction.project.create({
-      data: {
-        channelRoot: true,
-        name: STANDALONE_CHANNEL_PROJECT_NAME,
-        organizationId,
-      },
-      select: { id: true },
-    })
-    const team = await transaction.team.create({
-      data: {
-        name: STANDALONE_CHANNEL_TEAM_NAME,
-        projectId: project.id,
-        systemManaged: true,
-      },
-      select: { id: true },
-    })
-    return { projectId: project.id, teamId: team.id }
-  })
+  prisma.$transaction((transaction) =>
+    ensureSharedChannelRootInTransaction(transaction, organizationId))
 
 /**
  * Create a channel on behalf of a user, who becomes its owner.

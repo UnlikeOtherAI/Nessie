@@ -436,6 +436,14 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         channels.push(row)
         return row
       },
+      count: async ({ where }: { where?: Row }) => (record('channel.count'),
+        channels.filter((channel) => channel.projectId === where?.projectId).length),
+      // The organisation's default shared channels, seeded with its root.
+      createMany: async ({ data }: { data: Row[] }) => {
+        record('channel.createMany')
+        channels.push(...data.map((row) => ({ id: randomUUID(), ...row })))
+        return { count: data.length }
+      },
       findFirst: async ({ where }: { where?: Row }) => {
         record('channel.findFirst')
         return channels.find((channel) =>

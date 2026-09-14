@@ -21,9 +21,16 @@ const createStandalonePrisma = (slugTaken = false) => {
   let createdProject = false
   let createdTeam = false
   let channelCreateData: Record<string, unknown> | undefined
+  let seededChannelNames: string[] = []
 
   const transaction = {
     $executeRaw: async () => 0,
+    channel: {
+      createMany: async ({ data }: { data: Array<{ label: string; slug: string }> }) => {
+        seededChannelNames = data.map((row) => row.slug)
+        return { count: data.length }
+      },
+    },
     project: {
       create: async () => {
         createdProject = true
@@ -96,6 +103,7 @@ const createStandalonePrisma = (slugTaken = false) => {
     createdTeam: () => createdTeam,
     getChannelCreateData: () => channelCreateData,
     prisma,
+    seededChannelNames: () => seededChannelNames,
   }
 }
 
@@ -112,6 +120,7 @@ test('standalone channels use a hidden organization-level container', async () =
 
   assert.equal(fake.createdProject(), true)
   assert.equal(fake.createdTeam(), true)
+  assert.deepEqual(fake.seededChannelNames(), ['general', 'random'])
   assert.deepEqual(fake.getChannelCreateData(), {
     label: 'general',
     slug: 'general',

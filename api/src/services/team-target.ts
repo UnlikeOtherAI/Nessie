@@ -140,7 +140,7 @@ const createTeamEnvironment = async (
   })
   const channel = await transaction.channel.create({
     data: {
-      label: 'General',
+      label: 'general',
       slug: 'general',
       organizationId: input.organizationId,
       projectId: project.id,
@@ -256,8 +256,10 @@ export const resolveDefaultTarget = async (
     }
   }
 
+  // `systemManaged` excludes the shared-channel root and the Personal
+  // Assistant's team: neither is a team a person works in.
   const defaultTeam = await prisma.team.findFirst({
-    where: { externalTeamId: null, project: { organizationId } },
+    where: { externalTeamId: null, systemManaged: false, project: { organizationId } },
     orderBy: CREATED_AT_ASC,
     select: { id: true, projectId: true },
   })

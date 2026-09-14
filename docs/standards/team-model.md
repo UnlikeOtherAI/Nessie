@@ -307,6 +307,26 @@ at**, which under the model above is one team's body of work:
 - The two namespaces are independent. `#general` may exist as a shared channel
   *and* in every project; twice inside one of them, never.
 
+**Channel names are lowercase, seeds included.** A seed that writes a channel
+row directly (`createTeamEnvironment`, the bootstrap plan) bypasses
+`validateChannelLabel`, so it must write the slug form itself — `general`,
+never `General`. Project and team names are display names and keep their case.
+
+**Every organisation starts with shared `#general` and `#random`.**
+`ensureSharedChannelRootInTransaction`
+([packages/team-admin/src/channel-create.ts](../../packages/team-admin/src/channel-create.ts))
+creates both, public and memberless, when it creates the organisation's
+`channelRoot` project or finds one that has **never held a standard channel**
+— archived rows count. It runs in the bootstrap seed and in every UOA sign-in
+transaction (`resolveUoaTeamContext`, recovery) *after* the account-link claim
+and the team target, so a refused claim still writes nothing, and a root an
+older release created empty during a blue-green swap is healed at the next
+login. The predicate is "ever held", never "currently has" — a person who
+deletes (archives) one keeps it deleted. Do not add a "re-create if missing"
+check anywhere; it would resurrect deleted channels. Migration
+`20260914120000_default_shared_channels` backfilled existing organisations with
+the same predicate.
+
 **An archived channel does not hold its name.** `DELETE /api/channels/:id`
 archives rather than hard-deletes, and every list a person can see hides
 archived channels — so before this, deleting `#random` left no trace except the
