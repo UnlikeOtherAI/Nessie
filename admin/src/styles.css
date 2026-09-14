@@ -444,7 +444,11 @@ a {
 :where([data-theme="nessie"]) .admin-frame > .admin-shell > .resizable-sidebar,
 :where([data-theme="nessie"]) .mobile-web-home-header,
 :where([data-theme="nessie"]) .mobile-tabbar,
+:where([data-theme="nessie"]) .admin-frame > .native-chrome-palette,
 :where([data-theme="nessie"]) aside[class~='bg-[color:var(--sb)]']:not(.focus-mode *):not(.overlays-focus-mode *) {
+  /* The chrome is dark; the native shell reads this scheme (and every token
+     here) off `.native-chrome-palette` to set its status bar. */
+  color-scheme: dark;
   --rail: #0b172a;
   /* A step lighter than the rail and warmed toward violet, so the section
      rail and the list it opens read as two planes. */
@@ -496,7 +500,8 @@ a {
    messages into another source of visual noise. */
 .focus-mode > .admin-topbar,
 .focus-mode > .admin-shell > aside,
-.focus-mode > .admin-shell > .resizable-sidebar {
+.focus-mode > .admin-shell > .resizable-sidebar,
+.focus-mode > .native-chrome-palette {
   --rail: #242424;
   --sb: #383838;
   --sb-active: #606062;
