@@ -112,8 +112,9 @@ export function Hero() {
             <FontAwesomeIcon className="n-device-close" icon={faXmark} />
           </button>
           <div className="n-device-zoom">
-            <DeviceView idPrefix="nd-zoom" pose="flat" shot={tab.shot} />
+            <DeviceView idPrefix="nd-zoom" interactive pose="flat" shot={tab.shot} />
           </div>
+          <p className="n-device-hint">Drag to turn it around</p>
         </div>
       )}
     </section>

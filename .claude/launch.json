@@ -4,7 +4,7 @@
     {
       "name": "nessie-web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@nessie/web", "exec", "vite", "--port", "5471", "--strictPort"],
+      "runtimeArgs": ["--filter", "@nessie/web", "exec", "vite", "--host", "0.0.0.0", "--port", "5471", "--strictPort"],
       "port": 5471
     }
   ]

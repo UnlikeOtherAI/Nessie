@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import type * as Three from 'three'
 import type { Shot } from './content'
 import { Desktop } from './device'
@@ -7,24 +8,35 @@ import { Desktop } from './device'
 // — credited in the footer). three.js loads lazily so first paint never waits
 // for it; until the model is ready, or where WebGL is unavailable, the SVG
 // drawing shows instead. The model turns itself: tilted towards the copy in the
-// hero, a little less on hover, and flat in the full-screen view.
+// hero, a little less on hover, and flat in the full-screen view, where it can
+// also be dragged round. The back of the case carries the Nessie mark — a small
+// Easter egg for whoever turns it around.
 
 const modelUrl = '/models/desktop.glb'
-// A negative quarter turn about Y faces the screen to the viewer (+π/2 shows
-// the back). Turning a little further leans its left edge away, towards the
-// copy. The back panel is never shown from any of these poses.
+const logoUrl = '/nessie-mark.svg'
+// A negative quarter turn about Y faces the screen to the viewer. Turning a
+// little further leans its left edge away, towards the copy.
 const flatAngle = -Math.PI / 2
 const tiltedAngle = flatAngle - 0.42
 const hoverAngle = flatAngle - 0.26
 // The screen's UVs cover only this horizontal band of its square texture.
 const screenBand = { top: 0.2394, bottom: 0.793 }
 const textureSize = 2048
+// The back logo: its centre height and its size, as fractions of the model.
+const logoHeight = 0.69
+const logoScale = 0.13
+// Dragging: radians per pixel, and how far the model may tip up or down.
+const yawPerPixel = 0.01
+const pitchPerPixel = 0.005
+const maxPitch = 0.35
 
 type Pose = 'tilted' | 'flat'
 
 type SceneHandle = {
   setShot: (src: string) => void
   setAngle: (angle: number) => void
+  setPitch: (pitch: number) => void
+  setDragging: (dragging: boolean) => void
   dispose: () => void
 }
 
@@ -39,6 +51,56 @@ function hasWebGl() {
     return Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'))
   } catch {
     return false
+  }
+}
+
+// Casts in from both sides of the centred model at logo height. The side whose
+// first hit is not the screen is the back; the mark sits just off that surface.
+function addBackLogo(THREE: typeof Three, model: Three.Object3D, size: Three.Vector3, onLoad: () => void) {
+  const y = -size.y / 2 + logoHeight * size.y
+  for (const side of [1, -1]) {
+    const ray = new THREE.Raycaster(new THREE.Vector3(side * size.x, y, 0), new THREE.Vector3(-side, 0, 0))
+    const hit = ray.intersectObject(model, true)[0]
+    if (!hit?.face || hit.object.userData.isScreen) continue
+
+    const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
+    if (normal.x * side < 0) normal.negate()
+    const point = hit.point.clone().addScaledVector(normal, size.x * 0.003)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 512
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.3,
+      metalness: 0.15,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+    })
+    const edge = logoScale * size.z
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(edge, edge), material)
+    model.add(decal)
+    decal.position.copy(point).sub(model.position)
+    decal.updateMatrixWorld()
+    decal.lookAt(point.clone().add(normal))
+
+    const image = new Image()
+    image.onload = () => {
+      const context = canvas.getContext('2d')
+      if (!context) return
+      const scale = Math.min(canvas.width / image.width, canvas.height / image.height)
+      const width = image.width * scale
+      const height = image.height * scale
+      context.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+      texture.needsUpdate = true
+      onLoad()
+    }
+    image.src = logoUrl
+    return
   }
 }
 
@@ -71,19 +133,15 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
     return null
   }
 
-  // Centre the model on its bounds and scale its largest side to 1.
-  const box = new THREE.Box3().setFromObject(model)
-  const size = box.getSize(new THREE.Vector3())
-  model.position.sub(box.getCenter(new THREE.Vector3()))
-  const pivot = new THREE.Group()
-  pivot.add(model)
-  pivot.scale.setScalar(1 / Math.max(size.x, size.y, size.z))
-  pivot.rotation.y = startAngle
-  scene.add(pivot)
-
-  const camera = new THREE.PerspectiveCamera(26, 1, 0.01, 50)
-  camera.position.set(0, 0.02, 2.25)
-  camera.lookAt(0, 0, 0)
+  let yaw = startAngle
+  let targetYaw = startAngle
+  let pitch = 0
+  let targetPitch = 0
+  let dragging = false
+  let dirty = true
+  let frame = 0
+  let requestedShot = ''
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   // Screenshots are painted into the screen's UV band on a canvas texture.
   const canvas = document.createElement('canvas')
@@ -100,6 +158,7 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
     const material = object.material as Three.MeshStandardMaterial
     if (material.name === 'Screen') {
       object.material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
+      object.userData.isScreen = true
     } else if (material.name === 'LightBlue') {
       material.color.set('#b9d1fb')
     } else if (material.name === 'DarkBlue') {
@@ -107,12 +166,23 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
     }
   })
 
-  let angle = startAngle
-  let target = startAngle
-  let dirty = true
-  let frame = 0
-  let requestedShot = ''
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // Centre the model on its bounds, mark its back, and scale its largest side to 1.
+  const box = new THREE.Box3().setFromObject(model)
+  const size = box.getSize(new THREE.Vector3())
+  model.position.sub(box.getCenter(new THREE.Vector3()))
+  model.updateMatrixWorld(true)
+  addBackLogo(THREE, model, size, () => {
+    dirty = true
+  })
+  const pivot = new THREE.Group()
+  pivot.add(model)
+  pivot.scale.setScalar(1 / Math.max(size.x, size.y, size.z))
+  pivot.rotation.y = startAngle
+  scene.add(pivot)
+
+  const camera = new THREE.PerspectiveCamera(26, 1, 0.01, 50)
+  camera.position.set(0, 0.02, 2.25)
+  camera.lookAt(0, 0, 0)
 
   const resize = () => {
     const { width, height } = host.getBoundingClientRect()
@@ -128,10 +198,13 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
 
   const tick = () => {
     frame = requestAnimationFrame(tick)
-    const delta = target - angle
-    if (Math.abs(delta) > 0.0005) {
-      angle = reduceMotion ? target : angle + delta * 0.09
-      pivot.rotation.y = angle
+    const ease = reduceMotion ? 1 : dragging ? 0.35 : 0.09
+    const yawDelta = targetYaw - yaw
+    const pitchDelta = targetPitch - pitch
+    if (Math.abs(yawDelta) > 0.0005 || Math.abs(pitchDelta) > 0.0005) {
+      yaw += yawDelta * ease
+      pitch += pitchDelta * ease
+      pivot.rotation.set(pitch, yaw, 0)
       dirty = true
     }
     if (!dirty) return
@@ -168,7 +241,13 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
       image.src = src
     },
     setAngle(next) {
-      target = next
+      targetYaw = next
+    },
+    setPitch(next) {
+      targetPitch = next
+    },
+    setDragging(next) {
+      dragging = next
     },
     dispose() {
       cancelAnimationFrame(frame)
@@ -177,7 +256,10 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
         if (!(object instanceof THREE.Mesh)) return
         object.geometry.dispose()
         const materials = Array.isArray(object.material) ? object.material : [object.material]
-        for (const material of materials) material.dispose()
+        for (const material of materials) {
+          ;(material as Three.MeshStandardMaterial).map?.dispose()
+          material.dispose()
+        }
       })
       texture.dispose()
       pmrem.dispose()
@@ -187,12 +269,14 @@ async function createScene(host: HTMLElement, startAngle: number): Promise<Scene
   }
 }
 
-type DeviceViewProps = { shot: Shot; idPrefix: string; pose: Pose; hovered?: boolean }
+type DeviceViewProps = { shot: Shot; idPrefix: string; pose: Pose; hovered?: boolean; interactive?: boolean }
 
-export function DeviceView({ shot, idPrefix, pose, hovered = false }: DeviceViewProps) {
+export function DeviceView({ shot, idPrefix, pose, hovered = false, interactive = false }: DeviceViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const handle = useRef<SceneHandle | null>(null)
   const latest = useRef({ src: shot.src, angle: angleFor(pose, hovered) })
+  const orientation = useRef({ yaw: angleFor(pose, hovered), pitch: 0 })
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
   const [ready, setReady] = useState(false)
 
   latest.current = { src: shot.src, angle: angleFor(pose, hovered) }
@@ -225,11 +309,44 @@ export function DeviceView({ shot, idPrefix, pose, hovered = false }: DeviceView
   }, [shot.src, ready])
 
   useEffect(() => {
-    handle.current?.setAngle(angleFor(pose, hovered))
+    const yaw = angleFor(pose, hovered)
+    orientation.current = { yaw, pitch: 0 }
+    handle.current?.setAngle(yaw)
+    handle.current?.setPitch(0)
   }, [pose, hovered, ready])
 
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!handle.current) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    drag.current = { x: event.clientX, y: event.clientY, ...orientation.current }
+    handle.current.setDragging(true)
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = drag.current
+    if (!start || !handle.current) return
+    const yaw = start.yaw + (event.clientX - start.x) * yawPerPixel
+    const pitch = Math.max(-maxPitch, Math.min(maxPitch, start.pitch + (event.clientY - start.y) * pitchPerPixel))
+    orientation.current = { yaw, pitch }
+    handle.current.setAngle(yaw)
+    handle.current.setPitch(pitch)
+  }
+
+  const endDrag = () => {
+    drag.current = null
+    handle.current?.setDragging(false)
+  }
+
+  const classes = ['n-device-view', ready && 'n-device-ready', interactive && 'n-device-draggable']
   return (
-    <div className={ready ? 'n-device-view n-device-ready' : 'n-device-view'} ref={host}>
+    <div
+      className={classes.filter(Boolean).join(' ')}
+      onPointerCancel={interactive ? endDrag : undefined}
+      onPointerDown={interactive ? onPointerDown : undefined}
+      onPointerMove={interactive ? onPointerMove : undefined}
+      onPointerUp={interactive ? endDrag : undefined}
+      ref={host}
+    >
       <Desktop idPrefix={idPrefix} shot={shot} />
     </div>
   )

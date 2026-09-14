@@ -11,10 +11,13 @@ The public site credits the model in its footer (`modelCredit` in
 
 ## Changes from the original
 
+- The manufacturer logo modelled on the back of the case (two small loose
+  parts in the light blue material) was deleted in Blender from the GLB, the
+  `.blend`, and the FBX, which was re-exported from the cleaned `.blend`.
 - `web/public/models/desktop.glb` is the author's Sketchfab glTF export with the
   screen material's texture replaced by a plain placeholder image.
-- At runtime `web/src/home/desktop3d.tsx` recolours the body and stand and
-  paints Nessie screenshots onto the screen.
+- At runtime `web/src/home/desktop3d.tsx` recolours the body and stand, paints
+  Nessie screenshots onto the screen, and places the Nessie mark on the back.
 
 ## Contents
 

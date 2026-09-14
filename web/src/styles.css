@@ -115,7 +115,7 @@ button {
   min-height: 44px;
   padding: 12px 18px;
   border: 1px solid var(--n-sea);
-  border-radius: 4px;
+  border-radius: 999px;
   box-sizing: border-box;
   background: var(--n-sea);
   color: #fff;
@@ -446,8 +446,29 @@ button {
 .n-device-zoom {
   position: relative;
   width: min(94vw, calc(92vh * 1000 / 900));
-  pointer-events: none;
   animation: n-flatten 600ms var(--easing-standard);
+}
+
+/* Full-screen model: drag with a finger or mouse to turn it round. */
+.n-device-draggable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.n-device-draggable:active {
+  cursor: grabbing;
+}
+
+.n-device-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 @keyframes n-flatten {

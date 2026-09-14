@@ -327,5 +327,5 @@ export const modelCredit = {
   sourceUrl: 'https://sketchfab.com/3d-models/imac-2021-304cb06ffb554883a7a642b2b56754c1',
   licence: 'CC BY 4.0',
   licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
-  changes: 'recoloured, screen image replaced',
+  changes: 'recoloured, manufacturer logo removed, screen image replaced',
 }
