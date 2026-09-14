@@ -471,6 +471,12 @@ a {
   --surface-inverse: #ffffff;
   --surface-inverse-2: #e6ecf5;
   --thinking: #c4b5fd;
+  /* The surface's greens and amber are sized for white; on navy a running
+     dot would sit below its "thinking" partner, so the chrome takes the dark
+     themes' shades. */
+  --executing: #22c55e;
+  --success: #22c55e;
+  --warning: #f59e0b;
   --success-text: #86efac;
   --danger-text: #fca5a5;
   --warning-text: #fde68a;
