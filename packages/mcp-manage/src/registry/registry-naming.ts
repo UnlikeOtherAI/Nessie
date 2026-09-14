@@ -50,7 +50,9 @@ export const resolveAvailableCatalogName = async (
 ): Promise<string | null> => {
   for (const candidate of registryCatalogNameCandidates(registryName)) {
     const taken = await prisma.mcpCatalogEntry.findFirst({
-      where: { name: candidate, visibility: 'public' },
+      // Registry rows are instance-global; an organisation's own public app
+      // shares a name with one without colliding (per-tenant index).
+      where: { name: candidate, visibility: 'public', organizationId: null },
       select: { id: true },
     })
     if (!taken) return candidate

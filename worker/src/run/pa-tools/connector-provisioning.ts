@@ -9,7 +9,6 @@ import {
   McpCatalogError,
   McpInstanceError,
   McpOAuthError,
-  publishCatalogEntry,
   startOAuth,
   type CreateCatalogEntryInput,
   type McpInstanceRow,
@@ -102,17 +101,18 @@ const registerCatalogEntry = async (
     sourceUrl: input.url,
   }
 
-  // The catalog name is unique per owner within an organisation — retry with a
+  // A published catalog name is unique within an organisation — retry with a
   // numeric suffix instead of failing the whole conversational flow on a
-  // duplicate.
+  // duplicate. Published at insert, so a refused name leaves no draft behind.
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const name = attempt === 0 ? baseName : `${baseName}-${attempt + 1}`
     try {
-      const created = await createCatalogEntry(context.prisma, ctx.actorContext, {
-        ...entryInput,
-        name,
-      })
-      await publishCatalogEntry(context.prisma, ctx.actorContext, created.id)
+      const created = await createCatalogEntry(
+        context.prisma,
+        ctx.actorContext,
+        { ...entryInput, name },
+        { publish: true },
+      )
       return { id: created.id, label: created.label, authMethod }
     } catch (error) {
       if (
