@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nessie-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@nessie/web", "exec", "vite", "--port", "5471", "--strictPort"],
+      "port": 5471
+    }
+  ]
+}
