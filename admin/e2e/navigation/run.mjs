@@ -107,13 +107,17 @@ const main = async () => {
     browser = await launchBrowser()
     const contexts = new Map()
     for (const entry of selected) {
-      if (!contexts.has(entry.viewport)) {
+      let isolatedShell = null
+      if (entry.isolatedSession) {
+        const token = await entry.isolatedSession(seed)
+        isolatedShell = await openViewportContext(browser, { name: entry.viewport, token })
+      } else if (!contexts.has(entry.viewport)) {
         contexts.set(
           entry.viewport,
           await openViewportContext(browser, { name: entry.viewport, token: seed.token }),
         )
       }
-      const shell = contexts.get(entry.viewport)
+      const shell = isolatedShell ?? contexts.get(entry.viewport)
       const target = await shell.newPage()
       try {
         const result = await entry.run({ page: target.page, seed, viewport: shell.viewport })
@@ -126,6 +130,7 @@ const main = async () => {
         console.log(`      page errors: ${target.errors.slice(0, 3).join(' | ')}`)
       }
       await target.close()
+      if (isolatedShell) await isolatedShell.close()
     }
     for (const shell of contexts.values()) await shell.close()
   } finally {

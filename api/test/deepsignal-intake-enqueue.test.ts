@@ -32,6 +32,10 @@ import { setProductWebhookSecret } from '../src/services/product-webhook-secret.
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
 const AUTH_SECRET = 'deepsignal-intake-test-secret-0001'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test',
+  keys: { test: 'deepsignal-intake-encryption-root-0001' },
+} as const
 const FANOUT_TOPIC = 'deepsignal.insight.fanout'
 
 type Seed = {
@@ -63,7 +67,7 @@ const seedEnabledTeam = async (prisma: PrismaClient): Promise<Seed> => {
       teamId: team.id,
     },
   })
-  await setProductWebhookSecret(prisma, AUTH_SECRET, {
+  await setProductWebhookSecret(prisma, ENCRYPTION_KEY_RING, {
     organizationId: org.id,
     productSlug: 'deepsignal',
     secret,
@@ -94,6 +98,7 @@ const createReceiverApp = async (prisma: PrismaClient) => {
   registerRawBodyJsonParser(app)
   registerExternalAgentRoutes(app, {
     authSecret: AUTH_SECRET,
+    encryptionKeyRing: ENCRYPTION_KEY_RING,
     isJsonContentType: () => true,
     prisma,
     requireActorContext: () => null,

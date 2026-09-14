@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { decryptWithKey, deriveSecretKey } from '@nessie/runtime'
+import { decryptWithKeyRing, toEncryptionKeyRing } from '@nessie/runtime'
 
 import {
   consumeRefreshToken,
@@ -58,11 +58,11 @@ test('active refresh rotates local and encrypted upstream credentials atomically
   assert.equal(credential?.refreshTokenHash, hashRefreshToken('uoa-refresh-1.next'))
   assert.notEqual(credential?.refreshTokenCiphertext, 'uoa-refresh-1.next')
   assert.equal(
-    decryptWithKey(deriveSecretKey(AUTH_SECRET), {
+    decryptWithKeyRing(toEncryptionKeyRing(AUTH_SECRET), 'uoa.refresh', {
       authTag: credential!.refreshTokenAuthTag,
       ciphertext: credential!.refreshTokenCiphertext,
       iv: credential!.refreshTokenIv,
-    }),
+    }).plaintext,
     'uoa-refresh-1.next',
   )
 })

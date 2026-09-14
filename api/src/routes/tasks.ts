@@ -1,14 +1,17 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { type AuthorizedActionContext, ProjectIdSchema, TaskStatusSchema } from '@nessie/schemas'
+import { TicketSearchCursorError } from '@nessie/team-admin'
 import {
   ArchiveDoneTasksBodySchema,
   AssignableUserSchema,
   AssignTaskBodySchema,
   CreateTaskBodySchema,
   MoveTaskBodySchema,
+  SearchTasksQuerySchema,
   SetTaskIterationBodySchema,
   TaskRecordSchema,
+  TaskDetailRecordSchema,
   TransitionTaskBodySchema,
   UpdateTaskBodySchema,
 } from '../contracts/tasks-board.js'
@@ -18,10 +21,12 @@ import {
   assignTask,
   createHumanTask,
   getTask,
+  getTaskDetail,
   listAssignableUsers,
   listTasks,
   moveTaskToColumn,
   setTaskIteration,
+  searchTasksForUser,
   transitionTask,
   updateTask,
 } from '../services/tasks.js'
@@ -159,6 +164,43 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     return createApiResponse(AssignableUserSchema.array().parse(users))
   })
 
+  // Search is deliberately its own human doorway over the same bounded,
+  // visibility-aware query the assistant uses. It is not narrowed by the
+  // project selected in the current session.
+  app.get('/api/tasks/search', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const query = parseInput(SearchTasksQuerySchema, request.query ?? {}, reply)
+    if (!query) return reply
+
+    let tasks
+    try {
+      tasks = await searchTasksForUser(
+        prisma,
+        actorContext.tenant.organizationId,
+        {
+          cursor: query.cursor,
+          direction: query.direction,
+          limit: query.limit,
+          text: query.query,
+        },
+        await listAccessibleProjectIds(actorContext),
+        deps.authSecret,
+        actorContext.actor.actorId,
+        actorContext.actionContext.uoaIdentity,
+      )
+    } catch (error) {
+      if (error instanceof TicketSearchCursorError) {
+        sendApiError(reply, 400, 'TASK_SEARCH_CURSOR_INVALID', 'Invalid task search cursor', 'query')
+        return reply
+      }
+      throw error
+    }
+    return createApiResponse(TaskRecordSchema.array().parse(tasks.data), tasks.meta)
+  })
+
   // Archive from the board's explicit, entitled project only.
   app.post('/api/tasks/archive-done', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -243,7 +285,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     if (!actorContext) return reply
 
     const { taskId } = request.params as { taskId: string }
-    const task = await getTask(
+    const task = await getTaskDetail(
       prisma,
       taskId,
       actorContext.tenant.organizationId,
@@ -256,7 +298,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    return createApiResponse(TaskRecordSchema.parse(task))
+    return createApiResponse(TaskDetailRecordSchema.parse(task))
   })
 
 
@@ -276,7 +318,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       assigneeUserId: body.assigneeUserId,
       assigneeAgentId: body.assigneeAgentId,
       actorContext,
-    }, deps.authSecret)
+    }, deps.encryptionKeyRing)
 
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
@@ -307,7 +349,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       columnId: body.columnId,
       actorId: actorContext.actor.actorId,
       position: body.position,
-    }, deps.authSecret)
+    }, deps.encryptionKeyRing)
 
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
@@ -388,7 +430,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       organizationId: actorContext.tenant.organizationId,
       fields,
-    }, deps.authSecret)
+    }, deps.encryptionKeyRing)
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
       // A refused custom field value says which field and why; anything else

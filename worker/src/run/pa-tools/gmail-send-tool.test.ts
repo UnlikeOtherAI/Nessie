@@ -9,6 +9,10 @@ const ORGANIZATION = '11111111-1111-4111-8111-111111111111'
 const CONNECTION = '22222222-2222-4222-8222-222222222222'
 const DRAFT = '33333333-3333-4333-8333-333333333333'
 const USER = '44444444-4444-4444-8444-444444444444'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test',
+  keys: { test: 'gmail-send-tool-encryption-root' },
+} as const
 
 test('a raw resumed payload proof cannot authorize a Gmail send handler', async () => {
   const context = {
@@ -49,6 +53,7 @@ test('a trusted standing decision reaches Gmail send without a second grant chec
       tenant: { organizationId: parseOrganizationId(ORGANIZATION) },
     },
     channel: { id: 'channel-1', organizationId: parseOrganizationId(ORGANIZATION) },
+    atRestEncryptionKeyRing: ENCRYPTION_KEY_RING,
     gmailDraftSendStandingAuthorized: true as const,
     prisma: {
       gmailDraftAction: {

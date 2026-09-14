@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import test from 'node:test'
-import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, encryptWithKeyRing } from '@nessie/runtime'
 import type { PushPayload, PushResult, PushTarget } from '@nessie/push'
 import {
   handlePushDispatch,
@@ -11,6 +11,11 @@ import {
 import type { ApnsCredentials, FcmCredentials } from '@nessie/push'
 
 const AUTH_SECRET = 'test-auth-secret'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test-key',
+  keys: { 'test-key': 'test-at-rest-encryption-root' },
+  legacyKey: AUTH_SECRET,
+} as const
 const OK: PushResult = { ok: true, status: 200, deadToken: false, messageId: 'provider-id' }
 
 type CredRow = {
@@ -49,7 +54,7 @@ type FakeState = {
 }
 
 const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
-  encryptWithKey(deriveSecretKey(AUTH_SECRET), plaintext)
+  encryptWithKeyRing(ENCRYPTION_KEY_RING, AT_REST_SECRET_PURPOSE.pushCredential, plaintext)
 
 const apnsCred = (): CredRow => ({
   provider: 'apns',
@@ -179,7 +184,7 @@ const dispatch = (
   handlePushDispatch(
     {
       prisma: makeFakePrisma(state),
-      authSecret: AUTH_SECRET,
+      encryptionKeyRing: ENCRYPTION_KEY_RING,
       retryDelayMs: () => 0,
       senders,
     },

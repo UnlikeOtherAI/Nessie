@@ -10,7 +10,7 @@ import { PageBody } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjects } from '../../facades/projects/hooks'
 import { useConsumedIntent } from '../../navigation/intent'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
@@ -29,7 +29,7 @@ export const ProjectBoardsPage = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const boardsQuery = useProjectBoards(projectId)
-  const canAdminister = useCanAdministerProject(projectId ?? '')
+  const canAdminister = useCanModifyProject(projectId ?? '')
   const createIntent = useConsumedIntent('create')
   const prewarm = usePrewarm()
   const [createOpen, setCreateOpen] = useState(false)
@@ -38,6 +38,13 @@ export const ProjectBoardsPage = () => {
   useEffect(() => {
     if (createIntent.value === 'board' && canAdminister) setCreateOpen(true)
   }, [canAdminister, createIntent.serial, createIntent.value])
+
+  // A failed create can be the first signal that the server revoked the role
+  // after this page's membership read. Do not leave a now-forbidden dialog
+  // open once the shared entitlement query catches up.
+  useEffect(() => {
+    if (!canAdminister) setCreateOpen(false)
+  }, [canAdminister])
 
   if (!projectId) return null
 

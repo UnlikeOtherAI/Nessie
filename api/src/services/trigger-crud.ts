@@ -259,6 +259,12 @@ export const updateAgentTrigger = async (
   const nextStatus =
     input.status ??
     (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
+  // The scheduler is the sole owner of an enabled, paused trigger with no
+  // next run: it uses that state only after natural schedule exhaustion while
+  // a durable final delivery finishes retrying. A person pausing through the
+  // generic update route must disable the trigger too, even if they supplied
+  // a contradictory `enabled: true`, so their pause always cancels retries.
+  const normalizedEnabled = nextStatus === 'paused' ? false : input.enabled
   const nextConfig =
     input.config === undefined
       ? existing.config
@@ -314,7 +320,7 @@ export const updateAgentTrigger = async (
     data: {
       name: input.name === undefined ? undefined : input.name,
       description: input.description === undefined ? undefined : input.description,
-      enabled: input.enabled,
+      enabled: normalizedEnabled,
       status: nextStatus,
       config: shouldPersistConfig
         ? (normalizedConfig as Prisma.InputJsonValue)

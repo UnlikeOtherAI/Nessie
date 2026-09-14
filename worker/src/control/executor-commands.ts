@@ -7,7 +7,7 @@ export const ExecutorCommandJobPayloadSchema = z.object({ commandId: z.string().
 /** Hold the existing queue lease while the paired daemon owns the command. */
 export const executeExecutorCommandJob = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   payload: unknown,
 ): Promise<void> => {
   const { commandId } = ExecutorCommandJobPayloadSchema.parse(payload)

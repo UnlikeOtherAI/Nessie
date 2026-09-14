@@ -70,7 +70,7 @@ export const claimExecutor = async (
     descriptor: signedDescriptorForState(next),
     executorId: next.executorId,
   })
-  await saveExecutorState(stateDir, next)
+  await saveExecutorState(stateDir, next, state)
   return next
 }
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
+import { CHAT_MESSAGE_MAX_CHARS, type AgentConversationRecord } from '@nessie/schemas'
 import type {
   AgentRecord,
   CallRecord,
@@ -20,6 +20,7 @@ import {
   StartCallFailureDialog,
 } from '../../components/features/channels/CallerCallDialog'
 import VoiceCallDialog from '../../components/features/channels/VoiceCallDialog'
+import { RenameConversationDialog } from '../../components/features/channels/RenameConversationDialog'
 import type { VoiceCallState } from '../../facades/voice/voice-call-client'
 import { DashboardWorkspacePanel } from '../../components/features/dashboards/DashboardWorkspacePanel'
 
@@ -46,6 +47,8 @@ interface ChannelOverlaysProps {
   agentMap: Map<string, AgentRecord>
   agents: AgentRecord[]
   allUsers: UserRecord[]
+  /** The thread on screen; the agent drawer feeds and posts into it. */
+  activeThreadId: string | null
   boundAgents: AgentRecord[]
   channelUsers: UserRecord[]
   callerCallActionError: unknown
@@ -63,6 +66,16 @@ interface ChannelOverlaysProps {
   mentionEntities: MentionEntity[]
   oversizePaste: string | null
   pendingMessages: PendingStreamMessage[]
+  /**
+   * Renaming the open conversation: the record the header is naming, and the
+   * open state of the dialog that edits it. Null record on a room's General
+   * thread, which has no conversation to rename.
+   */
+  renameConversation: {
+    conversation: AgentConversationRecord | null
+    onClose: () => void
+    open: boolean
+  }
   renderContent: (text: string) => ReactNode
   replyThread: ReturnType<typeof useReplyThread>
   selectedMessageAgent: ChannelAgentParticipant | null
@@ -82,7 +95,6 @@ interface ChannelOverlaysProps {
   onCloseSelectedAgent: () => void
   onCloseSelectedUser: () => void
   onCloseSettings: () => void
-  onGroupCreated: (channelId: string) => void
   onInsertTrimmed: (trimmed: string) => void
   onCloseCallerDialog: () => void
   onCloseStartCallFailure: () => void
@@ -105,6 +117,7 @@ interface ChannelOverlaysProps {
 export const ChannelOverlays = ({
   activeCall,
   activeChannel,
+  activeThreadId,
   agentMap,
   agents,
   allUsers,
@@ -123,6 +136,7 @@ export const ChannelOverlays = ({
   mentionEntities,
   oversizePaste,
   pendingMessages,
+  renameConversation,
   renderContent,
   replyThread,
   selectedMessageAgent,
@@ -140,7 +154,6 @@ export const ChannelOverlays = ({
   onCloseSelectedAgent,
   onCloseSelectedUser,
   onCloseSettings,
-  onGroupCreated,
   onInsertTrimmed,
   onCloseCallerDialog,
   onCloseStartCallFailure,
@@ -153,7 +166,15 @@ export const ChannelOverlays = ({
   const navigate = useNavigate()
   const closeDashboard = () => {
     if (activeChannel) {
-      void navigate(dashboardCloseTarget(activeChannel.id))
+      // Only a conversation is named in the destination: closing a dashboard
+      // presented in a room's General thread returns to the room, exactly as
+      // it always has.
+      void navigate(dashboardCloseTarget(
+        activeChannel.id,
+        activeThreadId !== null && activeThreadId !== activeChannel.defaultThreadId
+          ? activeThreadId
+          : null,
+      ))
     }
   }
 
@@ -194,16 +215,20 @@ export const ChannelOverlays = ({
         boundAgents={boundAgents}
         channelId={activeChannel.id}
         channelLabel={activeChannel.label}
-        channelType={activeChannel.type}
         channelUsers={channelUsers}
         currentUserId={me.user.id}
         personalAssistantPresences={personalAssistantPresences}
         viewerCanManage={activeChannel.viewerCanManage}
         onClose={onCloseMembers}
-        onGroupCreated={onGroupCreated}
         onSelectAgent={onSelectAgent}
       />
     ) : null}
+
+    <RenameConversationDialog
+      conversation={renameConversation.conversation}
+      onClose={renameConversation.onClose}
+      open={renameConversation.open}
+    />
 
     {activeChannel ? (
       <ChannelSettingsDialog
@@ -255,6 +280,7 @@ export const ChannelOverlays = ({
 
     <ChannelInfoDrawers
       activeChannel={activeChannel}
+      activeThreadId={activeThreadId}
       agents={agents}
       allUsers={allUsers}
       me={me}

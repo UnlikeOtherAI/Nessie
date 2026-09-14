@@ -17,6 +17,7 @@ export const publishRunUpdated = async (
   realtimeTransport: PgRealtimeTransport,
   context: RunContext,
   status: RunStatus,
+  options: { idempotencyKey?: string; timestamp?: string } = {},
 ): Promise<void> => {
   await realtimeTransport.publishWs(buildScopes(context), {
     data: {
@@ -25,6 +26,8 @@ export const publishRunUpdated = async (
       status,
     },
     event: 'run.updated',
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    ...(options.timestamp ? { ts: options.timestamp } : {}),
   })
 }
 
@@ -41,18 +44,22 @@ export const publishAgentStatus = async (
     currentRunId?: string
     currentToolName?: string
     currentToolStartedAt?: string
+    since?: string
   },
+  options: { idempotencyKey?: string; timestamp?: string } = {},
 ): Promise<void> => {
   await realtimeTransport.publishWs(buildScopes(context), {
     data: {
       agentId: parseAgentId(context.agent.id),
       status: input.status,
-      since: new Date().toISOString(),
+      since: input.since ?? new Date().toISOString(),
       currentRunId: input.currentRunId ? parseRunId(input.currentRunId) : undefined,
       currentToolName: input.currentToolName,
       currentToolStartedAt: input.currentToolStartedAt,
     },
     event: 'agent.status',
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    ...(options.timestamp ? { ts: options.timestamp } : {}),
   })
 }
 
@@ -81,6 +88,7 @@ export const publishMessageCreated = async (
      */
     restricted?: boolean
   },
+  options: { idempotencyKey?: string; timestamp?: string } = {},
 ): Promise<void> => {
   const scopes = buildScopes(context)
   const { reply } = input
@@ -99,7 +107,7 @@ export const publishMessageCreated = async (
     },
     ...(reply ? { rootMessageId: reply.rootMessageId } : {}),
     threadId: context.run.threadId,
-  })
+  }, options)
   // The restricted envelope is an intentionally content-free wake-up marker.
   // Reply-thread counts, timestamps, and participants are durable metadata for
   // the withheld row, so only a reader of the reply itself may refetch them.
@@ -114,6 +122,10 @@ export const publishMessageCreated = async (
         replyParticipantIds: reply.meta.replyParticipantIds,
       },
       event: 'message.reply.meta',
+      ...(options.idempotencyKey
+        ? { idempotencyKey: `${options.idempotencyKey}:reply-meta` }
+        : {}),
+      ...(options.timestamp ? { ts: options.timestamp } : {}),
     })
   }
 }
@@ -123,7 +135,8 @@ export const publishTaskUpdated = async (
   scopes: WsScope[],
   taskId: string,
   status: TaskStatus,
-): Promise<void> => publishSharedTaskUpdated(realtimeTransport, scopes, taskId, status)
+  options: { idempotencyKey?: string; timestamp?: string } = {},
+): Promise<void> => publishSharedTaskUpdated(realtimeTransport, scopes, taskId, status, options)
 
 /**
  * A message changed in place (the rolling watch status). Distinct from
@@ -140,6 +153,7 @@ export const publishMessageUpdated = async (
     /** See `publishMessageCreated`: a restricted edit publishes content-free. */
     restricted?: boolean
   },
+  options: { idempotencyKey?: string; timestamp?: string } = {},
 ): Promise<void> => {
   await transport.publishWs(buildScopes(context), {
     data: {
@@ -151,5 +165,7 @@ export const publishMessageUpdated = async (
       threadId: parseThreadId(context.run.threadId),
     },
     event: 'message.updated',
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    ...(options.timestamp ? { ts: options.timestamp } : {}),
   })
 }

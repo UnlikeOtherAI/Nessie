@@ -30,6 +30,13 @@ learning remain in progress. This document covers both repositories.
   preserving the newer version. This is the Markdown portion of Phase 1;
   document disclosure and live UOA entitlement changes are separate foundations.
   Existing destination containment remains in place.
+- [Nessie PR #426](https://github.com/UnlikeOtherAI/Nessie/pull/426) merged
+  at `fa0e29e7798a37934fc174f44656d21ec04dfe4b`: fresh UOA organization/team
+  entitlements, exact person/organization-bound disclosure proofs, explicit
+  background identity revalidation and denied-principal handling. All nine CI
+  jobs passed, including the multi-instance smoke with signed UOA assertions.
+  This supplies the live authority dependency for document disclosure and
+  conversation recall; those capabilities are still being implemented.
 
 ## Outcome and product decisions
 

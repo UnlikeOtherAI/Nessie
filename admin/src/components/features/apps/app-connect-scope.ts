@@ -30,7 +30,7 @@ export const appConnectScopeCopy = (
   scopeLabel?: string,
 ): string => {
   if (choice === 'user') {
-    return 'Just you. You can choose which agents may use it after it connects.'
+    return 'Just you. Any agent you talk to can use it in your own conversations.'
   }
 
   if (choice === 'project') {

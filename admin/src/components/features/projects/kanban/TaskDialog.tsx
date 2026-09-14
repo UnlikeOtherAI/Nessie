@@ -203,8 +203,10 @@ export const TaskDialog = ({
   useEffect(() => {
     if (!open) return
     setError(null)
-    if (!hasExplicitTaskTab) resetDialogTabRef.current('details')
-  }, [hasExplicitTaskTab, open, task?.id])
+    // `taskTab=checklist` belongs to an existing task. A creation dialog has
+    // no checklist yet, so a retained edit URL must not select its empty pane.
+    if (!isEdit || !hasExplicitTaskTab) resetDialogTabRef.current('details')
+  }, [hasExplicitTaskTab, isEdit, open, task?.id])
 
   const pending =
     createTask.isPending
@@ -453,7 +455,7 @@ export const TaskDialog = ({
           ) : null}
         </div>
 
-        {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
+        {isEdit && task ? <TaskDocuments projectId={task.projectId} taskId={task.id} /> : null}
 
         {/*
           One banner for four mutations (save, column move, status transition,

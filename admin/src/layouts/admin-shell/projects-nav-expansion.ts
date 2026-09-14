@@ -23,7 +23,7 @@ export const retainExpandedProjectIds = (
   expandedProjectIds: ReadonlySet<string>,
   projects: readonly ProjectRecord[],
 ): Set<string> => {
-  const projectIds = new Set(projects.map((project) => project.id))
+  const projectIds = new Set<string>(projects.map((project) => project.id))
   return new Set([...expandedProjectIds].filter((projectId) => projectIds.has(projectId)))
 }
 

@@ -3,7 +3,12 @@ import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 
 import type { LedgerAttribution } from './ledger.js'
-import { decryptWithKey, deriveSecretKey } from './secret-crypto.js'
+import {
+  AT_REST_SECRET_PURPOSE,
+  decryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
+} from './secret-crypto.js'
 import {
   createUoaDelegatedIdentityService,
   loadUoaDelegatedIdentitySettings,
@@ -184,6 +189,7 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
   prisma: DeepSignalIdentityPrisma,
   env: NodeJS.ProcessEnv = process.env,
   options: {
+    encryptionKeyRing?: EncryptionKeyRingInput
     fetchImpl?: typeof fetch
     now?: () => number
   } = {},
@@ -202,10 +208,14 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
   if (!hasAppKey) return null
 
   const appKey = envValue(env, DEEPSIGNAL_MCP_CREDENTIAL_REF)!
+  const {
+    encryptionKeyRing: configuredEncryptionKeyRing,
+    ...delegatedOptions
+  } = options
   const delegated = createUoaDelegatedIdentityService({
     prisma,
     settings,
-    ...options,
+    ...delegatedOptions,
   })
   return {
     credentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF,
@@ -216,18 +226,21 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
       })
       if (rows.length === 0) return
 
-      const encryptionSecret = envValue(env, 'NESSIE_AUTH_SECRET')
-      if (!encryptionSecret) {
+      if (!configuredEncryptionKeyRing) {
         throw new DeepSignalMcpIdentityError(
           'DEEPSIGNAL_MCP_WEBHOOK_SECRET_CHECK_FAILED',
-          'Cannot verify DeepSignal webhook-key separation without NESSIE_AUTH_SECRET.',
+          'Cannot verify DeepSignal webhook-key separation without the at-rest encryption key ring.',
         )
       }
-      const key = deriveSecretKey(encryptionSecret)
+      const encryptionKeyRing = toEncryptionKeyRing(configuredEncryptionKeyRing)
       for (const row of rows) {
         let webhookSecret: string
         try {
-          webhookSecret = decryptWithKey(key, row)
+          webhookSecret = decryptWithKeyRing(
+            encryptionKeyRing,
+            AT_REST_SECRET_PURPOSE.productWebhook,
+            row,
+          ).plaintext
         } catch {
           throw new DeepSignalMcpIdentityError(
             'DEEPSIGNAL_MCP_WEBHOOK_SECRET_CHECK_FAILED',

@@ -24,11 +24,11 @@ export type OpenSessionInput = {
   threadId: string
   agentId: string
   /**
-   * The deployment auth secret. The connect URL is sealed with it and written
-   * beside the `active` flip, so a worker that did not open this session can
-   * still re-attach — see `session-capability.ts`.
+   * The versioned at-rest key ring. The connect URL is sealed with it and
+   * written beside the `active` flip, so a worker that did not open this
+   * session can still re-attach — see `session-capability.ts`.
    */
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   /**
    * The cross-origin write gate to store with it, serialised by the caller
    * (the worker owns its shape). An `active` row always carries one, so a
@@ -124,8 +124,8 @@ export const openCloudBrowserSession = async (
   if (!input.encryptionSecret) {
     throw new CloudBrowserError(
       CLOUD_BROWSER_ERROR_CODES.NO_CONNECTION,
-      'This deployment has no auth secret configured, so a cloud browser session '
-        + 'cannot be stored for other workers to resume. Set NESSIE_AUTH_SECRET.',
+      'This deployment has no at-rest encryption key ring configured, so a cloud browser '
+        + 'session cannot be stored for other workers to resume. Set NESSIE_ENCRYPTION_*.',
     )
   }
 

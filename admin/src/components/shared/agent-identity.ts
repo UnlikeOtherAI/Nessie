@@ -1,4 +1,4 @@
-import type { AgentRecord } from '../../lib/api-client'
+import type { AgentAvatarBackgroundColor } from '@nessie/schemas'
 
 /**
  * The fields an agent's picture is drawn from. A partial shape on purpose:
@@ -6,8 +6,13 @@ import type { AgentRecord } from '../../lib/api-client'
  * only an id and a label, and hand what they have to `AgentAvatar`, which then
  * upgrades it through the agent identity directory.
  */
-export type AgentIdentity = Pick<AgentRecord, 'id' | 'name' | 'role'> &
-  Partial<Pick<AgentRecord, 'avatarAttachmentId' | 'avatarBackgroundColor'>>
+export type AgentIdentity = {
+  avatarAttachmentId?: string | null
+  avatarBackgroundColor?: AgentAvatarBackgroundColor
+  id: string
+  name: string
+  role: string
+}
 
 /**
  * The emoji shown for an agent that has no portrait yet. It is a last resort,

@@ -24,11 +24,11 @@ import {
  */
 
 export type WorkflowFailureDispatchPrisma = PushDeliveryPrisma &
-  Pick<PrismaClient, 'channelMember' | 'organizationMember' | 'user' | 'workflowInstallation' | 'workflowRun'>
+  Pick<PrismaClient, 'channelMember' | 'organizationMember' | 'user' | 'userAlert' | 'workflowInstallation' | 'workflowRun'>
 
 export type WorkflowFailureDispatchDeps = {
   prisma: WorkflowFailureDispatchPrisma
-  authSecret: string
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   webPush?: WebPushCredentials
   senders?: PushSenders
   now?: () => Date
@@ -92,7 +92,7 @@ const buildWorkflowFailurePayload = (
     kind: 'workflow_run_failed',
     workflowInstallationId: payload.workflowInstallationId,
     workflowRunId: payload.workflowRunId,
-    url: `/workflows?failedRun=${payload.workflowRunId}`,
+    url: `/agents/workflows?failedRuns=1&run=${payload.workflowRunId}`,
   },
   collapseId: `workflow-run:${payload.workflowRunId}`,
 })
@@ -112,16 +112,14 @@ export const handleWorkflowRunFailureDispatch = async (
       organizationId: payload.organizationId,
       status: 'failed',
     },
-    select: { id: true, installation: { select: { workflowTemplate: { select: { name: true } } } } },
+    select: {
+      id: true,
+      installation: { select: { channelId: true, workflowTemplate: { select: { name: true } } } },
+    },
   })
   // The run may have been cancelled/retried past this alert, or deleted; an
   // alert for a run that is no longer failed would be a lie.
   if (!run) {
-    return summary
-  }
-
-  const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
-  if (!apnsCreds && !fcmCreds && !webPushEnabled) {
     return summary
   }
 
@@ -134,11 +132,37 @@ export const handleWorkflowRunFailureDispatch = async (
     where: { id: { in: candidateIds } },
     select: { id: true, preferences: true },
   })
+  const recipientIds = users.map((user) => user.id)
+  if (recipientIds.length === 0) {
+    return summary
+  }
+
+  // The durable alert is the source of truth. It happens before optional push
+  // delivery, so an installation with no registered devices is still visible
+  // in the bell. The run id is both the authorization revalidation relation and
+  // the cold-link doorway; `(user_id, event_key)` makes redelivery a no-op.
+  await deps.prisma.userAlert.createMany({
+    data: recipientIds.map((userId) => ({
+      eventKey: `workflow-run-failure:${payload.workflowRunId}`,
+      kind: 'workflow_run_failed' as const,
+      channelId: run.installation.channelId,
+      organizationId: payload.organizationId,
+      userId,
+      workflowRunId: payload.workflowRunId,
+    })),
+    skipDuplicates: true,
+  })
+
+  const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
+  if (!apnsCreds && !fcmCreds && !webPushEnabled) {
+    return summary
+  }
+
   const now = deps.now?.() ?? new Date()
-  const recipientIds = users
+  const pushRecipientIds = users
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'assignedWork'))
     .map((user) => user.id)
-  if (recipientIds.length === 0) {
+  if (pushRecipientIds.length === 0) {
     return summary
   }
 
@@ -150,9 +174,9 @@ export const handleWorkflowRunFailureDispatch = async (
     ...(deps.senders ? { senders: deps.senders } : {}),
     retryDelayMs,
     payload: buildWorkflowFailurePayload(payload, run.installation.workflowTemplate.name ?? null),
-    recipientIds,
+    recipientIds: pushRecipientIds,
     organizationId: payload.organizationId,
-    deepLinkUrl: `/workflows?failedRun=${payload.workflowRunId}`,
+    deepLinkUrl: `/agents/workflows?failedRuns=1&run=${payload.workflowRunId}`,
     messageId: null,
     // One notification per failed run: the terminal-event seam already dedupes
     // the enqueue on the same run id, so this claim closes the redelivery half.
@@ -170,7 +194,7 @@ export const handleWorkflowRunFailureDispatch = async (
   console.log('[workflow-failure-dispatch] done', {
     organizationId: payload.organizationId,
     workflowRunId: payload.workflowRunId,
-    recipients: recipientIds.length,
+    recipients: pushRecipientIds.length,
     sent: summary.sent,
     failed: summary.failed,
   })

@@ -6,12 +6,14 @@ import {
   isCreditsExhaustedError,
   partitionByDisclosure,
   resolveDisclosureViewer,
+  resolveMentionedAgentDecisions,
   selectFollowingAgentIds,
   type OrchestratorDecision,
   type PgRealtimeTransport,
   type ModelClient,
 } from '@nessie/runtime'
 import {
+  type AgentMention,
   type OrchestrateDecideJobPayload,
   parseAgentId,
   parseRunId,
@@ -79,6 +81,94 @@ export const resolveSystemDmDecisions = (
   return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'thread' }]
 }
 
+/**
+ * A conversation thread is a structural address, exactly as a single-agent
+ * system DM is.
+ *
+ * `threads.agent_id` names the agent a conversation is *with*
+ * (docs/plans/2026-09-08-agent-conversations.md), so a top-level human turn
+ * inside one engages that agent the way a turn in its DM does — no engagement
+ * judgement, no model call, and therefore no way for a conversation to be
+ * started empty and then go unanswered. Other bound agents still engage when
+ * the person explicitly addressed them, which is why the composer's structured
+ * mentions are composed in through the very resolver the ordinary path uses
+ * (`resolveMentionedAgentDecisions`) rather than a second one written here.
+ *
+ * Keyed on structure alone, never on content:
+ * - `thread.agentId` — a column;
+ * - `role === 'user'` — the same anti-loop bound `decideAgentEngagement` states
+ *   and `docs/standards/global-agents.md` relies on: an agent-authored turn in
+ *   a conversation engages nobody, so two agents cannot talk each other in a
+ *   circle inside one;
+ * - a top-level trigger — a message inside a *reply* thread is a side
+ *   discussion and keeps today's behaviour;
+ * - the agent still being bound to the room — if it was unbound since, this
+ *   returns `null` and the model-driven path decides, exactly as it would for
+ *   any other room.
+ *
+ * The order of the first three is the rule, not a formality. The role bound
+ * comes before the top-level one because it is about *who wrote this*, not
+ * about where it sits: an agent-authored reply inside a conversation must
+ * engage nobody, and asking "is this top-level?" first let exactly that turn
+ * fall through to the model-judged path, which is free to answer it and close
+ * the loop the bound exists to open.
+ */
+export const resolveConversationDecisions = (input: {
+  agentMentions?: AgentMention[] | undefined
+  channelAgents: ChannelAgent[]
+  isTopLevelTrigger: boolean
+  role: string
+  thread: { agentId: string | null; startedByUserId: string | null } | null
+}): OrchestratorDecision[] | null => {
+  const conversationAgentId = input.thread?.agentId
+  if (!conversationAgentId) {
+    return null
+  }
+  if (input.role !== 'user') {
+    return []
+  }
+  if (!input.isTopLevelTrigger) {
+    return null
+  }
+
+  // A Personal Assistant presence in a shared room is one Agent row per member,
+  // so the conversation's own presence is the one belonging to whoever started
+  // it. An ordinary binding carries no principal and matches directly.
+  const bound = input.channelAgents.filter((agent) => agent.id === conversationAgentId)
+  const conversationAgent =
+    bound.find(
+      (agent) =>
+        agent.principalUserId !== undefined
+        && agent.principalUserId === input.thread?.startedByUserId,
+    )
+    ?? bound.find((agent) => agent.principalUserId === undefined)
+  if (!conversationAgent) {
+    return null
+  }
+
+  const owner: OrchestratorDecision = {
+    action: 'reply',
+    agentId: conversationAgent.id,
+    ...(conversationAgent.principalUserId
+      ? { principalUserId: conversationAgent.principalUserId }
+      : {}),
+    replyPlacement: 'thread',
+  }
+  const ownerEngagementId = engagementIdFor(conversationAgent)
+  const mentioned = resolveMentionedAgentDecisions(
+    input.channelAgents.map(asEngagementCandidate),
+    input.agentMentions,
+  ).filter((decision) => {
+    if (decision.action !== 'reply') return true
+    const engagementId = decision.principalUserId
+      ? `${decision.agentId}:${decision.principalUserId}`
+      : decision.agentId
+    return engagementId !== ownerEngagementId
+  })
+
+  return [owner, ...mentioned]
+}
+
 export const executeOrchestrateDecideJob = async (
   deps: OrchestrateDecideDeps,
   payload: OrchestrateDecideJobPayload,
@@ -110,9 +200,19 @@ export const executeOrchestrateDecideJob = async (
   // (the message itself when it is a top-level root) scopes both the budget
   // notice and thread-following below. When the trigger cannot be fetched,
   // both keep their previous whole-thread behaviour.
+  // The thread's own conversation identity rides on this same read rather than
+  // a third query: the trigger message already has to be fetched for reply
+  // placement, and `Thread.agentId` / `Thread.startedByUserId` are two columns
+  // on the row it already joins.
   const triggerMessage = await deps.prisma.message.findUnique({
     where: { id: messageId },
-    select: { id: true, rootMessageId: true },
+    select: {
+      id: true,
+      role: true,
+      rootMessageId: true,
+      threadId: true,
+      thread: { select: { agentId: true, startedByUserId: true } },
+    },
   })
   const replyRootContextId = triggerMessage
     ? triggerMessage.rootMessageId ?? triggerMessage.id
@@ -155,6 +255,27 @@ export const executeOrchestrateDecideJob = async (
     role,
     channelAgents,
   )
+  // The sibling structural rule: a conversation thread addresses its own agent.
+  // Only consulted when the DM rule declined, so a conversation inside a
+  // single-agent system DM keeps that DM's already-structural answer.
+  // The thread the conversation branch reads is the trigger's own, read from
+  // the row rather than taken from the payload. The payload is server-written,
+  // so this is consistency between two reads of the same send, not a trust
+  // boundary: a mismatch means the branch would be deciding about one thread
+  // from another thread's columns, and the model-judged path is the answer.
+  const triggerInConversationThread =
+    triggerMessage !== null && triggerMessage.threadId === threadId
+  decisions ??= resolveConversationDecisions({
+    agentMentions,
+    channelAgents,
+    // A message inside a reply thread is a side discussion; it keeps today's
+    // behaviour whatever the containing thread is.
+    isTopLevelTrigger: triggerMessage ? triggerMessage.rootMessageId === null : false,
+    // The persisted role, not the payload's: the anti-loop bound is about who
+    // actually wrote the row.
+    role: triggerMessage?.role ?? role,
+    thread: triggerInConversationThread ? triggerMessage.thread : null,
+  })
   if (!decisions) {
     // Fetch the last 6 messages for orchestrator context. The most recent one
     // is the triggering message (already persisted before this job was enqueued).

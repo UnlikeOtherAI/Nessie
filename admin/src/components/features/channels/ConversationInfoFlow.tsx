@@ -10,7 +10,7 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { UserAvatar } from '../../shared/UserAvatar'
 import { IdentityTile } from '../../primitives/IdentityTile'
 import { RAIL_POLL_MS, useThreadBrowserSessions } from '../../../facades/browser-cloud/hooks'
-import { CHAT_TOOLS, type ChatToolId } from './tool-rail/chat-tools'
+import { type ChatTool, type ChatToolId } from './tool-rail/chat-tools'
 
 type ConversationInfoFlowProps = {
   activeChannel: ChannelRecord
@@ -19,10 +19,15 @@ type ConversationInfoFlowProps = {
   allUsers: UserRecord[]
   canAddPeople: boolean
   channelUsers: UserRecord[]
-  /** This conversation has one agent, so the agent's tools apply to it. */
-  hasAgentTools: boolean
+  /**
+   * The tools this room's agents actually have (`availableChatTools`), or empty
+   * where no agent works here. A list rather than a flag: an agent with
+   * conversations but no browser must be offered the one it has and not the
+   * one it does not, and a room with several agents has conversations but no
+   * one browser to name.
+  */
+  agentTools: readonly ChatTool[]
   me: MeResponse
-  onGroupCreated: (channelId: string) => void
   onOpenTool: (tool: ChatToolId) => void
 }
 
@@ -69,15 +74,17 @@ const Disclosure = ({
 const ChatToolDisclosures = ({
   onOpenTool,
   threadId,
+  tools,
 }: {
   onOpenTool: (tool: ChatToolId) => void
   threadId: string | null
+  tools: readonly ChatTool[]
 }) => {
   const sessions = useThreadBrowserSessions(threadId, { refetchInterval: RAIL_POLL_MS })
   const browsing = (sessions.data?.sessions.length ?? 0) > 0
   return (
     <>
-      {CHAT_TOOLS.map((tool) => (
+      {tools.map((tool) => (
         <Disclosure
           detail={
             tool.id === 'browser' && browsing
@@ -95,8 +102,8 @@ const ChatToolDisclosures = ({
 
 const ConversationOverview = ({
   activeChannel,
+  agentTools,
   channelUsers,
-  hasAgentTools,
   memberCount,
   canAddPeople,
   onOpenMembers,
@@ -107,8 +114,8 @@ const ConversationOverview = ({
   threadId,
 }: {
   activeChannel: ChannelRecord
+  agentTools: readonly ChatTool[]
   channelUsers: UserRecord[]
-  hasAgentTools: boolean
   memberCount: number
   canAddPeople: boolean
   onOpenMembers: () => void
@@ -158,8 +165,12 @@ const ConversationOverview = ({
       </div>
 
       <div className="mt-3 border-y border-[color:var(--sep)]">
-        {hasAgentTools ? (
-          <ChatToolDisclosures onOpenTool={onOpenTool} threadId={threadId} />
+        {agentTools.length > 0 ? (
+          <ChatToolDisclosures
+            onOpenTool={onOpenTool}
+            threadId={threadId}
+            tools={agentTools}
+          />
         ) : null}
         <Disclosure label="Messages" onClick={onOpenMessages} />
         <Disclosure label="Files and links" onClick={onOpenFiles} />
@@ -245,13 +256,11 @@ const AddConversationMembers = ({
   allUsers,
   channelUsers,
   currentUserId,
-  onGroupCreated,
 }: {
   activeChannel: ChannelRecord
   allUsers: UserRecord[]
   channelUsers: UserRecord[]
   currentUserId: string
-  onGroupCreated: (channelId: string) => void
 }) => {
   const addMember = useAddChannelMember()
   const [query, setQuery] = useState('')
@@ -281,14 +290,7 @@ const AddConversationMembers = ({
           <AvailableUserRow
             addPending={addMember.isPending}
             key={person.id}
-            onAdd={(userId) => addMember.mutate(
-              { channelId: activeChannel.id, userId },
-              {
-                onSuccess: (channel) => {
-                  if (activeChannel.type === 'dm' && channel?.id) onGroupCreated(channel.id)
-                },
-              },
-            )}
+            onAdd={(userId) => addMember.mutate({ channelId: activeChannel.id, userId })}
             user={person}
           />
         ))}
@@ -312,11 +314,10 @@ export const ConversationInfoFlow = ({
   activeChannel,
   activeThreadId,
   allUsers,
+  agentTools,
   canAddPeople,
   channelUsers,
-  hasAgentTools,
   me,
-  onGroupCreated,
   onOpenTool,
 }: ConversationInfoFlowProps) => {
   const location = useLocation()
@@ -327,7 +328,7 @@ export const ConversationInfoFlow = ({
   if (!route || route.channelId !== activeChannel.id || route.step === 'conversation') return null
 
   // `canAddPeople` (DM vs. standard channel) can only narrow further: a plain
-  // member without `canManageChannel` standing must not see a control that the
+  // viewer without `canModifyChannel` standing must not see a control that the
   // service refuses. See `docs/standards/disclosure-boundaries.md`.
   const canManageMembers = canAddPeople && activeChannel.viewerCanManage
   const members = channelUsers
@@ -360,9 +361,9 @@ export const ConversationInfoFlow = ({
       {route.step === 'info' ? (
         <ConversationOverview
           activeChannel={activeChannel}
+          agentTools={agentTools}
           canAddPeople={canManageMembers}
           channelUsers={members}
-          hasAgentTools={hasAgentTools}
           memberCount={memberCount}
           onOpenAddPeople={() => void navigate(`/channels/${activeChannel.id}/info/members/add`)}
           onOpenFiles={() => void navigate(`/channels/${activeChannel.id}?tab=files`)}
@@ -387,7 +388,6 @@ export const ConversationInfoFlow = ({
           allUsers={allUsers}
           channelUsers={members}
           currentUserId={me.user.id}
-          onGroupCreated={onGroupCreated}
         />
       ) : null}
 

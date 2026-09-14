@@ -1,5 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
-import { canUserReadDisclosureBasis } from '@nessie/runtime'
+import {
+  canUserReadDisclosureBasis,
+  partitionByDisclosure,
+  resolveDisclosureViewer,
+  resolveGrantedScopeKeysForMessages,
+  viewerSatisfiesBasis,
+} from '@nessie/runtime'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 import type { AgentVisibilityScope } from '@nessie/team-admin'
 
@@ -71,4 +77,71 @@ export const canReadAgentMessage = async (
     uoaIdentity: visibility.uoaIdentity,
     userId: visibility.userId,
   })
+}
+
+/**
+ * Resolves live disclosure for one bounded history scan. The runtime's batched
+ * grant accessor is grouped by destination channel because a grant's audience
+ * is channel-specific; no row receives its own grant round trip.
+ */
+export const filterReadableAgentMessages = async <TMessage extends AgentMessageDisclosureCandidate>(
+  prisma: PrismaClient,
+  messages: readonly TMessage[],
+  visibility?: DisclosureAgentVisibilityScope,
+): Promise<TMessage[]> => {
+  if (messages.length === 0) return []
+  if (!visibility) return messages.filter((message) => message.basisScopes.length === 0)
+
+  const viewer = await resolveDisclosureViewer(prisma, visibility.organizationId, visibility.userId, {
+    uoaIdentity: visibility.uoaIdentity,
+  })
+  if (viewer.kind !== 'user') return []
+
+  const memberChannelIds = new Set(viewer.scopes
+    .filter((scope) => scope.scopeType === 'channel')
+    .map((scope) => scope.scopeId))
+  const unknownChannelIds = [...new Set(messages
+    .map((message) => message.thread.channelId)
+    .filter((channelId) => !memberChannelIds.has(channelId)))]
+  if (unknownChannelIds.length > 0) {
+    const publicChannels = await prisma.channel.findMany({
+      where: {
+        id: { in: unknownChannelIds },
+        organizationId: visibility.organizationId,
+        visibility: 'public',
+      },
+      select: { id: true },
+    })
+    for (const channel of publicChannels) memberChannelIds.add(channel.id)
+  }
+  const channelReadable = messages.filter((message) =>
+    memberChannelIds.has(message.thread.channelId))
+  if (channelReadable.length === 0) return []
+
+  const provisional = partitionByDisclosure(channelReadable, viewer)
+  if (provisional.withheld.length === 0) return [...channelReadable]
+
+  const grantsByMessage = await resolveGrantedScopeKeysForMessages(prisma, {
+    // The accessor's per-subject destination support keeps this one batch even
+    // when an agent's history spans many channels.
+    channelId: provisional.withheld[0]?.thread.channelId ?? '',
+    messages: provisional.withheld.map((message) => ({
+      agentId: message.agentId,
+      basis: message.basisScopes,
+      destinationChannelId: message.thread.channelId,
+      disclosureSources: message.disclosureSources,
+      messageId: message.id,
+    })),
+    organizationId: visibility.organizationId,
+    viewerChannelIds: viewer.scopes
+      .filter((scope) => scope.scopeType === 'channel')
+      .map((scope) => scope.scopeId),
+    viewerUserId: viewer.userId,
+  })
+
+  const withheldIds = new Set(provisional.withheld.map((message) => message.id))
+  return channelReadable.filter((message) =>
+    !withheldIds.has(message.id)
+    || viewerSatisfiesBasis(message.basisScopes, viewer, grantsByMessage.get(message.id) ?? new Set<string>()),
+  )
 }

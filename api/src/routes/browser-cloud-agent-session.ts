@@ -45,7 +45,7 @@ export const registerBrowserCloudAgentSessionRoutes = (
   },
 ): void => {
   const { deps, operations, secretResolver, sendCloudBrowserError } = input
-  const { prisma, authSecret, requireActorContext, requireUserActor } = deps
+  const { prisma, encryptionKeyRing, requireActorContext, requireUserActor } = deps
 
 /**
  * The tabs the agent's browser was last seen with — the chat's Browser column
@@ -191,7 +191,7 @@ app.post(
         {
           prisma,
           resolveSecret: (ref) => secretResolver.resolve(ref),
-          encryptionSecret: authSecret ?? "",
+          encryptionSecret: encryptionKeyRing,
         },
         {
           organizationId,
@@ -338,11 +338,11 @@ app.delete("/api/browser-sessions/:sessionId", async (request, reply) => {
   // billed browser and could resume it into a person's partial sign-in.
   await captureUndrivenSessionTabs(prisma, {
     sessionId,
-    encryptionSecret: authSecret ?? "",
+    encryptionSecret: encryptionKeyRing,
   });
   await releaseCloudBrowserSession({
     prisma,
-    encryptionSecret: authSecret ?? '',
+    encryptionSecret: encryptionKeyRing,
     resolveSecret: (ref) => secretResolver.resolve(ref),
   }, {
     releasedBy: 'viewer_done',

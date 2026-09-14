@@ -112,7 +112,7 @@ const buildApp = (prisma: PrismaClient, actorContext: AuthorizedActionContext): 
 }
 
 runDatabaseTest(
-  'updateWorkflowInstallation throws the typed WorkflowReferenceError for an unknown channel',
+  'workflow installation writers throw the typed WorkflowReferenceError for an unknown channel',
   async (t) => {
     const prisma = new PrismaClient()
     const seed = await seedTeam(prisma)
@@ -121,6 +121,18 @@ runDatabaseTest(
       await prisma.$disconnect()
     })
     const actorContext = ownerContext(seed)
+
+    await assert.rejects(
+      () =>
+        installWorkflowTemplate(prisma, actorContext, seed.templateId, {
+          channelId: randomUUID(),
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof WorkflowReferenceError)
+        assert.equal(error.code, WORKFLOW_REFERENCE_ERROR_CODES.CHANNEL_NOT_FOUND)
+        return true
+      },
+    )
 
     const installation = await installWorkflowTemplate(prisma, actorContext, seed.templateId, {
       channelId: seed.channelId,

@@ -1,6 +1,7 @@
 import { randomBytes as nodeRandomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
+import type { EncryptionKeyRingInput } from '@nessie/runtime'
 import {
   createGoogleMeetSpace,
   GOOGLE_MEET_CREATE_SCOPE,
@@ -135,7 +136,7 @@ export type CreateCallLinkResult = {
 }
 
 export type CreateCallLinkDependencies = {
-  encryptionSecret?: string
+  encryptionSecret?: EncryptionKeyRingInput
   env?: CallLinkEnvironment
   randomBytes?: (size: number) => Uint8Array
   loadGoogleCredential?: typeof loadUserGoogleCommsCredential
@@ -224,7 +225,6 @@ export const createCallLinkForTeamUser = async (
   let credential
   try {
     const encryptionSecret = dependencies.encryptionSecret
-      ?? env['NESSIE_AUTH_SECRET']
     if (!encryptionSecret) {
       throw new CallLinkError('MEET_LINK_FAILED')
     }

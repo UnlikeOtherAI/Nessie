@@ -261,11 +261,9 @@ runDatabaseTest('agent history and tool activity use the same live disclosure ga
   const outsiderHistory = await loadAgentMessages(
     prisma,
     s.agentId,
-    25,
-    0,
-    { visibility: outsiderVisibility },
+    { cursorSecret: 'test-history-secret', limit: 25, visibility: outsiderVisibility },
   )
-  assert.equal(outsiderHistory.total, 0)
+  assert.equal(outsiderHistory.data.items.length, 0)
   assert.ok(!JSON.stringify(outsiderHistory).includes('acquisition'))
   assert.equal(
     (await loadAgentActivity(prisma, s.agentId, { visibility: outsiderVisibility }))
@@ -293,11 +291,9 @@ runDatabaseTest('agent history and tool activity use the same live disclosure ga
   const insiderHistory = await loadAgentMessages(
     prisma,
     s.agentId,
-    25,
-    0,
-    { visibility: insiderVisibility },
+    { cursorSecret: 'test-history-secret', limit: 25, visibility: insiderVisibility },
   )
-  assert.equal(insiderHistory.items[0]?.fullContent, secret)
+  assert.equal(insiderHistory.data.items[0]?.fullContent, secret)
   const insiderTools = await loadRunToolCalls(
     prisma,
     s.agentId,

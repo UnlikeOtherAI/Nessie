@@ -7,6 +7,7 @@ import type { DocumentStreamRecorder } from './execute/document-stream.js'
 import type { RunContext } from './execute/types.js'
 import type {
   ConnectorUsage,
+  EncryptionKeyRingInput,
   LedgerIdentityService,
   ModelClient,
   PgRealtimeTransport,
@@ -51,6 +52,8 @@ export type AgenticToolResult = {
 export type BuiltinToolRuntimeContext = {
   agentId: string
   agentKind: 'personal_assistant' | 'shared'
+  /** Dedicated deployment ring for the tool's durable at-rest credentials. */
+  atRestEncryptionKeyRing?: EncryptionKeyRingInput
   actorContext: RunExecuteJobPayload['actorContext']
   /**
    * Private execution capability added only by the authorizer after its
@@ -107,16 +110,16 @@ export type BuiltinToolRuntimeContext = {
    * the organisation's.
    */
   agentIdentity?: { visibility: 'team' | 'private'; ownerUserId: string | null }
-  /** Deployment secret used only to decrypt an acknowledged executor receipt
+  /** Deployment key ring used only to decrypt an acknowledged executor receipt
    * while preparing a user-owned continuation. It is never model-visible. */
-  executorCommandEncryptionSecret?: string
+  executorCommandEncryptionSecret?: EncryptionKeyRingInput
   /**
-   * Deployment secret used only to decrypt a board source's stored credential
+   * Deployment key ring used only to decrypt a board source's stored credential
    * when a ticket tool writes a change back to its provider. Never
    * model-visible. Optional so partial test fixtures keep compiling; a mirrored
    * ticket then moves locally only, exactly as it did before sources existed.
    */
-  boardSourceEncryptionSecret?: string
+  boardSourceEncryptionSecret?: EncryptionKeyRingInput
   ledgerIdentity: LedgerIdentityService | null
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any

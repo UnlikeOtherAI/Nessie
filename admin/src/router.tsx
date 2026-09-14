@@ -45,6 +45,9 @@ const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactE
 )
 
 const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })))
+const ProjectDirectoryPage = lazy(() =>
+  import('./pages/project/ProjectDirectoryPage').then((m) => ({ default: m.ProjectDirectoryPage })),
+)
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
 const AgentDesignerPage = lazy(() =>
   import('./pages/AgentDesignerPage').then((m) => ({ default: m.AgentDesignerPage })),
@@ -296,6 +299,13 @@ export const router = createBrowserRouter([
             path: ':channelId/threads/:threadId/dashboards/:dashboardId',
           },
           {
+            // One conversation with the room's agent: a second, isolated
+            // thread in the same channel (docs/plans/2026-09-08-agent-conversations.md).
+            // Listed after the two panels that hang off a thread, so those keep
+            // their more specific rows.
+            path: ':channelId/threads/:threadId',
+          },
+          {
             // An agent tool opened from the conversation info screen. The rail
             // beside a wide conversation keeps its choice in component state;
             // a single-column layout has no rail and pushes a real screen, so
@@ -314,6 +324,10 @@ export const router = createBrowserRouter([
       {
         path: '/projects',
         element: lazyElement(ProjectsIndexPage, 'list'),
+      },
+      {
+        path: '/projects/directory',
+        element: lazyElement(ProjectDirectoryPage, 'list'),
       },
       {
         path: '/projects/:projectId',

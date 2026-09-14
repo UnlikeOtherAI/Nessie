@@ -14,6 +14,7 @@ import {
 } from '@nessie/agent-mail'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveEffectiveUserId } from './access.js'
@@ -64,11 +65,7 @@ const SendSchema = CommonSchema.extend({
   to: z.array(z.string()).min(1).max(50),
 }).strict()
 
-const encryptionSecret = (): string => {
-  const secret = process.env.NESSIE_AUTH_SECRET
-  if (!secret) throw new Error('NESSIE_AUTH_SECRET is not configured')
-  return secret
-}
+const encryptionSecret = () => resolveWorkerAtRestKeyRing()
 
 /**
  * `MailboxSendAction.clientRequestId` is a UUID, while providers may give a

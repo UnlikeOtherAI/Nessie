@@ -35,7 +35,8 @@ const channel = (input: {
   slug: null,
   systemChannelType: null,
   teamId,
-  threads: [{ id: input.threadId }],
+  // The room's General thread: `agentId: null`, as the channel list selects it.
+  threads: [{ agentId: null, id: input.threadId }],
   members: [{ muted: false, role: 'member' }],
   project: { channelRoot: false, id: projectId, name: 'Nessie' },
   team: {

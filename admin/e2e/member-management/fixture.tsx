@@ -2,10 +2,17 @@ import { ApiClientError, ApiClientProvider, type ApiClient } from '@nessie/clien
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import type { TeamMemberRecord, TeamInvitationRecord } from '@nessie/schemas'
+import type {
+  AutomaticMembershipResponse,
+  TeamMemberRecord,
+  TeamInvitationRecord,
+  UserAlertRecord,
+} from '@nessie/schemas'
 
 import { MembersRosterPanel } from '../../src/components/features/settings/MembersRosterPanel'
+import { AlertsBell } from '../../src/layouts/admin-shell/AlertsBell'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
+import { FocusModeProvider } from '../../src/providers/FocusModeProvider'
 import '../../src/styles.css'
 
 const params = new URLSearchParams(location.search)
@@ -32,6 +39,34 @@ let invitations: TeamInvitationRecord[] = [
 ]
 let access = true
 const calls: { method: string; path: string; body?: unknown }[] = []
+const failedRuleId = '10000000-0000-4000-8000-000000000015'
+const automaticMembership: AutomaticMembershipResponse = {
+  domains: [{
+    challengeExpiresAt: '2026-09-13T00:00:00.000Z',
+    domain: 'example.test',
+    id: '10000000-0000-4000-8000-000000000016',
+    recordName: '_nessie-domain-verification.example.test',
+    rules: [{
+      createdScope: 'organization', enabled: true, grantedCount: 4,
+      health: 'needs_reauthorization', healthReason: 'The original grant expired.',
+      id: failedRuleId, manageable: true, teamId: '10000000-0000-4000-8000-000000000017',
+      teamName: 'Design',
+    }],
+    status: 'active',
+  }],
+  permissions: { manageDomains: true, manageReconciliation: true, manageRules: true },
+  provisioningEnabled: true,
+  teamOptions: [{ id: '10000000-0000-4000-8000-000000000017', name: 'Design' }],
+}
+let alerts: UserAlertRecord[] = [{
+  actorAgentId: null, actorDisplayName: null, actorUserId: null,
+  automaticMembershipRuleId: failedRuleId, automaticMembershipRuleTeamName: 'Design',
+  boardSourceId: null, callId: null, channelId: null, channelLabel: null,
+  createdAt: '2026-09-12T10:00:00.000Z', id: '10000000-0000-4000-8000-000000000018',
+  kind: 'automatic_membership_health', knowledgePageId: null, messageId: null,
+  metadata: null, projectId: null, readAt: null, rootMessageId: null, taskId: null,
+  threadId: null, triggerId: null,
+}]
 Object.assign(window, {
   memberManagementCalls: calls,
   refetchMemberManagementQueries: () => queryClient.refetchQueries(),
@@ -43,12 +78,23 @@ const page = (items: unknown[], grants: unknown) => ({
 const getPage = async (path: string) => {
   calls.push({ method: 'GET', path })
   const url = new URL(path, location.origin)
+  if (url.pathname === '/api/alerts') return alerts
+  if (url.pathname === '/api/alerts/summary') {
+    return {
+      assignedWork: { projects: {}, total: 0 },
+      knowledge: { projects: {}, total: 0 },
+      unreadCount: alerts.filter((alert) => alert.readAt === null).length,
+    }
+  }
+  if (url.pathname.endsWith('/automatic-membership')) return automaticMembership
   if (path.includes('/candidates')) {
     if (fail === 'search') throw new Error('Directory unavailable')
     return page([{ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák' }],
       { addMember: !readOnly && !noPermissions, searchMemberCandidates: true })
   }
-  if (path.includes('/member-invitation-targets')) return page([{ id: 'team-external', name: 'Design' }],
+  if (path.includes('/member-invitation-targets')) return page([
+    { id: 'team-external', name: 'Design' }, { id: 'team-research', name: 'Research' },
+  ],
     { createInvitation: !readOnly && !noPermissions })
   if (url.pathname.endsWith('/teams')) {
     if (fail === 'access') throw new Error('Directory unavailable')
@@ -75,22 +121,46 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   else if (path.endsWith('/reactivate')) members = members.map((member) => ({ ...member, status: 'ACTIVE' }))
   else if (method === 'DELETE') members = []
   else if (path.endsWith('/revoke')) invitations = []
-  else if (path.endsWith('/invitations') || path.endsWith('/member-invitations')) invitations.push({
-    inviteId: 'invite-new', email: String(body?.email), name: body?.name as string | undefined,
-    status: 'pending', team: { id: 'team-external', name: 'Design' },
-  })
+  else if (path.endsWith('/invitations') || path.endsWith('/member-invitations')) {
+    const email = String(body?.email)
+    const teams = { 'team-external': 'Design', 'team-research': 'Research' } as Record<string, string>
+    // The organisation form names its workspaces; the team form invites into
+    // the fixture's one team.
+    const teamIds = Array.isArray(body?.teamIds) ? body.teamIds as string[] : ['team-external']
+    for (const teamId of teamIds) {
+      // UOA, not this fixture or Nessie, owns the one-actionable-invitation rule
+      // for the exact target team and normalized email. A repeated form submit
+      // sends another request but keeps one pending row, modelling UOA's resend.
+      const hasPendingInvitation = invitations.some((invitation) =>
+        invitation.email?.trim().toLowerCase() === email.trim().toLowerCase()
+        && invitation.team?.id === teamId)
+      if (!hasPendingInvitation) invitations.push({
+        inviteId: `invite-new-${teamId}`, email, name: body?.name as string | undefined,
+        status: 'pending', team: { id: teamId, name: teams[teamId] ?? teamId },
+      })
+    }
+    return { ok: true, invitedTeamIds: teamIds, failedTeamIds: [] }
+  }
   else if (path.endsWith('/members')) members.push({ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák', status: 'ACTIVE' })
+  else if (path === '/api/alerts/read') alerts = alerts.map((alert) => (
+    body?.ids?.includes(alert.id) || body?.all === true
+      ? { ...alert, readAt: '2026-09-12T10:01:00.000Z' }
+      : alert
+  ))
   return { ok: true }
 }
-const client = { getPage, get: async () => ({}), post: mutate('POST'), put: mutate('PUT'),
+const client = { getPage, get: getPage, post: mutate('POST'), put: mutate('PUT'),
   delete: mutate('DELETE'), patch: mutate('PATCH') } as unknown as ApiClient
 const root = document.querySelector('#root')
 if (!(root instanceof HTMLElement)) throw new Error('Fixture root missing')
 document.documentElement.dataset.theme = 'sandstone'
 createRoot(root).render(
   <QueryClientProvider client={queryClient}>
-    <AuthSessionProvider><ApiClientProvider client={client}><BrowserRouter>
-      <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]"><MembersRosterPanel scope={scope} /></main>
-    </BrowserRouter></ApiClientProvider></AuthSessionProvider>
+    <AuthSessionProvider><ApiClientProvider client={client}><FocusModeProvider><BrowserRouter>
+      <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
+        <div className="flex justify-end p-3"><AlertsBell /></div>
+        <MembersRosterPanel scope={scope} />
+      </main>
+    </BrowserRouter></FocusModeProvider></ApiClientProvider></AuthSessionProvider>
   </QueryClientProvider>,
 )

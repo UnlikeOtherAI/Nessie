@@ -231,7 +231,7 @@ export const configureExecutorLocalPolicy = async (
     workspaceRoot: canonicalWorkspaceRoot,
     ...(helper ? { nativeHelperPath: helper } : {}),
   }
-  await saveExecutorState(stateDir, next)
+  await saveExecutorState(stateDir, next, state)
   return next
 }
 
@@ -280,7 +280,7 @@ export const configureExecutorBrowserSandbox = async (
       revision: state.descriptor.revision + 1,
     },
   }
-  await saveExecutorState(stateDir, next)
+  await saveExecutorState(stateDir, next, state)
   return next
 }
 
@@ -330,7 +330,7 @@ export const configureExecutorCodexSandbox = async (
       revision: state.descriptor.revision + 1,
     },
   }
-  await saveExecutorState(stateDir, next)
+  await saveExecutorState(stateDir, next, state)
   return next
 }
 

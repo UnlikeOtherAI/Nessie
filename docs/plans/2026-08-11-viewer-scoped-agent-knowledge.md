@@ -719,16 +719,16 @@ attempts share creation → no endpoint.
 
 ## Review record
 
-Designed 2026-08-11 by **Fable** (claude-fable-5) and **Kimix** (Kimi via Codex)
+Designed 2026-08-11 by **Fable** (claude-fable-5) and **Reviewer B**
 working independently from one brief. Every claim re-verified against the code
 before acceptance.
 
-- **Core mechanism: Fable's.** Kimix's whole-run-tuple + intersection predicate
+- **Core mechanism: Fable's.** Reviewer B's whole-run-tuple + intersection predicate
   was rejected on verification — `assembleScopes:202-205` puts the org audience in
   every member's tuple, so the predicate would admit everyone and close nothing.
-- **Kimix wrong on KB.** Claimed KB retrieval is agent-scoped and needs a fix;
+- **Reviewer B wrong on KB.** Claimed KB retrieval is agent-scoped and needs a fix;
   `access.ts:57-64` already resolves the user principal when there is an asker.
-- **Kimix right on compaction**, which Fable omitted entirely — and it produced
+- **Reviewer B right on compaction**, which Fable omitted entirely — and it produced
   the checkpoint-basis-union requirement above, without which Phase 1 ships a hole.
 - **Converged independently** (and therefore trusted): withheld placeholder over
   silent omission; forward-only with legacy messages unrestricted; asker's
@@ -739,7 +739,7 @@ before acceptance.
 
 Same two designers, same method. Resolved disagreements:
 
-- **Gate placement: Fable's.** Kimix argued for a retrieval gate on the grounds
+- **Gate placement: Fable's.** Reviewer B argued for a retrieval gate on the grounds
   that emission-gating leaves privileged text in a window re-read by
   `loadConversation`, the orchestrator, and checkpoints. True *without* Part 1 —
   but both plans sequence Part 1 first, and once the read predicate exists every
@@ -748,7 +748,7 @@ Same two designers, same method. Resolved disagreements:
   who under a retrieval gate would get a degraded answer and then a re-run.
 - **"Privileged is a relation, not a tier": Fable's**, and it is the most useful
   correction of the round — it removes a whole table from the design.
-- **Firing computation: Fable's** scope-chain form over Kimix's member
+- **Firing computation: Fable's** scope-chain form over reviewer B's member
   enumeration, which is unstable for a durable artifact — and whose stated
   formula was inverted (see the spec-bug note above).
 - **`SensitivityTier` verdict: converged**, and therefore trusted — human-assigned
@@ -757,7 +757,7 @@ Same two designers, same method. Resolved disagreements:
   only test fixtures do).
 - **Top tier gets no "always": converged.** Both reached it independently from
   different arguments — a wiretap over future unseen content (Fable); no ambient
-  audience to notice misuse (Kimix).
+  audience to notice misuse (reviewer B).
 - **Standing-grant key: converged** on `(source scope, destination channel, agent)`
   with live granter-membership recheck. Independent agreement on every dimension
   including the agent term.

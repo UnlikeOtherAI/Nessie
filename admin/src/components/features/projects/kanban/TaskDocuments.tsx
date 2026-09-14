@@ -20,8 +20,16 @@ import {
 
 // Compact "Documents" section shown inside the ticket dialog: the pages bound
 // to this task (notes + uploaded files), an inline "New note" affordance, and
-// an "Upload file" button. Only rendered once a task exists (edit mode).
-export const TaskDocuments = ({ taskId }: { taskId: string }) => {
+// an "Upload file" button. Project tasks enter the existing scoped Project
+// Docs surface; a task without a project stays in the global Knowledge home.
+// Only rendered once a task exists (edit mode).
+export const TaskDocuments = ({
+  projectId,
+  taskId,
+}: {
+  projectId?: string | null
+  taskId: string
+}) => {
   const navigate = useNavigate()
   const pagesQuery = useTaskPages(taskId)
   const createPage = useCreateTaskPage(taskId)
@@ -34,7 +42,12 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
   const pages = pagesQuery.data ?? []
 
   const openPage = (spaceId: string, pageId: string) => {
-    navigate(`/knowledge-base?spaceId=${spaceId}&pageId=${pageId}`)
+    const intent = new URLSearchParams({ pageId, spaceId })
+    navigate(
+      projectId
+        ? `/projects/${projectId}/docs?${intent}`
+        : `/knowledge-base?${intent}`,
+    )
   }
 
   const submitNote = async () => {

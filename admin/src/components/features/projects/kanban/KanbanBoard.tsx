@@ -16,9 +16,9 @@ import { arrayMove } from '@dnd-kit/sortable'
 import type { BoardTaskRecord } from '../../../../facades/boards/hooks'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
+import type { BoardView } from './board-view'
 import { ArchivedTaskCard, KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
-import { TaskDialog } from './TaskDialog'
 import { type BoardColumnView, CATEGORY_DOT } from './kanban-config'
 
 // Columns fill the viewport but never shrink below this. The board fits as many
@@ -50,6 +50,9 @@ type KanbanBoardProps = {
   // Persist a drag: move the task to `columnId` at `position` (index in that
   // column). Reordering within a column uses the same call (same columnId).
   onMoveTask: (taskId: string, columnId: string, position: number) => void
+  // The project host owns task detail navigation and its one shared dialog.
+  onOpenTask: (task: BoardTaskRecord) => void
+  view?: BoardView
 }
 
 export const KanbanBoard = ({
@@ -60,9 +63,10 @@ export const KanbanBoard = ({
   showProject,
   projectNameById,
   onMoveTask,
+  onOpenTask,
+  view = 'cards',
 }: KanbanBoardProps) => {
   const [showArchived, setShowArchived] = useState(false)
-  const [activeTask, setActiveTask] = useState<TaskRecord | null>(null)
   const [isDraggingCard, setIsDraggingCard] = useState(false)
   // Card to pulse after it lands in a column from a drag.
   const [pulseId, setPulseId] = useState<string | null>(null)
@@ -254,12 +258,17 @@ export const KanbanBoard = ({
   }
 
   const cardProps = (task: BoardTaskRecord) => ({
-    onOpen: setActiveTask,
+    onOpen: (openedTask: TaskRecord) => onOpenTask({
+      ...openedTask,
+      columnId: task.columnId,
+      position: task.position,
+    }),
     onPulseEnd: () => setPulseId((current) => (current === task.id ? null : current)),
     projectName: task.projectId ? projectNameById[task.projectId] ?? null : null,
     pulse: pulseId === task.id,
     showProject,
     task,
+    view,
   })
 
   return (
@@ -314,6 +323,7 @@ export const KanbanBoard = ({
                       key={column.id}
                       columnId={column.id}
                       count={ids.length}
+                      dense={view === 'lines'}
                       dot={CATEGORY_DOT[column.category]}
                       headerAction={
                         column.category === 'done' && projectId && boardId ? (
@@ -353,17 +363,22 @@ export const KanbanBoard = ({
           Archived ({archived.length})
         </button>
         {showArchived ? (
-          <div className="mt-2 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-2 grid min-h-0 flex-1 grid-cols-1 content-start gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {archived.length === 0 ? (
               <div className="text-xs text-[color:var(--tx3)]">No cancelled or failed work.</div>
             ) : (
               archived.map((task) => (
                 <ArchivedTaskCard
                   key={task.id}
-                  onOpen={setActiveTask}
+                  onOpen={(openedTask) => onOpenTask({
+                    ...openedTask,
+                    columnId: task.columnId,
+                    position: task.position,
+                  })}
                   projectName={task.projectId ? projectNameById[task.projectId] ?? null : null}
                   showProject={showProject}
                   task={task}
+                  view={view}
                 />
               ))
             )}
@@ -371,14 +386,6 @@ export const KanbanBoard = ({
         ) : null}
       </div>
 
-      <TaskDialog
-        boardId={boardId}
-        onClose={() => setActiveTask(null)}
-        open={activeTask !== null}
-        projectId={projectId}
-        task={activeTask}
-        taskColumnId={activeTask ? taskById.get(activeTask.id)?.columnId : undefined}
-      />
     </div>
   )
 }

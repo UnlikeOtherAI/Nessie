@@ -43,7 +43,7 @@ export const parseExecutorWorkspaceReviewResult = (result: Record<string, unknow
  */
 export const listExecutorWorkspaceReviews = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   actorContext: AuthorizedActionContext,
   executorId: string,
 ): Promise<WorkspaceReview[]> => {
@@ -82,7 +82,7 @@ export const listExecutorWorkspaceReviews = async (
 /** A user sees only reviews from runs they themselves started, across their entitled executors. */
 export const listOriginatingExecutorWorkspaceReviews = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   actorContext: AuthorizedActionContext,
 ): Promise<OriginatingWorkspaceReview[]> => {
   if (actorContext.actor.actorType !== 'user') return []

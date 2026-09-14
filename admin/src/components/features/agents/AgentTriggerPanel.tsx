@@ -17,6 +17,7 @@ import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
 import { useIsOwner } from '../../../facades/auth/hooks'
+import { triggerUrl } from '../../../facades/alerts/trigger-url'
 import { TriggerRunState } from '../triggers/TriggerRunState'
 import { findTriggerActivity, groupTriggers } from '../triggers/trigger-groups'
 import {
@@ -63,7 +64,7 @@ const TriggerRow = ({
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 className="truncate font-semibold text-[var(--tx)] hover:underline"
-                to={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
+                to={triggerUrl(trigger.id)}
               >
                 {trigger.name ?? trigger.type}
               </Link>

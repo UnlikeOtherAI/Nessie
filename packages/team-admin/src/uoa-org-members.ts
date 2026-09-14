@@ -43,8 +43,6 @@ const queryValues = (query: UoaRosterListQuery): Record<string, string> =>
     ].filter((entry): entry is [string, string] => entry[1] !== undefined),
   )
 
-type InvitationPermissions = { createInvitation: boolean; viewPendingInvitations: boolean }
-
 export type UoaInvitationTargetPage = {
   items: MemberInvitationTarget[]
   meta: PaginationMeta
@@ -54,7 +52,9 @@ export type UoaInvitationTargetPage = {
 export type UoaInvitationPage = {
   items: TeamInvitationRecord[]
   meta: PaginationMeta
-  permissions: InvitationPermissions
+  permissions: Pick<MemberRosterPermissions, 'addMember'> & {
+    viewPendingInvitations: boolean
+  }
 }
 
 export type UoaMemberTeamAccess = {
@@ -186,7 +186,12 @@ export const listOrganisationMemberInvitations = async (
     items: parseUoaInvitations(payload),
     meta: parseUoaPaginationMeta(payload),
     permissions: {
-      createInvitation: permissions?.createInvitation === true,
+      // The organization and team invitation feeds drive the same shared
+      // roster surface. UOA calls this upstream ability `createInvitation`,
+      // while Nessie's roster contract calls the corresponding UI capability
+      // `addMember`; leaking the upstream name here hid the invite and revoke
+      // controls at organization scope.
+      addMember: permissions?.createInvitation === true,
       viewPendingInvitations: permissions?.viewPendingInvitations === true,
     },
   }

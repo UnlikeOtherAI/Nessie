@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  CreateTeamInvitationsRequest,
-  CreateTeamInvitationsResponse,
+  CreateMemberInvitationRequest,
   TeamInvitationsResponse,
   TeamMembersResponse,
 } from '@nessie/schemas'
@@ -72,13 +71,23 @@ export const useSetTeamMemberActivation = () =>
       {},
     ))
 
-export const useCreateTeamInvitations = () => {
+/**
+ * Invite one address to this team.
+ *
+ * The body is UOA's user-mode single-invite shape, which is what
+ * `POST /api/team/invitations` validates. This hook used to send the older
+ * `{invites:[…]}` bulk body, which the route stopped accepting: every send from
+ * this form was a `400`, invisible because the form is reachable only on a
+ * non-UOA session (2026-09-13 invitation e2e run, F8). The form takes one
+ * address, so one request is the whole of it — no bulk contract to keep alive.
+ */
+export const useCreateTeamInvitation = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: CreateTeamInvitationsRequest) =>
-      apiClient.post<CreateTeamInvitationsResponse>('/api/team/invitations', input),
+    mutationFn: (input: CreateMemberInvitationRequest) =>
+      apiClient.post<{ ok: true }>('/api/team/invitations', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: teamKeys.invitations })
     },

@@ -21,14 +21,11 @@ import {
 } from '@nessie/team-admin'
 
 import { createAgentMessage } from '../execute/agent-message.js'
-import {
-  computeReplyBasis,
-  subtractImpliedScopes,
-  type BasisScope,
-} from '../execute/disclosure-basis.js'
+import { type BasisScope } from '../execute/disclosure-basis.js'
 import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
 import { publishMessageCreated } from '../execute/realtime.js'
 import {
+  computeDelegatedPostBasis,
   insertMessageBasis,
   insertPrivateConversationSources,
   requireConsumedSources,
@@ -108,9 +105,13 @@ const requireRequestingHuman = (context: BuiltinToolRuntimeContext): string => {
  * silenced in its own home. They heard the brief's content in the origin thread
  * already, so subtracting what they can reach withholds nothing from anybody.
  *
- * Both subtractions reuse `disclosure-basis.ts` rather than restating set
- * containment here: `computeReplyBasis` for the destination and
- * `subtractImpliedScopes` — the function it is itself built on — for the person.
+ * The rule itself now lives in `tool-message-basis.ts`
+ * (`computeDelegatedPostBasis`), beside the other stamping a tool does, because
+ * `agent_conversation_start` writes the same kind of message — one run's post
+ * that starts another run — and had to make the same two subtractions. What
+ * stays here is the one thing that is genuinely the handoff's: the destination
+ * is always the requester's own single-member DM, so the requester's scopes are
+ * always the right second subtraction.
  */
 export const computeHandoffBriefBasis = (input: {
   consumed: readonly BasisScope[]
@@ -123,10 +124,12 @@ export const computeHandoffBriefBasis = (input: {
   requesterScopes: readonly BasisScope[]
   targetAgentId: string
 }): BasisScope[] =>
-  subtractImpliedScopes(
-    computeReplyBasis(input.consumed, input.destination, [input.targetAgentId]),
-    input.requesterScopes,
-  )
+  computeDelegatedPostBasis({
+    consumed: input.consumed,
+    destination: input.destination,
+    requesterScopes: input.requesterScopes,
+    targetAgentIds: [input.targetAgentId],
+  })
 
 export const runAgentHandoffTool = async (
   context: BuiltinToolRuntimeContext,

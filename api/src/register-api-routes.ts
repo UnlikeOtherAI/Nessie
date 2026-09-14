@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { registerActivityRoutes } from './routes/activity.js'
+import { registerAgentConversationRoutes } from './routes/agent-conversations.js'
 import { registerAgentRoutes } from './routes/agents.js'
 import { registerAgentTodoRoutes } from './routes/agent-todos.js'
 import { registerAlertRoutes } from './routes/alerts.js'
@@ -104,13 +105,17 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   // Dashboard HTTP and dashboard secret-card presses need the same namespaced
   // credential store. Construct it once so both routes preserve the exact same
   // write-only boundary.
-  const dashboardCredentials = createDashboardCredentialStore(deps.prisma, deps.authSecret ?? '')
+  const dashboardCredentials = createDashboardCredentialStore(
+    deps.prisma,
+    deps.encryptionKeyRing,
+  )
 
   registerHealthRoutes(app, deps)
   registerAuthRoutes(app, deps)
   registerChannelRoutes(app, deps)
   registerCallRoutes(app, deps)
   registerAgentRoutes(app, deps)
+  registerAgentConversationRoutes(app, deps)
   registerDemonstrationRoutes(app, deps)
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)

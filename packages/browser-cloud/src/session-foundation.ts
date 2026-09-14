@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { resolveScopedSetting } from '@nessie/runtime'
+import { resolveScopedSetting, type EncryptionKeyRingInput } from '@nessie/runtime'
 import type { ConnectionScope } from './connection-management.js'
 
 import {
@@ -25,11 +25,12 @@ export type CloudBrowserDeps = {
   prisma: PrismaClient
   resolveSecret: SecretResolve
   /**
-   * The deployment auth secret, which unseals a session's connect capability.
-   * Needed to capture a resumed session's tabs before it is released, since no
-   * worker holds a socket to it; absent, that capture is skipped.
+   * The versioned at-rest key ring, which unseals a session's connect
+   * capability. Needed to capture a resumed session's tabs before it is
+   * released, since no worker holds a socket to it; absent, that capture is
+   * skipped.
    */
-  encryptionSecret?: string
+  encryptionSecret?: EncryptionKeyRingInput
   /** Test seam. */
   clientFactory?: (credentials: BrowserbaseCredentials) => BrowserbaseClient
   /** Test seam for the capture that dials a resumed session itself. */

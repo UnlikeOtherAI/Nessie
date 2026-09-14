@@ -7,8 +7,10 @@ Part of [the project boards design](overview.md).
 ### 7.1 Routes
 
 Gate legend: **member** = `requireActorContext` + `isProjectAccessibleToActor`;
-**admin** = member + `canAdministerProject` (org owner, or `ProjectMember.role
-∈ {owner, admin}`); **self** = the caller is the connection's owner.
+**admin** = member + `canModifyProject` (any `ProjectMember`, whatever its
+role, or an org owner/admin — superseded the original project-role gate on
+2026-09-14, see `docs/standards/team-model.md`); **self** = the caller is the
+connection's owner.
 
 Boards and columns — `api/src/routes/boards.ts` (replaces `board.ts`):
 
@@ -87,16 +89,20 @@ Connections and sources — `api/src/routes/board-sources/connections.ts`,
 
 ### 7.3 Authorization
 
-`canAdministerProject(prisma, viewer, projectId)` joins
-`isProjectAccessibleToUser` in `packages/team-admin/src/project-structure.ts`;
-`server-context.ts` exposes `requireProjectAdmin(actorContext, projectId,
-reply)` beside `requireOwner`. Reads stay on the existing entitlement. Task
-mutations keep `requireUserActor` + project access; the new refusals are
+`canModifyProject(prisma, viewer, projectId)` lives in
+`packages/team-admin/src/resource-authority.ts` and is
+`isProjectAccessibleToUser`; `server-context.ts` exposes
+`requireProjectModifier(actorContext, projectId, reply)` beside `requireOwner`.
+Task mutations keep `requireUserActor` + project access; the new refusals are
 service errors mapped in the route, never decided in the route.
 
-`ProjectMember` is Nessie-owned (a project has no UOA counterpart), so gating
-on its role creates no second identity authority. The iteration routes keep
-`requireOwner` untouched — out of scope, and a separate decision.
+*As built 2026-09-14:* the original gate here was `canAdministerProject`, a
+`ProjectMember.role ∈ {owner, admin}` check. It was replaced by the equal-rights
+model in `docs/standards/team-model.md` — any member of the project, or an
+organisation owner or admin, shapes boards, fields, sources and the sprint
+plan. The admin surface reads one fail-closed membership decision for these
+controls and refreshes it after a server 403 or 404, while the routes remain
+authoritative.
 
 ### 7.4 Realtime
 
@@ -132,7 +138,7 @@ search surface, and a person looking at one can see it.
 
 | tool | what it answers | gate |
 |---|---|---|
-| `ticket_search` | text over title, purpose, detail and the provider key (`ENG-214`), narrowed by project, board, status, priority, colleague, unmapped provider person, or nobody at all | no project to gate, so `listAccessibleProjectIds` travels *with* the query; the disclosure basis is stamped for every project it actually answered from |
+| `ticket_search` / human Search | text over title, purpose, detail and the provider key (`ENG-214`), narrowed by project, board, status, priority, colleague, unmapped provider person, or nobody at all | `listAccessibleProjectIds` becomes an explicit project set before the one shared keyset search; projectless, channel-root, and personal cross-project tasks have no board doorway, and a human run-derived result is withheld until the canonical disclosure read allows it. Assistant search additionally excludes every non-public or provenance-carrying run until its tool output can record all source lineage. |
 | `ticket_people_read` | who a ticket can be attributed to: colleagues, and the provider users a mirrored ticket names that Nessie has no account for, with the count each holds | the named project, when one is given |
 | `ticket_search_remote` | the connected providers asked live, for items the mirror does not hold (§5.13) | the projects whose sources may be asked, resolved to a list because a `BoardSource` belongs to exactly one project |
 

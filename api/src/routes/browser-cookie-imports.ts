@@ -76,7 +76,7 @@ export const registerBrowserCookieImportRoutes = (
   app: FastifyInstance,
   deps: BrowserCookieImportRouteDeps,
 ): void => {
-  const resolver = createMcpSecretResolver(deps.prisma, deps.authSecret ?? '')
+  const resolver = createMcpSecretResolver(deps.prisma, deps.encryptionKeyRing)
   const cookieImporter = deps.browserCookieImporter ?? importBrowserCookies
   const loadTarget = deps.privateImportTargetLoader ?? loadFreshPrivateImportTarget
 
@@ -250,7 +250,7 @@ export const registerBrowserCookieImportRoutes = (
       }
       try {
         await cookieImporter({
-          encryptionSecret: deps.authSecret,
+          encryptionSecret: deps.encryptionKeyRing,
           prisma: deps.prisma,
           resolveSecret: (ref) => resolver.resolve(ref),
         }, {

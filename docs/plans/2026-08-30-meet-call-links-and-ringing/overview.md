@@ -252,14 +252,14 @@ explicitly reinstated: "some people wanna just create a Teams link").
 
 ## 13. Review log
 
-Reviewers: **Kimix** (delivered, folded in below) and **Codex Sol**
+Reviewers: **Reviewer B** (delivered, folded in below) and **Codex Sol**
 (in progress at the time of this revision; its outcomes get appended
 here). Both reviewed revision `d309821a` — before the per-team provider
 setting and the Teams reinstatement — so their findings target the
 Meet-only draft; all still applied. Every folded finding was re-verified
 against the code before acceptance.
 
-**Kimix — confirmed and folded:**
+**Reviewer B — confirmed and folded:**
 
 1. *(critical)* Native push must not carry `meetingUri`: the mobile shell's
    `pathFromPushData` treats notification data as untrusted and accepts
@@ -294,7 +294,7 @@ against the code before acceptance.
     naming; missed-push respects quiet hours; bridge typed guard +
     allowlist trap; machine-only note for slice 1. All folded where cited.
 
-**Kimix — verified-accurate confirmations** (no change needed): the
+**Reviewer B — verified-accurate confirmations** (no change needed): the
 WsEventSchema defect, user-SSE scope delivery, surface-suppression bypass
 needing to thread into `deliverNativeTokens` (§6.2 flag covers both legs),
 desktop opener capability, entitlement/CSP hazards, OAuth scope facts,
@@ -377,7 +377,7 @@ before folding. Confirmed and folded:**
 surface-suppression bypass needing to cover every delivery leg, the
 sw.js capability gaps, the missing mobile external-open bridge, and the
 desktop opener capability. They disagreed nowhere on facts; Sol went
-deeper on auth/persistence mechanics, Kimix on the native-push trust
+deeper on auth/persistence mechanics, reviewer B on the native-push trust
 boundary and state-machine SQL shapes. Sol's review ran against the
 live worktree file (mid-amendment), which is why finding 5 saw the
 provider widening; all other findings apply to the final text.

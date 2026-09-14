@@ -1,8 +1,13 @@
 import { z } from 'zod'
 import { BOARD_TASK_LIMIT } from '@nessie/schemas'
-import { findBoard, listBoardTasks, listBoards } from '@nessie/team-admin'
+import { findBoard, listBoards } from '@nessie/team-admin'
 
-import { createHumanTask, moveTaskToColumn, updateTask } from '../../services/tasks.js'
+import {
+  createHumanTask,
+  listBoardTasksForUser,
+  moveTaskToColumn,
+  updateTask,
+} from '../../services/tasks.js'
 import { requireScope } from '../scopes.js'
 import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
 
@@ -32,7 +37,11 @@ const projectAccess = async (
   }
   return context.prisma.project.findFirst({
     select: { id: true, organizationId: true },
-    where: { id: projectId, organizationId: context.actorContext.tenant.organizationId },
+    where: {
+      id: projectId,
+      organizationId: context.actorContext.tenant.organizationId,
+      deletedAt: null,
+    },
   })
 }
 
@@ -138,8 +147,13 @@ export const boardTools = (): McpToolDefinition[] => [
       const board = await findBoard(context.prisma, project.id, input.boardId as string)
       if (!board) return { error: 'Board not found.' }
 
-      const { tasks, truncated } = await listBoardTasks(context.prisma, board, {
+      // The same viewer-scoped disclosure as the board route and `nessie_task_get`.
+      const { tasks, truncated } = await listBoardTasksForUser(context.prisma, board, {
         limit: BOARD_TASK_LIMIT,
+      }, {
+        organizationId: context.actorContext.tenant.organizationId,
+        uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+        userId: context.actorContext.actor.actorId,
       })
       return {
         board,
@@ -241,7 +255,7 @@ export const boardTools = (): McpToolDefinition[] => [
           organizationId: context.actorContext.tenant.organizationId,
           taskId: input.taskId as string,
         } as Parameters<typeof updateTask>[1],
-        context.authSecret,
+        context.encryptionKeyRing,
       )
       if ('error' in result) return describeWriteFailure(result)
       return { task: result }
@@ -273,7 +287,7 @@ export const boardTools = (): McpToolDefinition[] => [
           taskId: input.taskId as string,
           ...(input.position !== undefined ? { position: input.position as number } : {}),
         } as Parameters<typeof moveTaskToColumn>[1],
-        context.authSecret,
+        context.encryptionKeyRing,
       )
       if ('error' in result) return describeWriteFailure(result)
       return { task: result }

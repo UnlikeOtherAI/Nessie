@@ -49,6 +49,7 @@ const main = async () => {
     await runBrowserSuite(resolve(here, '../member-management/run.mjs'), 'member-management')
     await runBrowserSuite(resolve(here, 'project-team-channel.mjs'), 'project-team-channel')
     await runBrowserSuite(resolve(here, 'run.mjs'), 'project-usability')
+    await runBrowserSuite(resolve(here, '../ticket-search/run.mjs'), 'ticket-search')
     await runBrowserSuite(resolve(here, '../connected-board-sources/run.mjs'), 'connected-board-sources')
   } finally {
     await stopProcess(admin)

@@ -26,7 +26,7 @@ export const registerCommsConnectionRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, authSecret } = deps
+  const { prisma, requireActorContext, encryptionKeyRing } = deps
 
   // The OAuth start/callback pair lives in its own module: it is the only part
   // of this surface that is public, state-token authenticated, and provider
@@ -243,7 +243,7 @@ export const registerCommsConnectionRoutes = (
     try {
       disconnected = await disconnectOwnedCommsConnection(prisma, {
         connectionId: id,
-        encryptionSecret: authSecret,
+        encryptionSecret: encryptionKeyRing,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
       }, {

@@ -35,6 +35,10 @@ const PORT_BASE = Number(process.env.SMOKE_MULTI_PORT_BASE ?? 5481)
 const API_PORTS = [PORT_BASE + 1, PORT_BASE + 2]
 const PROXY_URL = `http://127.0.0.1:${PORT_BASE}`
 const AUTH_SECRET = 'multi-instance-smoke-secret-multi-instance-smoke'
+const ENCRYPTION_KEY_VERSION = 'multi-instance-smoke'
+const ENCRYPTION_KEY_RING = JSON.stringify({
+  [ENCRYPTION_KEY_VERSION]: 'multi-instance-smoke-dedicated-encryption-root-material',
+})
 const SCENARIO = 'reasoning-tool-answer'
 const EXPECTED_ANSWER =
   'The team has a handful of channels, including the one we are talking in right now.'
@@ -109,6 +113,8 @@ const main = async (): Promise<void> => {
   const shared = {
     ...uoaFixture.environment,
     NESSIE_AUTH_SECRET: AUTH_SECRET,
+    NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION: ENCRYPTION_KEY_VERSION,
+    NESSIE_ENCRYPTION_KEY_RING: ENCRYPTION_KEY_RING,
     NESSIE_MODE: 'selfHosted',
     NESSIE_MODEL_API_KEY: 'multi-instance-smoke',
     NESSIE_MODEL_PROVIDER: 'openai',

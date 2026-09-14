@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link } from 'react-router-dom'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { BoardIcon } from '../../components/features/projects/kanban/BoardIcon'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
@@ -59,8 +59,9 @@ export const ProjectSectionRows = ({
   showBoardSelection,
 }: ProjectSectionRowsProps) => {
   const prewarm = usePrewarm()
-  const { data: boards = [] } = useProjectBoards(projectId)
-  const canAdministerProject = useCanAdministerProject(projectId)
+  const boardsQuery = useProjectBoards(projectId)
+  const boards = boardsQuery.data ?? []
+  const canModifyProject = useCanModifyProject(projectId)
   const isScrum = boards.some((board) => board.style === 'scrum')
   const isCurrentProject = currentProjectId === projectId
   const boardsId = `projects-nav-${listId}-${projectId}-boards`
@@ -148,7 +149,7 @@ export const ProjectSectionRows = ({
                     <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                {canAdministerProject ? (
+                {canModifyProject ? (
                   <button
                     aria-label="New board"
                     className="admin-sidebar-more flex-shrink-0"
@@ -165,7 +166,25 @@ export const ProjectSectionRows = ({
 
               {boardsExpanded ? (
                 <div id={boardsId}>
-                  {boards.length === 0 ? (
+                  {boardsQuery.isLoading ? (
+                    <SidebarEmptyNote indent="grandchild">Loading boards…</SidebarEmptyNote>
+                  ) : null}
+                  {boardsQuery.isError && boards.length === 0 ? (
+                    <div
+                      className="admin-sb-item admin-sb-empty sidebar-grandchild flex items-center gap-2"
+                      role="alert"
+                    >
+                      <span className="min-w-0 flex-1">Couldn&apos;t load boards.</span>
+                      <button
+                        className="font-medium text-[color:var(--accent)] hover:underline"
+                        onClick={() => void boardsQuery.refetch()}
+                        type="button"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : null}
+                  {!boardsQuery.isLoading && !boardsQuery.isError && boards.length === 0 ? (
                     // The same quiet line every other empty sidebar section
                     // shows, on the grid its board rows would stand on. The
                     // "+" on the Boards row beside it is the way in.

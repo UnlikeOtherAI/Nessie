@@ -53,6 +53,10 @@ test('tasks: list is empty and by-id 404s for a foreign org', async () => {
   assert.equal(list.statusCode, 200)
   assert.deepEqual((list.json() as { data: unknown[] }).data, [])
 
+  const search = await app.inject({ method: 'GET', url: '/api/tasks/search?query=orgA' })
+  assert.equal(search.statusCode, 200)
+  assert.deepEqual((search.json() as { data: unknown[] }).data, [])
+
   const byId = await app.inject({ method: 'GET', url: `/api/tasks/${IDS.taskA}` })
   assert.equal(byId.statusCode, 404)
   await app.close()

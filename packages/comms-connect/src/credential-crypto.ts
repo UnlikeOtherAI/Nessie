@@ -9,7 +9,13 @@ import crypto from 'node:crypto'
  * that stores a token. Re-exported here so this package's own callers are
  * unchanged and there is still exactly one implementation.
  */
-export { openSecret, sealSecret } from '@nessie/runtime'
+export {
+  AT_REST_SECRET_PURPOSE,
+  openSecret,
+  sealSecret,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
+} from '@nessie/runtime'
 
 /**
  * A stable hash of a granted-scope set, order-independent. Persisted as

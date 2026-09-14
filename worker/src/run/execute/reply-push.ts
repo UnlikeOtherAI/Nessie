@@ -32,6 +32,7 @@ export const enqueueInteractiveReplyPush = async (
     /** Restricted replies never place their text in a notification. */
     contentVisibility?: 'full' | 'generic'
   },
+  options: { required?: boolean } = {},
 ): Promise<void> => {
   const recipientUserId = replyRecipientUserId(payload)
   if (!recipientUserId) return
@@ -54,6 +55,7 @@ export const enqueueInteractiveReplyPush = async (
       topic: 'push.dispatch',
     })
   } catch (error) {
+    if (options.required) throw error
     // A response is already durable and visible in realtime. Retrying the run
     // just to enqueue a notification could duplicate the reply, so leave the
     // queue failure observable and preserve the completed turn.

@@ -41,6 +41,13 @@ export type BoardTaskRecord = ProjectTaskRecord & {
 
 export type BoardPlacement = { columnId: string; position: number | null } | null
 
+/** The concrete board and column an entitled task detail opens in. */
+export type TaskBoardDetailPlacement = {
+  boardId: string
+  columnId: string | null
+  position: number | null
+} | null
+
 type PlacementPin = { columnId: string; position: number }
 
 /**
@@ -115,6 +122,49 @@ export const resolveBoardPlacement = (
   }
   const first = ofCategory[0]
   return first ? { columnId: first.id, position: null } : null
+}
+
+/**
+ * Resolve the board and column for a task detail route.
+ *
+ * This deliberately shares the board-listing placement rule. A task whose
+ * explicit board has disappeared is unresolved; it must never be shown in a
+ * neighbouring board just because that is the project's default. `boardId:
+ * null` is the established default-board contract.
+ */
+export const resolveProjectTaskDetailPlacement = async (
+  prisma: PrismaClient,
+  task: {
+    id: string
+    projectId: string | null
+    boardId: string | null
+    status: string
+    archivedAt: string | Date | null
+  },
+): Promise<TaskBoardDetailPlacement> => {
+  if (!task.projectId) return null
+  const board = await prisma.board.findFirst({
+    where: {
+      projectId: task.projectId,
+      ...(task.boardId ? { id: task.boardId } : { isDefault: true }),
+    },
+    select: {
+      id: true,
+      columns: { select: { id: true, category: true, position: true } },
+    },
+  })
+  if (!board) return null
+
+  const pin = await prisma.taskBoardPlacement.findUnique({
+    where: { taskId_boardId: { taskId: task.id, boardId: board.id } },
+    select: { columnId: true, position: true },
+  })
+  const placement = resolveBoardPlacement(task, board.columns, pin ?? undefined)
+  return {
+    boardId: board.id,
+    columnId: placement?.columnId ?? null,
+    position: placement?.position ?? null,
+  }
 }
 
 /**

@@ -86,7 +86,7 @@ export const buildApp = async (
     config,
     prisma,
     databaseUrl,
-    authSecret,
+    encryptionKeyRing,
     allowedCorsOrigins,
     teamHostBaseDomain,
     authenticateRequest,
@@ -287,7 +287,7 @@ export const buildApp = async (
     signedDownloadMinBytes: config.storage.signedDownloadMinBytes,
   })
   const deepSignalMcpIdentity =
-    createDeepSignalMcpIdentityServiceFromEnv(prisma)
+    createDeepSignalMcpIdentityServiceFromEnv(prisma, process.env, { encryptionKeyRing })
   await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
 
   // Wire the Individual Communications Connector adapters into the shared
@@ -324,7 +324,7 @@ export const buildApp = async (
     ledgerIdentity,
     deepSignalMcpIdentity,
     fileService,
-    mcpSecretStore: createPgSecretStore(prisma, authSecret ?? '', {
+    mcpSecretStore: createPgSecretStore(prisma, encryptionKeyRing, {
       refPrefix: 'secret_mcp_',
     }),
     // Personal model subscriptions live in their own vault project, separate
@@ -344,7 +344,7 @@ export const buildApp = async (
 
   // ─── MCP universal connector routes (Slice C) ──────────────────────────
   // Inject a persistent, encrypted SecretStore so completing an OAuth handshake
-  // durably stores the token bundle (AES-256-GCM, keyed off the auth secret)
+  // durably stores the token bundle under the independent encryption key ring
   // instead of dropping it. `registerMcpRoutes` still enforces the production
   // guard — a deploy without this store fails loud at startup.
   registerMcpRoutes(app, {
@@ -354,12 +354,12 @@ export const buildApp = async (
     rateLimiter,
     requireActorContext,
     requireOwner,
-    oauthSecretStore: createPgSecretStore(prisma, authSecret ?? ''),
+    oauthSecretStore: createPgSecretStore(prisma, encryptionKeyRing),
     // Probe/test paths resolve credentialRefs through the same layered
     // resolver the worker uses (encrypted pg store first, env fallback), so
     // OAuth tokens and assistant-collected secrets work for connection tests.
-    secretResolver: createMcpSecretResolver(prisma, authSecret ?? ''),
-    mcpSecretStore: createPgSecretStore(prisma, authSecret ?? '', {
+    secretResolver: createMcpSecretResolver(prisma, encryptionKeyRing),
+    mcpSecretStore: createPgSecretStore(prisma, encryptionKeyRing, {
       refPrefix: 'secret_mcp_',
     }),
   })
@@ -372,13 +372,13 @@ export const buildApp = async (
 
   // ─── Platform push-credentials surface (super-admin only) ──────────────
   // Apple/Google credentials for the central push gateway. Secret bytes are
-  // stored encrypted via the SecretStore (keyed off the auth secret) and are
+  // stored encrypted via the independent encryption key ring and are
   // write-only; only metadata is ever returned.
   registerPlatformPushRoutes(app, {
     prisma,
     requireActorContext,
     requireSuperAdmin,
-    encryptionSecret: authSecret ?? '',
+    encryptionKeyRing,
   })
 
   // The four maintenance sweeps take a session advisory lock on a connection
@@ -386,8 +386,9 @@ export const buildApp = async (
   // Prisma client they write through — the hub's, not a fourth one on the
   // same URL (see the connection-ceiling note above).
   const stopApiMaintenance = startApiMaintenance(prisma, realtimeHub.pool, {
-    encryptionSecret: authSecret ?? '',
-    resolveSecret: (ref) => createMcpSecretResolver(prisma, authSecret ?? '').resolve(ref),
+    // Browser-cloud still owns its legacy ciphertext migration separately.
+    encryptionSecret: encryptionKeyRing,
+    resolveSecret: (ref) => createMcpSecretResolver(prisma, encryptionKeyRing).resolve(ref),
   })
   app.addHook('onClose', () => {
     stopApiMaintenance()

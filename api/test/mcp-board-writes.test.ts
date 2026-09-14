@@ -70,7 +70,7 @@ const contextFor = (prisma: PrismaClient, s: Seed): McpToolContext => ({
     actor: { actorId: s.userId, actorType: 'user', roles: ['owner'] },
     tenant: { organizationId: s.organizationId, projectId: s.projectId },
   }),
-  authSecret: 'test-secret',
+  encryptionKeyRing: { activeVersion: 'test', keys: { test: 'mcp-board-encryption-root' } },
   checkPolicy: async () => ({ allowed: true, reasonCode: 'ALLOWED' }),
   // The real reader, so the test cannot pass against a shape production never
   // produces.

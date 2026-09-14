@@ -7,6 +7,7 @@ import {
   viewerSatisfiesBasis,
 } from '@nessie/runtime'
 import type { UoaSessionIdentity } from '@nessie/schemas'
+import { buildViewerThreadWhere } from '@nessie/team-admin'
 
 /**
  * Which thread a person may open, and how far they have read in it.
@@ -41,15 +42,13 @@ export const findThreadForUser = async (
   }) | null
 > =>
   prisma.thread.findFirst({
+    // The predicate itself lives in `@nessie/team-admin` now that the agent
+    // conversation list, the start door and the `conversation_reference` tool
+    // all have to answer "may this person open this thread" the same way. This
+    // read is unchanged; it just no longer states the rule a second time.
     where: {
       id: threadId,
-      channel: {
-        organizationId,
-        OR: [
-          { visibility: 'public' },
-          { members: { some: { userId } } },
-        ],
-      },
+      ...buildViewerThreadWhere(userId, organizationId),
     },
     include: {
       channel: {

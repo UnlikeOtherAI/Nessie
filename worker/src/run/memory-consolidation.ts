@@ -4,10 +4,12 @@ import {
   deriveMemoryConsolidationInferenceOrigin,
   parseAndVerifyMemoryConsolidationJobPayload,
   type CaptureConfig,
+  type ConsolidationCandidateExtractor,
 } from '@nessie/memory'
 import {
   attributionFromActorContext,
   LedgerAttributionError,
+  type LedgerIdentityService,
 } from '@nessie/runtime'
 import {
   MemoryConsolidationSourceSchema,
@@ -15,6 +17,7 @@ import {
   type RunMemoryConsolidateJobPayload,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../queue.js'
+import { createMemoryCandidateExtractor } from './memory-candidate-extraction.js'
 
 const TOPIC = 'memory.run.consolidate'
 
@@ -68,11 +71,23 @@ export const enqueueRunMemoryConsolidation = async (
 }
 
 export const executeRunMemoryConsolidationJob = async (
-  deps: { captureConfig: CaptureConfig },
+  deps: {
+    candidateExtractor?: ConsolidationCandidateExtractor
+    captureConfig: CaptureConfig
+    ledgerIdentity?: LedgerIdentityService | null
+    prisma: PrismaClient
+  },
   payload: unknown,
 ): Promise<void> => {
   const parsed = parseAndVerifyMemoryConsolidationJobPayload(payload)
-  const result = await consolidateRunMemories(parsed, deps.captureConfig)
+  const extractCandidates = deps.candidateExtractor ?? createMemoryCandidateExtractor(
+    { ledgerIdentity: deps.ledgerIdentity, prisma: deps.prisma },
+    { origin: parsed.origin },
+  )
+  const result = await consolidateRunMemories(parsed, {
+    ...deps.captureConfig,
+    extractCandidates,
+  })
   if (result.skippedReason) {
     console.warn(
       `[worker.memory] skipped run memory consolidation for ${parsed.runId}: ${result.skippedReason}`,

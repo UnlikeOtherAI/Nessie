@@ -75,7 +75,7 @@ const subjectDigest = (
 
 const originatingReview = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   actorContext: AuthorizedActionContext,
   reviewCommandId: string,
 ): Promise<{
@@ -128,7 +128,7 @@ const originatingReview = async (
 
 export const prepareExecutorWorkspacePromotion = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   actorContext: AuthorizedActionContext,
   input: { reviewCommandId: string },
 ): Promise<PreparedWorkspacePromotion> => {
@@ -228,7 +228,7 @@ export const confirmExecutorWorkspacePromotion = async (
   input: {
     candidateHandle: string
     confirmationToken: string
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     freshVerificationSatisfied: boolean
     promotionId: string
   },

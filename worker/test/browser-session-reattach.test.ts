@@ -28,9 +28,16 @@ import type { RunContext } from '../src/run/execute/types.js'
  */
 
 const AUTH_SECRET = 'test-auth-secret-for-browser-reattach'
-// The pool seals and unseals with the deployment auth secret, read through
-// `loadConfig()` at call time.
+const ENCRYPTION_RING = {
+  activeVersion: 'test-rotation',
+  keys: { 'test-rotation': AUTH_SECRET },
+  legacyKey: AUTH_SECRET,
+} as const
+// The pool reads this ring through `loadConfig()` at call time.
 process.env.NESSIE_AUTH_SECRET = AUTH_SECRET
+process.env.NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION = ENCRYPTION_RING.activeVersion
+process.env.NESSIE_ENCRYPTION_KEY_RING = JSON.stringify(ENCRYPTION_RING.keys)
+process.env.NESSIE_ENCRYPTION_LEGACY_KEY = AUTH_SECRET
 
 const SESSION_ID = '11111111-1111-4111-8111-111111111111'
 const RUN_ID = '22222222-2222-4222-8222-222222222222'
@@ -46,7 +53,7 @@ type Row = {
 
 const activeRow = (over: Partial<Row> = {}): Row => ({
   status: 'active',
-  connectCapabilityCiphertext: sealSecret(AUTH_SECRET, CONNECT_URL),
+  connectCapabilityCiphertext: sealSecret(ENCRYPTION_RING, CONNECT_URL, 'browser.session-capability'),
   originGate: serialiseOriginGate({
     authenticatedOrigins: new Set(['https://mail.example.com']),
     touchedAuthenticated: true,

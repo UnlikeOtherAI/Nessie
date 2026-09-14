@@ -5,7 +5,8 @@
 # of the audit records four the API refuses to start — or silently misbehaves —
 # without: NESSIE_API_PUBLIC_URL, NESSIE_ADMIN_PUBLIC_URL, NESSIE_CORS_ORIGINS
 # and NESSIE_API_TRUSTED_PROXY_HOPS. All four are below, and
-# NESSIE_AUTH_SECRET (hard failure in hosted/selfHosted) and NESSIE_CONFIG_PATH
+# NESSIE_AUTH_SECRET and the separately generated NESSIE_ENCRYPTION_* ring
+# (hard failures in hosted/selfHosted), plus NESSIE_CONFIG_PATH
 # (no env path exists for auth.providers, so SSO is off without it) with them.
 #
 # Empty values are stripped rather than passed as "": the config loader treats
@@ -34,6 +35,7 @@ locals {
   shared_plain_env_raw = {
     NODE_ENV                                 = "production"
     NESSIE_MODE                              = var.nessie_mode
+    NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION      = "2026-09"
     NESSIE_CONFIG_PATH                       = var.config_path
     NESSIE_API_PUBLIC_URL                    = local.api_public_url
     NESSIE_ADMIN_PUBLIC_URL                  = var.admin_public_url
@@ -113,6 +115,7 @@ locals {
     DATABASE_URL                     = module.secrets.generated_secret_ids["database-url"]
     NESSIE_DB_URL                    = module.secrets.generated_secret_ids["database-url"]
     NESSIE_AUTH_SECRET               = module.secrets.generated_secret_ids["auth-secret"]
+    NESSIE_ENCRYPTION_KEY_RING        = module.secrets.generated_secret_ids["encryption-key-ring"]
     NESSIE_STORAGE_ACCESS_KEY_ID     = module.secrets.generated_secret_ids["storage-access-key-id"]
     NESSIE_STORAGE_SECRET_ACCESS_KEY = module.secrets.generated_secret_ids["storage-secret-access-key"]
   }

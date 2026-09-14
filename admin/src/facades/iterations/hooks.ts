@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectKeys } from '../projects/keys'
+import { refreshProjectAdministrationAfterForbidden } from '../projects/administration'
 import { taskKeys } from '../tasks/keys'
 import { iterationKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -75,6 +76,7 @@ export const useCreateIteration = (projectId: string) => {
   return useMutation({
     mutationFn: (input: CreateIterationInput) =>
       apiClient.post<Iteration>(`/api/projects/${projectId}/iterations`, input),
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: iterationKeys.forProject(projectId) }),
   })
 }
@@ -87,6 +89,7 @@ export const useUpdateIteration = (projectId: string) => {
       const { id, ...body } = input
       return apiClient.patch<Iteration>(`/api/iterations/${id}`, body)
     },
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: iterationKeys.forProject(projectId) })
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
@@ -100,6 +103,7 @@ export const useDeleteIteration = (projectId: string) => {
   return useMutation({
     mutationFn: (iterationId: string) =>
       apiClient.delete<{ ok: true }>(`/api/iterations/${iterationId}`),
+    onError: (error) => refreshProjectAdministrationAfterForbidden(queryClient, projectId, error),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: iterationKeys.forProject(projectId) })
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })

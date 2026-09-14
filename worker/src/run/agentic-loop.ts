@@ -43,19 +43,20 @@ import {
   type AgentCardSuspension,
   type ToolApprovalSuspension,
 } from './tool-batch.js'
-import {
-  type AgenticLoopInput,
-  type LoopResult,
-} from './agentic-loop-types.js'
+import { type AgenticLoopInput, type LoopResult } from './agentic-loop-types.js'
 import { normalizeLegacyCompactionNotes } from './context-compaction.js'
+import {
+  advanceOutputFinalization,
+  outputFinalizationInstruction,
+  outputFinalizationTerminalText,
+  restoreOutputFinalizationState,
+} from './output-finalization.js'
 
-export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
-  'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
-
-const outputLimitPartial = (text: string): string => [
-  text.trim(),
-  'I reached the response limit before completing the answer. Continue this run to finish.',
-].filter(Boolean).join('\n\n')
+export {
+  EMPTY_OUTPUT_FINALIZATION_INSTRUCTION,
+  EMPTY_OUTPUT_TERMINAL_MESSAGE,
+  OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+} from './output-finalization.js'
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
@@ -102,8 +103,8 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   let compactionAttempts = resume?.compactionAttempts ?? 0
   let compactionLastIteration: number | null = resume?.compactionLastIteration ?? null
   let budgetRecoveryAttempted = resume?.budgetRecoveryAttempted ?? false
-  let lengthFinalizationUsed = resume?.lengthFinalizationUsed ?? false
-  let lengthFinalizationPending = resume?.lengthFinalizationPending ?? false
+  // New checkpoints retain legacy markers during a rolling worker deploy.
+  const outputFinalization = restoreOutputFinalizationState(resume ?? {})
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
@@ -139,8 +140,12 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       invocations: allInvocations,
       iterations,
       lastAssistantText,
-      lengthFinalizationUsed,
-      lengthFinalizationPending,
+      outputFinalizationUsed: outputFinalization.used,
+      outputFinalizationPending: outputFinalization.pending,
+      outputFinalizationReason: outputFinalization.reason,
+      // Older rolling workers see the recovery as already spent too.
+      lengthFinalizationUsed: outputFinalization.used,
+      lengthFinalizationPending: outputFinalization.pending,
       messages,
       pendingToolCalls: inFlightToolCalls,
       retriesUsed: retryBudget.total - retryBudget.remaining,
@@ -179,11 +184,13 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     cancelled = false,
     pendingApproval: ToolApprovalSuspension | null = null,
     pendingInput: AgentCardSuspension | null = null,
+    incompleteReason: 'empty_provider_response' | null = null,
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
     effectiveTokensUsed: spend.effectiveTokensUsed,
     exhaustedBudget,
+    incompleteReason,
     finalText,
     invocations: allInvocations,
     iterations,
@@ -300,7 +307,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       })
       if (postCompactionTimeStop) return stop(postCompactionTimeStop)
 
-      const finalizationPending = lengthFinalizationPending
+      const finalizationPending = outputFinalization.pending
       const activeToolSchemaTokens = finalizationPending ? 0 : toolSchemaTokens
       const admission = () => resolveOutputAdmission({
         contextPlan,
@@ -382,40 +389,33 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       const spendStop = stopAfterInference(budget, spend)
       if (spendStop) return stop(spendStop)
 
-      if (result.finishReason === 'length') {
-        if (finalizationPending || lengthFinalizationUsed) {
-          lastAssistantText = outputLimitPartial(safeOutputText || lastAssistantText)
-          return stop('tokens')
-        }
-        {
-          // Persist the truncated turn before asking for the bounded recovery.
-          // A re-claimed worker therefore retains the evidence and never has to
-          // re-dispatch the tool batch that produced it.
-          lengthFinalizationUsed = true
-          lengthFinalizationPending = true
-          messages.push(redactMessageContent({
-            content: safeOutputText || null,
-            role: 'assistant',
-          }))
-          messages.push({
-            content: OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
-            role: 'system',
-          })
-          await checkpoint()
-          // Re-enter through the next loop boundary. The pending marker is
-          // durable, so a crash cannot turn this recovery into a tool-enabled
-          // call or replay an incomplete provider tool-call batch.
-          continue
-        }
+      const finalization = advanceOutputFinalization(outputFinalization, {
+        finishReason: result.finishReason,
+        outputText: safeOutputText,
+        toolCalls: result.toolCalls,
+      })
+      if (finalization?.kind === 'recover') {
+        // Persist before the bounded no-tools turn, so a reclaim cannot replay work.
+        messages.push(redactMessageContent({
+          content: safeOutputText || null,
+          role: 'assistant',
+        }))
+        messages.push({
+          content: outputFinalizationInstruction(finalization.reason),
+          role: 'system',
+        })
+        await checkpoint()
+        continue
       }
-
-      if (finalizationPending && result.toolCalls.length > 0) {
-        lastAssistantText = outputLimitPartial(safeOutputText || lastAssistantText)
-        return stop('tokens')
+      if (finalization?.kind === 'terminal') {
+        const finalText = outputFinalizationTerminalText(finalization.reason, safeOutputText || lastAssistantText)
+        lastAssistantText = finalText
+        if (finalization.reason === 'length') return stop('tokens')
+        return finish(null, finalText, false, null, null, 'empty_provider_response')
       }
 
       if (!result.toolCalls || result.toolCalls.length === 0) {
-        lengthFinalizationPending = false
+        outputFinalization.pending = false
         if (safeOutputText) {
           await callbacks.onTextDelta(safeOutputText)
         }

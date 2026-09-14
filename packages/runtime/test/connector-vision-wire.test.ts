@@ -21,6 +21,7 @@ const messages: ProviderMessage[] = [
 
 const captureRequestBody = async (
   provider: ModelProviderName,
+  config: Partial<Parameters<ReturnType<typeof createConnectorRegistry>['getConfigured']>[0]> = {},
 ): Promise<Record<string, unknown>> => {
   const originalFetch = globalThis.fetch
   let body: Record<string, unknown> | null = null
@@ -30,8 +31,13 @@ const captureRequestBody = async (
   }) as typeof fetch
 
   try {
-    const connector = createConnectorRegistry().getConfigured({ apiKey: 'k', provider })
-    await connector.invoke({ messages, model: 'test-model', requestId: 'req-1' })
+    const connector = createConnectorRegistry().getConfigured({ apiKey: 'k', provider, ...config })
+    await connector.invoke({
+      maxOutputTokens: 321,
+      messages,
+      model: 'test-model',
+      requestId: 'req-1',
+    })
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -62,6 +68,7 @@ test('DeepSeek, whose chat API is text-only, gets plain text and no image', asyn
   const body = await captureRequestBody('deepseek')
   assert.equal(userContent(body), 'what is on this image?')
   assert.equal(JSON.stringify(body).includes('AAECAw=='), false)
+  assert.equal(body.thinking, undefined)
 })
 
 test('capability snapshots report vision truthfully per provider', async () => {

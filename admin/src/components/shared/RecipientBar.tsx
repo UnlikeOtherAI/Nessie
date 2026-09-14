@@ -83,7 +83,7 @@ export const RecipientBar = ({
     [users],
   )
   const agentsById = useMemo(
-    () => new Map(agents.map((agent) => [agent.id, agent])),
+    () => new Map<string, AgentRecord>(agents.map((agent) => [agent.id, agent])),
     [agents],
   )
   const selectedKeys = useMemo(

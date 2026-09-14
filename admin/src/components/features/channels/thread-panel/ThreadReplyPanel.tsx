@@ -133,9 +133,14 @@ export const ThreadReplyPanel = ({
     dismissPendingAgent,
     confirmSecretCapture,
     dismissSecretCapture,
+    mentionInvite,
     secretCapture,
   } = useChannelComposer({
     activeChannel,
+    // The container thread the reply hangs off — `useReplyThread` already
+    // resolves it from the route, so a reply inside a conversation posts into
+    // that conversation rather than into the room's General thread.
+    activeThreadId,
     threadMessages: replies,
     currentUserId: meUserId,
     // A reply thread is its own conversation, so its draft is keyed by the root
@@ -360,6 +365,7 @@ export const ThreadReplyPanel = ({
                   onOversizePaste={(paste) => setOversizePaste(paste)}
                   onConfirmSecretCapture={confirmSecretCapture}
                   onDismissSecretCapture={dismissSecretCapture}
+                  mentionInvite={mentionInvite}
                   onSubmitForm={(event) => {
                     threadScroll.pinToBottom()
                     markReplySent()

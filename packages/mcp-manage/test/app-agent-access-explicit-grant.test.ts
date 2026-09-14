@@ -46,6 +46,7 @@ const listAccess = async (
   toolPolicy: unknown,
   registryRows = rows,
   directGrants = registryRows.map((row) => grantFor('personal-assistant', row)),
+  connectionOwner = 'user-1',
 ) => {
   const prisma = {
     agent: {
@@ -76,43 +77,33 @@ const listAccess = async (
   return listAgentsWithAppAccess(
     prisma,
     actorContext,
-    [{ id: 'account-connection', scopeId: 'user-1', scopeType: 'user' }],
+    [{ id: 'account-connection', scopeId: connectionOwner, scopeType: 'user' }],
     registryRows,
   )
 }
 
-test('a descriptor-bound PA grant gives it user-scoped protected app access without policy writes', async () => {
-  const agents = await listAccess(null)
+test('the caller\'s own connection reaches every agent they talk to, with no grant', async () => {
+  const agents = await listAccess(null, [rows[0]!], [])
 
-  assert.deepEqual(agents.map((agent) => agent.agentId), ['personal-assistant'])
+  assert.deepEqual(
+    agents.map((agent) => agent.agentId),
+    ['personal-assistant', 'shared-agent'],
+  )
 })
 
-test('a shared agent never reaches the caller\'s protected personal connection', async () => {
-  const agents = await listAccess(
-    { 'capability-0': true },
-    [rows[0]!],
-    [grantFor('personal-assistant'), grantFor('shared-agent')],
-  )
-
-  assert.deepEqual(agents.map((agent) => agent.agentId), ['personal-assistant'])
-})
-
-test('a revoked PA grant removes it from protected app access', async () => {
-  const agents = await listAccess(
-    { 'capability-0': false },
-    [rows[0]!],
-    [],
-  )
+test('an explicit per-tool deny withholds the caller\'s own connection', async () => {
+  const agents = await listAccess({ 'capability-0': false }, [rows[0]!], [])
 
   assert.deepEqual(agents, [])
 })
 
-test('a shared-agent policy cannot lift protected user-scoped app access', async () => {
+test('a colleague\'s personal connection reaches no agent in the caller\'s runs, grants or not', async () => {
   const agents = await listAccess(
     { 'capability-0': true },
     [rows[0]!],
     [grantFor('personal-assistant'), grantFor('shared-agent')],
+    'user-2',
   )
 
-  assert.deepEqual(agents.map((agent) => agent.agentId), ['personal-assistant'])
+  assert.deepEqual(agents, [])
 })

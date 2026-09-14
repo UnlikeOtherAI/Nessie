@@ -29,6 +29,12 @@ import type { AvatarSources } from '../../shared/UserAvatar'
 
 type ChannelAgentInfoDrawerProps = {
   activeChannel: ChannelRecord | null
+  /**
+   * The thread this drawer's feed and composer belong to — the conversation on
+   * screen, which is the room's General thread only when no other one is open
+   * (docs/plans/2026-09-08-agent-conversations.md).
+   */
+  activeThreadId: string | null
   agent: ChannelAgentParticipant | null
   agents: AgentRecord[]
   meAvatar: AvatarSources
@@ -101,6 +107,7 @@ const isPersonalAssistantPresence = (
 
 export const ChannelAgentInfoDrawer = ({
   activeChannel,
+  activeThreadId,
   agent,
   agents,
   meAvatar,
@@ -136,9 +143,11 @@ export const ChannelAgentInfoDrawer = ({
     dismissPendingAgent,
     confirmSecretCapture,
     dismissSecretCapture,
+    mentionInvite,
     secretCapture,
   } = useChannelComposer({
     activeChannel,
+    activeThreadId: activeThreadId ?? undefined,
     currentUserId: meUserId,
     draftKey: channelComposerDraftKey(activeChannel?.id),
     threadMessages,
@@ -154,7 +163,7 @@ export const ChannelAgentInfoDrawer = ({
     startEdit,
     submitEdit,
     updatePending,
-  } = useChannelMessageActions(activeChannel?.defaultThreadId)
+  } = useChannelMessageActions(activeThreadId ?? undefined)
 
   const agentMap = useMemo(
     () => new Map(agents.map((entry) => [entry.id, entry])),
@@ -341,7 +350,7 @@ export const ChannelAgentInfoDrawer = ({
                 optimisticMessages={optimisticMessages}
                 pendingMessages={agentPendingMessages}
                 renderContent={renderContent}
-                threadId={activeChannel.defaultThreadId}
+                threadId={activeThreadId ?? undefined}
                 token={token}
                 updatePending={updatePending}
                 onAddReaction={addReaction}
@@ -369,6 +378,7 @@ export const ChannelAgentInfoDrawer = ({
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onConfirmSecretCapture={confirmSecretCapture}
             onDismissSecretCapture={dismissSecretCapture}
+            mentionInvite={mentionInvite}
             onSubmitForm={(event) => {
               drawerScroll.pinToBottom()
               void sendAddressedForm(event)

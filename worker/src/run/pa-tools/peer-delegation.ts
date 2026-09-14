@@ -1,4 +1,4 @@
-import { canAdministerProject, createBoard } from '@nessie/team-admin'
+import { canModifyProject, createBoard } from '@nessie/team-admin'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
@@ -30,8 +30,8 @@ const requesterAndProject = async (context: BuiltinToolRuntimeContext) => {
   })
   if (binding === 0) throw new Error('This agent is no longer bound to this project channel.')
   const member = await resolveActingMember(context)
-  if (!(await canAdministerProject(context.prisma, member, projectId))) {
-    throw new Error('A current project administrator must authorize this collaboration.')
+  if (!(await canModifyProject(context.prisma, member, projectId))) {
+    throw new Error('A current member of this project must authorize this collaboration.')
   }
   return { member, projectId }
 }
@@ -79,6 +79,12 @@ export const runAgentPeerDelegateTool = async (
         fromAgentId: context.agentId,
         organizationId: member.organizationId,
         peerDelegationDepth: depth + 1,
+        // The authenticated tuple is immutable run provenance. Its later
+        // Ledger use still verifies the original human's live account link,
+        // so this does not create a second identity authority or store a token.
+        ...(context.actorContext.actionContext.uoaIdentity
+          ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }
+          : {}),
         subject: `Project review: ${projectId}`,
         threadId: context.run.threadId,
         toAgentId: target.id,

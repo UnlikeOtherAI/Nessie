@@ -1,7 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
+import {
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
+} from '@nessie/runtime'
 import type { SessionClientType, UoaSessionIdentity } from '@nessie/schemas'
 import { hashRefreshToken } from './refresh-token-crypto.js'
 import {
@@ -16,7 +20,7 @@ type IssueInput = {
   providerId: string
   providerType: string
   ttlSeconds: number
-  encryptionSecret?: string
+  encryption?: EncryptionKeyRingInput
   uoaSession?: {
     configUrl: string
     identity: UoaSessionIdentity
@@ -42,7 +46,7 @@ export const issueRefreshToken = async (
   input: IssueInput,
 ): Promise<{ expiresAt: Date; rawToken: string }> => {
   if (
-    (input.providerType === 'uoa' && (!input.uoaSession || !input.encryptionSecret))
+    (input.providerType === 'uoa' && (!input.uoaSession || !input.encryption))
     || (input.providerType !== 'uoa' && input.uoaSession)
     || input.uoaSession?.identity.tokenVersion === null
   ) {
@@ -69,8 +73,9 @@ export const issueRefreshToken = async (
     },
   })
   const encrypted = input.uoaSession
-    ? encryptWithKey(
-        deriveSecretKey(input.encryptionSecret!),
+    ? encryptWithKeyRing(
+        toEncryptionKeyRing(input.encryption!),
+        'uoa.refresh',
         input.uoaSession.refreshToken,
       )
     : null

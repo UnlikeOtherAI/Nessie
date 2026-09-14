@@ -6,6 +6,7 @@ import { alertKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useEventStream } from '../realtime/event-stream'
+import { triggerUrl } from './trigger-url'
 
 // The server-enforced shape (`UserAlertRecordSchema`, parsed on every
 // response in `api/src/routes/alerts.ts`) rather than a hand-copied type —
@@ -151,7 +152,15 @@ export const getAlertLink = (
   if (alert.kind === 'trigger_health' && alert.triggerId) {
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
-    return { to: `/agents/triggers#${alert.triggerId}` }
+    return { to: triggerUrl(alert.triggerId) }
+  }
+  if (alert.kind === 'automatic_membership_health' && alert.automaticMembershipRuleId) {
+    // Automatic access has one home: Organization -> Members -> Automatic
+    // logins. The rule id is retained as URL state so the shared panel can put
+    // the precise reauthorization control in view after a cold bell click.
+    return {
+      to: `/settings/members?membersTab=automatic&automaticMembershipRule=${alert.automaticMembershipRuleId}`,
+    }
   }
   if (alert.kind === 'board_source_health' && alert.projectId && alert.boardSourceId) {
     // Straight to the source that stopped, with its remedy on screen — not to
@@ -159,6 +168,9 @@ export const getAlertLink = (
     return {
       to: `/projects/${alert.projectId}/settings?section=sources&source=${alert.boardSourceId}`,
     }
+  }
+  if (alert.kind === 'workflow_run_failed' && alert.workflowRunId) {
+    return { to: `/agents/workflows?failedRuns=1&run=${alert.workflowRunId}` }
   }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }

@@ -43,6 +43,16 @@ const makePrisma = () => {
         threadId: 'thread-1',
       }),
     },
+    // A first message names its conversation inside this same transaction. The
+    // thread here is a room's General thread (`agentId: null`), so the
+    // conditional update is never reached — the delegate exists because the
+    // send may call it, and an omitted one is a runtime TypeError rather than a
+    // type error.
+    thread: {
+      updateMany: async () => {
+        throw new Error('a General thread is never renamed by a message')
+      },
+    },
     messageThreadFollow: { createMany: async () => ({ count: 0 }) },
     userAlert: { createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }) },
     $queryRaw: async () => [{
@@ -70,6 +80,8 @@ const makePrisma = () => {
           organizationId: 'org-1',
           systemChannelType: null,
         },
+        agentId: null,
+        title: 'General',
       }),
     },
     agent: { findMany: async () => [] },

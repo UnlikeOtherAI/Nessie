@@ -10,8 +10,9 @@ import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } fr
 import {
   createGuestWorkspaceLease,
   releaseGuestWorkspaceLeaseIfCurrent,
+  type GuestWorkspaceLease,
 } from './guest-workspace-lease.js'
-import type { ExecutorLocalState } from './state-store.js'
+import type { ExecutorGuestVmExecutionConfig } from './state-store.js'
 
 const BROWSER_SESSION_MAX_MS = 10 * 60 * 1_000
 
@@ -27,6 +28,10 @@ type OpeningBrowserSession = {
 }
 
 type BrowserSessionStarter = (input: GuestVmSessionInput) => Promise<GuestVmSession>
+type PreparedLeaseSource = {
+  release: () => Promise<void>
+  workspaceRoot: string
+}
 
 export type ExecutorBrowserSessionManager = {
 	act: (command: ExecutorCommandEnvelope, runId: string) => Promise<Record<string, unknown>>
@@ -52,8 +57,12 @@ const denied = (): Record<string, unknown> => ({ code: 'EXECUTOR_BROWSER_DENIED'
  */
 export const createExecutorBrowserSessionManager = (
   stateDir: string,
-  state: ExecutorLocalState,
-  dependencies: { startSession?: BrowserSessionStarter } = {},
+  state: ExecutorGuestVmExecutionConfig,
+  dependencies: {
+    prepareLeaseSource?: (command: ExecutorCommandEnvelope) => Promise<PreparedLeaseSource>
+    startSession?: BrowserSessionStarter
+    verifyLease?: (lease: GuestWorkspaceLease, command: ExecutorCommandEnvelope) => Promise<boolean>
+  } = {},
 ): ExecutorBrowserSessionManager => {
   const activeByRun = new Map<string, ActiveBrowserSession>()
   const openedRunIds = new Set<string>()
@@ -104,6 +113,7 @@ export const createExecutorBrowserSessionManager = (
       }
       openingByRun.set(runId, opening)
       let lease: Awaited<ReturnType<typeof createGuestWorkspaceLease>> | undefined
+      let prepared: PreparedLeaseSource | undefined
       let session: GuestVmSession | undefined
       const stopSessionAndReleaseLease = async (): Promise<void> => {
         try {
@@ -113,11 +123,26 @@ export const createExecutorBrowserSessionManager = (
         }
       }
       try {
-        lease = await createGuestWorkspaceLease(stateDir, state.workspaceRoot, {
+        prepared = await dependencies.prepareLeaseSource?.(command)
+        lease = await createGuestWorkspaceLease(stateDir, prepared?.workspaceRoot ?? state.workspaceRoot, {
           bindingFence: command.bindingFence,
           commandId: command.commandId,
           runId,
         })
+        await prepared?.release()
+        prepared = undefined
+        if (opening.cancelled) {
+          await stopSessionAndReleaseLease()
+          return unavailable()
+        }
+        if (dependencies.verifyLease && !(await dependencies.verifyLease(lease, command))) {
+          await stopSessionAndReleaseLease()
+          return unavailable()
+        }
+        if (opening.cancelled) {
+          await stopSessionAndReleaseLease()
+          return unavailable()
+        }
         session = await startSession({
           egressPolicy: { allowedOrigins: browserSandbox.allowedOrigins },
           guestInitrdBuilderPath: browserSandbox.guestInitrdBuilderPath,
@@ -139,6 +164,7 @@ export const createExecutorBrowserSessionManager = (
         await stopSessionAndReleaseLease().catch(() => undefined)
         return unavailable()
       } finally {
+        await prepared?.release().catch(() => undefined)
         if (openingByRun.get(runId) === opening) openingByRun.delete(runId)
         opening.finish()
       }

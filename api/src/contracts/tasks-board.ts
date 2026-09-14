@@ -2,10 +2,13 @@ import {
   AgentIdSchema,
   ProjectIdSchema,
   TaskFieldValuesPatchSchema,
+  TaskDetailRecordSchema,
   TaskPrioritySchema,
+  PaginationParamsSchema,
   TaskRecordSchema,
   TaskStatusSchema,
   UserIdSchema,
+  type TaskDetailRecord,
   type TaskPriority,
   type TaskRecord,
 } from '@nessie/schemas'
@@ -18,7 +21,14 @@ import { NonEmptyStringSchema } from './shared.js'
 // The task record the admin renders directly lives in `@nessie/schemas`
 // (`task-records.ts`) because the admin has no import path into `api/src`.
 // Re-exported here so route modules keep one contract import.
-export { TaskPrioritySchema, TaskRecordSchema, type TaskPriority, type TaskRecord }
+export {
+  TaskPrioritySchema,
+  TaskDetailRecordSchema,
+  TaskRecordSchema,
+  type TaskDetailRecord,
+  type TaskPriority,
+  type TaskRecord,
+}
 
 export const CreateTaskBodySchema = z.object({
   title: NonEmptyStringSchema,
@@ -68,6 +78,11 @@ export const AssignTaskBodySchema = z.object({
   assigneeUserId: UserIdSchema.nullable().optional(),
   assigneeAgentId: AgentIdSchema.nullable().optional(),
 })
+
+/** A human's global ticket lookup. Access is decided at the route, not by a UI scope. */
+export const SearchTasksQuerySchema = z.object({
+  query: z.string().trim().min(2).max(200),
+}).merge(PaginationParamsSchema)
 
 export const TransitionTaskBodySchema = z.object({
   status: TaskStatusSchema,

@@ -221,6 +221,22 @@ memory_category  TEXT DEFAULT 'fact'      -- 'intent', 'reason', 'constraint', '
 `memory_type` separates run experiences from durable facts/procedures. `memory_category` is set by
 capture/consolidation and drives retrieval strategy.
 
+Post-run consolidation sends at most twelve user/assistant messages, truncated
+to 2,000 characters each, through the worker's deployment-billed utility
+inference. The model returns a strict maximum-four candidate projection with
+Unicode content, category, importance and source-message ids. Deterministic code
+validates that closed schema and every cited id; it does not infer meaning from
+keywords or language-specific sentence rules. Because the model sees the whole
+eligible tail, every candidate inherits the union of all private-conversation
+sources supplied to that inference. Citations remain trace metadata and cannot
+narrow disclosure authority. Task title and purpose are omitted because the
+consolidation job has no message-level disclosure proof for them.
+
+Malformed output and provider failures fail the durable consolidation job for
+queue retry. They do not change the already-completed source run. Valid
+candidates continue through the existing fingerprint, capture, enrichment,
+thought-audit and disclosure-source owners; there is no second memory store.
+
 ---
 
 ## Stage 4: Retrieval

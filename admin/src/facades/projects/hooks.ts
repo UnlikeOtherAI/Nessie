@@ -1,4 +1,5 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ProjectDirectoryEntrySchema, ProjectRecordSchema, type ProjectDirectoryEntry } from '@nessie/schemas'
 import type {
   ProjectMemberRecord,
   ProjectRecord,
@@ -14,9 +15,22 @@ export const useProjects = (enabled = true) => {
 
   return useQuery<ProjectRecord[]>({
     queryKey: projectKeys.all,
-    queryFn: () => apiClient.get('/api/projects'),
+    queryFn: () => apiClient.get('/api/projects', ProjectRecordSchema.array()),
     enabled,
     staleTime: Infinity,
+  })
+}
+
+/**
+ * Every project in the organisation, shaped by role: a project the viewer is
+ * not in carries only its name, description and members.
+ */
+export const useProjectDirectory = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<ProjectDirectoryEntry[]>({
+    queryKey: projectKeys.directory,
+    queryFn: () => apiClient.get('/api/projects/directory', ProjectDirectoryEntrySchema.array()),
   })
 }
 
@@ -24,10 +38,14 @@ export const useProjectMembers = (projectId: string | null) => {
   const apiClient = useApiClient()
 
   return useQuery<ProjectMemberRecord[]>({
-    placeholderData: keepPreviousData,
     enabled: Boolean(projectId),
     queryKey: projectKeys.members(projectId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/members`),
+    // Membership is an entitlement, not display data. Do not carry a previous
+    // project's role into a new route, and re-check a mounted surface when it
+    // regains focus so a role change takes effect without a page reload.
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   })
 }
 
@@ -60,7 +78,7 @@ export const useCreateProject = () => {
 
   return useMutation({
     mutationFn: (input: { name: string; teamId: string }) =>
-      apiClient.post<ProjectRecord>('/api/projects', input),
+      apiClient.post<ProjectRecord>('/api/projects', input, undefined, ProjectRecordSchema),
     onSuccess: async () => {
       // The sidebar resolves a project's explicit channel target from the
       // team's canonical `projectIds`. Refresh both directories together so a
@@ -117,14 +135,21 @@ export const useUpdateProject = () => {
     mutationFn: (input: {
       avatarAttachmentId: string | null
       avatarEmoji: string | null
+      description?: string | null
       name: string
       projectId: string
     }) =>
-      apiClient.patch<ProjectRecord>(`/api/projects/${input.projectId}`, {
-        avatarAttachmentId: input.avatarAttachmentId,
-        avatarEmoji: input.avatarEmoji,
-        name: input.name,
-      }),
+      apiClient.patch<ProjectRecord>(
+        `/api/projects/${input.projectId}`,
+        {
+          avatarAttachmentId: input.avatarAttachmentId,
+          avatarEmoji: input.avatarEmoji,
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          name: input.name,
+        },
+        undefined,
+        ProjectRecordSchema,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })

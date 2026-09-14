@@ -648,7 +648,7 @@ Resolved:
   the vendor CLI's session. Device code makes this work for web-only users
   anyway.
 
-## 6. Adversarial review record (Kimix + Codex Sol, 2026-09-02)
+## 6. Adversarial review record (reviewer B + Codex Sol, 2026-09-02)
 
 Both reviewers ran independently against the repo with the same brief:
 break this plan. Findings were adjudicated against the code (not averaged);
@@ -661,7 +661,7 @@ the lane (both reviewers); run-admission pinning of subscription/account/
 credential epoch on the `Run`, continuation fails closed (Sol); the
 "one lane" claim scoped to generative inference, with engagement decisions,
 embeddings/memory, avatars, and demonstration-generalize named as
-deployment-billed (both); explicit-null utility resolution (Kimix);
+deployment-billed (both); explicit-null utility resolution (reviewer B);
 dedicated vault project + worker identity scoped to it, broker as end-state
 (both — Sol showed the shared personal folder made narrow scoping
 unenforceable); `Agent.modelSubscriptionId` FK + ambiguity refusal (Sol);
@@ -678,7 +678,7 @@ reason/detail/revision + owner-directed alerts + metadata-only audit events
 (Sol); transfer clears provider+model+pointer with real null semantics,
 descendant sweep, one shared validator covering PA create and clones,
 run-time gate as authoritative backstop (both); run-level lane provenance
-in the inspector (Kimix); mock-llm Responses surface + race-test suite +
+in the inspector (reviewer B); mock-llm Responses surface + race-test suite +
 rollout ordering + GLM pinned pre-phase-1 (both); shared-channel decision
 now carries the whose-processor dimension and an org policy switch (Sol).
 

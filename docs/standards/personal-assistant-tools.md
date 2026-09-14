@@ -23,7 +23,8 @@ file is the rule**.
   `pa-tools/channels.ts` carried a "mirrored from api/src/services" comment over
   a duplicated `canManageChannel` for exactly that reason; on 2026-08-29 the
   predicate and the writes it gates moved to `channel-manage.ts`, which the api
-  service re-exports and the PA tool imports. An owner-gated tool stays visible
+  service re-exports and the PA tool imports. The predicate is now
+  `canModifyChannel` in `resource-authority.ts`, beside `canModifyProject`. An owner-gated tool stays visible
   to non-owners and refuses in words, following `pa-tools/connectors.ts`. Role
   comes from the live `OrganizationMember` row at call time, not from the run's
   enqueue-time `actorContext`. **A tool that takes an id ships with the read
@@ -85,6 +86,21 @@ Per-tool facts:
   the owner-only home DM. `assertGenericAgentToolPolicyInput` refuses every
   `requiresExplicitGrant` key and DeepWater marker, so chat cannot grant itself
   research.
+- `agent_conversations_list` → `listAgentConversationsForUser` (`safe: true`),
+  mirroring `GET /api/agents/:agentId/conversations`, and
+  `agent_conversation_start` → `startAgentConversation`, mirroring
+  `POST` on the same path — both in
+  `packages/team-admin/src/agent-conversations.ts`, both member-level, both
+  scoped as the acting member. The list is to a thread id what `agent_list` is
+  to an agent id, so `conversation_reference` never has to guess one. The start
+  door writes only the `Thread`; the opening message goes through the **agent**
+  door (`createAgentMessage`) rather than the person's, because the assistant is
+  the one speaking, with the delegated-post basis
+  (`computeDelegatedPostBasis` — the requester's own scopes are subtracted only
+  when the destination's whole audience *is* the requester), and it claims the
+  target's run in the same transaction as the doorway message it writes back
+  into the origin thread. It is deliberately allowed on unattended runs: a
+  scheduled "every morning, ask the researcher to…" is the point.
 - `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
   `POST /api/agents/:agentId/bindings`: channel membership
   (`getChannelIfMember`), the system-channel refusal (any non-null

@@ -11,6 +11,7 @@ import {
 } from '../../navigation/overlay'
 import { useReducedMotion } from '../../navigation/reduced-motion'
 import { useModalA11y } from '../../hooks/useModalA11y'
+import { useFocusedOverlayControl } from '../../hooks/useFocusedOverlayControl'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
 // The shared work every overlay does once (docs/navigation/overview.md §7): the Back
@@ -100,6 +101,9 @@ export const useOverlay = ({
 
   const trapsFocus = kind !== 'popover'
   useModalA11y(panelRef, requestClose, open && trapsFocus, initialFocusRef)
+  // A field in any modal or sheet stays above the keyboard. Popovers do not
+  // trap focus and place themselves through their own bounded geometry.
+  useFocusedOverlayControl(panelRef, open && trapsFocus)
   useEffect(() => {
     if (!open || trapsFocus) return undefined
     const onKeyDown = (event: KeyboardEvent) => {

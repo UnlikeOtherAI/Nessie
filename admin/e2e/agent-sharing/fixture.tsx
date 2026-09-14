@@ -15,7 +15,7 @@ const agent = {
   id: '00000000-0000-4000-8000-000000000101',
   lastActivityAt: timestamp,
   name: 'Morning Joke',
-  owner: { displayName: 'Taylor', id: userId },
+  owner: { displayName: 'Taylor', userId },
   ownerUserId: userId,
   role: 'assistant',
   status: 'idle' as const,

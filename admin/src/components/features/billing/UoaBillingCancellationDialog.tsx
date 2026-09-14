@@ -10,6 +10,12 @@ import type {
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 
+const PANEL_BASE_MAX_HEIGHT = 'calc(100dvh - 2rem)'
+const PANEL_MAX_HEIGHT = [
+  `min(760px, ${PANEL_BASE_MAX_HEIGHT},`,
+  `var(--overlay-visible-height, ${PANEL_BASE_MAX_HEIGHT}))`,
+].join(' ')
+
 type UoaBillingCancellationDialogProps = {
   confirmation: BillingCancellationConfirmationV1 | null
   error: string | null
@@ -92,19 +98,20 @@ export const UoaBillingCancellationDialog = ({
           'fixed inset-0 flex items-center justify-center',
           'bg-[var(--scrim-strong)] px-4 backdrop-blur-sm',
         ].join(' ')}
-        style={overlay.layerStyle}
+        style={{ ...overlay.layerStyle, paddingBottom: 'var(--overlay-visual-inset, 0px)' }}
       >
         <div
           aria-labelledby="uoa-billing-cancellation-title"
           aria-modal="true"
           className={[
-            'admin-card max-h-[min(760px,90dvh)] w-full max-w-2xl',
+            'admin-card w-full max-w-2xl',
             'overflow-y-auto rounded-xl border border-[color:var(--sep)]',
             'bg-[color:var(--main)] p-6 text-[color:var(--tx)]',
           ].join(' ')}
           data-testid="uoa-cancellation-dialog"
           ref={overlay.panelRef}
           role="dialog"
+          style={{ maxHeight: PANEL_MAX_HEIGHT }}
           tabIndex={-1}
         >
           <div className="flex items-start justify-between gap-4">

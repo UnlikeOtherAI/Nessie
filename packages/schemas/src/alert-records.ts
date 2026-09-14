@@ -35,14 +35,24 @@ export const UserAlertKindSchema = z.enum([
   // A ticket moved or changed on a board this person watches. Durable because
   // somebody explicitly asked to be told: a push is missable, the bell is not.
   'board_ticket_changed',
+  // A workflow run entered its terminal failed state. The linked run is the
+  // recovery doorway, and visibility is rechecked on every bell read.
+  'workflow_run_failed',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
 export const TeamInvitationAlertMetadataSchema = z.object({
   inviteId: z.string().min(1),
+  // The invitation's OWN organisation, which is not necessarily the alert
+  // row's `organizationId` — that one is the bell this row appears in. A
+  // cross-organisation invitation is filed in the bell the recipient is
+  // looking at (they have no membership in the inviting organisation yet, so a
+  // row filed there would be invisible), and these two fields are what let the
+  // row still name where the invitation came from.
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
   teamName: z.string().min(1),
+  orgName: z.string().min(1).optional(),
   invitedBy: z.string().min(1).optional(),
   expiresAt: TimestampSchema.optional(),
 }).strict()
@@ -62,7 +72,13 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  // An automatic-membership health alert is actionable only when the bell can
+  // name the exact rule that failed. The optional shape preserves old rows
+  // created before this relationship was projected through the alert API.
+  automaticMembershipRuleId: z.string().uuid().nullable().optional(),
+  automaticMembershipRuleTeamName: z.string().min(1).nullable().optional(),
   boardSourceId: z.string().uuid().nullable(),
+  workflowRunId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),

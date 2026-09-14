@@ -23,7 +23,7 @@ file is the rule**.
   home-membership trigger. Sole membership is what makes `effectiveUserId =
   poster` and the single-candidate fast path safe, so it must hold at rest. Three
   refusals keep it true: no agent binds into ANY system channel
-  (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
+  (`bindAgentToChannel`, both routes, the PA tool; `canModifyChannel` likewise
   refuses rename, archive and re-membering), `createAgentTrigger` refuses a
   `systemSlug` target (a scheduled run re-arms its creator's identity), and
   `assertGlobalAgentRunPlacement` admits, before any inference, only the home DM
@@ -104,11 +104,12 @@ file is the rule**.
 ## Bounded ordinary-agent project collaboration
 
 Ordinary shared agents do not wake one another by posting a chat message: the
-channel orchestrator accepts human turns only. A project administrator may
+channel orchestrator accepts human turns only. Any member of the project may
 explicitly grant an ordinary agent `agent_peer_delegate` and the selected
 project ticket tools. On a live project-channel turn, or a bounded durable peer
 delivery from one, the worker re-reads the original requester. Peer delegation
-and board creation require `canAdministerProject`; ticket operations mirror
+and board creation require `canModifyProject` (any member of the project, or
+an organisation owner or admin); ticket operations mirror
 the existing live project-access gate. The target must be a
 non-system shared agent already bound to that exact channel. The durable mailbox
 row carries the requester capability, a maximum depth of four, and the source
@@ -119,6 +120,22 @@ audiences and disclosure grants when the coordinator's output is read. This
 permits a researcher/coordinator review cycle without turning agent-authored
 messages into unbounded orchestration, widening a source audience, or letting
 ambient session scope decide what project an agent can change.
+
+Peer deliveries use the authorized destination channel's project and team
+attribution and retain the original human as the effective user. Their durable
+mail also carries that action's captured UOA subject/org/team/epoch tuple only
+as immutable run provenance: it is neither a credential nor a local identity
+record, and Ledger revalidates it against the original human's live link at
+admission. Missing or malformed provenance fails closed. When a target thread
+is busy, peer briefs drain one at a time in FIFO order: a later schedule or
+another peer cannot replace the selected hidden message, requester, or source
+basis. A terminal peer failure posts one useful result through the ordinary run
+lifecycle for the waiting conversation; it does not retry or acknowledge itself.
+
+An automatic continuation keeps the originating run's reply placement, so every
+part remains visible in that same conversation and reloads the checkpoint keyed
+to that placement. It does not create a second peer protocol or alter the
+captured requester, UOA provenance, or disclosure basis.
 
 The same project-channel binding is re-read for every delegated ticket call.
 Content-bearing ticket, board, and checklist writes share

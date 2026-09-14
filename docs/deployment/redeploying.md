@@ -4,8 +4,30 @@ Chapter of [deployment.md](../deployment.md). Images build on GitHub and the hos
 
 ## Redeploying a new version
 
-**Automatic (default):** every push to `main` triggers
-`.github/workflows/deploy.yml`, which rsyncs the tree to `/srv/nessie` and runs
+**Automatic (default):** a completed `CI` run for `main` wakes
+`.github/workflows/deploy.yml`. Before the build job receives package-write
+permission or the deploy job receives SSH secrets, its read-only gate resolves
+the current `main` tip and requires a successful `push` CI run for that exact
+SHA from this repository. It then checks out, builds, tags, syncs and promotes
+only that SHA. A failed, cancelled, forked, wrong-branch or stale CI event
+cannot promote an image.
+
+The `deploy-production` lock stays serialized with `cancel-in-progress: false`.
+GitHub retains the newest *event* while a run is pending, which may be a
+delayed CI completion for an older commit. Failed, cancelled, untrusted and
+non-`main` events use per-run ignored groups, so they cannot evict an eligible
+pending deploy. Resolving eligibility after the shared lock is acquired prevents
+the remaining queue inversion: an older successful event deploys the newer
+current tip only after that tip's CI succeeds; if the current tip is still
+unverified, the run stops and waits for its own CI completion. Production never
+falls back to an older verified commit.
+
+**Manual:** use **Run workflow** for `Deploy` from `main`. It uses the same
+current-tip CI gate and does not promote the UI-selected revision or bypass a
+failed/cancelled CI run. Routine production promotion must not use direct host
+commands.
+
+After the gate, the workflow rsyncs the proven tree to `/srv/nessie` and runs
 `infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
 the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
 `~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
@@ -23,16 +45,21 @@ the Ledger installer because raw reporting is now UOA-only. The Ledger caller,
 DeepSignal caller, UOA, session, webhook, and sibling-product keys are separate
 principals, not fallbacks.
 
+Before images, migrations, or a replacement container start, `redeploy.sh`
+runs `ensure-encryption-key-ring.sh` against the host-only Compose `.env`.
+For an older host it generates a distinct at-rest root, writes an active opaque
+version and retains the old signing root only as `NESSIE_ENCRYPTION_LEGACY_KEY`;
+it never prints either value. A partial ring fails the deploy before migrations.
+After the new API and worker are serving, follow the operator-only rotation
+procedure in [configuration.md](configuration.md#at-rest-encryption-rotation):
+run the command, verify/retry to zero conflicts, then remove the legacy root.
+
 The workflow rsyncs with `--delete` so files removed from the repo don't linger
 on the host and get compiled into the image (a stale `api/src` copy left by the
 mcp-manage extraction broke every build until this was added). rsync never
 deletes excluded paths, so `infrastructure/compose/.env` (and any `.env`) is
 preserved apart from that explicit single-key update, and the Postgres/MinIO
 data live in named Docker volumes outside the synced tree.
-
-**Manual:** from the dev machine `rsync` the tree to `/srv/nessie`, then on the
-host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
-migrations, rolls the containers). Postgres and its volume are untouched.
 
 ### Images are built on GitHub, never on the production host
 
@@ -58,12 +85,6 @@ file serves both. Because every deploy pulls a distinct SHA tag and tagged
 images are never *dangling*, the post-deploy reclaim explicitly removes Nessie
 release images other than the one just deployed — otherwise the shared disk
 grows by a full image per deploy.
-
-To deploy a specific build by hand:
-
-```sh
-cd /srv/nessie && NESSIE_IMAGE_TAG=<sha> bash infrastructure/compose/redeploy.sh
-```
 
 ### Zero-downtime rollout (health-gated blue-green swap)
 
@@ -101,9 +122,21 @@ Consequences worth knowing:
   workflow run. The workflow additionally serializes its own runs through the
   `deploy-production` GitHub concurrency group; queued runs it shows as
   "cancelled" were subsumed by a newer run that deploys their commits too.
-- Migrations still run **before** the swap, while the old API is serving, so a
-  schema change must remain compatible with the previous code for the length of
-  the build+swap window (this was already true of the old recreate flow).
+- Migrations normally run **before** the swap, while the old API is serving, so
+  a schema change must remain compatible with the previous code for the length of
+  the build+swap window. The one-time
+  `20260912090000_versioned_at_rest_key_metadata` migration is deliberately the
+  exception: it changes three Prisma-visible `key_version` columns from integer
+  to text. After encryption preflight succeeds, `redeploy.sh` detects it while
+  pending and stops every current and pre-rename API/worker container. It checks
+  that no matching container remains running before Prisma applies the
+  migration, then starts only the compatible generation. This intentional
+  maintenance gap prevents old integer clients and new opaque-version clients
+  from reading or writing the same column concurrently; later deploys remain
+  health-gated blue-green. If that migration or the subsequent compatible boot
+  fails, the script exits with the API and worker still stopped: do not roll an
+  old image back onto the text schema. Fix and roll forward, or restore the
+  database backup before starting the previous release.
 - **The reconcile job runs between the migrations and the swap**, as a one-shot
   `$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile`.
   It seeds each organisation's default policy rules, backfills protected-MCP

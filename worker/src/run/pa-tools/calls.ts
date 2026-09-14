@@ -93,7 +93,7 @@ export const runMeetingLinkCreateTool = async (
       teamId: args.teamId,
       userId: member.userId,
       ...(args.provider ? { provider: args.provider } : {}),
-    })
+    }, { encryptionSecret: context.executorCommandEncryptionSecret })
     return {
       inputSummary: `teamId=${args.teamId}${args.provider ? ` provider=${args.provider}` : ''}`,
       outputPreview: JSON.stringify(link),
@@ -123,7 +123,7 @@ export const runCallStartTool = async (
       channelId: args.channelId,
       createdViaAgentId: context.agentId,
       ...(args.provider ? { provider: args.provider } : {}),
-    })
+    }, { callLink: { encryptionSecret: context.executorCommandEncryptionSecret } })
 
     // The REST route publishes this after committing. The channel banner is
     // best effort; durable ring jobs created by startCallForUser still deliver

@@ -90,7 +90,7 @@ export const buildMessageEnvelope = (input: MessageAnnouncement) => ({
 export type MessageEnvelopePublisher = {
   publishWs: (
     scopes: WsScope[],
-    input: { data: unknown; event: string; ts?: string },
+    input: { data: unknown; event: string; idempotencyKey?: string; ts?: string },
   ) => Promise<unknown>
 }
 
@@ -104,9 +104,12 @@ export const publishMessageEnvelope = async (
   publisher: MessageEnvelopePublisher,
   scopes: WsScope[],
   input: MessageAnnouncement,
+  options: { idempotencyKey?: string; timestamp?: string } = {},
 ): Promise<void> => {
   await publisher.publishWs(scopes, {
     data: buildMessageEnvelope(input),
     event: input.rootMessageId ? 'message.reply' : 'message.new',
+    ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    ...(options.timestamp ? { ts: options.timestamp } : {}),
   })
 }

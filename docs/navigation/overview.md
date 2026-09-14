@@ -32,6 +32,15 @@ means section 7, wherever it now lives.
 - [Arriving with content, and drafts](content-and-drafts.md) — §14 Arriving
   with content, §15 Drafts.
 
+The Navigation Transitions suite includes a desktop durable-attention journey:
+it seeds a worker-classified trigger failure, opens it from the shared bell,
+and proves the durable trigger selection opens that exact schedule's health
+and Reauthorize controls after a reload. It also selects that real schedule
+from the list, takes its detail Back, then browser Back, proving durable
+selection does not create a stale history entry that reopens the detail. The
+worker and alert-dispatch suites retain ownership of the failure transition and
+delivery; this browser case owns the doorway.
+
 ## 16. Still planned
 
 Everything the plan

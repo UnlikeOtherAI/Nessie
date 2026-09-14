@@ -35,7 +35,7 @@ export const registerBoardSourceConnectionRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, config, requireActorContext, requireUserActor } = deps
+  const { prisma, config, encryptionKeyRing, requireActorContext, requireUserActor } = deps
 
   const callbackUrl = (provider: string): string =>
     `${config.api.publicUrl ?? 'http://localhost:5454'}/api/board-sources/connections/${provider}/callback`
@@ -182,7 +182,7 @@ export const registerBoardSourceConnectionRoutes = (
         provider: claimed.provider,
         authMethod: 'oauth',
         result,
-        encryptionSecret: config.auth.secret ?? '',
+        encryptionSecret: encryptionKeyRing,
       })
 
       return reply.type('text/html').send(callbackPage(true, connection.id))
@@ -232,7 +232,7 @@ export const registerBoardSourceConnectionRoutes = (
         provider: 'trello',
         authMethod: 'oauth',
         result,
-        encryptionSecret: config.auth.secret ?? '',
+        encryptionSecret: encryptionKeyRing,
       })
       return createApiResponse({ connectionId: connection.id })
     } catch {
@@ -309,7 +309,7 @@ export const registerBoardSourceConnectionRoutes = (
       provider: parsed.data,
       authMethod: 'api_key',
       result,
-      encryptionSecret: config.auth.secret ?? '',
+      encryptionSecret: encryptionKeyRing,
     })
     return createApiResponse({ connectionId: connection.id })
   })
@@ -373,7 +373,7 @@ export const registerBoardSourceConnectionRoutes = (
     const context = await loadBoardSourceConnectionContext(
       prisma,
       connection.id,
-      config.auth.secret ?? '',
+      encryptionKeyRing,
     )
     if (isBoardSourceCredentialError(context)) {
       sendApiError(

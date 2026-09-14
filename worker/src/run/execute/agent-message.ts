@@ -102,6 +102,20 @@ export type AgentMessageDraft = {
   userId?: string | null
   rootMessageId?: string | undefined
   metadata?: Prisma.InputJsonValue | undefined
+  /**
+   * The message's own basis, for the one case the run context cannot state it:
+   * a message this run writes into a *different* surface than it replies into.
+   *
+   * The default — and every existing caller — is `runReplyBasis(context)`, the
+   * run's destination-relative basis, because a reply always lands where the
+   * run is. `agent_conversation_start`'s opener does not: it lands in the new
+   * conversation, whose chain and bound agent are somebody else's, so its basis
+   * is resolved against that destination (`computeDelegatedPostBasis`) and
+   * handed in. The run's own ledger is still stamped from the run, never from
+   * this field, so a narrower message basis can never narrow what the run is
+   * recorded as holding.
+   */
+  basis?: readonly BasisScope[] | undefined
 }
 
 export type StampedMessage = {
@@ -207,7 +221,7 @@ export const createAgentMessage = async (
   context: RunContext,
   draft: AgentMessageDraft,
 ): Promise<StampedMessage> => {
-  const basis = runReplyBasis(context)
+  const basis = draft.basis ?? runReplyBasis(context)
 
   return inTransaction(tx, async (inner) => {
     const message = await inner.message.create({
@@ -237,12 +251,15 @@ export const createAgentMessage = async (
       sources: context.consumedSources.privateConversationSources(),
     })
     await persistRunBasis(inner, {
-      basis,
+      // The RUN's basis, not the message's: a post into another surface may be
+      // stamped more narrowly than the run holds, and the run's own ledger must
+      // still record everything it consumed.
+      basis: runReplyBasis(context),
       organizationId: context.channel.organizationId,
       runId: context.run.id,
     })
 
-    return { ...message, basis }
+    return { ...message, basis: [...basis] }
   })
 }
 

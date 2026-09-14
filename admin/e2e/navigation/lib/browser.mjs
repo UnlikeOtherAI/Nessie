@@ -1,6 +1,7 @@
-// One Chromium, one context per viewport, one page per case. The session
-// token is planted in localStorage before the first script runs — the same
-// key the admin reads (`nessie.admin.token`) and the same thing
+// One Chromium, one shared context per viewport, one page per case. A case
+// that revokes its session gets a context of its own. The session token is
+// planted in localStorage before the first script runs — the same key the
+// admin reads (`nessie.admin.token`) and the same thing
 // `worker/verify-edit-ui.mjs` does, so the suite never drives the login form.
 //
 // A page per case matters: a case that fails mid-navigation leaves the page

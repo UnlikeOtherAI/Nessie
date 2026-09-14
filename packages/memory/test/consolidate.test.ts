@@ -118,7 +118,13 @@ const messages: ConsolidationThreadMessage[] = [
 ]
 
 test('selectConsolidationCandidates emits bounded typed episodic and semantic memories', () => {
-  const candidates = selectConsolidationCandidates(runContext, messages)
+  const candidates = selectConsolidationCandidates(runContext, messages, [{
+    content: 'Support capacity is limited.',
+    importance: 0.78,
+    memoryCategory: 'reason',
+    privateConversationSources: [],
+    sourceMessageIds: [messages[0]!.id],
+  }])
 
   assert.equal(candidates[0]?.memoryType, 'episodic')
   assert.ok(candidates.some((candidate) => candidate.memoryType === 'semantic'))
@@ -176,6 +182,14 @@ test('captures in the PA channel while billing the immutable launch origin', asy
       threadTailLimit: 8,
     },
     {
+      extractCandidates: async () => ({
+        candidates: [{
+          content: 'The beta remains invite-only.',
+          importance: 0.8,
+          memoryCategory: 'constraint',
+          sourceMessageIds: [messages[1]!.id],
+        }],
+      }),
       modelClient: {
         chatJson: async (_messages, options) => {
           assert.ok(options?.usage)
@@ -242,6 +256,10 @@ test('organization mismatch skips before message or model access', async () => {
       taskId: TASK_ID,
     },
     {
+      extractCandidates: async () => {
+        modelCalls += 1
+        return { candidates: [] }
+      },
       modelClient: {
         chatJson: async () => {
           modelCalls += 1
@@ -317,6 +335,10 @@ test('source locator mismatches skip before message or model access', async () =
         taskId: TASK_ID,
       },
       {
+        extractCandidates: async () => {
+          modelCalls += 1
+          return { candidates: [] }
+        },
         modelClient: {
           chatJson: async () => {
             modelCalls += 1
@@ -335,4 +357,38 @@ test('source locator mismatches skip before message or model access', async () =
     assert.equal(laterQueries, 0)
     assert.equal(modelCalls, 0)
   }
+})
+
+test('extraction failure propagates without changing the completed source run', async () => {
+  let runWrites = 0
+  const pool = createPoolStub((sql) => {
+    if (sql.includes('FROM runs AS r')) {
+      return { rows: [runContext as unknown as Record<string, unknown>] }
+    }
+    if (sql.includes('FROM messages')) {
+      return { rows: [...messages].reverse() as unknown as Record<string, unknown>[] }
+    }
+    if (sql.includes('FROM message_disclosure_sources')) return { rows: [] }
+    if (sql.includes('UPDATE runs')) {
+      runWrites += 1
+      return { rows: [] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  await assert.rejects(
+    consolidateRunMemories(
+      { origin, runId: SOURCE_RUN_ID, source, taskId: TASK_ID },
+      {
+        extractCandidates: async () => { throw new Error('provider unavailable') },
+        modelClient: {
+          chatJson: async () => ({}),
+          embed: async () => [],
+        },
+        pool,
+      },
+    ),
+    /provider unavailable/,
+  )
+  assert.equal(runWrites, 0)
 })

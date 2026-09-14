@@ -6,7 +6,7 @@ import { getBaseUrl, type AgentRecord } from '../../lib/api-client'
 export type RealtimeConnectionState = 'connected' | 'connecting' | 'disconnected'
 
 export type AgentRealtimeRecord = {
-  currentRunId?: string
+  currentRunId?: AgentRecord['currentRunId']
   currentToolName?: string
   currentToolStartedAt?: string
   since?: string
@@ -73,7 +73,7 @@ export const snapshotToRecords = (snapshot: WsSnapshot): Record<string, AgentRea
 export const patchAgentStatusRecord = (
   agents: AgentRecord[] | undefined,
   event: {
-    currentRunId?: string
+    currentRunId?: AgentRecord['currentRunId']
     currentToolName?: string
     currentToolStartedAt?: string
     agentId: string

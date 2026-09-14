@@ -5,6 +5,7 @@ import {
   DRAIN_STARTED_REASON,
   LOCK_EXPIRED_AT_MAX_ATTEMPTS_REASON,
   LOCK_RENEWAL_FAILED_REASON,
+  QueueRetryAfterError,
   type QueueHandler,
   type QueueJob,
   type QueueJobClaim,
@@ -133,22 +134,37 @@ export class PgQueueProvider implements QueueProvider {
     return this.settled('acknowledge', claim, result.rowCount ?? 0)
   }
 
-  async nack(claim: QueueJobClaim, reason?: string): Promise<boolean> {
+  async nack(
+    claim: QueueJobClaim,
+    reason?: string,
+    options: { retryAfterMs?: number } = {},
+  ): Promise<boolean> {
+    const retryAfterMs = Math.max(0, Math.trunc(options.retryAfterMs ?? 0))
     const result = await this.pool.query(
       `
         UPDATE queue_jobs
         SET
           status = CASE
+            WHEN $4 > 0 THEN 'pending'
             WHEN attempt >= max_attempts THEN 'dead'
             ELSE 'pending'
           END,
+          max_attempts = CASE
+            WHEN $4 > 0 THEN max_attempts + 1
+            ELSE max_attempts
+          END,
           error_message = $3,
-          locked_until = NULL
+          locked_until = NULL,
+          enqueued_at = CASE
+            WHEN $4 > 0
+              THEN now() + ($4 * interval '1 millisecond')
+            ELSE enqueued_at
+          END
         WHERE id = $1
           AND attempt = $2
           AND status = 'processing'
       `,
-      [claim.id, claim.attempt, reason ?? null],
+      [claim.id, claim.attempt, reason ?? null, retryAfterMs],
     )
 
     return this.settled('nack', claim, result.rowCount ?? 0)
@@ -345,7 +361,9 @@ export class PgQueueProvider implements QueueProvider {
     // issuing its statement in one `try` meant an acknowledge that itself threw
     // fell into the nack arm, and it left no single point at which the terminal
     // write could be claimed.
-    let outcome: { kind: 'acknowledge' } | { kind: 'nack'; reason: string }
+    let outcome:
+      | { kind: 'acknowledge' }
+      | { kind: 'nack'; reason: string; retryAfterMs?: number }
     try {
       await this.withLockRenewal(job, { controller, state: renewal }, () =>
         handler(job, { signal: controller.signal }),
@@ -361,6 +379,7 @@ export class PgQueueProvider implements QueueProvider {
         ? { kind: 'nack', reason: LOCK_RENEWAL_FAILED_REASON }
         : { kind: 'acknowledge' }
     } catch (error) {
+      const retryAfterMs = error instanceof QueueRetryAfterError ? error.delayMs : undefined
       outcome = {
         kind: 'nack',
         reason: renewal.lost
@@ -368,6 +387,7 @@ export class PgQueueProvider implements QueueProvider {
           : error instanceof Error
             ? error.message
             : 'Unknown queue failure',
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
       }
     }
 
@@ -383,7 +403,11 @@ export class PgQueueProvider implements QueueProvider {
       if (outcome.kind === 'acknowledge') {
         await this.acknowledge(job)
       } else {
-        await this.nack(job, outcome.reason)
+        await this.nack(
+          job,
+          outcome.reason,
+          outcome.retryAfterMs === undefined ? {} : { retryAfterMs: outcome.retryAfterMs },
+        )
       }
     } catch (error) {
       logQueueError(`Failed to settle queue job ${job.id}`, error)

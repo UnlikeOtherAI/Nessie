@@ -54,7 +54,7 @@ const makeApp = (input: {
     // These route fixtures model a private conversation. The public audience
     // lookup must explicitly decline it instead of a missing Prisma delegate
     // masking the disclosure decision.
-    channel: { findFirst: async () => null },
+    channel: { findFirst: async () => null, findMany: async () => [] },
     thread: {
       findFirst: async () =>
         input.threadVisible === false

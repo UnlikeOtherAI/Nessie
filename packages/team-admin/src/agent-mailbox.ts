@@ -230,7 +230,9 @@ export const createAgentMailbox = async (
         select: { id: true },
       })
       await tx.thread.create({
-        data: { channelId: channel.id, title: 'Mailbox' },
+        // The room's own thread: `agentId` stays NULL so `ensureDefaultThread`
+        // resolves it as General, never a conversation started in this room.
+        data: { agentId: null, channelId: channel.id, title: 'Mailbox' },
       })
       await tx.agentBinding.create({
         data: { agentId: agent.id, channelId: channel.id },

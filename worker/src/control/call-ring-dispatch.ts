@@ -28,6 +28,7 @@ export type CallRingDispatchPrisma = PushDeliveryPrisma & Pick<
 
 export type CallRingDispatchDeps = {
   authSecret: string
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   now?: () => Date
   prisma: CallRingDispatchPrisma
   retryDelayMs?: (completedAttempt: number) => number

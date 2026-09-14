@@ -70,8 +70,12 @@ test('UOA-authorized users drive the member and invitation mutations', async () 
           upstream: {
             method: 'POST',
             url: `${base}/teams/${externalTeamId}/invitations${query}`,
+            // The return address is added server-side, never sent by the
+            // client — see `uoa-invitation-redirect-url.test.ts`.
             body: JSON.stringify({
-              email: 'new@acme.test', teamRole: 'member',
+              email: 'new@acme.test',
+              teamRole: 'member',
+              redirectUrl: uoaEnv.UOA_REDIRECT_URL,
             }),
           },
         },
@@ -92,6 +96,7 @@ test('UOA-authorized users drive the member and invitation mutations', async () 
           upstream: {
             method: 'POST',
             url: `${base}/teams/${externalTeamId}/invitations/inv_1/resend${query}`,
+            body: JSON.stringify({ redirectUrl: uoaEnv.UOA_REDIRECT_URL }),
           },
         },
         {
@@ -151,10 +156,16 @@ test('UOA-authorized users drive the member and invitation mutations', async () 
           }
         }
         assert.deepEqual(calls.length, expected.length)
-        assert.deepEqual(
-          (await app.inject(expected[1].request)).json().data,
-          { ok: true },
-        )
+        // UOA owns exact-team, normalized-email invitation uniqueness. A
+        // second submission must reach its signed-subject invite endpoint
+        // unchanged, where UOA replaces the actionable invite and sends the
+        // fresh email; Nessie must not keep a local duplicate detector.
+        assert.deepEqual((await app.inject(expected[1].request)).json().data, { ok: true })
+        const repeated = calls.at(-1)
+        assert.equal(repeated?.method, expected[1]?.upstream.method)
+        assert.equal(repeated?.url, expected[1]?.upstream.url)
+        assert.equal(repeated?.body, expected[1]?.upstream.body)
+        assert.equal(calls.length, expected.length + 1)
       } finally {
         await app.close()
       }

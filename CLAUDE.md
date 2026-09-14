@@ -10,7 +10,7 @@ distribution.
 ## Read [AGENTS.md](AGENTS.md) before you do anything
 
 [`AGENTS.md`](AGENTS.md) is the authoritative standards file and the project
-map: Rule zero, workflow, ports, the build and deployment story, and the
+map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
@@ -61,12 +61,26 @@ sentence changes only if the invariant itself did.
   building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
   the same fixed ports; details and limits are in
   [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
+- **Agent-conversations browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:agent-conversations`.
+  CI runs it in Navigation Transitions after the connected-mail suite, on the
+  same fixed ports. It brings up its own scripted inference endpoint
+  (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
+  reads that server's request log. It covers the DM rail, two isolated
+  conversations named by their first message, the one-empty-at-a-time rule
+  behind the "New conversation" button, the rename doorway, an ordinary
+  room's own doorway and a two-agent room's agent strip; two assertions
+  deliberately pin known gaps and say so in their own message.
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the
   project usability suite.
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
+- **Production promotion uses the exact-SHA gate:** Deploy resolves the current
+  `main` tip only after successful trusted main CI, including manual dispatch.
+  Read [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md)
+  before changing deployment automation.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is
   protected — every change lands through a pull request and only a green one can
   merge**, but no human approval is needed: merge as soon as CI passes. Full

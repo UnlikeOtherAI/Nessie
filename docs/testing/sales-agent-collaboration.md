@@ -4,6 +4,10 @@ This workflow checks that a person can configure a researcher and coordinator,
 have them review a small prospect set together, and retain the work in a project.
 The default test brief is three Czech hospitality prospects for KiloMayo.
 
+For the current status and next acceptance pass, start with the
+[consolidated batch review](sales-verification-batch-review.md). The evidence
+below records the earlier verification passes.
+
 ## Evidence and connections
 
 KiloTalk is the primary research source. Its admin is
@@ -209,6 +213,79 @@ expands readable source names and statuses. Collapsing the operational detail
 keeps the research summary visible without removing access to evidence. This
 verification read the cached record and did not start another scan.
 
+### Follow-up repairs and bounded research setup
+
+PR 419 removes the false browser-load error when an agent has no browser grant.
+Its final CI browser screenshot showed the settled Tools surface, and successful
+[Deploy run 34254211932](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34254211932)
+landed the change. A production walkthrough then expanded the coordinator's
+Browser category and confirmed its six disabled tools without the false error.
+
+PR 421 adds the missing **A project** choice to app connection setup. All nine
+CI checks passed before merge. A real local API and Vite walkthrough verified
+that Connect stays disabled without a project, becomes available after choosing
+one, and shows the correct audience after switching Project → Channel → Project.
+That local walkthrough did not connect an external account.
+
+PR 422 repairs zero-output admission recovery and passed all nine CI checks
+before merge. Successful
+[Deploy run 34255063666](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34255063666)
+landed that repair. Recovery has its own durable attempt marker, so earlier ordinary
+compaction does not disable it. Checkpoints preserve the recovery result and
+utility spend even when the utility call exhausts the run budget. Full argument
+schemas are now attached only to structural argument failures. These regression
+tests establish recovery behavior; a new production run is still required to
+prove the sales workflow and any live compaction invocation.
+
+Both agents' prompts were updated through the production editor and verified
+after reload. The coordinator now creates the board and tickets before loading
+large research records and delegates one prospect per bounded peer request.
+The researcher saves findings and source URLs throughout the run, keeps missing
+evidence explicit, and returns a short recommendation referencing its ticket.
+The prompts identify the peer agents directly, preserve the reusable templates,
+and explicitly defer Calendar/Meet and client outreach. A separate read-only
+KiloTalk research credential was created through Settings → API keys for the
+project-scoped connection; its value is not recorded in this document.
+
+Peer delegation is asynchronous mail, not a result RPC. A normal researcher
+reply does not wake the coordinator. The saved prompts therefore require one
+explicit `agent_peer_delegate` return handoff after research, carrying the
+ticket reference and a concise recommendation. The coordinator reviews and
+records the decision directly. At most one focused clarification round is
+allowed; a final result or acknowledgement must not start another assignment.
+The runtime preserves the original human's authority, serializes each
+agent/thread, and caps delegation depth at four. The earlier stopping rule is
+a prompt protocol, not a separate structural depth-three guard.
+
+After successful
+[Deploy run 34256544180](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34256544180),
+the production connection review offered the project audience. Its compact
+TabBar menu exposed a separate layering defect: options existed in the DOM but
+rendered behind the dialog. At the center of **A project**, browser hit-testing
+returned the underlying **Connect KiloTalk Sales Research** button. Clicking
+that position started an unintended personal connection. That new, unconfigured
+connection was disconnected through the UI; no credential was added and the
+original channel connection remained connected. The compact menu requires a
+layering repair before the project connection can be accepted.
+
+PR 423 is merged at `45b58d9e3` after all nine checks passed in
+[CI run 34260161435](https://github.com/UnlikeOtherAI/Nessie/actions/runs/34260161435).
+It adds explicit, non-unique project ownership by an existing team and carries
+the selected project/team pair into channel creation. A real local API/Vite
+walkthrough created two projects in one existing fixture team, created a
+channel through the second project's sidebar menu, and verified the live
+records, destination URL and sidebar placement after reload. That journey now
+runs in the Navigation Transitions gate. It exposed and helped repair stale
+team-directory cache state after project creation; incomplete team context now
+blocks submission with an explicit explanation.
+
+The migration deliberately does not infer ownership for ambiguous historical
+projects. Local team-admin tests passed 336/336 and a full worker run passed
+1,077 unit tests (four environment skips) plus 169 database tests. No full local
+API pass is claimed: local reruns encountered Windows tooling and a transient
+worker prerequisite failure. The final Linux Test and Navigation Transitions
+jobs both passed. A new production sales run remains necessary.
+
 ## Compaction verification
 
 The sibling `UnlikeOtherAI/deep.agent` repository already exports model-authored
@@ -223,3 +300,56 @@ run. The shared helper receives no Nessie identity or persistence state. Its
 preservation test keeps checkpoint input unchanged and retains an image-bearing
 recent turn; run-level tests continue to cover checkpoint recovery and tool
 pair integrity.
+
+PR 423 deployment succeeded in run 34261949124. Through the production UI,
+the verification created **Sales Verification — KiloMayo**
+(`8c03c93d-0175-4b74-ba79-391da2e938be`) in the existing General team and then
+created **sales-planning-verification**
+(`29d5a59f-01a4-46db-bb28-93dd18d8b8dd`) from that project's sidebar menu.
+Both saved sales agents were added through the channel's Members dialog.
+After reload the channel remained under the correct project and its Agents
+tab showed both agents; membership contained the owner and those two agents.
+
+PR 428's final browser evaluation passed against its conditional preview
+fixture in CI run 34263668156. The downloaded screenshots visibly show the
+compact audience menu above the connection dialog and the project picker
+with Connect disabled until a project is selected. The browser evaluation
+also checks hit-testing and Escape behavior. This removes the earlier
+unstyled/mid-animation proof ambiguity. Production acceptance and the full
+CI gate remain pending at this checkpoint.
+
+The production coordinator setup phase created board
+`63760773-95e2-4127-bb88-1d10d71d8bb2` (**KiloMayo prospect backlog**), planning
+ticket `275cdbf6-c84c-4305-8c12-2aeb3ccb1358`, Eska
+`ec7c28aa-d2cd-4665-9d14-ea0b3add7cbf`, Nordbeans
+`1815d0d8-220e-4687-9291-ad2be1bd0c9c`, and Můj šálek kávy
+`a15e385e-d9a9-443d-951a-fbc89dbb2f5e`. The browser verified all four cards on
+the dedicated board and the copied six-step checklist on the planning ticket.
+The first result persisted; research/review steps remained pending. The run
+then posted a generic unexpected-error reply. Its cause is under investigation;
+no setup replay is warranted because the writes succeeded.
+
+The first checklist result called the verification exercise the product offer.
+That does not establish a real commercial offer or ICP. The research phase must
+correct this distinction and retain missing qualification information explicitly.
+
+Read-only production records narrowed the setup failure to run
+`63e19189-796f-4878-841e-764cd87e5ce3`: all ten tool calls succeeded, then the
+direct Qwen/DeepSeek executor returned HTTP 200 with neither visible content nor
+a tool call. The inference-stage guard threw `Stage direct produced no content`.
+The recorded error invocation does not preserve the raw provider finish reason,
+so it does not establish whether the response was length-limited. Persisted
+thinking confirms reasoning was emitted, not why the visible answer was empty.
+A bounded, metered finalization repair is in progress; no setup replay occurred.
+
+PR 428 passed all nine checks in CI run 34265171195 and merged at `101870af4`.
+The final compact-menu screenshots were downloaded and visually reviewed.
+Its deployment is pending at this checkpoint.
+
+The continuation brief now identifies the actual commercial offer from
+https://www.kilomayo.com/: a hospitality platform spanning POS/KDS, loyalty,
+team operations, inventory, finance and till/kiosk/e-shop selling. These are
+vendor claims, not verified customer needs. KiloTalk remains the research
+portal; Respond.io use is not a hospitality qualification requirement. The
+brief references the existing board and all four ticket IDs and requires the
+coordinator to correct the earlier first-step result.

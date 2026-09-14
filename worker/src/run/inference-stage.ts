@@ -162,6 +162,8 @@ export const executeStage = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
+    /** The main agent loop owns the bounded recovery for a true empty success. */
+    allowEmptySuccess?: boolean
     baseMessages: ProviderMessage[]
     emitBufferedOutput?: boolean
     mode: RoutingMode
@@ -250,6 +252,9 @@ export const executeStage = async (
     const serviceConfig: ModelProviderConfig = {
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
+      ...(providerConfig.deepseekThinkingMode
+        ? { deepseekThinkingMode: providerConfig.deepseekThinkingMode }
+        : {}),
       ...(providerConfig.extraHeaders
         ? { extraHeaders: providerConfig.extraHeaders }
         : {}),
@@ -262,6 +267,7 @@ export const executeStage = async (
     let outputText = ''
     let invocation: InvocationRecord | undefined
     let toolCalls: ProviderToolCall[] = []
+    let visibleReasoning = false
     // One attempt = one id. Retries re-enter this function, so this is exactly
     // the boundary a fragment consumer must reset on.
     const invocationId = randomUUID()
@@ -294,6 +300,9 @@ export const executeStage = async (
       let next = await source.next()
       while (!next.done) {
         if (next.value.type === 'reasoning_text.delta') {
+          if (next.value.text) {
+            visibleReasoning = true
+          }
           if (next.value.text && input.onVisibleReasoningDelta) {
             await input.onVisibleReasoningDelta(next.value.text)
           }
@@ -341,7 +350,7 @@ export const executeStage = async (
       }
     }
 
-    if (!outputText.trim() && toolCalls.length === 0) {
+    if (!input.allowEmptySuccess && !outputText.trim() && toolCalls.length === 0) {
       throw new Error(`Stage ${input.stage.id} produced no content`)
     }
     if (!invocation) {
@@ -357,9 +366,11 @@ export const executeStage = async (
         profileId: input.profileId,
         routeSource: input.routeSource,
         routingMode: input.mode,
+        responseEmpty: !outputText.trim() && toolCalls.length === 0,
         stageId: input.stage.id,
         stageRole: input.stage.role,
         step,
+        ...(visibleReasoning ? { visibleReasoning: true } : {}),
       },
       operationType,
       provider: providerConfig.providerKey,

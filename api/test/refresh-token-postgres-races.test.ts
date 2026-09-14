@@ -49,7 +49,7 @@ const issueUoaFamily = async (
   refreshToken = `uoa-${randomUUID()}`,
   refreshTokenExpiresAt = new Date(Date.now() + 30 * DAY_MS),
 ) => issueRefreshToken(prisma, {
-  encryptionSecret: AUTH_SECRET,
+  encryption: AUTH_SECRET,
   organizationId: principal.organizationId,
   providerId: 'uoa',
   providerType: 'uoa',

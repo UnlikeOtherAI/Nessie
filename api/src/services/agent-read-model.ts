@@ -1,12 +1,10 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import {
   parseAgentId,
   parseRunId,
   parseTaskId,
-  parseThreadId,
   type AgentActivityResponse,
   type AgentChild,
-  type AgentMessagePage,
   type AgentStatusResponse,
   type ToolCallEntry,
 } from '@nessie/schemas'
@@ -270,74 +268,10 @@ export const loadAgentActivity = async (
   }
 }
 
-export const loadAgentMessages = async (
-  prisma: PrismaClient,
-  agentId: string,
-  limit: number,
-  offset = 0,
-  options?: { includeSystemManaged?: boolean; visibility?: DisclosureAgentVisibilityScope },
-): Promise<AgentMessagePage> => {
-  const agent = await prisma.agent.findUnique({
-    where: { id: agentId },
-    select: {
-      agentKind: true,
-      systemManaged: true,
-    },
-  })
-
-  if (!agent) return { items: [], total: 0 }
-  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return { items: [], total: 0 }
-
-  const threadVisibilityWhere = options?.visibility
-    ? buildDisclosureReadableThreadWhere(options.visibility)
-    : undefined
-  const where: Prisma.MessageWhereInput = {
-    OR: [
-      {
-        agentId,
-        ...(threadVisibilityWhere ? { thread: threadVisibilityWhere } : {}),
-      },
-      {
-        thread: {
-          ...(threadVisibilityWhere ?? {}),
-          runs: {
-            some: { agentId },
-          },
-        },
-      },
-    ],
-  }
-  // Unlike an ordinary channel predicate, a message basis may be admitted by a
-  // live grant. Fetch the lightweight projection first, ask the one canonical
-  // predicate for each restricted row, then page the resulting safe set. This
-  // keeps both the content and the total from revealing a withheld reply.
-  const candidates = await prisma.message.findMany({
-    where,
-    include: {
-      basisScopes: { select: { scopeId: true, scopeType: true } },
-      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
-      thread: { select: { channelId: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-  const readable = (await Promise.all(candidates.map(async (message) => ({
-    message,
-    readable: await canReadAgentMessage(prisma, message, options?.visibility),
-  })))).filter(({ readable }) => readable).map(({ message }) => message)
-  const messages = readable.slice(offset, offset + limit)
-
-  return {
-    items: messages.map((message) => ({
-      messageId: message.id,
-      role: message.role,
-      contentPreview: message.content.slice(0, 500),
-      fullContent: message.content,
-      threadId: parseThreadId(message.threadId),
-      timestamp: message.createdAt.toISOString(),
-    })),
-    total: readable.length,
-  }
-}
+export {
+  AGENT_MESSAGE_HISTORY_CANDIDATE_LIMIT,
+  loadAgentMessages,
+} from './agent-message-history.js'
 
 /**
  * The children of an agent, scoped to what the viewer may actually see.

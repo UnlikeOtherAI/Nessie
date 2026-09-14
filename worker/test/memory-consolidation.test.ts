@@ -236,6 +236,7 @@ test('consumer rejects a legacy payload before database or model access', async 
           },
           pool,
         },
+        prisma: {} as PrismaClient,
       },
       {
         runId: SOURCE_RUN_ID,
@@ -287,6 +288,7 @@ test('consumer rejects forged system UUIDs before database or model access', asy
             },
             pool,
           },
+          prisma: {} as PrismaClient,
         },
         forged,
       ),
@@ -384,6 +386,14 @@ test('consumer bills the launch team under the named system identities', async (
 
   await executeRunMemoryConsolidationJob(
     {
+      candidateExtractor: async () => ({
+        candidates: [{
+          content: 'The rollout remains invite-only.',
+          importance: 0.8,
+          memoryCategory: 'constraint',
+          sourceMessageIds: ['00000000-0000-4000-8000-00000000000d'],
+        }],
+      }),
       captureConfig: {
         modelClient: {
           chatJson: async (_messages, options) => {
@@ -399,6 +409,7 @@ test('consumer bills the launch team under the named system identities', async (
         },
         pool,
       },
+      prisma: {} as PrismaClient,
     },
     payload,
   )

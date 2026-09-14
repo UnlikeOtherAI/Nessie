@@ -7,6 +7,15 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 export type ThreadActivity = {
   rootMessageId: string
   threadId: string
+  /**
+   * The container thread's own title when it is a conversation with an agent,
+   * null for a room's General thread — so the inbox can name the conversation
+   * a reply happened inside rather than only the room
+   * (docs/plans/2026-09-08-agent-conversations.md).
+   */
+  threadTitle: string | null
+  /** The agent that thread is with, null for a General thread. */
+  threadAgentId: string | null
   channelId: string
   channelLabel: string
   root: { id: string; content: string; createdAt: string; author?: { displayName: string }; agentId?: string }

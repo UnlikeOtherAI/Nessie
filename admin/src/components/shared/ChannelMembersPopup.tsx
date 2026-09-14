@@ -36,19 +36,17 @@ type ChannelMembersPopupProps = {
   boundAgents: AgentRecord[]
   channelId: string
   channelLabel: string
-  channelType: 'dm' | 'standard'
   channelUsers: UserRecord[]
   currentUserId: string
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   /**
-   * Server-computed `ChannelRecord.viewerCanManage` — channel owner/admin, team
-   * owner/admin, or organisation owner/admin. Gates every add/remove control
+   * Server-computed `ChannelRecord.viewerCanManage` — any member of the
+   * channel, or an organisation owner/admin. Gates every add/remove control
    * here except a person's own "leave" row, which needs no authority over the
    * channel (see `docs/standards/disclosure-boundaries.md`).
-   */
+  */
   viewerCanManage: boolean
   onClose: () => void
-  onGroupCreated: (channelId: string) => void
   onSelectAgent: (agentId: string) => void
 }
 
@@ -58,13 +56,11 @@ export const ChannelMembersPopup = ({
   boundAgents,
   channelId,
   channelLabel,
-  channelType,
   channelUsers,
   currentUserId,
   personalAssistantPresences,
   viewerCanManage,
   onClose,
-  onGroupCreated,
   onSelectAgent,
 }: ChannelMembersPopupProps) => {
   const [search, setSearch] = useState('')
@@ -102,17 +98,7 @@ export const ChannelMembersPopup = ({
     search,
   })
 
-  const handleAddUser = (userId: string) =>
-    addMember.mutate(
-      { channelId, userId },
-      {
-        onSuccess: (data) => {
-          if (channelType === 'dm' && data?.id) {
-            onGroupCreated(data.id)
-          }
-        },
-      },
-    )
+  const handleAddUser = (userId: string) => addMember.mutate({ channelId, userId })
 
   return (
     <MemberManagementPopup

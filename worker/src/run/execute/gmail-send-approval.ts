@@ -7,6 +7,7 @@ import {
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
+import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 
 import { subtractImpliedScopes } from './disclosure-basis.js'
 import { hashJsonValue } from '../tool-util.js'
@@ -76,7 +77,7 @@ export const freezeGmailSendApproval = async (
     draftActionId: draftId,
     organizationId: context.channel.organizationId,
     userId,
-  }, { encryptionSecret: process.env.NESSIE_AUTH_SECRET ?? '' })
+  }, { encryptionSecret: resolveWorkerAtRestKeyRing() })
   if (!draft.editable || draft.attachments.length > 0 || !draft.hasPlainTextBody) {
     throw new GmailDraftError('DRAFT_NOT_SENDABLE', 'edit this draft in Gmail')
   }

@@ -23,6 +23,7 @@ const CREDS: WebPushCredentials = {
 
 type SubRow = {
   id: string
+  organizationId: string
   userId: string
   endpoint: string
   p256dh: string
@@ -52,11 +53,14 @@ const makeFakePrisma = (state: FakeState): WebPushDeliveryPrisma =>
     // `test/db/push-dispatch-idempotency.test.ts`.
     $executeRaw: async () => 1,
     webPushSubscription: {
-      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
-        state.subs.filter((s) => where.userId.in.includes(s.userId)),
-      deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
-        state.deleted.push(...where.id.in)
-        return { count: where.id.in.length }
+      findMany: async ({ where }: { where: { organizationId: string; userId: { in: string[] } } }) =>
+        state.subs.filter((s) => where.organizationId === s.organizationId && where.userId.in.includes(s.userId)),
+      deleteMany: async ({ where }: { where: { id: { in: string[] }; organizationId: string } }) => {
+        const deleted = state.subs
+          .filter((subscription) => where.organizationId === subscription.organizationId && where.id.in.includes(subscription.id))
+          .map((subscription) => subscription.id)
+        state.deleted.push(...deleted)
+        return { count: deleted.length }
       },
     },
     pushDelivery: {
@@ -82,8 +86,9 @@ const recordingSender = (): {
   return { sender, calls, results }
 }
 
-const sub = (id: string, userId: string): SubRow => ({
+const sub = (id: string, userId: string, organizationId = 'org-1'): SubRow => ({
   id,
+  organizationId,
   userId,
   endpoint: `https://push.example.com/${id}`,
   p256dh: `p256dh-${id}`,
@@ -152,6 +157,27 @@ test('prunes a subscription the push service reports gone (410)', async () => {
   assert.equal(state.deliveries[0]!.errorCode, 'Gone')
 })
 
+test('never sends or prunes a matching endpoint enrolled in another organization', async () => {
+  const state: FakeState = {
+    subs: [sub('org-1-subscription', 'u2'), sub('org-2-subscription', 'u2', 'org-2')],
+    deleted: [],
+    deliveries: [],
+  }
+  const { sender, results, calls } = recordingSender()
+  results.set('https://push.example.com/org-1-subscription', {
+    ok: false,
+    status: 410,
+    deadToken: true,
+    error: 'Gone',
+  })
+
+  const summary = await deliverWebPush(input(state, sender))
+
+  assert.deepEqual(summary, { sent: 0, failed: 1, pruned: 1 })
+  assert.deepEqual(calls.map((call) => call.target.endpoint), ['https://push.example.com/org-1-subscription'])
+  assert.deepEqual(state.deleted, ['org-1-subscription'])
+})
+
 test('a thrown sender is recorded as a non-dead failure, not pruned', async () => {
   const state: FakeState = { subs: [sub('s1', 'u2')], deleted: [], deliveries: [] }
   const sender: WebPushSender = async () => {
@@ -173,6 +199,7 @@ test('a cross-origin 307 redirect is never followed and fails the delivery', asy
   const state: FakeState = {
     subs: [{
       id: 's1',
+      organizationId: 'org-1',
       userId: 'u2',
       endpoint: 'https://push.example.com/wp/sub-1',
       p256dh: `p256dh-s1`,

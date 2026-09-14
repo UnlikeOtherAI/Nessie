@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { ChannelRecordSchema } from '@nessie/schemas'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useChannels } from '../channels/hooks'
@@ -85,6 +86,11 @@ const readString = (
 
 const buildChannelLookup = (channels: ChannelRecord[]): ChannelLookup => ({
   byId: new Map(channels.map((channel) => [channel.id, channel])),
+  // Deliberately the General threads only: it is the last-resort fallback for
+  // a payload that omits `channelId`, and the channel list knows no other
+  // thread. A message in a conversation carries its `channelId`, so it
+  // resolves through `byId` above and never reaches this map
+  // (docs/plans/2026-09-08-agent-conversations.md).
   byThreadId: new Map(channels.map((channel) => [channel.defaultThreadId, channel])),
 })
 
@@ -314,8 +320,11 @@ export const useMessageNotifications = (input: {
   const activeThreadId = useMemo(() => {
     if (reportedSurfaceForRoute === null) return undefined
     if (reportedSurfaceForRoute?.kind === 'channel') return reportedSurfaceForRoute.threadId
-    const replyThread = parseThreadIdFromPath(location.pathname)
-    if (replyThread) return replyThread
+    // The route names the thread whenever one is open — a conversation, or a
+    // reply panel over it. Only a bare channel route falls back to the room's
+    // General thread, which is what that route is showing.
+    const routeThread = parseThreadIdFromPath(location.pathname)
+    if (routeThread) return routeThread
     return activeChannelId ? channelLookup.byId.get(activeChannelId)?.defaultThreadId : undefined
   }, [activeChannelId, channelLookup, location.pathname, reportedSurfaceForRoute])
   const activeRootMessageId = useMemo(
@@ -373,7 +382,7 @@ export const useMessageNotifications = (input: {
       try {
         const freshChannels = await queryClient.fetchQuery<ChannelRecord[]>({
           queryKey: channelKeys.all,
-          queryFn: () => apiClient.get('/api/channels'),
+          queryFn: () => apiClient.get('/api/channels', ChannelRecordSchema.array()),
         })
         channel = resolveChannel(payload, buildChannelLookup(freshChannels))
       } catch {

@@ -42,7 +42,15 @@ const sendStateError = (reply: FastifyReply, error: CallStateError): void => {
 }
 
 export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { authSecret, prisma, realtimeHub, requireActorContext, getChannelIfMember, getVisibleChannel } = deps
+  const {
+    authSecret,
+    encryptionKeyRing,
+    prisma,
+    realtimeHub,
+    requireActorContext,
+    getChannelIfMember,
+    getVisibleChannel,
+  } = deps
 
   const publishStarted = async (callId: string): Promise<void> => {
     try {
@@ -83,7 +91,7 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           expectedOrganizationId: actorContext.tenant.organizationId,
           ...(body.provider ? { provider: body.provider } : {}),
         },
-        { callLink: { encryptionSecret: authSecret } },
+        { callLink: { encryptionSecret: encryptionKeyRing } },
       )
       const call = CallRecordSchema.parse(mapCallRecord(created))
       await publishStarted(call.id)

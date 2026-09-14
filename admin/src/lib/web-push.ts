@@ -4,9 +4,10 @@
  * callers must first check `isWebPushSupported()`.
  */
 
-import { getBaseUrl } from './api-client'
+import { getBaseUrl, type ApiClient } from './api-client'
 
 const SERVICE_WORKER_URL = '/sw.js'
+let webPushOwnerGeneration = 0
 
 /**
  * The worker receives push while the SPA is not running, so its response-token
@@ -57,6 +58,29 @@ export const getExistingSubscription = async (): Promise<PushSubscription | null
     return null
   }
   return registration.pushManager.getSubscription()
+}
+
+/**
+ * Remove this browser endpoint from the ending person's tenant enrollments.
+ * Do not unsubscribe the browser PushSubscription: another person must opt in
+ * explicitly, but the browser can safely reuse its endpoint after that choice.
+ */
+export const removeBrowserPushEnrollmentsOnLogout = async (apiClient: ApiClient): Promise<void> => {
+  const subscription = await getExistingSubscription()
+  if (!subscription) return
+  await apiClient.post('/api/push/web/logout', { endpoint: subscription.endpoint })
+}
+
+/** Tell the service worker which signed-in person may render encrypted pushes. */
+export const setActiveWebPushUser = (userId: string | null): void => {
+  if (!('serviceWorker' in navigator)) return
+  const generation = ++webPushOwnerGeneration
+  const message = { type: 'nessie.web-push-user', userId }
+  navigator.serviceWorker.controller?.postMessage(message)
+  void navigator.serviceWorker.ready.then((registration) => {
+    if (generation !== webPushOwnerGeneration) return
+    registration.active?.postMessage(message)
+  }).catch(() => undefined)
 }
 
 /**
@@ -114,18 +138,4 @@ const subscriptionMatchesKey = (
     return false
   }
   return currentBytes.every((byte, index) => byte === expected[index])
-}
-
-/**
- * Unsubscribe this browser from push. Returns the endpoint that was removed (so
- * callers can tell the API to drop it), or null when there was no subscription.
- */
-export const unsubscribeBrowser = async (): Promise<string | null> => {
-  const subscription = await getExistingSubscription()
-  if (!subscription) {
-    return null
-  }
-  const { endpoint } = subscription
-  await subscription.unsubscribe()
-  return endpoint
 }

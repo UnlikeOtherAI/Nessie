@@ -1,7 +1,7 @@
 # Identity, belonging, and workspace switching — audit (2026-08-31)
 
 > **Status:** audit complete; F1 landed on 2026-08-31. Three independent passes over the
-> tree at `0f8d9c41` (main): this document's author, a Kimix run, and a Codex
+> tree at `0f8d9c41` (main): this document's author, a reviewer B run, and a Codex
 > Sol run, each auditing the same brief; every external claim was re-verified
 > against the code before being folded in (§6). Builds on
 > [2026-08-14-uoa-sso-gap-analysis.md](2026-08-14-uoa-sso-gap-analysis.md) and
@@ -193,7 +193,7 @@ Put together, the most probable concrete sequence for B:
   even older variant, in local rows from before the SSO migration.
 
 The bug is therefore **not** in Nessie's switch/session plumbing (verified
-correct, §1.4), and Kimix's refuted-suspects list is confirmed: provisioning
+correct, §1.4), and reviewer B's refuted-suspects list is confirmed: provisioning
 is not first-login-only, roles are claim-projected, the org/team claim is
 persisted. It is a *belonging* fact plus a *visibility* hole: UOA never made B
 a member, and Nessie never told anyone.
@@ -219,7 +219,7 @@ further evidence.
 
 ### 2.3 Why the cache theory is secondary
 
-The Kimix pass (§6) pinned the root cause on the directory cache: per-process,
+The reviewer B pass (§6) pinned the root cause on the directory cache: per-process,
 30-minute TTL, silent-failure fetch, and a local-rows fallback that only knows
 workspaces the user already opened. Those defects are real (F3 below) and
 produce this *symptom class* — but for this bug they require `/org/me` to have
@@ -525,16 +525,16 @@ Ordered so the reported bug dies first. Landed recommendations are marked.
 ## 6. Multi-model reconciliation
 
 Three independent audits of the same brief: this author (with UOA source
-access), **Kimix**, and **Codex Sol** (both confined to the Nessie tree).
+access), **Reviewer B**, and **Codex Sol** (both confined to the Nessie tree).
 Every folded claim was re-verified against the code.
 
-**Kimix** produced a well-grounded Nessie-side map that agrees with §1 in all
+**Reviewer B** produced a well-grounded Nessie-side map that agrees with §1 in all
 mechanics. Divergence: it pinned the root cause on the directory
 cache/fallback asymmetry (F3) — the strongest conclusion available *without
 the UOA source*, since `/org/me` is a black box from Nessie. Adjudication
 (§2.3): F3 is real and folded as a finding, but demoted from root cause — it
 presumes a fetch failure the single-container deployment makes unlikely, and
-it cannot explain a workspace UOA itself does not list for B. Kimix's
+it cannot explain a workspace UOA itself does not list for B. Reviewer B's
 refuted-suspects list (provisioning is not owner-only; claims are persisted;
 roles are projections) was verified and adopted; its distinctive findings F5
 (link-metadata claim persistence, including the recovery-path
@@ -544,15 +544,15 @@ recommendations 3–8. Its observation that the switch machinery never consults
 the directory ("B is blocked purely because the entry is never rendered") is
 confirmed and load-bearing for recommendation 1.
 
-**Codex Sol** reached the same root-cause theory as Kimix (the
+**Codex Sol** reached the same root-cause theory as reviewer B (the
 cache/fallback path) — and, to its credit, stated the limit of that theory
 itself: *"There is one runtime fact the repository cannot establish … or UOA
 omitting B's entitlement"*, and *"if a valid `/org/me` response containing the
 workspace reached Nessie, the switcher would list it."* The UOA-side reading
 in §2 resolves exactly that unknown: UOA omits B's entitlement because an
 invited email is not an ACTIVE membership — so Sol's root cause is demoted to
-the F3 finding on the same grounds as Kimix's (§2.3). Its suspect-disposition
-table otherwise matches Kimix and §1. Sol's distinctive contributions, each
+the F3 finding on the same grounds as reviewer B's (§2.3). Its suspect-disposition
+table otherwise matches reviewer B and §1. Sol's distinctive contributions, each
 re-verified line-by-line before folding: the issuance-side deactivation block
 and the revocation lag (both now in F4), the structural-fork routes (F9), the
 `/api/teams` enumeration (F10), the fail-open absent-membership check (F11),

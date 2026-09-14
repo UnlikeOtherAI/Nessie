@@ -82,10 +82,14 @@ export const createConnectedBoardSourceFixtures = () => {
     {
       agentKind: 'shared', id: ids.watcher, name: 'UnlikeOtherAI QA watcher',
       role: 'quality', systemManaged: false, visibility: 'team',
+      channelIds: [], createdAt: now, lastActivityAt: now, status: 'idle',
+      todosEnabled: false, updatedAt: now,
     },
     {
       agentKind: 'shared', id: ids.watcherOther, name: 'UnlikeOtherAI QA backup',
       role: 'quality', systemManaged: false, visibility: 'team',
+      channelIds: [], createdAt: now, lastActivityAt: now, status: 'idle',
+      todosEnabled: false, updatedAt: now,
     },
   ]
 

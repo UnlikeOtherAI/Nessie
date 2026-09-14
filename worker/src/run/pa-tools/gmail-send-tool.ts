@@ -70,6 +70,10 @@ export const runGmailDraftSendTool = async (
         + '/settings/connections.',
     )
   }
+  const encryptionSecret = context.atRestEncryptionKeyRing
+  if (!encryptionSecret) {
+    throw new Error('Gmail sending is unavailable because the at-rest encryption key ring is not configured.')
+  }
 
   try {
     const result = await sendDraftForUser(
@@ -85,7 +89,7 @@ export const runGmailDraftSendTool = async (
           ? { holdMs: UNDO_WINDOW_MS }
           : {}),
       },
-      { encryptionSecret: process.env.NESSIE_AUTH_SECRET ?? '' },
+      { encryptionSecret },
     )
     return {
       inputSummary: `draftId=${args.draftId}`,

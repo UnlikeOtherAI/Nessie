@@ -131,7 +131,7 @@ test('findOrCreateDmChannel migrates a legacy one-member self DM key', async () 
     organizationMember: {
       count: async ({ where }: { where: { userId: { in: string[] } } }) =>
         where.userId.in.includes(userId) ? 1 : 0,
-      // `mapChannelRecord` computes `viewerCanManage` via `canManageChannel`,
+      // `mapChannelRecord` computes `viewerCanManage` via `canModifyChannel`,
       // which re-reads the channel's own membership rows for the viewer —
       // none of them grant management here. See `channel-last-message.test.ts`
       // for the fuller version of this fake and why each delegate is needed.
@@ -234,7 +234,7 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
     },
     channel: {
       // `mapChannelRecord`'s `viewerCanManage` re-reads the channel by id via
-      // `canManageChannel`; a miss is enough to make it return `null`.
+      // `canModifyChannel`; a miss is enough to make it return `null`.
       findUnique: async () => null,
       upsert: async (args: NonNullable<typeof upsertArgs>) => {
         upsertArgs = args
@@ -339,7 +339,7 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
     },
     channel: {
       // `mapChannelRecord`'s `viewerCanManage` re-reads the channel by id via
-      // `canManageChannel`; a miss is enough to make it return `null`.
+      // `canModifyChannel`; a miss is enough to make it return `null`.
       findUnique: async () => null,
       upsert: async (args: { create: NonNullable<typeof createArgs>['data'] }) => {
         createArgs = { data: args.create }

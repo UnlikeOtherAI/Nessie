@@ -87,9 +87,13 @@ const verifyByModelList = async (
     bundle: SubscriptionCredentialBundle
     displayName: string
     path?: string
+    /** A provider's documented list-models URL, declared by its adapter. */
+    url?: string
   },
 ): Promise<SubscriptionAccountIdentity> => {
-  const url = new URL(input.path ?? '/models', `${input.baseUrl.replace(/\/+$/, '')}/`)
+  const url = input.url
+    ? new URL(input.url)
+    : new URL(input.path ?? '/models', `${input.baseUrl.replace(/\/+$/, '')}/`)
   let response: Response
   try {
     response = await safeFetch(
@@ -183,6 +187,44 @@ const glmAdapter: SubscriptionProviderAdapter = {
       baseUrl: 'https://api.z.ai/api/paas/v4',
       bundle,
       displayName: 'Z.ai',
+    }),
+}
+
+// DeepSeek documents model discovery at the API root, while inference uses
+// the compatible `/v1/chat/completions` endpoint. Keeping this URL explicit
+// prevents a future base-url refactor from silently probing the wrong route.
+const DEEPSEEK_MODELS_URL = 'https://api.deepseek.com/models'
+
+/**
+ * DeepSeek API. This is a person's own topped-up or granted API balance, not
+ * a consumer-chat subscription; the key remains vault-only and its run stays
+ * in the personal lane with no Ledger fallback.
+ */
+const deepseekAdapter: SubscriptionProviderAdapter = {
+  authStrategy: 'api_key',
+  classifyFailure: classifyOpenAiShapedFailure,
+  displayName: 'DeepSeek API',
+  key: 'deepseek',
+  models: [
+    {
+      description: 'DeepSeek-V4.1-Flash with tool calling.',
+      displayName: 'DeepSeek Flash',
+      model: 'deepseek-flash',
+    },
+  ],
+  termsNote:
+    'Runs against your own DeepSeek API balance, including topped-up or granted balance, not your organisation’s Ledger credits. Nessie stores the key securely so your agents can use it while you are away.',
+  transport: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    deepseekThinkingMode: 'disabled',
+    runtimeProvider: 'deepseek',
+  },
+  verify: async (bundle) =>
+    verifyByModelList({
+      baseUrl: 'https://api.deepseek.com/v1',
+      bundle,
+      displayName: 'DeepSeek',
+      url: DEEPSEEK_MODELS_URL,
     }),
 }
 
@@ -412,6 +454,7 @@ export const deviceFlowForAdapter = (
  * forward reference.
  */
 const ADAPTERS: Partial<Record<SubscriptionProviderKey, SubscriptionProviderAdapter>> = {
+  deepseek: deepseekAdapter,
   glm: glmAdapter,
   grok: grokAdapter,
   kimi: kimiAdapter,

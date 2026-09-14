@@ -11,6 +11,7 @@ import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/native-shell'
+import { isNativeShell, resolveTeamSwitchDestination } from '../../lib/tenant-navigation'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -47,6 +48,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   const {
     me,
     reconcileSession,
+    refreshSession,
     sessionMode,
     switchContext,
     switchUoaTeam,
@@ -67,6 +69,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
   const [createOpen, setCreateOpen] = useState(false)
+  const refreshedForOpenRef = useRef(false)
 
   const teams = useMemo(() => teamsFromMe(me), [me])
   const invitations = me?.uoaPendingInvites ?? []
@@ -157,11 +160,19 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
       // deployment does not route by hostname, when UOA cannot be reached, or
       // when the team has no address, so the ordinary same-origin navigation
-      // below stays the behaviour everywhere else.
+      // below stays the behaviour everywhere else. A native shell never
+      // follows: its bridge is granted to the canonical origin only
+      // (see lib/tenant-navigation.ts), so it is not even asked.
       if (team.uoaTeam) {
-        const hostUrl = await fetchTeamHostUrl(apiClient, team.teamId)
-        if (hostUrl && new URL(hostUrl).host !== window.location.host) {
-          window.location.assign(`${hostUrl}/channels`)
+        const destination = await resolveTeamSwitchDestination({
+          canonicalOrigin: null,
+          currentHost: window.location.host,
+          currentHostServesApp: true,
+          fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
+          inNativeShell: isNativeShell(),
+        })
+        if (destination.kind === 'document') {
+          window.location.assign(destination.href)
           return
         }
       }
@@ -226,6 +237,23 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     }
     void startExternalSignIn(providerId, signInTheme)
   }
+
+  // Opening the switcher is the moment somebody asks "what teams do I have,
+  // and has anything invited me?", so it re-reads `/api/auth/me` rather than
+  // rendering whatever the session was told at sign-in. The server answers from
+  // its cached UOA directory unless that copy is over a minute old, so this
+  // costs a UOA read only when one is actually due. The ref makes it exactly
+  // one refresh per open: without it a `refreshSession` identity change while
+  // the menu is open would fire the effect again.
+  useEffect(() => {
+    if (!open) {
+      refreshedForOpenRef.current = false
+      return
+    }
+    if (refreshedForOpenRef.current) return
+    refreshedForOpenRef.current = true
+    void refreshSession()
+  }, [open, refreshSession])
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined

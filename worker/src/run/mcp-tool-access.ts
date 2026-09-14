@@ -59,6 +59,13 @@ const scopeMatchesRun = (
 /**
  * The connection scope is a hard ceiling. Explicit grants may narrow it but
  * cannot turn a credential belonging to one person into an agent-wide one.
+ *
+ * A user-scoped connection is its person's own account, and the scope check
+ * above already confines it to runs that person requested. Inside those runs
+ * any agent they talk to — their assistant or a shared agent — may use it,
+ * because the person who connected it is the one asking; only an explicit
+ * per-tool deny withholds it. Anyone else's run never reaches it, so a shared
+ * agent mentioned by a colleague still cannot act as the connecting person.
  */
 export const isMcpRegistryRowExposed = (
   toolPolicy: Record<string, boolean> | null,
@@ -73,24 +80,13 @@ export const isMcpRegistryRowExposed = (
   if (!scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)) return false
 
   const verdict = toolPolicy?.[registryEntryId]
+  if (instance.scopeType === 'user') return verdict !== false
+
   const requiresExplicitGrant = stringRecord(metadata).requiresExplicitGrant === true
   if (requiresExplicitGrant) {
-    // A shared agent cannot use an install bound to one person's identity.
-    // Its setup must use a channel, team, or organization-scoped instance
-    // instead; a descriptor-bound grant never broadens this scope ceiling.
-    if (
-      instance.scopeType === 'user'
-      && (ctx.agentKind === 'shared' || !ctx.isPersonalAssistantPresence)
-    ) return false
     return grants.some((grant) =>
       grant.agentId === agentId
       && isCurrentAllowedMcpToolGrant(grant, descriptorFingerprint))
-  }
-
-  // A user-scoped connection follows its person through a shared agent only
-  // when that agent has the normal, explicit per-tool allow.
-  if (instance.scopeType === 'user' && ctx.agentKind === 'shared' && verdict !== true) {
-    return false
   }
   return verdict !== false
 }

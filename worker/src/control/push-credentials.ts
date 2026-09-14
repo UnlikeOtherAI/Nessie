@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
-import { decryptWithKey, deriveSecretKey } from '@nessie/runtime'
+import {
+  AT_REST_SECRET_PURPOSE,
+  decryptWithKeyRing,
+  toEncryptionKeyRing,
+  type EncryptionKeyRingInput,
+} from '@nessie/runtime'
 import type { ApnsCredentials, FcmCredentials } from '@nessie/push'
 
 /**
@@ -25,18 +30,18 @@ export type LoadedPushCredentials = {
 
 const decryptSecret = async (
   prisma: Pick<PushCredentialPrisma, 'mcpOAuthSecret'>,
-  authSecret: string,
+  encryptionKeyRing: EncryptionKeyRingInput,
   secretRef: string,
 ): Promise<string | null> => {
   const row = await prisma.mcpOAuthSecret.findUnique({ where: { ref: secretRef } })
   if (!row) {
     return null
   }
-  return decryptWithKey(deriveSecretKey(authSecret), {
+  return decryptWithKeyRing(toEncryptionKeyRing(encryptionKeyRing), AT_REST_SECRET_PURPOSE.pushCredential, {
     ciphertext: row.ciphertext,
     iv: row.iv,
     authTag: row.authTag,
-  })
+  }).plaintext
 }
 
 /**
@@ -45,7 +50,7 @@ const decryptSecret = async (
  */
 const loadApnsCreds = async (
   prisma: Pick<PushCredentialPrisma, 'mcpOAuthSecret'>,
-  authSecret: string,
+  encryptionKeyRing: EncryptionKeyRingInput,
   row: {
     secretRef: string
     apnsKeyId: string | null
@@ -57,7 +62,7 @@ const loadApnsCreds = async (
   if (!row.apnsKeyId || !row.apnsTeamId || !row.apnsTopic) {
     return null
   }
-  const p8 = await decryptSecret(prisma, authSecret, row.secretRef)
+  const p8 = await decryptSecret(prisma, encryptionKeyRing, row.secretRef)
   if (!p8) {
     return null
   }
@@ -72,10 +77,10 @@ const loadApnsCreds = async (
 
 const loadFcmCreds = async (
   prisma: Pick<PushCredentialPrisma, 'mcpOAuthSecret'>,
-  authSecret: string,
+  encryptionKeyRing: EncryptionKeyRingInput,
   row: { secretRef: string },
 ): Promise<FcmCredentials | null> => {
-  const serviceAccountJson = await decryptSecret(prisma, authSecret, row.secretRef)
+  const serviceAccountJson = await decryptSecret(prisma, encryptionKeyRing, row.secretRef)
   if (!serviceAccountJson) {
     return null
   }
@@ -87,13 +92,13 @@ const loadFcmCreds = async (
  * `push_credentials` table. Returns nulls for absent/incomplete providers.
  */
 export const loadPushCredentials = async (
-  deps: { prisma: PushCredentialPrisma; authSecret: string },
+  deps: { prisma: PushCredentialPrisma; encryptionKeyRing: EncryptionKeyRingInput },
 ): Promise<LoadedPushCredentials> => {
   const credRows = await deps.prisma.pushCredential.findMany()
   const apnsRow = credRows.find((r) => r.provider === 'apns') ?? null
   const fcmRow = credRows.find((r) => r.provider === 'fcm') ?? null
   return {
-    apnsCreds: apnsRow ? await loadApnsCreds(deps.prisma, deps.authSecret, apnsRow) : null,
-    fcmCreds: fcmRow ? await loadFcmCreds(deps.prisma, deps.authSecret, fcmRow) : null,
+    apnsCreds: apnsRow ? await loadApnsCreds(deps.prisma, deps.encryptionKeyRing, apnsRow) : null,
+    fcmCreds: fcmRow ? await loadFcmCreds(deps.prisma, deps.encryptionKeyRing, fcmRow) : null,
   }
 }

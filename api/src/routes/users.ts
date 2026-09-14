@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 
 import { hashPassword } from '../auth/password.js'
-import { CreateUserBodySchema, UpdateUserRoleBodySchema, UserRecordSchema } from '../contracts/users-presence.js'
+import {
+  CreateUserBodySchema,
+  UpdateUserRoleBodySchema,
+  UserRecordSchema,
+  type UserRecord,
+} from '../contracts/users-presence.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
 import { requireUnboundMembershipManagement } from './membership-mode-gate.js'
@@ -12,16 +17,24 @@ import {
 } from '../services/uoa-avatar.js'
 import { LAST_OWNER_ERROR } from '../services/organization-owner-lock.js'
 import {
+  uoaIdentityDirectory,
+  type UoaIdentityDirectory,
+} from '../services/uoa-identity-directory.js'
+import {
   createUserForOrganization,
   getOrganizationMembership,
   getOrganizationUserRecord,
+  listUoaUsersForOrganization,
   listUsersForOrganization,
   setOrganizationMemberDeactivated,
+  toMemberDirectoryView,
+  UoaIdentityMappingError,
   updateOrganizationMemberRole,
 } from '../services/users.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import { attemptGlobalAgentsBootstrap } from '../services/global-agents.js'
+import { sendMemberManagementError } from './member-management-errors.js'
 import type { RouteDeps } from './types.js'
 
 // The membership mutators throw LAST_OWNER_ERROR from inside their transaction
@@ -29,7 +42,11 @@ import type { RouteDeps } from './types.js'
 const isLastOwnerError = (error: unknown): boolean =>
   error instanceof Error && error.message === LAST_OWNER_ERROR
 
-export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+export const registerUserRoutes = (
+  app: FastifyInstance,
+  deps: RouteDeps,
+  identityDirectory: UoaIdentityDirectory = uoaIdentityDirectory,
+): void => {
   const {
     prisma,
     requireActorContext,
@@ -38,18 +55,68 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     MEMBERSHIP_ROLES,
   } = deps
 
+  /**
+   * The organisation's people directory. Any authenticated member may read it,
+   * because every doorway that addresses a person — the DM `+` picker, the
+   * sidebar, search, @mentions, project and watcher pickers — is built on it.
+   * The response is shaped by the caller's role: an owner receives the
+   * management record, everyone else the directory view
+   * (`toMemberDirectoryView`), which drops deactivated people and their
+   * deactivation timestamp and narrows `channelIds` to channels the viewer
+   * shares.
+   */
   app.get('/api/users', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
     }
 
-    if (!requireOwner(actorContext, reply)) {
-      return reply
+    const isOwnerActor = actorContext.actor.roles?.includes('owner') === true
+    const shapeForActor = (users: UserRecord[]): UserRecord[] =>
+      isOwnerActor ? users : toMemberDirectoryView(users, actorContext.actor.actorId)
+
+    const organizationId = actorContext.tenant.organizationId
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { externalOrgId: true },
+    })
+    if (organization?.externalOrgId) {
+      const identity = actorContext.actionContext.uoaIdentity
+      if (!identity) {
+        sendApiError(
+          reply,
+          403,
+          'UOA_SESSION_REQUIRED',
+          'UnlikeOtherAI could not verify your session. Sign in again and select this team.',
+        )
+        return reply
+      }
+      try {
+        const members = await identityDirectory.list({
+          externalOrgId: organization.externalOrgId,
+          identity,
+        })
+        const users = await listUoaUsersForOrganization(prisma, organizationId, members)
+        return createApiResponse(UserRecordSchema.array().parse(shapeForActor(users)))
+      } catch (error) {
+        if (error instanceof UoaIdentityMappingError) {
+          request.log.error({ err: error, organizationId }, 'uoa identity mapping incomplete')
+          sendApiError(
+            reply,
+            409,
+            'UOA_IDENTITY_MAPPING_REQUIRED',
+            'This organisation has legacy people without a stable UnlikeOtherAI subject. '
+              + 'Run the identity migration audit before using this directory.',
+          )
+          return reply
+        }
+        if (sendMemberManagementError(request, reply, error, 'organization')) return reply
+        throw error
+      }
     }
 
-    const users = await listUsersForOrganization(prisma, actorContext.tenant.organizationId)
-    return createApiResponse(UserRecordSchema.array().parse(users))
+    const users = await listUsersForOrganization(prisma, organizationId)
+    return createApiResponse(UserRecordSchema.array().parse(shapeForActor(users)))
   })
 
   app.post('/api/users', async (request, reply) => {

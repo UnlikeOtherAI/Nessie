@@ -30,13 +30,25 @@ type AlertCreate = {
 const makeDeps = (input: {
   members: { id: string; displayName: string }[]
   failCreateMany?: boolean
+  visibility?: 'public' | 'protected' | 'private'
+  organizationMembers?: { id: string; displayName: string }[]
 }) => {
   const created: AlertCreate[] = []
   const follows: { rootMessageId: string; userId: string }[] = []
   const published: { data: Record<string, unknown>; event: string }[] = []
   const prisma = {
+    channel: {
+      findUnique: async () => ({
+        systemChannelType: null,
+        type: 'standard',
+        visibility: input.visibility ?? 'private',
+      }),
+    },
     channelMember: {
       findMany: async () => input.members.map((member) => ({ user: member })),
+    },
+    organizationMember: {
+      findMany: async () => (input.organizationMembers ?? []).map((user) => ({ user })),
     },
     userAlert: {
       createMany: async ({ data }: { data: AlertCreate[] }) => {
@@ -156,4 +168,63 @@ test('a persistence failure is swallowed (best-effort, never breaks delivery)', 
   )
 
   assert.equal(deps.published.length, 0)
+})
+
+test('a durable completion mention propagates persistence failure for replay', async () => {
+  const deps = makeDeps({
+    members: [{ id: MEMBER, displayName: 'Mentioned One' }],
+    failCreateMany: true,
+  })
+
+  await assert.rejects(
+    createMessageMentionAlerts(
+      { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+      {
+        ...baseInput,
+        actorAgentId: AGENT,
+        content: '@Mentioned One hi',
+        durableEventKey: `run-completion:${MESSAGE}:mention-alert`,
+      },
+    ),
+    /db down/,
+  )
+})
+
+// Who a mention can address (docs/standards/user-alerts.md): an open channel
+// adds every active organisation member; a private one adds nobody, so a
+// non-member named in an agent's message there is never alerted.
+const OUTSIDER = '00000000-0000-4000-8000-000000000408'
+
+test('an agent @mention of a non-member alerts them in a public channel', async () => {
+  const deps = makeDeps({
+    members: [{ id: MEMBER, displayName: 'Mentioned One' }],
+    organizationMembers: [
+      { id: MEMBER, displayName: 'Mentioned One' },
+      { id: OUTSIDER, displayName: 'Otto Outsider' },
+    ],
+    visibility: 'public',
+  })
+
+  await createMessageMentionAlerts(
+    { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+    { ...baseInput, content: '@Otto Outsider can you check', actorAgentId: AGENT },
+  )
+
+  assert.deepEqual(deps.created.map((row) => row.userId), [OUTSIDER])
+})
+
+test('an agent @mention of a non-member alerts nobody in a private channel', async () => {
+  const deps = makeDeps({
+    members: [{ id: MEMBER, displayName: 'Mentioned One' }],
+    organizationMembers: [{ id: OUTSIDER, displayName: 'Otto Outsider' }],
+    visibility: 'private',
+  })
+
+  await createMessageMentionAlerts(
+    { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+    { ...baseInput, content: '@Otto Outsider can you check', actorAgentId: AGENT },
+  )
+
+  assert.deepEqual(deps.created, [])
+  assert.deepEqual(deps.published, [])
 })

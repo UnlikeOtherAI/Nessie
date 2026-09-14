@@ -52,3 +52,20 @@ export const TaskRecordSchema = z.object({
   updatedAt: TimestampSchema,
 })
 export type TaskRecord = z.infer<typeof TaskRecordSchema>
+
+/**
+ * An entitled task plus the board placement the server resolved for it.
+ *
+ * A task's `boardId` is only an ownership pointer: `null` means the project's
+ * default board, and a pin can be stale after a lifecycle change. Deep links
+ * therefore use this projection instead of trying to reproduce
+ * `resolveBoardPlacement` in the client.
+ */
+export const TaskDetailRecordSchema = TaskRecordSchema.extend({
+  boardPlacement: z.object({
+    boardId: z.string().uuid(),
+    columnId: z.string().uuid().nullable(),
+    position: z.number().int().nullable(),
+  }).nullable(),
+})
+export type TaskDetailRecord = z.infer<typeof TaskDetailRecordSchema>

@@ -38,7 +38,11 @@ for it. Four pieces, plus one cache underneath them all.
   private third-party content and must never briefly paint under a new account,
   provider or entitlement identity. Task checklists are also exempt: their
   instructions and results may contain private research evidence, so changing a
-  task id clears the panel until the next entitled read finishes.
+  task id clears the panel until the next entitled read finishes. Project
+  membership is likewise exempt because it is an authorization decision:
+  switching projects clears the preceding role list until the destination
+  project's entitlement read resolves, so a prior project's role can never
+  briefly reveal board or sprint administration controls.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
@@ -51,7 +55,12 @@ for it. Four pieces, plus one cache underneath them all.
   (both its sidebar and the project Documents tab), the triggers column, and
   the workflows column. Each takes the fact from its own query, and a *disabled*
   query — the non-owner case, whose refusal is the page's own gate — is
-  deliberately not "loading".
+  deliberately not "loading". A project's Board host treats a previous
+  project's placeholder as loading too, so a project switch never paints the
+  former board under the destination URL. The Board and project Documents
+  surfaces route initial errors through `QueryState` and its Retry action;
+  their successful empty guidance runs only after the same scoped read has
+  settled.
 - **One `Skeleton`, four page types** —
   `admin/src/components/primitives/Skeleton.tsx`: `list`, `detail`, `feed`,
   `board`, plus `SkeletonBlock` for the placeholders that are one sized

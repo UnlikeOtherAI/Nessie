@@ -102,6 +102,7 @@ export const registerAuthUoaTeamRoute = (
     try {
       consumed = await consumeRefreshToken(prisma, {
         authSecret,
+        encryption: deps.encryptionKeyRing,
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,

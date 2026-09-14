@@ -32,6 +32,13 @@ export const createCatalogEntry = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: CreateCatalogEntryInput,
+  /**
+   * `publish` inserts the row already shared with the organisation — the
+   * state `publishCatalogEntry` would leave it in — so a same-name app in the
+   * organisation is refused by the insert itself instead of stranding a
+   * private draft that then blocks every retry.
+   */
+  options: { publish?: boolean } = {},
 ): Promise<McpCatalogEntryRow> => {
   const authConfig = ensureAuthConfigMatchesMethod(input.authMethod, input.authConfig)
   await assertCatalogSecurity({
@@ -85,14 +92,14 @@ export const createCatalogEntry = async (
         vendor: input.vendor ?? null,
         sourceUrl: input.sourceUrl ?? null,
         signature: input.signature ?? null,
-        status: 'draft',
-        visibility: 'private',
+        status: options.publish ? 'published' : 'draft',
+        visibility: options.publish ? 'public' : 'private',
         // A person wrote this, so it is an app rather than a registry record
         // nobody has looked at. The column defaults to `discovered`, which the
         // store read filters out — leaving the Apps page's own "Add custom MCP
         // server" producing a row that page can never show. `curated` is what
         // the store migration gave every pre-existing human-authored entry,
-        // and it stays private to its owner until the entry is published.
+        // and a draft stays private to its owner until the entry is published.
         moderationState: 'curated',
         slug,
         ownerUserId: actorContext.actor.actorId,

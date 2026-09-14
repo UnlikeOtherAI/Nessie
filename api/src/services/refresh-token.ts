@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { type Prisma, type PrismaClient } from '@prisma/client'
 import type { SessionClientType, UoaSessionIdentity } from '@nessie/schemas'
+import type { EncryptionKeyRingInput } from '@nessie/runtime'
 import {
   deriveRefreshTokenSuccessor,
   hashRefreshToken,
@@ -10,7 +11,6 @@ import {
   lockRefreshFamily,
   refreshTokenSelect,
   resolveReplayDescendant,
-  revokeRefreshFamily,
   revokeRefreshFamilyRows,
   type RefreshTokenRecord,
 } from './refresh-token-family.js'
@@ -51,10 +51,13 @@ export { REFRESH_TOKEN_REPLAY_GRACE_MS } from './refresh-token-family.js'
 export { revokeRefreshFamily as revokeFamily } from './refresh-token-family.js'
 export { UoaRefreshBindingError } from './refresh-token-uoa.js'
 export { UoaTeamSwitchError } from './uoa-team-switch-intent.js'
+export { revokeRefreshTokenByRaw } from './refresh-token-revocation.js'
 export type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 
 type ConsumeInput = UoaRotationCallbacks & {
   authSecret: string
+  /** Server callers supply the independent ring; test fixtures may use authSecret. */
+  encryption?: EncryptionKeyRingInput
   rawToken: string
   ttlSeconds: number
   refreshUoaSession?: (input: {
@@ -241,7 +244,7 @@ export const consumeRefreshToken = async (
       )
     }
     const prepared = await prepareUoaRefresh(tx, {
-      authSecret: input.authSecret,
+      encryption: input.encryption ?? input.authSecret,
       now: requestTime,
       presented,
     })
@@ -323,7 +326,7 @@ export const consumeRefreshToken = async (
         ...(teamSwitch ? { teamSwitch } : {}),
       })
       rotatedUoa = validateUoaRefresh({
-        authSecret: input.authSecret,
+        encryption: input.encryption ?? input.authSecret,
         credential: preflight.uoa.credential,
         expectedIdentity: preflight.uoa.expectedIdentity,
         identity: refreshed.identity,
@@ -482,21 +485,4 @@ export const consumeRefreshToken = async (
 
   await notifyUoaSessionBindingAfterCommit(input, rotatedUoa, result, preflight.presented.userId)
   return result
-}
-
-// Logout: revoke the family of the presented token. Missing/unknown tokens are
-// a no-op so logout is always idempotent. Returns the owning user id when a
-// family was actually revoked, so the caller can also bump that user's
-// tokenVersion and kill their outstanding access token.
-export const revokeRefreshTokenByRaw = async (
-  prisma: PrismaClient,
-  rawToken: string,
-): Promise<{ userId: string } | null> => {
-  const record = await prisma.refreshToken.findUnique({
-    where: { tokenHash: hashRefreshToken(rawToken) },
-    select: { familyId: true, userId: true },
-  })
-  if (!record) return null
-  await revokeRefreshFamily(prisma, record.familyId)
-  return { userId: record.userId }
 }

@@ -55,7 +55,7 @@ const makeApp = (viewerUserId: string) => {
     agent: { findMany: async () => [] },
     // The confidential stream's channel is private, so its audience remains
     // constrained to explicit channel members.
-    channel: { findFirst: async () => null },
+    channel: { findFirst: async () => null, findMany: async () => [] },
     channelMember: { findMany: async () => [] },
     disclosureGrant: { findMany: async () => [] },
     knowledgePage: {

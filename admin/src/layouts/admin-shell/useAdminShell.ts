@@ -15,7 +15,11 @@ import { useUsers } from '../../facades/users/hooks';
 import { useCurrentOrganization } from '../../facades/organization/hooks';
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { newChannelComposeLocationState } from '../../lib/channel-compose-navigation';
-import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
+import {
+  parseChannelIdFromPath,
+  parseChannelProjectIdFromPath,
+  parseThreadIdFromPath,
+} from '../../lib/channel-route';
 import { useIsOwner } from '../../facades/auth/hooks';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from '../../navigation/nav-items';
@@ -61,7 +65,9 @@ export const useAdminShell = () => {
   // UOA owns membership on an UnlikeOtherAI session, which changes who the
   // Members doorway belongs to (any active member reads the roster).
   const isUoaSession = me?.auth.providerType === 'uoa';
-  const { data: users = [] } = useUsers(isOwner);
+  // Every member reads the people directory (owners get the management view
+  // of the same list), so the DM picker and sidebar resolve colleagues.
+  const { data: users = [] } = useUsers();
   const organization = useCurrentOrganization();
   const canManageOrganization = organization.data?.administration.status === 'allowed';
   const isAgentsRoute = location.pathname.startsWith('/agents');
@@ -90,8 +96,11 @@ export const useAdminShell = () => {
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
     channelIds: personalAssistantChannel ? [personalAssistantChannel.id] : [],
+    // The thread on screen: the conversation the route names, else the room's
+    // own General thread (docs/plans/2026-09-08-agent-conversations.md).
     threadId: currentChannelId
-      ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
+      ? parseThreadIdFromPath(location.pathname)
+        ?? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,
   });
   const activeDmChannel = currentChannelId

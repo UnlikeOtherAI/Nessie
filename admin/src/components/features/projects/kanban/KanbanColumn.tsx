@@ -11,6 +11,8 @@ type KanbanColumnProps = {
   headerAction?: ReactNode
   // Ordered task ids in this column — the SortableContext items for reordering.
   itemIds: string[]
+  /** One-line tickets sit closer together than full cards. */
+  dense?: boolean
 }
 
 export const KanbanColumn = ({
@@ -21,6 +23,7 @@ export const KanbanColumn = ({
   children,
   headerAction,
   itemIds,
+  dense = false,
 }: KanbanColumnProps) => {
   // The column is itself a drop target so cards can be dropped into an empty
   // column or below the last card. It is also the scroll container for its own
@@ -45,7 +48,8 @@ export const KanbanColumn = ({
       <div
         ref={setNodeRef}
         className={[
-          'flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain',
+          'flex min-h-[120px] flex-1 flex-col overflow-y-auto overscroll-y-contain',
+          dense ? 'gap-1' : 'gap-2',
           'rounded-lg p-2 transition-colors',
           isOver ? 'bg-[color:var(--overlay)]' : 'bg-[color:var(--sb)]',
         ].join(' ')}

@@ -2,136 +2,13 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import Fastify from 'fastify'
-import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
-
-import { registerDeviceRoutes } from '../src/routes/devices.js'
-
-const organizationId = '00000000-0000-4000-8000-000000000001'
-const projectId = '00000000-0000-4000-8000-000000000002'
-const userA = '00000000-0000-4000-8000-00000000000a'
-const userB = '00000000-0000-4000-8000-00000000000b'
-
-type DeviceRow = {
-  id: string
-  organizationId: string
-  userId: string
-  platform: string
-  token: string
-  appVersion: string | null
-  apnsEnvironment: 'sandbox' | 'production' | null
-  registrationVersion: bigint
-  inactiveAt: Date | null
-  lastSeenAt: Date
-  createdAt: Date
-}
-
-const actorContextFor = (
-  userId: string,
-  activeOrganizationId = organizationId,
-  pushRegistrationVersion = '0',
-): AuthorizedActionContext => ({
-  actor: { actorType: 'user', actorId: userId, roles: ['member'] },
-  tenant: { organizationId: activeOrganizationId, projectId },
-  actionContext: { requestId: `req-devices-${userId}`, pushRegistrationVersion },
-})
-
-/**
- * In-memory `deviceToken` store reproducing the ordered physical-token write
- * and scoped tombstoning the route relies on. Shared across the app so we can
- * assert idempotent registration and ownership transfer behaviour.
- */
-const makeApp = (
-  userId: string,
-  rows: DeviceRow[] = [],
-  activeOrganizationId = organizationId,
-  pushRegistrationVersion = '0',
-) => {
-  let registrationGeneration = BigInt(pushRegistrationVersion)
-  const prisma = {
-    deviceToken: {
-      updateMany: async ({
-        where,
-        data,
-      }: {
-        where: {
-          token: string
-          registrationVersion?: { lte: bigint }
-          organizationId?: string
-          userId?: string
-        }
-        data: {
-          organizationId?: string
-          userId?: string
-          platform?: string
-          appVersion?: string | null
-          registrationVersion: bigint
-          inactiveAt?: Date | null
-          apnsEnvironment?: 'sandbox' | 'production' | null
-          lastSeenAt?: Date
-        }
-      }) => {
-        const existing = rows.find((row) => row.token === where.token)
-        if (!existing) return { count: 0 }
-        if (
-          where.registrationVersion
-          && existing.registrationVersion > where.registrationVersion.lte
-        ) return { count: 0 }
-        if (where.organizationId && existing.organizationId !== where.organizationId) return { count: 0 }
-        if (where.userId && existing.userId !== where.userId) return { count: 0 }
-        existing.organizationId = data.organizationId ?? existing.organizationId
-        existing.userId = data.userId ?? existing.userId
-        existing.platform = data.platform ?? existing.platform
-        existing.appVersion = data.appVersion ?? existing.appVersion
-        existing.registrationVersion = data.registrationVersion
-        existing.inactiveAt = data.inactiveAt === undefined ? existing.inactiveAt : data.inactiveAt
-        existing.apnsEnvironment = data.apnsEnvironment === undefined
-          ? existing.apnsEnvironment
-          : data.apnsEnvironment
-        existing.lastSeenAt = data.lastSeenAt ?? existing.lastSeenAt
-        return { count: 1 }
-      },
-      findUnique: async ({ where }: { where: { token: string } }) =>
-        rows.find((row) => row.token === where.token) ?? null,
-      create: async ({
-        data: create,
-      }: {
-        data: Omit<DeviceRow, 'id' | 'lastSeenAt' | 'createdAt'> & { appVersion?: string }
-      }) => {
-        const now = new Date()
-        const created: DeviceRow = {
-          id: randomUUID(),
-          organizationId: create.organizationId,
-          userId: create.userId,
-          platform: create.platform,
-          token: create.token,
-          appVersion: create.appVersion ?? null,
-          registrationVersion: create.registrationVersion,
-          inactiveAt: create.inactiveAt ?? null,
-          apnsEnvironment: create.apnsEnvironment ?? null,
-          lastSeenAt: now,
-          createdAt: now,
-        }
-        rows.push(created)
-        return created
-      },
-    },
-    pushRegistrationGeneration: {
-      upsert: async () => {
-        registrationGeneration += 1n
-        return { value: registrationGeneration }
-      },
-    },
-  } as unknown as PrismaClient
-
-  const app = Fastify({ logger: false })
-  registerDeviceRoutes(app, {
-    prisma,
-    requireActorContext: () => actorContextFor(userId, activeOrganizationId, pushRegistrationVersion),
-  } as unknown as Parameters<typeof registerDeviceRoutes>[1])
-  return { app, rows }
-}
+import {
+  makeApp,
+  organizationId,
+  type DeviceRow,
+  userA,
+  userB,
+} from './device-token-routes-harness.js'
 
 test('POST /api/devices registers a new native device token for the caller', async () => {
   const { app, rows } = makeApp(userA)
@@ -244,6 +121,33 @@ test('a delayed registration cannot reactivate a logout tombstone', async () => 
   await delayed.app.close()
 })
 
+test('a new account can revive its physical installation after logout only with its proof', async () => {
+  const rows: DeviceRow[] = []
+  const former = makeApp(userA, rows, organizationId, '1')
+  const first = await former.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'tombstone-transfer-token' },
+  })
+  const ownershipProof = (first.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  await former.app.inject({ method: 'DELETE', url: '/api/devices/tombstone-transfer-token' })
+
+  const newOrganizationId = '00000000-0000-4000-8000-000000000099'
+  const current = makeApp(userB, rows, newOrganizationId, '3')
+  const restored = await current.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'tombstone-transfer-token', ownershipProof },
+  })
+
+  assert.equal(restored.statusCode, 201)
+  assert.equal(rows[0]?.inactiveAt, null)
+  assert.equal(rows[0]?.userId, userB)
+  assert.equal(rows[0]?.organizationId, newOrganizationId)
+  await former.app.close()
+  await current.app.close()
+})
+
 test('a user cannot delete another user token (scoped on userId)', async () => {
   // userA owns the token; the DELETE call is authenticated as userB.
   const rows: DeviceRow[] = [
@@ -271,23 +175,15 @@ test('a user cannot delete another user token (scoped on userId)', async () => {
   await app.close()
 })
 
-test('a user re-registering an existing token transfers it from the former user', async () => {
-  // userA already owns "shared-token". userB registers the same token string.
-  const rows: DeviceRow[] = [
-    {
-      id: randomUUID(),
-      organizationId,
-      userId: userA,
-      platform: 'ios',
-      token: 'shared-token',
-      appVersion: null,
-      apnsEnvironment: null,
-      registrationVersion: 0n,
-      inactiveAt: null,
-      lastSeenAt: new Date(),
-      createdAt: new Date(),
-    },
-  ]
+test('a copied native token cannot transfer another person\'s installation', async () => {
+  const rows: DeviceRow[] = []
+  const former = makeApp(userA, rows, organizationId, '1')
+  const first = await former.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'shared-token' },
+  })
+  assert.equal(first.statusCode, 201)
   const { app } = makeApp(userB, rows, organizationId, '1')
 
   const response = await app.inject({
@@ -296,43 +192,41 @@ test('a user re-registering an existing token transfers it from the former user'
     payload: { platform: 'android', token: 'shared-token' },
   })
 
-  assert.equal(response.statusCode, 201)
-  // One physical installation must never fan private previews to both people.
+  assert.equal(response.statusCode, 403)
   assert.equal(rows.length, 1)
-  assert.equal(rows[0]?.userId, userB)
-  assert.equal(rows[0]?.platform, 'android')
+  assert.equal(rows[0]?.userId, userA)
+  assert.equal(rows[0]?.platform, 'ios')
+  await former.app.close()
   await app.close()
 })
 
-test('a late former-account registration cannot reclaim a token after an ownership transfer', async () => {
-  const rows: DeviceRow[] = [
-    {
-      id: randomUUID(),
-      organizationId,
-      userId: userA,
-      platform: 'ios',
-      token: 'ordered-token',
-      appVersion: null,
-      apnsEnvironment: 'sandbox',
-      registrationVersion: 0n,
-      inactiveAt: null,
-      lastSeenAt: new Date(),
-      createdAt: new Date(),
-    },
-  ]
+test('an installation proof transfers an account switch and rotates before a former session arrives', async () => {
+  const rows: DeviceRow[] = []
   const former = makeApp(userA, rows, organizationId, '1')
   const currentOrganizationId = '00000000-0000-4000-8000-000000000099'
   const current = makeApp(userB, rows, currentOrganizationId, '2')
 
-  await current.app.inject({
+  const initial = await former.app.inject({
     method: 'POST',
     url: '/api/devices',
     payload: { platform: 'ios', token: 'ordered-token' },
   })
+  const initialProof = (initial.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof initialProof, 'string')
+
+  const transferred = await current.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'ordered-token', ownershipProof: initialProof },
+  })
+  assert.equal(transferred.statusCode, 201)
+  const transferredProof = (transferred.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof transferredProof, 'string')
+  assert.notEqual(transferredProof, initialProof)
   const late = await former.app.inject({
     method: 'POST',
     url: '/api/devices',
-    payload: { platform: 'ios', token: 'ordered-token' },
+    payload: { platform: 'ios', token: 'ordered-token', ownershipProof: initialProof },
   })
 
   assert.equal(late.statusCode, 201)
@@ -343,21 +237,72 @@ test('a late former-account registration cannot reclaim a token after an ownersh
   await current.app.close()
 })
 
+test('a stale former session cannot revive a tombstone after a proofed transfer', async () => {
+  const rows: DeviceRow[] = []
+  const former = makeApp(userA, rows, organizationId, '1')
+  const currentOrganizationId = '00000000-0000-4000-8000-000000000099'
+  const current = makeApp(userB, rows, currentOrganizationId, '2')
+  const nextOrganizationId = '00000000-0000-4000-8000-000000000088'
+  const next = makeApp(userA, rows, nextOrganizationId, '4')
+
+  const initial = await former.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token' },
+  })
+  const initialProof = (initial.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof initialProof, 'string')
+  const transferred = await current.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token', ownershipProof: initialProof },
+  })
+  const transferredProof = (transferred.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof transferredProof, 'string')
+  assert.notEqual(transferredProof, initialProof)
+
+  const deleted = await current.app.inject({ method: 'DELETE', url: '/api/devices/transferred-tombstone-token' })
+  assert.equal(deleted.statusCode, 204)
+  const stale = await former.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token', ownershipProof: initialProof },
+  })
+  assert.equal(stale.statusCode, 201)
+  assert.ok(rows[0]?.inactiveAt instanceof Date)
+
+  const revived = await next.app.inject({
+    method: 'POST',
+    url: '/api/devices',
+    payload: { platform: 'ios', token: 'transferred-tombstone-token', ownershipProof: transferredProof },
+  })
+  assert.equal(revived.statusCode, 201)
+  const revivedProof = (revived.json() as { data: { ownershipProof?: string } }).data.ownershipProof
+  assert.equal(typeof revivedProof, 'string')
+  assert.notEqual(revivedProof, transferredProof)
+  assert.equal(rows[0]?.inactiveAt, null)
+  assert.equal(rows[0]?.organizationId, nextOrganizationId)
+  await former.app.close()
+  await current.app.close()
+  await next.app.close()
+})
+
 test('registering in another organization transfers the device to that active team', async () => {
   const otherOrganizationId = '00000000-0000-4000-8000-000000000099'
   const rows: DeviceRow[] = []
   const first = makeApp(userA, rows, organizationId, '1')
   const second = makeApp(userA, rows, otherOrganizationId, '2')
 
-  await first.app.inject({
+  const firstRegistration = await first.app.inject({
     method: 'POST',
     url: '/api/devices',
     payload: { platform: 'ios', token: 'shared-device-token' },
   })
+  const ownershipProof = (firstRegistration.json() as { data: { ownershipProof?: string } }).data.ownershipProof
   await second.app.inject({
     method: 'POST',
     url: '/api/devices',
-    payload: { platform: 'ios', token: 'shared-device-token' },
+    payload: { platform: 'ios', token: 'shared-device-token', ownershipProof },
   })
 
   assert.equal(rows.length, 1)

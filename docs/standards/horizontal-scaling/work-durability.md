@@ -385,6 +385,42 @@ matches no row. Beside it:
   `RunDrainedError`. The run stays `running`, its token and heartbeat are
   cleared so the next worker claims it on its next poll rather than waiting out
   the takeover window, and the job is nacked with reason `worker_drain`.
+- **An intentional retry hands the run claim back before it nacks the job.** A
+  non-final `FatalToolExecutionError` keeps the run `running`, along with its
+  crash checkpoint and tool-effect rows, but stops the heartbeat and clears the
+  executor token through `handBackRunExecution` before rethrowing. The update is
+  fenced on the current token, so a superseded executor cannot release its
+  successor. The next queue attempt can therefore claim the same run immediately
+  instead of acknowledging a retry against the previous attempt's fresh heartbeat.
+  If the hand-back UPDATE itself fails, `QueueRetryAfterError` leaves that one
+  attempt pending until just after the two-minute takeover window. The provider
+  advances the attempt only on a real claim, so waiting cannot exhaust retries;
+  the successor then either takes the stale run or observes a live newer holder
+  without releasing or failing it.
+- **Success is one terminal commit plus replayable follow-up.** The answer (or
+  rolling-watch fold), reply bookkeeping, `completed` run, done task, idle
+  agent and keyed `run.completion.followup` queue row commit together. A later
+  phase cannot turn that completed run into `failed` or append a second answer.
+  The follow-up carries immutable answer, reply and completion timestamps and
+  replays plan/delegation/workflow completion, terminal cleanup and realtime.
+  Realtime keys include organization, channel, thread and run; insertion holds
+  the existing per-scope advisory lock through commit and accepts a collision
+  only when both the persisted JSON payload and audience match. A replay never
+  notifies an existing event again, and an older follow-up never writes an
+  agent idle after a newer run has started. An ambiguous COMMIT acknowledgement
+  is resolved by reading back both the completed run and its keyed follow-up
+  before any failure message; an unavailable readback is a delayed retry that
+  preserves retry capacity. A parent workflow continuation uses
+  its stable workflow/step queue key, so a retry can reapply the non-terminal
+  transition without scheduling the continuation twice. Mention alerts and
+  interactive reply pushes use stable keys and propagate transient enqueue or
+  publication failures so the completion job retries them without ringing or
+  notifying twice. Workflow terminal
+  event/card announcements remain best-effort within the workflow subsystem;
+  they are outside this completion guarantee. Memory enqueue is retryable on
+  infrastructure failure and skips only when immutable launch attribution is
+  structurally incomplete. Pending-message draining retains its independent
+  periodic `sweepPendingThreadMessages` recovery path.
 - **Row state a run leaves outside the run gets an out-of-process reaper.** A
   status only the executing process can advance is a status a `SIGKILL` freezes
   for ever, and under autoscaling that kill is routine. `run_document_sessions`
@@ -397,7 +433,7 @@ matches no row. Beside it:
   dead before the run claim would — reaping on age alone kills a legitimately
   long generation. **A heartbeat is a claim's liveness, not a process's:** it
   stops whenever the executor token is nulled, which `updateRunStatus` does on
-  every suspension and `releaseRunForDrain` on every orderly hand-back, so a
+  every suspension and `handBackRunExecution` on every orderly hand-back, so a
   stale or null heartbeat says "parked" or "draining" as readily as "dead".
   Hence `pending`, `waiting_approval`, `waiting_input` and a `running` run with a
   NULL heartbeat are never reaped out of; each leaves that state eventually, and
@@ -443,7 +479,7 @@ What this finding still owes, proved by the two-instance chaos smoke:
   and waits; the per-job `AbortSignal` fires only when the deadline passes and
   `subscription.abandon` runs, and `stop()` then closes the pool without waiting
   for the abandoned handler to unwind. So the loop reaches its checkpoint path
-  with the process already exiting, and `releaseRunForDrain` never lands: the
+  with the process already exiting, and `handBackRunExecution` never lands: the
   successor claims the released job, finds the run still carrying a fresh
   heartbeat, and skips it. The chaos smoke's check (b) fails on exactly this,
   and did before this phase too. The fix is a second `AbortController` for

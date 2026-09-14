@@ -21,6 +21,10 @@ const userId = '00000000-0000-4000-8000-000000000004'
 const connectionId = '00000000-0000-4000-8000-000000000009'
 const boardId = '00000000-0000-4000-8000-000000000010'
 const ENCRYPTION_SECRET = 'test-encryption-secret'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test',
+  keys: { test: ENCRYPTION_SECRET },
+} as const
 
 const sourceRow = (over: Record<string, unknown> = {}) => ({
   id: sourceId,
@@ -121,7 +125,11 @@ const buildApp = async (input: {
         externalTenantId: 'tenant-1',
         grantedScopes: [],
         credential: {
-          accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'lin_api_key'),
+          accessTokenCiphertext: sealSecret(
+            ENCRYPTION_KEY_RING,
+            'lin_api_key',
+            'board-source.credential',
+          ),
           refreshTokenCiphertext: null,
           expiresAt: null,
         },
@@ -134,13 +142,14 @@ const buildApp = async (input: {
   registerBoardSourceAdapter('linear', () => stubAdapter(input.removals))
 
   registerBoardSourceRoutes(app, {
+    encryptionKeyRing: ENCRYPTION_KEY_RING,
     prisma,
     config: { auth: { secret: ENCRYPTION_SECRET }, api: { publicUrl: 'http://localhost:5454' } },
     requireActorContext: () => ({
       actor: { actorId: userId, actorType: 'user', roles: ['owner'] },
       tenant: { organizationId },
     }),
-    requireProjectAdmin: async () => true,
+    requireProjectModifier: async () => true,
     isProjectAccessibleToActor: async () => true,
   } as unknown as RouteDeps)
 
@@ -277,5 +286,79 @@ test('a source that never registered one is removed without dialling the provide
   })
   assert.equal(response.statusCode, 200, response.body)
   assert.deepEqual(removals, [])
+  clearBoardSourceAdapters()
+})
+
+/**
+ * A source runs on its connection owner's delegated credential, so a person who
+ * does not own the connection is refused before it is used for anything: no
+ * container read, no custom field seeded, no container listing, no source row.
+ * The check used to sit in `createBoardSource`, after all three had happened.
+ */
+test('attaching somebody else\'s connection is refused before the connection is used', async () => {
+  const calls: string[] = []
+  const app = Fastify()
+  const prisma = {
+    project: { findFirst: async () => ({ id: projectId, organizationId }) },
+    boardSourceConnection: {
+      findFirst: async () => ({ id: connectionId, ownerUserId: 'somebody-else', provider: 'linear' }),
+      findUnique: async () => {
+        calls.push('connection.credential')
+        return null
+      },
+    },
+    taskFieldDefinition: {
+      findMany: async () => {
+        calls.push('taskFieldDefinition.findMany')
+        return []
+      },
+      create: async () => {
+        calls.push('taskFieldDefinition.create')
+        return {}
+      },
+    },
+    boardSource: {
+      count: async () => 0,
+      create: async () => {
+        calls.push('boardSource.create')
+        return {}
+      },
+    },
+  } as unknown as PrismaClient
+
+  clearBoardSourceAdapters()
+  registerBoardSourceAdapter('linear', () => ({
+    ...stubAdapter([]),
+    describeContainer: async () => {
+      calls.push('adapter.describeContainer')
+      return { fields: [], states: [], members: [] }
+    },
+    listContainers: async () => {
+      calls.push('adapter.listContainers')
+      return []
+    },
+  }) as unknown as BoardSourceAdapter)
+
+  registerBoardSourceRoutes(app, {
+    encryptionKeyRing: ENCRYPTION_KEY_RING,
+    prisma,
+    requireActorContext: () => ({
+      actor: { actorId: userId, actorType: 'user', roles: ['member'] },
+      tenant: { organizationId },
+    }),
+    requireProjectModifier: async () => true,
+    isProjectAccessibleToActor: async () => true,
+  } as unknown as RouteDeps)
+  await app.ready()
+
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/projects/${projectId}/sources`,
+    payload: { connectionId, container: { teamId: 'team-1' } },
+  })
+  assert.equal(response.statusCode, 403, response.body)
+  assert.equal(JSON.parse(response.body).error.code, 'CONNECTION_NOT_OWNED')
+  assert.deepEqual(calls, [])
+  await app.close()
   clearBoardSourceAdapters()
 })

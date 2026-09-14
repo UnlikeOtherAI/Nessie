@@ -12,8 +12,6 @@ import {
   mapRealtimeEventRow,
   mapThreadStreamEvent,
   notifyRealtime,
-  publishThreadStreamEvent,
-  publishWsEvent,
   resolveRealtimeNotification,
   type RealtimeEventRow,
   type RealtimeNotificationEnvelope,
@@ -23,6 +21,7 @@ import {
   type ThreadStreamEventRow,
   type WsEventMessage,
 } from './realtime-publish.js'
+import { publishThreadStreamEvent, publishWsEvent } from './realtime-durable-publish.js'
 
 export {
   buildSseRefEnvelope,
@@ -36,6 +35,7 @@ export {
   type ThreadStreamEvent,
   type WsEventMessage,
 } from './realtime-publish.js'
+export { publishThreadStreamEvent, publishWsEvent } from './realtime-durable-publish.js'
 
 // The message announcement envelope rides this transport and is published by
 // both processes, so it is reachable wherever the transport is.
@@ -403,8 +403,14 @@ export class PgRealtimeTransport {
     threadId: string,
     event: SseEvent['event'],
     data: SseEvent['data'],
+    options: { idempotencyKey?: string } = {},
   ): Promise<ThreadStreamEvent> {
-    return publishThreadStreamEvent(this.pool, this.channel, { data, event, threadId })
+    return publishThreadStreamEvent(this.pool, this.channel, {
+      data,
+      event,
+      ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      threadId,
+    })
   }
 
   /**
@@ -525,6 +531,7 @@ export class PgRealtimeTransport {
     input: {
       data: unknown
       event: string
+      idempotencyKey?: string
       ts?: string
     },
   ): Promise<WsEventMessage> {
@@ -535,7 +542,11 @@ export class PgRealtimeTransport {
       ts: input.ts ?? new Date().toISOString(),
     })
 
-    const replayEvent = await publishWsEvent(this.pool, this.channel, { message, scopes })
+    const replayEvent = await publishWsEvent(this.pool, this.channel, {
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      message,
+      scopes,
+    })
     if (replayEvent) {
       // Housekeeping must never fail a publish that already committed: the row
       // and its NOTIFY are durable by this point, and retention is not the

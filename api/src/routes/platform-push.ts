@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
+import type { EncryptionKeyRingInput } from '@nessie/runtime'
 import {
   ApnsUploadFieldsSchema,
   PushTestRequestSchema,
@@ -39,8 +40,8 @@ export type PlatformPushDeps = {
     actorContext: AuthorizedActionContext,
     reply: FastifyReply,
   ) => Promise<boolean>
-  /** Encryption secret (auth secret) for the push SecretStore. */
-  encryptionSecret: string
+  /** Independent at-rest encryption ring for push credentials. */
+  encryptionKeyRing: EncryptionKeyRingInput
   /** Injectable Google token exchange for tests; defaults to live. */
   fcmTokenExchange?: FcmTokenExchange
 }
@@ -107,7 +108,7 @@ export const registerPlatformPushRoutes = (
   deps: PlatformPushDeps,
 ): void => {
   const { prisma } = deps
-  const secretStore = createPushSecretStore(prisma, deps.encryptionSecret)
+  const secretStore = createPushSecretStore(prisma, deps.encryptionKeyRing)
   const service = createPushCredentialsService({
     prisma,
     secretStore,

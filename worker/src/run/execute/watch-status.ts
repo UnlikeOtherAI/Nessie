@@ -64,6 +64,13 @@ export type FoldResult = {
   restricted: boolean
 }
 
+type PrismaLike = PrismaClient | Prisma.TransactionClient
+
+const inTransaction = async <T>(
+  prisma: PrismaLike,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> => '$transaction' in prisma ? prisma.$transaction(work) : work(prisma)
+
 /**
  * Fold this sweep into the watch's rolling status message, or start a new one.
  *
@@ -74,11 +81,11 @@ export type FoldResult = {
  * same agent rolling in several threads.
  */
 export const foldWatchStatus = async (
-  prisma: PrismaClient,
+  prisma: PrismaLike,
   context: RunContext,
   input: FoldInput,
 ): Promise<FoldResult> =>
-  prisma.$transaction(async (tx) => {
+  inTransaction(prisma, async (tx) => {
     await tx.$executeRaw(
       Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${input.threadId}), hashtext(${input.agentId}))`,
     )

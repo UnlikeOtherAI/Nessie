@@ -4,6 +4,7 @@ export {
   ApiClientError,
   type ApiClient,
   type ApiClientConfig,
+  type ApiResponseDataSchema,
 } from './api-client.js'
 
 // Shared API data-shape types (also re-exported via api-client for back-compat).
@@ -17,7 +18,6 @@ export type {
   BootstrapModeResponse,
   CallParticipantRecord,
   CallRecord,
-  ChannelMetadataRecord,
   ChannelRecord,
   AgentBrowserLoginRecord,
   AgentBrowserRecord,

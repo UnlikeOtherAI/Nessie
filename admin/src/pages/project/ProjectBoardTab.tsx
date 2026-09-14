@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { faList, faTableCellsLarge } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link, useSearchParams } from 'react-router-dom'
 import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
 import { BoardAssigneeFilter } from '../../components/features/projects/kanban/BoardAssigneeFilter'
@@ -10,28 +12,52 @@ import {
   type AssigneeFilter,
 } from '../../components/features/projects/kanban/board-assignee-filter'
 import type { BoardColumnView } from '../../components/features/projects/kanban/kanban-config'
-import type { BoardRecord } from '../../facades/boards/hooks'
+import type { BoardRecord, BoardTaskRecord } from '../../facades/boards/hooks'
 import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useMoveTask, useTaskAssignees } from '../../facades/tasks/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { useProjectSources } from '../../facades/board-sources/hooks'
 import { SourceStatusStrip } from '../../components/features/projects/kanban/SourceStatusStrip'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { TabBar, type TabBarItem } from '../../components/primitives/TabBar'
+import {
+  BOARD_VIEWS,
+  DEFAULT_BOARD_VIEW,
+  type BoardView,
+} from '../../components/features/projects/kanban/board-view'
+import { useTabParam } from '../../navigation/useTabParam'
+
+const VIEW_ITEMS: ReadonlyArray<TabBarItem<BoardView>> = [
+  {
+    icon: <FontAwesomeIcon icon={faTableCellsLarge} />,
+    label: 'Cards',
+    testId: 'board-view-cards',
+    value: 'cards',
+  },
+  {
+    icon: <FontAwesomeIcon icon={faList} />,
+    label: 'Lines',
+    testId: 'board-view-lines',
+    title: 'One line per card: title and priority only',
+    value: 'lines',
+  },
+]
 
 type ProjectBoardTabProps = {
   board: BoardRecord | null
+  onOpenTask: (task: BoardTaskRecord) => void
   projectId: string
 }
 
-export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
+export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTabProps) => {
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
   const { data: sources = [] } = useProjectSources(projectId, board?.id)
-  const canAdminister = useCanAdministerProject(projectId)
+  const canAdminister = useCanModifyProject(projectId)
   const { data: assignableUsers = [] } = useTaskAssignees()
   const { me } = useAuthSession()
   const moveTask = useMoveTask()
@@ -61,6 +87,7 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
     else params.set('assignee', next)
     setSearchParams(params, { replace: true })
   }
+  const [view, setView] = useTabParam('view', BOARD_VIEWS, DEFAULT_BOARD_VIEW)
 
   // Options come from the whole pool, so narrowing to one person does not empty
   // the list you would use to pick somebody else.
@@ -116,7 +143,16 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             sources={sources}
           />
         </div>
-        <div className="self-end sm:self-auto">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <TabBar<BoardView>
+            ariaLabel="Board view"
+            items={VIEW_ITEMS}
+            onChange={setView}
+            role="radiogroup"
+            size="sm"
+            touchTarget
+            value={view}
+          />
           <BoardAssigneeFilter
             currentUserId={currentUserId}
             onChange={setAssignee}
@@ -179,10 +215,12 @@ export const ProjectBoardTab = ({ board, projectId }: ProjectBoardTabProps) => {
             columns={columns}
             key={board.id}
             onMoveTask={handleMove}
+            onOpenTask={onOpenTask}
             projectId={projectId}
             projectNameById={projectNameById}
             showProject={false}
             tasks={visibleTasks}
+            view={view}
           />
         )}
       </div>

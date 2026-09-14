@@ -5,7 +5,7 @@
 Three independent passes over the same six production findings:
 
 - **Fable** (design judgement, placement + entry points) — [2026-08-11-unsurfaced-capabilities.md](./2026-08-11-unsurfaced-capabilities.md)
-- **kimix/Codex** (code verification, value-per-effort) — transcript in the session scratchpad
+- **Reviewer B** (code verification, value-per-effort) — transcript in the session scratchpad
 - **Claude** (production audit that found them; adjudication below)
 
 They agreed on five of six. This file records the agreed plan, and — where the two
@@ -40,10 +40,10 @@ chip. #2 is the only one where production is *broken*, and the fix is a one-line
 
 ## Where they disagreed, and how it was settled
 
-**1. Scheduled/upcoming triggers.** Fable wanted an "Up next" strip; kimix found that
+**1. Scheduled/upcoming triggers.** Fable wanted an "Up next" strip; reviewer B found that
 `useTriggersPageState.ts:80` *already* sorts the list soonest-first from plain
 `/api/triggers`, so the strip would restate the list directly above itself. **Settled
-kimix's way:** no strip. Add only an "Overdue" chip, computed client-side from fields the
+reviewer B's way:** no strip. Add only an "Overdue" chip, computed client-side from fields the
 page already has (`enabled && active && nextRunAt < now`), plus Fable's overdue count on
 `/ops` — a stuck schedule is a worker-sweep symptom, which is the one genuinely new
 signal. Both flagged that `/api/triggers/upcoming` is misnamed: it returns
@@ -51,7 +51,7 @@ signal. Both flagged that `/api/triggers/upcoming` is misnamed: it returns
 delete it rather than build a screen to justify it, and give `/api/triggers/scheduled` a
 `nextRunAt asc` `orderBy` (it has none today) if anything ever consumes it.
 
-**2. Effective policy.** kimix established the endpoint is **not** owner-gated and returns
+**2. Effective policy.** Reviewer B established the endpoint is **not** owner-gated and returns
 the *caller's own* decisions. Fable's objection follows: a self-matrix shown to an owner who
 passes every check is decoration. Both are right about different audiences. **Settled by
 splitting it:** ship the member-facing "Your permissions" matrix on `/settings/security`
@@ -59,7 +59,7 @@ now — real value, zero API change, no possible leak because the endpoint is se
 and defer the owner debugging matrix until someone adds the owner-only `?userId=`
 parameter, which is what makes it answer "why can't *they* do X".
 
-**3. Naming only.** `/settings/models` (Fable) vs `/settings/inference-providers` (kimix).
+**3. Naming only.** `/settings/models` (Fable) vs `/settings/inference-providers` (reviewer B).
 Took `/settings/models` — it names the thing a person is looking for; providers,
 credentials and routing profiles are how it is delivered.
 

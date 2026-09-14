@@ -5,7 +5,8 @@ import {
   persistOriginGate,
   type CdpClient,
 } from '@nessie/browser-cloud'
-import { loadConfig } from '@nessie/config'
+import { loadConfig, resolveEncryptionKeyRing } from '@nessie/config'
+import type { EncryptionKeyRingInput } from '@nessie/runtime'
 
 import {
   deserialiseOriginGate,
@@ -62,11 +63,14 @@ export type SessionPoolDeps = {
 }
 
 /**
- * The deployment secret the connect capability is sealed with. Exported
- * because `browser_open` has to hand the same secret to
+ * The deployment at-rest key ring used for the connect capability. Exported
+ * because `browser_open` has to hand the same ring to
  * `openCloudBrowserSession`, and one reader keeps the two ends in step.
  */
-export const capabilitySealSecret = (): string => loadConfig().auth.secret ?? ''
+export const capabilitySealSecret = (): EncryptionKeyRingInput => {
+  const config = loadConfig()
+  return resolveEncryptionKeyRing(config, config.auth.secret)
+}
 
 const evictIdle = (now: number): void => {
   for (const [sessionId, entry] of pool) {

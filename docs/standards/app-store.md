@@ -39,13 +39,28 @@ file is the rule**.
   stays a **constant HTML page that never redirects** (a caller-supplied return
   URL is an open redirect); it posts a fixed message to its opener at a
   server-resolved origin, and the popup carries `noopener` because its first
-  navigation is the third-party authorize URL, not ours. **Installing an app is
-  not granting it**: `McpServerInstance.requiresExplicitToolGrant` (default
+  navigation is the third-party authorize URL, not ours. **Publishing an app
+  shares it with its organisation**: `publishCatalogEntry` writes
+  `visibility: 'public'` (custom apps and library imports both publish), so a
+  colleague's app is on everyone's `/apps`. Public tenant names are unique per
+  organisation, instance-global names instance-wide. `visibility` stays because
+  private apps are planned — do not drop it. **Installing an app is
+  not granting it** (except on a person's own connection, which every agent may
+  use in that person's runs — see [mcp-connectors.md](mcp-connectors.md)): `McpServerInstance.requiresExplicitToolGrant` (default
   false) is carried into `projectMcpToolDescriptors` on both the create and
   update branches — update too, or a capability discovered by a later refresh
   projects open and silently widens the app — and the worker's existing
   `isExposed` enforces default-OFF. Never add a grant table: `ToolGrant` rows
   exist and the worker never reads them.
+- **Account recovery stays on its existing connection row.** An expired or
+  failed account can start the same OAuth completion flow from its Apps account
+  row, and a scope manager can refresh that row's capability projection. The
+  detail presenter supplies separate, live `canReconnect` and
+  `canRefreshCapabilities` decisions because reauthorizing a reachable account
+  and changing a shared account have different authority. Reconnect reuses the
+  existing `McpServerInstance`; it never creates a duplicate, and capability
+  refresh preserves `requiresExplicitToolGrant` so newly discovered tools stay
+  unavailable until someone grants them.
 
 ## Detail
 

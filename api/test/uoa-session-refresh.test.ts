@@ -139,7 +139,10 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
         orgName: 'Fresh org',
         teamId: 'team-active',
       }],
-      pendingInvites: [],
+      // This fixture omits `pending_invites` entirely, which is UOA not stating
+      // them rather than stating none — see `parsePendingTeamInvites`. The team
+      // list in the same body is still verified.
+      pendingInvites: undefined,
     })
     assert.equal(urls.length, 2)
   })

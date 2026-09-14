@@ -4,6 +4,7 @@ import { useTenantHost, useTenantTeam } from '../../facades/team/tenant-host'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
+import { tenantTeamSwitchNeeded } from './tenant-team-switch'
 
 /**
  * What the browser's hostname means, decided once, above the router.
@@ -26,7 +27,7 @@ import { TeamHostSignIn } from './TeamHostSignIn'
  */
 export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { data, isLoading } = useTenantHost()
-  const { sessionState, switchUoaTeam, token } = useAuthSession()
+  const { me, sessionState, switchUoaTeam, token } = useAuthSession()
   const switched = useRef<string | null>(null)
 
   // The ids only exist for a signed-in caller on a team host — the public
@@ -35,18 +36,23 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const team = teamData?.team ?? null
 
   useEffect(() => {
-    if (!token || !team) return
+    // `me` is needed to know which team the session is already on.
+    if (!token || !team || !me) return
     const key = `${team.externalOrgId}:${team.externalTeamId}`
     // Once per team per page load: a failed switch must leave the person where
     // they are rather than retrying forever against a team they cannot open.
     if (switched.current === key) return
     switched.current = key
 
+    // Arriving here from the team switcher, the session is already on this
+    // team; switching again only races the page-load refresh into a 409.
+    if (!tenantTeamSwitchNeeded(me, team)) return
+
     void switchUoaTeam({
       organizationId: team.externalOrgId,
       teamId: team.externalTeamId,
     }).catch(() => undefined)
-  }, [team, switchUoaTeam, token])
+  }, [me, team, switchUoaTeam, token])
 
   // Render nothing at all while the hostname is still being resolved, but only
   // when it could plausibly be a tenant host — otherwise every ordinary load

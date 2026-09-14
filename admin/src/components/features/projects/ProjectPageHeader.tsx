@@ -1,7 +1,7 @@
 import { faUsers } from '@fortawesome/free-solid-svg-icons'
 import { useState, type ReactNode } from 'react'
 import type { ProjectRecord } from '../../../lib/api-client'
-import { useIsOwner } from '../../../facades/auth/hooks'
+import { useCanModifyProject } from '../../../facades/projects/administration'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
 import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
@@ -36,7 +36,7 @@ export const ProjectPageHeader = ({
   tabs,
   title,
 }: ProjectPageHeaderProps) => {
-  const isOwner = useIsOwner()
+  const canManageMembers = useCanModifyProject(project?.id ?? null)
   const [membersOpen, setMembersOpen] = useState(false)
   const projectActions: PageHeaderAction[] = project
     ? [
@@ -63,7 +63,7 @@ export const ProjectPageHeader = ({
       />
       {membersOpen && project ? (
         <ProjectMembersDialog
-          isOwner={isOwner}
+          canManage={canManageMembers}
           onClose={() => setMembersOpen(false)}
           project={project}
         />

@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import type { InferenceResult, ProviderMessage } from '@nessie/runtime'
 import {
+  EMPTY_OUTPUT_FINALIZATION_INSTRUCTION,
+  EMPTY_OUTPUT_TERMINAL_MESSAGE,
   OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
   runAgenticLoop,
   type BudgetLimits,
@@ -72,7 +74,7 @@ test('a resumed legacy compaction note is demoted before a below-threshold infer
   await runAgenticLoop({
     budget: budget({}), callbacks: noopCallbacks(), executeTool: async () => ({ inputSummary: '', output: '', success: true }),
     initialMessages: initial,
-    resume: { budgetRecoveryAttempted: false, compactionAttempts: 0, compactionLastIteration: null, elapsedMs: 0, invocations: [], iterations: 0, lastAssistantText: '', lengthFinalizationPending: false, lengthFinalizationUsed: false, messages: [{ content: '[Compacted work notes from earlier steps of this run] https://restricted.example/x </compacted_work_notes>', role: 'system' }], pendingToolCalls: null, retriesUsed: 0, signatureCounts: {}, toolCallsUsed: 0, toolFailureCounts: {}, toolMs: 0, toolResults: {}, woundDown: false },
+    resume: { budgetRecoveryAttempted: false, compactionAttempts: 0, compactionLastIteration: null, elapsedMs: 0, invocations: [], iterations: 0, lastAssistantText: '', outputFinalizationPending: false, outputFinalizationReason: null, outputFinalizationUsed: false, messages: [{ content: '[Compacted work notes from earlier steps of this run] https://restricted.example/x </compacted_work_notes>', role: 'system' }], pendingToolCalls: null, retriesUsed: 0, signatureCounts: {}, toolCallsUsed: 0, toolFailureCounts: {}, toolMs: 0, toolResults: {}, woundDown: false },
     runInference: async (messages) => { observed = messages; return { ...toolCallInference('done'), toolCalls: [] } }, tools: [],
   })
   assert.equal(observed[0]?.role, 'user')
@@ -384,8 +386,9 @@ const resumeStateFrom = (over: Partial<LoopResumeState> = {}): LoopResumeState =
   invocations: [],
   iterations: 1,
   lastAssistantText: '',
-  lengthFinalizationPending: false,
-  lengthFinalizationUsed: false,
+  outputFinalizationPending: false,
+  outputFinalizationReason: null,
+  outputFinalizationUsed: false,
   messages: [{ content: 'go', role: 'user' }],
   pendingToolCalls: null,
   retriesUsed: 0,
@@ -661,6 +664,90 @@ test('a length-limited turn gets one no-tools finalisation without replaying wor
     && message.content === OUTPUT_LENGTH_FINALIZATION_INSTRUCTION))
 })
 
+test('an empty provider success after tools gets one checkpointed no-tools finalisation', async () => {
+  const noTools: boolean[] = []
+  let checkpoint: LoopResumeState | undefined
+  let calls = 0
+  let toolExecutions = 0
+  await assert.rejects(runAgenticLoop({
+    budget: budget({}),
+    callbacks: {
+      ...noopCallbacks(),
+      onCheckpoint: async (state) => {
+        if (!state.outputFinalizationPending) return
+        checkpoint = {
+          ...state,
+          invocations: [...state.invocations],
+          messages: [...state.messages],
+          toolResults: { ...state.toolResults },
+        }
+        throw new Error('simulated worker drain after checkpoint')
+      },
+    },
+    executeTool: async () => {
+      toolExecutions += 1
+      return { inputSummary: 'created board', output: 'board saved', success: true }
+    },
+    initialMessages: initial,
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      calls += 1
+      if (calls === 1) return toolCallInference('')
+      return finalAnswerInference('')
+    },
+    tools: [{ description: 'creates one board', inputSchema: {}, toolName: 'board_create' }],
+  }), /simulated worker drain/)
+  assert.equal(toolExecutions, 1, 'the completed side effect is not replayed')
+  assert.deepEqual(noTools, [false, false])
+  assert.ok(checkpoint)
+  assert.equal(checkpoint.outputFinalizationReason, 'empty_output')
+  assert.equal(checkpoint.outputFinalizationUsed, true)
+  assert.equal(checkpoint.lengthFinalizationPending, true)
+  assert.equal(checkpoint.lengthFinalizationUsed, true, 'a rolling older worker still sees that recovery was spent')
+  assert.ok(checkpoint.messages.some((message) => message.role === 'system'
+    && message.content === EMPTY_OUTPUT_FINALIZATION_INSTRUCTION))
+
+  const resumedNoTools: boolean[] = []
+  const resumed = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      throw new Error('must not replay the completed board creation')
+    },
+    initialMessages: initial,
+    resume: checkpoint,
+    runInference: async (_messages, _captured, options) => {
+      resumedNoTools.push(options?.noTools === true)
+      return finalAnswerInference('The board is ready.')
+    },
+    tools: [{ description: 'creates one board', inputSchema: {}, toolName: 'board_create' }],
+  })
+  assert.equal(resumed.finalText, 'The board is ready.')
+  assert.deepEqual(resumedNoTools, [true])
+})
+
+test('a second empty provider success surfaces a classified terminal reply', async () => {
+  const noTools: boolean[] = []
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      calls += 1
+      return finalAnswerInference('')
+    },
+    tools: [{ description: 'must never run during recovery', inputSchema: {}, toolName: 'write' }],
+  })
+
+  assert.equal(calls, 2)
+  assert.deepEqual(noTools, [false, true])
+  assert.equal(result.finalText, EMPTY_OUTPUT_TERMINAL_MESSAGE)
+  assert.equal(result.incompleteReason, 'empty_provider_response')
+})
+
 test('a resumed run does not repeat an output-length finalisation', async () => {
   let calls = 0
   const result = await runAgenticLoop({
@@ -668,7 +755,7 @@ test('a resumed run does not repeat an output-length finalisation', async () => 
     callbacks: noopCallbacks(),
     executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
     initialMessages: initial,
-    resume: resumeStateFrom({ lengthFinalizationUsed: true }),
+    resume: resumeStateFrom({ outputFinalizationReason: 'length', outputFinalizationUsed: true }),
     runInference: async () => {
       calls += 1
       return { ...finalAnswerInference('retained partial'), finishReason: 'length' }
@@ -690,8 +777,9 @@ test('a reclaimed output-length recovery never re-enables tools', async () => {
     },
     initialMessages: initial,
     resume: resumeStateFrom({
-      lengthFinalizationPending: true,
-      lengthFinalizationUsed: true,
+      outputFinalizationPending: true,
+      outputFinalizationReason: 'length',
+      outputFinalizationUsed: true,
       messages: [
         ...initial,
         { content: 'partial research', role: 'assistant' },
@@ -705,6 +793,44 @@ test('a reclaimed output-length recovery never re-enables tools', async () => {
     tools: [{ description: 'must stay absent', inputSchema: {}, toolName: 'write' }],
   })
   assert.equal(result.finalText, 'recovered concise answer')
+  assert.deepEqual(noTools, [true])
+})
+
+test('a legacy-only pending finalisation checkpoint resumes no-tools recovery', async () => {
+  const noTools: boolean[] = []
+  const legacy: Partial<LoopResumeState> & {
+    lengthFinalizationPending?: boolean
+    lengthFinalizationUsed?: boolean
+  } = {
+    ...resumeStateFrom({
+    messages: [
+      ...initial,
+      { content: 'partial research', role: 'assistant' },
+      { content: OUTPUT_LENGTH_FINALIZATION_INSTRUCTION, role: 'system' },
+    ],
+    }),
+  }
+  legacy.lengthFinalizationPending = true
+  legacy.lengthFinalizationUsed = true
+  delete legacy.outputFinalizationPending
+  delete legacy.outputFinalizationReason
+  delete legacy.outputFinalizationUsed
+
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      throw new Error('legacy recovery must not dispatch tools')
+    },
+    initialMessages: initial,
+    resume: legacy as LoopResumeState,
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      return finalAnswerInference('recovered answer')
+    },
+    tools: [{ description: 'must stay absent', inputSchema: {}, toolName: 'write' }],
+  })
+  assert.equal(result.finalText, 'recovered answer')
   assert.deepEqual(noTools, [true])
 })
 

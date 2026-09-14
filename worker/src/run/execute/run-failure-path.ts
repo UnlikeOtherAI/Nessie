@@ -1,6 +1,7 @@
 import {
   markAmbiguousDeepWaterHandoffRecoveryNeeded,
   markDeepWaterHandoffRecoveryNeeded,
+  QueueRetryAfterError,
   type DeepWaterHandoffRunLocator,
   type InvocationRecord,
 } from '@nessie/runtime'
@@ -53,6 +54,11 @@ export const handleRunFailurePath = async (
   // worker resumes it from the checkpoint. Writing a failure notice here would
   // announce a shutdown to the thread as if the work had gone wrong.
   if (input.caughtError instanceof RunDrainedError) throw input.caughtError
+
+  // The success transaction may have committed while its acknowledgement was
+  // lost, and even the durable readback was unavailable. Retry that uncertainty
+  // without publishing or persisting any failure side effects.
+  if (input.caughtError instanceof QueueRetryAfterError) throw input.caughtError
 
   await input.thinkingRecorder.close()
   await input.documentStream.finalizeOutstanding('run_failed')

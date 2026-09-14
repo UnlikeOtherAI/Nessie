@@ -151,6 +151,56 @@ test('provider-record Ledger URL signs complete identity after route resolution'
   }
 })
 
+test('a reasoning-only OpenAI-compatible stream preserves its stop reason as an empty success', async () => {
+  let queryCount = 0
+  const prisma = {
+    $queryRaw: async () => {
+      queryCount += 1
+      return queryCount === 1
+        ? [{
+            authSecretRef: 'DIRECT_PROVIDER_SECRET',
+            baseUrl: 'https://ledger.unlikeotherai.com/v1',
+            connectorKind: 'compiled',
+            id: '66666666-6666-4666-8666-666666666666',
+          }]
+        : [{ id: '77777777-7777-4777-8777-777777777777' }]
+    },
+  } as unknown as PrismaClient
+  const originalFetch = globalThis.fetch
+  const reasoning: string[] = []
+  globalThis.fetch = (async () => new Response([
+    'data: {"id":"chatcmpl-empty","model":"gpt-5-mini","choices":[{"delta":{"reasoning_content":"checking completed work"},"finish_reason":null}]}\n\n',
+    'data: {"id":"chatcmpl-empty","model":"gpt-5-mini","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+    'data: [DONE]\n\n',
+  ].join(''), { headers: { 'Content-Type': 'text/event-stream' } })) as typeof fetch
+
+  try {
+    const result = await runInferenceGraph(prisma, {
+      actorContext,
+      allowEmptySuccess: true,
+      agent: {
+        id: AGENT_ID,
+        model: 'gpt-5-mini',
+        provider: 'openai',
+        routingProfileId: null,
+      },
+      baseMessages: [{ content: 'Hello', role: 'user' }],
+      modelConfig,
+      onVisibleReasoningDelta: async (text) => { reasoning.push(text) },
+      organizationId: ORGANIZATION_ID,
+    })
+
+    assert.equal(result.status, 'completed')
+    assert.equal(result.finalAnswer, '')
+    assert.equal(result.invocations[0]?.finishReason, 'stop')
+    assert.equal(result.invocations[0]?.metadata?.responseEmpty, true)
+    assert.equal(result.invocations[0]?.metadata?.visibleReasoning, true)
+    assert.deepEqual(reasoning, ['checking completed work'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('a deployment with no signer dispatches its Ledger route on the bearer alone', async () => {
   // No organization provider record: the deployment-wide Ledger URL is the route.
   const prisma = {

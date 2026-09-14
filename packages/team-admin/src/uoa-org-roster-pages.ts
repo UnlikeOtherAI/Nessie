@@ -7,6 +7,7 @@ import type {
 } from '@nessie/schemas'
 
 import {
+  invitationRedirectUrl,
   requireSettings,
   rosterRequest,
   teamPath,
@@ -139,16 +140,27 @@ export const listTeamInvitations = async (
   }
 }
 
-/** Send one exact-team invitation in UOA's user-mode contract. */
+/**
+ * Send one exact-team invitation in UOA's user-mode contract.
+ *
+ * `redirectUrl` is added here rather than accepted from the caller: it is not
+ * the inviter's choice, it is this deployment's registered login address, and a
+ * client-supplied value would be an open-redirect surface. Every scope — team
+ * (`POST /api/team/invitations`) and organisation
+ * (`POST /api/organization/member-invitations`) — reaches UOA through this one
+ * function, so the invitee's way back cannot be present at one scope and
+ * missing at the other.
+ */
 export const createTeamInvitation = async (
   team: UoaRosterTeam,
   input: CreateMemberInvitationRequest,
   deps: UoaRosterDeps = {},
 ): Promise<void> => {
+  const settings = requireSettings()
   await rosterRequest(
-    requireSettings(),
+    settings,
     `${teamPath(team)}/invitations`,
-    { method: 'POST', body: input },
+    { method: 'POST', body: { ...input, redirectUrl: invitationRedirectUrl(settings) } },
     deps,
   )
 }

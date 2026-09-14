@@ -19,6 +19,7 @@ import { ChannelMessageFeed } from '../../components/features/channels/ChannelMe
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
+import { mentionableUsers } from '../../components/features/channels/mention-invite'
 import { useChannelMentions } from './useChannelMentions'
 import { splitThreadInboxMessages } from './thread-inbox-presentation'
 
@@ -60,11 +61,12 @@ export const ThreadInboxCard = ({
     () => users.filter((user) => user.channelIds.includes(activity.channelId)),
     [activity.channelId, users],
   )
+  const mentionUsers = useMemo(() => mentionableUsers(users), [users])
   const { mentionEntities, renderContent } = useChannelMentions({
     activeChannel: channel,
     agents,
     channels,
-    channelUsers,
+    mentionUsers,
   })
   const messages = useMemo(
     () => (rootQuery.data?.message ? [rootQuery.data.message, ...(repliesQuery.data ?? [])] : []),
@@ -84,13 +86,16 @@ export const ThreadInboxCard = ({
   )
   const composer = useChannelComposer({
     activeChannel: channel,
+    // The row's own thread, not the room's General one: an inbox card renders
+    // one reply thread, and that thread may live in a conversation.
+    activeThreadId: activity.threadId,
     currentUserId: currentUser.id,
     draftKey: replyComposerDraftKey(activity.rootMessageId),
     getSendExtras,
     threadMessages: messages,
   })
   const markRead = useMarkThreadRead()
-  const messageActions = useChannelMessageActions(channel?.defaultThreadId)
+  const messageActions = useChannelMessageActions(activity.threadId)
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const isLoading = rootQuery.isLoading || repliesQuery.isLoading
   const hasFailed = rootQuery.isError || repliesQuery.isError
@@ -110,7 +115,21 @@ export const ThreadInboxCard = ({
           onClick={onOpen}
           type="button"
         >
-          <div className="font-semibold text-[color:var(--tx)]">
+          {activity.threadTitle ? (
+            <div className="font-semibold text-[color:var(--tx)]">
+              {activity.threadTitle}
+            </div>
+          ) : null}
+          {/*
+            A conversation names itself, and the room it lives in drops to the
+            line beneath — the same order the conversation header uses, so the
+            inbox and the thread agree about what this thing is called.
+          */}
+          <div
+            className={activity.threadTitle
+              ? 'mt-0.5 text-xs text-[color:var(--tx2)]'
+              : 'font-semibold text-[color:var(--tx)]'}
+          >
             {channelContextLabel(channel ?? undefined, activity.channelLabel)}
           </div>
           <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
@@ -254,6 +273,7 @@ export const ThreadInboxCard = ({
             onChangeMessage={composer.setMessage}
             onDismissPendingAgent={composer.dismissPendingAgent}
             onDismissSecretCapture={composer.dismissSecretCapture}
+            mentionInvite={composer.mentionInvite}
             onInsertAtSign={() => composer.mentionRef.current?.insertAtSign()}
             onInsertEmoji={composer.insertEmoji}
             onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}

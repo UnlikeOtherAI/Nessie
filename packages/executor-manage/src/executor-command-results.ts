@@ -55,7 +55,7 @@ const validTransition = (
 /** Receipts are monotonic and idempotent only when their terminal digest agrees. */
 export const recordExecutorCommandReceiptInTransaction = async (
   tx: Prisma.TransactionClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   executorId: string,
   receiptInput: unknown,
   result: Record<string, unknown> | undefined,
@@ -163,7 +163,7 @@ export const recordExecutorCommandReceiptInTransaction = async (
 
 export const recordExecutorCommandReceipt = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   executorId: string,
   receiptInput: unknown,
   result: Record<string, unknown> | undefined,
@@ -179,7 +179,7 @@ export const recordExecutorCommandReceipt = async (
 
 export const readExecutorCommandResult = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   commandId: string,
 ): Promise<Record<string, unknown> | null> => {
   const command = await prisma.executorCommand.findUnique({
@@ -214,7 +214,7 @@ export const markExecutorCommandUnknownOutcome = async (
 
 const readResultOrMarkUnknownOutcome = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   commandId: string,
 ): Promise<Record<string, unknown> | null> => prisma.$transaction(async (tx) => {
   await tx.$executeRaw(Prisma.sql`
@@ -239,7 +239,7 @@ const readResultOrMarkUnknownOutcome = async (
 
 export const waitForExecutorCommandResult = async (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
   commandId: string,
   expiresAt: Date,
 ): Promise<Record<string, unknown> | null> => {

@@ -5,7 +5,7 @@
 // have any caller-chosen name, so a name list can never fully classify it).
 // The credential-shaped name list below is defense in depth for callers that
 // pass the standard names without the flag. Normalization at entry covers all
-// RequestInit.headers shapes plus `Request` input (Kimix 1.2) so the list
+// RequestInit.headers shapes plus `Request` input (design review 1.2) so the list
 // applies no matter how the headers were spelled.
 //
 // This module owns UrlSafetyError so it can throw refusal errors without a

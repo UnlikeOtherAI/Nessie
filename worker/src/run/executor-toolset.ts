@@ -201,7 +201,7 @@ export const buildExecutorToolset = async (
   input: {
     agentToolPolicy: Record<string, boolean> | null
     agentId: string
-    encryptionSecret: string | undefined
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput | undefined
     organizationId: string
     runId: string
   },

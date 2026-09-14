@@ -230,6 +230,12 @@ export const AppConnectionSummaryRecordSchema = z.object({
   // as DELETE /api/app-connections/:id. A shared account is visible to everyone
   // it serves, but only its manager may remove it.
   canDisconnect: z.boolean(),
+  // Reconnecting uses the credential-minting right, which is deliberately
+  // narrower than the scope-management right required to change an account.
+  // The server decides each control from its matching live authorization
+  // predicate; a visible row is never enough authority to imply either.
+  canReconnect: z.boolean(),
+  canRefreshCapabilities: z.boolean(),
   id: z.string().uuid(),
   displayName: NonEmptyStringSchema,
   scopeType: McpServerScopeTypeSchema,

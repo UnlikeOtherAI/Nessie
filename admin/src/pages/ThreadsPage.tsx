@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom'
-import { useIsOwner } from '../facades/auth/hooks'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
@@ -17,8 +16,7 @@ export const ThreadsPage = () => {
   const activity = useThreadActivity({ unreadOnly })
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
-  const isOwner = useIsOwner()
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const items = activity.data?.items ?? []
   const headerActions: PageHeaderAction[] = [{
     checked: unreadOnly,
@@ -51,7 +49,12 @@ export const ThreadsPage = () => {
               key={item.rootMessageId}
               token={token}
               users={users}
-              onOpen={() => navigate(`/channels/${item.channelId}/threads/${item.threadId}/replies/${item.rootMessageId}`)}
+              // A conversation opens as itself; a reply in a room's General
+              // thread still opens its reply panel, which is the thing that
+              // row is about (docs/plans/2026-09-08-agent-conversations.md).
+              onOpen={() => navigate(item.threadTitle
+                ? `/channels/${item.channelId}/threads/${item.threadId}`
+                : `/channels/${item.channelId}/threads/${item.threadId}/replies/${item.rootMessageId}`)}
             />
           )) : null}
         </div>

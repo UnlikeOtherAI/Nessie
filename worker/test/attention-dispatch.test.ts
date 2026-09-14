@@ -3,6 +3,11 @@ import test from 'node:test'
 
 import { handleAttentionDispatch } from '../src/control/attention-dispatch.js'
 
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test-key',
+  keys: { 'test-key': 'test-at-rest-encryption-root' },
+} as const
+
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const USER_ID = '00000000-0000-4000-8000-000000000002'
 const ACTOR_ID = '00000000-0000-4000-8000-000000000003'
@@ -54,7 +59,7 @@ test('assigned-work attention stays private when no push provider is configured'
   }
 
   const result = await handleAttentionDispatch({
-    authSecret: 'test-secret',
+    encryptionKeyRing: ENCRYPTION_KEY_RING,
     prisma: prisma as never,
   }, { alertId: ALERT_ID })
 
@@ -93,7 +98,7 @@ test('assigned-work attention with no current project membership is not delivere
   }
 
   const result = await handleAttentionDispatch({
-    authSecret: 'test-secret',
+    encryptionKeyRing: ENCRYPTION_KEY_RING,
     prisma: prisma as never,
   }, { alertId: ALERT_ID })
 

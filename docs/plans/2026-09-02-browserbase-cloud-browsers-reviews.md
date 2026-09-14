@@ -2,7 +2,7 @@
 
 Two chapters of [2026-09-02-browserbase-cloud-browsers.md](2026-09-02-browserbase-cloud-browsers.md) (§5c and §6a), moved here verbatim to keep that plan under the repo's file-length cap. Section numbers are the parent's.
 
-## 5c. Adversarial code review (Kimix, 2026-09-02) — what it found
+## 5c. Adversarial code review (2026-09-02) — what it found
 
 Nine defects confirmed and fixed; the review paid for itself twice over.
 The two that mattered most were both cases where a guard existed but did not
@@ -54,7 +54,7 @@ proxy/geo options, Stagehand-style `browser_act` if observe/act proves too
 low-level. Separately tracked, not this plan: the disclosure preconditions
 that let `browser.connected.*` be advertised.
 
-## 6a. Adversarial-review addenda (2026-09-02, Kimix + Codex Sol)
+## 6a. Adversarial-review addenda (2026-09-02, reviewer B + Codex Sol)
 
 Accepted findings that are requirements rather than section rewrites:
 

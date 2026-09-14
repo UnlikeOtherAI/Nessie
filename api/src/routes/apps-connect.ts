@@ -120,7 +120,7 @@ const resolveScopeId = (
 
 export type AppsConnectDeps = RouteDeps & {
   /**
-   * Test seams. Production builds each from the deployment auth secret exactly
+   * Test seams. Production builds each from the deployment at-rest encryption key ring exactly
    * as `registerMcpRoutes` does — the same factory over the same key, so a ref
    * minted by an App Store connect resolves through the worker unchanged.
    * There is one vault; this is the wiring, not a copy.
@@ -144,7 +144,7 @@ export const buildAppConnectContext = (
   actorContext: AuthorizedActionContext,
   deps: AppsConnectDeps,
 ): AppConnectContext | null => {
-  const encryptionSecret = deps.authSecret ?? ''
+  const encryptionSecret = deps.encryptionKeyRing
   try {
     return {
       prisma: deps.prisma,

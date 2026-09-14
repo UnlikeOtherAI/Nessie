@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 
-import { sealSecret } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, sealSecret } from '@nessie/runtime'
 
 import { AdapterNotRegisteredError, resolveBoardSourceAdapter } from '@nessie/board-sources'
 import {
@@ -72,7 +72,11 @@ export const renewBoardSourceWebhooks = async (
           webhookExpiresAt: registration.expiresAt ? new Date(registration.expiresAt) : null,
           webhookTokenHash: createHash('sha256').update(token).digest('hex'),
           webhookSecretCiphertext: registration.signingSecret
-            ? sealSecret(deps.encryptionSecret, registration.signingSecret)
+            ? sealSecret(
+              deps.encryptionSecret,
+              registration.signingSecret,
+              AT_REST_SECRET_PURPOSE.boardSourceWebhook,
+            )
             : null,
         },
       })

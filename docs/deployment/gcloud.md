@@ -124,6 +124,7 @@ all four are here.
 |---|---|---|
 | `NODE_ENV` | plain | `production` |
 | `NESSIE_MODE` | plain | `selfHosted`. `local` is rejected by variable validation |
+| `NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION` | plain | `2026-09`; names the active root in the generated key-ring secret |
 | `NESSIE_CONFIG_PATH` | plain | `/app/infrastructure/compose/nessie.config.json`. **Required for SSO**: `auth.providers` has no environment mapping, and the file ships inside the image because `.dockerignore` does not exclude `infrastructure/` |
 | `NESSIE_API_PUBLIC_URL` | plain | Derived from `api_hostname`. The API throws at request time without it outside `local` mode |
 | `NESSIE_ADMIN_PUBLIC_URL` | plain | MCP and comms OAuth callbacks mint redirect URIs from it |
@@ -148,6 +149,7 @@ all four are here.
 | `DATABASE_URL` | **secret** | Generated. Same secret as `NESSIE_DB_URL` |
 | `NESSIE_DB_URL` | **secret** | Generated |
 | `NESSIE_AUTH_SECRET` | **secret** | Generated. Hard startup failure in `hosted`/`selfHosted`; must be stable across replicas and deploys or every session dies on every revision |
+| `NESSIE_ENCRYPTION_KEY_RING` | **secret** | Generated JSON key ring containing a root distinct from `NESSIE_AUTH_SECRET`; required outside local mode for purpose-bound durable ciphertext. Retain prior entries during a rotation, run the operator command to zero conflicts, then retire them. |
 | `NESSIE_STORAGE_ACCESS_KEY_ID` | **secret** | Generated HMAC key |
 | `NESSIE_STORAGE_SECRET_ACCESS_KEY` | **secret** | Generated HMAC key |
 | `NESSIE_MODEL_API_KEY` | **secret** | Operator-populated |
@@ -209,7 +211,8 @@ Secrets are a two-step, and the order matters: a Cloud Run revision that
 references a Secret Manager secret with **no version** never becomes ready.
 
 1. **State bucket.** Create a private, versioned GCS bucket for terraform state
-   by hand — it holds the generated database password, the auth secret and the
+   by hand — it holds the generated database password, the auth secret, the
+   independent at-rest encryption key ring and the
    HMAC key material.
 
    ```sh

@@ -328,6 +328,11 @@ export const syncUoaDirectoryAfterSessionCommit = async (
 ): Promise<void> => {
   if (!input.teamDirectory) return
   rememberUoaTeamDirectory(input.userId, input.teamDirectory)
+  // An answer that did not state its invitations reconciles none of them:
+  // `syncTeamInviteAlerts` deletes everything the list omits, so a structurally
+  // partial `pending_invites` would empty this person's bell.
+  const pendingInvites = input.teamDirectory.pendingInvites
+  if (!pendingInvites) return
   try {
     const organization = await prisma.organization.findUnique({
       where: { externalOrgId: input.nextIdentity.organizationId },
@@ -339,7 +344,7 @@ export const syncUoaDirectoryAfterSessionCommit = async (
     }
     await syncTeamInviteAlerts(prisma, {
       organizationId: organization.id,
-      pendingInvites: input.teamDirectory.pendingInvites,
+      pendingInvites,
       userId: input.userId,
     })
   } catch (error) {

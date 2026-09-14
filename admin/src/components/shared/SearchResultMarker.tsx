@@ -12,12 +12,14 @@ export type SearchMarkerSubject =
   | { kind: 'message' }
   | { kind: 'knowledge' }
   | { kind: 'thought' }
+  | { kind: 'task' }
 
-const TYPE_GLYPH: Record<'channel' | 'message' | 'knowledge' | 'thought', string> = {
+const TYPE_GLYPH: Record<'channel' | 'message' | 'knowledge' | 'thought' | 'task', string> = {
   channel: '#',
   message: '💬',
   knowledge: '📄',
   thought: 'M',
+  task: '✓',
 }
 
 /**

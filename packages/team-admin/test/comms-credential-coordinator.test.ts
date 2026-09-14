@@ -35,10 +35,10 @@ const connection = () => ({
   credential: {
     id: '00000000-0000-4000-8000-000000000004',
     connectionId: CONNECTION_ID,
-    accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'old-access'),
-    refreshTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'stored-refresh'),
+    accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'old-access', 'comms.credential'),
+    refreshTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'stored-refresh', 'comms.credential'),
     expiresAt: new Date('2026-08-30T10:59:00.000Z'),
-    keyVersion: 1,
+    keyVersion: 'legacy',
     scopeHash: 'old-scope-hash',
     createdAt: new Date('2026-08-30T09:00:00.000Z'),
     updatedAt: new Date('2026-08-30T10:00:00.000Z'),
@@ -143,7 +143,7 @@ test('expired refresh preserves the stored refresh token when omitted', async ()
   const ciphertext = fake.credentialUpdate()?.['refreshTokenCiphertext']
   assert.equal(typeof ciphertext, 'string')
   assert.equal(
-    openSecret(ENCRYPTION_SECRET, ciphertext as string),
+    openSecret(ENCRYPTION_SECRET, ciphertext as string, 'comms.credential'),
     'stored-refresh',
   )
 })

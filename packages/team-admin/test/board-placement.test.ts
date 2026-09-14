@@ -11,6 +11,7 @@ import {
   listBoards,
   moveProjectTaskToColumn,
   resolveBoardPlacement,
+  resolveProjectTaskDetailPlacement,
   transitionProjectTask,
 } from '../src/index.js'
 
@@ -169,6 +170,55 @@ runDatabaseTest('a board shows only its own tickets', async () => {
     assert.deepEqual(
       (await listBoardTasks(prisma, defaultBoard, { limit: 50 })).tasks.map((task) => task.id),
       [seeded.taskId],
+    )
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('task detail resolves the same board placement the board renders', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const project = { id: seeded.projectId, organizationId: seeded.organizationId }
+    const [board] = await listBoards(prisma, project)
+    assert.ok(board)
+    const inProgress = board.columns.find((column) => column.category === 'in_progress')
+    assert.ok(inProgress)
+    await moveProjectTaskToColumn(prisma, {
+      taskId: seeded.taskId,
+      organizationId: seeded.organizationId,
+      columnId: inProgress.id,
+      actorId: seeded.userId,
+      position: 2,
+    })
+    const task = await prisma.task.findUniqueOrThrow({ where: { id: seeded.taskId } })
+    const rendered = (await listBoardTasks(prisma, board, { limit: 50 })).tasks
+      .find((candidate) => candidate.id === seeded.taskId)
+    assert.ok(rendered)
+    assert.deepEqual(await resolveProjectTaskDetailPlacement(prisma, task), {
+      boardId: board.id,
+      columnId: rendered.columnId,
+      position: rendered.position,
+    })
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a task without an explicit board resolves to the project default board', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const project = { id: seeded.projectId, organizationId: seeded.organizationId }
+    const [defaultBoard] = await listBoards(prisma, project)
+    assert.ok(defaultBoard)
+    const task = await prisma.task.findUniqueOrThrow({ where: { id: seeded.taskId } })
+    assert.deepEqual(
+      await resolveProjectTaskDetailPlacement(prisma, task),
+      { boardId: defaultBoard.id, columnId: defaultBoard.columns[0]?.id ?? null, position: null },
     )
   } finally {
     await cleanup(prisma, seeded)

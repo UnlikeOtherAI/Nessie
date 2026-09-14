@@ -18,7 +18,7 @@ import {
   type BoardStyle,
 } from '../../facades/boards/hooks'
 import { formErrorMessage } from '../../facades/forms/form-errors'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjects } from '../../facades/projects/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
 import { BoardColumnsEditor, type BindableState } from './settings/BoardColumnsEditor'
@@ -170,7 +170,7 @@ export const BoardSettingsPage = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const boardsQuery = useProjectBoards(projectId)
-  const canAdminister = useCanAdministerProject(projectId ?? '')
+  const canAdminister = useCanModifyProject(projectId ?? '')
   const [tab, selectTab] = useTabParam('tab', TABS, 'general')
   const sourcesQuery = useProjectSources(
     canAdminister && tab === 'columns' ? projectId : undefined,
@@ -253,7 +253,7 @@ export const BoardSettingsPage = () => {
           <>
             <FormSuccess>{saveState.status === 'success' ? 'Saved.' : undefined}</FormSuccess>
             <FormError>{saveState.status === 'error' ? saveState.message : undefined}</FormError>
-            {!canAdminister ? <p className="text-sm text-[color:var(--tx3)]">Only project administrators can change board settings.</p> : null}
+            {!canAdminister ? <p className="text-sm text-[color:var(--tx3)]">Only members of this project, or an organisation owner or admin, can change board settings.</p> : null}
             {canAdminister && tab === 'general' ? (
               <BoardGeneralSettings
                 board={board}
@@ -315,7 +315,7 @@ export const BoardSettingsPage = () => {
               </Section>
             ) : null}
             {!canAdminister && tab === 'columns' ? (
-              <Section description="Columns are managed by project administrators." title="Columns">
+              <Section description="Columns are managed by the project's members." title="Columns">
                 <ul className="grid gap-1 text-sm text-[color:var(--tx2)]">
                   {[...board.columns]
                     .sort((left, right) => left.position - right.position)
@@ -325,7 +325,7 @@ export const BoardSettingsPage = () => {
             ) : null}
             {!canAdminister && tab === 'watchers' ? (
               <Section
-                description="Only project administrators can view or change who receives source updates."
+                description="Only members of this project, or an organisation owner or admin, can view or change who receives source updates."
                 title="Watchers"
               >
                 <p className="text-sm text-[color:var(--tx3)]">No watcher details are available.</p>

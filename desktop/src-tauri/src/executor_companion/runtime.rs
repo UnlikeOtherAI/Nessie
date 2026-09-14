@@ -9,22 +9,26 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 pub(super) mod availability;
 pub(super) mod integrity;
+mod local_pairing;
 /// The Win32 process-handle probe behind `daemon_is_live` on Windows.
 #[cfg(windows)]
 mod windows_process;
 
 use availability::{classify_availability, virtualization_available};
 use integrity::{verified_runtime_directory, VerifiedRuntime};
+use local_pairing::EXECUTOR_STATE_FILE;
+pub(super) use local_pairing::{
+    forget_local_pairing, has_deeptest_source_grant, local_policy_summary,
+};
 
 pub use availability::{CompanionAvailability, ExecutorCompanionAvailability};
 
 const EXECUTOR_DIRECTORY: &str = "executors";
-const EXECUTOR_STATE_FILE: &str = "executor-state.json";
 const EXECUTOR_DAEMON_LEASE_FILE: &str = "daemon.pid";
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -53,66 +57,6 @@ pub struct ExecutorCompanionStatus {
     pub operation_keys: Vec<String>,
     pub workspace_configured: bool,
     pub workspace_label: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalStateSummary {
-    descriptor: LocalDescriptorSummary,
-    workspace_root: PathBuf,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalDescriptorSummary {
-    operation_keys: Vec<String>,
-}
-
-fn private_workspace_label(workspace: &Path) -> String {
-    workspace.file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| !name.is_empty())
-        .unwrap_or("Selected filesystem root")
-        .to_owned()
-}
-
-pub(super) fn local_policy_summary(state_dir: &Path) -> Result<(String, Vec<String>), String> {
-    let path = state_dir.join(EXECUTOR_STATE_FILE);
-    let metadata = fs::symlink_metadata(&path)
-        .map_err(|_| "Nessie Desktop could not read this executor's local policy.".to_owned())?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err("Nessie Desktop executor state must be an ordinary file.".to_owned());
-    }
-    let state: LocalStateSummary = serde_json::from_slice(
-        &fs::read(path)
-            .map_err(|_| "Nessie Desktop could not read this executor's local policy.".to_owned())?,
-    )
-    .map_err(|_| "Nessie Desktop executor state is malformed.".to_owned())?;
-    Ok((private_workspace_label(&state.workspace_root), state.descriptor.operation_keys))
-}
-
-pub(super) fn forget_local_pairing(state_dir: &Path) -> Result<(), String> {
-    let state_file = state_dir.join(EXECUTOR_STATE_FILE);
-    let metadata = fs::symlink_metadata(&state_file)
-        .map_err(|_| "This executor has not been paired on this Nessie Desktop device.".to_owned())?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err("Nessie Desktop executor state must be an ordinary file.".to_owned());
-    }
-    let runtime_directory = state_dir.join("runtime");
-    if let Ok(metadata) = fs::symlink_metadata(&runtime_directory) {
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err("Nessie Desktop executor runtime state must be an ordinary directory.".to_owned());
-        }
-        fs::remove_dir_all(&runtime_directory)
-            .map_err(|_| "Nessie Desktop could not remove local executor drafts.".to_owned())?;
-    }
-    fs::remove_file(state_file)
-        .map_err(|_| "Nessie Desktop could not forget the local executor pairing.".to_owned())?;
-    // A future state revision may add another local-only leaf. Removing the
-    // directory is therefore best-effort; deleting the exact key-bearing state
-    // file above is the operation's security boundary.
-    let _ = fs::remove_dir(state_dir);
-    Ok(())
 }
 
 pub(super) fn executor_state_dir(app: &AppHandle, executor_id: &str) -> Result<PathBuf, String> {
@@ -445,8 +389,7 @@ pub fn shutdown(state: &ExecutorCompanionState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        lease_blocks_start, private_workspace_label, read_daemon_lease, DaemonLease,
-        EXECUTOR_DAEMON_LEASE_FILE,
+        lease_blocks_start, read_daemon_lease, DaemonLease, EXECUTOR_DAEMON_LEASE_FILE,
     };
     use std::fs;
 
@@ -469,13 +412,6 @@ mod tests {
         assert_eq!(read_daemon_lease(&directory), DaemonLease::Absent);
         assert!(!lease_blocks_start(&DaemonLease::Absent, |_| true));
         fs::remove_dir_all(&directory).ok();
-    }
-
-    #[test]
-    fn workspace_label_exposes_only_the_selected_leaf() {
-        let workspace = std::path::Path::new("/Users/person/Private client");
-        assert_eq!(private_workspace_label(workspace), "Private client");
-        assert!(!private_workspace_label(workspace).contains("person"));
     }
 
     #[test]

@@ -39,7 +39,7 @@ test('THEME_TOKENS is exactly what a [data-theme] block redeclares', () => {
 test('every built-in theme block declares the same set', () => {
   const expected = new Set<string>(THEME_TOKENS)
   for (const theme of [
-    'midnight', 'daylight', 'forest', 'ocean', 'sunset', 'rose', 'graphite', 'sandstone', 'contrast',
+    'nessie', 'midnight', 'daylight', 'forest', 'ocean', 'sunset', 'rose', 'graphite', 'sandstone', 'contrast',
   ]) {
     assert.deepEqual(tokensIn(`[data-theme="${theme}"]`), expected, `[data-theme="${theme}"]`)
   }

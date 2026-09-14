@@ -345,7 +345,9 @@ test('an enabled content table opens in a near-fullscreen dialog', async () => {
     const dialog = dom.window.document.querySelector<HTMLElement>('[role="dialog"]')
     assert.ok(dialog)
     assert.equal(dialog.style.width, 'calc(100vw - 2rem)')
-    assert.equal(dialog.style.height, 'calc(100dvh - 2rem)')
+    assert.match(dialog.style.height, /100dvh/)
+    assert.match(dialog.style.height, /safe-area-inset-top/)
+    assert.match(dialog.style.height, /safe-area-inset-bottom/)
     assert.ok(dialog.querySelector('table'))
 
     const close = dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"]')

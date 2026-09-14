@@ -11,6 +11,7 @@ import type { DocumentStreamRecorder } from './document-stream.js'
 import { handleRunExecutionFailure } from './failure.js'
 import { stripLeadingSectionTag } from './memory.js'
 import type { RunInference } from './run-inference.js'
+import { EmptyProviderResponseError } from '../output-finalization.js'
 import type { RunExecutionSetup } from './run-setup.js'
 import {
   applyRunStopContinuation,
@@ -148,6 +149,23 @@ export const handleRunLoopOutcome = async (
     // single-run invariant is never broken to force a continuation.
     await applyRunStopContinuation(deps, payload, context, stopPlan)
     return hadPartialText ? 'completed' : 'failed'
+  }
+
+  if (input.loopResult.incompleteReason === 'empty_provider_response' && !input.handoffLocator) {
+    await input.documentStream.finalizeOutstanding('run_failed')
+    await persistInvocationLedgerEvents(deps.prisma, {
+      actorContext: payload.actorContext,
+      agentId: context.agent.id,
+      invocations: input.loopResult.invocations,
+      runId: context.run.id,
+    })
+    await handleRunExecutionFailure(deps, payload, context, {
+      error: new EmptyProviderResponseError(),
+      planContext: input.planContext,
+      streamStarted: input.streamStarted,
+      terminalMessage: responseText,
+    })
+    return 'failed'
   }
 
   const windDownMetadata =

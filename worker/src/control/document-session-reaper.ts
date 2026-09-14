@@ -63,7 +63,7 @@ import {
  *   statement that writes `waiting_approval`/`waiting_input`, so the heartbeat
  *   falls silent the moment a run waits on an approval or a card. Six minutes
  *   is an ordinary length of time for a person to take.
- * - **A worker drains.** `releaseRunForDrain` nulls token *and* heartbeat by
+ * - **A worker retries.** `handBackRunExecution` nulls token *and* heartbeat by
  *   design, so the next worker claims the run on its next poll instead of
  *   waiting out the takeover window. The run stays `running` with its job back
  *   on the queue; under a scale-in, with every other worker busy, it can sit
@@ -237,7 +237,7 @@ export const reapAbandonedDocumentSessions = async (
       -- one of these statuses is left eventually — the terminal case below
       -- collects whatever they stranded.
       AND r.status NOT IN ('pending', 'waiting_approval', 'waiting_input')
-      -- A 'running' run with a NULL heartbeat is what releaseRunForDrain leaves
+      -- A 'running' run with a NULL heartbeat is what handBackRunExecution leaves
       -- for its successor to claim on its very next poll. Written as an explicit
       -- exclusion because NULL is not silence and must never read as it.
       AND NOT (r.status = 'running' AND r.executor_heartbeat_at IS NULL)

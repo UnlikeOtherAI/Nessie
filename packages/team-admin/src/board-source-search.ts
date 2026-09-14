@@ -84,7 +84,7 @@ export const searchRemoteTickets = async (
     projectIds: string[]
     text: string
     limit?: number
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   },
 ): Promise<RemoteTicketSearchOutcome> => {
   if (input.projectIds.length === 0 || !input.text.trim()) {

@@ -16,6 +16,7 @@ import {
   type MemberRosterScope,
 } from '../../../facades/users/member-roster'
 import { useRemoveTeamMember, useSetTeamMemberActivation } from '../../../facades/users/team-members'
+import { memberDisplayName } from '../../../lib/member-display-name'
 
 type MemberDetailsDialogProps = {
   member: TeamMemberRecord | null
@@ -125,7 +126,7 @@ export const MemberDetailsDialog = ({
       : current.filter((id) => id !== teamId))
   }
 
-  const name = member?.displayName ?? member?.email ?? 'Member'
+  const name = memberDisplayName(member?.displayName, member?.email) ?? 'Member'
   const actionLabel = action === 'remove' ? 'Remove from team'
     : action === 'deactivate' ? 'Deactivate in organization' : 'Reactivate in organization'
   const changeMembership = async () => {

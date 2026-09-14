@@ -9,14 +9,27 @@ const readSource = (relativePath: string): string =>
 test('a temporary login card opens the routed browser with its exact thread on phone and desktop', () => {
   const card = readSource('../src/components/features/channels/AgentCardMessage.tsx')
   const channels = readSource('../src/pages/ChannelsPage.tsx')
+  const messageSurface = readSource('../src/pages/channels/useChannelMessageSurface.ts')
 
   assert.match(
     card,
     /navigate\(`\/channels\/\$\{channelId\}\/tools\/browser\?threadId=\$\{encodeURIComponent\(card\.threadId\)\}`\)/,
   )
-  assert.match(channels, /const routedBrowserThreadId = routeTool === 'browser'/)
-  assert.match(channels, /searchParams\.get\('threadId'\)/)
-  assert.match(channels, /threadId=\{browserThreadId \?\? null\}/)
+  // The message-surface controller owns the thread choice. A browser route's
+  // explicit thread wins, then an open reply, then the channel conversation.
+  const browserThreadSelection = [
+    "const browserThreadId = \\(routeTool === 'browser'",
+    "\\? searchParams\\.get\\('threadId'\\) : null\\)",
+    '\\?\\? replyThread\\.activeThreadId',
+    '\\?\\? activeThreadId',
+  ].join('\\s*')
+  assert.match(
+    messageSurface,
+    new RegExp(browserThreadSelection),
+  )
+  // The page is still the route composition boundary and sends the resolved
+  // thread to the dock; moving the controller must not drop the route value.
+  assert.match(channels, /threadId=\{messageSurface\.browserThreadId \?\? null\}/)
 })
 
 test('Done retires the claim intent and never lets an adopted run auto-reclaim control', () => {

@@ -1,4 +1,4 @@
-import type { ChannelSystemType, PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, Prisma, PrismaClient } from '@prisma/client'
 import { buildAgentVisibilityWhere, buildVisibleAgentWhere } from '@nessie/db'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
@@ -10,6 +10,11 @@ export type ChannelAccessRow = {
   visibility: string
 }
 
+/**
+ * Membership, not visibility: binding an agent to a channel requires the caller
+ * to be IN that channel, so a public channel they never joined is not enough.
+ * A soft-deleted channel is never returned, members of it included.
+ */
 export const getChannelIfMember = async (
   prisma: PrismaClient,
   userId: string,
@@ -19,6 +24,7 @@ export const getChannelIfMember = async (
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      deletedAt: true,
       systemChannelType: true,
       type: true,
       organizationId: true,
@@ -26,7 +32,12 @@ export const getChannelIfMember = async (
       members: { where: { userId }, select: { id: true }, take: 1 },
     },
   })
-  if (!channel || channel.organizationId !== organizationId || channel.members.length === 0) {
+  if (
+    !channel
+    || channel.deletedAt
+    || channel.organizationId !== organizationId
+    || channel.members.length === 0
+  ) {
     return null
   }
   return {
@@ -37,7 +48,9 @@ export const getChannelIfMember = async (
 }
 
 export const isAgentVisibleToUser = async (
-  prisma: PrismaClient,
+  // Widened to the transaction client so a caller inside `$transaction` asks
+  // the same question with the same answer; the read itself is unchanged.
+  prisma: PrismaClient | Prisma.TransactionClient,
   userId: string,
   organizationId: string,
   agentId: string,

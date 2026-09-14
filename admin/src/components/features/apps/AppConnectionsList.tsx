@@ -4,16 +4,41 @@ import { Notice } from '../../primitives/Notice'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { EmptyState } from '../../shared/EmptyState'
-import { useDisconnectAppConnection } from '../../../facades/apps/connect-hooks'
 import {
+  type AppCapabilitiesRefreshResult,
+  useDisconnectAppConnection,
+  useRefreshAppConnectionCapabilities,
+} from '../../../facades/apps/connection-hooks'
+import {
+  connectionRecoveryActions,
   connectionConnectedLabel,
   connectionStatusPill,
 } from './app-connection-presentation'
 import { connectionsEmptyMessage } from './app-detail-view'
 
+type RefreshFeedback =
+  | { connectionId: string; kind: 'updated'; toolCount: number }
+  | { connectionId: string; kind: 'unhealthy'; status: AppCapabilitiesRefreshResult['status'] }
+  | { connectionId: string; kind: 'request_failed' }
+
+const refreshFailureCopy = (status: AppCapabilitiesRefreshResult['status']) => {
+  switch (status) {
+    case 'error':
+    case 'expired':
+      return 'Capabilities could not be refreshed. Reconnect this account to repair it.'
+    case 'disabled':
+      return 'Capabilities could not be refreshed because this account is switched off.'
+    case 'connecting':
+      return 'Capabilities are still connecting. Try refreshing again in a moment.'
+    case 'connected':
+      return null
+  }
+}
+
 type AppConnectionsListProps = {
   app: AppDetailRecord
   onConnectAnother: () => void
+  onReconnect: (connection: AppConnectionSummaryRecord) => void
 }
 
 // The accounts this app is reachable through, and who each one works for.
@@ -23,10 +48,12 @@ type AppConnectionsListProps = {
 // `displayName` is already the server's wording for who the account works for,
 // so each row says it once: the name, the status pill, and — only when there is
 // one — how recently it was reached.
-export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsListProps) => {
+export const AppConnectionsList = ({ app, onConnectAnother, onReconnect }: AppConnectionsListProps) => {
   const now = Date.now()
   const disconnect = useDisconnectAppConnection()
+  const refreshCapabilities = useRefreshAppConnectionCapabilities()
   const [disconnecting, setDisconnecting] = useState<AppConnectionSummaryRecord | null>(null)
+  const [refreshFeedback, setRefreshFeedback] = useState<RefreshFeedback | null>(null)
 
   const closeDisconnect = () => {
     if (disconnect.isPending) return
@@ -49,6 +76,8 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
         {app.connections.map((connection) => {
           const pill = connectionStatusPill(connection.status)
           const connectedLabel = connectionConnectedLabel(connection, now)
+          const recoveryActions = connectionRecoveryActions(connection)
+          const refresh = refreshFeedback?.connectionId === connection.id ? refreshFeedback : null
           return (
             <li
               className={[
@@ -63,6 +92,39 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
                 </span>
                 <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                   <Pill tone={pill.tone}>{pill.label}</Pill>
+                  {recoveryActions.includes('reconnect') ? (
+                    <button
+                      className="admin-button admin-button-secondary admin-button-compact"
+                      data-testid={`app-reconnect-${connection.id}`}
+                      onClick={() => onReconnect(connection)}
+                      type="button"
+                    >
+                      Reconnect
+                    </button>
+                  ) : null}
+                  {recoveryActions.includes('refresh_capabilities') ? (
+                    <button
+                      className="admin-button admin-button-secondary admin-button-compact"
+                      data-testid={`app-refresh-capabilities-${connection.id}`}
+                      disabled={refreshCapabilities.isPending}
+                      onClick={() => {
+                        setRefreshFeedback(null)
+                        refreshCapabilities.mutate(connection.id, {
+                          onSuccess: (result) => {
+                            setRefreshFeedback(
+                              result.status === 'connected'
+                                ? { connectionId: result.connectionId, kind: 'updated', toolCount: result.toolCount }
+                                : { connectionId: result.connectionId, kind: 'unhealthy', status: result.status },
+                            )
+                          },
+                          onError: () => setRefreshFeedback({ connectionId: connection.id, kind: 'request_failed' }),
+                        })
+                      }}
+                      type="button"
+                    >
+                      {refreshCapabilities.isPending ? 'Refreshing…' : 'Refresh capabilities'}
+                    </button>
+                  ) : null}
                   {connection.canDisconnect ? (
                     <button
                       className="admin-button admin-button-secondary admin-button-danger admin-button-compact"
@@ -93,6 +155,21 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
               {connection.errorMessage ? (
                 <Notice className="mt-2" role="alert" size="sm" tone="danger">
                   {connection.errorMessage}
+                </Notice>
+              ) : null}
+              {refresh?.kind === 'updated' ? (
+                <div className="mt-2 text-xs text-[color:var(--tx2)]" role="status">
+                  Capabilities updated: {refresh.toolCount} available.
+                </div>
+              ) : null}
+              {refresh?.kind === 'unhealthy' ? (
+                <Notice className="mt-2" role="alert" size="sm" tone="danger">
+                  {refreshFailureCopy(refresh.status)}
+                </Notice>
+              ) : null}
+              {refresh?.kind === 'request_failed' ? (
+                <Notice className="mt-2" role="alert" size="sm" tone="danger">
+                  We couldn&apos;t refresh capabilities. Try again.
                 </Notice>
               ) : null}
             </li>

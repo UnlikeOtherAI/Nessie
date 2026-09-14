@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type {
   ChannelRecord,
   MessageSearchResult,
   ProjectRecord,
   UserRecord,
 } from '../../lib/api-client'
+import type { TaskRecord } from '../tasks/hooks'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { searchKeys } from './keys'
-import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useChannels } from '../channels/hooks'
 import { useProjects } from '../projects/hooks'
 import { useUsers } from '../users/hooks'
+import { usePagedList, usePagedListReset, type PagedList } from '../pagination/usePagedList'
 
 const MIN_QUERY_LENGTH = 2
 const DEBOUNCE_MS = 250
@@ -68,6 +70,10 @@ export interface GlobalSearchResults {
   messages: MessageSearchResult[]
   knowledge: KnowledgeSearchHit[]
   thoughts: ThoughtSearchHit[]
+  tasks: TaskRecord[]
+  taskPagination: PagedList<TaskRecord>
+  invalidTaskCursor: boolean
+  restartTaskSearch: () => void
   isLoading: boolean
   errorMessage: string | null
 }
@@ -110,6 +116,9 @@ export const usePersistedGlobalSearchMode = (): readonly [GlobalSearchMode, (nex
 const queryErrorMessage = (error: unknown): string | null =>
   error instanceof Error ? error.message : null
 
+export const isInvalidTaskSearchCursor = (error: unknown): boolean =>
+  error instanceof ApiClientError && error.code === 'TASK_SEARCH_CURSOR_INVALID'
+
 /**
  * Global search across channels, people, projects (filtered client-side from
  * already-loaded data), messages and knowledge pages in text mode, and memory
@@ -121,7 +130,6 @@ export const useGlobalSearch = (
   mode: GlobalSearchMode = 'text',
 ): GlobalSearchResults => {
   const apiClient = useApiClient()
-  const isOwner = useIsOwner()
 
   const debounced = useDebouncedValue(query, DEBOUNCE_MS)
   const trimmed = debounced.trim()
@@ -131,7 +139,7 @@ export const useGlobalSearch = (
   const semanticMode = mode === 'semantic'
 
   const { data: channels = [] } = useChannels()
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const { data: projects = [] } = useProjects()
 
   const filteredChannels = useMemo(
@@ -170,6 +178,17 @@ export const useGlobalSearch = (
     enabled: active && textMode,
   })
 
+  const taskPagination = usePagedList<TaskRecord>({
+    enabled: active && textMode,
+    params: { query: trimmed },
+    paramPrefix: 'tasks-',
+    path: '/api/tasks/search',
+    queryKey: searchKeys.tasks(trimmed),
+    scope: `task-search:${trimmed}`,
+  })
+  const restartTaskSearch = usePagedListReset('tasks-')
+  const invalidTaskCursor = isInvalidTaskSearchCursor(taskPagination.query.error)
+
   // Text mode uses keyword search; semantic mode uses hybrid search so
   // knowledge results (with highlighted passages) surface alongside thoughts.
   const knowledgeQuery = useQuery<KnowledgeSearchHit[]>({
@@ -199,15 +218,20 @@ export const useGlobalSearch = (
     people: filteredPeople,
     projects: filteredProjects,
     messages: active && textMode ? messagesQuery.data ?? [] : [],
+    tasks: active && textMode ? taskPagination.items : [],
+    taskPagination,
+    invalidTaskCursor,
+    restartTaskSearch,
     knowledge: active ? knowledgeQuery.data ?? [] : [],
     thoughts: active && semanticMode ? thoughtsQuery.data ?? [] : [],
     isLoading:
       active &&
       (textMode
-        ? messagesQuery.isFetching || knowledgeQuery.isFetching
+        ? messagesQuery.isFetching || taskPagination.query.isFetching || knowledgeQuery.isFetching
         : thoughtsQuery.isFetching || knowledgeQuery.isFetching),
     errorMessage: active
       ? queryErrorMessage(messagesQuery.error)
+        ?? queryErrorMessage(taskPagination.query.error)
         ?? queryErrorMessage(knowledgeQuery.error)
         ?? queryErrorMessage(thoughtsQuery.error)
       : null,

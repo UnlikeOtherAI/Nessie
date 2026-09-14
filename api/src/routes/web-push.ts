@@ -8,22 +8,20 @@ import {
 import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { trimWebPushSubscriptionCap } from '../services/web-push-subscriptions.js'
 import type { RouteDeps } from './types.js'
 
 // User-Agent strings can be arbitrarily long; clamp to a sane DB-friendly size
 // so a hostile client can't bloat the row.
 const MAX_USER_AGENT_LENGTH = 512
 
-// Cap per-user subscriptions so a hostile client can't bloat the table or
-// amplify worker fan-out. A real user has a handful of browsers/devices.
-const MAX_SUBSCRIPTIONS_PER_USER = 20
-
 /**
  * Web Push subscription endpoints.
  *
  * Browsers register a Push API subscription so the push pipeline can deliver
- * notifications via VAPID. Subscriptions are user-scoped: a caller only ever
- * registers/removes subscriptions for themselves, within their own tenant.
+ * notifications via VAPID. A row is a tenant/user enrollment of the browser's
+ * PushSubscription: a caller only ever registers/removes their own enrollment
+ * in their current tenant.
  * Web push is "enabled" iff the VAPID public/private keys and subject are all
  * configured (`config.webPush`).
  */
@@ -38,6 +36,12 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    const organizationId = actorContext.tenant.organizationId
+    const userId = actorContext.actor.actorId
+    const registrations = await prisma.webPushSubscription.findMany({
+      where: { organizationId, userId },
+      select: { endpoint: true },
+    })
     const { publicKey, privateKey, subject } = config.webPush
     const enabled = Boolean(publicKey && privateKey && subject)
 
@@ -45,13 +49,14 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       WebPushConfigResponseSchema.parse({
         enabled,
         publicKey: publicKey ?? null,
+        registeredEndpoints: registrations.map((registration) => registration.endpoint),
       }),
     )
   })
 
   // POST /api/push/web/subscribe — register or refresh a browser push
-  // subscription. Upsert by the unique (userId, endpoint) so re-subscribing is
-  // idempotent and only ever touches the caller's own row.
+  // subscription. Upsert by (organizationId, userId, endpoint) so re-subscribing
+  // is idempotent and only ever touches the caller's own current-tenant row.
   app.post('/api/push/web/subscribe', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -81,7 +86,9 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const userAgent = request.headers['user-agent']?.slice(0, MAX_USER_AGENT_LENGTH) ?? null
 
     const subscription = await prisma.webPushSubscription.upsert({
-      where: { userId_endpoint: { userId, endpoint: body.endpoint } },
+      where: {
+        organizationId_userId_endpoint: { organizationId, userId, endpoint: body.endpoint },
+      },
       create: {
         organizationId,
         userId,
@@ -101,18 +108,7 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     // Bound table growth: keep only the most-recently-seen subscriptions, evicting
     // the oldest beyond the cap (covers the case where this upsert created a new row).
-    const count = await prisma.webPushSubscription.count({ where: { userId } })
-    if (count > MAX_SUBSCRIPTIONS_PER_USER) {
-      const stale = await prisma.webPushSubscription.findMany({
-        where: { userId },
-        orderBy: { lastSeenAt: 'asc' },
-        take: count - MAX_SUBSCRIPTIONS_PER_USER,
-        select: { id: true },
-      })
-      await prisma.webPushSubscription.deleteMany({
-        where: { id: { in: stale.map((row) => row.id) } },
-      })
-    }
+    await trimWebPushSubscriptionCap(prisma, { organizationId, userId })
 
     return reply.code(201).send(
       createApiResponse(
@@ -127,9 +123,9 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   })
 
   // POST /api/push/web/unsubscribe — remove the caller's own subscription.
-  // Idempotent: a missing row is not an error. Matched on (userId, endpoint) so
-  // a user can never delete another user's subscription even with a known
-  // endpoint value.
+  // Idempotent: a missing row is not an error. It removes the server enrollment
+  // only: the browser's shared PushSubscription remains available to another
+  // explicitly enrolled tenant.
   app.post('/api/push/web/unsubscribe', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -142,9 +138,28 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     await prisma.webPushSubscription.deleteMany({
-      where: { userId: actorContext.actor.actorId, endpoint: body.endpoint },
+      where: {
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+        endpoint: body.endpoint,
+      },
     })
 
+    return reply.code(204).send()
+  })
+
+  // POST /api/push/web/logout — remove this browser endpoint from every
+  // enrollment held by the person ending their session. The PushSubscription
+  // itself remains browser-owned, but a later person must explicitly enroll it.
+  app.post('/api/push/web/logout', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(WebPushUnsubscribeRequestSchema, request.body, reply)
+    if (!body) return reply
+
+    await prisma.webPushSubscription.deleteMany({
+      where: { endpoint: body.endpoint, userId: actorContext.actor.actorId },
+    })
     return reply.code(204).send()
   })
 }

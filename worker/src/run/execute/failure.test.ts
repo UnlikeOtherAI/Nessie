@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import { ProviderHttpError } from '@nessie/runtime'
 import { handleRunExecutionFailure } from './failure.js'
+import { executeRunJob } from './run-job.js'
 import { PrivateAgentPlacementError } from './private-agent-placement.js'
+import { resolveReplyRootMessageId } from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 
@@ -134,8 +136,13 @@ test('an interactive run tells the person waiting that Ledger credits are exhaus
   assert.deepEqual(streamEvents, [])
 })
 
-test('an unattended run fails quietly — no message into a room that did not ask', async () => {
-  const messages: Array<{ content: string; role: string }> = []
+test('a direct peer failure posts one top-level result and redelivery leaves it alone', async () => {
+  const messages: Array<{ content: string; role: string; rootMessageId: string | null }> = []
+  const replyRootMessageId = resolveReplyRootMessageId(
+    { id: '00000000-0000-4000-8000-00000000000a', rootMessageId: null },
+    null,
+    'channel',
+  )
   // A real `$transaction` hands the callback a client carrying every model, so
   // the stub must too: the message chokepoint writes the row and its basis rows
   // inside one, and a transaction client missing `message` made the write throw
@@ -143,8 +150,8 @@ test('an unattended run fails quietly — no message into a room that did not as
   const transaction = {
     $executeRaw: async () => undefined,
     message: {
-      create: async ({ data }: { data: { content: string; role: string } }) => {
-        messages.push(data)
+      create: async ({ data }: { data: { content: string; role: string; rootMessageId?: string } }) => {
+        messages.push({ ...data, rootMessageId: data.rootMessageId ?? null })
         return {
           content: data.content,
           createdAt: new Date('2026-08-04T20:00:00.000Z'),
@@ -163,8 +170,8 @@ test('an unattended run fails quietly — no message into a room that did not as
       $transaction: async (work: (tx: typeof transaction) => Promise<unknown>) => work(transaction),
       agent: { update: async () => undefined },
       message: {
-        create: async ({ data }: { data: { content: string; role: string } }) => {
-          messages.push(data)
+        create: async ({ data }: { data: { content: string; role: string; rootMessageId?: string } }) => {
+          messages.push({ ...data, rootMessageId: data.rootMessageId ?? null })
           return {
             content: data.content,
             createdAt: new Date('2026-08-11T20:00:00.000Z'),
@@ -204,18 +211,17 @@ test('an unattended run fails quietly — no message into a room that did not as
       teamId: ID.team,
     },
     consumedSources: createConsumedSourceSink(),
-    run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
+    run: { createdAt: new Date(), id: ID.run, replyPlacement: 'channel', threadId: ID.thread },
+    replyRootMessageId,
     task: { id: ID.task },
   } satisfies RunContext
 
   await handleRunExecutionFailure(
     deps,
     {
-      actorContext: {} as never,
+      actorContext: { actionContext: { purpose: 'agent.peer_delegation' } } as never,
       agentId: ID.agent as never,
-      // No `interactive` flag: a scheduled sweep. Nobody is waiting, and
-      // repeating the same apology every 15 minutes would bury the findings
-      // the channel exists for.
+      // A peer has explicitly delegated this work and is waiting in the same conversation.
       messageId: '00000000-0000-4000-8000-00000000000a',
       runId: ID.run as never,
       taskId: ID.task as never,
@@ -229,7 +235,49 @@ test('an unattended run fails quietly — no message into a room that did not as
     },
   )
 
-  assert.deepEqual(messages, [])
+  assert.deepEqual(messages, [{
+    agentId: ID.agent,
+    content: 'No API key is configured for the model provider. Ask a team owner to add the provider credential, then try again.',
+    role: 'assistant',
+    rootMessageId: null,
+    threadId: ID.thread,
+  }])
+
+  const terminalDeps = {
+    prisma: {
+      run: { findUnique: async () => ({ finishedAt: new Date(), status: 'failed' }) },
+    },
+  } as unknown as ExecutionDependencies
+  const peerPayload = {
+    actorContext: { actionContext: { purpose: 'agent.peer_delegation' } },
+    agentId: ID.agent,
+    messageId: '00000000-0000-4000-8000-00000000000a',
+    runId: ID.run,
+    taskId: ID.task,
+    threadId: ID.thread,
+  } as never
+  await executeRunJob(terminalDeps, peerPayload, {} as never)
+  await executeRunJob(terminalDeps, peerPayload, {} as never)
+  assert.equal(messages.length, 1, 'redelivery preserves the one visible terminal result')
+
+  await handleRunExecutionFailure(
+    deps,
+    {
+      actorContext: { actionContext: {} } as never,
+      agentId: ID.agent as never,
+      messageId: '00000000-0000-4000-8000-000000000012',
+      runId: '00000000-0000-4000-8000-000000000013' as never,
+      taskId: ID.task as never,
+      threadId: ID.thread as never,
+    },
+    context,
+    {
+      error: new Error('ordinary scheduled provider failure'),
+      planContext: null,
+      streamStarted: false,
+    },
+  )
+  assert.equal(messages.length, 1, 'an unattended retry does not post into the conversation')
 })
 
 test('an invalid private placement fails without speaking into the shared destination', async () => {

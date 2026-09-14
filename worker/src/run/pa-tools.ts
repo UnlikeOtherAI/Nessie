@@ -1,5 +1,10 @@
 export { runCardPostTool } from './pa-tools/cards.js'
 export {
+  runAgentConversationStartTool,
+  runAgentConversationsListTool,
+  runConversationReferenceTool,
+} from './pa-tools/agent-conversations.js'
+export {
   runMessageDeleteTool,
   runMessageEditTool,
   runMessageSearchTool,

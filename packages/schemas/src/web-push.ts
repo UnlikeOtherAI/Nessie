@@ -6,8 +6,9 @@ import { z } from 'zod'
  * The admin SPA subscribes through the browser Push API and POSTs the resulting
  * `PushSubscription` to the authenticated `/api/push/web/*` endpoints; the
  * worker fans notifications out to those subscriptions with RFC 8291 encryption
- * and RFC 8292 VAPID. Subscriptions are user-scoped: a caller only ever
- * registers/removes subscriptions for themselves. See `docs/web-push.md`.
+ * and RFC 8292 VAPID. A row is a tenant/user enrollment of a browser
+ * subscription: callers only register or remove their own enrollment in the
+ * current organization. See `docs/web-push.md`.
  */
 
 /**
@@ -81,5 +82,9 @@ export type WebPushSubscriptionRecord = z.infer<typeof WebPushSubscriptionRecord
 export const WebPushConfigResponseSchema = z.object({
   enabled: z.boolean(),
   publicKey: z.string().nullable(),
+  // Browser-level PushSubscription state is shared across organizations and
+  // can outlive a login. These are only the authenticated caller's endpoint
+  // enrollments in the current organization, never another user's records.
+  registeredEndpoints: z.array(WebPushEndpointSchema),
 })
 export type WebPushConfigResponse = z.infer<typeof WebPushConfigResponseSchema>

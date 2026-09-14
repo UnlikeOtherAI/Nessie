@@ -54,6 +54,7 @@ type KnowledgeContextValue = {
   // resolved; loading an empty placeholder must not clear unseen documents.
   spacesLoaded: boolean
   spacesLoadFailed: boolean
+  refetchSpaces: () => unknown
   // The caller's personal "My Docs" space, read separately from the paged
   // shared-space list so its pinned doorway never vanishes on another page.
   myDocsSpace?: KnowledgeSpaceRecord | null
@@ -280,6 +281,8 @@ export const KnowledgeProvider = ({
 
   const { refetch: refetchPagesQuery } = pagesQuery
   const refetchPages = useCallback(() => refetchPagesQuery(), [refetchPagesQuery])
+  const refetchSpacesQuery = spaceId ? spaceQuery.refetch : spacesQuery.query.refetch
+  const refetchSpaces = useCallback(() => refetchSpacesQuery(), [refetchSpacesQuery])
   const childrenOf = useCallback(
     (parentPageId: string) => pagesByParent.get(parentPageId) ?? [],
     [pagesByParent],
@@ -322,6 +325,7 @@ export const KnowledgeProvider = ({
     spacePagination,
     spacesLoaded: spaceId ? spaceQuery.isSuccess : spacesQuery.query.isSuccess,
     spacesLoadFailed: spaceId ? spaceQuery.isError : spacesQuery.query.isError,
+    refetchSpaces,
     myDocsSpace: myDocsSpaceQuery.data ?? null,
     selectedSpaceId,
     selectedSpace,
@@ -382,6 +386,7 @@ export const KnowledgeProvider = ({
     pagesQuery.isLoading,
     projectId,
     refetchPages,
+    refetchSpaces,
     rootPages,
     selectedSpace,
     selectedSpaceId,

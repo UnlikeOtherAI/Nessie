@@ -28,6 +28,8 @@ export { buildPromptCacheKey } from './inference-stage.js'
 
 type RunInferenceGraphInput = {
   actorContext: AuthorizedActionContext
+  /** Only the main agent-loop answer may use its checkpointed empty-response recovery. */
+  allowEmptySuccess?: boolean
   agent: {
     id: string
     model: string | null
@@ -134,6 +136,7 @@ const executeSingleMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
+    allowEmptySuccess?: boolean
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
     maxOutputTokensOverride?: number
@@ -176,6 +179,7 @@ const executeSingleMode = async (
 
   const success = await executeStage(prisma, {
     actorContext: input.actorContext,
+    ...(input.allowEmptySuccess ? { allowEmptySuccess: true } : {}),
     baseMessages: input.baseMessages,
     emitBufferedOutput: !input.route.streamLive,
     mode: input.route.mode,
@@ -244,6 +248,7 @@ export const runInferenceGraph = async (
 
   return executeSingleMode(prisma, {
     actorContext: input.actorContext,
+    ...(input.allowEmptySuccess ? { allowEmptySuccess: true } : {}),
     baseMessages: input.baseMessages,
     maxOutputTokensOverride: input.maxOutputTokensOverride,
     modelConfig: input.modelConfig,

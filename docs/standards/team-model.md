@@ -152,6 +152,146 @@ project-scoped; it is scoped — not yet fully specified — in
 [docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md),
 and `scripts/inspect-team-shape.sql` sizes it against real data.
 
+## Who may change a project or a channel
+
+Three rules, and one predicate each for projects and channels that every route,
+service and assistant tool asks —
+[`packages/team-admin/src/resource-authority.ts`](../../packages/team-admin/src/resource-authority.ts):
+
+1. **Any organisation member may create a project or a channel.** What has to
+   be earned is the placement, not the act: `createProjectForUser` requires
+   the team named in the request to be one the person is in, and
+   `canPlaceChannelInTeam` (below) does the same for a channel. A channel placed
+   inside an existing project changes that project, so `createChannelForUser`
+   also requires `canModifyProject` for it (`ChannelProjectAccessError`); a
+   shared (standalone) channel keeps the organisation-wide rule. An
+   organisation owner or admin may place either in any team.
+2. **Inside a project or a channel, every member of it has equal rights** —
+   rename it and edit its settings, add and remove its members, archive or
+   delete it, and change a project's shape (boards, columns, custom fields,
+   sources, iterations, watchers). The creator is simply the first member.
+   `ProjectMember.role` and `ChannelMember.role` still exist and are still
+   written (`owner` for the creator) but **grant nothing**; do not gate a new
+   decision on them. Dropping the columns is a separate migration.
+3. **Only an organisation owner or admin may view and change a project or a
+   channel they are not a member of** — and for a channel, only one they can
+   already see. An organisation owner or admin outside a **private or
+   protected** channel can neither read it, change it, nor add themselves to it
+   (the Slack/Teams rule); `canModifyChannel` refuses and the member routes
+   answer `channel_not_found`. A **public** channel they may manage without
+   joining. A team role is not an arm: a team owner/admin outside a channel
+   cannot change it. A plain member outside a project cannot see it; outside a
+   channel they keep exactly the read access they had (a public channel stays
+   readable and joinable) and change nothing.
+
+**A message belongs to its author.** Only the author deletes a message (a soft
+delete, `softDeleteMessage`); a fellow channel member, an organisation owner or
+admin, or a team role may not delete somebody else's message. The function takes
+no role, so no caller can hand one in.
+
+**The role that decides is the verified request role.** REST callers pass
+`isAdminActor(actorContext)` into `canModifyChannel`, `updateChannel`,
+`setChannelArchived`, `createChannelForUser`, `mapChannelRecord` and
+`listChannelsForUser`. `request-admission.ts` sets those roles from UOA's live
+authorization in a bound organisation, so a demotion or promotion upstream
+takes effect on the next request. Only callers with no request role — the
+worker's assistant tools, `resolveActingMember` — still read the
+`OrganizationMember` row, which remains the migration gap described below.
+
+`canModifyProject` is `isProjectAccessibleToUser`: under rule 2 the people who
+may change a project are exactly the people who may open it, so project read
+entitlement widened to organisation admins (it was owner-only) and a refusal to
+change a project is the same `404 PROJECT_NOT_FOUND` the read gives
+(`requireProjectModifier`). `canModifyChannel` returns the channel row with the
+answer; a refusal is a 404 to somebody who cannot see the channel and a 403 to
+somebody who can. The same predicate drives `ChannelRecord.viewerCanManage`,
+renaming another person's agent conversation in the room, and removing another
+person's assistant from it.
+
+**Out of scope, deliberately.** A **system channel** (the Personal Assistant's
+home, a global agent's home DM) is lifecycle-protected and refused for
+everybody. A **direct message** is reachable only by its participants:
+participation is checked first, so nobody outside a DM — an organisation owner or
+admin, a team owner or admin — renames, archives or learns anything about it (a
+member-route refusal to an outsider is `channel_not_found`, never
+`dm_members_fixed`). Its members are a fixed pair the member routes refuse to
+change, and among its participants only a channel or team owner/admin role or an
+organisation owner/admin may rename or archive it. **Binding an agent** into a
+channel, triggers and workflows are agent and organisation capabilities with
+their own gates, not project or channel settings.
+
+**Project membership is Nessie's own.** UOA owns organisation and team
+membership; it has never heard of a project. So `POST`/`DELETE
+/api/projects/:projectId/members` manage a project's members in a UOA-bound
+organisation exactly as in an unbound one, and
+`requireUnboundMembershipManagement` does not gate them. The one exception is
+the anchor project a UOA-bound team carries (`Team.projectId` with
+`externalTeamId` set): sign-in writes its `ProjectMember` rows from the verified
+team membership (`ensureTeamMemberships`), re-projects their role and removes them
+when UOA withdraws the team, so a local write there would fight the projection.
+Those routes refuse it with `409 TEAM_PROJECT_MEMBERSHIP_MANAGED_BY_SSO`; change
+the team's membership instead. A member added to a project must be an active
+member of the organisation.
+
+### Deleting a project or a channel
+
+**Every member may delete** — deleting is inside rule 2, like archiving and
+renaming — and every delete is a **soft delete**. Nothing guards the last member
+of a project either: any member may remove any member, themselves included.
+
+- `DELETE /api/projects/:projectId` (`deleteProject`) stamps
+  `Project.deletedAt`, and `deletedAt` with `archivedAt` on every channel still
+  in it, in one transaction. No row is removed: boards, tasks, fields, sources,
+  iterations, members, channels and their history stay intact for a restore.
+  Knowledge, executors and a UOA-bound team anchor still refuse the delete
+  (`PROJECT_HAS_KNOWLEDGE`, `PROJECT_HAS_EXECUTORS`,
+  `PROJECT_HAS_EXTERNAL_TEAMS`), because their data is reachable from surfaces
+  that do not pass through the project's own entitlement. Channels no longer
+  block.
+- `DELETE /api/channels/:channelId` (`deleteChannel`, gated by
+  `canModifyChannel`) stamps `Channel.deletedAt` together with `archivedAt`, so
+  every archived-channel filter already hides it and its name is released.
+- **Readers filter `deletedAt: null`.** Projects: `isProjectAccessibleToUser`,
+  `listAccessibleProjectIds`, `listProjectsForUser`, `listProjectDirectory`,
+  `listTeamsForOrganization`'s project ids, `loadUserMemberships`, the project
+  routes' own reads, context switching, budget/secret/status/knowledge scope
+  checks, and the worker's ticket search. Channels: `canModifyChannel` (so a
+  deleted channel cannot be renamed, unarchived, re-membered or deleted again),
+  `getVisibleChannel` (which the realtime scope check asks),
+  `getChannelIfMember`, `buildAccessibleChannelWhere` (thread and agent
+  conversation reads), `listChannelsForUser` even with `includeArchived`,
+  `joinPublicChannel`, and the member-change routes.
+- **Known gap:** full-text message search (`api/src/services/message-search.ts`)
+  scopes channels by visibility and membership only, so a deleted channel's
+  messages remain searchable by the people who could read them until that
+  reader filters `deletedAt` too.
+- **There is no restore yet.** Nothing unsets `deletedAt`; a restore surface is
+  planned and has all the data it needs.
+
+### What a person outside a project may see
+
+Any active organisation member may read `GET /api/projects/directory`
+(`listProjectDirectory`), reachable from the Projects sidebar as "Browse all
+projects". It lists every live project, shaped by role:
+
+- For a project they are not in, **only its name, description and members**
+  (id, display name, avatar sources) — `access: 'limited'`. No counts, avatar,
+  boards, tasks, fields, sources, iterations, channels, settings or watchers.
+  The row is built field by field and parsed through a `.strict()` schema, so a
+  field added to the project read cannot reach an outsider by default.
+- A member of the project, or an organisation owner or admin, gets
+  `access: 'full'` with the ordinary project record.
+
+The directory is read-only: it carries no modify controls, and the full project
+routes still answer an outsider `404 PROJECT_NOT_FOUND`. `Project.description`
+is written by the project's members through `PATCH /api/projects/:projectId`
+(Edit project).
+
+**Team roles reach no channel.** A team owner or admin outside a channel has no
+arm into it; the only place a team role still counts is among the participants
+of a direct message (the legacy DM rule above), which requires participation
+first.
+
 ## Channel names, and what an archived channel keeps
 
 A channel's name is its slug and its label at once — one name, and it is the
@@ -192,7 +332,9 @@ allows exactly: a `TeamMember` row on the team; a `ProjectMember` row on the
 team's project, which is how someone working a project reaches its rooms; an
 organisation owner or admin; or a `systemManaged` team, one of the two
 exceptions named above (the standalone-channel root, the Personal Assistant's
-team), which has no members by construction. A missing team context is a 400
+team), which has no members by construction. Placing a channel in an existing (non
+channel-root) project additionally takes `canModifyProject`, so a team member who
+is not in the project is refused. A missing team context is a 400
 `CHANNEL_TEAM_CONTEXT_REQUIRED` — never a default team id filled in on the
 caller's behalf.
 
@@ -284,8 +426,10 @@ because it has no acting-person assertion. The
 the configured organisation-admin role, and reads the caller's fresh
 `GET /org/me` role before showing or serving that section. UOA's `owner` role
 holds every declared capability structurally. A local `OrganizationMember` row
-is therefore a binding and compatibility projection, never authority for an
-UOA-bound organisation; a failed role read answers retryably and fails closed.
+is intended to retain only Nessie-owned linkage or extension data. The current
+authentication path still reads its role and activation fields, so those fields
+remain a migration gap and a second authority until the live boundary below
+replaces them. A failed live role read answers retryably and fails closed.
 
 ### Who may ask, and who authorizes it
 
@@ -293,7 +437,7 @@ The relay admits an authenticated caller with a current UOA subject assertion;
 **UOA authorizes the exact target**. It re-resolves the person's live
 membership and capability for every write, so a demoted or removed
 administrator stops being able to change membership upstream even if a local
-projection still says otherwise. A team administrator need not have an
+row still says otherwise. A team administrator need not have an
 organisation-admin role, so `requireOrgAdmin` must not gate team membership
 routes. Roster reads remain available to people entitled by UOA to see that
 team.
@@ -302,14 +446,15 @@ The organisation-wide Members section is distinct: its declared
 `nessie.organisation.manage` capability is checked from fresh `GET /org/me`
 standing before its roster or mutations run. Neither path may relay with only a
 domain-hash bearer, because that would replace UOA's live authorization with a
-local membership projection.
+local membership decision.
 
-### The projection has a revocation half
+### The current durable projection is a migration gap
 
-`OrganizationMember`, `TeamMember` and `ProjectMember` are a projection of UOA's
-claims, and `authenticateRequest` re-resolves the acting role from the live
-`OrganizationMember` row — which makes the projection the enforcement point. It
-must therefore be able to *lose* rows, not only gain them:
+`OrganizationMember`, `TeamMember` and UOA-derived `ProjectMember` rows currently
+copy UOA claims. `authenticateRequest` re-resolves the acting role from the
+durable `OrganizationMember` row, making that copy an enforcement authority.
+Session-time reconciliation narrows the gap but does not make the copy an
+acceptable cache:
 
 - Every session rotation carries a verified team directory, and
   `reconcileUoaMembershipProjection`
@@ -318,7 +463,7 @@ must therefore be able to *lose* rows, not only gain them:
   deactivates an `OrganizationMember` for a bound organisation UOA no longer
   places the person in at all. Deactivation keeps the row and its history, and
   `ensureTeamMemberships` clears it again the moment UOA re-asserts a team
-  there — in a bound organisation `deactivatedAt` is a projection too.
+  there — in a bound organisation `deactivatedAt` is copied UOA state too.
 - In a UOA-bound organisation, a session whose `OrganizationMember` row is gone
   is refused (`ORGANIZATION_MEMBERSHIP_REQUIRED`) rather than passed through:
   every session there was minted from a proven UOA membership, so an absent row
@@ -327,6 +472,14 @@ must therefore be able to *lose* rows, not only gain them:
 - Rows with no binding are never reconciled: a `Team` with no `externalTeamId`
   and an `Organization` with no `externalOrgId` have no upstream authority to be
   reconciled against.
+
+The target state removes these UOA-owned roles and memberships from durable
+authorization. Bound-tenant consumers call one UOA API-backed boundary and may
+reuse a result only in bounded process memory with a short freshness deadline,
+credential-epoch scoping and prompt invalidation. No webhook, snapshot or delta
+materialises a durable member or hierarchy projection. Stable UOA references
+and Nessie-owned extension data may remain; the no-IdP organisation keeps its
+local membership model.
 
 ### Live entitlement readers
 
@@ -349,7 +502,8 @@ providers is the unbound org-tenant that keeps local control; the mode says
 neither. `requireUnboundMembershipManagement`
 ([api/src/routes/membership-mode-gate.ts](../../api/src/routes/membership-mode-gate.ts))
 is that predicate, and local role changes, deactivation, local account creation
-and local team-member writes all sit behind it.
+and local team-member writes all sit behind it. Project membership does not
+(§"Who may change a project or a channel").
 
 The same rule decides who may create a team. `POST /api/teams` and the
 `team_create` agent tool write a purely local `Team`, so inside a UOA-bound
@@ -369,6 +523,32 @@ and profile and team names are still mirrored locally. The binding keys (`Organi
 `Team.externalTeamId`, `User.uoaSub`) are not duplication — they are what
 makes asking UOA possible. That rule, and the outstanding gaps against it, are
 in the plan linked above.
+
+The first identity-read migration slice is deliberately narrower than that
+target. In a UOA-bound organisation, legacy `GET /api/users` now reads the live
+ACTIVE UOA organisation roster through the current actor's subject assertion,
+paginates it to completion, and joins only product-owned fields by
+`User.uoaSub`. Its 30-second in-memory display cache is scoped by organisation,
+actor, active team and credential epoch; it has entry and total-member bounds,
+coalesces same-key misses under a bounded in-flight set, prevents invalidated
+loads from refilling it, never serves expired data after an upstream failure,
+and is never an authorization input. A missing legacy subject binding is a migration error,
+never an email/name join. The unbound organisation retains the local route.
+
+`GET /api/users` is the people directory every addressing doorway is built on
+(DM picker, sidebar, search, mentions, project and watcher pickers), so any
+authenticated member of the organisation may read it; the response, not the
+door, is shaped by role. An owner receives the management record. Everyone
+else receives `toMemberDirectoryView` (`api/src/services/users.ts`): id,
+display name, email, organisation role, avatar sources, active status and
+timestamps, with deactivated people omitted, `deactivatedAt` never sent, and
+`channelIds` narrowed to channels the viewer shares. That view is rebuilt
+field by field so a new owner-record field never reaches members by default,
+and it adds no local profile copy — in a bound organisation it is the same
+live UOA roster read.
+Other renderers and authorization checks still read the mirrors/projections
+named above, so this slice does not complete the authority migration; the
+audited sequence and upstream blockers are recorded in the unification plan.
 
 ### Nessie policy may decide placement; UOA still authorizes it
 
@@ -391,7 +571,8 @@ the subject assertion is the *entire* authorization of `POST /api/team/members`
 — the local owner/admin gate in front of it (§"Who may ask, and who authorizes
 it") is a consistency check on who may ask, not a substitute — so relaying with
 the domain-hash bearer alone would remove the real check and rebuild a weaker
-one on the `TeamMember` projection this document is trying to demote to a cache.
+one on the durable `TeamMember` copy this document requires the migration to
+remove.
 The automatic-membership grants do not pass through that route at all: they call
 `addTeamMember` directly with the authorizing administrator's own assertion.
 And **no automatic path may name a role or remove a membership**: membership is

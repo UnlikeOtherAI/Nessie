@@ -7,6 +7,7 @@ import {
 } from '@nessie/board-sources'
 import {
   BOARD_SOURCE_SYNC_INITIAL_TOPIC,
+  isAdminActor,
   BoardSourceDetailRecordSchema,
   BoardSourceRecordSchema,
   CreateBoardSourceBodySchema,
@@ -41,7 +42,7 @@ import type { RouteDeps } from '../types.js'
  * it, because a sync carries that person's delegated authority.
  */
 export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, config, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } =
+  const { prisma, encryptionKeyRing, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } =
     deps
 
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
@@ -71,6 +72,22 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
           'A source runs under its connection owner’s account, so only they can point it at a project. Connect your own account first.',
         )
         return
+      case 'IDENTITY_MAPPING_FORBIDDEN':
+        sendApiError(
+          reply,
+          403,
+          'IDENTITY_MAPPING_FORBIDDEN',
+          'People mappings apply to every project that reads this workspace, so only somebody in all of those projects, or an organisation owner or admin, can change them.',
+        )
+        return
+      case 'IDENTITY_TARGET_INVALID':
+        sendApiError(
+          reply,
+          400,
+          'IDENTITY_TARGET_INVALID',
+          'A person can only be mapped to an active member or an agent of this organisation.',
+        )
+        return
       case 'CONTAINER_ALREADY_ATTACHED':
         sendApiError(
           reply,
@@ -93,7 +110,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
     const context = await loadBoardSourceConnectionContext(
       prisma,
       connectionId,
-      config.auth.secret ?? '',
+      encryptionKeyRing,
     )
     if (isBoardSourceCredentialError(context)) return null
     try {
@@ -128,7 +145,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       const context = await loadBoardSourceConnectionContext(
         prisma,
         source.connectionId,
-        config.auth.secret ?? '',
+        encryptionKeyRing,
       )
       if (isBoardSourceCredentialError(context)) return
       await adapter.removeWebhook(
@@ -194,16 +211,25 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(CreateBoardSourceBodySchema, request.body, reply)
     if (!body) return reply
 
     const connection = await prisma.boardSourceConnection.findFirst({
       where: { id: body.connectionId, organizationId: project.organizationId },
-      select: { id: true, provider: true },
+      select: { id: true, ownerUserId: true, provider: true },
     })
     if (!connection) {
       sendApiError(reply, 404, 'CONNECTION_NOT_FOUND', 'Connection not found')
+      return reply
+    }
+    // Ownership is decided before the connection is used for anything. Reading
+    // the container, seeding custom fields and listing containers all run on
+    // the owner's delegated credential, so a non-owner must not reach even one
+    // provider call or project write. `createBoardSource` repeats the check
+    // for its other callers.
+    if (connection.ownerUserId !== actorContext.actor.actorId) {
+      sourceError(reply, { error: 'CONNECTION_NOT_OWNED' })
       return reply
     }
 
@@ -254,7 +280,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       (await loadBoardSourceConnectionContext(
         prisma,
         connection.id,
-        config.auth.secret ?? '',
+        encryptionKeyRing,
       )) as Parameters<typeof adapter.listContainers>[0],
     )
     const descriptor = containers.find(
@@ -330,7 +356,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(UpdateBoardSourceBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -354,13 +380,18 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(PutBoardSourceMappingsBodySchema, request.body, reply)
     if (!body) return reply
 
     const result = await putBoardSourceMappings(prisma, project.id, sourceId, {
       ...body,
       actorUserId: actorContext.actor.actorId,
+      viewer: {
+        isOrganizationAdmin: isAdminActor(actorContext),
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      },
     })
     if (isBoardSourceError(result)) {
       sourceError(reply, result)
@@ -394,7 +425,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
         sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
         return reply
       }
-      if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+      if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
 
       const updated = await prisma.boardSource.updateMany({
         where: { id: sourceId, projectId: project.id },
@@ -421,7 +452,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
 
     await unregisterWebhook(project.id, sourceId)
     const result = await deleteBoardSource(prisma, project.id, sourceId)

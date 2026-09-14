@@ -32,7 +32,7 @@ bind into any of them.
 (ownership = stewardship; this doc adds *visibility*, a different fact),
 [2026-08-15-uoa-org-tenancy.md](2026-08-15-uoa-org-tenancy.md),
 [docs/done/2026-08-29-org-chain-of-command-superseded.md](../done/2026-08-29-org-chain-of-command-superseded.md).
-**Reviewed:** independent parallel reviews by Codex Sol and kimix on the same
+**Reviewed:** independent parallel reviews by Codex Sol and reviewer B on the same
 brief; every claim verified against code before adoption. Agreements,
 disagreements, and adjudication: §"Cross-model review".
 
@@ -314,7 +314,7 @@ Read paths that must compose it, each verified to exist:
 | `createAgentVisibilityScope` consumers (`agent-read-model` status/activity/children) | channel-scoped | inherit via the predicate above |
 | To-do routes (`/api/agents/:agentId/todo-templates*`, `/api/agents/:agentId/todos*`) | every route gates through `isAgentAccessibleToActor`; rows are then scoped by exact organization + agent | inherit through the mirror predicate with no to-do-specific visibility rule |
 | Agent documents (`KnowledgeSpace.ownerAgentId`, KB workspace/search, publication alerts, presence) | derives the human audience from the owning agent | consume `listVisibleAgentIdsForUser` / `buildVisibleAgentWhere`, including the private-owner fence, so documents cannot outlive the agent's entitlement |
-| **Pending-invite scan** (`message-create.ts:218-233`) | loads **every** non-system shared agent in the org and regex-matches names against any `@`-bearing message — an org-wide name oracle the moment private agents exist (existence + id confirmed to any member, and the composer offers to bind it) | the `findMany` composes the visibility fragment for the message author (kimix finding, verified) |
+| **Pending-invite scan** (`message-create.ts:218-233`) | loads **every** non-system shared agent in the org and regex-matches names against any `@`-bearing message — an org-wide name oracle the moment private agents exist (existence + id confirmed to any member, and the composer offers to bind it) | the `findMany` composes the visibility fragment for the message author (reviewer B finding, verified) |
 | Trigger lists (`trigger-crud.ts:52,108` — `listOrganizationTriggers`, scheduled sweep list) | filter by `agentKind IN (shared, personal_assistant)` + org, no ownership arm | a private agent's triggers are as private as the agent: compose the fragment (owner-gated surface, but org owners are exactly who must not see these) |
 | `listAgentToolPolicyTargets` (`agent-tool-policy.ts:51`) + DeepWater target lists | enumerates all shared non-system agents org-wide for owner surfaces | exclude private agents not stewarded by the caller — an owner cannot meaningfully administer tools on an agent they may not see |
 | `GET /api/runs/active` (`api/src/routes/runs.ts:44-52`) | **member-level** (`requireActorContext` only) and returns every active/restartable run in the org with agent linkage | compose the visibility fragment (Sol finding, verified). Machine-only today, but "machine-only" is not "leak-proof" |
@@ -569,7 +569,7 @@ weight, with two adjustments:
    toolset, exemptions intact — unchanged.
    - Outside that DM (a PA run or a delegated child carrying the owner's
      principal): identity is the owner's
-     (`effectiveUserId`, UOA delegation, billing attribution — kimix's four
+     (`effectiveUserId`, UOA delegation, billing attribution — reviewer B's four
      points stand), but the toolset assembly withholds the owner-private
      tier: user-scope connectors, comms tools, and owner-private
      knowledge/memory reads are either absent or routed through the existing
@@ -648,7 +648,7 @@ table, any per-viewer message *content*, cross-org agent rows, digest streams
 beyond the elevation alerts, personal-agent transfer, a `GlobalAgentDefinition`
 catalog table, an `AgentTeamScope` publication join.
 
-## Cross-model review — Codex Sol and kimix
+## Cross-model review — Codex Sol and reviewer B
 
 Both reviewers received the same brief, worked independently against the
 repo, and delivered full designs. Every claim cited below was re-verified
@@ -678,7 +678,7 @@ confirmed line-by-line and changed this document.
 
 ### Confirmed findings adopted from the reviews
 
-1. **The pending-invite scan is an org-wide name oracle** (kimix; verified at
+1. **The pending-invite scan is an org-wide name oracle** (reviewer B; verified at
    `message-create.ts:218-233`). Any `@`-bearing message regex-matches
    against *every* non-system shared agent in the org — existence, id, and a
    bind offer for agents the viewer is not entitled to see. Fixed in the
@@ -690,11 +690,11 @@ confirmed line-by-line and changed this document.
 3. **`GET /api/runs/active` is member-level and org-wide** (Sol; verified —
    `requireActorContext` only). Added to the gating table.
 4. **Trigger lists and tool-policy target lists enumerate org-wide with no
-   ownership arm** (kimix; verified at `trigger-crud.ts:52,108`,
+   ownership arm** (reviewer B; verified at `trigger-crud.ts:52,108`,
    `agent-tool-policy.ts:51`). Added.
 5. **The memory-containment exemption keys off `agentKind`, not the
    surface** (both flagged the area; the precise mechanics in this doc are
-   from direct verification of `memory.ts:130-175`). kimix stated the PA
+   from direct verification of `memory.ts:130-175`). Reviewer B stated the PA
    "goes through `constrainScopesToDestination`" — half right: the mode is
    PA, but the containment call is *skipped* for the PA, which is exactly
    why a presence run would inherit the exemption unless it is re-keyed.
@@ -704,7 +704,7 @@ confirmed line-by-line and changed this document.
 
 ### Disagreements and how they were resolved
 
-**Singleton PA + presence vs real per-user PA rows.** kimix: keep the
+**Singleton PA + presence vs real per-user PA rows.** Reviewer B: keep the
 singleton, add a per-user binding column. Sol: convert to per-user rows,
 because everything keyed by `agentId` alone (messages, reactions, runs,
 mentions, realtime, rate limits) becomes ambiguous, and a projection id must
@@ -719,12 +719,12 @@ is the largest single work item in either review for a benefit the spec does
 not ask for. The conversion is named as the committed path *if* per-user PA
 personalisation becomes product.
 
-**Default authority of a presence run.** kimix: the PA acts as the owner,
+**Default authority of a presence run.** Reviewer B: the PA acts as the owner,
 full stop — containment + basis + bind-time consent + per-run alert are the
 guardrails; "do not implement the weaker requester-identity version." Sol:
 the run is `shared_unprivileged` by default — no owner memory, no owner
 tools, every elevation owner-approved. **Resolved between them:** identity,
-delegation, and billing are the owner's (kimix — and Sol agrees the
+delegation, and billing are the owner's (reviewer B — and Sol agrees the
 requester's identity is never used); capability is reduced by default and
 owner-private reads/side-effects go through the existing approval machinery
 (Sol's substance), keyed **structurally off the surface** rather than a new
@@ -746,7 +746,7 @@ obligation with no query it improves. If the team disagrees, switching to
 the 3-value spelling changes no behaviour in this design.
 
 **A `GlobalAgentDefinition` catalog table with versions/rollback** (Sol)
-**vs the existing code-registry `ensure*` pattern** (kimix + this doc).
+**vs the existing code-registry `ensure*` pattern** (reviewer B + this doc).
 **Resolved: code registry.** It is the shipped precedent (PA, Librarian,
 external products), updates are a deploy, and the policy-merge discipline
 already protects per-org grants. A versioned DB catalog is warranted the day
@@ -761,12 +761,12 @@ scoping ever lands, it lands as an explicit join, not as trust in that
 column.
 
 **Personal-agent triggers.** Sol: disable in v1 (no safe delivery target).
-kimix: allow, owner-only ("a private daily brief" is coherent). **Resolved:
-allow, kimix's way**, because the auto-provisioned owner DM *is* the safe
+Reviewer B: allow, owner-only ("a private daily brief" is coherent). **Resolved:
+allow, reviewer B's way**, because the auto-provisioned owner DM *is* the safe
 delivery target Sol's review assumed absent, and the run-start assertion
 fails closed if anything else is ever targeted.
 
-**Owner deactivation pauses private agents** — kimix and Sol converged on
+**Owner deactivation pauses private agents** — reviewer B and Sol converged on
 this independently (against the letter of "ownership is never lifecycle"),
 and both derived the same shape: pause + durable alert + existence-only
 admin visibility + explicit reactivation. Adopted, with the

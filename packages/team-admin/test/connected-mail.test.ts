@@ -67,7 +67,7 @@ test('a Gmail 401 transitions the selected live connection to reauthorization', 
       }],
       findUnique: async () => ({
         credential: {
-          accessTokenCiphertext: sealSecret('test-secret', 'access-token'),
+          accessTokenCiphertext: sealSecret('test-secret', 'access-token', 'comms.credential'),
           expiresAt: null,
           refreshTokenCiphertext: null,
         },
@@ -107,7 +107,7 @@ test('an SMTP failure is delivery_unknown and the same idempotency key never dia
   const prisma = {
     mailboxConnection: { findFirst: async () => connection },
     mailboxConnectionCredential: {
-      findUnique: async () => ({ secretCiphertext: sealSecret('test-secret', 'password') }),
+      findUnique: async () => ({ secretCiphertext: sealSecret('test-secret', 'password', 'mailbox.credential') }),
     },
     mailboxSendAction: {
       upsert: async ({ create }: { create: Record<string, unknown> }) => {

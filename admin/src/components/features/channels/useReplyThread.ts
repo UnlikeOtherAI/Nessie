@@ -136,7 +136,10 @@ export const useReplyThread = ({
   const repliesQuery = useThreadReplies(activeThreadId, openRootMessageId ?? undefined)
 
   const lookupAgentIdentity = useAgentIdentityLookup()
-  const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
+  const agentMap = useMemo(
+    () => new Map<string, AgentRecord>(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  )
   const userMap = useMemo(
     () => new Map(channelUsers.map((user) => [user.id, user])),
     [channelUsers],

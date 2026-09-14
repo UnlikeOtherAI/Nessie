@@ -30,6 +30,7 @@ export const registerAuthRefreshRoute = (
 ): void => {
   const {
     authSecret,
+    encryptionKeyRing,
     config,
     prisma,
     rateLimiter,
@@ -78,6 +79,7 @@ export const registerAuthRefreshRoute = (
     try {
       consumed = await consumeRefreshToken(prisma, {
         authSecret,
+        encryption: encryptionKeyRing,
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,

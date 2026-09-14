@@ -29,7 +29,7 @@ export type TriggerHealthDispatchPrisma = PushDeliveryPrisma &
 
 export type TriggerHealthDispatchDeps = {
   prisma: TriggerHealthDispatchPrisma
-  authSecret: string
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   webPush?: WebPushCredentials
   senders?: PushSenders
   now?: () => Date

@@ -29,7 +29,8 @@ import {
   storeToken,
   type StoredTokenMode,
 } from '../lib/storage'
-import { getBaseUrl } from '../lib/api-client'
+import { createApiClient, getBaseUrl } from '../lib/api-client'
+import { removeBrowserPushEnrollmentsOnLogout, setActiveWebPushUser } from '../lib/web-push'
 import { clearBlobCache } from '../lib/blob-cache'
 import { getSessionClientType } from '../lib/session-client'
 import {
@@ -143,6 +144,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     tokenRef.current = payload.token
     importedSessionTokenRef.current = imported ? payload.token : null
     meRef.current = payload.me
+    setActiveWebPushUser(payload.me.user.id)
     setToken(payload.token)
     setMe(payload.me)
     setBootstrapState(null)
@@ -152,6 +154,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // Synchronously remove every local bearer/auth reference; safe to call
   // before returning control to a remote finalizer.
   const commitSessionClear = useCallback((): void => {
+    setActiveWebPushUser(null)
     tokenRef.current = null
     importedSessionTokenRef.current = null
     meRef.current = null
@@ -419,6 +422,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       },
       terminate: (finalize) => sessionMutations.terminate(finalize),
       unregisterNative: unregisterNativePushDevice,
+      unregisterBrowser: () => removeBrowserPushEnrollmentsOnLogout(createApiClient(initiating.token)),
     })
   }, [importedApplyTracker, readSessionCredential, sessionMutations])
 

@@ -70,7 +70,7 @@ const cleanup = async (prisma: PrismaClient, fixture: Seed): Promise<void> => {
 /**
  * A run in `status`, carrying the executor claim the real code would have left
  * on it: a token and a heartbeat `heartbeatAgo` ago, or — when `heartbeatAgo`
- * is null — the cleared pair `releaseRunForDrain` writes on an orderly
+ * is null — the cleared pair `handBackRunExecution` writes on an orderly
  * hand-back.
  */
 const createRun = async (
@@ -326,7 +326,7 @@ runDatabaseTest('a session on a drained run waiting for its successor survives',
   const prisma = new PrismaClient()
   const fixture = await seed(prisma)
   try {
-    // What `releaseRunForDrain` leaves: `running`, no token, no heartbeat —
+    // What `handBackRunExecution` leaves: `running`, no token, no heartbeat —
     // cleared on purpose so the next worker claims the run on its very next
     // poll instead of waiting out the takeover window. The job is back on the
     // queue; a scale-in with every other worker busy is exactly the shape that

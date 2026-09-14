@@ -63,6 +63,14 @@ const ENQUEUE_RUN_EXECUTION_SITES: Record<string, 'stamps' | 'inherits' | 'unatt
   'worker/src/control/agent-run-start.ts': 'unattended',
   'worker/src/run/execute/continuation.ts': 'unattended',
   'worker/src/run/orchestrate.ts': 'inherits',
+  // `agent_conversation_start`. The destination is wherever the conversation
+  // was placed, which for the commonest case — "ask the researcher to…" — is
+  // the person's own DM with that agent, a single-member system DM. The run is
+  // enqueued `interactive: false` (nobody is at the keyboard of the *target's*
+  // turn), but the stamp is applied anyway rather than resting on that: it is
+  // the destination that decides, and `withDelegatedSystemDmIdentity` is a
+  // no-op for every shared room.
+  'worker/src/run/pa-tools/agent-conversations.ts': 'stamps',
   'worker/src/run/subtask-tools.ts': 'unattended',
 }
 

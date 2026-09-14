@@ -11,6 +11,10 @@ export const threadKeys = {
   activity: (unreadOnly = false) =>
     ['threads', 'activity', { unreadOnly }] as const,
   unreadDirectMessages: ['threads', 'unread-direct-messages'] as const,
+  // One thread read as a conversation record — the read behind a conversation
+  // card and the conversation header's title. Several cards pointing at the
+  // same thread share this key, so a feed full of references polls once.
+  conversation: (threadId?: string) => ['threads', threadId, 'conversation'] as const,
   documentStream: (threadId: string | undefined, sessionId: string) =>
     ['threads', threadId, 'documentStreams', sessionId] as const,
   documentStreams: (threadId?: string) =>

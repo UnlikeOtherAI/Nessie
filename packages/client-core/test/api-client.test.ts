@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createApiClient } from '../src/api-client.js'
+import { ChannelRecordSchema } from '@nessie/schemas'
+
+import { ApiClientError, createApiClient } from '../src/api-client.js'
 
 const withMockFetch = async (
   mock: typeof fetch,
@@ -130,6 +132,101 @@ const pageResponse = () =>
     data: [{ id: 'a' }, { id: 'b' }],
     meta: { hasMore: true, nextCursor: 'c2', prevCursor: null, total: 134 },
   })
+
+const channelRecord = {
+  createdAt: '2026-09-12T12:00:00.000Z',
+  defaultThreadId: '00000000-0000-4000-8000-000000000007',
+  id: '00000000-0000-4000-8000-000000000001',
+  label: 'Delivery',
+  lastMessageAt: null,
+  organizationId: '00000000-0000-4000-8000-000000000002',
+  projectId: '00000000-0000-4000-8000-000000000003',
+  projectName: 'Nessie',
+  teamId: '00000000-0000-4000-8000-000000000004',
+  teamName: 'Engineering',
+  type: 'standard' as const,
+  unreadCount: 0,
+  updatedAt: '2026-09-12T12:00:00.000Z',
+  viewerCanManage: true,
+  visibility: 'public' as const,
+}
+
+test('rejects a malformed successful response envelope', async () => {
+  await withMockFetch(
+    async () => Response.json({ channels: [] }),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      await assert.rejects(
+        client.get('/api/channels', ChannelRecordSchema.array()),
+        (error: unknown) => error instanceof ApiClientError
+          && error.code === 'INVALID_RESPONSE'
+          && error.status === 200,
+      )
+    },
+  )
+})
+
+for (const [description, payload] of [
+  ['a missing data property', {}],
+  ['an error-only object', { error: { code: 'NOPE', message: 'not a success envelope' } }],
+] as const) {
+  test(`generic get and getPage reject ${description}`, async () => {
+    await withMockFetch(
+      async () => Response.json(payload),
+      async () => {
+        const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+        const invalidResponse = (error: unknown): boolean => error instanceof ApiClientError
+          && error.code === 'INVALID_RESPONSE'
+          && error.status === 200
+
+        await assert.rejects(client.get('/api/thing'), invalidResponse)
+        await assert.rejects(client.getPage('/api/thing'), invalidResponse)
+      },
+    )
+  })
+}
+
+test('generic get and getPage accept an explicit null data payload', async () => {
+  await withMockFetch(
+    async () => Response.json({ data: null, futureEnvelopeField: 'accepted' }),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      assert.equal(await client.get<null>('/api/thing'), null)
+      assert.equal((await client.getPage<null>('/api/thing')).data, null)
+    },
+  )
+})
+
+test('rejects a record that omits an authoritative required field', async () => {
+  const { label: _label, ...withoutLabel } = channelRecord
+  await withMockFetch(
+    async () => Response.json({ data: [withoutLabel] }),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      await assert.rejects(
+        client.get('/api/channels', ChannelRecordSchema.array()),
+        (error: unknown) => error instanceof ApiClientError
+          && error.code === 'INVALID_RESPONSE',
+      )
+    },
+  )
+})
+
+test('accepts additive fields when a canonical record schema parses a response', async () => {
+  await withMockFetch(
+    async () => Response.json({
+      data: [{ ...channelRecord, futureServerField: 'accepted' }],
+      meta: { hasMore: false, nextCursor: null, prevCursor: null },
+    }),
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      const page = await client.getPage('/api/channels', ChannelRecordSchema.array())
+
+      assert.equal(page.data[0]?.id, channelRecord.id)
+      assert.equal('futureServerField' in (page.data[0] ?? {}), false)
+    },
+  )
+})
 
 test('getPage keeps the envelope, because a list lives in its meta', async () => {
   // `get` unwraps to `payload.data`, which is right for a record or an array

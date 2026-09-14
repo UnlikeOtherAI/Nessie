@@ -73,6 +73,23 @@ afterwards. Spec:
   nobody acts on. The reasoning is in
 [`web-search.md`](web-search.md) → "The search card"; it is the boundary of
 this standard, not an exception to it.
+- **A doorway into another conversation is not one of these either, and it is
+  live.** The conversation card — `metadata.conversationRef`
+  (`packages/schemas/src/conversation-ref.ts`, `{schemaVersion, threadId,
+  channelId, agentId}`, written **only** by the server, by
+  `agent_conversation_start` and `conversation_reference`, never from model
+  text) — is presentational for the same reason the search card is: nothing is
+  pressed and nothing resolves, so pressing it navigates. It differs from the
+  search card in the other direction: it holds **no** state at all. It renders
+  whatever `GET /api/threads/:threadId/conversation` says right now, per viewer
+  — running, queued, done, failed, or "a conversation you can't see" — because a
+  status stored in the metadata would be a snapshot that lies within a minute,
+  and because two readers of the same pointer are owed two different answers.
+  That is what keeps "a card kind per thing" unnecessary: a pointer plus a
+  viewer-scoped read is the shape, not a new `AgentCard` kind. See
+  [`reply-threads.md`](reply-threads.md) → "Container threads as conversations".
+  `AgentHandoffDoorway` stays separate for now — it points at a DM rather than a
+  thread — and folding the two is named in the plan's "Later".
 - **An action may be a same-app doorway.** An action with `href` is an internal
   router path. It claims the card before navigation, so a draft cannot remain
   open for a stale second choice. A normal `submits: true` action validates the

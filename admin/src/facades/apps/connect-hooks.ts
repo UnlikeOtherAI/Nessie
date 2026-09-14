@@ -33,6 +33,7 @@ import {
 import { isReactNativeWebView } from '../../lib/native-shell'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { APPS_QUERY_KEY } from './hooks'
+import { useReconnectAppConnection } from './connection-hooks'
 
 /**
  * Driving the universal Connect flow.
@@ -60,6 +61,8 @@ export type AppConnectScope = {
 export type AppConnectFlow = {
   /** Start a connect for this scope. */
   connect: (scope: AppConnectScope) => void
+  /** Reauthorize this exact existing account without creating another one. */
+  reconnect: (connectionId: string) => void
   /** Abandon the flow and put the panel away. */
   dismiss: () => void
   /** "Didn't open? Open it again" — re-issues the same authorization URL. */
@@ -170,50 +173,6 @@ export const useSetAppConnectionSecret = () => {
   })
 }
 
-/** Remove one connection and refresh every list/detail that can name it. */
-export const useDisconnectAppConnection = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (connectionId: string) =>
-      apiClient.delete(`/api/app-connections/${encodeURIComponent(connectionId)}`),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
-    },
-  })
-}
-
-/**
- * The detail hero removes an app by disconnecting every account it currently
- * exposes. Each request keeps the server's per-scope authorization boundary:
- * a client-side list can never remove an account the existing DELETE route
- * would reject.
- */
-export const useRemoveAppConnections = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (connectionIds: readonly string[]) => {
-      const results = await Promise.allSettled(
-        connectionIds.map((connectionId) =>
-          apiClient.delete(`/api/app-connections/${encodeURIComponent(connectionId)}`),
-        ),
-      )
-      if (results.some((result) => result.status === 'rejected')) {
-        throw new Error('One or more connected accounts could not be removed')
-      }
-    },
-    onSettled: () => {
-      // A concurrent change can reject one account after another has already
-      // been removed. Wait for every request before re-reading the app, rather
-      // than paint stale rows while sibling deletes are still in flight.
-      void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
-    },
-  })
-}
-
 export const useAppConnectFlow = (input: {
   /** Injected by tests and by a native shell; the web popup is the default. */
   launcher?: ExternalAuthLauncher
@@ -223,6 +182,7 @@ export const useAppConnectFlow = (input: {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   const connectApp = useConnectApp(slug)
+  const reconnectApp = useReconnectAppConnection()
   const [state, dispatch] = useReducer(connectReducer, initialConnectState)
 
   const launcher = useMemo(
@@ -237,7 +197,11 @@ export const useAppConnectFlow = (input: {
   )
 
   const handleRef = useRef<AuthHandle | null>(null)
-  const scopeRef = useRef<AppConnectScope | null>(null)
+  const attemptRef = useRef<
+    | { kind: 'connect'; scope: AppConnectScope }
+    | { connectionId: string; kind: 'reconnect' }
+    | null
+  >(null)
   const startedAtRef = useRef<number>(0)
 
   const forgetMarker = useCallback(() => {
@@ -301,7 +265,7 @@ export const useAppConnectFlow = (input: {
 
   const begin = useCallback(
     async (scope: AppConnectScope) => {
-      scopeRef.current = scope
+      attemptRef.current = { kind: 'connect', scope }
       startedAtRef.current = Date.now()
       dispatch({ type: 'start' })
       try {
@@ -324,6 +288,30 @@ export const useAppConnectFlow = (input: {
       }
     },
     [connectApp, launch, rememberMarker],
+  )
+
+  const beginReconnect = useCallback(
+    async (connectionId: string) => {
+      attemptRef.current = { connectionId, kind: 'reconnect' }
+      startedAtRef.current = Date.now()
+      dispatch({ type: 'start' })
+      try {
+        const result = parseAppConnectResponse(await reconnectApp.mutateAsync(connectionId))
+        if (!result) {
+          dispatch({ code: 'CONNECTION_FAILED', detail: null, type: 'failed' })
+          return
+        }
+        dispatch({ result, type: 'server_result' })
+        if (result.status === 'authorize') {
+          rememberMarker(result.connectionId, result.authorizationUrl, startedAtRef.current)
+          launch(result.authorizationUrl)
+        }
+      } catch (error) {
+        const { code, detail } = normalizeConnectError(error)
+        dispatch({ code, detail, type: 'failed' })
+      }
+    },
+    [launch, reconnectApp, rememberMarker],
   )
 
   // A flow this tab started and walked away from. Without this the page looks
@@ -452,9 +440,11 @@ export const useAppConnectFlow = (input: {
   const connect = useCallback((scope: AppConnectScope) => void begin(scope), [begin])
 
   const retry = useCallback(() => {
-    const scope = scopeRef.current
-    if (scope) void begin(scope)
-  }, [begin])
+    const attempt = attemptRef.current
+    if (!attempt) return
+    if (attempt.kind === 'connect') void begin(attempt.scope)
+    else void beginReconnect(attempt.connectionId)
+  }, [begin, beginReconnect])
 
   const reopenAuthorization = useCallback(() => {
     const url = state.authorizationUrl
@@ -470,5 +460,10 @@ export const useAppConnectFlow = (input: {
     dispatch({ type: 'reset' })
   }, [forgetMarker])
 
-  return { connect, dismiss, reopenAuthorization, retry, state }
+  const reconnect = useCallback(
+    (connectionId: string) => void beginReconnect(connectionId),
+    [beginReconnect],
+  )
+
+  return { connect, reconnect, dismiss, reopenAuthorization, retry, state }
 }

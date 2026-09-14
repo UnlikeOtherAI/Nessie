@@ -263,6 +263,26 @@
   --overlay-strong: rgba(43, 32, 24, 0.14); --scrim-weak: rgba(43, 32, 24, 0.08); --scrim: rgba(43, 32, 24, 0.18); --scrim-strong: rgba(43, 32, 24, 0.45);
 }
 
+/* Nessie, the default: the work surface is white with navy ink, and the
+   navigation around it is the icon's navy with white text. These are the
+   surface's tokens; the chrome's are re-scoped below, beside focus mode, the
+   same way focus mode splits its two palettes. */
+[data-theme="nessie"] {
+  color-scheme: light;
+  --rail: #eef2f8; --sb: #ffffff; --sb-active: #1f6feb; --ink: #0b172a;
+  --muted: #5b6b82; --line: rgba(11, 23, 42, 0.12); --main: #ffffff; --main-hover: #f3f6fb;
+  --sep: #dde3ec; --border-strong: #b3bfd0; --tx: #0b172a; --tx2: #334155;
+  --tx3: #5b6b82; --lnk: #1a66d9; --accent: #1f6feb; --accent-soft: rgba(31, 111, 235, 0.12);
+  --danger: #dc2626; --warning: #d97706; --thinking: #6d28d9; --executing: #15803d;
+  --panel: #ffffff; --panel-soft: rgba(31, 111, 235, 0.06); --accent-hover: #1858c4; --accent-strong: #12449a;
+  --on-accent: #ffffff; --surface-inverse: #ffffff; --surface-inverse-2: #eef2f8; --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.12); --success-border: rgba(21, 128, 61, 0.35); --success-text: #166534; --danger-soft: rgba(220, 38, 38, 0.1);
+  --danger-border: rgba(220, 38, 38, 0.32); --danger-text: #b91c1c; --danger-strong: #b91c1c; --warning-soft: rgba(217, 119, 6, 0.14);
+  --warning-border: rgba(217, 119, 6, 0.34); --warning-text: #92400e; --info: #0284c7; --info-soft: rgba(2, 132, 199, 0.12);
+  --info-border: rgba(2, 132, 199, 0.35); --info-text: #0369a1; --overlay-weak: rgba(11, 23, 42, 0.05); --overlay: rgba(11, 23, 42, 0.08);
+  --overlay-strong: rgba(11, 23, 42, 0.14); --scrim-weak: rgba(11, 23, 42, 0.08); --scrim: rgba(11, 23, 42, 0.18); --scrim-strong: rgba(11, 23, 42, 0.45);
+}
+
 [data-theme="contrast"] {
   color-scheme: dark;
   --rail: #000000; --sb: #050505; --sb-active: #4da3ff; --ink: #000000;
@@ -413,12 +433,75 @@ a {
     --scrim-strong 300ms var(--easing-standard);
 }
 
+/* Nessie's navy navigation. Only the chrome is re-scoped: the text tokens are
+   global, so white sidebar text needs its own scope rather than a global --tx.
+   `:where()` keeps these at focus mode's specificity, and focus mode is
+   declared after them, so turning focus on still wins. The sidebar lists are
+   matched by their surface class wherever they render — beside the content
+   on a desktop, as a phone's root page, or in the mobile drawer. */
+:where([data-theme="nessie"]) .admin-frame > .admin-topbar,
+:where([data-theme="nessie"]) .admin-frame > .admin-shell > aside,
+:where([data-theme="nessie"]) .admin-frame > .admin-shell > .resizable-sidebar,
+:where([data-theme="nessie"]) .mobile-web-home-header,
+:where([data-theme="nessie"]) .mobile-tabbar,
+:where([data-theme="nessie"]) .admin-frame > .native-chrome-palette,
+:where([data-theme="nessie"]) aside[class~='bg-[color:var(--sb)]']:not(.focus-mode *):not(.overlays-focus-mode *) {
+  /* The chrome is dark; the native shell reads this scheme (and every token
+     here) off `.native-chrome-palette` to set its status bar. */
+  color-scheme: dark;
+  --rail: #0b172a;
+  /* A step lighter than the rail and warmed toward violet, so the section
+     rail and the list it opens read as two planes. */
+  --sb: #232646;
+  --sb-active: #2f80ed;
+  --ink: #0b172a;
+  --muted: #8a9ab3;
+  --line: rgba(255, 255, 255, 0.12);
+  --main: #13223b;
+  --main-hover: #16263f;
+  --panel: #13223b;
+  --panel-soft: rgba(47, 128, 237, 0.1);
+  --sep: #1e2e48;
+  --border-strong: #2f4262;
+  --tx: #ffffff;
+  --tx2: #d5deea;
+  --tx3: #9fb0c8;
+  --lnk: #6cb6ff;
+  --accent: #2f80ed;
+  --accent-hover: #4a93f5;
+  --accent-strong: #8cc5ff;
+  --accent-soft: rgba(47, 128, 237, 0.22);
+  --on-accent: #ffffff;
+  --surface-inverse: #ffffff;
+  --surface-inverse-2: #e6ecf5;
+  --thinking: #c4b5fd;
+  /* The surface's greens and amber are sized for white; on navy a running
+     dot would sit below its "thinking" partner, so the chrome takes the dark
+     themes' shades. */
+  --executing: #22c55e;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --success-text: #86efac;
+  --danger-text: #fca5a5;
+  --warning-text: #fde68a;
+  --info: #38bdf8;
+  --info-text: #7dd3fc;
+  --overlay-weak: rgba(255, 255, 255, 0.06);
+  --overlay: rgba(255, 255, 255, 0.1);
+  --overlay-strong: rgba(255, 255, 255, 0.2);
+  --scrim-weak: rgba(0, 0, 0, 0.1);
+  --scrim: rgba(0, 0, 0, 0.2);
+  --scrim-strong: rgba(0, 0, 0, 0.5);
+  color: var(--tx);
+}
+
 /* Focus is a neutral Slack-style treatment: charcoal navigation frames a
    paper-white work surface, so the current theme's colour accents cannot turn
    messages into another source of visual noise. */
 .focus-mode > .admin-topbar,
 .focus-mode > .admin-shell > aside,
-.focus-mode > .admin-shell > .resizable-sidebar {
+.focus-mode > .admin-shell > .resizable-sidebar,
+.focus-mode > .native-chrome-palette {
   --rail: #242424;
   --sb: #383838;
   --sb-active: #606062;
@@ -759,6 +842,13 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 .admin-shell > aside,
 .admin-shell > main {
   padding-bottom: calc(var(--nessie-native-bottom-overlay, 0px) + env(safe-area-inset-bottom));
+}
+
+/* The rail keeps its account button off the window's bottom edge. Its spacing
+   lives here, not in a `pb-*` utility: the unlayered rule above beats every
+   layered Tailwind padding on this aside. */
+.admin-shell > aside.admin-sidebar-rail {
+  padding-bottom: calc(24px + var(--nessie-native-bottom-overlay, 0px) + env(safe-area-inset-bottom));
 }
 
 /* The pinned list column takes one clearance more than the surfaces above:
@@ -1958,6 +2048,18 @@ html[data-desktop-platform='linux'] #root {
 .touch-sidebar .admin-sb-item > .w-\[14px\] {
   width: 16px;
   font-size: 16px;
+}
+
+/* The rail still scrolls in a window too short for its buttons, but never
+   draws a bar: its spacer sizes the column to the viewport, so sub-pixel
+   rounding alone overflowed it by 1px and painted a full-height scrollbar
+   that also took 5px from a 65px column. */
+.admin-sidebar-rail {
+  scrollbar-width: none;
+}
+
+.admin-sidebar-rail::-webkit-scrollbar {
+  display: none;
 }
 
 .admin-rail-btn {
@@ -3677,19 +3779,28 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
-/* Kanban: pulse a card three times after it lands in a column from a drag. */
-.kanban-card-pulse {
-  animation: kanban-card-pulse 0.34s ease-in-out 3;
+/*
+ * Three short pulses to point the eye at something already on screen: a kanban
+ * card that just landed in a column from a drag, the empty conversation the
+ * "New conversation" button hands back instead of opening a second one.
+ *
+ * One class rather than one per surface — it was `kanban-card-pulse`, used in
+ * exactly one place, and a second copy for the conversation row is the drift
+ * the design system exists to stop. It is a ring and nothing else: the 1.04
+ * scale it used to carry moved a full-width row far enough to give its column
+ * a horizontal scrollbar for the length of the animation, and a colour pulse
+ * is also the half of it that reduced-motion readers can keep.
+ */
+.admin-attention-pulse {
+  animation: admin-attention-pulse 0.34s ease-in-out 3;
 }
 
-@keyframes kanban-card-pulse {
+@keyframes admin-attention-pulse {
   0%,
   100% {
-    transform: scale(1);
     box-shadow: 0 0 0 0 var(--accent-soft);
   }
   50% {
-    transform: scale(1.04);
     box-shadow: 0 0 0 4px var(--accent-soft);
   }
 }

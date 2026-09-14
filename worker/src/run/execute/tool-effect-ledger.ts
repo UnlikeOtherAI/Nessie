@@ -312,7 +312,7 @@ const loadEffect = (
  * status that says this run id will never be resumed again.
  */
 export const clearRunToolEffects = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   runId: string,
 ): Promise<void> => {
   await prisma.runToolEffect.deleteMany({ where: { runId } })

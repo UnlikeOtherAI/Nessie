@@ -30,13 +30,27 @@ Nessie's own metadata rows and never touches Infisical. Only writes need it.
 
 So an operator is not misled into thinking a missing vault breaks everything:
 connector and OAuth credentials are a **separate legacy store** and are
-unaffected. MCP connector secrets and OAuth access/refresh tokens, Slack/Gmail
-comms tokens, Browserbase keys, and APNs/FCM push secrets are AES-256-GCM
-encrypted at rest in PostgreSQL under the deployment's `NESSIE_AUTH_SECRET`,
-addressed by opaque `secret_*` / `credentialRef` pointers. That is the
-migration concern named under "Authority split" below, not a second vault. Org
+unaffected. UOA refresh credentials, MCP OAuth access/refresh tokens, and
+APNs/FCM push secrets use purpose-bound AES-256-GCM envelopes under the
+deployment's independently versioned encryption key ring, addressed by opaque
+`secret_*` / `credentialRef` pointers. An envelope records its key version and
+purpose; a retained previous root is read then replaced under the active version
+before that root is retired. This is the migration concern named under
+"Authority split" below, not a second vault. Org
 inference-provider keys and the deployment model key are environment variables
 and are likewise unaffected.
+
+The durable at-rest inventory is intentionally explicit: UOA session refresh
+credentials; MCP OAuth, MCP credential, push, browser and dashboard references;
+product webhook secrets; board-source credentials and webhook secrets;
+communications credentials; connected-mail passwords; cloud-browser session
+capabilities; and executor command payloads/results. The operator-only
+`pnpm --filter @nessie/api rotate:at-rest-secrets` command authenticates and
+rewrites that complete inventory. Its required deploy-old-and-new, report,
+zero-conflict, and retirement sequence is the authoritative configuration
+runbook in [deployment/configuration.md](deployment/configuration.md#at-rest-encryption-rotation).
+
+One-way verifier hashes, including `ownershipProofHash`, are intentionally outside this inventory: they cannot be decrypted or re-encrypted and are not encrypted-at-rest secret material.
 
 ## Security invariant
 

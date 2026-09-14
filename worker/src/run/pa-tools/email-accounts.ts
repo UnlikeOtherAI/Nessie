@@ -15,6 +15,7 @@ import {
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember, type ActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
+import { resolveWorkerAtRestKeyRing } from '../../at-rest-key-ring.js'
 
 type EmailAccountKind = 'provider' | 'mailbox'
 
@@ -36,11 +37,7 @@ const requireAccountKind = (value: unknown): EmailAccountKind => {
   return value
 }
 
-const encryptionSecret = (): string => {
-  const secret = process.env.NESSIE_AUTH_SECRET
-  if (!secret) throw new Error('NESSIE_AUTH_SECRET is not configured')
-  return secret
-}
+const encryptionSecret = () => resolveWorkerAtRestKeyRing()
 
 const providerLabel = (provider: string): string =>
   provider === 'google' ? 'Google' : provider === 'microsoft' ? 'Microsoft' : provider

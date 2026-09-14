@@ -95,7 +95,7 @@ const contextFor = (prisma: PrismaClient, s: Seed): McpToolContext => ({
     actor: { actorId: s.userId, actorType: 'user', roles: ['owner'] },
     tenant: { organizationId: s.organizationId, projectId: s.projectId },
   }),
-  authSecret: 'test-secret',
+  encryptionKeyRing: { activeVersion: 'test', keys: { test: 'mcp-publish-encryption-root' } },
   checkPolicy: async () => ({ allowed: true, reasonCode: 'ALLOWED' }),
   getTask: async () => null,
   isProjectAccessibleToActor: async () => true,

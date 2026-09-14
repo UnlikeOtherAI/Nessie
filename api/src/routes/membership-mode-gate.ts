@@ -4,11 +4,18 @@ import type { FastifyReply } from 'fastify'
 import { sendApiError } from '../lib/api.js'
 
 /**
- * Org/project/team membership and roles are owned by the identity provider
+ * Organisation and team membership and roles are owned by the identity provider
  * wherever one binds the tenant being acted on: the local rows are a projection
  * of the verified session claims (`services/uoa-roles.ts`), and a local write
  * would be silently reverted — or, worse, survive as a second authority — at
  * the next login or token rotation. Refuse it instead of pretending it took.
+ *
+ * **Project membership is not covered.** A project is a Nessie construct UOA
+ * has never heard of, so `POST`/`DELETE /api/projects/:projectId/members` manage
+ * it locally in every organisation. The one exception — the anchor project a
+ * UOA-bound team carries, whose rows sign-in projects — is refused by the
+ * project routes themselves (`TEAM_PROJECT_MEMBERSHIP_MANAGED_BY_SSO`), not by
+ * this gate.
  *
  * **The predicate is the acting tenant's binding, not the deployment mode.**
  * `config.mode` was a proxy for it that failed in both directions (2026-09-05
@@ -40,7 +47,7 @@ const refuse = (reply: FastifyReply): boolean => {
 }
 
 /**
- * Returns `true` when the caller may manage membership locally, i.e. when the
+ * Returns `true` when the caller may manage organisation or team membership locally, i.e. when the
  * organisation — and, for a team write, the team — carries no external binding.
  *
  * A `teamId` that does not resolve inside this organisation is deliberately not

@@ -57,7 +57,6 @@ const REASON = 'Swallowed before the app-wide MutationCache.onError default (aud
 const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'components/features/agents/AgentOwnershipState.tsx': REASON,
   'components/features/agents/AgentTriggerPanel.tsx': REASON,
-  'components/features/apps/AppConnectionsList.tsx': REASON,
   'components/features/billing/UoaBillingCreditsPanel.tsx': REASON,
   'components/features/billing/UoaBillingRecurringAddonsPanel.tsx': REASON,
   'components/features/channels/AppSetupCard.tsx': REASON,
@@ -85,7 +84,6 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'components/features/projects/kanban/ArchiveDoneMenu.tsx': REASON,
   'components/features/projects/kanban/TaskDocuments.tsx': REASON,
   'components/shared/ChannelMembersPopup.tsx': REASON,
-  'components/shared/CreateProjectDialog.tsx': REASON,
   'components/shared/ProjectMembersDialog.tsx': REASON,
   'facades/channels/dm-navigation.ts': REASON,
   'layouts/admin-shell/AlertsBell.tsx': REASON,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import test from 'node:test'
-import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, encryptWithKeyRing } from '@nessie/runtime'
 import type {
   ApnsCredentials,
   PushPayload,
@@ -16,8 +16,13 @@ import {
 import type { PushSenders } from '../src/control/push-delivery-core.js'
 
 const AUTH_SECRET = 'test-auth-secret'
+const ENCRYPTION_KEY_RING = {
+  activeVersion: 'test-key',
+  keys: { 'test-key': 'test-at-rest-encryption-root' },
+  legacyKey: AUTH_SECRET,
+} as const
 
-const encrypt = (plaintext: string) => encryptWithKey(deriveSecretKey(AUTH_SECRET), plaintext)
+const encrypt = (plaintext: string) => encryptWithKeyRing(ENCRYPTION_KEY_RING, AT_REST_SECRET_PURPOSE.pushCredential, plaintext)
 
 type OrgMember = { userId: string; role: 'owner' | 'admin' | 'member'; deactivatedAt: Date | null }
 type ScopeMember = { userId: string; role: 'owner' | 'admin' | 'member' }
@@ -162,7 +167,7 @@ test('notifies only active organisation owners for a team budget', async () => {
   const { senders, apnsCalls } = recordingSenders()
 
   const summary = await handleBudgetAlertDispatch(
-    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders, retryDelayMs: () => 0 },
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders, retryDelayMs: () => 0 },
     teamPayload(),
   )
 
@@ -185,7 +190,7 @@ test('respects push preferences (pushEnabled=false is suppressed)', async () => 
   const { senders, apnsCalls } = recordingSenders()
 
   await handleBudgetAlertDispatch(
-    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders, retryDelayMs: () => 0 },
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders, retryDelayMs: () => 0 },
     teamPayload(),
   )
 
@@ -210,7 +215,7 @@ test('org-scoped budget notifies owners', async () => {
   const { senders, apnsCalls } = recordingSenders()
 
   await handleBudgetAlertDispatch(
-    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders, retryDelayMs: () => 0 },
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders, retryDelayMs: () => 0 },
     { ...teamPayload(), scopeType: 'organization', scopeId: 'org-1', scopeLabel: 'Acme' },
   )
 
@@ -228,7 +233,7 @@ test('budget alerts include the Ops usage deep link in native payloads', async (
   const { senders, apnsPayloads } = recordingSenders()
 
   await handleBudgetAlertDispatch(
-    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders, retryDelayMs: () => 0 },
+    { prisma: makeFakePrisma(state), encryptionKeyRing: ENCRYPTION_KEY_RING, senders, retryDelayMs: () => 0 },
     { ...teamPayload(), scopeType: 'organization', scopeId: 'org-1', scopeLabel: 'Acme' },
   )
 

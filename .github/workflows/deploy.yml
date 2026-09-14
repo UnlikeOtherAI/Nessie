@@ -1,10 +1,11 @@
 name: Deploy
 
-# Auto-deploy to the self-hosted Hetzner production host on every push to main.
-# Syncs the working tree to /srv/nessie and runs the redeploy script (rebuild
-# images, apply migrations, recreate containers). See docs/deployment.md.
+# Production is woken by completed main CI, then promotes the exact current
+# main SHA that has passed that CI. See docs/deployment.md.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -13,12 +14,58 @@ on:
 # while another run's build/redeploy is still reading it. GitHub keeps only the
 # newest PENDING run per group, so under heavy merge traffic intermediate
 # queued deploys show as "cancelled" — that is subsumption, not lost work: the
-# newer run deploys a tree that already contains their commits.
+# newer run deploys a tree that already contains their commits. Failed,
+# cancelled, untrusted and non-main events receive unique ignored groups, so
+# they cannot cancel a pending eligible deploy before the gate skips them. The
+# gate resolves the current verified main SHA *after* this slot is acquired:
+# a delayed older successful CI event therefore cannot lose a newer deploy.
 concurrency:
-  group: deploy-production
+  group: >-
+    ${{
+      (
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.name == 'CI'
+          && github.event.workflow_run.event == 'push'
+          && github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.head_branch == 'main'
+          && github.event.workflow_run.repository.full_name == github.repository
+          && github.event.workflow_run.head_repository.full_name == github.repository)
+      )
+      && 'deploy-production'
+      || format('deploy-production-ignored-{0}', github.run_id)
+    }}
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Resolve verified main SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      eligible: ${{ steps.resolve.outputs.eligible }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      # This checkout carries no deploy credentials. The gate script comes from
+      # the trusted main branch rather than an event-provided revision.
+      - name: Checkout gate policy
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: main
+
+      - name: Resolve current verified main SHA
+        id: resolve
+        env:
+          DEPLOY_EVENT_NAME: ${{ github.event_name }}
+          DEPLOY_REF: ${{ github.ref }}
+          DEPLOY_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/deploy-gate.mjs >> "$GITHUB_OUTPUT"
+
   # Images are built HERE, on GitHub runners, never on the production host.
   # Building on the box drove its 8-core CPU to load ~340 with 0% idle for the
   # length of every deploy, and the live site timed out through Caddy while it
@@ -26,6 +73,8 @@ jobs:
   # answer with. The host now only pulls a finished image and swaps.
   build:
     name: Build ${{ matrix.name }} image
+    needs: gate
+    if: needs.gate.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -50,6 +99,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -73,7 +124,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           build-args: ${{ matrix.build-args }}
-          tags: ${{ steps.repo.outputs.prefix }}-${{ matrix.name }}:${{ github.sha }}
+          tags: ${{ steps.repo.outputs.prefix }}-${{ matrix.name }}:${{ needs.gate.outputs.sha }}
           secrets: |
             "deep_agent_read_token=${{ secrets.DEEP_AGENT_READ_TOKEN }}"
           # Scoped per image so the three matrix legs don't evict each other.
@@ -82,7 +133,7 @@ jobs:
 
   deploy:
     name: Deploy to Hetzner
-    needs: build
+    needs: [gate, build]
     runs-on: ubuntu-latest
     # Now that the host only pulls and swaps, a deploy is minutes. Without a
     # timeout a hung ssh holds the deploy-production concurrency slot for the
@@ -99,6 +150,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
 
       - name: Set up SSH
         env:
@@ -180,7 +233,7 @@ jobs:
           # credential is stored on the box.
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_USER: ${{ github.actor }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ needs.gate.outputs.sha }}
           IMAGE_OWNER: ${{ github.repository_owner }}
         run: |
           IMAGE_REPO="ghcr.io/$(echo "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')/nessie"

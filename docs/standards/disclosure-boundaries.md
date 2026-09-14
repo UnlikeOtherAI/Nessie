@@ -88,12 +88,51 @@ Facts not restated there:
   share affordance goes only to a reader who satisfies the basis directly,
   never a grant recipient. The WS/SSE terminal events carry `restricted: true`
   instead of a preview.
+- The agent Messages tab merges at most 100 ordered candidates from two
+  independently indexed history arms. Direct messages read at most 101 rows;
+  run-derived messages read at most 101 rows for each distinct conversation the
+  agent ran in, then merge in the database service. This bounds work by the
+  agent's conversations rather than by any conversation's complete history; a
+  very widely deployed agent therefore costs proportionally more per page. It
+  resolves the viewer once, checks destination-channel reach in that same
+  bounded read, and uses the runtime's page-wide grant accessor, including
+  histories whose rows land in different destination channels. Its encrypted
+  continuation is bound to the current agent, organization and user, so it may
+  advance past withheld candidates without exposing their keys, counts, or
+  metadata. A later page always re-evaluates live membership, grants and grant
+  expiry; a revoked grant therefore withholds the row on that request rather
+  than trusting a prior page.
 - A manual share publishes the content-free `message.disclosure.changed` event
   to the destination channel scopes. Open readers refetch the reply through
   the current predicate; granting it never puts its text on the realtime wire.
 - A task, plan, or child-agent activity row linked to a run is a retained run
   output: its reader must satisfy both the run channel entitlement and that
   run's disclosure basis. A task without a run keeps ordinary task visibility.
+  That holds on every read that returns the row, list or single: the task list,
+  the task detail, the board task list (`listBoardTasksForUser`,
+  `api/src/services/tasks.ts`, used by `GET
+  /api/projects/:projectId/boards/:boardId/tasks` and the MCP
+  `nessie_board_get`) all leave an unreadable row out. `listBoardTasks`
+  (`@nessie/team-admin`) is unscoped placement and must not be returned to a
+  viewer directly.
+- Message search reach is the same for every role — organisation and team
+  owners and admins included — and follows Slack/Teams: public standard
+  channels plus the conversations the searcher is a member of. A direct message
+  or a system room (`systemChannelType` set: Personal Assistant, agent mailbox,
+  external agent) is participant-only even when its visibility says public
+  (`searchMessages`, `api/src/services/message-search.ts`). The channel read
+  predicate (`getVisibleChannel`, `api/src/lib/request-helpers.ts`) must stay
+  aligned with this rule. Both leave out a soft-deleted channel
+  (`Channel.deletedAt`, stamped by a channel delete and by its project's
+  delete) for every searcher, members of it included.
+- `buildVisibleChannelWhere` (`worker/src/run/pa-tools/access.ts`) returns a
+  top-level `OR`. Combine it with other predicates through `AND: [...]`, never by
+  spreading it beside a second `OR`: the later key replaces the visibility rule
+  and the query returns private channels the person never joined (this is how
+  `channel_find` leaked). It also carries `deletedAt: null`, so every worker
+  reader built on it — `channel_list` with `includeArchived`, attachments,
+  message destinations, conversation search — never reaches a soft-deleted
+  channel.
 - A shared agent with private-conversation material cannot place that material
   into an external browser URL or page (`browser_open` and `browser_act`). Those
   browser verbs have no original-author-bound, exact-content disclosure grant;
@@ -128,9 +167,10 @@ Facts not restated there:
   run receives its bytes. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
-  `canManageChannel` (`api/src/services/channel-members.ts`), the same gate
-  renaming and archiving take, with one carve-out — a person may always remove
-  themselves.
+  `canModifyChannel` (`packages/team-admin/src/resource-authority.ts`, applied
+  in `api/src/services/channel-members.ts`), the same gate renaming and
+  archiving take — any member of the channel, or an organisation owner or
+  admin — with one carve-out: a person may always remove themselves.
 - Spec and build status:
   [docs/plans/2026-08-11-disclosure-boundaries-build.md](../plans/2026-08-11-disclosure-boundaries-build.md).
 - `@nessie/runtime`'s `publishMessageEnvelope` (`packages/runtime/src/message-envelope.ts`)
@@ -147,3 +187,11 @@ Facts not restated there:
   memoized for `REALTIME_ENTITLEMENT_TTL_MS` (5 s) so a token-per-delta stream
   costs one query per window rather than one per token; a revocation stops the
   stream within that same 5-second window, not at connect time.
+- Deactivation keeps `ChannelMember` rows as history, and `getVisibleChannel`
+  asks only "public, or a member". So the per-connection channel gate in
+  `api/src/realtime/notification-delivery.ts` — which the WS, user-SSE and
+  thread-stream lanes all ask — first requires the memoized organisation gate
+  (`canAccessOrganizationEvent`: an `OrganizationMember` row with
+  `deactivatedAt: null`). A deactivated member's open stream stops within one
+  window, at the cost of at most one extra membership query per window per
+  connection.

@@ -71,7 +71,7 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
  */
 const PROJECT_INTENT: SurfaceIntent = {
   consume: [...KNOWLEDGE_INTENT.consume ?? [], 'connect'],
-  state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source'],
+  state: [...KNOWLEDGE_INTENT.state ?? [], 'board', 'section', 'source', 'task'],
 }
 
 export const SURFACES: Surface[] = [
@@ -198,6 +198,26 @@ export const SURFACES: Surface[] = [
     type: 'nested',
   },
   {
+    // One conversation with the room's agent — a second thread in the same
+    // channel (docs/plans/2026-09-08-agent-conversations.md). It is a pushed
+    // detail under the room on `single`, so Back returns to the room's General
+    // thread rather than to the Channels root; on `split` the page swaps the
+    // feed in place, which is what `splitInline` says.
+    depth: 2,
+    fillsViewport: true,
+    identityOf: (match) => `channel:${match[1]}`,
+    keyScope: () => 'channel',
+    parentOf: (match) => ({
+      label: 'Back to conversation',
+      pathname: `/channels/${match[1]}`,
+    }),
+    pattern: /^\/channels\/([^/]+)\/threads\/([^/]+)$/,
+    root: CHANNELS_ROOT,
+    section: 'channels',
+    splitInline: true,
+    type: 'nested',
+  },
+  {
     // The conversation. Its Messages / Files / Automations / Agents strip is
     // component state, not routes, so there is nothing to classify beneath it.
     // It fills the viewport: a fixed header and bottom-anchored composer with a
@@ -239,6 +259,17 @@ export const SURFACES: Surface[] = [
     type: 'root',
   },
   {
+    // Every project in the organisation, including ones the viewer is not in
+    // (name, description and members only). Before the project rows below,
+    // which would otherwise read `directory` as a project id.
+    depth: 1,
+    parentOf: toProjects,
+    pattern: /^\/projects\/directory$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'detail',
+  },
+  {
     depth: 3,
     identityOf: (match) => `project-board-settings:${match[1]}:${match[2]}`,
     intent: { state: ['tab'] },
@@ -277,7 +308,8 @@ export const SURFACES: Surface[] = [
     keyScope: () => 'project',
     intent: PROJECT_INTENT,
     parentOf: toProjects,
-    pattern: /^\/projects\/([^/]+)(?:\/board)?$/,
+    // `directory` is the organisation-wide project list above, never an id.
+    pattern: /^\/projects\/(?!directory(?:\/|$))([^/]+)(?:\/board)?$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'tabHost',

@@ -145,7 +145,7 @@ export const resolveMailboxForToolCall = async (
 export const openMailboxEndpoints = async (
   prisma: PrismaClient,
   mailbox: ReachableMailbox,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): Promise<MailboxEndpoints> =>
   mailboxEndpointsFor(prisma, mailbox.connection, encryptionSecret)
 

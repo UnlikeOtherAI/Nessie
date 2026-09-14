@@ -55,6 +55,9 @@ restated there:
   body (the cause stays behind the deep link, so a lock-screen notification
   cannot carry a provider error). The alert is revalidated on read
   (`visibleUserAlertWhere`), so it stops surfacing once the trigger is healthy.
+  Every trigger doorway uses `triggerUrl` and its `#trigger-<id>` consumed
+  anchor, so a bell click selects the failed trigger and exposes its recovery
+  controls rather than opening an unselected list.
 - `POST /api/triggers/:id/reauthorize` refuses and names a changed team;
   an owner taking over somebody else's schedule is a separate explicit act. It
   is the only recovery path: editing preserves the server-owned identity by
@@ -67,3 +70,13 @@ restated there:
   dedupe keys are namespaced by the route's own server-decided source — the
   scheduler's keys are predictable, and a caller could otherwise pre-create a
   delivery and silently cancel a future occurrence.
+
+- A failed workflow run writes one `workflow_run_failed` `UserAlert` per live
+  recipient before attempting optional push delivery. Its `(user_id, event_key)`
+  key is `workflow-run-failure:<run id>`, so a redelivered job cannot ring the
+  bell twice. The alert relates to the failed run and retains its delivery
+  channel, while reads traverse the run's installation and its **current**
+  channel to re-check the same workflow-read entitlement as the run route. Its
+  doorway is the exact run in the Failed runs surface
+  (`/agents/workflows?failedRuns=1&run=<id>`), which is safe to open cold and
+  does not depend on a registered device.

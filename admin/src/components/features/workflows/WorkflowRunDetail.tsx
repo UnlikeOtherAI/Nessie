@@ -28,6 +28,7 @@ import {
  */
 
 type WorkflowRunDetailProps = {
+  isWorkflowAdmin: boolean
   workflowRunId: string
 }
 
@@ -53,7 +54,10 @@ const JsonDetails = ({ label, value }: { label: string; value: unknown }) => {
 const stepActionButton =
   'admin-button admin-button-secondary admin-button-compact'
 
-export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => {
+export const WorkflowRunDetail = ({
+  isWorkflowAdmin,
+  workflowRunId,
+}: WorkflowRunDetailProps) => {
   const runQuery = useWorkflowRun(workflowRunId)
   const cancelRun = useCancelWorkflowRun()
   const retryRun = useRetryWorkflowRun()
@@ -95,7 +99,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
                   ) : null}
                 </div>
                 <div className="flex flex-shrink-0 gap-2">
-                  {isActiveRun(run.status) ? (
+                  {isWorkflowAdmin && isActiveRun(run.status) ? (
                     <button
                       className="admin-button admin-button-secondary"
                       disabled={cancelRun.isPending}
@@ -105,7 +109,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
                       {cancelRun.isPending ? 'Cancelling…' : 'Cancel'}
                     </button>
                   ) : null}
-                  {isTerminalRun(run.status) ? (
+                  {isWorkflowAdmin && isTerminalRun(run.status) ? (
                     <button
                       className="admin-button admin-button-primary"
                       disabled={retryRun.isPending}
@@ -136,10 +140,13 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
                 <RowList className="mt-3" label="Steps">
                   {steps.map((step) => {
                     const canSkip =
+                      isWorkflowAdmin &&
                       isActiveRun(run.status) &&
                       (step.status === 'pending' || step.status === 'blocked')
-                    const canBlock = isActiveRun(run.status) && step.status === 'pending'
-                    const canUnblock = isActiveRun(run.status) && step.status === 'blocked'
+                    const canBlock =
+                      isWorkflowAdmin && isActiveRun(run.status) && step.status === 'pending'
+                    const canUnblock =
+                      isWorkflowAdmin && isActiveRun(run.status) && step.status === 'blocked'
                     const stepDuration = formatDuration(step.startedAt, step.finishedAt)
 
                     return (

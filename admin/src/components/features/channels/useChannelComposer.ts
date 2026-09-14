@@ -27,9 +27,18 @@ import {
 } from './composer-draft'
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
+import { useMentionInviteGate, type MentionInviteController } from './useMentionInviteGate'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
+  /**
+   * The thread this composer posts into — the conversation on screen, which is
+   * the room's General thread only when no other one is open. Explicit rather
+   * than derived from the channel: a channel now holds many threads, and a
+   * composer that resolved its own would post into General from inside a
+   * conversation (docs/plans/2026-09-08-agent-conversations.md).
+   */
+  activeThreadId: string | undefined
   threadMessages: ThreadMessageRecord[]
   currentUserId: string | undefined
   // Optional per-send extras (reply-thread routing, #233) read at send time so
@@ -64,6 +73,8 @@ interface UseChannelComposerResult {
   secretCapture: SecretCapture | null
   confirmSecretCapture: (secret: SecretRecord) => Promise<void>
   dismissSecretCapture: () => void
+  // The invite-before-send question for people who cannot read this channel.
+  mentionInvite: MentionInviteController
 }
 
 const newClientMessageId = (): string =>
@@ -83,12 +94,13 @@ export type SecretCapture = {
 
 export const useChannelComposer = ({
   activeChannel,
+  activeThreadId,
   threadMessages,
   currentUserId,
   draftKey,
   getSendExtras,
 }: UseChannelComposerParams): UseChannelComposerResult => {
-  const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
+  const sendMessage = useSendMessage(activeThreadId)
   const uploadAttachment = useUploadAttachment()
   const attachments = useComposerAttachments()
   const bindAgent = useBindAgent()
@@ -177,12 +189,14 @@ export const useChannelComposer = ({
     setInviteErrors({})
     setSendError(null)
     setSecretCapture(null)
-    // A different conversation is a different post: never carry one channel's
-    // idempotency key into the next.
+    // A different conversation is a different post: never carry one thread's
+    // idempotency key into the next. A second conversation with the same agent
+    // in the same room is a different thread, not a different channel, so the
+    // thread is part of this identity too.
     clientMessageIdRef.current = null
-  }, [activeChannel?.id])
+  }, [activeChannel?.id, activeThreadId])
 
-  const sendText = useCallback(
+  const deliverText = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {
       const text = rawText.trim()
       const attachmentIds = attachments.attachmentIds
@@ -282,6 +296,38 @@ export const useChannelComposer = ({
       }
     },
     [activeChannel, attachments, clearDraft, sendMessage, getSendExtras, setMessage],
+  )
+
+  // A held draft goes back into the editor, so Cancel leaves it where it was.
+  const restoreDraft = useCallback((text: string) => {
+    setMessage(text)
+    mentionRef.current?.setText(text)
+  }, [setMessage])
+  const mentionGate = useMentionInviteGate({
+    activeChannel,
+    currentUserId,
+    deliver: deliverText,
+    restoreDraft,
+  })
+  const { clearToSend } = mentionGate
+
+  // Asks before a post that @mentions somebody who cannot read the channel.
+  // A draft the delivery path would refuse anyway (too long, carrying a
+  // secret, empty) goes straight there, so its own dialog comes first.
+  const sendText = useCallback(
+    async (rawText: string, agentMentions: AgentMention[] = []) => {
+      const text = rawText.trim()
+      if (text && text.length <= CHAT_MESSAGE_MAX_CHARS && !detectSecrets(text)[0]) {
+        try {
+          if (!(await clearToSend(text, agentMentions))) return
+        } catch (error) {
+          setSendError(error instanceof Error ? error.message : 'Could not send this message.')
+          return
+        }
+      }
+      await deliverText(rawText, agentMentions)
+    },
+    [clearToSend, deliverText],
   )
 
   const insertEmoji = useCallback((emoji: string) => {
@@ -446,5 +492,6 @@ export const useChannelComposer = ({
     secretCapture,
     confirmSecretCapture,
     dismissSecretCapture: () => setSecretCapture(null),
+    mentionInvite: mentionGate.controller,
   }
 }

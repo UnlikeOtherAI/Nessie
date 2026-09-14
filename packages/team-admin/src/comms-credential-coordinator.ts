@@ -4,10 +4,12 @@ import {
   type GoogleCapabilityId,
 } from '@nessie/schemas'
 import {
+  AT_REST_SECRET_PURPOSE,
   computeScopeHash,
   openSecret,
   resolveConnector,
   sealSecret,
+  toEncryptionKeyRing,
   type CommunicationsConnector,
   type ConnectorConnectionContext,
   type CredentialBundle,
@@ -48,7 +50,7 @@ const toStringArray = (value: Prisma.JsonValue): string[] =>
  */
 export const buildCommsConnectorContext = (
   connection: ConnectionWithCredential,
-  encryptionSecret: string,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
 ): ConnectorConnectionContext => {
   if (!connection.credential) {
     throw new CommsCredentialCoordinatorError('CREDENTIAL_MISSING')
@@ -64,11 +66,13 @@ export const buildCommsConnectorContext = (
       accessToken: openSecret(
         encryptionSecret,
         connection.credential.accessTokenCiphertext,
+        AT_REST_SECRET_PURPOSE.commsCredential,
       ),
       refreshToken: connection.credential.refreshTokenCiphertext
         ? openSecret(
             encryptionSecret,
             connection.credential.refreshTokenCiphertext,
+            AT_REST_SECRET_PURPOSE.commsCredential,
           )
         : undefined,
       expiresAt: connection.credential.expiresAt?.toISOString(),
@@ -116,7 +120,7 @@ type LoadedCredential = {
  */
 const readConnectionCredential = async (
   prisma: PrismaClient,
-  input: { connectionId: string; encryptionSecret: string },
+  input: { connectionId: string; encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput },
 ): Promise<LoadedCredential> => {
   const current = await prisma.commsConnection.findUnique({
     where: { id: input.connectionId },
@@ -146,7 +150,7 @@ const storeRefreshedCredential = async (
   prisma: PrismaClient,
   input: {
     connectionId: string
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     refreshed: CredentialBundle
     seenAt: Date
   },
@@ -158,11 +162,17 @@ const storeRefreshedCredential = async (
         accessTokenCiphertext: sealSecret(
           input.encryptionSecret,
           input.refreshed.accessToken,
+          AT_REST_SECRET_PURPOSE.commsCredential,
         ),
         refreshTokenCiphertext: input.refreshed.refreshToken
-          ? sealSecret(input.encryptionSecret, input.refreshed.refreshToken)
+          ? sealSecret(
+            input.encryptionSecret,
+            input.refreshed.refreshToken,
+            AT_REST_SECRET_PURPOSE.commsCredential,
+          )
           : null,
         expiresAt: parseExpiry(input.refreshed.expiresAt),
+        keyVersion: toEncryptionKeyRing(input.encryptionSecret).activeVersion,
         scopeHash: computeScopeHash(input.refreshed.scopes),
       },
     })
@@ -204,7 +214,7 @@ const refreshSelectedConnection = async (
   input: {
     connectionId: string
     connector: CommunicationsConnector
-    encryptionSecret: string
+    encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
     now: Date
   },
 ): Promise<ConnectorConnectionContext> => {
@@ -264,7 +274,7 @@ export type LoadUserGoogleCredentialInput = {
    * recoverable mistake.
    */
   connectionId?: string
-  encryptionSecret: string
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   connector?: CommunicationsConnector
   now?: Date
 }

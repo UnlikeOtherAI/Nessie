@@ -7,6 +7,16 @@ import {
   userMessageForFailureReason,
 } from './error-classification.js'
 import { ProviderInvocationError } from '@nessie/runtime'
+import { EmptyProviderResponseError } from './output-finalization.js'
+
+test('an exhausted empty-provider recovery is terminal', () => {
+  const error = new EmptyProviderResponseError()
+  assert.equal(classifyError(error), 'empty_response')
+  assert.deepEqual(resolveRecovery('empty_response', 0, { remaining: 6, total: 6 }), {
+    action: 'surface_error',
+    userMessage: userMessageForFailureReason('empty_response'),
+  })
+})
 
 test('missing model credentials tell the user how to resolve the problem', () => {
   const error = new Error('Missing API key for provider kimi')

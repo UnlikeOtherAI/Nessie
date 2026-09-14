@@ -1,11 +1,13 @@
 import crypto from 'node:crypto'
 
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 
 import {
-  decryptWithKey,
-  deriveSecretKey,
-  encryptWithKey,
+  decryptWithKeyRing,
+  encryptWithKeyRing,
+  toEncryptionKeyRing,
+  AT_REST_SECRET_PURPOSE,
+  type EncryptionKeyRingInput,
 } from '@nessie/runtime'
 
 import { assertMcpUrlSafe, pinnedMcpFetch } from './mcp-security.js'
@@ -22,8 +24,8 @@ import {
  * The in-memory stub (`inMemorySecretStoreStub`) only mints opaque refs and
  * drops the token material, which is why `registerMcpRoutes` refuses to boot
  * with it under `NODE_ENV=production`. This store persists the token bundle in
- * Postgres, encrypted at rest with AES-256-GCM under a key derived from the
- * deployment's auth secret, so completing an OAuth handshake durably stores the
+ * Postgres, encrypted at rest with AES-256-GCM under a versioned, purpose-bound
+ * deployment key ring, so completing an OAuth handshake durably stores the
  * credentials instead of silently losing them.
  *
  * **Automatic refresh:** OAuth bundles carry their refresh metadata
@@ -51,13 +53,38 @@ type StoredBundle = {
   resource?: string
 }
 
+type StoredSecretRow = {
+  authTag: string
+  ciphertext: string
+  iv: string
+  ref: string
+}
+
+const MCP_SECRET_LOCK_TIMEOUT_MS = 15_000
+
+/**
+ * Serializes one durable MCP secret across API and worker replicas. The lock is
+ * held while a provider can rotate the refresh token, so a maintenance
+ * re-encryption cannot win the ciphertext CAS and discard that new credential.
+ */
+export const withMcpOAuthSecretLock = async <T>(
+  prisma: PrismaClient,
+  ref: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> => prisma.$transaction(async (tx) => {
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`mcp-oauth-secret:${ref}`}, 0))`,
+  )
+  return work(tx)
+}, { timeout: MCP_SECRET_LOCK_TIMEOUT_MS })
+
 /**
  * Build a Postgres-backed, encrypted {@link SecretStore}. Inject the result as
  * `oauthSecretStore` into `registerMcpRoutes`.
  */
 export const createPgSecretStore = (
   prisma: PrismaClient | Prisma.TransactionClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   options: {
     /**
      * Ref prefix for minted secrets. Must start with `secret_` so refs stay
@@ -65,13 +92,20 @@ export const createPgSecretStore = (
      * assistant-collected credentials use `secret_mcp_`.
      */
     refPrefix?: string
+    /** Stable at-rest domain for this opaque-reference family. */
+    purpose?: string
   } = {},
 ): SecretStore => {
   const refPrefix = options.refPrefix ?? 'secret_oauth_'
   if (!refPrefix.startsWith('secret_')) {
     throw new Error(`Secret ref prefix must start with "secret_", got "${refPrefix}"`)
   }
-  const key = deriveSecretKey(encryptionSecret)
+  const purpose = options.purpose ?? (
+    refPrefix === 'secret_mcp_'
+      ? AT_REST_SECRET_PURPOSE.mcpCredential
+      : AT_REST_SECRET_PURPOSE.mcpOauth
+  )
+  const keyRing = toEncryptionKeyRing(encryption)
   return {
     put: async (input) => {
       const ref = `${refPrefix}${crypto.randomBytes(16).toString('hex')}`
@@ -89,7 +123,11 @@ export const createPgSecretStore = (
         clientSecret: input.clientSecret,
         resource: input.resource,
       }
-      const { ciphertext, iv, authTag } = encryptWithKey(key, JSON.stringify(bundle))
+      const { ciphertext, iv, authTag } = encryptWithKeyRing(
+        keyRing,
+        purpose,
+        JSON.stringify(bundle),
+      )
       await prisma.mcpOAuthSecret.create({
         data: { ref, ciphertext, iv, authTag },
       })
@@ -100,6 +138,14 @@ export const createPgSecretStore = (
 
 /** Refresh when the token is within this window of expiry (or already past). */
 const REFRESH_SKEW_MS = 60_000
+
+const purposeForStoredRef = (ref: string): string => {
+  if (ref.startsWith('secret_oauth_')) return AT_REST_SECRET_PURPOSE.mcpOauth
+  if (ref.startsWith('secret_mcp_')) return AT_REST_SECRET_PURPOSE.mcpCredential
+  if (ref.startsWith('secret_browserbase_')) return AT_REST_SECRET_PURPOSE.browserConnection
+  if (ref.startsWith('secret_dashboard_')) return AT_REST_SECRET_PURPOSE.dashboardCredential
+  throw new Error('[mcp-secret-store] unrecognised persistent secret reference.')
+}
 
 const shouldRefresh = (bundle: StoredBundle): boolean =>
   typeof bundle.expiresAt === 'number'
@@ -167,6 +213,47 @@ const refreshBundle = async (
   }
 }
 
+const sameBundle = (left: StoredBundle, right: StoredBundle): boolean =>
+  left.accessToken === right.accessToken
+  && left.clientId === right.clientId
+  && left.clientSecret === right.clientSecret
+  && left.expiresAt === right.expiresAt
+  && left.expiresIn === right.expiresIn
+  && left.refreshToken === right.refreshToken
+  && left.resource === right.resource
+  && left.tokenEndpoint === right.tokenEndpoint
+  && left.tokenType === right.tokenType
+
+const loadBundle = (
+  keyRing: ReturnType<typeof toEncryptionKeyRing>,
+  purpose: string,
+  row: StoredSecretRow,
+) => {
+  const opened = decryptWithKeyRing(keyRing, purpose, {
+    authTag: row.authTag,
+    ciphertext: row.ciphertext,
+    iv: row.iv,
+  })
+  return { bundle: JSON.parse(opened.plaintext) as StoredBundle, opened }
+}
+
+const replaceCurrentBundle = async (
+  tx: Prisma.TransactionClient,
+  row: StoredSecretRow,
+  data: { authTag: string; ciphertext: string; iv: string },
+): Promise<boolean> => {
+  const update = await tx.mcpOAuthSecret.updateMany({
+    where: {
+      ref: row.ref,
+      ciphertext: row.ciphertext,
+      iv: row.iv,
+      authTag: row.authTag,
+    },
+    data,
+  })
+  return update.count === 1
+}
+
 /**
  * Read side of {@link createPgSecretStore}. Resolves a `secret_*` ref to the
  * plaintext access token (the value the dispatcher injects into the MCP
@@ -176,43 +263,68 @@ const refreshBundle = async (
  */
 export const createPgSecretResolver = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): SecretResolver => {
-  const key = deriveSecretKey(encryptionSecret)
+  const keyRing = toEncryptionKeyRing(encryption)
   const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   return {
     resolve: async (ref) => {
-      if (!ref.startsWith('secret_')) {
+      if (!ref.startsWith('secret_')) return null
+      let purpose: string
+      try {
+        purpose = purposeForStoredRef(ref)
+      } catch {
         return null
       }
-      const row = await prisma.mcpOAuthSecret.findUnique({ where: { ref } })
-      if (!row) {
-        return null
-      }
-      const bundle = JSON.parse(
-        decryptWithKey(key, {
-          ciphertext: row.ciphertext,
-          iv: row.iv,
-          authTag: row.authTag,
-        }),
-      ) as StoredBundle
+      return withMcpOAuthSecretLock(prisma, ref, async (tx) => {
+        const row = await tx.mcpOAuthSecret.findUnique({ where: { ref } })
+        if (!row) return null
+        const { bundle, opened } = loadBundle(keyRing, purpose, row)
 
-      if (!shouldRefresh(bundle)) {
-        return bundle.accessToken
-      }
+        if (!shouldRefresh(bundle)) {
+          if (opened.needsReencryption) {
+            const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(bundle))
+            await replaceCurrentBundle(tx, row, replacement).catch(() => false)
+          }
+          return bundle.accessToken
+        }
 
-      const renewed = await refreshBundle(bundle, fetchImpl)
-      if (!renewed) {
-        // Best-effort: hand back the stale token so the server's 401 surfaces
-        // loudly instead of a silent resolver failure.
-        return bundle.accessToken
-      }
-      const { ciphertext, iv, authTag } = encryptWithKey(key, JSON.stringify(renewed))
-      await prisma.mcpOAuthSecret
-        .update({ where: { ref }, data: { ciphertext, iv, authTag } })
-        .catch(() => undefined)
-      return renewed.accessToken
+        const renewed = await refreshBundle(bundle, fetchImpl)
+        if (!renewed) {
+          // The provider refused the grant. Preserve its currently stored
+          // refresh token, but still migrate its authenticated ciphertext.
+          if (opened.needsReencryption) {
+            const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(bundle))
+            await replaceCurrentBundle(tx, row, replacement).catch(() => false)
+          }
+          return bundle.accessToken
+        }
+
+        const replacement = encryptWithKeyRing(keyRing, purpose, JSON.stringify(renewed))
+        if (await replaceCurrentBundle(tx, row, replacement).catch(() => false)) {
+          return renewed.accessToken
+        }
+
+        // A non-participating writer can still beat the conditional update.
+        // If it merely re-encrypted the exact bundle, retry against its current
+        // envelope so a provider-issued rotating refresh token is not dropped.
+        const current = await tx.mcpOAuthSecret.findUnique({ where: { ref } })
+        if (!current) return null
+        const latest = loadBundle(keyRing, purpose, current)
+        if (sameBundle(latest.bundle, bundle)) {
+          if (await replaceCurrentBundle(tx, current, replacement).catch(() => false)) {
+            return renewed.accessToken
+          }
+          const afterRetry = await tx.mcpOAuthSecret.findUnique({ where: { ref } })
+          if (!afterRetry) return null
+          return loadBundle(keyRing, purpose, afterRetry).bundle.accessToken
+        }
+
+        // A logical credential update wins over this refresh. Do not overwrite
+        // a newer provider token with material minted for the old credential.
+        return latest.bundle.accessToken
+      })
     },
   }
 }
@@ -225,9 +337,9 @@ export const createPgSecretResolver = (
  */
 export const createMcpSecretResolver = (
   prisma: PrismaClient,
-  encryptionSecret: string,
+  encryption: EncryptionKeyRingInput,
 ): SecretResolver =>
   createLayeredSecretResolver([
-    createPgSecretResolver(prisma, encryptionSecret),
+    createPgSecretResolver(prisma, encryption),
     new EnvSecretResolver(),
   ])

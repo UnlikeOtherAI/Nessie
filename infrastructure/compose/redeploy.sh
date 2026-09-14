@@ -18,6 +18,12 @@ if ! flock -w 1800 9; then
   exit 1
 fi
 
+# Existing hosts predate the dedicated at-rest ring. Stage a newly generated
+# root and retain the former signing root before Compose can start an image that
+# requires the ring. The helper never prints key material and refuses partial
+# configuration, so a bad host .env fails before migrations or the rollout.
+bash infrastructure/compose/ensure-encryption-key-ring.sh infrastructure/compose/.env
+
 # Image source. With NESSIE_IMAGE_TAG set (the Deploy workflow always sets it)
 # the images were built on GitHub runners and are pulled here; the host
 # compiles nothing. Unset, the script falls back to building locally, which is
@@ -38,9 +44,11 @@ fi
 # running generation as belonging to these services.
 #
 # Two distinct consequences, handled in two places:
-#   * worker and infisical pin container_name, and those names are still held
-#     by the pre-rename containers — Compose would fail outright with "container
-#     name already in use". They are freed here, before anything is created.
+#   * infisical pins container_name, and that name is still held by the
+#     pre-rename container — Compose would fail outright with "container name
+#     already in use". It is freed here. The worker is deliberately deferred
+#     until the key-version migration decision below, where it is drained with
+#     every old API/worker replica when that incompatible migration is pending.
 #   * api/admin/web have no pinned name, so Compose simply starts a second
 #     generation and never retires the first. Those are retired AFTER the new
 #     replicas pass their health checks, further down, so the swap stays
@@ -56,7 +64,13 @@ legacy_service_containers() {
     --filter "label=com.docker.compose.service=$1"
 }
 
-for legacy in worker infisical; do
+running_service_containers() {
+  docker ps -q \
+    --filter "label=com.docker.compose.project=compose" \
+    --filter "label=com.docker.compose.service=$1"
+}
+
+for legacy in infisical; do
   legacy_ids="$(legacy_service_containers "$legacy")"
   if [ -n "$legacy_ids" ]; then
     echo "==> Removing pre-rename '$legacy' container(s); it now runs as nessie-$legacy"
@@ -107,6 +121,53 @@ for attempt in $(seq 1 30); do
   fi
   sleep 2
 done
+
+# This migration changes the Prisma-visible type of three progress columns from
+# integer to text. The prior API/worker clients decode those fields as integers,
+# while this release writes opaque labels, so they must never serve together.
+# Drain only for this one pending migration; every ordinary migration keeps the
+# health-gated blue-green path below.
+AT_REST_KEY_METADATA_MIGRATION='20260912090000_versioned_at_rest_key_metadata'
+key_metadata_pending="$(
+  $COMPOSE exec -T nessie-postgres psql -U nessie -d nessie -tAc \
+    "SELECT CASE WHEN to_regclass('_prisma_migrations') IS NULL THEN false ELSE NOT EXISTS (SELECT 1 FROM _prisma_migrations WHERE migration_name = '$AT_REST_KEY_METADATA_MIGRATION' AND finished_at IS NOT NULL AND rolled_back_at IS NULL) END;" \
+    2>/dev/null | tr -d '[:space:]'
+)"
+if [ "$key_metadata_pending" = "t" ]; then
+  echo "==> Draining every API and worker replica before incompatible key-version metadata migration"
+  $COMPOSE stop nessie-api nessie-worker
+  for legacy in api worker; do
+    legacy_ids="$(running_service_containers "$legacy")"
+    if [ -n "$legacy_ids" ]; then
+      echo "$legacy_ids" | xargs docker stop >/dev/null
+    fi
+  done
+
+  running_ids="$(
+    for service in nessie-api nessie-worker api worker; do
+      running_service_containers "$service"
+    done
+  )"
+  if [ -n "$running_ids" ]; then
+    echo "API or worker containers remained running; refusing incompatible migration" >&2
+    exit 1
+  fi
+
+  # The old worker held the fixed `nessie-worker` container name. It has now
+  # stopped cleanly, so remove it before the compatible worker starts later.
+  legacy_worker_ids="$(legacy_service_containers worker)"
+  if [ -n "$legacy_worker_ids" ]; then
+    echo "$legacy_worker_ids" | xargs docker rm >/dev/null
+  fi
+else
+  # Normal redeploys retain blue-green API availability. Only the renamed
+  # worker has a fixed container name, so release a pre-rename one here.
+  legacy_worker_ids="$(legacy_service_containers worker)"
+  if [ -n "$legacy_worker_ids" ]; then
+    echo "==> Removing pre-rename 'worker' container(s); it now runs as nessie-worker"
+    echo "$legacy_worker_ids" | xargs docker rm -f >/dev/null
+  fi
+fi
 
 # Prisma stops at the first failed migration and refuses every later one
 # (P3009), so a single migration that died mid-deploy parks the whole

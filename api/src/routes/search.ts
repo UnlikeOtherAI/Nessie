@@ -27,7 +27,6 @@ export const registerSearchRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       after: query.after,
       before: query.before,
       channelId: channelId ?? query.channelId,
-      isOwner: actorContext.actor.roles?.includes('owner') ?? false,
       limit: query.limit,
       organizationId: actorContext.tenant.organizationId,
       query: query.query,

@@ -138,8 +138,11 @@ fact. Read this before treating any section above as a description of the code.
   usable rather than confusing.
 - **The assistant can search tickets at all.** §7's tool table mirrored the
   routes, and neither had a search: `ticket_list` takes a project and a status.
-  `ticket_search` (text over title, purpose, detail and the provider key, with
-  project/board/status/priority/assignee narrowing) and its resolver
+  `ticket_search` and human Search (text over title, purpose, detail and the
+  provider key, with project/board/status/priority/assignee narrowing) share
+  one entitled, disclosure-filtered keyset search. Each result names a project
+  board that opens its existing task dialog; projectless and restricted-run
+  tasks never become unopenable or disclosive rows. Its resolver
   `ticket_people_read` close that, and they are the surface where **unmapped
   provider people became reachable**: they hold tickets through
   `TaskExternalLink.remoteAssignee*` and have no user id, so `unmappedAssignee`

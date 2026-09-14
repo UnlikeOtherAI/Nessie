@@ -93,15 +93,35 @@ export const CreateChannelBodySchema = z.object({
 
 export const UpdateProjectBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
+  // What the project is for. Readable by everybody in the organisation through
+  // the project directory, so it is written by the project's own members.
+  description: z.string().trim().max(500).nullable().optional(),
   avatarEmoji: z.string().trim().min(1).max(32).nullable().optional(),
   avatarAttachmentId: z.string().uuid().nullable().optional(),
 }).refine(
-  (body) => body.name !== undefined || body.avatarEmoji !== undefined || body.avatarAttachmentId !== undefined,
+  (body) => body.name !== undefined
+    || body.description !== undefined
+    || body.avatarEmoji !== undefined
+    || body.avatarAttachmentId !== undefined,
   { message: 'At least one project field is required' },
 )
 
 export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
+})
+
+// `GET /api/channels/:channelId/mention-audience?userIds=a,b` — which of the
+// people a draft @mentions cannot read the channel, asked before sending.
+export const MAX_MENTION_AUDIENCE_USER_IDS = 50
+
+export const ChannelMentionAudienceUserIdsSchema = z
+  .array(UserIdSchema)
+  .min(1)
+  .max(MAX_MENTION_AUDIENCE_USER_IDS)
+
+export const ChannelMentionAudienceRecordSchema = z.object({
+  outsiderUserIds: z.array(UserIdSchema),
+  viewerCanAddMembers: z.boolean(),
 })
 
 // POST always uses the caller as the PA principal. DELETE accepts a principal

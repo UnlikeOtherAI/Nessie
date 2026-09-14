@@ -69,8 +69,8 @@ const makeConnection = (lastSyncAt: Date | null): ConnectionRow => ({
   initialSyncCompletedAt: new Date(),
   lastSuccessfulSyncAt: lastSyncAt,
   credential: {
-    accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'access-token'),
-    refreshTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'refresh-token'),
+    accessTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'access-token', 'comms.credential'),
+    refreshTokenCiphertext: sealSecret(ENCRYPTION_SECRET, 'refresh-token', 'comms.credential'),
     expiresAt: null,
   },
 })

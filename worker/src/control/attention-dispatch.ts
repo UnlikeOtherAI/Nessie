@@ -22,7 +22,7 @@ export type AttentionDispatchPrisma = PushDeliveryPrisma & PushBadgePrisma & Pic
 >
 
 export type AttentionDispatchDeps = {
-  authSecret: string
+  encryptionKeyRing: import('@nessie/runtime').EncryptionKeyRingInput
   now?: () => Date
   prisma: AttentionDispatchPrisma
   retryDelayMs?: (completedAttempt: number) => number

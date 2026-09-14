@@ -14,6 +14,7 @@ import {
 } from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
+import { registerExecutorFence, withRunExecutorFence } from './lifecycle.js'
 
 const AGENT_ID = '00000000-0000-0000-0000-0000000000a1'
 const CHANNEL_ID = '00000000-0000-0000-0000-0000000000b1'
@@ -89,8 +90,18 @@ const makeDeps = () => {
   const queryRawCalls: unknown[] = []
   const ws: WsCall[] = []
   const sse: SseCall[] = []
+  const queuedPayloads: Record<string, unknown>[] = []
   const prisma = {
-    $executeRaw: async () => 1,
+    $executeRaw: async (query?: { values?: unknown[] }) => {
+      const values = Array.isArray(query?.values) ? query.values : []
+      for (const value of values) {
+        if (typeof value === 'string' && value.includes('"delivery"')) {
+          queuedPayloads.push(JSON.parse(value) as Record<string, unknown>)
+        }
+      }
+      return 1
+    },
+    $transaction: async (work: (tx: unknown) => Promise<unknown>) => work(prisma),
     $queryRaw: async (...args: unknown[]) => {
       queryRawCalls.push(args)
       return [
@@ -123,8 +134,10 @@ const makeDeps = () => {
       // purse an invocation spent, so the fake has to model that read.
       findUnique: async () => ({ modelSubscription: null }),
       update: async () => ({}),
+      updateMany: async () => ({ count: 1 }),
     },
     runBasisScope: { createMany: async () => ({ count: 1 }) },
+    runToolEffect: { deleteMany: async () => ({ count: 0 }) },
     task: { update: async () => ({}) },
     taskEvent: { create: async () => ({}) },
   }
@@ -137,8 +150,26 @@ const makeDeps = () => {
     },
   }
   const deps = { prisma, realtimeTransport } as unknown as ExecutionDependencies
-  return { deps, messageCreates, queryRawCalls, sse, ws }
+  return { deps, messageCreates, queryRawCalls, queuedPayloads, sse, ws }
 }
+
+const complete = async (
+  deps: ExecutionDependencies,
+  context: RunContext,
+  responseText: string,
+): Promise<void> => withRunExecutorFence(context.run.id, async () => {
+  registerExecutorFence(context.run.id, RUN_ID)
+  await completeRunExecution(deps, makePayload(), context, {
+    planId: PLAN_ID,
+    rootStepId: PLAN_STEP_ID,
+  }, {
+    invocations: [],
+    iterations: 1,
+    memories: [],
+    responseText,
+    toolCallsUsed: 0,
+  })
+})
 
 const wsEvents = (ws: WsCall[], event: string): WsCall[] =>
   ws.filter((call) => call.event === event)
@@ -223,20 +254,11 @@ test('persistResolvedReplyAnchor swallows write failures', async () => {
   await persistResolvedReplyAnchor(prisma, RUN_ID, ROOT_MESSAGE_ID)
 })
 
-test('completeRunExecution attaches rootMessageId, bookkeeping, and reply events', async () => {
-  const { deps, messageCreates, queryRawCalls, sse, ws } = makeDeps()
+test('completeRunExecution atomically records reply placement and follow-up intent', async () => {
+  const { deps, messageCreates, queryRawCalls, queuedPayloads, sse, ws } = makeDeps()
   const context = makeContext(ROOT_MESSAGE_ID)
 
-  await completeRunExecution(deps, makePayload(), context, {
-    planId: PLAN_ID,
-    rootStepId: PLAN_STEP_ID,
-  }, {
-    invocations: [],
-    iterations: 1,
-    memories: [],
-    responseText: 'Done — deployed the fix.',
-    toolCallsUsed: 0,
-  })
+  await complete(deps, context, 'Done — deployed the fix.')
 
   assert.equal(messageCreates.length, 1)
   assert.equal(messageCreates[0]!.data.rootMessageId, ROOT_MESSAGE_ID)
@@ -245,90 +267,46 @@ test('completeRunExecution attaches rootMessageId, bookkeeping, and reply events
   // Bookkeeping ran against the root with the reply's creation timestamp.
   assert.equal(queryRawCalls.length, 1)
 
-  const replies = wsEvents(ws, 'message.reply')
-  assert.equal(replies.length, 1)
-  assert.equal(replies[0]!.data.messageId, REPLY_MESSAGE_ID)
-  assert.equal(replies[0]!.data.rootMessageId, ROOT_MESSAGE_ID)
-  assert.equal(replies[0]!.data.agentId, AGENT_ID)
-  assert.equal(wsEvents(ws, 'message.new').length, 0)
-
-  const metas = wsEvents(ws, 'message.reply.meta')
-  assert.equal(metas.length, 1)
-  assert.deepEqual(metas[0]!.data, {
-    channelId: CHANNEL_ID,
-    threadId: THREAD_ID,
+  const delivery = queuedPayloads[0]?.delivery as Record<string, unknown>
+  assert.equal(delivery.kind, 'message')
+  assert.equal(delivery.messageId, REPLY_MESSAGE_ID)
+  assert.deepEqual(delivery.reply, {
     rootMessageId: ROOT_MESSAGE_ID,
     replyCount: 3,
     lastReplyAt: LAST_REPLY_AT.toISOString(),
     replyParticipantIds: [AGENT_ID],
   })
-
-  const streamDone = sse.find((call) => call.event === 'stream.done')
-  assert.ok(streamDone)
-  assert.equal(streamDone.data.rootMessageId, ROOT_MESSAGE_ID)
+  assert.deepEqual(ws, [])
+  assert.deepEqual(sse, [])
 })
 
-test('a restricted reply publishes no reply-thread metadata', async () => {
-  const { deps, sse, ws } = makeDeps()
+test('a restricted reply queues only a restricted immutable projection', async () => {
+  const { deps, queuedPayloads, sse, ws } = makeDeps()
   const context = makeContext(ROOT_MESSAGE_ID)
   context.consumedSources.add({
     scopeId: '00000000-0000-0000-0000-0000000000aa',
     scopeType: 'user',
   })
 
-  await completeRunExecution(deps, makePayload(), context, {
-    planId: PLAN_ID,
-    rootStepId: PLAN_STEP_ID,
-  }, {
-    invocations: [],
-    iterations: 1,
-    memories: [],
-    responseText: 'private response',
-    toolCallsUsed: 0,
-  })
+  await complete(deps, context, 'private response')
 
-  const replies = wsEvents(ws, 'message.reply')
-  assert.equal(replies.length, 1)
-  assert.deepEqual(replies[0]?.data, {
-    agentId: AGENT_ID,
-    channelId: CHANNEL_ID,
-    messageId: REPLY_MESSAGE_ID,
-    restricted: true,
-    role: 'assistant',
-    rootMessageId: ROOT_MESSAGE_ID,
-    threadId: THREAD_ID,
-  })
-  assert.equal(wsEvents(ws, 'message.reply.meta').length, 0)
-
-  const streamDone = sse.find((call) => call.event === 'stream.done')
-  assert.equal(streamDone?.data.content, '')
-  assert.equal(streamDone?.data.restricted, true)
+  assert.equal((queuedPayloads[0]?.delivery as Record<string, unknown>).restricted, true)
+  assert.deepEqual(ws, [])
+  assert.deepEqual(sse, [])
 })
 
-test('completeRunExecution without a reply root stays byte-identical (top-level)', async () => {
-  const { deps, messageCreates, queryRawCalls, sse, ws } = makeDeps()
+test('completeRunExecution without a reply root queues a top-level delivery', async () => {
+  const { deps, messageCreates, queryRawCalls, queuedPayloads, sse, ws } = makeDeps()
   const context = makeContext()
 
-  await completeRunExecution(deps, makePayload(), context, {
-    planId: PLAN_ID,
-    rootStepId: PLAN_STEP_ID,
-  }, {
-    invocations: [],
-    iterations: 1,
-    memories: [],
-    responseText: 'Done.',
-    toolCallsUsed: 0,
-  })
+  await complete(deps, context, 'Done.')
 
   assert.equal(messageCreates.length, 1)
   assert.equal('rootMessageId' in messageCreates[0]!.data, false)
   assert.equal(queryRawCalls.length, 0)
-  assert.equal(wsEvents(ws, 'message.new').length, 1)
-  assert.equal(wsEvents(ws, 'message.reply').length, 0)
-  assert.equal(wsEvents(ws, 'message.reply.meta').length, 0)
-  const streamDone = sse.find((call) => call.event === 'stream.done')
-  assert.ok(streamDone)
-  assert.equal('rootMessageId' in streamDone.data, false)
+  assert.equal('reply' in (queuedPayloads[0]?.delivery as Record<string, unknown>), false)
+  assert.deepEqual(ws, [])
+  assert.deepEqual(sse, [])
 })
 
 test('completeRunExecution stamps an id-only todoRef on its assistant reply', async () => {
@@ -337,16 +315,7 @@ test('completeRunExecution stamps an id-only todoRef on its assistant reply', as
   ;(deps.prisma as unknown as { agentTodo: { findFirst: () => Promise<{ id: string }> } })
     .agentTodo.findFirst = async () => ({ id: todoId })
 
-  await completeRunExecution(deps, makePayload(), makeContext(), {
-    planId: PLAN_ID,
-    rootStepId: PLAN_STEP_ID,
-  }, {
-    invocations: [],
-    iterations: 1,
-    memories: [],
-    responseText: 'Done.',
-    toolCallsUsed: 0,
-  })
+  await complete(deps, makeContext(), 'Done.')
 
   assert.deepEqual(messageCreates[0]?.data.metadata, { todoRef: { todoId } })
   assert.equal(messageCreates[0]?.data.role, 'assistant')

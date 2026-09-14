@@ -119,7 +119,8 @@ test('startup validation rejects app-key reuse with an existing encrypted webhoo
   }
   const service = createDeepSignalMcpIdentityServiceFromEnv(
     prisma as never,
-    env({ NESSIE_AUTH_SECRET: authSecret }),
+    env(),
+    { encryptionKeyRing: authSecret },
   )
   assert.ok(service)
   await assert.rejects(

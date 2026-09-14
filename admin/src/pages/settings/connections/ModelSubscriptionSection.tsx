@@ -211,7 +211,9 @@ export const ModelSubscriptionSection = () => {
           ) : rows.length === 0 ? (
             <EmptyState
               action={
-                <div className="flex gap-2">
+                // Wraps: the row grows with every adapter that registers, and
+                // five already overflow a phone on one line.
+                <div className="flex flex-wrap gap-2">
                   {(providers.data?.providers ?? []).map((provider) => (
                     <button
                       className="admin-button admin-button-primary admin-button-compact"
@@ -233,7 +235,7 @@ export const ModelSubscriptionSection = () => {
               {rows.map((subscription) => (
                 <SubscriptionCard key={subscription.id} subscription={subscription} />
               ))}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {(providers.data?.providers ?? []).map((provider) => (
                   <button
                     className="admin-button admin-button-secondary admin-button-compact"

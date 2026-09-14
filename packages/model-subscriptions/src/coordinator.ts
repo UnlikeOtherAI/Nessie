@@ -49,6 +49,8 @@ export type ResolvedSubscriptionCredential = {
   subscriptionId: string
   providerKey: string
   baseUrl: string
+  /** Present only for a code-declared personal DeepSeek adapter. */
+  deepseekThinkingMode?: 'disabled'
   runtimeProvider: SubscriptionProviderAdapter['transport']['runtimeProvider']
 }
 
@@ -274,6 +276,9 @@ export const resolveSubscriptionCredential = async (
   return {
     accessToken: bundle.accessToken,
     baseUrl: adapter.transport.baseUrl,
+    ...(adapter.transport.deepseekThinkingMode
+      ? { deepseekThinkingMode: adapter.transport.deepseekThinkingMode }
+      : {}),
     epoch,
     ...(extraHeaders && Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
     providerKey: adapter.key,

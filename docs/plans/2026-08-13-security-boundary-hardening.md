@@ -1,13 +1,13 @@
 # Security boundary hardening — system design v2 (2026-08-13)
 
-Status: **v2 — amended after two adversarial external reviews** (Kimix, Codex
+Status: **v2 — amended after two adversarial external reviews** (reviewer B, Codex
 Sol; both reviews verified claim-by-claim against the tree before adoption —
 see Appendix). v1's chokepoints were, as both reviewers proved, mostly new
 *functions* rather than boundaries; v2 makes each boundary the only spelling.
 Implementation: Phase 0 items are cleared to build now; items marked
 **[access-model]** are deferred pending the owner's access-semantics decision.
 
-Input findings: S1–S14 (audit addendum), Kimix design review (K-*), Sol design
+Input findings: S1–S14 (audit addendum), Reviewer B's design review (K-*), Sol design
 review (SB-*/CB-*/M-*). Correction carried back into the audit doc: **S11 is
 exploitable today** — `worker/src/run/execute/agent-loop.ts` dispatches
 `delegate` (L277), MCP (L300), and executor tools (L303) *before* the
@@ -32,7 +32,7 @@ analysis ("live authorization bypass",
 3. **Sensitivity is typed, never inferred.** No header-name sniffing:
    requests carry `credentialsPresent` structurally from the code that
    attached the credential; OAuth exchange/refresh and secret-bearing calls
-   are `redirectPolicy: 'none'` **by construction** (Sol SB-05, Kimix 1.2).
+   are `redirectPolicy: 'none'` **by construction** (Sol SB-05, Review B 1.2).
 4. **Install scope is a ceiling.** Explicit policy may narrow exposure,
    never broaden it past the connector's install scope; user-owned secrets
    resolve only with the expected owner (Sol SB-02).
@@ -42,13 +42,13 @@ analysis ("live authorization bypass",
 6. **Long-lived connections carry session identity.** `sid` + user + org +
    channel on every SSE/WS connection; revocation closes by `sid`; fan-out
    checks live state, with push-based (pg NOTIFY) cache invalidation, never
-   TTL-only (Sol SB-04, Kimix 3.4).
+   TTL-only (Sol SB-04, Review B 3.4).
 7. **Migrations are expand/contract.** The deploy order is
    migrate-then-restart with old processes live (`redeploy.sh:54-58`):
    nullable columns + dual-write + bounded backfill + `NOT VALID` →
    `VALIDATE` + concurrent indexes; data preflights are operator-run release
    gates, never steps inside unattended `migrate deploy` (Sol M-03/M-09,
-   Kimix 3.1).
+   Review B 3.1).
 
 ---
 
@@ -72,7 +72,7 @@ access-model decision.
   **and the same user's** `ProjectMember` and `TeamMember` for any selected
   project/team — object hierarchy alone is a regression against today's
   switch-context route (Sol SB-06). UOA sessions keep their exact fail-closed
-  binding; the generic path can never move a UOA family (Kimix 3.2).
+  binding; the generic path can never move a UOA family (Review B 3.2).
 - **Branded issuance**: the resolver returns an opaque
   `ResolvedSessionContext`; user-session issuance accepts only that type;
   `issueSessionToken` becomes private to the auth module
@@ -111,19 +111,19 @@ access-model decision.
   sid behaviour, and the NOTIFY invalidation.
 - **Membership writers** call `assertTenantHierarchy` (which subsumes the
   existing `validateTenantHierarchy` — v1's "only correct copy" claim was
-  wrong, Kimix §4.6) *inside* their transactions, and re-check entitlement
+  wrong, Review B §4.6) *inside* their transactions, and re-check entitlement
   inside the write predicate, not in a preceding read (TOCTOU, Sol CB-07).
 - **Database backstop, corrected** (Sol M-01/M-02): v1's FKs proved object
   ancestry only. The invariant is *same-user membership ancestry*:
   `ProjectMember(organization_id, user_id) → OrganizationMember(organization_id, user_id)`
   and `TeamMember(project_id, user_id) → TeamMember→ProjectMember(project_id, user_id)`,
-  plus `channels`' denormalized triple constrained via composite FKs (Kimix
+  plus `channels`' denormalized triple constrained via composite FKs (Review B
   2.5). `projects` already has `@@unique([id, organizationId])` — reuse it.
   Existing team-only memberships are inventoried by the operator preflight;
   **whether they become parent memberships or a distinct entitlement model is
   [access-model]** — the constraint ships after that disposition.
 - Rollout per principle 7; old-replica NULL-selection interleaving during the
-  deploy window is documented and accepted (Kimix 3.2).
+  deploy window is documented and accepted (Review B 3.2).
 
 ## Workstream 2 — Secret custody (S2, S13; SB-02, CB-04, CB-08, M-04/05/06/11)
 
@@ -160,7 +160,7 @@ access-model decision.
   replay is refused, not "rewritten"); OAuth exchange/refresh is
   `redirectPolicy: 'none'` by construction. Header normalization at
   `safeFetch` entry covers `Headers` / arrays / records / `Request` input
-  (Kimix 1.2) as defense in depth under the typed flag.
+  (Review B 1.2) as defense in depth under the typed flag.
 - **Transport required at the lowest seam** (Sol CB-05 / correction 6):
   `createInferenceService` — which the worker's inference stage calls
   directly, bypassing `createModelClient` — takes a required
@@ -168,10 +168,10 @@ access-model decision.
   global-fetch defaults; same for `sendWebPush`/FCM, whose *delivery-layer*
   seams (`web-push-delivery.ts:112` `sender ?? sendWebPush`,
   `fcm.ts` `fetchImpl = defaultFetch`) are retyped so the pinned transport is
-  the only constructible input (Kimix 1.1). OIDC (`external-auth.ts`) and
+  the only constructible input (Review B 1.1). OIDC (`external-auth.ts`) and
   UOA session fetches move onto it with issuer-origin pinning covering
   `token_endpoint`, `userinfo_endpoint`, **`jwks_uri` and
-  `authorization_endpoint`** (Kimix §4.2). Config-load URL validation gets an
+  `authorization_endpoint`** (Review B §4.2). Config-load URL validation gets an
   awaited startup phase (Sol correction 12) and still pins at dial.
 - **The lint is an AST/import boundary, not a call-spelling rule** (CB-06):
   every reference to global/`globalThis` fetch, `node:http(s)`, and direct
@@ -187,7 +187,7 @@ access-model decision.
   add, remove, self-join (`joinPublicChannel`), the DM→group fork
   (`createGroupFromDm`), and the PA-DM refusal — with the active-actor check
   *inside* (both existing `canManageChannel` copies lack `deactivatedAt`;
-  Kimix §4.3 / Sol correction 5), audit + the SSE close-publish + the pg
+  Review B §4.3 / Sol correction 5), audit + the SSE close-publish + the pg
   NOTIFY for auth caches in the same transaction. `prisma.channelMember`
   writes outside the module fail lint; DB trigger as backstop. The *policy
   action* is a real vocabulary member (v1's `manage` does not exist — Sol
@@ -196,7 +196,7 @@ access-model decision.
   decided, the service preserves current API behaviour behind the single
   chokepoint (structure now, semantics when decided).
 - **Runs**: `loadRunForActor` replaces `loadRunForOrg`, which is **deleted**
-  in the same change (Kimix 1.5); mutation services revalidate entitlement
+  in the same change (Review B 1.5); mutation services revalidate entitlement
   inside the write predicate (TOCTOU, CB-07). The run-ID consumer inventory
   includes executor availability/bind (`/api/runs/:runId/executor-bind`
   currently checks org/project but not channel access — Sol SB-07).
@@ -243,13 +243,13 @@ access-model decision.
   configured public URL** — request-derived origins (including the direct
   `Host` header, which proxy-trust does not protect) are local-dev only
   (Sol SB-08). Lint bans `x-forwarded-*` / `headers.host` reads outside the
-  resolver and the trust-proxy plumbing (Kimix 2.4, CB-09).
+  resolver and the trust-proxy plumbing (Review B 2.4, CB-09).
 
 ## Workstream 6 — Contract authority (S14)
 
 `api/src/contracts/inference-core.ts` derives from `packages/schemas` with a
 conformance test asserting the api surface is **at least as strict** (not
-blind re-export — the two layers serve different audiences; Kimix §4.5).
+blind re-export — the two layers serve different audiences; Review B §4.5).
 The shared-schema `authSecretRef` removal lands here with Workstream 2's
 Phase 0 slice.
 
@@ -289,7 +289,7 @@ Workstream 2's). Also landed 2026-08-14: **W3a** (typed redirect policy in `safe
 (session integrity), W2 store proper, W4 structural consolidation, realtime
 session identity. Everything marked **[access-model]** remains parked.
 
-## Sequencing (rebuilt: exploit-liveness first — Kimix §6, Sol M-06)
+## Sequencing (rebuilt: exploit-liveness first — Review B §6, Sol M-06)
 
 **Phase 0 (days, ship independently):**
 1. W0 dispatch-authorization boundary (minimal form: gate-before-dispatch on
@@ -359,7 +359,7 @@ one-place change.
 
 ## Appendix — review provenance
 
-v1 was reviewed adversarially by Kimix and Codex Sol. Every claim folded into
+v1 was reviewed adversarially by reviewer B and Codex Sol. Every claim folded into
 v2 was re-verified against the tree (spot-checks this round: dispatch order
 in `agent-loop.ts:277-337`, `isExposed` policy-true-before-scope, the
 credential fallback, `sid` non-optionality, `createInferenceService` direct
@@ -367,7 +367,7 @@ call, the existing `projects` composite unique, `manage` absent from the
 policy vocabulary, shared-schema `authSecretRef`, both `canManageChannel`
 copies lacking `deactivatedAt`, G11's prior documentation of the delegate
 bypass — all confirmed). Sol's review found the most severe gaps (SB-01/02,
-the FK conceptual error, the migration-order outages); Kimix independently
+the FK conceptual error, the migration-order outages); reviewer B independently
 found the enforcement-gap pattern (§5 "one of eight boundaries defended"),
 the webpush seam placement, header-shape normalization, `jwks_uri`, and the
 Phase-0 reordering. The reviews disagree nowhere material; where v1

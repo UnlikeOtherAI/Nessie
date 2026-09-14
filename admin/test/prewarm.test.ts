@@ -220,5 +220,5 @@ test('navigating rows prewarm before the click', () => {
 })
 
 test('the registry is a small closed set, not a growing switch', () => {
-  assert.equal(PREWARM_REGISTRY.length, 6)
+  assert.equal(PREWARM_REGISTRY.length, 7)
 })

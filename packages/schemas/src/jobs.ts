@@ -34,6 +34,54 @@ export const RunExecuteJobPayloadSchema = z.object({
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
 
+export const RUN_COMPLETION_FOLLOWUP_TOPIC = 'run.completion.followup'
+
+const RunCompletionReplySchema = z.object({
+  rootMessageId: z.string().uuid(),
+  replyCount: z.number().int().nonnegative(),
+  lastReplyAt: TimestampSchema.nullable(),
+  replyParticipantIds: z.array(z.string().uuid()),
+})
+
+const RunCompletionDeliverySchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('message'),
+    authoredByOwner: z.boolean(),
+    content: z.string(),
+    createdAt: TimestampSchema,
+    messageId: z.string().uuid(),
+    restricted: z.boolean(),
+    role: z.enum(['assistant', 'user']),
+    reply: RunCompletionReplySchema.optional(),
+  }),
+  z.object({
+    kind: z.literal('reaction'),
+    sourceMessageId: z.string().uuid(),
+  }),
+  z.object({
+    kind: z.literal('watch'),
+    content: z.string(),
+    editedAt: TimestampSchema,
+    messageId: z.string().uuid(),
+    restricted: z.boolean(),
+  }),
+])
+
+/** Required work queued atomically with a successful run's terminal commit. */
+export const RunCompletionFollowupJobPayloadSchema = z.object({
+  completedAt: TimestampSchema,
+  delivery: RunCompletionDeliverySchema,
+  iterations: z.number().int().nonnegative(),
+  planId: z.string().uuid(),
+  responseText: z.string(),
+  rootStepId: z.string().uuid(),
+  source: RunExecuteJobPayloadSchema,
+  toolCallsUsed: z.number().int().nonnegative(),
+})
+export type RunCompletionFollowupJobPayload = z.infer<
+  typeof RunCompletionFollowupJobPayloadSchema
+>
+
 export const OrchestrateDecideJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   /**

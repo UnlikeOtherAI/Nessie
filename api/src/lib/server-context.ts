@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { loadConfig } from '@nessie/config'
+import { loadConfig, resolveEncryptionKeyRing } from '@nessie/config'
 import {
   isAdminActor,
   type AuthorizedActionContext,
@@ -128,6 +128,7 @@ export const createServerContext = () => {
         + ' Multi-instance deployments WILL fail without a shared persistent secret.',
     )
   })()
+  const encryptionKeyRing = resolveEncryptionKeyRing(config, authSecret)
 
   /**
    * The install's owner-bootstrap token, read from Postgres so every replica
@@ -365,24 +366,25 @@ export const createServerContext = () => {
   const requestHelpers = createRequestHelpers(prisma)
 
   /**
-   * Guard for changing a project's *shape* — its boards, columns, custom
-   * fields and data sources. An organisation owner passes, and so does
-   * somebody the project itself records as its owner or admin.
+   * Guard for changing a project — its name and avatar, its members, its
+   * lifecycle, and its shape (boards, columns, custom fields, data sources,
+   * iterations, watchers). Any member of the project passes, whatever their
+   * `ProjectMember.role`, and so does an organisation owner or admin who is
+   * not a member (`canModifyProject` in `@nessie/team-admin`).
    *
-   * Board mutations were owner-only while a project had one board of four
-   * columns; with many boards per project that is unworkable, and
-   * `ProjectMember.role` is Nessie-owned data (a project has no UOA
-   * counterpart), so gating on it adds no second identity authority.
+   * A refusal is a 404 `PROJECT_NOT_FOUND`: under the model the people who may
+   * change a project are exactly the people who may read it, so a caller who
+   * fails here cannot see the project and must not learn that it exists.
    */
-  const requireProjectAdmin = async (
+  const requireProjectModifier = async (
     actorContext: AuthorizedActionContext,
     projectId: string,
     reply: FastifyReply,
   ): Promise<boolean> => {
-    if (await requestHelpers.canActorAdministerProject(actorContext, projectId)) {
+    if (await requestHelpers.canActorModifyProject(actorContext, projectId)) {
       return true
     }
-    sendApiError(reply, 403, 'FORBIDDEN', 'Project administrator access required')
+    sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
     return false
   }
 
@@ -391,6 +393,7 @@ export const createServerContext = () => {
     prisma,
     databaseUrl,
     authSecret,
+    encryptionKeyRing,
     allowedCorsOrigins,
     teamHostBaseDomain,
     tlsCheckKey,
@@ -420,7 +423,7 @@ export const createServerContext = () => {
     rateLimiter,
     disconnectPrismaClient,
     ...requestHelpers,
-    requireProjectAdmin,
+    requireProjectModifier,
   }
 }
 
