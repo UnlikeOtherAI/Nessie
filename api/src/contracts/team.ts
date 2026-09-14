@@ -110,6 +110,20 @@ export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
 })
 
+// `GET /api/channels/:channelId/mention-audience?userIds=a,b` — which of the
+// people a draft @mentions cannot read the channel, asked before sending.
+export const MAX_MENTION_AUDIENCE_USER_IDS = 50
+
+export const ChannelMentionAudienceUserIdsSchema = z
+  .array(UserIdSchema)
+  .min(1)
+  .max(MAX_MENTION_AUDIENCE_USER_IDS)
+
+export const ChannelMentionAudienceRecordSchema = z.object({
+  outsiderUserIds: z.array(UserIdSchema),
+  viewerCanAddMembers: z.boolean(),
+})
+
 // POST always uses the caller as the PA principal. DELETE accepts a principal
 // only so a channel manager can remove another member's already-consented
 // presence; a member may still remove only their own.

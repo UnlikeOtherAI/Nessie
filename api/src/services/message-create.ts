@@ -4,7 +4,9 @@ import {
   applyReplyBookkeeping,
   createMentionUserAlerts,
   followReplyThread,
+  listOpenChannelMentionCandidates,
   mentionedAgentIdsFromContent,
+  mergeMentionCandidates,
   resolveMessageMentions,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
@@ -204,6 +206,8 @@ export const createThreadMessage = async (
           id: true,
           organizationId: true,
           systemChannelType: true,
+          type: true,
+          visibility: true,
         },
       },
       // The conversation this send may name: `agentId` says whether the thread
@@ -284,11 +288,21 @@ export const createThreadMessage = async (
   // Resolve human + broadcast mentions on the inbound content. Agent mentions
   // are resolved below for engagement; here we record every mention class on
   // message.metadata.mentions so clients can highlight/notify deterministically.
+  // Candidates are the channel's members, plus every active organisation member
+  // when the channel is open. A non-member of a private or protected channel is
+  // never a candidate, so a send that did not invite them writes no alert, no
+  // follow and no mention push for them.
+  const openMentionCandidates = input.content.includes('@')
+    ? await listOpenChannelMentionCandidates(prisma, thread.channel)
+    : []
   const mentions = resolveMessageMentions(input.content, {
-    members: thread.channel.members.map((m) => ({
-      userId: m.user.id,
-      displayName: m.user.displayName,
-    })),
+    members: mergeMentionCandidates(
+      thread.channel.members.map((m) => ({
+        userId: m.user.id,
+        displayName: m.user.displayName,
+      })),
+      openMentionCandidates,
+    ),
   })
 
   const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({

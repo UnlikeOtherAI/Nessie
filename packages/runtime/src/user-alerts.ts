@@ -49,6 +49,50 @@ export const resolveMessageMentions = (
   return { userIds: [...new Set(userIds)], agentIds: [], broadcast }
 }
 
+// ─── mention audience ────────────────────────────────────────────────────────
+// Who an @name in a channel can address. A channel member always can. In an
+// *open* channel — public, not a DM, not a system conversation — every active
+// organisation member already reads the room, so every active member is
+// addressable too. In a private or protected channel a non-member is not: the
+// author is asked to invite them before sending (the admin composer), and a
+// send without inviting must not hand them an alert, a push, or a snippet.
+// Only people with an `OrganizationMember` row (they accepted their invitation
+// and have a Nessie principal) can ever be addressed; deactivated ones never.
+
+export type MentionAudienceChannel = {
+  organizationId: string
+  systemChannelType?: string | null
+  type?: string | null
+  visibility?: string | null
+}
+
+export type MentionCandidate = { userId: string; displayName: string }
+
+export const isOpenMentionChannel = (channel: MentionAudienceChannel): boolean =>
+  channel.visibility === 'public' && channel.type !== 'dm' && !channel.systemChannelType
+
+/**
+ * The active organisation members an open channel adds to its mention
+ * candidates; nobody for any other channel, whose candidates stay its members.
+ */
+export const listOpenChannelMentionCandidates = async (
+  prisma: Pick<PrismaClient, 'organizationMember'>,
+  channel: MentionAudienceChannel,
+): Promise<MentionCandidate[]> => {
+  if (!isOpenMentionChannel(channel)) return []
+  const rows = await prisma.organizationMember.findMany({
+    where: { organizationId: channel.organizationId, deactivatedAt: null },
+    select: { user: { select: { id: true, displayName: true } } },
+  })
+  return rows.map((row) => ({ userId: row.user.id, displayName: row.user.displayName }))
+}
+
+export const mergeMentionCandidates = (
+  ...lists: MentionCandidate[][]
+): MentionCandidate[] => [
+  ...new Map(lists.flat().map((candidate) => [candidate.userId, candidate])).values(),
+]
+
 export const mentionedAgentIdsFromContent = (
   content: string,
   agents: Array<{ id: string; name: string }>,
