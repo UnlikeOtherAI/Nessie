@@ -27,16 +27,6 @@ export function Hero() {
         <Button href={signInUrl}>Get started</Button>
         <Button ghost href={contactUrl}>Book a demo</Button>
       </div>
-      <div className="n-trusted">
-        <span>{hero.trustedLabel}</span>
-        <ul className="n-logo-row">
-          {Array.from({ length: hero.logoSlots }, (_, i) => (
-            <li className="n-logo-slot n-placeholder" key={i}>
-              Logo
-            </li>
-          ))}
-        </ul>
-      </div>
       <div className="n-stage" id="product">
         <img alt={tab.shot.alt} className="n-stage-img" key={active} src={tab.shot.src} />
         <button

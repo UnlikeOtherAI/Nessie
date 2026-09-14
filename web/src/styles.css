@@ -304,41 +304,10 @@ button {
   line-height: 1.5;
 }
 
-.n-trusted {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: center;
-  margin-top: 40px;
-  color: var(--n-muted);
-  font-size: 13px;
-}
-
-.n-logo-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: center;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.n-logo-slot {
-  display: grid;
-  width: 104px;
-  height: 32px;
-  border-radius: 6px;
-  place-items: center;
-  color: #a19fa3;
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .n-stage {
   position: relative;
   max-width: var(--n-max);
-  margin: 40px auto 0;
+  margin: 56px auto 0;
   padding: 40px;
   border-radius: 24px;
   box-sizing: border-box;
@@ -879,11 +848,23 @@ button {
   margin: 0 auto;
 }
 
+/* Wave divider between sections of different colour */
+.n-wave {
+  display: block;
+  margin: -1px 0;
+  line-height: 0;
+}
+
+.n-wave svg {
+  display: block;
+  width: 100%;
+  height: clamp(56px, 8vw, 120px);
+}
+
 /* Footer */
 .n-footer {
-  padding: 64px 0 32px;
+  padding: 48px 0 32px;
   background: #fff;
-  border-top: 1px solid var(--n-line);
 }
 
 .n-footer-grid {

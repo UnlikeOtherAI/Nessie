@@ -54,8 +54,6 @@ const channelShot: Shot = {
 export const hero = {
   title: 'Where your people and their agents get work done.',
   text: 'Nessie keeps the channels your team already knows. Its agents turn the conversation into finished work.',
-  trustedLabel: 'Trusted by teams at',
-  logoSlots: 6,
 }
 
 export const heroTabs = [
