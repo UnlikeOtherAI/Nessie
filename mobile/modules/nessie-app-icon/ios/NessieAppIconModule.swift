@@ -1,11 +1,11 @@
 import ExpoModulesCore
 import UIKit
 
-/// Switches the Home Screen icon between the light default and the dark
+/// Switches the Home Screen icon between the dark default and the light
 /// alternative. The alternative is compiled into the asset catalog by
-/// `plugins/with-dark-app-icon.js`; `nil` is the primary (light) icon.
+/// `plugins/with-light-app-icon.js`; `nil` is the primary (dark) icon.
 public class NessieAppIconModule: Module {
-    private static let darkIconName = "AppIconDark"
+    private static let lightIconName = "AppIconLight"
 
     public func definition() -> ModuleDefinition {
         Name("NessieAppIcon")
@@ -20,11 +20,11 @@ public class NessieAppIconModule: Module {
             let name = Thread.isMainThread
                 ? UIApplication.shared.alternateIconName
                 : DispatchQueue.main.sync { UIApplication.shared.alternateIconName }
-            return name == Self.darkIconName ? "dark" : "light"
+            return name == Self.lightIconName ? "light" : "dark"
         }
 
         AsyncFunction("setIcon") { (icon: String, promise: Promise) in
-            let name: String? = icon == "dark" ? Self.darkIconName : nil
+            let name: String? = icon == "light" ? Self.lightIconName : nil
             guard UIApplication.shared.alternateIconName != name else {
                 promise.resolve(icon)
                 return

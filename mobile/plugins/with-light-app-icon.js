@@ -3,17 +3,17 @@ const path = require('path')
 const { withDangerousMod, withXcodeProject } = require('expo/config-plugins')
 
 /**
- * Compiles the dark Home Screen icon into the iOS asset catalog as an
- * alternate icon set, so `setAlternateIconName('AppIconDark')` can select it
- * (modules/nessie-app-icon). The light icon stays the primary `AppIcon`.
+ * Compiles the light Home Screen icon into the iOS asset catalog as an
+ * alternate icon set, so `setAlternateIconName('AppIconLight')` can select it
+ * (modules/nessie-app-icon). The dark icon stays the primary `AppIcon`.
  *
  * An asset-catalog alternate needs no hand-written `CFBundleAlternateIcons`:
  * actool writes those Info.plist keys when the set is named in
  * ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES.
  */
-const ICON_SET = 'AppIconDark'
+const ICON_SET = 'AppIconLight'
 
-const withDarkAppIcon = (config, { image }) => {
+const withLightAppIcon = (config, { image }) => {
   config = withDangerousMod(config, ['ios', async (mod) => {
     const { platformProjectRoot, projectName, projectRoot } = mod.modRequest
     const iconSet = path.join(platformProjectRoot, projectName, 'Images.xcassets', `${ICON_SET}.appiconset`)
@@ -38,4 +38,4 @@ const withDarkAppIcon = (config, { image }) => {
   })
 }
 
-module.exports = withDarkAppIcon
+module.exports = withLightAppIcon

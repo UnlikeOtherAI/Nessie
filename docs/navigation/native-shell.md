@@ -194,14 +194,14 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
 - **`nessie:app-icon { icon }` bridge message.** Settings → Appearance shows
   an *App icon* panel (`admin/src/pages/settings/appearance/AppIconPanel.tsx`)
   only when `window.__nessieNativeShell.appIcon` is `true` — an iOS build that
-  carries `mobile/modules/nessie-app-icon`. Picking *Light* (the primary icon)
-  or *Dark* posts the message; `mobile/src/lib/native-app-icon.ts` guards it
+  carries `mobile/modules/nessie-app-icon`. Picking *Dark* (the primary icon)
+  or *Light* posts the message; `mobile/src/lib/native-app-icon.ts` guards it
   and `App.tsx` calls `setAlternateIconName`, then publishes the icon actually
   in effect back as `nessie:native-app-icon` (retained on
   `window.__nessieNativeAppIcon`, which the shell-info script also sets on
   every load). The panel shows that answer, not the tap.
-  The dark set is compiled into the asset catalog as `AppIconDark` by
-  `mobile/plugins/with-dark-app-icon.js`. Every icon and favicon is generated
+  The light set is compiled into the asset catalog as `AppIconLight` by
+  `mobile/plugins/with-light-app-icon.js`. Every icon and favicon is generated
   from one geometry by `assets/logo/generate.py`.
 - **The shell stops re-deriving from the pathname what the admin already
   knows (step 9).** It used to match the WebView's reported `nessie:route`

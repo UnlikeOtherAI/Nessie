@@ -36,7 +36,7 @@
       "predictiveBackGestureEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#07152C"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -67,9 +67,9 @@
       "react-native-bottom-tabs",
       "expo-web-browser",
       [
-        "./plugins/with-dark-app-icon",
+        "./plugins/with-light-app-icon",
         {
-          "image": "./assets/icon-dark.png"
+          "image": "./assets/icon-light.png"
         }
       ]
     ],

@@ -30,13 +30,13 @@ test('the app icon choice is offered only when the shell says it can switch', ()
   assert.equal(isNativeAppIconShell(), false)
 })
 
-test('reads the icon the shell reports, defaulting to light', () => {
+test('reads the icon the shell reports, defaulting to dark', () => {
   globalWindow.window = {}
-  assert.equal(readNativeAppIcon(), 'light')
-  globalWindow.window = { __nessieNativeAppIcon: 'dark' }
   assert.equal(readNativeAppIcon(), 'dark')
-  globalWindow.window = { __nessieNativeAppIcon: 'AppIconDark' }
+  globalWindow.window = { __nessieNativeAppIcon: 'light' }
   assert.equal(readNativeAppIcon(), 'light')
+  globalWindow.window = { __nessieNativeAppIcon: 'AppIconLight' }
+  assert.equal(readNativeAppIcon(), 'dark')
 })
 
 test('asks the shell for the chosen icon over the bridge', () => {

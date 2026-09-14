@@ -30,7 +30,7 @@ export const isNativeAppIconShell = (): boolean => {
 }
 
 export const readNativeAppIcon = (): AppIconVariant =>
-  readWindow()?.__nessieNativeAppIcon === 'dark' ? 'dark' : 'light'
+  readWindow()?.__nessieNativeAppIcon === 'light' ? 'light' : 'dark'
 
 export const requestNativeAppIcon = (icon: AppIconVariant): void => {
   readWindow()?.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'nessie:app-icon', icon }))

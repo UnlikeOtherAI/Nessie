@@ -6,8 +6,8 @@ import {
 } from '../../../facades/native-app-icon'
 
 const OPTIONS: Array<{ id: AppIconVariant; label: string; src: string }> = [
-  { id: 'light', label: 'Light', src: '/app-icon-light.png' },
   { id: 'dark', label: 'Dark', src: '/app-icon-dark.png' },
+  { id: 'light', label: 'Light', src: '/app-icon-light.png' },
 ]
 
 /**

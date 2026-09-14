@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo-modules-core'
 
 /**
- * The Home Screen icon: the light default or the dark alternative.
+ * The Home Screen icon: the dark default or the light alternative.
  *
  * iOS-only. `requireOptionalNativeModule` makes "unavailable" a readable state
  * on Android, in Expo Go, and in an installed build that predates the module,
@@ -20,7 +20,7 @@ const nativeModule = requireOptionalNativeModule<NessieAppIconNativeModule>('Nes
 
 export const isAppIconSwitchAvailable = (): boolean => nativeModule?.isSupported() === true
 
-export const getAppIcon = (): AppIconVariant => nativeModule?.getIcon() ?? 'light'
+export const getAppIcon = (): AppIconVariant => nativeModule?.getIcon() ?? 'dark'
 
 export const setAppIcon = async (icon: AppIconVariant): Promise<AppIconVariant> => {
   if (!nativeModule) throw new Error('Changing the app icon is not available in this build.')

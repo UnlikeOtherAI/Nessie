@@ -24,6 +24,6 @@ test('publishes the icon in effect on window and as an event', () => {
 test('accepts only the two shipped icons', () => {
   assert.equal(isAppIconMessage({ type: 'nessie:app-icon', icon: 'light' }), true)
   assert.equal(isAppIconMessage({ type: 'nessie:app-icon', icon: 'dark' }), true)
-  assert.equal(isAppIconMessage({ type: 'nessie:app-icon', icon: 'AppIconDark' }), false)
+  assert.equal(isAppIconMessage({ type: 'nessie:app-icon', icon: 'AppIconLight' }), false)
   assert.equal(isAppIconMessage({ type: 'nessie:haptic', icon: 'dark' }), false)
 })

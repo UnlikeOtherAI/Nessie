@@ -25,7 +25,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Brand colours. DARK is the icon ground; LIGHT is the alternative ground.
+# Brand colours. DARK is the default icon ground; LIGHT is the alternative ground.
 DARK = '#07152C'
 LIGHT = '#FFFFFF'
 COLOURS = {
@@ -279,9 +279,9 @@ def main() -> None:
     save(full_bleed(160, LIGHT), 'admin/public/app-icon-light.png', rgb=True)
     save(full_bleed(160, DARK), 'admin/public/app-icon-dark.png', rgb=True)
 
-    # Mobile (Expo): light is the default icon, dark the iOS alternative
-    save(full_bleed(1024, LIGHT), 'mobile/assets/icon.png', rgb=True)
-    save(full_bleed(1024, DARK), 'mobile/assets/icon-dark.png', rgb=True)
+    # Mobile (Expo): dark is the default icon, light the iOS alternative
+    save(full_bleed(1024, DARK), 'mobile/assets/icon.png', rgb=True)
+    save(full_bleed(1024, LIGHT), 'mobile/assets/icon-light.png', rgb=True)
     save(android_foreground(1024), 'mobile/assets/adaptive-icon.png')
     save(mark(512), 'mobile/assets/splash-icon.png')
     save(mark(256), 'mobile/assets/splash-icon-rounded.png')
