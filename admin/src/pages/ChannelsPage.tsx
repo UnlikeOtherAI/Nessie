@@ -50,7 +50,7 @@ export const ChannelsPage = () => {
   // that is standing right there. See `useChannelPlaceableAgents`.
   const { data: agents = [], isPending: agentsPending } = useChannelPlaceableAgents()
   const isOwner = useIsOwner()
-  const { data: allUsers = [] } = useUsers(isOwner)
+  const { data: allUsers = [] } = useUsers()
 
   const isComposeRoute = location.pathname === '/channels/new'
   const composeReturnTo = readChannelComposeReturnTo(location.state)

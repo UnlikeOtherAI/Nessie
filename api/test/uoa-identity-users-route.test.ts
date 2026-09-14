@@ -135,12 +135,110 @@ test('bound owner receives only UOA-authorized identities with product extension
   await fixture.app.close()
 })
 
-test('non-owner is rejected before any UOA directory read', async () => {
-  const fixture = await makeApp({ owner: false })
+// A plain member must be able to find the people they can message. The viewer
+// shares `channelId` with the other person; `privateChannelId` is a channel
+// only the other person is in, so it must not reach the viewer.
+const otherUserId = '66666666-6666-4666-8666-666666666666'
+const privateChannelId = '77777777-7777-4777-8777-777777777777'
+const viewerMember: TeamMemberRecord = {
+  avatarImageUrl: null,
+  displayName: 'Viewer Member',
+  email: 'viewer@example.test',
+  orgRole: 'member',
+  status: 'ACTIVE',
+  uoaSub: 'uoa-viewer',
+}
+const ownerMember: TeamMemberRecord = {
+  avatarImageUrl: 'https://uoa.example/owner.png',
+  displayName: 'Org Owner',
+  email: 'owner@example.test',
+  orgRole: 'owner',
+  status: 'ACTIVE',
+  uoaSub: 'uoa-org-owner',
+}
+
+test('bound member receives the directory view of every colleague', async () => {
+  const fixture = await makeApp({
+    directoryList: async () => [viewerMember, ownerMember],
+    owner: false,
+    users: [
+      { ...boundUser(viewerMember.uoaSub), channelMembers: [{ channelId }] },
+      {
+        ...boundUser(ownerMember.uoaSub),
+        channelMembers: [{ channelId }, { channelId: privateChannelId }],
+        id: otherUserId,
+      },
+    ],
+  })
   const response = await fixture.app.inject({ method: 'GET', url: '/api/users' })
 
-  assert.equal(response.statusCode, 403)
-  assert.deepEqual(fixture.calls(), { directory: 0, users: 0 })
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(fixture.calls(), { directory: 1, users: 1 })
+  const owner = response.json().data.find((user: { id: string }) => user.id === otherUserId)
+  assert.deepEqual(owner, {
+    activeStatus: null,
+    avatarUrl: ownerMember.avatarImageUrl,
+    channelIds: [channelId],
+    createdAt: timestamp.toISOString(),
+    displayName: ownerMember.displayName,
+    email: ownerMember.email,
+    id: otherUserId,
+    role: ownerMember.orgRole,
+    updatedAt: timestamp.toISOString(),
+  })
+  await fixture.app.close()
+})
+
+test('unbound member gets active colleagues without management fields', async () => {
+  const fixture = await makeApp({
+    externalId: null,
+    owner: false,
+    users: [
+      { ...unboundUser, organizationMembers: [{ deactivatedAt: null, role: 'member' }] },
+      {
+        ...unboundUser,
+        channelMembers: [{ channelId }, { channelId: privateChannelId }],
+        displayName: 'Local Owner',
+        email: 'local-owner@example.test',
+        id: otherUserId,
+      },
+      {
+        ...unboundUser,
+        displayName: 'Gone Person',
+        email: 'gone@example.test',
+        id: '88888888-8888-4888-8888-888888888888',
+        organizationMembers: [{ deactivatedAt: timestamp, role: 'member' }],
+      },
+    ],
+  })
+  const response = await fixture.app.inject({ method: 'GET', url: '/api/users' })
+
+  assert.equal(response.statusCode, 200)
+  const data = response.json().data as Array<Record<string, unknown>>
+  assert.deepEqual(data.map((user) => user.id), [userId, otherUserId])
+  for (const user of data) {
+    assert.equal('deactivatedAt' in user, false)
+  }
+  assert.deepEqual(data[1]?.channelIds, [channelId])
+  assert.equal(data[1]?.displayName, 'Local Owner')
+  await fixture.app.close()
+})
+
+test('unbound owner keeps the management record', async () => {
+  const deactivated = {
+    ...unboundUser,
+    channelMembers: [{ channelId: privateChannelId }],
+    id: otherUserId,
+    organizationMembers: [{ deactivatedAt: timestamp, role: 'member' }],
+  }
+  const fixture = await makeApp({ externalId: null, users: [unboundUser, deactivated] })
+  const response = await fixture.app.inject({ method: 'GET', url: '/api/users' })
+
+  assert.equal(response.statusCode, 200)
+  const data = response.json().data as Array<Record<string, unknown>>
+  assert.equal(data.length, 2)
+  assert.equal(data[1]?.deactivatedAt, timestamp.toISOString())
+  assert.deepEqual(data[1]?.channelIds, [privateChannelId])
   await fixture.app.close()
 })
 

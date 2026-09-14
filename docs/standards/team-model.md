@@ -391,6 +391,18 @@ coalesces same-key misses under a bounded in-flight set, prevents invalidated
 loads from refilling it, never serves expired data after an upstream failure,
 and is never an authorization input. A missing legacy subject binding is a migration error,
 never an email/name join. The unbound organisation retains the local route.
+
+`GET /api/users` is the people directory every addressing doorway is built on
+(DM picker, sidebar, search, mentions, project and watcher pickers), so any
+authenticated member of the organisation may read it; the response, not the
+door, is shaped by role. An owner receives the management record. Everyone
+else receives `toMemberDirectoryView` (`api/src/services/users.ts`): id,
+display name, email, organisation role, avatar sources, active status and
+timestamps, with deactivated people omitted, `deactivatedAt` never sent, and
+`channelIds` narrowed to channels the viewer shares. That view is rebuilt
+field by field so a new owner-record field never reaches members by default,
+and it adds no local profile copy — in a bound organisation it is the same
+live UOA roster read.
 Other renderers and authorization checks still read the mirrors/projections
 named above, so this slice does not complete the authority migration; the
 audited sequence and upstream blockers are recorded in the unification plan.
