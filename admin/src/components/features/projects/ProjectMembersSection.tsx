@@ -2,7 +2,7 @@ import { useNavigateToDm } from '../../../facades/channels/dm-navigation'
 import { useProjectMembers } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { UserAvatar } from '../../shared/UserAvatar'
-import { useIsOwner } from '../../../facades/auth/hooks'
+import { useIsOrganizationAdmin } from '../../../facades/auth/hooks'
 import { Skeleton } from '../../primitives/Skeleton'
 import { SectionOverflowHint } from '../../shared/SectionOverflowHint'
 import {
@@ -28,14 +28,14 @@ type ProjectMembersSectionProps = {
  */
 export const ProjectMembersSection = ({ className, projectId }: ProjectMembersSectionProps) => {
   const { me, token } = useAuthSession()
-  const isOrganizationOwner = useIsOwner()
+  const isOrganizationAdmin = useIsOrganizationAdmin()
   const navigateToDm = useNavigateToDm()
   const { data: members, isError, isPending } = useProjectMembers(projectId)
 
   const ordered = orderProjectMembers(members ?? [])
   const visible = ordered.slice(0, MEMBER_ROW_CAP)
   const canManage = canManageProjectMembers({
-    isOrganizationOwner,
+    isOrganizationAdmin,
     members: ordered,
     userId: me?.user.id,
   })
@@ -53,7 +53,7 @@ export const ProjectMembersSection = ({ className, projectId }: ProjectMembersSe
       {isPending ? <Skeleton className="p-2" variant="list" /> : null}
       {isError ? <SectionNotice>Members could not be loaded. Please refresh.</SectionNotice> : null}
       {!isPending && !isError && ordered.length === 0 ? (
-        <SectionNotice>No members yet. Owners can add people in Settings.</SectionNotice>
+        <SectionNotice>No members yet. Add people from the project's Members button.</SectionNotice>
       ) : null}
       {visible.map((member) => (
         <button

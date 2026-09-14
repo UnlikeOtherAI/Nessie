@@ -807,7 +807,7 @@ than silently rewritten:
   excludes. The distinction is that the script is ours and the model
   supplies only a node id; bytes land through the one `FileService`.
 
-### 5c. Adversarial code review (Kimix, 2026-09-02)
+### 5c. Adversarial code review (2026-09-02)
 
 What the 2026-09-02 review found, and what was done about it, is in
 [2026-09-02-browserbase-cloud-browsers-reviews.md](2026-09-02-browserbase-cloud-browsers-reviews.md)
@@ -954,7 +954,7 @@ iframe and URL-minting prose in §4.9.
     mobile viewer passes the keyboard parameter — "sign in from your
     phone" is a phase-2 acceptance test, not an assumption.
 
-## 6a. Adversarial-review addenda (2026-09-02, Kimix + Codex Sol)
+## 6a. Adversarial-review addenda (2026-09-02, reviewer B + Codex Sol)
 
 In [2026-09-02-browserbase-cloud-browsers-reviews.md](2026-09-02-browserbase-cloud-browsers-reviews.md),
 beside §5c.

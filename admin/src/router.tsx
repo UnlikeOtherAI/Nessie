@@ -45,6 +45,9 @@ const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactE
 )
 
 const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })))
+const ProjectDirectoryPage = lazy(() =>
+  import('./pages/project/ProjectDirectoryPage').then((m) => ({ default: m.ProjectDirectoryPage })),
+)
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
 const AgentDesignerPage = lazy(() =>
   import('./pages/AgentDesignerPage').then((m) => ({ default: m.AgentDesignerPage })),
@@ -321,6 +324,10 @@ export const router = createBrowserRouter([
       {
         path: '/projects',
         element: lazyElement(ProjectsIndexPage, 'list'),
+      },
+      {
+        path: '/projects/directory',
+        element: lazyElement(ProjectDirectoryPage, 'list'),
       },
       {
         path: '/projects/:projectId',

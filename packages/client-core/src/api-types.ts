@@ -50,6 +50,11 @@ export type TeamRecord = {
   name: string
   projectId: string
   projectIds?: string[]
+  /**
+   * Whether the signed-in person is a member of this team — the placement
+   * `POST /api/projects` requires of anybody but an organisation owner or admin.
+   */
+  viewerIsMember?: boolean
 }
 
 export type CallParticipantRecord = {

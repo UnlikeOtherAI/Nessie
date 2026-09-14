@@ -159,6 +159,13 @@ export type StartAgentConversationResult = {
   conversation: AgentConversationRecord
   /** Null when the conversation was started empty, which is the rail's case. */
   message: ThreadMessageRecord | null
+  /**
+   * True when nothing was opened because this person's last one here is still
+   * empty: `conversation` is that one. The server decides it — one empty
+   * conversation at a time is its rule (`startAgentConversation`) — and the
+   * panel turns it into a nudge rather than a silent second row.
+   */
+  reused: boolean
 }
 
 /**

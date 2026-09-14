@@ -106,7 +106,7 @@ export const loadUserMemberships = async (
       include: { organization: { select: { id: true, name: true } } },
     }),
     prisma.projectMember.findMany({
-      where: { userId },
+      where: { userId, project: { deletedAt: null } },
       include: { project: { select: { id: true, name: true, organizationId: true } } },
     }),
     prisma.teamMember.findMany({

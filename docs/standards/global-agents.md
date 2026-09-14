@@ -23,7 +23,7 @@ file is the rule**.
   home-membership trigger. Sole membership is what makes `effectiveUserId =
   poster` and the single-candidate fast path safe, so it must hold at rest. Three
   refusals keep it true: no agent binds into ANY system channel
-  (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
+  (`bindAgentToChannel`, both routes, the PA tool; `canModifyChannel` likewise
   refuses rename, archive and re-membering), `createAgentTrigger` refuses a
   `systemSlug` target (a scheduled run re-arms its creator's identity), and
   `assertGlobalAgentRunPlacement` admits, before any inference, only the home DM
@@ -104,11 +104,12 @@ file is the rule**.
 ## Bounded ordinary-agent project collaboration
 
 Ordinary shared agents do not wake one another by posting a chat message: the
-channel orchestrator accepts human turns only. A project administrator may
+channel orchestrator accepts human turns only. Any member of the project may
 explicitly grant an ordinary agent `agent_peer_delegate` and the selected
 project ticket tools. On a live project-channel turn, or a bounded durable peer
 delivery from one, the worker re-reads the original requester. Peer delegation
-and board creation require `canAdministerProject`; ticket operations mirror
+and board creation require `canModifyProject` (any member of the project, or
+an organisation owner or admin); ticket operations mirror
 the existing live project-access gate. The target must be a
 non-system shared agent already bound to that exact channel. The durable mailbox
 row carries the requester capability, a maximum depth of four, and the source

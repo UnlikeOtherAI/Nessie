@@ -470,7 +470,7 @@ of thing the next platform will have its own version of.
 
 ## Review log
 
-- 2026-09-02: adversarial review by Kimix (narrowed brief, 11 findings)
+- 2026-09-02: adversarial review by reviewer B (narrowed brief, 11 findings)
   and Codex Sol (full scope, 28 findings), each verified against the
   Nessie/Coder/Ledger code before folding in. Confirmed highs reshaped
   the plan: the voice session is not a `Run` and never holds the

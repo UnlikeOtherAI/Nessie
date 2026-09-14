@@ -226,6 +226,17 @@ const sendProvisioningError = (
   error: unknown,
 ): boolean => {
   if (error instanceof UoaRosterRejectedError) {
+    // UOA never suffixes an organisation's address: a taken one is refused so
+    // the person picks another name instead of landing on `acme-k4f2`.
+    if (error.upstreamCode === 'ORG_SLUG_TAKEN') {
+      sendApiError(
+        reply,
+        409,
+        'ORG_SLUG_TAKEN',
+        'An organisation with this address already exists. Pick another name or address.',
+      )
+      return true
+    }
     // 400 with no owner is the one refusal a person can act on: it means UOA
     // has no record of them on this domain, which signing in again repairs.
     const missingOwner = error.upstreamCode === 'OWNER_REQUIRED'

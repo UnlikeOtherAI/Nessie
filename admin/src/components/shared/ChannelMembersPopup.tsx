@@ -40,8 +40,8 @@ type ChannelMembersPopupProps = {
   currentUserId: string
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   /**
-   * Server-computed `ChannelRecord.viewerCanManage` — channel owner/admin, team
-   * owner/admin, or organisation owner/admin. Gates every add/remove control
+   * Server-computed `ChannelRecord.viewerCanManage` — any member of the
+   * channel, or an organisation owner/admin. Gates every add/remove control
    * here except a person's own "leave" row, which needs no authority over the
    * channel (see `docs/standards/disclosure-boundaries.md`).
   */

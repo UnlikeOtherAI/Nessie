@@ -12,10 +12,11 @@ type FakeElement = {
   textContent?: string
 }
 
-const injectedThemeMessage = (
+const injectedMessages = (
   colorScheme: 'dark' | 'light',
   tokens: { rail?: string; text?: string } = {},
-): Record<string, unknown> | undefined => {
+  pagePublishesChrome = false,
+): Record<string, unknown>[] => {
   const elements = new Map<string, FakeElement>()
   const messages: Record<string, unknown>[] = []
 
@@ -32,6 +33,7 @@ const injectedThemeMessage = (
     querySelector: (): FakeElement | null => null,
   }
   const window = {
+    ...(pagePublishesChrome ? { __nessieChromeThemePublisher: true } : {}),
     __nessieNativeShell: { formFactor: 'phone', platform: 'ios' },
     addEventListener: (): void => undefined,
     location: { protocol: 'file:' },
@@ -69,8 +71,14 @@ const injectedThemeMessage = (
   const runInjectedScript = new Function('window', 'document', 'MutationObserver', 'getComputedStyle', INJECTED)
   runInjectedScript(window, document, FakeMutationObserver, getComputedStyle)
 
-  return messages.find((message) => message.type === 'theme')
+  return messages
 }
+
+const injectedThemeMessage = (
+  colorScheme: 'dark' | 'light',
+  tokens: { rail?: string; text?: string } = {},
+): Record<string, unknown> | undefined =>
+  injectedMessages(colorScheme, tokens).find((message) => message.type === 'theme')
 
 const injectedSafeAreaCss = (platform: string, formFactor: string, bottomInset = 0): string => {
   const elements = new Map<string, FakeElement>()
@@ -251,6 +259,19 @@ test('uses the iPad page rail for the Sandstone phone header', () => {
 
   assert.equal(sandstone?.headerSurface, '#f1e9dc')
   assert.equal(sandstone?.headerText, '#2b2018')
+})
+
+// Under a theme whose chrome differs from its work surface, the root describes
+// the surface: reading it painted a white header over a navy page. A page that
+// publishes its own palette must be the only voice for both messages.
+test('leaves theme and backdrop to a page that publishes its own chrome palette', () => {
+  const kinds = (publishes: boolean): unknown[] =>
+    injectedMessages('dark', {}, publishes).map((message) => message.type)
+
+  assert.ok(kinds(false).includes('theme'))
+  assert.ok(kinds(false).includes('bg'))
+  assert.equal(kinds(true).includes('theme'), false)
+  assert.equal(kinds(true).includes('bg'), false)
 })
 
 test('recognises hexadecimal CSS colours when choosing native contrast', () => {

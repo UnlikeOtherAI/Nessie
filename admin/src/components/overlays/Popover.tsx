@@ -112,13 +112,17 @@ export const Popover = ({
     const anchor = anchorRect ?? anchorElement?.getBoundingClientRect() ?? null
     if (!anchor) return
     const rect = panel.getBoundingClientRect()
+    // The content's natural height, not the box's: once `maxHeight` is applied
+    // the box is capped at it, so content that arrives later (the account
+    // menu's statuses) would be measured at the old height and stay clipped.
+    const height = rect.height - panel.clientHeight + panel.scrollHeight
     const width = matchAnchorWidth && anchorElement
       ? anchorElement.getBoundingClientRect().width
       : null
     const next = placePopover({
       anchor,
       bounds: viewportBounds(),
-      panel: { height: rect.height, width: width ?? rect.width },
+      panel: { height, width: width ?? rect.width },
       placement,
     })
     const value: Placed = {
@@ -160,10 +164,23 @@ export const Popover = ({
     // The viewport changes when the document's layout changes even in engines
     // that do not report an element-level resize for the anchor.
     observer.observe(document.body)
+    // The capped panel box does not resize when its content grows, so watch
+    // the content itself — including children mounted after the first open.
+    const observeChildren = () => {
+      if (!panel) return
+      for (const child of Array.from(panel.children)) observer.observe(child)
+    }
+    observeChildren()
+    const mutations = new MutationObserver(() => {
+      observeChildren()
+      measure()
+    })
+    if (panel) mutations.observe(panel, { childList: true })
     return () => {
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
       observer.disconnect()
+      mutations.disconnect()
     }
   }, [anchorRef, measure, open, panelRef])
 

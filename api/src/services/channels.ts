@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  isAdminRole,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -10,11 +11,12 @@ import {
 } from '@nessie/schemas'
 import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts/team.js'
 import {
-  canManageChannel,
+  canModifyChannel,
   channelTeamInclude,
   ChannelSlugConflictError,
   ChannelValidationError,
   createChannelForUser,
+  deleteChannel,
   ensureDefaultThread,
   loadLastMessageAtByThread,
   loadUnreadCountsByThread,
@@ -28,10 +30,11 @@ import {
 // the worker (the assistant's `channel_create` / `channel_update` /
 // `channel_archive` tools); the routes keep importing them from here.
 export {
-  canManageChannel,
+  canModifyChannel,
   ChannelSlugConflictError,
   ChannelValidationError,
   createChannelForUser,
+  deleteChannel,
   setChannelArchived,
   updateChannel,
 }
@@ -42,9 +45,17 @@ export const listChannelsForUser = async (
   organizationId: string,
   teamId?: string,
   includeArchived = false,
+  /**
+   * The caller's verified organisation owner/admin standing
+   * (`isAdminActor(actorContext)`). Omitted only by callers with no request
+   * role, which fall back to the `OrganizationMember` row.
+   */
+  viewer: { isOrganizationAdmin?: boolean } = {},
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
+    // Soft-deleted channels never list, not even with `includeArchived`.
+    deletedAt: null,
     OR: [
       { visibility: 'public' },
       { members: { some: { userId } } },
@@ -151,27 +162,47 @@ export const listChannelsForUser = async (
   )
   const lastMessageAtByThread = await loadLastMessageAtByThread(prisma, defaultThreadIds)
 
-  // `viewerCanManage` mirrors `canManageChannel` (`@nessie/team-admin`), batched
-  // rather than looked up per row: the viewer's channel-member role is already
+  // `viewerCanManage` mirrors `canModifyChannel` (`@nessie/team-admin`), batched
+  // rather than looked up per row: the viewer's channel membership is already
   // loaded above, so only the organisation role (one row for this viewer) and
-  // the team roles across the distinct teams on this page are fetched, once
-  // each, instead of once per channel.
+  // — for the direct messages on this page, which keep their own rule — the
+  // team roles across their distinct teams are fetched, once each, instead of
+  // once per channel.
+  const dmTeamIds = [...new Set(
+    channels.filter((channel) => channel.type === 'dm').map((channel) => channel.teamId),
+  )]
   const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
-    prisma.organizationMember.findFirst({
-      where: { organizationId, userId },
-      select: { role: true },
-    }),
-    prisma.teamMember.findMany({
-      where: { userId, teamId: { in: [...new Set(channels.map((channel) => channel.teamId))] } },
-      select: { role: true, teamId: true },
-    }),
+    viewer.isOrganizationAdmin !== undefined
+      ? Promise.resolve(null)
+      : prisma.organizationMember.findFirst({
+        where: { organizationId, userId },
+        select: { role: true },
+      }),
+    dmTeamIds.length === 0
+      ? Promise.resolve([])
+      : prisma.teamMember.findMany({
+        where: { userId, teamId: { in: dmTeamIds } },
+        select: { role: true, teamId: true },
+      }),
   ])
-  const isManagerRole = (role: string | null | undefined): boolean =>
-    role === 'owner' || role === 'admin'
-  const viewerIsOrgManager = isManagerRole(viewerOrgMember?.role)
+  const viewerIsOrgAdmin = viewer.isOrganizationAdmin ?? isAdminRole(viewerOrgMember?.role)
   const viewerTeamRoleByTeamId = new Map(
     viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
   )
+  const viewerMayModify = (channel: (typeof channels)[number]): boolean => {
+    if (channel.systemChannelType) return false
+    const isParticipant = channel.members[0] !== undefined
+    const channelRole = channel.members[0]?.role
+    if (channel.type === 'dm') {
+      // Participation first: nobody outside a DM manages it.
+      if (!isParticipant) return false
+      return viewerIsOrgAdmin
+        || isAdminRole(channelRole)
+        || isAdminRole(viewerTeamRoleByTeamId.get(channel.teamId))
+    }
+    if (isParticipant) return true
+    return viewerIsOrgAdmin && channel.visibility === 'public'
+  }
 
   const principalUserIds = [...new Set(
     channels.flatMap((channel) =>
@@ -237,11 +268,7 @@ export const listChannelsForUser = async (
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
-    viewerCanManage: !channel.systemChannelType && (
-      isManagerRole(channel.members[0]?.role)
-      || viewerIsOrgManager
-      || isManagerRole(viewerTeamRoleByTeamId.get(channel.teamId))
-    ),
+    viewerCanManage: viewerMayModify(channel),
     personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
@@ -251,13 +278,18 @@ export const listChannelsForUser = async (
 
 export const joinPublicChannel = async (
   prisma: PrismaClient,
-  input: { userId: string; organizationId: string; channelId: string },
+  input: {
+    userId: string
+    organizationId: string
+    channelId: string
+    isOrganizationAdmin?: boolean
+  },
 ): Promise<ChannelRecord | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: input.channelId },
-    select: { organizationId: true, visibility: true, archivedAt: true },
+    select: { organizationId: true, visibility: true, archivedAt: true, deletedAt: true },
   })
-  if (!channel || channel.organizationId !== input.organizationId) {
+  if (!channel || channel.organizationId !== input.organizationId || channel.deletedAt) {
     return null
   }
   if (channel.visibility !== 'public' || channel.archivedAt) {
@@ -281,5 +313,7 @@ export const joinPublicChannel = async (
     where: { id: input.channelId },
     include: channelTeamInclude,
   })
-  return mapChannelRecord(prisma, joined, input.userId)
+  return mapChannelRecord(prisma, joined, input.userId, {
+    isOrganizationAdmin: input.isOrganizationAdmin,
+  })
 }

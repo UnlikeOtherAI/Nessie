@@ -143,9 +143,10 @@ test('no bare vh unit remains in the nine overlay panels', () => {
   assert.ok(bareVhCount >= 9, `expected at least nine dvh conversions, found ${bareVhCount}`)
 })
 
-test('Dialog\'s xl size specifically uses dvh, not vh, for maxHeight', () => {
+test('Dialog sizes share the safe dynamic-viewport ceiling', () => {
   const dialog = source('../src/components/shared/Dialog.tsx')
-  assert.match(dialog, /xl:\s*\{[^}]*maxHeight:\s*'88dvh'/)
+  assert.match(dialog, /const PANEL_MAX_HEIGHT = \[/)
+  assert.match(dialog, /xl:\s*\{[^}]*maxHeight:\s*PANEL_MAX_HEIGHT/)
 })
 
 test('the two stylesheet rules that sized with vh now use dvh', () => {

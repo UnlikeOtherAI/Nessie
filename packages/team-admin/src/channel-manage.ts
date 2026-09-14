@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { Channel, PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import type { ChannelRecord } from '@nessie/schemas'
 
 import { channelTeamInclude, mapChannelRecord } from './channel-records.js'
@@ -10,9 +10,11 @@ import {
   throwIfChannelSlugConflict,
   validateChannelLabel,
 } from './channel-slugs.js'
+import { canModifyChannel } from './resource-authority.js'
 
 /**
- * Who may manage a channel, and the writes that authorization gates.
+ * The channel writes `canModifyChannel` gates (`resource-authority.ts`: any
+ * member of the channel, or an organisation owner or admin on a public one).
  *
  * Shared by the channel/thread routes and the personal assistant's
  * `channel_update` / `channel_archive` tools: renaming or archiving a channel by
@@ -21,68 +23,20 @@ import {
  * that stays at the call sites.
  */
 
-/**
- * Channel owner/admin, organization owner/admin, or team owner/admin. The
- * channel row comes back with it so a caller that needs the scope — the rename's
- * slug pre-check needs `projectId` — does not read it twice.
- */
-export const canManageChannel = async (
-  prisma: PrismaClient,
-  input: { userId: string; organizationId: string; channelId: string },
-): Promise<{ channel: Channel } | null> => {
-  const channel = await prisma.channel.findUnique({
-    where: { id: input.channelId },
-  })
-  if (!channel || channel.organizationId !== input.organizationId) {
-    return null
-  }
-
-  // System channels are lifecycle-protected: their label, archive state and
-  // membership are bootstrap-owned facts other rules depend on (a global
-  // agent's home DM must stay reachable and single-member). Nobody manages one
-  // by clicking or by asking; the ensure functions repair them instead.
-  if (channel.systemChannelType) {
-    return null
-  }
-
-  const [channelMember, orgMember, teamMember] = await Promise.all([
-    prisma.channelMember.findUnique({
-      where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },
-      select: { role: true },
-    }),
-    prisma.organizationMember.findFirst({
-      where: { organizationId: input.organizationId, userId: input.userId },
-      select: { role: true },
-    }),
-    prisma.teamMember.findFirst({
-      where: { teamId: channel.teamId, userId: input.userId },
-      select: { role: true },
-    }),
-  ])
-
-  const isManager =
-    channelMember?.role === 'owner'
-    || channelMember?.role === 'admin'
-    || orgMember?.role === 'owner'
-    || orgMember?.role === 'admin'
-    || teamMember?.role === 'owner'
-    || teamMember?.role === 'admin'
-
-  return isManager ? { channel } : null
-}
-
 export const updateChannel = async (
   prisma: PrismaClient,
   input: {
     userId: string
     organizationId: string
     channelId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
     label?: string
     topic?: string | null
     description?: string | null
   },
 ): Promise<ChannelRecord | null> => {
-  const manage = await canManageChannel(prisma, input)
+  const manage = await canModifyChannel(prisma, input)
   if (!manage) {
     return null
   }
@@ -117,7 +71,9 @@ export const updateChannel = async (
       data,
       include: channelTeamInclude,
     })
-    return mapChannelRecord(prisma, channel, input.userId)
+    return mapChannelRecord(prisma, channel, input.userId, {
+      isOrganizationAdmin: input.isOrganizationAdmin,
+    })
   } catch (error) {
     if (input.label !== undefined) {
       throwIfChannelSlugConflict(error, validateChannelLabel(input.label).slug, scope)
@@ -133,9 +89,11 @@ export const setChannelArchived = async (
     organizationId: string
     channelId: string
     archived: boolean
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
   },
 ): Promise<ChannelRecord | null> => {
-  const manage = await canManageChannel(prisma, input)
+  const manage = await canModifyChannel(prisma, input)
   if (!manage) {
     return null
   }
@@ -169,11 +127,44 @@ export const setChannelArchived = async (
       data: { archivedAt: input.archived ? new Date() : null },
       include: channelTeamInclude,
     })
-    return mapChannelRecord(prisma, channel, input.userId)
+    return mapChannelRecord(prisma, channel, input.userId, {
+      isOrganizationAdmin: input.isOrganizationAdmin,
+    })
   } catch (error) {
     if (reclaimedSlug !== null) {
       throwIfChannelSlugConflict(error, reclaimedSlug, scope, 'restore')
     }
     throw error
   }
+}
+
+/**
+ * Delete a channel: a soft delete, gated like every other change to it
+ * (`canModifyChannel` — any member, or an organisation owner or admin on a
+ * public channel). `deletedAt` and `archivedAt` are stamped together, so every
+ * archived-channel filter already hides the row and its name is released, and
+ * the read-by-id paths filter `deletedAt` on top. Nothing — threads, messages,
+ * members, bindings — is removed, so a later restore has everything to return.
+ * Returns null exactly when `canModifyChannel` does.
+ */
+export const deleteChannel = async (
+  prisma: PrismaClient,
+  input: {
+    userId: string
+    organizationId: string
+    channelId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
+  },
+): Promise<{ id: string } | null> => {
+  const manage = await canModifyChannel(prisma, input)
+  if (!manage) {
+    return null
+  }
+  const now = new Date()
+  await prisma.channel.update({
+    where: { id: input.channelId },
+    data: { archivedAt: manage.channel.archivedAt ?? now, deletedAt: now },
+  })
+  return { id: input.channelId }
 }

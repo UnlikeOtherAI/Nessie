@@ -10,7 +10,7 @@ import { PageBody } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjects } from '../../facades/projects/hooks'
 import { useConsumedIntent } from '../../navigation/intent'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
@@ -29,7 +29,7 @@ export const ProjectBoardsPage = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const boardsQuery = useProjectBoards(projectId)
-  const canAdminister = useCanAdministerProject(projectId ?? '')
+  const canAdminister = useCanModifyProject(projectId ?? '')
   const createIntent = useConsumedIntent('create')
   const prewarm = usePrewarm()
   const [createOpen, setCreateOpen] = useState(false)

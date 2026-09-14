@@ -38,6 +38,8 @@ export type NativeShellMessage = {
   hasBackDepth?: boolean
   haptic?: HapticKind
   color?: string
+  /** `theme`: `'page'` when the admin resolved the chrome palette, focus mode included. */
+  chromeSource?: string
   headerSurface?: string
   headerText?: string
   /** `nessie:app-icon`'s chosen Home Screen icon — see native-app-icon.ts. */

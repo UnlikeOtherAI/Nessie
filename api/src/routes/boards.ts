@@ -17,7 +17,6 @@ import {
   deleteBoardColumn,
   findBoard,
   isBoardMutationError,
-  listBoardTasks,
   listBoards,
   updateBoard,
   updateBoardColumn,
@@ -25,6 +24,7 @@ import {
 
 import { BoardTaskRecordSchema } from '../contracts/tasks-board.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { listBoardTasksForUser } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -32,17 +32,18 @@ import type { RouteDeps } from './types.js'
  *
  * Replaces the single-board `board.ts`: a project now has many boards, each
  * owning its own tickets (`Task.boardId`) and its own columns. Reads are
- * entitlement-gated on project access; writes need project administration
- * (organisation owner, or the project's own owner/admin) rather than
- * organisation ownership.
+ * entitlement-gated on project access; writes take `requireProjectModifier`,
+ * which every member of the project has equally — an organisation owner or
+ * admin, or any project member (`canModifyProject`). A soft-deleted project is
+ * gone for both: the entitlement and the lookup below each refuse it.
  */
 export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } = deps
+  const { prisma, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } = deps
 
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
     if (!(await isProjectAccessibleToActor(actorContext, projectId))) return null
     return prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId, deletedAt: null },
       select: { id: true, organizationId: true },
     })
   }
@@ -103,7 +104,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(CreateBoardBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -128,7 +129,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(UpdateBoardBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -150,7 +151,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const { newDefaultBoardId } = request.query as { newDefaultBoardId?: string }
 
     const result = await deleteBoard(prisma, project.id, boardId, newDefaultBoardId)
@@ -188,9 +189,13 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       })
       iterationId = active?.id ?? null
     }
-    const { tasks, truncated } = await listBoardTasks(prisma, board, {
+    const { tasks, truncated } = await listBoardTasksForUser(prisma, board, {
       limit: BOARD_TASK_LIMIT,
       iterationId,
+    }, {
+      organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
+      userId: actorContext.actor.actorId,
     })
     return createApiResponse({
       tasks: BoardTaskRecordSchema.array().parse(tasks),
@@ -208,7 +213,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const board = await prisma.board.findFirst({
       where: { id: boardId, projectId: project.id },
       select: { id: true, organizationId: true },
@@ -240,7 +245,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
         sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
         return reply
       }
-      if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+      if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
       if (!(await findBoard(prisma, project.id, boardId))) {
         sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
         return reply
@@ -273,7 +278,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
         sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
         return reply
       }
-      if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+      if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
       if (!(await findBoard(prisma, project.id, boardId))) {
         sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
         return reply

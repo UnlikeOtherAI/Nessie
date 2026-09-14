@@ -94,7 +94,6 @@ test('a non-author is refused before the immutability check, keeping 403 the ans
 test('deleting a card-press message stays allowed — a tombstone changes nothing on the card', async () => {
   const { calls, prisma } = makePrisma({ metadata: cardResponseMetadata })
   const result = await softDeleteMessage(prisma, {
-    isChannelManager: false,
     messageId: input.messageId,
     threadId: input.threadId,
     userId: AUTHOR,

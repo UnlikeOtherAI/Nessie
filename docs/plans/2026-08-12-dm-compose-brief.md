@@ -11,7 +11,7 @@ You are asked for a **visual/UX design proposal**, not an implementation.
 > group DM channel. If I add a user to this GroupDM, it needs to ask me if I
 > want to create a new group or just add them to the existing one, in which case
 > they're going to see the full history. This task is design, so consult with
-> Kimix on how we're gonna implement this visually."
+> [a second model] on how we're gonna implement this visually."
 
 ## Verified current state (read from the code, 2026-08-12)
 

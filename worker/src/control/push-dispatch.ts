@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
-import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
+import {
+  canUserReadDisclosureBasis,
+  isOpenMentionChannel,
+  type BasisScopeRow,
+} from '@nessie/runtime'
 import { buildChannelMessagePath, type PushDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
@@ -117,9 +121,37 @@ export const handlePushDispatch = async (
     },
     select: { muted: true, userId: true },
   })
-  const unmutedRecipientIds = members
-    .filter((member) => !member.muted)
-    .map((member) => member.userId)
+  const channel = await deps.prisma.channel.findUnique({
+    where: { id: payload.channelId },
+    select: { label: true, systemChannelType: true, type: true, visibility: true },
+  })
+  // An open channel (public, not a DM, not a system conversation) is readable
+  // by every active organisation member, so a person @mentioned there who never
+  // joined is still rung — framed as a mention. A private or protected channel
+  // never adds anyone: its recipients are its members, and the API never lists
+  // a non-member in `mentionUserIds` there.
+  const memberIds = new Set(members.map((member) => member.userId))
+  const openChannelMentionIds = !recipientUserIds && channel && isOpenMentionChannel({
+    ...channel,
+    organizationId: payload.organizationId,
+  })
+    ? (await deps.prisma.organizationMember.findMany({
+      where: {
+        deactivatedAt: null,
+        organizationId: payload.organizationId,
+        userId: {
+          in: payload.mentionUserIds.filter(
+            (userId) => userId !== payload.authorUserId && !memberIds.has(userId),
+          ),
+        },
+      },
+      select: { userId: true },
+    })).map((row) => row.userId)
+    : []
+  const unmutedRecipientIds = [
+    ...members.filter((member) => !member.muted).map((member) => member.userId),
+    ...openChannelMentionIds,
+  ]
   if (unmutedRecipientIds.length === 0) {
     return summary
   }
@@ -175,10 +207,6 @@ export const handlePushDispatch = async (
   // members were filtered out above for everyone — a muted channel suppresses
   // even mention pushes, but the durable UserAlert row + bell badge are still
   // created API-side, so a mention is never lost, just quiet.
-  const channel = await deps.prisma.channel.findUnique({
-    where: { id: payload.channelId },
-    select: { label: true },
-  })
   const channelLabel = channel?.label ?? 'New message'
   const authorName = payload.authorName
     ?? replyMessage?.agent?.name

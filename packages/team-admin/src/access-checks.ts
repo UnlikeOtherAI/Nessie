@@ -28,6 +28,7 @@ export const getChannelIfMember = async (
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      deletedAt: true,
       systemChannelType: true,
       type: true,
       organizationId: true,
@@ -35,7 +36,7 @@ export const getChannelIfMember = async (
       members: { where: { userId }, select: { id: true }, take: 1 },
     },
   })
-  if (!channel) return null
+  if (!channel || channel.deletedAt) return null
   if (channel.organizationId !== organizationId) return null
   if (channel.members.length === 0) return null
   return {

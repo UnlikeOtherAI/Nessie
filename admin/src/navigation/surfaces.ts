@@ -259,6 +259,17 @@ export const SURFACES: Surface[] = [
     type: 'root',
   },
   {
+    // Every project in the organisation, including ones the viewer is not in
+    // (name, description and members only). Before the project rows below,
+    // which would otherwise read `directory` as a project id.
+    depth: 1,
+    parentOf: toProjects,
+    pattern: /^\/projects\/directory$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'detail',
+  },
+  {
     depth: 3,
     identityOf: (match) => `project-board-settings:${match[1]}:${match[2]}`,
     intent: { state: ['tab'] },
@@ -297,7 +308,8 @@ export const SURFACES: Surface[] = [
     keyScope: () => 'project',
     intent: PROJECT_INTENT,
     parentOf: toProjects,
-    pattern: /^\/projects\/([^/]+)(?:\/board)?$/,
+    // `directory` is the organisation-wide project list above, never an id.
+    pattern: /^\/projects\/(?!directory(?:\/|$))([^/]+)(?:\/board)?$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'tabHost',

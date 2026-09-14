@@ -784,7 +784,7 @@ findings came back closed, but the round caught several contradictions **revisio
 
 ## 12. Traceability — every review finding, and where it is handled
 
-Findings from three independent reviews (Fable, Kimix, Codex Sol, 2026-08-12),
+Findings from three independent reviews (Fable, reviewer B, Codex Sol, 2026-08-12),
 re-checked by those reviewers against revision 1 and updated here. Every row must
 be closed or explicitly waived before this plan is considered delivered.
 

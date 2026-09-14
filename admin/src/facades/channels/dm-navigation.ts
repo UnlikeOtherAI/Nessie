@@ -12,17 +12,17 @@ import { useChannels, useOpenDm, useStartChannelConversation } from './hooks'
  *
  * `POST /api/dm/:userId` already resolves an existing DM server-side, so the
  * client-side lookup below is purely an optimisation that avoids a round trip
- * and a channel-list invalidation. It depends on `GET /api/users`, which is
- * owner-gated — hence `useUsers(false)`: this hook never issues that request
- * itself, it only reads the cached list when some owner-only surface has
- * already loaded it, and falls through to the mutation for everyone else.
- * A member clicking a member must still land in the DM.
+ * and a channel-list invalidation. It reads the people directory
+ * (`GET /api/users`), which every member may read; a member's view narrows
+ * each person's `channelIds` to channels the viewer shares, which still
+ * contains their mutual DM. While the list is loading, or when no DM exists
+ * yet, it falls through to the mutation.
  */
 export const useNavigateToDm = (): ((userId: string) => void) => {
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const { data: channels = [] } = useChannels()
-  const { data: users = [] } = useUsers(false)
+  const { data: users = [] } = useUsers()
   const openDm = useOpenDm()
 
   return useCallback(

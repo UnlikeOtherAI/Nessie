@@ -33,6 +33,11 @@ export type NoticePadding = 'lg' | 'md'
 type NoticeProps = {
   children: ReactNode
   className?: string
+  /**
+   * Spelled as the attribute, the way `Pill` takes it: a banner a test has to
+   * find is named at the call site, never by the words it happens to say.
+   */
+  'data-testid'?: string
   padding?: NoticePadding
   radius?: NoticeRadius
   role?: 'alert' | 'status'
@@ -84,6 +89,7 @@ const paddingClasses: Record<NoticePadding, string> = {
 export const Notice = ({
   children,
   className,
+  'data-testid': testId,
   padding = 'md',
   radius = 'md',
   role,
@@ -101,6 +107,7 @@ export const Notice = ({
     ]
       .filter(Boolean)
       .join(' ')}
+    data-testid={testId}
     role={role}
   >
     {children}

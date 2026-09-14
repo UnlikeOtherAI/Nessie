@@ -10,6 +10,7 @@ import { RemotePersonPill } from './RemotePersonPill'
 import { TaskFieldChips } from './TaskFieldChips'
 import { useTaskFields } from '../../../../facades/task-fields/hooks'
 import { useTaskAssignees } from '../../../../facades/tasks/hooks'
+import type { BoardView } from './board-view'
 import { statusLabel } from './kanban-config'
 import { PRIORITY_LABEL, PRIORITY_SIGNAL, formatDueDate, isOverdue } from './task-meta'
 
@@ -21,6 +22,7 @@ type KanbanCardProps = {
   // Pulse the card briefly after it lands in a column from a drag.
   pulse?: boolean
   onPulseEnd?: () => void
+  view?: BoardView
 }
 
 const MAX_EXCERPT_CHARS = 180
@@ -117,6 +119,30 @@ export const KanbanCardContent = ({
   )
 }
 
+// The `lines` view: the title and the priority signal, nothing else. The full
+// title stays reachable as a tooltip because one line truncates it.
+export const KanbanLineContent = ({ task }: Pick<KanbanCardProps, 'task'>) => {
+  const title = task.title ?? task.purpose ?? 'Untitled task'
+  return (
+    <>
+      <FontAwesomeIcon
+        className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
+        icon={faSignal}
+        title={`${PRIORITY_LABEL[task.priority]} priority`}
+      />
+      <span
+        className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]"
+        title={title}
+      >
+        {title}
+      </span>
+    </>
+  )
+}
+
+const LINE_CLASS = 'admin-card relative flex min-h-11 select-none items-center gap-2 py-1 pl-3'
+const CARD_CLASS = 'admin-card relative grid select-none gap-2 p-3'
+
 // A board card: sortable within its column (vertical priority order) and
 // draggable to another column via dnd-kit. Must live inside a SortableContext.
 export const KanbanCard = ({
@@ -126,6 +152,7 @@ export const KanbanCard = ({
   onOpen,
   pulse = false,
   onPulseEnd,
+  view = 'cards',
 }: KanbanCardProps) => {
   const {
     attributes,
@@ -172,10 +199,11 @@ export const KanbanCard = ({
       ref={setNodeRef}
       data-kanban-card
       data-kanban-placeholder={isDragging ? 'true' : undefined}
+      data-kanban-view={view}
       className={[
-        'admin-card relative grid select-none gap-2 p-3 pr-12',
+        view === 'lines' ? `${LINE_CLASS} pr-12` : `${CARD_CLASS} pr-12`,
         isDragging ? '[&>*]:invisible' : '',
-        pulse ? 'kanban-card-pulse' : '',
+        pulse ? 'admin-attention-pulse' : '',
       ].join(' ')}
       onAnimationEnd={pulse ? onPulseEnd : undefined}
       onClick={handleClick}
@@ -189,7 +217,7 @@ export const KanbanCard = ({
           whether a long press was a drag. */}
       <button
         aria-label={`Reorder ${taskLabel}`}
-        className="absolute right-1 top-1 flex h-11 w-11 cursor-grab touch-none items-center justify-center rounded-md text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)] active:cursor-grabbing"
+        className={`absolute right-1 ${view === 'lines' ? 'top-1/2 -translate-y-1/2' : 'top-1'} flex h-11 w-11 cursor-grab touch-none items-center justify-center rounded-md text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)] active:cursor-grabbing`}
         data-kanban-drag-handle
         onClick={(event) => event.stopPropagation()}
         ref={setActivatorNodeRef}
@@ -200,7 +228,11 @@ export const KanbanCard = ({
       >
         <FontAwesomeIcon icon={faGripVertical} />
       </button>
-      <KanbanCardContent projectName={projectName} showProject={showProject} task={task} />
+      {view === 'lines' ? (
+        <KanbanLineContent task={task} />
+      ) : (
+        <KanbanCardContent projectName={projectName} showProject={showProject} task={task} />
+      )}
     </div>
   )
 }
@@ -212,11 +244,13 @@ export const ArchivedTaskCard = ({
   showProject,
   projectName,
   onOpen,
-}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName' | 'onOpen'>) => (
+  view = 'cards',
+}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName' | 'onOpen' | 'view'>) => (
   <div
     aria-label={`Open ${task.title ?? task.purpose ?? 'task'}`}
-    className="admin-card grid cursor-pointer select-none gap-2 p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]"
+    className={`${view === 'lines' ? `${LINE_CLASS} pr-3` : CARD_CLASS} cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]`}
     data-kanban-card
+    data-kanban-view={view}
     onClick={() => onOpen(task)}
     onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
       if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
@@ -226,6 +260,10 @@ export const ArchivedTaskCard = ({
     role="button"
     tabIndex={0}
   >
-    <KanbanCardContent archived projectName={projectName} showProject={showProject} task={task} />
+    {view === 'lines' ? (
+      <KanbanLineContent task={task} />
+    ) : (
+      <KanbanCardContent archived projectName={projectName} showProject={showProject} task={task} />
+    )}
   </div>
 )

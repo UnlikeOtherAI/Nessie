@@ -2,7 +2,7 @@
 
 Status: plan approved for implementation (mechanical portions delegated to
 CLI-agent batches; every UI change Playwright-verified before merge). Inputs:
-three independent audits on one shared brief — Fable, Kimix, Codex Sol — all
+three independent audits on one shared brief — Fable, reviewer B, Codex Sol — all
 claims below re-verified against the tree before inclusion.
 
 ## Verdict
@@ -23,7 +23,7 @@ incoherence is at the seams, and it is countable:
 - **Two meanings of "mobile"**: `useMobileLayout()` = narrow viewport OR
   native shell; the raw 767px literal = viewport only. In the iPad WebView the
   shell says mobile while the column-browser pages say desktop (split-brain,
-  Kimix §2.4; Sol confirms the phone-landscape variant: an 844×390 native
+  Review B §2.4; Sol confirms the phone-landscape variant: an 844×390 native
   phone is "phone" to the shell but "not mobile" to width-only pages, so Back
   affordances disagree).
 - **Nested layouts classify the window while the shell consumes it** (Sol's
@@ -55,18 +55,18 @@ Also landed 2026-08-14: D6 (sidebar ARIA live-clamp within [min,max]), D7/D8 (me
 | # | Defect | Evidence | Found by |
 | --- | --- | --- | --- |
 | D1 | Thread-panel mode gaps: `max-[899px]`+`min-[900px]` and `max-[1279px]`+`min-[1280px]` leave `[899,900)` and `[1279,1280)` uncovered (arbitrary `max-[N]` is strict `<`); reachable under fractional zoom widths | `ThreadReplyPanel.tsx:218-247` | All three |
-| D2 | Stale clamp: thread width clamped only at mount/drag — no resize subscription; a 640px persisted width stays 640 on a shrunk 900px viewport; `aria-valuemax` is a mount-time snapshot | `useReplyThread.ts:54-64`, `ThreadReplyPanel.tsx:242` | Kimix, Sol |
-| D3 | Width-as-touch-proxy: `(max-width: 1024px)` OR-ed with pointer queries makes a narrow mouse desktop "touch" (and un-selectable chat text at exactly 1024px); the pointer terms alone carry the intent | `styles.css:1744` | Fable, Kimix |
-| D4 | Mobile split-brain (shell-aware vs width-only "isMobile") — see Verdict | `AdminShellLayout.tsx:95` vs 6 literal call sites | Kimix, Sol |
+| D2 | Stale clamp: thread width clamped only at mount/drag — no resize subscription; a 640px persisted width stays 640 on a shrunk 900px viewport; `aria-valuemax` is a mount-time snapshot | `useReplyThread.ts:54-64`, `ThreadReplyPanel.tsx:242` | Reviewer B, Sol |
+| D3 | Width-as-touch-proxy: `(max-width: 1024px)` OR-ed with pointer queries makes a narrow mouse desktop "touch" (and un-selectable chat text at exactly 1024px); the pointer terms alone carry the intent | `styles.css:1744` | Fable, reviewer B |
+| D4 | Mobile split-brain (shell-aware vs width-only "isMobile") — see Verdict | `AdminShellLayout.tsx:95` vs 6 literal call sites | Reviewer B, Sol |
 | D5 | Inclusive JS band pairs repeat the D1 gap class (767/768, 1023/1024) | `ColumnBrowserViewport.tsx:13-18` | Sol |
 | D6 | Sidebar ARIA/state not recomputed when viewport limits change (CSS clamps the track; React state doesn't follow) | `ResizableSidebar.tsx:40-57,108-136` | Sol |
 | D7 | Phantom header leading space: `hasLeading = Boolean(leading)` is always true because `AdminPageHeader` always passes `<PhoneNavigationButton />`, which returns `null` outside phone mode — actions collapse ~48px early | `ResponsivePageHeader.tsx:178`, `AdminPageHeader.tsx:17`, `PhoneNavigationButton.tsx` | Sol |
 | D8 | Header measurement doesn't observe the hidden intrinsic-measurement row; font-scale changes can stale the partition | `ResponsivePageHeader.tsx:193-238,431-446` | Sol |
 | D9 | Native safe-area CSS targets `.admin-shell > aside`, but wide shell wraps the aside in `ResizableSidebar` — bottom clearance misses | `mobile/src/lib/webview-inject.ts:42-49`, `AdminShellLayout.tsx:229` | Sol |
 | D10 | Drag cleanup misses `pointercancel`/window-blur; thread separator is pointer-only despite its ARIA separator role; drag paths persist localStorage/cookies per pointer-move instead of frame-coalesced + persist-on-end | `ThreadReplyPanel.tsx:189-210`, `KnowledgeColumns.tsx:202-225`, `ResizableSidebar.tsx:59-66` | Sol |
-| D11 | Popover placement measures `window` once, not the clipping/anchor container, and misses anchor movement from sidebar reflow | `ReactionPills.tsx:108-131`, `WorkspaceSwitcher.tsx:58-75`, `UserMenuPopover.tsx:59-76` | Kimix, Sol |
+| D11 | Popover placement measures `window` once, not the clipping/anchor container, and misses anchor movement from sidebar reflow | `ReactionPills.tsx:108-131`, `WorkspaceSwitcher.tsx:58-75`, `UserMenuPopover.tsx:59-76` | Reviewer B, Sol |
 | D12 | `useMediaQuery` returns a stale result if its query string changes between renders (initializer reads old query; effect doesn't resync `matches`) | `hooks/useMediaQuery.ts:3-13` | Sol |
-| D14 | Cross-file private-scale dependency: composer emoji CSS comments depend on the thread panel's 900px | `styles.css:1161` | Kimix |
+| D14 | Cross-file private-scale dependency: composer emoji CSS comments depend on the thread panel's 900px | `styles.css:1161` | Reviewer B |
 | D15 | Authored CSS uses inclusive `max-width: 640px`/`1024px` overlapping Tailwind `sm`/`lg` at the exact boundary (two modes apply at once) | `lib/notifications.css:71-77`, `styles.css:1744` | Sol |
 
 Not defects (leave alone, document): `DashboardGrid`'s `{lg:1200, md:768,
@@ -205,14 +205,14 @@ behaviour?" — is made once, in review, per site.
 
 ## Reviewer divergences, resolved
 
-- **Hook vs store**: Fable/Kimix proposed extending `useMediaQuery`; Sol
+- **Hook vs store**: Fable/reviewer B proposed extending `useMediaQuery`; Sol
   proposed the singleton `useSyncExternalStore` store. **Store adopted** —
   one subscription set, coherent snapshots, and it structurally prevents
   arbitrary query strings (the regression the lint would otherwise chase).
-- **Keep `useMediaQuery` for capability queries** (Kimix) vs **delete it**
+- **Keep `useMediaQuery` for capability queries** (reviewer B) vs **delete it**
   (Sol): **deleted** — capabilities live on the snapshot; ThemeProvider keeps
   its own raw listener (allowlisted).
-- **Thread panel 900**: named token + variant rejoin now (Fable/Kimix), full
+- **Thread panel 900**: named token + variant rejoin now (Fable/reviewer B), full
   container-based docking later (Sol) — **both, phased** (2 then 5).
 - **DashboardGrid band rename** to `narrow/medium/wide` (Sol, optional):
   **deferred** — persisted schema labels; a comment marking the scale as

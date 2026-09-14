@@ -18,7 +18,9 @@ import {
   externalTenantKeyFor,
   type IdentityLinkProjection,
   reprojectIdentityLinks,
+  tenantSourceProjectIds,
 } from './board-source-identity.js'
+import { listAccessibleProjectIds, type ProjectViewer } from './project-structure.js'
 
 /**
  * Board sources as the API manages them: attach, describe, map, pause, remove.
@@ -35,6 +37,8 @@ export type BoardSourceError =
   | { error: 'CONNECTION_NOT_OWNED' }
   | { error: 'CONTAINER_ALREADY_ATTACHED' }
   | { error: 'INVALID_STATE_MAPPING' }
+  | { error: 'IDENTITY_MAPPING_FORBIDDEN' }
+  | { error: 'IDENTITY_TARGET_INVALID' }
   | { error: 'CONNECTION_IN_USE'; detail: string }
 
 export const isBoardSourceError = <T>(value: T | BoardSourceError): value is BoardSourceError =>
@@ -350,6 +354,13 @@ export const putBoardSourceMappings = async (
       agentId?: string | null
     }[]
     actorUserId: string
+    /**
+     * Who is saving. An identity link is keyed by the provider tenant, not the
+     * source, and re-projection reassigns tasks in every source of that tenant
+     * across every project — so changing one is authorized against all of
+     * them, never just the project in the URL.
+     */
+    viewer: ProjectViewer
   },
 ): Promise<BoardSourceRecord | BoardSourceError> => {
   const source = await prisma.boardSource.findFirst({
@@ -395,6 +406,26 @@ export const putBoardSourceMappings = async (
       userId,
       agentId,
     })
+  }
+
+  if (changed.length > 0) {
+    // A task's assignee can read it, so mapping an upstream person to yourself
+    // in project A would otherwise hand you that person's tickets in project B.
+    // Every project that reads this tenant must be one the saver may change;
+    // an organisation owner or admin reaches all of them.
+    if (!input.viewer.isOrganizationAdmin) {
+      const [tenantProjectIds, accessible] = await Promise.all([
+        tenantSourceProjectIds(prisma, tenant),
+        listAccessibleProjectIds(prisma, input.viewer),
+      ])
+      const reachable = new Set(accessible === 'all' ? tenantProjectIds : accessible)
+      if (tenantProjectIds.some((id) => !reachable.has(id))) {
+        return { error: 'IDENTITY_MAPPING_FORBIDDEN' }
+      }
+    }
+    if (!(await identityTargetsBelongToOrganization(prisma, tenant.organizationId, changed))) {
+      return { error: 'IDENTITY_TARGET_INVALID' }
+    }
   }
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -444,4 +475,29 @@ export const putBoardSourceMappings = async (
   // an unknown name until somebody upstream happened to touch it.
   await reprojectIdentityLinks(prisma, tenant, changed)
   return mapBoardSource(updated)
+}
+
+/**
+ * A mapping may only name somebody who is really here: an active member of the
+ * source's organisation, or an agent of it. The ids arrive in the request body,
+ * so without this a link could point tasks at a foreign or deactivated account.
+ */
+const identityTargetsBelongToOrganization = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  links: readonly IdentityLinkProjection[],
+): Promise<boolean> => {
+  const userIds = [...new Set(links.flatMap((link) => (link.userId ? [link.userId] : [])))]
+  const agentIds = [...new Set(links.flatMap((link) => (link.agentId ? [link.agentId] : [])))]
+  const [members, agents] = await Promise.all([
+    userIds.length === 0
+      ? Promise.resolve(0)
+      : prisma.organizationMember.count({
+        where: { organizationId, userId: { in: userIds }, deactivatedAt: null },
+      }),
+    agentIds.length === 0
+      ? Promise.resolve(0)
+      : prisma.agent.count({ where: { organizationId, id: { in: agentIds } } }),
+  ])
+  return members === userIds.length && agents === agentIds.length
 }

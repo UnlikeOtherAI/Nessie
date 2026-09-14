@@ -4,7 +4,7 @@ import {
   type ScopeResolutionMode,
 } from '@nessie/memory'
 import type { SpaceViewerPrincipal } from '@nessie/knowledge'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminRole, type AuthorizedActionContext } from '@nessie/schemas'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
@@ -78,6 +78,9 @@ export type ActingMember = {
   // policy check reads their live role — not the assistant agent running the loop.
   actorContext: AuthorizedActionContext
   isOwner: boolean
+  // Owner or admin — the pair that reaches a project the person is not a
+  // member of (`canModifyProject` / `isProjectAccessibleToUser`).
+  isOrganizationAdmin: boolean
   organizationId: string
   role: string
   userId: string
@@ -119,6 +122,7 @@ export const resolveActingMember = async (
       },
     },
     isOwner: membership.role === 'owner',
+    isOrganizationAdmin: isAdminRole(membership.role),
     organizationId,
     role: membership.role,
     userId,
@@ -159,11 +163,21 @@ export const buildSpaceViewerPrincipal = (
 // user belongs to. The personal assistant acts as its owner, so this is also its
 // reach — the same channels the owner can see, never a private channel the owner
 // was not admitted to.
+//
+// The result carries a top-level `OR`. Never spread it into a where clause that
+// adds its own `OR` — the later key silently replaces the visibility rule.
+// Combine with other predicates through `AND: [buildVisibleChannelWhere(...), …]`.
+//
+// A soft-deleted channel (deleted itself, or with its project) is invisible to
+// every caller, so the predicate excludes it rather than each reader: an
+// archived-channel filter would hide it too, but `channel_list` with
+// `includeArchived`, the attachment readers and the destination lookups have none.
 export const buildVisibleChannelWhere = (
   organizationId: string,
   userId: string,
 ): Prisma.ChannelWhereInput => ({
   organizationId,
+  deletedAt: null,
   OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
 })
 

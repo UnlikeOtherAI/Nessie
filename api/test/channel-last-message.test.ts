@@ -63,17 +63,19 @@ test('the channel list carries lastMessageAt, null for a channel with no message
           team: teamShape,
         },
         {
+          // A public channel the viewer has not joined.
           ...channelRow({ id: quietChannelId, label: 'empty', slug: 'empty' }),
           threads: [{ agentId: null, id: quietThreadId }],
-          members: [{ role: 'member', muted: false }],
+          members: [],
           project: projectShape,
           team: teamShape,
         },
       ],
     },
-    // `viewerCanManage` is batched over these two once, not per channel — see
-    // `listChannelsForUser`. Neither role grants management here, so both
-    // channels come back `viewerCanManage: false`.
+    // `viewerCanManage` is batched, not looked up per channel — see
+    // `listChannelsForUser`. The viewer is a plain organisation member, so it
+    // follows channel membership alone: every member of a channel may change
+    // it, and nobody outside it may.
     organizationMember: {
       findFirst: async () => null,
     },
@@ -96,16 +98,17 @@ test('the channel list carries lastMessageAt, null for a channel with no message
   assert.equal(channels.length, 2)
   assert.equal(channels[0]?.lastMessageAt, lastMessageAt.toISOString())
   assert.equal(channels[0]?.unreadCount, 3)
-  assert.equal(channels[0]?.viewerCanManage, false)
+  assert.equal(channels[0]?.viewerCanManage, true)
   assert.equal(channels[1]?.lastMessageAt, null)
+  assert.equal(channels[1]?.viewerCanManage, false)
 })
 
-// `mapChannelRecord` computes `viewerCanManage` via `canManageChannel`, which
+// `mapChannelRecord` computes `viewerCanManage` via `canModifyChannel`, which
 // re-reads the channel by id and then the channel-member, org-member, and
 // team-member rows for the viewer. A fake exercising it must model all four
 // (see `docs/standards/testing.md` § "Prisma fakes") even in these
 // lastMessageAt-focused cases; a missing channel row is enough to make
-// `canManageChannel` return `null`, so `viewerCanManage` comes back `false`.
+// `canModifyChannel` return `null`, so `viewerCanManage` comes back `false`.
 const noManagementAuthority = {
   channel: { findUnique: async () => null },
   channelMember: { findUnique: async () => null },

@@ -675,9 +675,9 @@ messages (replaced by the stored mailbox + surface), the second interposed a
 vendor-operated "Nessie Mail relay" between Nessie and SES (replaced by
 direct, env-configured SES integration).
 
-## 6a. Post-build review (Kimix, 2026-09-02)
+## 6a. Post-build review (2026-09-02)
 
-Three scoped Kimix passes over the built code. What was accepted and fixed:
+Three scoped review passes over the built code. What was accepted and fixed:
 
 - **Duplicate sends were possible.** The `queued → sending` claim stops one row
   being dispatched twice; nothing stopped a replayed run inserting a *second*
@@ -724,7 +724,7 @@ disclosure build.
 
 ## 6. Review adjudication (2026-09-02)
 
-Two independent reviews (Codex Sol, Kimix) ran against the previous
+Two independent reviews (Codex Sol, reviewer B) ran against the previous
 revision; convergent and verified findings are folded above. The
 load-bearing corrections: external-recipient disclosure got its own decision
 (`email:{mailboxId}` scope + consumed-source inspection) instead of the

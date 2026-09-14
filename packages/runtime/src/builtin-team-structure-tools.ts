@@ -9,11 +9,13 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
  * turns "the Marketing project" into the id they take — the same rule that
  * gave `agent_bind_channel` its `agent_list`.
  *
- * `POST /api/projects` and `POST /api/teams` are both `requireOwner`, so both
- * writes are organisation-owner actions. Like the connector tools, they stay
- * VISIBLE to everybody and refuse in words naming who can do it, rather than
- * letting an agent claim it has no such capability. `project_list` mirrors
- * `GET /api/projects`, which any member may call.
+ * Any organisation member may create a project, in a team they are a member of
+ * (`createProjectForUser`; an organisation owner or admin may place one in any
+ * team). Creating a team stays an organisation-owner action (`POST /api/teams`
+ * is `requireOwner`). Like the connector tools, both stay VISIBLE to everybody
+ * and refuse in words naming who can do it, rather than letting an agent claim
+ * it has no such capability. `project_list` mirrors `GET /api/projects`, which
+ * any member may call.
  *
  * They are `personalAssistantOnly` (not `identityDelegatedOnly`): standing up a
  * project is provisioning, the same tier as `channel_create`, so the Personal
@@ -31,7 +33,7 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'List the projects you can reach, each with the teams inside it. This is '
       + 'how a project or team NAME becomes the projectId team_create needs and '
       + 'the teamId channel_create needs — do not ask the user for an id, and do '
-      + 'not invent one. An organisation owner sees every project; anybody else '
+      + 'not invent one. An organisation owner or admin sees every project; anybody else '
       + 'sees the projects they belong to.',
     parameters: {
       type: 'object',
@@ -53,9 +55,9 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     description:
       'Create a new project in the current organisation. The user becomes its '
-      + 'only member and its owner; nobody else is added. Organisation owners '
-      + 'only. Resolve an existing team with project_list and pass its teamId; '
-      + 'then pass both ids to channel_create.',
+      + 'only member; nobody else is added. Any member may create one in a team '
+      + 'they belong to. Resolve an existing team with project_list and pass its '
+      + 'teamId; then pass both ids to channel_create.',
     parameters: {
       type: 'object',
       properties: {

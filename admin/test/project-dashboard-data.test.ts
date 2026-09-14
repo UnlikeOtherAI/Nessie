@@ -134,23 +134,28 @@ test('members order by project role rank then name', () => {
   assert.deepEqual(ordered.map((member) => member.displayName), ['Bob', 'Ann', 'Zoe', 'Ada'])
 })
 
-test('project admins manage members without being organisation owners', () => {
+test('every project member manages members, whatever their project role', () => {
   const members = [
-    { userId: 'u1', displayName: 'Ada', email: 'a@x', role: 'admin' },
+    { userId: 'u1', displayName: 'Ada', email: 'a@x', role: 'owner' },
     { userId: 'u2', displayName: 'Bob', email: 'b@x', role: 'member' },
+    { userId: 'u4', displayName: 'Cy', email: 'c@x', role: 'viewer' },
   ]
 
+  for (const userId of ['u1', 'u2', 'u4']) {
+    assert.equal(
+      canManageProjectMembers({ isOrganizationAdmin: false, members, userId }),
+      true,
+      `project member ${userId} has the same rights as the creator`,
+    )
+  }
+  // A plain organisation member outside the project may not.
   assert.equal(
-    canManageProjectMembers({ isOrganizationOwner: false, members, userId: 'u1' }),
-    true,
-  )
-  assert.equal(
-    canManageProjectMembers({ isOrganizationOwner: false, members, userId: 'u2' }),
+    canManageProjectMembers({ isOrganizationAdmin: false, members, userId: 'u3' }),
     false,
   )
-  // An organisation owner who is not a member of the project has no row here.
+  // An organisation owner or admin who is not a member has no row here.
   assert.equal(
-    canManageProjectMembers({ isOrganizationOwner: true, members, userId: 'u3' }),
+    canManageProjectMembers({ isOrganizationAdmin: true, members, userId: 'u3' }),
     true,
   )
 })

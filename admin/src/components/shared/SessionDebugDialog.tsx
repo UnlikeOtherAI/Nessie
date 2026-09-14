@@ -3,6 +3,15 @@ import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 import { Notice } from '../primitives/Notice'
 
+const PANEL_BASE_MAX_HEIGHT = [
+  'calc(100dvh - env(safe-area-inset-top, 0px)',
+  '- env(safe-area-inset-bottom, 0px) - 2rem)',
+].join(' ')
+const PANEL_MAX_HEIGHT = [
+  `min(${PANEL_BASE_MAX_HEIGHT},`,
+  `var(--overlay-visible-height, ${PANEL_BASE_MAX_HEIGHT}))`,
+].join(' ')
+
 export const SessionDebugIcon = () => (
   <svg
     aria-hidden="true"
@@ -99,7 +108,7 @@ export const SessionDebugDialog = ({
         className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"
         style={{
           ...overlay.layerStyle,
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--overlay-visual-inset, 0px))',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
           paddingTop: 'env(safe-area-inset-top, 0px)',
@@ -114,10 +123,7 @@ export const SessionDebugDialog = ({
           ref={overlay.panelRef}
           role="dialog"
           style={{
-            maxHeight: [
-              'calc(100dvh - env(safe-area-inset-top, 0px)',
-              '- env(safe-area-inset-bottom, 0px) - 2rem)',
-            ].join(' '),
+            maxHeight: PANEL_MAX_HEIGHT,
             maxWidth: 640,
           }}
           tabIndex={-1}

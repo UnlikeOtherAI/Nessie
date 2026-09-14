@@ -328,7 +328,7 @@ export const ConversationInfoFlow = ({
   if (!route || route.channelId !== activeChannel.id || route.step === 'conversation') return null
 
   // `canAddPeople` (DM vs. standard channel) can only narrow further: a plain
-  // member without `canManageChannel` standing must not see a control that the
+  // viewer without `canModifyChannel` standing must not see a control that the
   // service refuses. See `docs/standards/disclosure-boundaries.md`.
   const canManageMembers = canAddPeople && activeChannel.viewerCanManage
   const members = channelUsers
