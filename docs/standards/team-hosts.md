@@ -323,6 +323,47 @@ it is ever stored — its shape (https, no credentials, not this origin), and
 then `/api/hosts/resolve`, which answers only for hostnames that really are
 tenants of this deployment. Never trust the parameter alone.
 
+## The landing lists the teams you are signed into
+
+`https://nessie.works` (`web/`) opens, for a signed-in visitor, with a "Your
+teams" section before everything else: every team the person belongs to, its
+organisation, its avatar, and which one the session is on. Signed out, the
+section does not exist — no placeholder, nothing that moves.
+
+**The read is `GET /api/auth/landing-teams`, and it admits exactly one origin.**
+It lives under `/api/auth` because that is the refresh cookie's path, and it
+sets its own `Access-Control-Allow-Origin` for `NESSIE_LANDING_ORIGIN` and
+refuses every other `Origin` with a 403 — the app and tenant hosts included.
+The landing is deliberately **not** in `NESSIE_CORS_ORIGINS`: that list grants
+every credentialed route, and this page needs one answer. Unset means no
+landing is admitted and the section never renders.
+
+**It reads the refresh session without consuming it.** The cookie is shared
+with the app; rotating it here would race the app's page-load refresh on the
+same family, the failure the section above already avoids. A revoked,
+expired, rotated-away or unbindable session answers `200 { teams: [] }`, the
+same as no cookie, so anonymous traffic produces no errors.
+
+**The list is the one `/api/auth/me` serves.** Under UOA it is
+`loadUoaTeamDirectory` — the bounded in-memory directory, freshness read and
+cold-cache fallback — so nothing new is stored. Each entry links to the team's
+address from the same UOA lookup `/api/hosts/address` uses, at `/channels`,
+where `TenantHostGate` runs the ordinary silent switch; with no address it
+links to the app's canonical origin (`NESSIE_ADMIN_PUBLIC_URL`). Without an
+IdP the teams are the local membership tree and the active one is the first
+membership, which is the team a refresh of that session lands on.
+
+**The wire carries only what is drawn** — label, organisation name, avatar URL,
+active flag, link (`LandingTeamSchema`); no ids, no email. Rate limited by
+`landingTeamsIp` (docs/rate-limiting.md). The landing's CSP names
+`https://api.nessie.works` in `connect-src` and UOA's host in `img-src`.
+
+**Known gap:** a team with no resolvable address that is not the active one
+opens the app on the session's current team; the person switches from there.
+There is no cross-origin "switch into this team" handoff on the canonical
+origin, and this change does not invent one. Native shells are unaffected:
+the landing is a browser page and never runs inside them.
+
 ## Local development
 
 Ports are unchanged and non-negotiable: API `5454`, admin `5455`.

@@ -92,7 +92,7 @@ must not be its most expensive one. Actor resolution stays at `preHandler`.
 
 Which bucket governs a request is decided by `resolveGlobalRateLimitBucket`:
 
-1. `GET /api/auth/me` → `authMeIp`.
+1. `GET /api/auth/me` → `authMeIp`; `GET /api/auth/landing-teams` → `landingTeamsIp`.
 2. A `POST` whose route pattern is named in the table → that bucket.
 3. A `POST` to one of the executor-daemon session routes →
    `executorDaemonSessionIp`.
@@ -140,6 +140,7 @@ Applied by the global hook:
 | Bucket | Surface | Env prefix | Default |
 |---|---|---|---|
 | `authMeIp` | `GET /api/auth/me` | `NESSIE_RATE_LIMIT_AUTH_ME_IP_` | 600 / min |
+| `landingTeamsIp` | `GET /api/auth/landing-teams` | `NESSIE_RATE_LIMIT_LANDING_TEAMS_IP_` | 120 / min |
 | `threadMessageIp` | `POST /api/threads/:threadId/messages` | `NESSIE_RATE_LIMIT_THREAD_MESSAGE_IP_` | 60 / min |
 | `mailboxDiscoverIp` | `POST /api/mailbox-connections/discover` | `NESSIE_RATE_LIMIT_MAILBOX_DISCOVER_IP_` | 30 / min |
 | `agentWriteIp` | any `POST`/`PUT`/`PATCH`/`DELETE` under `/api/agents` | `NESSIE_RATE_LIMIT_AGENT_WRITE_IP_` | 60 / min |

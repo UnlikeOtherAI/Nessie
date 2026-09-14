@@ -58,7 +58,131 @@ body {
   color: var(--tx);
 }
 
+/* "Your teams": the first thing a signed-in visitor sees, above the doorway.
+   Same page ground, gutter and panel as the card below it, so it reads as
+   part of one page rather than a banner laid over it. Absent when signed out. */
+.landing-teams {
+  box-sizing: border-box;
+  padding: calc(env(safe-area-inset-top, 0px) + var(--page-gutter, 24px)) var(--page-gutter, 24px) 0;
+  background: var(--rail);
+}
+
+.landing-teams-title {
+  margin: 0 0 12px;
+  color: var(--tx2);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.landing-teams-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-teams-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 14px);
+  background: var(--panel);
+  box-shadow: var(--shadow-panel);
+  color: var(--tx);
+  text-decoration: none;
+  transition: border-color var(--duration-fast, 120ms) var(--easing-standard, ease);
+}
+
+.landing-teams-entry:hover {
+  border-color: var(--border-strong);
+}
+
+.landing-teams-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.landing-teams-entry-active {
+  border-color: var(--accent);
+}
+
+.landing-teams-avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm, 7px);
+  object-fit: cover;
+}
+
+.landing-teams-avatar-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-soft);
+  color: var(--tx2);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.landing-teams-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.landing-teams-label,
+.landing-teams-org {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing-teams-label {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.landing-teams-org {
+  color: var(--tx3);
+  font-size: 13px;
+}
+
+.landing-teams-current {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--tx);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.landing-teams-chevron {
+  flex: none;
+  color: var(--tx3);
+  font-size: 12px;
+}
+
+/* The doorway below adds its own top safe-area inset; with the list above it
+   that inset is already spent. */
+.landing-teams + .signin-page {
+  padding-top: var(--page-gutter, 16px);
+}
+
 @media (max-width: 40rem) {
+  .landing-teams-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .landing-section {
     padding: 64px 20px 80px;
   }

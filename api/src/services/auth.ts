@@ -269,23 +269,31 @@ const addLocalTeamAvatarIds = async (
 // of the same 60 s bounds sequential ones — so a stale copy plus an unreachable
 // UOA costs one timed-out request a minute, not one per call. A 401/403 stops
 // attempts until a login or rotation (`services/uoa-directory-refresh.ts`).
-const loadUoaTeamDirectory = async (
+//
+// Shared by `/api/auth/me` and the public landing's team list
+// (`services/landing-teams.ts`), which has no access token and so passes the
+// same three facts read from the refresh session instead of from claims.
+export const loadUoaTeamDirectory = async (
   prisma: PrismaClient,
   userId: string,
-  claims: SessionTokenClaims,
+  session: {
+    providerType: string
+    /** The local organisation of the session's active team. */
+    organizationId: string
+    identity: SessionTokenClaims['uoaIdentity']
+  },
   deps: UoaDirectoryRefreshDeps,
 ): Promise<{
   uoaPendingInvites: MeResponse['uoaPendingInvites']
   uoaTeams: MeResponse['uoaTeams']
 }> => {
-  if (claims.providerType !== 'uoa') {
+  if (session.providerType !== 'uoa') {
     return { uoaPendingInvites: undefined, uoaTeams: undefined }
   }
-  const activeOrganizationId = parseOrganizationId(claims.org)
   try {
     await refreshStaleUoaTeamDirectory(prisma, {
-      identity: claims.uoaIdentity,
-      organizationId: activeOrganizationId,
+      identity: session.identity,
+      organizationId: session.organizationId,
       userId,
     }, deps)
   } catch (error) {
@@ -297,7 +305,7 @@ const loadUoaTeamDirectory = async (
     ?? await deriveUoaTeamDirectoryFromTeams(prisma, userId)
   const teams = uoaTeamDirectoryFromEntries(
     directory.entries,
-    claims.uoaIdentity?.teamId,
+    session.identity?.teamId,
   )
   return {
     uoaPendingInvites: directory.pendingInvites,
@@ -324,7 +332,11 @@ export const buildMeResponse = async (
   // renders that way until the provider supplies a name.
   const [memberships, uoaDirectory] = await Promise.all([
     loadUserMemberships(prisma, user.id),
-    loadUoaTeamDirectory(prisma, user.id, claims, uoaDirectoryRefreshDeps),
+    loadUoaTeamDirectory(prisma, user.id, {
+      identity: claims.uoaIdentity,
+      organizationId: parseOrganizationId(claims.org),
+      providerType: claims.providerType,
+    }, uoaDirectoryRefreshDeps),
   ])
 
   // Surface the live per-org role for the active context org so the admin's
