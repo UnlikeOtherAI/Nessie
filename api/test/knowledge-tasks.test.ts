@@ -5,7 +5,12 @@ import Fastify from 'fastify'
 import multipart from '@fastify/multipart'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import type { CreatePageInput, KnowledgePageRecord, KnowledgeProvider } from '@nessie/knowledge'
+import {
+  readableKnowledgePageVersionsWhere,
+  type CreatePageInput,
+  type KnowledgePageRecord,
+  type KnowledgeProvider,
+} from '@nessie/knowledge'
 import { registerKnowledgeTaskRoutes } from '../src/routes/knowledge-tasks.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
@@ -136,6 +141,13 @@ const makeApp = (options: MakeAppOptions = {}) => {
     },
     agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
+    // The knowledge viewer resolves a live entitlement first: an unbound local
+    // organisation with an active membership, plus the person's channel and
+    // team reach for the version disclosure viewer.
+    channelMember: { findMany: async () => [] },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'owner' }) },
+    teamMember: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
     task: {
       findFirst: async () =>
@@ -320,6 +332,17 @@ test('GET /tasks/:taskId/pages returns the page envelope shape', async () => {
     projectId,
     spaceId: docsSpaceId,
     deletedAt: null,
+    // Ticket pages exclude any retained version the person cannot read, using
+    // the shared version-disclosure predicate for their live reach.
+    ...readableKnowledgePageVersionsWhere({
+      kind: 'user',
+      scopes: [
+        { scopeId: userId, scopeType: 'user' },
+        { scopeId: projectId, scopeType: 'project' },
+        { scopeId: organizationId, scopeType: 'organization' },
+      ],
+      userId,
+    }),
     status: { not: 'archived' },
   }])
   await app.close()

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
+import { readCanonicalAgentCore } from '@nessie/knowledge'
 
 import { createConsumedSourceSink } from '../src/run/execute/disclosure-basis.js'
+import { fileServiceFor } from '../src/run/file-service.js'
 import {
   runAgentAvatarGenerateTool,
   runAgentAvatarUpdateTool,
@@ -134,6 +136,9 @@ const cleanup = async (prisma: PrismaClient) => {
     where: { channelId: { in: [channelId, designerChannelId] } },
   })
   await prisma.thread.deleteMany({ where: { id: threadId } })
+  // Updating an agent writes its canonical core documents into a knowledge
+  // space the agent owns; that home references the agent, so it goes first.
+  await prisma.knowledgeSpace.deleteMany({ where: { organizationId: orgId } })
   await prisma.agent.deleteMany({ where: { organizationId: orgId } })
   await prisma.channel.deleteMany({ where: { id: { in: [channelId, designerChannelId] } } })
   await prisma.team.deleteMany({ where: { id: teamId } })
@@ -241,8 +246,14 @@ dbTest('agent_update rewrites only the fields it was given', async () => {
       systemPrompt: 'Rewritten instructions.',
     })
     assert.match(result.outputPreview, /Updated agent/)
+    // Instructions are canonical core documents now; the agent row no longer
+    // carries them, so the rewrite is read back through the core reader.
+    const core = await readCanonicalAgentCore(prisma, fileServiceFor(prisma), {
+      agentId: personOwnedAgentId,
+      organizationId: orgId,
+    })
+    assert.equal(core?.systemPrompt, 'Rewritten instructions.')
     const stored = await prisma.agent.findUniqueOrThrow({ where: { id: personOwnedAgentId } })
-    assert.equal(stored.systemPrompt, 'Rewritten instructions.')
     assert.equal(stored.name, `Person owned ${suite}`)
     assert.equal(stored.role, 'assistant')
   })

@@ -689,6 +689,9 @@ importers:
 
   packages/dashboard:
     dependencies:
+      '@nessie/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -751,6 +754,9 @@ importers:
       '@nessie/retrieval':
         specifier: workspace:*
         version: link:../retrieval
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas
@@ -1103,6 +1109,9 @@ importers:
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../packages/retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime

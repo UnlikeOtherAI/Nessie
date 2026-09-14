@@ -41,3 +41,8 @@ export {
   type ThoughtSearchRow,
 } from './thoughts.js'
 export { toVectorLiteral, type Queryable } from './query.js'
+export {
+  searchMessageCandidates,
+  type MessageSearchCandidate,
+  type SearchMessageCandidatesInput,
+} from './messages.js'

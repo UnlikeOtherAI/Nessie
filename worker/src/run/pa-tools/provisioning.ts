@@ -24,9 +24,12 @@ import {
   listAgentsForUser,
   resolveAgentAvatarStyleSafely,
 } from '@nessie/team-admin'
+import { writeCanonicalAgentCore } from '@nessie/knowledge'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
 import { fileServiceFor } from '../file-service.js'
+import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
@@ -228,6 +231,30 @@ export const runAgentCreateTool = async (
     toolPolicy: args.toolPolicy,
     visibility: args.visibility,
   })
+
+  const created = await context.prisma.agent.findFirst({
+    where: { id: agent.id, organizationId: member.organizationId },
+    select: { projectId: true },
+  })
+  if (created?.projectId) {
+    await writeCanonicalAgentCore(
+      context.prisma,
+      createWorkerKnowledgeProvider(context),
+      fileServiceFor(context.prisma),
+      {
+        actor: {
+          organizationId: member.organizationId,
+          uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+          userId: member.userId,
+        },
+        agentId: agent.id,
+        attribution: attributionFromActorContext(context.actorContext),
+        organizationId: member.organizationId,
+        projectId: created.projectId,
+        userId: member.userId,
+      },
+    )
+  }
 
   return {
     inputSummary: `name="${args.name}"`,

@@ -226,7 +226,14 @@ export const createKnowledgePublicationAttention = async (
       memberAgentIds: [],
       memberUserIds,
     }, {
+      // Recipients are active local organisation members, the same authority
+      // `loadUserViewer` accepts as the unbound-tenant base entitlement. The
+      // alert carries no page content; delivery re-reads the page through the
+      // version disclosure predicate before anything is shown.
+      baseEntitled: true,
       bypass: false,
+      organizationRole: null,
+      uoaMembershipVerified: false,
       projectIds: projectUserIds.has(member.userId) ? new Set([input.projectId]) : new Set(),
       userId: member.userId,
       visibleAgentIds: space.ownerAgentId && (

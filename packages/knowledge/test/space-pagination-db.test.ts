@@ -118,7 +118,7 @@ dbTest('a member can discover another person\'s explicitly shared My Docs space'
     viewer: await loadSpaceViewer(prisma, organization.id, {
       actorId: grantee.id,
       actorType: 'user',
-    }),
+    }, { liveEntitlements: { kind: 'local', organizationId: organization.id, userId: grantee.id } }),
   })
 
   assert.deepEqual(result.data.map((space) => space.id), [personalSpace.id])

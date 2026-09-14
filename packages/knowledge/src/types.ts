@@ -22,6 +22,41 @@ export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
 // backed by an Attachment). Folders stay virtual (a document with children).
 export type KnowledgePageKind = 'document' | 'file'
 export type KnowledgeAuthorType = 'user' | 'agent'
+export type KnowledgeDocumentRole =
+  | 'identity'
+  | 'working_rules'
+  | 'knowledge'
+  | 'template'
+  | 'example'
+  | 'procedure'
+  | 'experience'
+export type KnowledgeDocumentTrust =
+  | 'observed'
+  | 'explicitly_confirmed'
+  | 'inferred'
+  | 'unverified_import'
+export type KnowledgeDocumentOrigin =
+  | 'user_authored'
+  | 'agent_authored'
+  | 'legacy_migration'
+  | 'import'
+
+/** One source scope a version must retain in addition to its document home. */
+export type KnowledgePageVersionBasisScope = {
+  scopeId: string
+  scopeType: string
+}
+
+/** A private-conversation author whose material informed this exact version. */
+export type KnowledgePageVersionDisclosureSource = {
+  sourceAuthorUserId: string | null
+  sourceChannelId: string
+}
+
+export type KnowledgePageVersionDisclosureInput = {
+  basisScopes?: KnowledgePageVersionBasisScope[]
+  disclosureSources?: KnowledgePageVersionDisclosureSource[]
+}
 
 export type KnowledgeProviderCapabilities = {
   canWrite: boolean
@@ -56,11 +91,13 @@ export type KnowledgePageVersionRecord = {
   // SHA-256 of the canonical Markdown attachment bytes. Null for rich-text
   // pages and legacy file versions whose projection has not been backfilled.
   sourceContentHash: string | null
+  trust: KnowledgeDocumentTrust
+  origin: KnowledgeDocumentOrigin
   authorType: KnowledgeAuthorType
   authorId: string
   changeComment: string | null
   createdAt: string
-}
+} & Required<KnowledgePageVersionDisclosureInput>
 
 export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   id: string
@@ -86,6 +123,7 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   title: string
   summary: string | null
   metadata: Record<string, unknown> | null
+  documentRole: KnowledgeDocumentRole
   kind: KnowledgePageKind
   parentPageId: string | null
   position: number
@@ -167,12 +205,14 @@ export type ListSpacesInput = {
 }
 
 export type ListPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   organizationId: string
   spaceId: string
   includeArchived?: boolean
 }
 
 export type ListRecentPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   organizationId: string
   // Required: this list is always "this project's recent documents".
   projectId: string
@@ -184,6 +224,7 @@ export type ListRecentPagesInput = {
 }
 
 export type SearchPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   cursor?: string
   labels?: string[]
   limit?: number
@@ -199,6 +240,7 @@ export type SearchPagesInput = {
 }
 
 export type HybridSearchPagesInput = {
+  disclosureViewer?: import('@nessie/runtime').DisclosureViewer
   organizationId: string
   query: string
   queryEmbedding: number[] | null
@@ -236,15 +278,18 @@ export type UpdateSpaceInput = Partial<{
   writeRestricted: boolean
 }>
 
-export type CreatePageInput = KnowledgeScopeInput & {
+export type CreatePageInput = KnowledgeScopeInput & KnowledgePageVersionDisclosureInput & {
   authorId: string
   authorType: KnowledgeAuthorType
   body?: string | null
   bodyRef?: string | null
+  documentRole?: KnowledgeDocumentRole
   // For file nodes: kind = 'file' and the v1 version is backed by this attachment.
   kind?: KnowledgePageKind
   attachmentId?: string | null
   changeComment?: string | null
+  origin?: KnowledgeDocumentOrigin
+  trust?: KnowledgeDocumentTrust
   createdBy: string
   labels?: string[]
   metadata?: Record<string, unknown> | null
@@ -258,13 +303,15 @@ export type CreatePageInput = KnowledgeScopeInput & {
 }
 
 // Add a new version to a file node, backed by a freshly stored attachment.
-export type AddFileVersionInput = {
+export type AddFileVersionInput = KnowledgePageVersionDisclosureInput & {
   organizationId: string
   pageId: string
   attachmentId: string
   authorId: string
   authorType: KnowledgeAuthorType
   changeComment?: string | null
+  origin?: KnowledgeDocumentOrigin
+  trust?: KnowledgeDocumentTrust
   // A downloaded Markdown editor pins the file version it edited. Ordinary
   // upload remains append-only without this optional compare-and-swap fence.
   expectedLatestVersionId?: string
@@ -282,9 +329,10 @@ export class KnowledgePageRevisionConflictError extends Error {
   }
 }
 
-export type UpdatePageInput = Partial<{
+export type UpdatePageInput = KnowledgePageVersionDisclosureInput & Partial<{
   body: string | null
   bodyRef: string | null
+  origin?: KnowledgeDocumentOrigin
   changeComment: string | null
   labels: string[]
   metadata: Record<string, unknown> | null
@@ -292,6 +340,7 @@ export type UpdatePageInput = Partial<{
   summary: string | null
   title: string
   visibility: KnowledgeVisibility
+  trust?: KnowledgeDocumentTrust
 }> & {
   authorId: string
   authorType: KnowledgeAuthorType
@@ -319,10 +368,56 @@ export type PublishPageInput = {
   pageId: string
 }
 
-export type RestorePageVersionInput = {
+export type AgentCoreMigrationDraft = {
+  attachmentId: string
+  role: 'identity' | 'working_rules'
+}
+
+export type AgentCoreMigrationInput = {
+  agentId: string
+  authorId: string
+  drafts: AgentCoreMigrationDraft[]
+  organizationId: string
+  projectId: string
+  spaceId: string
+}
+
+export type AgentCoreMigrationResult =
+  | { kind: 'migrated'; pageIds: string[] }
+  | { kind: 'already_migrated' }
+  | { kind: 'stale' }
+
+/** A staged canonical Markdown file and the published version it replaces. */
+export type AgentCoreDocumentUpdateDraft = {
+  attachmentId: string
+  expectedPublishedVersionId?: string
+  role: 'identity' | 'working_rules'
+}
+
+/**
+ * Replaces one or both active core documents.  A blank migrated agent has no
+ * mappings yet, so its first non-empty edit supplies both roles and creates
+ * them together.
+ */
+export type AgentCoreDocumentUpdateInput = {
+  agentId: string
+  authorId: string
+  drafts: AgentCoreDocumentUpdateDraft[]
+  organizationId: string
+  projectId: string
+  spaceId: string
+}
+
+export type AgentCoreDocumentUpdateResult =
+  | { kind: 'updated'; pageIds: string[] }
+  | { kind: 'stale' }
+
+export type RestorePageVersionInput = KnowledgePageVersionDisclosureInput & {
   authorId: string
   authorType: KnowledgeAuthorType
   changeComment?: string | null
+  origin?: KnowledgeDocumentOrigin
+  trust?: KnowledgeDocumentTrust
   organizationId: string
   pageId: string
   versionId: string
@@ -336,6 +431,8 @@ export type KnowledgeProvider = {
   archivePage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
   archiveSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>
   createPage: (input: CreatePageInput) => Promise<KnowledgePageRecord>
+  migrateAgentCoreDocuments?: (input: AgentCoreMigrationInput) => Promise<AgentCoreMigrationResult>
+  updateAgentCoreDocuments?: (input: AgentCoreDocumentUpdateInput) => Promise<AgentCoreDocumentUpdateResult>
   createSpace: (input: CreateSpaceInput) => Promise<KnowledgeSpaceRecord>
   getPage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
   getSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>

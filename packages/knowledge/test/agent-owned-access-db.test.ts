@@ -125,11 +125,11 @@ dbTest('the four agent-document read implementations agree on one database fixtu
     loadSpaceViewer(prisma, organization.id, {
       actorId: visibleUser.id,
       actorType: 'user',
-    }),
+    }, { liveEntitlements: { kind: 'local', organizationId: organization.id, userId: visibleUser.id } }),
     loadSpaceViewer(prisma, organization.id, {
       actorId: hiddenUser.id,
       actorType: 'user',
-    }),
+    }, { liveEntitlements: { kind: 'local', organizationId: organization.id, userId: hiddenUser.id } }),
     loadSpaceViewer(prisma, organization.id, {
       actorId: agent.id,
       actorType: 'agent',
@@ -236,7 +236,7 @@ dbTest('a deactivated steward loses read access to an unbound agent home', async
   const before = await loadSpaceViewer(prisma, organization.id, {
     actorId: user.id,
     actorType: 'user',
-  })
+  }, { liveEntitlements: { kind: 'local', organizationId: organization.id, userId: user.id } })
   assert.equal(canReadSpace(mappedSpace, before), true)
 
   await prisma.organizationMember.update({
@@ -251,6 +251,6 @@ dbTest('a deactivated steward loses read access to an unbound agent home', async
   const after = await loadSpaceViewer(prisma, organization.id, {
     actorId: user.id,
     actorType: 'user',
-  })
+  }, { liveEntitlements: { kind: 'denied' } })
   assert.equal(canReadSpace(mappedSpace, after), false)
 })

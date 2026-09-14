@@ -41,6 +41,11 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
       authorId: overrides.authorId ?? (overrides.authorType === 'agent' ? 'agent-1' : 'user-1'),
       changeComment: null,
       createdAt: now,
+      // The native mapper refuses a version projected without its disclosure
+      // relations, so an ordinary unrestricted legacy version carries both as
+      // explicit empty arrays.
+      basisScopes: [],
+      disclosureSources: [],
     },
   ],
   publishedVersion: null,
@@ -202,6 +207,9 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     },
     knowledgePageVersion: {
       findFirst: async () => options.page?.versions[0] ?? null,
+      // Filing and publish requests check every retained version against the
+      // viewer's disclosure first; these fixtures carry no restricted version.
+      findMany: async () => [],
       create: async (args: { data: Record<string, unknown> }) => {
         createVersionCalls.push(args.data)
         return options.page?.versions[0] ?? {
@@ -221,6 +229,12 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
     },
+    // A personal assistant delegated to a person resolves that person's live
+    // entitlement: an unbound local organisation with an active membership.
+    channelMember: { findMany: async () => [] },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
+    teamMember: { findMany: async () => [] },
     projectMember: {
       findMany: async () => [{ projectId: 'project-1' }],
     },

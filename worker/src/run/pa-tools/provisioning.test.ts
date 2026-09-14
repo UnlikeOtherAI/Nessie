@@ -192,6 +192,9 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
           ...input.data,
         }
       },
+      // Core instructions are written only for an agent homed in a project;
+      // this agent has none, so creation skips that write.
+      findFirst: async () => ({ projectId: null }),
     },
     toolRegistryEntry: { findMany: async () => [] },
   })

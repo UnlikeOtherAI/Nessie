@@ -42,14 +42,34 @@ const makeCreatedAgent = (data: Record<string, unknown>) => ({
 
 const makeApp = (role: 'member' | 'owner') => {
   let createCalls = 0
+  let created: ReturnType<typeof makeCreatedAgent> | null = null
   const db = {
     $executeRaw: async () => 0,
     agent: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         createCalls += 1
-        return makeCreatedAgent(data)
+        created = makeCreatedAgent(data)
+        return created
       },
+      // A created agent's project decides whether its core documents home is
+      // prepared; the migration then re-reads the created row.
+      findFirst: async () => created,
+      findMany: async () => [],
+      findUnique: async () => created ? { projectId: created.projectId } : null,
     },
+    // Preparing the new agent's documents home: the home exists, no migration
+    // marker yet, and the knowledge viewer resolves the creator's live local
+    // membership and reach.
+    agentBinding: { findMany: async () => [] },
+    agentCoreDocumentMigration: { findUnique: async () => null },
+    channelMember: { findMany: async () => [] },
+    knowledgeSpace: {
+      findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000040' }),
+    },
+    knowledgeSpaceMember: { findMany: async () => [] },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    projectMember: { findMany: async () => [{ projectId }] },
+    teamMember: { findMany: async () => [] },
     attachment: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         where.id === avatarAttachmentId
@@ -91,6 +111,12 @@ const makeApp = (role: 'member' | 'owner') => {
     createAgentVisibilityScope: () => ({}),
     getChannelIfMember: async () => null,
     isAgentAccessibleToActor: async () => false,
+    // A created agent with no instructions stages no files; the provider
+    // records the empty core migration for its documents home.
+    knowledgeProvider: {
+      getSpace: async () => null,
+      migrateAgentCoreDocuments: async () => ({ kind: 'migrated', pageIds: [] }),
+    },
     prisma,
     requireActorContext: () => actorContext,
     requireOwner: (_context: AuthorizedActionContext, reply) => {
