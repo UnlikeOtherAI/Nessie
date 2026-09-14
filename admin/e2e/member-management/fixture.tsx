@@ -92,7 +92,9 @@ const getPage = async (path: string) => {
     return page([{ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák' }],
       { addMember: !readOnly && !noPermissions, searchMemberCandidates: true })
   }
-  if (path.includes('/member-invitation-targets')) return page([{ id: 'team-external', name: 'Design' }],
+  if (path.includes('/member-invitation-targets')) return page([
+    { id: 'team-external', name: 'Design' }, { id: 'team-research', name: 'Research' },
+  ],
     { createInvitation: !readOnly && !noPermissions })
   if (url.pathname.endsWith('/teams')) {
     if (fail === 'access') throw new Error('Directory unavailable')
@@ -121,16 +123,23 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   else if (path.endsWith('/revoke')) invitations = []
   else if (path.endsWith('/invitations') || path.endsWith('/member-invitations')) {
     const email = String(body?.email)
-    // UOA, not this fixture or Nessie, owns the one-actionable-invitation rule
-    // for the exact target team and normalized email. A repeated form submit
-    // sends another request but keeps one pending row, modelling UOA's resend.
-    const hasPendingInvitation = invitations.some((invitation) =>
-      invitation.email?.trim().toLowerCase() === email.trim().toLowerCase()
-      && invitation.team?.id === 'team-external')
-    if (!hasPendingInvitation) invitations.push({
-      inviteId: 'invite-new', email, name: body?.name as string | undefined,
-      status: 'pending', team: { id: 'team-external', name: 'Design' },
-    })
+    const teams = { 'team-external': 'Design', 'team-research': 'Research' } as Record<string, string>
+    // The organisation form names its workspaces; the team form invites into
+    // the fixture's one team.
+    const teamIds = Array.isArray(body?.teamIds) ? body.teamIds as string[] : ['team-external']
+    for (const teamId of teamIds) {
+      // UOA, not this fixture or Nessie, owns the one-actionable-invitation rule
+      // for the exact target team and normalized email. A repeated form submit
+      // sends another request but keeps one pending row, modelling UOA's resend.
+      const hasPendingInvitation = invitations.some((invitation) =>
+        invitation.email?.trim().toLowerCase() === email.trim().toLowerCase()
+        && invitation.team?.id === teamId)
+      if (!hasPendingInvitation) invitations.push({
+        inviteId: `invite-new-${teamId}`, email, name: body?.name as string | undefined,
+        status: 'pending', team: { id: teamId, name: teams[teamId] ?? teamId },
+      })
+    }
+    return { ok: true, invitedTeamIds: teamIds, failedTeamIds: [] }
   }
   else if (path.endsWith('/members')) members.push({ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák', status: 'ACTIVE' })
   else if (path === '/api/alerts/read') alerts = alerts.map((alert) => (

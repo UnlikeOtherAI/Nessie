@@ -57,6 +57,9 @@ export const useInvitationTargets = (enabled: boolean) =>
   usePagedList<MemberInvitationTarget, PagedRoster<MemberInvitationTarget, { createInvitation: boolean }>>({
     enabled,
     items: (response) => response.items,
+    // The invite form offers "Select all"; the largest page keeps every
+    // workspace a caller can administer on the one list it acts on.
+    limit: 100,
     paramPrefix: 'invite-',
     path: '/api/organization/member-invitation-targets',
     queryKey: organizationKeys.invitationTargets,
@@ -100,12 +103,19 @@ const invalidateRosters = (queryClient: ReturnType<typeof useQueryClient>) => {
   void queryClient.invalidateQueries({ queryKey: teamKeys.invitations })
 }
 
+/** Organisation invitations name the workspaces UOA refused on a partial send. */
+export type MemberInvitationResult = {
+  failedTeamIds?: string[]
+  invitedTeamIds?: string[]
+  ok: true
+}
+
 export const useInviteMember = (scope: MemberRosterScope) => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: CreateMemberInvitationRequest & { teamId?: string }) =>
-      api.post(
+    mutationFn: (input: CreateMemberInvitationRequest & { teamIds?: string[] }) =>
+      api.post<MemberInvitationResult>(
         scope === 'organization' ? '/api/organization/member-invitations' : '/api/team/invitations',
         input,
       ),

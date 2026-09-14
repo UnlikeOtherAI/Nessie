@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+import { Checkbox } from '../../primitives/Checkbox'
 import { TabBar } from '../../primitives/TabBar'
 import { UserAvatar } from '../../shared/UserAvatar'
 import { memberDisplayName } from '../../../lib/member-display-name'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
-import { Input, Select } from '../../shared/FormControls'
+import { Input } from '../../shared/FormControls'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { QueryState } from '../../shared/QueryState'
 import { useFormSubmit } from '../../../facades/forms/form-errors'
@@ -37,7 +38,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const addCandidateForm = useFormSubmit(addMember.mutateAsync)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
-  const [targetId, setTargetId] = useState('')
+  const [targetIds, setTargetIds] = useState<string[]>([])
   const [targetError, setTargetError] = useState<string | null>(null)
   const [candidateQuery, setCandidateQuery] = useState('')
   const [debouncedCandidateQuery, setDebouncedCandidateQuery] = useState('')
@@ -59,12 +60,14 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const resetInviteForm = inviteForm.reset
   const resetAddCandidateForm = addCandidateForm.reset
 
+  // Reset when the dialog closes, not when it opens: an effect runs after the
+  // opened dialog paints, so resetting then could discard a choice already made.
   useEffect(() => {
-    if (!open) return
+    if (open) return
     setTargetError(null)
     setEmail('')
     setName('')
-    setTargetId('')
+    setTargetIds([])
     resetInviteForm()
     resetAddCandidateForm()
     setCandidateQuery('')
@@ -77,16 +80,46 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const submitInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setTargetError(null)
-    if (scope === 'organization' && !targetId) {
-      setTargetError('Choose the workspace receiving this invitation.')
+    if (scope === 'organization' && targetIds.length === 0) {
+      setTargetError('Choose at least one workspace for this invitation.')
       return
     }
     const result = await inviteForm.submit({
       email: email.trim(),
       ...(name.trim() ? { name: name.trim() } : {}),
-      ...(scope === 'organization' ? { teamId: targetId } : {}),
+      ...(scope === 'organization' ? { teamIds: targetIds } : {}),
     })
-    if (result) onClose()
+    if (!result) return
+    const failedTeamIds = result.failedTeamIds ?? []
+    if (failedTeamIds.length === 0) {
+      onClose()
+      return
+    }
+    // UOA accepted some workspaces and refused others. Keep only the refused
+    // ones selected so a retry cannot re-send the invitations that went out.
+    const nameOf = (id: string) => targetItems.find((target) => target.id === id)?.name ?? id
+    setTargetIds(failedTeamIds)
+    setTargetError(`The invitation could not be sent to ${failedTeamIds.map(nameOf).join(', ')}. `
+      + 'The other selected workspaces received it.')
+  }
+
+  const targetItems = targets.items
+  const allTargetsSelected = targetItems.length > 0
+    && targetItems.every((target) => targetIds.includes(target.id))
+
+  const toggleTarget = (teamId: string, checked: boolean) => {
+    setTargetError(null)
+    setTargetIds((current) => checked
+      ? [...current.filter((id) => id !== teamId), teamId]
+      : current.filter((id) => id !== teamId))
+  }
+
+  const toggleAllTargets = () => {
+    const shownIds = new Set(targetItems.map((target) => target.id))
+    setTargetError(null)
+    setTargetIds((current) => allTargetsSelected
+      ? current.filter((id) => !shownIds.has(id))
+      : [...current.filter((id) => !shownIds.has(id)), ...shownIds])
   }
 
   const addCandidate = async (uoaSub: string) => {
@@ -95,14 +128,13 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   }
 
   const busy = inviteForm.isPending || addCandidateForm.isPending
-  const targetItems = targets.items
   const candidateItems = candidates.data?.data.items ?? []
 
   return (
     <Dialog
       description={scope === 'team'
         ? 'Add an existing organisation member or send a workspace invitation.'
-        : 'Choose the workspace that will receive the invitation.'}
+        : 'Choose the workspaces that will receive the invitation.'}
       dismissDisabled={busy}
       initialFocusRef={scope === 'team' && mode === 'existing' ? undefined : emailRef}
       onClose={onClose}
@@ -200,16 +232,40 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
         ) : (
           <form className="space-y-4" onSubmit={(event) => void submitInvite(event)}>
             {scope === 'organization' ? (
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-team">
-                  Workspace
-                </label>
-                <QueryState className="py-2" errorLabel="Teams could not be loaded."
+              <fieldset className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <legend className="text-sm font-medium text-[color:var(--tx)]">
+                    Workspaces
+                    {targetIds.length > 0 ? (
+                      <span className="ml-1 font-normal text-[color:var(--tx3)]">({targetIds.length} selected)</span>
+                    ) : null}
+                  </legend>
+                  {targetItems.length > 1 ? (
+                    <button
+                      className="text-xs text-[color:var(--tx2)] underline underline-offset-2 hover:text-[color:var(--tx)] disabled:opacity-50"
+                      disabled={busy}
+                      onClick={toggleAllTargets}
+                      type="button"
+                    >
+                      {allTargetsSelected ? 'Deselect all' : 'Select all'}
+                    </button>
+                  ) : null}
+                </div>
+                <QueryState className="py-2" emptyLabel="There are no workspaces you can invite people to."
+                  errorLabel="Teams could not be loaded." isEmpty={targetItems.length === 0}
                   loadingLabel="Loading teams…" query={targets.query}>
-                {() => <Select disabled={busy} id="invite-team" onChange={(event) => setTargetId(event.target.value)} value={targetId}>
-                  <option value="">Choose a workspace</option>
-                  {targetItems.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}
-                </Select>}
+                {() => <div className="grid max-h-64 gap-1 overflow-y-auto">
+                  {targetItems.map((target) => (
+                    <div className="rounded px-1.5 py-1 hover:bg-[color:var(--overlay)]" key={target.id}>
+                      <Checkbox
+                        checked={targetIds.includes(target.id)}
+                        disabled={busy}
+                        label={target.name}
+                        onChange={(checked) => toggleTarget(target.id, checked)}
+                      />
+                    </div>
+                  ))}
+                </div>}
                 </QueryState>
                 <PaginationFooter
                   canNext={targets.canNext}
@@ -222,7 +278,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                   pageCount={targets.pageCount}
                   pageSize={targets.pageSize}
                 />
-              </div>
+              </fieldset>
             ) : null}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="invite-email">Email</label>

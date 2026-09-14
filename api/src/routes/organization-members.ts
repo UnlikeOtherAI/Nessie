@@ -74,9 +74,23 @@ const RosterQuerySchema = z.object({
   status: z.enum(['ACTIVE', 'DEACTIVATED', 'REMOVED', 'all']).optional(),
 })
 
+const InvitationTeamIdSchema = z.string().trim().min(1).max(200)
+
+// One invitation form can target several workspaces; UOA invites per team, so
+// the route sends one upstream invitation for each. A single `teamId` is still
+// accepted so an admin bundle from the previous build keeps working during a
+// blue-green swap.
 const CreateMemberInvitationSchema = CreateMemberInvitationRequestSchema.extend({
-  teamId: z.string().trim().min(1).max(200),
+  teamIds: z.array(InvitationTeamIdSchema).min(1).max(100)
+    .transform((ids) => [...new Set(ids)]),
 })
+
+const withInvitationTeamIds = (body: unknown): unknown => {
+  const record = body && typeof body === 'object' ? body as Record<string, unknown> : null
+  if (!record || record.teamIds !== undefined || record.teamId === undefined) return body
+  const { teamId, ...rest } = record
+  return { ...rest, teamIds: [teamId] }
+}
 
 const TeamAccessSchema = z.object({
   teamIds: z.array(z.string().trim().min(1).max(200)).max(100),
@@ -300,16 +314,30 @@ export const registerOrganizationMembersRoutes = (
           action: 'organization.member_invited',
           resourceType: 'organization_invitation',
         },
-        parse: () => parseInput(CreateMemberInvitationSchema, request.body, reply),
+        parse: () => parseInput(CreateMemberInvitationSchema, withInvitationTeamIds(request.body), reply),
       },
       async (orgId, body, subjectDeps) => {
-        const { teamId, ...invitation } = body
-        await createTeamInvitation(
-          { externalOrgId: orgId, externalTeamId: teamId },
-          invitation,
-          subjectDeps,
-        )
-        return { ok: true }
+        const { teamIds, ...invitation } = body
+        const invitedTeamIds: string[] = []
+        const failedTeamIds: string[] = []
+        let firstError: unknown
+        for (const teamId of teamIds) {
+          try {
+            await createTeamInvitation(
+              { externalOrgId: orgId, externalTeamId: teamId },
+              invitation,
+              subjectDeps,
+            )
+            invitedTeamIds.push(teamId)
+          } catch (error) {
+            firstError ??= error
+            failedTeamIds.push(teamId)
+          }
+        }
+        // Nothing was sent: surface UOA's refusal exactly as the single-team
+        // form did. A partial send is a success that names what still failed.
+        if (invitedTeamIds.length === 0) throw firstError
+        return { ok: true, invitedTeamIds, failedTeamIds }
       },
     ))
 
