@@ -1,10 +1,10 @@
-import { faArrowRight, faCheck, faServer } from '@fortawesome/free-solid-svg-icons'
+import { faArrowRight, faCheck, faKey, faServer } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { docsUrl, pricing, signInUrl } from './content'
 import { Button } from './ui'
 
 export function Pricing() {
-  const { plan, selfHost } = pricing
+  const { plan, selfHost, byo } = pricing
   return (
     <section className="n-section n-pricing" id="pricing">
       <div className="n-container">
@@ -25,6 +25,7 @@ export function Pricing() {
                 </div>
               ))}
             </div>
+            <p className="n-price-note">{plan.usageNote}</p>
             <ul className="n-price-features">
               {plan.features.map((feature) => (
                 <li key={feature}>
@@ -45,6 +46,21 @@ export function Pricing() {
               {selfHost.cta} <FontAwesomeIcon icon={faArrowRight} />
             </a>
           </aside>
+          <article className="n-byo">
+            <span className="n-byo-icon">
+              <FontAwesomeIcon icon={faKey} />
+            </span>
+            <div className="n-byo-copy">
+              <h3>{byo.title}</h3>
+              <p>{byo.text}</p>
+              <ul className="n-byo-providers">
+                {byo.providers.map((provider) => (
+                  <li key={provider}>{provider}</li>
+                ))}
+                <li className="n-byo-more">{byo.more}</li>
+              </ul>
+            </div>
+          </article>
         </div>
       </div>
     </section>

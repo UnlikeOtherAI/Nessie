@@ -1129,6 +1129,82 @@ button {
   margin-top: auto;
 }
 
+.n-price-note {
+  max-width: 440px;
+  margin-top: 14px !important;
+  color: var(--n-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Bring-your-own AI accounts: spans both pricing columns */
+.n-byo {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 36px 40px;
+  border-radius: 24px;
+  background: var(--n-ink);
+  color: #fff;
+}
+
+.n-byo-icon {
+  display: grid;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  place-items: center;
+  background: var(--n-teal);
+  color: var(--n-ink);
+  font-size: 22px;
+}
+
+.n-byo-copy h3 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.n-byo-copy p {
+  max-width: 680px;
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.n-byo-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.n-byo-providers li {
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.n-byo-providers .n-byo-more {
+  border-style: dashed;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+@media (max-width: 600px) {
+  .n-byo {
+    flex-direction: column;
+    padding: 28px;
+  }
+}
+
 @media (max-width: 860px) {
   .n-pricing-grid {
     grid-template-columns: minmax(0, 1fr);

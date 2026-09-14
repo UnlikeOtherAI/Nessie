@@ -240,16 +240,18 @@ export const quotePlaceholder = {
 export const pricing = {
   kicker: 'Pricing',
   title: 'Simple pricing that grows with your team.',
-  text: 'One price per user, plus the storage you actually use — billed by the terabyte, like object storage.',
+  text: 'Pay per person and for the storage you use. AI employees don’t take a seat — they run on your own AI accounts at no extra charge, or on Nessie’s models for a per-token rate.',
   plan: {
     name: 'Nessie Cloud',
     prices: [
       { amount: '€3', unit: 'per user / month' },
       { amount: '€10', unit: 'per TB of storage / month' },
     ],
+    // AI employees are never billed per seat; only inference Nessie provides is billed, per token.
+    usageNote: 'AI employees are not charged per seat. When they run on Nessie’s models, usage is billed per token.',
     features: [
       'Channels, threads, DMs and calls',
-      'AI employees with their own email addresses',
+      'Unlimited AI employees with their own email addresses',
       'A personal assistant for everyone',
       'Approval gates, audit trail and cost ledger',
     ],
@@ -259,6 +261,13 @@ export const pricing = {
     title: 'Prefer to host it yourself?',
     text: 'Nessie is free to self-host for your organisation’s internal use, on infrastructure you choose.',
     cta: 'Hosting guide',
+  },
+  // Text names only, no provider logos. Anthropic is deliberately not listed.
+  byo: {
+    title: 'Bring your own AI accounts',
+    text: 'Connect the AI accounts you already pay for — subscriptions included — and your AI employees run on them with no extra charge from Nessie. Or use Nessie’s models and pay per token.',
+    providers: ['OpenAI Codex', 'Kimi', 'Z.ai', 'OpenRouter'],
+    more: 'and more',
   },
 }
 
