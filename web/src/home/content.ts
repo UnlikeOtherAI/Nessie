@@ -54,7 +54,7 @@ const channelShot: Shot = {
 }
 
 export const hero = {
-  title: 'Grow your team. Then make it massive.',
+  title: 'Grow your team. Keep your people.',
   text: 'Nessie gives you AI employees with a name, an email address and a seat in your channels. They take on the repetitive work, so your people can focus on customers and creative ideas. Nobody has to lose their job.',
 }
 
