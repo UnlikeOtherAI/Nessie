@@ -16,6 +16,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import type { BoardTaskRecord } from '../../../../facades/boards/hooks'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
+import type { BoardView } from './board-view'
 import { ArchivedTaskCard, KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
 import { type BoardColumnView, CATEGORY_DOT } from './kanban-config'
@@ -51,6 +52,7 @@ type KanbanBoardProps = {
   onMoveTask: (taskId: string, columnId: string, position: number) => void
   // The project host owns task detail navigation and its one shared dialog.
   onOpenTask: (task: BoardTaskRecord) => void
+  view?: BoardView
 }
 
 export const KanbanBoard = ({
@@ -62,6 +64,7 @@ export const KanbanBoard = ({
   projectNameById,
   onMoveTask,
   onOpenTask,
+  view = 'cards',
 }: KanbanBoardProps) => {
   const [showArchived, setShowArchived] = useState(false)
   const [isDraggingCard, setIsDraggingCard] = useState(false)
@@ -265,6 +268,7 @@ export const KanbanBoard = ({
     pulse: pulseId === task.id,
     showProject,
     task,
+    view,
   })
 
   return (
@@ -319,6 +323,7 @@ export const KanbanBoard = ({
                       key={column.id}
                       columnId={column.id}
                       count={ids.length}
+                      dense={view === 'lines'}
                       dot={CATEGORY_DOT[column.category]}
                       headerAction={
                         column.category === 'done' && projectId && boardId ? (
@@ -358,7 +363,7 @@ export const KanbanBoard = ({
           Archived ({archived.length})
         </button>
         {showArchived ? (
-          <div className="mt-2 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-2 grid min-h-0 flex-1 grid-cols-1 content-start gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {archived.length === 0 ? (
               <div className="text-xs text-[color:var(--tx3)]">No cancelled or failed work.</div>
             ) : (
@@ -373,6 +378,7 @@ export const KanbanBoard = ({
                   projectName={task.projectId ? projectNameById[task.projectId] ?? null : null}
                   showProject={showProject}
                   task={task}
+                  view={view}
                 />
               ))
             )}
