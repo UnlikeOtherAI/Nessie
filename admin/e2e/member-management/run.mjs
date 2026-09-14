@@ -79,32 +79,52 @@ try {
       await page.getByRole('button', { name: 'Send invitation', exact: true }).click()
       assert.equal(await page.getByText('Set up automatic team access', { exact: true }).count(), 0)
       if (scope === 'team') await page.getByRole('tab', { name: 'Invite to workspace', exact: true }).click()
-      else await page.getByLabel('Workspace', { exact: true }).selectOption('team-external')
+      else {
+        // Organisation invitations pick any number of workspaces; the team
+        // form has one team and therefore no workspace list at all.
+        const design = page.getByRole('checkbox', { name: 'Design', exact: true })
+        const research = page.getByRole('checkbox', { name: 'Research', exact: true })
+        await page.getByRole('button', { name: 'Select all', exact: true }).click()
+        assert.ok(await design.isChecked() && await research.isChecked())
+        await page.getByRole('button', { name: 'Deselect all', exact: true }).click()
+        assert.ok(!(await design.isChecked()) && !(await research.isChecked()))
+      }
       assert.equal(await page.getByLabel('Name (optional)', { exact: true }).getAttribute('maxlength'), '120')
       await page.getByLabel('Email', { exact: true }).fill('new@example.test')
+      if (scope === 'organization') {
+        await page.getByRole('button', { name: 'Send invitation', exact: true }).last().click()
+        await page.getByText('Choose at least one workspace for this invitation.').waitFor()
+        assert.equal((await calls(page)).some((call) => call.body?.email !== undefined), false)
+        await page.getByRole('checkbox', { name: 'Research', exact: true }).check()
+        await page.getByRole('button', { name: 'Select all', exact: true }).click()
+      }
       await page.screenshot({ path: resolve(output, `${width}-${scope}-invitation-name-limit.png`) })
       await page.getByRole('button', { name: 'Send invitation', exact: true }).last().click()
       await dialogClosed()
       const sent = (await calls(page)).find((call) => call.method === 'POST' && call.body?.email === 'new@example.test')
       assert.ok(sent)
-      if (scope === 'organization') assert.equal(sent.body.teamId, 'team-external')
+      if (scope === 'organization') assert.deepEqual([...sent.body.teamIds].sort(), ['team-external', 'team-research'])
+      else assert.equal(sent.body.teamIds, undefined)
       // Submit the same person to the same target again. The admin sends both
       // requests through to UOA, which owns the atomic resend/no-duplicate
       // behaviour; the fixture retains one actionable pending row.
       await page.getByRole('button', { name: 'Send invitation', exact: true }).click()
       assert.equal(await page.getByText('Set up automatic team access', { exact: true }).count(), 0)
       if (scope === 'team') await page.getByRole('tab', { name: 'Invite to workspace', exact: true }).click()
-      else await page.getByLabel('Workspace', { exact: true }).selectOption('team-external')
+      else await page.getByRole('checkbox', { name: 'Design', exact: true }).check()
       await page.getByLabel('Email', { exact: true }).fill('new@example.test')
       await page.getByRole('button', { name: 'Send invitation', exact: true }).last().click()
       await dialogClosed()
       const repeated = (await calls(page)).filter((call) =>
         call.method === 'POST' && call.body?.email === 'new@example.test')
       assert.equal(repeated.length, 2)
-      if (scope === 'organization') assert.equal(repeated[1]?.body.teamId, 'team-external')
+      if (scope === 'organization') assert.deepEqual(repeated[1]?.body.teamIds, ['team-external'])
       await tab(page, 'Pending invitations')
-      await page.getByRole('button', { name: 'Open invitation for new@example.test' }).waitFor()
-      assert.equal(await page.getByRole('button', { name: 'Open invitation for new@example.test' }).count(), 1)
+      await page.getByRole('button', { name: 'Open invitation for new@example.test' }).first().waitFor()
+      // One actionable row per invited workspace: both for the organisation's
+      // Select all, the fixture's one team otherwise.
+      assert.equal(await page.getByRole('button', { name: 'Open invitation for new@example.test' }).count(),
+        scope === 'organization' ? 2 : 1)
       await page.getByRole('button', { name: 'Open invitation for pending@example.test' }).click()
       await page.getByRole('button', { name: 'Resend invitation', exact: true }).click()
       await dialogClosed()

@@ -4,7 +4,9 @@
 Members roster and its facades against a stateful, in-browser UOA boundary. It
 never contacts UOA or sends email. The fixture proves desktop and phone flows
 for role changes, organisation activation, team removal, invitations (including
-a same-email, same-team resubmission sent through to UOA), explicit resend and
+an organisation invitation to several workspaces chosen by checkbox, with
+Select all / Deselect all and a refused empty selection, and a same-email,
+same-team resubmission sent through to UOA), explicit resend and
 cancellation, team access, live permission withdrawal, request refusal and
 list refreshes. It also seeds one failed automatic-membership grant and proves
 the unread shared bell item opens the precise rule, focuses its Re-authorize

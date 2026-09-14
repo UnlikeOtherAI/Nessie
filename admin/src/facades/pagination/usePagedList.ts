@@ -117,8 +117,10 @@ export const usePagedList = <TItem, TData = TItem[]>({
   const scopeKey = `${paramPrefix}scope`
   const scopeMatches = !scope || searchParams.get(scopeKey) === scope
   const cursor = scopeMatches ? searchParams.get(cursorKey) ?? undefined : undefined
-  const savedLimit = Number(searchParams.get(limitKey))
-  const limit = resolvePageSize(Number.isFinite(savedLimit) ? savedLimit : configuredLimit)
+  // An absent parameter is `Number(null)`, i.e. 0, which is finite: reading it
+  // as a saved size silently replaced every caller's configured limit with 25.
+  const savedLimit = searchParams.get(limitKey)
+  const limit = resolvePageSize(savedLimit === null ? configuredLimit : Number(savedLimit))
   const direction = scopeMatches && searchParams.get(directionKey) === 'backward' ? 'backward' : 'forward'
   const page = scopeMatches ? Number(searchParams.get(pageKey) ?? '0') || 0 : 0
 
