@@ -92,16 +92,16 @@ export const createServerContext = () => {
     .replace(/^\.+|\.+$/g, '') || undefined
 
   /**
-   * The public landing's exact origin, e.g. `https://nessie.works`.
+   * The public landing's exact origins, e.g. `https://nessie.works` and
+   * `https://www.nessie.works` (`NESSIE_LANDING_ORIGIN`, validated by
+   * `loadConfig`).
    *
-   * Admitted by `GET /api/auth/landing-teams` and by nothing else: it is
+   * Admitted by `GET /api/auth/landing-teams` and by nothing else: they are
    * deliberately NOT added to `allowedCorsOrigins`, so the landing can read
    * its one signed-in answer without becoming an origin that may call the rest
-   * of the API with credentials. Unset means the landing shows no team list.
+   * of the API with credentials. Empty means the landing shows no team list.
    */
-  const landingOrigin = parseOriginList(process.env.NESSIE_LANDING_ORIGIN)
-    .values()
-    .next().value ?? undefined
+  const landingOrigins: ReadonlySet<string> = new Set(config.api.landingOrigins)
 
   /**
    * Shared secret the edge presents when asking whether a hostname may be
@@ -407,7 +407,7 @@ export const createServerContext = () => {
     authSecret,
     encryptionKeyRing,
     allowedCorsOrigins,
-    landingOrigin,
+    landingOrigins,
     teamHostBaseDomain,
     tlsCheckKey,
     DEFAULT_LOCAL_PROVIDER_TYPE,

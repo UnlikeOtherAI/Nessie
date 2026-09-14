@@ -14,8 +14,8 @@ export const LANDING_TEAMS_PATH = '/api/auth/landing-teams'
 
 export type LandingTeamsRouteDeps = {
   prisma: PrismaClient
-  /** `NESSIE_LANDING_ORIGIN`: the one origin this route answers. */
-  landingOrigin: string | undefined
+  /** `NESSIE_LANDING_ORIGIN`: the exact origins this route answers. */
+  landingOrigins: ReadonlySet<string>
   teamHostBaseDomain: string | undefined
   adminOrigin: string | null
   /** Test seam; production resolves through UOA exactly as `/api/hosts/address` does. */
@@ -37,7 +37,7 @@ const resolveTeamAddressOrNull: LandingTeamsDeps['resolveTeamAddress'] = async (
  * "The landing lists the teams you are signed into").
  *
  * It lives under `/api/auth` because that is the refresh cookie's path, and it
- * answers with its own CORS headers for exactly one origin. The landing is
+ * answers with its own CORS headers for the landing's own origins. The landing is
  * deliberately not in the API-wide allowlist: admitting it there would let
  * that page call every credentialed route, when it needs this one answer.
  * `@fastify/cors` sets nothing for an origin it refuses, so the headers here
@@ -54,11 +54,14 @@ export const registerAuthLandingTeamsRoute = (
     reply.header('Cache-Control', 'no-store')
     reply.header('Vary', 'Origin, Cookie')
 
-    if (!deps.landingOrigin || request.headers.origin !== deps.landingOrigin) {
+    // Exact match against the configured list; the grant names only the one
+    // origin that asked — never `*`, never the list.
+    const origin = request.headers.origin
+    if (!origin || !deps.landingOrigins.has(origin)) {
       sendApiError(reply, 403, 'ORIGIN_NOT_ALLOWED', 'This read is only for the public landing page.')
       return reply
     }
-    reply.header('Access-Control-Allow-Origin', deps.landingOrigin)
+    reply.header('Access-Control-Allow-Origin', origin)
     reply.header('Access-Control-Allow-Credentials', 'true')
 
     const rawToken = readRefreshCookie(request)

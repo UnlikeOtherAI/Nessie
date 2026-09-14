@@ -15,6 +15,7 @@ import {
 import { hashRefreshToken } from '../src/services/refresh-token-crypto.js'
 
 const LANDING = 'https://nessie.works'
+const LANDING_WWW = 'https://www.nessie.works'
 const APP = 'https://app.nessie.works'
 
 const USER_A = '11111111-1111-4111-8111-111111111111'
@@ -136,7 +137,7 @@ const createFakePrisma = (input: {
 
 const buildApp = async (
   prisma: ReturnType<typeof createFakePrisma>,
-  options: { landingOrigin?: string; teamHostBaseDomain?: string } = {},
+  options: { landingOrigins?: string[]; teamHostBaseDomain?: string } = {},
 ): Promise<FastifyInstance> => {
   const app = Fastify()
   // The API-wide policy exactly as production registers it: the landing is
@@ -152,7 +153,7 @@ const buildApp = async (
   await app.register(cookie)
   registerAuthLandingTeamsRoute(app, {
     prisma: prisma as never,
-    landingOrigin: 'landingOrigin' in options ? options.landingOrigin : LANDING,
+    landingOrigins: new Set(options.landingOrigins ?? [LANDING, LANDING_WWW]),
     teamHostBaseDomain: options.teamHostBaseDomain,
     adminOrigin: APP,
     resolveTeamAddress: async (teamId) =>
@@ -202,6 +203,15 @@ test('any other origin is refused and gets no CORS grant — the app and tenant 
     { origin: 'https://evil.example' },
     { origin: 'https://nessie.works.attacker.test' },
     { origin: 'http://nessie.works' },
+    { origin: 'http://www.nessie.works' },
+    { origin: 'https://evil-nessie.works' },
+    { origin: 'https://nessie.works.evil.com' },
+    { origin: 'https://www.nessie.works.evil.com' },
+    { origin: 'https://nessie.works:8443' },
+    { origin: 'https://nessie.works/' },
+    { origin: 'https://NESSIE.works' },
+    { origin: `${LANDING},${LANDING_WWW}` },
+    { origin: 'null' },
     { origin: APP },
     { origin: 'https://design.acme.nessie.works' },
   ]
@@ -210,6 +220,7 @@ test('any other origin is refused and gets no CORS grant — the app and tenant 
     assert.equal(response.statusCode, 403, JSON.stringify(headers))
     assert.equal(response.json().data, undefined)
     assert.notEqual(response.headers['access-control-allow-origin'], LANDING)
+    assert.notEqual(response.headers['access-control-allow-origin'], LANDING_WWW)
     if (headers.origin !== APP && headers.origin !== 'https://design.acme.nessie.works') {
       assert.equal(response.headers['access-control-allow-origin'], undefined, JSON.stringify(headers))
     }
@@ -218,17 +229,45 @@ test('any other origin is refused and gets no CORS grant — the app and tenant 
 })
 
 test('no landing origin configured: the route answers nobody', async () => {
-  const app = await buildApp(createFakePrisma({ tokens: [tokenRow('raw-a')] }), { landingOrigin: undefined })
-  const response = await get(app, { origin: LANDING, cookie: `${REFRESH_COOKIE_NAME}=raw-a` })
-  assert.equal(response.statusCode, 403)
+  const app = await buildApp(createFakePrisma({ tokens: [tokenRow('raw-a')] }), { landingOrigins: [] })
+  for (const origin of [LANDING, LANDING_WWW]) {
+    const response = await get(app, { origin, cookie: `${REFRESH_COOKIE_NAME}=raw-a` })
+    assert.equal(response.statusCode, 403, origin)
+  }
+  await app.close()
+})
+
+test('every listed landing origin is admitted, and each grant names only the origin that asked', async () => {
+  const app = await buildApp(createFakePrisma({ tokens: [tokenRow('raw-a')] }))
+  for (const origin of [LANDING, LANDING_WWW]) {
+    const response = await get(app, { origin, cookie: `${REFRESH_COOKIE_NAME}=raw-a` })
+    assert.equal(response.statusCode, 200, origin)
+    assert.equal(response.headers['access-control-allow-origin'], origin)
+    assert.equal(response.headers['access-control-allow-credentials'], 'true')
+    assert.equal(response.headers['vary'], 'Origin, Cookie')
+    assert.equal(response.headers['cache-control'], 'no-store')
+    assert.equal(response.json().data.teams.length, 2)
+  }
+  await app.close()
+})
+
+test('a single-entry list still refuses the other landing host', async () => {
+  const app = await buildApp(createFakePrisma({ tokens: [] }), { landingOrigins: [LANDING] })
+  const refused = await get(app, { origin: LANDING_WWW })
+  assert.equal(refused.statusCode, 403)
+  assert.equal(refused.headers['access-control-allow-origin'], undefined)
+  assert.equal(refused.headers['vary'], 'Origin, Cookie')
+  assert.equal(refused.headers['cache-control'], 'no-store')
   await app.close()
 })
 
 test('the global CORS policy still does not admit the landing anywhere else', async () => {
   const app = await buildApp(createFakePrisma({ tokens: [] }))
   app.get('/api/other', async () => ({ ok: true }))
-  const response = await app.inject({ method: 'GET', url: '/api/other', headers: { origin: LANDING } })
-  assert.equal(response.headers['access-control-allow-origin'], undefined)
+  for (const origin of [LANDING, LANDING_WWW]) {
+    const response = await app.inject({ method: 'GET', url: '/api/other', headers: { origin } })
+    assert.equal(response.headers['access-control-allow-origin'], undefined, origin)
+  }
   await app.close()
 })
 

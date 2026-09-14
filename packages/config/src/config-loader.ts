@@ -10,6 +10,7 @@ import {
 } from './config-schema.js'
 import { assertLocalOnlyCapability, FILESYSTEM_STORAGE } from './local-only.js'
 import { parseEncryptionKeyRingEnv } from './encryption-key-ring.js'
+import { parseOriginAllowlist } from './origin-allowlist.js'
 
 export const ConfigEnvMap = {
   NESSIE_MODE: 'mode',
@@ -218,6 +219,7 @@ const DEFAULT_CONFIG: NessieConfig = {
       executorDaemonSessionIp: { max: 6_000, windowMs: 60_000 },
       publicRouteIp: { max: 1_200, windowMs: 60_000 },
     },
+    landingOrigins: [],
   },
   github: {
     owner: 'UnlikeOtherAI',
@@ -440,6 +442,11 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
     ),
     loadCliOverrides(argv),
   )
+  // A list, so it cannot ride the scalar env map. Parsed strictly here so a
+  // malformed entry refuses to start rather than silently never matching.
+  if (env.NESSIE_LANDING_ORIGIN !== undefined) {
+    setByPath(merged, 'api.landingOrigins', parseOriginAllowlist(env.NESSIE_LANDING_ORIGIN, 'NESSIE_LANDING_ORIGIN'))
+  }
 
   const config = NessieConfigSchema.parse(merged)
 
