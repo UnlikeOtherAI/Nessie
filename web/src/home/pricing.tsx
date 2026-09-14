@@ -16,15 +16,13 @@ export function Pricing() {
         <div className="n-pricing-grid">
           <article className="n-price-card">
             <h3>{plan.name}</h3>
-            <div className="n-price-rows">
-              {plan.prices.map((price, i) => (
-                <div className="n-price" key={price.unit}>
-                  {i > 0 && <span className="n-price-plus">+</span>}
-                  <strong>{price.amount}</strong>
-                  <span>{price.unit}</span>
-                </div>
-              ))}
+            <div className="n-price">
+              <strong>{plan.price.amount}</strong>
+              <span>{plan.price.unit}</span>
             </div>
+            <p className="n-price-storage">
+              + <strong>{plan.storage.amount}</strong> {plan.storage.unit}
+            </p>
             <p className="n-price-note">{plan.usageNote}</p>
             <ul className="n-price-features">
               {plan.features.map((feature) => (

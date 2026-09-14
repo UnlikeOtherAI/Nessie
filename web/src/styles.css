@@ -1081,18 +1081,24 @@ button {
   text-transform: uppercase;
 }
 
-.n-price-rows {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  align-items: flex-end;
-  margin-top: 18px;
-}
-
 .n-price {
   display: flex;
   gap: 10px;
   align-items: baseline;
+  margin-top: 18px;
+}
+
+/* Storage: one team-wide amount, set smaller under the per-user price. */
+.n-price-storage {
+  margin-top: 10px !important;
+  color: var(--n-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.n-price-storage strong {
+  color: var(--n-ink);
+  font-weight: 700;
 }
 
 .n-price strong {
@@ -1106,12 +1112,6 @@ button {
 .n-price span {
   color: var(--n-muted);
   font-size: 16px;
-}
-
-.n-price .n-price-plus {
-  color: var(--n-muted);
-  font-size: 32px;
-  font-weight: 300;
 }
 
 .n-price-features {

@@ -243,10 +243,9 @@ export const pricing = {
   text: 'Pay per person and for the storage you use. AI employees don’t take a seat — they run on your own AI accounts at no extra charge, or on Nessie’s models for a per-token rate.',
   plan: {
     name: 'Nessie Cloud',
-    prices: [
-      { amount: '€3', unit: 'per user / month' },
-      { amount: '€10', unit: 'per TB of storage / month' },
-    ],
+    price: { amount: '€3', unit: 'per user / month' },
+    // Storage is one bill for the whole team, never multiplied by users.
+    storage: { amount: '€10', unit: 'per TB of storage / month for the whole team — not per user' },
     // AI employees are never billed per seat; only inference Nessie provides is billed, per token.
     usageNote: 'AI employees are not charged per seat. When they run on Nessie’s models, usage is billed per token.',
     features: [
