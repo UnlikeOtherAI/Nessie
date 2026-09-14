@@ -42,6 +42,8 @@ export type NativeShellMessage = {
   chromeSource?: string
   headerSurface?: string
   headerText?: string
+  /** `nessie:app-icon`'s chosen Home Screen icon — see native-app-icon.ts. */
+  icon?: string
   inactive?: string
   id?: number
   left?: number

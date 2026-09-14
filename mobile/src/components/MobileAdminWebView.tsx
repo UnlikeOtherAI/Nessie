@@ -17,6 +17,7 @@ import { isNativeVoiceCallAvailable } from '../../modules/nessie-voice-call'
 import { NATIVE_BACK_FORWARD_GESTURES } from '../lib/webview-back-gesture'
 
 type Props = {
+  appIcon: NativeShellInfo['appIcon']
   backgroundColor: string
   bottomInset: number
   formFactor: NativeShellInfo['formFactor']
@@ -40,6 +41,7 @@ type Props = {
 
 /** The persistent admin WebView and the native safety boundary around its navigation. */
 export const MobileAdminWebView = ({
+  appIcon,
   backgroundColor,
   bottomInset,
   formFactor,
@@ -62,6 +64,7 @@ export const MobileAdminWebView = ({
 }: Props): React.JSX.Element | null => {
   if (!initialPushPathResolved) return null
   const shellInfo = {
+    appIcon,
     bottomInset,
     clientId: pushSurfaceClientId,
     formFactor,

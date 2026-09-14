@@ -1,6 +1,13 @@
+import type { AppIconVariant } from '../../modules/nessie-app-icon'
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
 export type NativeShellInfo = {
+  /**
+   * The Home Screen icon in effect, or null when this build cannot switch it
+   * (nessie-app-icon). Published with every load, because a reload starts a
+   * page that has never heard the answer to an earlier switch.
+   */
+  appIcon: AppIconVariant | null
   bottomInset: number
   clientId: string
   formFactor: 'ipad' | 'large-phone-landscape' | 'phone'
@@ -30,12 +37,13 @@ export const createNativePushSurfaceClientId = (): string => {
 }
 
 export const nativeShellInfoScript = (info: NativeShellInfo): string => `
-window.__nessieNativeShell = { bottomInset: ${JSON.stringify(info.bottomInset)}, platform: ${
-  JSON.stringify(info.platform)
-}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
+window.__nessieNativeShell = { appIcon: ${JSON.stringify(info.appIcon !== null)}, bottomInset: ${
+  JSON.stringify(info.bottomInset)
+}, platform: ${JSON.stringify(info.platform)}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
   JSON.stringify(info.voiceCall)
 } };
 window.__nessieNativeAppForeground = true;
+${info.appIcon ? `window.__nessieNativeAppIcon = ${JSON.stringify(info.appIcon)};` : ''}
 window.__nessiePushSurfaceClientId = ${JSON.stringify(info.clientId)};
 ${info.pendingPushPath ? `window.__nessiePendingPushPath = ${JSON.stringify(info.pendingPushPath)};` : ''}
 try { window.dispatchEvent(new Event('nessie:native-shell-info')); } catch (e) {}

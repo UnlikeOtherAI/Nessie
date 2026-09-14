@@ -36,7 +36,7 @@
       "predictiveBackGestureEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0f172a"
+        "backgroundColor": "#07152C"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -49,7 +49,7 @@
           "image": "./assets/splash-icon-rounded.png",
           "imageWidth": 64,
           "resizeMode": "contain",
-          "backgroundColor": "#0f172a"
+          "backgroundColor": "#07152C"
         }
       ],
       [
@@ -65,7 +65,13 @@
       ],
       "expo-notifications",
       "react-native-bottom-tabs",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "./plugins/with-light-app-icon",
+        {
+          "image": "./assets/icon-light.png"
+        }
+      ]
     ],
     "extra": {
       "eas": {

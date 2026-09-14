@@ -220,6 +220,18 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   notification, not a repeating buzz — the browser path keeps its own
   repeating `navigator.vibrate` pattern via the same helper's fallback); the
   sheet-snap and tab-change triggers §4.15 describes arrive with steps 7–8.
+- **`nessie:app-icon { icon }` bridge message.** Settings → Appearance shows
+  an *App icon* panel (`admin/src/pages/settings/appearance/AppIconPanel.tsx`)
+  only when `window.__nessieNativeShell.appIcon` is `true` — an iOS build that
+  carries `mobile/modules/nessie-app-icon`. Picking *Dark* (the primary icon)
+  or *Light* posts the message; `mobile/src/lib/native-app-icon.ts` guards it
+  and `App.tsx` calls `setAlternateIconName`, then publishes the icon actually
+  in effect back as `nessie:native-app-icon` (retained on
+  `window.__nessieNativeAppIcon`, which the shell-info script also sets on
+  every load). The panel shows that answer, not the tap.
+  The light set is compiled into the asset catalog as `AppIconLight` by
+  `mobile/plugins/with-light-app-icon.js`. Every icon and favicon is generated
+  from one geometry by `assets/logo/generate.py`.
 - **The shell stops re-deriving from the pathname what the admin already
   knows (step 9).** It used to match the WebView's reported `nessie:route`
   path against a hand-copied prefix table (`tabIndexForPath`, each
