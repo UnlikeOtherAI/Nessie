@@ -93,7 +93,12 @@ dbTest('a fellow member and an organisation admin cannot delete somebody else’
     await seed(prisma)
 
     for (const userId of [fellowUserId, orgAdminUserId]) {
-      const result = await softDeleteMessage(prisma, { messageId, threadId, userId })
+      // The route used to hand in `isChannelManager: true` for exactly these two
+      // people. The service must refuse them even if a caller still does.
+      const result = await softDeleteMessage(
+        prisma,
+        { isChannelManager: true, messageId, threadId, userId } as Parameters<typeof softDeleteMessage>[1],
+      )
       assert.deepEqual(result, { kind: 'forbidden' }, userId)
     }
     const kept = await prisma.message.findUniqueOrThrow({ where: { id: messageId } })
