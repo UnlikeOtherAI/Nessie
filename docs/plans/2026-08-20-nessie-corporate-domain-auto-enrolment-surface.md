@@ -14,7 +14,7 @@ for the reasoning in "UOA remains the authority", which the successor follows.
 **Scope:** Nessie is a secondary owner interface for the UOA corporate-domain
 auto-enrolment capability. The primary hosted interface remains UOA Auth.
 **Dependency:** `UnlikeOtherAuthenticator/Docs/plans/2026-08-20-corporate-domain-auto-enrolment.md`
-**Reviewed:** Kimix CLI, 2026-08-20
+**Reviewed:** independent model review, 2026-08-20
 
 ## Outcome
 

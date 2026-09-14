@@ -72,13 +72,13 @@ context without an explicit authorized tool call and untrusted framing.
 
 ## 15. Where the three designs disagreed, and what won
 
-| # | Question | Fable | Kimix | Sol | Decision |
+| # | Question | Fable | Reviewer B | Sol | Decision |
 |---|---|---|---|---|---|
 | 1 | Widget catalogue | 5: stat, trend, breakdown, table, status | 6: + pie, markdown_note | 4: line, bar, table, stat | **5** — Sol's four plus Fable's `status`, which answers a categorical-health question none of the others can and is nearly free. Pie cut 2–1; `markdown_note` cut as the freeform wedge. |
 | 2 | Chat embedding | separate `metadata.widgetEmbeds` | extend `IntegrationUiCard` | separate, **server-populated only** | **Separate, server-populated.** Sol's reasoning decides it: the card contract is an ephemeral product-result surface with links and actions; a widget needs identity, invalidation, source authorization, retention, and live/static. Shared shell, separate contract. |
-| 3 | Data entitlement (the crux) | not deeply addressed | per-source `delegateMode`, default `viewer` | `delegated` forced for external, `viewer` reserved for internal | **Sol.** Viewer entitlement is not expressible against a third-party API and contradicts one-cache scheduling. Kimix's contribution survives as the *source-object* visibility gate and the visible-provenance chip. |
-| 4 | Scheduling | (not specified) | new `DashboardRefreshSchedule` poller table | existing trigger scheduler, new target kind | **Sol** — AGENTS.md bans a second scheduler. Kimix's real concern ("refreshing a chart is not running an agent") is met by the target-kind discriminant: no `AgentTrigger` row, no run, no tokens. |
-| 5 | KB embedding | `::widget{}` Markdown directive | `::dashboard-widget[]` Markdown directive | **TipTap atomic node** | **Sol**, and it is a correction of *my* brief, which wrongly told all three that pages are Markdown. Fable's and Kimix's UX reasoning survives on top of the correct mechanism. |
+| 3 | Data entitlement (the crux) | not deeply addressed | per-source `delegateMode`, default `viewer` | `delegated` forced for external, `viewer` reserved for internal | **Sol.** Viewer entitlement is not expressible against a third-party API and contradicts one-cache scheduling. Reviewer B's contribution survives as the *source-object* visibility gate and the visible-provenance chip. |
+| 4 | Scheduling | (not specified) | new `DashboardRefreshSchedule` poller table | existing trigger scheduler, new target kind | **Sol** — AGENTS.md bans a second scheduler. Reviewer B's real concern ("refreshing a chart is not running an agent") is met by the target-kind discriminant: no `AgentTrigger` row, no run, no tokens. |
+| 5 | KB embedding | `::widget{}` Markdown directive | `::dashboard-widget[]` Markdown directive | **TipTap atomic node** | **Sol**, and it is a correction of *my* brief, which wrongly told all three that pages are Markdown. Fable's and reviewer B's UX reasoning survives on top of the correct mechanism. |
 | 6 | Grid + chart libraries | RGL + Recharts | RGL + Recharts | RGL + Recharts, both lazy behind adapters | **Unanimous**, with Sol's quarantine. Verified React 19 compatible. |
 | 7 | Transform | in the source contract | JMESPath, reuse the evaluator | JMESPath, relocate behind a neutral export | **Unanimous on reuse.** Independently reached by two models and confirmed against the file. |
 | 8 | Public links at v1 | no | no | no | **Unanimous no.** |
@@ -87,9 +87,9 @@ context without an explicit authorized tool call and untrusted framing.
 | 11 | Version diff | spatial diff on the canvas | version rows | typed server-side diff | **Fable's spatial diff** over Sol's typed diff computed server-side. A line diff of a layout is meaningless. |
 
 **On reviewer reliability:** the standing rule is to verify claims rather than
-accept them. All five of Kimix's file citations checked out. Both library picks
+accept them. All five of reviewer B's file citations checked out. Both library picks
 verified against the npm registry for React 19. Two of three models inherited a
-factual error I put in the brief; only Sol checked it against the code. Kimix's
+factual error I put in the brief; only Sol checked it against the code. Reviewer B's
 §A2 also contains a visible self-correction left in the text ("no, cut that"),
 which is a drafting artifact, not a defect in the conclusion.
 

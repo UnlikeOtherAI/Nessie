@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Scope:** UnlikeOtherAuthenticator (UOA) and Nessie
-**Reviewed:** Kimix CLI, 2026-08-20
+**Reviewed:** independent model review, 2026-08-20
 
 ## Outcome
 
