@@ -89,6 +89,26 @@ Facts not restated there:
 - A task, plan, or child-agent activity row linked to a run is a retained run
   output: its reader must satisfy both the run channel entitlement and that
   run's disclosure basis. A task without a run keeps ordinary task visibility.
+  That holds on every read that returns the row, list or single: the task list,
+  the task detail, the board task list (`listBoardTasksForUser`,
+  `api/src/services/tasks.ts`, used by `GET
+  /api/projects/:projectId/boards/:boardId/tasks` and the MCP
+  `nessie_board_get`) all leave an unreadable row out. `listBoardTasks`
+  (`@nessie/team-admin`) is unscoped placement and must not be returned to a
+  viewer directly.
+- Message search reach is the same for every role — organisation and team
+  owners and admins included — and follows Slack/Teams: public standard
+  channels plus the conversations the searcher is a member of. A direct message
+  or a system room (`systemChannelType` set: Personal Assistant, agent mailbox,
+  external agent) is participant-only even when its visibility says public
+  (`searchMessages`, `api/src/services/message-search.ts`). The channel read
+  predicate (`getVisibleChannel`, `api/src/lib/request-helpers.ts`) must stay
+  aligned with this rule.
+- `buildVisibleChannelWhere` (`worker/src/run/pa-tools/access.ts`) returns a
+  top-level `OR`. Combine it with other predicates through `AND: [...]`, never by
+  spreading it beside a second `OR`: the later key replaces the visibility rule
+  and the query returns private channels the person never joined (this is how
+  `channel_find` leaked).
 - A shared agent with private-conversation material cannot place that material
   into an external browser URL or page (`browser_open` and `browser_act`). Those
   browser verbs have no original-author-bound, exact-content disclosure grant;
@@ -142,3 +162,11 @@ Facts not restated there:
   memoized for `REALTIME_ENTITLEMENT_TTL_MS` (5 s) so a token-per-delta stream
   costs one query per window rather than one per token; a revocation stops the
   stream within that same 5-second window, not at connect time.
+- Deactivation keeps `ChannelMember` rows as history, and `getVisibleChannel`
+  asks only "public, or a member". So the per-connection channel gate in
+  `api/src/realtime/notification-delivery.ts` — which the WS, user-SSE and
+  thread-stream lanes all ask — first requires the memoized organisation gate
+  (`canAccessOrganizationEvent`: an `OrganizationMember` row with
+  `deactivatedAt: null`). A deactivated member's open stream stops within one
+  window, at the cost of at most one extra membership query per window per
+  connection.
