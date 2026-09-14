@@ -38,7 +38,6 @@ export function Hero() {
   const stage = useRef<HTMLDivElement>(null)
   const backdrop = useRef<HTMLButtonElement>(null)
   const controls = useRef<HTMLDivElement>(null)
-  const hint = useRef<HTMLParagraphElement>(null)
   const closer = useRef<HTMLButtonElement>(null)
   const openFrom = useRef<DOMRect | null>(null)
   const closeMotion = useRef<Animation | null>(null)
@@ -76,7 +75,7 @@ export function Hero() {
     if (!element || !from || prefersReducedMotion()) return
     const start = transformFrom(from, element.getBoundingClientRect())
     element.animate([{ transform: start }, { transform: 'none' }], { duration: openMs, easing: easeOut })
-    for (const layer of [backdrop.current, controls.current, hint.current]) {
+    for (const layer of [backdrop.current, controls.current]) {
       layer?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: openMs, easing: 'ease' })
     }
   }, [expanded])
@@ -96,7 +95,7 @@ export function Hero() {
       easing: easeInOut,
       fill: 'forwards',
     })
-    for (const layer of [backdrop.current, controls.current, hint.current]) {
+    for (const layer of [backdrop.current, controls.current]) {
       layer?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: closeMs, easing: easeInOut, fill: 'forwards' })
     }
     closeMotion.current = motion
@@ -214,11 +213,7 @@ export function Hero() {
                 />
               ))}
             </div>
-          </div>
-          <p className="n-device-hint" ref={hint}>
-            Drag to turn it around
-          </p>
-        </>
+          </div>        </>
       )}
     </section>
   )

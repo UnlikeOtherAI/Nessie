@@ -456,9 +456,10 @@ button {
 }
 
 /* Close button and case colours, above the desktop in the top-right corner. */
+/* Starts below the sticky header and its hanging wave. */
 .n-device-controls {
   position: fixed;
-  top: 18px;
+  top: 124px;
   right: 18px;
   z-index: 203;
   display: flex;
@@ -519,18 +520,6 @@ button {
 
 .n-device-draggable:active {
   cursor: grabbing;
-}
-
-.n-device-hint {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  z-index: 203;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  pointer-events: none;
-  transform: translateX(-50%);
 }
 
 /* Pagination for the hero screenshots, under the desktop. */
