@@ -11,6 +11,7 @@ import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/native-shell'
+import { isNativeShell, resolveTeamSwitchDestination } from '../../lib/tenant-navigation'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -159,11 +160,19 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
       // deployment does not route by hostname, when UOA cannot be reached, or
       // when the team has no address, so the ordinary same-origin navigation
-      // below stays the behaviour everywhere else.
+      // below stays the behaviour everywhere else. A native shell never
+      // follows: its bridge is granted to the canonical origin only
+      // (see lib/tenant-navigation.ts), so it is not even asked.
       if (team.uoaTeam) {
-        const hostUrl = await fetchTeamHostUrl(apiClient, team.teamId)
-        if (hostUrl && new URL(hostUrl).host !== window.location.host) {
-          window.location.assign(`${hostUrl}/channels`)
+        const destination = await resolveTeamSwitchDestination({
+          canonicalOrigin: null,
+          currentHost: window.location.host,
+          currentHostServesApp: true,
+          fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
+          inNativeShell: isNativeShell(),
+        })
+        if (destination.kind === 'document') {
+          window.location.assign(destination.href)
           return
         }
       }
