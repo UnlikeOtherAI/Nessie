@@ -45,7 +45,7 @@ const sendChannelMemberRefusal = (
         reply,
         403,
         'CHANNEL_FORBIDDEN',
-        'Only a channel, team or organisation administrator can change who is in this channel.',
+        'Only a member of this channel, or an organisation owner or admin, can change who is in it.',
       )
       return
     case 'target_not_in_organization':
@@ -61,14 +61,14 @@ const sendChannelMemberRefusal = (
 /**
  * Who is in a channel. Registered by `registerChannelRoutes` beside the
  * channel's own lifecycle, kept in its own module because the authorization
- * these two writes take — `canManageChannel`, with a carve-out for leaving —
+ * these two writes take — `canModifyChannel`, with a carve-out for leaving —
  * is the channel surface's one genuinely distinct decision.
  */
 export const registerChannelMemberRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext } = deps
 
   // Adding somebody to a channel hands them its whole history, so the gate is
-  // `canManageChannel` — the same one rename and archive take.
+  // `canModifyChannel` — the same one rename and archive take.
   app.post('/api/channels/:channelId/members', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {

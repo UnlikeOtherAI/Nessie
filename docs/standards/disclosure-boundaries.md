@@ -143,9 +143,10 @@ Facts not restated there:
   run receives its bytes. Public conversations create none.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
-  `canManageChannel` (`api/src/services/channel-members.ts`), the same gate
-  renaming and archiving take, with one carve-out — a person may always remove
-  themselves.
+  `canModifyChannel` (`packages/team-admin/src/resource-authority.ts`, applied
+  in `api/src/services/channel-members.ts`), the same gate renaming and
+  archiving take — any member of the channel, or an organisation owner or
+  admin — with one carve-out: a person may always remove themselves.
 - Spec and build status:
   [docs/plans/2026-08-11-disclosure-boundaries-build.md](../plans/2026-08-11-disclosure-boundaries-build.md).
 - `@nessie/runtime`'s `publishMessageEnvelope` (`packages/runtime/src/message-envelope.ts`)

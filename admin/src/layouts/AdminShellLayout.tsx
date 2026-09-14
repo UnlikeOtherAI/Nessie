@@ -261,7 +261,6 @@ const AuthenticatedAdminShellLayout = () => {
     <KnowledgeSidebarNav />
   ) : shell.isProjectsRoute ? (
     <ProjectsSidebarNav
-      isOwner={shell.isOwner}
       onToggleStar={shell.toggleStar}
       pathname={shell.pathname}
       starredCollapsed={shell.starredCollapsed}

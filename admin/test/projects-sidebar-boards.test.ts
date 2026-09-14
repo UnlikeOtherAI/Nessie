@@ -88,8 +88,8 @@ test('the Board section lists the project boards and creates one through a dialo
   // The "+" is a pop-up, not a trip to Settings, and it is offered only to
   // somebody whose click the server would not refuse.
   assert.match(sectionRows, /aria-label="New board"/)
-  assert.match(sectionRows, /canAdministerProject \? \(/)
-  assert.match(sectionRows, /useCanAdministerProject\(projectId\)/)
+  assert.match(sectionRows, /canModifyProject \? \(/)
+  assert.match(sectionRows, /useCanModifyProject\(projectId\)/)
   assert.match(dialogs, /<BoardCreateDialog/)
 })
 

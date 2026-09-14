@@ -18,6 +18,7 @@ import {
   type ConversationRenameDoorway,
 } from './rename-conversation'
 import { chatToolHeaderActions, type ChatToolId } from './tool-rail/chat-tools'
+import { channelRoomControls } from './channel-room-controls'
 
 interface ChannelHeaderProps {
   activeCall: boolean
@@ -115,15 +116,10 @@ export const ChannelHeader = ({
       ? externalAgentIdentity?.name ?? activeChannel?.label ?? 'Channels'
       : activeChannel?.label ?? 'Channels'
   const title = conversation?.title ?? roomTitle
-  const canManageChannel = Boolean(
-    activeChannel && activeChannel.type !== 'dm' && !isPersonalAssistantConversation,
-  )
-  const canOpenConversationInfo = Boolean(
-    activeChannel && activeChannel.type === 'dm' && !isPersonalAssistantConversation,
-  )
-  const shouldJoin = Boolean(
-    canManageChannel && activeChannel?.visibility === 'public' && !activeChannel.memberRole,
-  )
+  const { canManageChannel, canOpenConversationInfo, shouldJoin } = channelRoomControls({
+    activeChannel,
+    isPersonalAssistantConversation,
+  })
   // One call button for every conversation; what it starts is decided by the
   // kind of conversation, not by a second control. In the Personal Assistant
   // DM it opens a live voice call with the assistant; everywhere else it mints

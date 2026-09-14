@@ -4,7 +4,7 @@ import {
   type ScopeResolutionMode,
 } from '@nessie/memory'
 import type { SpaceViewerPrincipal } from '@nessie/knowledge'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminRole, type AuthorizedActionContext } from '@nessie/schemas'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
@@ -78,6 +78,9 @@ export type ActingMember = {
   // policy check reads their live role — not the assistant agent running the loop.
   actorContext: AuthorizedActionContext
   isOwner: boolean
+  // Owner or admin — the pair that reaches a project the person is not a
+  // member of (`canModifyProject` / `isProjectAccessibleToUser`).
+  isOrganizationAdmin: boolean
   organizationId: string
   role: string
   userId: string
@@ -119,6 +122,7 @@ export const resolveActingMember = async (
       },
     },
     isOwner: membership.role === 'owner',
+    isOrganizationAdmin: isAdminRole(membership.role),
     organizationId,
     role: membership.role,
     userId,

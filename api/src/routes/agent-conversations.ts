@@ -5,6 +5,7 @@ import {
   AgentIdSchema,
   CHAT_MESSAGE_MAX_CHARS,
   detectSecrets,
+  isAdminActor,
   RenameThreadBodySchema,
   StartAgentConversationBodySchema,
   ThreadIdSchema,
@@ -226,6 +227,7 @@ export const registerAgentConversationRoutes = (
     if (!body) return reply
 
     const outcome = await renameThreadForUser(prisma, {
+      isOrganizationAdmin: isAdminActor(actorContext),
       organizationId: actorContext.tenant.organizationId,
       threadId,
       title: body.title,

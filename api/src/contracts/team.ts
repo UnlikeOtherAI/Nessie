@@ -93,10 +93,16 @@ export const CreateChannelBodySchema = z.object({
 
 export const UpdateProjectBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
+  // What the project is for. Readable by everybody in the organisation through
+  // the project directory, so it is written by the project's own members.
+  description: z.string().trim().max(500).nullable().optional(),
   avatarEmoji: z.string().trim().min(1).max(32).nullable().optional(),
   avatarAttachmentId: z.string().uuid().nullable().optional(),
 }).refine(
-  (body) => body.name !== undefined || body.avatarEmoji !== undefined || body.avatarAttachmentId !== undefined,
+  (body) => body.name !== undefined
+    || body.description !== undefined
+    || body.avatarEmoji !== undefined
+    || body.avatarAttachmentId !== undefined,
   { message: 'At least one project field is required' },
 )
 

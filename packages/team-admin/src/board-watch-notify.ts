@@ -11,6 +11,23 @@ const readFilter = (value: unknown): BoardFilter => {
   return parsed.success ? parsed.data : DEFAULT_BOARD_FILTER
 }
 
+// An active organisation owner or admin reaches every project, so a watcher
+// alert to one needs no project membership.
+const isActiveOrganizationAdmin = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> =>
+  (await prisma.organizationMember.count({
+    where: {
+      organizationId,
+      userId,
+      // `ORGANIZATION_ADMIN_ROLES`, spelled as the column's enum values.
+      role: { in: ['owner', 'admin'] },
+      deactivatedAt: null,
+    },
+  })) > 0
+
 /**
  * Telling a board's watchers that a ticket moved.
  *
@@ -186,14 +203,11 @@ export const resolveBoardWatchRecipients = async (
   const recipients: BoardWatchRecipient[] = []
 
   for (const [userId, entry] of byUser) {
-    // Rule 3: entitlement before any write. An organisation owner reads every
-    // project; anybody else needs a membership.
-    const isOwner = await prisma.organizationMember.count({
-      where: { organizationId, userId, role: 'owner', deactivatedAt: null },
-    }) > 0
+    // Rule 3: entitlement before any write. An organisation owner or admin
+    // reads every project; anybody else needs a membership.
     const allowed = await isProjectAccessibleToUser(
       prisma,
-      { isOwner, organizationId, userId },
+      { isOrganizationAdmin: await isActiveOrganizationAdmin(prisma, organizationId, userId), organizationId, userId },
       projectId,
     )
     if (!allowed) continue
@@ -217,14 +231,7 @@ export const resolveBoardWatchRecipients = async (
     const readerAllowed = await isProjectAccessibleToUser(
       prisma,
       {
-        isOwner: await prisma.organizationMember.count({
-          where: {
-            organizationId,
-            userId: entry.addedByUserId,
-            role: 'owner',
-            deactivatedAt: null,
-          },
-        }) > 0,
+        isOrganizationAdmin: await isActiveOrganizationAdmin(prisma, organizationId, entry.addedByUserId),
         organizationId,
         userId: entry.addedByUserId,
       },

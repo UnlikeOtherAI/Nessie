@@ -87,9 +87,10 @@ export const ChannelRecordSchema = z.object({
   memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
   // Whether the caller has muted notifications for this channel (per-member).
   muted: z.boolean().optional(),
-  // Server-computed: may the viewer add or remove a member of this channel
-  // right now (`canManageChannel` — channel owner/admin, team owner/admin, or
-  // organisation owner/admin)? Required, not optional, so a client can never
+  // Server-computed: may the viewer change this channel right now — rename,
+  // archive, add or remove members (`canModifyChannel` — any member of the
+  // channel, or an organisation owner/admin; never on a system channel; a DM
+  // keeps its own participant rule)? Required, not optional, so a client can never
   // fall back to showing the control when a producer forgot to set it — see
   // `docs/standards/disclosure-boundaries.md` on `ChannelMember` writes.
   viewerCanManage: z.boolean(),
@@ -113,6 +114,8 @@ export const ProjectRecordSchema = z.object({
   name: NonEmptyStringSchema,
   avatarEmoji: z.string().min(1).max(32).nullable(),
   avatarAttachmentId: z.string().uuid().nullable(),
+  // Optional on the wire so an older API build that omits it still parses.
+  description: z.string().nullable().optional(),
   organizationId: OrganizationIdSchema,
   memberCount: z.number().int().nonnegative(),
   teamCount: z.number().int().nonnegative().optional(),
@@ -120,6 +123,50 @@ export const ProjectRecordSchema = z.object({
   createdAt: TimestampSchema,
 })
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
+
+/**
+ * A person in a project, as somebody outside it may see them: who they are,
+ * and nothing about what they do there.
+ */
+export const ProjectDirectoryMemberSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  avatarUrl: z.string().nullable(),
+  avatarAttachmentId: z.string().uuid().nullable(),
+})
+export type ProjectDirectoryMember = z.infer<typeof ProjectDirectoryMemberSchema>
+
+/**
+ * One row of `GET /api/projects/directory` — every project in the organisation,
+ * shaped by role (`docs/standards/team-model.md` → "What a person outside a
+ * project may see").
+ *
+ * - `limited`: somebody outside the project. Its name, description and members
+ *   and **nothing else** — no counts, avatar, boards, tasks, fields, sources,
+ *   iterations, channels, settings or watchers. `.strict()` so a field added to
+ *   the reader cannot reach an outsider without this schema changing too.
+ * - `full`: a member of the project, or an organisation owner or admin, who may
+ *   open it and gets the ordinary project record alongside.
+ */
+export const ProjectDirectoryEntrySchema = z.discriminatedUnion('access', [
+  z.object({
+    access: z.literal('limited'),
+    id: ProjectIdSchema,
+    name: NonEmptyStringSchema,
+    description: z.string().nullable(),
+    members: z.array(ProjectDirectoryMemberSchema),
+  }).strict(),
+  z.object({
+    access: z.literal('full'),
+    id: ProjectIdSchema,
+    name: NonEmptyStringSchema,
+    description: z.string().nullable(),
+    members: z.array(ProjectDirectoryMemberSchema),
+    project: ProjectRecordSchema,
+    viewerIsMember: z.boolean(),
+  }).strict(),
+])
+export type ProjectDirectoryEntry = z.infer<typeof ProjectDirectoryEntrySchema>
 
 export const TeamCallProviderSchema = z.enum([
   'google_meet',
@@ -137,6 +184,10 @@ export const TeamRecordSchema = z.object({
   // part of the record.
   callProvider: TeamCallProviderSchema,
   memberCount: z.number().int().nonnegative().optional(),
+  // Whether the person asking is a member of this team — the placement
+  // `createProjectForUser` requires of anybody but an organisation owner or
+  // admin. Present when the reader was asked on a viewer's behalf.
+  viewerIsMember: z.boolean().optional(),
   createdAt: TimestampSchema,
 })
 export type TeamRecord = z.infer<typeof TeamRecordSchema>
@@ -200,9 +251,10 @@ export type AgentVisibility = z.infer<typeof AgentVisibilitySchema>
 
 /**
  * The display projection for an agent's steward. It exists because there is no
- * member-readable endpoint mapping a local user id to a name — `GET /api/users`
- * is owner-only and the UOA roster is keyed by subject and scoped to one team —
- * so without this an owner cell could render an id and nothing else.
+ * guarantee that a steward still appears in the people directory — `GET
+ * /api/users` omits deactivated people from a member's view and the UOA roster
+ * is keyed by subject — so without this an owner cell could render an id and
+ * nothing else.
  *
  * Deliberately carries no `uoaSub`: an agent is visible across teams through any
  * public channel, so inlining a UOA subject would be a cross-team identity

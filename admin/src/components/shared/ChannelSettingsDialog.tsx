@@ -92,6 +92,11 @@ export const ChannelSettingsDialog = (
     void navigate('/channels')
   }
 
+  // Rendered only for somebody the server lets change this channel. The header
+  // gear is gated the same way; this is the second lock, so a stale open state
+  // or a future doorway cannot show edit controls that would only be refused.
+  if (!channel.viewerCanManage) return null
+
   return (
     <>
       <Dialog description={`#${channel.label}`} onClose={onClose} open={open} title="Channel settings">

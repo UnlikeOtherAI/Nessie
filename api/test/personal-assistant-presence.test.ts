@@ -26,6 +26,8 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
   const firstUserId = randomUUID()
   const secondUserId = randomUUID()
   const managerUserId = randomUUID()
+  // An organisation member who is not in the channel.
+  const outsiderUserId = randomUUID()
 
   try {
     await prisma.organization.create({
@@ -36,6 +38,7 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
         { id: firstUserId, email: `${firstUserId}@test.local`, displayName: 'First' },
         { id: secondUserId, email: `${secondUserId}@test.local`, displayName: 'Second' },
         { id: managerUserId, email: `${managerUserId}@test.local`, displayName: 'Manager' },
+        { id: outsiderUserId, email: `${outsiderUserId}@test.local`, displayName: 'Outsider' },
       ],
     })
     await prisma.organizationMember.createMany({
@@ -43,6 +46,7 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
         { organizationId, role: 'member', userId: firstUserId },
         { organizationId, role: 'member', userId: secondUserId },
         { organizationId, role: 'owner', userId: managerUserId },
+        { organizationId, role: 'member', userId: outsiderUserId },
       ],
     })
     const project = await prisma.project.create({
@@ -98,13 +102,26 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
       },
     }), 2)
 
-    // A member cannot remove somebody else's PA presence; a channel owner can.
+    // Somebody outside the channel cannot remove a PA presence from it. Every
+    // member of the channel has equal rights in it (`canModifyChannel`), so a
+    // fellow member can, and so can an organisation owner.
+    assert.equal((await removePersonalAssistantPresence(prisma, {
+      actorUserId: outsiderUserId,
+      channelId: channel.id,
+      organizationId,
+      principalUserId: secondUserId,
+    })).kind, 'forbidden')
     assert.equal((await removePersonalAssistantPresence(prisma, {
       actorUserId: firstUserId,
       channelId: channel.id,
       organizationId,
       principalUserId: secondUserId,
-    })).kind, 'forbidden')
+    })).kind, 'deleted')
+    assert.equal((await addPersonalAssistantPresence(prisma, {
+      channelId: channel.id,
+      organizationId,
+      userId: secondUserId,
+    })).kind, 'created')
     assert.equal((await removePersonalAssistantPresence(prisma, {
       actorUserId: managerUserId,
       channelId: channel.id,
@@ -147,7 +164,9 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
     }), 1)
   } finally {
     await prisma.organization.deleteMany({ where: { id: organizationId } })
-    await prisma.user.deleteMany({ where: { id: { in: [firstUserId, secondUserId, managerUserId] } } })
+    await prisma.user.deleteMany({
+      where: { id: { in: [firstUserId, secondUserId, managerUserId, outsiderUserId] } },
+    })
     await prisma.$disconnect()
   }
 })

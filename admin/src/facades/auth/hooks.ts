@@ -43,6 +43,17 @@ export const isOwnerSession = (me: MeResponse | null): boolean =>
 /** The same question, asked from a component or a hook. */
 export const useIsOwner = (): boolean => isOwnerSession(useAuthSession().me)
 
+/**
+ * Organisation owner **or** admin — the pair (`ORGANIZATION_ADMIN_ROLES`) that
+ * reaches a project or channel the person is not a member of. A render gate
+ * only; the server re-resolves the role from the live membership row.
+ */
+export const isOrganizationAdminSession = (me: MeResponse | null): boolean =>
+  me?.user.roleIds.some((role) => role === 'owner' || role === 'admin') ?? false
+
+export const useIsOrganizationAdmin = (): boolean =>
+  isOrganizationAdminSession(useAuthSession().me)
+
 export const useAuthProviders = () => {
   const apiClient = useApiClient()
 
