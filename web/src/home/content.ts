@@ -1,32 +1,34 @@
 import {
   faBook,
   faClipboardCheck,
-  faClock,
   faCoins,
-  faComments,
+  faEnvelope,
   faEnvelopeOpenText,
   faGlobe,
   faHashtag,
+  faPeopleArrows,
   faPlug,
-  faRobot,
+  faRepeat,
   faServer,
-  faUserShield,
   faVideo,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 
 // Everything the homepage says lives here, so copy edits never touch layout.
+// The whole site makes one argument: Nessie's agents are real employees —
+// named, with their own email, working with each other — so a team can grow
+// without limit while its people move to customer and creative work.
 // Anything flagged `placeholder` renders with a dashed outline: no metric,
-// logo, rating or customer story ships until it is real and approved.
+// rating or customer story ships until it is real and approved.
 
 export const signInUrl = 'https://app.nessie.works/login?launch=sso'
 export const docsUrl = 'https://github.com/UnlikeOtherAI/nessie'
 export const contactUrl = 'mailto:hello@nessie.works'
 
 export const navItems = [
-  { label: 'Product', href: '#product', menu: true },
-  { label: 'Solutions', href: '#pillars', menu: true },
-  { label: 'Self-hosting', href: '#control', menu: false },
+  { label: 'AI employees', href: '#teammates', menu: true },
+  { label: 'Teamwork', href: '#teamwork', menu: true },
+  { label: 'Your people', href: '#people', menu: false },
   { label: 'Resources', href: '#resources', menu: true },
   { label: 'Pricing', href: '#final', menu: false },
 ]
@@ -40,42 +42,40 @@ export type Shot = { src: string; alt: string }
 
 const assistantShot: Shot = {
   src: '/screenshots/nessie-assistant.png',
-  alt: 'A Nessie thread where the assistant drafts an all-team note about a new expense policy',
+  alt: 'A Nessie thread where an agent drafts an all-team note about a new expense policy',
 }
 const actionsShot: Shot = {
   src: '/screenshots/nessie-actions.png',
-  alt: 'The assistant confirming it posted the note to #General and scheduled a follow-up',
+  alt: 'The agent confirming it posted the note to #General and scheduled a follow-up',
 }
 const channelShot: Shot = {
   src: '/screenshots/nessie-channel.png',
-  alt: 'The #General channel in Nessie showing the published expense policy note',
+  alt: 'The #General channel in Nessie showing the note the agent published',
 }
 
 export const hero = {
-  title: 'Where your people and their agents get work done.',
-  text: 'Nessie keeps the channels your team already knows. Its agents turn the conversation into finished work.',
+  title: 'Grow your team. Then make it massive.',
+  text: 'Nessie gives you AI employees with a name, an email address and a seat in your channels. They take on the repetitive work, so your people can focus on customers and creative ideas. Nobody has to lose their job.',
 }
 
 export const heroTabs = [
-  { label: 'Ask the assistant', shot: assistantShot },
-  { label: 'Post an update', shot: actionsShot },
-  { label: 'Run a project', shot: channelShot },
-  { label: 'Review mail', shot: assistantShot },
-  { label: 'Schedule follow-ups', shot: actionsShot },
+  { label: 'Brief a teammate', shot: assistantShot },
+  { label: 'It gets it done', shot: actionsShot },
+  { label: 'The whole team sees it', shot: channelShot },
 ]
 
 export type Card = { icon: IconDefinition; title: string; text: string; tag?: string }
 
 export const aiBand = {
-  title: 'Agents that finish the job, not just the sentence.',
-  text: 'Nessie’s agents work inside your channels with your team’s context — drafting, posting and following up, with a person’s approval wherever it matters.',
+  title: 'Not bots. Real teammates.',
+  text: 'Every Nessie agent is a first-class member of your team. It has its own email address, joins channels and DMs, works with other agents and with your people, and answers for what it does.',
   cards: [
-    { icon: faRobot, title: 'Ask your assistant to draft the announcement', text: 'In any language, from any thread.' },
-    { icon: faEnvelopeOpenText, title: 'Approve mail replies from chat', text: 'Drafts wait for your yes.', tag: 'New' },
-    { icon: faComments, title: 'Catch up on a thread you missed', text: 'The decisions, without the scroll.' },
-    { icon: faPlug, title: 'Connect tools to agents with MCP', text: 'Scoped per team and project.' },
-    { icon: faVideo, title: 'Talk it through with your assistant', text: 'Voice calls in the browser and on iPhone.' },
-    { icon: faClock, title: 'Let an agent schedule the follow-up', text: 'It comes back when the work is due.' },
+    { icon: faEnvelope, title: 'Its own email address', text: 'Customers and colleagues write to it like anyone else.', tag: 'Core' },
+    { icon: faPeopleArrows, title: 'Agents work with each other', text: 'They hand off, ask questions and share results.' },
+    { icon: faHashtag, title: 'A seat in every channel', text: 'Mention it, message it, add it to a project.' },
+    { icon: faRepeat, title: 'The repetitive work, handled', text: 'Reports, follow-ups, triage and updates — every time.' },
+    { icon: faClipboardCheck, title: 'Asks before it matters', text: 'Anything consequential waits for a person’s approval.' },
+    { icon: faCoins, title: 'Shows its work and its cost', text: 'Every action audited, every token accounted for.' },
   ] satisfies Card[],
 }
 
@@ -85,10 +85,10 @@ export const whatsNew = {
   items: [
     { icon: faHashtag, tag: 'New feature', title: 'Invite into several teams at once', text: 'One invitation from the organisation roster.' },
     { icon: faGlobe, tag: 'New feature', title: 'Private browser access', text: 'Lend an agent a browser and take control any time.' },
-    { icon: faEnvelopeOpenText, tag: 'Improvement', title: 'Mail drafts in chat', text: 'Review and approve replies without opening your inbox.' },
+    { icon: faEnvelopeOpenText, tag: 'Improvement', title: 'Mail drafts in chat', text: 'Review and approve an agent’s replies without opening your inbox.' },
     { icon: faPlug, tag: 'New feature', title: 'Paired agents', text: 'Publish a Nessie agent as an MCP server for other tools.' },
-    { icon: faVideo, tag: 'Improvement', title: 'Voice calls on iPhone', text: 'Call your assistant from the native app.' },
-    { icon: faCoins, tag: 'Improvement', title: 'Cost per project', text: 'The token ledger now breaks spend down by project.' },
+    { icon: faVideo, tag: 'Improvement', title: 'Voice calls on iPhone', text: 'Call an agent from the native app.' },
+    { icon: faCoins, tag: 'Improvement', title: 'Cost per project', text: 'See what each project’s agents spend.' },
   ] satisfies Card[],
 }
 
@@ -106,76 +106,75 @@ export type Pillar = {
 
 export const pillars: Pillar[] = [
   {
-    id: 'context',
-    label: 'Context',
-    title: 'Give every agent the context your team already has.',
-    text: 'Threads, documents and boards live together, so answers come from your work instead of guesswork.',
+    id: 'teammates',
+    label: 'AI employees',
+    title: 'Hire a teammate in minutes, not months.',
+    text: 'Give an agent a role, a name and a person responsible for it. It joins your organisation like a new colleague — with an inbox, access to the right projects and nothing it shouldn’t see.',
     rows: [
       {
-        title: 'Your assistant, grounded in your work.',
-        text: 'It reads the threads, documents and boards you can see — nothing more — and answers from them.',
-        cta: 'Meet the assistant',
+        title: 'A colleague, not a chatbot.',
+        text: 'Each agent has a name, a role and an owner, and shows up in your team like anyone else.',
+        cta: 'Meet your first agent',
         shot: assistantShot,
       },
       {
-        title: 'Knowledge your team can cite.',
-        text: 'Add documents and PDFs to a project, and every answer can point back to its source.',
-        cta: 'About knowledge',
-        shot: channelShot,
+        title: 'An inbox of its own.',
+        text: 'Agents send and receive email, so customers, suppliers and colleagues reach them the way they already work.',
+        shot: actionsShot,
       },
       {
-        title: 'Find the decision, not the keyword.',
-        text: 'Search understands what you meant, in whichever language you asked.',
-        shot: actionsShot,
+        title: 'Knows only what it should.',
+        text: 'Agents see the projects, documents and channels they are given — nothing more.',
+        shot: channelShot,
       },
     ],
     stat: { value: '—', text: 'Placeholder: add a measured, sourced figure before launch.' },
   },
   {
-    id: 'people',
-    label: 'People',
-    title: 'Work together like people, even when some are agents.',
-    text: 'Familiar channels, threads and DMs — with agents that show up as named, accountable colleagues.',
+    id: 'teamwork',
+    label: 'Teamwork',
+    title: 'A team of agents that works like a team.',
+    text: 'Agents talk to each other the way your people do: they pass work along, ask for help and report back where everyone can see.',
     rows: [
       {
-        title: 'Everything starts in a channel.',
-        text: 'Channels live inside teams and projects, so every conversation has an obvious home.',
-        cta: 'How channels work',
+        title: 'Handoffs without meetings.',
+        text: 'One agent drafts, another checks the numbers, a third sends it — and the thread shows every step.',
+        cta: 'How agents collaborate',
         shot: channelShot,
       },
       {
-        title: 'Pick up a call without leaving the thread.',
-        text: 'Built-in video calls keep the discussion and its outcome in one place.',
+        title: 'People and agents in one conversation.',
+        text: 'Mention a person or an agent in the same thread; whoever is right for the job picks it up.',
         shot: assistantShot,
       },
       {
-        title: 'Agents you can see and trust.',
-        text: 'Every agent has a name, an owner and a record of what it posted.',
+        title: 'Always on, never overloaded.',
+        text: 'Triggers and schedules keep work moving overnight and at weekends, without anyone on call.',
         shot: actionsShot,
       },
     ],
     quote: true,
   },
   {
-    id: 'work',
-    label: 'Work',
-    title: 'Move the routine work without losing the judgement.',
-    text: 'Triggers, schedules and work distribution keep tasks moving; approval gates keep people in charge.',
+    id: 'people',
+    label: 'Your people',
+    title: 'Nobody loses their job. Everyone gets a better one.',
+    text: 'Hand the repetitive, boring work to agents, and give your people time for what AI can’t do: building relationships with customers and doing creative work.',
     rows: [
       {
-        title: 'Triggers and schedules for anyone.',
-        text: 'Run an agent on a timer or when something happens — no scripts needed.',
-        cta: 'About triggers',
+        title: 'More time with customers.',
+        text: 'Agents prepare the notes, send the follow-ups and chase the paperwork, so your people can listen and build trust.',
+        cta: 'Stories from teams',
         shot: actionsShot,
       },
       {
-        title: 'Hand work to the right person or agent.',
-        text: 'Work distribution routes tasks and keeps track of who has what.',
+        title: 'Room for creative work.',
+        text: 'Research, formatting and first drafts arrive ready, so ideas get the attention they deserve.',
         shot: channelShot,
       },
       {
-        title: 'A person approves anything that matters.',
-        text: 'Approval gates pause sensitive actions until someone says yes.',
+        title: 'Every person leads a team.',
+        text: 'Each of your people can direct several agents, turning one role into the output of a whole department.',
         shot: assistantShot,
       },
     ],
@@ -184,8 +183,8 @@ export const pillars: Pillar[] = [
   {
     id: 'control',
     label: 'Control',
-    title: 'Self-hosted. Auditable. Yours.',
-    text: 'Run Nessie on your own infrastructure and see exactly what happened, who approved it and what it cost.',
+    title: 'A bigger team. Full control.',
+    text: 'However many agents you add, you decide what they can do, approve what matters and see exactly what happened and what it cost.',
     rows: [
       {
         title: 'Run it where your data should live.',
@@ -195,7 +194,7 @@ export const pillars: Pillar[] = [
       },
       {
         title: 'Sign in through your own SSO.',
-        text: 'Organisations, teams and members come from your identity provider, never a second copy.',
+        text: 'Your organisation, teams and people come from your identity provider, never a second copy.',
         shot: assistantShot,
       },
       {
@@ -214,7 +213,7 @@ export const quotePlaceholder = {
 }
 
 export const stories = {
-  title: 'Teams that run on Nessie',
+  title: 'Teams that grew with Nessie',
   cards: Array.from({ length: 4 }, (_, i) => ({
     title: `Customer story ${i + 1} — placeholder`,
     text: 'Replace with a real, approved case study.',
@@ -222,40 +221,40 @@ export const stories = {
 }
 
 export const statsBand = {
-  title: 'Built for organisations that want to own their tools.',
+  title: 'One person. A whole team behind them.',
   stats: [
-    { value: '4', label: 'levels of structure: organisation, team, project and channel' },
+    { value: 'Email', label: 'a real address for every agent, not a bot integration' },
+    { value: '24/7', label: 'agents keep working while your people rest' },
     { value: 'Free', label: 'to self-host for your organisation’s internal use' },
-    { value: '2 yrs', label: 'until each release becomes Apache 2.0 under FSL-1.1-ALv2' },
   ],
 }
 
 export const love = {
-  title: 'Why teams choose Nessie.',
+  title: 'What your people get back.',
   facts: [
-    { value: 'EU', label: 'designed and built in Europe' },
-    { value: 'Any', label: 'language understood, slang and typos included' },
-    { value: 'MCP', label: 'standard connectors for agent tools' },
-    { value: 'iOS', label: 'native iPhone and iPad apps' },
+    { value: 'Time', label: 'back from repetitive, boring tasks' },
+    { value: 'Focus', label: 'on the work only people can do' },
+    { value: 'Clients', label: 'relationships that get real attention' },
+    { value: 'Ideas', label: 'creative work with room to breathe' },
   ],
   ratingPlaceholder: 'Review-site rating placeholder — add only a verified rating.',
 }
 
 export const promos = {
-  title: 'Learn more about Nessie',
+  title: 'Learn more about AI employees',
   items: [
-    { icon: faBook, kind: 'Guide', title: 'Moving your team from another chat tool', cta: 'Read more', href: docsUrl },
+    { icon: faBook, kind: 'Guide', title: 'Hiring your first AI employee', cta: 'Read more', href: docsUrl },
+    { icon: faPeopleArrows, kind: 'Guide', title: 'How agents work with each other', cta: 'Read more', href: docsUrl },
     { icon: faServer, kind: 'Docs', title: 'Self-hosting Nessie, step by step', cta: 'Read the docs', href: docsUrl },
-    { icon: faUserShield, kind: 'Licence', title: 'What FSL-1.1-ALv2 lets you do', cta: 'Learn more', href: docsUrl },
     { icon: faClipboardCheck, kind: 'Product', title: 'How approval gates keep agents accountable', cta: 'Learn more', href: docsUrl },
   ],
 }
 
-export const finalCta = { title: 'See what your team can do with Nessie.' }
+export const finalCta = { title: 'Your team is about to get a lot bigger.' }
 
 export const footerColumns = [
-  { title: 'Product', links: ['Channels', 'Agents', 'Knowledge', 'Calls', 'Apps'] },
-  { title: 'Why Nessie', links: ['Self-hosting', 'Security', 'SSO', 'Licence'] },
+  { title: 'Product', links: ['AI employees', 'Agent email', 'Channels', 'Knowledge', 'Apps'] },
+  { title: 'Why Nessie', links: ['Your people', 'Self-hosting', 'Security', 'Licence'] },
   { title: 'Resources', links: ['Docs', 'Changelog', 'Guides', 'Support'] },
   { title: 'Company', links: ['About', 'Careers', 'Contact', 'Press'] },
 ]
