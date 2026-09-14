@@ -105,6 +105,40 @@ export const listUsersForOrganization = async (
   return users.map(mapUserRecord)
 }
 
+/**
+ * The people directory as a non-owner reads it: enough to address a
+ * colleague (open a DM, mention, search, pick), nothing that belongs to member
+ * management. The record is rebuilt field by field so a field later added to
+ * the owner record never reaches members by default.
+ *
+ * - Deactivated people are omitted, and `deactivatedAt` is never sent.
+ * - `channelIds` is narrowed to channels the viewer is also in. The full list
+ *   would disclose private channels and other people's DMs; the shared subset
+ *   is what DM resolution and channel-participant lists need.
+ */
+export const toMemberDirectoryView = (
+  users: readonly UserRecord[],
+  viewerUserId: string,
+): UserRecord[] => {
+  const viewerChannelIds = new Set<string>(
+    users.find((user) => user.id === viewerUserId)?.channelIds ?? [],
+  )
+  return users
+    .filter((user) => !user.deactivatedAt)
+    .map((user) => ({
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      channelIds: user.channelIds.filter((channelId) => viewerChannelIds.has(channelId)),
+      activeStatus: user.activeStatus,
+      avatarUrl: user.avatarUrl,
+      avatarAttachmentId: user.avatarAttachmentId,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    }))
+}
+
 export class UoaIdentityMappingError extends Error {
   constructor(message: string) {
     super(message)

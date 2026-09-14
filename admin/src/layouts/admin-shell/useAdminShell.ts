@@ -65,7 +65,9 @@ export const useAdminShell = () => {
   // UOA owns membership on an UnlikeOtherAI session, which changes who the
   // Members doorway belongs to (any active member reads the roster).
   const isUoaSession = me?.auth.providerType === 'uoa';
-  const { data: users = [] } = useUsers(isOwner);
+  // Every member reads the people directory (owners get the management view
+  // of the same list), so the DM picker and sidebar resolve colleagues.
+  const { data: users = [] } = useUsers();
   const organization = useCurrentOrganization();
   const canManageOrganization = organization.data?.administration.status === 'allowed';
   const isAgentsRoute = location.pathname.startsWith('/agents');

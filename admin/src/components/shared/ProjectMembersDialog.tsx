@@ -25,7 +25,7 @@ type ProjectMembersDialogProps = {
 export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembersDialogProps) => {
   const { me } = useAuthSession()
   const { data: members = [] } = useProjectMembers(project.id)
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const addMember = useAddProjectMember()
   const removeMember = useRemoveProjectMember()
   const [search, setSearch] = useState('')

@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom'
-import { useIsOwner } from '../facades/auth/hooks'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
@@ -17,8 +16,7 @@ export const ThreadsPage = () => {
   const activity = useThreadActivity({ unreadOnly })
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
-  const isOwner = useIsOwner()
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const items = activity.data?.items ?? []
   const headerActions: PageHeaderAction[] = [{
     checked: unreadOnly,

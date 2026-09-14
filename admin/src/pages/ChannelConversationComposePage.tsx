@@ -51,7 +51,7 @@ export const ChannelConversationComposePage = () => {
   const phoneLayout = usePhoneLayout()
   const { me, token } = useAuthSession()
   const isOwner = useIsOwner()
-  const { data: allUsers = [] } = useUsers(isOwner)
+  const { data: allUsers = [] } = useUsers()
   // `scope: 'all'` is the arm that includes the read-only system tier. The
   // default list excludes every `systemManaged` agent, which is why no global
   // agent and no Personal Assistant could ever appear in this address book.

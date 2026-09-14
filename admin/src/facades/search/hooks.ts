@@ -10,7 +10,6 @@ import type {
 import type { TaskRecord } from '../tasks/hooks'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { searchKeys } from './keys'
-import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useChannels } from '../channels/hooks'
 import { useProjects } from '../projects/hooks'
@@ -131,7 +130,6 @@ export const useGlobalSearch = (
   mode: GlobalSearchMode = 'text',
 ): GlobalSearchResults => {
   const apiClient = useApiClient()
-  const isOwner = useIsOwner()
 
   const debounced = useDebouncedValue(query, DEBOUNCE_MS)
   const trimmed = debounced.trim()
@@ -141,7 +139,7 @@ export const useGlobalSearch = (
   const semanticMode = mode === 'semantic'
 
   const { data: channels = [] } = useChannels()
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const { data: projects = [] } = useProjects()
 
   const filteredChannels = useMemo(
