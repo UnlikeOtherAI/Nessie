@@ -30,3 +30,17 @@ export function Wave({ top, bottom, shape = 'rise' }: WaveProps) {
     </div>
   )
 }
+
+// The same water edge hanging off the bottom of a bar: the shape is flipped so
+// the bar's colour drips down over whatever scrolls beneath it.
+export function HangingWave({ color, shape = 'fall' }: { color: string; shape?: keyof typeof shapes }) {
+  const paths = shapes[shape]
+  return (
+    <div aria-hidden="true" className="n-wave-hang">
+      <svg preserveAspectRatio="none" viewBox="0 0 1440 120">
+        <path d={paths.back} fill={color} opacity="0.45" />
+        <path d={paths.front} fill={color} />
+      </svg>
+    </div>
+  )
+}

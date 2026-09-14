@@ -4,8 +4,9 @@
 :root {
   /* Logo colours: green #06bc90 / #3ff0b2, blue #03a9ff / #0266fa,
      yellow #fcc503, pink #ff2e8b. */
-  --n-ink: #0a1630;
-  --n-deep: #122447;
+  /* Default Nessie theme: navy top bar and section rail, channels-menu indigo */
+  --n-ink: #0b172a;
+  --n-deep: #232646;
   --n-sea: #0266fa;
   --n-sea-hover: #0052d1;
   --n-teal: #3ff0b2;
@@ -31,7 +32,7 @@ body {
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 96px;
+  scroll-padding-top: 120px;
 }
 
 #root {
@@ -204,8 +205,29 @@ button {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #fff;
-  box-shadow: 0 1px 0 var(--n-line);
+  background: var(--n-ink);
+  color: #fff;
+}
+
+.n-header .n-brand {
+  color: #fff;
+}
+
+.n-wave-hang {
+  position: absolute;
+  top: calc(100% - 1px);
+  right: 0;
+  left: 0;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.n-wave-hang svg {
+  display: block;
+  width: 100%;
+  height: clamp(18px, 2.6vw, 32px);
+  /* Hangs downward, and breaks on the left so it answers the dividers below. */
+  transform: scale(-1, -1);
 }
 
 .n-header-inner {
@@ -244,19 +266,19 @@ button {
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  color: var(--n-text);
+  color: rgba(255, 255, 255, 0.86);
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
 }
 
 .n-nav a:hover {
-  color: var(--n-sea);
+  color: #fff;
 }
 
 .n-nav-chevron {
   width: 10px;
-  color: var(--n-muted);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .n-header-actions {
@@ -270,7 +292,7 @@ button {
   padding: 8px;
   border: 0;
   background: none;
-  color: var(--n-text);
+  color: #fff;
   font-size: 17px;
   cursor: pointer;
 }
@@ -280,19 +302,19 @@ button {
 }
 
 .n-signin {
-  color: var(--n-text);
+  color: #fff;
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
 }
 
 .n-signin:hover {
-  color: var(--n-sea);
+  text-decoration: underline;
 }
 
 /* Hero */
 .n-hero {
-  padding: 64px 24px 72px;
+  padding: clamp(112px, 13vw, 176px) 24px 72px;
   background: linear-gradient(180deg, #fff 0%, #fff 40%, var(--n-foam) 100%);
   text-align: center;
 }
@@ -860,7 +882,6 @@ button {
   width: 100%;
   height: clamp(56px, 8vw, 120px);
 }
-
 /* Footer */
 .n-footer {
   padding: 48px 0 32px;
@@ -1038,9 +1059,10 @@ button {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    z-index: 1;
     padding: 20px 24px;
-    background: #fff;
-    box-shadow: 0 12px 24px rgba(6, 34, 47, 0.1);
+    background: var(--n-deep);
+    box-shadow: 0 12px 24px rgba(11, 23, 42, 0.3);
   }
 
   .n-header-inner {

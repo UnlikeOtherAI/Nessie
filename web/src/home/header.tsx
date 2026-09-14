@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useState } from 'react'
 import { cookieCopy, navItems, signInUrl } from './content'
 import { Button, openCookieEvent } from './ui'
+import { HangingWave } from './wave'
 
 export function Header() {
   const [open, setOpen] = useState(false)
@@ -32,6 +33,7 @@ export function Header() {
           </button>
         </div>
       </div>
+      <HangingWave color="var(--n-ink)" />
     </header>
   )
 }
