@@ -37,7 +37,7 @@ import type { RouteDeps } from './types.js'
  * organisation ownership.
  */
 export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } = deps
+  const { prisma, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } = deps
 
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
     if (!(await isProjectAccessibleToActor(actorContext, projectId))) return null
@@ -103,7 +103,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(CreateBoardBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -128,7 +128,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(UpdateBoardBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -150,7 +150,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const { newDefaultBoardId } = request.query as { newDefaultBoardId?: string }
 
     const result = await deleteBoard(prisma, project.id, boardId, newDefaultBoardId)
@@ -208,7 +208,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const board = await prisma.board.findFirst({
       where: { id: boardId, projectId: project.id },
       select: { id: true, organizationId: true },
@@ -240,7 +240,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
         sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
         return reply
       }
-      if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+      if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
       if (!(await findBoard(prisma, project.id, boardId))) {
         sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
         return reply
@@ -273,7 +273,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
         sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
         return reply
       }
-      if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+      if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
       if (!(await findBoard(prisma, project.id, boardId))) {
         sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
         return reply

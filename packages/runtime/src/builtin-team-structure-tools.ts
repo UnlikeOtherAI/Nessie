@@ -53,9 +53,9 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     description:
       'Create a new project in the current organisation. The user becomes its '
-      + 'only member and its owner; nobody else is added. Organisation owners '
-      + 'only. Resolve an existing team with project_list and pass its teamId; '
-      + 'then pass both ids to channel_create.',
+      + 'only member; nobody else is added. Any member may create one in a team '
+      + 'they belong to. Resolve an existing team with project_list and pass its '
+      + 'teamId; then pass both ids to channel_create.',
     parameters: {
       type: 'object',
       properties: {

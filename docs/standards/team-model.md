@@ -152,6 +152,51 @@ project-scoped; it is scoped — not yet fully specified — in
 [docs/plans/2026-09-02-uoa-as-a-service-unification.md](../plans/2026-09-02-uoa-as-a-service-unification.md),
 and `scripts/inspect-team-shape.sql` sizes it against real data.
 
+## Who may change a project or a channel
+
+Three rules, and one predicate each for projects and channels that every route,
+service and assistant tool asks —
+[`packages/team-admin/src/resource-authority.ts`](../../packages/team-admin/src/resource-authority.ts):
+
+1. **Any organisation member may create a project or a channel.** What has to
+   be earned is the placement, not the act: `createProjectForUser` requires
+   the team named in the request to be one the person is in, and
+   `canPlaceChannelInTeam` (below) does the same for a channel. An
+   organisation owner or admin may place either in any team.
+2. **Inside a project or a channel, every member of it has equal rights** —
+   rename it and edit its settings, add and remove its members, archive or
+   delete it, and change a project's shape (boards, columns, custom fields,
+   sources, iterations, watchers). The creator is simply the first member.
+   `ProjectMember.role` and `ChannelMember.role` still exist and are still
+   written (`owner` for the creator) but **grant nothing**; do not gate a new
+   decision on them. Dropping the columns is a separate migration.
+3. **Only an organisation owner or admin may view and change a project or a
+   channel they are not a member of.** A team role is not an arm: a team
+   owner/admin outside a channel cannot change it. A plain member outside a
+   project cannot see it; outside a channel they keep exactly the read access
+   they had (a public channel stays readable and joinable) and change nothing.
+
+`canModifyProject` is `isProjectAccessibleToUser`: under rule 2 the people who
+may change a project are exactly the people who may open it, so project read
+entitlement widened to organisation admins (it was owner-only) and a refusal to
+change a project is the same `404 PROJECT_NOT_FOUND` the read gives
+(`requireProjectModifier`). `canModifyChannel` returns the channel row with the
+answer; a refusal is a 404 to somebody who cannot see the channel and a 403 to
+somebody who can. The same predicate drives `ChannelRecord.viewerCanManage`,
+deleting another person's message, renaming another person's agent conversation
+in the room, and removing another person's assistant from it.
+
+**Out of scope, deliberately.** A **system channel** (the Personal Assistant's
+home, a global agent's home DM) is lifecycle-protected and refused for
+everybody. A **direct message** keeps its own rule: its members are a fixed
+pair the member routes refuse to change, and only a channel or team owner/admin
+role or an organisation owner/admin may rename or archive one. **Binding an
+agent** into a channel, triggers and workflows are agent and organisation
+capabilities with their own gates, not project or channel settings. In a
+UOA-bound organisation `POST`/`DELETE /api/projects/:projectId/members` still
+answer `403 LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED` for everybody
+(`requireUnboundMembershipManagement`), after the modify check.
+
 ## Channel names, and what an archived channel keeps
 
 A channel's name is its slug and its label at once — one name, and it is the

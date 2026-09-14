@@ -272,7 +272,7 @@ test('research-launch persists and enqueues the exact full created durable run i
         type: 'dm',
         unreadCount: 0,
         lastMessageAt: null,
-        // A system channel is never manageable: `canManageChannel` refuses
+        // A system channel is never manageable: `canModifyChannel` refuses
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
         updatedAt: now.toISOString(),

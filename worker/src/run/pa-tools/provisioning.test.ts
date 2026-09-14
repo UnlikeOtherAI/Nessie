@@ -95,7 +95,7 @@ test('channel_create makes the acting user the owner of a channel in the run tea
     // gets that standing from their team membership, not their org role.
     teamMember: { findFirst: async () => ({ role: 'member' }) },
     projectMember: { findFirst: async () => null },
-    // `mapChannelRecord` computes `viewerCanManage` through `canManageChannel`,
+    // `mapChannelRecord` computes `viewerCanManage` through `canModifyChannel`,
     // which re-reads the channel row and the creator's channel membership.
     channelMember: { findUnique: async () => ({ role: 'owner' }) },
     channel: {

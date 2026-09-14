@@ -153,6 +153,9 @@ const buildApp = async (mode: Mode, prismaSpy: PrismaSpy) => {
     requireActorContext: () => actorContext,
     requireOrgAdmin: () => true,
     requireOwner: () => true,
+    // The project member routes take `requireProjectModifier` before the
+    // membership-mode gate; open here so the gate is what is measured.
+    requireProjectModifier: async () => true,
     resolveMembershipRole: (role?: string) =>
       (['owner', 'admin', 'member', 'viewer'].includes(role ?? '') ? role : null),
   } as never

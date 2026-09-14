@@ -108,7 +108,8 @@ channel orchestrator accepts human turns only. A project administrator may
 explicitly grant an ordinary agent `agent_peer_delegate` and the selected
 project ticket tools. On a live project-channel turn, or a bounded durable peer
 delivery from one, the worker re-reads the original requester. Peer delegation
-and board creation require `canAdministerProject`; ticket operations mirror
+and board creation require `canModifyProject` (any member of the project, or
+an organisation owner or admin); ticket operations mirror
 the existing live project-access gate. The target must be a
 non-system shared agent already bound to that exact channel. The durable mailbox
 row carries the requester capability, a maximum depth of four, and the source

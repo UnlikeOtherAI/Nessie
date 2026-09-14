@@ -28,7 +28,7 @@ import {
 
 import { isAgentVisibleToUser } from './access-checks.js'
 import { buildAccessibleChannelWhere } from './agent-record.js'
-import { canManageChannel } from './channel-manage.js'
+import { canModifyChannel } from './resource-authority.js'
 import {
   loadLastMessageAtByChannel,
   loadLastMessageAtByThread,
@@ -902,7 +902,7 @@ export const renameThreadForUser = async (
   if (thread.agentId === null) return { kind: 'title_fixed' }
 
   if (thread.startedByUserId !== input.userId) {
-    const manage = await canManageChannel(prisma, {
+    const manage = await canModifyChannel(prisma, {
       channelId: thread.channelId,
       organizationId: input.organizationId,
       userId: input.userId,

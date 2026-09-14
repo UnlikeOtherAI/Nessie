@@ -41,7 +41,7 @@ import type { RouteDeps } from '../types.js'
  * it, because a sync carries that person's delegated authority.
  */
 export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, encryptionKeyRing, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } =
+  const { prisma, encryptionKeyRing, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } =
     deps
 
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
@@ -194,7 +194,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(CreateBoardSourceBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -330,7 +330,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(UpdateBoardSourceBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -354,7 +354,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(PutBoardSourceMappingsBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -394,7 +394,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
         sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
         return reply
       }
-      if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+      if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
 
       const updated = await prisma.boardSource.updateMany({
         where: { id: sourceId, projectId: project.id },
@@ -421,7 +421,7 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
 
     await unregisterWebhook(project.id, sourceId)
     const result = await deleteBoardSource(prisma, project.id, sourceId)

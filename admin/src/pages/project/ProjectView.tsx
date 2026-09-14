@@ -13,7 +13,7 @@ import { useRedirect } from '../../navigation/redirect'
 import { projectSectionIdFromPathname } from '../../navigation/project-sections'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { usePresentedTask } from '../../facades/tasks/hooks'
 import { Notice } from '../../components/primitives/Notice'
 import { QueryState } from '../../components/shared/QueryState'
@@ -30,7 +30,7 @@ export const ProjectView = () => {
   const navigate = useNavigate()
   const redirect = useRedirect()
   const { data: projects = [] } = useProjects()
-  const canAdminister = useCanAdministerProject(projectId ?? null)
+  const canAdminister = useCanModifyProject(projectId ?? null)
   const boardsQuery = useProjectBoards(projectId)
   // A previous project's boards are useful only while that project remains on
   // screen. Once the route changes, hold the destination in its loading state

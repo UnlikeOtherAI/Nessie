@@ -9,6 +9,7 @@ import {
 } from '@nessie/team-admin'
 
 import { ProjectMemberRecordSchema, ProjectRecordSchema, UpdateProjectBodySchema } from '../contracts/team.js'
+import { isAdminActor } from '@nessie/schemas'
 import { z } from 'zod'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -22,7 +23,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   const {
     prisma,
     requireActorContext,
-    requireOwner,
+    requireProjectModifier,
     resolveMembershipRole,
     MEMBERSHIP_ROLES,
     isProjectAccessibleToActor,
@@ -32,10 +33,11 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    // Non-owners only see the projects they are a member of. The shared reader
-    // is the one the `project_list` tool asks too.
+    // Anybody but an organisation owner or admin only sees the projects they
+    // are a member of. The shared reader is the one the `project_list` tool
+    // asks too.
     const projects = await listProjectsForUser(prisma, {
-      isOwner: actorContext.actor.roles?.includes('owner') === true,
+      isOrganizationAdmin: isAdminActor(actorContext),
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
     })
@@ -103,10 +105,12 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }))))
   })
 
+  // Any member of the organisation may create a project. What has to be earned
+  // is the placement — the team named in the body — and `createProjectForUser`
+  // decides that: a member of that team, or an organisation owner or admin.
   app.post('/api/projects', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const body = z.object({ name: z.string().min(1), teamId: z.string().uuid() }).safeParse(request.body)
     if (!body.success) {
@@ -114,8 +118,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    // The same function the `project_create` tool calls: the owner membership
-    // row and the default board columns are written in one place.
+    // The same function the `project_create` tool calls: the creator's
+    // membership row and the default board columns are written in one place.
     let project
     try {
       project = await createProjectForUser(prisma, {
@@ -145,12 +149,15 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     )
   })
 
+  // Every write below takes `requireProjectModifier`: any member of the
+  // project, or an organisation owner or admin. Everybody else cannot see the
+  // project and gets the same 404 the read gives them.
   app.patch('/api/projects/:projectId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(UpdateProjectBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -238,9 +245,9 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   app.delete('/api/projects/:projectId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     // What deleting a project destroys is owned by `deleteProject`, not by this
     // handler: it enumerates every blocking family in one place and returns one
     // typed refusal per family. The route parses, calls, and maps.
@@ -291,7 +298,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   app.post('/api/projects/:projectId/members', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
+    const { projectId } = request.params as { projectId: string }
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     if (
       !(await requireUnboundMembershipManagement(prisma, reply, {
         organizationId: actorContext.tenant.organizationId,
@@ -300,7 +308,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const { projectId } = request.params as { projectId: string }
+    // `role` is still accepted and stored, but it grants nothing: every member
+    // of a project has the same rights in it (`canModifyProject`).
     const body = request.body as { userId?: string; role?: string } | undefined
     if (!body?.userId) {
       sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
@@ -352,7 +361,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   app.delete('/api/projects/:projectId/members/:userId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
+    const { projectId, userId } = request.params as { projectId: string; userId: string }
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     if (
       !(await requireUnboundMembershipManagement(prisma, reply, {
         organizationId: actorContext.tenant.organizationId,
@@ -361,7 +371,6 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const { projectId, userId } = request.params as { projectId: string; userId: string }
     const project = await prisma.project.findFirst({
       where: {
         channelRoot: false,

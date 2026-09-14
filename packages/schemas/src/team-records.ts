@@ -87,9 +87,10 @@ export const ChannelRecordSchema = z.object({
   memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
   // Whether the caller has muted notifications for this channel (per-member).
   muted: z.boolean().optional(),
-  // Server-computed: may the viewer add or remove a member of this channel
-  // right now (`canManageChannel` — channel owner/admin, team owner/admin, or
-  // organisation owner/admin)? Required, not optional, so a client can never
+  // Server-computed: may the viewer change this channel right now — rename,
+  // archive, add or remove members (`canModifyChannel` — any member of the
+  // channel, or an organisation owner/admin; never on a system channel; a DM
+  // keeps its own participant rule)? Required, not optional, so a client can never
   // fall back to showing the control when a producer forgot to set it — see
   // `docs/standards/disclosure-boundaries.md` on `ChannelMember` writes.
   viewerCanManage: z.boolean(),

@@ -18,11 +18,16 @@ import { useUserMemberFilters } from './channel-members/useMemberFilters'
 
 type ProjectMembersDialogProps = {
   project: ProjectRecord
-  isOwner: boolean
+  /**
+   * `useCanModifyProject` — any member of the project, or an organisation owner
+   * or admin. Gates the add and remove controls; the list itself is readable by
+   * everyone who can open the project.
+   */
+  canManage: boolean
   onClose: () => void
 }
 
-export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembersDialogProps) => {
+export const ProjectMembersDialog = ({ project, canManage, onClose }: ProjectMembersDialogProps) => {
   const { me } = useAuthSession()
   const { data: members = [] } = useProjectMembers(project.id)
   const { data: users = [] } = useUsers()
@@ -39,7 +44,7 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
     members: memberUsers,
     search,
   })
-  const hasAvailable = isOwner && availableUsers.length > 0
+  const hasAvailable = canManage && availableUsers.length > 0
 
   return (
     <MemberManagementPopup
@@ -54,7 +59,7 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
           <div className={sectionHeadingClass}>In this project</div>
           {filteredUsers.map((user) => (
             <CurrentUserRow
-              canRemove={isOwner}
+              canRemove={canManage}
               currentUserId={me?.user.id ?? ''}
               key={user.id}
               onRemove={(userId) => removeMember.mutate({ projectId: project.id, userId })}

@@ -140,14 +140,6 @@ export const UpdateBoardColumnBodySchema = z
 export const BOARD_TASK_LIMIT = 500
 
 /**
- * Project-member roles that carry administrative authority over the project's
- * shape. The server predicate is `canAdministerProject` in
- * `@nessie/team-admin`; the admin mirrors it in `useCanAdministerProject` so
- * a control is not offered to somebody whose click would be refused.
- */
-export const PROJECT_ADMIN_ROLES = ['owner', 'admin'] as const
-
-/**
  * A board watcher: exactly one of `userId` / `agentId`, mirroring the CHECK on
  * the row. A union rather than two optional fields, so a caller cannot express
  * "both" or "neither" and have the server discover it.

@@ -150,7 +150,7 @@ const createHarness = (options: HarnessOptions = {}) => {
         type: 'dm',
         unreadCount: 0,
         lastMessageAt: null,
-        // A system channel is never manageable: `canManageChannel` refuses
+        // A system channel is never manageable: `canModifyChannel` refuses
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
         updatedAt: '2026-07-19T10:00:00.000Z',

@@ -18,7 +18,7 @@ import {
   type BoardStyle,
 } from '../../facades/boards/hooks'
 import { formErrorMessage } from '../../facades/forms/form-errors'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjects } from '../../facades/projects/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
 import { BoardColumnsEditor, type BindableState } from './settings/BoardColumnsEditor'
@@ -170,7 +170,7 @@ export const BoardSettingsPage = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const boardsQuery = useProjectBoards(projectId)
-  const canAdminister = useCanAdministerProject(projectId ?? '')
+  const canAdminister = useCanModifyProject(projectId ?? '')
   const [tab, selectTab] = useTabParam('tab', TABS, 'general')
   const sourcesQuery = useProjectSources(
     canAdminister && tab === 'columns' ? projectId : undefined,

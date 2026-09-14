@@ -22,7 +22,6 @@ import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMen
 import type { StarredItem } from './types'
 
 type ProjectsSidebarNavProps = {
-  isOwner: boolean
   onToggleStar: (type: StarredItem['type'], id: string) => void
   pathname: string
   starredCollapsed: boolean
@@ -55,7 +54,6 @@ const currentProjectIdFromPathname = (pathname: string): string | undefined =>
   /^\/projects\/([^/?#]+)/.exec(pathname)?.[1]
 
 export const ProjectsSidebarNav = ({
-  isOwner,
   onToggleStar,
   pathname,
   starredCollapsed,
@@ -215,7 +213,6 @@ export const ProjectsSidebarNav = ({
         currentProjectId={currentProjectId}
         currentSectionId={currentSectionId}
         isExpanded={isExpanded}
-        isOwner={isOwner}
         isStarred={starredProjectIds.has(project.id)}
         key={`${listId}:${project.id}`}
         knowledgeCount={attention?.knowledge.projects[project.id] ?? 0}
@@ -265,17 +262,17 @@ export const ProjectsSidebarNav = ({
         ) : null}
 
         <SidebarMenuSection
+          // Any member may create a project (in a team they belong to), so the
+          // doorway is offered to everyone the list is shown to.
           action={
-            isOwner ? (
-              <button
-                aria-label="New project"
-                className="admin-sidebar-plus"
-                onClick={() => setCreateOpen(true)}
-                type="button"
-              >
-                +
-              </button>
-            ) : null
+            <button
+              aria-label="New project"
+              className="admin-sidebar-plus"
+              onClick={() => setCreateOpen(true)}
+              type="button"
+            >
+              +
+            </button>
           }
           id="projects-nav-projects"
           isCollapsed={collapsedSections.projects ?? false}

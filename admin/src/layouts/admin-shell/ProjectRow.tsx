@@ -18,7 +18,6 @@ type ProjectRowProps = {
   currentProjectId?: string
   currentSectionId: string
   isExpanded: boolean
-  isOwner: boolean
   isStarred: boolean
   knowledgeCount: number
   listId: ProjectListId
@@ -36,9 +35,12 @@ type ProjectRowProps = {
 
 /**
  * One project's tile in the Projects sidebar: avatar, name, the sections
- * disclosure, the star, and — for an owner — the "⋯" edit/delete menu. The
- * menu's open/closed state lives here, one row at a time, rather than lifted
- * to the list that renders every row.
+ * disclosure, the star, and the "⋯" edit/delete menu. The menu is offered on
+ * every row: the list comes from `GET /api/projects`, which returns exactly the
+ * projects the viewer may change (their own memberships, or every project for
+ * an organisation owner or admin), so a row nobody could edit is never drawn.
+ * The menu's open/closed state lives here, one row at a time, rather than
+ * lifted to the list that renders every row.
  */
 export const ProjectRow = ({
   activeBoardParam,
@@ -47,7 +49,6 @@ export const ProjectRow = ({
   currentProjectId,
   currentSectionId,
   isExpanded,
-  isOwner,
   isStarred,
   knowledgeCount,
   listId,
@@ -146,8 +147,7 @@ export const ProjectRow = ({
         >
           {isStarred ? '★' : '☆'}
         </span>
-        {isOwner ? (
-          <span className="relative ml-1 flex-shrink-0">
+        <span className="relative ml-1 flex-shrink-0">
             <button
               aria-label={`Project actions for ${project.name}`}
               aria-expanded={isMenuOpen}
@@ -200,8 +200,7 @@ export const ProjectRow = ({
                   document.body,
                 )
               : null}
-          </span>
-        ) : null}
+        </span>
       </div>
 
       {isExpanded ? (

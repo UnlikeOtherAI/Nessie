@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { FormError, FormSuccess } from '../../components/shared/FormActions'
 import { PageBody } from '../../components/shared/PageBody'
 import { useConsumedIntents } from '../../navigation/intent'
@@ -46,7 +46,7 @@ const ProjectSettingsContent = ({
   section: (typeof SECTIONS)[number]
   selectSection: (section: (typeof SECTIONS)[number]) => void
 }) => {
-  const canAdminister = useCanAdministerProject(projectId)
+  const canAdminister = useCanModifyProject(projectId)
   const [selectedSourceId, selectSource] = useTabParam('source', [] as string[], '')
   const intents = useConsumedIntents(PROJECT_SETTINGS_INTENTS)
   const startWithConnect = Boolean(intents.values.connect)
@@ -73,7 +73,7 @@ const ProjectSettingsContent = ({
 
         {!canAdminister ? (
           <p className="text-sm text-[color:var(--tx3)]">
-            Only project administrators can change project settings.
+            Only members of this project can change its settings.
           </p>
         ) : null}
 

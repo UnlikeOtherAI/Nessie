@@ -149,7 +149,7 @@ const buildApp = async (input: {
       actor: { actorId: userId, actorType: 'user', roles: ['owner'] },
       tenant: { organizationId },
     }),
-    requireProjectAdmin: async () => true,
+    requireProjectModifier: async () => true,
     isProjectAccessibleToActor: async () => true,
   } as unknown as RouteDeps)
 

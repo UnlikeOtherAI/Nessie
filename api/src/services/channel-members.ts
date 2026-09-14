@@ -1,16 +1,16 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import { canManageChannel, loadTeamProjectScope } from '@nessie/team-admin'
+import { canModifyChannel, loadTeamProjectScope } from '@nessie/team-admin'
 
 import { emitAuditEvent } from './audit.js'
 
 /**
  * Changing who is in a channel is a disclosure decision, so it takes the same
- * gate renaming and archiving take: `canManageChannel` (channel owner/admin,
- * team owner/admin, organisation owner/admin). Membership was previously open
- * to any member of the channel, which meant the weaker act (renaming) was
- * guarded harder than the stronger one (handing a stranger a private channel's
- * whole history, or evicting the channel's own owner).
+ * gate renaming and archiving take: `canModifyChannel` — any member of the
+ * channel, or an organisation owner or admin. Every member of a channel has
+ * equal rights in it (`docs/standards/team-model.md`), so a member may hand a
+ * colleague the channel's history exactly as they may rename it; somebody
+ * outside the channel may do neither unless they administer the organisation.
  *
  * The decision lives here rather than in the route because the same rule has to
  * hold for every caller of these two writes, and because the audit row that
@@ -83,7 +83,7 @@ const refuseUnlessManager = async (
   channelId: string,
   channel: MemberChangeChannel,
 ): Promise<ChannelMemberChange | null> => {
-  const manage = await canManageChannel(prisma, {
+  const manage = await canModifyChannel(prisma, {
     channelId,
     organizationId: actorContext.tenant.organizationId,
     userId: actorContext.actor.actorId,
