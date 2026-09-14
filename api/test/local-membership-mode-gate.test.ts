@@ -3,8 +3,8 @@ import { register } from 'node:module'
 import test from 'node:test'
 
 /**
- * Org/project/team membership and roles belong to the identity provider that
- * binds the tenant being acted on. The local rows are a projection of the
+ * Organisation and team membership and roles belong to the identity provider
+ * that binds the tenant being acted on. The local rows are a projection of the
  * verified session claims, so a local write would be reverted at the next login
  * or token rotation — or survive as a second authority — and the server refuses
  * it instead:
@@ -13,8 +13,12 @@ import test from 'node:test'
  *   - `POST  /api/users/:userId/deactivate`       (membership kill-switch)
  *   - `POST  /api/users/:userId/reactivate`
  *   - `POST  /api/teams/:teamId/members`
- *   - `POST  /api/projects/:projectId/members`
- *   - `DELETE /api/projects/:projectId/members/:userId`
+ *
+ * Project membership is **not** in that list: a project is a Nessie construct
+ * UOA has never heard of, so `POST`/`DELETE /api/projects/:projectId/members`
+ * run in a bound tenant too — asserted at the bottom of this file. (The one
+ * project whose rows sign-in projects, a bound team's anchor, is refused by the
+ * project routes themselves; `project-equal-rights-routes.test.ts` covers it.)
  *
  * **The predicate is the acting tenant's binding, not `config.mode`**
  * (2026-09-05 API review, FO2-2): `Organization.externalOrgId`, plus
@@ -23,8 +27,7 @@ import test from 'node:test'
  * provider is the unbound tenant that keeps local control — the mode says
  * neither. Every mode is exercised for every call below to prove `mode` plays
  * no part in the answer; `requireUnboundMembershipManagement` never inspects
- * it. (The `/api/projects/*` routes were the two remaining callers of the
- * superseded `config.mode` predicate and have since migrated.)
+ * it.
  *
  * Each gate is also asserted *open* for an unbound tenant (the request reaches
  * the next step of the real handler), which is where the last-owner invariant
@@ -211,6 +214,12 @@ const CALLS: Call[] = [
     name: 'POST /api/teams/:teamId/members',
     url: '/api/teams/team-1/members',
   },
+]
+
+// Project membership is Nessie-owned, so these reach their handler whatever the
+// tenant's binding: a missing userId (USER_ID_REQUIRED) or a project the spy
+// does not hold (NOT_FOUND).
+const PROJECT_CALLS: Call[] = [
   {
     body: {},
     localCode: 'USER_ID_REQUIRED',
@@ -277,6 +286,23 @@ for (const call of CALLS) {
 
       assert.equal(response.statusCode, call.localStatus)
       assert.equal(response.json().error.code, call.localCode)
+
+      await app.close()
+    }
+  })
+}
+
+for (const call of PROJECT_CALLS) {
+  test(`${call.name} is not refused by the membership gate, bound or not`, async () => {
+    for (const binding of [BOUND, UNBOUND]) {
+      const prismaSpy = new PrismaSpy(binding)
+      const app = await buildApp('hosted', prismaSpy)
+
+      const response = await send(app, call)
+
+      assert.equal(response.statusCode, call.localStatus, response.body)
+      assert.equal(response.json().error.code, call.localCode)
+      assert.notEqual(response.json().error.code, 'LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED')
 
       await app.close()
     }

@@ -45,6 +45,9 @@ export const ProjectMembersDialog = ({ project, canManage, onClose }: ProjectMem
     search,
   })
   const hasAvailable = canManage && availableUsers.length > 0
+  // A refused add or remove (a team-mirrored project, a person who is no
+  // longer in the organisation) is said here rather than dropped silently.
+  const mutationError = addMember.error ?? removeMember.error
 
   return (
     <MemberManagementPopup
@@ -54,6 +57,12 @@ export const ProjectMembersDialog = ({ project, canManage, onClose }: ProjectMem
       search={search}
       totalMembers={members.length}
     >
+      {mutationError ? (
+        <div className="px-3 py-2 text-sm text-[color:var(--danger-text)]" role="alert">
+          {mutationError instanceof Error ? mutationError.message : 'That change could not be made.'}
+        </div>
+      ) : null}
+
       {filteredUsers.length > 0 ? (
         <div>
           <div className={sectionHeadingClass}>In this project</div>

@@ -154,6 +154,13 @@ const cleanup = async (prisma: PrismaClient) => {
   await prisma.organization.deleteMany({ where: { id: orgId } })
 }
 
+// Binds the seeded organisation and team to UOA, as sign-in materialisation
+// leaves them. `externalTeamId` makes `anchorProjectId` that team's anchor.
+const bindToUoa = async (prisma: PrismaClient) => {
+  await prisma.organization.update({ where: { id: orgId }, data: { externalOrgId: `uoa-org-${suite}` } })
+  await prisma.team.update({ where: { id: teamId }, data: { externalTeamId: `uoa-team-${suite}` } })
+}
+
 const withApp = async (run: (app: App, prisma: PrismaClient) => Promise<void>) => {
   const prisma = new PrismaClient()
   const app = await buildApp(prisma)
@@ -277,5 +284,70 @@ dbTest('an organisation admin outside the project sees it and changes it', async
     })
     assert.equal(added.statusCode, 201, added.body)
     assert.equal(await isProjectMember(prisma, projectId, orgAdminUserId), false)
+  })
+})
+
+// ─── Project membership is Nessie-owned ─────────────────────────────────────
+
+dbTest('in a UOA-bound organisation a project member still manages its members', async () => {
+  await withApp(async (app, prisma) => {
+    await bindToUoa(prisma)
+    const projectId = await createProjectWithPeer(app, prisma)
+
+    const added = await call(app, peerUserId, 'POST', `/api/projects/${projectId}/members`, {
+      userId: newcomerUserId,
+    })
+    assert.equal(added.statusCode, 201, added.body)
+    assert.equal(await isProjectMember(prisma, projectId, newcomerUserId), true)
+
+    const removed = await call(
+      app,
+      peerUserId,
+      'DELETE',
+      `/api/projects/${projectId}/members/${newcomerUserId}`,
+    )
+    assert.equal(removed.statusCode, 200, removed.body)
+    assert.equal(await isProjectMember(prisma, projectId, newcomerUserId), false)
+  })
+})
+
+dbTest('the anchor project of a UOA-bound team keeps its projected members read-only', async () => {
+  await withApp(async (app, prisma) => {
+    await bindToUoa(prisma)
+    // Sign-in writes this row from the verified team membership.
+    await prisma.projectMember.create({
+      data: { projectId: anchorProjectId, role: 'member', userId: creatorUserId },
+    })
+
+    const added = await call(app, creatorUserId, 'POST', `/api/projects/${anchorProjectId}/members`, {
+      userId: orgAdminUserId,
+    })
+    assert.equal(added.statusCode, 409, added.body)
+    assert.equal(added.json().error.code, 'TEAM_PROJECT_MEMBERSHIP_MANAGED_BY_SSO')
+
+    const removed = await call(
+      app,
+      creatorUserId,
+      'DELETE',
+      `/api/projects/${anchorProjectId}/members/${creatorUserId}`,
+    )
+    assert.equal(removed.statusCode, 409, removed.body)
+    assert.equal(await isProjectMember(prisma, anchorProjectId, creatorUserId), true)
+    assert.equal(await isProjectMember(prisma, anchorProjectId, orgAdminUserId), false)
+  })
+})
+
+dbTest('a deactivated organisation member cannot be added to a project', async () => {
+  await withApp(async (app, prisma) => {
+    const projectId = await createProjectWithPeer(app, prisma)
+    await prisma.organizationMember.updateMany({
+      where: { organizationId: orgId, userId: newcomerUserId },
+      data: { deactivatedAt: new Date() },
+    })
+    const added = await call(app, peerUserId, 'POST', `/api/projects/${projectId}/members`, {
+      userId: newcomerUserId,
+    })
+    assert.equal(added.statusCode, 404, added.body)
+    assert.equal(await isProjectMember(prisma, projectId, newcomerUserId), false)
   })
 })
