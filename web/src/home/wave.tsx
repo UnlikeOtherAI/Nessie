@@ -16,7 +16,7 @@ const shapes = {
 
 type WaveProps = { top: string; bottom: string; shape?: keyof typeof shapes }
 
-export function Wave({ top, bottom, shape = 'rise' }: WaveProps) {
+export function Wave({ top, bottom, shape = 'fall' }: WaveProps) {
   const paths = shapes[shape]
   // No wave dips below 80% of the height, so painting the bottom strip in the
   // lower colour hides the sub-pixel seam where the scaled SVG meets its box.
@@ -33,7 +33,7 @@ export function Wave({ top, bottom, shape = 'rise' }: WaveProps) {
 
 // The same water edge hanging off the bottom of a bar: the shape is flipped so
 // the bar's colour drips down over whatever scrolls beneath it.
-export function HangingWave({ color, shape = 'fall' }: { color: string; shape?: keyof typeof shapes }) {
+export function HangingWave({ color, shape = 'rise' }: { color: string; shape?: keyof typeof shapes }) {
   const paths = shapes[shape]
   return (
     <div aria-hidden="true" className="n-wave-hang">

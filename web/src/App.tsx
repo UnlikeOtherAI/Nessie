@@ -4,7 +4,8 @@ import { CookieBar, Header } from './home/header'
 import { Hero } from './home/hero'
 import { Wave } from './home/wave'
 
-// Light-to-dark changes use the "rise" wave, dark-to-light the "fall" wave.
+// Waves only ever sit on the bottom edge of a dark section; a dark section's
+// top edge is straight.
 const light = '#fff'
 
 export function App() {
@@ -13,21 +14,18 @@ export function App() {
       <Header />
       <main>
         <Hero />
-        <Wave bottom="var(--n-ink)" top="var(--n-foam)" />
         <AiBand />
-        <Wave bottom={light} shape="fall" top="var(--n-ink)" />
+        <Wave bottom={light} top="var(--n-ink)" />
         <WhatsNew />
         <Pillars />
         <Stories />
-        <Wave bottom="var(--n-deep)" top={light} />
         <StatsBand />
-        <Wave bottom={light} shape="fall" top="var(--n-deep)" />
+        <Wave bottom={light} top="var(--n-deep)" />
         <Love />
         <Promos />
-        <Wave bottom="var(--n-ink)" top={light} />
         <FinalCta />
       </main>
-      <Wave bottom={light} shape="fall" top="var(--n-ink)" />
+      <Wave bottom={light} top="var(--n-ink)" />
       <Footer />
       <CookieBar />
     </>
