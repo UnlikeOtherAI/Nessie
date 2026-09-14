@@ -487,9 +487,12 @@ WebKit/touch). dnd-kit *does* handle native scroll containers correctly.
 ### Pulse the dropped card
 
 - A card that actually changes column on drop pulses **three times**
-  (`kanban-card-pulse` in `admin/src/styles.css`: scale 1→1.04 + an `--accent-soft`
-  ring, `0.34s × 3`). `KanbanBoard` tracks the moved task id (`pulseId`) and clears
-  it on `animationend`.
+  (`admin-attention-pulse` in `admin/src/styles.css`: an `--accent-soft` ring,
+  `0.34s × 3`). `KanbanBoard` tracks the moved task id (`pulseId`) and clears
+  it on `animationend`. It was `kanban-card-pulse` and carried a 1→1.04 scale
+  until 2026-09-14, when the conversations column needed the same "look here"
+  pulse on a full-width row: one class for both, and the scale went because it
+  gave that row's column a horizontal scrollbar while it played.
 
 ### Verification
 
@@ -498,7 +501,7 @@ WebKit/touch). dnd-kit *does* handle native scroll containers correctly.
 - Playwright (Chromium), 1680px: during a card drag there is **no**
   `[data-kanban-card-preview]` and the dragged card carries a `translate3d`
   transform (follows the pointer in place); dropping it on another column moves
-  it there, the landed card shows `kanban-card-pulse`, and the scroll stays
+  it there, the landed card shows the pulse class, and the scroll stays
   page-aligned. (Test card moved + restored, no data left changed.)
 
 ## Update 2026-06-13 (6) — per-column card ordering; all-projects board removed
