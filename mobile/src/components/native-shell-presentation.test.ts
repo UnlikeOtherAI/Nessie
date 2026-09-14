@@ -69,6 +69,22 @@ test('native account focus mode is preserved from the web shell', () => {
   assert.equal(focused.nativeAccount.presence, 'online')
 })
 
+test('a theme records whether the page resolved the chrome palette itself', () => {
+  const fromPage = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'theme',
+    chromeSource: 'page',
+    headerSurface: '#0b172a',
+    headerText: '#ffffff',
+  })
+  assert.equal(fromPage.pageOwnsChrome, true)
+  assert.equal(fromPage.phoneHeaderSurface, '#0b172a')
+  assert.equal(fromPage.phoneHeaderText, '#ffffff')
+
+  // An admin that predates the source field is a root-token read again.
+  const legacy = reduceNativeShellPresentation(fromPage, { type: 'theme', headerSurface: '#f1e9dc' })
+  assert.equal(legacy.pageOwnsChrome, false)
+})
+
 test('only presentation messages enter the native presentation reducer', () => {
   assert.equal(isNativeShellPresentationMessage({ type: 'theme' }), true)
   assert.equal(isNativeShellPresentationMessage({ type: 'nessie:team' }), true)

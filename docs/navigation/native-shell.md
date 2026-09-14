@@ -178,6 +178,35 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   path so the plain `hardwareBackPress` listener keeps firing with the flag
   on; the system's predictive-back preview only ever shows the launcher,
   never an in-app screen, and the in-app motion stays the web stack's.
+- **`theme` and `bg` — the page publishes the chrome palette.**
+  `NativeChromeThemeBridge` (`admin/src/bridges/`) renders an empty
+  `.native-chrome-palette` element as a direct child of `.admin-frame` and
+  posts `theme` (with `chromeSource: 'page'`) and `bg` read from it: on mount,
+  on a `data-theme` change, on an organisation-palette change and on a focus
+  toggle. `admin/src/styles.css` lists that element in every rule that gives
+  the chrome its own palette — a theme's chrome scope (Nessie's navy) and focus
+  mode — so a theme whose chrome differs from its work surface reaches the
+  native header, the iPad chrome and the status bar **by CSS alone, with no
+  native release**. The shell used to read `--rail`/`--tx` off the document
+  root, which under such a theme is the white work surface: that is how the
+  iPhone and iPad top bars stayed white under Nessie.
+  `admin/test/native-chrome-theme.test.ts` fails a chrome rule that forgets
+  the element.
+
+  The page sets `window.__nessieChromeThemePublisher`; the injected script
+  (`mobile/src/lib/webview-inject.ts`) then posts neither message, and
+  `applyNativeFocusChrome` shows a page-sourced palette as sent, keeping
+  `NATIVE_FOCUS_CHROME` only as the fallback for an admin that predates the
+  bridge. Installed builds without that check still post from the root for
+  600ms after each change and the shell keeps the last message, so the bridge
+  posts again after `REPOST_AFTER_LEGACY_SETTLE_MS` (700ms) until those builds
+  are gone. When the shell unmounts (sign-out) the bridge posts the document's
+  own palette once, without `chromeSource`, so the sign-in screen does not
+  keep the chrome's or focus mode's colours: the injected script cannot take
+  over by itself, because nothing it observes changes and its dedupe still
+  holds the palette from before the bridge mounted. That hand-back is deferred
+  a tick and skipped when a bridge has remounted in the meantime.
+  `admin/test/native-chrome-theme-bridge.test.ts` mounts the real bridge.
 - **`nessie:haptic { haptic }` bridge message.** `admin/src/lib/haptics.ts`
   posts it (`haptic(kind)`, `kind` one of `light | medium | heavy | selection
   | success | warning | error`) when running inside the native shell, and
