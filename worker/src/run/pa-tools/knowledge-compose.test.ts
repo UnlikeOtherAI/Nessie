@@ -129,8 +129,14 @@ const makeHarness = (
           parentAgentId: null,
         }),
       },
+      // A person composing is resolved through the live entitlement seam: an
+      // unbound local organisation with an active membership row.
+      channelMember: { findMany: async () => [] },
+      organization: { findUnique: async () => ({ externalOrgId: null }) },
+      organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
       projectMember: { findMany: async () => [] },
       task: { findFirst: async () => task },
+      teamMember: { findMany: async () => [] },
     },
     run: { id: 'run-1', messageId: 'message-1', threadId: 'thread-1' },
     toolCallId: null,
@@ -158,18 +164,24 @@ test('compose auto-publishes an agent-owned document when nothing was consumed',
   assert.match(result.outputPreview, /published in that private space/)
 })
 
-test('compose refuses a wider-audience disclosure before storing an attachment or page', async () => {
+test('compose after a wider-audience read retains that basis on the saved version', async () => {
   const harness = makeHarness(agentSpace('agent-1'))
   harness.consumedSources.add({ scopeId: 'project-foreign', scopeType: 'project' })
 
   const result = await compose(harness)
 
-  assert.equal(harness.storeCalls.length, 0)
-  assert.equal(harness.createCalls.length, 0)
-  assert.equal(harness.publishCalls.length, 0)
-  assert.match(result.outputPreview, /cannot save this document/)
-  assert.match(result.outputPreview, /Nothing was saved/)
-  assert.doesNotMatch(result.outputPreview, /kb_publish_request/)
+  // The document is saved, but its version carries the foreign project in its
+  // own basis, so a reader of the private home who cannot read that project
+  // never sees it (docs/standards/disclosure-boundaries.md, "Document versions
+  // retain their source boundary").
+  assert.equal(harness.storeCalls.length, 1)
+  assert.equal(harness.createCalls.length, 1)
+  const [created] = harness.createCalls as Array<{ basisScopes: unknown[] }>
+  assert.deepEqual(created?.basisScopes, [
+    { scopeId: 'project-foreign', scopeType: 'project' },
+  ])
+  assert.equal(harness.publishCalls.length, 1)
+  assert.match(result.outputPreview, /published in that private space/)
 })
 
 test('compose rejects a ticket outside its destination project before storing an attachment', async () => {

@@ -5,6 +5,18 @@ import type { PrismaClient } from '@prisma/client'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { loadRunContext } from './lifecycle.js'
 
+// Core-instruction admission runs inside `loadRunContext`: an agent with no
+// typed core mapping and no migration marker admits nothing, records an empty
+// snapshot, and continues. These suites cover bindings and mailboxes only.
+const coreDocumentAdmissionDelegates = {
+  agentCoreDocument: { findMany: async () => [] },
+  agentCoreDocumentMigration: { findUnique: async () => null },
+  runCoreDocumentSnapshot: {
+    createMany: async () => ({ count: 0 }),
+    findMany: async () => [],
+  },
+}
+
 // Every delegate `loadRunContext` touches needs a stub in these fakes, and the
 // client is cast — a model one omits is `undefined` at call time rather than a
 // type error. `emailConversation` arrived with hosted mailboxes and took this
@@ -26,7 +38,9 @@ test('loadRunContext resolves bindings and the active demonstration once', async
       },
     },
     emailConversation: { findUnique: async () => null },
+    ...coreDocumentAdmissionDelegates,
     run: {
+      update: async () => ({}),
       findUnique: async () => ({
         agent: {
           agentKind: 'shared',
@@ -107,7 +121,9 @@ test('loadRunContext carries the mailbox when the thread is an email conversatio
     emailConversation: {
       findUnique: async () => ({ id: 'conversation-1', mailboxId: 'mailbox-1' }),
     },
+    ...coreDocumentAdmissionDelegates,
     run: {
+      update: async () => ({}),
       findUnique: async () => ({
         agent: {
           agentKind: 'shared',
@@ -153,7 +169,9 @@ test('an ordinary thread carries no mailbox, so nothing extra is implied', async
     agentBinding: { findMany: async () => [] },
     demonstration: { findFirst: async () => null },
     emailConversation: { findUnique: async () => null },
+    ...coreDocumentAdmissionDelegates,
     run: {
+      update: async () => ({}),
       findUnique: async () => ({
         agent: {
           agentKind: 'shared',

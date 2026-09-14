@@ -111,6 +111,9 @@ const makeHarness = (
           parentAgentId: null,
         }),
       },
+      // Every retained version of the page is checked against the viewer's
+      // disclosure before an edit; these fixtures carry no restricted version.
+      knowledgePageVersion: { findMany: async () => [] },
     },
     run: { id: 'run-1', messageId: 'message-1', threadId: 'thread-1' },
     toolCallId: null,
@@ -147,18 +150,25 @@ test('editing a published agent document republishes only audience-covered conte
   assert.match(result.outputPreview, /new version is published/)
 })
 
-test('editing refuses a wider-audience disclosure before storing an attachment or version', async () => {
+test('editing after a wider-audience read retains that basis on the new version', async () => {
   const harness = makeHarness(space('agent-1'), page('published'))
   harness.consumedSources.add({ scopeId: 'project-foreign', scopeType: 'project' })
 
   const result = await edit(harness)
 
-  assert.equal(harness.storeCalls.length, 0)
-  assert.equal(harness.versionCalls.length, 0)
-  assert.equal(harness.publishCalls.length, 0)
-  assert.match(result.outputPreview, /cannot save this version/)
-  assert.match(result.outputPreview, /existing document is unchanged/)
-  assert.doesNotMatch(result.outputPreview, /kb_publish_request/)
+  // The version is saved, but it carries the foreign project in its own basis,
+  // so a reader of the agent home who cannot read that project never sees it
+  // (docs/standards/disclosure-boundaries.md, "Document versions retain their
+  // source boundary").
+  assert.equal(harness.storeCalls.length, 1)
+  assert.equal(harness.versionCalls.length, 1)
+  const [version] = harness.versionCalls as Array<{ basisScopes: unknown[] }>
+  assert.deepEqual(version?.basisScopes, [
+    { scopeId: 'project-foreign', scopeType: 'project' },
+    { scopeId: 'agent-1', scopeType: 'agent' },
+  ])
+  assert.equal(harness.publishCalls.length, 1)
+  assert.match(result.outputPreview, /new version is published/)
 })
 
 test('editing a published agent document republishes after an organization-visibility read', async () => {
