@@ -178,8 +178,14 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   editable region carries `enterKeyHint="send"`. Every overlay panel that
   sized with a bare `vh` unit — nine dialogs/popups plus two `styles.css`
   rules — now sizes with `dvh` (the dynamic viewport, which a soft keyboard
-  can shrink; the static `vh` cannot), including the shared `Dialog`'s `xl`
-  size.
+  can shrink; the static `vh` cannot). `Dialog` also caps every size from the
+  live visual viewport when a browser does not apply that reduction to `dvh`,
+  and moves the panel's flex viewport above the reported keyboard inset. It
+  keeps its natural height until it exceeds that safe visible area, then makes
+  the panel —
+  never the obscured page behind it — scrollable. The overlay primitive also
+  reveals the focused control after a focus or Visual Viewport resize, so the
+  active field remains above the keyboard.
 - **Scroll owners on split**: `useScrollMemory` already covered the two
   lists that swap for their own detail at stack depth 1 on `split`
   (`ColumnBrowserColumn`, `AgentsList`, keyed per list identity). The channel

@@ -27,18 +27,33 @@ import { useOverlay } from '../overlays/useOverlay'
 
 type DialogSize = 'md' | 'lg' | 'xl' | 'full'
 
+// The panel is its natural height until its content cannot fit in the dynamic
+// viewport. `overflowY: auto` makes it a scroll owner only in that case, and
+// `dvh` follows the space remaining above a phone's soft keyboard.
+const PANEL_BASE_MAX_HEIGHT = [
+  'calc(100dvh - env(safe-area-inset-top, 0px)',
+  '- env(safe-area-inset-bottom, 0px) - 2rem)',
+].join(' ')
+const PANEL_MAX_HEIGHT = [
+  `min(${PANEL_BASE_MAX_HEIGHT},`,
+  `var(--overlay-visible-height, ${PANEL_BASE_MAX_HEIGHT}))`,
+].join(' ')
+
 // `md` is the `.create-channel-panel` default (440px, 16px gutter). The other
 // sizes are the exact inline overrides their call sites require.
-const PANEL_STYLE: Record<DialogSize, CSSProperties | undefined> = {
-  md: undefined,
+const PANEL_STYLE: Record<DialogSize, CSSProperties> = {
+  md: {
+    maxHeight: PANEL_MAX_HEIGHT,
+    overflowY: 'auto',
+  },
   lg: {
-    maxHeight: 'calc(100dvh - 2rem)',
+    maxHeight: PANEL_MAX_HEIGHT,
     maxWidth: 640,
     overflowY: 'auto',
     width: '100%',
   },
   xl: {
-    maxHeight: '88dvh',
+    maxHeight: PANEL_MAX_HEIGHT,
     maxWidth: 'none',
     overflowY: 'auto',
     width: 'min(80vw, 1100px)',
@@ -48,7 +63,7 @@ const PANEL_STYLE: Record<DialogSize, CSSProperties | undefined> = {
   full: {
     display: 'flex',
     flexDirection: 'column',
-    height: 'calc(100dvh - 2rem)',
+    height: PANEL_MAX_HEIGHT,
     maxHeight: 'none',
     maxWidth: 'none',
     minHeight: 0,
@@ -64,6 +79,7 @@ const SCRIM_STYLE: CSSProperties = {
   display: 'flex',
   inset: 0,
   justifyContent: 'center',
+  paddingBottom: 'var(--overlay-visual-inset, 0px)',
   position: 'fixed',
 }
 
