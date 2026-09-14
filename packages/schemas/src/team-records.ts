@@ -138,6 +138,10 @@ export const TeamRecordSchema = z.object({
   // part of the record.
   callProvider: TeamCallProviderSchema,
   memberCount: z.number().int().nonnegative().optional(),
+  // Whether the person asking is a member of this team — the placement
+  // `createProjectForUser` requires of anybody but an organisation owner or
+  // admin. Present when the reader was asked on a viewer's behalf.
+  viewerIsMember: z.boolean().optional(),
   createdAt: TimestampSchema,
 })
 export type TeamRecord = z.infer<typeof TeamRecordSchema>
@@ -201,9 +205,10 @@ export type AgentVisibility = z.infer<typeof AgentVisibilitySchema>
 
 /**
  * The display projection for an agent's steward. It exists because there is no
- * member-readable endpoint mapping a local user id to a name — `GET /api/users`
- * is owner-only and the UOA roster is keyed by subject and scoped to one team —
- * so without this an owner cell could render an id and nothing else.
+ * guarantee that a steward still appears in the people directory — `GET
+ * /api/users` omits deactivated people from a member's view and the UOA roster
+ * is keyed by subject — so without this an owner cell could render an id and
+ * nothing else.
  *
  * Deliberately carries no `uoaSub`: an agent is visible across teams through any
  * public channel, so inlining a UOA subject would be a cross-team identity

@@ -157,6 +157,7 @@ export const registerTeamRoutes = (
     const teams = await listTeamsForOrganization(prisma, {
       organizationId: actorContext.tenant.organizationId,
       ...(query.projectId ? { projectIds: [query.projectId] } : {}),
+      viewerUserId: actorContext.actor.actorId,
     })
 
     const callProviderAvailability = configuredCallProviders()

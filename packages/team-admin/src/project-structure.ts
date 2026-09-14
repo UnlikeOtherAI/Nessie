@@ -146,7 +146,7 @@ export const listProjectsForUser = async (
  */
 export const listTeamsForOrganization = async (
   prisma: PrismaClient,
-  input: { organizationId: string; projectIds?: string[] },
+  input: { organizationId: string; projectIds?: string[]; viewerUserId?: string },
 ): Promise<(TeamRecord & { memberCount: number })[]> => {
   const teams = await prisma.team.findMany({
     where: {
@@ -171,6 +171,9 @@ export const listTeamsForOrganization = async (
     externallyManaged: team.externalTeamId !== null,
     id: parseTeamId(team.id),
     memberCount: team.members.length,
+    ...(input.viewerUserId
+      ? { viewerIsMember: team.members.some((member) => member.userId === input.viewerUserId) }
+      : {}),
     name: team.name,
     projectId: parseProjectId(team.projectId),
     projectIds: projectIds.map(parseProjectId),
