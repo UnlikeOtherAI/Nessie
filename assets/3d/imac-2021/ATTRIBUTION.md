@@ -13,7 +13,9 @@ The public site credits the model in its footer (`modelCredit` in
 
 - The manufacturer logo modelled on the back of the case (two small loose
   parts in the light blue material) was deleted in Blender from the GLB, the
-  `.blend`, and the FBX, which was re-exported from the cleaned `.blend`.
+  `.blend`, and the FBX, which was re-exported from the cleaned `.blend`. The
+  logo was an insert, so this leaves a logo-shaped opening in the back shell;
+  the site closes it with a disc in the panel's material under the Nessie mark.
 - `web/public/models/desktop.glb` is the author's Sketchfab glTF export with the
   screen material's texture replaced by a plain placeholder image.
 - At runtime `web/src/home/desktop3d.tsx` recolours the body and stand, paints

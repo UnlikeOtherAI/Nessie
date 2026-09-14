@@ -1,16 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="140 110 975 1020" role="img" aria-label="Nessie">
-  <defs>
-    <clipPath id="left"><rect x="152" y="124" width="328" height="996" rx="164"/></clipPath>
-    <clipPath id="right"><path d="M735 301a183 183 0 0 1 366 0v654a161 161 0 0 1-241 140L735 940z"/></clipPath>
-  </defs>
-  <g clip-path="url(#left)">
-    <rect x="140" y="110" width="360" height="1030" fill="#06bc90"/>
-    <polygon points="140,110 480,110 480,660 140,322" fill="#3ff0b2"/>
-  </g>
-  <polygon points="480,195 735,485 735,940 480,660" fill="#03a9ff"/>
-  <polygon points="735,485 933,703 735,897" fill="#0266fa"/>
-  <g clip-path="url(#right)">
-    <rect x="720" y="100" width="400" height="1040" fill="#ff2e8b"/>
-    <polygon points="720,100 1120,100 1120,527 933,703 720,467" fill="#fcc503"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="97.75 92.15 1058.4 1058.4">
+  <defs><clipPath id="nessie-n"><path d="M152.6 305.85A181.95 181.95 0 0 1 478.5 194.57L478.5 955.85A162.95 162.95 0 0 1 152.6 955.85ZM478.5 194L734.5 484.86L734.5 938.32L478.5 656.91ZM734.8 307.05A183.25 183.25 0 0 1 1101.3 307.05L1101.3 972.84A144.66 144.66 0 0 1 848 1068.3L734.5 939.09L734.5 307.05Z"/></clipPath></defs>
+  <g clip-path="url(#nessie-n)">
+    <path fill="#04BC8F" d="M0 0H478.5V1254H0Z"/>
+    <path fill="#3AEFB1" d="M0 0H478.5V660.22L0 185.83Z"/>
+    <path fill="#01A8FC" d="M478.5 0H734.5V1254H478.5Z"/>
+    <path fill="#FDC501" d="M734.5 0H1254V1254H734.5Z"/>
+    <path fill="#0066FC" d="M734.5 484.41L934.56 703.8L734.5 897.15Z"/>
+    <path fill="#FC2D8A" d="M734.5 897.15L1254 395.07V1254H734.5Z"/>
   </g>
 </svg>

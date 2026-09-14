@@ -15,7 +15,9 @@ const neck = { x: 405, y: 740, width: 190, height: 102 }
 const footTop = 'M398 842 H602 L614 864 H386 Z'
 const footEdge = { x: 386, y: 864, width: 228, height: 6 }
 
-export function Desktop({ shot, idPrefix }: { shot: Shot; idPrefix: string }) {
+type DesktopProps = { shot: Shot; idPrefix: string; tint?: { front: string; back: string } }
+
+export function Desktop({ shot, idPrefix, tint = { front: '#dce8fd', back: '#c8dafb' } }: DesktopProps) {
   const id = (name: string) => `${idPrefix}-${name}`
   const url = (name: string) => `url(#${id(name)})`
   return (
@@ -26,24 +28,24 @@ export function Desktop({ shot, idPrefix }: { shot: Shot; idPrefix: string }) {
           <stop offset="1" stopColor="#f2f4f8" />
         </linearGradient>
         <linearGradient id={id('chin')} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor="#dce8fd" />
-          <stop offset="1" stopColor="#c8dafb" />
+          <stop offset="0" stopColor={tint.front} />
+          <stop offset="1" stopColor={tint.back} />
         </linearGradient>
         <linearGradient id={id('neck')} x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0" stopColor="#b9c8e6" />
-          <stop offset="0.12" stopColor="#d6e2f8" />
-          <stop offset="0.5" stopColor="#e4ecfb" />
-          <stop offset="0.88" stopColor="#d2def5" />
-          <stop offset="1" stopColor="#b3c3e2" />
+          <stop offset="0" stopColor={tint.back} />
+          <stop offset="0.15" stopColor={tint.front} />
+          <stop offset="0.5" stopColor={tint.front} />
+          <stop offset="0.85" stopColor={tint.front} />
+          <stop offset="1" stopColor={tint.back} />
         </linearGradient>
         <linearGradient id={id('neck-shade')} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor="#0b172a" stopOpacity="0.22" />
           <stop offset="0.3" stopColor="#0b172a" stopOpacity="0" />
         </linearGradient>
         <linearGradient id={id('foot')} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor="#eef3fc" />
-          <stop offset="0.45" stopColor="#d3dff5" />
-          <stop offset="1" stopColor="#aebfdf" />
+          <stop offset="0" stopColor={tint.front} />
+          <stop offset="0.45" stopColor={tint.front} />
+          <stop offset="1" stopColor={tint.back} />
         </linearGradient>
         <linearGradient id={id('glare')} x1="0" x2="1" y1="0" y2="1">
           <stop offset="0" stopColor="#ffffff" stopOpacity="0.16" />
@@ -67,7 +69,7 @@ export function Desktop({ shot, idPrefix }: { shot: Shot; idPrefix: string }) {
       <rect {...neck} fill={url('neck')} />
       <rect {...neck} fill={url('neck-shade')} />
       <path d={footTop} fill={url('foot')} />
-      <rect {...footEdge} fill="#a3b5d8" rx="2" />
+      <rect {...footEdge} fill={tint.back} rx="2" />
       <path d="M398 842 H602" stroke="#ffffff" strokeOpacity="0.8" strokeWidth="1.5" />
 
       {/* Body: white bezel on top, tinted chin below */}

@@ -320,6 +320,22 @@ export const footerColumns = [
 
 export const legalLinks = ['Privacy', 'Terms', 'Cookie policy']
 
+// Case colours for the 3D desktop: `front` tints the chin and stand, `back`
+// the rear shell. The choice is remembered in a cookie (colour-cookie.ts).
+export type DeviceColour = { id: string; name: string; front: string; back: string }
+
+export const deviceColours: DeviceColour[] = [
+  { id: 'green', name: 'Green', front: '#bfe6cf', back: '#8fcdaa' },
+  { id: 'yellow', name: 'Yellow', front: '#f6e3a1', back: '#eccb62' },
+  { id: 'orange', name: 'Orange', front: '#f8c7a6', back: '#ee9f73' },
+  { id: 'pink', name: 'Pink', front: '#f6c7d0', back: '#e8a0b0' },
+  { id: 'purple', name: 'Purple', front: '#cfc8f0', back: '#a99fdc' },
+  { id: 'blue', name: 'Blue', front: '#b9d1fb', back: '#8fb0ea' },
+  { id: 'silver', name: 'Silver', front: '#e7e8ec', back: '#c9ccd3' },
+]
+
+export const defaultDeviceColour = 'pink'
+
 // CC BY 4.0 requires title, author, source, licence and a note of changes.
 export const modelCredit = {
   title: 'iMac 2021',
