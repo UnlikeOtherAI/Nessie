@@ -2,6 +2,7 @@ import { faGithub } from '@fortawesome/free-brands-svg-icons'
 import { faPause, faPlay, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { readDeviceColour, writeDeviceColour } from './colour-cookie'
 import { deviceColours, docsUrl, hero, heroTabs, signInUrl, type DeviceColour } from './content'
 import { DeviceView } from './desktop3d'
@@ -9,13 +10,15 @@ import { Button } from './ui'
 
 const advanceMs = 6000
 const openMs = 650
-const closeMs = 450
+const closeMs = 480
+const easeOut = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+const easeInOut = 'cubic-bezier(0.4, 0, 0.2, 1)'
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-// The transform that makes the full-screen desktop sit exactly over the hero one.
+// The transform that draws a box at `target` over the box at `origin`.
 function transformFrom(origin: DOMRect, target: DOMRect) {
   const dx = origin.left + origin.width / 2 - (target.left + target.width / 2)
   const dy = origin.top + origin.height / 2 - (target.top + target.height / 2)
@@ -29,10 +32,14 @@ export function Hero() {
   const [closing, setClosing] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [colour, setColour] = useState<DeviceColour>(readDeviceColour)
-  const trigger = useRef<HTMLButtonElement>(null)
+  const slot = useRef<HTMLDivElement>(null)
+  const stage = useRef<HTMLDivElement>(null)
+  const backdrop = useRef<HTMLButtonElement>(null)
+  const controls = useRef<HTMLDivElement>(null)
+  const hint = useRef<HTMLParagraphElement>(null)
   const closer = useRef<HTMLButtonElement>(null)
-  const zoom = useRef<HTMLDivElement>(null)
-  const swatches = useRef<HTMLDivElement>(null)
+  const openFrom = useRef<DOMRect | null>(null)
+  const closeMotion = useRef<Animation | null>(null)
 
   useEffect(() => {
     if (!playing) return undefined
@@ -40,35 +47,58 @@ export function Hero() {
     return () => window.clearTimeout(id)
   }, [active, playing])
 
-  // Opening: start the full-screen desktop over the hero one, then pan and
-  // scale it into place while the backdrop fades in.
+  const open = () => {
+    if (expanded) return
+    openFrom.current = stage.current?.getBoundingClientRect() ?? null
+    setHovered(false)
+    setPlaying(false)
+    setExpanded(true)
+  }
+
+  const onStageKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    open()
+  }
+
+  // One 3D scene serves both views. Opening moves the stage out of the hero
+  // into a fixed, centred box, draws it back over the hero spot, then eases it
+  // into place — the same canvas flies, so nothing reloads or swaps mid-way.
   useLayoutEffect(() => {
-    const target = zoom.current
-    const origin = trigger.current
-    if (!expanded || !target || !origin || prefersReducedMotion()) return
-    const from = transformFrom(origin.getBoundingClientRect(), target.getBoundingClientRect())
-    target.animate([{ transform: from }, { transform: 'none' }], {
-      duration: openMs,
-      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-    })
-    swatches.current?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: openMs, easing: 'ease' })
+    const element = stage.current
+    if (!expanded) {
+      closeMotion.current?.cancel()
+      closeMotion.current = null
+      return
+    }
+    const from = openFrom.current
+    if (!element || !from || prefersReducedMotion()) return
+    const start = transformFrom(from, element.getBoundingClientRect())
+    element.animate([{ transform: start }, { transform: 'none' }], { duration: openMs, easing: easeOut })
+    for (const layer of [backdrop.current, controls.current, hint.current]) {
+      layer?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: openMs, easing: 'ease' })
+    }
   }, [expanded])
 
   const close = () => {
-    const target = zoom.current
-    const origin = trigger.current
-    if (closing) return
-    if (!target || !origin || prefersReducedMotion()) {
+    const element = stage.current
+    const home = slot.current
+    if (!expanded || closing) return
+    if (!element || !home || prefersReducedMotion()) {
       setExpanded(false)
       return
     }
     setClosing(true)
-    const to = transformFrom(origin.getBoundingClientRect(), target.getBoundingClientRect())
-    const easing = 'cubic-bezier(0.4, 0, 0.2, 1)'
-    const motion = target.animate([{ transform: 'none' }, { transform: to }], { duration: closeMs, easing, fill: 'forwards' })
-    for (const element of [closer.current, swatches.current]) {
-      element?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: closeMs, easing, fill: 'forwards' })
+    const end = transformFrom(home.getBoundingClientRect(), element.getBoundingClientRect())
+    const motion = element.animate([{ transform: 'none' }, { transform: end }], {
+      duration: closeMs,
+      easing: easeInOut,
+      fill: 'forwards',
+    })
+    for (const layer of [backdrop.current, controls.current, hint.current]) {
+      layer?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: closeMs, easing: easeInOut, fill: 'forwards' })
     }
+    closeMotion.current = motion
     motion.onfinish = () => {
       setClosing(false)
       setExpanded(false)
@@ -77,11 +107,11 @@ export function Hero() {
   const closeRef = useRef(close)
   closeRef.current = close
 
-  // While zoomed: lock page scroll, close on Escape, and hand focus back to the
-  // hero desktop when the view closes.
+  // While full screen: lock page scroll, close on Escape, and hand focus back
+  // to the hero desktop when the view closes.
   useEffect(() => {
     if (!expanded) return undefined
-    const button = trigger.current
+    const home = stage.current
     const previousOverflow = document.body.style.overflow
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeRef.current()
@@ -92,7 +122,7 @@ export function Hero() {
     return () => {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKey)
-      button?.focus()
+      home?.focus()
     }
   }, [expanded])
 
@@ -116,22 +146,30 @@ export function Hero() {
           </div>
         </div>
         <div className={expanded ? 'n-hero-visual n-hero-visual-away' : 'n-hero-visual'} id="product">
-          <button
-            aria-label="See the Nessie screen up close"
-            className="n-device-trigger"
-            onBlur={() => setHovered(false)}
-            onClick={() => {
-              setExpanded(true)
-              setPlaying(false)
-            }}
-            onFocus={() => setHovered(true)}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            ref={trigger}
-            type="button"
-          >
-            <DeviceView colour={colour} hovered={hovered} idPrefix="nd-hero" pose="tilted" shot={tab.shot} />
-          </button>
+          <div className="n-device-slot" ref={slot}>
+            <div
+              aria-label={expanded ? undefined : 'See the Nessie screen up close'}
+              className={expanded ? 'n-device-stage n-device-stage-full' : 'n-device-stage'}
+              onBlur={() => setHovered(false)}
+              onClick={expanded ? undefined : open}
+              onFocus={() => setHovered(!expanded)}
+              onKeyDown={expanded ? undefined : onStageKey}
+              onMouseEnter={() => setHovered(!expanded)}
+              onMouseLeave={() => setHovered(false)}
+              ref={stage}
+              role={expanded ? undefined : 'button'}
+              tabIndex={expanded ? -1 : 0}
+            >
+              <DeviceView
+                colour={colour}
+                hovered={hovered}
+                idPrefix="nd-hero"
+                interactive={expanded && !closing}
+                pose={expanded && !closing ? 'flat' : 'tilted'}
+                shot={tab.shot}
+              />
+            </div>
+          </div>
           <button
             aria-label={playing ? 'Pause' : 'Play'}
             className="n-stage-toggle"
@@ -161,35 +199,38 @@ export function Hero() {
         ))}
       </div>
       {expanded && (
-        <div aria-label="Nessie screen, full size" aria-modal="true" className="n-device-overlay" role="dialog">
-          <button aria-label="Close" className="n-device-backdrop" onClick={close} ref={closer} type="button">
-            <FontAwesomeIcon className="n-device-close" icon={faXmark} />
-          </button>
-          <div aria-label="Case colour" className="n-swatches" ref={swatches} role="radiogroup">
-            {deviceColours.map((option) => (
-              <button
-                aria-checked={option.id === colour.id}
-                aria-label={option.name}
-                className="n-swatch"
-                key={option.id}
-                onClick={() => chooseColour(option)}
-                role="radio"
-                style={{ background: option.front }}
-                type="button"
-              />
-            ))}
+        <>
+          <button
+            aria-hidden="true"
+            className="n-device-backdrop"
+            onClick={close}
+            ref={backdrop}
+            tabIndex={-1}
+            type="button"
+          />
+          <div aria-label="Nessie screen, full size" className="n-device-controls" ref={controls} role="dialog">
+            <button aria-label="Close" className="n-device-close-button" onClick={close} ref={closer} type="button">
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+            <div aria-label="Case colour" className="n-swatches" role="radiogroup">
+              {deviceColours.map((option) => (
+                <button
+                  aria-checked={option.id === colour.id}
+                  aria-label={option.name}
+                  className="n-swatch"
+                  key={option.id}
+                  onClick={() => chooseColour(option)}
+                  role="radio"
+                  style={{ background: option.front }}
+                  type="button"
+                />
+              ))}
+            </div>
           </div>
-          <div className="n-device-zoom" ref={zoom}>
-            <DeviceView
-              colour={colour}
-              idPrefix="nd-zoom"
-              interactive
-              pose={closing ? 'tilted' : 'flat'}
-              shot={tab.shot}
-            />
-          </div>
-          <p className="n-device-hint">Drag to turn it around</p>
-        </div>
+          <p className="n-device-hint" ref={hint}>
+            Drag to turn it around
+          </p>
+        </>
       )}
     </section>
   )

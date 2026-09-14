@@ -150,15 +150,15 @@ async function createScene(host: HTMLElement, startAngle: number, colour: Device
   // Neutral tone mapping keeps the pale case colours true; ACES pushed the
   // chin to white wherever it faced the light head-on.
   renderer.toneMapping = THREE.NeutralToneMapping
-  renderer.toneMappingExposure = 0.9
+  renderer.toneMappingExposure = 1.15
   renderer.domElement.className = 'n-device-canvas'
   renderer.domElement.setAttribute('aria-hidden', 'true')
 
   const scene = new THREE.Scene()
   const pmrem = new THREE.PMREMGenerator(renderer)
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
-  scene.environmentIntensity = 0.8
-  const key = new THREE.DirectionalLight(0xffffff, 0.7)
+  scene.environmentIntensity = 1
+  const key = new THREE.DirectionalLight(0xffffff, 0.85)
   key.position.set(-2, 3, 4)
   scene.add(key)
 
@@ -389,6 +389,20 @@ export function DeviceView({ shot, idPrefix, pose, colour, hovered = false, inte
     handle.current?.setAngle(yaw)
     handle.current?.setPitch(0)
   }, [pose, hovered, ready])
+
+  // iPad Safari turns a touch into its own page pan or zoom — cancelling the
+  // pointer stream — unless the touch is claimed with a non-passive listener.
+  useEffect(() => {
+    const element = host.current
+    if (!interactive || !element) return undefined
+    const claim = (event: TouchEvent) => event.preventDefault()
+    element.addEventListener('touchstart', claim, { passive: false })
+    element.addEventListener('touchmove', claim, { passive: false })
+    return () => {
+      element.removeEventListener('touchstart', claim)
+      element.removeEventListener('touchmove', claim)
+    }
+  }, [interactive])
 
   // Hero hover: lean a little after the pointer.
   const onHoverMove = (event: ReactPointerEvent<HTMLDivElement>) => {

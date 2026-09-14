@@ -352,16 +352,40 @@ button {
   position: relative;
 }
 
-/* perspective only reaches direct children, so it sits on the element that
-   directly holds the SVG — on the wrapper the tilt collapsed to a squash. */
-.n-device-trigger {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
+/* The slot keeps the desktop's place in the hero; the stage inside it is what
+   flies to full screen. perspective only reaches direct children, so it sits
+   on the element that directly holds the view. */
+.n-device-slot {
+  position: relative;
+  aspect-ratio: 1000 / 900;
+}
+
+.n-device-stage {
+  position: absolute;
+  inset: 0;
   cursor: zoom-in;
   perspective: 1100px;
+}
+
+.n-device-stage:focus-visible {
+  border-radius: 16px;
+  outline: 3px solid var(--n-sea);
+  outline-offset: 4px;
+}
+
+/* Full screen: the same stage leaves the hero for a fixed, centred box, so the
+   one 3D scene flies out and back without a second copy loading mid-way. */
+.n-device-stage-full {
+  position: fixed;
+  inset: 0;
+  z-index: 201;
+  width: min(94vw, calc(92vh * 1000 / 900));
+  height: min(calc(94vw * 900 / 1000), 92vh);
+  margin: auto;
+  cursor: default;
+  perspective: none;
+  transform-origin: center;
+  will-change: transform;
 }
 
 .n-device {
@@ -370,9 +394,13 @@ button {
   height: auto;
 }
 
-.n-device-trigger .n-device {
+.n-device-stage .n-device {
   transform: rotateY(-24deg);
   transition: transform 450ms var(--easing-standard), opacity 400ms ease;
+}
+
+.n-device-stage-full .n-device {
+  transform: none;
 }
 
 /* The 3D canvas sits over the SVG drawing and replaces it once the model has
@@ -398,8 +426,8 @@ button {
   opacity: 0;
 }
 
-.n-device-trigger:hover .n-device,
-.n-device-trigger:focus-visible .n-device {
+.n-device-stage:not(.n-device-stage-full):hover .n-device,
+.n-device-stage:not(.n-device-stage-full):focus-visible .n-device {
   transform: rotateY(-14deg);
 }
 
@@ -413,41 +441,53 @@ button {
   }
 }
 
-/* Tapped: the desktop swings flat and fills the viewport. */
-.n-device-overlay {
+/* Behind the full-screen desktop: the page, dimmed and blurred. Its fade is
+   driven from hero.tsx together with the flight of the desktop. */
+.n-device-backdrop {
   position: fixed;
   inset: 0;
   z-index: 200;
-  display: grid;
-  place-items: center;
-  perspective: 2200px;
-}
-
-.n-device-backdrop {
-  position: absolute;
-  inset: 0;
   padding: 0;
   border: 0;
   background: rgba(11, 23, 42, 0.5);
   backdrop-filter: blur(18px) saturate(1.1);
   -webkit-backdrop-filter: blur(18px) saturate(1.1);
   cursor: zoom-out;
-  animation: n-screen 300ms ease;
 }
 
-/* The hero desktop hides while its full-screen twin is on screen, so the
-   opening and closing animations read as one object moving. */
-.n-hero-visual-away .n-device-trigger,
+/* The play/pause control hides while the desktop is away from the hero. */
 .n-hero-visual-away .n-stage-toggle {
   visibility: hidden;
 }
 
+/* Close button and case colours, above the desktop in the top-right corner. */
+.n-device-controls {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 203;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+}
+
+.n-device-close-button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  place-items: center;
+  background: rgba(11, 23, 42, 0.45);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
 /* Case colours: white-ringed circles stacked under the close button. */
 .n-swatches {
-  position: absolute;
-  top: 76px;
-  right: 22px;
-  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -473,26 +513,13 @@ button {
   outline-offset: 3px;
 }
 
-.n-device-close {
-  position: absolute;
-  top: 24px;
-  right: 28px;
-  width: 24px;
-  height: 24px;
-  color: #fff;
-}
-
-.n-device-zoom {
-  position: relative;
-  width: min(94vw, calc(92vh * 1000 / 900));
-  transform-origin: center;
-}
-
 /* Full-screen model: drag with a finger or mouse to turn it round. */
 .n-device-draggable {
   cursor: grab;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .n-device-draggable:active {
@@ -500,21 +527,15 @@ button {
 }
 
 .n-device-hint {
-  position: absolute;
+  position: fixed;
   bottom: 24px;
   left: 50%;
+  z-index: 203;
   margin: 0;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
   pointer-events: none;
   transform: translateX(-50%);
-}
-
-@keyframes n-flatten {
-  from {
-    opacity: 0.3;
-    transform: translateX(20vw) scale(0.42);
-  }
 }
 
 .n-stage-toggle {
@@ -1675,7 +1696,7 @@ button {
     margin: 0 auto;
   }
 
-  .n-device-trigger .n-device {
+  .n-device-stage .n-device {
     transform: rotateY(-12deg);
   }
 }
@@ -1720,13 +1741,11 @@ button {
 
   .n-screen-img,
   .n-cookie,
-  .n-stage-progress,
-  .n-device-backdrop,
-  .n-device-zoom {
+  .n-stage-progress {
     animation: none;
   }
 
-  .n-device-trigger .n-device {
+  .n-device-stage .n-device {
     transition: none;
   }
 }
