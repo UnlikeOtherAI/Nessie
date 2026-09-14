@@ -236,13 +236,57 @@ test('createCatalogEntry starts private + draft, owned by the author', async () 
   assert.equal(entry.createdBy, USER_A)
 })
 
+test('createCatalogEntry with publish inserts the app already shared with the organisation', async () => {
+  const { prisma, rows } = makeStub([])
+  const entry = await createCatalogEntry(
+    prisma,
+    actorCtx(USER_A),
+    {
+      name: 'kilo-support',
+      label: 'Kilo support',
+      protocol: 'http',
+      authMethod: 'none',
+      authConfig: { method: 'none' },
+    },
+    { publish: true },
+  )
+  assert.equal(entry.visibility, 'public')
+  assert.equal(entry.status, 'published')
+  assert.equal(entry.ownerUserId, USER_A)
+  // One row — no private draft left beside it for a refused name to strand.
+  assert.equal(rows.size, 1)
+})
+
 // ─── private self-publish ─────────────────────────────────────────────────
 
-test('publishCatalogEntry self-publishes a private draft for its owner', async () => {
+test('publishCatalogEntry shares a private draft with the whole organisation', async () => {
   const { prisma, rows } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
   const result = await publishCatalogEntry(prisma, actorCtx(USER_A), 'entry-1')
   assert.equal(result?.status, 'published')
   assert.equal(rows.get('entry-1')?.status, 'published')
+  assert.equal(rows.get('entry-1')?.visibility, 'public')
+  // A colleague can now read it, which is what puts it on their `/apps`.
+  assert.equal((await getAccessibleCatalogEntry(prisma, actorCtx(USER_B), 'entry-1'))?.id, 'entry-1')
+})
+
+test('publishCatalogEntry shares a legacy private published entry, and is idempotent after', async () => {
+  const { prisma, rows } = makeStub([makeRow({ status: 'published', ownerUserId: USER_A })])
+  await publishCatalogEntry(prisma, actorCtx(USER_A), 'entry-1')
+  assert.equal(rows.get('entry-1')?.visibility, 'public')
+  const again = await publishCatalogEntry(prisma, actorCtx(USER_A), 'entry-1')
+  assert.equal(again?.visibility, 'public')
+})
+
+test('publishCatalogEntry reports a same-name public app in the organisation as a duplicate', async () => {
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  ;(prisma.mcpCatalogEntry as unknown as { updateMany: () => Promise<never> }).updateMany =
+    async () => { throw Object.assign(new Error('unique'), { code: 'P2002' }) }
+  await assert.rejects(
+    () => publishCatalogEntry(prisma, actorCtx(USER_A), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME,
+  )
 })
 
 test('publishCatalogEntry refuses public entries (use the review flow)', async () => {

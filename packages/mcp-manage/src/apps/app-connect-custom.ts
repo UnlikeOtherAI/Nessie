@@ -1,6 +1,6 @@
 import { discoverMcpEndpoint } from '../discovery.js'
 import { libraryEntryToCatalogInput, type McpLibraryEntry } from '../library.js'
-import { publishCatalogEntry, type McpCatalogEntryRow } from '../mcp-catalog.js'
+import type { McpCatalogEntryRow } from '../mcp-catalog.js'
 import { createCatalogEntry } from '../mcp-catalog-create.js'
 import { normalizeEndpoint } from '../registry/registry-mapper.js'
 
@@ -53,9 +53,10 @@ const customAppLabel = (endpoint: string, name?: string): string => {
 
 /**
  * One server is one app, even here: pasting the same address again under the
- * same name resolves to the app the person already added, not a rival row
- * beside it. A same-name-different-server clash is a genuine collision, and
- * `createCatalogEntry`'s duplicate-name refusal is the right answer to it.
+ * same name resolves to the app already added — by this person, or shared with
+ * the organisation by a colleague — not a rival row beside it. A
+ * same-name-different-server clash is a genuine collision, and the
+ * duplicate-name refusal is the right answer to it.
  */
 const resolveCustomCatalogEntry = async (
   ctx: AppConnectContext,
@@ -70,9 +71,13 @@ const resolveCustomCatalogEntry = async (
   const existing = await ctx.prisma.mcpCatalogEntry.findFirst({
     where: {
       name: input.machineName,
-      ownerUserId: ctx.actorContext.actor.actorId,
       organizationId: ctx.actorContext.tenant.organizationId,
+      OR: [
+        { ownerUserId: ctx.actorContext.actor.actorId },
+        { visibility: 'public', status: 'published' },
+      ],
     },
+    orderBy: { createdAt: 'asc' },
   })
   if (existing) {
     const config = existing.defaultTransportConfig as { url?: unknown } | null
@@ -84,8 +89,13 @@ const resolveCustomCatalogEntry = async (
   // config — `api_key` gets its header, `oauth2` stays client-less so
   // endpoints and a client are discovered at connect time. A custom server is
   // that same mapping applied to a discovery proposal instead of a library row.
-  const created = await createCatalogEntry(ctx.prisma, ctx.actorContext, {
-    ...libraryEntryToCatalogInput({
+  // Published, matching `POST /api/mcp/library/import`, so an app added here
+  // and one imported from the Library tab are the same kind of row — and, as
+  // publishing shares it, the whole organisation sees it on `/apps`.
+  return createCatalogEntry(
+    ctx.prisma,
+    ctx.actorContext,
+    libraryEntryToCatalogInput({
       source: 'registry',
       key: input.endpoint,
       name: input.machineName,
@@ -98,10 +108,8 @@ const resolveCustomCatalogEntry = async (
       authMethod: input.authMethod,
       authHint: null,
     }),
-  })
-  // Published private, matching `POST /api/mcp/library/import`, so an app added
-  // here and one imported from the Library tab are the same kind of row.
-  return (await publishCatalogEntry(ctx.prisma, ctx.actorContext, created.id)) ?? created
+    { publish: true },
+  )
 }
 
 export const addCustomApp = async (

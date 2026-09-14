@@ -4386,8 +4386,9 @@ model McpCatalogEntry {
   health                McpServerHealth?
   appConnectionRequests AgentAppConnectionRequest[]
 
-  // Uniqueness is enforced by partial indexes (see migration): public entries
-  // are unique on `name` store-wide; private entries are unique per owner in
+  // Uniqueness is enforced by partial indexes (see migration): public
+  // instance-global entries are unique on `name`, public tenant entries on
+  // `name` within their organisation; private entries are unique per owner in
   // one organisation. A person can therefore use the same private connector
   // name in separate teams without either team exposing the other.
   // A single `@@unique` can't express either, so they live in raw SQL.

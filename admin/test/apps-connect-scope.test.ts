@@ -79,7 +79,7 @@ test('personal remains the default scope and a channel needs an explicit id', ()
   assert.equal(buildAppConnectScope('channel', ''), null)
   assert.equal(
     appConnectScopeCopy('user'),
-    'Just you. You can choose which agents may use it after it connects.',
+    'Just you. Any agent you talk to can use it in your own conversations.',
   )
   assert.equal(
     appConnectScopeCopy('project', project.name),
@@ -233,7 +233,7 @@ test('the dialog posts personal scope by default and posts only the explicitly s
     assert.ok(confirm)
     assert.equal(confirm.disabled, false)
     assert.equal(harness.scope.querySelector('[data-testid="app-connect-channel-picker"]'), null)
-    assert.match(harness.scope.textContent ?? '', /Just you\. You can choose which agents may use it/)
+    assert.match(harness.scope.textContent ?? '', /Just you\. Any agent you talk to can use it/)
 
     await act(async () => confirm.click())
     await settle()
