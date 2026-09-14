@@ -1,7 +1,5 @@
 import {
-  faBolt,
   faBook,
-  faBriefcase,
   faClipboardCheck,
   faClock,
   faCoins,
@@ -9,8 +7,6 @@ import {
   faEnvelopeOpenText,
   faGlobe,
   faHashtag,
-  faListCheck,
-  faMagnifyingGlass,
   faPlug,
   faRobot,
   faServer,
@@ -20,160 +16,250 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 
 // Everything the homepage says lives here, so copy edits never touch layout.
-// Items marked `placeholder` are deliberately unfinished: no metric or quote
-// ships until it is a real, sourced one.
+// Anything flagged `placeholder` renders with a dashed outline: no metric,
+// logo, rating or customer story ships until it is real and approved.
 
 export const signInUrl = 'https://app.nessie.works/login?launch=sso'
 export const docsUrl = 'https://github.com/UnlikeOtherAI/nessie'
+export const contactUrl = 'mailto:hello@nessie.works'
 
-export const navLinks = [
-  { label: 'Product', href: '#context' },
-  { label: 'Agents', href: '#agents' },
-  { label: 'Self-hosting', href: '#control' },
-  { label: 'Resources', href: '#resources' },
+export const navItems = [
+  { label: 'Product', href: '#product', menu: true },
+  { label: 'Solutions', href: '#pillars', menu: true },
+  { label: 'Self-hosting', href: '#control', menu: false },
+  { label: 'Resources', href: '#resources', menu: true },
+  { label: 'Pricing', href: '#final', menu: false },
 ]
 
-export const hero = {
-  eyebrow: 'The European Slack alternative',
-  title: 'Your team and its agents, in one conversation.',
-  text: 'Nessie keeps the channels, threads and DMs people already know — and adds agents that draft, post and follow up right where the team is looking.',
+export const cookieCopy = {
+  text: 'We use essential cookies to run this site. With your permission we also use analytics cookies to learn which pages help people.',
+  policy: 'Cookie policy',
 }
 
-export type HeroTab = { label: string; src: string; alt: string; caption: string }
+export type Shot = { src: string; alt: string }
 
-export const heroTabs: HeroTab[] = [
-  {
-    label: 'Ask in a thread',
-    src: '/screenshots/nessie-assistant.png',
-    alt: 'A Nessie thread where the assistant drafts an all-team note about a new expense policy',
-    caption: 'The assistant drafts the note in the thread where it was asked.',
-  },
-  {
-    label: 'It follows through',
-    src: '/screenshots/nessie-actions.png',
-    alt: 'The assistant confirming it posted the note to #General and scheduled a follow-up',
-    caption: 'It posts to #General and schedules Monday’s follow-up on its own.',
-  },
-  {
-    label: 'The team reads it',
-    src: '/screenshots/nessie-channel.png',
-    alt: 'The #General channel in Nessie showing the published expense policy note',
-    caption: 'The result lands in the channel everyone already reads.',
-  },
+const assistantShot: Shot = {
+  src: '/screenshots/nessie-assistant.png',
+  alt: 'A Nessie thread where the assistant drafts an all-team note about a new expense policy',
+}
+const actionsShot: Shot = {
+  src: '/screenshots/nessie-actions.png',
+  alt: 'The assistant confirming it posted the note to #General and scheduled a follow-up',
+}
+const channelShot: Shot = {
+  src: '/screenshots/nessie-channel.png',
+  alt: 'The #General channel in Nessie showing the published expense policy note',
+}
+
+export const hero = {
+  title: 'Where your people and their agents get work done.',
+  text: 'Nessie keeps the channels your team already knows. Its agents turn the conversation into finished work.',
+  trustedLabel: 'Trusted by teams at',
+  logoSlots: 6,
+}
+
+export const heroTabs = [
+  { label: 'Ask the assistant', shot: assistantShot },
+  { label: 'Post an update', shot: actionsShot },
+  { label: 'Run a project', shot: channelShot },
+  { label: 'Review mail', shot: assistantShot },
+  { label: 'Schedule follow-ups', shot: actionsShot },
 ]
 
-const [assistantShot, actionsShot, channelShot] = heroTabs as [HeroTab, HeroTab, HeroTab]
+export type Card = { icon: IconDefinition; title: string; text: string; tag?: string }
 
-export type Card = { icon: IconDefinition; title: string; text: string }
+export const aiBand = {
+  title: 'Agents that finish the job, not just the sentence.',
+  text: 'Nessie’s agents work inside your channels with your team’s context — drafting, posting and following up, with a person’s approval wherever it matters.',
+  cards: [
+    { icon: faRobot, title: 'Ask your assistant to draft the announcement', text: 'In any language, from any thread.' },
+    { icon: faEnvelopeOpenText, title: 'Approve mail replies from chat', text: 'Drafts wait for your yes.', tag: 'New' },
+    { icon: faComments, title: 'Catch up on a thread you missed', text: 'The decisions, without the scroll.' },
+    { icon: faPlug, title: 'Connect tools to agents with MCP', text: 'Scoped per team and project.' },
+    { icon: faVideo, title: 'Talk it through with your assistant', text: 'Voice calls in the browser and on iPhone.' },
+    { icon: faClock, title: 'Let an agent schedule the follow-up', text: 'It comes back when the work is due.' },
+  ] satisfies Card[],
+}
 
-export const agentCards: Card[] = [
-  { icon: faRobot, title: 'A personal assistant for everyone', text: 'Ask for a draft, a summary or a reminder in plain language — in any language.' },
-  { icon: faEnvelopeOpenText, title: 'Review mail from chat', text: 'Connected mailboxes surface in the conversation, and replies wait for your approval.' },
-  { icon: faClock, title: 'Scheduled follow-ups', text: 'Agents set their own triggers and come back when the work is due.' },
-  { icon: faPlug, title: 'Tools through MCP', text: 'Give agents the connectors they need, scoped per organisation, team or project.' },
-  { icon: faVideo, title: 'Call your assistant', text: 'Talk it through by voice in the browser or on iPhone when typing is slower.' },
-  { icon: faClipboardCheck, title: 'Approval gates', text: 'Anything with consequences pauses for a person before it happens.' },
-]
+export const whatsNew = {
+  title: 'What’s new in Nessie',
+  link: 'See all updates',
+  items: [
+    { icon: faHashtag, tag: 'New feature', title: 'Invite into several teams at once', text: 'One invitation from the organisation roster.' },
+    { icon: faGlobe, tag: 'New feature', title: 'Private browser access', text: 'Lend an agent a browser and take control any time.' },
+    { icon: faEnvelopeOpenText, tag: 'Improvement', title: 'Mail drafts in chat', text: 'Review and approve replies without opening your inbox.' },
+    { icon: faPlug, tag: 'New feature', title: 'Paired agents', text: 'Publish a Nessie agent as an MCP server for other tools.' },
+    { icon: faVideo, tag: 'Improvement', title: 'Voice calls on iPhone', text: 'Call your assistant from the native app.' },
+    { icon: faCoins, tag: 'Improvement', title: 'Cost per project', text: 'The token ledger now breaks spend down by project.' },
+  ] satisfies Card[],
+}
 
-export type Update = { tag: string; title: string; text: string }
-
-export const updates: Update[] = [
-  { tag: 'New', title: 'Invite into several teams at once', text: 'One invitation from the organisation roster.' },
-  { tag: 'New', title: 'Private browser access', text: 'Hand an agent a browser session, take control any time.' },
-  { tag: 'Improved', title: 'Chat-side mail drafts', text: 'Review and approve replies without opening your inbox.' },
-  { tag: 'New', title: 'Paired agents', text: 'Publish a Nessie agent as an MCP server for other tools.' },
-  { tag: 'Improved', title: 'Named conversations', text: 'Agent DMs are titled by what you first asked.' },
-]
+export type PillarRow = { title: string; text: string; cta?: string; shot: Shot }
 
 export type Pillar = {
   id: string
   label: string
   title: string
   text: string
-  features: Card[]
-  image: HeroTab
-  stat: { value: string; text: string; placeholder?: boolean }
-  reverse?: boolean
+  rows: PillarRow[]
+  stat?: { value: string; text: string }
+  quote?: boolean
 }
 
 export const pillars: Pillar[] = [
   {
     id: 'context',
     label: 'Context',
-    title: 'Every answer starts from what your team already knows.',
-    text: 'Knowledge, boards and conversations sit in one place, so agents work from your context instead of guessing.',
-    features: [
-      { icon: faBook, title: 'Team knowledge', text: 'Documents and PDFs agents can read and cite, per project.' },
-      { icon: faMagnifyingGlass, title: 'Search that understands', text: 'Find the decision, not just the keyword.' },
-      { icon: faListCheck, title: 'Boards in the loop', text: 'Work items agents can update as the conversation moves.' },
+    title: 'Give every agent the context your team already has.',
+    text: 'Threads, documents and boards live together, so answers come from your work instead of guesswork.',
+    rows: [
+      {
+        title: 'Your assistant, grounded in your work.',
+        text: 'It reads the threads, documents and boards you can see — nothing more — and answers from them.',
+        cta: 'Meet the assistant',
+        shot: assistantShot,
+      },
+      {
+        title: 'Knowledge your team can cite.',
+        text: 'Add documents and PDFs to a project, and every answer can point back to its source.',
+        cta: 'About knowledge',
+        shot: channelShot,
+      },
+      {
+        title: 'Find the decision, not the keyword.',
+        text: 'Search understands what you meant, in whichever language you asked.',
+        shot: actionsShot,
+      },
     ],
-    image: assistantShot,
-    stat: { value: '—', text: 'Metric placeholder: add a sourced figure before launch.', placeholder: true },
+    stat: { value: '—', text: 'Placeholder: add a measured, sourced figure before launch.' },
   },
   {
-    id: 'agents',
+    id: 'people',
     label: 'People',
-    title: 'People and agents, side by side.',
-    text: 'Agents join channels and DMs like colleagues — visible, named and accountable for what they post.',
-    features: [
-      { icon: faHashtag, title: 'Channels inside projects', text: 'Organisation → team → project → channel, so work has one home.' },
-      { icon: faComments, title: 'Threads and DMs', text: 'The shape of conversation your team already uses.' },
-      { icon: faVideo, title: 'Built-in calls', text: 'Video calls without leaving the workspace.' },
+    title: 'Work together like people, even when some are agents.',
+    text: 'Familiar channels, threads and DMs — with agents that show up as named, accountable colleagues.',
+    rows: [
+      {
+        title: 'Everything starts in a channel.',
+        text: 'Channels live inside teams and projects, so every conversation has an obvious home.',
+        cta: 'How channels work',
+        shot: channelShot,
+      },
+      {
+        title: 'Pick up a call without leaving the thread.',
+        text: 'Built-in video calls keep the discussion and its outcome in one place.',
+        shot: assistantShot,
+      },
+      {
+        title: 'Agents you can see and trust.',
+        text: 'Every agent has a name, an owner and a record of what it posted.',
+        shot: actionsShot,
+      },
     ],
-    image: channelShot,
-    stat: { value: '—', text: 'Metric placeholder: add a sourced figure before launch.', placeholder: true },
-    reverse: true,
+    quote: true,
   },
   {
     id: 'work',
     label: 'Work',
-    title: 'Hand off the routine. Keep the judgement.',
-    text: 'Triggers, schedules and work distribution move tasks forward — and approval gates keep people in charge.',
-    features: [
-      { icon: faBolt, title: 'Triggers and schedules', text: 'Run agents on a timer or when something happens.' },
-      { icon: faBriefcase, title: 'Work distribution', text: 'Route tasks to the right person or agent.' },
-      { icon: faClipboardCheck, title: 'Approvals', text: 'A clear yes before anything leaves the building.' },
+    title: 'Move the routine work without losing the judgement.',
+    text: 'Triggers, schedules and work distribution keep tasks moving; approval gates keep people in charge.',
+    rows: [
+      {
+        title: 'Triggers and schedules for anyone.',
+        text: 'Run an agent on a timer or when something happens — no scripts needed.',
+        cta: 'About triggers',
+        shot: actionsShot,
+      },
+      {
+        title: 'Hand work to the right person or agent.',
+        text: 'Work distribution routes tasks and keeps track of who has what.',
+        shot: channelShot,
+      },
+      {
+        title: 'A person approves anything that matters.',
+        text: 'Approval gates pause sensitive actions until someone says yes.',
+        shot: assistantShot,
+      },
     ],
-    image: actionsShot,
-    stat: { value: '—', text: 'Metric placeholder: add a sourced figure before launch.', placeholder: true },
+    stat: { value: '—', text: 'Placeholder: add a measured, sourced figure before launch.' },
   },
   {
     id: 'control',
     label: 'Control',
-    title: 'Your servers. Your rules. Your data in Europe.',
-    text: 'Host Nessie yourself, sign in through your own SSO, and see exactly what every agent did and what it cost.',
-    features: [
-      { icon: faServer, title: 'Self-hosted', text: 'Run your own instance; free for internal use.' },
-      { icon: faUserShield, title: 'RBAC and audit trail', text: 'Roles, scopes and a record of every action.' },
-      { icon: faCoins, title: 'Token-cost ledger', text: 'Attribute agent spend to teams and projects.' },
+    title: 'Self-hosted. Auditable. Yours.',
+    text: 'Run Nessie on your own infrastructure and see exactly what happened, who approved it and what it cost.',
+    rows: [
+      {
+        title: 'Run it where your data should live.',
+        text: 'Host Nessie on infrastructure you choose — free for your organisation’s internal use.',
+        cta: 'Hosting guide',
+        shot: channelShot,
+      },
+      {
+        title: 'Sign in through your own SSO.',
+        text: 'Organisations, teams and members come from your identity provider, never a second copy.',
+        shot: assistantShot,
+      },
+      {
+        title: 'Know what every agent did and what it cost.',
+        text: 'An audit trail and a token-cost ledger attribute every action and every euro.',
+        shot: actionsShot,
+      },
     ],
-    image: assistantShot,
-    stat: { value: '2 yrs', text: 'after each release, its code converts to Apache 2.0 under FSL-1.1-ALv2.' },
-    reverse: true,
+    quote: true,
   },
 ]
 
-export const facts = [
-  { value: '4', text: 'levels of structure: organisation, team, project, channel' },
-  { value: '100%', text: 'self-hostable on infrastructure you choose' },
-  { value: 'EU', text: 'built in Europe, for teams who care where data lives' },
-  { value: 'Any', text: 'language — intent is understood, not keyword-matched' },
-]
+export const quotePlaceholder = {
+  text: 'Customer quote placeholder — replace with a real, approved testimonial.',
+  who: 'Name, role, organisation',
+}
 
-export const quotes = [
-  { text: 'Customer quote placeholder — replace with a real, approved testimonial.', who: 'Name, Role, Company' },
-  { text: 'Customer quote placeholder — replace with a real, approved testimonial.', who: 'Name, Role, Company' },
-]
+export const stories = {
+  title: 'Teams that run on Nessie',
+  cards: Array.from({ length: 4 }, (_, i) => ({
+    title: `Customer story ${i + 1} — placeholder`,
+    text: 'Replace with a real, approved case study.',
+  })),
+}
 
-export const resources = [
-  { icon: faBook, kind: 'Docs', title: 'Nessie on GitHub: README and docs', cta: 'Read the docs', href: docsUrl },
-  { icon: faServer, kind: 'Guide', title: 'Deploy Nessie on your own servers', cta: 'Start hosting', href: docsUrl },
-  { icon: faUserShield, kind: 'Licence', title: 'What FSL-1.1-ALv2 lets you do', cta: 'Read the licence', href: docsUrl },
-  { icon: faGlobe, kind: 'Product', title: 'Why a European alternative matters', cta: 'Coming soon', href: '#top' },
-]
+export const statsBand = {
+  title: 'Built for organisations that want to own their tools.',
+  stats: [
+    { value: '4', label: 'levels of structure: organisation, team, project and channel' },
+    { value: 'Free', label: 'to self-host for your organisation’s internal use' },
+    { value: '2 yrs', label: 'until each release becomes Apache 2.0 under FSL-1.1-ALv2' },
+  ],
+}
+
+export const love = {
+  title: 'Why teams choose Nessie.',
+  facts: [
+    { value: 'EU', label: 'designed and built in Europe' },
+    { value: 'Any', label: 'language understood, slang and typos included' },
+    { value: 'MCP', label: 'standard connectors for agent tools' },
+    { value: 'iOS', label: 'native iPhone and iPad apps' },
+  ],
+  ratingPlaceholder: 'Review-site rating placeholder — add only a verified rating.',
+}
+
+export const promos = {
+  title: 'Learn more about Nessie',
+  items: [
+    { icon: faBook, kind: 'Guide', title: 'Moving your team from another chat tool', cta: 'Read more', href: docsUrl },
+    { icon: faServer, kind: 'Docs', title: 'Self-hosting Nessie, step by step', cta: 'Read the docs', href: docsUrl },
+    { icon: faUserShield, kind: 'Licence', title: 'What FSL-1.1-ALv2 lets you do', cta: 'Learn more', href: docsUrl },
+    { icon: faClipboardCheck, kind: 'Product', title: 'How approval gates keep agents accountable', cta: 'Learn more', href: docsUrl },
+  ],
+}
+
+export const finalCta = { title: 'See what your team can do with Nessie.' }
 
 export const footerColumns = [
   { title: 'Product', links: ['Channels', 'Agents', 'Knowledge', 'Calls', 'Apps'] },
-  { title: 'Platform', links: ['Self-hosting', 'SSO', 'Security', 'MCP connectors', 'Licence'] },
-  { title: 'Company', links: ['About', 'Blog', 'Careers', 'Contact'] },
+  { title: 'Why Nessie', links: ['Self-hosting', 'Security', 'SSO', 'Licence'] },
+  { title: 'Resources', links: ['Docs', 'Changelog', 'Guides', 'Support'] },
+  { title: 'Company', links: ['About', 'Careers', 'Contact', 'Press'] },
 ]
+
+export const legalLinks = ['Privacy', 'Terms', 'Cookie policy']

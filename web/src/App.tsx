@@ -1,17 +1,7 @@
-import { Fragment } from 'react'
-import { pillars } from './home/content'
-import {
-  AgentsIntro,
-  Facts,
-  FinalCta,
-  Footer,
-  Header,
-  Hero,
-  PillarSection,
-  Quote,
-  Resources,
-  Updates,
-} from './home/sections'
+import { AiBand, Pillars, WhatsNew } from './home/blocks'
+import { FinalCta, Footer, Love, Promos, StatsBand, Stories } from './home/closing'
+import { CookieBar, Header } from './home/header'
+import { Hero } from './home/hero'
 
 export function App() {
   return (
@@ -19,20 +9,17 @@ export function App() {
       <Header />
       <main>
         <Hero />
-        <AgentsIntro />
-        <Updates />
-        {pillars.map((pillar, i) => (
-          <Fragment key={pillar.id}>
-            <PillarSection pillar={pillar} />
-            {i === 1 && <Quote index={0} />}
-          </Fragment>
-        ))}
-        <Quote index={1} />
-        <Facts />
-        <Resources />
+        <AiBand />
+        <WhatsNew />
+        <Pillars />
+        <Stories />
+        <StatsBand />
+        <Love />
+        <Promos />
         <FinalCta />
       </main>
       <Footer />
+      <CookieBar />
     </>
   )
 }
