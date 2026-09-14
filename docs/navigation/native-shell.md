@@ -198,7 +198,8 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   or *Dark* posts the message; `mobile/src/lib/native-app-icon.ts` guards it
   and `App.tsx` calls `setAlternateIconName`, then publishes the icon actually
   in effect back as `nessie:native-app-icon` (retained on
-  `window.__nessieNativeAppIcon`). The panel shows that answer, not the tap.
+  `window.__nessieNativeAppIcon`, which the shell-info script also sets on
+  every load). The panel shows that answer, not the tap.
   The dark set is compiled into the asset catalog as `AppIconDark` by
   `mobile/plugins/with-dark-app-icon.js`. Every icon and favicon is generated
   from one geometry by `assets/logo/generate.py`.

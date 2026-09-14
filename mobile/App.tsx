@@ -68,7 +68,12 @@ import {
   startNativeVoiceCall,
 } from './modules/nessie-voice-call'
 import { nativeVoiceCallStateScript } from './src/lib/native-voice-call'
-import { getAppIcon, isAppIconSwitchAvailable, setAppIcon } from './modules/nessie-app-icon'
+import {
+  getAppIcon,
+  isAppIconSwitchAvailable,
+  setAppIcon,
+  type AppIconVariant,
+} from './modules/nessie-app-icon'
 import { nativeAppIconScript } from './src/lib/native-app-icon'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
@@ -267,17 +272,16 @@ const Shell = (): React.JSX.Element => {
     return () => subscription?.remove()
   }, [runScript])
 
-  // The icon in effect is republished on every load, so Appearance settings
-  // show the real one after a reload or an icon change made elsewhere.
-  useEffect(() => {
-    if (!isAppIconSwitchAvailable()) return
-    runScript(nativeAppIconScript(getAppIcon()))
-  }, [runScript])
-
-  const changeAppIcon = useCallback((icon: 'light' | 'dark'): void => {
+  // Held in state so every later page load is told the icon in effect through
+  // the shell info, not only the page that asked for the change.
+  const [appIcon, setAppIconState] = useState(() => (isAppIconSwitchAvailable() ? getAppIcon() : null))
+  const changeAppIcon = useCallback((icon: AppIconVariant): void => {
     void setAppIcon(icon)
       .catch(() => getAppIcon())
-      .then((applied) => runScript(nativeAppIconScript(applied)))
+      .then((applied) => {
+        setAppIconState(applied)
+        runScript(nativeAppIconScript(applied))
+      })
   }, [runScript])
 
   const flushExternalAuthDelivery = useCallback((): void => {
@@ -320,7 +324,7 @@ const Shell = (): React.JSX.Element => {
   // layout without relying on a reload.
   useEffect(() => {
     runScript(nativeShellInfoScript({
-      appIcon: isAppIconSwitchAvailable(),
+      appIcon,
       bottomInset: insets.bottom,
       clientId: pushSurfaceClientId.current,
       formFactor: nativeFormFactor,
@@ -328,7 +332,7 @@ const Shell = (): React.JSX.Element => {
       platform: Platform.OS,
       voiceCall: isNativeVoiceCallAvailable(),
     }))
-  }, [insets.bottom, nativeFormFactor, pendingPushPath, runScript])
+  }, [appIcon, insets.bottom, nativeFormFactor, pendingPushPath, runScript])
   const sourceUri = bootRecovery.reloadNonce === 0
     ? ADMIN_URL
     : (() => {
@@ -600,6 +604,7 @@ const Shell = (): React.JSX.Element => {
 
       <View style={webviewLayerStyle}>
         <MobileAdminWebView
+          appIcon={appIcon}
           backgroundColor={bg}
           bottomInset={insets.bottom}
           formFactor={nativeFormFactor}

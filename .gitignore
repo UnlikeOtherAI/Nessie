@@ -60,3 +60,5 @@ infrastructure/terraform/*.tfvars
 infrastructure/terraform/*.tfstate
 infrastructure/terraform/*.tfstate.*
 infrastructure/terraform/*.tfplan
+
+__pycache__/

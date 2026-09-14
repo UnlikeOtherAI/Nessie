@@ -22,7 +22,7 @@ const scriptBuilders: ReadonlyArray<{ name: string; script: () => string }> = [
   {
     name: 'nativeShellInfoScript',
     script: () => nativeShellInfoScript({
-      appIcon: true,
+      appIcon: null,
       bottomInset: 0,
       clientId: 'client-id',
       formFactor: 'phone',
