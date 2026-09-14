@@ -41,6 +41,11 @@ export type NativeShellPresentation = {
   inactive: string
   listColumn: NativeListColumn | null
   nativeAccount: NativeAccount
+  /**
+   * The latest `theme` came from the admin's own chrome palette, which already
+   * reflects focus mode, so the shell's fallback focus palette must not apply.
+   */
+  pageOwnsChrome: boolean
   phoneHeaderSurface: string
   phoneHeaderText: string
   phoneOnAccent: string
@@ -64,6 +69,7 @@ export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   inactive: '#8a8f98',
   listColumn: null,
   nativeAccount: { avatarUrl: null, focusModeEnabled: false, name: null, presence: 'offline', statusEmoji: null },
+  pageOwnsChrome: false,
   phoneHeaderSurface: '#2b2018',
   phoneHeaderText: '#fffdf8',
   phoneOnAccent: '#fffdf8',
@@ -121,6 +127,7 @@ export const reduceNativeShellPresentation = (
       accent: optionalText(message.accent) ?? current.accent,
       chromeSurface: optionalText(message.surface) ?? current.chromeSurface,
       inactive: optionalText(message.inactive) ?? current.inactive,
+      pageOwnsChrome: message.chromeSource === 'page',
       phoneHeaderSurface: optionalText(message.headerSurface) ?? current.phoneHeaderSurface,
       phoneHeaderText: optionalText(message.headerText) ?? current.phoneHeaderText,
       phoneOnAccent: optionalText(message.onAccent) ?? current.phoneOnAccent,

@@ -163,6 +163,10 @@ export const buildSpaceViewerPrincipal = (
 // user belongs to. The personal assistant acts as its owner, so this is also its
 // reach — the same channels the owner can see, never a private channel the owner
 // was not admitted to.
+//
+// The result carries a top-level `OR`. Never spread it into a where clause that
+// adds its own `OR` — the later key silently replaces the visibility rule.
+// Combine with other predicates through `AND: [buildVisibleChannelWhere(...), …]`.
 export const buildVisibleChannelWhere = (
   organizationId: string,
   userId: string,

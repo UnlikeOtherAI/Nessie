@@ -9,6 +9,7 @@ import {
   getProjectTask,
   isProjectTaskTransitionValid,
   listAssignableProjectTaskUsers,
+  listBoardTasks,
   listProjectTasks,
   searchProjectTasks,
   moveProjectTaskToColumn,
@@ -50,6 +51,29 @@ export const listTasks = async (
     task,
   })))
   return readable.filter(({ readable }) => readable).map(({ task }) => task)
+}
+
+/**
+ * A board's placed task list, as this viewer may read it. A run-derived task
+ * retains its run's prompt, so it takes the same disclosure decision as
+ * `listTasks` and `getTask`: a row the viewer may not read is left out, exactly
+ * as the task list leaves it out, rather than rendered as a card.
+ * `truncated` still describes the board's own pool.
+ */
+export const listBoardTasksForUser = async (
+  prisma: PrismaClient,
+  board: Parameters<typeof listBoardTasks>[1],
+  options: Parameters<typeof listBoardTasks>[2],
+  viewer: {
+    organizationId: string
+    userId: string
+    uoaIdentity: UoaSessionIdentity | undefined
+  },
+) => {
+  const { tasks, truncated } = await listBoardTasks(prisma, board, options)
+  const readable = await Promise.all(tasks.map((task) =>
+    canUserReadRunDerivedRecord(prisma, { ...viewer, runId: task.runId })))
+  return { tasks: tasks.filter((_, index) => readable[index]), truncated }
 }
 
 export const getTask = async (

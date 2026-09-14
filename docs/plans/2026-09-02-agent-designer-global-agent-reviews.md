@@ -5,7 +5,7 @@ This appendix keeps the review record, open question, and adjacent defects for
 
 ## Cross-model review (2026-09-02)
 
-Kimix (14 findings) and Codex Sol (22 findings) reviewed the same revision
+Reviewer B (14 findings) and Codex Sol (22 findings) reviewed the same revision
 independently; both verdicts were "not implementation-ready", and every adopted
 claim was re-verified against code before the revision that answered it. Each
 finding below is now built, and the design decision it changed is stated in the
@@ -22,7 +22,7 @@ because the PUT body carries `ownerUserId` and `todosEnabled`; the handoff
 needed a real loop bound (a per-requester cooldown row, withheld from global
 agents and subtask children).
 
-**Kimix:** the channel-surface CHECK violation twin; the five `agentKind`-keyed
+**Reviewer B:** the channel-surface CHECK violation twin; the five `agentKind`-keyed
 delegation sites re-keyed onto one predicate; delegated reads feeding the
 disclosure sink; the handoff-basis subtraction, without which the Designer is
 silenced in its own DM; the `systemSlug` CHECK requiring `organizationId`; the

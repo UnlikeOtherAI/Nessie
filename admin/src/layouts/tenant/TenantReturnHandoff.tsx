@@ -9,6 +9,7 @@ import {
   rememberTenantReturn,
   TENANT_RETURN_PARAM,
 } from '../../lib/tenant-return'
+import { isNativeShell, tenantReturnDestination } from '../../lib/tenant-navigation'
 
 /**
  * The two ends of the tenant sign-in round trip. Renders nothing.
@@ -69,15 +70,17 @@ export const TenantReturnHandoff = () => {
     // this key, so the stored value is only as suspect as this origin itself —
     // but the check costs nothing and removes the assumption that whatever put
     // it there validated it.
-    const target = parseTenantReturn(stored, window.location.origin)?.href
-    if (!target) {
-      forgetTenantReturn()
-      return
-    }
+    //
+    // A native shell drops it instead of following: its bridge works only on
+    // the canonical origin it is already on (lib/tenant-navigation.ts).
+    const target = tenantReturnDestination({
+      inNativeShell: isNativeShell(),
+      target: parseTenantReturn(stored, window.location.origin)?.href ?? null,
+    })
     // Consume it first: if the navigation is interrupted, a stale address must
     // not hijack the next sign-in in this tab.
     forgetTenantReturn()
-    window.location.assign(target)
+    if (target) window.location.assign(target)
   }, [sessionState])
 
   return null

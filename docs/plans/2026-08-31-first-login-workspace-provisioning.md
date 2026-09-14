@@ -1,10 +1,10 @@
 # First-login workspace provisioning, self-serve team creation, and the end of local identity mirrors
 
-**Status: v2 — revised after two independent adversarial reviews (Kimix,
+**Status: v2 — revised after two independent adversarial reviews (reviewer B,
 Codex Sol; both reviewed v1 against both codebases, findings adjudicated
 claim-by-claim, convergent findings folded, three spot-verified in source).
 Review artifacts:
-[review-kimix](2026-08-31-first-login-workspace-provisioning-review-kimix.md),
+[review-b](2026-08-31-first-login-workspace-provisioning-review-b.md),
 [review-sol](2026-08-31-first-login-workspace-provisioning-review-sol.md).**
 
 One sentence: a brand-new SSO user who signs in to Nessie with no UOA
@@ -56,7 +56,7 @@ this — Nessie only relays, projects, and renders.
 ### A1. First-login auto-provisioning (org + "General" team)
 
 Mechanism: `auto_create_personal_org_on_first_login` for the Nessie domain,
-**after** these fixes (Kimix 4, Sol 6, Sol 7, Kimix 19/Sol 21):
+**after** these fixes (Review B 4, Sol 6, Sol 7, Review B 19/Sol 21):
 
 - `autoCreatePersonalOrgForUser` takes the canonical per-user/domain
   advisory lock (the one `user-team-requirement.service.ts:34-50` already
@@ -78,13 +78,13 @@ Mechanism: `auto_create_personal_org_on_first_login` for the Nessie domain,
   loses to "General".)
 - **Naming:** org name for a user with no asserted name is a neutral
   default ("My organisation"), never derived from the email address — the
-  org name is user-visible to future co-members (PII, Kimix 19/Sol 21).
+  org name is user-visible to future co-members (PII, Review B 19/Sol 21).
   Named users keep "<name>'s organisation" / team "General".
 - `pending_invites_block_auto_create` stays `true`.
 
 ### A2. Consolidate the creation paths (not just their outcomes)
 
-Five paths write five role outcomes today. Consolidation (Kimix 29, Sol 11):
+Five paths write five role outcomes today. Consolidation (Review B 29, Sol 11):
 
 - One `createOrganisationWithOwner` service used by the public route, the
   hosted `/auth/create-workspace`, the admin route, and A1's auto-creator.
@@ -113,7 +113,7 @@ Five paths write five role outcomes today. Consolidation (Kimix 29, Sol 11):
   history records why (the index replaced a racy trigger; the new trigger
   counts under the same lock the writers now hold, which the old one did
   not).
-- **Assumption audit ships in the same change** (Kimix 11, Sol 2): every
+- **Assumption audit ships in the same change** (Review B 11, Sol 2): every
   consumer in UOA and Nessie that encodes "one membership on this domain ⇒
   the organisation is unambiguous" — `resolveExternalWorkspaceSelection`'s
   sole-team fallback, UOA's session-choices/refresh active-org selection,
@@ -126,14 +126,14 @@ Five paths write five role outcomes today. Consolidation (Kimix 29, Sol 11):
   policy. Filtering the probe to ACTIVE alone would just move the failure
   to the unique constraint.
 - Nessie-side copy: `UoaInvitationOrgConflictError` handling and invite UI
-  copy revised in the same change (Kimix 18).
+  copy revised in the same change (Review B 18).
 
 ### A4. `/org/me` carries onboarding state — as a NEW block
 
 - A separate top-level `onboarding` block (`{ can_create_org,
   pending_invites }`) is returned when the user has no org context; the
   `org` block keeps its exact current meaning — present ⇒ real ACTIVE
-  context (Sol 10; "additive" v1 framing was wrong, Kimix 14 concurs).
+  context (Sol 10; "additive" v1 framing was wrong, Review B 14 concurs).
 - Pending invites for a zero-org user cannot be read through the current
   `/org/me` transaction — RLS `team_invites_select` requires `app.org_id`
   (Sol 9). The lookup is a narrowly-scoped SECURITY DEFINER function (or
@@ -158,8 +158,8 @@ noted it was unverifiable from the reviewed baseline — it is now in-tree.)
 The exchange refusal stays. `EXTERNAL_AUTH_FAILED` for the specific
 no-workspace case becomes `UOA_NO_WORKSPACE` with static remedy copy on the
 login screen — identical for every zero-workspace cause, revealing nothing
-about account existence or invites (Kimix 20). **Ships before A1's flag
-flip** (Kimix 13, Sol 12): it is the failure handling for the rollout
+about account existence or invites (Review B 20). **Ships before A1's flag
+flip** (Review B 13, Sol 12): it is the failure handling for the rollout
 window, and A1's placement is self-healing per login attempt so a user who
 hits the window is unblocked on retry. Implementation is a structural
 classification of the exchange result — never string-matching the upstream
@@ -167,7 +167,7 @@ error message.
 
 ### B2. "New workspace" — UOA-hosted chooser flow, no Nessie relay
 
-v1's backend-mode relay is **dropped** (Kimix 17 + 1/5/9/12/27, Sol 3/4/5:
+v1's backend-mode relay is **dropped** (Review B 17 + 1/5/9/12/27, Sol 3/4/5:
 backend mode has no acting-user concept — `resolveAndAuthorizeTeamOrg`
 returns unchecked with no actor — so the relay was a confused deputy with a
 cross-tenant write hole, plus a create/switch propagation race). Instead:
@@ -211,12 +211,12 @@ System-managed teams (PA, external agents, standalone channels) untouched.
   contract note and stripped there in the same change.
 - Heal `Team.name` from the UOA workspace label wherever org names heal
   today — **both** the directory read and the switch/login paths (Sol 13) —
-  which the Part D green field makes load-bearing on day one (Kimix 15):
+  which the Part D green field makes load-bearing on day one (Review B 15):
   every post-cleanup team name starts as the `Workspace <id8>` placeholder.
 
 ## Part C — Remove the last duplicated identity data
 
-The verified consumer inventory (Kimix 21-23, Sol 15-16) reframes this from
+The verified consumer inventory (Review B 21-23, Sol 15-16) reframes this from
 "drop two columns" to a staged migration with named hot paths:
 
 ### C0. Consumer inventory (the contract of this part)
@@ -254,7 +254,7 @@ The verified consumer inventory (Kimix 21-23, Sol 15-16) reframes this from
    resolution pass with no candidate source raises a visible worker log
    metric ("a capability that can stop working owns the way a person finds
    out").
-4. No-name contract (Kimix 24): for a user whose claims carry no name the
+4. No-name contract (Review B 24): for a user whose claims carry no name the
    directory serves UOA's roster-derived label transiently; nothing
    persists it.
 
@@ -266,7 +266,7 @@ The verified consumer inventory (Kimix 21-23, Sol 15-16) reframes this from
 - Adoption bridge: unchanged single-shot semantics; a *second* pre-SSO
   account with the same email fails closed with a **named refusal and
   remedy copy** (`LEGACY_ACCOUNT_AMBIGUOUS` — contact the operator), not a
-  silent dead end (Kimix 24).
+  silent dead end (Review B 24).
 - Wire contracts: each C0 email field gets an explicit decision — `MeResponse`
   hydrates from the session's verified claims; `UserRecord.email` becomes
   optional and hydrates from the roster relay for UOA orgs; project-member

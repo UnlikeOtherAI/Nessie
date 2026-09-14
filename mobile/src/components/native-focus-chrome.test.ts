@@ -67,6 +67,33 @@ test('focus mode leaves the page-supplied background alone', () => {
   assert.equal(applyNativeFocusChrome(page).background, '#ffffff')
 })
 
+// A current admin resolves focus into the palette it publishes; re-applying the
+// hard-coded fallback on top would make every theme's focus chrome a native
+// release away from changing.
+test('a page-published palette is shown as sent, focus mode included', () => {
+  const pageFocused = withFocus(
+    reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+      type: 'theme',
+      chromeSource: 'page',
+      accent: '#c0c0c4',
+      headerSurface: '#1f1f1f',
+      headerText: '#fafafa',
+      surface: '#2c2c2c',
+    }),
+    true,
+  )
+
+  assert.equal(pageFocused.pageOwnsChrome, true)
+  assert.deepEqual(applyNativeFocusChrome(pageFocused), pageFocused)
+})
+
+test('a palette without a page source still gets the fallback focus chrome', () => {
+  const legacy = withFocus(themed(), true)
+
+  assert.equal(legacy.pageOwnsChrome, false)
+  assert.equal(applyNativeFocusChrome(legacy).phoneHeaderSurface, NATIVE_FOCUS_CHROME.phoneHeaderSurface)
+})
+
 test('the focus chrome palette never carries a background of its own', () => {
   assert.equal('background' in NATIVE_FOCUS_CHROME, false)
 })

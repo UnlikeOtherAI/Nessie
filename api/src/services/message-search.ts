@@ -43,7 +43,6 @@ export const searchMessages = async (
   input: {
     organizationId: string
     userId: string
-    isOwner: boolean
     query: string
     channelId?: string
     senderId?: string
@@ -54,14 +53,21 @@ export const searchMessages = async (
 ): Promise<MessageSearchResult[]> => {
   const limit = Math.min(input.limit ?? 25, 100)
 
-  // Channels the caller can see — public, or ones they are a member of. Owners
-  // see every channel in the organization.
+  // Search reach is the same for every role, organisation and team owners and
+  // admins included: public standard channels, plus the conversations the
+  // searcher is a member of. A direct message or a system room (Personal
+  // Assistant, agent mailbox, external agent) is participant-only even when its
+  // visibility column says public. Owners used to skip this filter entirely,
+  // which returned snippets from other people's DMs and assistant rooms.
+  // The channel read predicate (`getVisibleChannel`, api/src/lib/request-helpers.ts)
+  // must stay aligned with this rule.
   const channels = await prisma.channel.findMany({
     where: {
       organizationId: input.organizationId,
-      ...(input.isOwner
-        ? {}
-        : { OR: [{ visibility: 'public' }, { members: { some: { userId: input.userId } } }] }),
+      OR: [
+        { type: 'standard', systemChannelType: null, visibility: 'public' },
+        { members: { some: { userId: input.userId } } },
+      ],
       ...(input.channelId ? { id: input.channelId } : {}),
     },
     select: { id: true },

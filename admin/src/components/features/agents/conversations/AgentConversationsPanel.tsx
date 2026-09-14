@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import type { AgentRecord } from '../../../../lib/api-client'
@@ -26,6 +26,20 @@ import { focusComposerState } from './conversation-intent'
  * person sizes them for different things.
  */
 const CONVERSATIONS_PANEL_WIDTH_STORAGE_KEY = 'nessie.agentConversationsPanelWidth'
+
+/**
+ * What the button says when it hands back the conversation you already have.
+ *
+ * The server refuses to stack a second empty conversation
+ * (`startAgentConversation` → `reused`), and a refusal nobody can read is a
+ * button that looks broken — so the row blinks and this says why, in the
+ * agent's own voice.
+ */
+const EMPTY_CONVERSATION_NUDGE =
+  'This one is still empty — try talking to me here first.'
+
+/** How long the nudge stands before the column goes quiet again. */
+const NUDGE_VISIBLE_MS = 8_000
 
 /**
  * The agent avatar inside a `sm` strip item (26px tall): large enough to be a
@@ -94,6 +108,19 @@ export const AgentConversationsPanel = ({
   })
   const startConversation = useStartAgentConversation()
   const [startError, setStartError] = useState<string | null>(null)
+  /**
+   * The conversation the button just pointed back at, and which press pointed
+   * at it. The `press` count is what restarts the blink: pressing again on the
+   * same conversation re-keys its row, so the animation plays from the top
+   * instead of standing still on a class that never changed.
+   */
+  const [nudge, setNudge] = useState<{ conversationId: string; press: number } | null>(null)
+
+  useEffect(() => {
+    if (!nudge) return undefined
+    const timer = window.setTimeout(() => setNudge(null), NUDGE_VISIBLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [nudge])
 
   // On a single-column layout the panel is a route and the router owns Back;
   // this registration is for the layouts in between — a narrow tablet, where
@@ -128,6 +155,22 @@ export const AgentConversationsPanel = ({
           )
         },
         onSuccess: (result) => {
+          // Nothing was opened: this person's last conversation here has still
+          // had nothing said in it, and that is the one that came back. Blink
+          // its row and say so — a press that quietly did nothing would read
+          // as a broken button.
+          if (result.reused) {
+            setNudge((previous) => ({
+              conversationId: result.conversation.id,
+              press: (previous?.press ?? 0) + 1,
+            }))
+          } else {
+            setNudge(null)
+          }
+          // Already standing in it — the press before this one brought them
+          // here — so there is nowhere to go and no second history entry to
+          // leave behind on the way.
+          if (result.conversation.id === activeThreadId) return
           // The reader is here to say the first thing, so the composer takes
           // the caret on arrival (`conversation-intent.ts`).
           void navigate(conversationPath(result.conversation), { state: focusComposerState() })
@@ -204,12 +247,24 @@ export const AgentConversationsPanel = ({
             {startError}
           </Notice>
         ) : null}
+        {nudge ? (
+          <Notice
+            className="mt-2"
+            data-testid="empty-conversation-nudge"
+            role="status"
+            size="sm"
+            tone="info"
+          >
+            {EMPTY_CONVERSATION_NUDGE}
+          </Notice>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <AgentConversationList
           activeChannelId={activeChannelId}
           activeThreadId={activeThreadId}
           agentId={agent.id}
+          flash={nudge}
           refetchInterval={openListCadence}
         />
       </div>

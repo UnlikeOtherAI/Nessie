@@ -67,7 +67,8 @@ sentence changes only if the invariant itself did.
   same fixed ports. It brings up its own scripted inference endpoint
   (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
   reads that server's request log. It covers the DM rail, two isolated
-  conversations named by their first message, the rename doorway, an ordinary
+  conversations named by their first message, the one-empty-at-a-time rule
+  behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip; two assertions
   deliberately pin known gaps and say so in their own message.
 - **Browser Cloud usability coverage:** run

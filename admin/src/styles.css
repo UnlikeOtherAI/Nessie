@@ -444,7 +444,11 @@ a {
 :where([data-theme="nessie"]) .admin-frame > .admin-shell > .resizable-sidebar,
 :where([data-theme="nessie"]) .mobile-web-home-header,
 :where([data-theme="nessie"]) .mobile-tabbar,
+:where([data-theme="nessie"]) .admin-frame > .native-chrome-palette,
 :where([data-theme="nessie"]) aside[class~='bg-[color:var(--sb)]']:not(.focus-mode *):not(.overlays-focus-mode *) {
+  /* The chrome is dark; the native shell reads this scheme (and every token
+     here) off `.native-chrome-palette` to set its status bar. */
+  color-scheme: dark;
   --rail: #0b172a;
   /* A step lighter than the rail and warmed toward violet, so the section
      rail and the list it opens read as two planes. */
@@ -496,7 +500,8 @@ a {
    messages into another source of visual noise. */
 .focus-mode > .admin-topbar,
 .focus-mode > .admin-shell > aside,
-.focus-mode > .admin-shell > .resizable-sidebar {
+.focus-mode > .admin-shell > .resizable-sidebar,
+.focus-mode > .native-chrome-palette {
   --rail: #242424;
   --sb: #383838;
   --sb-active: #606062;
@@ -3774,19 +3779,28 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
-/* Kanban: pulse a card three times after it lands in a column from a drag. */
-.kanban-card-pulse {
-  animation: kanban-card-pulse 0.34s ease-in-out 3;
+/*
+ * Three short pulses to point the eye at something already on screen: a kanban
+ * card that just landed in a column from a drag, the empty conversation the
+ * "New conversation" button hands back instead of opening a second one.
+ *
+ * One class rather than one per surface — it was `kanban-card-pulse`, used in
+ * exactly one place, and a second copy for the conversation row is the drift
+ * the design system exists to stop. It is a ring and nothing else: the 1.04
+ * scale it used to carry moved a full-width row far enough to give its column
+ * a horizontal scrollbar for the length of the animation, and a colour pulse
+ * is also the half of it that reduced-motion readers can keep.
+ */
+.admin-attention-pulse {
+  animation: admin-attention-pulse 0.34s ease-in-out 3;
 }
 
-@keyframes kanban-card-pulse {
+@keyframes admin-attention-pulse {
   0%,
   100% {
-    transform: scale(1);
     box-shadow: 0 0 0 0 var(--accent-soft);
   }
   50% {
-    transform: scale(1.04);
     box-shadow: 0 0 0 4px var(--accent-soft);
   }
 }

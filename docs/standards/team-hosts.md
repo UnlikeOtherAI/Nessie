@@ -65,6 +65,46 @@ Consequently:
   identity from `x-forwarded-host` still stands; the hostname arrives as an
   explicit query parameter from the client asking about itself.
 
+## The address bar follows the switch — in a browser only
+
+Every place that moves the page between tenants decides where to go through
+one module, `admin/src/lib/tenant-navigation.ts`, and must keep doing so —
+`admin/test/tenant-navigation.test.ts` pins each entry point to it:
+
+| Entry point | Browser | Native shell |
+|---|---|---|
+| `TeamSwitcher` (rail / menu switch) | team's address from `GET /api/hosts/address?teamId=` when it is a different host; otherwise in-app `/channels` | in-app `/channels`; the address is not even looked up |
+| `OrgPortal` (team picked on `<org>.<base>`) | team's address; if there is none, `signInOrigin/channels`; if neither is known, stays on the portal | `signInOrigin/channels` |
+| `TenantReturnHandoff` (stored `?return=` after sign-in) | the stored tenant address | dropped: forgotten and not followed, so the person stays on the canonical origin |
+
+**A native shell never loads a tenant hostname as its top-level document.**
+`isNativeShell()` is `isDesktopApp()` or `isReactNativeWebView()`. The desktop
+shell grants IPC only to `https://app.nessie.works/**`
+(`desktop/src-tauri/capabilities/default.json`), so a tenant hostname as its
+top-level document loses the deep-link bridge: `ExternalAuthProvider` then
+toasts "The external sign-in could not be completed." while the UI stays on the
+old team. Tenant hostnames remain unsupported as a desktop top-level document;
+widening that allowlist is a separate security decision, not a fix for this.
+A stored tenant return is dropped rather than converted into an in-app switch:
+the ids behind a return address are not known without another lookup, and the
+signed-in canonical origin is already a complete place to land.
+
+**An organisation portal never navigates in-app.** `TenantHostGate` renders
+`OrgPortal` for an organisation hostname whatever the path, so `/channels` on
+that host reloads the portal instead of opening the team.
+
+**Known gap, browsers only:** accepting an invitation
+(`admin/src/facades/team/invitations.ts`) and creating a team
+(`admin/src/facades/team/provisioning.ts`) still navigate in-app and do not
+follow the new team's address. Native shells are unaffected.
+
+**A team host does not re-switch onto the team the session is already on.**
+`TenantHostGate` compares the host's `externalOrgId`/`externalTeamId` with the
+active `me.uoaTeams` entry (`tenantTeamSwitchNeeded`) and switches only when
+they differ. A redundant `POST /api/auth/uoa/team` races the page-load refresh,
+which rotates the same refresh-cookie family, and loses with
+`TEAM_SWITCH_CONFLICT`.
+
 ## Matching a hostname is a label comparison, never a suffix test
 
 `https://design.acme.evil-nessie.works` ends with `nessie.works`. So does

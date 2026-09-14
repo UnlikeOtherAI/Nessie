@@ -30,6 +30,7 @@ import { PhoneNavigationProvider } from './admin-shell/PhoneNavigationProvider';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativeCreationBridge } from './admin-shell/NativeCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
+import { NativeChromeThemeBridge } from '../bridges/NativeChromeThemeBridge';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import {
   ResizableSidebar,
@@ -387,6 +388,7 @@ const AuthenticatedAdminShellLayout = () => {
             <ShellStateProvider value={shellState}>
                 <SkipToContentLink />
                 <div className={frameClassName} data-navigation={navigationLayout}>
+                  {nativeShell ? <NativeChromeThemeBridge /> : null}
                   {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                   {hideTopBar ? null : (
                     <TopBar

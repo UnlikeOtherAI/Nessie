@@ -2,7 +2,7 @@
 
 > Status: audit complete, 2026-08-31. Read-only; no code changed.
 > Method: Nessie claims are grounded in code (file + line). Cross-checked by
-> three parallel readers — this session, `kimix`, and `codex sol` — with every
+> three parallel readers — this session, a second model, and `codex sol` — with every
 > external claim verified against the tree before it was accepted.
 > Next step: Fable turns this into recommendations. This document states *where
 > we stand*, not what to build.
@@ -381,8 +381,8 @@ competitor's marketing until proven:
 
 ## 8. Cross-checker reconciliation
 
-Three readers ran this audit in parallel (this session + `kimix` + `codex sol`).
-`kimix` produced a full structured report; `codex sol` produced an exploration
+Three readers ran this audit in parallel (this session + a second model + `codex sol`).
+a second model produced a full structured report; `codex sol` produced an exploration
 transcript rather than a final report before it was stopped, and its
 code-grounded observations were extracted from that transcript. Every Nessie
 claim carries a code citation verified against the current tree. Where an
@@ -399,7 +399,7 @@ never written and `continuationToken` has zero consumers — re-verified, despit
 wired); no automatic model failover; no learn-by-demonstration; audit hash-chain
 shipped.
 
-Two points surfaced by `kimix` were **verified against code and folded in**: the
+Two points surfaced by a second model were **verified against code and folded in**: the
 Infisical-backed scoped secret vault (§9) and the dead `InferenceRoutingMode`
 schema (§11). Nothing in this document rests on an unverified external claim —
 the only "as-asserted, to confirm" items are the **Grok-side** benchmark claims

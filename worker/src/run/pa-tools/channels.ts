@@ -92,12 +92,19 @@ export const runChannelFindTool = async (
   const querySlug = scopedTarget?.channelSlug ?? toChannelSlug(query)
 
   const channels = (await context.prisma.channel.findMany({
+    // The visibility predicate is itself an `OR`; spreading it beside the
+    // label/slug `OR` let the second key replace the first, and the finder then
+    // named private channels the person had never joined. Both must hold.
     where: {
-      ...buildVisibleChannelWhere(organizationId, userId),
-      archivedAt: null,
-      OR: [
-        { label: { contains: query, mode: 'insensitive' } },
-        ...(querySlug ? [{ slug: { contains: querySlug, mode: 'insensitive' as const } }] : []),
+      AND: [
+        buildVisibleChannelWhere(organizationId, userId),
+        { archivedAt: null },
+        {
+          OR: [
+            { label: { contains: query, mode: 'insensitive' } },
+            ...(querySlug ? [{ slug: { contains: querySlug, mode: 'insensitive' as const } }] : []),
+          ],
+        },
       ],
     },
     orderBy: { label: 'asc' },
