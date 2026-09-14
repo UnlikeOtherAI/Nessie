@@ -88,6 +88,8 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
 
   const byCreatedAsc = <T extends { createdAt: number }>(rows: T[]): T[] =>
     [...rows].sort((a, b) => a.createdAt - b.createdAt)
+  // The shared-channel root's team; `resolveDefaultTarget` must never pick it.
+  const systemManagedTeamIds = new Set<string>()
 
   const client = {
     organization: {
@@ -263,9 +265,13 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         }
       },
       findFirst: async ({ where }: {
-        where?: { project?: { organizationId?: string } }
+        where?: { project?: { organizationId?: string }; systemManaged?: boolean }
       } = {}) => {
         const scoped = teams.filter((t) => {
+          if (
+            where?.systemManaged !== undefined
+            && systemManagedTeamIds.has(t.id) !== where.systemManaged
+          ) return false
           if (where?.project?.organizationId === undefined) return true
           const project = projects.find((p) => p.id === t.projectId)
           return project?.organizationId === where.project.organizationId
@@ -276,7 +282,13 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
       create: async ({
         data,
       }: {
-        data: { name: string; projectId: string; externalTeamId?: string; externalOrgId?: string | null }
+        data: {
+          name: string
+          projectId: string
+          externalTeamId?: string
+          externalOrgId?: string | null
+          systemManaged?: boolean
+        }
       }) => {
         const row: Team = {
           id: randomUUID(),
@@ -287,6 +299,7 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
           createdAt: tick(),
         }
         teams.push(row)
+        if (data.systemManaged) systemManagedTeamIds.add(row.id)
         return { id: row.id }
       },
     },
@@ -306,6 +319,12 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         }
         channels.push(row)
         return { id: row.id }
+      },
+      createMany: async ({ data }: { data: Array<{ teamId: string; visibility: string }> }) => {
+        for (const row of data) {
+          channels.push({ id: randomUUID(), teamId: row.teamId, visibility: row.visibility, createdAt: tick() })
+        }
+        return { count: data.length }
       },
     },
     organizationMember: {
@@ -474,6 +493,7 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
     client: client as unknown as PrismaClient,
     defaultTeamId,
     state: {
+      systemManagedTeamIds,
       orgs,
       users,
       projects,
@@ -527,8 +547,14 @@ test('auto-provisions the per-UOA-org Organization and its team', async () => {
   // first-materializer rule — the local row is a projection, not a local grant.
   assert.equal(state.teamMembers.find((m) => m.teamId === ctx!.teamId)?.role, 'member')
   // A #general channel is created and the user joins it.
-  assert.equal(state.channels.length, 1)
+  assert.equal(state.channels.filter((c) => c.teamId === ctx!.teamId).length, 1)
   assert.equal(state.channelMembers.length, 1)
+  // The brand-new Organization's shared #general and #random arrive with it:
+  // public and memberless, in the system-managed channel root.
+  assert.equal(
+    state.channels.filter((c) => state.systemManagedTeamIds.has(c.teamId)).length,
+    2,
+  )
   // A brand-new Organization gets the default policy rules (deny-by-default
   // engine), scoped to exactly that org.
   assert.ok(state.policyRules.length > 0)
@@ -600,7 +626,7 @@ test('two different teams resolve to two different Nessie teams (isolated enviro
   assert.ok(backend && design)
   assert.notEqual(backend!.teamId, design!.teamId)
   assert.notEqual(backend!.projectId, design!.projectId)
-  assert.equal(state.teams.length, 2)
+  assert.equal(state.teams.filter((t) => !state.systemManagedTeamIds.has(t.id)).length, 2)
 })
 
 test('the same team resolves to the same team for a second user (shared environment)', async () => {
@@ -612,7 +638,7 @@ test('the same team resolves to the same team for a second user (shared environm
 
   assert.ok(first && second)
   assert.equal(first!.teamId, second!.teamId)
-  assert.equal(state.teams.length, 1)
+  assert.equal(state.teams.filter((t) => !state.systemManagedTeamIds.has(t.id)).length, 1)
   // Both users are members of the one team team.
   assert.equal(state.teamMembers.filter((m) => m.teamId === first!.teamId).length, 2)
 })

@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { ensureSharedChannelRootInTransaction } from '@nessie/team-admin'
 
 import type { UoaTeamDirectoryEntry } from './uoa-team-directory.js'
 
@@ -56,13 +57,15 @@ export const materializeExternalOrganizationInTransaction = async (
   if (existing) {
     return existing
   }
-  return transaction.organization.create({
+  const created = await transaction.organization.create({
     data: {
       externalOrgId,
       name: externalOrganizationPlaceholderName(externalOrgId),
     },
     select: { id: true },
   })
+  await ensureSharedChannelRootInTransaction(transaction, created.id)
+  return created
 }
 
 /**

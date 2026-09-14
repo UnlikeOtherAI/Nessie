@@ -167,6 +167,23 @@ at**, which under the model above is one team's body of work:
 - The two namespaces are independent. `#general` may exist as a shared channel
   *and* in every project; twice inside one of them, never.
 
+**Channel names are lowercase, seeds included.** A seed that writes a channel
+row directly (`createTeamEnvironment`, the bootstrap plan) bypasses
+`validateChannelLabel`, so it must write the slug form itself — `general`,
+never `General`. Project and team names are display names and keep their case.
+
+**Every organisation starts with shared `#general` and `#random`.**
+`ensureSharedChannelRootInTransaction`
+([packages/team-admin/src/channel-create.ts](../../packages/team-admin/src/channel-create.ts))
+creates both, public and memberless, in the same transaction that creates the
+organisation's `channelRoot` project, and it is called where an organisation is
+created (`materializeExternalOrganizationInTransaction`, the bootstrap seed).
+They are seeded once, keyed on the root's existence, never on the channels'
+existence — so a person who deletes (archives) one keeps it deleted. Do not add
+a "re-create if missing" check anywhere; it would resurrect deleted channels.
+Migration `20260914120000_default_shared_channels` backfilled organisations
+that predate this, seeding only roots that had never held a standard channel.
+
 **An archived channel does not hold its name.** `DELETE /api/channels/:id`
 archives rather than hard-deletes, and every list a person can see hides
 archived channels — so before this, deleting `#random` left no trace except the

@@ -66,6 +66,7 @@ const makeFake = (seed: {
     }
   const client = {
     $queryRaw: async () => (record('$queryRaw'), []),
+    $executeRaw: async () => (record('$executeRaw'), 0),
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
     organization: {
       findFirst: async () => (record('organization.findFirst'), state.orgs[0] ?? null),
@@ -174,6 +175,12 @@ const makeFake = (seed: {
         const row = { id: randomUUID(), ...data }
         state.channels.push(row)
         return row
+      },
+      // The organisation's default shared channels, seeded with its root.
+      createMany: async ({ data }: { data: Row[] }) => {
+        record('channel.createMany')
+        state.channels.push(...data.map((row) => ({ id: randomUUID(), ...row })))
+        return { count: data.length }
       },
     },
     organizationMember: {
