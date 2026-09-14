@@ -7,6 +7,7 @@ import {
 } from '@nessie/board-sources'
 import {
   BOARD_SOURCE_SYNC_INITIAL_TOPIC,
+  isAdminActor,
   BoardSourceDetailRecordSchema,
   BoardSourceRecordSchema,
   CreateBoardSourceBodySchema,
@@ -69,6 +70,22 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
           403,
           'CONNECTION_NOT_OWNED',
           'A source runs under its connection owner’s account, so only they can point it at a project. Connect your own account first.',
+        )
+        return
+      case 'IDENTITY_MAPPING_FORBIDDEN':
+        sendApiError(
+          reply,
+          403,
+          'IDENTITY_MAPPING_FORBIDDEN',
+          'People mappings apply to every project that reads this workspace, so only somebody in all of those projects, or an organisation owner or admin, can change them.',
+        )
+        return
+      case 'IDENTITY_TARGET_INVALID':
+        sendApiError(
+          reply,
+          400,
+          'IDENTITY_TARGET_INVALID',
+          'A person can only be mapped to an active member or an agent of this organisation.',
         )
         return
       case 'CONTAINER_ALREADY_ATTACHED':
@@ -200,10 +217,19 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
 
     const connection = await prisma.boardSourceConnection.findFirst({
       where: { id: body.connectionId, organizationId: project.organizationId },
-      select: { id: true, provider: true },
+      select: { id: true, ownerUserId: true, provider: true },
     })
     if (!connection) {
       sendApiError(reply, 404, 'CONNECTION_NOT_FOUND', 'Connection not found')
+      return reply
+    }
+    // Ownership is decided before the connection is used for anything. Reading
+    // the container, seeding custom fields and listing containers all run on
+    // the owner's delegated credential, so a non-owner must not reach even one
+    // provider call or project write. `createBoardSource` repeats the check
+    // for its other callers.
+    if (connection.ownerUserId !== actorContext.actor.actorId) {
+      sourceError(reply, { error: 'CONNECTION_NOT_OWNED' })
       return reply
     }
 
@@ -361,6 +387,11 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
     const result = await putBoardSourceMappings(prisma, project.id, sourceId, {
       ...body,
       actorUserId: actorContext.actor.actorId,
+      viewer: {
+        isOrganizationAdmin: isAdminActor(actorContext),
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      },
     })
     if (isBoardSourceError(result)) {
       sourceError(reply, result)
