@@ -19,6 +19,7 @@ import { ChannelMessageFeed } from '../../components/features/channels/ChannelMe
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
+import { mentionableUsers } from '../../components/features/channels/mention-invite'
 import { useChannelMentions } from './useChannelMentions'
 import { splitThreadInboxMessages } from './thread-inbox-presentation'
 
@@ -60,11 +61,12 @@ export const ThreadInboxCard = ({
     () => users.filter((user) => user.channelIds.includes(activity.channelId)),
     [activity.channelId, users],
   )
+  const mentionUsers = useMemo(() => mentionableUsers(users), [users])
   const { mentionEntities, renderContent } = useChannelMentions({
     activeChannel: channel,
     agents,
     channels,
-    channelUsers,
+    mentionUsers,
   })
   const messages = useMemo(
     () => (rootQuery.data?.message ? [rootQuery.data.message, ...(repliesQuery.data ?? [])] : []),
@@ -271,6 +273,7 @@ export const ThreadInboxCard = ({
             onChangeMessage={composer.setMessage}
             onDismissPendingAgent={composer.dismissPendingAgent}
             onDismissSecretCapture={composer.dismissSecretCapture}
+            mentionInvite={composer.mentionInvite}
             onInsertAtSign={() => composer.mentionRef.current?.insertAtSign()}
             onInsertEmoji={composer.insertEmoji}
             onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}

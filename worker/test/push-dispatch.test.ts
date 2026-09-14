@@ -412,3 +412,49 @@ test('does not throw or prune when a sender rejects', async () => {
   assert.equal(summary.sent, 0)
   assert.deepEqual(state.deleted, [])
 })
+
+// A person @mentioned in an open channel they never joined can read it, so they
+// are rung as a mention. In a private channel nobody outside the membership is
+// ever added, whatever `mentionUserIds` carries.
+for (const visibility of ['public', 'private'] as const) {
+  const verb = visibility === 'public' ? 'is' : 'is not'
+  test(`a mentioned non-member ${verb} rung in a ${visibility} channel`, async () => {
+    const state = {
+      creds: [apnsCred()],
+      members: [member('u2')],
+      users: [
+        { id: 'u2', preferences: null },
+        { id: 'u3', preferences: null },
+      ],
+      tokens: [
+        { id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' as const },
+        { id: 't3', userId: 'u3', token: 'tok-u3', platform: 'ios' as const },
+      ],
+      secrets: [apnsSecret()],
+      channel: { label: 'General', systemChannelType: null, type: 'standard', visibility },
+      deleted: [],
+    } as FakeState
+    const prisma = makeFakePrisma(state)
+    const lookedUp: unknown[] = []
+    ;(prisma.organizationMember as unknown as { findMany: unknown }).findMany = async (
+      args: { where: { userId: { in: string[] } } },
+    ) => {
+      lookedUp.push(args.where)
+      return args.where.userId.in.filter((id) => id === 'u3').map((userId) => ({ userId }))
+    }
+    const { senders, apnsCalls, apnsPayloads } = recordingSenders()
+    await handlePushDispatch(
+      { prisma, encryptionKeyRing: ENCRYPTION_KEY_RING, senders },
+      payload({ mentionUserIds: ['u3'] }),
+    )
+
+    const byToken = new Map(apnsCalls.map((call, index) => [call.token, apnsPayloads[index]]))
+    assert.equal(byToken.has('tok-u2'), true, 'the channel member is rung either way')
+    if (visibility === 'public') {
+      assert.match(byToken.get('tok-u3')?.subtitle ?? '', /mentioned you/)
+    } else {
+      assert.equal(byToken.has('tok-u3'), false)
+      assert.deepEqual(lookedUp, [], 'a private channel never widens its recipients')
+    }
+  })
+}
