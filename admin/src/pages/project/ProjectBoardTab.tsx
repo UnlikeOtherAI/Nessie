@@ -25,10 +25,11 @@ import { SourceStatusStrip } from '../../components/features/projects/kanban/Sou
 import { EmptyState } from '../../components/shared/EmptyState'
 import { TabBar, type TabBarItem } from '../../components/primitives/TabBar'
 import {
+  BOARD_VIEWS,
   DEFAULT_BOARD_VIEW,
-  parseBoardView,
   type BoardView,
 } from '../../components/features/projects/kanban/board-view'
+import { useTabParam } from '../../navigation/useTabParam'
 
 const VIEW_ITEMS: ReadonlyArray<TabBarItem<BoardView>> = [
   {
@@ -86,13 +87,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     else params.set('assignee', next)
     setSearchParams(params, { replace: true })
   }
-  const view = parseBoardView(searchParams.get('view'))
-  const setView = (next: BoardView) => {
-    const params = new URLSearchParams(searchParams)
-    if (next === DEFAULT_BOARD_VIEW) params.delete('view')
-    else params.set('view', next)
-    setSearchParams(params, { replace: true })
-  }
+  const [view, setView] = useTabParam('view', BOARD_VIEWS, DEFAULT_BOARD_VIEW)
 
   // Options come from the whole pool, so narrowing to one person does not empty
   // the list you would use to pick somebody else.
