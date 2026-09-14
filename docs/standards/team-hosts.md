@@ -330,13 +330,19 @@ teams" section before everything else: every team the person belongs to, its
 organisation, its avatar, and which one the session is on. Signed out, the
 section does not exist — no placeholder, nothing that moves.
 
-**The read is `GET /api/auth/landing-teams`, and it admits exactly one origin.**
-It lives under `/api/auth` because that is the refresh cookie's path, and it
-sets its own `Access-Control-Allow-Origin` for `NESSIE_LANDING_ORIGIN` and
-refuses every other `Origin` with a 403 — the app and tenant hosts included.
-The landing is deliberately **not** in `NESSIE_CORS_ORIGINS`: that list grants
-every credentialed route, and this page needs one answer. Unset means no
-landing is admitted and the section never renders.
+**The read is `GET /api/auth/landing-teams`, and it admits only the landing's
+own origins.** It lives under `/api/auth` because that is the refresh cookie's
+path. `NESSIE_LANDING_ORIGIN` is an exact-match list — production is
+`https://nessie.works,https://www.nessie.works`, because the landing answers on
+both — validated at config load: every entry must be a bare `http(s)` origin,
+and a path or malformed entry refuses to start. The route echoes
+`Access-Control-Allow-Origin` with the one listed origin the request came from,
+never `*` and never the list, keeps `Vary: Origin, Cookie`, and refuses every
+other `Origin` with a 403 — the app, tenant hosts and lookalikes such as
+`https://nessie.works.evil.com` included. The landing is deliberately **not** in
+`NESSIE_CORS_ORIGINS`: that list grants every credentialed route, and this page
+needs one answer. Unset means no landing is admitted and the section never
+renders.
 
 **It reads the refresh session without consuming it.** The cookie is shared
 with the app; rotating it here would race the app's page-load refresh on the

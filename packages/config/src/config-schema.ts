@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { EncryptionConfigSchema } from './encryption-key-ring.js'
+import { isBareOrigin } from './origin-allowlist.js'
 
 export type { LocalOnlyCapability } from './local-only.js'
 
@@ -270,6 +271,13 @@ export const NessieConfigSchema = z.object({
     // outside an HTTP request (the worker's personal assistant). Defaults to
     // localhost:{port} for local dev.
     publicUrl: z.string().url().optional(),
+    // `NESSIE_LANDING_ORIGIN`: the exact origins of the public landing, e.g.
+    // `https://nessie.works` and `https://www.nessie.works`. Admitted by
+    // `GET /api/auth/landing-teams` only — never part of the API-wide CORS
+    // allowlist (docs/standards/team-hosts.md). Empty: no landing is admitted.
+    landingOrigins: z
+      .array(z.string().refine(isBareOrigin, 'must be a bare http(s) origin, e.g. https://example.com'))
+      .default([]),
   }),
   // GitHub integration for the in-app Feedback section: submitted feedback
   // becomes an issue in this repo. The token is required to actually create

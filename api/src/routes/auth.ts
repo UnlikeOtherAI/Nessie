@@ -61,7 +61,7 @@ export const registerAuthRoutes = (
   registerAuthUoaTeamRoute(app, deps)
   registerAuthLandingTeamsRoute(app, {
     prisma: deps.prisma,
-    landingOrigin: deps.landingOrigin,
+    landingOrigins: deps.landingOrigins,
     teamHostBaseDomain: deps.teamHostBaseDomain,
     adminOrigin: process.env.NESSIE_ADMIN_PUBLIC_URL ?? process.env.NESSIE_ADMIN_ORIGIN ?? null,
   })
