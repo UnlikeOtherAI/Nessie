@@ -165,6 +165,7 @@ export function Hero() {
                 hovered={hovered}
                 idPrefix="nd-hero"
                 interactive={expanded && !closing}
+                onDismiss={() => closeRef.current()}
                 pose={expanded && !closing ? 'flat' : 'tilted'}
                 shot={tab.shot}
               />
