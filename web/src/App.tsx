@@ -3,6 +3,7 @@ import { AiBand, Pillars, WhatsNew } from './home/blocks'
 import { FinalCta, Footer, Love, Promos, StatsBand, Stories } from './home/closing'
 import { CookieBar, Header } from './home/header'
 import { Hero } from './home/hero'
+import { Pricing } from './home/pricing'
 import { Wave } from './home/wave'
 
 // Waves only ever sit on the bottom edge of a dark section; a dark section's
@@ -20,6 +21,7 @@ export function App() {
         <Wave bottom={light} top="var(--n-ink)" />
         <WhatsNew />
         <Pillars />
+        <Pricing />
         <Stories />
         <StatsBand />
         <Wave bottom={light} top="var(--n-deep)" />

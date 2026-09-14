@@ -34,7 +34,7 @@ export const navItems = [
   { label: 'Teamwork', href: '#teamwork', menu: true },
   { label: 'Your people', href: '#people', menu: false },
   { label: 'Resources', href: '#resources', menu: true },
-  { label: 'Pricing', href: '#final', menu: false },
+  { label: 'Pricing', href: '#pricing', menu: false },
 ]
 
 export const cookieCopy = {
@@ -236,6 +236,32 @@ export const quotePlaceholder = {
   who: 'Name, role, organisation',
 }
 
+// Hosted pricing, both amounts monthly. Storage is billed like object storage.
+export const pricing = {
+  kicker: 'Pricing',
+  title: 'Simple pricing that grows with your team.',
+  text: 'One price per user, plus the storage you actually use — billed by the terabyte, like object storage.',
+  plan: {
+    name: 'Nessie Cloud',
+    prices: [
+      { amount: '€3', unit: 'per user / month' },
+      { amount: '€10', unit: 'per TB of storage / month' },
+    ],
+    features: [
+      'Channels, threads, DMs and calls',
+      'AI employees with their own email addresses',
+      'A personal assistant for everyone',
+      'Approval gates, audit trail and cost ledger',
+    ],
+    cta: 'Get started',
+  },
+  selfHost: {
+    title: 'Prefer to host it yourself?',
+    text: 'Nessie is free to self-host for your organisation’s internal use, on infrastructure you choose.',
+    cta: 'Hosting guide',
+  },
+}
+
 export const stories = {
   title: 'Teams that grew with Nessie',
   cards: Array.from({ length: 4 }, (_, i) => ({
@@ -284,3 +310,13 @@ export const footerColumns = [
 ]
 
 export const legalLinks = ['Privacy', 'Terms', 'Cookie policy']
+
+// CC BY 4.0 requires title, author, source, licence and a note of changes.
+export const modelCredit = {
+  title: 'iMac 2021',
+  author: 'DatSketch',
+  sourceUrl: 'https://sketchfab.com/3d-models/imac-2021-304cb06ffb554883a7a642b2b56754c1',
+  licence: 'CC BY 4.0',
+  licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  changes: 'recoloured, screen image replaced',
+}

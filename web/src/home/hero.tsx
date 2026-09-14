@@ -3,7 +3,7 @@ import { faPause, faPlay, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useRef, useState } from 'react'
 import { docsUrl, hero, heroTabs, signInUrl } from './content'
-import { Desktop } from './device'
+import { DeviceView } from './desktop3d'
 import { Button } from './ui'
 
 const advanceMs = 6000
@@ -12,6 +12,7 @@ export function Hero() {
   const [active, setActive] = useState(0)
   const [playing, setPlaying] = useState(true)
   const [expanded, setExpanded] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const closer = useRef<HTMLButtonElement>(null)
 
@@ -62,10 +63,14 @@ export function Hero() {
               setExpanded(true)
               setPlaying(false)
             }}
+            onBlur={() => setHovered(false)}
+            onFocus={() => setHovered(true)}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             ref={trigger}
             type="button"
           >
-            <Desktop idPrefix="nd-hero" shot={tab.shot} />
+            <DeviceView hovered={hovered} idPrefix="nd-hero" pose="tilted" shot={tab.shot} />
           </button>
           <button
             aria-label={playing ? 'Pause' : 'Play'}
@@ -107,7 +112,7 @@ export function Hero() {
             <FontAwesomeIcon className="n-device-close" icon={faXmark} />
           </button>
           <div className="n-device-zoom">
-            <Desktop idPrefix="nd-zoom" shot={tab.shot} />
+            <DeviceView idPrefix="nd-zoom" pose="flat" shot={tab.shot} />
           </div>
         </div>
       )}

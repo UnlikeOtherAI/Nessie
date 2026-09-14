@@ -7,6 +7,7 @@ import {
   footerColumns,
   legalLinks,
   love,
+  modelCredit,
   promos,
   signInUrl,
   statsBand,
@@ -143,6 +144,10 @@ export function Footer() {
             </button>
           </div>
         </div>
+        <p className="n-credit">
+          3D desktop model: <a href={modelCredit.sourceUrl}>“{modelCredit.title}”</a> by {modelCredit.author},
+          licensed under <a href={modelCredit.licenceUrl}>{modelCredit.licence}</a>; {modelCredit.changes}.
+        </p>
       </div>
     </footer>
   )
