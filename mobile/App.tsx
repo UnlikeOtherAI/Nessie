@@ -68,6 +68,8 @@ import {
   startNativeVoiceCall,
 } from './modules/nessie-voice-call'
 import { nativeVoiceCallStateScript } from './src/lib/native-voice-call'
+import { getAppIcon, isAppIconSwitchAvailable, setAppIcon } from './modules/nessie-app-icon'
+import { nativeAppIconScript } from './src/lib/native-app-icon'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
   createIpadNativeChromeTheme,
@@ -265,6 +267,19 @@ const Shell = (): React.JSX.Element => {
     return () => subscription?.remove()
   }, [runScript])
 
+  // The icon in effect is republished on every load, so Appearance settings
+  // show the real one after a reload or an icon change made elsewhere.
+  useEffect(() => {
+    if (!isAppIconSwitchAvailable()) return
+    runScript(nativeAppIconScript(getAppIcon()))
+  }, [runScript])
+
+  const changeAppIcon = useCallback((icon: 'light' | 'dark'): void => {
+    void setAppIcon(icon)
+      .catch(() => getAppIcon())
+      .then((applied) => runScript(nativeAppIconScript(applied)))
+  }, [runScript])
+
   const flushExternalAuthDelivery = useCallback((): void => {
     flushNativeExternalAuthDelivery(externalAuthDeliveries.current, runScript)
   }, [runScript])
@@ -305,6 +320,7 @@ const Shell = (): React.JSX.Element => {
   // layout without relying on a reload.
   useEffect(() => {
     runScript(nativeShellInfoScript({
+      appIcon: isAppIconSwitchAvailable(),
       bottomInset: insets.bottom,
       clientId: pushSurfaceClientId.current,
       formFactor: nativeFormFactor,
@@ -446,6 +462,7 @@ const Shell = (): React.JSX.Element => {
       endNativeVoiceCall: () => void endNativeVoiceCall().catch(() => undefined),
       runExternalAuth,
       runScript,
+      setAppIcon: changeAppIcon,
       setNativeVoiceCallMuted: (muted) => void setNativeVoiceCallMuted(muted).catch(() => undefined),
       startNativeVoiceCall: (provisioning) => void startNativeVoiceCall(provisioning)
         .catch(() => undefined),

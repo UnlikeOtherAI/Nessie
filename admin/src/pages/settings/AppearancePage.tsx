@@ -1,3 +1,4 @@
+import { AppIconPanel } from './appearance/AppIconPanel'
 import { ColoursPanel } from './appearance/ColoursPanel'
 import { SettingsPanel, type SettingsTabHostProps } from '../../components/shared/SettingsPanel'
 import { TypePanel } from './appearance/TypePanel'
@@ -14,6 +15,7 @@ export const AppearancePage = ({ tabs }: SettingsTabHostProps) => (
     <div className="grid gap-4">
       <ColoursPanel />
       <TypePanel />
+      <AppIconPanel />
     </div>
   </SettingsPanel>
 )

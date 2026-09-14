@@ -44,6 +44,7 @@ const runShellScript = (
 
 test('caches a cold-start push path before the WebView application mounts', () => {
   const { events, window } = runShellScript(nativeShellInfoScript({
+    appIcon: true,
     bottomInset: 34,
     clientId: 'client-id',
     formFactor: 'phone',
@@ -54,6 +55,7 @@ test('caches a cold-start push path before the WebView application mounts', () =
 
   assert.equal(window.__nessiePendingPushPath, '/channels/channel-a/threads/thread-a/replies/root-a')
   assert.deepEqual(window.__nessieNativeShell, {
+    appIcon: true,
     bottomInset: 34,
     formFactor: 'phone',
     platform: 'ios',
@@ -65,6 +67,7 @@ test('caches a cold-start push path before the WebView application mounts', () =
 
 test('publishes the large-phone landscape form factor after rotation', () => {
   const { events, window } = runShellScript(nativeShellInfoScript({
+    appIcon: true,
     bottomInset: 21,
     clientId: 'client-id',
     formFactor: 'large-phone-landscape',
@@ -74,6 +77,7 @@ test('publishes the large-phone landscape form factor after rotation', () => {
   }))
 
   assert.deepEqual(window.__nessieNativeShell, {
+    appIcon: true,
     bottomInset: 21,
     formFactor: 'large-phone-landscape',
     platform: 'ios',

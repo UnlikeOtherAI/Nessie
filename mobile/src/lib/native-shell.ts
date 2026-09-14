@@ -1,6 +1,8 @@
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
 export type NativeShellInfo = {
+  /** Whether this build can switch the Home Screen icon (iOS, nessie-app-icon). */
+  appIcon: boolean
   bottomInset: number
   clientId: string
   formFactor: 'ipad' | 'large-phone-landscape' | 'phone'
@@ -30,9 +32,9 @@ export const createNativePushSurfaceClientId = (): string => {
 }
 
 export const nativeShellInfoScript = (info: NativeShellInfo): string => `
-window.__nessieNativeShell = { bottomInset: ${JSON.stringify(info.bottomInset)}, platform: ${
-  JSON.stringify(info.platform)
-}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
+window.__nessieNativeShell = { appIcon: ${JSON.stringify(info.appIcon)}, bottomInset: ${
+  JSON.stringify(info.bottomInset)
+}, platform: ${JSON.stringify(info.platform)}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
   JSON.stringify(info.voiceCall)
 } };
 window.__nessieNativeAppForeground = true;

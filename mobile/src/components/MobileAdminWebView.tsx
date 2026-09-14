@@ -13,6 +13,7 @@ import {
   type NativeShellInfo,
   wrapNativeWebViewScript,
 } from '../lib/native-shell'
+import { isAppIconSwitchAvailable } from '../../modules/nessie-app-icon'
 import { isNativeVoiceCallAvailable } from '../../modules/nessie-voice-call'
 import { NATIVE_BACK_FORWARD_GESTURES } from '../lib/webview-back-gesture'
 
@@ -62,6 +63,7 @@ export const MobileAdminWebView = ({
 }: Props): React.JSX.Element | null => {
   if (!initialPushPathResolved) return null
   const shellInfo = {
+    appIcon: isAppIconSwitchAvailable(),
     bottomInset,
     clientId: pushSurfaceClientId,
     formFactor,
