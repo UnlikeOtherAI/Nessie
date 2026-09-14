@@ -43,6 +43,12 @@ export const listChannelsForUser = async (
   organizationId: string,
   teamId?: string,
   includeArchived = false,
+  /**
+   * The caller's verified organisation owner/admin standing
+   * (`isAdminActor(actorContext)`). Omitted only by callers with no request
+   * role, which fall back to the `OrganizationMember` row.
+   */
+  viewer: { isOrganizationAdmin?: boolean } = {},
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
@@ -162,10 +168,12 @@ export const listChannelsForUser = async (
     channels.filter((channel) => channel.type === 'dm').map((channel) => channel.teamId),
   )]
   const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
-    prisma.organizationMember.findFirst({
-      where: { organizationId, userId },
-      select: { role: true },
-    }),
+    viewer.isOrganizationAdmin !== undefined
+      ? Promise.resolve(null)
+      : prisma.organizationMember.findFirst({
+        where: { organizationId, userId },
+        select: { role: true },
+      }),
     dmTeamIds.length === 0
       ? Promise.resolve([])
       : prisma.teamMember.findMany({
@@ -173,18 +181,23 @@ export const listChannelsForUser = async (
         select: { role: true, teamId: true },
       }),
   ])
-  const viewerIsOrgAdmin = isAdminRole(viewerOrgMember?.role)
+  const viewerIsOrgAdmin = viewer.isOrganizationAdmin ?? isAdminRole(viewerOrgMember?.role)
   const viewerTeamRoleByTeamId = new Map(
     viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
   )
   const viewerMayModify = (channel: (typeof channels)[number]): boolean => {
     if (channel.systemChannelType) return false
-    if (viewerIsOrgAdmin) return true
+    const isParticipant = channel.members[0] !== undefined
     const channelRole = channel.members[0]?.role
     if (channel.type === 'dm') {
-      return isAdminRole(channelRole) || isAdminRole(viewerTeamRoleByTeamId.get(channel.teamId))
+      // Participation first: nobody outside a DM manages it.
+      if (!isParticipant) return false
+      return viewerIsOrgAdmin
+        || isAdminRole(channelRole)
+        || isAdminRole(viewerTeamRoleByTeamId.get(channel.teamId))
     }
-    return channelRole !== undefined
+    if (isParticipant) return true
+    return viewerIsOrgAdmin && channel.visibility === 'public'
   }
 
   const principalUserIds = [...new Set(
@@ -261,7 +274,12 @@ export const listChannelsForUser = async (
 
 export const joinPublicChannel = async (
   prisma: PrismaClient,
-  input: { userId: string; organizationId: string; channelId: string },
+  input: {
+    userId: string
+    organizationId: string
+    channelId: string
+    isOrganizationAdmin?: boolean
+  },
 ): Promise<ChannelRecord | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: input.channelId },
@@ -291,5 +309,7 @@ export const joinPublicChannel = async (
     where: { id: input.channelId },
     include: channelTeamInclude,
   })
-  return mapChannelRecord(prisma, joined, input.userId)
+  return mapChannelRecord(prisma, joined, input.userId, {
+    isOrganizationAdmin: input.isOrganizationAdmin,
+  })
 }

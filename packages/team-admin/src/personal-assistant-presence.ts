@@ -95,6 +95,8 @@ export const removePersonalAssistantPresence = async (
     channelId: string
     organizationId: string
     principalUserId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
   },
 ): Promise<PersonalAssistantPresenceMutation> => {
   const [assistant, channel] = await Promise.all([
@@ -123,6 +125,7 @@ export const removePersonalAssistantPresence = async (
     if (!membership) return { kind: 'not_found' }
   } else if (!await canModifyChannel(prisma, {
     channelId: input.channelId,
+    isOrganizationAdmin: input.isOrganizationAdmin,
     organizationId: input.organizationId,
     userId: input.actorUserId,
   })) {

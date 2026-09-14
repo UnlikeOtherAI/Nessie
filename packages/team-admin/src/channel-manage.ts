@@ -14,7 +14,7 @@ import { canModifyChannel } from './resource-authority.js'
 
 /**
  * The channel writes `canModifyChannel` gates (`resource-authority.ts`: any
- * member of the channel, or an organisation owner or admin).
+ * member of the channel, or an organisation owner or admin on a public one).
  *
  * Shared by the channel/thread routes and the personal assistant's
  * `channel_update` / `channel_archive` tools: renaming or archiving a channel by
@@ -29,6 +29,8 @@ export const updateChannel = async (
     userId: string
     organizationId: string
     channelId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
     label?: string
     topic?: string | null
     description?: string | null
@@ -69,7 +71,9 @@ export const updateChannel = async (
       data,
       include: channelTeamInclude,
     })
-    return mapChannelRecord(prisma, channel, input.userId)
+    return mapChannelRecord(prisma, channel, input.userId, {
+      isOrganizationAdmin: input.isOrganizationAdmin,
+    })
   } catch (error) {
     if (input.label !== undefined) {
       throwIfChannelSlugConflict(error, validateChannelLabel(input.label).slug, scope)
@@ -85,6 +89,8 @@ export const setChannelArchived = async (
     organizationId: string
     channelId: string
     archived: boolean
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
   },
 ): Promise<ChannelRecord | null> => {
   const manage = await canModifyChannel(prisma, input)
@@ -121,7 +127,9 @@ export const setChannelArchived = async (
       data: { archivedAt: input.archived ? new Date() : null },
       include: channelTeamInclude,
     })
-    return mapChannelRecord(prisma, channel, input.userId)
+    return mapChannelRecord(prisma, channel, input.userId, {
+      isOrganizationAdmin: input.isOrganizationAdmin,
+    })
   } catch (error) {
     if (reclaimedSlug !== null) {
       throwIfChannelSlugConflict(error, reclaimedSlug, scope, 'restore')

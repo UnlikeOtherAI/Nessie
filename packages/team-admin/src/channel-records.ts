@@ -321,6 +321,8 @@ export const mapChannelRecord = async (
   prisma: PrismaClient,
   channel: ChannelWithProject,
   userId?: string,
+  /** See `ChannelModifier.isOrganizationAdmin`: the caller's verified role. */
+  viewer: { isOrganizationAdmin?: boolean } = {},
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
@@ -349,6 +351,7 @@ export const mapChannelRecord = async (
   const viewerCanManage = userId
     ? (await canModifyChannel(prisma, {
         channelId: channel.id,
+        isOrganizationAdmin: viewer.isOrganizationAdmin,
         organizationId: channel.organizationId,
         userId,
       })) !== null

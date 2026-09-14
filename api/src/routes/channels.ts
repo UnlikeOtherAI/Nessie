@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { SetChannelMuteRequestSchema } from '@nessie/schemas'
+import { isAdminActor, SetChannelMuteRequestSchema } from '@nessie/schemas'
 
 import {
   ChannelRecordSchema,
@@ -61,6 +61,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       query.teamId,
       // sp-channels: archived channels are excluded unless explicitly requested
       query.includeArchived === 'true',
+      { isOrganizationAdmin: isAdminActor(actorContext) },
     )
 
     return createApiResponse(ChannelRecordSchema.array().parse(channels))
@@ -92,6 +93,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     let channel
     try {
       channel = await createChannelForUser(prisma, {
+        isOrganizationAdmin: isAdminActor(actorContext),
         label: body.label,
         visibility: body.visibility ?? 'public',
         organizationId: actorContext.tenant.organizationId,
@@ -195,6 +197,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     try {
       channel = await updateChannel(prisma, {
         channelId,
+        isOrganizationAdmin: isAdminActor(actorContext),
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         ...(body.label !== undefined ? { label: body.label } : {}),
@@ -240,6 +243,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const channel = await setChannelArchived(prisma, {
       archived: true,
       channelId,
+      isOrganizationAdmin: isAdminActor(actorContext),
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
     })
@@ -270,6 +274,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       channel = await setChannelArchived(prisma, {
         archived: false,
         channelId,
+        isOrganizationAdmin: isAdminActor(actorContext),
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
       })
@@ -308,6 +313,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const channel = await setChannelArchived(prisma, {
       archived: true,
       channelId,
+      isOrganizationAdmin: isAdminActor(actorContext),
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
     })
@@ -337,6 +343,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const { channelId } = request.params as { channelId: string }
     const channel = await joinPublicChannel(prisma, {
       channelId,
+      isOrganizationAdmin: isAdminActor(actorContext),
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
     })

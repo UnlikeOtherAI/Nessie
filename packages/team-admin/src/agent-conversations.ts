@@ -889,6 +889,8 @@ export const renameThreadForUser = async (
     threadId: string
     title: string
     userId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
   },
 ): Promise<RenameThreadOutcome> => {
   const thread = await prisma.thread.findFirst({
@@ -904,6 +906,7 @@ export const renameThreadForUser = async (
   if (thread.startedByUserId !== input.userId) {
     const manage = await canModifyChannel(prisma, {
       channelId: thread.channelId,
+      isOrganizationAdmin: input.isOrganizationAdmin,
       organizationId: input.organizationId,
       userId: input.userId,
     })

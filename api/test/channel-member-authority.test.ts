@@ -33,6 +33,7 @@ const projectId = `00000000-0000-4000-8000-${suite}00000002`
 const teamId = `00000000-0000-4000-8000-${suite}00000003`
 const channelId = `00000000-0000-4000-8000-${suite}00000004`
 const publicChannelId = `00000000-0000-4000-8000-${suite}00000005`
+const dmChannelId = `00000000-0000-4000-8000-${suite}00000006`
 
 const creatorUserId = `00000000-0000-4000-8000-${suite}00000010`
 const plainMemberUserId = `00000000-0000-4000-8000-${suite}00000011`
@@ -110,11 +111,26 @@ const seed = async (prisma: PrismaClient) => {
       visibility: 'public',
     },
   })
+  // A direct message between two people, neither of them an administrator.
+  await prisma.channel.create({
+    data: {
+      dmKey: [orgId, teamId, ...[creatorUserId, targetUserId].sort()].join(':'),
+      id: dmChannelId,
+      label: `dm-${suite}`,
+      organizationId: orgId,
+      projectId,
+      teamId,
+      type: 'dm',
+      visibility: 'private',
+    },
+  })
   await prisma.channelMember.createMany({
     data: [
       { channelId, role: 'owner', userId: creatorUserId },
       { channelId, role: 'member', userId: plainMemberUserId },
       { channelId: publicChannelId, role: 'owner', userId: creatorUserId },
+      { channelId: dmChannelId, role: 'member', userId: creatorUserId },
+      { channelId: dmChannelId, role: 'member', userId: targetUserId },
     ],
   })
 }
@@ -124,6 +140,7 @@ const cleanup = async (prisma: PrismaClient) => {
   await prisma.channelMember.deleteMany({ where: { channel: { organizationId: orgId } } })
   await prisma.thread.deleteMany({ where: { channel: { organizationId: orgId } } })
   await prisma.channel.deleteMany({ where: { organizationId: orgId } })
+  await prisma.projectMember.deleteMany({ where: { projectId } })
   await prisma.teamMember.deleteMany({ where: { teamId } })
   await prisma.team.deleteMany({ where: { id: teamId } })
   await prisma.project.deleteMany({ where: { id: projectId } })
@@ -153,8 +170,8 @@ const manageInput = (id: string, userId: string) => ({ channelId: id, organizati
 
 dbTest('a plain organisation member creates a channel and is its first member', async () => {
   await withDb(async (prisma) => {
-    // Standing in the team is what places a channel there (`canPlaceChannelInTeam`).
-    await prisma.teamMember.create({ data: { role: 'member', teamId, userId: plainMemberUserId } })
+    // Adding a room to a project changes the project (`canModifyProject`).
+    await prisma.projectMember.create({ data: { projectId, role: 'member', userId: plainMemberUserId } })
     const created = await createChannelForUser(prisma, {
       label: `made-by-member-${suite}`,
       organizationId: orgId,
@@ -275,19 +292,112 @@ dbTest('a team administrator who is not in the channel can no longer change it',
   })
 })
 
-dbTest('an organisation admin who is not in the channel may change it', async () => {
+dbTest('an organisation admin who is not in a public channel may change it', async () => {
   await withDb(async (prisma) => {
     const added = await addMemberToChannel(prisma, actorFor(orgAdminUserId, 'admin'), {
-      channelId,
+      channelId: publicChannelId,
       userId: targetUserId,
     })
     assert.deepEqual(added, { kind: 'changed' })
 
     const updated = await updateChannel(prisma, {
-      ...manageInput(channelId, orgAdminUserId),
+      ...manageInput(publicChannelId, orgAdminUserId),
+      isOrganizationAdmin: true,
       topic: 'Set by an organisation admin',
     })
     assert.equal(updated?.topic, 'Set by an organisation admin')
+    assert.equal(updated?.viewerCanManage, true)
+    assert.equal(await isChannelMember(prisma, publicChannelId, orgAdminUserId), false)
+  })
+})
+
+// Slack/Teams: an administrator outside a private channel cannot read it,
+// change it, or let themselves in.
+dbTest('an organisation admin outside a private channel is told it does not exist', async () => {
+  await withDb(async (prisma) => {
+    const admin = actorFor(orgAdminUserId, 'admin')
+    assert.deepEqual(
+      await addMemberToChannel(prisma, admin, { channelId, userId: orgAdminUserId }),
+      { kind: 'channel_not_found' },
+    )
+    assert.deepEqual(
+      await addMemberToChannel(prisma, admin, { channelId, userId: targetUserId }),
+      { kind: 'channel_not_found' },
+    )
+    const asAdmin = { ...manageInput(channelId, orgAdminUserId), isOrganizationAdmin: true }
+    assert.equal(await updateChannel(prisma, { ...asAdmin, label: `x-${suite}` }), null)
+    assert.equal(await setChannelArchived(prisma, { ...asAdmin, archived: true }), null)
+    // The same answer when the role is read from the membership row instead.
+    assert.equal(await updateChannel(prisma, { ...manageInput(channelId, orgAdminUserId), topic: 'no' }), null)
+
+    const row = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } })
+    assert.equal(row.label, `priv-${suite}`)
+    assert.equal(row.archivedAt, null)
     assert.equal(await isChannelMember(prisma, channelId, orgAdminUserId), false)
+  })
+})
+
+// ─── The verified request role decides, not the membership row ──────────────
+
+dbTest('a UOA promotion or demotion counts on the next request, not the next login', async () => {
+  await withDb(async (prisma) => {
+    // The row still says `member`; UOA's live authorization says admin.
+    const promoted = await updateChannel(prisma, {
+      ...manageInput(publicChannelId, outsiderUserId),
+      isOrganizationAdmin: true,
+      topic: 'Promoted upstream',
+    })
+    assert.equal(promoted?.topic, 'Promoted upstream')
+
+    // The row still says `admin`; UOA's live authorization says member.
+    const demoted = await setChannelArchived(prisma, {
+      ...manageInput(publicChannelId, orgAdminUserId),
+      archived: true,
+      isOrganizationAdmin: false,
+    })
+    assert.equal(demoted, null)
+    const row = await prisma.channelMember.findFirst({ where: { channelId: publicChannelId, userId: orgAdminUserId } })
+    assert.equal(row, null)
+  })
+})
+
+// ─── Direct messages: participants only ─────────────────────────────────────
+
+dbTest('nobody outside a direct message renames or archives it, whatever their role', async () => {
+  await withDb(async (prisma) => {
+    for (const [userId, isOrganizationAdmin] of [
+      [orgAdminUserId, true],
+      [teamAdminUserId, false],
+      [plainMemberUserId, false],
+    ] as const) {
+      const input = { ...manageInput(dmChannelId, userId), isOrganizationAdmin }
+      assert.equal(await updateChannel(prisma, { ...input, topic: 'no' }), null, userId)
+      assert.equal(await setChannelArchived(prisma, { ...input, archived: true }), null, userId)
+    }
+    const row = await prisma.channel.findUniqueOrThrow({ where: { id: dmChannelId } })
+    assert.equal(row.archivedAt, null)
+    assert.equal(row.topic, null)
+  })
+})
+
+dbTest('a membership change on a DM tells an outsider only that it does not exist', async () => {
+  await withDb(async (prisma) => {
+    // A participant learns the pair is fixed; an outsider — even an admin —
+    // gets the same answer a missing id gets, so the kind of channel behind an
+    // id is not disclosed.
+    assert.deepEqual(
+      await addMemberToChannel(prisma, actorFor(creatorUserId), { channelId: dmChannelId, userId: outsiderUserId }),
+      { kind: 'dm_members_fixed' },
+    )
+    for (const actor of [actorFor(outsiderUserId), actorFor(orgAdminUserId, 'admin')]) {
+      assert.deepEqual(
+        await addMemberToChannel(prisma, actor, { channelId: dmChannelId, userId: outsiderUserId }),
+        { kind: 'channel_not_found' },
+      )
+      assert.deepEqual(
+        await removeMemberFromChannel(prisma, actor, { channelId: dmChannelId, userId: targetUserId }),
+        { kind: 'channel_not_found' },
+      )
+    }
   })
 })

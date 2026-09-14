@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 import { canModifyChannel, loadTeamProjectScope } from '@nessie/team-admin'
 
 import { emitAuditEvent } from './audit.js'
@@ -7,7 +7,7 @@ import { emitAuditEvent } from './audit.js'
 /**
  * Changing who is in a channel is a disclosure decision, so it takes the same
  * gate renaming and archiving take: `canModifyChannel` — any member of the
- * channel, or an organisation owner or admin. Every member of a channel has
+ * channel, or an organisation owner or admin on a public channel. Every member of a channel has
  * equal rights in it (`docs/standards/team-model.md`), so a member may hand a
  * colleague the channel's history exactly as they may rename it; somebody
  * outside the channel may do neither unless they administer the organisation.
@@ -65,13 +65,16 @@ const loadChannelForMemberChange = async (
 
 // The refusals both membership writes share, in the order the surface states
 // them: unreachable channel, bootstrap-owned system conversation, fixed DM pair.
+// Reachability is decided first: somebody who cannot see the channel gets the
+// same `channel_not_found` a missing id gets, never a refusal that names what
+// kind of channel sits behind the id.
 const resolveChannelForMemberChange = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   channelId: string,
 ): Promise<{ refusal: ChannelMemberChange } | { channel: MemberChangeChannel }> => {
   const channel = await loadChannelForMemberChange(prisma, actorContext, channelId)
-  if (!channel) return { refusal: { kind: 'channel_not_found' } }
+  if (!channel || !channel.actorCanSee) return { refusal: { kind: 'channel_not_found' } }
   if (channel.systemChannelType) return { refusal: { kind: 'system_managed' } }
   if (channel.type === 'dm') return { refusal: { kind: 'dm_members_fixed' } }
   return { channel }
@@ -85,6 +88,7 @@ const refuseUnlessManager = async (
 ): Promise<ChannelMemberChange | null> => {
   const manage = await canModifyChannel(prisma, {
     channelId,
+    isOrganizationAdmin: isAdminActor(actorContext),
     organizationId: actorContext.tenant.organizationId,
     userId: actorContext.actor.actorId,
   })
