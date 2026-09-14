@@ -1,7 +1,8 @@
+import { faGithub } from '@fortawesome/free-brands-svg-icons'
 import { faPause, faPlay } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useState } from 'react'
-import { contactUrl, hero, heroTabs, signInUrl } from './content'
+import { docsUrl, hero, heroTabs, signInUrl } from './content'
 import { Button } from './ui'
 
 const advanceMs = 6000
@@ -25,7 +26,7 @@ export function Hero() {
       <p className="n-hero-text">{hero.text}</p>
       <div className="n-actions">
         <Button href={signInUrl}>Get started</Button>
-        <Button ghost href={contactUrl}>Book a demo</Button>
+        <Button ghost href={docsUrl} icon={faGithub}>Open source</Button>
       </div>
       <div className="n-stage" id="product">
         <img alt={tab.shot.alt} className="n-stage-img" key={active} src={tab.shot.src} />

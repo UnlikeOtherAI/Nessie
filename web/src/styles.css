@@ -110,6 +110,7 @@ button {
 /* Buttons */
 .n-btn {
   display: inline-flex;
+  gap: 10px;
   align-items: center;
   justify-content: center;
   min-height: 44px;
