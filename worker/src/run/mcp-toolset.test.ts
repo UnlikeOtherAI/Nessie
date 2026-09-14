@@ -105,7 +105,7 @@ test('a protected tool is denied when its descriptor fingerprint is stale', asyn
   assert.deepEqual(await exposedNames([row]), [])
 })
 
-test('a shared agent cannot use a user-scope protected tool even with a matching grant', async () => {
+test('a shared agent uses its requester\'s own protected connection without a grant, never a colleague\'s', async () => {
   const row: RowSeed = {
     id: 'protected',
     requiresExplicitGrant: true,
@@ -113,8 +113,12 @@ test('a shared agent cannot use a user-scope protected tool even with a matching
     scopeType: 'user',
     toolName: 'protected_tool',
   }
+  assert.deepEqual(await exposedNames([row], { agentKind: 'shared' }), ['protected_tool'])
   assert.deepEqual(
-    await exposedNames([withCurrentAllowedGrant(row)], { agentKind: 'shared' }),
+    await exposedNames([withCurrentAllowedGrant(row)], {
+      agentKind: 'shared',
+      effectiveUserId: 'user-2',
+    }),
     [],
   )
 })
@@ -136,7 +140,7 @@ test('a PA presence can use its protected user-scope tool with a matching grant'
   )
 })
 
-test('a PA outside its personal presence cannot use a protected user-scope tool', async () => {
+test('an explicit deny withholds a protected user-scope tool from its own person\'s runs', async () => {
   const row: RowSeed = {
     id: 'protected',
     requiresExplicitGrant: true,
@@ -148,6 +152,7 @@ test('a PA outside its personal presence cannot use a protected user-scope tool'
   assert.deepEqual(
     await exposedNames([withCurrentAllowedGrant(row)], {
       isPersonalAssistantPresence: false,
+      toolPolicy: { protected: false },
     }),
     [],
   )
@@ -168,7 +173,7 @@ test('a protected tool ignores a role grant even when its fingerprint matches', 
   }]), [])
 })
 
-test('unprotected user-scope connections follow the effective user, with shared-agent policy still required', async () => {
+test('unprotected user-scope connections follow the effective user into any agent they talk to', async () => {
   const rows: RowSeed[] = [
     {
       authConfig: { method: 'oauth2' },
@@ -187,13 +192,13 @@ test('unprotected user-scope connections follow the effective user, with shared-
     await exposedNames(rows, { agentKind: 'personal_assistant', effectiveUserId: 'user-2' }),
     [],
   )
-  // A shared agent run still needs its normal explicit tool grant.
-  assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
+  // A shared agent the owner talks to uses it too, unless the tool is denied.
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), ['my_tool'])
   assert.deepEqual(
-    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: true } }),
-    ['my_tool'],
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: false } }),
+    [],
   )
-  // That grant never carries user-1's OAuth connection into user-2's run.
+  // No policy ever carries user-1's OAuth connection into user-2's run.
   assert.deepEqual(
     await exposedNames(rows, {
       agentKind: 'shared',

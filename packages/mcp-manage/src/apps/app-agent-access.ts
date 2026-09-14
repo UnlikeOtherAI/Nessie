@@ -30,10 +30,9 @@ import { isOwnerRole } from '../mcp-catalog.js'
  *
  * - A run's team/project come from the channel it happens in, so an agent's
  *   reach is the set of channels it is bound to.
- * - A user-scoped install reaches runs requested by the installing user. A
- *   protected connector grant is a personal delegation, never a way to make
- *   the account callable by a shared agent, so shared agents do not appear
- *   for those tools even when another policy would otherwise allow them.
+ * - A user-scoped install reaches runs requested by the installing user, and
+ *   in those runs every agent the person talks to may use it unless a tool is
+ *   explicitly denied. Here the caller stands in for that requesting user.
  */
 
 export type AppAccessInstance = {
@@ -143,22 +142,17 @@ const agentCanUseApp = (
   instances.some((instance) => {
     if (!scopeReachesAgent(instance, agent, effectiveUserId)) return false
     return (rowsByInstance.get(instance.id) ?? []).some((row) => {
+      const verdict = policyVerdict(agent.toolPolicy, row.id)
+      // The caller's own connection reaches every agent in the caller's own
+      // runs; only an explicit per-tool deny withholds it.
+      if (instance.scopeType === 'user') return verdict !== false
+
       if (requiresExplicitGrant(row.metadata)) {
-        // A direct descriptor-bound grant never widens an installation owned
-        // by one person into a shared-agent capability.
-        if (instance.scopeType === 'user' && agent.agentKind === 'shared') return false
         const fingerprint = descriptorFingerprint(row)
         return fingerprint !== null
           && (directGrantsByAgentId.get(agent.id) ?? []).some((grant) =>
             grant.toolId === row.id
             && isCurrentAllowedMcpToolGrant(grant, fingerprint))
-      }
-
-      const verdict = policyVerdict(agent.toolPolicy, row.id)
-      // Existing non-protected behaviour remains policy-and-scope based. A
-      // user-scoped shared-agent call needs an ordinary explicit policy allow.
-      if (instance.scopeType === 'user' && agent.agentKind === 'shared' && verdict !== true) {
-        return false
       }
       return verdict !== false
     })

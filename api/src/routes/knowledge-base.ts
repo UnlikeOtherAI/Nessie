@@ -105,7 +105,7 @@ export const registerKnowledgeBaseRoutes = (
     // actors may only create in a project they belong to; agents may only create
     // in a project reached via one of their channel bindings; services keep bypass.
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId, deletedAt: null },
       select: { id: true },
     })
     if (!project || !canViewerReachProject(viewer, projectId)) {

@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChannelRecordSchema, type SetChannelMuteRequest } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
@@ -87,6 +88,27 @@ export const useAddChannelMember = () => {
       void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
+}
+
+export type ChannelMentionAudience = {
+  outsiderUserIds: string[]
+  viewerCanAddMembers: boolean
+}
+
+/**
+ * Asked at send time, never cached: which of the people a draft @mentions
+ * cannot read this channel, and whether the author may add them. The answer
+ * belongs to the moment of sending — membership can change between two sends.
+ */
+export const useChannelMentionAudienceCheck = () => {
+  const apiClient = useApiClient()
+  return useCallback(
+    (channelId: string, userIds: string[]) =>
+      apiClient.get<ChannelMentionAudience>(
+        `/api/channels/${channelId}/mention-audience?userIds=${userIds.map(encodeURIComponent).join(',')}`,
+      ),
+    [apiClient],
+  )
 }
 
 export const useRemoveChannelMember = () => {

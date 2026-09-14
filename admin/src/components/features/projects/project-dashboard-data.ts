@@ -176,19 +176,18 @@ export const orderProjectMembers = <T extends DashboardMember>(members: readonly
     })
 
 /**
- * Who sees "Manage →". Project membership carries its own roles, so a project
- * admin manages people without being an organisation owner; an organisation
- * owner may manage a project they are not a member of at all (no row of their
- * own in the list).
+ * Who sees "Manage →". Every member of a project has equal rights in it, so any
+ * member manages people whatever their project role; an organisation owner or
+ * admin may manage a project they are not a member of at all (no row of their
+ * own in the list). Mirrors `canModifyProject` on the server.
  */
 export const canManageProjectMembers = (input: {
-  isOrganizationOwner: boolean
+  isOrganizationAdmin: boolean
   members: readonly DashboardMember[]
   userId: string | null | undefined
 }): boolean => {
-  if (input.isOrganizationOwner) return true
-  const own = input.members.find((member) => member.userId === input.userId)
-  return own?.role === 'owner' || own?.role === 'admin'
+  if (input.isOrganizationAdmin) return true
+  return input.members.some((member) => member.userId === input.userId)
 }
 
 // ─── Agents ─────────────────────────────────────────────────────────────────

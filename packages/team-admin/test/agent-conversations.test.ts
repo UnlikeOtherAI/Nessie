@@ -23,6 +23,8 @@ test('buildViewerThreadWhere is the room-is-the-audience predicate, and nothing 
   assert.deepEqual(buildViewerThreadWhere(USER, ORG), {
     channel: {
       organizationId: ORG,
+      // A soft-deleted channel's threads are nobody's audience.
+      deletedAt: null,
       OR: [
         { visibility: 'public' },
         { members: { some: { userId: USER } } },

@@ -2,7 +2,7 @@
 
 Date: 2026-08-31
 
-Review: Kimix code-aware review completed 2026-09-01; findings incorporated
+Review: independent code-aware review completed 2026-09-01; findings incorporated
 
 Status: implementation-ready plan; no implementation claimed
 

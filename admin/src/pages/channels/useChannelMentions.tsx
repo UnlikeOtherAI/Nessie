@@ -20,7 +20,12 @@ interface UseChannelMentionsParams {
   activeChannel?: ChannelRecord | null
   agents: AgentRecord[]
   channels: ChannelRecord[]
-  channelUsers: UserRecord[]
+  /**
+   * Every active person in the organisation (`mentionableUsers`), not the
+   * room's participants: anyone can be addressed, and the composer asks before
+   * sending to somebody who cannot read a private room.
+   */
+  mentionUsers: UserRecord[]
   personalAssistantPresences?: PersonalAssistantPresenceParticipant[]
 }
 
@@ -93,6 +98,14 @@ export const buildPersonalAssistantMentionEntities = (
     trigger: '@' as const,
   }))
 
+export const buildUserMentionEntities = (users: UserRecord[]): MentionEntity[] =>
+  users.map((user) => ({
+    id: user.id,
+    name: user.displayName,
+    type: 'user' as const,
+    trigger: '@' as const,
+  }))
+
 function findTokenMatch<T>(
   text: string,
   startIndex: number,
@@ -117,7 +130,7 @@ export const useChannelMentions = ({
   activeChannel,
   agents,
   channels,
-  channelUsers,
+  mentionUsers,
   personalAssistantPresences = [],
 }: UseChannelMentionsParams): UseChannelMentionsResult => {
   const navigateToAgentDm = useNavigateToAgentDm()
@@ -130,12 +143,7 @@ export const useChannelMentions = ({
     () => [
       ...buildAgentMentionEntities(agents),
       ...buildPersonalAssistantMentionEntities(personalAssistantPresences),
-      ...channelUsers.map((u) => ({
-        id: u.id,
-        name: u.displayName,
-        type: 'user' as const,
-        trigger: '@' as const,
-      })),
+      ...buildUserMentionEntities(mentionUsers),
       ...channelMentionTargets.map((target) => ({
         detail: target.detail,
         id: target.channel.id,
@@ -144,7 +152,7 @@ export const useChannelMentions = ({
         trigger: '#' as const,
       })),
     ],
-    [agents, channelMentionTargets, channelUsers, personalAssistantPresences],
+    [agents, channelMentionTargets, mentionUsers, personalAssistantPresences],
   )
 
   const mentionEntityMap = useMemo(
@@ -184,7 +192,7 @@ export const useChannelMentions = ({
   const dmChannelByUserId = useMemo(
     () =>
       new Map(
-        channelUsers
+        mentionUsers
           .map((user): [string, ChannelRecord | undefined] => [
             user.id,
             channels.find(
@@ -196,7 +204,7 @@ export const useChannelMentions = ({
             (entry): entry is [string, ChannelRecord] => entry[1] !== undefined,
           ),
       ),
-    [channels, channelUsers],
+    [channels, mentionUsers],
   )
   const sortedMentionNames = useMemo(
     () =>

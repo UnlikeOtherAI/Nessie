@@ -55,7 +55,7 @@ const searchableProjectIds = async (
   const accessible = await listAccessibleProjectIds(context.prisma, member)
   if (accessible !== 'all') return accessible
   const projects = await context.prisma.project.findMany({
-    where: { organizationId: member.organizationId },
+    where: { organizationId: member.organizationId, deletedAt: null },
     select: { id: true },
   })
   return projects.map((project) => project.id)

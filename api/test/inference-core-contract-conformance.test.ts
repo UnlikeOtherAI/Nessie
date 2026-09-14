@@ -26,7 +26,7 @@ import {
  * Contract-unification conformance (security-boundary hardening, Workstream 6, S14).
  *
  * The api contracts and the shared schemas describe the same inference wire
- * shapes but serve different audiences (Kimix §4.5), so the api layer is not a
+ * shapes but serve different audiences (design review §4.5), so the api layer is not a
  * blind re-export — it may be *stricter* (uuid invocation ids, defaulted
  * tool-call arrays, non-empty tool descriptions). The invariant is strength,
  * not identity: anything the shared schema rejects, the api contract must also

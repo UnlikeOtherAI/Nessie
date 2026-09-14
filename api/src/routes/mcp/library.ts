@@ -3,7 +3,6 @@ import {
   createCatalogEntry,
   discoverMcpEndpoint,
   isOwnerRole,
-  publishCatalogEntry,
   searchMcpLibrary,
   submitForReview,
   type CreateCatalogEntryInput,
@@ -120,15 +119,18 @@ export const registerMcpLibraryRoutes = (
     }
 
     try {
-      const created = await createCatalogEntry(prisma, actorContext, input)
-      let published = created
       if (body.shareToOrg) {
+        const created = await createCatalogEntry(prisma, actorContext, input)
         await submitForReview(prisma, actorContext, created.id)
-        published = (await approveSubmission(prisma, actorContext, created.id)) ?? created
-      } else if (body.publish ?? true) {
-        published = (await publishCatalogEntry(prisma, actorContext, created.id)) ?? created
+        const approved = (await approveSubmission(prisma, actorContext, created.id)) ?? created
+        return reply.code(201).send(createApiResponse(approved))
       }
-      return reply.code(201).send(createApiResponse(published))
+      // Publishing at insert: a same-name app already shared in the
+      // organisation is refused without stranding a private draft.
+      const created = await createCatalogEntry(prisma, actorContext, input, {
+        publish: body.publish ?? true,
+      })
+      return reply.code(201).send(createApiResponse(created))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error

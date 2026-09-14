@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 
 import { hashPassword } from '../auth/password.js'
-import { CreateUserBodySchema, UpdateUserRoleBodySchema, UserRecordSchema } from '../contracts/users-presence.js'
+import {
+  CreateUserBodySchema,
+  UpdateUserRoleBodySchema,
+  UserRecordSchema,
+  type UserRecord,
+} from '../contracts/users-presence.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
 import { requireUnboundMembershipManagement } from './membership-mode-gate.js'
@@ -22,6 +27,7 @@ import {
   listUoaUsersForOrganization,
   listUsersForOrganization,
   setOrganizationMemberDeactivated,
+  toMemberDirectoryView,
   UoaIdentityMappingError,
   updateOrganizationMemberRole,
 } from '../services/users.js'
@@ -49,15 +55,25 @@ export const registerUserRoutes = (
     MEMBERSHIP_ROLES,
   } = deps
 
+  /**
+   * The organisation's people directory. Any authenticated member may read it,
+   * because every doorway that addresses a person — the DM `+` picker, the
+   * sidebar, search, @mentions, project and watcher pickers — is built on it.
+   * The response is shaped by the caller's role: an owner receives the
+   * management record, everyone else the directory view
+   * (`toMemberDirectoryView`), which drops deactivated people and their
+   * deactivation timestamp and narrows `channelIds` to channels the viewer
+   * shares.
+   */
   app.get('/api/users', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
     }
 
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
+    const isOwnerActor = actorContext.actor.roles?.includes('owner') === true
+    const shapeForActor = (users: UserRecord[]): UserRecord[] =>
+      isOwnerActor ? users : toMemberDirectoryView(users, actorContext.actor.actorId)
 
     const organizationId = actorContext.tenant.organizationId
     const organization = await prisma.organization.findUnique({
@@ -81,7 +97,7 @@ export const registerUserRoutes = (
           identity,
         })
         const users = await listUoaUsersForOrganization(prisma, organizationId, members)
-        return createApiResponse(UserRecordSchema.array().parse(users))
+        return createApiResponse(UserRecordSchema.array().parse(shapeForActor(users)))
       } catch (error) {
         if (error instanceof UoaIdentityMappingError) {
           request.log.error({ err: error, organizationId }, 'uoa identity mapping incomplete')
@@ -100,7 +116,7 @@ export const registerUserRoutes = (
     }
 
     const users = await listUsersForOrganization(prisma, organizationId)
-    return createApiResponse(UserRecordSchema.array().parse(users))
+    return createApiResponse(UserRecordSchema.array().parse(shapeForActor(users)))
   })
 
   app.post('/api/users', async (request, reply) => {

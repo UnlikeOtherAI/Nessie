@@ -21,11 +21,24 @@ export const visibleUserAlertWhere = (input: {
   },
   OR: [
     {
+      // A mention surfaces while its recipient can read the room: as a member,
+      // or — for an open channel (public, not a DM, not a system conversation)
+      // — as any active member of the organisation, which the outer clause
+      // already requires. A private channel's alert to a non-member never
+      // surfaces, even if one were written.
       kind: 'mention',
       channel: {
         is: {
           organizationId: input.organizationId,
-          members: { some: { userId: input.userId } },
+          OR: [
+            { members: { some: { userId: input.userId } } },
+            {
+              deletedAt: null,
+              systemChannelType: null,
+              type: { not: 'dm' },
+              visibility: 'public',
+            },
+          ],
         },
       },
     },

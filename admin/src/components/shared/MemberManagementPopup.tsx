@@ -4,6 +4,12 @@ import { OverlayPortal } from '../overlays/OverlayPortal'
 import { useOverlay } from '../overlays/useOverlay'
 import { CloseIcon, SearchIcon } from './channel-members/icons'
 
+const PANEL_BASE_MAX_HEIGHT = 'calc(100dvh - 2rem)'
+const PANEL_MAX_HEIGHT = [
+  `min(${PANEL_BASE_MAX_HEIGHT},`,
+  `var(--overlay-visible-height, ${PANEL_BASE_MAX_HEIGHT}))`,
+].join(' ')
+
 type MemberManagementPopupProps = {
   children: ReactNode
   entityLabel: string
@@ -19,7 +25,7 @@ type MemberManagementPopupProps = {
  * modal, search, count, and dismissal behaviour visibly identical.
  *
  * Not the shared `Dialog`: a fixed-header + fixed-search + independently
- * scrolling member list inside a `max-h-[80dvh]` flex column, which none of
+ * scrolling member list inside a viewport-bounded flex column, which none of
  * the shell's four panel geometries express. `useOverlay` still gives it the
  * Back registration, focus trap, drag-safe scrim and layer every other
  * overlay gets (docs/navigation/overview.md §7).
@@ -55,6 +61,7 @@ export const MemberManagementPopup = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          paddingBottom: 'var(--overlay-visual-inset, 0px)',
           background: 'var(--scrim-strong)',
           backdropFilter: 'blur(4px)',
         }}
@@ -63,12 +70,12 @@ export const MemberManagementPopup = ({
           aria-labelledby={titleId}
           aria-modal="true"
           className={[
-            'flex max-h-[80dvh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
+            'flex w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
             'border border-[color:var(--sep)] bg-[color:var(--main)]',
           ].join(' ')}
           ref={overlay.panelRef}
           role="dialog"
-          style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
+          style={{ boxShadow: '0 24px 48px var(--scrim-strong)', maxHeight: PANEL_MAX_HEIGHT }}
           tabIndex={-1}
         >
           <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">

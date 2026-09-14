@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { isAdminActor } from '@nessie/schemas'
 
 import { DeletePersonalAssistantPresenceBodySchema } from '../contracts/team.js'
 import { PersonalAssistantBootstrapResponseSchema } from '../contracts/agents.js'
@@ -143,6 +144,7 @@ export const registerPersonalAssistantRoutes = (
     const result = await removePersonalAssistantPresence(prisma, {
       actorUserId: actorContext.actor.actorId,
       channelId,
+      isOrganizationAdmin: isAdminActor(actorContext),
       organizationId: actorContext.tenant.organizationId,
       principalUserId: body.principalUserId ?? actorContext.actor.actorId,
     })

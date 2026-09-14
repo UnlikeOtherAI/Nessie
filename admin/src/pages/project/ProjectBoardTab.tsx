@@ -16,7 +16,7 @@ import type { BoardRecord, BoardTaskRecord } from '../../facades/boards/hooks'
 import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useMoveTask, useTaskAssignees } from '../../facades/tasks/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
@@ -57,7 +57,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   const tasksQuery = useBoardTasks(projectId, board?.id)
   const { data: projects = [] } = useProjects()
   const { data: sources = [] } = useProjectSources(projectId, board?.id)
-  const canAdminister = useCanAdministerProject(projectId)
+  const canAdminister = useCanModifyProject(projectId)
   const { data: assignableUsers = [] } = useTaskAssignees()
   const { me } = useAuthSession()
   const moveTask = useMoveTask()

@@ -50,7 +50,7 @@ export const ChannelsPage = () => {
   // that is standing right there. See `useChannelPlaceableAgents`.
   const { data: agents = [], isPending: agentsPending } = useChannelPlaceableAgents()
   const isOwner = useIsOwner()
-  const { data: allUsers = [] } = useUsers(isOwner)
+  const { data: allUsers = [] } = useUsers()
 
   const isComposeRoute = location.pathname === '/channels/new'
   const composeReturnTo = readChannelComposeReturnTo(location.state)
@@ -65,7 +65,7 @@ export const ChannelsPage = () => {
   // Function-first identity + conversation starters for the active external
   // agent, sourced from its plugin manifest (null for any other channel).
   const externalAgentIdentity = useExternalAgentIdentity(activeChannel)
-  const { agentMap, boundAgents, channelUsers } = useChannelParticipants(
+  const { agentMap, boundAgents, channelUsers, mentionUsers } = useChannelParticipants(
     activeChannel,
     agents,
     allUsers,
@@ -228,6 +228,7 @@ export const ChannelsPage = () => {
     channels,
     channelUsers,
     currentUserId: me?.user.id,
+    mentionUsers,
     inConversation,
     isComposeRoute,
     isExternalAgentActiveChannel,

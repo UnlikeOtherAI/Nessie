@@ -12,6 +12,7 @@ import {
 import { MCP_CATALOG_ERROR_CODES, McpCatalogError } from './mcp-catalog-errors.js'
 import {
   assertCatalogSecurity,
+  duplicateNameError,
   isUniqueViolation,
   toJsonRecord,
 } from './mcp-catalog-guards.js'
@@ -316,12 +317,14 @@ export const deleteCatalogEntry = async (
 }
 
 /**
- * Self-publish a `private` connector (`draft` → `published`) so its owner can
- * install it. Public connectors must instead go through the review flow
- * (`submitForReview` → superuser `approveSubmission`) and are rejected here.
+ * Publish a `private` connector (`draft` or legacy private `published` →
+ * public `published`) so everyone in its organisation can find and install it.
+ * A pending public submission must instead finish the review flow
+ * (`submitForReview` → superuser `approveSubmission`) and is rejected here; an
+ * already public published entry is returned unchanged.
  *
  * Concurrency: the transition is a single conditional `updateMany` keyed on
- * `status === 'draft'`, so two concurrent publishes race at the database and
+ * the status it read, so two concurrent publishes race at the database and
  * exactly one wins; the loser re-reads to return a consistent answer.
  */
 export const publishCatalogEntry = async (
@@ -332,23 +335,33 @@ export const publishCatalogEntry = async (
   const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return null
   if (existing.visibility === 'public') {
+    if (existing.status === 'published') return existing
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
       `Catalog entry ${id} is public; use the review flow to publish it`,
     )
   }
-  if (existing.status === 'published') return existing
-  if (existing.status !== 'draft') {
+  if (existing.status !== 'draft' && existing.status !== 'published') {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
       `Catalog entry ${id} cannot be published from ${existing.status}`,
     )
   }
 
-  const { count } = await prisma.mcpCatalogEntry.updateMany({
-    where: { id, status: 'draft', visibility: 'private' },
-    data: { status: 'published' },
-  })
+  // Publishing shares the app with the whole organisation: every app is
+  // public within its tenant for now. `visibility` stays a real column
+  // because private apps are planned; until they ship, publish is the one
+  // transition that writes `public`, and the tenancy floor still bounds it.
+  let count: number
+  try {
+    ;({ count } = await prisma.mcpCatalogEntry.updateMany({
+      where: { id, status: existing.status, visibility: 'private' },
+      data: { status: 'published', visibility: 'public' },
+    }))
+  } catch (error) {
+    if (isUniqueViolation(error)) throw duplicateNameError(existing.name)
+    throw error
+  }
   if (count === 0) {
     const current = await getAccessibleCatalogEntry(prisma, actorContext, id)
     if (!current) return null

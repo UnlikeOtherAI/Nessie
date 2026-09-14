@@ -49,7 +49,7 @@ export const canManageSecretScope = async (input: {
   if (scopeType === 'project') {
     const project = await prisma.project.findFirst({
       select: { id: true },
-      where: { id: input.scopeId, organizationId },
+      where: { id: input.scopeId, organizationId, deletedAt: null },
     })
     return { allowed: isOwner && Boolean(project), scopeId: input.scopeId }
   }

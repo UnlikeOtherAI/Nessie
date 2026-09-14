@@ -64,8 +64,9 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     description:
       'Update a channel label, topic, and/or description. Requires the acting ' +
-      'principal to be able to manage the channel (channel owner/admin, or an ' +
-      'org/team owner/admin).',
+      'principal to be able to change the channel: any member of it, or an ' +
+      'organisation owner or admin when the channel is public. A direct message ' +
+      'can only be changed by its participants.',
     parameters: {
       type: 'object',
       properties: {

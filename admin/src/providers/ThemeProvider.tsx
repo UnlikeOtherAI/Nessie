@@ -64,6 +64,11 @@ type ThemeContextValue = {
 
 const BUILT_IN_THEMES = [
   {
+    description: 'Navy navigation around a white work surface.',
+    id: 'nessie',
+    label: 'Nessie',
+  },
+  {
     description: 'Warm sand surfaces with terracotta controls.',
     id: 'sandstone',
     label: 'Sandstone',

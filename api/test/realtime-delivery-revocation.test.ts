@@ -312,6 +312,100 @@ test('a ws burst costs one channel query, and still stops on revocation', async 
   assert.equal(channelChecks, 2)
 })
 
+/**
+ * Deactivation on the channel lanes.
+ *
+ * Deactivating a member revokes refresh families but leaves `ChannelMember`
+ * rows as history, and the channel predicate (`getVisibleChannel`) asks only
+ * "public, or a member". So a deactivated person's open WS, user-SSE or thread
+ * stream kept every channel event — the organization lane was the only one that
+ * checked the membership row. Each lane below keeps channel access granted and
+ * deactivates the organization membership mid-connection.
+ */
+const deactivationGates = (clock: ReturnType<typeof createClock>) => {
+  const state = { active: true, organizationChecks: 0 }
+  return {
+    state,
+    options: {
+      canAccessChannelEvent: async () => true,
+      entitlements: {
+        canAccessOrganizationEvent: async (request: { organizationId: string; userId: string }) => {
+          state.organizationChecks += 1
+          assert.equal(request.organizationId, ORGANIZATION_ID)
+          assert.equal(request.userId, USER_ID)
+          return state.active
+        },
+        resolveThreadChannelId: async () => CHANNEL_ID,
+      },
+      now: clock.now,
+    },
+  }
+}
+
+test('a deactivated member stops receiving channel events on a ws connection', async () => {
+  const clock = createClock()
+  const { options, state } = deactivationGates(clock)
+  const { deliverNotification, wsConnections } = createWsNotificationDelivery(options)
+
+  const sent: WsEventMessage[] = []
+  wsConnections.add({
+    organizationId: ORGANIZATION_ID,
+    scopes: channelScopes,
+    send: (message) => sent.push(message),
+    userId: USER_ID,
+  })
+
+  for (let event = 0; event < 4; event += 1) {
+    await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  }
+  assert.equal(sent.length, 4)
+  assert.equal(state.organizationChecks, 1, 'the membership check shares the channel gate window')
+
+  state.active = false
+  clock.advancePastTtl()
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(sent.length, 4, 'a deactivated member kept a channel feed on an open socket')
+})
+
+test('a deactivated member stops receiving channel events on a user stream', async () => {
+  const clock = createClock()
+  const { options, state } = deactivationGates(clock)
+  const { deliverNotification, userSseConnections } = createWsNotificationDelivery(options)
+
+  const written: string[] = []
+  userSseConnections.add(createUserConnection(written))
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(written.length, 1)
+
+  state.active = false
+  clock.advancePastTtl()
+
+  await deliverNotification({ kind: 'ws', message: wsMessage, scopes: channelScopes })
+  assert.equal(written.length, 1, 'a deactivated member kept a channel feed on an open user stream')
+})
+
+test('a deactivated member stops receiving a thread stream', async () => {
+  const clock = createClock()
+  const { options, state } = deactivationGates(clock)
+  const { deliverNotification, threadSseConnections } = createWsNotificationDelivery(options)
+
+  const written: string[] = []
+  threadSseConnections.add(createThreadConnection(written))
+
+  await deliverNotification(threadEvent(1))
+  await deliverNotification(threadEvent(2))
+  assert.equal(written.length, 2)
+  assert.equal(state.organizationChecks, 1)
+
+  state.active = false
+  clock.advancePastTtl()
+
+  await deliverNotification(threadEvent(3))
+  assert.equal(written.length, 2, 'a deactivated member kept an open thread stream')
+})
+
 test('caching the entitlement does not cache the subscription', async () => {
   const clock = createClock()
   let channelChecks = 0

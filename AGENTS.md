@@ -311,8 +311,10 @@ when one changes, the same turn updates it, not this section.
   category no longer matches. Placement is resolved server-side by
   `resolveBoardPlacement` (`@nessie/team-admin`) — never in the client — and
   board/column/field/source administration, plus iteration
-  create/update/delete, is gated by `canAdministerProject`
-  (`requireProjectAdmin` at the route), not organisation ownership.
+  create/update/delete, is gated by `canModifyProject`
+  (`requireProjectModifier` at the route): any member of the project, or an
+  organisation owner or admin — the equal-rights rule in
+  [docs/standards/team-model.md](docs/standards/team-model.md).
   Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
   before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call

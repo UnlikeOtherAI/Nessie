@@ -273,7 +273,7 @@ runDatabaseTest('the project list is scoped by entitlement and by organisation',
   })
 
   const asOwner = await listProjectsForUser(prisma, {
-    isOwner: true,
+    isOrganizationAdmin: true,
     organizationId: seeded.organizationId,
     userId: seeded.ownerId,
   })
@@ -283,7 +283,7 @@ runDatabaseTest('the project list is scoped by entitlement and by organisation',
   assert.ok(!ownerIds.has(seeded.otherProjectId), 'never another organisation')
 
   const asMember = await listProjectsForUser(prisma, {
-    isOwner: false,
+    isOrganizationAdmin: false,
     organizationId: seeded.organizationId,
     userId: seeded.memberId,
   })

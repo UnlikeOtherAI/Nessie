@@ -30,7 +30,7 @@ export const registerBoardWatcherRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, requireUserActor, requireProjectAdmin, isProjectAccessibleToActor } = deps
+  const { prisma, requireActorContext, requireUserActor, requireProjectModifier, isProjectAccessibleToActor } = deps
 
   const loadBoard = async (
     actorContext: AuthorizedActionContext,
@@ -76,7 +76,7 @@ export const registerBoardWatcherRoutes = (
       sendApiError(reply, 404, 'BOARD_NOT_FOUND', 'Board not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(SetBoardWatchersBodySchema, request.body, reply)
     if (!body) return reply
 

@@ -73,7 +73,7 @@ const createStandalonePrisma = (slugTaken = false) => {
         }
       },
       findFirst: async () => slugTaken ? { id: IDS.channel } : null,
-      // `mapChannelRecord` computes `viewerCanManage` through `canManageChannel`,
+      // `mapChannelRecord` computes `viewerCanManage` through `canModifyChannel`,
       // which re-reads the channel row and the viewer's three memberships.
       findUnique: async () => ({
         id: IDS.channel,

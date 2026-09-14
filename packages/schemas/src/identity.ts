@@ -97,10 +97,11 @@ export const UserPreferencesSchema = z.object({
   // `organization` means "my organisation's colours, wherever I am" — a fixed
   // id, not an organisation id, because the preference is account-level and
   // follows the person into every organisation they belong to. It resolves to
-  // Sandstone in one that has no palette.
+  // the built-in default (Nessie) in one that has no palette.
   // docs/plans/2026-09-05-organisation-custom-theme.md §5.1
   theme: z.enum([
     'organization',
+    'nessie',
     'nebula',
     'midnight',
     'daylight',

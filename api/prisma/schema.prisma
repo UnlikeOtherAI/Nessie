@@ -1534,6 +1534,13 @@ model Project {
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA team and does not mirror any external team.
   channelRoot              Boolean                   @default(false) @map("channel_root")
+  // What the project is for, in a sentence. One of the three facts (with its
+  // name and members) a person outside the project may read.
+  description              String?
+  // Soft delete. `DELETE /api/projects/:projectId` stamps this (and its
+  // channels' `deletedAt`) instead of removing rows, so the data stays intact
+  // for a future restore. Every project read filters `deletedAt: null`.
+  deletedAt                DateTime?                 @map("deleted_at")
   createdAt                DateTime                  @default(now()) @map("created_at")
   updatedAt                DateTime                  @updatedAt @map("updated_at")
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -2050,6 +2057,11 @@ model Channel {
   topic                  String?
   description            String?
   archivedAt             DateTime?                 @map("archived_at")
+  // Soft delete. `DELETE /api/channels/:channelId` stamps this together with
+  // `archivedAt`, so every archived-channel filter already hides the row and
+  // its name is released; reads by id filter `deletedAt: null` too. The rows
+  // stay intact for a future restore; nothing unsets it yet.
+  deletedAt              DateTime?                 @map("deleted_at")
   createdAt              DateTime                  @default(now()) @map("created_at")
   updatedAt              DateTime                  @updatedAt @map("updated_at")
   organization           Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4386,8 +4398,9 @@ model McpCatalogEntry {
   health                McpServerHealth?
   appConnectionRequests AgentAppConnectionRequest[]
 
-  // Uniqueness is enforced by partial indexes (see migration): public entries
-  // are unique on `name` store-wide; private entries are unique per owner in
+  // Uniqueness is enforced by partial indexes (see migration): public
+  // instance-global entries are unique on `name`, public tenant entries on
+  // `name` within their organisation; private entries are unique per owner in
   // one organisation. A person can therefore use the same private connector
   // name in separate teams without either team exposing the other.
   // A single `@@unique` can't express either, so they live in raw SQL.

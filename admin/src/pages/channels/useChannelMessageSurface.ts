@@ -41,6 +41,8 @@ type ChannelMessageSurfaceInput = {
   channels: ChannelRecord[]
   channelUsers: UserRecord[]
   currentUserId: string | undefined
+  // Every active person the composer may @mention (`useChannelParticipants`).
+  mentionUsers: UserRecord[]
   inConversation: boolean
   isComposeRoute: boolean
   isExternalAgentActiveChannel: boolean
@@ -77,6 +79,7 @@ export const useChannelMessageSurface = ({
   isGlobalAgentActiveChannel,
   isPersonalAssistantConversation,
   location,
+  mentionUsers,
   phoneLayout,
   redirect,
   routeTool,
@@ -102,7 +105,7 @@ export const useChannelMessageSurface = ({
     activeChannel,
     agents,
     channels,
-    channelUsers,
+    mentionUsers,
     personalAssistantPresences: activeChannel?.personalAssistantPresences,
   })
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })

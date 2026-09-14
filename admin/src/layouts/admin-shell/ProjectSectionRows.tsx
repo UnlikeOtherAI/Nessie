@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link } from 'react-router-dom'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { useProjectBoards } from '../../facades/boards/hooks'
 import { BoardIcon } from '../../components/features/projects/kanban/BoardIcon'
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
@@ -61,7 +61,7 @@ export const ProjectSectionRows = ({
   const prewarm = usePrewarm()
   const boardsQuery = useProjectBoards(projectId)
   const boards = boardsQuery.data ?? []
-  const canAdministerProject = useCanAdministerProject(projectId)
+  const canModifyProject = useCanModifyProject(projectId)
   const isScrum = boards.some((board) => board.style === 'scrum')
   const isCurrentProject = currentProjectId === projectId
   const boardsId = `projects-nav-${listId}-${projectId}-boards`
@@ -149,7 +149,7 @@ export const ProjectSectionRows = ({
                     <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                {canAdministerProject ? (
+                {canModifyProject ? (
                   <button
                     aria-label="New board"
                     className="admin-sidebar-more flex-shrink-0"

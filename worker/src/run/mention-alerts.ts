@@ -2,6 +2,8 @@ import type { PrismaClient } from '@prisma/client'
 import {
   createMentionUserAlerts,
   followReplyThread,
+  listOpenChannelMentionCandidates,
+  mergeMentionCandidates,
   resolveMessageMentions,
   type PgRealtimeTransport,
 } from '@nessie/runtime'
@@ -135,15 +137,33 @@ export const createMessageMentionAlerts = async (
 
   let mentionedUserIds: string[]
   try {
-    const members = await deps.prisma.channelMember.findMany({
-      where: { channelId: input.channelId },
-      select: { user: { select: { id: true, displayName: true } } },
-    })
+    // The same audience a person's send resolves against: members, plus every
+    // active organisation member in an open channel. A non-member of a private
+    // channel is never addressed, so they get no alert and no follow.
+    const [members, channel] = await Promise.all([
+      deps.prisma.channelMember.findMany({
+        where: { channelId: input.channelId },
+        select: { user: { select: { id: true, displayName: true } } },
+      }),
+      deps.prisma.channel.findUnique({
+        where: { id: input.channelId },
+        select: { systemChannelType: true, type: true, visibility: true },
+      }),
+    ])
+    const openCandidates = channel
+      ? await listOpenChannelMentionCandidates(deps.prisma, {
+        ...channel,
+        organizationId: input.organizationId,
+      })
+      : []
     mentionedUserIds = resolveMessageMentions(input.content, {
-      members: members.map((member) => ({
-        userId: member.user.id,
-        displayName: member.user.displayName,
-      })),
+      members: mergeMentionCandidates(
+        members.map((member) => ({
+          userId: member.user.id,
+          displayName: member.user.displayName,
+        })),
+        openCandidates,
+      ),
     }).userIds
   } catch (error) {
     if (input.durableEventKey) throw error

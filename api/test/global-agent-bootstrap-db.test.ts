@@ -9,7 +9,7 @@ import {
   AGENT_DESIGNER_BLUEPRINT,
   AgentBindingError,
   bindAgentToChannel,
-  canManageChannel,
+  canModifyChannel,
   checkPolicy,
   createAgentTrigger,
   ensureGlobalAgentBootstrap,
@@ -374,7 +374,7 @@ dbTest('no second agent may bind into a global agent home DM', async () => {
     // And the surface is lifecycle-protected: nobody renames or archives it,
     // not even the organisation owner who seeded it.
     assert.equal(
-      await canManageChannel(prisma, {
+      await canModifyChannel(prisma, {
         channelId: bootstrap.channelId,
         organizationId,
         userId,

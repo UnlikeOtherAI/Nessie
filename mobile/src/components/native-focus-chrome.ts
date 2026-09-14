@@ -2,17 +2,17 @@ import { mixColor } from '../lib/chrome-transition'
 import type { NativeShellPresentation } from './native-shell-presentation'
 
 /**
- * Focus mode's navigation palette, for the chrome the native shell draws.
+ * Focus mode's navigation palette, for a page that does not publish its own.
  *
  * The admin paints focus as charcoal navigation framing a paper-white work
- * surface, and declares that navigation palette only on the chrome the page
- * itself draws (`admin/src/styles.css`, `.focus-mode > .admin-topbar` and the
- * sidebar rail beside it). A native shell hides both of those, so on a phone
- * the page contains no element carrying these colours to read back over the
- * bridge -- the native header and tab bar have to hold them directly.
+ * surface. A current admin publishes that palette itself: its
+ * `.native-chrome-palette` element sits in the `.focus-mode > .admin-topbar`
+ * rule, so its `theme` message already carries focus colours and says so with
+ * `chromeSource: 'page'` (docs/navigation/native-shell.md, "theme and bg").
+ * These constants are only the fallback for an admin predating that, whose
+ * document root never carried focus colours to read back.
  *
- * Keep these in step with that `.focus-mode > .admin-topbar` block; they are
- * the same colours, for the chrome the page is not drawing.
+ * Keep these in step with that `.focus-mode > .admin-topbar` block.
  */
 export const NATIVE_FOCUS_CHROME = {
   accent: '#b9b9bc',
@@ -34,7 +34,7 @@ export const NATIVE_FOCUS_CHROME = {
 export const applyNativeFocusChrome = (
   presentation: NativeShellPresentation,
 ): NativeShellPresentation =>
-  presentation.nativeAccount.focusModeEnabled
+  presentation.nativeAccount.focusModeEnabled && !presentation.pageOwnsChrome
     ? { ...presentation, ...NATIVE_FOCUS_CHROME }
     : presentation
 

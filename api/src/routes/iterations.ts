@@ -19,7 +19,7 @@ import {
 import type { RouteDeps } from './types.js'
 
 export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } = deps
+  const { prisma, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } = deps
 
   // Single seam for every iteration route: a project is only loadable by an
   // org owner or a member of that project, so another team's iterations and
@@ -70,9 +70,10 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
   })
 
   // An iteration is project shape, exactly as a board or a column is, so it
-  // takes the same gate: `requireProjectAdmin`, not organisation ownership. A
-  // project admin who can create the board an iteration filters could not
-  // create the iteration itself.
+  // takes the same gate: `requireProjectModifier` (any member of the project, or
+  // an organisation owner or admin), not organisation ownership — otherwise a
+  // member who can create the board an iteration filters could not create the
+  // iteration itself.
   app.post('/api/projects/:projectId/iterations', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -83,7 +84,7 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, project.id, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, project.id, reply))) return reply
     const body = parseInput(CreateIterationBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -101,7 +102,7 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
       sendApiError(reply, 404, 'ITERATION_NOT_FOUND', 'Iteration not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, iteration.projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, iteration.projectId, reply))) return reply
     const body = parseInput(UpdateIterationBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -127,7 +128,7 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
       sendApiError(reply, 404, 'ITERATION_NOT_FOUND', 'Iteration not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, iteration.projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, iteration.projectId, reply))) return reply
 
     await deleteIteration(prisma, iteration.projectId, iterationId)
     return createApiResponse({ ok: true })

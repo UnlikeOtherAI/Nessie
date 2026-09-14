@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 
-import { canManageChannel } from './channel-manage.js'
+import { canModifyChannel } from './resource-authority.js'
 
 type TransactionClient = PrismaClient | Prisma.TransactionClient
 
@@ -95,6 +95,8 @@ export const removePersonalAssistantPresence = async (
     channelId: string
     organizationId: string
     principalUserId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
   },
 ): Promise<PersonalAssistantPresenceMutation> => {
   const [assistant, channel] = await Promise.all([
@@ -121,8 +123,9 @@ export const removePersonalAssistantPresence = async (
       select: { id: true },
     })
     if (!membership) return { kind: 'not_found' }
-  } else if (!await canManageChannel(prisma, {
+  } else if (!await canModifyChannel(prisma, {
     channelId: input.channelId,
+    isOrganizationAdmin: input.isOrganizationAdmin,
     organizationId: input.organizationId,
     userId: input.actorUserId,
   })) {
