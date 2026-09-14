@@ -119,10 +119,15 @@ jobs:
       # packages/schemas left @nessie/memory's typecheck hash byte-identical, so
       # a cached pass would replay green over a breaking change. The speed comes
       # from the cache instead — unchanged packages replay in milliseconds.
+      # Every tsc that loads the generated Prisma client holds ~2.2 GB. When a
+      # change invalidates most of the cache, Turbo's default of 10 concurrent
+      # tasks starts a wave of those at once and the runner's OOM killer ends
+      # the step; 4 matches the test job (docs/standards/testing.md).
       - name: Typecheck packages
         run: pnpm typecheck
         env:
           TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
+          TURBO_CONCURRENCY: 4
 
   build:
     name: Build
@@ -164,10 +169,13 @@ jobs:
 
       # Still the lint-gated root build, per AGENTS.md — the gate is inside
       # `pnpm build` and must not be swapped for a raw turbo invocation.
+      # Same memory ceiling as the Type Check step: an uncached wave of
+      # Prisma-loading tsc processes is OOM-killed at Turbo's default of 10.
       - name: Build all packages
         run: pnpm build
         env:
           TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
+          TURBO_CONCURRENCY: 4
 
   linux-desktop:
     name: Linux Desktop Bundle
@@ -717,6 +725,10 @@ jobs:
       - name: Build worker dependencies
         if: steps.scope.outputs.code == '1'
         run: pnpm exec turbo run build --filter=@nessie/worker...
+        env:
+          # See the Type Check step: an uncached Prisma-loading tsc wave is
+          # OOM-killed at Turbo's default concurrency.
+          TURBO_CONCURRENCY: 4
 
       - name: Apply database migrations
         if: steps.scope.outputs.code == '1'
@@ -801,6 +813,10 @@ jobs:
       - name: Build api and worker
         if: steps.scope.outputs.code == '1'
         run: pnpm exec turbo run build --filter=@nessie/api... --filter=@nessie/worker...
+        env:
+          # See the Type Check step: an uncached Prisma-loading tsc wave is
+          # OOM-killed at Turbo's default concurrency.
+          TURBO_CONCURRENCY: 4
 
       - name: Apply database migrations
         if: steps.scope.outputs.code == '1'
@@ -940,6 +956,10 @@ jobs:
       - name: Build admin, api and worker
         if: steps.scope.outputs.code == '1'
         run: pnpm exec turbo run build --filter=@nessie/admin... --filter=@nessie/api... --filter=@nessie/worker...
+        env:
+          # See the Type Check step: an uncached Prisma-loading tsc wave is
+          # OOM-killed at Turbo's default concurrency.
+          TURBO_CONCURRENCY: 4
 
       - name: Apply database migrations
         if: steps.scope.outputs.code == '1'
