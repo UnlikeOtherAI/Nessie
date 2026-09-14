@@ -1,3 +1,4 @@
+import { Assistant } from './home/assistant'
 import { AiBand, Pillars, WhatsNew } from './home/blocks'
 import { FinalCta, Footer, Love, Promos, StatsBand, Stories } from './home/closing'
 import { CookieBar, Header } from './home/header'
@@ -14,6 +15,7 @@ export function App() {
       <Header />
       <main>
         <Hero />
+        <Assistant />
         <AiBand />
         <Wave bottom={light} top="var(--n-ink)" />
         <WhatsNew />

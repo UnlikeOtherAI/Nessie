@@ -1,14 +1,18 @@
 import {
   faBook,
+  faCarSide,
   faClipboardCheck,
+  faClock,
   faCoins,
   faEnvelope,
   faEnvelopeOpenText,
   faGlobe,
   faHashtag,
+  faPenToSquare,
   faPeopleArrows,
   faPlug,
   faRepeat,
+  faReply,
   faServer,
   faVideo,
   type IconDefinition,
@@ -63,6 +67,26 @@ export const heroTabs = [
   { label: 'It gets it done', shot: actionsShot },
   { label: 'The whole team sees it', shot: channelShot },
 ]
+
+// Straight after the hero: every person gets an assistant that works like
+// them, and any AI employee can be called like a colleague.
+export const assistant = {
+  kicker: 'Your personal assistant',
+  title: 'Everyone gets an assistant that works the way they do.',
+  text: 'Each person in your organisation gets their own AI assistant. It learns how you communicate, takes work off your plate, and checks with you before anything important goes out.',
+  cards: [
+    { icon: faClock, title: 'Schedules your messages', text: 'Write it now; it goes out when it should.' },
+    { icon: faReply, title: 'Replies when a reply is needed', text: 'Keeps colleagues moving on the questions you would have answered anyway.' },
+    { icon: faPenToSquare, title: 'Drafts emails in your voice', text: 'Prepares replies from your past conversations, ready for you to send.' },
+  ] satisfies Card[],
+  call: {
+    icon: faCarSide,
+    kicker: 'Voice calls',
+    title: 'Plan the day on your way to work.',
+    text: 'Call any of your AI employees like a colleague — from the car, the train or a walk. Hand out the day’s work to everyone and get ahead of your email before you arrive.',
+    cta: 'How voice calls work',
+  },
+}
 
 export type Card = { icon: IconDefinition; title: string; text: string; tag?: string }
 
