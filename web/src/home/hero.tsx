@@ -1,5 +1,5 @@
 import { faGithub } from '@fortawesome/free-brands-svg-icons'
-import { faPause, faPlay, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { faXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -8,7 +8,8 @@ import { deviceColours, docsUrl, hero, heroTabs, signInUrl, type DeviceColour } 
 import { DeviceView } from './desktop3d'
 import { Button } from './ui'
 
-const advanceMs = 6000
+// Screenshots rotate slowly; the dots under the desktop jump between them.
+const advanceMs = 9000
 const openMs = 650
 const closeMs = 480
 const easeOut = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
@@ -27,8 +28,9 @@ function transformFrom(origin: DOMRect, target: DOMRect) {
 
 export function Hero() {
   const [active, setActive] = useState(0)
-  const [playing, setPlaying] = useState(true)
   const [expanded, setExpanded] = useState(false)
+  // Screenshots advance on their own, except while the desktop is full screen.
+  const playing = !expanded
   const [closing, setClosing] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [colour, setColour] = useState<DeviceColour>(readDeviceColour)
@@ -51,7 +53,6 @@ export function Hero() {
     if (expanded) return
     openFrom.current = stage.current?.getBoundingClientRect() ?? null
     setHovered(false)
-    setPlaying(false)
     setExpanded(true)
   }
 
@@ -170,33 +171,20 @@ export function Hero() {
               />
             </div>
           </div>
-          <button
-            aria-label={playing ? 'Pause' : 'Play'}
-            className="n-stage-toggle"
-            onClick={() => setPlaying(!playing)}
-            type="button"
-          >
-            <FontAwesomeIcon icon={playing ? faPause : faPlay} />
-          </button>
+          <div aria-label="Screenshots" className="n-shot-dots" role="tablist">
+            {heroTabs.map((t, i) => (
+              <button
+                aria-label={t.label}
+                aria-selected={i === active}
+                className="n-shot-dot"
+                key={t.label}
+                onClick={() => setActive(i)}
+                role="tab"
+                type="button"
+              />
+            ))}
+          </div>
         </div>
-      </div>
-      <div className="n-stage-tabs" role="tablist">
-        {heroTabs.map((t, i) => (
-          <button
-            aria-selected={i === active}
-            className="n-stage-tab"
-            key={t.label}
-            onClick={() => {
-              setActive(i)
-              setPlaying(false)
-            }}
-            role="tab"
-            type="button"
-          >
-            {t.label}
-            {i === active && playing && <span className="n-stage-progress" key={active} />}
-          </button>
-        ))}
       </div>
       {expanded && (
         <>

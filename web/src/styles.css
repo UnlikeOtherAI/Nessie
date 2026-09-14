@@ -455,11 +455,6 @@ button {
   cursor: zoom-out;
 }
 
-/* The play/pause control hides while the desktop is away from the hero. */
-.n-hero-visual-away .n-stage-toggle {
-  visibility: hidden;
-}
-
 /* Close button and case colours, above the desktop in the top-right corner. */
 .n-device-controls {
   position: fixed;
@@ -538,72 +533,40 @@ button {
   transform: translateX(-50%);
 }
 
-.n-stage-toggle {
-  position: absolute;
-  right: 8%;
-  bottom: 22%;
-  display: grid;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 50%;
-  place-items: center;
-  background: rgba(6, 34, 47, 0.55);
-  color: #fff;
-  cursor: pointer;
-}
-
-.n-stage-tabs {
+/* Pagination for the hero screenshots, under the desktop. */
+.n-shot-dots {
   display: flex;
-  justify-content: space-between;
-  max-width: var(--n-max);
-  margin: 56px auto 0;
-  padding: 6px 12px;
-  border-radius: 999px;
-  box-sizing: border-box;
-  background: #fff;
-  box-shadow: 0 2px 10px rgba(6, 34, 47, 0.08);
-  overflow-x: auto;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
 }
 
-.n-stage-tab {
+.n-shot-dot {
   position: relative;
-  padding: 12px 16px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
   border: 0;
-  background: none;
-  color: var(--n-muted);
-  font-size: 15px;
-  font-weight: 500;
-  white-space: nowrap;
+  border-radius: 999px;
+  background: rgba(11, 23, 42, 0.22);
   cursor: pointer;
+  transition: width 250ms var(--easing-standard), background 250ms ease;
 }
 
-.n-stage-tab[aria-selected='true'] {
-  color: var(--n-ink);
-  font-weight: 700;
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 6px;
-}
-
-.n-stage-progress {
+/* A finger-sized hit area around each small dot. */
+.n-shot-dot::after {
   position: absolute;
-  right: 16px;
-  bottom: 4px;
-  left: 16px;
-  height: 2px;
-  background: var(--n-teal);
-  transform-origin: left;
-  animation: n-progress 6000ms linear forwards;
+  inset: -10px -6px;
+  content: '';
 }
 
-@keyframes n-progress {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
+.n-shot-dot:hover {
+  background: rgba(11, 23, 42, 0.4);
+}
+
+.n-shot-dot[aria-selected='true'] {
+  width: 28px;
+  background: var(--n-sea);
 }
 
 /* Personal assistant + voice calls, straight after the hero */
@@ -1740,8 +1703,7 @@ button {
   }
 
   .n-screen-img,
-  .n-cookie,
-  .n-stage-progress {
+  .n-cookie {
     animation: none;
   }
 
