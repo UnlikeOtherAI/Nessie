@@ -7,6 +7,7 @@ import {
   SESSION_CLIENT_HEADER,
 } from '../services/session-client.js'
 import { registerAuthCoreRoutes } from './auth-core.js'
+import { registerAuthLandingTeamsRoute } from './auth-landing-teams.js'
 import { registerAuthLoginRoute } from './auth-login.js'
 import { registerAuthRefreshRoute } from './auth-refresh.js'
 import { registerAuthSecurityRoutes } from './auth-security.js'
@@ -58,4 +59,10 @@ export const registerAuthRoutes = (
   registerAuthRefreshRoute(app, deps)
   registerAuthSecurityRoutes(app, deps, issueRefreshCookie)
   registerAuthUoaTeamRoute(app, deps)
+  registerAuthLandingTeamsRoute(app, {
+    prisma: deps.prisma,
+    landingOrigin: deps.landingOrigin,
+    teamHostBaseDomain: deps.teamHostBaseDomain,
+    adminOrigin: process.env.NESSIE_ADMIN_PUBLIC_URL ?? process.env.NESSIE_ADMIN_ORIGIN ?? null,
+  })
 }

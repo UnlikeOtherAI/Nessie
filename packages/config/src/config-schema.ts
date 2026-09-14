@@ -237,6 +237,10 @@ export const NessieConfigSchema = z.object({
       agentWriteIp: RateLimitRuleSchema.default({ max: 60, windowMs: 60_000 }),
       // `GET /api/auth/me` is public and counts users when unauthenticated.
       authMeIp: RateLimitRuleSchema.default({ max: 600, windowMs: 60_000 }),
+      // `GET /api/auth/landing-teams`: the public landing asks once per page
+      // view, and a signed-in answer can fan out to one UOA address read per
+      // team, so it sits well below `/api/auth/me`.
+      landingTeamsIp: RateLimitRuleSchema.default({ max: 120, windowMs: 60_000 }),
       // Unauthenticated key-guessing surface: a bearer webhook key is the only
       // thing between a caller and a trigger fire, so this is the tightest of
       // the intake buckets.

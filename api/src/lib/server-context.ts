@@ -92,6 +92,18 @@ export const createServerContext = () => {
     .replace(/^\.+|\.+$/g, '') || undefined
 
   /**
+   * The public landing's exact origin, e.g. `https://nessie.works`.
+   *
+   * Admitted by `GET /api/auth/landing-teams` and by nothing else: it is
+   * deliberately NOT added to `allowedCorsOrigins`, so the landing can read
+   * its one signed-in answer without becoming an origin that may call the rest
+   * of the API with credentials. Unset means the landing shows no team list.
+   */
+  const landingOrigin = parseOriginList(process.env.NESSIE_LANDING_ORIGIN)
+    .values()
+    .next().value ?? undefined
+
+  /**
    * Shared secret the edge presents when asking whether a hostname may be
    * issued a certificate (`GET /api/hosts/tls-check`).
    *
@@ -395,6 +407,7 @@ export const createServerContext = () => {
     authSecret,
     encryptionKeyRing,
     allowedCorsOrigins,
+    landingOrigin,
     teamHostBaseDomain,
     tlsCheckKey,
     DEFAULT_LOCAL_PROVIDER_TYPE,

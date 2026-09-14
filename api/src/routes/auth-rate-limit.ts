@@ -43,6 +43,7 @@ export const RATE_LIMIT_BUCKETS = {
   mailboxDiscoverIp: 'api.mailbox_discover.ip',
   agentWriteIp: 'api.agent_write.ip',
   authMeIp: 'auth.me.ip',
+  landingTeamsIp: 'auth.landing_teams.ip',
   triggerWebhookIp: 'trigger.webhook.ip',
   commsWebhookIp: 'comms.webhook.ip',
   boardSourceWebhookIp: 'board_source.webhook.ip',
@@ -207,6 +208,7 @@ export const resolveGlobalRateLimitBucket = (input: {
 }): RateLimitBucketName | null => {
   const method = input.method.toUpperCase()
   if (method === 'GET' && input.routePath === '/api/auth/me') return 'authMeIp'
+  if (method === 'GET' && input.routePath === '/api/auth/landing-teams') return 'landingTeamsIp'
   if (method === 'POST') {
     const named = POST_ROUTE_BUCKETS.get(input.routePath)
     if (named) return named
