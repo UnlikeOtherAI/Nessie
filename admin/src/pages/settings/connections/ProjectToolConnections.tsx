@@ -102,7 +102,7 @@ export const ProjectToolConnections = () => {
       {mine.length === 0 ? (
         <EmptyState title="No project tools connected">
           Nothing is syncing yet. Connecting an account here does not change any board on
-          its own — a project administrator points it at a project afterwards.
+          its own — a member of a project points it at that project afterwards.
         </EmptyState>
       ) : (
         <div className="grid gap-2">

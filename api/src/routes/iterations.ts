@@ -70,9 +70,10 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
   })
 
   // An iteration is project shape, exactly as a board or a column is, so it
-  // takes the same gate: `requireProjectModifier`, not organisation ownership. A
-  // project admin who can create the board an iteration filters could not
-  // create the iteration itself.
+  // takes the same gate: `requireProjectModifier` (any member of the project, or
+  // an organisation owner or admin), not organisation ownership — otherwise a
+  // member who can create the board an iteration filters could not create the
+  // iteration itself.
   app.post('/api/projects/:projectId/iterations', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply

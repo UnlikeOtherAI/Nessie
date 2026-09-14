@@ -68,7 +68,7 @@ vacuous:
    thing that can stop them from reaching an org A resource is a correct
    `organizationId` check. Remove that check in a handler and the fallbacks
    would grant access — turning the conformance case red. (Verified: deleting
-   the org check in `canManageChannel` flips the channel mutation cases from
+   the org check in `canModifyChannel` flips the channel mutation cases from
    `403` to a non-403.)
 
 The real `createRequestHelpers(prisma)` runs against the fake store, so

@@ -161,7 +161,10 @@ service and assistant tool asks —
 1. **Any organisation member may create a project or a channel.** What has to
    be earned is the placement, not the act: `createProjectForUser` requires
    the team named in the request to be one the person is in, and
-   `canPlaceChannelInTeam` (below) does the same for a channel. An
+   `canPlaceChannelInTeam` (below) does the same for a channel. A channel placed
+   inside an existing project changes that project, so `createChannelForUser`
+   also requires `canModifyProject` for it (`ChannelProjectAccessError`); a
+   shared (standalone) channel keeps the organisation-wide rule. An
    organisation owner or admin may place either in any team.
 2. **Inside a project or a channel, every member of it has equal rights** —
    rename it and edit its settings, add and remove its members, archive or
@@ -171,10 +174,29 @@ service and assistant tool asks —
    written (`owner` for the creator) but **grant nothing**; do not gate a new
    decision on them. Dropping the columns is a separate migration.
 3. **Only an organisation owner or admin may view and change a project or a
-   channel they are not a member of.** A team role is not an arm: a team
-   owner/admin outside a channel cannot change it. A plain member outside a
-   project cannot see it; outside a channel they keep exactly the read access
-   they had (a public channel stays readable and joinable) and change nothing.
+   channel they are not a member of** — and for a channel, only one they can
+   already see. An organisation owner or admin outside a **private or
+   protected** channel can neither read it, change it, nor add themselves to it
+   (the Slack/Teams rule); `canModifyChannel` refuses and the member routes
+   answer `channel_not_found`. A **public** channel they may manage without
+   joining. A team role is not an arm: a team owner/admin outside a channel
+   cannot change it. A plain member outside a project cannot see it; outside a
+   channel they keep exactly the read access they had (a public channel stays
+   readable and joinable) and change nothing.
+
+**A message belongs to its author.** Only the author deletes a message (a soft
+delete, `softDeleteMessage`); a fellow channel member, an organisation owner or
+admin, or a team role may not delete somebody else's message. The function takes
+no role, so no caller can hand one in.
+
+**The role that decides is the verified request role.** REST callers pass
+`isAdminActor(actorContext)` into `canModifyChannel`, `updateChannel`,
+`setChannelArchived`, `createChannelForUser`, `mapChannelRecord` and
+`listChannelsForUser`. `request-admission.ts` sets those roles from UOA's live
+authorization in a bound organisation, so a demotion or promotion upstream
+takes effect on the next request. Only callers with no request role — the
+worker's assistant tools, `resolveActingMember` — still read the
+`OrganizationMember` row, which remains the migration gap described below.
 
 `canModifyProject` is `isProjectAccessibleToUser`: under rule 2 the people who
 may change a project are exactly the people who may open it, so project read
@@ -183,19 +205,33 @@ change a project is the same `404 PROJECT_NOT_FOUND` the read gives
 (`requireProjectModifier`). `canModifyChannel` returns the channel row with the
 answer; a refusal is a 404 to somebody who cannot see the channel and a 403 to
 somebody who can. The same predicate drives `ChannelRecord.viewerCanManage`,
-deleting another person's message, renaming another person's agent conversation
-in the room, and removing another person's assistant from it.
+renaming another person's agent conversation in the room, and removing another
+person's assistant from it.
 
 **Out of scope, deliberately.** A **system channel** (the Personal Assistant's
 home, a global agent's home DM) is lifecycle-protected and refused for
-everybody. A **direct message** keeps its own rule: its members are a fixed
-pair the member routes refuse to change, and only a channel or team owner/admin
-role or an organisation owner/admin may rename or archive one. **Binding an
-agent** into a channel, triggers and workflows are agent and organisation
-capabilities with their own gates, not project or channel settings. In a
-UOA-bound organisation `POST`/`DELETE /api/projects/:projectId/members` still
-answer `403 LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED` for everybody
-(`requireUnboundMembershipManagement`), after the modify check.
+everybody. A **direct message** is reachable only by its participants:
+participation is checked first, so nobody outside a DM — an organisation owner or
+admin, a team owner or admin — renames, archives or learns anything about it (a
+member-route refusal to an outsider is `channel_not_found`, never
+`dm_members_fixed`). Its members are a fixed pair the member routes refuse to
+change, and among its participants only a channel or team owner/admin role or an
+organisation owner/admin may rename or archive it. **Binding an agent** into a
+channel, triggers and workflows are agent and organisation capabilities with
+their own gates, not project or channel settings.
+
+**Project membership is Nessie's own.** UOA owns organisation and team
+membership; it has never heard of a project. So `POST`/`DELETE
+/api/projects/:projectId/members` manage a project's members in a UOA-bound
+organisation exactly as in an unbound one, and
+`requireUnboundMembershipManagement` does not gate them. The one exception is
+the anchor project a UOA-bound team carries (`Team.projectId` with
+`externalTeamId` set): sign-in writes its `ProjectMember` rows from the verified
+team membership (`ensureTeamMemberships`), re-projects their role and removes them
+when UOA withdraws the team, so a local write there would fight the projection.
+Those routes refuse it with `409 TEAM_PROJECT_MEMBERSHIP_MANAGED_BY_SSO`; change
+the team's membership instead. A member added to a project must be an active
+member of the organisation.
 
 ## Channel names, and what an archived channel keeps
 
@@ -237,7 +273,9 @@ allows exactly: a `TeamMember` row on the team; a `ProjectMember` row on the
 team's project, which is how someone working a project reaches its rooms; an
 organisation owner or admin; or a `systemManaged` team, one of the two
 exceptions named above (the standalone-channel root, the Personal Assistant's
-team), which has no members by construction. A missing team context is a 400
+team), which has no members by construction. Placing a channel in an existing (non
+channel-root) project additionally takes `canModifyProject`, so a team member who
+is not in the project is refused. A missing team context is a 400
 `CHANNEL_TEAM_CONTEXT_REQUIRED` — never a default team id filled in on the
 caller's behalf.
 
@@ -405,7 +443,8 @@ providers is the unbound org-tenant that keeps local control; the mode says
 neither. `requireUnboundMembershipManagement`
 ([api/src/routes/membership-mode-gate.ts](../../api/src/routes/membership-mode-gate.ts))
 is that predicate, and local role changes, deactivation, local account creation
-and local team-member writes all sit behind it.
+and local team-member writes all sit behind it. Project membership does not
+(§"Who may change a project or a channel").
 
 The same rule decides who may create a team. `POST /api/teams` and the
 `team_create` agent tool write a purely local `Team`, so inside a UOA-bound
