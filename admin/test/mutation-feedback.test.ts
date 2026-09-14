@@ -84,7 +84,6 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'components/features/projects/kanban/ArchiveDoneMenu.tsx': REASON,
   'components/features/projects/kanban/TaskDocuments.tsx': REASON,
   'components/shared/ChannelMembersPopup.tsx': REASON,
-  'components/shared/CreateProjectDialog.tsx': REASON,
   'components/shared/ProjectMembersDialog.tsx': REASON,
   'facades/channels/dm-navigation.ts': REASON,
   'layouts/admin-shell/AlertsBell.tsx': REASON,
