@@ -200,8 +200,13 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   bridge. Installed builds without that check still post from the root for
   600ms after each change and the shell keeps the last message, so the bridge
   posts again after `REPOST_AFTER_LEGACY_SETTLE_MS` (700ms) until those builds
-  are gone. With no shell mounted (sign-in), nothing renders the element and
-  the injected script keeps its root reads.
+  are gone. When the shell unmounts (sign-out) the bridge posts the document's
+  own palette once, without `chromeSource`, so the sign-in screen does not
+  keep the chrome's or focus mode's colours: the injected script cannot take
+  over by itself, because nothing it observes changes and its dedupe still
+  holds the palette from before the bridge mounted. That hand-back is deferred
+  a tick and skipped when a bridge has remounted in the meantime.
+  `admin/test/native-chrome-theme-bridge.test.ts` mounts the real bridge.
 - **`nessie:haptic { haptic }` bridge message.** `admin/src/lib/haptics.ts`
   posts it (`haptic(kind)`, `kind` one of `light | medium | heavy | selection
   | success | warning | error`) when running inside the native shell, and

@@ -32,7 +32,7 @@ type PaletteStyle = {
 export type NativeChromeThemeMessage = {
   accent: string
   accentStrong: string
-  chromeSource: 'page'
+  chromeSource?: 'page'
   headerSurface: string
   headerText: string
   inactive: string
@@ -46,29 +46,41 @@ export type NativeChromeThemeMessage = {
 
 const token = (style: PaletteStyle, name: string): string => style.getPropertyValue(name).trim()
 
-export const readNativeChromeTheme = (palette: PaletteStyle): NativeChromeThemeMessage => ({
-  accent: token(palette, '--accent'),
-  accentStrong: token(palette, '--accent-strong'),
-  chromeSource: 'page',
-  headerSurface: token(palette, '--rail'),
-  headerText: token(palette, '--tx'),
-  inactive: token(palette, '--tx3'),
-  onAccent: token(palette, '--on-accent'),
-  scheme: palette.colorScheme ?? '',
-  surface: token(palette, '--panel'),
-  text: token(palette, '--tx'),
-  textMuted: token(palette, '--tx2'),
-  type: 'theme',
-})
+/**
+ * `fromPage: false` is the hand-back when the shell unmounts: the document's
+ * own palette, without the marker, so the shell treats it as a root read again.
+ */
+export const readNativeChromeTheme = (
+  palette: PaletteStyle,
+  { fromPage = true }: { fromPage?: boolean } = {},
+): NativeChromeThemeMessage => {
+  const message: NativeChromeThemeMessage = {
+    accent: token(palette, '--accent'),
+    accentStrong: token(palette, '--accent-strong'),
+    headerSurface: token(palette, '--rail'),
+    headerText: token(palette, '--tx'),
+    inactive: token(palette, '--tx3'),
+    onAccent: token(palette, '--on-accent'),
+    scheme: palette.colorScheme ?? '',
+    surface: token(palette, '--panel'),
+    text: token(palette, '--tx'),
+    textMuted: token(palette, '--tx2'),
+    type: 'theme',
+  }
+  return fromPage ? { ...message, chromeSource: 'page' } : message
+}
 
 export const isIosPhoneShell = (info: NativeShellInfo | null): boolean =>
   info?.platform === 'ios' && (info.formFactor === 'phone' || info.formFactor === 'large-phone-landscape')
 
 /**
  * The colour behind the WebView (the iPad status strip, overscroll, load).
- * Focus keeps the work surface there, as the shell always has; otherwise it is
- * the chrome's rail, or its `--main` on an iPhone, whose page body the shell
- * paints with `--main`.
+ * Focus keeps the work surface there, as the shell always has. Otherwise it is
+ * the chrome's `--rail` (the token the page body is painted with), or the
+ * chrome's `--main` on an iPhone, where the injected CSS paints the body with
+ * `--main` instead. These are the chrome's values, not the body's: under a
+ * theme with its own chrome scope the body's are the work surface, and the
+ * backdrop belongs with the native chrome drawn over it.
  */
 export const readNativeBackdrop = ({
   focusSurface,
