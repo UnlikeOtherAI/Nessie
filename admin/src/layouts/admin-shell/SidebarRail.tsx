@@ -60,7 +60,7 @@ export const SidebarRail = ({
   return (
     <aside
       className={[
-        'flex h-full w-[65px] flex-col items-center overflow-x-hidden overflow-y-auto',
+        'admin-rail flex h-full w-[65px] flex-col items-center overflow-x-hidden overflow-y-auto',
         'bg-[color:var(--rail)] px-2 pt-2 pb-14',
       ].join(' ')}
     >

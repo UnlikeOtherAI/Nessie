@@ -13,6 +13,7 @@ const THEME_SWATCHES: Record<Exclude<Theme, 'organization'>, readonly [string, s
   graphite: ['#101113', '#64748b', '#e5e7eb'],
   midnight: ['#0f172a', '#2563eb', '#e5e7eb'],
   nebula: ['#2e1132', '#7c3aed', '#d1d2d3'],
+  nessie: ['#0b172a', '#1f6feb', '#ffffff'],
   ocean: ['#07151c', '#0e7490', '#e4eef3'],
   rose: ['#150b11', '#e11d48', '#f2e4ea'],
   sandstone: ['#f1e9dc', '#b45309', '#2b2018'],
@@ -50,10 +51,10 @@ export const ColoursPanel = () => {
 
   const hasOrganizationTheme = themes.some((option) => option.id === 'organization')
   // The card carrying the default for anyone who has not chosen: the
-  // organisation's palette when there is one, Sandstone otherwise.
+  // organisation's palette when there is one, the built-in default otherwise.
   const defaultTheme: Theme = hasOrganizationTheme ? 'organization' : DEFAULT_THEME
-  // A choice of `organization` in an organisation with no palette renders
-  // Sandstone, so mark Sandstone rather than leaving no card selected.
+  // A choice of `organization` in an organisation with no palette renders the
+  // built-in default, so mark that rather than leaving no card selected.
   const selectedTheme: Theme =
     theme === 'organization' && !hasOrganizationTheme ? DEFAULT_THEME : theme
   const canAdminister = organization?.administration.status === 'allowed'

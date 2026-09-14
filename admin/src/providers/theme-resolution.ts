@@ -27,7 +27,7 @@ export type ThemeResolution = {
   choice: Theme
 }
 
-export const DEFAULT_THEME: AppliedTheme = 'sandstone'
+export const DEFAULT_THEME: AppliedTheme = 'nessie'
 
 export const resolveThemeChoice = (input: ThemeResolutionInput): ThemeResolution => {
   // Signed out there is no account to ask, and a server value from a previous

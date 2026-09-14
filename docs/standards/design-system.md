@@ -25,6 +25,19 @@ summary and points here; **this file is the rule**.
   an existing person.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+  The id is also listed in `admin/index.html` (first paint), `theme-storage.ts`,
+  `UserPreferencesSchema` in `@nessie/schemas`, and `SsoThemeSchema` +
+  `UOA_SIGN_IN_THEMES` in the API, which hand the hosted sign-in page concrete
+  colours.
+- **The default theme is `nessie`** (`DEFAULT_THEME`, `theme-resolution.ts`):
+  the icon's navy (`#0b172a`) for the top bar and rail, a lighter violet-leaning
+  navy (`#232646`) for the sidebars, and a white work surface. The text tokens are global — the sidebar draws `--tx` on `--sb`
+  — so a theme whose chrome and surface differ in lightness cannot be one
+  block. Its `[data-theme="nessie"]` block holds the surface's tokens, and a
+  `:where([data-theme="nessie"])` rule beside focus mode re-scopes the navy
+  tokens onto the chrome elements. `:where()` keeps that rule at focus mode's
+  specificity, and focus mode is declared after it, so focus mode still wins.
+  Overlays render outside the shell and take the surface palette.
 - **One theme is data, not CSS: the organisation's own.** An organisation
   administrator authors a palette on `/settings/organization?tab=appearance`; it
   appears as one more card on the per-user Colours panel, labelled with the
