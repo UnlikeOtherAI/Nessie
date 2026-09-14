@@ -89,6 +89,7 @@ export const switchActorContext = async (
   ])
   if (
     !project
+    || project.deletedAt
     || project.organizationId !== organizationId
     || !projectMember
     || !team

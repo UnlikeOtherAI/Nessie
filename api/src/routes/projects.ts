@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   createProjectForUser,
   deleteProject,
+  listProjectDirectory,
   listProjectsForUser,
   mapProjectRecord,
   projectCountsInclude,
@@ -9,7 +10,7 @@ import {
 } from '@nessie/team-admin'
 
 import { ProjectMemberRecordSchema, ProjectRecordSchema, UpdateProjectBodySchema } from '../contracts/team.js'
-import { isAdminActor } from '@nessie/schemas'
+import { isAdminActor, ProjectDirectoryEntrySchema } from '@nessie/schemas'
 import { z } from 'zod'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -76,6 +77,22 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return createApiResponse(ProjectRecordSchema.array().parse(projects))
   })
 
+  // Every live project in the organisation, shaped by role: outsiders see a
+  // project's name, description and members only, so they know it exists and
+  // whom to ask; members and organisation owners/admins get the full record.
+  // Registered before `/:projectId` so the literal segment is not read as an id.
+  app.get('/api/projects/directory', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const entries = await listProjectDirectory(prisma, {
+      isOrganizationAdmin: isAdminActor(actorContext),
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    return createApiResponse(ProjectDirectoryEntrySchema.array().parse(entries))
+  })
+
   app.get('/api/projects/:projectId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -88,6 +105,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const project = await prisma.project.findFirst({
       where: {
         channelRoot: false,
+        deletedAt: null,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
@@ -113,6 +131,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const project = await prisma.project.findFirst({
       where: {
         channelRoot: false,
+        deletedAt: null,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
@@ -195,6 +214,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const project = await prisma.project.findFirst({
       where: {
         channelRoot: false,
+        deletedAt: null,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
@@ -257,6 +277,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       where: { id: project.id },
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description || null } : {}),
         ...avatarIdentity,
       },
       include: projectCountsInclude,
@@ -349,6 +370,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const project = await prisma.project.findFirst({
       where: {
         channelRoot: false,
+        deletedAt: null,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
@@ -398,6 +420,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const project = await prisma.project.findFirst({
       where: {
         channelRoot: false,
+        deletedAt: null,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },

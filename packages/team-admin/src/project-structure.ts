@@ -3,6 +3,8 @@ import {
   parseOrganizationId,
   parseProjectId,
   parseTeamId,
+  parseUserId,
+  type ProjectDirectoryEntry,
   type ProjectRecord,
   type TeamRecord,
 } from '@nessie/schemas'
@@ -44,6 +46,7 @@ type ProjectWithCounts = {
   name: string
   avatarEmoji: string | null
   avatarAttachmentId: string | null
+  description?: string | null
   organizationId: string
   createdAt: Date
   members: { userId: string; role: string }[]
@@ -57,6 +60,7 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
   name: project.name,
   avatarEmoji: project.avatarEmoji,
   avatarAttachmentId: project.avatarAttachmentId,
+  description: project.description ?? null,
   organizationId: parseOrganizationId(project.organizationId),
   memberCount: project.members.length,
   teamCount: project.team ? 1 : project.teams.length,
@@ -96,7 +100,7 @@ export const listAccessibleProjectIds = async (
   const memberships = await prisma.projectMember.findMany({
     where: {
       userId: viewer.userId,
-      project: { organizationId: viewer.organizationId },
+      project: { organizationId: viewer.organizationId, deletedAt: null },
     },
     select: { projectId: true },
   })
@@ -108,8 +112,10 @@ export const isProjectAccessibleToUser = async (
   viewer: ProjectViewer,
   projectId: string,
 ): Promise<boolean> => {
+  // A soft-deleted project is gone for everybody, organisation admins included:
+  // every route that gates on this refuses it with the read's own 404.
   const project = await prisma.project.count({
-    where: { id: projectId, organizationId: viewer.organizationId },
+    where: { id: projectId, organizationId: viewer.organizationId, deletedAt: null },
   })
   if (project === 0) return false
   if (viewer.isOrganizationAdmin) return true
@@ -129,6 +135,7 @@ export const listProjectsForUser = async (
   const projects = await prisma.project.findMany({
     where: {
       channelRoot: false,
+      deletedAt: null,
       organizationId: viewer.organizationId,
       ...(accessible === 'all' ? {} : { id: { in: accessible } }),
     },
@@ -136,6 +143,66 @@ export const listProjectsForUser = async (
     orderBy: { createdAt: 'asc' },
   })
   return projects.map(mapProjectRecord)
+}
+
+/**
+ * Every live project in the organisation, shaped by who is asking
+ * (`ProjectDirectoryEntrySchema`). Any active organisation member may read it:
+ * a person outside a project learns its name, description and members and
+ * nothing else, so they know who to ask; a member of it, or an organisation
+ * owner or admin, gets the full record too.
+ *
+ * The limited row is built field by field rather than by deleting keys from the
+ * full one, so a field added to the project read can never reach an outsider by
+ * default. Only active organisation members are listed as members.
+ */
+export const listProjectDirectory = async (
+  prisma: PrismaClient,
+  viewer: ProjectViewer,
+): Promise<ProjectDirectoryEntry[]> => {
+  const [projects, activeMembers] = await Promise.all([
+    prisma.project.findMany({
+      where: { channelRoot: false, deletedAt: null, organizationId: viewer.organizationId },
+      include: {
+        ...projectCountsInclude,
+        members: {
+          select: {
+            role: true,
+            userId: true,
+            user: { select: { avatarAttachmentId: true, avatarUrl: true, displayName: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.organizationMember.findMany({
+      where: { organizationId: viewer.organizationId, deactivatedAt: null },
+      select: { userId: true },
+    }),
+  ])
+  const active = new Set(activeMembers.map((member) => member.userId))
+  return projects.map((project): ProjectDirectoryEntry => {
+    const members = project.members
+      .filter((member) => active.has(member.userId))
+      .map((member) => ({
+        avatarAttachmentId: member.user.avatarAttachmentId,
+        avatarUrl: member.user.avatarUrl,
+        displayName: member.user.displayName,
+        userId: parseUserId(member.userId),
+      }))
+    const viewerIsMember = project.members.some((member) => member.userId === viewer.userId)
+    const base = {
+      description: project.description,
+      id: parseProjectId(project.id),
+      members,
+      name: project.name,
+    }
+    if (!viewerIsMember && !viewer.isOrganizationAdmin) {
+      return { access: 'limited', ...base }
+    }
+    return { access: 'full', ...base, project: mapProjectRecord(project), viewerIsMember }
+  })
 }
 
 /**
@@ -156,7 +223,10 @@ export const listTeamsForOrganization = async (
         { projects: { some: { organizationId: input.organizationId } } },
       ],
     },
-    include: { members: { select: { userId: true } }, projects: { select: { id: true } } },
+    include: {
+      members: { select: { userId: true } },
+      projects: { where: { deletedAt: null }, select: { id: true } },
+    },
     orderBy: { createdAt: 'asc' },
   })
   return teams.flatMap((team) => {

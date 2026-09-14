@@ -16,6 +16,7 @@ import {
   ChannelSlugConflictError,
   ChannelValidationError,
   createChannelForUser,
+  deleteChannel,
   ensureDefaultThread,
   loadLastMessageAtByThread,
   loadUnreadCountsByThread,
@@ -33,6 +34,7 @@ export {
   ChannelSlugConflictError,
   ChannelValidationError,
   createChannelForUser,
+  deleteChannel,
   setChannelArchived,
   updateChannel,
 }
@@ -52,6 +54,8 @@ export const listChannelsForUser = async (
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
+    // Soft-deleted channels never list, not even with `includeArchived`.
+    deletedAt: null,
     OR: [
       { visibility: 'public' },
       { members: { some: { userId } } },
@@ -283,9 +287,9 @@ export const joinPublicChannel = async (
 ): Promise<ChannelRecord | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: input.channelId },
-    select: { organizationId: true, visibility: true, archivedAt: true },
+    select: { organizationId: true, visibility: true, archivedAt: true, deletedAt: true },
   })
-  if (!channel || channel.organizationId !== input.organizationId) {
+  if (!channel || channel.organizationId !== input.organizationId || channel.deletedAt) {
     return null
   }
   if (channel.visibility !== 'public' || channel.archivedAt) {

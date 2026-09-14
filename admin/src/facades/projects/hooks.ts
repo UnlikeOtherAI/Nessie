@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ProjectRecordSchema } from '@nessie/schemas'
+import { ProjectDirectoryEntrySchema, ProjectRecordSchema, type ProjectDirectoryEntry } from '@nessie/schemas'
 import type {
   ProjectMemberRecord,
   ProjectRecord,
@@ -18,6 +18,19 @@ export const useProjects = (enabled = true) => {
     queryFn: () => apiClient.get('/api/projects', ProjectRecordSchema.array()),
     enabled,
     staleTime: Infinity,
+  })
+}
+
+/**
+ * Every project in the organisation, shaped by role: a project the viewer is
+ * not in carries only its name, description and members.
+ */
+export const useProjectDirectory = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<ProjectDirectoryEntry[]>({
+    queryKey: projectKeys.directory,
+    queryFn: () => apiClient.get('/api/projects/directory', ProjectDirectoryEntrySchema.array()),
   })
 }
 
@@ -122,6 +135,7 @@ export const useUpdateProject = () => {
     mutationFn: (input: {
       avatarAttachmentId: string | null
       avatarEmoji: string | null
+      description?: string | null
       name: string
       projectId: string
     }) =>
@@ -130,6 +144,7 @@ export const useUpdateProject = () => {
         {
           avatarAttachmentId: input.avatarAttachmentId,
           avatarEmoji: input.avatarEmoji,
+          ...(input.description !== undefined ? { description: input.description } : {}),
           name: input.name,
         },
         undefined,

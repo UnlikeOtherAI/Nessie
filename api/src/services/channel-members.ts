@@ -41,7 +41,7 @@ const loadChannelForMemberChange = async (
   channelId: string,
 ): Promise<MemberChangeChannel | null> => {
   const channel = await prisma.channel.findFirst({
-    where: { id: channelId, organizationId: actorContext.tenant.organizationId },
+    where: { id: channelId, organizationId: actorContext.tenant.organizationId, deletedAt: null },
     select: {
       systemChannelType: true,
       type: true,

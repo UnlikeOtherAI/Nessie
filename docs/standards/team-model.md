@@ -233,6 +233,65 @@ Those routes refuse it with `409 TEAM_PROJECT_MEMBERSHIP_MANAGED_BY_SSO`; change
 the team's membership instead. A member added to a project must be an active
 member of the organisation.
 
+### Deleting a project or a channel
+
+**Every member may delete** — deleting is inside rule 2, like archiving and
+renaming — and every delete is a **soft delete**. Nothing guards the last member
+of a project either: any member may remove any member, themselves included.
+
+- `DELETE /api/projects/:projectId` (`deleteProject`) stamps
+  `Project.deletedAt`, and `deletedAt` with `archivedAt` on every channel still
+  in it, in one transaction. No row is removed: boards, tasks, fields, sources,
+  iterations, members, channels and their history stay intact for a restore.
+  Knowledge, executors and a UOA-bound team anchor still refuse the delete
+  (`PROJECT_HAS_KNOWLEDGE`, `PROJECT_HAS_EXECUTORS`,
+  `PROJECT_HAS_EXTERNAL_TEAMS`), because their data is reachable from surfaces
+  that do not pass through the project's own entitlement. Channels no longer
+  block.
+- `DELETE /api/channels/:channelId` (`deleteChannel`, gated by
+  `canModifyChannel`) stamps `Channel.deletedAt` together with `archivedAt`, so
+  every archived-channel filter already hides it and its name is released.
+- **Readers filter `deletedAt: null`.** Projects: `isProjectAccessibleToUser`,
+  `listAccessibleProjectIds`, `listProjectsForUser`, `listProjectDirectory`,
+  `listTeamsForOrganization`'s project ids, `loadUserMemberships`, the project
+  routes' own reads, context switching, budget/secret/status/knowledge scope
+  checks, and the worker's ticket search. Channels: `canModifyChannel` (so a
+  deleted channel cannot be renamed, unarchived, re-membered or deleted again),
+  `getVisibleChannel` (which the realtime scope check asks),
+  `getChannelIfMember`, `buildAccessibleChannelWhere` (thread and agent
+  conversation reads), `listChannelsForUser` even with `includeArchived`,
+  `joinPublicChannel`, and the member-change routes.
+- **Known gap:** full-text message search (`api/src/services/message-search.ts`)
+  scopes channels by visibility and membership only, so a deleted channel's
+  messages remain searchable by the people who could read them until that
+  reader filters `deletedAt` too.
+- **There is no restore yet.** Nothing unsets `deletedAt`; a restore surface is
+  planned and has all the data it needs.
+
+### What a person outside a project may see
+
+Any active organisation member may read `GET /api/projects/directory`
+(`listProjectDirectory`), reachable from the Projects sidebar as "Browse all
+projects". It lists every live project, shaped by role:
+
+- For a project they are not in, **only its name, description and members**
+  (id, display name, avatar sources) — `access: 'limited'`. No counts, avatar,
+  boards, tasks, fields, sources, iterations, channels, settings or watchers.
+  The row is built field by field and parsed through a `.strict()` schema, so a
+  field added to the project read cannot reach an outsider by default.
+- A member of the project, or an organisation owner or admin, gets
+  `access: 'full'` with the ordinary project record.
+
+The directory is read-only: it carries no modify controls, and the full project
+routes still answer an outsider `404 PROJECT_NOT_FOUND`. `Project.description`
+is written by the project's members through `PATCH /api/projects/:projectId`
+(Edit project).
+
+**Team roles reach no channel.** A team owner or admin outside a channel has no
+arm into it; the only place a team role still counts is among the participants
+of a direct message (the legacy DM rule above), which requires participation
+first.
+
 ## Channel names, and what an archived channel keeps
 
 A channel's name is its slug and its label at once — one name, and it is the

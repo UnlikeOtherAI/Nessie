@@ -80,7 +80,9 @@ export const canModifyChannel = async (
   const channel = await prisma.channel.findUnique({
     where: { id: input.channelId },
   })
-  if (!channel || channel.organizationId !== input.organizationId) {
+  // A soft-deleted channel is gone for every caller: nothing renames,
+  // unarchives or re-members it until a restore exists.
+  if (!channel || channel.organizationId !== input.organizationId || channel.deletedAt) {
     return null
   }
 

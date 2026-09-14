@@ -235,7 +235,9 @@ dbTest('any project member renames it, manages its members and deletes it', asyn
 
     const deleted = await call(app, peerUserId, 'DELETE', `/api/projects/${projectId}`)
     assert.equal(deleted.statusCode, 200, deleted.body)
-    assert.equal(await prisma.project.count({ where: { id: projectId } }), 0)
+    // A soft delete: the row stays for a future restore, and every read hides it.
+    const kept = await prisma.project.findUniqueOrThrow({ where: { id: projectId } })
+    assert.notEqual(kept.deletedAt, null)
   })
 })
 
@@ -349,5 +351,119 @@ dbTest('a deactivated organisation member cannot be added to a project', async (
     })
     assert.equal(added.statusCode, 404, added.body)
     assert.equal(await isProjectMember(prisma, projectId, newcomerUserId), false)
+  })
+})
+
+// ─── Deleting is a soft delete ──────────────────────────────────────────────
+
+dbTest('a deleted project is kept, with its channels, and hidden from every read', async () => {
+  await withApp(async (app, prisma) => {
+    const projectId = await createProjectWithPeer(app, prisma)
+    const channel = await prisma.channel.create({
+      data: {
+        label: `room-${suite}`,
+        organizationId: orgId,
+        projectId,
+        slug: `room-${suite}`,
+        teamId,
+        visibility: 'public',
+        members: { create: [{ role: 'owner', userId: creatorUserId }] },
+      },
+    })
+
+    const deleted = await call(app, creatorUserId, 'DELETE', `/api/projects/${projectId}`)
+    assert.equal(deleted.statusCode, 200, deleted.body)
+
+    const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } })
+    assert.notEqual(project.deletedAt, null)
+    const room = await prisma.channel.findUniqueOrThrow({ where: { id: channel.id } })
+    assert.notEqual(room.deletedAt, null)
+    assert.notEqual(room.archivedAt, null)
+    assert.equal(await prisma.board.count({ where: { projectId } }) > 0, true, 'boards are kept')
+    assert.equal(await isProjectMember(prisma, projectId, creatorUserId), true, 'members are kept')
+
+    for (const userId of [creatorUserId, orgAdminUserId]) {
+      const listed = await call(app, userId, 'GET', '/api/projects')
+      const ids = (listed.json() as { data: Array<{ id: string }> }).data.map((row) => row.id)
+      assert.equal(ids.includes(projectId), false, userId)
+      assert.equal((await call(app, userId, 'GET', `/api/projects/${projectId}`)).statusCode, 404)
+      const directory = await call(app, userId, 'GET', '/api/projects/directory')
+      const directoryIds = (directory.json() as { data: Array<{ id: string }> }).data.map((row) => row.id)
+      assert.equal(directoryIds.includes(projectId), false, userId)
+    }
+    assert.equal(
+      (await call(app, creatorUserId, 'PATCH', `/api/projects/${projectId}`, { name: 'Back again' })).statusCode,
+      404,
+    )
+    assert.equal((await call(app, creatorUserId, 'DELETE', `/api/projects/${projectId}`)).statusCode, 404)
+  })
+})
+
+// ─── What a person outside a project may see ────────────────────────────────
+
+const WITHHELD_PROJECT_FIELDS = [
+  'avatarAttachmentId',
+  'avatarEmoji',
+  'boards',
+  'channelCount',
+  'channels',
+  'createdAt',
+  'fields',
+  'iterations',
+  'memberCount',
+  'organizationId',
+  'project',
+  'settings',
+  'sources',
+  'tasks',
+  'teamCount',
+  'viewerIsMember',
+  'watchers',
+]
+
+dbTest('an outsider lists a project with only its name, description and members', async () => {
+  await withApp(async (app, prisma) => {
+    const projectId = await createProjectWithPeer(app, prisma)
+    const described = await call(app, creatorUserId, 'PATCH', `/api/projects/${projectId}`, {
+      description: 'Where the launch gets planned',
+    })
+    assert.equal(described.statusCode, 200, described.body)
+
+    const directory = await call(app, outsiderUserId, 'GET', '/api/projects/directory')
+    assert.equal(directory.statusCode, 200, directory.body)
+    const entry = (directory.json() as { data: Array<Record<string, unknown>> }).data
+      .find((row) => row.id === projectId)
+    assert.ok(entry, 'an outsider can find the project')
+    assert.deepEqual(Object.keys(entry).sort(), ['access', 'description', 'id', 'members', 'name'])
+    assert.equal(entry.access, 'limited')
+    assert.equal(entry.description, 'Where the launch gets planned')
+    for (const field of WITHHELD_PROJECT_FIELDS) {
+      assert.equal(field in entry, false, `limited view carries no ${field}`)
+    }
+    const members = entry.members as Array<Record<string, unknown>>
+    assert.deepEqual(
+      members.map((member) => member.userId).sort(),
+      [creatorUserId, peerUserId].sort(),
+    )
+    for (const member of members) {
+      assert.deepEqual(Object.keys(member).sort(), ['avatarAttachmentId', 'avatarUrl', 'displayName', 'userId'])
+    }
+
+    // The full record is still refused to the outsider.
+    assert.equal((await call(app, outsiderUserId, 'GET', `/api/projects/${projectId}`)).statusCode, 404)
+  })
+})
+
+dbTest('a member and an organisation admin get the full record in the directory', async () => {
+  await withApp(async (app, prisma) => {
+    const projectId = await createProjectWithPeer(app, prisma)
+    for (const [userId, viewerIsMember] of [[peerUserId, true], [orgAdminUserId, false]] as const) {
+      const directory = await call(app, userId, 'GET', '/api/projects/directory')
+      const entry = (directory.json() as { data: Array<Record<string, unknown>> }).data
+        .find((row) => row.id === projectId)
+      assert.equal(entry?.access, 'full', userId)
+      assert.equal(entry?.viewerIsMember, viewerIsMember, userId)
+      assert.equal((entry?.project as { id: string }).id, projectId)
+    }
   })
 })

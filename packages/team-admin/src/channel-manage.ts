@@ -137,3 +137,34 @@ export const setChannelArchived = async (
     throw error
   }
 }
+
+/**
+ * Delete a channel: a soft delete, gated like every other change to it
+ * (`canModifyChannel` — any member, or an organisation owner or admin on a
+ * public channel). `deletedAt` and `archivedAt` are stamped together, so every
+ * archived-channel filter already hides the row and its name is released, and
+ * the read-by-id paths filter `deletedAt` on top. Nothing — threads, messages,
+ * members, bindings — is removed, so a later restore has everything to return.
+ * Returns null exactly when `canModifyChannel` does.
+ */
+export const deleteChannel = async (
+  prisma: PrismaClient,
+  input: {
+    userId: string
+    organizationId: string
+    channelId: string
+    /** See `ChannelModifier.isOrganizationAdmin`. */
+    isOrganizationAdmin?: boolean
+  },
+): Promise<{ id: string } | null> => {
+  const manage = await canModifyChannel(prisma, input)
+  if (!manage) {
+    return null
+  }
+  const now = new Date()
+  await prisma.channel.update({
+    where: { id: input.channelId },
+    data: { archivedAt: manage.channel.archivedAt ?? now, deletedAt: now },
+  })
+  return { id: input.channelId }
+}

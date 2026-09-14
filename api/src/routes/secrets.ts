@@ -107,7 +107,7 @@ const grantPrincipalExistsInOrganization = async (input: {
   }
   if (principalType === 'project') {
     return Boolean(await prisma.project.findFirst({
-      where: { id: principalId, organizationId },
+      where: { id: principalId, organizationId, deletedAt: null },
       select: { id: true },
     }))
   }

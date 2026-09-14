@@ -114,6 +114,8 @@ export const ProjectRecordSchema = z.object({
   name: NonEmptyStringSchema,
   avatarEmoji: z.string().min(1).max(32).nullable(),
   avatarAttachmentId: z.string().uuid().nullable(),
+  // Optional on the wire so an older API build that omits it still parses.
+  description: z.string().nullable().optional(),
   organizationId: OrganizationIdSchema,
   memberCount: z.number().int().nonnegative(),
   teamCount: z.number().int().nonnegative().optional(),
@@ -121,6 +123,50 @@ export const ProjectRecordSchema = z.object({
   createdAt: TimestampSchema,
 })
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
+
+/**
+ * A person in a project, as somebody outside it may see them: who they are,
+ * and nothing about what they do there.
+ */
+export const ProjectDirectoryMemberSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  avatarUrl: z.string().nullable(),
+  avatarAttachmentId: z.string().uuid().nullable(),
+})
+export type ProjectDirectoryMember = z.infer<typeof ProjectDirectoryMemberSchema>
+
+/**
+ * One row of `GET /api/projects/directory` — every project in the organisation,
+ * shaped by role (`docs/standards/team-model.md` → "What a person outside a
+ * project may see").
+ *
+ * - `limited`: somebody outside the project. Its name, description and members
+ *   and **nothing else** — no counts, avatar, boards, tasks, fields, sources,
+ *   iterations, channels, settings or watchers. `.strict()` so a field added to
+ *   the reader cannot reach an outsider without this schema changing too.
+ * - `full`: a member of the project, or an organisation owner or admin, who may
+ *   open it and gets the ordinary project record alongside.
+ */
+export const ProjectDirectoryEntrySchema = z.discriminatedUnion('access', [
+  z.object({
+    access: z.literal('limited'),
+    id: ProjectIdSchema,
+    name: NonEmptyStringSchema,
+    description: z.string().nullable(),
+    members: z.array(ProjectDirectoryMemberSchema),
+  }).strict(),
+  z.object({
+    access: z.literal('full'),
+    id: ProjectIdSchema,
+    name: NonEmptyStringSchema,
+    description: z.string().nullable(),
+    members: z.array(ProjectDirectoryMemberSchema),
+    project: ProjectRecordSchema,
+    viewerIsMember: z.boolean(),
+  }).strict(),
+])
+export type ProjectDirectoryEntry = z.infer<typeof ProjectDirectoryEntrySchema>
 
 export const TeamCallProviderSchema = z.enum([
   'google_meet',

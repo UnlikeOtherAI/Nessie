@@ -35,6 +35,9 @@ const isPlainObject = (value: unknown): value is Row =>
   typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
 
 const scalarEquals = (rowValue: unknown, condition: unknown): boolean => {
+  // A nullable column the seed never set is NULL in Postgres, so `field: null`
+  // (the soft-delete filter, `deletedAt: null`) must match it here too.
+  if (condition === null) return rowValue === null || rowValue === undefined
   if (rowValue instanceof Date && condition instanceof Date) {
     return rowValue.getTime() === condition.getTime()
   }

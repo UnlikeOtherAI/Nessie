@@ -10,7 +10,13 @@ import {
 } from '@nessie/schemas'
 
 import { addMemberToChannel, removeMemberFromChannel } from '../src/services/channel-members.js'
-import { createChannelForUser, setChannelArchived, updateChannel } from '../src/services/channels.js'
+import {
+  createChannelForUser,
+  deleteChannel,
+  listChannelsForUser,
+  setChannelArchived,
+  updateChannel,
+} from '../src/services/channels.js'
 
 /**
  * Who may change a channel — rename it, archive it, and change who is in it.
@@ -399,5 +405,49 @@ dbTest('a membership change on a DM tells an outsider only that it does not exis
         { kind: 'channel_not_found' },
       )
     }
+  })
+})
+
+// ─── Deleting is a soft delete ──────────────────────────────────────────────
+
+dbTest('a member deletes a channel: it is kept, hidden, and nothing changes it again', async () => {
+  await withDb(async (prisma) => {
+    const deleted = await deleteChannel(prisma, manageInput(publicChannelId, creatorUserId))
+    assert.deepEqual(deleted, { id: publicChannelId })
+
+    const row = await prisma.channel.findUniqueOrThrow({ where: { id: publicChannelId } })
+    assert.notEqual(row.deletedAt, null)
+    assert.notEqual(row.archivedAt, null)
+    assert.equal(await isChannelMember(prisma, publicChannelId, creatorUserId), true, 'members are kept')
+
+    for (const includeArchived of [false, true]) {
+      const listed = await listChannelsForUser(prisma, creatorUserId, orgId, undefined, includeArchived)
+      assert.equal(listed.some((channel) => channel.id === publicChannelId), false)
+    }
+    assert.equal(
+      await setChannelArchived(prisma, { ...manageInput(publicChannelId, creatorUserId), archived: false }),
+      null,
+      'a deleted channel cannot be unarchived back into view',
+    )
+    assert.equal(
+      await updateChannel(prisma, { ...manageInput(publicChannelId, orgAdminUserId), isOrganizationAdmin: true, topic: 'x' }),
+      null,
+    )
+    assert.deepEqual(
+      await addMemberToChannel(prisma, actorFor(creatorUserId), { channelId: publicChannelId, userId: targetUserId }),
+      { kind: 'channel_not_found' },
+    )
+  })
+})
+
+dbTest('an outsider cannot delete a private channel they cannot see', async () => {
+  await withDb(async (prisma) => {
+    assert.equal(await deleteChannel(prisma, manageInput(channelId, outsiderUserId)), null)
+    assert.equal(
+      await deleteChannel(prisma, { ...manageInput(channelId, orgAdminUserId), isOrganizationAdmin: true }),
+      null,
+    )
+    const row = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } })
+    assert.equal(row.deletedAt, null)
   })
 })

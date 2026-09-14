@@ -323,6 +323,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
       select: {
+        deletedAt: true,
         systemChannelType: true,
         type: true,
         organizationId: true,
@@ -330,7 +331,9 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         members: { where: { userId }, select: { id: true }, take: 1 },
       },
     })
-    if (!channel) return null
+    // A soft-deleted channel is invisible to every reader, including the
+    // realtime scope check (`filterAuthorizedScopes`) that asks this.
+    if (!channel || channel.deletedAt) return null
     if (channel.organizationId !== organizationId) return null
     // Public channels are visible to all org members
     if (channel.visibility === 'public') {

@@ -7,14 +7,13 @@ import { PrismaClient } from '@prisma/client'
 import { createProjectForUser, deleteProject } from '../src/index.js'
 
 /**
- * What deleting a project destroys.
+ * What deleting a project does.
  *
- * Every one of these families used to be a live hard-cascade behind a route
- * guard that knew about exactly one of them (`channelCount > 0`), so a Prisma
- * fake would prove nothing: the whole point is what the FOREIGN KEYS do, and
- * these run against a real database. Each refusal below is a family the old
- * `prisma.project.delete()` would have taken with it — or, for executors,
- * crashed on with an unhandled P2003.
+ * A delete is a soft delete: `Project.deletedAt` is stamped, the project's
+ * channels are soft-deleted with it, and no row is removed. Three families
+ * still refuse, because their data is reachable from surfaces that do not pass
+ * through the project's own entitlement. Against a real database, because the
+ * point is what survives in it.
  */
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
@@ -94,17 +93,23 @@ const addTeam = (prisma: PrismaClient, sown: Seed, externalTeamId?: string) =>
     },
   })
 
-runDatabaseTest('an empty project is deleted', async () => {
+runDatabaseTest('a project is soft-deleted: kept, stamped, and not deleted twice', async () => {
   await withSeed(async (prisma, sown) => {
     const result = await deleteProject(prisma, {
       organizationId: sown.organizationId,
       projectId: sown.projectId,
     })
     assert.deepEqual(result, { kind: 'deleted' })
-    assert.equal(
-      await prisma.project.count({ where: { id: sown.projectId } }),
-      0,
-    )
+    const kept = await prisma.project.findUniqueOrThrow({ where: { id: sown.projectId } })
+    assert.notEqual(kept.deletedAt, null)
+    assert.equal(await prisma.projectMember.count({ where: { projectId: sown.projectId } }), 1)
+    assert.ok((await prisma.board.count({ where: { projectId: sown.projectId } })) > 0)
+
+    const again = await deleteProject(prisma, {
+      organizationId: sown.organizationId,
+      projectId: sown.projectId,
+    })
+    assert.deepEqual(again, { kind: 'not_found' })
   })
 })
 
@@ -122,7 +127,7 @@ runDatabaseTest('a project in another organisation is not found', async () => {
   })
 })
 
-runDatabaseTest('channels refuse the delete and survive it', async () => {
+runDatabaseTest('channels no longer refuse: they are soft-deleted with the project', async () => {
   await withSeed(async (prisma, sown) => {
     const team = await addTeam(prisma, sown)
     const channel = await prisma.channel.create({
@@ -134,17 +139,17 @@ runDatabaseTest('channels refuse the delete and survive it', async () => {
         teamId: team.id,
       },
     })
+    await prisma.thread.create({ data: { channelId: channel.id, title: 'General' } })
 
     const result = await deleteProject(prisma, {
       organizationId: sown.organizationId,
       projectId: sown.projectId,
     })
-    assert.equal(result.kind, 'blocked')
-    assert.deepEqual(
-      result.kind === 'blocked' ? result.blocks.map((block) => block.code) : [],
-      ['PROJECT_NOT_EMPTY'],
-    )
-    assert.equal(await prisma.channel.count({ where: { id: channel.id } }), 1)
+    assert.deepEqual(result, { kind: 'deleted' })
+    const kept = await prisma.channel.findUniqueOrThrow({ where: { id: channel.id } })
+    assert.notEqual(kept.deletedAt, null)
+    assert.notEqual(kept.archivedAt, null)
+    assert.equal(await prisma.thread.count({ where: { channelId: channel.id } }), 1)
   })
 })
 
@@ -215,8 +220,8 @@ runDatabaseTest('a UOA-bound team refuses; an unbound one does not', async () =>
     // The local half of a UOA-owned object is still there.
     assert.equal(await prisma.team.count({ where: { id: bound.id } }), 1)
 
-    // A team Nessie owns outright is not a reason to refuse: it goes with the
-    // project, which is the only thing it exists inside.
+    // A team Nessie owns outright is not a reason to refuse: it is hidden with
+    // the project, which is the only thing it exists inside.
     await prisma.team.update({
       where: { id: bound.id },
       data: { externalTeamId: null },
@@ -226,7 +231,8 @@ runDatabaseTest('a UOA-bound team refuses; an unbound one does not', async () =>
       projectId: sown.projectId,
     })
     assert.deepEqual(deleted, { kind: 'deleted' })
-    assert.equal(await prisma.team.count({ where: { id: bound.id } }), 0)
+    // Soft: the team row is kept with the project for a restore.
+    assert.equal(await prisma.team.count({ where: { id: bound.id } }), 1)
   })
 })
 
@@ -258,7 +264,7 @@ runDatabaseTest('every blocking family is reported at once', async () => {
     assert.equal(result.kind, 'blocked')
     assert.deepEqual(
       result.kind === 'blocked' ? result.blocks.map((block) => block.code) : [],
-      ['PROJECT_NOT_EMPTY', 'PROJECT_HAS_KNOWLEDGE', 'PROJECT_HAS_EXTERNAL_TEAMS'],
+      ['PROJECT_HAS_KNOWLEDGE', 'PROJECT_HAS_EXTERNAL_TEAMS'],
     )
   })
 })

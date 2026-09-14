@@ -90,11 +90,18 @@ test('channel_create makes the acting user the owner of a channel in the run tea
         systemManaged: false,
       }),
     },
-    project: { findUnique: async () => ({ teamId: TEAM_ID }) },
+    // One superset row: the explicit project resolver reads `teamId`, and
+    // placement reads `channelRoot` to know it is a real project.
+    project: {
+      count: async () => 1,
+      findUnique: async () => ({ channelRoot: false, teamId: TEAM_ID }),
+    },
     // Placing a channel in a team requires standing in it; a plain org member
     // gets that standing from their team membership, not their org role.
     teamMember: { findFirst: async () => ({ role: 'member' }) },
-    projectMember: { findFirst: async () => null },
+    // Adding a room to an existing project changes that project, so the acting
+    // user must be a member of it (`canModifyProject`).
+    projectMember: { count: async () => 1, findFirst: async () => null },
     // `mapChannelRecord` computes `viewerCanManage` through `canModifyChannel`,
     // which re-reads the channel row and the creator's channel membership.
     channelMember: { findUnique: async () => ({ role: 'owner' }) },

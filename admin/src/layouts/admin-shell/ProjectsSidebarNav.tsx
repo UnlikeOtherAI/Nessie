@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
@@ -286,6 +286,27 @@ export const ProjectsSidebarNav = ({
             // above, so there is nothing left to say here.
             unstarredProjects.map((project) => renderProjectRow(project, 'projects'))
           )}
+          {/*
+            The list above is only the projects this person can open. The
+            directory is where they find the rest — each one's name,
+            description and members — and so whom to ask to be added.
+          */}
+          <div className="mt-1">
+            <div
+              className={[
+                'admin-sb-item sidebar-project-tile group',
+                pathname === '/projects/directory' ? 'active' : '',
+              ].join(' ')}
+            >
+              <Link
+                aria-current={pathname === '/projects/directory' ? 'page' : undefined}
+                className="sidebar-project-link"
+                to="/projects/directory"
+              >
+                <span className="min-w-0 flex-1 truncate text-[color:var(--tx3)]">Browse all projects</span>
+              </Link>
+            </div>
+          </div>
         </SidebarMenuSection>
       </nav>
 
