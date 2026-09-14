@@ -17,7 +17,6 @@ import {
   deleteBoardColumn,
   findBoard,
   isBoardMutationError,
-  listBoardTasks,
   listBoards,
   updateBoard,
   updateBoardColumn,
@@ -25,6 +24,7 @@ import {
 
 import { BoardTaskRecordSchema } from '../contracts/tasks-board.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { listBoardTasksForUser } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -188,9 +188,13 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
       })
       iterationId = active?.id ?? null
     }
-    const { tasks, truncated } = await listBoardTasks(prisma, board, {
+    const { tasks, truncated } = await listBoardTasksForUser(prisma, board, {
       limit: BOARD_TASK_LIMIT,
       iterationId,
+    }, {
+      organizationId: actorContext.tenant.organizationId,
+      uoaIdentity: actorContext.actionContext.uoaIdentity,
+      userId: actorContext.actor.actorId,
     })
     return createApiResponse({
       tasks: BoardTaskRecordSchema.array().parse(tasks),
