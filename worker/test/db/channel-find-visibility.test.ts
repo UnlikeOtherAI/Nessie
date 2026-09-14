@@ -127,3 +127,32 @@ runDatabaseTest('channel_find never names a private channel the person has not j
   const listed = await runChannelListTool(context, {})
   assert.doesNotMatch(listed.outputPreview, new RegExp(s.outsiderChannelId))
 })
+
+// A deleted channel is soft-deleted (`deletedAt` with `archivedAt`), so an
+// archived-channel filter hides it only where one exists. `channel_list` with
+// `includeArchived` has none, and the attachment, destination and conversation
+// search readers ask the same visibility predicate without one either — the
+// predicate itself has to leave deleted channels out.
+runDatabaseTest('a soft-deleted channel is invisible to the channel tools, archived listing included', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: s.organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: s.userIds } } })
+    await prisma.$disconnect()
+  })
+  const context = contextFor(prisma, s)
+  const now = new Date()
+  await prisma.channel.updateMany({
+    where: { id: { in: [s.publicChannelId, s.memberChannelId] } },
+    data: { archivedAt: now, deletedAt: now },
+  })
+
+  const listed = await runChannelListTool(context, { includeArchived: true })
+  assert.doesNotMatch(listed.outputPreview, new RegExp(s.publicChannelId), 'a deleted public channel was listed')
+  assert.doesNotMatch(listed.outputPreview, new RegExp(s.memberChannelId), 'a deleted member channel was listed')
+
+  const found = await runChannelFindTool(context, { query: 'findme' })
+  assert.doesNotMatch(found.outputPreview, new RegExp(s.publicChannelId))
+  assert.doesNotMatch(found.outputPreview, new RegExp(s.memberChannelId))
+})

@@ -32,9 +32,10 @@ import type { RouteDeps } from './types.js'
  *
  * Replaces the single-board `board.ts`: a project now has many boards, each
  * owning its own tickets (`Task.boardId`) and its own columns. Reads are
- * entitlement-gated on project access; writes need project administration
- * (organisation owner, or the project's own owner/admin) rather than
- * organisation ownership.
+ * entitlement-gated on project access; writes take `requireProjectModifier`,
+ * which every member of the project has equally — an organisation owner or
+ * admin, or any project member (`canModifyProject`). A soft-deleted project is
+ * gone for both: the entitlement and the lookup below each refuse it.
  */
 export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } = deps
@@ -42,7 +43,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
     if (!(await isProjectAccessibleToActor(actorContext, projectId))) return null
     return prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId, deletedAt: null },
       select: { id: true, organizationId: true },
     })
   }

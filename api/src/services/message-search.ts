@@ -60,10 +60,12 @@ export const searchMessages = async (
   // visibility column says public. Owners used to skip this filter entirely,
   // which returned snippets from other people's DMs and assistant rooms.
   // The channel read predicate (`getVisibleChannel`, api/src/lib/request-helpers.ts)
-  // must stay aligned with this rule.
+  // must stay aligned with this rule, including that a soft-deleted channel (a
+  // deleted channel, or any channel of a deleted project) is gone for everyone.
   const channels = await prisma.channel.findMany({
     where: {
       organizationId: input.organizationId,
+      deletedAt: null,
       OR: [
         { type: 'standard', systemChannelType: null, visibility: 'public' },
         { members: { some: { userId: input.userId } } },

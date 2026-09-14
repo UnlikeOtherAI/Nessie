@@ -192,3 +192,37 @@ runDatabaseTest('a participant still finds their own private, direct and system 
     `system ${s.canary} note`,
   ])
 })
+
+// Deleting a channel (or its project) is a soft delete: `deletedAt` is stamped
+// together with `archivedAt` and the messages stay for a future restore. The
+// channel is gone for every reader, so search must not keep serving its
+// snippets — not to a member of it, and not by naming it directly.
+runDatabaseTest('a soft-deleted channel is never searched, even by its members', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: s.organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: s.userIds } } })
+    await prisma.$disconnect()
+  })
+
+  const alice = await prisma.user.findFirstOrThrow({
+    where: { id: { in: s.userIds }, displayName: 'alice' },
+    select: { id: true },
+  })
+  const now = new Date()
+  // The same stamp `deleteChannel` and `deleteProject` write.
+  await prisma.channel.updateMany({
+    where: { id: { in: [s.publicChannelId, s.privateChannelId] } },
+    data: { archivedAt: now, deletedAt: now },
+  })
+
+  const snippets = (await search(prisma, s, alice.id)).map((result) => result.snippet).sort()
+  assert.deepEqual(snippets, [
+    `assistant ${s.canary} note`,
+    `dm ${s.canary} note`,
+    `system ${s.canary} note`,
+  ], `a deleted channel's messages were still searchable: ${JSON.stringify(snippets)}`)
+  assert.deepEqual(await search(prisma, s, alice.id, { channelId: s.privateChannelId }), [])
+  assert.deepEqual(await search(prisma, s, s.memberId, { channelId: s.publicChannelId }), [])
+})

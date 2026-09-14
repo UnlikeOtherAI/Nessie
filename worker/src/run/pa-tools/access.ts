@@ -167,11 +167,17 @@ export const buildSpaceViewerPrincipal = (
 // The result carries a top-level `OR`. Never spread it into a where clause that
 // adds its own `OR` — the later key silently replaces the visibility rule.
 // Combine with other predicates through `AND: [buildVisibleChannelWhere(...), …]`.
+//
+// A soft-deleted channel (deleted itself, or with its project) is invisible to
+// every caller, so the predicate excludes it rather than each reader: an
+// archived-channel filter would hide it too, but `channel_list` with
+// `includeArchived`, the attachment readers and the destination lookups have none.
 export const buildVisibleChannelWhere = (
   organizationId: string,
   userId: string,
 ): Prisma.ChannelWhereInput => ({
   organizationId,
+  deletedAt: null,
   OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
 })
 
