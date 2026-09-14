@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { faList, faTableCellsLarge } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Link, useSearchParams } from 'react-router-dom'
 import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
 import { BoardAssigneeFilter } from '../../components/features/projects/kanban/BoardAssigneeFilter'
@@ -21,6 +23,28 @@ import { useClearProjectAttention } from '../../facades/alerts/clear-project-att
 import { useProjectSources } from '../../facades/board-sources/hooks'
 import { SourceStatusStrip } from '../../components/features/projects/kanban/SourceStatusStrip'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { TabBar, type TabBarItem } from '../../components/primitives/TabBar'
+import {
+  DEFAULT_BOARD_VIEW,
+  parseBoardView,
+  type BoardView,
+} from '../../components/features/projects/kanban/board-view'
+
+const VIEW_ITEMS: ReadonlyArray<TabBarItem<BoardView>> = [
+  {
+    icon: <FontAwesomeIcon icon={faTableCellsLarge} />,
+    label: 'Cards',
+    testId: 'board-view-cards',
+    value: 'cards',
+  },
+  {
+    icon: <FontAwesomeIcon icon={faList} />,
+    label: 'Lines',
+    testId: 'board-view-lines',
+    title: 'One line per card: title and priority only',
+    value: 'lines',
+  },
+]
 
 type ProjectBoardTabProps = {
   board: BoardRecord | null
@@ -60,6 +84,13 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
     const params = new URLSearchParams(searchParams)
     if (next === ALL_ASSIGNEES) params.delete('assignee')
     else params.set('assignee', next)
+    setSearchParams(params, { replace: true })
+  }
+  const view = parseBoardView(searchParams.get('view'))
+  const setView = (next: BoardView) => {
+    const params = new URLSearchParams(searchParams)
+    if (next === DEFAULT_BOARD_VIEW) params.delete('view')
+    else params.set('view', next)
     setSearchParams(params, { replace: true })
   }
 
@@ -117,7 +148,16 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
             sources={sources}
           />
         </div>
-        <div className="self-end sm:self-auto">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <TabBar<BoardView>
+            ariaLabel="Board view"
+            items={VIEW_ITEMS}
+            onChange={setView}
+            role="radiogroup"
+            size="sm"
+            touchTarget
+            value={view}
+          />
           <BoardAssigneeFilter
             currentUserId={currentUserId}
             onChange={setAssignee}
@@ -185,6 +225,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
             projectNameById={projectNameById}
             showProject={false}
             tasks={visibleTasks}
+            view={view}
           />
         )}
       </div>
