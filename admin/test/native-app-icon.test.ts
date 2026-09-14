@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { afterEach, test } from 'node:test'
+import { afterEach, beforeEach, test } from 'node:test'
 
 import {
   isNativeAppIconShell,
@@ -8,9 +8,20 @@ import {
 } from '../src/facades/native-app-icon.js'
 
 const globalWindow = globalThis as { window?: unknown }
+// The admin suite runs every test file in one process, and other files leave a
+// `window` of their own in place (tenant-host-branding.test.ts stubs one when
+// it loads). Put back whatever was there just before each test instead of
+// deleting it; reading it at import time would miss a stub installed by a file
+// that loads after this one.
+let originalWindow: PropertyDescriptor | undefined
+
+beforeEach(() => {
+  originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+})
 
 afterEach(() => {
-  delete globalWindow.window
+  if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+  else delete globalWindow.window
 })
 
 test('the app icon choice is offered only when the shell says it can switch', () => {
