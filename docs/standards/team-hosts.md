@@ -65,6 +65,30 @@ Consequently:
   identity from `x-forwarded-host` still stands; the hostname arrives as an
   explicit query parameter from the client asking about itself.
 
+## The address bar follows the switch — in a browser only
+
+After a successful UOA team switch, `TeamSwitcher` asks
+`GET /api/hosts/address?teamId=` and, when the answer names a different host,
+moves the page there (`teamHostRedirectUrl` in
+`admin/src/layouts/admin-shell/team-host-redirect.ts`). A `null` answer, or the
+same host, stays on an in-app `navigate('/channels')`.
+
+**A native shell never follows.** `isDesktopApp()` or `isReactNativeWebView()`
+skips the lookup and navigates in-app on the current origin. The desktop shell
+grants IPC only to `https://app.nessie.works/**`
+(`desktop/src-tauri/capabilities/default.json`), so a tenant hostname as its
+top-level document loses the deep-link bridge: `ExternalAuthProvider` then
+toasts "The external sign-in could not be completed." while the UI stays on the
+old team. Tenant hostnames remain unsupported as a desktop top-level document;
+widening that allowlist is a separate security decision, not a fix for this.
+
+**A team host does not re-switch onto the team the session is already on.**
+`TenantHostGate` compares the host's `externalOrgId`/`externalTeamId` with the
+active `me.uoaTeams` entry (`tenantTeamSwitchNeeded`) and switches only when
+they differ. A redundant `POST /api/auth/uoa/team` races the page-load refresh,
+which rotates the same refresh-cookie family, and loses with
+`TEAM_SWITCH_CONFLICT`.
+
 ## Matching a hostname is a label comparison, never a suffix test
 
 `https://design.acme.evil-nessie.works` ends with `nessie.works`. So does

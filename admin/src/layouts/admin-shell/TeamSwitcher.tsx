@@ -10,6 +10,7 @@ import { useTeamAvatarRevision } from '../../facades/team/hooks'
 import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
+import { isDesktopApp } from '../../lib/desktop'
 import { isReactNativeWebView } from '../../lib/native-shell'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
@@ -18,6 +19,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTheme } from '../../providers/ThemeProvider'
 import { CreateTeamDialog } from './CreateTeamDialog'
 import { recoverTeamSwitchFailure } from './team-switch-recovery'
+import { teamHostRedirectUrl } from './team-host-redirect'
 import { teamSwitchFailureMessage } from './team-switch-message'
 import { TeamMenu } from './TeamMenu'
 import { useTransientMenu } from './TransientMenuContext'
@@ -159,11 +161,18 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
       // deployment does not route by hostname, when UOA cannot be reached, or
       // when the team has no address, so the ordinary same-origin navigation
-      // below stays the behaviour everywhere else.
-      if (team.uoaTeam) {
-        const hostUrl = await fetchTeamHostUrl(apiClient, team.teamId)
-        if (hostUrl && new URL(hostUrl).host !== window.location.host) {
-          window.location.assign(`${hostUrl}/channels`)
+      // below stays the behaviour everywhere else. A native shell never
+      // follows: its bridge is granted to the canonical origin only
+      // (see team-host-redirect.ts), so it is not even asked.
+      const inNativeShell = isDesktopApp() || isReactNativeWebView()
+      if (team.uoaTeam && !inNativeShell) {
+        const redirectUrl = teamHostRedirectUrl({
+          currentHost: window.location.host,
+          hostUrl: await fetchTeamHostUrl(apiClient, team.teamId),
+          inNativeShell,
+        })
+        if (redirectUrl) {
+          window.location.assign(redirectUrl)
           return
         }
       }
