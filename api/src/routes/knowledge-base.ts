@@ -383,7 +383,7 @@ export const registerKnowledgeBaseRoutes = (
     // predicate lives in the provider's raw SQL (native-search.ts), so a
     // separate count would either fork that WHERE clause or drift from it.
     const readablePages = new Set((await filterReadablePages(
-      actorContext,
+      viewer,
       result.data.map((hit) => hit.page),
     )).map((page) => page.id))
     return createApiResponse(

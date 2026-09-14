@@ -50,6 +50,7 @@ import { executeAutomaticMembershipReconcileJob } from './control/automatic-memb
 import { executeAutomaticMembershipRevalidateJob } from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
+import { executeMessageEmbedJob } from './control/message-embed.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
 import { handleTriggerHealthAlert } from './control/trigger-health-dispatch.js'
