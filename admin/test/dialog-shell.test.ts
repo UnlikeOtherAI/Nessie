@@ -33,6 +33,13 @@ const render = (props: Partial<Parameters<typeof Dialog>[0]> = {}): string =>
     }),
   )
 
+const assertSafeViewportPanel = (html: string): void => {
+  assert.match(html, /max-height:min\(calc\(100dvh/)
+  assert.match(html, /env\(safe-area-inset-top, 0px\)/)
+  assert.match(html, /env\(safe-area-inset-bottom, 0px\)/)
+  assert.match(html, /overflow-y:auto/)
+}
+
 test('the shell always announces itself as a modal dialog', () => {
   const html = render()
   assert.match(html, /role="dialog"/)
@@ -74,13 +81,12 @@ test('the scrim sits in the modal layer of the one scale, or the blocking layer 
   assert.doesNotMatch(render(), /9999/)
 })
 
-test('the shipped panel geometries are the only widths on offer', () => {
-  assert.match(render(), /class="create-channel-panel" role="dialog"/)
-  assert.match(
-    render({ size: 'lg' }),
-    /style="max-height:calc\(100dvh - 2rem\);max-width:640px;overflow-y:auto;width:100%"/,
-  )
-  assert.match(render({ size: 'xl' }), /style="max-height:88dvh;max-width:none;overflow-y:auto;width:min\(80vw, 1100px\)"/)
+test('the shell displays its natural height before its own panel needs to scroll', () => {
+  assertSafeViewportPanel(render())
+  assertSafeViewportPanel(render({ size: 'lg' }))
+  assertSafeViewportPanel(render({ size: 'xl' }))
+  assert.match(render(), /--overlay-visible-height/)
+  assert.match(render(), /--overlay-visual-inset/)
 })
 
 // ---------------------------------------------------------------------------
