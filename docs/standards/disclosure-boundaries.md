@@ -103,12 +103,17 @@ Facts not restated there:
   external agent) is participant-only even when its visibility says public
   (`searchMessages`, `api/src/services/message-search.ts`). The channel read
   predicate (`getVisibleChannel`, `api/src/lib/request-helpers.ts`) must stay
-  aligned with this rule.
+  aligned with this rule. Both leave out a soft-deleted channel
+  (`Channel.deletedAt`, stamped by a channel delete and by its project's
+  delete) for every searcher, members of it included.
 - `buildVisibleChannelWhere` (`worker/src/run/pa-tools/access.ts`) returns a
   top-level `OR`. Combine it with other predicates through `AND: [...]`, never by
   spreading it beside a second `OR`: the later key replaces the visibility rule
   and the query returns private channels the person never joined (this is how
-  `channel_find` leaked).
+  `channel_find` leaked). It also carries `deletedAt: null`, so every worker
+  reader built on it — `channel_list` with `includeArchived`, attachments,
+  message destinations, conversation search — never reaches a soft-deleted
+  channel.
 - A shared agent with private-conversation material cannot place that material
   into an external browser URL or page (`browser_open` and `browser_act`). Those
   browser verbs have no original-author-bound, exact-content disclosure grant;

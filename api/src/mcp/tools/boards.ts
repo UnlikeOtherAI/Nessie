@@ -37,7 +37,11 @@ const projectAccess = async (
   }
   return context.prisma.project.findFirst({
     select: { id: true, organizationId: true },
-    where: { id: projectId, organizationId: context.actorContext.tenant.organizationId },
+    where: {
+      id: projectId,
+      organizationId: context.actorContext.tenant.organizationId,
+      deletedAt: null,
+    },
   })
 }
 
