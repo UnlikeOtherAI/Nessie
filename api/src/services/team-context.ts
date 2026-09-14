@@ -1,4 +1,5 @@
 import type { MemberRole, Prisma, PrismaClient } from '@prisma/client'
+import { ensureSharedChannelRootInTransaction } from '@nessie/team-admin'
 
 import {
   lockExternalOrganization,
@@ -163,6 +164,10 @@ const resolveRecoveryContext = async (
   if (!target) {
     return null
   }
+  if (externalOrgId) {
+    // After the claim and the target, so a refused claim writes nothing.
+    await ensureSharedChannelRootInTransaction(tx, organizationId)
+  }
   const firstOrgMember = externalOrgId
     ? await isFirstOrganizationMember(tx, organizationId)
     : false
@@ -298,6 +303,9 @@ export const resolveUoaTeamContext = async (
         externalTeamId,
         input.team,
       )
+      // Shared #general and #random: seeded into a new organisation, and into
+      // a root that has never held a channel (one an older release made empty).
+      await ensureSharedChannelRootInTransaction(tx, organization.id)
       return { organizationId: organization.id, target }
     }, AUTH_LOCK_TRANSACTION_OPTIONS)
 

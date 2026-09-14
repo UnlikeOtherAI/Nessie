@@ -5,6 +5,12 @@
 -- without resurrecting anything a person deleted: deleting archives, so an
 -- archived row still counts as "this root has had channels". Only a root that
 -- has never held a standard channel is seeded.
+--
+-- During a blue-green swap the previous release keeps serving while this runs,
+-- and it can create a channel root or a shared channel concurrently. Block
+-- those writes for the few milliseconds this takes, rather than racing them
+-- into a unique-index violation that aborts the deploy. Reads are unaffected.
+LOCK TABLE "projects", "teams", "channels" IN SHARE ROW EXCLUSIVE MODE;
 
 -- 1. A root project + system-managed team for every organisation lacking one.
 WITH missing AS (

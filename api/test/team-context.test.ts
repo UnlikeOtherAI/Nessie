@@ -320,6 +320,9 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         channels.push(row)
         return { id: row.id }
       },
+      count: async ({ where }: { where: { projectId: string } }) =>
+        channels.filter((c) =>
+          teams.some((t) => t.id === c.teamId && t.projectId === where.projectId)).length,
       createMany: async ({ data }: { data: Array<{ teamId: string; visibility: string }> }) => {
         for (const row of data) {
           channels.push({ id: randomUUID(), teamId: row.teamId, visibility: row.visibility, createdAt: tick() })

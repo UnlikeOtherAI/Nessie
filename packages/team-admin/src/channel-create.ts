@@ -69,18 +69,37 @@ const canPlaceChannelInTeam = async (
 }
 
 /**
- * The shared channels every organisation starts with. They are seeded exactly
- * once — in the transaction that creates the organisation's channel root — so
- * archiving one is final: the root already exists, and nothing re-seeds.
+ * The shared channels every organisation starts with. They are seeded only
+ * into a root that has never held a standard channel — archived rows count —
+ * so deleting one is final: the root has held channels, and nothing re-seeds.
  */
 export const DEFAULT_SHARED_CHANNEL_NAMES = ['general', 'random'] as const
 
+const seedDefaultSharedChannels = async (
+  transaction: Prisma.TransactionClient,
+  root: { organizationId: string; projectId: string; teamId: string },
+): Promise<void> => {
+  // Public and memberless: every organisation member reaches a public channel,
+  // and nobody in particular created these.
+  await transaction.channel.createMany({
+    data: DEFAULT_SHARED_CHANNEL_NAMES.map((name) => ({
+      label: name,
+      slug: name,
+      organizationId: root.organizationId,
+      projectId: root.projectId,
+      teamId: root.teamId,
+      visibility: 'public' as const,
+    })),
+  })
+}
+
 /**
  * Resolve-or-create the organisation's shared-channel root (the `channelRoot`
- * project and its `systemManaged` team). Creating it also creates the default
- * shared channels, so a new organisation never shows an empty "Shared channels"
- * section. Serialised per organisation by an advisory lock; call it inside the
- * transaction that creates the organisation.
+ * project and its `systemManaged` team), seeding the default shared channels
+ * into a root that has never held one — so a new organisation never shows an
+ * empty "Shared channels" section, including a root an older release created
+ * empty. Serialised per organisation by an advisory lock; call it inside the
+ * transaction that creates or signs in to the organisation.
  */
 export const ensureSharedChannelRootInTransaction = async (
   transaction: Prisma.TransactionClient,
@@ -101,6 +120,16 @@ export const ensureSharedChannelRootInTransaction = async (
     select: { id: true, projectId: true },
   })
   if (existing) {
+    const everHeld = await transaction.channel.count({
+      where: { projectId: existing.projectId, type: 'standard' },
+    })
+    if (everHeld === 0) {
+      await seedDefaultSharedChannels(transaction, {
+        organizationId,
+        projectId: existing.projectId,
+        teamId: existing.id,
+      })
+    }
     return { projectId: existing.projectId, teamId: existing.id }
   }
 
@@ -120,17 +149,10 @@ export const ensureSharedChannelRootInTransaction = async (
     },
     select: { id: true },
   })
-  // Public and memberless: every organisation member reaches a public channel,
-  // and nobody in particular created these.
-  await transaction.channel.createMany({
-    data: DEFAULT_SHARED_CHANNEL_NAMES.map((name) => ({
-      label: name,
-      slug: name,
-      organizationId,
-      projectId: project.id,
-      teamId: team.id,
-      visibility: 'public' as const,
-    })),
+  await seedDefaultSharedChannels(transaction, {
+    organizationId,
+    projectId: project.id,
+    teamId: team.id,
   })
   return { projectId: project.id, teamId: team.id }
 }

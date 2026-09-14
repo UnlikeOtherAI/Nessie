@@ -176,6 +176,8 @@ const makeFake = (seed: {
         state.channels.push(row)
         return row
       },
+      count: async ({ where }: { where: Row }) => (record('channel.count'),
+        state.channels.filter((channel) => channel.projectId === where.projectId).length),
       // The organisation's default shared channels, seeded with its root.
       createMany: async ({ data }: { data: Row[] }) => {
         record('channel.createMany')

@@ -66,3 +66,28 @@ runDatabaseTest('the channel root seeds #general and #random once, and a deleted
     await prisma.$disconnect()
   }
 })
+
+runDatabaseTest('a root an older release created empty is seeded on the next resolve', async () => {
+  const prisma = new PrismaClient()
+  const organization = await prisma.organization.create({
+    data: { name: `default-shared-empty-root-${randomUUID()}` },
+  })
+  try {
+    const project = await prisma.project.create({
+      data: { channelRoot: true, name: 'Standalone channels', organizationId: organization.id },
+    })
+    await prisma.team.create({
+      data: { name: 'Standalone channels', projectId: project.id, systemManaged: true },
+    })
+
+    await prisma.$transaction((tx) => ensureSharedChannelRootInTransaction(tx, organization.id))
+
+    assert.deepEqual(
+      (await sharedChannels(prisma, organization.id)).map((channel) => channel.slug),
+      ['general', 'random'],
+    )
+  } finally {
+    await prisma.organization.deleteMany({ where: { id: organization.id } })
+    await prisma.$disconnect()
+  }
+})
