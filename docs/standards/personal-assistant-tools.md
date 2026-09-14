@@ -23,7 +23,8 @@ file is the rule**.
   `pa-tools/channels.ts` carried a "mirrored from api/src/services" comment over
   a duplicated `canManageChannel` for exactly that reason; on 2026-08-29 the
   predicate and the writes it gates moved to `channel-manage.ts`, which the api
-  service re-exports and the PA tool imports. An owner-gated tool stays visible
+  service re-exports and the PA tool imports. The predicate is now
+  `canModifyChannel` in `resource-authority.ts`, beside `canModifyProject`. An owner-gated tool stays visible
   to non-owners and refuses in words, following `pa-tools/connectors.ts`. Role
   comes from the live `OrganizationMember` row at call time, not from the run's
   enqueue-time `actorContext`. **A tool that takes an id ships with the read

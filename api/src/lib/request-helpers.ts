@@ -1,6 +1,7 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import {
   PersonalAssistantConfigSummarySchema,
+  isAdminActor,
   isDelegatedSystemDmChannelType,
   parseAgentId,
   parseChannelId,
@@ -16,7 +17,7 @@ import {
 import { PersonalAssistantStateResponseSchema } from '../contracts/agents.js'
 import { ThreadRecordSchema } from '../contracts/messaging.js'
 import {
-  canAdministerProject,
+  canModifyProject,
   ensureDefaultThread,
   getChannelIfMember as getChannelIfMemberShared,
   isAgentAccessibleToActor as isAgentAccessibleToActorShared,
@@ -278,7 +279,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         defaultThreadId: parseThreadId(thread.id),
         unreadCount: 0,
         lastMessageAt: lastMessageAt ?? null,
-        // System channels are lifecycle-protected: `canManageChannel` refuses
+        // System channels are lifecycle-protected: `canModifyChannel` refuses
         // every viewer on one, so the Personal Assistant's home is never
         // manageable — a decision the predicate makes, not a placeholder.
         viewerCanManage: false,
@@ -322,6 +323,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
       select: {
+        deletedAt: true,
         systemChannelType: true,
         type: true,
         organizationId: true,
@@ -329,7 +331,9 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         members: { where: { userId }, select: { id: true }, take: 1 },
       },
     })
-    if (!channel) return null
+    // A soft-deleted channel is invisible to every reader, including the
+    // realtime scope check (`filterAuthorizedScopes`) that asks this.
+    if (!channel || channel.deletedAt) return null
     if (channel.organizationId !== organizationId) return null
     // Public channels are visible to all org members
     if (channel.visibility === 'public') {
@@ -509,16 +513,17 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     return authorizedScopes
   }
 
-  // Project read access: an org owner sees every project in their org;
+  // Project access: an org owner or admin reaches every project in their org;
   // everyone else only projects they are an explicit ProjectMember of. This is
   // what keeps one team's tickets, board and iterations off another team's
   // screen — org scope alone made them readable by every member.
   //
   // The predicate itself lives in `@nessie/team-admin` so the worker's
   // `project_list` tool asks exactly this question; these wrappers only unpack
-  // the actor context.
+  // the actor context. `actor.roles` is re-resolved from the live membership
+  // row on every request, so a demoted admin loses the reach on the next call.
   const projectViewer = (actorContext: AuthorizedActionContext) => ({
-    isOwner: actorContext.actor.roles?.includes('owner') === true,
+    isOrganizationAdmin: isAdminActor(actorContext),
     organizationId: actorContext.tenant.organizationId,
     userId: actorContext.actor.actorId,
   })
@@ -529,18 +534,17 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
   ): Promise<boolean> =>
     isProjectAccessibleToUser(prisma, projectViewer(actorContext), projectId)
 
-  // Who may change a project's *shape* — its boards, columns, custom fields
-  // and data sources — as opposed to who may read it or work its tasks. An
-  // organisation owner, or someone the project itself records as its owner or
-  // admin. See `@nessie/team-admin` `canAdministerProject`.
-  const canActorAdministerProject = async (
+  // Who may change a project — rename, members, lifecycle, boards, fields,
+  // sources, iterations, watchers: any member of it, or an organisation owner
+  // or admin. See `@nessie/team-admin` `canModifyProject`.
+  const canActorModifyProject = async (
     actorContext: AuthorizedActionContext,
     projectId: string,
   ): Promise<boolean> =>
-    canAdministerProject(prisma, projectViewer(actorContext), projectId)
+    canModifyProject(prisma, projectViewer(actorContext), projectId)
 
-  // `'all'` for owners (no project filter at all), otherwise the id list of the
-  // projects the actor belongs to.
+  // `'all'` for owners and admins (no project filter at all), otherwise the id
+  // list of the projects the actor belongs to.
   const listAccessibleProjectIds = async (
     actorContext: AuthorizedActionContext,
   ): Promise<string[] | 'all'> =>
@@ -552,7 +556,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     loadPersonalAssistantState,
     isAgentAccessibleToActor,
     isProjectAccessibleToActor,
-    canActorAdministerProject,
+    canActorModifyProject,
     listAccessibleProjectIds,
     getVisibleChannel,
     getChannelIfMember,

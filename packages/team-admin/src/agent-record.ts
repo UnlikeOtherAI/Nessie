@@ -36,6 +36,9 @@ export const buildAccessibleChannelWhere = (
   visibility: AgentVisibilityScope,
 ): Prisma.ChannelWhereInput => ({
   organizationId: visibility.organizationId,
+  // Soft-deleted channels are hidden from every thread and agent read built on
+  // this fragment (`findThreadForUser`, the agent conversation list).
+  deletedAt: null,
   ...(visibility.includeAllOrgChannels
     ? {}
     : {

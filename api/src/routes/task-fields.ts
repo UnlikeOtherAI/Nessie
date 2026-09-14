@@ -22,7 +22,7 @@ import type { RouteDeps } from './types.js'
  * defining them is administering it.
  */
 export const registerTaskFieldRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireProjectAdmin, isProjectAccessibleToActor } = deps
+  const { prisma, requireActorContext, requireProjectModifier, isProjectAccessibleToActor } = deps
 
   const loadProject = async (actorContext: AuthorizedActionContext, projectId: string) => {
     if (!(await isProjectAccessibleToActor(actorContext, projectId))) return null
@@ -83,7 +83,7 @@ export const registerTaskFieldRoutes = (app: FastifyInstance, deps: RouteDeps): 
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(CreateTaskFieldBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -110,7 +110,7 @@ export const registerTaskFieldRoutes = (app: FastifyInstance, deps: RouteDeps): 
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const body = parseInput(UpdateTaskFieldBodySchema, request.body, reply)
     if (!body) return reply
 
@@ -132,7 +132,7 @@ export const registerTaskFieldRoutes = (app: FastifyInstance, deps: RouteDeps): 
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
       return reply
     }
-    if (!(await requireProjectAdmin(actorContext, projectId, reply))) return reply
+    if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
 
     const result = await deleteTaskFieldDefinition(prisma, project.id, fieldId)
     if (isTaskFieldError(result)) {

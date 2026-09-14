@@ -1,20 +1,23 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
 /**
- * Deleting a project, and the one place that knows what that destroys.
+ * Deleting a project, and the one place that decides what that does.
  *
- * The policy used to be five `onDelete` clauses written by five different
- * features plus a single `if` in `DELETE /api/projects/:projectId` that knew
- * about one of them. `Project` has no `deletedAt`, so there is no soft delete to
- * fall back on: a delete is a hard delete, and the honest shape is to refuse
- * until the project is empty and say which family is holding it.
+ * **A delete is a soft delete.** `Project.deletedAt` is stamped, and so is
+ * `deletedAt` (with `archivedAt`) on every channel still in the project, in one
+ * transaction. No row is removed — boards, tasks, fields, sources, iterations,
+ * members, channels and their history all stay intact for a future restore —
+ * and every project and channel read filters `deletedAt: null`, so the project
+ * and its rooms are gone for everybody the moment it commits
+ * (`docs/standards/team-model.md` → "Deleting a project or a channel").
  *
- * The four families, and why each one refuses rather than cascading:
+ * Channels no longer block: they are soft-deleted with the project, which is
+ * exactly as recoverable as the channel archive the old guard protected.
  *
- * - **Channels** (`Channel.project`, Cascade). `DELETE /api/channels/:id`
- *   archives rather than hard-deletes precisely so a conversation is
- *   recoverable; cascading them off the side of a project delete would undo
- *   that. This is the guard that already existed.
+ * Three families still refuse, because their data is reachable from surfaces
+ * that do not pass through the project's own entitlement, so hiding the project
+ * would not hide them:
+ *
  * - **Knowledge spaces and pages** (`KnowledgeSpace.project`,
  *   `KnowledgePage.project`, both Cascade). `KnowledgePage` carries its own
  *   `deletedAt`, so the knowledge base has a recoverable delete of its own; the
@@ -28,13 +31,11 @@ import { Prisma, type PrismaClient } from '@prisma/client'
  *   destructive direction, and UOA is never told. Unbind or delete the team in
  *   UOA first.
  *
- * The counts and the delete run in one transaction so a channel created between
- * the two is not swept away by the FK, and P2003 is mapped rather than thrown:
- * any family added later refuses instead of 500ing.
+ * The counts and the stamps run in one transaction, so a knowledge page created
+ * between the two cannot slip under a project that is being hidden.
  */
 
 export type ProjectDeletionBlockCode =
-  | 'PROJECT_NOT_EMPTY'
   | 'PROJECT_HAS_KNOWLEDGE'
   | 'PROJECT_HAS_EXECUTORS'
   | 'PROJECT_HAS_EXTERNAL_TEAMS'
@@ -63,20 +64,12 @@ const blockedBy = (
 ): ProjectDeletionBlock => ({ code, count, message })
 
 const collectBlocks = (counts: {
-  channels: number
   executors: number
   externalTeams: number
   knowledgePages: number
   knowledgeSpaces: number
 }): ProjectDeletionBlock[] => {
   const blocks: ProjectDeletionBlock[] = []
-  if (counts.channels > 0) {
-    blocks.push(blockedBy(
-      'PROJECT_NOT_EMPTY',
-      counts.channels,
-      "Move or delete the project's channels before deleting it",
-    ))
-  }
   const knowledge = counts.knowledgeSpaces + counts.knowledgePages
   if (knowledge > 0) {
     blocks.push(blockedBy(
@@ -113,6 +106,7 @@ export const deleteProject = async (
           // A channel-root project is the organisation's invisible container
           // for standalone channels. It is not a project anybody may delete.
           channelRoot: false,
+          deletedAt: null,
           id: input.projectId,
           organizationId: input.organizationId,
         },
@@ -120,7 +114,6 @@ export const deleteProject = async (
           id: true,
           _count: {
             select: {
-              channels: true,
               executors: true,
               knowledgePages: true,
               knowledgeSpaces: true,
@@ -135,7 +128,6 @@ export const deleteProject = async (
       if (!project) return { kind: 'not_found' }
 
       const blocks = collectBlocks({
-        channels: project._count.channels,
         executors: project._count.executors,
         externalTeams: project.teams.length,
         knowledgePages: project._count.knowledgePages,
@@ -143,7 +135,16 @@ export const deleteProject = async (
       })
       if (blocks.length > 0) return { kind: 'blocked', blocks }
 
-      await tx.project.delete({ where: { id: project.id } })
+      const now = new Date()
+      await tx.channel.updateMany({
+        where: { projectId: project.id, archivedAt: null, deletedAt: null },
+        data: { archivedAt: now, deletedAt: now },
+      })
+      await tx.channel.updateMany({
+        where: { projectId: project.id, deletedAt: null },
+        data: { deletedAt: now },
+      })
+      await tx.project.update({ where: { id: project.id }, data: { deletedAt: now } })
       return { kind: 'deleted' }
     })
   } catch (error) {

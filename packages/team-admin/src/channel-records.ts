@@ -10,7 +10,7 @@ import {
 } from '@nessie/schemas'
 import type { ChannelRecord } from '@nessie/schemas'
 
-import { canManageChannel } from './channel-manage.js'
+import { canModifyChannel } from './resource-authority.js'
 
 type ChannelWithProject = Channel & {
   project?: {
@@ -321,6 +321,8 @@ export const mapChannelRecord = async (
   prisma: PrismaClient,
   channel: ChannelWithProject,
   userId?: string,
+  /** See `ChannelModifier.isOrganizationAdmin`: the caller's verified role. */
+  viewer: { isOrganizationAdmin?: boolean } = {},
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
@@ -347,8 +349,9 @@ export const mapChannelRecord = async (
   // read would be — `listChannelsForUser` computes this batched instead of
   // calling through this function per row.
   const viewerCanManage = userId
-    ? (await canManageChannel(prisma, {
+    ? (await canModifyChannel(prisma, {
         channelId: channel.id,
+        isOrganizationAdmin: viewer.isOrganizationAdmin,
         organizationId: channel.organizationId,
         userId,
       })) !== null

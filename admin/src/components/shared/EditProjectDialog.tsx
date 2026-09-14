@@ -20,6 +20,7 @@ export const EditProjectDialog = ({ onClose, open, project }: EditProjectDialogP
   const nameInputRef = useRef<HTMLInputElement>(null)
   const updateProject = useUpdateProject()
   const [name, setName] = useState(project.name)
+  const [description, setDescription] = useState(project.description ?? '')
   const [avatarEmoji, setAvatarEmoji] = useState<string | null>(project.avatarEmoji)
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | null>(project.avatarAttachmentId)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
@@ -38,6 +39,7 @@ export const EditProjectDialog = ({ onClose, open, project }: EditProjectDialogP
   useEffect(() => {
     if (!open) return
     setName(project.name)
+    setDescription(project.description ?? '')
     setAvatarEmoji(project.avatarEmoji)
     setAvatarAttachmentId(project.avatarAttachmentId)
     setEmojiPickerOpen(false)
@@ -51,7 +53,9 @@ export const EditProjectDialog = ({ onClose, open, project }: EditProjectDialogP
 
   const busy = uploading || updateProject.isPending
   const trimmedName = name.trim()
+  const trimmedDescription = description.trim()
   const changed = trimmedName !== project.name
+    || trimmedDescription !== (project.description ?? '')
     || avatarEmoji !== project.avatarEmoji
     || avatarAttachmentId !== project.avatarAttachmentId
 
@@ -82,6 +86,7 @@ export const EditProjectDialog = ({ onClose, open, project }: EditProjectDialogP
       await updateProject.mutateAsync({
         avatarAttachmentId,
         avatarEmoji,
+        description: trimmedDescription || null,
         name: trimmedName,
         projectId: project.id,
       })
@@ -117,6 +122,24 @@ export const EditProjectDialog = ({ onClose, open, project }: EditProjectDialogP
             onChange={(event) => setName(event.target.value)}
             value={name}
           />
+        </div>
+
+        <div className="grid gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]" htmlFor="edit-project-description">
+            Description
+          </label>
+          <textarea
+            className="admin-input"
+            id="edit-project-description"
+            maxLength={500}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What is this project for?"
+            rows={2}
+            value={description}
+          />
+          <div className="text-xs text-[color:var(--tx3)]">
+            Everybody in the organisation can read this, with the project's name and members.
+          </div>
         </div>
 
         <div className="grid gap-3 rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] p-4">

@@ -15,6 +15,8 @@ test('channel visibility filter allows public channels and explicit memberships'
     buildAccessibleChannelWhere({ organizationId, userId }),
     {
       organizationId,
+      // Soft-deleted channels are hidden from every reader built on this.
+      deletedAt: null,
       OR: [
         { visibility: 'public' },
         { members: { some: { userId } } },
@@ -30,7 +32,7 @@ test('owner channel visibility filter stays scoped to the organization', () => {
       organizationId,
       userId,
     }),
-    { organizationId },
+    { organizationId, deletedAt: null },
   )
 })
 

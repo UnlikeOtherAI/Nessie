@@ -205,7 +205,7 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (scopeType === 'organization') return scopeId === organizationId
     if (scopeType === 'project') {
       const project = await prisma.project.findFirst({
-        where: { id: scopeId, organizationId },
+        where: { id: scopeId, organizationId, deletedAt: null },
         select: { id: true },
       })
       return Boolean(project)

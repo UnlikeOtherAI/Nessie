@@ -18,6 +18,7 @@ import {
   exerciseRichBoardAssigneesPhone,
 } from './rich-assignees.mjs'
 import { exerciseProjectAdministrationPermissions } from './project-administration-permissions.mjs'
+import { exerciseProjectDirectory } from './project-directory.mjs'
 import { exerciseProjectLoadFailures } from './project-load-failures.mjs'
 
 const ADMIN_URL = `http://localhost:${ADMIN_PORT}`
@@ -222,6 +223,9 @@ const main = async () => {
     })
     createdTaskIds.add(loadFailureTask.id)
     await exerciseProjectAdministrationPermissions({
+      adminUrl: ADMIN_URL, api, browser, project, runId, shot, token: seed.token,
+    })
+    await exerciseProjectDirectory({
       adminUrl: ADMIN_URL, api, browser, project, runId, shot, token: seed.token,
     })
     const [firstColumn, secondColumn, boardBFirstColumn] = [boardA.columns[0], boardA.columns[1], boardB.columns[0]]

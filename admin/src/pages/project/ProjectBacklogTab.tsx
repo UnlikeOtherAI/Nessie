@@ -20,7 +20,7 @@ import {
   useTasks,
   useUpdateTaskPoints,
 } from '../../facades/tasks/hooks'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 
 const PointsInput = ({ task }: { task: TaskRecord }) => {
   const update = useUpdateTaskPoints()
@@ -171,7 +171,7 @@ type ProjectBacklogTabProps = {
 }
 
 export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
-  const canAdminister = useCanAdministerProject(projectId)
+  const canAdminister = useCanModifyProject(projectId)
   const iterationsQuery = useIterations(projectId)
   const tasksQuery = useTasks(projectId)
   // Memoised so the empty-array fallback is not a fresh literal every render;

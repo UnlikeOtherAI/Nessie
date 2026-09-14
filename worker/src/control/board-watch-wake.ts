@@ -74,16 +74,17 @@ export const wakeBoardWatcherAgent = async (
     agentId: input.agentId,
     organizationId: input.organizationId,
   }))) return 'unreachable'
-  const isOwner = await prisma.organizationMember.count({
+  const isOrganizationAdmin = await prisma.organizationMember.count({
     where: {
       organizationId: input.organizationId,
       userId: input.addedByUserId,
-      role: 'owner',
+      // `ORGANIZATION_ADMIN_ROLES`, spelled as the column's enum values.
+      role: { in: ['owner', 'admin'] },
       deactivatedAt: null,
     },
   }) > 0
   if (!(await isProjectAccessibleToUser(prisma, {
-    isOwner,
+    isOrganizationAdmin,
     organizationId: input.organizationId,
     userId: input.addedByUserId,
   }, input.projectId))) return 'unreachable'

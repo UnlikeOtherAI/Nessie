@@ -783,7 +783,7 @@ runDatabaseTest('a home DM is enough to see an agent the entitlement excludes', 
   })
 })
 
-runDatabaseTest('renaming: the starter may, a bystander may not, General cannot', async () => {
+runDatabaseTest('renaming: the starter and any room member may, General cannot', async () => {
   await withSeed(async (prisma, s) => {
     const started = await startAgentConversation(prisma, {
       agentId: s.agentId,
@@ -795,14 +795,19 @@ runDatabaseTest('renaming: the starter may, a bystander may not, General cannot'
     assert.equal(started.kind, 'created')
     if (started.kind !== 'created') return
 
+    // Every member of a channel has equal rights in it
+    // (`docs/standards/team-model.md`), so a fellow member of the room may
+    // rename a conversation somebody else started. Refusing a person outside
+    // the channel is `canModifyChannel`'s own test
+    // (`channel-member-authority.test.ts`).
     assert.equal(
       (await renameThreadForUser(prisma, {
         organizationId: s.organizationId,
         threadId: started.thread.id,
-        title: 'By a bystander',
+        title: 'By a fellow member',
         userId: s.userB,
       })).kind,
-      'forbidden',
+      'renamed',
     )
     assert.equal(
       (await renameThreadForUser(prisma, {

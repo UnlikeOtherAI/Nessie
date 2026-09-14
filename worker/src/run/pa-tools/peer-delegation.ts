@@ -1,4 +1,4 @@
-import { canAdministerProject, createBoard } from '@nessie/team-admin'
+import { canModifyProject, createBoard } from '@nessie/team-admin'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
@@ -30,8 +30,8 @@ const requesterAndProject = async (context: BuiltinToolRuntimeContext) => {
   })
   if (binding === 0) throw new Error('This agent is no longer bound to this project channel.')
   const member = await resolveActingMember(context)
-  if (!(await canAdministerProject(context.prisma, member, projectId))) {
-    throw new Error('A current project administrator must authorize this collaboration.')
+  if (!(await canModifyProject(context.prisma, member, projectId))) {
+    throw new Error('A current member of this project must authorize this collaboration.')
   }
   return { member, projectId }
 }
