@@ -16,7 +16,6 @@ import {
   UpdateThreadMessageBodySchema,
 } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { canModifyChannel } from '../services/channels.js'
 import { softDeleteMessage, updateMessage } from '../services/message-edit.js'
 import {
   listThreadMessages,
@@ -375,16 +374,8 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    // Channel/team/org managers (and the author) may delete a message. Uses the
-    // same authorization as the channel_* agent tools so REST and agents agree.
-    const manage = await canModifyChannel(prisma, {
-      channelId: thread.channel.id,
-      organizationId: actorContext.tenant.organizationId,
-      userId: actorContext.actor.actorId,
-    })
-    const isChannelManager = manage !== null
+    // Only the author may delete a message; `softDeleteMessage` decides.
     const result = await softDeleteMessage(prisma, {
-      isChannelManager,
       messageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
