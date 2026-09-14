@@ -423,6 +423,91 @@ runDatabaseTest('a conversation with nothing in it sorts by when it was opened',
   })
 })
 
+runDatabaseTest('a bare start hands back the empty conversation you already have', async () => {
+  await withSeed(async (prisma, s) => {
+    const bare = {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+    }
+    const first = await startAgentConversation(prisma, bare)
+    assert.equal(first.kind, 'created')
+    if (first.kind !== 'created') return
+
+    // The second press. Nothing has been said in the first one, so there is
+    // nothing to open: the same thread comes back, marked as the one they
+    // already had, and no second "No messages yet" row exists to open.
+    const second = await startAgentConversation(prisma, bare)
+    assert.equal(second.kind, 'reused')
+    assert.equal(second.thread.id, first.thread.id)
+    assert.equal(second.thread.title, DEFAULT_CONVERSATION_TITLE)
+    assert.equal(
+      await prisma.thread.count({
+        where: { agentId: s.agentId, channelId: s.publicChannelId },
+      }),
+      1,
+    )
+
+    // Say something, and the button is a button again: the conversation that
+    // now holds a message is not the one being duplicated.
+    await postMessage(prisma, {
+      content: 'Have a look at the pricing page',
+      createdAt: new Date(),
+      threadId: first.thread.id,
+      userId: s.userA,
+    })
+    const third = await startAgentConversation(prisma, bare)
+    assert.equal(third.kind, 'created')
+    if (third.kind === 'created') assert.notEqual(third.thread.id, first.thread.id)
+  })
+})
+
+runDatabaseTest('reuse is the bare press only, and only your own empty one', async () => {
+  await withSeed(async (prisma, s) => {
+    const mine = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+    })
+    assert.equal(mine.kind, 'created')
+    if (mine.kind !== 'created') return
+
+    // A job opens its own context even though an empty one is sitting there:
+    // `agent_conversation_start` writes the opener into the thread it gets
+    // back, and a fresh context is the whole reason it asked for one.
+    const withJob = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      message: 'Draft the brief',
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+    })
+    assert.equal(withJob.kind, 'created')
+    // So does a named one: reusing an unnamed thread would drop the name.
+    const named = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userA,
+      title: 'Q3 pricing',
+    })
+    assert.equal(named.kind, 'created')
+
+    // And B's press is B's own: A's empty conversation in this shared room is
+    // not a conversation B has started and left empty.
+    const theirs = await startAgentConversation(prisma, {
+      agentId: s.agentId,
+      channelId: s.publicChannelId,
+      organizationId: s.organizationId,
+      startedByUserId: s.userB,
+    })
+    assert.equal(theirs.kind, 'created')
+    if (theirs.kind === 'created') assert.notEqual(theirs.thread.id, mine.thread.id)
+  })
+})
+
 runDatabaseTest('an agent the viewer cannot see at all is not found', async () => {
   await withSeed(async (prisma, s) => {
     await prisma.agentBinding.deleteMany({

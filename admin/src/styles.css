@@ -3774,19 +3774,28 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
-/* Kanban: pulse a card three times after it lands in a column from a drag. */
-.kanban-card-pulse {
-  animation: kanban-card-pulse 0.34s ease-in-out 3;
+/*
+ * Three short pulses to point the eye at something already on screen: a kanban
+ * card that just landed in a column from a drag, the empty conversation the
+ * "New conversation" button hands back instead of opening a second one.
+ *
+ * One class rather than one per surface — it was `kanban-card-pulse`, used in
+ * exactly one place, and a second copy for the conversation row is the drift
+ * the design system exists to stop. It is a ring and nothing else: the 1.04
+ * scale it used to carry moved a full-width row far enough to give its column
+ * a horizontal scrollbar for the length of the animation, and a colour pulse
+ * is also the half of it that reduced-motion readers can keep.
+ */
+.admin-attention-pulse {
+  animation: admin-attention-pulse 0.34s ease-in-out 3;
 }
 
-@keyframes kanban-card-pulse {
+@keyframes admin-attention-pulse {
   0%,
   100% {
-    transform: scale(1);
     box-shadow: 0 0 0 0 var(--accent-soft);
   }
   50% {
-    transform: scale(1.04);
     box-shadow: 0 0 0 4px var(--accent-soft);
   }
 }

@@ -656,6 +656,13 @@ export const listAgentConversationsForUser = async (
 
 export type StartAgentConversationOutcome =
   | { kind: 'created'; thread: { id: string; channelId: string; title: string } }
+  /**
+   * The unnamed conversation this person already has open here, still empty.
+   * A bare start is answered with it instead of stacking a second empty row —
+   * the caller's cue to take the reader back to it and say why, never a
+   * silent no-op (`AgentConversationsPanel`).
+   */
+  | { kind: 'reused'; thread: { id: string; channelId: string; title: string } }
   | { kind: 'agent_not_found' }
   /** No channel the caller may post in has this agent. An answer, not a fallback. */
   | { kind: 'no_room' }
@@ -797,6 +804,11 @@ const resolveDefaultRoom = async (
  * talk to it"; creating a room to make the call succeed would be placement,
  * which is owner-gated and is a different decision entirely.
  *
+ * A bare start — no opener, no title — returns `reused` when this person's
+ * previous one here is still empty, so a room can never fill with rows nobody
+ * has said anything in. See the condition below for why an opener or a name
+ * always opens its own.
+ *
  * Takes a transaction client as readily as the base one, because a caller that
  * writes the opener and claims the run in one transaction must be able to put
  * the thread inside it too — otherwise a failure there leaves an orphan
@@ -853,6 +865,34 @@ export const startAgentConversation = async (
   // `null`, never the sentinel: an unnamed conversation is one the first
   // message may still name, and a person who typed "New conversation" is not.
   const title = deriveConversationTitle({ message: input.message, title: input.title })
+
+  // One empty conversation at a time. A start that brings neither an opener nor
+  // a name is the "New conversation" button and nothing else — and pressing it
+  // while a conversation this person opened here is *still* empty asks for the
+  // conversation they already have, not a second row that says "No messages
+  // yet" beside the first. `messages: { none: {} }` is the same structural fact
+  // the list renders that line from (`lastActivityAt`, `MAX(messages.created_at)`),
+  // so the button and the row it points at can never disagree about which
+  // conversations are empty.
+  //
+  // A start that carries a job (`agent_conversation_start`, worker) or a typed
+  // title never reuses anything: the opener belongs in its own context, and a
+  // name is a decision this would quietly drop.
+  if (!input.message && title === null) {
+    const empty = await prisma.thread.findFirst({
+      where: {
+        agentId: input.agentId,
+        channelId,
+        messages: { none: {} },
+        startedByUserId: input.startedByUserId,
+        title: null,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, channelId: true },
+    })
+    if (empty) return { kind: 'reused', thread: { ...empty, title: DEFAULT_CONVERSATION_TITLE } }
+  }
+
   const thread = await prisma.thread.create({
     data: {
       agentId: input.agentId,

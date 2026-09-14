@@ -198,10 +198,15 @@ export const registerAgentConversationRoutes = (
       return reply
     }
 
-    return reply.code(201).send(
+    // 200 for the conversation the caller already had, 201 for a new one, and
+    // `reused` in the body either way: the client has to be able to tell "here
+    // is your new conversation" from "you already have an empty one" without
+    // comparing ids it never held.
+    return reply.code(started.kind === 'reused' ? 200 : 201).send(
       createApiResponse({
         conversation: AgentConversationRecordSchema.parse(conversation),
         message: message ? ThreadMessageRecordSchema.parse(message) : null,
+        reused: started.kind === 'reused',
       }),
     )
   })

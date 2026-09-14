@@ -34,7 +34,7 @@ import {
 } from './fixture.mjs'
 import { startMockModelServer } from './mock-server.mjs'
 import { exercisePhoneColumn } from './phone-column.mjs'
-import { openGallery } from './viewports.mjs'
+import { openGallery, shot } from './viewports.mjs'
 
 const ADMIN_URL = 'http://127.0.0.1:5455'
 const API_URL = 'http://127.0.0.1:5454'
@@ -605,6 +605,53 @@ const main = async () => {
       assert.ok(open.includes(BETA_QUESTION), 'the conversation on screen is the marked row')
     })
 
+    // ---- one-empty-at-a-time ----------------------------------------------
+    // The button is not a thread factory. While a conversation opened here has
+    // still had nothing said in it, pressing it again hands that one back —
+    // the row blinks, the column says why — instead of stacking a second row
+    // that reads "No messages yet". The rule is the server's
+    // (`startAgentConversation` → `reused`), so this is the whole path: press,
+    // press again, and count what exists afterwards.
+    await goto(desktop, room)
+    await composer(desktop).waitFor({ timeout: 60_000 })
+    await openConversationsColumn(desktop, 'desktop', fixture.agent.name)
+    const beforeEmpty = desktop.url()
+    await desktop.locator('[data-testid="start-agent-conversation"]').click()
+    await desktop.waitForURL((url) => url.href !== beforeEmpty
+      && new RegExp(`${fixture.dmRoom.id}/threads/[0-9a-f-]{36}$`, 'u').test(url.pathname))
+    const emptyThreadId = desktop.url().split('/threads/')[1]
+    const standingIn = desktop.url()
+
+    await desktop.locator('[data-testid="start-agent-conversation"]').click()
+    await desktop.locator('[data-testid="empty-conversation-nudge"]').waitFor({ timeout: 30_000 })
+    assert.equal(desktop.url(), standingIn,
+      'the second press stays in the conversation that is already empty')
+    // The blink first: it stands for as long as the notice does, and the
+    // database read below is not worth spending that window on.
+    assert.equal(
+      await desktop.locator(
+        '[data-testid="agent-conversation-row"].admin-attention-pulse',
+      ).count(),
+      1,
+      'the conversation it handed back is the row that blinks',
+    )
+    await shot(desktop, SCREENSHOTS, 'empty-nudge', 'desktop')
+    assert.equal(
+      await pipeline.prisma.thread.count({
+        where: {
+          agentId: fixture.agent.id,
+          channelId: fixture.dmRoom.id,
+          messages: { none: {} },
+        },
+      }),
+      1,
+      'and leaves exactly one empty conversation in the room, not two',
+    )
+    // The cases below count this room's rows. An empty conversation nobody will
+    // ever say anything in is not one of them, so this one goes rather than
+    // silently shifting every count after it.
+    await pipeline.prisma.thread.delete({ where: { id: emptyThreadId } })
+
     // ---- rename -----------------------------------------------------------
     // The doorway, not the endpoint. `PATCH /api/threads/:id` has always taken
     // a rename and `useRenameThread` has always been wired to it; until the
@@ -969,8 +1016,9 @@ const main = async () => {
 
     console.log(
       '[agent-conversations e2e] PASS: rail → two isolated conversations, named by their'
-      + ' first message → rename → concurrent runs → scoped visibility → live card'
-      + ' → phone column → agent page → an ordinary room’s own doorway → the agent strip',
+      + ' first message → one empty conversation at a time → rename → concurrent runs'
+      + ' → scoped visibility → live card → phone column → agent page'
+      + ' → an ordinary room’s own doorway → the agent strip',
     )
   } catch (error) {
     await saveFailureEvidence({
