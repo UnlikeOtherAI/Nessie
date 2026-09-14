@@ -100,11 +100,15 @@ const contextFor = (prisma: PrismaClient, s: Seed): McpToolContext => ({
   getTask: async () => null,
   isProjectAccessibleToActor: async () => true,
   knowledge: {
+    // A bypass viewer carries no disclosure viewer, so production's version
+    // filter returns every page for it; the fake says the same.
+    buildDisclosureViewer: () => null,
     buildViewer: async () => ({
       bypass: true,
       userId: s.userId,
       visibleAgentIds: new Set<string>(),
     }) as never,
+    filterReadablePages: async (_viewer, pages) => [...pages],
     provider: createNativeKnowledgeProvider(prisma, {}),
   },
   prisma,
@@ -280,11 +284,13 @@ runDatabaseTest('concurrent asks for one draft converge on a single approval', a
     const contextB: McpToolContext = {
       ...contextFor(other, s),
       knowledge: {
+        buildDisclosureViewer: () => null,
         buildViewer: async () => ({
           bypass: true,
           userId: s.userId,
           visibleAgentIds: new Set<string>(),
         }) as never,
+        filterReadablePages: async (_viewer, pages) => [...pages],
         provider: createNativeKnowledgeProvider(other, {}),
       },
     }

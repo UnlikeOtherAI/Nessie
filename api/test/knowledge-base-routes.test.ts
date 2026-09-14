@@ -186,9 +186,19 @@ const makeApp = (
       findMany: async () => [{ projectId }],
     },
     organization: { findUnique: async () => ({ externalOrgId: null }) },
-    organizationMember: { findFirst: async () => ({ id: 'member-1' }) },
+    // The live local membership is the role authority, so it serves the role
+    // each test's actor holds.
+    organizationMember: {
+      findFirst: async () => ({
+        id: 'member-1',
+        role: actorContextOverride.actor.roles?.includes('owner') ? 'owner' : 'member',
+      }),
+    },
     channelMember: { findMany: async () => [] },
     teamMember: { findMany: async () => [] },
+    // A page mutation first asks whether the page is an agent core document;
+    // none of these fixture pages are.
+    agentCoreDocument: { findUnique: async () => null },
     agent: { findMany: async () => visibleAgentIds.map((id) => ({ id })) },
     agentBinding: {
       findMany: async () => [],

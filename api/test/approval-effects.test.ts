@@ -40,6 +40,10 @@ const makePage = (overrides: Partial<KnowledgePageRecord> = {}): KnowledgePageRe
     authorId: 'agent-1',
     changeComment: null,
     createdAt: '2026-05-31T10:00:00.000Z',
+    // The native mapper refuses a version projected without its disclosure
+    // relations; an ordinary unrestricted version carries both as empty arrays.
+    basisScopes: [],
+    disclosureSources: [],
   },
   publishedVersion: null,
   publishedVersionId: null,

@@ -86,17 +86,38 @@ const space = {
   writeRestricted: true,
 } as KnowledgeSpaceRecord
 
+// An agent with no legacy instructions: opening its documents prepares the
+// home and records the (empty) core migration, so a readable home reports an
+// active core with no estimated tokens.
+const readableHome = {
+  core: { estimatedTokens: 0, state: 'active' },
+  space: { canRead: true, id: spaceId, name: 'Researcher — Documents' },
+}
+
 const makeApp = (input: {
   accessible: boolean
   actorId?: string
+  agentProjectId?: string | null
   expectedVisibleAgentWhere?: unknown
   hasSpace: boolean
   readable?: boolean
   visibleAgent?: boolean
 }) => {
   let lookupCount = 0
+  let createCount = 0
+  let homeExists = input.hasSpace
   const prisma = {
+    $executeRaw: async () => 0,
+    $transaction: async <T>(action: (tx: unknown) => Promise<T>) => action(prisma),
     agent: {
+      findFirst: async () => ({
+        id: agentId,
+        name: 'Researcher',
+        projectId: input.agentProjectId === undefined ? projectId : input.agentProjectId,
+        speakingStyle: null,
+        systemManaged: false,
+        systemPrompt: null,
+      }),
       // Route accessibility and the live audience of an agent-owned space are
       // deliberately separate: an owner can reach an unbound agent's detail
       // surface without that agent's documents becoming readable.
@@ -107,7 +128,15 @@ const makeApp = (input: {
         return (input.visibleAgent ?? input.readable !== false) ? [{ id: agentId }] : []
       },
     },
+    agentBinding: { findMany: async () => [] },
+    agentCoreDocumentMigration: { findUnique: async () => null },
+    channelMember: { findMany: async () => [] },
     knowledgeSpace: {
+      create: async () => {
+        createCount += 1
+        homeExists = true
+        return { id: spaceId }
+      },
       findFirst: async ({ where }: { where: Record<string, unknown> }) => {
         lookupCount += 1
         assert.deepEqual(where, {
@@ -115,12 +144,18 @@ const makeApp = (input: {
           organizationId,
           ownerAgentId: agentId,
         })
-        return input.hasSpace ? { id: spaceId, name: space.name } : null
+        return homeExists ? { id: spaceId } : null
       },
+      findUnique: async () => (homeExists ? { id: spaceId, name: space.name } : null),
     },
+    knowledgeSpaceMember: { findMany: async () => [] },
+    // The viewer resolves the person's live local membership first.
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
     projectMember: {
       findMany: async () => [{ projectId }],
     },
+    teamMember: { findMany: async () => [] },
   } as unknown as PrismaClient
   const knowledgeProvider = {
     getSpace: async (requestedOrganizationId: string, requestedSpaceId: string) => {
@@ -130,6 +165,7 @@ const makeApp = (input: {
         ? { ...space, memberUserIds: [] }
         : space
     },
+    migrateAgentCoreDocuments: async () => ({ kind: 'migrated' as const, pageIds: [] }),
   } as unknown as KnowledgeProvider
   const app = Fastify({ logger: false })
   registerAgentDocumentRoutes(app, {
@@ -141,7 +177,7 @@ const makeApp = (input: {
       actor: { ...actorContext.actor, actorId: input.actorId ?? userId },
     }),
   } as unknown as Parameters<typeof registerAgentDocumentRoutes>[1])
-  return { app, lookupCount: () => lookupCount }
+  return { app, createCount: () => createCount, lookupCount: () => lookupCount }
 }
 
 test('GET agent docs returns the readable agent home reference without recomputing write access', async () => {
@@ -149,9 +185,7 @@ test('GET agent docs returns the readable agent home reference without recomputi
   try {
     const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
     assert.equal(response.statusCode, 200)
-    assert.deepEqual(response.json().data, {
-      space: { canRead: true, id: spaceId, name: 'Researcher — Documents' },
-    })
+    assert.deepEqual(response.json().data, readableHome)
   } finally {
     await app.close()
   }
@@ -178,9 +212,7 @@ test('GET agent docs admits the live agent audience without a direct space membe
   try {
     const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
     assert.equal(response.statusCode, 200)
-    assert.deepEqual(response.json().data, {
-      space: { canRead: true, id: spaceId, name: 'Researcher — Documents' },
-    })
+    assert.deepEqual(response.json().data, readableHome)
   } finally {
     await app.close()
   }
@@ -206,9 +238,7 @@ test('GET agent docs applies the private-agent audience fence before returning a
       owner.app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` }),
       sharedChannelReader.app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` }),
     ])
-    assert.deepEqual(ownerResponse.json().data, {
-      space: { canRead: true, id: spaceId, name: 'Researcher — Documents' },
-    })
+    assert.deepEqual(ownerResponse.json().data, readableHome)
     assert.deepEqual(readerResponse.json().data, { space: { canRead: false } })
   } finally {
     await owner.app.close()
@@ -228,13 +258,30 @@ test('GET agent docs hides an inaccessible agent as not found', async () => {
   }
 })
 
-test('GET agent docs returns an empty state without provisioning', async () => {
-  const { app, lookupCount } = makeApp({ accessible: true, hasSpace: false })
+test('GET agent docs returns an empty state without provisioning for an agent with no document project', async () => {
+  const { app, createCount, lookupCount } = makeApp({
+    accessible: true,
+    agentProjectId: null,
+    hasSpace: false,
+  })
   try {
     const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
     assert.equal(response.statusCode, 200)
     assert.deepEqual(response.json().data, { space: null })
-    assert.equal(lookupCount(), 1)
+    assert.equal(lookupCount(), 0)
+    assert.equal(createCount(), 0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('GET agent docs provisions a missing agent home once when the tab is opened', async () => {
+  const { app, createCount } = makeApp({ accessible: true, hasSpace: false })
+  try {
+    const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(response.json().data, readableHome)
+    assert.equal(createCount(), 1)
   } finally {
     await app.close()
   }
