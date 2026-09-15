@@ -31,6 +31,23 @@ test('native team presentation carries its public picture and clears invalid val
   assert.equal(cleared.teamAvatarUrl, null)
 })
 
+test('native team presentation keeps the avatar revision across the legacy message', () => {
+  const uploaded = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:team',
+    name: 'Design',
+    teamAvatarUrl: 'https://authentication.example/teams/design/avatar',
+    teamAvatarRevision: 2,
+  })
+  assert.equal(uploaded.teamAvatarRevision, 2)
+
+  const legacy = reduceNativeShellPresentation(uploaded, {
+    type: 'nessie:workspace',
+    name: 'Design',
+    workspaceAvatarUrl: 'https://authentication.example/teams/design/avatar',
+  })
+  assert.equal(legacy.teamAvatarRevision, 2)
+})
+
 test('native presentation normalizes per-section badge counts and sums an authoritative total', () => {
   const message = {
     type: 'nessie:attention',

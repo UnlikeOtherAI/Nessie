@@ -246,7 +246,10 @@ test('the native phone home chrome delegates team, history, account, and Channel
   // The avatar is read once and posted on both the team message and the
   // legacy workspace one, so the source shape is a local, not an inline read.
   assert.match(teamSwitcher, /const avatarImageUrl = active\?\.avatarImageUrl \?\? null/)
-  assert.match(teamSwitcher, /type: 'nessie:team', teamAvatarUrl: avatarImageUrl/)
+  assert.match(
+    teamSwitcher,
+    /type: 'nessie:team',\s+teamAvatarUrl: avatarImageUrl,\s+teamAvatarRevision: avatarRevision,/,
+  )
   // Installed builds still speak the old message, so the reducer accepts either field.
   assert.match(
     nativePresentation,
