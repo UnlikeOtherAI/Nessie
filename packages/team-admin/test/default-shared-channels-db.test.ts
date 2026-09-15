@@ -20,7 +20,9 @@ const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 const sharedChannels = (prisma: PrismaClient, organizationId: string) =>
   prisma.channel.findMany({
     where: { archivedAt: null, organizationId, project: { channelRoot: true } },
-    orderBy: { createdAt: 'asc' },
+    // Both defaults come from one createMany and share a createdAt, so the slug
+    // breaks the tie; ordering by createdAt alone returned them in either order.
+    orderBy: [{ createdAt: 'asc' }, { slug: 'asc' }],
     select: { id: true, label: true, slug: true, visibility: true },
   })
 
