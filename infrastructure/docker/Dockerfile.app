@@ -38,6 +38,10 @@ RUN pnpm --filter @nessie/api exec prisma generate --schema prisma/schema.prisma
 
 # Keep container builds lint-gated for the package graph this image ships, then
 # build the shared packages, worker, and API in dependency order.
+# Capped at four concurrent tasks, as in CI: each package that loads the
+# generated Prisma types peaks around 2.2 GB, and Turbo's default
+# concurrency ran the hosted image builder out of memory.
+ENV TURBO_CONCURRENCY=4
 RUN pnpm exec turbo run lint --filter=@nessie/api --filter=@nessie/worker \
   && pnpm exec turbo run build --filter=@nessie/api --filter=@nessie/worker
 
