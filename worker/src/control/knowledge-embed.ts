@@ -19,6 +19,11 @@ import {
 const EMBED_BATCH_SIZE = 64
 
 type KnowledgeEmbedDeps = {
+  /**
+   * True when every Ledger call this worker makes is signed, and therefore
+   * refused without the originating session's UOA identity.
+   */
+  ledgerSigningConfigured?: boolean
   modelClient: ModelClient
   prisma: PrismaClient
 }
@@ -179,7 +184,16 @@ export const executeKnowledgeEmbedJob = async (
     deps.modelClient.embeddingModel,
   )
 
-  if (pending.length > 0) {
+  // An origin with no captured session identity (a backfill, or a save that
+  // predates capture) cannot be signed, and a signing Ledger refuses it on
+  // every attempt. Retrying only dead-letters the job; the chunks stay
+  // lexically searchable, so skip the provider call and say why.
+  if (pending.length > 0 && deps.ledgerSigningConfigured && !origin.uoaIdentity) {
+    console.warn(
+      '[worker.knowledge-embed] skipped provider embedding: the job has no originating UOA session identity',
+      { organizationId: payload.organizationId, pageId: payload.pageId, versionId: payload.versionId },
+    )
+  } else if (pending.length > 0) {
     const attribution: LedgerAttribution = {
       organizationId: payload.organizationId,
       userId: origin.userId,
@@ -194,6 +208,7 @@ export const executeKnowledgeEmbedJob = async (
       requestId: origin.requestId,
       correlationId: origin.correlationId ?? null,
       systemComponent: origin.systemComponent ?? null,
+      ...(origin.uoaIdentity ? { uoaIdentity: origin.uoaIdentity } : {}),
     }
 
     await embedPendingChunks(deps, payload, pending, attribution)

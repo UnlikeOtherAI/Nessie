@@ -101,6 +101,59 @@ test('message embed records a failed retry state when the model returns a wrong 
   assert.ok(writes[0]!.values.includes('failed'))
 })
 
+const ORIGIN = {
+  userId: '88888888-8888-4888-8888-888888888888',
+  uoaIdentity: {
+    organizationId: 'uoa-org',
+    subject: 'uoa-subject',
+    teamId: 'uoa-team',
+    tokenVersion: 19,
+  },
+}
+
+test('message embed signs as the captured origin under a signing deployment', async () => {
+  const writes: SqlLike[] = []
+  let usage: Record<string, unknown> | undefined
+  const modelClient = {
+    embedMany: async (_texts: string[], options: { usage: Record<string, unknown> }) => {
+      usage = options.usage
+      return [Array<number>(EMBEDDING_DIMENSIONS).fill(0.1)]
+    },
+    embeddingModel: EMBEDDING_MODEL,
+  } as unknown as Pick<ModelClient, 'embedMany' | 'embeddingModel'>
+
+  await executeMessageEmbedJob(
+    { ledgerSigningConfigured: true, modelClient, prisma: prismaFor(source(), writes) },
+    { ...payload(), origin: ORIGIN },
+  )
+
+  assert.deepEqual(usage?.['uoaIdentity'], ORIGIN.uoaIdentity)
+  assert.equal(usage?.['userId'], ORIGIN.userId)
+  assert.ok(writes[0]!.values.includes('indexed'))
+})
+
+test('message embed records a terminal skip, not a retry, for an origin-less claim under signing', async () => {
+  const writes: SqlLike[] = []
+  let calls = 0
+  const modelClient = {
+    embedMany: async () => {
+      calls += 1
+      throw new Error('Ledger requires a linked UnlikeOtherAI SSO identity for the originating user.')
+    },
+    embeddingModel: EMBEDDING_MODEL,
+  } as unknown as Pick<ModelClient, 'embedMany' | 'embeddingModel'>
+
+  await executeMessageEmbedJob(
+    { ledgerSigningConfigured: true, modelClient, prisma: prismaFor(source(), writes) },
+    payload(),
+  )
+
+  assert.equal(calls, 0)
+  assert.equal(writes.length, 1)
+  assert.ok(writes[0]!.values.includes('skipped'))
+  assert.ok(writes[0]!.values.includes('uoa_identity_unavailable'))
+})
+
 test('message embedding migration takes its vector width from the shared dimensions contract', async () => {
   const migration = await readFile(new URL(
     '../../api/prisma/migrations/20260911110002_message_embedding_projection/migration.sql',

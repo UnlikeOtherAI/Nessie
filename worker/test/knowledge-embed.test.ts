@@ -225,6 +225,68 @@ test('executeKnowledgeEmbedJob batches embedding calls at 64 chunks and cleans u
   assert.ok(executeRawCalls.at(-1)!.sql.includes('DELETE FROM knowledge_page_chunks'))
 })
 
+const UOA_IDENTITY = {
+  organizationId: 'uoa-org',
+  subject: 'uoa-subject',
+  teamId: 'uoa-team',
+  tokenVersion: 19,
+}
+
+test('executeKnowledgeEmbedJob signs with the saving session identity captured in its origin', async () => {
+  const prisma = buildPrismaStub({
+    page: PAGE,
+    pendingChunks: [{ id: 'chunk-1', content: 'content' }],
+    executeRawCalls: [],
+    queryRawCalls: [],
+  })
+  const usages: Array<Record<string, unknown>> = []
+  const modelClient = {
+    embedMany: async (texts: string[], options: { usage: Record<string, unknown> }) => {
+      usages.push(options.usage)
+      return texts.map(() => Array<number>(EMBEDDING_DIMENSIONS).fill(0.1))
+    },
+    embeddingModel: EMBEDDING_MODEL,
+  } as unknown as ModelClient
+
+  await executeKnowledgeEmbedJob(
+    { ledgerSigningConfigured: true, modelClient, prisma },
+    { ...PAYLOAD, origin: { ...PAYLOAD.origin, uoaIdentity: UOA_IDENTITY } },
+  )
+
+  assert.equal(usages.length, 1)
+  assert.deepEqual(usages[0]!['uoaIdentity'], UOA_IDENTITY)
+})
+
+test('executeKnowledgeEmbedJob skips the provider under signing when the origin has no session identity', async () => {
+  const executeRawCalls: CapturedCall[] = []
+  const prisma = buildPrismaStub({
+    page: PAGE,
+    pendingChunks: [{ id: 'chunk-1', content: 'content' }],
+    executeRawCalls,
+    queryRawCalls: [],
+  })
+  let embedManyCalls = 0
+  const modelClient = {
+    embedMany: async () => {
+      embedManyCalls += 1
+      throw new Error('Ledger requires a linked UnlikeOtherAI SSO identity for the originating user.')
+    },
+    embeddingModel: EMBEDDING_MODEL,
+  } as unknown as ModelClient
+  const originalWarn = console.warn
+  console.warn = () => {}
+  try {
+    await assert.doesNotReject(
+      executeKnowledgeEmbedJob({ ledgerSigningConfigured: true, modelClient, prisma }, PAYLOAD),
+    )
+  } finally {
+    console.warn = originalWarn
+  }
+
+  assert.equal(embedManyCalls, 0)
+  assert.equal(executeRawCalls.filter((c) => c.sql.includes('embedding = v.embedding::vector')).length, 0)
+})
+
 test('executeKnowledgeEmbedJob skips vectors with the wrong dims without throwing', async () => {
   const pendingChunks = [
     { id: 'good-chunk', content: 'ok' },
