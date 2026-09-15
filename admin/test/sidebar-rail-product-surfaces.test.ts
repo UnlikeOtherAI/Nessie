@@ -22,7 +22,7 @@ test('the left rail exposes the shared create actions immediately above the acco
   assert.ok(rail.indexOf('<CreateMenuTrigger') < rail.indexOf('<UserMenuTrigger'))
 })
 
-test('Create ends with Agent, opening the Direct messages agent tab', () => {
+test('Create ends with Agent, opening the Agent Designer', () => {
   const createMenu = readSource('../src/layouts/admin-shell/CreateMenuTrigger.tsx')
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const shellHook = readSource('../src/layouts/admin-shell/useAdminShell.ts')
@@ -31,36 +31,24 @@ test('Create ends with Agent, opening the Direct messages agent tab', () => {
   assert.match(createMenu, />Create a private or shared agent</)
   // Agent is the last row of the menu.
   assert.ok(createMenu.indexOf('>Project<') < createMenu.indexOf('>Agent<'))
-  // Desktop and the native phone sheet reach the same Direct-messages flow.
+  // Desktop and the native phone sheet reach the same designer.
   assert.equal(shell.split('onCreateAgent={shell.navigateToNewAgent}').length - 1, 2)
-  assert.match(shellHook, /'\/channels\/new\?with=agents'/)
+  assert.match(shellHook, /navigate\('\/agents\/designer', \{\n\s+state: \{ returnTo:/)
 })
 
-test('the Direct messages composer separates people and agents and offers visibility first', () => {
+test('the New message composer is one address book with no agent creation', () => {
   const compose = readSource('../src/pages/ChannelConversationComposePage.tsx')
-  const targetTabs = readSource(
-    '../src/components/features/channels/DirectMessageTargetTabs.tsx',
-  )
-  const creator = readSource(
-    '../src/components/features/channels/DirectMessageAgentCreator.tsx',
-  )
   const visibility = readSource(
     '../src/components/features/agents/AgentVisibilityPicker.tsx',
   )
-  const designer = readSource('../src/pages/AgentDesignerPage.tsx')
+  const designerForm = readSource('../src/components/features/agents/designer/AgentDesignerForm.tsx')
 
-  assert.match(compose, /<DirectMessageTargetTabs/)
-  assert.match(targetTabs, /label: 'People'/)
-  assert.match(targetTabs, /label: 'Agents'/)
-  assert.match(compose, /<DirectMessageAgentCreator/)
-  assert.match(creator, /Create a new agent/)
-  assert.match(creator, /Continue to Agent Designer/)
+  assert.doesNotMatch(compose, /DirectMessageTargetTabs|DirectMessageAgentCreator|agents\/designer/)
+  // Visibility is still chosen when creating an agent — in the designer itself.
+  assert.match(designerForm, /<AgentVisibilityPicker/)
   assert.match(visibility, /label: 'Private'/)
   assert.match(visibility, /label: 'Shared'/)
   assert.match(visibility, /People who can see its channels can find it; people who can post there can address it/)
-  assert.match(compose, /`\/agents\/designer\?visibility=\$\{newAgentVisibility\}`/)
-  assert.match(designer, /searchParams\.get\('visibility'\) === 'private'/)
-  assert.match(designer, /if \(requestedVisibility\) setVisibility\(requestedVisibility\)/)
 })
 
 test('the Create control uses the same desktop rail tooltip as Focus', () => {

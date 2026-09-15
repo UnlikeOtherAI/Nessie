@@ -15,12 +15,6 @@ import {
 import { usePhoneLayout } from '../navigation/mobile-shell'
 import { OverlayPortal } from '../components/overlays/OverlayPortal'
 import { useOverlay } from '../components/overlays/useOverlay'
-import { DirectMessageAgentCreator } from '../components/features/channels/DirectMessageAgentCreator'
-import {
-  DIRECT_MESSAGE_TARGET_VALUES,
-  DirectMessageTargetTabs,
-  type DirectMessageTarget,
-} from '../components/features/channels/DirectMessageTargetTabs'
 import {
   MentionInput,
   type AgentMention,
@@ -32,7 +26,6 @@ import { useIsOwner } from '../facades/auth/hooks'
 import { RecipientBar } from '../components/shared/RecipientBar'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { useTabParam } from '../navigation/useTabParam'
 
 const getRecipientName = (
   recipient: Recipient,
@@ -61,17 +54,10 @@ export const ChannelConversationComposePage = () => {
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
 
-  const [target, setTarget] = useTabParam(
-    'with',
-    DIRECT_MESSAGE_TARGET_VALUES,
-    'people',
-  )
   const [recipients, setRecipients] = useState<Recipient[]>([])
-  const [newAgentVisibility, setNewAgentVisibility] = useState<'private' | 'team'>('private')
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
-  const [leavingForDesigner, setLeavingForDesigner] = useState(false)
 
   const returnTo = readChannelComposeReturnTo(location.state)
   const close = useCallback(() => {
@@ -120,29 +106,6 @@ export const ChannelConversationComposePage = () => {
     [agentsById, recipients, usersById],
   )
 
-
-
-  const selectTarget = useCallback((next: DirectMessageTarget) => {
-    setTarget(next)
-    // The address bar owns its own query and highlight; switching sides only
-    // changes what it is offered, and the caret belongs back in the field.
-    window.setTimeout(() => addressInputRef.current?.focus(), 0)
-  }, [setTarget])
-
-  const continueToAgentDesigner = useCallback(() => {
-    // This Flow is a portal on split layouts. The navigation stack retains its
-    // outgoing screen as an underlay, so remove the Flow from the current
-    // entry before pushing the Designer; otherwise its portal escapes that
-    // underlay's inert/hidden boundary and keeps covering the destination.
-    setLeavingForDesigner(true)
-    void navigate(returnTo, { flushSync: true, replace: true })
-    window.setTimeout(() => {
-      void navigate(`/agents/designer?visibility=${newAgentVisibility}`, {
-        state: { returnTo },
-      })
-    }, 0)
-  }, [navigate, newAgentVisibility, returnTo])
-
   const submit = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {
       const content = rawText.trim()
@@ -180,14 +143,11 @@ export const ChannelConversationComposePage = () => {
     [navigate, recipients, sendMessage, startConversation],
   )
 
-
-
   const isPending = startConversation.isPending || sendMessage.isPending
 
   if (!me) {
     return null
   }
-  if (leavingForDesigner) return null
 
   return (
     <OverlayPortal active={!phoneLayout}>
@@ -230,37 +190,23 @@ export const ChannelConversationComposePage = () => {
             titleId="channel-conversation-compose-title"
           />
 
-          <DirectMessageTargetTabs onChange={selectTarget} value={target} />
-
-          <div
-            aria-labelledby={`direct-message-target-tab-${target}`}
-            className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5"
-            id={`direct-message-target-tabpanel-${target}`}
-            role="tabpanel"
-          >
-          {target === 'agents' ? (
-            <DirectMessageAgentCreator
-              onContinue={continueToAgentDesigner}
-              onVisibilityChange={setNewAgentVisibility}
-              visibility={newAgentVisibility}
-            />
-          ) : null}
-          {target === 'agents' ? (
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">
-              Or message an existing agent
-            </p>
-          ) : null}
+          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
+          {/* One address book: people and agents are offered side by side, and
+              any mix of them can be addressed in the same message. */}
           <div className="flex-shrink-0">
             <RecipientBar
-              agents={target === 'agents' ? agents : []}
+              agents={agents}
               autoFocus
               inputRef={addressInputRef}
               label="To"
+              // People are listed first, so a short cap would push every agent
+              // out of reach until the person typed; the list scrolls instead.
+              limit={50}
               onChange={setRecipients}
-              placeholder={target === 'people' ? 'Type a name or email address' : 'Type an agent name'}
+              placeholder="Type a name, email address or agent"
               recipients={recipients}
               token={token}
-              users={target === 'people' ? users : []}
+              users={users}
             />
           </div>
 
