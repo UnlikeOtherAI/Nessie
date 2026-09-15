@@ -307,7 +307,7 @@ const RESTRICTION_REASONS: Record<AgentToolCatalogRestrictedEntry['restriction']
     'reserved for Nessie’s built-in specialists — nobody can give it to a '
     + 'designed agent, including you',
   explicit_grant:
-    'granted only from the owner surfaces (Apps, Integrations) — never from here',
+    'granted only from the owner surfaces (Apps, Tools) — never from here',
   personal_assistant_only:
     'only a person’s own Personal Assistant may use it; a designed agent cannot',
 }

@@ -218,7 +218,7 @@ export const registerMcpInstanceRoutes = (
         reply,
         409,
         MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
-        'This first-party connector is provisioned from Integrations and uses Nessie SSO.',
+        'This first-party connector is provisioned by its product and uses Nessie SSO.',
       )
       return reply
     }

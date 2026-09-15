@@ -373,7 +373,6 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/components/features/agents/AgentDetailTabs.tsx', 'agentTab'],
     ['../src/components/features/agents/AgentsList.tsx', 'scope'],
     ['../src/components/features/executors/ExecutorDetailPanels.tsx', 'tab'],
-    ['../src/components/features/integrations/DeepWaterResearchPanel.tsx', 'research'],
     ['../src/components/features/knowledge/KnowledgeWorkspace.tsx', 'view'],
     ['../src/pages/project/ProjectView.tsx', 'board'],
     ['../src/pages/project/ProjectSettingsPage.tsx', 'section'],

@@ -15,7 +15,7 @@ export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts):
     + 'a person\'s sign-in to a shared or team agent browser.',
   'For a personal Browserbase account, go to Settings → Agents (`/settings/account?tab=agents`). '
     + 'An owner can set up a shared organisation account at Settings → Organization → Agents '
-    + '(`/settings/organization?tab=agents`). Do not send people to Apps or Integrations.',
+    + '(`/settings/organization?tab=agents`). Do not send people to Apps.',
   facts.hasCardTool
     ? 'You can ask for a Browserbase API key only through a masked card secret field with '
       + '`destination.kind` `browserbase_connection`; never ask for it in prose or receive it yourself. '

@@ -64,7 +64,7 @@ test('the routes outside the stack are exactly the unauthenticated ones and not-
 })
 
 test('a redirect route is listed but never classifies a screen', () => {
-  const redirects = ['/', '/work', '/chats', '/workflows', '/workflows/tools', '/settings/tools', '/settings/agents', '/integrations']
+  const redirects = ['/', '/work', '/chats', '/workflows', '/workflows/tools', '/settings/tools', '/settings/agents']
   for (const pathname of redirects) {
     assert.equal(matchSurface(pathname)?.surface.type, 'redirect', pathname)
     assert.equal(surfaceScreen(pathname), null, pathname)

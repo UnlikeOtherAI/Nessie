@@ -480,7 +480,6 @@ test('redirect-only routes classify no screen and never animate', () => {
     '/workflows/tools',
     '/settings/tools',
     '/settings/agents',
-    '/integrations',
   ]
   for (const pathname of redirects) {
     assert.equal(getPhoneNavigationScreen(pathname), null, pathname)

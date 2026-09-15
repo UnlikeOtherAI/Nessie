@@ -42,7 +42,6 @@ test('registrations use explicit numeric priority, never mount order', () => {
 
 test('admin column-browser pages delegate Back to the shared column, with no ad-hoc phone Back buttons', () => {
   for (const page of [
-    '../src/pages/IntegrationsPage.tsx',
     '../src/pages/ToolsPage.tsx',
     '../src/pages/TriggersPage.tsx',
     '../src/pages/WorkflowsPage.tsx',

@@ -74,7 +74,7 @@ export const setToolRegistryEntriesStatus = async (
   }
 
   // First-party products (DeepWater, DeepSignal) own their projections through
-  // Integrations and the explicit-grant bundle, which reads the registry row's
+  // team enablement and the explicit-grant bundle, which reads the registry row's
   // enabled+active state as its readiness signal. Letting the generic review
   // route flip those rows would let an owner silently break a bundle the
   // integration still counts as complete — the same reason generic instance
@@ -94,7 +94,7 @@ export const setToolRegistryEntriesStatus = async (
   if (managed.some(Boolean)) {
     throw new McpInstanceError(
       MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
-      'These tools belong to a first-party integration and are managed from Integrations.',
+      'These tools belong to a first-party integration and are managed by that product.',
     )
   }
 

@@ -84,9 +84,6 @@ const UnreadMessagesPage = lazy(() =>
   import('./pages/UnreadMessagesPage').then((m) => ({ default: m.UnreadMessagesPage })),
 )
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })))
-const IntegrationsPage = lazy(() =>
-  import('./pages/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
-)
 const KnowledgeBasePage = lazy(() =>
   import('./pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })),
 )
@@ -265,10 +262,6 @@ export const router = createBrowserRouter([
   {
     path: '/settings/appearance',
     element: <RedirectRoute to="/settings/account?tab=appearance" />,
-  },
-  {
-    path: '/integrations',
-    element: <RedirectRoute to="/settings/integrations" />,
   },
   {
     element: <AdminShellLayout />,
@@ -511,10 +504,6 @@ export const router = createBrowserRouter([
         // page rather than a 404 — the code in the query survives the redirect.
         path: '/settings/agent-access',
         element: <AgentAccessRedirect />,
-      },
-      {
-        path: '/settings/integrations',
-        element: lazyElement(IntegrationsPage, 'board'),
       },
       {
         path: '/settings/members',

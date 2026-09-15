@@ -85,7 +85,6 @@ export const SURFACES: Surface[] = [
   redirect({ pattern: /^\/workflows\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/settings\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/settings\/agents$/, root: ADMIN_ROOT, section: 'admin' }),
-  redirect({ pattern: /^\/integrations$/, root: ADMIN_ROOT, section: 'admin' }),
 
   // ── Connected mail ───────────────────────────────────────────────────────
   ...createConnectedMailSurfaces(ADMIN_ROOT),
