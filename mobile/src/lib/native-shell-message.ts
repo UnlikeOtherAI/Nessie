@@ -72,6 +72,8 @@ export type NativeShellMessage = {
   voiceCall?: unknown
   muted?: boolean
   teamAvatarUrl?: string
+  /** `nessie:team`: the admin's avatar revision, bumped by an upload or removal. */
+  teamAvatarRevision?: number
   /** LEGACY_NATIVE_SHELL: `nessie:workspace`'s spelling of `teamAvatarUrl`. */
   workspaceAvatarUrl?: string
 }
