@@ -253,6 +253,9 @@ export const listTeamsForOrganization = async (
 
 export class ProjectValidationError extends Error {}
 
+/** The one channel every new project starts with. */
+export const PROJECT_DEFAULT_CHANNEL_NAME = 'general'
+
 const requireName = (value: string | undefined, what: string): string => {
   const name = value?.trim()
   if (!name) {
@@ -306,6 +309,18 @@ export const createProjectForUser = async (
       teamId: team.id,
       members: { create: { userId: input.userId, role: 'owner' } },
       boards: { create: defaultBoardCreateData(input.organizationId) },
+      // A project starts with its own #general and nothing else. Memberless and
+      // public like every seeded channel, and in the project's own team — never
+      // the organisation's shared channel root.
+      channels: {
+        create: {
+          label: PROJECT_DEFAULT_CHANNEL_NAME,
+          slug: PROJECT_DEFAULT_CHANNEL_NAME,
+          organizationId: input.organizationId,
+          teamId: team.id,
+          visibility: 'public',
+        },
+      },
     },
     include: projectCountsInclude,
   })
