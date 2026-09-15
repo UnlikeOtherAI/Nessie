@@ -47,7 +47,7 @@ const readStoredWidth = (): number => {
 }
 
 // One column of the drill-down browser, on the shared `ColumnBrowserColumn`
-// shell — the same one Tools/Triggers/Workflows/Integrations use — with its
+// shell — the same one Tools/Triggers/Workflows use — with its
 // trailing edge wired to the shared resize handle so every column tracks the
 // one width the browser persists.
 const KnowledgeColumn = ({

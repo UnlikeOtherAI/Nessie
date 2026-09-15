@@ -7,7 +7,7 @@ import { TabBar } from '../primitives/TabBar'
  * Pick exactly one option, inside a form.
  *
  * Five hand-rolled versions existed: three byte-identical button rows copied
- * across the integrations panels, a ring-selected button list in
+ * across the former integrations panels, a ring-selected button list in
  * `CreateSpaceDialog`, a solid-fill one in `VersionHistory`, radio cards in
  * the appearance panels, and a pair of primary/secondary buttons in
  * `ProjectSettingsPage`. Only the appearance panels used real radios, so the

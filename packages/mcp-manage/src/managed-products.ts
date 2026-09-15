@@ -83,7 +83,7 @@ export const isManagedDeepWaterInstance = async (
 
 /**
  * First-party connector instances whose app credential and lifecycle are owned
- * by Integrations. Users may activate/deactivate them through the product
+ * by its first-party product. Users may activate/deactivate them through the product
  * surface but may not replace the product-bound application credential.
  */
 export const isManagedIntegrationInstance = async (
@@ -169,7 +169,7 @@ export const isManagedIntegrationCatalogEntry = async (
 /**
  * Generic MCP catalog/instance lifecycle operations cannot safely mutate a
  * first-party product connector. Its transport uses product-bound identity,
- * and its rows must stay aligned with Integrations state. The Integrations
+ * and its rows must stay aligned with the product's team enablement. That
  * transition is therefore its sole lifecycle owner.
  */
 export const assertCatalogLifecycleIsUserManaged = async (
@@ -180,6 +180,6 @@ export const assertCatalogLifecycleIsUserManaged = async (
 
   throw new McpInstanceError(
     MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
-    'This first-party connector lifecycle is managed from Integrations.',
+    'This first-party connector lifecycle is managed by its product.',
   )
 }

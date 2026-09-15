@@ -111,7 +111,7 @@ export const assertCardSecretDestinations = async (
     ) {
       throw new Error(
         `Field "${block.key}" points at an integration-managed connector, whose credentials `
-        + 'are set through its own Integrations toggle.',
+        + 'are owned by its product.',
       )
     }
     validated.push({

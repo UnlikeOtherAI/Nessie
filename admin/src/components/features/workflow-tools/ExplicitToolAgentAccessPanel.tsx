@@ -94,7 +94,7 @@ const ExplicitPolicyRow = ({
       {updaterManaged ? (
         <div className="mt-1 text-[11px] text-[color:var(--tx3)]">
           Managed by an active Deep Water grant. Revoke the dependent
-          research tools in Integrations first.
+          research tools first.
         </div>
       ) : null}
     </Row>

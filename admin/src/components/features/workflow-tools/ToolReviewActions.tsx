@@ -20,7 +20,7 @@ export const ToolReviewActions = ({ tool }: ToolReviewActionsProps) => {
   const setStatus = useSetToolRegistryStatus()
 
   if (tool.builtin || tool.mcpInstanceId === null) return null
-  // First-party products own their projections through Integrations; the API
+  // First-party products own their projections; the API
   // refuses these ids, so offering the buttons would only produce a 409.
   if (tool.managedProductSlug !== null) return null
 

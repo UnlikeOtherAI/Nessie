@@ -46,19 +46,9 @@ test('integration product surfaces do not expose local usage summaries', () => {
   const rows = readSource('../../api/src/services/integration-product-rows.ts')
   const schema = readSource('../../packages/schemas/src/integrations.ts')
   const service = readSource('../../api/src/services/integrations.ts')
-  const integrations = readSource('../src/pages/IntegrationsPage.tsx')
-  const buildMe = readSource(
-    '../src/components/features/integrations/BuildMeProjectPanel.tsx',
-  )
-  const deepTest = readSource(
-    '../src/components/features/integrations/DeepTestSecurityPanel.tsx',
-  )
 
   assert.doesNotMatch(route, /usageSummary/)
   assert.doesNotMatch(rows, /usageSummary|product_usage_/)
   assert.doesNotMatch(schema, /ProductUsageSummaryRecord|usageSummary/)
   assert.doesNotMatch(service, /connector_usage_events|product_usage/)
-  assert.doesNotMatch(integrations, /usageSummary/)
-  assert.doesNotMatch(buildMe, /usageSummary/)
-  assert.doesNotMatch(deepTest, /usageSummary/)
 })

@@ -198,9 +198,7 @@ export type AppUnavailableExplanation = {
  *
  * The first two cases keep the button visible and disabled rather than hiding
  * it: a missing button reads as a missing feature, a disabled one with a reason
- * reads as somebody else's call. Naming Integrations is not enough on its own —
- * a member then has to go and find it — so that one carries the door as well as
- * the sentence.
+ * reads as somebody else's call.
  *
  * The three verdicts below — blocked, retired, unreachable — belong to the
  * states with no button at all, and all three used to return null. The detail
@@ -215,8 +213,8 @@ export const appUnavailableExplanation = (
 ): AppUnavailableExplanation | null => {
   if (app.managedByIntegration) {
     return {
-      text: 'Turned on from Integrations, not here.',
-      link: { href: '/settings/integrations', label: 'Open Integrations' },
+      text: 'Turned on for your team by its product, not connected here.',
+      link: null,
     }
   }
   if (app.locked) return { text: 'Managed by your admin.', link: null }

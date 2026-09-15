@@ -89,7 +89,6 @@ shrinks.
 | the trigger list (`useTriggersPageState`) | `status` | `all` · `active` · `paused` · `error` |
 | full-page search (`SearchPage`) | `mode` | `text` · `semantic` (default: this device's last mode) |
 | a knowledge space (`KnowledgeWorkspace`) | `view` | `full` · `column` · `tree` (default: the `knowledgeViewMode` cookie) |
-| Deep Water (`DeepWaterResearchPanel`) | `research` | `run` · `runs` · `settings` |
 | an agent's screen (`AgentScreenViewer`) | `browserTab` | one per tab the agent's cloud browser has open |
 | a project board (`ProjectView`) | `board` | one per board of the project (default: the project's default board) |
 | project settings (`ProjectSettingsPage`) | `section` | `boards`; `board` selects which board inside it |
@@ -112,8 +111,7 @@ facts that justify it arrive.
 
 A named param is used wherever `tab` would collide: `agentTab` because the
 agent strip also renders inside the quick-view sheet over a conversation that
-owns `?tab=`, and `research` because that panel sits inside a product detail on
-the Integrations page. A strip that narrows a list (`role="radiogroup"`) uses
+owns `?tab=`. A strip that narrows a list (`role="radiogroup"`) uses
 the same hook — `filter`, `scope`, `source`, `status` are filters, not panel
 switches.
 

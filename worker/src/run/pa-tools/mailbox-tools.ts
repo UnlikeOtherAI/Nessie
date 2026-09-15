@@ -124,7 +124,7 @@ const runAgainstMailbox = async <T>(
       const detail = error instanceof Error ? error.message : 'The mailbox rejected the password.'
       await markMailboxNeedsReauthorization(context.prisma, mailbox.connection.id, detail)
       throw new Error(
-        `${detail} The mailbox needs reconnecting from the Integrations page before I can use it.`,
+        `${detail} The mailbox needs reconnecting before I can use it.`,
       )
     }
     throw error
