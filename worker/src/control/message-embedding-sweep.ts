@@ -1,56 +1,16 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { MESSAGE_EMBED_TOPIC } from '@nessie/schemas'
-import { enqueueQueueJob } from '../queue.js'
-import { messageContentHash } from './message-embed.js'
+import { claimMessageEmbeddingInTransaction } from '@nessie/db'
 
 type PendingMessage = { content: string; id: string; organizationId: string }
 
+// The claim lives in `@nessie/db` so a send can claim inside its own
+// transaction with the sender's identity. The sweep has no session, so its
+// claims carry no origin and are skipped by a signing deployment's embed job.
 const claimMessageEmbedding = async (
   prisma: PrismaClient,
   input: PendingMessage & { embeddingModel: string },
-): Promise<boolean> => {
-  const contentHash = messageContentHash(input.content)
-  return prisma.$transaction(async (tx) => {
-    const claimed = await tx.$executeRaw(Prisma.sql`
-      INSERT INTO message_embeddings (
-        id, message_id, content_hash, embedding_model, status, created_at, updated_at
-      )
-      SELECT gen_random_uuid(), ${input.id}::uuid, ${contentHash}, ${input.embeddingModel},
-             'pending', now(), now()
-      WHERE EXISTS (
-        SELECT 1 FROM messages m
-        JOIN threads t ON t.id = m.thread_id
-        JOIN channels c ON c.id = t.channel_id
-        WHERE m.id = ${input.id}::uuid
-          AND m.deleted_at IS NULL
-          AND m.role IN ('user', 'assistant')
-          AND c.organization_id = ${input.organizationId}::uuid
-          AND encode(digest(m.content, 'sha256'), 'hex') = ${contentHash}
-      )
-      ON CONFLICT (message_id) DO UPDATE SET
-        content_hash = EXCLUDED.content_hash,
-        embedding = NULL,
-        embedding_model = EXCLUDED.embedding_model,
-        dims = NULL,
-        status = 'pending',
-        last_error = NULL,
-        updated_at = now()
-      WHERE message_embeddings.content_hash IS DISTINCT FROM EXCLUDED.content_hash
-         OR message_embeddings.embedding_model IS DISTINCT FROM EXCLUDED.embedding_model
-    `)
-    if (Number(claimed) === 0) return false
-    return enqueueQueueJob(tx, {
-      idempotencyKey: `message-embed:${input.id}:${contentHash}:${input.embeddingModel}`,
-      payload: {
-        contentHash,
-        embeddingModel: input.embeddingModel,
-        messageId: input.id,
-        organizationId: input.organizationId,
-      },
-      topic: MESSAGE_EMBED_TOPIC,
-    })
-  })
-}
+): Promise<boolean> =>
+  prisma.$transaction((tx) => claimMessageEmbeddingInTransaction(tx, input))
 
 /**
  * One cluster-wide bounded pass. A durable pending row is the claim: after one
