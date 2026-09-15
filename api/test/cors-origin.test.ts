@@ -75,7 +75,15 @@ type CreateCorsOriginChecker = (input: {
   teamHostBaseDomain?: string
 }) => CorsOriginChecker
 
-const { createCorsOriginChecker } = await import('../src/lib/server-context.js') as {
+type BuildStreamCorsHeaders = (input: {
+  allowedOrigins: Set<string>
+  mode: AppMode
+  origin: string | undefined
+  teamHostBaseDomain: string | undefined
+}) => Record<string, string>
+
+const { buildStreamCorsHeaders, createCorsOriginChecker } = await import('../src/lib/server-context.js') as {
+  buildStreamCorsHeaders: BuildStreamCorsHeaders
   createCorsOriginChecker: CreateCorsOriginChecker
 }
 
@@ -210,6 +218,40 @@ test('labels that are not legal DNS labels are refused', async () => {
       origin,
     )
   }
+})
+
+test('stream CORS headers admit a tenant host, so its SSE streams are not refused', () => {
+  // The hijacked thread/events/designer streams build their own headers. They
+  // once dropped the base domain, so a tenant-host admin passed REST CORS but
+  // never received a thinking bubble.
+  for (const origin of ['https://acme.nessie.works', 'https://design.acme.nessie.works']) {
+    assert.deepEqual(
+      buildStreamCorsHeaders({
+        allowedOrigins: new Set(),
+        mode: 'hosted',
+        origin,
+        teamHostBaseDomain: TEAM_HOST_BASE,
+      }),
+      {
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Origin': origin,
+        Vary: 'Origin',
+      },
+      origin,
+    )
+  }
+})
+
+test('stream CORS headers still refuse a look-alike tenant host', () => {
+  assert.deepEqual(
+    buildStreamCorsHeaders({
+      allowedOrigins: new Set(),
+      mode: 'hosted',
+      origin: 'https://acme.evil-nessie.works',
+      teamHostBaseDomain: TEAM_HOST_BASE,
+    }),
+    {},
+  )
 })
 
 test('no base domain configured admits no team hostnames at all', async () => {
