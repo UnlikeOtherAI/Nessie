@@ -130,10 +130,11 @@ runDatabaseTest('a project in another organisation is not found', async () => {
 runDatabaseTest('channels no longer refuse: they are soft-deleted with the project', async () => {
   await withSeed(async (prisma, sown) => {
     const team = await addTeam(prisma, sown)
+    // Not `general`: the project already started with its own #general.
     const channel = await prisma.channel.create({
       data: {
-        label: 'general',
-        slug: 'general',
+        label: 'launch',
+        slug: 'launch',
         organizationId: sown.organizationId,
         projectId: sown.projectId,
         teamId: team.id,
@@ -241,8 +242,8 @@ runDatabaseTest('every blocking family is reported at once', async () => {
     const team = await addTeam(prisma, sown, `uoa-${randomUUID()}`)
     await prisma.channel.create({
       data: {
-        label: 'general',
-        slug: 'general',
+        label: 'launch',
+        slug: 'launch',
         organizationId: sown.organizationId,
         projectId: sown.projectId,
         teamId: team.id,

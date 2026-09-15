@@ -32,10 +32,12 @@ type RecipientBarProps = {
   /** A settings form needs its Save action reachable after choosing a recipient. */
   closeAfterSelection?: boolean
   disabled?: boolean
+  /** How many options the list offers at once. People are listed before agents. */
+  limit?: number
   /**
    * The caller's handle on the text field. Passed rather than owned because the
    * compose screen focuses it on events this component knows nothing about —
-   * switching between people and agents, returning from the agent designer.
+   * a send attempted with no recipient chosen.
    */
   inputRef?: RefObject<HTMLInputElement | null>
 }
@@ -70,6 +72,7 @@ export const RecipientBar = ({
   autoFocus = false,
   closeAfterSelection = false,
   disabled = false,
+  limit = 8,
   inputRef: callerRef,
 }: RecipientBarProps) => {
   const ownRef = useRef<HTMLInputElement>(null)
@@ -91,8 +94,8 @@ export const RecipientBar = ({
     [recipients],
   )
   const options = useMemo<RecipientOption[]>(
-    () => buildRecipientOptions({ agents, limit: 8, query, selectedKeys, users }),
-    [agents, query, selectedKeys, users],
+    () => buildRecipientOptions({ agents, limit, query, selectedKeys, users }),
+    [agents, limit, query, selectedKeys, users],
   )
 
   const add = useCallback(

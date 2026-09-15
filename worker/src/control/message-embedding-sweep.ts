@@ -35,7 +35,7 @@ export const sweepMessageEmbeddings = async (
         OR me.content_hash IS DISTINCT FROM encode(digest(m.content, 'sha256'), 'hex')
         OR me.embedding_model IS DISTINCT FROM ${input.embeddingModel}
       )
-    ORDER BY m.updated_at, m.id
+    ORDER BY m.created_at, m.id
     LIMIT ${limit}
   `)
   let queued = 0

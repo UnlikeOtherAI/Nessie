@@ -199,7 +199,7 @@ the dangerous one actually means something. The verdict enum **excludes
 means "the server said something new that nobody has looked at yet". And ids
 belonging to a **first-party integration** instance (DeepWater, DeepSignal)
 are refused with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`, because those
-projections are managed as a bundle from Integrations and their readiness
+projections are managed as a bundle by their product and their readiness
 check reads the same registry rows.
 
 Review is recurring, not one-time install ceremony: a re-probe that finds a

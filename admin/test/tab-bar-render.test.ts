@@ -84,8 +84,6 @@ test('every compact form selector reaches the shared sliding strip', () => {
     ['../src/components/features/dashboards/AddWidgetPanel.tsx', '<ChoiceGroup'],
     ['../src/components/features/projects/kanban/TaskPriorityField.tsx', '<TabBar'],
     ['../src/layouts/admin-shell/user-menu/PresenceControl.tsx', '<TabBar'],
-    ['../src/components/features/integrations/BuildMeProjectPanel.tsx', '<ChoiceGroup'],
-    ['../src/components/features/integrations/DeepTestSecurityPanel.tsx', '<ChoiceGroup'],
     ['../src/components/features/integrations/DeepWaterResearchCustomControls.tsx', '<ChoiceGroup'],
     ['../src/components/features/knowledge/VersionHistory.tsx', '<ChoiceGroup'],
     ['../src/components/features/projects/kanban/BoardCreateDialog.tsx', '<ChoiceGroup'],

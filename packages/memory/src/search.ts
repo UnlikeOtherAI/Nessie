@@ -1,4 +1,4 @@
-import type { ModelClient } from '@nessie/runtime'
+import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 import {
   searchThoughtCandidates,
   searchThoughtCandidatesInScopes,
@@ -306,6 +306,8 @@ export type SearchThoughtsInScopesInput = {
   actorType?: 'user' | 'agent' | 'service' | 'system' | null
   requestId?: string | null
   correlationId?: string | null
+  /** The session's UOA identity; a signing Ledger refuses the embed without it. */
+  uoaIdentity?: LedgerAttribution['uoaIdentity']
 }
 
 const IN_SCOPES_MODE: ThoughtSearchMode = 'hybrid'
@@ -340,6 +342,7 @@ export const searchThoughtsInScopes = async (
       actorType: input.actorType ?? (input.userId ? 'user' : 'agent'),
       requestId: input.requestId ?? null,
       correlationId: input.correlationId ?? null,
+      ...(input.uoaIdentity ? { uoaIdentity: input.uoaIdentity } : {}),
     })
   } catch (err) {
     throw new SearchEmbeddingError(

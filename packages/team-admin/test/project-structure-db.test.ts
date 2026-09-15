@@ -145,6 +145,38 @@ runDatabaseTest('a created project holds its creator and nobody else', async (t)
   assert.ok(board.columns.every((column) => column.organizationId === team.organizationId))
 })
 
+runDatabaseTest('a created project starts with its own #general and no other channel', async (t) => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
+
+  const project = await createProjectForUser(prisma, {
+    name: 'Sales',
+    organizationId: seeded.organizationId,
+    teamId: seeded.teamId,
+    userId: seeded.ownerId,
+  })
+
+  const channels = await prisma.channel.findMany({
+    where: { organizationId: seeded.organizationId },
+    select: { projectId: true, slug: true, teamId: true, type: true, visibility: true },
+  })
+  // Exactly one channel in the whole organisation: nothing named after the
+  // project, and nothing in the shared channel root.
+  assert.deepEqual(channels, [{
+    projectId: project.id,
+    slug: 'general',
+    teamId: seeded.teamId,
+    type: 'standard',
+    visibility: 'public',
+  }])
+  assert.equal(project.channelCount, 1)
+  assert.equal(
+    await prisma.project.count({ where: { channelRoot: true, organizationId: seeded.organizationId } }),
+    0,
+  )
+})
+
 runDatabaseTest('a project and a channel in its owning team', async (t) => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)

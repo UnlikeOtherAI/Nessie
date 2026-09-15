@@ -156,7 +156,9 @@ export const runProjectCreateTool = async (
       `Created project "${project.name}"`,
       `projectId=${project.id}`,
       'You are its only member — nobody else was added. Anyone you add later has the same rights in it as you.',
-      `It belongs to teamId=${args.teamId}. Pass both ids to channel_create.`,
+      `It belongs to teamId=${args.teamId}.`,
+      'It already has its own #general channel. Do not create any other channel '
+      + 'for it unless the person asked for one; if they did, pass both ids to channel_create.',
     ].join('\n'),
     toolName: 'project_create',
   }

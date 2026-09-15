@@ -66,7 +66,7 @@ type PillProps = {
  *
  * `muted` collapses the neutral fills onto `--overlay-weak`/`--tx3` for the same
  * reason: that is the pair `StatusPill` shipped, so the `--overlay`/`--tx2`
- * chips (`signal-format`, `MessageUiCards`, `KanbanCard`, `IntegrationsPage`)
+ * chips (`signal-format`, `MessageUiCards`, `KanbanCard`)
  * join it rather than it joining them. A `--scrim` fill does not: it darkens
  * where `--overlay-weak` lightens, so `ToolTransportPill` stays unconverted.
  *

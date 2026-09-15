@@ -214,25 +214,24 @@ test('somebody else owning the decision disables the button rather than hiding i
     tone: 'primary',
   })
   // The card keeps a plain sentence: `title` is a tooltip and cannot hold an
-  // anchor. The detail hero renders the same sentence with the link.
+  // anchor. The detail hero renders the same sentence.
   assert.deepEqual(appCardAction(app({ managedByIntegration: true, state: 'auth_expired' })), {
     kind: 'disabled',
     label: 'Reconnect',
-    title: 'Turned on from Integrations, not here.',
+    title: 'Turned on for your team by its product, not connected here.',
     tone: 'primary',
   })
 })
 
-test('an integration-managed app names Integrations even when it is also locked', () => {
+test('an integration-managed app says so even when it is also locked', () => {
   assert.equal(appUnavailableExplanation(app()), null)
   assert.deepEqual(appUnavailableExplanation(app({ locked: true })), {
     link: null,
     text: 'Managed by your admin.',
   })
-  // Naming the door is not opening it, so the sentence carries the way there.
   assert.deepEqual(appUnavailableExplanation(app({ locked: true, managedByIntegration: true })), {
-    link: { href: '/settings/integrations', label: 'Open Integrations' },
-    text: 'Turned on from Integrations, not here.',
+    link: null,
+    text: 'Turned on for your team by its product, not connected here.',
   })
 })
 

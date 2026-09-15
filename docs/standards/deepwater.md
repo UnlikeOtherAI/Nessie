@@ -52,8 +52,9 @@ file is the rule**.
   and removed by migration, so they cannot shadow the product-bound app API key.
   Generic instance test, refresh, healthcheck, and delete operations reject the
   integration-managed instance with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`;
-  generic secret writes are also rejected, and PA probe/uninstall tools direct
-  callers to the Integrations toggle, which is its sole lifecycle path. Ledger
+  generic secret writes are also rejected, and PA probe/uninstall tools tell
+  callers the connector is managed by its product; team enablement is its sole
+  lifecycle path. Ledger
   owns job isolation, budget enforcement, audit, and raw usage metering for
   both PA and shared-agent calls; UOA alone rates that usage commercially.
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` is the

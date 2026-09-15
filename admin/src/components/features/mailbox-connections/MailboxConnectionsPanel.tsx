@@ -19,7 +19,7 @@ import { MailboxConnectionForm } from './MailboxConnectionForm'
 
 /**
  * One panel, both homes: a person's own mailboxes on their connections page and
- * a team's shared mailboxes on Integrations. The scope is a parameter, not a
+ * a team's shared mailboxes. The scope is a parameter, not a
  * second component — the two would otherwise drift on status copy, on what a
  * disconnect warns about, and on who may see the agent-access rows.
  */
