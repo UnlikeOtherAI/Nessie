@@ -1,4 +1,4 @@
-import { accessSync, constants, statSync } from 'node:fs'
+import { accessSync, constants, readFileSync, statSync } from 'node:fs'
 import { release } from 'node:os'
 import { arch, platform } from 'node:process'
 
@@ -24,6 +24,12 @@ export type HostPlatformProbe = {
   environment: Record<string, string | undefined>
   exists: (path: string) => boolean
   kernelRelease: string
+  /**
+   * macOS's own product version ("15.6", "27.0"), when the host states one.
+   * Absent on every other platform, and on a macOS whose system version file
+   * cannot be read.
+   */
+  macosProductVersion?: string
   platform: string
 }
 
@@ -41,6 +47,27 @@ export const SUPERVISOR_ENVIRONMENT_VARIABLE = 'NESSIE_EXECUTOR_SUPERVISOR'
 const UNSUPPORTED_HOST =
   'This executor release supports macOS 15+ on Apple Silicon, Linux on x86_64 or arm64, '
   + 'and Windows 10 22H2+ on x86_64. Set no execution capability on other platforms.'
+
+/** macOS states its own version here, in XML, on every supported release. */
+export const MACOS_SYSTEM_VERSION_PATH = '/System/Library/CoreServices/SystemVersion.plist'
+
+/**
+ * The product version macOS publishes about itself, or `undefined` when the
+ * file is missing or does not state one. The match is deliberately narrow —
+ * one key, one string — because this is a version probe, not a plist parser.
+ */
+export const readMacosProductVersion = (
+  read: (path: string) => string = (path) => readFileSync(path, 'utf8'),
+): string | undefined => {
+  let contents: string
+  try {
+    contents = read(MACOS_SYSTEM_VERSION_PATH)
+  } catch {
+    return undefined
+  }
+  const match = /<key>ProductVersion<\/key>\s*<string>([0-9][0-9.]*)<\/string>/.exec(contents)
+  return match?.[1]
+}
 
 export const defaultHostPlatformProbe = (): HostPlatformProbe => ({
   architecture: arch,
@@ -65,6 +92,9 @@ export const defaultHostPlatformProbe = (): HostPlatformProbe => ({
   // platforms: Darwin's kernel version, the Linux kernel release, and the
   // Windows "10.0.<build>" triple.
   kernelRelease: release(),
+  ...(platform === 'darwin'
+    ? { macosProductVersion: readMacosProductVersion() }
+    : {}),
   platform,
 })
 
@@ -89,7 +119,17 @@ const assertMinimumVersion = (candidate: ExecutorPlatform): ExecutorPlatform => 
 }
 
 /**
- * macOS ships a Darwin kernel version, not its own: Darwin 24 is macOS 15.
+ * macOS is asked for its own version rather than having one derived from its
+ * kernel. Deriving worked while Darwin 24 meant macOS 15, and then stopped:
+ * Apple renumbered at macOS 26, so a fixed offset now names a release that
+ * does not exist — this host reports Darwin 27 and macOS 27, which the old
+ * arithmetic called macOS 18. The descriptor a person reviews states this
+ * version, so a plausible wrong answer is worse than an unreadable one.
+ *
+ * The kernel derivation survives only as the fallback for a host whose system
+ * version file cannot be read, where an approximate major version is still
+ * better than refusing to run at all.
+ *
  * Virtualization.framework's guest contract is Apple Silicon only, so an Intel
  * Mac is refused rather than silently degraded.
  */
@@ -99,7 +139,9 @@ const macosHost = (probe: HostPlatformProbe): ExecutorHost => {
     platform: assertMinimumVersion({
       architecture: 'arm64',
       os: 'macos',
-      osMajorVersion: majorVersion(probe.kernelRelease, 0) - 9,
+      osMajorVersion: probe.macosProductVersion === undefined
+        ? majorVersion(probe.kernelRelease, 0) - 9
+        : majorVersion(probe.macosProductVersion, 0),
     }),
     sandboxBackend: 'virtualization_framework',
     supervisor: hostSupervisor(probe),
