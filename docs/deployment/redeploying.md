@@ -124,19 +124,33 @@ Consequences worth knowing:
   "cancelled" were subsumed by a newer run that deploys their commits too.
 - Migrations normally run **before** the swap, while the old API is serving, so
   a schema change must remain compatible with the previous code for the length of
-  the build+swap window. The one-time
-  `20260912090000_versioned_at_rest_key_metadata` migration is deliberately the
-  exception: it changes three Prisma-visible `key_version` columns from integer
-  to text. After encryption preflight succeeds, `redeploy.sh` detects it while
-  pending and stops every current and pre-rename API/worker container. It checks
-  that no matching container remains running before Prisma applies the
-  migration, then starts only the compatible generation. This intentional
-  maintenance gap prevents old integer clients and new opaque-version clients
-  from reading or writing the same column concurrently; later deploys remain
-  health-gated blue-green. If that migration or the subsequent compatible boot
-  fails, the script exits with the API and worker still stopped: do not roll an
-  old image back onto the text schema. Fix and roll forward, or restore the
-  database backup before starting the previous release.
+  the build+swap window. The generated Prisma client selects every scalar
+  column, so a migration that drops a column or table, sets `NOT NULL`, or
+  retypes a column breaks the previous release's replicas (P2022 on every query
+  of the table; old worker jobs dead-letter with a deploy artifact as the
+  recorded reason) from the moment it lands until the swap completes. The rule
+  is enforced, not aspirational:
+  - `scripts/lint-migrations.mjs` fails any migration in the tree containing
+    `DROP COLUMN`, `DROP TABLE`, or `SET NOT NULL` that is not listed in
+    `api/prisma/deploy-incompatible-migrations.json` (comments and string
+    literals are parsed out, so prose never trips it).
+  - `redeploy.sh` reads that same manifest and, while **any** listed migration
+    is still pending in `_prisma_migrations`, drains every current and
+    pre-rename API/worker container before Prisma runs, verifies none remain,
+    and only then migrates and boots the compatible generation.
+
+  When you genuinely need an incompatible migration, you have two options, and
+  the lint failure message names both: split the change into
+  **expand/backfill/contract across two releases** (see
+  `20260911110000_project_team_inversion_expand`) so every intermediate schema
+  serves both code generations — strongly preferred, because it keeps deploys
+  zero-downtime — or add the migration to
+  `api/prisma/deploy-incompatible-migrations.json` with the reason old clients
+  break, accepting the deliberate maintenance gap while the deploy drains. If a
+  drained deploy or the subsequent compatible boot fails, the script exits with
+  the API and worker still stopped: do not roll an old image back onto the new
+  schema. Fix and roll forward, or restore the database backup before starting
+  the previous release.
 - **The reconcile job runs between the migrations and the swap**, as a one-shot
   `$COMPOSE run --rm --no-deps nessie-api pnpm --filter @nessie/api reconcile`.
   It seeds each organisation's default policy rules, backfills protected-MCP
