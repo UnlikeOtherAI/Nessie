@@ -138,7 +138,9 @@ export const registerKnowledgeSharedWithMeRoutes = (
       return createApiResponse([], { hasMore: false, nextCursor: null, prevCursor: null })
     }
     const { organizationId } = actorContext.tenant
-    const limit = resolvePageLimit(query.limit)
+    // A virtual folder pages 50 at a time, not the instance's 25: this is a
+    // Finder column being scrolled, not a table being read a page at a time.
+    const limit = resolvePageLimit(query.limit ?? 50)
     const cursor = decodeKeysetCursor(query.cursor)
     const shares = await listSharesForGrantee(prisma, {
       organizationId,

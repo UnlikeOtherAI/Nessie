@@ -158,10 +158,13 @@ export const registerKnowledgeShareRoutes = (
       return null
     }
     const space = await provider.getSpace(organizationId, page.spaceId)
+    // Personal documents are the only pages a person may hand to another
+    // person. Whose personal documents they are decides who may act, below;
+    // that a project's or a shared folder's page is not shareable at all is
+    // decided here, and is the same answer for everybody.
     const personal = space !== null
       && space.metadata !== null
       && space.metadata.personal === true
-      && space.userId === actorContext.actor.actorId
     if (!space || !personal) {
       sendApiError(
         reply,

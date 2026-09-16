@@ -297,6 +297,16 @@ dbTest('a page share reaches one subtree, for one person, and never becomes a sp
       url: `/api/knowledge-base/pages/${folderId}/shares`,
     })
     assert.equal(granteeListsShares.statusCode, 403)
+    const strangerListsShares = await as('stranger', {
+      method: 'GET',
+      url: `/api/knowledge-base/pages/${folderId}/shares`,
+    })
+    assert.equal(strangerListsShares.statusCode, 403)
+    assert.equal(
+      errorCode(strangerListsShares),
+      errorCode(granteeListsShares),
+      'a grantee must get the same refusal as a stranger, or the list discloses them',
+    )
     const ownerListsShares = await as('owner', {
       method: 'GET',
       url: `/api/knowledge-base/pages/${folderId}/shares`,
