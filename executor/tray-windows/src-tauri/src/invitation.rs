@@ -119,14 +119,24 @@ mod tests {
     use super::{default_api_base_url, parse_invitation};
 
     const ENROLLMENT: &str = "3f1c9a2e-0000-4000-8000-000000000001";
+    const EXECUTOR: &str = "8b2d4c60-0000-4000-8000-000000000002";
     const CHALLENGE: &str = "Zm9vYmFyLWNoYWxsZW5nZQ";
 
     /// Exactly what the Executors page renders for copying today.
+    ///
+    /// The state directory is now the one the packaged systemd unit reads,
+    /// named after the executor, rather than a fixed `$HOME/.nessie-executor`
+    /// that `nessie-executor enable` refuses. The tray only reads `--api`,
+    /// `--enrollment` and `--challenge` out of the pasted line, so the path is
+    /// incidental to it — which is precisely why this fixture has to keep
+    /// matching the page: nothing else would notice if the tray stopped
+    /// parsing what the page hands people.
     #[test]
     fn reads_the_pairing_command_the_executors_page_offers() {
         let command = format!(
             "nessie-executor pair --api https://api.nessie.works --state-dir \
-             \"$HOME/.nessie-executor\" --workspace \"/absolute/read-only/workspace\" \
+             \"$HOME/.local/state/nessie-executor/{EXECUTOR}\" \
+             --workspace \"/absolute/read-only/workspace\" \
              --enrollment {ENROLLMENT} --challenge {CHALLENGE}",
         );
         let invitation = parse_invitation(&command).expect("the pairing command must parse");
