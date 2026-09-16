@@ -54,13 +54,25 @@ only meaningful if the list is enforced, so the list joins the local policy:
 The reach panel shows the two things that are already facts of the local state,
 and lets a person change them through the same CLI:
 
-- the canonical read-only **workspace root** chosen at pairing
-  (`configure --workspace`), and
+- the canonical read-only **workspace folders** — one or more, each under a
+  short name (`configure --folder <name>=<path>`, or `configure --workspace` for
+  a single one whose name is derived from the directory), and
 - the **allowed origins** the guest browser may open
   (`configure-browser --allowed-origins`).
 
 Both are already owner-verified and both already refuse to change while drafts
 or sandboxes exist. The panel states that refusal rather than working around it.
+
+A folder's name is the first segment of every workspace path: `file.list` with
+no path answers with the folder names, and `file.read nessie/api/src/index.ts`
+reads inside the folder named `nessie`. The names are part of the reviewed
+descriptor and therefore of `localPolicyDigest`, so adding a folder is a
+revision a person reviews; the host paths stay local and are never sent to
+Nessie. `describe` reports both under `reach.folders`, alongside
+`reach.guestSessions`, which is `refused_multiple_folders` while more than one
+folder is configured — a guest VM mounts one workspace, so `command.run` and
+`coding.launch` fail closed with `EXECUTOR_GUEST_SINGLE_FOLDER_REQUIRED` rather
+than binding to the first folder. The panel should say that, not hide it.
 
 ## The app
 

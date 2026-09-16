@@ -89,7 +89,7 @@ const stateFor = (workspaceRoot: string) => ({
   executorId: '00000000-0000-4000-8000-000000000454',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 test('command session starts one no-egress COW guest and forwards an argv request without a shell', async () => {

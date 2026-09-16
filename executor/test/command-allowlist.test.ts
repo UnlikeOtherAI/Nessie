@@ -59,7 +59,7 @@ const stateWith = (commandAllowlist?: string[]): ExecutorLocalState => ({
   executorId: '00000000-0000-4000-8000-000000000504',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot: '/private/workspace',
+  workspaceFolders: [{ name: 'workspace', path: '/private/workspace' }],
 })
 
 const countingSessions = (): { calls: string[]; sessions: ExecutorCommandSessionManager } => {
@@ -158,7 +158,7 @@ test('configure stores a canonical list and refuses command.run without one', as
       ['file.read', 'command.run', 'workspace.review', 'sandbox.stop'],
       undefined,
       sandboxHost,
-      state.workspaceRoot,
+      state.workspaceFolders,
       [],
     ),
     /Name at least one permitted program/,
@@ -170,7 +170,7 @@ test('configure stores a canonical list and refuses command.run without one', as
       ['file.read'],
       undefined,
       sandboxHost,
-      state.workspaceRoot,
+      state.workspaceFolders,
       ['/usr/bin/git'],
     ),
     /permitted command is a program/,
@@ -178,20 +178,20 @@ test('configure stores a canonical list and refuses command.run without one', as
   // A leading wildcard would permit the shells the program grammar refuses.
   await assert.rejects(
     configureExecutorLocalPolicy(
-      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceRoot, ['*'],
+      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceFolders, ['*'],
     ),
     /permitted command is a program/,
   )
   await assert.rejects(
     configureExecutorLocalPolicy(
-      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceRoot, ['sh *'],
+      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceFolders, ['sh *'],
     ),
     /permitted command is a program/,
   )
   // A wildcard in the middle would mean different things to different readers.
   await assert.rejects(
     configureExecutorLocalPolicy(
-      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceRoot, ['git * --force'],
+      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceFolders, ['git * --force'],
     ),
     /permitted command is a program/,
   )
@@ -202,7 +202,7 @@ test('configure stores a canonical list and refuses command.run without one', as
       ['file.read'],
       undefined,
       sandboxHost,
-      state.workspaceRoot,
+      state.workspaceFolders,
       ['git *', 'git  *'],
     ),
     /listed once/,
@@ -214,7 +214,7 @@ test('configure stores a canonical list and refuses command.run without one', as
     ['file.read', 'command.run', 'workspace.review', 'sandbox.stop'],
     undefined,
     sandboxHost,
-    state.workspaceRoot,
+    state.workspaceFolders,
     ['pnpm  run   *', 'git *'],
   )
   // Hand-typed spacing is normalised, so the same policy typed twice is not two
@@ -229,7 +229,7 @@ test('configure stores a canonical list and refuses command.run without one', as
     ['file.read', 'command.run', 'workspace.review', 'sandbox.stop'],
     undefined,
     sandboxHost,
-    configured.workspaceRoot,
+    configured.workspaceFolders,
   )
   assert.deepEqual(kept.descriptor.commandAllowlist, ['git *', 'pnpm run *'])
 
@@ -240,7 +240,7 @@ test('configure stores a canonical list and refuses command.run without one', as
     ['file.read'],
     undefined,
     sandboxHost,
-    kept.workspaceRoot,
+    kept.workspaceFolders,
     [],
   )
   assert.equal('commandAllowlist' in cleared.descriptor, false)
@@ -294,7 +294,8 @@ test('describe answers what this executor may reach and run, without its key', (
   assert.deepEqual(described.policy.permittedPrograms, ['git *', 'pnpm run *'])
   assert.deepEqual(described.reach, {
     allowedOrigins: ['https://app.example.test'],
-    workspaceRoot: '/private/workspace',
+    folders: [{ name: 'workspace', path: '/private/workspace' }],
+    guestSessions: 'available',
   })
   assert.equal(described.sandbox.browserConfigured, true)
   assert.deepEqual(describeExecutor(stateWith()).policy.permittedPrograms, [])

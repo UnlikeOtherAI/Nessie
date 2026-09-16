@@ -217,7 +217,7 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
       challenge: CHALLENGE,
       enrollmentId: ENROLLMENT_ID,
       stateDir,
-      workspaceRoot: workspace,
+      workspaceFolders: [{ name: 'workspace', path: workspace }],
     })
     const paired = await loadExecutorState(stateDir)
     const claimed = await claimExecutor(stateDir, paired)

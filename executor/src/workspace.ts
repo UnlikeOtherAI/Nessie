@@ -8,20 +8,37 @@ import {
 } from '@nessie/schemas'
 
 import {
+  executorWorkspacePath,
+  findExecutorWorkspaceFolder,
+  splitExecutorWorkspacePath,
+  type ExecutorWorkspaceFolder,
+} from './workspace-folders.js'
+import {
   WorkspacePathError,
   EXECUTOR_PROMOTION_JOURNAL_DIRECTORY,
   configureOrdinaryDirectory,
   resolveExistingWorkspacePath,
-  safeRelativeWorkspacePath,
 } from './workspace-paths.js'
 
 const DEFAULT_READ_BYTES = 4_096
 const DEFAULT_LIST_ENTRIES = 100
 
-/** The pairing root is fixed and must remain a real, ordinary directory. */
-export const configureWorkspaceRoot = async (value: string): Promise<string> => {
-  if (!isAbsolute(value)) throw new WorkspacePathError('The workspace root must be absolute.')
-  return configureOrdinaryDirectory(value, 'The workspace root')
+/** A paired folder's host directory must remain a real, ordinary directory. */
+export const configureWorkspaceFolderPath = async (value: string): Promise<string> => {
+  if (!isAbsolute(value)) throw new WorkspacePathError('A workspace folder must be an absolute path.')
+  return configureOrdinaryDirectory(value, 'The workspace folder')
+}
+
+/**
+ * The folder namespace one operation reads, and where each folder's bytes come
+ * from. `directoryFor` is what lets the same code serve a live host folder and a
+ * run's copy-on-write draft of it without either one leaking into path
+ * resolution: the folder set decides *which* directory, the resolver decides
+ * *where* it is, and `workspace-paths.ts` still guards everything beneath it.
+ */
+export type ExecutorWorkspaceView = {
+  directoryFor: (folder: ExecutorWorkspaceFolder) => Promise<string>
+  folders: readonly ExecutorWorkspaceFolder[]
 }
 
 const readAtMost = async (path: string, maxBytes: number): Promise<{ bytes: number; data: Buffer }> => {
@@ -40,21 +57,47 @@ const readAtMost = async (path: string, maxBytes: number): Promise<{ bytes: numb
   }
 }
 
+/**
+ * The namespace root: the folders themselves, so an agent that has been handed
+ * an executor can discover what it may reach before it names anything. The
+ * shape is the same listing a directory returns, which is what lets an agent
+ * take a name straight from here and use it as the first segment of a read.
+ */
+const listWorkspaceFolders = (
+  folders: readonly ExecutorWorkspaceFolder[],
+  maxEntries: number,
+): Record<string, unknown> => {
+  const names = [...folders].map((folder) => folder.name).sort()
+  const visible = names.slice(0, maxEntries)
+  return {
+    entries: visible.map((name) => ({ kind: 'directory', name })),
+    path: '.',
+    success: true,
+    truncated: names.length > visible.length,
+  }
+}
+
 export const listWorkspaceFiles = async (
-  workspaceRoot: string,
+  view: ExecutorWorkspaceView,
   input: unknown,
 ): Promise<Record<string, unknown>> => {
   const args = ExecutorFileListArgumentsSchema.parse(input)
-  const path = await resolveExistingWorkspacePath(workspaceRoot, safeRelativeWorkspacePath(args.path))
+  const requestedEntries = args.maxEntries ?? DEFAULT_LIST_ENTRIES
+  const requested = splitExecutorWorkspacePath(args.path)
+  if (requested.folderName === undefined) return listWorkspaceFolders(view.folders, requestedEntries)
+  const folder = findExecutorWorkspaceFolder(view.folders, requested.folderName)
+  const path = await resolveExistingWorkspacePath(await view.directoryFor(folder), requested.path)
   const info = await lstat(path)
   if (!info.isDirectory() || info.isSymbolicLink()) {
     throw new WorkspacePathError('The requested workspace path is not a directory.')
   }
-  const requestedEntries = args.maxEntries ?? DEFAULT_LIST_ENTRIES
   const entries = await readdir(path, { withFileTypes: true })
-  const visible = entries
+  const admitted = entries
     .filter((entry) => !entry.isSymbolicLink())
-    .filter((entry) => entry.name !== EXECUTOR_PROMOTION_JOURNAL_DIRECTORY)
+    // The promotion journal is per folder, so it is hidden at each folder's own
+    // root rather than only at the namespace root.
+    .filter((entry) => requested.path !== '.' || entry.name !== EXECUTOR_PROMOTION_JOURNAL_DIRECTORY)
+  const visible = admitted
     .slice(0, requestedEntries)
     .map((entry) => ({
       kind: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
@@ -62,20 +105,25 @@ export const listWorkspaceFiles = async (
     }))
   return {
     entries: visible,
-    path: safeRelativeWorkspacePath(args.path),
+    path: executorWorkspacePath(folder.name, requested.path),
     success: true,
-    truncated: entries.filter((entry) => (
-      !entry.isSymbolicLink() && entry.name !== EXECUTOR_PROMOTION_JOURNAL_DIRECTORY
-    )).length > visible.length,
+    truncated: admitted.length > visible.length,
   }
 }
 
 export const readWorkspaceFile = async (
-  workspaceRoot: string,
+  view: ExecutorWorkspaceView,
   input: unknown,
 ): Promise<Record<string, unknown>> => {
   const args = ExecutorFileReadArgumentsSchema.parse(input)
-  const path = await resolveExistingWorkspacePath(workspaceRoot, safeRelativeWorkspacePath(args.path))
+  const requested = splitExecutorWorkspacePath(args.path)
+  if (requested.folderName === undefined || requested.path === '.') {
+    throw new WorkspacePathError(
+      'A workspace file path names a folder and a file inside it, for example "nessie/README.md".',
+    )
+  }
+  const folder = findExecutorWorkspaceFolder(view.folders, requested.folderName)
+  const path = await resolveExistingWorkspacePath(await view.directoryFor(folder), requested.path)
   const info = await lstat(path)
   if (!info.isFile() || info.isSymbolicLink()) {
     throw new WorkspacePathError('The requested workspace path is not a regular file.')
@@ -85,7 +133,7 @@ export const readWorkspaceFile = async (
   return {
     byteCount: result.data.byteLength,
     content: result.data.toString('utf8'),
-    path: safeRelativeWorkspacePath(args.path),
+    path: executorWorkspacePath(folder.name, requested.path),
     success: true,
     truncated: result.bytes > maxBytes,
   }

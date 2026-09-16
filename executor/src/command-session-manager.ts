@@ -7,6 +7,7 @@ import {
 import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } from './guest-vm-session.js'
 import {
   createGuestWorkspaceLease,
+  guestSessionFolder,
   releaseGuestWorkspaceLeaseIfCurrent,
   type GuestWorkspaceLease,
 } from './guest-workspace-lease.js'
@@ -105,11 +106,13 @@ export const createExecutorCommandSessionManager = (
     }
     try {
       prepared = await dependencies.prepareLeaseSource?.(command)
-      lease = await createGuestWorkspaceLease(stateDir, prepared?.workspaceRoot ?? state.workspaceRoot, {
-        bindingFence: command.bindingFence,
-        commandId: command.commandId,
-        runId,
-      })
+      lease = await createGuestWorkspaceLease(
+        stateDir,
+        // Refuses when more than one folder is configured; the daemon dispatch
+        // has already answered with the named reason before reaching here.
+        guestSessionFolder(state.workspaceFolders, prepared?.workspaceRoot),
+        { bindingFence: command.bindingFence, commandId: command.commandId, runId },
+      )
       await prepared?.release()
       prepared = undefined
       if (opening.cancelled) {

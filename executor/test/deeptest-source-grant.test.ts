@@ -31,7 +31,7 @@ const stateFor = (
   executorId: '00000000-0000-4000-8000-000000000005',
   machinePrivateKey: 'machine-private-secret',
   machinePublicKey: 'machine-public-value',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 const fixture = async (): Promise<{ stateDir: string; workspaceRoot: string }> => {
@@ -59,7 +59,7 @@ test('paired state publishes an exact credential-free source grant', async () =>
     const grantPath = deepTestSourceGrantPath(stateDir)
     const raw = await readFile(grantPath, 'utf8')
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    assert.deepEqual(Object.keys(parsed).sort(), ['descriptor', 'executorId', 'workspaceRoot'])
+    assert.deepEqual(Object.keys(parsed).sort(), ['descriptor', 'executorId', 'workspaceFolders'])
     assert.doesNotMatch(
       raw,
       /apiBaseUrl|machinePrivateKey|machinePublicKey|privateBudgetToken|providerCredential|secret/u,
@@ -67,7 +67,7 @@ test('paired state publishes an exact credential-free source grant', async () =>
     assert.deepEqual(await loadExecutorDeepTestSourceGrant(grantPath), {
       descriptor: original.descriptor,
       executorId: state.executorId,
-      workspaceRoot,
+      workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
     })
   } finally {
     await rm(join(stateDir, '..'), { force: true, recursive: true })

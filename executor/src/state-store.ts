@@ -4,15 +4,23 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 import {
   canonicalExecutorJson,
+  EXECUTOR_WORKSPACE_FOLDER_MAXIMUM,
   ExecutorEnrollmentRequestSchema,
   ExecutorIdSchema,
   ExecutorNonEmptyCommandAllowlistSchema,
   ExecutorProfileSchema,
+  ExecutorWorkspaceFolderNamesSchema,
+  executorWorkspaceFolderNameIsLegal,
   ImplementedExecutorOperationKeySchema,
   type ExecutorEnrollmentRequest,
 } from '@nessie/schemas'
 
 import { assertOwnerOnlyStatePath, ensureOwnerOnlyStateDirectory } from './state-security.js'
+import {
+  assertExecutorWorkspaceFolders,
+  deriveExecutorWorkspaceFolderName,
+  type ExecutorWorkspaceFolder,
+} from './workspace-folders.js'
 
 const STATE_FILE = 'executor-state.json'
 const PAIRING_FILE = 'executor-pairing.json'
@@ -55,6 +63,13 @@ export type ExecutorLocalState = {
     operationKeys: string[]
     profiles: string[]
     revision: number
+    /**
+     * The folder names this revision exposes. Absent means the descriptor was
+     * signed before folders had names and describes exactly one folder; see the
+     * field's comment in `@nessie/schemas`, which explains why synthesizing a
+     * name for those would break every existing pairing at connect.
+     */
+    workspaceFolders?: string[]
   }
   executorId: string
   machinePrivateKey: string
@@ -65,14 +80,64 @@ export type ExecutorLocalState = {
   browserSandbox?: ExecutorBrowserSandboxConfig
   /** Local-only Codex VM configuration; it is never supplied by Nessie. */
   codexSandbox?: ExecutorCodexSandboxConfig
-  /** Canonical, single read-only host directory selected during pairing. */
-  workspaceRoot: string
+  /**
+   * The canonical read-only host directories this executor is paired against,
+   * each under a short name that is the first segment of every workspace path.
+   * Host paths are local: only the names reach Nessie, through the descriptor.
+   */
+  workspaceFolders: ExecutorWorkspaceFolder[]
+}
+
+/**
+ * A state or grant file written before folders had names. It carries one
+ * `workspaceRoot`; everything downstream reads `workspaceFolders`, so the
+ * migration happens once, on read, in `migratedWorkspaceFolders`. Nothing
+ * rewrites the file for its own sake — the next ordinary save normalizes it.
+ */
+type LegacySingleRootShape = { workspaceFolders?: unknown; workspaceRoot?: unknown }
+
+const migratedWorkspaceFolders = (value: LegacySingleRootShape): ExecutorWorkspaceFolder[] | null => {
+  if (Array.isArray(value.workspaceFolders)) {
+    if (value.workspaceRoot !== undefined) return null
+    const folders = value.workspaceFolders
+    if (folders.length < 1 || folders.length > EXECUTOR_WORKSPACE_FOLDER_MAXIMUM) return null
+    const parsed: ExecutorWorkspaceFolder[] = []
+    for (const folder of folders) {
+      if (
+        !folder
+        || typeof folder !== 'object'
+        || Array.isArray(folder)
+        || !exactKeys(folder as Record<string, unknown>, ['name', 'path'])
+        || typeof (folder as ExecutorWorkspaceFolder).name !== 'string'
+        || !validAbsoluteLocalPath((folder as ExecutorWorkspaceFolder).path)
+        || !executorWorkspaceFolderNameIsLegal((folder as ExecutorWorkspaceFolder).name)
+      ) return null
+      parsed.push({
+        name: (folder as ExecutorWorkspaceFolder).name,
+        path: (folder as ExecutorWorkspaceFolder).path,
+      })
+    }
+    if (!ExecutorWorkspaceFolderNamesSchema.safeParse(parsed.map((folder) => folder.name)).success) {
+      return null
+    }
+    // The same set rules the write path enforces, re-checked on read: a file that
+    // somehow holds two folders where one contains the other would give one file
+    // two names, and this refuses to load it rather than serving it.
+    try {
+      assertExecutorWorkspaceFolders(parsed)
+    } catch {
+      return null
+    }
+    return parsed
+  }
+  if (!validAbsoluteLocalPath(value.workspaceRoot)) return null
+  return [{ name: deriveExecutorWorkspaceFolderName(value.workspaceRoot), path: value.workspaceRoot }]
 }
 
 /** Credential-free projection that a source-only child may read. */
 export type ExecutorDeepTestSourceGrant = Pick<
   ExecutorLocalState,
-  'descriptor' | 'executorId' | 'workspaceRoot'
+  'descriptor' | 'executorId' | 'workspaceFolders'
 >
 
 /**
@@ -92,7 +157,7 @@ export type ExecutorDeepTestExecutionGrant = ExecutorDeepTestSourceGrant & {
 }
 
 /** The VM managers never need paired credentials or control-plane metadata. */
-export type ExecutorGuestVmExecutionConfig = Pick<ExecutorLocalState, 'descriptor' | 'workspaceRoot'> & {
+export type ExecutorGuestVmExecutionConfig = Pick<ExecutorLocalState, 'descriptor' | 'workspaceFolders'> & {
   browserSandbox?: ExecutorBrowserSandboxConfig
 }
 
@@ -107,7 +172,7 @@ export const executorGuestVmExecutionConfig = (
     vmHelperPath: grant.runtime.vmHelperPath,
   },
   descriptor: grant.descriptor,
-  workspaceRoot: grant.workspaceRoot,
+  workspaceFolders: grant.workspaceFolders.map((folder) => ({ ...folder })),
 })
 
 /** A literal is required so callers cannot publish by accidentally passing a truthy value. */
@@ -122,7 +187,7 @@ export type ExecutorPreparedPairing = {
   enrollmentId: string
   machinePrivateKey: string
   request: ExecutorEnrollmentRequest
-  workspaceRoot: string
+  workspaceFolders: ExecutorWorkspaceFolder[]
 }
 
 const statePath = (stateDir: string): string => resolve(stateDir, STATE_FILE)
@@ -232,21 +297,36 @@ const validAbsoluteLocalPath = (value: unknown): value is string =>
 const parseDeepTestSourceGrant = (value: unknown): ExecutorDeepTestSourceGrant => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid grant')
   const grant = value as Record<string, unknown>
-  if (!exactKeys(grant, ['descriptor', 'executorId', 'workspaceRoot'])) throw new Error('invalid grant')
+  if (
+    !exactKeys(grant, ['descriptor', 'executorId', 'workspaceFolders'])
+    // A grant file published by a companion that predates named folders. The
+    // DeepTest adapter is a separate process and may load one, so it is read
+    // through the same migration as the state file rather than refused.
+    && !exactKeys(grant, ['descriptor', 'executorId', 'workspaceRoot'])
+  ) throw new Error('invalid grant')
+  const workspaceFolders = migratedWorkspaceFolders(grant as LegacySingleRootShape)
+  if (workspaceFolders === null) throw new Error('invalid grant')
   if (!grant.descriptor || typeof grant.descriptor !== 'object' || Array.isArray(grant.descriptor)) {
     throw new Error('invalid grant')
   }
   const descriptor = grant.descriptor as Record<string, unknown>
-  // The allowlist is carried only when the policy has one, so both key sets are
-  // valid; a child that receives no list runs no command, which is the same
-  // refusal the daemon makes.
+  // The allowlist and the folder names are each carried only when the policy has
+  // them, so every combination of those two optional keys is a valid key set. A
+  // child that receives no allowlist runs no command, which is the same refusal
+  // the daemon makes.
+  const descriptorKeys = new Set(Object.keys(descriptor))
+  for (const optional of ['commandAllowlist', 'workspaceFolders']) descriptorKeys.delete(optional)
   if (
-    !exactKeys(descriptor, ['limits', 'operationKeys', 'profiles', 'revision'])
-    && !exactKeys(descriptor, ['commandAllowlist', 'limits', 'operationKeys', 'profiles', 'revision'])
+    descriptorKeys.size !== 4
+    || !['limits', 'operationKeys', 'profiles', 'revision'].every((key) => descriptorKeys.has(key))
   ) throw new Error('invalid grant')
   if (
     descriptor.commandAllowlist !== undefined
     && !ExecutorNonEmptyCommandAllowlistSchema.safeParse(descriptor.commandAllowlist).success
+  ) throw new Error('invalid grant')
+  if (
+    descriptor.workspaceFolders !== undefined
+    && !ExecutorWorkspaceFolderNamesSchema.safeParse(descriptor.workspaceFolders).success
   ) throw new Error('invalid grant')
   if (!descriptor.limits || typeof descriptor.limits !== 'object' || Array.isArray(descriptor.limits)) {
     throw new Error('invalid grant')
@@ -267,21 +347,27 @@ const parseDeepTestSourceGrant = (value: unknown): ExecutorDeepTestSourceGrant =
     || descriptor.profiles.length > 2
     || !descriptor.profiles.every((profile) => ExecutorProfileSchema.safeParse(profile).success)
     || !ExecutorIdSchema.safeParse(grant.executorId).success
-    || !validAbsoluteLocalPath(grant.workspaceRoot)
   ) throw new Error('invalid grant')
-  return grant as unknown as ExecutorDeepTestSourceGrant
+  return {
+    descriptor: descriptor as unknown as ExecutorDeepTestSourceGrant['descriptor'],
+    executorId: grant.executorId as string,
+    workspaceFolders,
+  }
 }
 
 const parseDeepTestExecutionGrant = (value: unknown): ExecutorDeepTestExecutionGrant => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid grant')
   const grant = value as Record<string, unknown>
-  if (!exactKeys(grant, ['browser', 'descriptor', 'executorId', 'runtime', 'workspaceRoot'])) {
-    throw new Error('invalid grant')
-  }
+  if (
+    !exactKeys(grant, ['browser', 'descriptor', 'executorId', 'runtime', 'workspaceFolders'])
+    && !exactKeys(grant, ['browser', 'descriptor', 'executorId', 'runtime', 'workspaceRoot'])
+  ) throw new Error('invalid grant')
   const source = parseDeepTestSourceGrant({
     descriptor: grant.descriptor,
     executorId: grant.executorId,
-    workspaceRoot: grant.workspaceRoot,
+    ...(grant.workspaceFolders === undefined
+      ? { workspaceRoot: grant.workspaceRoot }
+      : { workspaceFolders: grant.workspaceFolders }),
   })
   if (!grant.browser || typeof grant.browser !== 'object' || Array.isArray(grant.browser)) {
     throw new Error('invalid grant')
@@ -317,9 +403,12 @@ const sourceGrantFor = (state: ExecutorLocalState): ExecutorDeepTestSourceGrant 
     operationKeys: [...state.descriptor.operationKeys],
     profiles: [...state.descriptor.profiles],
     revision: state.descriptor.revision,
+    ...(state.descriptor.workspaceFolders?.length
+      ? { workspaceFolders: [...state.descriptor.workspaceFolders] }
+      : {}),
   },
   executorId: state.executorId,
-  workspaceRoot: state.workspaceRoot,
+  workspaceFolders: state.workspaceFolders.map((folder) => ({ ...folder })),
 })
 
 const executionGrantFor = (state: ExecutorLocalState): ExecutorDeepTestExecutionGrant => {
@@ -348,7 +437,11 @@ const sameSourceGrant = (
   right: ExecutorDeepTestSourceGrant,
 ): boolean => (
   left.executorId === right.executorId
-  && left.workspaceRoot === right.workspaceRoot
+  && left.workspaceFolders.length === right.workspaceFolders.length
+  && left.workspaceFolders.every((folder, index) => (
+    folder.name === right.workspaceFolders[index]?.name
+    && folder.path === right.workspaceFolders[index]?.path
+  ))
   && left.descriptor.revision === right.descriptor.revision
   && left.descriptor.limits.maxCommandRuntimeSeconds
     === right.descriptor.limits.maxCommandRuntimeSeconds
@@ -416,12 +509,13 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
   await assertOwnerOnly(dirname(path), 'directory')
   await assertOwnerOnly(path, 'file')
   const parsed = JSON.parse(await readFile(path, 'utf8')) as Partial<ExecutorLocalState>
+  const workspaceFolders = migratedWorkspaceFolders(parsed as LegacySingleRootShape)
   if (
     typeof parsed.apiBaseUrl !== 'string'
     || typeof parsed.executorId !== 'string'
     || typeof parsed.machinePrivateKey !== 'string'
     || typeof parsed.machinePublicKey !== 'string'
-    || typeof parsed.workspaceRoot !== 'string'
+    || workspaceFolders === null
     || (parsed.nativeHelperPath !== undefined && typeof parsed.nativeHelperPath !== 'string')
     || (parsed.browserSandbox !== undefined && !validBrowserSandbox(parsed.browserSandbox))
     || (parsed.codexSandbox !== undefined && !validCodexSandbox(parsed.codexSandbox))
@@ -429,7 +523,11 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
   ) {
     throw new Error('Executor state is malformed.')
   }
-  return parsed as ExecutorLocalState
+  // The single legacy root becomes one named folder here and nowhere else, and
+  // `workspaceRoot` is dropped so no later save can write both spellings.
+  const rest = { ...(parsed as ExecutorLocalState) } as ExecutorLocalState & { workspaceRoot?: string }
+  delete rest.workspaceRoot
+  return { ...rest, workspaceFolders }
 }
 
 const STATE_DIRECTORY_NAME = /^[A-Za-z0-9-]{1,128}$/
@@ -556,7 +654,7 @@ const validPreparedPairing = (value: unknown): value is ExecutorPreparedPairing 
     typeof prepared.apiBaseUrl === 'string'
     && typeof prepared.enrollmentId === 'string'
     && typeof prepared.machinePrivateKey === 'string'
-    && typeof prepared.workspaceRoot === 'string'
+    && migratedWorkspaceFolders(value as LegacySingleRootShape) !== null
     && ExecutorEnrollmentRequestSchema.safeParse(prepared.request).success
   )
 }
@@ -571,7 +669,13 @@ export const loadExecutorPreparedPairing = async (
     await assertOwnerOnly(path, 'file')
     const parsed: unknown = JSON.parse(await readFile(path, 'utf8'))
     if (!validPreparedPairing(parsed)) throw new Error('Executor pairing state is malformed.')
-    return parsed
+    // An unfinished pairing from before folders had names carries one root;
+    // migrate it the same way the state file is migrated.
+    const rest = { ...parsed } as ExecutorPreparedPairing & { workspaceRoot?: string }
+    delete rest.workspaceRoot
+    const workspaceFolders = migratedWorkspaceFolders(parsed as LegacySingleRootShape)
+    if (workspaceFolders === null) throw new Error('Executor pairing state is malformed.')
+    return { ...rest, workspaceFolders }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error

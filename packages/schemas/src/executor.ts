@@ -279,6 +279,73 @@ const relativeWorkspacePath = (value: string): boolean => (
   )
 )
 
+const distinctExecutorWorkspaceFolderNames = (value: readonly string[]): boolean =>
+  new Set(value).size === value.length
+
+/**
+ * How many host folders one executor may expose, and what a folder may be
+ * called. The name is the first segment of every workspace path an agent
+ * writes, so it is also a directory name in the daemon's copy-on-write layout
+ * and a token in the audit trail.
+ *
+ * Lowercase ASCII, digits and interior hyphens only:
+ *
+ *  - lowercase-only makes case-insensitive distinctness structural rather than
+ *    a check somebody can forget. Two folders differing only in case would be
+ *    one directory on a case-insensitive filesystem, which is a trap.
+ *  - no dot means `.` and `..` are unrepresentable, and so is the executor's
+ *    own promotion journal directory.
+ *  - a name starts and ends alphanumeric, so it never reads as a command-line
+ *    flag and never leaves a trailing separator-adjacent hyphen.
+ *  - one bounded ASCII token is byte-stable in a receipt: no locale, no case
+ *    folding, no Unicode normalization can change what a reviewer approved.
+ */
+export const EXECUTOR_WORKSPACE_FOLDER_MAXIMUM = 16
+export const EXECUTOR_WORKSPACE_FOLDER_NAME_MAXIMUM_LENGTH = 40
+export const EXECUTOR_WORKSPACE_FOLDER_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/u
+
+/**
+ * Windows turns these basenames into devices wherever a path is opened, so a
+ * folder may not be called one even on a host where it would work today: the
+ * name travels with the reviewed policy, and the same policy has to be legal on
+ * the next machine that loads it.
+ */
+export const EXECUTOR_RESERVED_WORKSPACE_FOLDER_NAMES = [
+  'aux',
+  'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+  'con',
+  'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+  'nul',
+  'prn',
+] as const
+
+export const executorWorkspaceFolderNameIsLegal = (value: string): boolean => (
+  EXECUTOR_WORKSPACE_FOLDER_NAME_PATTERN.test(value)
+  && value.length <= EXECUTOR_WORKSPACE_FOLDER_NAME_MAXIMUM_LENGTH
+  && !(EXECUTOR_RESERVED_WORKSPACE_FOLDER_NAMES as readonly string[]).includes(value)
+)
+
+export const ExecutorWorkspaceFolderNameSchema = z
+  .string()
+  .max(EXECUTOR_WORKSPACE_FOLDER_NAME_MAXIMUM_LENGTH)
+  .refine(
+    executorWorkspaceFolderNameIsLegal,
+    'A workspace folder name is 1 to 40 lowercase letters, digits and interior hyphens.',
+  )
+
+/**
+ * The folder names the reviewed policy exposes. Present exactly when the
+ * executor names its folders — absent from every descriptor signed before this
+ * field existed, which each describe exactly one folder. Carrying a synthesized
+ * single name into those descriptors would change them at an unchanged
+ * revision, and the control plane refuses that outright.
+ */
+export const ExecutorWorkspaceFolderNamesSchema = z
+  .array(ExecutorWorkspaceFolderNameSchema)
+  .min(1)
+  .max(EXECUTOR_WORKSPACE_FOLDER_MAXIMUM)
+  .refine(distinctExecutorWorkspaceFolderNames, 'Each workspace folder is named once.')
+
 export const EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM = 64
 export const EXECUTOR_COMMAND_PATTERN_MAXIMUM_LENGTH = 512
 /** The final token that widens an entry to "and any further arguments". */
@@ -513,6 +580,12 @@ export const ExecutorCapabilityDescriptorSchema = z
     // digest. Absent from a daemon paired before the allowlist existed; that
     // daemon runs nothing through `command.run` until its policy names one.
     commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
+    // The named host folders this executor exposes, so adding one is a revision
+    // a person reviews. Only the names travel: the host paths stay local,
+    // because a reviewer of an organisation-scoped executor has no business
+    // reading somebody's home directory layout. Absent means the single
+    // unnamed folder every pre-naming pairing has.
+    workspaceFolders: ExecutorWorkspaceFolderNamesSchema.optional(),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
       .object({

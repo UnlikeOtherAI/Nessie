@@ -1,10 +1,11 @@
 import { constants } from 'node:fs'
-import { lstat, mkdir, open } from 'node:fs/promises'
+import { lstat, mkdir, open, readdir } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 
 import { RunIdSchema } from '@nessie/schemas'
 
 import { ensureExecutorRuntimeDirectory } from './state-store.js'
+import { assertExecutorWorkspaceFolderName } from './workspace-folders.js'
 import { WorkspacePathError, isInsideDirectory } from './workspace-paths.js'
 
 /**
@@ -17,10 +18,18 @@ import { WorkspacePathError, isInsideDirectory } from './workspace-paths.js'
 // these limits equal avoids copying a source tree that can never accept a
 // write, while still leaving ordinary read-only operations unconstrained by
 // the COW cap.
+//
+// The budget is per workspace folder, because a folder is snapshotted on its
+// own and only when a draft needs it. A run that drafts several folders can
+// therefore hold a multiple of this, bounded by the folder maximum in
+// `@nessie/schemas`.
 export const MAX_SOURCE_BYTES = 128 * 1024 * 1024
 export const MAX_SOURCE_FILES = 10_000
 export const MAX_SCRATCH_BYTES = MAX_SOURCE_BYTES
 export const COPY_BUFFER_BYTES = 64 * 1024
+
+/** One level of indirection so a folder can never be named `base-manifest.json`. */
+export const SANDBOX_FOLDERS_DIRECTORY = 'folders'
 
 /** Bytes and files counted against one of the limits above. */
 export type SandboxUsage = { bytes: number; files: number }
@@ -41,6 +50,7 @@ const sandboxDirectory = async (stateDir: string): Promise<string> => {
   return sandboxes
 }
 
+/** Where one run's sandbox lives, and where its per-folder drafts sit. */
 export const sandboxPaths = async (stateDir: string, runId: string) => {
   const parsedRunId = RunIdSchema.parse(runId)
   const parent = await sandboxDirectory(stateDir)
@@ -48,13 +58,58 @@ export const sandboxPaths = async (stateDir: string, runId: string) => {
   if (!isInsideDirectory(parent, root) || basename(root) !== parsedRunId) {
     throw new WorkspacePathError('The sandbox identity is invalid.')
   }
+  return { folders: resolve(root, SANDBOX_FOLDERS_DIRECTORY), parent, root }
+}
+
+/**
+ * A run has one sandbox per workspace folder it touched, each with its own
+ * snapshot, base manifest and guest lease. A folder nobody wrote to has no
+ * directory here at all: reads of it stay on the host copy, which is why the
+ * copy cost of a second folder is paid only when a draft needs it.
+ *
+ * The folder name is re-validated against the grammar here, not trusted from
+ * the caller: this is the one place a name becomes a directory component.
+ */
+export const sandboxFolderPaths = async (stateDir: string, runId: string, folderName: string) => {
+  const run = await sandboxPaths(stateDir, runId)
+  const name = assertExecutorWorkspaceFolderName(folderName)
+  const root = resolve(run.folders, name)
+  if (!isInsideDirectory(run.folders, root) || basename(root) !== name) {
+    throw new WorkspacePathError('The sandbox folder identity is invalid.')
+  }
   return {
     baseManifest: resolve(root, 'base-manifest.json'),
     guestLease: resolve(root, 'guest-lease.json'),
-    parent,
+    name,
+    parent: run.folders,
     root,
+    run: run.root,
     workspace: resolve(root, 'workspace'),
   }
+}
+
+/**
+ * The folders this run has a draft for, in name order. A directory that is not
+ * a legal folder name never becomes one: it is refused rather than skipped, so
+ * a tampered runtime directory cannot quietly shrink a review.
+ */
+export const sandboxDraftFolderNames = async (stateDir: string, runId: string): Promise<string[]> => {
+  const run = await sandboxPaths(stateDir, runId)
+  let entries
+  try {
+    entries = await readdir(run.folders, { withFileTypes: true })
+  } catch (error) {
+    if (missing(error)) return []
+    throw error
+  }
+  return entries
+    .map((entry) => {
+      if (entry.isSymbolicLink() || !entry.isDirectory()) {
+        throw new WorkspacePathError('The executor sandbox contains an unexpected entry.')
+      }
+      return assertExecutorWorkspaceFolderName(entry.name)
+    })
+    .sort()
 }
 
 /** Creates an owner-only file that must not already exist, then syncs it. */

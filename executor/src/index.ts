@@ -18,6 +18,11 @@ import {
   executorServiceStatus,
 } from './service-linux.js'
 import {
+  parseExecutorWorkspaceFolderArguments,
+  workspaceFoldersFromInput,
+  type ExecutorWorkspaceFolder,
+} from './workspace-folder-arguments.js'
+import {
   loadExecutorDeepTestSourceGrant,
   loadExecutorDeepTestExecutionGrant,
   loadExecutorState,
@@ -36,7 +41,7 @@ type ParsedCommand =
     enrollmentId: string
     pairingInputFromStandardInput?: true
     stateDir: string
-    workspaceRoot?: string
+    workspaceFolders?: ExecutorWorkspaceFolder[]
   }
   | {
     configurationInputFromStandardInput?: true
@@ -46,7 +51,7 @@ type ParsedCommand =
     nativeHelperPath?: string
     operationKeys?: string[]
     stateDir: string
-    workspaceRoot?: string
+    workspaceFolders?: ExecutorWorkspaceFolder[]
   }
   | {
     allowedOrigins: string[]
@@ -90,14 +95,16 @@ const usage = (): never => {
   throw new Error(
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
     + '(--challenge <token>|--challenge-stdin) --state-dir <owner-only-path> '
-    + '--workspace <absolute-read-only-root>\n'
+    + '(--workspace <absolute-read-only-root>'
+    + '|--folder <name>=<absolute-read-only-root> [--folder ...])\n'
     + '       nessie-executor pair --api <https://api.example> --enrollment <uuid> '
     + '--pair-input-stdin --state-dir <owner-only-path>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
     + '--operations <file.list,file.read,file.write,command.run,browser.open,browser.observe,'
     + 'browser.act,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop> '
     + '[--native-helper </absolute/owner-only/nessie-executor-native>] '
-    + '[--workspace <absolute-read-only-root>] '
+    + '[--workspace <absolute-read-only-root>'
+    + '|--folder <name>=<absolute-read-only-root> [--folder ...]] '
     + '[--tools <program,program,...>|--clear-tools]\n'
     + '       nessie-executor configure --configuration-input-stdin '
     + '--state-dir <owner-only-path>\n'
@@ -158,7 +165,10 @@ const readPairingChallenge = async (): Promise<string> => {
   return challenge
 }
 
-const readPairingInput = async (): Promise<{ challenge: string; workspaceRoot: string }> => {
+const readPairingInput = async (): Promise<{
+  challenge: string
+  workspaceFolders: ExecutorWorkspaceFolder[]
+}> => {
   const chunks: Buffer[] = []
   let byteLength = 0
   for await (const chunk of process.stdin) {
@@ -178,19 +188,20 @@ const readPairingInput = async (): Promise<{ challenge: string; workspaceRoot: s
     || typeof parsed !== 'object'
     || Array.isArray(parsed)
     || typeof (parsed as { challenge?: unknown }).challenge !== 'string'
-    || typeof (parsed as { workspaceRoot?: unknown }).workspaceRoot !== 'string'
     || !(parsed as { challenge: string }).challenge
-    || !(parsed as { workspaceRoot: string }).workspaceRoot
   ) {
     throw new Error('Pairing input on standard input is malformed.')
   }
-  return parsed as { challenge: string; workspaceRoot: string }
+  return {
+    challenge: (parsed as { challenge: string }).challenge,
+    workspaceFolders: workspaceFoldersFromInput(parsed, 'Pairing input on standard input'),
+  }
 }
 
 const readConfigurationInput = async (): Promise<{
   commandAllowlist?: string[]
   operationKeys: string[]
-  workspaceRoot: string
+  workspaceFolders: ExecutorWorkspaceFolder[]
 }> => {
   const chunks: Buffer[] = []
   let byteLength = 0
@@ -213,8 +224,6 @@ const readConfigurationInput = async (): Promise<{
     || Array.isArray(parsed)
     || !Array.isArray((parsed as { operationKeys?: unknown }).operationKeys)
     || !(parsed as { operationKeys: unknown[] }).operationKeys.every((key) => typeof key === 'string')
-    || typeof (parsed as { workspaceRoot?: unknown }).workspaceRoot !== 'string'
-    || !(parsed as { workspaceRoot: string }).workspaceRoot
     // Absent keeps the permitted programs the policy already names; present it
     // must be a list of names, and `[]` is the instruction to clear them.
     || (allowlist !== undefined && (
@@ -223,7 +232,11 @@ const readConfigurationInput = async (): Promise<{
   ) {
     throw new Error('Local policy input on standard input is malformed.')
   }
-  return parsed as { commandAllowlist?: string[]; operationKeys: string[]; workspaceRoot: string }
+  return {
+    ...(allowlist === undefined ? {} : { commandAllowlist: allowlist as string[] }),
+    operationKeys: (parsed as { operationKeys: string[] }).operationKeys,
+    workspaceFolders: workspaceFoldersFromInput(parsed, 'Local policy input on standard input'),
+  }
 }
 
 const secureApiUrl = (value: string): string => {
@@ -247,9 +260,12 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   const [command] = args
   if (command === 'pair') {
     const pairingInputFromStandardInput = args.includes('--pair-input-stdin')
-    if (pairingInputFromStandardInput && (args.includes('--challenge') || args.includes('--challenge-stdin') || args.includes('--workspace'))) {
-      return usage()
-    }
+    if (pairingInputFromStandardInput && (
+      args.includes('--challenge')
+      || args.includes('--challenge-stdin')
+      || args.includes('--workspace')
+      || args.includes('--folder')
+    )) return usage()
     return {
       apiBaseUrl: secureApiUrl(option(args, '--api')),
       enrollmentId: option(args, '--enrollment'),
@@ -257,7 +273,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       stateDir: option(args, '--state-dir'),
       ...(pairingInputFromStandardInput
         ? { pairingInputFromStandardInput: true }
-        : { workspaceRoot: option(args, '--workspace'), ...pairingChallenge(args) }),
+        : { workspaceFolders: parseExecutorWorkspaceFolderArguments(args, true), ...pairingChallenge(args) }),
     }
   }
   if (command === 'configure') {
@@ -265,6 +281,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
     if (configurationInputFromStandardInput && (
       args.includes('--operations')
       || args.includes('--workspace')
+      || args.includes('--folder')
       || args.includes('--native-helper')
       || args.includes('--tools')
       || args.includes('--clear-tools')
@@ -288,8 +305,11 @@ export const parseCommand = (args: string[]): ParsedCommand => {
         ? { operationKeys: option(args, '--operations').split(',').map((value) => value.trim()) }
         : {}),
       stateDir: option(args, '--state-dir'),
-      ...(!configurationInputFromStandardInput && args.includes('--workspace')
-        ? { workspaceRoot: option(args, '--workspace') }
+      ...(!configurationInputFromStandardInput
+        ? (() => {
+          const folders = parseExecutorWorkspaceFolderArguments(args, false)
+          return folders ? { workspaceFolders: folders } : {}
+        })()
         : {}),
     }
   }
@@ -382,7 +402,7 @@ export const run = async (args: string[]): Promise<void> => {
       ? await readPairingInput()
       : {
         challenge: command.challenge ?? await readPairingChallenge(),
-        workspaceRoot: command.workspaceRoot!,
+        workspaceFolders: command.workspaceFolders!,
       }
     const paired = await pairExecutor({
       ...command,
@@ -457,7 +477,7 @@ export const run = async (args: string[]): Promise<void> => {
       : {
         commandAllowlist: command.commandAllowlist,
         operationKeys: command.operationKeys!,
-        workspaceRoot: command.workspaceRoot,
+        workspaceFolders: command.workspaceFolders,
       }
     const updated = await configureExecutorLocalPolicy(
       command.stateDir,
@@ -465,7 +485,7 @@ export const run = async (args: string[]): Promise<void> => {
       input.operationKeys,
       command.nativeHelperPath,
       undefined,
-      input.workspaceRoot,
+      input.workspaceFolders,
       input.commandAllowlist,
     )
     process.stdout.write(

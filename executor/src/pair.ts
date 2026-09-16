@@ -40,7 +40,13 @@ import {
   type ExecutorLocalState,
   type ExecutorPreparedPairing,
 } from './state-store.js'
-import { configureWorkspaceRoot } from './workspace.js'
+import {
+  assertExecutorWorkspaceFolderName,
+  assertExecutorWorkspaceFolders,
+  executorWorkspaceFolderNames,
+  type ExecutorWorkspaceFolder,
+} from './workspace-folders.js'
+import { configureWorkspaceFolderPath } from './workspace.js'
 
 const rawEd25519PublicKey = (publicKey: KeyObject): string =>
   publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url')
@@ -50,8 +56,35 @@ export type PairExecutorInput = {
   challenge: string
   enrollmentId: string
   stateDir: string
-  workspaceRoot: string
+  workspaceFolders: readonly ExecutorWorkspaceFolder[]
 }
+
+/**
+ * Canonicalise every paired folder, then check the set as a whole. Both halves
+ * matter: a folder is only accepted as a real, ordinary, link-free directory,
+ * and the set is only accepted when no name repeats and no folder contains
+ * another — two rules that can only be checked after canonicalisation, because
+ * a symbolic link could otherwise hide a nesting the names deny.
+ */
+export const configureExecutorWorkspaceFolders = async (
+  requested: readonly ExecutorWorkspaceFolder[],
+): Promise<ExecutorWorkspaceFolder[]> => {
+  for (const folder of requested) assertExecutorWorkspaceFolderName(folder.name)
+  const folders = await Promise.all(requested.map(async (folder) => ({
+    name: folder.name,
+    path: await configureWorkspaceFolderPath(folder.path),
+  })))
+  assertExecutorWorkspaceFolders(folders)
+  return folders
+}
+
+const sameWorkspaceFolders = (
+  left: readonly ExecutorWorkspaceFolder[],
+  right: readonly ExecutorWorkspaceFolder[],
+): boolean => (
+  left.length === right.length
+  && left.every((folder, index) => folder.name === right[index]?.name && folder.path === right[index]?.path)
+)
 
 /** The daemon-owned copy-on-write bundle, named once in `@nessie/schemas`. */
 export const COW_WORKSPACE_OPERATION_KEYS = EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS
@@ -211,6 +244,15 @@ const profilesForOperationKeys = (operationKeys: string[]): string[] =>
     ? ['workspace_sandbox', 'coding_session']
     : ['workspace_sandbox']
 
+/**
+ * Drafts and sandboxes belong to the folder set that produced them, so the whole
+ * set is frozen while any of them exist. This is deliberately the run-level
+ * runtime directory rather than a per-folder check: a draft in one folder can
+ * have been promoted against, reviewed alongside, or written by a guest that also
+ * read another, and a manifest that referred to a folder the policy no longer
+ * names could not be reviewed honestly. Adding, removing, renaming or repointing
+ * any folder is refused until the runtime directory is empty.
+ */
 const assertWorkspaceMayChange = async (stateDir: string): Promise<void> => {
   const runtimeDirectory = resolve(stateDir, 'runtime')
   let metadata
@@ -225,7 +267,7 @@ const assertWorkspaceMayChange = async (stateDir: string): Promise<void> => {
   }
   if ((await readdir(runtimeDirectory)).length > 0) {
     throw new Error(
-      'Remove every local draft and stop every sandbox before changing the workspace folder.',
+      'Remove every local draft and stop every sandbox before changing the workspace folders.',
     )
   }
 }
@@ -246,13 +288,15 @@ export const configureExecutorLocalPolicy = async (
   requestedOperationKeys: string[],
   nativeHelperPath?: string,
   host: ExecutorHost = detectExecutorHost(),
-  workspaceRoot: string = state.workspaceRoot,
+  workspaceFolders: readonly ExecutorWorkspaceFolder[] = state.workspaceFolders,
   commandAllowlist: readonly string[] = state.descriptor.commandAllowlist ?? [],
 ): Promise<ExecutorLocalState> => {
-  if (workspaceRoot !== state.workspaceRoot) await assertWorkspaceMayChange(stateDir)
-  const canonicalWorkspaceRoot = workspaceRoot === state.workspaceRoot
-    ? state.workspaceRoot
-    : await configureWorkspaceRoot(workspaceRoot)
+  const canonicalWorkspaceFolders = sameWorkspaceFolders(workspaceFolders, state.workspaceFolders)
+    ? state.workspaceFolders
+    : await configureExecutorWorkspaceFolders(workspaceFolders)
+  if (!sameWorkspaceFolders(canonicalWorkspaceFolders, state.workspaceFolders)) {
+    await assertWorkspaceMayChange(stateDir)
+  }
   const permittedPrograms = configuredCommandAllowlist(commandAllowlist)
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
@@ -278,8 +322,14 @@ export const configureExecutorLocalPolicy = async (
       operationKeys,
       profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
+      // Every proposed policy names its folders, including a single one. A
+      // pairing that predates the field keeps its unnamed descriptor until a
+      // person proposes something — which is this call, and which bumps the
+      // revision, so the reviewer sees the names appear rather than the meaning
+      // of an already-approved revision changing under them.
+      workspaceFolders: executorWorkspaceFolderNames(canonicalWorkspaceFolders),
     },
-    workspaceRoot: canonicalWorkspaceRoot,
+    workspaceFolders: [...canonicalWorkspaceFolders],
     ...(helper ? { nativeHelperPath: helper } : {}),
   }
   await saveExecutorState(stateDir, next, state)
@@ -406,13 +456,13 @@ const pairExecutorDependencies: PairExecutorDependencies = {
 
 const preparePairing = (
   input: PairExecutorInput,
-  workspaceRoot: string,
+  workspaceFolders: ExecutorWorkspaceFolder[],
 ): ExecutorPreparedPairing => {
   const keys = generateKeyPairSync('ed25519')
   const machinePublicKey = rawEd25519PublicKey(keys.publicKey)
   const descriptor = buildSignedDescriptor(
     keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url'),
-    initialLocalPolicy,
+    { ...initialLocalPolicy, workspaceFolders: executorWorkspaceFolderNames(workspaceFolders) },
   )
   const digest = `sha256:${createHash('sha256')
     .update(canonicalExecutorJson(descriptor.descriptor))
@@ -441,13 +491,13 @@ const preparePairing = (
       type: 'pkcs8',
     }).toString('base64url'),
     request,
-    workspaceRoot,
+    workspaceFolders,
   }
 }
 
 const assertPreparedPairingMatches = (
   input: PairExecutorInput,
-  workspaceRoot: string,
+  workspaceFolders: readonly ExecutorWorkspaceFolder[],
   prepared: ExecutorPreparedPairing,
 ): void => {
   let storedPublicKey: string
@@ -467,7 +517,7 @@ const assertPreparedPairingMatches = (
     || prepared.request.enrollmentId !== prepared.enrollmentId
     || prepared.request.challenge !== input.challenge
     || prepared.request.machinePublicKey !== storedPublicKey
-    || prepared.workspaceRoot !== workspaceRoot
+    || !sameWorkspaceFolders(prepared.workspaceFolders, workspaceFolders)
   ) {
     throw new Error(
       'This executor state directory contains a different unfinished pairing. '
@@ -480,12 +530,12 @@ export const pairExecutor = async (
   input: PairExecutorInput,
   dependencies: PairExecutorDependencies = pairExecutorDependencies,
 ): Promise<{ fingerprint: string }> => {
-  const workspaceRoot = await configureWorkspaceRoot(input.workspaceRoot)
+  const workspaceFolders = await configureExecutorWorkspaceFolders(input.workspaceFolders)
   let prepared = await dependencies.loadPrepared(input.stateDir)
   if (prepared) {
-    assertPreparedPairingMatches(input, workspaceRoot, prepared)
+    assertPreparedPairingMatches(input, workspaceFolders, prepared)
   } else {
-    prepared = preparePairing(input, workspaceRoot)
+    prepared = preparePairing(input, workspaceFolders)
     // No enrollment request may leave the host until its exact key and proof
     // can survive a lost response or process restart.
     await dependencies.savePrepared(input.stateDir, prepared)
@@ -493,11 +543,14 @@ export const pairExecutor = async (
   const pending = await dependencies.submitEnrollment(prepared.apiBaseUrl, prepared.request)
   const state: ExecutorLocalState = {
     apiBaseUrl: prepared.apiBaseUrl,
-    descriptor: initialLocalPolicy,
+    descriptor: {
+      ...initialLocalPolicy,
+      workspaceFolders: executorWorkspaceFolderNames(prepared.workspaceFolders),
+    },
     executorId: pending.executorId,
     machinePrivateKey: prepared.machinePrivateKey,
     machinePublicKey: prepared.request.machinePublicKey,
-    workspaceRoot: prepared.workspaceRoot,
+    workspaceFolders: prepared.workspaceFolders,
   }
   await dependencies.saveState(input.stateDir, state)
   await dependencies.clearPrepared(input.stateDir)
