@@ -257,15 +257,24 @@ dbTest('move out of a personal folder ends every share on the subtree', async ()
     assert.equal((response.json() as { data: { sharesEnded: number } }).data.sharesEnded, 1)
     assert.equal(await seeded.prisma.knowledgePageShare.count({ where: { pageId } }), 0)
 
-    const audit = await seeded.prisma.auditLog.findFirstOrThrow({
+    const moved = await seeded.prisma.auditLog.findFirstOrThrow({
       where: { resourceId: pageId, action: 'kb.page.moved' },
     })
-    const ended = (audit.metadata as Record<string, unknown>)['endedShares']
-    assert.deepEqual(ended, [{
+    assert.equal((moved.metadata as Record<string, unknown>)['sharesEnded'], 1)
+
+    // A move out of a personal space is a revocation, so it is told in the
+    // sharing surface's own words and against the page that lost the grant —
+    // not summarised in the mover's metadata, where an audit read on behalf of
+    // the grantee would never find it.
+    const unshared = await seeded.prisma.auditLog.findMany({
+      where: { resourceId: pageId, action: 'kb.page.unshared' },
+    })
+    assert.equal(unshared.length, 1)
+    assert.deepEqual(unshared[0]?.metadata, {
       granteeUserId: seeded.outsiderId,
       spaceId: seeded.personalSpaceId,
       by: 'moved',
-    }])
+    })
   } finally {
     await app.close()
     await teardownTransferWorld(seeded)
