@@ -1,18 +1,49 @@
 import { faCloudArrowUp } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
+/**
+ * What the overlay says, given what the pointer is carrying and where it would
+ * land. A count is only known once the drag is over the host (the items list
+ * is readable during a drag; `dataTransfer.files` is not), so every combination
+ * has to read as a whole sentence rather than a template with a hole in it.
+ *
+ * Pure, and exported, because the Finder's column and the toolbar's hidden
+ * file input must not drift into two spellings of the same sentence.
+ */
+export const dropZoneLabel = ({
+  count = 0,
+  destination,
+}: {
+  count?: number | null
+  destination?: string | null
+}): string => {
+  const files = typeof count === 'number' && count > 0 ? count : 0
+  const noun = files === 1 ? 'file' : 'files'
+  if (destination) {
+    return files > 0 ? `Drop ${files} ${noun} into ${destination}` : `Drop to upload into ${destination}`
+  }
+  return files > 0 ? `Drop ${files} ${noun} here` : 'Drop the file here'
+}
+
 // Full-cover overlay shown while a file is dragged over (or uploading to) a drop
 // host. The host must be `position: relative`. Renders a darkened backdrop with
 // a centered square dashed drop target; during upload it shows live progress.
 export const DropZoneOverlay = ({
   active,
+  count,
+  destination,
   uploading,
   progressPct,
-  label = 'Drop the file here',
+  label,
 }: {
   active: boolean
+  // How many files the pointer is carrying, when the host knows.
+  count?: number | null
+  // The folder the drop would land in; names the target in the sentence.
+  destination?: string | null
   uploading?: boolean
   progressPct?: number
+  // An explicit sentence, for a host whose drop is not "upload into a folder".
   label?: string
 }) => {
   if (!active && !uploading) return null
@@ -33,7 +64,9 @@ export const DropZoneOverlay = ({
             </div>
           </>
         ) : (
-          <span className="text-sm font-medium text-[color:var(--tx)]">{label}</span>
+          <span className="text-sm font-medium text-[color:var(--tx)]">
+            {label ?? dropZoneLabel({ count, destination })}
+          </span>
         )}
       </div>
     </div>
