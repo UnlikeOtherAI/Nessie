@@ -194,6 +194,33 @@ export const openPage = async (
   return { page }
 }
 
+/**
+ * The `accessSpaceForPageCreate` arm, for a surface that has no `FastifyReply`
+ * to answer with: may this credential create a page under `parentPageId`
+ * because the owner shared that page (or a folder above it) at `edit`?
+ *
+ * Answers false for an absent parent on purpose — creating at a space's root is
+ * the owner's, however generously they shared what is inside it.
+ */
+export const parentShareAllowsCreate = async (
+  context: McpToolContext,
+  spaceId: string,
+  parentPageId: unknown,
+): Promise<boolean> => {
+  const access = context.knowledge
+  if (!access || typeof parentPageId !== 'string' || !parentPageId) return false
+  const organizationId = context.actorContext.tenant.organizationId
+  const parent = await access.provider.getPage(organizationId, parentPageId)
+  if (!parent || parent.spaceId !== spaceId) return false
+  return viewerHoldsPageShare(context.prisma, {
+    organizationId,
+    actorType: context.actorContext.actor.actorType,
+    page: parent,
+    viewer: await access.buildViewer(context.actorContext),
+    minimum: 'edit',
+  })
+}
+
 export const pageTool = (
   name: string,
   toolId: SheetToolId,

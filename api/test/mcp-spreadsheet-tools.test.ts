@@ -465,6 +465,43 @@ runDatabaseTest('a credential reaches a shared spreadsheet exactly as far as the
     await prisma.knowledgePageShare.update({ where: { id: share.id }, data: { access: 'edit' } })
     assert.equal((await write()).error, undefined, 'an edit share writes')
 
+    // Creating is the HTTP door's rule, mirrored: the space root is the
+    // owner's, a folder they shared at `edit` is not.
+    const atRoot = await tool('nessie_sheet_create').run(asGrantee, {
+      spaceId: personal.id,
+      title: 'Not theirs to file here',
+    }) as { error?: string }
+    assert.match(atRoot.error ?? '', /not one this account can use/)
+
+    const folder = await prisma.knowledgePage.create({
+      data: {
+        organizationId: s.organizationId,
+        projectId: s.projectId,
+        spaceId: personal.id,
+        title: 'Models',
+        kind: 'folder',
+        status: 'published',
+        createdBy: s.userId,
+      },
+      select: { id: true },
+    })
+    await prisma.knowledgePageShare.create({
+      data: {
+        organizationId: s.organizationId,
+        pageId: folder.id,
+        spaceId: personal.id,
+        granteeUserId: grantee.id,
+        grantedByUserId: s.userId,
+        access: 'edit',
+      },
+    })
+    const inside = await tool('nessie_sheet_create').run(asGrantee, {
+      spaceId: personal.id,
+      title: 'Grantee model',
+      parentPageId: folder.id,
+    }) as { error?: string }
+    assert.equal(inside.error, undefined, 'an edit share on a folder is write access inside it')
+
     // Revocation is a hard delete, so the very next call finds nothing.
     await prisma.knowledgePageShare.delete({ where: { id: share.id } })
     assert.match((await read()).error ?? '', /not one this account can use/)
