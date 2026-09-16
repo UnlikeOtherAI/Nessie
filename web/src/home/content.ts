@@ -69,7 +69,7 @@ const orgShot = shot('control-host', 'An organisation’s own settings on an ins
 const auditShot = shot('control-audit', 'An audit trail of what each agent did, and what was refused')
 
 export const hero = {
-  title: 'Grow your team. Keep your people.',
+  title: 'Hire new AI employees. Keep your people.',
   text: 'Nessie gives you AI employees with a name, an email address and a seat in your channels. They take on the repetitive work, so your people can focus on customers and creative ideas. Nobody has to lose their job.',
 }
 

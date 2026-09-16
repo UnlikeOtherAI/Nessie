@@ -21,7 +21,8 @@ The whole site makes one argument; keep every change consistent with it.
 - **Nobody loses their job.**
 
 Copy the owner rejected: "Grow your team. Then make it massive." ("massive"
-sounds idiotic). Current hero title: "Grow your team. Keep your people."
+sounds idiotic). Current hero title: "Hire new AI employees. Keep your
+people." — "Grow your team." was the first half until 2026-09-16.
 
 Product backing for the claims: [agent email](../agent-email.md) and
 [agent communication](../agent-communication-spec.md). Claims still to confirm
