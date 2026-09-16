@@ -14,6 +14,7 @@ import { surfaceParent } from '../../navigation/surface-lookup'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,
+  type PageHeaderCustomAction,
 } from './ResponsivePageHeader'
 
 // The one header every screen renders (docs/navigation/overview.md §9, plan §4.9).
@@ -131,6 +132,10 @@ export const ScreenHeader = ({
     nativeBar,
   )
 
+  const customActions = (actions ?? []).filter(
+    (action): action is PageHeaderCustomAction => action.kind === 'custom',
+  )
+
   const pageBack = onBack && (flowOwnsBack || surfaceParent(pathname) !== null)
     ? (
       <PhoneBackButton
@@ -151,11 +156,13 @@ export const ScreenHeader = ({
     // taking it out of the visual bar the native chrome now owns — removing
     // it would break the announcement silently.
     //
-    // `eyebrow`, `leading` and `titleInput` have no lane in a native bar, so
-    // they stay with the page rather than being dropped: an agent's avatar, a
-    // "System managed" note and the workflow-name field are content, not
-    // chrome — and dropping the field would leave no way to rename at all.
+    // `eyebrow`, `leading`, `titleInput` and a `custom` action have no lane in
+    // a native bar, so they stay with the page rather than being dropped: an
+    // agent's avatar, a "System managed" note, the workflow-name field and the
+    // board's assignee filter are content, not chrome — and dropping the field
+    // would leave no way to rename at all.
     const below = eyebrow || leading || subtitle || tabs || titleInput
+      || customActions.length > 0
     return (
       <>
         <h1 className="sr-only" id={titleId}>{barTitle}</h1>
@@ -185,6 +192,13 @@ export const ScreenHeader = ({
             ) : null}
             {subtitle ? <div className="min-w-0">{subtitle}</div> : null}
             {tabs ? <div className="min-w-0">{tabs}</div> : null}
+            {customActions.length > 0 ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {customActions.map((action) => (
+                  <span key={action.id}>{action.render(false)}</span>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </>

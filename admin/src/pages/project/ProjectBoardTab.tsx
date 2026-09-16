@@ -1,51 +1,18 @@
 import { useMemo } from 'react'
-import { faList, faTableCellsLarge } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
-import { BoardAssigneeFilter } from '../../components/features/projects/kanban/BoardAssigneeFilter'
-import {
-  ALL_ASSIGNEES,
-  assigneeFilterOptions,
-  matchesAssigneeFilter,
-  parseAssigneeFilter,
-  type AssigneeFilter,
-} from '../../components/features/projects/kanban/board-assignee-filter'
+import { ALL_ASSIGNEES } from '../../components/features/projects/kanban/board-assignee-filter'
 import type { BoardColumnView } from '../../components/features/projects/kanban/kanban-config'
 import type { BoardRecord, BoardTaskRecord } from '../../facades/boards/hooks'
-import { useBoardTasks } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { useCanModifyProject } from '../../facades/projects/administration'
-import { useMoveTask, useTaskAssignees } from '../../facades/tasks/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { useProjectSources } from '../../facades/board-sources/hooks'
 import { SourceStatusStrip } from '../../components/features/projects/kanban/SourceStatusStrip'
 import { EmptyState } from '../../components/shared/EmptyState'
-import { TabBar, type TabBarItem } from '../../components/primitives/TabBar'
-import {
-  BOARD_VIEWS,
-  DEFAULT_BOARD_VIEW,
-  type BoardView,
-} from '../../components/features/projects/kanban/board-view'
-import { useTabParam } from '../../navigation/useTabParam'
-
-const VIEW_ITEMS: ReadonlyArray<TabBarItem<BoardView>> = [
-  {
-    icon: <FontAwesomeIcon icon={faTableCellsLarge} />,
-    label: 'Cards',
-    testId: 'board-view-cards',
-    value: 'cards',
-  },
-  {
-    icon: <FontAwesomeIcon icon={faList} />,
-    label: 'Lines',
-    testId: 'board-view-lines',
-    title: 'One line per card: title and priority only',
-    value: 'lines',
-  },
-]
+import { useBoardChrome } from './useBoardChrome'
 
 type ProjectBoardTabProps = {
   board: BoardRecord | null
@@ -54,12 +21,14 @@ type ProjectBoardTabProps = {
 }
 
 export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTabProps) => {
-  const tasksQuery = useBoardTasks(projectId, board?.id)
+  // The header owns the controls; this owns the board. Both read the same URL
+  // and the same query cache through `useBoardChrome`, so there is one answer
+  // to what is on screen rather than a prop chain through the page.
+  const chrome = useBoardChrome(projectId, board?.id)
+  const { setAssignee, showArchived, tasks, tasksQuery, view, visibleTasks } = chrome
   const { data: projects = [] } = useProjects()
   const { data: sources = [] } = useProjectSources(projectId, board?.id)
   const canAdminister = useCanModifyProject(projectId)
-  const { data: assignableUsers = [] } = useTaskAssignees()
-  const { me } = useAuthSession()
   const moveTask = useMoveTask()
   useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
 
@@ -73,32 +42,6 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   )
 
   const columns: BoardColumnView[] = board?.columns ?? []
-  const tasks = useMemo(() => tasksQuery.data?.tasks ?? [], [tasksQuery.data])
-
-  // A view over the board, not part of it: the choice lives in the URL beside
-  // `?board=`, so a reload keeps it and a narrowed board is a link somebody can
-  // send, while `Board.filter` stays the board's shared definition.
-  const [searchParams, setSearchParams] = useSearchParams()
-  const assignee = parseAssigneeFilter(searchParams.get('assignee'))
-  const currentUserId = me?.user.id ?? null
-  const setAssignee = (next: AssigneeFilter) => {
-    const params = new URLSearchParams(searchParams)
-    if (next === ALL_ASSIGNEES) params.delete('assignee')
-    else params.set('assignee', next)
-    setSearchParams(params, { replace: true })
-  }
-  const [view, setView] = useTabParam('view', BOARD_VIEWS, DEFAULT_BOARD_VIEW)
-
-  // Options come from the whole pool, so narrowing to one person does not empty
-  // the list you would use to pick somebody else.
-  const filterOptions = useMemo(
-    () => assigneeFilterOptions(tasks, assignableUsers),
-    [tasks, assignableUsers],
-  )
-  const visibleTasks = useMemo(
-    () => tasks.filter((task) => matchesAssigneeFilter(task, assignee, currentUserId)),
-    [tasks, assignee, currentUserId],
-  )
 
   const handleMove = (taskId: string, columnId: string, position: number) => {
     moveTask.mutate({ id: taskId, columnId, position })
@@ -135,33 +78,14 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
           </span>
         </div>
       ) : null}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="min-w-0 w-full sm:flex-1">
-          <SourceStatusStrip
-            canAdminister={canAdminister}
-            projectId={projectId}
-            sources={sources}
-          />
-        </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <TabBar<BoardView>
-            ariaLabel="Board view"
-            items={VIEW_ITEMS}
-            onChange={setView}
-            role="radiogroup"
-            size="sm"
-            touchTarget
-            value={view}
-          />
-          <BoardAssigneeFilter
-            currentUserId={currentUserId}
-            onChange={setAssignee}
-            people={filterOptions.people}
-            remote={filterOptions.remote}
-            value={assignee}
-          />
-        </div>
-      </div>
+      {/* Health, not a control: it renders nothing until a connected source
+          has something to say, and its remedy is one press from the board.
+          The controls that used to share this row are in the header. */}
+      <SourceStatusStrip
+        canAdminister={canAdminister}
+        projectId={projectId}
+        sources={sources}
+      />
       {tasksQuery.data?.truncated ? (
         <div className="text-xs text-[color:var(--tx3)]">
           {/* The cap is on the board read, so it bounds what any filter can
@@ -218,6 +142,7 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
             onOpenTask={onOpenTask}
             projectId={projectId}
             projectNameById={projectNameById}
+            showArchived={showArchived}
             showProject={false}
             tasks={visibleTasks}
             view={view}

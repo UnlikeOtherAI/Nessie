@@ -1,5 +1,5 @@
 import { faUsers } from '@fortawesome/free-solid-svg-icons'
-import { useState, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import type { ProjectRecord } from '../../../lib/api-client'
 import { useCanModifyProject } from '../../../facades/projects/administration'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
@@ -7,7 +7,15 @@ import { ScreenHeader } from '../../shared/ScreenHeader'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type ProjectPageHeaderProps = {
-  actions?: PageHeaderAction[]
+  /**
+   * A function when the screen wants the Members doorway somewhere of its own
+   * — the board puts it in Configure rather than spending a header slot on it
+   * — and pairs that with `membersAction={false}`. The dialog stays here
+   * either way, so every project route opens the same one.
+   */
+  actions?: PageHeaderAction[] | ((openMembers: () => void) => PageHeaderAction[])
+  /** Whether this header draws its own Members action. */
+  membersAction?: boolean
   backLabel?: string
   onBack?: () => void
   project: ProjectRecord | undefined
@@ -30,6 +38,7 @@ type ProjectPageHeaderProps = {
 export const ProjectPageHeader = ({
   actions = [],
   backLabel,
+  membersAction = true,
   onBack,
   project,
   subtitle,
@@ -38,18 +47,20 @@ export const ProjectPageHeader = ({
 }: ProjectPageHeaderProps) => {
   const canManageMembers = useCanModifyProject(project?.id ?? null)
   const [membersOpen, setMembersOpen] = useState(false)
-  const projectActions: PageHeaderAction[] = project
+  const openMembers = useCallback(() => setMembersOpen(true), [])
+  const given = typeof actions === 'function' ? actions(openMembers) : actions
+  const projectActions: PageHeaderAction[] = project && membersAction
     ? [
-        ...actions,
+        ...given,
         {
           icon: faUsers,
           id: 'project-members',
           label: `Members (${project.memberCount})`,
-          onSelect: () => setMembersOpen(true),
+          onSelect: openMembers,
           priority: 80,
         },
       ]
-    : actions
+    : given
 
   return (
     <>
