@@ -9,6 +9,7 @@ import {
   isAgentCoreDocumentPage,
   knowledgeEmbeddingJobKey,
   loadSpaceViewer,
+  viewerHoldsPageShare,
   type KnowledgePageRecord,
   type KnowledgeProvider,
   type KnowledgeSpaceRecord,
@@ -303,7 +304,25 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     return space
   }
 
-  // Enforces access on the space a page belongs to.
+  // The person-to-person share arm of the two access modes, and the only place
+  // a `KnowledgePageShare` ever widens anything. `viewerHoldsPageShare` carries
+  // the preconditions; a caller that needs the owner's own authority asks
+  // `requirePageOwnerWrite` instead.
+  const pageShareAllows = (
+    actorContext: AuthorizedActionContext,
+    page: KnowledgePageRecord,
+    viewer: SpaceViewer,
+    mode: 'read' | 'write',
+  ): Promise<boolean> => viewerHoldsPageShare(prisma, {
+    organizationId: actorContext.tenant.organizationId,
+    actorType: actorContext.actor.actorType,
+    page,
+    viewer,
+    minimum: mode === 'read' ? 'view' : 'edit',
+  })
+
+  // Enforces access on the space a page belongs to, plus the page-level share
+  // arm for a person the owner shared this page (or an ancestor folder) with.
   const accessPageSpace = async (
     actorContext: AuthorizedActionContext,
     page: KnowledgePageRecord,
@@ -311,14 +330,87 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     mode: 'read' | 'write',
     reply: FastifyReply,
   ): Promise<boolean> => {
-    if ((await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) === null) return false
+    const space = await provider.getSpace(actorContext.tenant.organizationId, page.spaceId)
+    if (!space) {
+      sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
+      return false
+    }
+    const spaceAllows = mode === 'read' ? canReadSpace(space, viewer) : canWriteSpace(space, viewer)
+    if (!spaceAllows && !(await pageShareAllows(actorContext, page, viewer, mode))) {
+      denyAccess(reply, mode === 'read' ? 'NOT_A_SPACE_MEMBER' : 'WRITE_NOT_PERMITTED')
+      return false
+    }
 
     // Unversioned page metadata and annotations inherit every retained
     // version's source boundary. Letting an editor alter such a page without
-    // reading its history would create a disclosure bypass.
+    // reading its history would create a disclosure bypass. A share never
+    // reaches past it: the basis check runs for a grantee exactly as it does
+    // for a member, which is why an `edit` grant cannot open a version the
+    // recipient could not already have been shown.
     if (await canReadPageVersion(viewer, page)) return true
     denyAccess(reply, 'VERSION_SOURCE_RESTRICTED')
     return false
+  }
+
+  /**
+   * Write access that ignores shares entirely: the acts that stay the owner's
+   * however generously they shared a page — publish, move, archive, and the
+   * share routes themselves.
+   *
+   * Publishing is the owner's statement that a version is current; the tree and
+   * the audience are the owner's structure. An editor who could publish would
+   * replace the owner's published version without an act of theirs, and an
+   * editor who could re-share would make the owner's "Has access" list stop
+   * being the truth.
+   */
+  const requirePageOwnerWrite = async (
+    actorContext: AuthorizedActionContext,
+    page: KnowledgePageRecord,
+    viewer: SpaceViewer,
+    reply: FastifyReply,
+  ): Promise<boolean> => {
+    if ((await accessSpace(actorContext, page.spaceId, viewer, 'write', reply)) === null) return false
+    if (await canReadPageVersion(viewer, page)) return true
+    denyAccess(reply, 'VERSION_SOURCE_RESTRICTED')
+    return false
+  }
+
+  /**
+   * `POST /spaces/:spaceId/pages` for a recipient of an `edit` share: creating
+   * inside a shared folder is writing inside the grant's subtree, so it is
+   * allowed, while creating at the space root never consults shares at all.
+   *
+   * The new page is created by the recipient (`createdBy`) in the owner's space
+   * with the owner's scope columns, and inherits the folder's share reach
+   * through the ancestor walk rather than through a row of its own.
+   */
+  const accessSpaceForPageCreate = async (
+    actorContext: AuthorizedActionContext,
+    spaceId: string,
+    viewer: SpaceViewer,
+    parentPageId: string | null | undefined,
+    reply: FastifyReply,
+  ): Promise<KnowledgeSpaceRecord | null> => {
+    const space = await provider.getSpace(actorContext.tenant.organizationId, spaceId)
+    if (!space) {
+      sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
+      return null
+    }
+    if (canWriteSpace(space, viewer)) return space
+    if (parentPageId) {
+      const parent = await provider.getPage(actorContext.tenant.organizationId, parentPageId)
+      // The parent must live in the space being written to; otherwise an edit
+      // share on a page in one space would authorize a create in another.
+      if (
+        parent
+        && parent.spaceId === spaceId
+        && (await pageShareAllows(actorContext, parent, viewer, 'write'))
+      ) {
+        return space
+      }
+    }
+    denyAccess(reply, 'WRITE_NOT_PERMITTED')
+    return null
   }
 
   const filterReadablePages = async (
@@ -336,8 +428,11 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     buildViewer,
     denyAccess,
     accessSpace,
+    accessSpaceForPageCreate,
     accessPageSpace,
     canReadVersion,
+    canReadPageVersionsWithViewer,
+    requirePageOwnerWrite,
     buildDisclosureViewer: disclosureViewerFor,
     filterReadablePages,
   }

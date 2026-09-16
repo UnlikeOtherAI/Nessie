@@ -4,6 +4,7 @@ import { useUsers } from '../../../facades/users/hooks'
 import { useTeamMembers } from '../../../facades/users/team-members'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { toFormErrors } from '../../../facades/forms/form-errors'
+import { ChoiceGroup } from '../../shared/ChoiceGroup'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { FormField } from '../../shared/FormField'
@@ -24,12 +25,25 @@ type SpaceSettingsDialogProps = {
     memberAgentIds?: string[]
     memberUserIds?: string[]
     name: string
+    visibility?: KnowledgeSpaceRecord['visibility']
     writeRestricted?: boolean
   }) => Promise<void>
   open: boolean
   pending?: boolean
   space: KnowledgeSpaceRecord
 }
+
+const VISIBILITY_OPTIONS: {
+  value: KnowledgeSpaceRecord['visibility']
+  label: string
+  description: string
+}[] = [
+  { description: 'Only you and people or agents you add', label: 'Private', value: 'private' },
+  { description: 'Everyone in a channel you pick', label: 'Channel', value: 'channel' },
+  { description: 'Everyone on your team', label: 'Team', value: 'team' },
+  { description: 'Everyone on the project', label: 'Project', value: 'project' },
+  { description: 'Everyone in the organization', label: 'Organization', value: 'organization' },
+]
 
 // The API supplies the access-administration entitlement independently of the
 // ordinary content-write verdict. A writer may still edit the descriptive
@@ -61,6 +75,7 @@ export const SpaceSettingsDialog = ({
   const [memberAgentIds, setMemberAgentIds] = useState<string[]>(space.memberAgentIds)
   const [memberUserIds, setMemberUserIds] = useState<string[]>(space.memberUserIds)
   const [writeRestricted, setWriteRestricted] = useState(space.writeRestricted)
+  const [visibility, setVisibility] = useState<KnowledgeSpaceRecord['visibility']>(space.visibility)
   const [formError, setFormError] = useState<string | undefined>()
 
   useEffect(() => {
@@ -70,6 +85,7 @@ export const SpaceSettingsDialog = ({
       setMemberAgentIds(space.memberAgentIds)
       setMemberUserIds(space.memberUserIds)
       setWriteRestricted(space.writeRestricted)
+      setVisibility(space.visibility)
       setFormError(undefined)
     }
   }, [open, space])
@@ -88,7 +104,7 @@ export const SpaceSettingsDialog = ({
         name: trimmedName,
         description: description.trim() ? description.trim() : null,
         ...(canManageAccess
-          ? { memberAgentIds, memberUserIds: effectiveMemberUserIds, writeRestricted }
+          ? { memberAgentIds, memberUserIds: effectiveMemberUserIds, visibility, writeRestricted }
           : {}),
       })
     } catch (error) {
@@ -121,6 +137,17 @@ export const SpaceSettingsDialog = ({
 
         {canManageAccess ? (
           <div className="grid gap-3">
+            {/* Who the folder is *for*, which is the first question about it
+                and, until now, the one this dialog could not answer: the value
+                could be chosen at creation and never changed again, so a
+                folder created private stayed private with no way back. */}
+            <ChoiceGroup
+              label="Visibility"
+              onChange={setVisibility}
+              options={VISIBILITY_OPTIONS}
+              value={visibility}
+              variant="card"
+            />
             <div className="flex items-start justify-between gap-3">
               <span>
                 <span className="block text-sm font-medium text-[color:var(--tx)]">Restrict editing</span>

@@ -50,7 +50,7 @@ sentence changes only if the invariant itself did.
   person to check a screen you can open yourself.
 - **Project usability browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
-  CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
+  The on-request Browser Suites workflow runs it in Navigation Transitions through a fixed-port lifecycle harness,
   between the navigation and independent connected-mail suites.
 - **Mailbox onboarding browser coverage:** run
   `pnpm --filter @nessie/admin test:e2e:mailbox-onboarding`. CI runs it in
@@ -65,12 +65,12 @@ sentence changes only if the invariant itself did.
   [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md).
 - **Private-conversation disclosure browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:disclosure` after
-  building `@nessie/mock-llm`. CI runs it first in Navigation Transitions on
+  building `@nessie/mock-llm`. The on-request Browser Suites workflow runs it first in Navigation Transitions on
   the same fixed ports; details and limits are in
   [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
 - **Agent-conversations browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:agent-conversations`.
-  CI runs it in Navigation Transitions after the connected-mail suite, on the
+  The on-request Browser Suites workflow runs it in Navigation Transitions after the connected-mail suite, on the
   same fixed ports. It brings up its own scripted inference endpoint
   (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
   reads that server's request log. It covers the DM rail, two isolated
@@ -85,12 +85,18 @@ sentence changes only if the invariant itself did.
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
   model dropdown, and the tool/app fold that arrives closed.
+- **The browser suites run on request, not on every push.** They live in
+  `.github/workflows/browser-suites.yml`; start them with
+  `gh workflow run browser-suites.yml --ref <branch>` or from the Actions tab.
+  Nothing runs them automatically, so a branch that touches the admin shell,
+  navigation surfaces, the mailbox or the documents browser should be given a
+  run before it merges.
 - **A CI browser fixture takes three edits, not one.** Navigation Transitions
   serves a *preview build* (`NAV_E2E_ADMIN_MODE: preview`), not the dev
   server, so a new `admin/e2e/<name>/index.html` is not served at all unless
   **(1)** it is a rollup input in `admin/vite.config.ts` behind its own
   `NESSIE_<NAME>_E2E_FIXTURE` flag, which keeps it out of release bundles,
-  **(2)** that flag is set on the job in `.github/workflows/ci.yml`, and
+  **(2)** that flag is set on the job in `.github/workflows/browser-suites.yml`, and
   **(3)** the flag is listed under `@nessie/admin#build`'s `env` in
   `turbo.json`. Miss (3) and CI restores a cached bundle built without the
   fixture, which fails exactly like missing (1) — the flag has to be in the
@@ -106,7 +112,7 @@ sentence changes only if the invariant itself did.
   agent is owner-only while adding a person is any member.
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
-  CI runs it in that same managed Navigation Transitions lifecycle before the
+  The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the
   project usability suite.
 - **Spreadsheets browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:spreadsheets` — two real

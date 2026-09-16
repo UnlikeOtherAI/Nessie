@@ -1,3 +1,8 @@
+import type {
+  KnowledgeIndexingState,
+  KnowledgePageTransferState,
+} from '@nessie/schemas'
+
 import type { SpaceViewer } from './access.js'
 
 export type KnowledgeProviderKind =
@@ -19,10 +24,14 @@ export type KnowledgeVisibility =
 export type KnowledgeSensitivityTier = 'normal' | 'sensitive' | 'restricted'
 export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
 // A page is an editable rich-text document, a stored file node (each version
-// backed by an Attachment), or a spreadsheet — a live IronCalc workbook whose
-// journal is `spreadsheet_op_batches` and whose durable versions are xlsx
-// renditions. Folders stay virtual (a document with children).
-export type KnowledgePageKind = 'document' | 'file' | 'spreadsheet'
+// backed by an Attachment), a folder, or a spreadsheet. A folder is a page of
+// kind `folder`: no versions, never published, never indexed; its children are
+// the pages whose `parentPageId` is it. A spreadsheet is a live IronCalc
+// workbook whose journal is `spreadsheet_op_batches` and whose durable
+// versions are xlsx renditions — never a file node that happens to be an xlsx.
+// Every branch over this union is exhaustive on purpose — a kind added later
+// must say what it does rather than read as a document.
+export type KnowledgePageKind = 'document' | 'file' | 'folder' | 'spreadsheet'
 export type KnowledgeAuthorType = 'user' | 'agent'
 export type KnowledgeDocumentRole =
   | 'identity'
@@ -146,6 +155,22 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   deletedAt: string | null
   createdAt: string
   updatedAt: string
+  // The Finder's row fields. Optional in Wave 0 and filled by the listing
+  // enrichment in Wave 1A, which is when the `?` comes off: a contract that
+  // demanded them before anything computed them would have made every existing
+  // construction site a compile error for a field nobody could yet supply.
+  //
+  // `mime`/`sizeBytes`: a file's current version's attachment, a document's
+  // octet_length(body), null for a folder. `sizeBytes` is a decimal string
+  // because it is a BigInt (docs/standards/file-storage.md).
+  mime?: string | null
+  sizeBytes?: string | null
+  // KnowledgePageShare rows on this page; 0 outside personal spaces.
+  shareCount?: number
+  indexing?: KnowledgeIndexingState
+  // Set while a cross-space move or copy of this page is in flight. The row
+  // reads "Moving…"/"Copying…" and refuses edits, moves and deletes.
+  transfer?: KnowledgePageTransferState | null
 }
 
 export type KnowledgeSearchPassage = {

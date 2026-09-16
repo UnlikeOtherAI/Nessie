@@ -32,7 +32,10 @@ test('every section-sidebar row file wires sidebarAriaCurrent alongside its acti
   const files = [
     '../src/layouts/admin-shell/SidebarNav.tsx',
     '../src/layouts/admin-shell/AdminSidebarNav.tsx',
-    '../src/layouts/admin-shell/KnowledgeSidebarNav.tsx',
+    // Knowledge has no secondary sidebar any more: the Documents Finder's own
+    // root column is the section's first column, and its rows are
+    // `role="option"` with `aria-selected` rather than sidebar rows with an
+    // `active` class (finder-root-column.test.ts covers them).
     // The Projects sidebar's own row rendering lives in ProjectRow.tsx (the
     // project tile) and ProjectSectionRows.tsx (its sections and boards);
     // ProjectsSidebarNav.tsx itself is the orchestrator and no longer
@@ -45,7 +48,6 @@ test('every section-sidebar row file wires sidebarAriaCurrent alongside its acti
     '../src/layouts/admin-shell/SidebarDmSection.tsx',
     '../src/layouts/admin-shell/SidebarProjectsSection.tsx',
     '../src/layouts/admin-shell/SidebarStarredSection.tsx',
-    '../src/components/features/knowledge/KnowledgeSpaceList.tsx',
     '../src/components/features/personal-assistant/PersonalAssistantSurface.tsx',
   ]
   for (const file of files) {
@@ -72,6 +74,17 @@ test('every section-sidebar row file wires sidebarAriaCurrent alongside its acti
 // here as the single exception to the rule above. Dashboards moved into
 // Projects, that row is gone, and the exception went with it — every remaining
 // row in these files pairs its `active` class with `sidebarAriaCurrent(...)`.
+
+test('the Knowledge root column marks its selected row with aria-selected', () => {
+  // The navy sidebar's rows were links with an `active` class; the Finder's
+  // root is a listbox, so "which one is open" is `aria-selected` on a
+  // `role="option"` row and the CSS keys off that rather than off a class.
+  const row = source('../src/components/shared/RowList.tsx')
+  assert.match(row, /'aria-selected': ariaSelected,/)
+  assert.match(row, /role=\{role\}/)
+  const rootColumn = source('../src/components/features/knowledge/finder/FinderRootColumn.tsx')
+  assert.match(rootColumn, /role="listbox"/)
+})
 
 test('the skip link is mounted at the top of the shell and targets its own main', () => {
   const shell = source('../src/layouts/AdminShellLayout.tsx')
@@ -163,14 +176,17 @@ test('the channel composer container reserves space for the keyboard inset', () 
   assert.match(composer, /paddingBottom: 'calc\(14px \+ var\(--keyboard-inset, 0px\)\)'/)
 })
 
-test('the channel list and knowledge tree sidebars carry a stable scroll-memory key', () => {
+test('the channel list and the Finder columns carry a stable scroll-memory key', () => {
   const sidebarNav = source('../src/layouts/admin-shell/SidebarNav.tsx')
   assert.match(sidebarNav, /useScrollMemory\('sidebar:channel-list'\)/)
   assert.match(sidebarNav, /ref=\{channelListScroll\.ref\}/)
 
-  const knowledgeNav = source('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx')
-  assert.match(knowledgeNav, /useScrollMemory\('sidebar:knowledge-tree'\)/)
-  assert.match(knowledgeNav, /ref=\{treeScroll\.ref\}/)
+  // Knowledge's scroll memory moved with its sidebar: each Finder column is a
+  // scroll region of its own, keyed by which folder it is showing, so
+  // returning to the section lands every column where it was left.
+  const finder = source('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+  assert.match(finder, /scrollKey="finder:root"/)
+  assert.match(finder, /scrollKey=\{`finder:\$\{level\.key\}`\}/)
 })
 
 test('the agents list already remembers its scroll position per scope', () => {

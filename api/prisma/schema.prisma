@@ -570,13 +570,28 @@ enum KnowledgePageStatus {
   archived
 }
 
-// A page is either an editable rich-text document (the default) or a stored
-// file node whose content lives in object storage (each version → one
-// Attachment). Folders stay virtual: a `document` page with child pages.
+// A page is either an editable rich-text document (the default), a stored file
+// node whose content lives in object storage (each version → one Attachment),
+// or a folder. A folder is a page of kind `folder`: no versions, never
+// published, never indexed; its children are the pages whose `parentPageId` is
+// it. The older convention — a `document` page rendered as a folder because it
+// carried `metadata.folder` or had children — is retired: it turned any
+// document that gained a sub-page into a folder on screen, and no server-side
+// listing could exclude folders without loading a whole space first.
 enum KnowledgePageKind {
   document
   file
+  folder
   spreadsheet
+}
+
+// What a person-to-person share lets the recipient do. `view`: read, download,
+// follow links. `edit`: also write new versions, upload file versions, add
+// attachments, rename. Never: publish, move, delete, re-share — those stay the
+// owner's (docs/plans/2026-09-16-documents-finder-ui/data-and-api.md §2).
+enum KnowledgePageShareAccess {
+  view
+  edit
 }
 
 enum KnowledgeAuthorType {
@@ -1082,6 +1097,11 @@ model User {
   checkpointDisclosureSources           RunCheckpointDisclosureSource[]
   thoughtDisclosureSources              ThoughtDisclosureSource[]
   knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
+  // Pages somebody else shared with this person. There is deliberately no
+  // back-relation for shares this person granted: the sharer is always the
+  // page's owner, reachable through the page, and a second relation would
+  // invite a query that reads a grant list without reading the page's space.
+  knowledgePageSharesReceived           KnowledgePageShare[]                   @relation("KnowledgePageSharesReceived")
   userAlertActivity                     UserAlert[]                            @relation("UserAlertActor")
   messageThreadFollows                  MessageThreadFollow[]
   favorites                             Favorite[]
@@ -1289,6 +1309,7 @@ model Organization {
   thoughts                              Thought[]
   knowledgeSpaces                       KnowledgeSpace[]
   knowledgePages                        KnowledgePage[]
+  knowledgePageShares                   KnowledgePageShare[]
   knowledgePageVersionBasisScopes       KnowledgePageVersionBasisScope[]
   knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
   knowledgePageChunks                   KnowledgePageChunk[]
@@ -2274,6 +2295,11 @@ enum UserAlertKind {
   // A workflow run failed. It is durable because a run that fails while no
   // device is registered still needs to reach the people who can inspect it.
   workflow_run_failed
+  // Somebody shared one of their own documents with this person. The value
+  // exists before anything writes it: a NOTIFY payload carrying a kind an
+  // older replica cannot parse crashes that replica during a blue-green swap,
+  // so the reader side lands one deploy ahead of the writer.
+  knowledge_shared
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -5759,6 +5785,7 @@ model KnowledgePage {
   coreDocumentFor        AgentCoreDocument?        @relation("AgentCoreDocumentPage")
   personalCoreOverlayFor PersonalAgentCoreOverlay? @relation("PersonalAgentCoreOverlayPage")
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shares                 KnowledgePageShare[]
   spreadsheetHead        SpreadsheetHead?
   spreadsheetOpBatches   SpreadsheetOpBatch[]
 
@@ -5843,6 +5870,39 @@ model SpreadsheetOpBatch {
   @@unique([pageId, actorId, clientOpId], map: "spreadsheet_op_batches_page_actor_client_key")
   @@index([pageId, createdAt], map: "spreadsheet_op_batches_page_created_idx")
   @@map("spreadsheet_op_batches")
+}
+
+/// One person granted access to one page at one level. For a folder the grant
+/// covers every descendant at read (and write) time through a recursive
+/// ancestor walk, never by copying rows — a move inside the owner's space must
+/// not have to rewrite a grant list. Only pages in the sharer's own personal
+/// space may carry a share; the route enforces that, the schema does not.
+///
+/// Revocation is a hard delete: the audit trail (`kb.page.unshared`) is the
+/// history, and a tombstone row would have to be excluded from every read.
+model KnowledgePageShare {
+  id              String                   @id @default(uuid()) @db.Uuid
+  organizationId  String                   @map("organization_id") @db.Uuid
+  pageId          String                   @map("page_id") @db.Uuid
+  // Denormalised from the page for the grantee's listing and for the
+  // per-space invariant checks. A page never changes space through movePage,
+  // and a transfer out of the personal space ends every share on the subtree,
+  // so this column cannot drift from the page's own space_id.
+  spaceId         String                   @map("space_id") @db.Uuid
+  granteeUserId   String                   @map("grantee_user_id") @db.Uuid
+  grantedByUserId String                   @map("granted_by_user_id") @db.Uuid
+  access          KnowledgePageShareAccess @default(view)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  page         KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  grantee      User          @relation("KnowledgePageSharesReceived", fields: [granteeUserId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, granteeUserId])
+  @@index([granteeUserId, createdAt(sort: Desc)], map: "knowledge_page_shares_grantee_created_idx")
+  @@index([organizationId, spaceId], map: "knowledge_page_shares_org_space_idx")
+  @@map("knowledge_page_shares")
 }
 
 model KnowledgePageVersion {

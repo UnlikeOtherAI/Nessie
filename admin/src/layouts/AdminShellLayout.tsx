@@ -13,7 +13,6 @@ import { AttentionDisplayManager } from '../bridges/AttentionDisplayManager';
 import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
-import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { LocalBackProvider } from '../navigation/LocalBackContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
@@ -258,7 +257,10 @@ const AuthenticatedAdminShellLayout = () => {
   // secondary column on desktop; everything else falls back to the
   // channels/DMs SidebarNav.
   const secNavElement = shell.isKnowledgeRoute ? (
-    <KnowledgeSidebarNav />
+    // Knowledge has no secondary sidebar any more: its own first column is the
+    // root of the Documents Finder, and a navy picker in front of it was the
+    // thing the redesign removed. Feedback is the other section with none.
+    null
   ) : shell.isProjectsRoute ? (
     <ProjectsSidebarNav
       onToggleStar={shell.toggleStar}

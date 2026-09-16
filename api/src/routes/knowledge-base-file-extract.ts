@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { KnowledgeInferenceOriginError } from '@nessie/knowledge'
+import { isExtractableUpload, KnowledgeInferenceOriginError } from '@nessie/knowledge'
 import { KNOWLEDGE_EXTRACT_TOPIC } from '@nessie/schemas'
 
 import { enqueueQueueJob } from '@nessie/db'
@@ -9,30 +9,13 @@ import {
   requireApiKnowledgeInferenceOrigin,
 } from '../services/knowledge-inference-origin.js'
 
-// File kinds/extensions worth deterministic text extraction. The worker
-// (worker/src/control/knowledge-extract.ts) re-checks extractability
-// defensively — this predicate exists twice by design (once here, to avoid
-// enqueuing dead-end jobs; once in the worker, in case the two ever drift).
-// Markdown never reaches this predicate: knowledge-base-files.ts short-circuits
-// it into a native document before a file-node page ever exists.
-const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-const EXTRACTABLE_TEXT_EXTENSIONS = new Set([
-  'txt', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml', 'html', 'htm', 'css',
-  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'rb', 'php', 'go', 'rs', 'java',
-  'c', 'h', 'cpp', 'hpp', 'cs', 'swift', 'kt', 'sh', 'bash', 'sql', 'toml', 'ini',
-  'log', 'env', 'conf', 'properties',
-])
-
-const extensionOf = (filename: string): string | undefined =>
-  filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
-
-export const isExtractableUpload = (filename: string, mime: string): boolean => {
-  if (mime.startsWith('text/')) return true
-  if (mime === 'application/pdf') return true
-  if (mime === DOCX_MIME) return true
-  const ext = extensionOf(filename)
-  return ext ? ext === 'pdf' || ext === 'docx' || EXTRACTABLE_TEXT_EXTENSIONS.has(ext) : false
-}
+// Which uploads are worth deterministic text extraction now lives in
+// @nessie/knowledge (`extractable.ts`), shared by this route, the worker's
+// defensive re-check, and the Finder's indexing status — which says "Not
+// indexed — unsupported" out loud and would have been lying whenever the two
+// former copies of the list drifted. Re-exported here so existing importers of
+// this module keep one import surface.
+export { isExtractableUpload }
 
 // Fire-and-forget, mirroring emitAuditEvent (services/audit.ts): the file
 // node/version is already committed by the time this runs, so a queue-insert

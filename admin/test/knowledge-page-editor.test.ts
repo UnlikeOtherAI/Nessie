@@ -26,7 +26,9 @@ test('new pages can choose an existing document as their parent', () => {
   assert.match(editor, /parentOptions\(pages\)/)
   assert.match(editor, /parentPageId: mode === 'create' \? draftParentPageId : undefined/)
   assert.match(workspace, /pages=\{pages\}/)
-  assert.match(workspace, /spaceName=\{selectedSpace\?\.name \?\? 'Pages'\}/)
+  // "Documents", not "Pages": the section, the root row and the editor's
+  // breadcrumb all say the word the owner uses.
+  assert.match(workspace, /spaceName=\{selectedSpace\?\.name \?\? 'Documents'\}/)
 })
 
 test('an open document exposes the New page doorway in its header and child section', () => {
@@ -65,12 +67,13 @@ test('saving follows a parent changed in the editor location picker', () => {
   assert.match(mutations, /setPagePath\(\[\.\.\.parentPath, created\.id\]\)/)
 })
 
-test('the selected Space expands into the page hierarchy in the left sidebar', () => {
-  const sidebar = read('../../../layouts/admin-shell/KnowledgeSidebarNav.tsx')
-  const tree = read('KnowledgeSidebarPageTree.tsx')
-  assert.match(sidebar, /<KnowledgeSidebarPageTree/)
-  assert.match(sidebar, /activePageId=\{showSelectedSpace \? openPageId : undefined\}/)
-  assert.match(sidebar, /openPagePath\(path\)/)
-  assert.match(tree, /childrenOf\(page\.id\)/)
-  assert.match(tree, /aria-current=\{sidebarAriaCurrent\(active\)\}/)
+test('the open folder expands into the next column of the Finder', () => {
+  // The page hierarchy used to be a disclosure tree inside the navy sidebar.
+  // With the sidebar gone, walking into a folder is what opens the next
+  // column — one browser, not a tree beside it (browser-ui.md §4, Rejected).
+  const finder = read('finder/DocumentsFinder.tsx')
+  assert.match(finder, /key: `folder:\$\{folder\.id\}`/)
+  assert.match(finder, /parentPageId: folder\.id/)
+  assert.match(finder, /browseTo\(\[\.\.\.prefix, page\.id\]\)/)
+  assert.match(finder, /dispatch\(\{ columnKey: `folder:\$\{page\.id\}`, type: 'enterColumn' \}\)/)
 })

@@ -54,13 +54,17 @@ import { registerIterationRoutes } from './routes/iterations.js'
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
+import { registerKnowledgeFinderRoutes } from './routes/knowledge-finder.js'
 import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
 import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
 import { registerKnowledgeRecentPagesRoutes } from './routes/knowledge-recent-pages.js'
 import { registerKnowledgeSpreadsheetRoutes } from './routes/knowledge-spreadsheets.js'
 import { createSpreadsheetRouteContext } from './routes/knowledge-spreadsheets-context.js'
+import { registerKnowledgeSharedWithMeRoutes } from './routes/knowledge-shared-with-me.js'
+import { registerKnowledgeShareRoutes } from './routes/knowledge-shares.js'
 import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
 import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
+import { registerKnowledgeTransferRoutes } from './routes/knowledge-transfers.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerMeetingLinkRoutes } from './routes/meeting-links.js'
@@ -212,12 +216,16 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerKnowledgeBaseRoutes(app, deps, spreadsheetContext)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
+  registerKnowledgeFinderRoutes(app, deps)
   registerKnowledgeLibrarianRoutes(app, deps)
   registerKnowledgeLinkRoutes(app, deps)
   registerKnowledgeRecentPagesRoutes(app, deps)
   registerKnowledgeSpreadsheetRoutes(app, deps, spreadsheetContext)
+  registerKnowledgeSharedWithMeRoutes(app, deps)
+  registerKnowledgeShareRoutes(app, deps)
   registerKnowledgeSummaryRoutes(app, deps)
   registerKnowledgeTaskRoutes(app, deps)
+  registerKnowledgeTransferRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerTaskChecklistRoutes(app, deps)
   registerBillingRoutes(app, deps)

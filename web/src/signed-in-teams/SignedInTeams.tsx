@@ -47,6 +47,9 @@ export const SignedInTeamsSection = ({ teams }: { teams: readonly LandingTeam[] 
   if (teams.length === 0) return null
   return (
     <section aria-labelledby="n-teams-title" className="n-teams">
+      {/* The bar belongs to the content, not the section: it has to span the
+          heading and the cards together and grow with them. */}
+      <div className="n-teams-inner">
       <h2 className="n-teams-title" id="n-teams-title">You’re signed in</h2>
       <p className="n-teams-lede">
         Open one of your teams to pick up where you left off — or keep reading.
@@ -70,6 +73,7 @@ export const SignedInTeamsSection = ({ teams }: { teams: readonly LandingTeam[] 
           </li>
         ))}
       </ul>
+      </div>
     </section>
   )
 }
