@@ -21,6 +21,22 @@ export type RealtimeDeliveryEntitlements = {
     organizationId: string
     userId: string
   }) => Promise<boolean>
+  /**
+   * May this person still read this knowledge page? The document lane's
+   * equivalent of the channel question, asked on every event through the same
+   * 5 s memo — the lane holds a socket open for as long as a pane is open, so
+   * subscription-time authorization alone would let a reader removed from the
+   * space keep receiving a live spreadsheet.
+   *
+   * Implemented in `hub.ts` (`loadSpaceViewer` + `canReadSpace` + the
+   * every-version-readable check) rather than here, because those live in
+   * `@nessie/knowledge` and this module is the shared entitlement vocabulary.
+   */
+  canAccessKnowledgePage?: (input: {
+    pageId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
   canAccessOrganizationEvent: (input: {
     organizationId: string
     userId: string

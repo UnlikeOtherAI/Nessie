@@ -312,6 +312,18 @@ export const AuditActionSchema = z.enum([
   'kb.annotation.reopened',
   'kb.annotation.updated',
   'kb.annotation.deleted',
+  // Spreadsheets. `batch_applied` is the per-edit row: it carries the seq, the
+  // client op id, the structural kind and the touched rectangles, so the
+  // journal's order is reconstructible from the audit trail alone, and the
+  // agent id / run id / credential id when a program made the change.
+  'kb.spreadsheet.batch_applied',
+  'kb.spreadsheet.snapshot',
+  'kb.spreadsheet.imported',
+  'kb.spreadsheet.restored',
+  'kb.spreadsheet.engine_migrated',
+  // A filter model whose range no longer described its sheet. Said out loud
+  // rather than repaired in silence: it is a fact about somebody's document.
+  'kb.spreadsheet.filter_dropped',
   'push.credential.uploaded',
   'push.credential.deleted',
   'push.credential.tested',

@@ -29,3 +29,18 @@ file is the rule**.
   (`ToolPicker`, `readOnly` for a viewer who cannot change a tool); the
   separate read-only renderer that used to exist had drifted to its own
   grouping, its own cards and no search at all.
+- **`spreadsheets` is its own category, not a corner of `knowledge`.**
+  The twelve `sheet_*` builtins (`sheet_describe`, `sheet_read_range`,
+  `sheet_find`, `sheet_replace`, `sheet_write_range`, `sheet_format_range`,
+  `sheet_structure`, `sheet_filter`, `sheet_tabs`, `sheet_create`,
+  `sheet_export`, `sheet_versions`) and their `nessie_sheet_*` MCP mirrors
+  declare `category: 'spreadsheets'`. `knowledge` already held 13 ids, and
+  adding twelve more would have put it over the quarter-of-the-catalogue cap
+  the test enforces — but the cap is the symptom, not the reason. A person
+  choosing tools asks "can it work in spreadsheets?" as one question, and the
+  answer should be one switchable group rather than twelve entries scattered
+  through the documents list. The category is deliberately **not** in
+  `EFFECTFUL_TOOL_CATEGORY_IDS`: a spreadsheet is the organisation's own
+  document, a duplicate edit is visible to the agent on its next read and
+  reversible through `sheet_versions restore`, and these are high-frequency
+  writes where a ledger row per call would be paid where it buys least.

@@ -384,6 +384,16 @@ export const addFileVersion = async (
     return prisma.$transaction(async (tx) => {
       const page = await getMutablePage(tx, input.organizationId, input.pageId)
       if (!page) return null
+      // A spreadsheet's body is a projection of the engine's workbook, which
+      // the stored xlsx cannot reproduce here, and its identity is that
+      // projection's hash rather than a hash of the bytes. Every other kind
+      // keeps the rule that FileService bytes are the only authority.
+      if ((input.body !== undefined || input.sourceContentHash !== undefined)
+        && page.kind !== 'spreadsheet') {
+        throw new KnowledgeConflictError(
+          'File versions must derive their body from the attachment bytes',
+        )
+      }
       const latest = await tx.knowledgePageVersion.findFirst({
         where: { pageId: input.pageId },
         orderBy: { versionNumber: 'desc' },
@@ -396,9 +406,9 @@ export const addFileVersion = async (
         data: {
           pageId: input.pageId,
           versionNumber: await nextVersionNumber(tx, input.pageId),
-          body: projection?.body ?? null,
+          body: projection?.body ?? input.body ?? null,
           attachmentId: input.attachmentId,
-          sourceContentHash: projection?.sourceContentHash ?? null,
+          sourceContentHash: projection?.sourceContentHash ?? input.sourceContentHash ?? null,
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
@@ -428,6 +438,15 @@ export const updatePage = async (
     if (!existing) return null
     if (existing.kind === 'file' && (input.body !== undefined || input.bodyRef !== undefined)) {
       throw new KnowledgeConflictError('File versions must be created from their attachment bytes')
+    }
+    // A spreadsheet's body is written by `createSpreadsheetSnapshot` from the
+    // engine's own projection. Letting the generic page editor set it would
+    // put a second author on the text that feeds search, with no workbook
+    // behind it — and the editor is not the doorway to a spreadsheet anyway.
+    if (existing.kind === 'spreadsheet' && (input.body !== undefined || input.bodyRef !== undefined)) {
+      throw new KnowledgeConflictError(
+        'Spreadsheet versions are written by saving a version of the workbook',
+      )
     }
     if (input.expectedRevision !== undefined && existing.revision !== input.expectedRevision) {
       throw new KnowledgePageRevisionConflictError(existing.revision)

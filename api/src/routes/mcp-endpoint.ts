@@ -7,6 +7,7 @@ import { buildNessieMcpServer } from '../mcp/server.js'
 import { checkPolicy } from '../services/policy.js'
 import { getTask } from '../services/tasks.js'
 import type { KnowledgeAccess } from '../mcp/tool-context.js'
+import type { SpreadsheetRouteContext } from './knowledge-spreadsheets-context.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -55,7 +56,17 @@ export const answerHijackedFailure = (raw: {
   }))
 }
 
-export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+export const registerMcpEndpointRoutes = (
+  app: FastifyInstance,
+  deps: RouteDeps,
+  /**
+   * The process's one spreadsheet service, built by the composition root. It is
+   * threaded in rather than constructed here because the model cache and the
+   * presence budget are its closure state: a second instance would give this
+   * endpoint its own copy of every workbook a paired agent touched.
+   */
+  spreadsheetContext?: SpreadsheetRouteContext,
+): void => {
   const { prisma, isProjectAccessibleToActor, listAccessibleProjectIds } = deps
 
   // Built once: it constructs the knowledge provider, which registers the
@@ -118,6 +129,7 @@ export const registerMcpEndpointRoutes = (app: FastifyInstance, deps: RouteDeps)
         knowledge,
         prisma,
         scopes: credential.scopes,
+        spreadsheet: spreadsheetContext?.service ?? null,
       })
 
       const transport = new StreamableHTTPServerTransport({

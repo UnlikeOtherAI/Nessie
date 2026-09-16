@@ -22,6 +22,8 @@ export type FinderToolbarInput = {
   needsReviewOnly: boolean
   onCreateDocument: (parentPageId: string | null) => void
   onCreateRootFolder?: () => void
+  onCreateSpreadsheet?: (parentPageId: string | null) => void
+  onImportSpreadsheet?: (parentPageId: string | null) => void
   onOpenAgent: (agentId: string) => void
   onOpenSettings: () => void
   onSelectSort: (sort: FinderSort) => void
@@ -47,6 +49,12 @@ export const useFinderToolbar = (input: FinderToolbarInput) => {
     isVirtualColumn: input.isVirtualColumn,
     needsReviewOnly: input.needsReviewOnly,
     onCreateDocument: () => input.onCreateDocument(input.activeParentPageId),
+    onCreateSpreadsheet: input.onCreateSpreadsheet
+      ? () => input.onCreateSpreadsheet?.(input.activeParentPageId)
+      : undefined,
+    onImportSpreadsheet: input.onImportSpreadsheet
+      ? () => input.onImportSpreadsheet?.(input.activeParentPageId)
+      : undefined,
     onCreateFolder: () => {
       // A root folder needs a visibility choice, which an inline name field
       // cannot carry, so at the root this is a dialog instead.

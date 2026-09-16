@@ -88,6 +88,7 @@ const REFUSAL_STATUS: Record<string, number> = {
   TRANSFER_AGENT_CORE_DOCUMENT: 403,
   TRANSFER_TASK_BOUND: 403,
   TRANSFER_WIDENS_BASIS: 403,
+  TRANSFER_COPY_SPREADSHEET: 400,
 }
 
 export const runTransferTransaction = async (
@@ -129,6 +130,7 @@ export const runTransferTransaction = async (
     sourceProjectId: input.sourceSpace.projectId,
     targetSpace: targetScope,
     parentPageId: input.parentPageId,
+    operation: input.operation,
   })
   if (refusal) {
     return {

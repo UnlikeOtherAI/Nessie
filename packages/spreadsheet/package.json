@@ -1,0 +1,38 @@
+{
+  "name": "@nessie/spreadsheet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./rebase": {
+      "types": "./src/rebase.ts",
+      "default": "./dist/rebase.js"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "default": "./dist/node.js"
+    },
+    "./xlsx-warnings": {
+      "types": "./src/xlsx-warnings.ts",
+      "default": "./dist/xlsx-warnings.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src --max-warnings 0",
+    "test": "node test/run.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ironcalc/nodejs": "0.8.3",
+    "@ironcalc/wasm": "0.8.4",
+    "@nessie/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0"
+  }
+}

@@ -62,7 +62,10 @@ export type {
 } from './finder-menu-types'
 
 export const useFinderMenus = ({
+  onConvertToSpreadsheet,
   onCreateRootFolder,
+  onCreateSpreadsheet,
+  onImportSpreadsheet,
   onNewFolderIn,
   onRefresh,
   onUploadFiles,
@@ -152,7 +155,11 @@ export const useFinderMenus = ({
         kind: 'share',
         pageId: page.id,
         spaceId: space?.id,
-        subjectKind: (page.kind === 'folder' ? 'folder' : page.kind === 'file' ? 'file' : 'document'),
+        subjectKind: page.kind === 'folder'
+          ? 'folder'
+          : page.kind === 'file'
+            ? 'file'
+            : page.kind === 'spreadsheet' ? 'spreadsheet' : 'document',
         title: page.title,
       })
       return
@@ -226,6 +233,14 @@ export const useFinderMenus = ({
           onNewFolderIn(first.id)
         }
       },
+      newFileTypeContext: {
+        openCreate: (target) => knowledge.openCreate(target),
+        openSpreadsheetCreate: onCreateSpreadsheet,
+        openSpreadsheetImport: onImportSpreadsheet,
+        openUploadPicker: (target) => onUploadFiles?.(target),
+        parentPageId,
+        spaceId,
+      },
       newSharedFolder: onCreateRootFolder,
       open: () => {
         if (first) knowledge.openPagePath([...knowledge.pagePath, first.id])
@@ -233,6 +248,11 @@ export const useFinderMenus = ({
           knowledge.openPageDeepLink({ pageId: virtualRow.id, spaceId: virtualRow.home.spaceId })
         }
       },
+      openAsSpreadsheet: onConvertToSpreadsheet
+        ? () => {
+          if (first) onConvertToSpreadsheet(first)
+        }
+        : undefined,
       openAgent: () => {
         const agentId = rootRow?.kind === 'space' ? rootRow.space.ownerAgentId : null
         if (agentId) void navigate(`/agents/${agentId}`)
@@ -306,9 +326,10 @@ export const useFinderMenus = ({
       },
     }
   }, [
-    active, failed, knowledge, me?.user.id, navigate, onCreateRootFolder, onNewFolderIn, onRefresh,
-    onUploadFiles, openSharing, pushToast, queryClient, reindex, removeShare, renderMoveTo,
-    space, targetPages,
+    active, failed, knowledge, me?.user.id, navigate, onConvertToSpreadsheet, onCreateRootFolder,
+    onCreateSpreadsheet, onImportSpreadsheet, onNewFolderIn, onRefresh, onUploadFiles,
+    openSharing, pushToast,
+    queryClient, reindex, removeShare, renderMoveTo, space, targetPages,
   ])
 
   const items = useMemo(() => (menuTarget

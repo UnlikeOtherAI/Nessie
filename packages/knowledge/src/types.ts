@@ -24,11 +24,13 @@ export type KnowledgeVisibility =
 export type KnowledgeSensitivityTier = 'normal' | 'sensitive' | 'restricted'
 export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
 // A page is an editable rich-text document, a stored file node (each version
-// backed by an Attachment), or a folder. A folder is a page of kind `folder`:
-// no versions, never published, never indexed; its children are the pages whose
+// backed by an Attachment), a spreadsheet — a live IronCalc workbook whose
+// journal is `spreadsheet_op_batches` and whose durable versions are xlsx
+// renditions — or a folder. A folder is a page of kind `folder`: no versions,
+// never published, never indexed; its children are the pages whose
 // `parentPageId` is it. Every branch over this union is exhaustive on purpose —
 // a kind added later must say what it does rather than read as a document.
-export type KnowledgePageKind = 'document' | 'file' | 'folder'
+export type KnowledgePageKind = 'document' | 'file' | 'spreadsheet' | 'folder'
 export type KnowledgeAuthorType = 'user' | 'agent'
 export type KnowledgeDocumentRole =
   | 'identity'
@@ -339,6 +341,21 @@ export type AddFileVersionInput = KnowledgePageVersionDisclosureInput & {
   // A downloaded Markdown editor pins the file version it edited. Ordinary
   // upload remains append-only without this optional compare-and-swap fence.
   expectedLatestVersionId?: string
+  /**
+   * The searchable projection of the attachment, and its content identity.
+   *
+   * **Honoured only for a `spreadsheet` page**, and refused for every other
+   * kind. FileService bytes are the authority for a file node's body, which is
+   * why the provider derives the Markdown projection itself rather than
+   * trusting caller text next to an attachment id. A spreadsheet has no such
+   * path: its body is a projection of the *engine's* workbook, which nothing
+   * downstream of the stored xlsx can reproduce, and its identity is the
+   * canonical projection's hash rather than a hash of the bytes — `toBytes()`
+   * is not byte-deterministic, so an unchanged workbook would hash differently
+   * on every save (decisions.md §"Spike A").
+   */
+  body?: string | null
+  sourceContentHash?: string | null
 }
 
 /**

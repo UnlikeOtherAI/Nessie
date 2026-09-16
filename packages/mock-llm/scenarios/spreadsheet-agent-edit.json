@@ -1,0 +1,72 @@
+{
+  "name": "spreadsheet-agent-edit",
+  "description": "An agent opens a spreadsheet, reads it, edits it, decides the edit was wrong and restores the version the write door saved for it. Drives the worker's sheet_* builtins end to end and the admin's agent-presence browser case. The `__PAGE__` and `__VERSION__` placeholders are filled in by whichever harness runs it: neither a page id nor a version id exists when a scenario is written.",
+  "defaults": {
+    "latencyMs": 0,
+    "model": "mock-model"
+  },
+  "turns": [
+    {
+      "text": "Let me see what is in this workbook before I touch it.",
+      "toolCalls": [
+        {
+          "arguments": { "pageId": "__PAGE__" },
+          "toolCallId": "sheet-edit-describe",
+          "toolName": "sheet_describe"
+        }
+      ],
+      "usage": { "inputTokens": 180, "outputTokens": 22 }
+    },
+    {
+      "text": "One sheet. Reading the used range.",
+      "toolCalls": [
+        {
+          "arguments": { "pageId": "__PAGE__", "sheet": "Sheet1", "range": "A1:B4" },
+          "toolCallId": "sheet-edit-read",
+          "toolName": "sheet_read_range"
+        }
+      ],
+      "usage": { "inputTokens": 240, "outputTokens": 16 }
+    },
+    {
+      "text": "Adding the quarter's figures and a total.",
+      "toolCalls": [
+        {
+          "arguments": {
+            "pageId": "__PAGE__",
+            "sheet": "Sheet1",
+            "range": "A1",
+            "rows": [
+              ["Region", "Revenue"],
+              ["North", 1200],
+              ["South", 900],
+              ["Total", "=SUM(B2:B3)"]
+            ]
+          },
+          "toolCallId": "sheet-edit-write",
+          "toolName": "sheet_write_range"
+        }
+      ],
+      "usage": { "inputTokens": 300, "outputTokens": 48 }
+    },
+    {
+      "text": "Those were last quarter's numbers — putting the sheet back as I found it.",
+      "toolCalls": [
+        {
+          "arguments": {
+            "pageId": "__PAGE__",
+            "action": "restore",
+            "versionId": "__VERSION__"
+          },
+          "toolCallId": "sheet-edit-restore",
+          "toolName": "sheet_versions"
+        }
+      ],
+      "usage": { "inputTokens": 360, "outputTokens": 26 }
+    },
+    {
+      "text": "I wrote the wrong quarter's figures and restored the version saved before my first edit, so the sheet is back where it was.",
+      "usage": { "inputTokens": 400, "outputTokens": 30 }
+    }
+  ]
+}

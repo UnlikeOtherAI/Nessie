@@ -60,6 +60,8 @@ import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
 import { registerKnowledgeRecentPagesRoutes } from './routes/knowledge-recent-pages.js'
 import { registerKnowledgeSharedWithMeRoutes } from './routes/knowledge-shared-with-me.js'
 import { registerKnowledgeShareRoutes } from './routes/knowledge-shares.js'
+import { registerKnowledgeSpreadsheetRoutes } from './routes/knowledge-spreadsheets.js'
+import { createSpreadsheetRouteContext } from './routes/knowledge-spreadsheets-context.js'
 import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
 import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
 import { registerKnowledgeTransferRoutes } from './routes/knowledge-transfers.js'
@@ -124,7 +126,13 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
   registerMcpAgentAuthRoutes(app, deps)
-  registerMcpEndpointRoutes(app, deps)
+  // One spreadsheet service per process: the model cache and the presence
+  // budget are its closure state, and the page routes' restore branch, the
+  // spreadsheet routes, the live lane and the MCP endpoint all read the same
+  // cache. Built here rather than beside the knowledge routes because the MCP
+  // endpoint registers first and needs the same instance.
+  const spreadsheetContext = createSpreadsheetRouteContext(deps)
+  registerMcpEndpointRoutes(app, deps, spreadsheetContext)
   registerWellKnownMcpResourceRoutes(app, deps)
   registerPlanRoutes(app, deps)
   registerWorkflowRoutes(app, deps)
@@ -205,7 +213,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentCardRoutes(app, { ...deps, dashboardCredentials })
   registerBrowserCloudRoutes(app, { ...deps, dashboardCredentials })
   registerScopedSettingsRoutes(app, deps)
-  registerKnowledgeBaseRoutes(app, deps)
+  registerKnowledgeBaseRoutes(app, deps, spreadsheetContext)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
   registerKnowledgeFinderRoutes(app, deps)
@@ -214,6 +222,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerKnowledgeRecentPagesRoutes(app, deps)
   registerKnowledgeSharedWithMeRoutes(app, deps)
   registerKnowledgeShareRoutes(app, deps)
+  registerKnowledgeSpreadsheetRoutes(app, deps, spreadsheetContext)
   registerKnowledgeSummaryRoutes(app, deps)
   registerKnowledgeTaskRoutes(app, deps)
   registerKnowledgeTransferRoutes(app, deps)
