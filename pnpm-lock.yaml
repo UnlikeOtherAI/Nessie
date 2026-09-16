@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@ironcalc/workbook@0.8.3':
-    hash: 8962411c9bfb33d6da8d2e132a192ebfeee2b85de314e4c0982f49d6d50e82b7
-    path: patches/@ironcalc__workbook@0.8.3.patch
-
 importers:
 
   .:
@@ -91,7 +86,7 @@ importers:
         version: 0.8.4
       '@ironcalc/workbook':
         specifier: 0.8.3
-        version: 0.8.3(patch_hash=8962411c9bfb33d6da8d2e132a192ebfeee2b85de314e4c0982f49d6d50e82b7)(i18next@26.4.2(typescript@5.9.3))(lucide-react@1.46.0(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(react@19.2.4)
+        version: 0.8.3(i18next@26.4.2(typescript@5.9.3))(lucide-react@1.46.0(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(react@19.2.4)
       '@nessie/client-core':
         specifier: workspace:*
         version: link:../packages/client-core
@@ -10123,7 +10118,7 @@ snapshots:
 
   '@ironcalc/wasm@0.8.4': {}
 
-  '@ironcalc/workbook@0.8.3(patch_hash=8962411c9bfb33d6da8d2e132a192ebfeee2b85de314e4c0982f49d6d50e82b7)(i18next@26.4.2(typescript@5.9.3))(lucide-react@1.46.0(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(react@19.2.4)':
+  '@ironcalc/workbook@0.8.3(i18next@26.4.2(typescript@5.9.3))(lucide-react@1.46.0(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(react@19.2.4)':
     dependencies:
       '@ironcalc/wasm': 0.8.4
       i18next: 26.4.2(typescript@5.9.3)

@@ -114,8 +114,9 @@ visibly, as if they were another person at the table.
    engine (sort keeps formula meaning under Excel/Sheets copy semantics via
    `getTokens`; a persisted per-sheet filter model applied as engine row
    hiding; find/replace across sheets). → `agent-tools.md`, `storage-and-concurrency.md`
-10. **UI: wrap, do not fork.** One `pnpm patch` (≈ 20 lines) adds
-    `redraw()` to `IronCalcHandle`; everything else is done from outside —
+10. **UI: wrap, do not fork, and do not patch.** Nothing in the repo modifies
+    the library: the repaint is one synthetic `Escape` `keydown` at the
+    widget's own container, and everything else is done from outside —
     own-property wrappers on the wasm `Model` instance (intent recording,
     flush, selection frames), a delegated `input` listener on the editor
     textarea (drafts), our own presence overlay, our own action bar for
@@ -182,7 +183,7 @@ Detailed per-phase ownership and acceptance criteria: `phases.md`.
 
 | Paths | Phase |
 |---|---|
-| `packages/schemas/src/spreadsheet.ts`, `realtime-document.ts`, `tool-categories.ts`; `api/prisma/schema.prisma` (+migration); `packages/spreadsheet/` skeleton; `patches/@ironcalc__workbook*.patch`; dependency pins; `docs/plans/2026-09-15-spreadsheets-ironcalc/**` | 0 |
+| `packages/schemas/src/spreadsheet.ts`, `realtime-document.ts`, `tool-categories.ts`; `api/prisma/schema.prisma` (+migration); `packages/spreadsheet/` skeleton; dependency pins; `docs/plans/2026-09-15-spreadsheets-ironcalc/**` | 0 |
 | `packages/spreadsheet/src/**`, `packages/spreadsheet/test/**` | 1 |
 | `packages/knowledge/src/spreadsheet/**`, `api/src/routes/knowledge-spreadsheet*.ts`, `api/src/realtime/document-lane.ts`, `packages/runtime/src/realtime*.ts` (document envelope), `api/test/spreadsheet-*.test.ts`, `worker/src/control/spreadsheet-compact.ts` | 2 |
 | `admin/src/components/features/knowledge/spreadsheet/**` (except `live/**`), `admin/src/facades/knowledge/spreadsheet-hooks.ts`, the kind-switch sites listed in `admin-ui.md` | 3a |

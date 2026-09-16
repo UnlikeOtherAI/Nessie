@@ -10,7 +10,7 @@ Pro simulator.
 
 | | Outcome |
 |---|---|
-| **C — render** | **Pass.** `<IronCalc>` mounts under React 19.2 unchanged, edits, recalculates, undoes, redoes and takes structural ops; a second model's `flushSendQueue()` diffs apply to the mounted one and paint through the patched `redraw()`; the method-shadowing bridge records intent without a fork; both themes reach the canvas. No fork trigger from `library-assessment.md` §"When to fork" was hit. |
+| **C — render** | **Pass.** `<IronCalc>` mounts under React 19.2 unchanged, edits, recalculates, undoes, redoes and takes structural ops; a second model's `flushSendQueue()` diffs apply to the mounted one and paint; the method-shadowing bridge records intent without a fork; both themes reach the canvas. No fork trigger from `library-assessment.md` §"When to fork" was hit. The repaint was a `pnpm patch` when this spike was written; §"The repaint, from outside the package" below is the measurement that replaced it, and **there is no patch in the repo now**. |
 | **D — touch** | **Pass — phone editing ships.** Tap selects, double-tap opens the `<textarea>` and the on-screen keyboard path, Enter commits, a drag scrolls. The overlay's long-press range selection works **on real iOS WebKit**, does not fight the native scroll, and cost **182 lines** (the plan budgeted ≈ 200). One extra fix the plan does not mention was needed and is three CSS declarations. |
 
 Everything below is reproducible:
@@ -42,58 +42,108 @@ Raw numbers: `spike-cd/findings.json`.
 | Selection frames emitted during the run | 16 |
 | Second model's diffs applied to the mounted model | `B3` `220 → 999`, **27 bytes** |
 | `applyExternalDiffs` echo into the local queue | none (`flushSendQueue()` returns `[0x00]`) |
-| Canvas **without** `redraw()` | unchanged — stale |
-| Canvas **with** `redraw()` | repainted |
+| Canvas **without** a repaint | unchanged — stale |
+| Canvas **with** a repaint | repainted |
 | Theme light (`daylight`) | grid `rgb(216,222,232)`, surface `rgb(255,255,255)`, outline `rgb(37,99,235)` |
 | Theme dark (`midnight`) | grid `rgb(31,41,55)`, surface `rgb(17,24,39)`, outline `rgb(37,99,235)` |
 
 Screenshots: `spike-cd/desktop-light.png`, `spike-cd/desktop-dark.png`.
 
-### The `pnpm patch` — what it changes and why
+### The repaint, from outside the package (2026-09-16, supersedes the patch)
 
-`patches/@ironcalc__workbook@0.8.3.patch`, **54 lines**, registered from the
-root `package.json` (`pnpm.patchedDependencies`) so `pnpm-workspace.yaml` — a
-shared file with load-bearing comments pnpm rewrites when it owns the key —
-stays untouched.
+This spike shipped the repaint as `patches/@ironcalc__workbook@0.8.3.patch` —
+54 diff lines, 6 lines of code — which published `Workbook`'s private redraw
+`useState` setter through an optional ref prop and hung `redraw()` off
+`IronCalcHandle`. **That patch is gone.** No library is modified in the repo;
+all three IronCalc packages are plain version references.
 
-`Workbook.tsx` keeps a private `useState` counter it bumps after its own
-actions; `Worksheet.tsx` rebuilds `WorksheetCanvas` and calls `renderSheet()`
-in a `useEffect` **with no dependency array**, so any re-render of that subtree
-repaints from the model. Bumping that counter is therefore the whole of
-"redraw", and it is the one thing a host cannot reach from outside. The patch
-publishes it through an optional ref prop and hangs `redraw()` off
-`IronCalcHandle`:
+The two facts the patch rested on are still true and are still what makes a
+repaint possible:
 
-```js
-// dist/ironcalc.js — Workbook (src/components/Workbook/Workbook.tsx)
--  …, s = w(null), l = T(0)[1], [u, d] = T(null), …
-+  …, s = w(null), l = T(0)[1],
-+  __icRedraw = e.redrawRef ? e.redrawRef.current = () => l((e) => e + 1) : null,
-+  [u, d] = T(null), …
+- `Workbook.tsx` keeps a private `useState` counter it bumps after its own
+  actions, and `Worksheet.tsx` rebuilds `WorksheetCanvas` and calls
+  `renderSheet()` in a `useEffect` **with no dependency array**, so any
+  re-render of that subtree repaints from the model.
+- `IronCalc` builds `new WorkbookState()` in its **root** render body, so only a
+  *subtree* re-render is safe.
 
-// dist/ironcalc.js — IronCalc root (src/IronCalc.tsx)
--  let a = n ?? document.body;
-+  let a = n ?? document.body, __icRedrawRef = w(null);
-       …
-   } })),                       →   }, redraw() { __icRedrawRef.current?.(); } })),
-   canEdit: r                   →   canEdit: r, redrawRef: __icRedrawRef
+What the patch missed is that the widget already bumps that counter for every
+key it handles, and that exactly one of those keys changes nothing else worth
+keeping. `Workbook`'s `onEscape` is
+`workbookState.clearCutRange(); setCopyStyles(null); <reset the cursor>;
+setRedrawId(n => n + 1)`. So the repaint is one synthetic event
+(`WorkbookHost.tsx` → `repaintGrid`):
 
-// dist/IronCalc.d.ts
- export interface IronCalcHandle {
-     setLanguage: (language: string) => void;
-+    /** Repaints the grid after the model changed from outside the widget. */
-+    redraw: () => void;
- }
+```ts
+container.dispatchEvent(
+  new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape' }),
+)
 ```
 
-Four hunks, no behaviour change when `redrawRef` is absent, and the four
-anchors are distinctive enough that a release which moves them fails the patch
-loudly rather than silently. Well inside the ≤ 50-line fork trigger (the count
-above is diff lines; the code change is 6 lines).
+**Where it is aimed is the safety argument.** `useKeyboardNavigation` opens with
+`if (!root.current || event.target !== root.current) return`, so dispatching on
+`.ic-workbook-container` is both what makes the handler run and what keeps the
+event away from the cell editor's own handlers on the `<textarea>` below it.
 
-**Measured necessity.** Applying a peer batch with the repaint suppressed left
-`canvas.toDataURL()` byte-identical; calling `redraw()` changed it. Without the
-patch a remote edit is invisible until the person clicks.
+**Measured, against the unpatched 0.8.3**, with the same oracle this spike used
+(`canvas.toDataURL()` before and after a peer's batch), driving a throwaway page
+that mounts `<IronCalc>` beside a second model:
+
+| Check | Patched `redraw()` | Synthetic Escape |
+|---|---|---|
+| `IronCalcHandle.redraw` exists | yes | **no** — the package is unmodified |
+| Canvas after a peer batch, no repaint | stale (byte-identical) | stale (byte-identical) |
+| Canvas after the repaint | repainted | repainted |
+| Address box after `setSelectedCell(7, 4)` | `A1` → `D7` | `A1` → `D7` |
+| Cell outline box after it | `left 299, top 258` | `left 299, top 258` |
+| Formula bar when a peer writes into the selected cell | follows | follows |
+| Sheet tab bar when a peer adds a sheet | `Sheet1` → `Sheet1, Sheet2` | `Sheet1` → `Sheet1, Sheet2` |
+| Editor open with `hello` while a batch lands | `<textarea>` still focused, text `hello`, commits `hello!` | same |
+| Frozen panes (2 frozen rows, scrolled to 400): frozen band | stale → repainted | stale → repainted |
+| … and the scrolled body | stale → repainted | stale → repainted |
+| Batch landing mid-scroll | repaints, scroll runs on `80 → 200 → 240 → 320` | identical |
+| Focus while nothing is being edited | moves to `.ic-workbook-container` | moves to `.ic-workbook-container` |
+| Cut outline (`clearCutRange`) | survives | **cleared** |
+
+The last row is the whole cost, and it is drawing state: `getCutRange()` is read
+in exactly one place, `WorksheetCanvas.renderSheet()`, and `onPaste` clears it
+before it reads the clipboard — a cut paste is driven by `type: "cut"` in the
+`application/json` payload, not by `cutRange`. The format painter
+(`setCopyStyles`) disarms with it, which is what Escape means to a person
+anyway.
+
+**Blast radius of the synthetic key**, measured with counters on every level:
+
+```text
+document capture 1   React root (bubble) 1   body 0   document (bubble) 0   window 0
+```
+
+React's `SyntheticEvent.stopPropagation()` calls the native one, and the widget
+calls it for every unmodified key, so the event dies at React's root container.
+The one capture-phase listener that still sees it cost one line of app code:
+`SpreadsheetPane`'s fullscreen Escape now requires `event.isTrusted`, because
+without it every peer batch threw the person out of fullscreen.
+
+**Two cheaper nudges were measured and rejected.** A `window` `resize` event and
+a synthetic `scroll` on `.ic-worksheet-wrapper` both repaint the canvas — the
+scroll one is the cleanest thing in the whole survey, it does not propagate, it
+does not steal focus and it holds the scroll position exactly — but both only
+re-render `Worksheet`. After `setSelectedCell(7, 4)` the cell outline moved to
+the same pixel and the **address box still read `A1`**, the formula bar still
+read the old cell and a peer's new sheet never reached the tab bar. Find and
+replace exists to move the selection and show where it went, so that is not a
+repaint. `IronCalcHandle.setLanguage` is the third dead end: it is guarded on an
+actual language change and calls `model.setLanguage`, a recorded mutation.
+
+**The patch had one virtue this does not: it failed loudly.** A release that
+moved its anchors broke the install; a DOM reach-in just stops painting.
+`admin/test/spreadsheet-repaint-contract.test.ts` is where that loudness lives
+now — eight assertions against the installed `dist`, pinning the version, the
+container class and its `onKeyDown`, the `target !== root` guard, `case
+"Escape": …onEscape()`, `onEscape`'s counter bump and the absence of any new
+side effect in it, `Worksheet`'s dependency-free repaint effect, and — first —
+that `IronCalcHandle` still publishes no repaint of its own. The day upstream
+adds one, delete `repaintGrid` and call it.
 
 ### The bridge (method shadowing, not a fork)
 
@@ -367,8 +417,8 @@ Phase 3b must add (`getFrozenRowsCount`/`getFrozenColumnsCount`).
    them.
 7. **`workbookState: new WorkbookState()` is constructed in `IronCalc`'s render
    body**, so anything that re-renders the *root* (not the Workbook subtree)
-   throws away in-cell editing state. `redraw()` only re-renders the subtree and
-   is safe; Phase 3a must keep the root's props stable anyway.
+   throws away in-cell editing state. The repaint only re-renders the subtree
+   and is safe; Phase 3a must keep the root's props stable anyway.
 8. **Not a contract change, but a Phase 3a note:** Playwright cannot click the
    canvas without `force: true` — IronCalc's own `.ic-worksheet-cell-outline`
    div covers it. The e2e suites will need that everywhere.

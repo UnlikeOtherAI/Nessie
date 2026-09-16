@@ -44,7 +44,7 @@ or five idle minutes, because the text projection is written with a version.
 
 | # | Decision | Landed | Where |
 |---|---|---|---|
-| 1 | IronCalc, one exact pin on all three packages, not forked | yes | `SPREADSHEET_ENGINE_VERSION`; `@ironcalc/nodejs` 0.8.3 + `@ironcalc/wasm` 0.8.4 exact; one 6-line `pnpm patch` — `40322c34e`, `aafa48e52` |
+| 1 | IronCalc, one exact pin on all three packages, not forked | yes | `SPREADSHEET_ENGINE_VERSION`; `@ironcalc/nodejs` 0.8.3 + `@ironcalc/wasm` 0.8.4 + `@ironcalc/workbook` 0.8.3 exact, and **nothing in the repo modifies the library**: the 6-line `pnpm patch` that published `redraw()` was replaced by `WorkbookHost`'s `repaintGrid` (a synthetic `Escape` at `.ic-workbook-container`), measured identical, and `patches/` is gone — `40322c34e`, `aafa48e52`, `agent/sheets-unpatch` |
 | 2 | Canonical state is the workbook: engine bytes + an ordered diff journal | yes | `spreadsheet_heads.hot_snapshot`, `spreadsheet_op_batches` — `b69d20e57` |
 | 3 | Durable versions are `.xlsx` renditions, `.icalc` beside them | yes | `snapshot.ts`, `restore.ts`; blob keyed by version id, not seq (Phase 2 correction) — `8750ed66b`, `ba67a4aa4` |
 | 4 | Server canonical, browser optimistic; one `applySpreadsheetBatch` | yes | `apply.ts`, `commit.ts`, `head.ts` — `8750ed66b` |

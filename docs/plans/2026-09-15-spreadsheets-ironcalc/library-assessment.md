@@ -209,7 +209,7 @@ structural conflict must replay **intent**, not bytes (`storage-and-concurrency.
 | Gap | Closed by |
 |---|---|
 | No live collaboration | Nessie's ordered journal + per-document lane (`storage-and-concurrency.md`, `realtime-and-presence.md`) |
-| No change / selection / redraw hooks | **Wrap, do not fork:** the sync layer shadows the wasm `Model` instance's mutating methods with own-property wrappers (records intent, flushes the send queue, emits selection frames); the draft observer listens to `input` on the editor textarea; **one `pnpm patch` (≈ 20 lines) adds `redraw()` to `IronCalcHandle`** by lifting `setRedrawId` to the root — the only thing the host cannot do from outside. Upstream PR for `redraw` + `onModelChange`. |
+| No change / selection / redraw hooks | **Wrap, do not fork, and do not patch either:** the sync layer shadows the wasm `Model` instance's mutating methods with own-property wrappers (records intent, flushes the send queue, emits selection frames); the draft observer listens to `input` on the editor textarea; the repaint is **one synthetic `Escape` `keydown` aimed at `.ic-workbook-container`**, which is the only key whose handler bumps `Workbook`'s private redraw counter without changing anything worth keeping (`spike-cd-render-touch.md` §"The repaint, from outside the package"). This was a `pnpm patch` until 2026-09-16; nothing in the repo modifies the library now. `redraw()` + `onModelChange` remain the upstream PR worth filing — a published method beats a synthetic key press. |
 | No presence rendering | Own `PresenceOverlay` over the sheet container, rectangles computed from the model (widths, heights, frozen counts, `top_row/left_column`, scroll element offsets) |
 | No sort / filter | Nessie's own layer with full fidelity: sort rewrites relative references (Sheets/Excel copy semantics) through `getTokens`; a persisted per-sheet filter model applied as engine row hiding; both in the pane and the tools (`storage-and-concurrency.md` §"Sort, filter, find and replace"). Upstream: expose `extend_to`, fix the Node paste bug, and eventually an engine autofilter (the engine already imports xlsx `<autoFilter>` into `Table` but does not filter). |
 | No find / replace | Across-sheets find and replace in our layer over `getSheetDimensions` + `getCellContent`; upstream candidate: a Rust `search` for very large sheets |
@@ -222,9 +222,10 @@ structural conflict must replay **intent**, not bytes (`storage-and-concurrency.
 
 Fork (`UnlikeOtherAI/IronCalc`, publishing `@nessie/ironcalc-*`) only if:
 
-1. The `redraw` patch cannot be expressed as a ≤ 50-line `pnpm patch` on
-   the published `dist`, or upstream rejects the hook and the patch keeps
-   breaking on releases.
+1. The repaint stops being reachable from outside — `admin/test/spreadsheet-repaint-contract.test.ts`
+   is the alarm — **and** upstream rejects a published repaint hook. A
+   `pnpm patch` is not the next step: no library may be modified in the repo,
+   so the ladder is *outside route → upstream → fork*.
 2. Method-shadowing on the wasm `Model` instance breaks under a wasm-bindgen
    upgrade (Phase 0 render spike proves it on the pinned version).
 3. A diff-format or `to_bytes` incompatibility across versions needs a

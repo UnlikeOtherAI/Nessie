@@ -164,7 +164,8 @@ the overlay compares.
 
 1. Keep `appliedSeq`. Apply `sheet.ops` only if `seq === appliedSeq + 1`
    (`model.pauseEvaluation(); applyExternalDiffs(bytes); resumeEvaluation();
-   evaluate(); handle.redraw()`); buffer higher; after 250 ms with a gap,
+   evaluate(); session.redraw()` — `WorkbookHost`'s `repaintGrid`, not a
+   library method); buffer higher; after 250 ms with a gap,
    `GET …/ops?afterSeq=appliedSeq` and apply in order; discard lower. A
    `diffs: null` event is fetched by seq.
 2. Skip batches whose `clientOpId` is in the local pending map (own echo);
