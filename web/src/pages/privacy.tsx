@@ -350,8 +350,10 @@ export const PrivacyPage = () => (
     <p>This is the whole of it:</p>
     <ul>
       <li>
-        <strong>Your cookie choice</strong> is stored in your browser’s local storage under{' '}
-        <code>nessie-cookie-consent</code>. It never leaves your browser.
+        <strong>Your cookie choice</strong> is stored in a first-party cookie named{' '}
+        <code>nessie-cookie-consent</code>, set for a year on <code>nessie.works</code> and its subdomains so that
+        answering once is enough. It holds one value — whether you allowed analytics — and no identifier. A copy is
+        kept in your browser’s local storage as well, in case cookies are blocked. No server reads either.
       </li>
       <li>
         <strong>A preference cookie</strong>, <code>nessie-device-colour</code>, remembers which colour you picked
