@@ -24,6 +24,11 @@ const repositoryDirectory = resolve(desktopDirectory, '..')
 /** Where the nested helper is staged, and the name Tauri copies it under. */
 export const MENU_BAR_APP_NAME = 'Nessie Executor.app'
 export const STAGING_DIRECTORY = resolve(desktopDirectory, 'src-tauri/resources/executor-menubar')
+/**
+ * Xcode's DerivedData, kept out of the staging directory: everything under
+ * `resources/` is a bundle input, and an intermediate build tree is not one.
+ */
+const BUILD_DIRECTORY = resolve(desktopDirectory, 'src-tauri/target/executor-menubar-build')
 /** Relative to the enclosing `Contents` directory — Tauri's own base for `files`. */
 export const NESTED_BUNDLE_PATH = `Library/LoginItems/${MENU_BAR_APP_NAME}`
 
@@ -47,7 +52,7 @@ const run = (command, argumentVector, options = {}) => {
 const buildMenuBarApp = () => {
   const output = run(
     resolve(repositoryDirectory, 'executor/menubar-macos/scripts/build-app.sh'),
-    ['--configuration', 'Release', '--output', resolve(STAGING_DIRECTORY, 'build')],
+    ['--configuration', 'Release', '--output', BUILD_DIRECTORY],
     { stdio: ['ignore', 'pipe', 'inherit'] },
   )
   const built = output.trim().split('\n').at(-1)
