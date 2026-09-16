@@ -170,6 +170,21 @@ export const PageEditor = ({
     },
   ]
 
+  // A spreadsheet is edited in its grid, never here. This is not defensive
+  // tidiness: the body a rich-text save writes is the field a workbook uses for
+  // its *text projection* (what search and embeddings read), so letting the
+  // editor open on one would overwrite a derived field with prose and leave the
+  // workbook behind it untouched and disagreeing with it.
+  if (page?.kind === 'spreadsheet') {
+    return (
+      <KnowledgePane onBack={onBack} title={page.title}>
+        <div className="p-6">
+          <FormError>A spreadsheet is edited in its grid, not in the page editor.</FormError>
+        </div>
+      </KnowledgePane>
+    )
+  }
+
   return (
     <form className="h-full" id={formId} onSubmit={submit}>
       <KnowledgePane

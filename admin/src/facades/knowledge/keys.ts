@@ -27,6 +27,12 @@ export const knowledgeKeys = {
     ['knowledge-spaces', projectId ?? 'organization'] as const,
   space: (spaceId?: string) => ['knowledge-spaces', spaceId ?? 'none'] as const,
   spaces: ['knowledge-spaces'] as const,
+  // A spreadsheet's bootstrap and its per-sheet filter model are views of one
+  // page's workbook, so they nest under that page: restoring a version or
+  // switching kind invalidates them along with the page itself.
+  spreadsheet: (pageId?: string) => ['knowledge-page', pageId ?? 'none', 'spreadsheet'] as const,
+  spreadsheetFilter: (pageId?: string, sheet?: number) =>
+    ['knowledge-page', pageId ?? 'none', 'spreadsheet', 'filter', sheet ?? 'all'] as const,
   storageUsage: (scopeType: string, scopeId?: string) =>
     ['knowledge-storage-usage', scopeType, scopeId ?? 'self'] as const,
   versions: (pageId?: string) => ['knowledge-versions', pageId ?? 'none'] as const,

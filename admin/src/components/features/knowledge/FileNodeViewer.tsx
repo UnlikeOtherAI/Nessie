@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { faDownload, faPaperclip } from '@fortawesome/free-solid-svg-icons'
+import { faDownload, faPaperclip, faTable } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
@@ -20,6 +20,16 @@ import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
+// The file kinds a workbook can be built from. `.xls` is deliberately absent:
+// the engine cannot read it, and an `.xls` and a corrupt zip produce the same
+// error, so offering the doorway would promise something that always fails.
+const SPREADSHEET_SOURCE_EXT = new Set(['csv', 'tsv', 'xlsx'])
+
+export const isSpreadsheetSourceFilename = (filename: string): boolean => {
+  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
+  return ext ? SPREADSHEET_SOURCE_EXT.has(ext) : false
+}
+
 type FileNodeViewerProps = {
   canWrite: boolean
   page: KnowledgePageRecord
@@ -27,6 +37,12 @@ type FileNodeViewerProps = {
   // registry and passes no onBack; wider layouts keep the pane's own Back.
   onBack?: () => void
   onOpenHistory: () => void
+  /**
+   * Builds a spreadsheet document from this file, beside it. The original file
+   * node is kept — converting is additive, so a person who wanted the file can
+   * still download the bytes they uploaded.
+   */
+  onOpenAsSpreadsheet?: () => void
   onSaveMarkdown?: (markdown: string, baseVersionId: string) => Promise<void>
   onUploadVersion: () => void
   onToggleAttachments: () => void
@@ -36,6 +52,7 @@ export const FileNodeViewer = ({
   canWrite,
   page,
   onBack,
+  onOpenAsSpreadsheet,
   onOpenHistory,
   onSaveMarkdown,
   onUploadVersion,
@@ -91,6 +108,16 @@ export const FileNodeViewer = ({
       onSelect: onOpenHistory,
       priority: 50,
     },
+    ...(canWrite && onOpenAsSpreadsheet && isSpreadsheetSourceFilename(page.title)
+      ? [{
+          icon: faTable,
+          id: 'convert-to-spreadsheet',
+          label: 'Open as spreadsheet',
+          onSelect: onOpenAsSpreadsheet,
+          priority: 80,
+          title: 'Build an editable spreadsheet document from this file',
+        } satisfies PageHeaderAction]
+      : []),
     ...(canWrite
       ? [{
           id: 'upload-version',

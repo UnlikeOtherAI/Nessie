@@ -56,7 +56,7 @@ export const ProjectDocumentsSection = ({
           type="button"
         >
           <span aria-hidden="true" className="w-4 text-center">
-            {page.kind === 'file' ? '📎' : '📄'}
+            {page.kind === 'file' ? '📎' : page.kind === 'spreadsheet' ? '📊' : '📄'}
           </span>
           <span className="truncate text-sm text-[color:var(--tx)]">{page.title}</span>
           <span className="truncate text-xs text-[color:var(--tx3)]">{page.spaceName}</span>

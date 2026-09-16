@@ -4,6 +4,7 @@ import {
   faChevronRight,
   faFileLines,
   faFolder,
+  faTable,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
@@ -77,7 +78,13 @@ const KnowledgeItemIcon = ({
 }) => {
   // Folder → folder icon; file node → typed icon from its filename; document → text.
   const icon =
-    kind === 'folder' ? faFolder : page.kind === 'file' ? iconForFilename(page.title) : faFileLines
+    kind === 'folder'
+      ? faFolder
+      : page.kind === 'file'
+        ? iconForFilename(page.title)
+        : page.kind === 'spreadsheet'
+          ? faTable
+          : faFileLines
   return (
     <FontAwesomeIcon
       className={[
@@ -106,6 +113,10 @@ const KnowledgeItemTrailing = ({
   ) : page.kind === 'file' ? (
     <Pill size="sm" tone="muted">
       file
+    </Pill>
+  ) : page.kind === 'spreadsheet' ? (
+    <Pill size="sm" tone="muted">
+      spreadsheet
     </Pill>
   ) : (
     <>

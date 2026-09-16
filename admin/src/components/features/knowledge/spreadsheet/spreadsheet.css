@@ -1,0 +1,40 @@
+/* Spreadsheet pane overrides.
+ *
+ * Imported from the lazy spreadsheet chunk, never from `src/styles.css`, so it
+ * ships with `ironcalc.css` in the same lazily-loaded stylesheet and costs a
+ * `/knowledge-base` visit nothing.
+ *
+ * Only two things belong here. Everything else the widget draws follows
+ * `themeVariables` (spreadsheet-theme.ts). */
+
+/* 1. The four rules in `ironcalc.css` that hard-code a light colour instead of
+ *    reading the palette they mean (measured on 0.8.3; upstream PR candidate:
+ *    swap the literals for these variables). Only the first is visible in
+ *    ordinary use — a white band across the formula bar in any dark theme —
+ *    and it is invisible to assertions, so it is screenshot-guarded. */
+.ic-root .ic-editor-container { background: var(--palette-common-white); }
+.ic-root .ironcalc-cell-handle { border-color: var(--palette-common-white); }
+.ic-root .ic-sheet-tab:hover { background-color: var(--palette-grey-100); }
+.ic-root .ic-db-swatch-row + .ic-db-swatch-row { border-top-color: var(--palette-grey-300); }
+
+/* 2. iOS Safari answers a long press with its *own* text-selection gesture,
+ *    which paints a page-wide selection highlight over the chrome while the
+ *    overlay's range selection runs (measured on iOS 26.5, iPhone 17 Pro
+ *    simulator). Turning selection and the callout off over the pane is the
+ *    whole fix, and the grid is a canvas so nothing selectable is lost. */
+.spreadsheet-pane {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The widget fills whatever height the pane gives it. IronCalc's own root has
+ * no intrinsic height, so without this the grid collapses to its header row. */
+.spreadsheet-widget-host { position: relative; min-height: 0; flex: 1; }
+.spreadsheet-widget-host .ic-widget { height: 100%; }
+
+/* Below 480px the pane hides IronCalc's formatting toolbar behind our "Format"
+ * toggle so the grid keeps the height; the formula bar and the sheet tabs stay.
+ * The attribute is set by the pane, never by a media query here, so a person
+ * who opened Format keeps it open while rotating. */
+.spreadsheet-widget-host[data-format-bar='hidden'] .ic-toolbar-container { display: none; }
