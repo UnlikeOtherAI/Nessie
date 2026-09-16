@@ -381,6 +381,14 @@ export const router = createBrowserRouter([
         element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
+        path: '/knowledge-base/latest',
+        element: lazyElement(KnowledgeBasePage, 'list'),
+      },
+      {
+        path: '/knowledge-base/shared-with-me',
+        element: lazyElement(KnowledgeBasePage, 'list'),
+      },
+      {
         path: '/knowledge-base/spaces/:spaceId',
         element: lazyElement(KnowledgeBasePage, 'list'),
       },

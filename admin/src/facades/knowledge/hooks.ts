@@ -90,6 +90,10 @@ export type UpdateSpaceInput = {
 export type SavePageInput = {
   body?: string | null
   changeComment?: string | null
+  // `folder` on a create is what makes an empty folder a folder. The API
+  // contract accepts 'document' | 'folder'; a file node is created by the
+  // upload route, never by this one.
+  kind?: Extract<KnowledgePageKind, 'document' | 'folder'>
   labels?: string[]
   metadata?: Record<string, unknown> | null
   parentPageId?: string | null
@@ -241,36 +245,6 @@ export const useUpdateKnowledgeSpace = () => {
       return apiClient.patch<KnowledgeSpaceRecord>(`/api/knowledge-base/spaces/${spaceId}`, body)
     },
     onSuccess: (space) => invalidateKnowledge(queryClient, { spaceId: space.id }),
-  })
-}
-
-type SeedKnowledgeInput = {
-  body: string
-  projectId?: string
-  spaceName: string
-  summary?: string | null
-  title: string
-}
-
-// Creates a space and seeds it with a single page in one shot — used to
-// bootstrap an empty knowledge base on first visit.
-export const useSeedKnowledgeBase = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (input: SeedKnowledgeInput) => {
-      const space = await apiClient.post<KnowledgeSpaceRecord>('/api/knowledge-base/spaces', {
-        name: input.spaceName,
-        projectId: input.projectId,
-      })
-      await apiClient.post<KnowledgePageRecord>(
-        `/api/knowledge-base/spaces/${space.id}/pages`,
-        { body: input.body, summary: input.summary ?? null, title: input.title },
-      )
-      return space
-    },
-    onSuccess: () => invalidateKnowledge(queryClient),
   })
 }
 

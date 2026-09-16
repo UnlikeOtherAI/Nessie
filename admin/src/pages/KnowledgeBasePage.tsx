@@ -1,20 +1,32 @@
 import { useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { useKnowledge } from '../components/features/knowledge/KnowledgeProvider'
 import { useKnowledgePageDeepLink } from '../components/features/knowledge/useKnowledgePageDeepLink'
 import { KnowledgeWorkspace } from '../components/features/knowledge/KnowledgeWorkspace'
-import { ScreenHeader } from '../components/shared/ScreenHeader'
 
+/**
+ * The Knowledge section's one page. Every route under `/knowledge-base` lands
+ * here and says which root row is open; the Finder is the same component
+ * either way, so a sibling swap is a selection change rather than a remount.
+ *
+ * There is no `ScreenHeader` here. The Finder's root column *is* the screen —
+ * `ColumnBrowserColumn screen` renders the `h1` and the toolbar — which is
+ * what lets the column carry the actions on both layouts instead of a header
+ * above it carrying them on one.
+ */
 export const KnowledgeBasePage = () => {
+  const { pathname } = useLocation()
   const { productView, spaceId } = useParams<{
     productView?: string
     spaceId?: string
   }>()
   const {
     activeProductView,
+    selectedRoot,
     selectedSpaceId,
     selectProductView,
     selectSpace,
+    selectVirtual,
   } = useKnowledge()
 
   // Deep link from elsewhere (an approval's "Open page" link, a search result,
@@ -22,29 +34,28 @@ export const KnowledgeBasePage = () => {
   // project Docs tab, which accepts the same `?spaceId=&pageId=` params.
   useKnowledgePageDeepLink()
 
-  // Phone list selections have addressable child routes so the shell can keep
-  // and animate the outgoing list. Sync those routes back into the shared
-  // Knowledge team as well, so a cold deep link opens the same content.
+  // The routes are addressable so the phone shell can keep and animate the
+  // outgoing screen. Sync them back into the shared browser, so a cold deep
+  // link opens the same content.
   useEffect(() => {
-    if (spaceId && selectedSpaceId !== spaceId) {
-      selectSpace(spaceId)
-    }
+    if (spaceId && selectedSpaceId !== spaceId) selectSpace(spaceId)
   }, [selectedSpaceId, selectSpace, spaceId])
 
   useEffect(() => {
-    if (productView && activeProductView !== productView) {
-      selectProductView(productView)
-    }
+    if (productView && activeProductView !== productView) selectProductView(productView)
   }, [activeProductView, productView, selectProductView])
+
+  useEffect(() => {
+    const wanted = pathname.endsWith('/latest')
+      ? 'latest'
+      : pathname.endsWith('/shared-with-me')
+        ? 'shared-with-me'
+        : null
+    if (wanted && selectedRoot?.kind !== wanted) selectVirtual(wanted)
+  }, [pathname, selectedRoot, selectVirtual])
 
   return (
     <div className="flex h-full flex-col">
-      {/* singleLayoutOnly: on a split layout the section's own list is the
-          pinned column and the team's panes carry their own chrome, so
-          the bar paints only where it is the screen's own header. The screen
-          is published either way, so the tab title and the native shell name
-          it on both. */}
-      <ScreenHeader singleLayoutOnly title="Knowledge" />
       <div className="min-h-0 flex-1">
         <KnowledgeWorkspace />
       </div>

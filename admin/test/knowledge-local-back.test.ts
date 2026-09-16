@@ -15,8 +15,10 @@ const team = readSource('../src/components/features/knowledge/KnowledgeWorkspace
 // NestedStage. The team itself registers nothing.
 
 test('each knowledge screen is a nested stage with its pinned id and priority', () => {
+  // `knowledge:folder` is deliberately absent: the Finder sits on
+  // `ColumnBrowserViewport`, whose columns are already `column:<k>` stages on
+  // `single`, so a folder is a layer without this file owning one.
   const stages = [
-    ['knowledge:folder', 'knowledgeFolder', 'Back to parent folder'],
     ['knowledge:document', 'knowledgeDocument', "depth > 0 ? 'Back to parent page' : 'Back to space'"],
     ['knowledge:history', 'knowledgeHistory', 'Back from version history'],
     ['knowledge:editor', 'knowledgeEditor', 'Back from page editor'],
@@ -52,7 +54,6 @@ test('the team registers no Back owner of its own — the stages do', () => {
 
 test('every stage unwinds exactly one level, deepest first', () => {
   const actions = [
-    'onBack={() => browseTo(pathPages.slice(0, -1).map((page) => page.id))}',
     'onBack={() => popTo(depth)}',
     'onBack={closeHistory}',
     'onBack={closeEditor}',
@@ -92,9 +93,11 @@ test('inner knowledge surfaces keep titles/actions but suppress their own Back i
   }
 })
 
-test('an inline host still composes one knowledge pane at a time', () => {
-  // On split the stages render where they stand, so the base browser yields to
-  // whichever pane is deepest — the composition the early returns used to give.
+test('an inline host composes the editor over the browser and the document beside it', () => {
+  // The editor and the history are full-width screens, so inline they replace
+  // the browser. The open document does not: a file browser with a preview
+  // column is what a Finder *is*, and hiding the columns to read one file
+  // loses the place you are standing in.
   assert.match(team, /const historyOpen = Boolean\(historyPage\) && \(stacked \|\| !editorOpen\)/)
   assert.match(
     team,
@@ -102,10 +105,9 @@ test('an inline host still composes one knowledge pane at a time', () => {
   )
   assert.match(
     team,
-    /const baseIsBrowser = stacked \|\| !\(editorOpen \|\| historyOpen \|\| documentOpen\)/,
+    /const browserVisible = stacked \|\| !\(editorOpen \|\| historyOpen\)/,
   )
-  // A folder is only ever a layer; inline, the browser already renders the path.
-  assert.match(team, /const folderOpen = stacked && !current/)
+  assert.match(team, /\{!stacked && documentOpen \? \(/)
 })
 
 test('the agent detail page owns no Back of its own', () => {

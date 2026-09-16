@@ -4,12 +4,8 @@ import {
   useKnowledgePages,
   useKnowledgeSpace,
   useKnowledgeSpaces,
-  type KnowledgePageRecord,
 } from '../../../facades/knowledge/hooks'
-import {
-  isFolderPage,
-  sortFilesystemPages,
-} from '../knowledge/KnowledgeFilesystemRows'
+import { sortFinderRows } from '../knowledge/finder/finder-sort'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 
 type DocumentTargetBarProps = {
@@ -23,8 +19,8 @@ type DocumentTargetBarProps = {
 /**
  * The address bar under a streaming document: the visible receipt of where the
  * file will land, and the control that changes it. Clicking it walks the same
- * spaces and folders the knowledge browser shows (through the same facade
- * queries — folders are `isFolderPage`, not a second definition), and picking
+ * spaces and folders the Finder shows (through the same facade queries, and
+ * ordered by the same `sortFinderRows` — not a second definition), and picking
  * one re-aims the save before it happens or moves the page after it.
  */
 export const DocumentTargetBar = ({
@@ -41,32 +37,19 @@ export const DocumentTargetBar = ({
   const pagesQuery = useKnowledgePages(browseSpaceId ?? undefined)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
 
-  const childrenOf = useMemo(() => {
-    const byParent = new Map<string, KnowledgePageRecord[]>()
-    for (const page of pages) {
-      const key = page.parentPageId ?? ''
-      const siblings = byParent.get(key)
-      if (siblings) {
-        siblings.push(page)
-      } else {
-        byParent.set(key, [page])
-      }
-    }
-    return (parentPageId: string) => byParent.get(parentPageId) ?? []
-  }, [pages])
-
   const currentParentId = browsePath.at(-1) ?? null
+  // `kind === 'folder'` is the whole test now: a folder is a real page kind,
+  // not "a page that happens to have children", which used to make any
+  // document with a sub-page look like a folder here.
   const folders = useMemo(
     () =>
-      sortFilesystemPages(
+      sortFinderRows(
         pages.filter(
-          (page) =>
-            (page.parentPageId ?? null) === currentParentId &&
-            isFolderPage(page, childrenOf),
+          (page) => (page.parentPageId ?? null) === currentParentId && page.kind === 'folder',
         ),
-        childrenOf,
+        'name',
       ),
-    [childrenOf, currentParentId, pages],
+    [currentParentId, pages],
   )
   const writableSpaces = spacesQuery.items.filter((space) => space.canWrite)
   const listedBrowseSpace = spacesQuery.items.find((space) => space.id === browseSpaceId)

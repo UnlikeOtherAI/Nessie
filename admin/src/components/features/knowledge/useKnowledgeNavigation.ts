@@ -17,6 +17,21 @@ type UseKnowledgeNavigationInput = {
 
 export type KnowledgeNavigation = ReturnType<typeof useKnowledgeNavigation>
 
+/**
+ * Which row of the Finder's root is open. It replaces the bare
+ * `selectedSpaceId` as the source of truth, because two of the root's rows are
+ * not spaces at all: Latest and Shared with me are listings the server
+ * computes. `selectedSpaceId` stays as a *derived* field, so the document,
+ * history and editor panes are untouched by this.
+ */
+export type KnowledgeSelectedRoot =
+  | { kind: 'space'; spaceId: string }
+  | { kind: 'latest' }
+  | { kind: 'shared-with-me' }
+  | null
+
+export type KnowledgeVirtualKind = 'latest' | 'shared-with-me'
+
 const samePath = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
 
@@ -36,7 +51,12 @@ export const useKnowledgeNavigation = ({
   navigate,
   scopeSpaceId,
 }: UseKnowledgeNavigationInput) => {
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>(scopeSpaceId)
+  const [selectedRoot, setSelectedRoot] = useState<KnowledgeSelectedRoot>(
+    scopeSpaceId ? { kind: 'space', spaceId: scopeSpaceId } : null,
+  )
+  // Derived, never stored twice: a virtual folder has no space, and a space
+  // row has exactly one.
+  const selectedSpaceId = selectedRoot?.kind === 'space' ? selectedRoot.spaceId : undefined
   const [pagePath, setPagePathState] = useState<string[]>([])
   const [openPageId, setOpenPageId] = useState<string | undefined>()
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
@@ -72,9 +92,29 @@ export const useKnowledgeNavigation = ({
     setHistoryPageId(undefined)
   }, [])
 
+  // The one setter the rest of the provider still reaches for; it means "open
+  // this space", which is what every caller of the old state setter meant.
+  const setSelectedSpaceId = useCallback((nextSpaceId: string | undefined): void => {
+    setSelectedRoot(nextSpaceId ? { kind: 'space', spaceId: nextSpaceId } : null)
+  }, [])
+
   const selectSpace = useCallback((nextSpaceId: string): void => {
     if (scopeSpaceId && nextSpaceId !== scopeSpaceId) return
     setSelectedSpaceId(nextSpaceId)
+    setPagePath([])
+    setOpenPageId(undefined)
+    setSpaceSettingsOpen(false)
+    setActiveProductView(undefined)
+    closeOverlays()
+  }, [closeOverlays, scopeSpaceId, setPagePath, setSelectedSpaceId])
+
+  /**
+   * Open Latest or Shared with me — or, with `null`, leave one. A scoped mount
+   * (an agent's tab) has no root column, so it has no virtual folders either.
+   */
+  const selectVirtual = useCallback((kind: KnowledgeVirtualKind | null): void => {
+    if (scopeSpaceId) return
+    setSelectedRoot(kind === null ? null : { kind })
     setPagePath([])
     setOpenPageId(undefined)
     setSpaceSettingsOpen(false)
@@ -135,7 +175,7 @@ export const useKnowledgeNavigation = ({
       setOpenPageId(input.pageId)
       closeOverlays()
     },
-    [closeOverlays, navigate, scopeSpaceId, setPagePath],
+    [closeOverlays, navigate, scopeSpaceId, setPagePath, setSelectedSpaceId],
   )
 
   const drillTo = useCallback((depth: number, childPageId: string): void => {
@@ -191,6 +231,8 @@ export const useKnowledgeNavigation = ({
     readPagePath,
     selectProductView,
     selectSpace,
+    selectVirtual,
+    selectedRoot,
     selectedSpaceId,
     setEditor,
     setOpenPageId,
@@ -222,8 +264,11 @@ export const useKnowledgeNavigation = ({
     readPagePath,
     selectProductView,
     selectSpace,
+    selectVirtual,
+    selectedRoot,
     selectedSpaceId,
     setPagePath,
+    setSelectedSpaceId,
     spaceSettingsOpen,
   ])
 }
