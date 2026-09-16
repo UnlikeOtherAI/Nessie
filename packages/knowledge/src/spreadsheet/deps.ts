@@ -1,10 +1,12 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
 import {
+  SpreadsheetBatchSummarySchema,
   presenceColorFor,
   type DocumentSseEventName,
   type SpreadsheetActor,
   type SpreadsheetAppliedBatch,
+  type SpreadsheetIntent,
 } from '@nessie/schemas'
 
 import type { SpreadsheetModelCache } from './model-cache.js'
@@ -114,10 +116,41 @@ export type SpreadsheetBatchRow = {
  * it has a name to give; the fallback keeps a batch renderable rather than
  * failing a whole catch-up page over one deleted account.
  */
+const STRUCTURAL_INTENT_KINDS: ReadonlySet<SpreadsheetIntent['kind']> = new Set([
+  'insertRows',
+  'deleteRows',
+  'insertColumns',
+  'deleteColumns',
+  'moveRows',
+  'moveColumns',
+])
+
+/**
+ * The row/column intents a stored batch performed, for a client that has to
+ * rebase its own refused batch over it.
+ *
+ * Only the structural ones travel. The rest of a summary is the writer's
+ * private record — a cell's text, a style path — and a peer has the diffs for
+ * those anyway; shipping them would put one person's keystrokes on everybody
+ * else's wire for no gain. A summary that will not parse yields nothing, which
+ * the client reads as "cannot be rebased" and refuses to replay blind.
+ */
+const structuralIntentsOf = (
+  row: SpreadsheetBatchRow,
+): { structuralIntents?: SpreadsheetIntent[] } => {
+  if (!row.structuralKind) return {}
+  const parsed = SpreadsheetBatchSummarySchema.safeParse(row.summary)
+  if (!parsed.success) return {}
+  const intents = (parsed.data.intents ?? []).filter((intent) =>
+    STRUCTURAL_INTENT_KINDS.has(intent.kind))
+  return intents.length > 0 ? { structuralIntents: intents } : {}
+}
+
 export const toAppliedBatch = (
   row: SpreadsheetBatchRow,
   options: { displayName?: string; includeDiffs?: boolean } = {},
 ): SpreadsheetAppliedBatch => ({
+  ...structuralIntentsOf(row),
   batchId: row.id,
   pageId: row.pageId,
   seq: Number(row.seq),

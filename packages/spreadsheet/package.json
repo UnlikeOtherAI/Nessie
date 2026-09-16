@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./rebase": {
+      "types": "./src/rebase.ts",
+      "default": "./dist/rebase.js"
+    },
     "./node": {
       "types": "./src/node.ts",
       "default": "./dist/node.js"
