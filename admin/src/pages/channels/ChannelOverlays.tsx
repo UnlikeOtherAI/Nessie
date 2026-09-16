@@ -219,6 +219,7 @@ export const ChannelOverlays = ({
         currentUserId={me.user.id}
         personalAssistantPresences={personalAssistantPresences}
         viewerCanManage={activeChannel.viewerCanManage}
+        viewerCanManageAgents={activeChannel.viewerCanManageAgents}
         onClose={onCloseMembers}
         onSelectAgent={onSelectAgent}
       />

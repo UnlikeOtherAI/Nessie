@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { isAdminActor, SetChannelMuteRequestSchema } from '@nessie/schemas'
+import { isAdminActor, isOwnerActor, SetChannelMuteRequestSchema } from '@nessie/schemas'
 
 import {
   ChannelRecordSchema,
@@ -62,7 +62,13 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       query.teamId,
       // sp-channels: archived channels are excluded unless explicitly requested
       query.includeArchived === 'true',
-      { isOrganizationAdmin: isAdminActor(actorContext) },
+      {
+        isOrganizationAdmin: isAdminActor(actorContext),
+        // Owner-only, and narrower than the admin standing above: it decides
+        // `viewerCanManageAgents`, the agent binding routes' own gate. Passed
+        // here so the list read answers it without a second membership query.
+        isOrganizationOwner: isOwnerActor(actorContext),
+      },
     )
 
     return createApiResponse(ChannelRecordSchema.array().parse(channels))

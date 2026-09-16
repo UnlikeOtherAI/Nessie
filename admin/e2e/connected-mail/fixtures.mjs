@@ -104,7 +104,11 @@ export const createMailFixtures = () => {
     lastMessageAt: now, memberRole: 'owner', organizationId: ids.organization,
     projectId: ids.project, projectName: 'Launch', scope: 'project', slug: 'email-triage',
     teamId: ids.team, teamName: 'Delivery', type: 'standard', unreadCount: 0,
-    updatedAt: now, viewerCanManage: true, visibility: 'private',
+    updatedAt: now, viewerCanManage: true,
+    // Required beside `viewerCanManage`, and a different authority: placing
+    // an agent is owner-only, adding a person is any member. A stubbed
+    // record without it fails `ChannelRecordSchema.parse` in the client.
+    viewerCanManageAgents: false, visibility: 'private',
   }
 
   const threadDoorway = { accountId: 'gmail-1', mode: 'thread', source: 'gmail', threadId: 'thread-1' }

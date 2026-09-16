@@ -46,6 +46,10 @@ export {
 export const AGENT_CARD_MAX_BLOCKS = 12
 export const AGENT_CARD_MAX_ACTIONS = 4
 export const AGENT_CARD_MAX_FIELDS = 12
+/** Words in one `chips` row. Past this it is a document, not a card. */
+export const AGENT_CARD_MAX_CHIPS = 40
+/** Blocks folded inside one `details` block. */
+export const AGENT_CARD_MAX_DETAIL_BLOCKS = 6
 export const AGENT_CARD_MAX_OPTIONS = 20
 /** The normal input limit; a textarea must opt into a larger bounded value. */
 export const AGENT_CARD_DEFAULT_INPUT_MAX_CHARS = 500
@@ -249,6 +253,47 @@ const LinkBlockSchema = z
   })
   .strict()
 
+/**
+ * A row of short words — tool names, channels, apps. A `fields` block is
+ * label/value pairs and a `text` block is prose; neither says "here is a set of
+ * named things" without the reader doing the parsing, which is exactly what an
+ * agent proposal's tool list is.
+ */
+const ChipsBlockSchema = z
+  .object({
+    type: z.literal('chips'),
+    label: z.string().trim().min(1).max(60).optional(),
+    items: z
+      .array(z.string().trim().min(1).max(60))
+      .min(1)
+      .max(AGENT_CARD_MAX_CHIPS),
+  })
+  .strict()
+
+/**
+ * Detail the reader asked for, closed until they do.
+ *
+ * The Agent Designer's proposal is the case that forced it: an agent's whole
+ * tool selection is the person's approval of that selection, so it has to be on
+ * the card — and it is also thirty words nobody reads while deciding whether the
+ * name is right. A card cannot say both at once without somewhere to fold.
+ *
+ * Deliberately one level and body-only: no nesting, no inputs and no secrets
+ * inside. Nesting is a layout language in waiting, and a field hidden behind a
+ * disclosure is a form control a person can submit without ever seeing.
+ */
+const DetailsBlockSchema = z
+  .object({
+    type: z.literal('details'),
+    /** The closed row's label. It must say what opening it shows. */
+    summary: z.string().trim().min(1).max(80),
+    blocks: z
+      .array(z.union([TextBlockSchema, FieldsBlockSchema, ChipsBlockSchema, LinkBlockSchema]))
+      .min(1)
+      .max(AGENT_CARD_MAX_DETAIL_BLOCKS),
+  })
+  .strict()
+
 const InputBlockSchema = z
   .object({
     type: z.literal('input'),
@@ -316,6 +361,8 @@ const SecretBlockSchema = z
 export const AgentCardBlockSchema = z.union([
   TextBlockSchema,
   FieldsBlockSchema,
+  ChipsBlockSchema,
+  DetailsBlockSchema,
   ImageBlockSchema,
   LinkBlockSchema,
   InputBlockSchema,
@@ -447,6 +494,8 @@ const PresentedImageBlockSchema = z
 export const PresentedAgentCardBlockSchema = z.union([
   TextBlockSchema,
   FieldsBlockSchema,
+  ChipsBlockSchema,
+  DetailsBlockSchema,
   PresentedImageBlockSchema,
   LinkBlockSchema,
   InputBlockSchema,

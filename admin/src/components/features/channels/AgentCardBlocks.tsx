@@ -92,6 +92,103 @@ const settledValueText = (
   return String(value)
 }
 
+/**
+ * Every block that shows something rather than asking for something.
+ *
+ * It is a component of its own because `details` renders the same vocabulary
+ * one level down: without this the folded half would have been a second copy of
+ * the text/fields/chips/link renderers, which is precisely the per-arrangement
+ * duplication the one-renderer rule exists to prevent.
+ */
+const CardStaticBlock = ({ block }: {
+  block: Extract<PresentedAgentCardBlock, { type: 'text' | 'fields' | 'chips' | 'details' | 'image' | 'link' }>
+}) => {
+  if (block.type === 'text') {
+    return (
+      <div className="agent-card-text">
+        {/* Card text is agent-authored prose, not channel chat: it carries
+            no @mention entities to resolve, so text nodes pass through
+            unchanged. Remote images stay blocked by the default. */}
+        <MessageMarkdown renderInlineText={(text) => text}>
+          {block.markdown}
+        </MessageMarkdown>
+      </div>
+    )
+  }
+  if (block.type === 'fields') {
+    return (
+      <dl className="agent-card-fields">
+        {block.items.map((item) => (
+          <div className="contents" key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    )
+  }
+  if (block.type === 'chips') {
+    return (
+      <div className="agent-card-chips">
+        {block.label ? <span className="agent-card-chips-label">{block.label}</span> : null}
+        <ul>
+          {block.items.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </div>
+    )
+  }
+  if (block.type === 'details') {
+    // Native <details>, closed on load: it is keyboard- and screen-reader-
+    // correct for free, it survives with JavaScript mid-hydration, and the
+    // summary is findable by the browser's own in-page search when open.
+    // stopPropagation because the whole card is a click target for the thread.
+    return (
+      <details className="agent-card-details">
+        <summary onClick={(event) => event.stopPropagation()}>{block.summary}</summary>
+        <div className="agent-card-details-body">
+          {block.blocks.map((nested, nestedIndex) => (
+            <CardStaticBlock block={nested} key={`${nested.type}-${nestedIndex}`} />
+          ))}
+        </div>
+      </details>
+    )
+  }
+  if (block.type === 'image') {
+    return (
+      <CardImage
+        alt={block.alt}
+        attachmentId={block.attachmentId}
+        {...(block.caption === undefined ? {} : { caption: block.caption })}
+      />
+    )
+  }
+  // A path is a doorway inside this app — the sign-in card's "Open the
+  // browser" — and goes through the router, so Back and the phone stack
+  // treat it as a screen rather than a new tab on our own origin.
+  if (block.href.startsWith('/')) {
+    return (
+      <Link
+        className="agent-card-link"
+        onClick={(event) => event.stopPropagation()}
+        to={block.href}
+      >
+        {block.label}
+      </Link>
+    )
+  }
+  return (
+    <a
+      className="agent-card-link"
+      href={block.href}
+      onClick={(event) => event.stopPropagation()}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      {block.label}
+    </a>
+  )
+}
+
 export const AgentCardBlocks = ({
   blocks,
   disabled,
@@ -115,68 +212,15 @@ export const AgentCardBlocks = ({
 }) => (
   <div className="agent-card-blocks">
     {blocks.map((block, index) => {
-      if (block.type === 'text') {
-        return (
-          <div className="agent-card-text" key={`text-${index}`}>
-            {/* Card text is agent-authored prose, not channel chat: it carries
-                no @mention entities to resolve, so text nodes pass through
-                unchanged. Remote images stay blocked by the default. */}
-            <MessageMarkdown renderInlineText={(text) => text}>
-              {block.markdown}
-            </MessageMarkdown>
-          </div>
-        )
-      }
-      if (block.type === 'fields') {
-        return (
-          <dl className="agent-card-fields" key={`fields-${index}`}>
-            {block.items.map((item) => (
-              <div className="contents" key={item.label}>
-                <dt>{item.label}</dt>
-                <dd>{item.value}</dd>
-              </div>
-            ))}
-          </dl>
-        )
-      }
-      if (block.type === 'image') {
-        return (
-          <CardImage
-            alt={block.alt}
-            attachmentId={block.attachmentId}
-            key={`image-${index}`}
-            {...(block.caption === undefined ? {} : { caption: block.caption })}
-          />
-        )
-      }
-      if (block.type === 'link') {
-        // A path is a doorway inside this app — the sign-in card's "Open the
-        // browser" — and goes through the router, so Back and the phone stack
-        // treat it as a screen rather than a new tab on our own origin.
-        if (block.href.startsWith('/')) {
-          return (
-            <Link
-              className="agent-card-link"
-              key={`link-${index}`}
-              onClick={(event) => event.stopPropagation()}
-              to={block.href}
-            >
-              {block.label}
-            </Link>
-          )
-        }
-        return (
-          <a
-            className="agent-card-link"
-            href={block.href}
-            key={`link-${index}`}
-            onClick={(event) => event.stopPropagation()}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            {block.label}
-          </a>
-        )
+      if (
+        block.type === 'text'
+        || block.type === 'fields'
+        || block.type === 'chips'
+        || block.type === 'details'
+        || block.type === 'image'
+        || block.type === 'link'
+      ) {
+        return <CardStaticBlock block={block} key={`${block.type}-${index}`} />
       }
       if (settled && (block.type === 'input' || block.type === 'secret')) {
         return (
