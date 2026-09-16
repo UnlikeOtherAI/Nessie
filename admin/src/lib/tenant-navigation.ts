@@ -100,6 +100,41 @@ export const resolveTeamSwitchDestination = async ({
   })
 
 /**
+ * Where a native shell goes when its top-level document is already on a tenant
+ * host, or null to stay.
+ *
+ * The entry points above keep a native shell off tenant hosts, but a shell can
+ * still arrive on one — a link opened in the window, an older admin bundle, a
+ * path nobody has guarded yet — and nothing brought it back. There every IPC
+ * call is refused, so the macOS title bar stops dragging the window and the
+ * deep-link bridge fails until the app is relaunched. A team host serves the
+ * app, so the same route opens on the canonical origin; an organisation portal
+ * has no route of its own, so it lands on the team landing.
+ */
+export const nativeShellRecoveryHref = ({
+  canonicalOrigin,
+  currentUrl,
+  hostKind,
+  inNativeShell,
+}: {
+  /** The product's own origin (`signInOrigin`). */
+  canonicalOrigin: string | null
+  currentUrl: string
+  /** What `/api/hosts/resolve` said this hostname is; null for an ordinary host. */
+  hostKind: 'organisation' | 'team' | null
+  inNativeShell: boolean
+}): string | null => {
+  if (!inNativeShell || !hostKind) return null
+  const canonical = parseHost(canonicalOrigin)
+  const current = parseHost(currentUrl)
+  if (!canonical || !current || canonical.host === current.host) return null
+  const path = hostKind === 'team'
+    ? `${current.pathname}${current.search}${current.hash}`
+    : TEAM_LANDING_PATH
+  return new URL(path, canonical.origin).href
+}
+
+/**
  * Whether a stored tenant return address may be navigated to.
  *
  * `target` has already passed `parseTenantReturn`. In a native shell it is
