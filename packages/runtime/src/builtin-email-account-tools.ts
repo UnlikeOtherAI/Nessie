@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const EMAIL_ACCOUNT_LIST_TOOL_ID = 'email_account_list'
@@ -5,6 +7,56 @@ export const EMAIL_ACCOUNT_CONNECT_TOOL_ID = 'email_account_connect'
 export const EMAIL_ACCOUNT_CHECK_TOOL_ID = 'email_account_check'
 export const EMAIL_ACCOUNT_DISCONNECT_TOOL_ID = 'email_account_disconnect'
 export const EMAIL_ACCOUNT_AGENT_ACCESS_TOOL_ID = 'email_account_agent_access'
+
+const AccountKindSchema = z.enum(['provider', 'mailbox'])
+
+const EmailAccountListToolInputSchema = z.object({}).strict()
+
+const EmailAccountConnectToolInputSchema = z.object({
+  scope: z.enum(['user', 'team']).default('user'),
+}).strict()
+
+const EmailAccountReferenceToolInputSchema = z.object({
+  accountId: z.string().uuid(),
+  accountKind: AccountKindSchema,
+}).strict()
+
+const EmailAccountAgentAccessToolInputSchema = z.object({
+  accountId: z.string().uuid(),
+  agentId: z.string().uuid(),
+  allowed: z.boolean(),
+}).strict()
+
+const EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS = {
+  [EMAIL_ACCOUNT_LIST_TOOL_ID]: EmailAccountListToolInputSchema,
+  [EMAIL_ACCOUNT_CONNECT_TOOL_ID]: EmailAccountConnectToolInputSchema,
+  [EMAIL_ACCOUNT_CHECK_TOOL_ID]: EmailAccountReferenceToolInputSchema,
+  [EMAIL_ACCOUNT_DISCONNECT_TOOL_ID]: EmailAccountReferenceToolInputSchema,
+  [EMAIL_ACCOUNT_AGENT_ACCESS_TOOL_ID]: EmailAccountAgentAccessToolInputSchema,
+} as const
+
+export const isEmailAccountTool = (toolName: string): boolean =>
+  Object.hasOwn(EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS, toolName)
+
+/**
+ * The lifecycle tools are a credential boundary, so their arguments are parsed
+ * before policy, audit or approval handling rather than inside each handler.
+ *
+ * The handlers already validate the fields they read. Strictness is the part
+ * that has to happen here: a field nobody reads still travels. `args` reaches
+ * `summarizeToolInput`, which writes the task event, and an approval freezes it
+ * verbatim — so a password or OAuth code the model was talked into emitting
+ * would become durable state without a single handler ever touching it.
+ */
+export const parseEmailAccountToolArgs = (
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> => {
+  const schema = EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS[
+    toolName as keyof typeof EMAIL_ACCOUNT_TOOL_INPUT_SCHEMAS
+  ]
+  return schema ? schema.parse(args) : args
+}
 
 const ACCOUNT_REFERENCE_PROPERTIES = {
   accountId: {
@@ -32,6 +84,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'Returns exact accountKind and accountId values for follow-up account actions, '
       + 'including personal Google/Microsoft connections and entitled IMAP/SMTP mailboxes.',
     id: EMAIL_ACCOUNT_LIST_TOOL_ID,
+    inputSchema: EmailAccountListToolInputSchema,
     label: 'List Email Accounts',
     parameters: { properties: {}, type: 'object' },
     personalAssistantOnly: true,
@@ -45,6 +98,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'The person enters credentials only in the protected form or provider OAuth page; '
       + 'never ask them to paste an email password or OAuth code into the conversation.',
     id: EMAIL_ACCOUNT_CONNECT_TOOL_ID,
+    inputSchema: EmailAccountConnectToolInputSchema,
     label: 'Connect Email Account',
     parameters: {
       properties: {
@@ -68,6 +122,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'the same initial or incremental sync as its settings card; an IMAP/SMTP mailbox '
       + 'tests both incoming access and outgoing authentication with its stored credential.',
     id: EMAIL_ACCOUNT_CHECK_TOOL_ID,
+    inputSchema: EmailAccountReferenceToolInputSchema,
     label: 'Check Email Account',
     parameters: {
       properties: ACCOUNT_REFERENCE_PROPERTIES,
@@ -85,6 +140,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'stored IMAP/SMTP credential, or revokes a provider grant when possible and '
       + 'always removes the local token. Requires human approval before it runs.',
     id: EMAIL_ACCOUNT_DISCONNECT_TOOL_ID,
+    inputSchema: EmailAccountReferenceToolInputSchema,
     label: 'Disconnect Email Account',
     parameters: {
       properties: ACCOUNT_REFERENCE_PROPERTIES,
@@ -103,6 +159,7 @@ export const EMAIL_ACCOUNT_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'resource-level permission only: the agent also needs its mailbox_search, '
       + 'mailbox_read or mailbox_send tool grants for those actions.',
     id: EMAIL_ACCOUNT_AGENT_ACCESS_TOOL_ID,
+    inputSchema: EmailAccountAgentAccessToolInputSchema,
     label: 'Manage Mailbox Agent Access',
     parameters: {
       properties: {
