@@ -7,17 +7,26 @@
  * anybody remembering to add it, which is the point: a doorway that exists in
  * one surface and not another is the failure AGENTS.md → "Rule zero" is about.
  *
+ * Two doorways have no section of their own and are inserted by hand, because
+ * the page below the grid does not list them any more: Channels and People.
+ * That is deliberate — a project's rooms and its people used to have a summary
+ * card each, which put Members on the screen three times (the header button,
+ * the tile, the card). Each tile now carries what is in it, so the count is
+ * said once.
+ *
  * Pure, and separate from the component, for the reason
  * `project-dashboard-data.ts` is: the ordering and the gating are the parts
  * worth testing, and they are testable without rendering React.
  */
 
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
-import { faUsers } from '@fortawesome/free-solid-svg-icons'
+import { faHashtag, faUsers } from '@fortawesome/free-solid-svg-icons'
 import { projectSections, type ProjectSectionId } from '../../../navigation/project-sections'
 
 /** Everything a project section is, except Overview: a doorway does not link to itself. */
 export type ProjectTileSectionId = Exclude<ProjectSectionId, 'overview'>
+
+export type ProjectTileKey = ProjectTileSectionId | 'channels' | 'people'
 
 /**
  * The tone names what the destination *is*, not which token it borrows, so the
@@ -28,6 +37,7 @@ export type ProjectTileTone =
   | 'plan'
   | 'insight'
   | 'knowledge'
+  | 'rooms'
   | 'people'
   | 'compute'
   | 'config'
@@ -35,12 +45,13 @@ export type ProjectTileTone =
 export type ProjectNavigationTile = {
   blurb: string
   icon: IconDefinition
-  /** `people` for the members doorway, otherwise the section's own id. */
-  key: ProjectTileSectionId | 'people'
+  key: ProjectTileKey
   label: string
-  /** A live count for what is behind the tile; absent when there is nothing to count. */
+  /** What is in there, said once: "12 open", "4 people", "updated 2h". */
   meta?: string
-  /** Absent on `people` alone, which opens a dialog rather than navigating. */
+  /** The members dialog, for the one doorway that is not a route. */
+  opensMembers?: true
+  /** Absent when the tile has nowhere to go — a project with no channels yet. */
   to?: string
   tone: ProjectTileTone
 }
@@ -60,35 +71,58 @@ const SECTION_COPY: Record<ProjectTileSectionId, { blurb: string; tone: ProjectT
 }
 
 type ProjectNavigationTilesInput = {
-  /** Shown against Boards, and omitted while the board list is still loading. */
-  boardCount: number
+  /** Open tickets in no sprint. Only shown on a scrum project, which is the only one with a Backlog. */
+  backlogCount: number
+  /** The project's conversation rooms, most active first; the tile opens the first. */
+  channels: readonly { id: string; label: string }[]
   /** Whether the reader may add and remove people; changes the People tile's words only. */
   canManageMembers: boolean
+  /** When the project's knowledge was last written to, already formatted ("2h"). */
+  documentsUpdatedAge: string | null
   isScrum: boolean
   memberCount: number
+  /** Everything still open on the project's boards. */
+  openWorkCount: number
   projectId: string
 }
 
-const peopleCount = (count: number): string | undefined => {
-  if (count <= 0) return undefined
-  return count === 1 ? '1 person' : `${count} people`
+const count = (value: number, one: string, many: string): string | undefined => {
+  // Nothing, or still loading: a tile says nothing rather than "0 people".
+  if (value <= 0) return undefined
+  return value === 1 ? `1 ${one}` : `${value} ${many}`
 }
 
-const boardCountLabel = (count: number): string | undefined => {
-  if (count <= 0) return undefined
-  return count === 1 ? '1 board' : `${count} boards`
+const sectionMeta = (
+  id: ProjectTileSectionId,
+  input: ProjectNavigationTilesInput,
+): string | undefined => {
+  switch (id) {
+    case 'board':
+      return count(input.openWorkCount, 'open', 'open')
+    case 'backlog':
+      return count(input.backlogCount, 'waiting', 'waiting')
+    // A count here would be a lie: the recent-pages read is capped, so it
+    // knows the newest document but not how many there are. Recency is the
+    // honest signal, and the one a person is looking for.
+    case 'docs':
+      return input.documentsUpdatedAge ? `updated ${input.documentsUpdatedAge}` : undefined
+    // Insights is a view of the counts beside it; Executors are an
+    // organisation-wide pool, so a project-scoped number would be invented;
+    // Settings has nothing to count.
+    case 'insights':
+    case 'executors':
+    case 'settings':
+      return undefined
+  }
 }
 
-export const projectNavigationTiles = ({
-  boardCount,
-  canManageMembers,
-  isScrum,
-  memberCount,
-  projectId,
-}: ProjectNavigationTilesInput): ProjectNavigationTile[] => {
-  // No counts passed: the sidebar bakes an assigned-work total into its label
-  // and a tile carries its own, so `Boards (3)` would read as two numbers.
-  const sections = projectSections({ isScrum, projectId })
+export const projectNavigationTiles = (
+  input: ProjectNavigationTilesInput,
+): ProjectNavigationTile[] => {
+  // No counts passed to `projectSections`: it bakes an assigned-work total into
+  // its label for the sidebar, and a tile carries its own, so `Boards (3)`
+  // beside `12 open` would read as two different numbers for one thing.
+  const sections = projectSections({ isScrum: input.isScrum, projectId: input.projectId })
     .filter((section) => section.id !== 'overview')
     .map((section): ProjectNavigationTile => {
       const id = section.id as ProjectTileSectionId
@@ -98,27 +132,44 @@ export const projectNavigationTiles = ({
         icon: section.icon,
         key: id,
         label: section.label,
-        ...(id === 'board' ? { meta: boardCountLabel(boardCount) } : {}),
+        ...(sectionMeta(id, input) ? { meta: sectionMeta(id, input) } : {}),
         to: section.to,
         tone: copy.tone,
       }
     })
 
+  const firstChannel = input.channels[0]
+  const channels: ProjectNavigationTile = {
+    blurb: firstChannel
+      ? 'Where this project talks — people and its agents together.'
+      : 'No rooms yet. Channels created under this project’s teams appear here.',
+    icon: faHashtag,
+    key: 'channels',
+    label: 'Channels',
+    meta: count(input.channels.length, 'channel', 'channels'),
+    // The most active room, which is where a person going "to the channels"
+    // means to end up. With none there is nowhere to send them, and a tile
+    // that navigates to an empty list is worse than one that says so.
+    ...(firstChannel ? { to: `/channels/${firstChannel.id}` } : {}),
+    tone: 'rooms',
+  }
+
   const people: ProjectNavigationTile = {
-    blurb: canManageMembers
+    blurb: input.canManageMembers
       ? 'Add and remove the people working in this project.'
       : 'Who is working in this project.',
     icon: faUsers,
     key: 'people',
     label: 'People',
-    meta: peopleCount(memberCount),
+    meta: count(input.memberCount, 'person', 'people'),
+    opensMembers: true,
     tone: 'people',
   }
 
-  // People sits with the other "manage this project" doorways rather than at
-  // the top: the work is what a person came for.
+  // Channels and People sit with the other "manage this project" doorways
+  // rather than at the top: the work is what a person came for.
   const before = sections.findIndex((tile) => tile.key === 'executors')
   return before === -1
-    ? [...sections, people]
-    : [...sections.slice(0, before), people, ...sections.slice(before)]
+    ? [...sections, channels, people]
+    : [...sections.slice(0, before), channels, people, ...sections.slice(before)]
 }

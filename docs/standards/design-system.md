@@ -221,7 +221,29 @@ summary and points here; **this file is the rule**.
   added to the sidebar appears on the Overview without anybody remembering it
   (AGENTS.md → "Rule zero"). Copy for a section is an exhaustive
   `Record<ProjectTileSectionId, …>`, so a new section fails to compile rather
-  than rendering an unexplained coloured square.
+  than rendering an unexplained coloured square. Channels and People are the
+  two deliberate non-sections in that grid: they have no route of their own,
+  and the page below no longer lists them, so the grid is where they live or
+  they are nowhere.
+- **A tile carries what is in it; the page below carries what a count cannot
+  say.** Overview had Members on it three times — the header button, the tile,
+  and a summary card — because a card was the only way a count reached the
+  screen. Each tile now states its own ("12 open", "4 people", "2 channels"),
+  and only where the number is *true*: a capped read knows the newest document
+  but not how many exist, so Docs says `updated 2h`, and Executors are an
+  organisation-wide pool, so a project-scoped count would be invented. Nothing
+  shows a zero — a tile still loading and a tile with nothing behind it both
+  say nothing rather than "0 people".
+  What is left below is the two things a count cannot say, in two columns:
+  **where the work is** (`projectWorkQueue` — the reader's own open tickets,
+  falling back to what nobody has picked up, then to everything open, and the
+  card *names* which of the three it chose, because an unlabelled list of
+  somebody else's tickets reads as yours) and **latest documents**. The columns
+  are `auto-fit` over exactly two children, so they are two where they fit and
+  one where they do not, never three. Each column is its own `@container`, so a
+  row restacks on the column's width rather than the window's — the same
+  dashboard is narrow behind a chat shell on a desktop and wide on a phone in
+  landscape.
 - **One sign-in surface, and it is the homepage's doorway.** The admin login
   (`/login`) and the public landing (`nessie.works`) are the same screen:
   `packages/sign-in-surface` owns the layout (`SignInSurface`), the showcase

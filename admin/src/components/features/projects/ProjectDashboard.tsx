@@ -1,19 +1,10 @@
-import { ProjectAgentsSection } from './ProjectAgentsSection'
-import { ProjectChannelsSection } from './ProjectChannelsSection'
 import { ProjectDocumentsSection } from './ProjectDocumentsSection'
-import { ProjectMembersSection } from './ProjectMembersSection'
 import { ProjectNavigationTiles } from './ProjectNavigationTiles'
 import { ProjectWorkSection } from './ProjectWorkSection'
 
 type ProjectDashboardProps = {
   projectId: string
 }
-
-// One card of the wall. The margin is the row gap: `gap` on a multi-column
-// container is the *column* gap only, so vertical spacing has to come from the
-// items, and `break-inside` keeps a card whole rather than letting a column
-// boundary cut a channel list in half.
-const cardClass = 'mb-4 break-inside-avoid'
 
 /**
  * The project dashboard: one component behind both entry points
@@ -22,39 +13,48 @@ const cardClass = 'mb-4 break-inside-avoid'
  *
  * It opens with the navigation grid, because that is what Overview is for: a
  * person arriving at a project wants to get somewhere, and a wall of read-only
- * summaries answered a question they had not asked yet. The summaries follow
- * underneath, so what is late and who is here is still one glance away. The
- * page therefore takes the navigation's colour rather than the work surface's
- * white. The surface class is on each host's outer section, not here, so the
- * project header is painted with the body it titles rather than left as a
- * white band above it — `.admin-nav-surface` in `styles.css` says why.
+ * summaries answered a question they had not asked yet. Each tile says what is
+ * in it, which is what let the wall go: a project's rooms, its people and its
+ * document count were a card each, and Members in particular appeared three
+ * times on one screen — the header button, the tile and the card.
+ *
+ * What is left is the two things a count cannot say, in two columns:
+ *
+ *   **Where the work is** — the reader's own open tickets, or, with none of
+ *   their own, what nobody has picked up. Named rather than implied; see
+ *   `projectWorkQueue`.
+ *   **Latest documents** — what has been written down, newest first.
+ *
+ * The page therefore takes the navigation's colour rather than the work
+ * surface's white. The surface class is on each host's outer section, not here,
+ * so the project header is painted with the body it titles rather than left as
+ * a white band above it — `.admin-nav-surface` in `styles.css` says why.
  *
  * It is a page, so it is **full-width** (`docs/standards/design-system.md`, "One
  * page edge"): one shared `--page-gutter` on each side, and no centred
- * `max-w-*` reading column leaving a dead strip on the right. It used to cap
- * itself at 1040px and centre, which on a wide screen left the team's overview
- * floating in the middle of an empty page while every other screen in the admin
- * ran edge to edge.
+ * `max-w-*` reading column leaving a dead strip on the right.
  *
- * The sections are a multi-column wall rather than a fixed left/right pair.
- * `columns` derives its count from the room the element actually has, which is
- * what this screen needs: the same dashboard sits behind a chat shell on one
- * route and a full-width project tab on another, so the viewport says nothing
- * useful about the space available — and unlike a breakpoint, the count keeps
- * growing on a very wide window instead of stretching five compact cards across
- * 1600px. DOM order is urgency order (Work, Channels, Documents, Members,
- * Agents) and columns fill top-to-bottom, so that order survives at every count,
- * down to the single column a phone gets.
+ * Each column is a query container of its own, so a row inside it restacks on
+ * the column's width rather than the window's — this dashboard is narrow
+ * behind a chat shell on a desktop and wide on a phone in landscape, and only
+ * the column knows which.
+ *
+ * The two columns are `auto-fit` rather than a breakpoint, for the reason the
+ * tile grid is: the same dashboard sits behind a chat shell on one route and a
+ * full-width project tab on another, so the viewport says nothing useful about
+ * the space available. With exactly two children `auto-fit` is two columns
+ * where they fit and one where they do not, and never three.
  */
 export const ProjectDashboard = ({ projectId }: ProjectDashboardProps) => (
   <div className="h-full overflow-y-auto px-[var(--page-gutter)] py-5">
     <ProjectNavigationTiles className="mb-5" projectId={projectId} />
-    <div className="columns-[22rem] gap-4">
-      <ProjectWorkSection className={cardClass} projectId={projectId} />
-      <ProjectChannelsSection className={cardClass} projectId={projectId} />
-      <ProjectDocumentsSection className={cardClass} projectId={projectId} />
-      <ProjectMembersSection className={cardClass} projectId={projectId} />
-      <ProjectAgentsSection className={cardClass} projectId={projectId} />
+    <div className="project-overview-columns">
+      <div className="project-overview-column">
+        <ProjectWorkSection projectId={projectId} />
+      </div>
+      <div className="project-overview-column">
+        <ProjectDocumentsSection projectId={projectId} />
+      </div>
     </div>
   </div>
 )

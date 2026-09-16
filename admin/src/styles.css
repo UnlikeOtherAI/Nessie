@@ -695,8 +695,12 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   transform: translateY(-1px);
 }
 
-.project-nav-tile:disabled {
-  opacity: 0.55;
+/* A doorway with nothing behind it yet — a project before its first channel.
+   It keeps its place in the grid and says so, rather than vanishing and
+   leaving the reader to wonder where this project's rooms are. */
+.project-nav-tile:disabled,
+.project-nav-tile[data-empty='true'] {
+  opacity: 0.6;
 }
 
 .project-nav-tile-art {
@@ -739,10 +743,62 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   line-height: 1.35;
 }
 
+/* Two columns where they fit, one where they do not, never three: `auto-fit`
+   over exactly two children. `start` so each column is its own height — the
+   Work list and the document list are rarely the same length, and stretching
+   them to match leaves whichever is shorter with a tall empty box. */
+.project-overview-columns {
+  display: grid;
+  align-items: start;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+}
+
+.project-overview-column {
+  container: project-column / inline-size;
+  min-width: 0;
+}
+
+/* A narrow column — a phone, or this dashboard behind a chat shell. A ticket
+   row is four things on one line (status, title, when) and the title is the
+   only one a person reads first, so at this width it takes the whole line and
+   the rest drops beneath it. Truncating the title to keep an uppercase status
+   chip whole had it right the wrong way round. */
+@container project-column (max-width: 26rem) {
+  .project-work-row {
+    display: grid;
+    align-items: center;
+    row-gap: 0.25rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .project-work-row-title {
+    grid-area: 1 / 1 / 2 / 3;
+  }
+
+  .project-work-row-status {
+    grid-area: 2 / 1;
+    justify-self: start;
+  }
+
+  .project-work-row-meta {
+    margin-left: 0;
+    grid-area: 2 / 2;
+  }
+
+  /* Which space a document is in matters when several are on screen; at this
+     width the title needs the room more, and the Docs tab names the space on
+     arrival. */
+  .project-doc-row-space {
+    display: none;
+  }
+}
+
 .project-nav-tile[data-tone='work'] { --tile: var(--accent); }
 .project-nav-tile[data-tone='plan'] { --tile: var(--thinking); }
 .project-nav-tile[data-tone='insight'] { --tile: var(--info); }
 .project-nav-tile[data-tone='knowledge'] { --tile: var(--warning); }
+.project-nav-tile[data-tone='rooms'] { --tile: var(--info); }
 .project-nav-tile[data-tone='people'] { --tile: var(--success); }
 .project-nav-tile[data-tone='compute'] { --tile: var(--lnk); }
 /* Settings is the one doorway a person is not here to walk through, so it is

@@ -19,10 +19,13 @@ const source = (path: string): string =>
 
 const tiles = (overrides: Partial<Parameters<typeof projectNavigationTiles>[0]> = {}) =>
   projectNavigationTiles({
-    boardCount: 1,
+    backlogCount: 0,
     canManageMembers: true,
+    channels: [{ id: 'c1', label: 'general' }],
+    documentsUpdatedAge: '2h',
     isScrum: false,
     memberCount: 3,
+    openWorkCount: 5,
     projectId: 'p1',
     ...overrides,
   })
@@ -36,11 +39,15 @@ test('every section of the project has a tile, and Overview does not link to its
 
     // Nothing the sidebar offers is missing here…
     for (const id of sectionIds) assert.ok(tileKeys.includes(id), `no tile for "${id}"`)
-    // …and nothing here points at a section that does not exist.
+    // …and nothing here points at a section that does not exist. Channels and
+    // People are the two deliberate non-sections: they have no route of their
+    // own but the page below no longer lists them, so the grid must.
     for (const key of tileKeys) {
-      if (key === 'people') continue
+      if (key === 'channels' || key === 'people') continue
       assert.ok(sectionIds.includes(key), `tile "${key}" is not a project section`)
     }
+    assert.ok(tileKeys.includes('channels'))
+    assert.ok(tileKeys.includes('people'))
     assert.ok(!tileKeys.includes('overview' as never))
   }
 })
@@ -55,32 +62,67 @@ test('a scrum project gains Backlog and Insights, a kanban one does not', () => 
   assert.ok(scrum.includes('insights'))
 })
 
-test('the tiles keep the sidebar order, with People before the manage-it doorways', () => {
+test('the tiles keep the sidebar order, with Channels and People before the manage-it doorways', () => {
   const keys = tiles({ isScrum: true }).map((tile) => tile.key)
-  assert.deepEqual(keys, ['board', 'backlog', 'insights', 'docs', 'people', 'executors', 'settings'])
+  assert.deepEqual(keys, [
+    'board', 'backlog', 'insights', 'docs', 'channels', 'people', 'executors', 'settings',
+  ])
 })
 
-test('People is the one tile that does not navigate', () => {
+test('People opens the members dialog; every section tile is a route', () => {
   const found = tiles()
   const people = found.find((tile) => tile.key === 'people')
   assert.ok(people)
   assert.equal(people.to, undefined)
-  // Everything else must, or it is a coloured square that does nothing.
+  assert.equal(people.opensMembers, true)
+  // Every other tile goes somewhere, or it is a coloured square that does
+  // nothing. Channels leaves the project, so it is checked on its own below.
   for (const tile of found) {
-    if (tile.key === 'people') continue
+    if (tile.key === 'people' || tile.key === 'channels') continue
     assert.match(tile.to ?? '', /^\/projects\/p1(\/|$)/)
   }
 })
 
-test('a tile counts what is behind it, and says nothing when there is nothing to count', () => {
-  const withCounts = tiles({ boardCount: 3, memberCount: 1 })
-  assert.equal(withCounts.find((tile) => tile.key === 'board')?.meta, '3 boards')
-  assert.equal(withCounts.find((tile) => tile.key === 'people')?.meta, '1 person')
+test('Channels opens the busiest room, and says so when there is none', () => {
+  const withRooms = tiles({
+    channels: [{ id: 'busy', label: 'general' }, { id: 'quiet', label: 'random' }],
+  }).find((tile) => tile.key === 'channels')
+  assert.equal(withRooms?.to, '/channels/busy')
+  assert.equal(withRooms?.meta, '2 channels')
 
-  // Still loading, or genuinely empty: no "0 boards".
-  const empty = tiles({ boardCount: 0, memberCount: 0 })
-  assert.equal(empty.find((tile) => tile.key === 'board')?.meta, undefined)
-  assert.equal(empty.find((tile) => tile.key === 'people')?.meta, undefined)
+  // Nowhere to send anybody: the tile keeps its place and explains itself
+  // rather than pointing at an empty list.
+  const without = tiles({ channels: [] }).find((tile) => tile.key === 'channels')
+  assert.equal(without?.to, undefined)
+  assert.equal(without?.meta, undefined)
+  assert.match(without?.blurb ?? '', /No rooms yet/)
+})
+
+test('each tile says what is in it — once, and only where a number is honest', () => {
+  const found = tiles({ backlogCount: 4, isScrum: true, memberCount: 1, openWorkCount: 12 })
+  const meta = (key: string) => found.find((tile) => tile.key === key)?.meta
+
+  assert.equal(meta('board'), '12 open')
+  assert.equal(meta('backlog'), '4 waiting')
+  assert.equal(meta('people'), '1 person')
+  assert.equal(meta('channels'), '1 channel')
+  // The recent-pages read is capped, so it knows when the newest document
+  // changed but not how many exist. Recency is the honest signal.
+  assert.equal(meta('docs'), 'updated 2h')
+  // Nothing project-scoped to count: executors are an organisation-wide pool.
+  assert.equal(meta('executors'), undefined)
+  assert.equal(meta('settings'), undefined)
+  assert.equal(meta('insights'), undefined)
+
+  // Still loading, or genuinely empty: no "0 open".
+  const empty = tiles({
+    backlogCount: 0,
+    channels: [],
+    documentsUpdatedAge: null,
+    memberCount: 0,
+    openWorkCount: 0,
+  })
+  for (const tile of empty) assert.equal(tile.meta, undefined, `${tile.key} invented a count`)
 })
 
 test('the People tile says what the reader may actually do', () => {
@@ -128,6 +170,19 @@ test('the navigational palette is scoped with the chrome it borrows', () => {
   assert.match(styles, /\.focus-mode \.project-nav-tile,/)
   // Every tone resolves to a token — no raw colour on this surface.
   const tones = [...styles.matchAll(/\.project-nav-tile\[data-tone='([a-z]+)'\] \{ --tile: ([^;]+); \}/g)]
-  assert.equal(tones.length, 7)
+  assert.equal(tones.length, 8)
   for (const [, , value] of tones) assert.match(value, /^var\(--[a-z0-9-]+\)$/)
+})
+
+test('the page below the grid is two columns, and nothing a tile already says', () => {
+  const dashboard = source('components/features/projects/ProjectDashboard.tsx')
+
+  // Members used to be on this screen three times — the header button, the
+  // tile, and a card. The cards a tile's count replaced are gone.
+  assert.match(dashboard, /<ProjectWorkSection/)
+  assert.match(dashboard, /<ProjectDocumentsSection/)
+  assert.doesNotMatch(dashboard, /<ProjectMembersSection/)
+  assert.doesNotMatch(dashboard, /<ProjectChannelsSection/)
+  assert.doesNotMatch(dashboard, /<ProjectAgentsSection/)
+  assert.match(dashboard, /className="project-overview-columns"/)
 })
