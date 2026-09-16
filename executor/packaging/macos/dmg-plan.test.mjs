@@ -448,6 +448,10 @@ test('the release workflow can never publish an unsigned image', () => {
   // The published asset is named by the job, and the marker must never appear
   // in anything the publish step uploads.
   assert.equal(releaseWorkflow.includes(DEVELOPMENT_MARKER), false)
-  // The publish job waits for the executor DMG job.
-  assert.match(releaseWorkflow, /needs: \[preflight, macos, macos-executor-menubar, windows, linux, android\]/)
+  // The publish job waits for the executor DMG job, so a failed notarization
+  // cannot be a release that shipped every other asset and quietly omitted this
+  // one.
+  const publishNeeds = /\n  publish:[\s\S]*?\n    needs: \[([^\]]+)\]/.exec(releaseWorkflow)
+  assert.ok(publishNeeds !== null, 'the publish job must declare its needs')
+  assert.ok(publishNeeds[1].split(',').map((name) => name.trim()).includes('macos-executor-menubar'))
 })
