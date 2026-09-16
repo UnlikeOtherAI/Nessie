@@ -143,7 +143,7 @@ export const useFinderTransfers = ({
               body: result.sharesEnded > 0
                 ? `Sharing with ${result.sharesEnded} `
                   + `${result.sharesEnded === 1 ? 'person' : 'people'} ended.`
-                : `They are in ${drop.destination.name} now.`,
+                : `${drop.count === 1 ? 'It is' : 'They are'} in ${drop.destination.name} now.`,
               title: transferProgressSentence({
                 count: drop.count,
                 destinationName: drop.destination.name,
