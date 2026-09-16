@@ -219,17 +219,17 @@ the lockfile (Phase 0 only).
 
 ## Remaining unknowns (genuinely new)
 
-- **Version-storage growth.** Automatic pre-destructive snapshots plus the
-  200-batch cadence mean a busy 200 000-cell sheet can write a 2 MB xlsx
-  many times an hour, all accounted against the organisation's storage
-  quota. Phase 5 measures a week of the e2e workload and proposes a
-  retention rule for *automatic* versions (e.g. keep every named version,
-  the last 50 automatic ones, and one per day beyond that) — a policy
-  question once there is data.
-- **Cross-sheet references in a sort.** Copy semantics shift a relative
-  reference into another sheet by the row delta (what Sheets does). If the
-  owner prefers references *into other sheets* to stay fixed, it is a
-  one-flag change in `formula-shift.ts`; the default follows Sheets.
 - **Touch selection ergonomics.** Spike D decides whether long-press-drag
   fights the native scroll on iOS WebKit; the fallback is a "Select" mode
   toggle in the action bar rather than a gesture.
+
+Two former unknowns are settled (owner, 2026-09-16):
+
+- **Version-storage growth: not a concern now.** Automatic snapshots keep
+  firing and storage grows; there is no retention policy and Phase 5 must
+  not build one. Revisit when there is real usage to measure.
+- **Cross-sheet references in a sort: follow Sheets.** The standing rule for
+  every behavioural question in this build is *do what Google Sheets does*.
+  Where this plan offered a cheaper deviation, the Sheets behaviour wins;
+  where Sheets' behaviour is unknown to the implementer, check it in Sheets
+  before choosing, and record the answer in `decisions.md`.
