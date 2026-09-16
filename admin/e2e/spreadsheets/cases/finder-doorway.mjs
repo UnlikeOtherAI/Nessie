@@ -1,3 +1,7 @@
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { createChecks } from '../../navigation/lib/expect.mjs'
 import { legacyXlsBytes, serverCsv, serverXlsx, uploadFileNode } from '../lib/seed.mjs'
 import {
@@ -8,7 +12,15 @@ import {
   openFinder,
   pickNewMenuItem,
 } from '../lib/finder.mjs'
-import { commit, focusGrid, gotoCell, shot, typeDraft, until } from '../lib/grid.mjs'
+import {
+  commit,
+  focusGrid,
+  formulaBarText,
+  gotoCell,
+  shot,
+  typeDraft,
+  until,
+} from '../lib/grid.mjs'
 
 /**
  * **Rule zero for this capability**: a person makes a spreadsheet, and reaches
@@ -169,7 +181,15 @@ export const run = async ({ contextFor, browser, seed }) => {
       // permanent spinner is not a doorway.
       const parsed = await page.locator('.ic-worksheet-sheet-canvas')
         .waitFor({ timeout: 90_000 }).then(() => true, (error) => String(error))
-      checks.ok('the imported workbook finishes loading', parsed === true, String(parsed).slice(0, 200))
+      checks.ok('the converted workbook finishes loading', parsed === true, String(parsed).slice(0, 200))
+      // And it holds what the file held. The doorway used to open the page on
+      // the `202`, before the worker had put anything in it, and the grid then
+      // stayed empty for good.
+      await focusGrid(page)
+      await gotoCell(page, 'B2')
+      const converted = await formulaBarText(page)
+      checks.ok('and it holds the value the file held', converted.includes('1234'),
+        JSON.stringify(converted))
       const after = await finderRows(page)
       checks.ok('the uploaded file is still there',
         after.some((row) => row.id === uploaded.id && row.kind === 'file'),
@@ -178,6 +198,41 @@ export const run = async ({ contextFor, browser, seed }) => {
         after.filter((row) => row.kind === 'spreadsheet').length >= 2,
         JSON.stringify(after.map((row) => `${row.kind}:${row.title}`)))
       await shot(page, 'finder-doorway-9-converted')
+    }
+
+    // ── Import: the same bytes, as a workbook rather than a file node ─────
+    if (made) {
+      const directory = await mkdtemp(join(tmpdir(), 'finder-doorway-'))
+      const path = join(directory, 'Imported book.xlsx')
+      await writeFile(path, await serverXlsx(made.id, seed.ownerToken))
+
+      await page.getByRole('button', { name: 'New', exact: true }).click()
+      await page.getByRole('menu').first()
+        .getByRole('menuitem', { name: 'Spreadsheet from a file…', exact: true }).click()
+      const dialog = page.getByTestId('spreadsheet-import-dialog')
+      await dialog.waitFor({ timeout: 15_000 })
+
+      // The refusal first: an `.xls` never reaches the wire.
+      const legacyPath = join(directory, 'Old.xls')
+      await writeFile(legacyPath, legacyXlsBytes())
+      await page.locator('input[type=file]').last().setInputFiles(legacyPath)
+      await page.waitForTimeout(400)
+      checks.ok('an .xls is refused in the dialog, with the reason',
+        (await dialog.innerText()).includes('.xlsx'), (await dialog.innerText()).slice(0, 200))
+      await shot(page, 'finder-doorway-10-import-xls')
+
+      await page.locator('input[type=file]').last().setInputFiles(path)
+      await page.getByTestId('spreadsheet-import-open').waitFor({ timeout: 90_000 })
+      await shot(page, 'finder-doorway-11-import-done')
+      await page.getByTestId('spreadsheet-import-open').click()
+      await page.getByTestId('spreadsheet-action-bar').waitFor({ timeout: 90_000 })
+      await page.locator('.ic-worksheet-sheet-canvas').waitFor({ timeout: 90_000 })
+      await focusGrid(page)
+      await gotoCell(page, 'B2')
+      const imported = await formulaBarText(page)
+      checks.ok('an imported workbook opens with its contents', imported.includes('1234'),
+        JSON.stringify(imported))
+      await shot(page, 'finder-doorway-12-import-opened')
     }
 
     checks.ok('no page errors', errors.length === 0, errors.join(' | '))

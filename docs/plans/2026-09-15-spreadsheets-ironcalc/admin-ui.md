@@ -5,8 +5,8 @@
 | | Where |
 |---|---|
 | **Home** | The knowledge workspace pane: `KnowledgeDocumentPane` renders `SpreadsheetPane` when `page.kind === 'spreadsheet'`. Reached through every existing knowledge doorway: `/knowledge-base` (My Docs, spaces), `/knowledge-base/spaces/:spaceId?pageId=` (deep link via `KNOWLEDGE_INTENT`), project Docs tab, agent Documents tab, ticket documents. **No new route, no new surface row.** |
-| **Create** | `buildKnowledgeWorkspaceActions` gains `{ id: 'new-spreadsheet', label: 'New spreadsheet', icon: faTable, priority: 90 }` beside "New page"; `TaskDocuments.tsx` gains the same; an `.xlsx`/`.csv` file node's `FileNodeViewer` shows **Open as spreadsheet** (`convert-to-spreadsheet`), mirroring "Convert to document"; **Import spreadsheet…** is a second item under "Upload file" (`accept=".xlsx,.csv,.tsv"`) hitting the import route. |
-| **Find** | Tree and filesystem rows show `faTable` for the kind (`KnowledgeSidebarPageTree.tsx:49`, `KnowledgeFilesystemRows.tsx:80,106`, `file-icons.ts`); `kb_search` results carry `kind` and open the page. |
+| **Create** | Two entries in the Finder's `new-file-types.ts` registry — `spreadsheet` ("Spreadsheet") and `spreadsheet-import` ("Spreadsheet from a file…") — which the toolbar's **New** menu and a folder column's background menu both read, so each appears in both. `TaskDocuments.tsx` keeps its own "New spreadsheet" beside "New note". An `.xlsx`/`.csv`/`.tsv` file row offers **Open as spreadsheet** in its right-click menu and in `FileNodeViewer`'s header; an `.xls` is offered **disabled with its reason** rather than omitted. |
+| **Find** | Finder rows take their glyph from the `spreadsheet` **file family** (`file-icons.ts`), which is its own family beside `excel`: an uploaded `.xlsx` is a file you download, this is a workbook you edit. `kb_search` results carry `kind` and open the page. |
 | **In chat** | `DocumentRefChip` already links any page; agent tool cards for `sheet_*` link to the page with the range in the label ("wrote B2:D40 in *Q3 Forecast*"). |
 | **Presence** | The avatar strip in the pane header (`IdentityTile`s with the actor colour ring) is the home; the overlay is the in-context doorway. |
 | **History / Restore** | Existing `VersionHistory.tsx` via the pane's "History" action, extended for the kind: author with an `agent` badge, comment, **Restore this version** (confirmed, snapshots first), "Download" serves the xlsx. Restore is also reached from the transient "Saved a version before <action> — Restore" notice the pane shows after every automatic pre-destructive snapshot, and from agent tool cards in chat ("Restore the version from before this"). |
@@ -130,15 +130,29 @@ re-parents the same host (one model, one widget); Back closes it through the
 registered overlay. On `single` layout the pane is a stack layer like any
 page pane.
 
-## Kind switch sites (3a owns exactly these edits)
+## Kind switch sites
 
-- `admin/src/facades/knowledge/hooks.ts:25` — kind union adds `'spreadsheet'`.
-- `KnowledgeDocumentPane.tsx:77` — three-way switch.
-- `KnowledgeSidebarPageTree.tsx:49`, `KnowledgeFilesystemRows.tsx:80,106`,
-  `KnowledgeWorkspace.tsx:188`, `PageEditor.tsx:41` (refuse edit for the
-  kind), `ProjectDocumentsSection.tsx:59`, `kanban/TaskDocuments.tsx:160`.
-- `admin/src/components/shared/file-icons.ts:131` — unchanged behaviour for
-  filenames; the kind is not a filename.
+**Rewritten after the Documents Finder landed.** `KnowledgeWorkspace`'s
+filesystem rows, its sidebar tree and `knowledge-workspace-actions.ts` are
+gone; the sites below are the ones that exist. Each is exhaustive over
+`KnowledgePageKind` on purpose, so the next kind is a compile error rather
+than a row that reads as a document.
+
+- `packages/schemas/src/knowledge.ts` — `KnowledgePageKindSchema`, the one
+  spelling of the union. `packages/knowledge/src/types.ts` mirrors it for the
+  server; `admin/src/facades/knowledge/hooks.ts` re-exports it.
+- `KnowledgeDocumentPane.tsx` — which pane opens; the spreadsheet chunk is
+  the lazy import here and nowhere else.
+- `finder/finder-sort.ts` (`familyForRow`), `shared/file-icons.ts` (the
+  `spreadsheet` family, its label, tone and glyph), `finder/FinderRow.tsx`
+  (`data-finder-kind`), `finder/finder-menu-target.ts` (`menuKind`),
+  `finder/finder-menu.ts` (`FinderMenuKind` and the row's items),
+  `finder/GetInfoDialog.tsx` (Kind, Contains, Search),
+  `finder/sharing-copy.ts` (`ShareSubjectKind`),
+  `packages/knowledge/src/native-indexing-status.ts` (`spreadsheetState`),
+  `packages/knowledge/src/native-page-info.ts` (`countsFor`).
+- `PageEditor.tsx` refuses to edit the kind; `ProjectDocumentsSection.tsx`
+  and `kanban/TaskDocuments.tsx` draw their own row icon.
 
 ## Phone and desktop
 
@@ -180,7 +194,7 @@ same-origin.
 
 Screenshots into `admin/e2e/screenshots/spreadsheets/`:
 
-1. `create.png` — project Docs tab → New spreadsheet → grid, IronCalc toolbar,
+1. `create.png` — the Finder's New menu → Spreadsheet → grid, IronCalc toolbar,
    formula bar, tabs and our action bar render; wasm + chunk appear in the
    network log only now.
 2. `theme-dark.png` / `theme-light.png` — chrome and grid follow the org
