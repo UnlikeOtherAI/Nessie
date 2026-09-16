@@ -135,13 +135,23 @@ pub fn validate_removing(name: &str, existing: &[Folder]) -> Result<Vec<Folder>,
     Ok(remaining)
 }
 
+/// Whether `outer` contains `inner` — as folders, not as strings.
+///
+/// Two spellings of one Windows path are one folder, so both separators are
+/// boundaries and the comparison ignores case there. Appending a forward slash
+/// and comparing byte-for-byte, as this did, meant `C:\\work\\nessie` never
+/// looked like a parent of `C:\\work\\nessie\\src`: nesting was accepted on the
+/// one platform this crate ships to, which is the state the caller refuses
+/// because a file inside both folders would have two workspace paths.
 fn contains(outer: &str, inner: &str) -> bool {
-    let outer_with_separator = if outer.ends_with('/') || outer.ends_with('\\') {
-        outer.to_owned()
-    } else {
-        format!("{outer}/")
+    let normalise = |value: &str| {
+        let slashed = value.replace('\\', "/");
+        let trimmed = slashed.trim_end_matches('/').to_owned();
+        if cfg!(windows) { trimmed.to_lowercase() } else { trimmed }
     };
-    outer == inner || inner.starts_with(&outer_with_separator)
+    let outer = normalise(outer);
+    let inner = normalise(inner);
+    outer == inner || inner.starts_with(&format!("{outer}/"))
 }
 
 #[cfg(test)]
@@ -205,6 +215,29 @@ mod tests {
         // A sibling is not nested, so it must still be accepted — otherwise the
         // two assertions above would pass under a rule that refuses everything.
         assert!(validate_adding(&absolute("ledger"), None, &existing).is_ok());
+        // A folder whose name merely starts with another's is not inside it.
+        assert!(validate_adding(&absolute("nessie-notes"), None, &existing).is_ok());
+    }
+
+    /// Windows accepts either separator and treats paths case-insensitively, so
+    /// a nested folder can be spelled several ways and every one of them is the
+    /// same folder on disk.
+    #[test]
+    #[cfg(windows)]
+    fn nesting_is_found_through_any_windows_spelling() {
+        let existing = vec![folder("nessie", "C:\\work\\nessie")];
+        for spelling in [
+            "C:\\work\\nessie\\src",
+            "C:/work/nessie/src",
+            "c:\\WORK\\Nessie\\src",
+            "C:\\work\\nessie\\",
+        ] {
+            assert!(
+                validate_adding(spelling, Some("other"), &existing).is_err(),
+                "{spelling} is inside the folder already reached"
+            );
+        }
+        assert!(validate_adding("C:\\work\\nessie-notes", Some("notes"), &existing).is_ok());
     }
 
     #[test]
