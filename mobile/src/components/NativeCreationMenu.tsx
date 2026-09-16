@@ -8,6 +8,7 @@ import {
   NATIVE_CREATION_OPTIONS,
   nativeCreationMenuMetrics,
   shouldDismissNativeCreationMenu,
+  shouldOpenNativeCreationMenu,
   type NativeCreationLane,
 } from '../lib/native-creation-menu'
 import type { NativeCreationAction } from '../lib/native-shell-layout'
@@ -19,6 +20,9 @@ type NativeCreationMenuProps = {
   onAccentColor: string
   onOpen: () => void
   onSelect: (action: NativeCreationAction) => void
+  // Bumped to open the menu from outside — the ⌘N key command. Omitted where
+  // nothing opens it programmatically (e.g. the phone shell).
+  openVersion?: number
   sheetMutedText: string
   sheetSurface: string
   sheetText: string
@@ -39,6 +43,7 @@ export const NativeCreationMenu = ({
   onAccentColor,
   onOpen,
   onSelect,
+  openVersion = 0,
   sheetMutedText,
   sheetSurface,
   sheetText,
@@ -46,9 +51,10 @@ export const NativeCreationMenu = ({
   const [open, setOpen] = useState(false)
   const progress = useRef(new Animated.Value(0)).current
   const dismissedVersion = useRef(dismissVersion)
+  const openedVersion = useRef(openVersion)
   const { width: windowWidth } = useWindowDimensions()
 
-  const openMenu = (): void => {
+  const openMenu = useCallback((): void => {
     onOpen()
     progress.stopAnimation()
     progress.setValue(0)
@@ -61,7 +67,7 @@ export const NativeCreationMenu = ({
         useNativeDriver: false,
       }).start()
     })
-  }
+  }, [onOpen, progress])
 
   const closeMenu = useCallback((): void => {
     Animated.timing(progress, {
@@ -83,6 +89,16 @@ export const NativeCreationMenu = ({
     dismissedVersion.current = dismissVersion
     if (shouldClose) closeMenu()
   }, [closeMenu, dismissVersion, open])
+
+  useEffect(() => {
+    const shouldOpen = shouldOpenNativeCreationMenu({
+      creationOpen: open,
+      openVersion,
+      previousOpenVersion: openedVersion.current,
+    })
+    openedVersion.current = openVersion
+    if (shouldOpen) openMenu()
+  }, [open, openMenu, openVersion])
 
   const select = (action: NativeCreationAction): void => {
     progress.stopAnimation()

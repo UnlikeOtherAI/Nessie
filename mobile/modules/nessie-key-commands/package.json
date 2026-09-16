@@ -1,0 +1,10 @@
+{
+  "name": "nessie-key-commands",
+  "version": "0.1.0",
+  "description": "Registers iPad hardware-keyboard shortcuts (UIKeyCommand) for the Nessie shell.",
+  "main": "index.ts",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Nessie",
+  "homepage": "https://nessie.works"
+}

@@ -6,6 +6,7 @@ import {
   NATIVE_CREATION_OPTIONS,
   nativeCreationMenuMetrics,
   shouldDismissNativeCreationMenu,
+  shouldOpenNativeCreationMenu,
 } from './native-creation-menu'
 
 test('the phone sheet offers Agent last, directly above the Message button', () => {
@@ -25,6 +26,27 @@ test('the phone sheet offers Agent last, directly above the Message button', () 
     icon: 'smart-toy',
     title: 'Agent',
   })
+})
+
+test('a bumped openVersion opens a closed menu, but never re-opens an open one', () => {
+  // No bump: nothing happens.
+  assert.equal(shouldOpenNativeCreationMenu({
+    creationOpen: false,
+    openVersion: 0,
+    previousOpenVersion: 0,
+  }), false)
+  // Bump while closed: open (the ⌘N path).
+  assert.equal(shouldOpenNativeCreationMenu({
+    creationOpen: false,
+    openVersion: 1,
+    previousOpenVersion: 0,
+  }), true)
+  // Bump while already open: no-op, so ⌘N on an open menu does not restart it.
+  assert.equal(shouldOpenNativeCreationMenu({
+    creationOpen: true,
+    openVersion: 1,
+    previousOpenVersion: 0,
+  }), false)
 })
 
 test('a creation sheet stays open until an external menu dismissal arrives', () => {

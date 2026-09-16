@@ -50,6 +50,22 @@ export const shouldDismissNativeCreationMenu = ({
 }): boolean => creationOpen && dismissVersion !== previousDismissVersion
 
 /**
+ * The open twin of the dismiss check: a bumped `openVersion` opens the menu, but
+ * only when it is not already open, so re-opening an open menu is a no-op. This
+ * is what lets the ⌘N key command open the same creation menu a tap opens,
+ * without the shell reaching into the component's animation state.
+ */
+export const shouldOpenNativeCreationMenu = ({
+  creationOpen,
+  openVersion,
+  previousOpenVersion,
+}: {
+  creationOpen: boolean
+  openVersion: number
+  previousOpenVersion: number
+}): boolean => !creationOpen && openVersion !== previousOpenVersion
+
+/**
  * Where the creation control lives, in window coordinates. `left` and `right`
  * are the lane's insets from the window edges — a phone's lane is the whole
  * screen, an iPad's is its pinned list column — and `bottom` is the lane's

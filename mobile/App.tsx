@@ -86,6 +86,16 @@ import {
 } from './src/lib/ipad-native-chrome'
 import { ANDROID_TABLET_TAB_BAR_BOTTOM_GAP } from './src/lib/android-tablet-dock'
 import { NATIVE_CREATION_LANE_CLEARANCE } from './src/lib/native-creation-menu'
+import {
+  applyIpadKeyCommandAction,
+  resolveIpadKeyCommandAction,
+  serializeIpadKeyCommandsForNative,
+} from './src/lib/ipad-key-commands'
+import {
+  addKeyCommandListener,
+  areKeyCommandsSupported,
+  registerKeyCommands,
+} from './modules/nessie-key-commands'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
 import { MobileAdminWebView } from './src/components/MobileAdminWebView'
@@ -506,6 +516,56 @@ const Shell = (): React.JSX.Element => {
     setIndex,
   })
 
+  // ⌘N opens the iPad creation menu by bumping this counter, the open twin of
+  // `dismissCreationMenuVersion` (see `shouldOpenNativeCreationMenu`).
+  const [creationOpenVersion, openNativeCreationMenu] = useReducer((n: number) => n + 1, 0)
+
+  // The iPad hardware-keyboard shortcuts are registered once and dispatched
+  // through the same handlers the tab bar and toolbar use. The listener reads
+  // the current activeIndex and handlers off a ref so the native subscription
+  // installs a single time yet never fires a stale closure. All of the chord →
+  // action semantics live in `ipad-key-commands.ts` and are unit-tested; this is
+  // only the wiring.
+  const keyCommandRef = useRef({
+    activeIndex: index,
+    bootRecovery,
+    nativeActions,
+    onIndexChange,
+    openNativeCreationMenu,
+  })
+  keyCommandRef.current = {
+    activeIndex: index,
+    bootRecovery,
+    nativeActions,
+    onIndexChange,
+    openNativeCreationMenu,
+  }
+  useEffect(() => {
+    if (!IS_IPAD || !areKeyCommandsSupported()) {
+      return
+    }
+    registerKeyCommands(serializeIpadKeyCommandsForNative())
+    return addKeyCommandListener(({ id }) => {
+      const action = resolveIpadKeyCommandAction(id)
+      if (!action) {
+        return
+      }
+      const current = keyCommandRef.current
+      applyIpadKeyCommandAction(
+        action,
+        {
+          selectTabIndex: current.onIndexChange,
+          openSearch: current.nativeActions.openSearchOverlay,
+          openCreationMenu: current.openNativeCreationMenu,
+          goBack: () => current.nativeActions.runToolbarAction('back'),
+          goForward: () => current.nativeActions.runToolbarAction('forward'),
+          reload: current.bootRecovery.fullRefreshWebView,
+        },
+        { activeIndex: current.activeIndex },
+      )
+    })
+  }, [])
+
   const onShouldStartLoadWithRequest = (request: ShouldStartLoadRequest): boolean => {
     const disposition = webViewNavigationDisposition(request, {
       adminUrl: ADMIN_URL,
@@ -736,6 +796,7 @@ const Shell = (): React.JSX.Element => {
           onAccentColor={phoneOnAccent}
           onOpen={nativeActions.closeTransientMenus}
           onSelect={nativeActions.createFromNativeMenu}
+          openVersion={creationOpenVersion}
           sheetMutedText={phoneTextMuted}
           sheetSurface={ipadChromeSurface}
           sheetText={phoneText}
