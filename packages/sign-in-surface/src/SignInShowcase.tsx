@@ -122,9 +122,9 @@ type SignInShowcaseProps = {
 }
 
 /**
- * The dark showcase panel: one illustrated thread at a time, a title and a
- * line under it, advancing on a timer until the reader picks a slide. Reduced
- * motion turns the timer off; the dots stay.
+ * The deep-water showcase band: one illustrated thread at a time on a white
+ * card, a title and a line under it, advancing on a timer until the reader
+ * picks a slide. Reduced motion turns the timer off; the dots stay.
  */
 export const SignInShowcase = ({
   intervalSeconds = 5,
@@ -146,7 +146,6 @@ export const SignInShowcase = ({
 
   return (
     <div className="signin-showcase-panel">
-      <div aria-hidden="true" className="signin-showcase-aura" />
       <div aria-hidden="true" className="signin-showcase-shade" />
       {slides.map((slide, slideIndex) => {
         const isActive = slideIndex === index

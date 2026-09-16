@@ -1,5 +1,5 @@
 /* The landing opens on the sign-in surface (packages/sign-in-surface) on the
-   Space White tokens it ships; nothing here restyles it. What follows the
+   deep-water tokens it ships; nothing here restyles it. What follows the
    doorway is the landing's own, set in the same type and tokens. */
 
 html,
@@ -35,11 +35,10 @@ body {
 .landing-section-title {
   margin: 0;
   color: var(--tx);
-  font-family: var(--font-family-display);
-  font-size: 44px;
-  font-weight: 400;
-  letter-spacing: -0.005em;
-  line-height: 1.15;
+  font-size: clamp(32px, 4vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.17;
   text-wrap: balance;
 }
 
@@ -59,11 +58,16 @@ body {
 }
 
 /* "Your teams": the first thing a signed-in visitor sees, above the doorway.
-   Same page ground, gutter and panel as the card below it, so it reads as
-   part of one page rather than a banner laid over it. Absent when signed out. */
+   Same page ground, gutter and panel as the doorway below it, so it reads as
+   part of one page rather than a banner laid over it. It carries its own
+   bottom gutter: the doorway's brand bar starts flush at its own top edge.
+   Absent when signed out. */
 .landing-teams {
   box-sizing: border-box;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--page-gutter, 24px)) var(--page-gutter, 24px) 0;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + var(--page-gutter, 24px))
+    var(--page-gutter, 24px)
+    var(--page-gutter, 24px);
   background: var(--rail);
 }
 
@@ -170,12 +174,6 @@ body {
   flex: none;
   color: var(--tx3);
   font-size: 12px;
-}
-
-/* The doorway below adds its own top safe-area inset; with the list above it
-   that inset is already spent. */
-.landing-teams + .signin-page {
-  padding-top: var(--page-gutter, 16px);
 }
 
 @media (max-width: 40rem) {
