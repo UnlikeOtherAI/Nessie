@@ -75,6 +75,12 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the
   project usability suite.
+- **Full-width tab bar geometry:** run
+  `pnpm --filter @nessie/admin test:e2e:tabbar-full` after touching
+  `.tabbar-shell*` or adding a `<TabBar fullWidth />` call site. It needs no
+  API or database, and its fixture must gain the new call site's container —
+  the rule it guards is in
+  [`docs/standards/design-system.md`](docs/standards/design-system.md).
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Production promotion uses the exact-SHA gate:** Deploy resolves the current
