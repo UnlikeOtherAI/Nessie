@@ -223,7 +223,6 @@ test('admin: /settings depth0 and every admin page depth1 under it', () => {
   assert.equal(getPhoneNavigationScreen('/settings/members')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/tokens')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/audit')?.depth, 1)
-  assert.equal(getPhoneNavigationScreen('/approvals')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/policy')?.depth, 1)
   assert.deepEqual(getPhoneNavigationBackTarget('/agents'), {
     label: 'Back to Admin',
@@ -273,9 +272,11 @@ test('Apps is an Admin-section list, with a detail level beneath it', () => {
     mode: 'replace',
     to: '/apps',
   })
-  // /approvals must not be swallowed by the /apps prefix.
-  assert.equal(getPhoneTabRootPath('/approvals'), '/settings')
-  assert.equal(getPhoneNavigationScreen('/approvals')?.section, 'admin')
+  // An admin page whose path starts with the /apps prefix letters must not be
+  // swallowed by it. (This guarded /approvals until approvals moved into the
+  // conversation they belong to; /audit is the same shape in the same row.)
+  assert.equal(getPhoneTabRootPath('/audit'), '/settings')
+  assert.equal(getPhoneNavigationScreen('/audit')?.section, 'admin')
 })
 
 test('the provider-independent Back decision: pop a parent, replace otherwise', () => {
