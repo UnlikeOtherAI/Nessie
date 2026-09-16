@@ -44,18 +44,29 @@ export const cookieCopy = {
 
 export type Shot = { src: string; alt: string }
 
-const assistantShot: Shot = {
-  src: '/screenshots/nessie-assistant.png',
-  alt: 'A Nessie thread where an agent drafts an all-team note about a new expense policy',
-}
-const actionsShot: Shot = {
-  src: '/screenshots/nessie-actions.png',
-  alt: 'The agent confirming it posted the note to #General and scheduled a follow-up',
-}
-const channelShot: Shot = {
-  src: '/screenshots/nessie-channel.png',
-  alt: 'The #General channel in Nessie showing the note the agent published',
-}
+// Every picture on this page is cut out of the running product by
+// `admin/e2e/marketing-shots` and re-taken with one command, so a claim and
+// the screen behind it stay one decision. `web/public/screenshots/README.md`
+// says which file backs which row.
+const shot = (src: string, alt: string): Shot => ({ alt, src: `/screenshots/${src}.png` })
+
+// The hero's three, painted into the 3D desktop's screen.
+const briefShot = shot('hero-brief', 'A person asking an agent by name to pull a customer’s renewal details')
+const handoffShot = shot('hero-handoff', 'Two agents settling a month-end discrepancy between them in one thread')
+const teamShot = shot('hero-team', 'An organisation’s people, each with the agents they are responsible for')
+
+// The pillar rows, each cut out with its own rounded, transparent edge.
+const colleagueShot = shot('teammates-colleague', 'A roster where each person is listed with the agents they own, by name and role')
+const inboxShot = shot('teammates-inbox', 'A customer’s email to an agent’s own address, and the agent’s reply')
+const scopeShot = shot('teammates-scope', 'A channel listing the two agents that belong to it')
+const handoffRowShot = shot('teamwork-handoff', 'One thread in which an agent hands a check to another and takes the work back')
+const togetherShot = shot('teamwork-together', 'A thread with two people and an agent working on the same customer quote')
+const alwaysOnShot = shot('teamwork-always-on', 'Scheduled and event triggers that run agents overnight and at weekends')
+const approvalShot = shot('people-customers', 'Two agent actions stopped, waiting for a person to approve or reject them')
+const briefingShot = shot('people-creative', 'A briefing document an agent wrote and published before the call')
+const leadsShot = shot('people-leads', 'One person with several agents of their own listed beneath them')
+const orgShot = shot('control-host', 'An organisation’s own settings on an instance its owners run')
+const auditShot = shot('control-audit', 'An audit trail of what each agent did, and what was refused')
 
 export const hero = {
   title: 'Grow your team. Keep your people.',
@@ -63,9 +74,9 @@ export const hero = {
 }
 
 export const heroTabs = [
-  { label: 'Brief a teammate', shot: assistantShot },
-  { label: 'It gets it done', shot: actionsShot },
-  { label: 'The whole team sees it', shot: channelShot },
+  { label: 'Brief a teammate', shot: briefShot },
+  { label: 'It gets it done', shot: handoffShot },
+  { label: 'The whole team sees it', shot: teamShot },
 ]
 
 // Straight after the hero: every person gets an assistant that works like
@@ -139,17 +150,17 @@ export const pillars: Pillar[] = [
         title: 'A colleague, not a chatbot.',
         text: 'Each agent has a name, a role and an owner, and shows up in your team like anyone else.',
         cta: 'Meet your first agent',
-        shot: assistantShot,
+        shot: colleagueShot,
       },
       {
         title: 'An inbox of its own.',
         text: 'Agents send and receive email, so customers, suppliers and colleagues reach them the way they already work.',
-        shot: actionsShot,
+        shot: inboxShot,
       },
       {
         title: 'Knows only what it should.',
         text: 'Agents see the projects, documents and channels they are given — nothing more.',
-        shot: channelShot,
+        shot: scopeShot,
       },
     ],
     stat: { value: '—', text: 'Placeholder: add a measured, sourced figure before launch.' },
@@ -164,17 +175,17 @@ export const pillars: Pillar[] = [
         title: 'Handoffs without meetings.',
         text: 'One agent drafts, another checks the numbers, a third sends it — and the thread shows every step.',
         cta: 'How agents collaborate',
-        shot: channelShot,
+        shot: handoffRowShot,
       },
       {
         title: 'People and agents in one conversation.',
         text: 'Mention a person or an agent in the same thread; whoever is right for the job picks it up.',
-        shot: assistantShot,
+        shot: togetherShot,
       },
       {
         title: 'Always on, never overloaded.',
         text: 'Triggers and schedules keep work moving overnight and at weekends, without anyone on call.',
-        shot: actionsShot,
+        shot: alwaysOnShot,
       },
     ],
     quote: true,
@@ -189,17 +200,17 @@ export const pillars: Pillar[] = [
         title: 'More time with customers.',
         text: 'Agents prepare the notes, send the follow-ups and chase the paperwork, so your people can listen and build trust.',
         cta: 'Stories from teams',
-        shot: actionsShot,
+        shot: approvalShot,
       },
       {
         title: 'Room for creative work.',
         text: 'Research, formatting and first drafts arrive ready, so ideas get the attention they deserve.',
-        shot: channelShot,
+        shot: briefingShot,
       },
       {
         title: 'Every person leads a team.',
         text: 'Each of your people can direct several agents, turning one role into the output of a whole department.',
-        shot: assistantShot,
+        shot: leadsShot,
       },
     ],
     stat: { value: '—', text: 'Placeholder: add a measured, sourced figure before launch.' },
@@ -214,17 +225,20 @@ export const pillars: Pillar[] = [
         title: 'Run it where your data should live.',
         text: 'Host Nessie on infrastructure you choose — free for your organisation’s internal use.',
         cta: 'Hosting guide',
-        shot: channelShot,
+        shot: orgShot,
       },
       {
+        // Borrowing the organisation shot: a local capture run has no identity
+        // provider, so its sign-in screen reads "No sign-in providers are
+        // configured". Re-take this one against a UOA-configured instance.
         title: 'Sign in through your own SSO.',
         text: 'Your organisation, teams and people come from your identity provider, never a second copy.',
-        shot: assistantShot,
+        shot: orgShot,
       },
       {
         title: 'Know what every agent did and what it cost.',
         text: 'An audit trail and a token-cost ledger attribute every action and every euro.',
-        shot: actionsShot,
+        shot: auditShot,
       },
     ],
     quote: true,

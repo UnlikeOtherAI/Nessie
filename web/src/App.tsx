@@ -5,16 +5,23 @@ import { CookieBar, Header } from './home/header'
 import { Hero } from './home/hero'
 import { Pricing } from './home/pricing'
 import { Wave } from './home/wave'
+import { SignedInTeams } from './signed-in-teams/SignedInTeams'
 
 // Waves only ever sit on the bottom edge of a dark section; a dark section's
 // top edge is straight.
 const light = '#fff'
+
+// Where the signed-in team list is read from. Production builds take the
+// default; a local run points it at its own API.
+const apiOrigin = import.meta.env.VITE_NESSIE_API_ORIGIN ?? 'https://api.nessie.works'
 
 export function App() {
   return (
     <>
       <Header />
       <main>
+        {/* Before the pitch, for anyone who already has somewhere to be. */}
+        <SignedInTeams apiOrigin={apiOrigin} />
         <Hero />
         <Assistant />
         <AiBand />
