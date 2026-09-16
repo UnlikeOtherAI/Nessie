@@ -4,7 +4,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import { readChannelForViewer, readChannelRoster } from '../src/services/channel-directory.js'
-import { listChannelsForUser } from '../src/services/channels.js'
+import { joinPublicChannel, listChannelsForUser } from '../src/services/channels.js'
 
 /**
  * What a person may read of ONE channel, including one they are not in.
@@ -297,5 +297,52 @@ dbTest('GET /api/channels excludes a protected room from non-members, admins inc
     const asAdmin = await listed(adminUserId, true)
     assert.ok(!asAdmin.includes(protectedChannelId), 'not even for an admin')
     assert.ok(!asAdmin.includes(dmChannelId), 'and never somebody else\'s DM')
+  })
+})
+
+// ─── Joining ────────────────────────────────────────────────────────────────
+
+/**
+ * Self-service joining is the whole difference between the two visibilities a
+ * person can choose. `public` means anyone in the organisation may let
+ * themselves in; `protected` means getting in is somebody else's decision, and
+ * the route answers `403 CHANNEL_JOIN_FORBIDDEN` rather than quietly adding
+ * them.
+ *
+ * An organisation admin gets NO exception here, and that is deliberate: they
+ * may add themselves through the member routes, which is an explicit
+ * management act that writes an audit row. Joining is participation, and
+ * participation is never implied by standing.
+ */
+dbTest('a public room is self-service and a protected one is not, for anybody', async () => {
+  await withDb(async (prisma) => {
+    const joined = await joinPublicChannel(prisma, {
+      channelId: publicChannelId,
+      organizationId: orgId,
+      userId: outsiderUserId,
+    })
+    assert.notEqual(joined, null, 'a public room lets them in')
+    assert.equal(joined?.viewerIsMember, true)
+
+    for (const [userId, isOrganizationAdmin] of [
+      [outsiderUserId, false],
+      [adminUserId, true],
+    ] as const) {
+      assert.equal(
+        await joinPublicChannel(prisma, {
+          channelId: protectedChannelId,
+          isOrganizationAdmin,
+          organizationId: orgId,
+          userId,
+        }),
+        null,
+        `${userId} must not join a protected room`,
+      )
+      assert.equal(
+        await prisma.channelMember.count({ where: { channelId: protectedChannelId, userId } }),
+        0,
+        'and no membership row is written',
+      )
+    }
   })
 })
