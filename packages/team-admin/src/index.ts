@@ -177,6 +177,7 @@ export {
   deleteMailboxConnection,
   isCredentialRejection,
   listMailboxConnectionsForUser,
+  listManageableMailboxConnectionsForUser,
   loadManageableMailboxConnection,
   mailboxConnectionFailureMessage,
   mailboxConnectionTestFailure,

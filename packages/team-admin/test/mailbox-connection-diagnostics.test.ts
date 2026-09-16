@@ -11,6 +11,8 @@ import {
 import type { MailboxLegFailure } from '@nessie/schemas'
 
 import {
+  listMailboxConnectionsForUser,
+  listManageableMailboxConnectionsForUser,
   mailboxConnectionFailureMessage,
   mailboxConnectionTestFailure,
   mailboxResolutionRefusal,
@@ -192,4 +194,66 @@ test('every structural failure has a fixed message, and none is the provider tex
     assert.ok(message.length > 0)
     assert.ok(!message.includes('raw'))
   }
+})
+
+/**
+ * Visibility is not authority.
+ *
+ * A member sees the shared mailboxes of every team they belong to, which is
+ * right for a roster. It is wrong for the Personal Assistant's lifecycle
+ * tools: `loadManageableMailboxConnection` refuses a shared mailbox to anyone
+ * but an owner or admin, so listing them offered the model ids whose every
+ * mutation would be refused. These pin the two lists apart.
+ */
+const mailboxRows = [
+  { agentAccess: [], id: 'own', ownerUserId: 'member', teamId: null },
+  { agentAccess: [], id: 'shared', ownerUserId: 'someone-else', teamId: 'team-1' },
+]
+
+const prismaStub = (captured: { where?: unknown }) => ({
+  mailboxConnection: {
+    findMany: async (args: { where?: unknown }) => {
+      captured.where = args.where
+      return []
+    },
+  },
+  teamMember: { findMany: async () => [{ teamId: 'team-1' }] },
+}) as unknown as Parameters<typeof listManageableMailboxConnectionsForUser>[0]
+
+test('a plain member manages only their own mailboxes, never a shared one', async () => {
+  const captured: { where?: unknown } = {}
+  await listManageableMailboxConnectionsForUser(prismaStub(captured), {
+    actor: { role: 'member', userId: 'member' },
+    organizationId: 'org-1',
+  })
+
+  const where = captured.where as { OR: { id?: { in: string[] }; ownerUserId?: string }[] }
+  assert.deepEqual(where.OR[0], { ownerUserId: 'member' })
+  // The shared arm matches nothing at all, rather than the member's teams.
+  assert.deepEqual(where.OR[1], { id: { in: [] } })
+})
+
+test('an owner manages every shared mailbox in the organisation', async () => {
+  const captured: { where?: unknown } = {}
+  await listManageableMailboxConnectionsForUser(prismaStub(captured), {
+    actor: { role: 'owner', userId: 'boss' },
+    organizationId: 'org-1',
+  })
+
+  const where = captured.where as { OR: { teamId?: unknown; ownerUserId?: string }[] }
+  assert.deepEqual(where.OR[0], { ownerUserId: 'boss' })
+  assert.deepEqual(where.OR[1], { teamId: { not: null } })
+})
+
+test('the manageable list is narrower than the visible one for a member', async () => {
+  const visible: { where?: unknown } = {}
+  await listMailboxConnectionsForUser(prismaStub(visible), {
+    actor: { role: 'member', userId: 'member' },
+    organizationId: 'org-1',
+  })
+  const visibleWhere = visible.where as { OR: { teamId?: { in: string[] } }[] }
+
+  // Visibility reaches the member's teams; authority does not.
+  assert.deepEqual(visibleWhere.OR[1], { teamId: { in: ['team-1'] } })
+  assert.ok(mailboxRows.length === 2)
 })

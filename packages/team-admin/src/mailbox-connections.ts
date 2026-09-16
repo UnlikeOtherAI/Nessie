@@ -447,6 +447,38 @@ export const listMailboxConnectionsForUser = async (
 }
 
 /**
+ * Connections the caller can actually mutate.
+ *
+ * Deliberately narrower than `listMailboxConnectionsForUser`: membership grants
+ * visibility of a shared mailbox, not authority over it. The Personal
+ * Assistant lists through this one because every id it returns is a valid
+ * argument to the lifecycle tools — `loadManageableMailboxConnection` refuses a
+ * shared mailbox for anyone but an owner or admin, so the broader list was
+ * offering a member ids whose every mutation would be refused.
+ *
+ * The predicate mirrors that refusal exactly: own personal mailbox, or a shared
+ * one when the actor manages the organisation.
+ */
+export const listManageableMailboxConnectionsForUser = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; actor: ActingMember },
+): Promise<MailboxConnectionRecord[]> => {
+  const sharedWhere: Prisma.MailboxConnectionWhereInput = MANAGER_ROLES.has(input.actor.role)
+    ? { teamId: { not: null } }
+    : { id: { in: [] } }
+
+  const rows = await prisma.mailboxConnection.findMany({
+    include: { agentAccess: { select: { agentId: true } } },
+    orderBy: { createdAt: 'asc' },
+    where: {
+      organizationId: input.organizationId,
+      OR: [{ ownerUserId: input.actor.userId }, sharedWhere],
+    },
+  })
+  return rows.map(presentMailboxConnection)
+}
+
+/**
  * The connection this caller may administer, or a refusal.
  *
  * One predicate behind every mutation — rename, retest, disconnect, and every
