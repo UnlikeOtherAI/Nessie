@@ -8,20 +8,30 @@ other agents implement, in waves, without re-deriving them. When a decision
 proves wrong during a phase, the phase changes this document in the same
 turn and says why.
 
-Files:
+## Table of Contents
 
-- `overview.md` (this file) — goal, the ten decisions, architecture, phase
-  table, ownership map, settled decisions, remaining unknowns.
-- `library-assessment.md` — what IronCalc is and is not, verified against
-  its source at commit `4a95d5d7` and a live probe of the Node binding.
-- `storage-and-concurrency.md` — canonical model, journal, sequencing,
-  snapshots and versions, engine upgrades, import/export, indexing. Carries
-  the **shared contract** (`packages/schemas/src/spreadsheet.ts`, Prisma).
-- `realtime-and-presence.md` — the per-document live lane, envelope, the
-  presence protocol for people and agents, the client ordering rules.
-- `agent-tools.md` — the builtin `sheet_*` and MCP `nessie_sheet_*` surface.
-- `admin-ui.md` — navigation (Rule zero), embedding, theme, phone.
-- `phases.md` — waves, exclusive path ownership, acceptance criteria, tests.
+- [overview.md](overview.md) (this file) — goal, the ten decisions,
+  architecture, phase table, ownership map, settled decisions, unknowns.
+- [library-assessment.md](library-assessment.md) — what IronCalc is and is
+  not, verified against its source and a live probe of the Node binding.
+- [storage-and-concurrency.md](storage-and-concurrency.md) — canonical model,
+  journal, sequencing, snapshots and versions, engine upgrades, import and
+  export, indexing. Carries the shared contract
+  (`packages/schemas/src/spreadsheet.ts`, Prisma).
+- [realtime-and-presence.md](realtime-and-presence.md) — the per-document
+  live lane, envelope, the presence protocol for people and agents, the
+  client ordering rules.
+- [agent-tools.md](agent-tools.md) — the builtin `sheet_*` and MCP
+  `nessie_sheet_*` surface.
+- [admin-ui.md](admin-ui.md) — navigation (Rule zero), embedding, theme,
+  phone.
+- [phases.md](phases.md) — waves, exclusive path ownership, acceptance
+  criteria, tests.
+- [decisions.md](decisions.md) — the Phase 0 spike record: measured engine
+  facts, the corrections they force on this plan, and the owner's calls.
+- [spike-b-xlsx.md](spike-b-xlsx.md) — xlsx and CSV fidelity measurements.
+- [spike-cd-render-touch.md](spike-cd-render-touch.md) — the admin render
+  and phone-touch spikes.
 
 ## Goal
 

@@ -90,3 +90,33 @@ merged-range case to refuse. Revisit if upstream adds them.
 A1 addressing note: `A1Schema` deliberately refuses a sheet-qualified
 reference (`Sheet1!B2`). Every tool and route takes the sheet separately, so a
 range can never disagree with the sheet it was addressed to.
+
+## Spike B — xlsx and CSV (agent branch `agent/spike-xlsx`, 2026-09-16)
+
+Full measurements in [spike-b-xlsx.md](spike-b-xlsx.md). The corrections it
+forces on this plan, all measured:
+
+- **`saveToXlsx` into a missing parent directory panics in Rust and aborts the
+  process** — uncatchable by `try`/`catch`. Every engine file call goes
+  through a temp-directory helper (`mkdtemp` 0700, `randomUUID()` name,
+  `finally` cleanup). It also refuses to overwrite, appends no extension, and
+  blocks the event loop (~4 s for 1 M cells), so large exports belong on the
+  worker.
+- **`fromXlsx` does not evaluate**: formulas read `#ERROR!` until `evaluate()`,
+  and an un-evaluated model exports those errors as cached values.
+- **`pasteCsvString` is TSV**, not CSV — Phase 1 parses CSV itself; the call
+  also needs `setSelectedCell` placed first, and treats the area as an anchor.
+- **Import caps are by uncompressed size and cell count, not file size**:
+  1 M cells is a 3.27 MB file but 864 MB RSS (~11:1 XML expansion).
+- **Format sniffing before the engine**: an `.xls` and a corrupt zip produce
+  the same engine error, so `detectWorkbookFormat` decides.
+- **Warnings need a marker scan**, not just the part list: autofilter,
+  validation, hyperlinks, protection and outlines live inside sheet XML.
+- **Hidden is not queryable as a boolean** — a hidden row or column reports
+  size 0; there is no `getRowsHidden`.
+- **Merged cells survive an xlsx round trip** even though no binding exposes
+  them: they are preserved in the file and invisible to the API. So an
+  imported workbook does not lose its merges on save — it simply cannot show
+  or edit them.
+- An imported autofilter is read into `Table` and never written back, so that
+  one is genuinely lost on round trip.
