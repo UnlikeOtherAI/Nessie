@@ -19,6 +19,11 @@ export {
   enqueueRunExecution,
 } from './queue.js'
 export {
+  claimMessageEmbeddingInTransaction,
+  messageContentHash,
+  type MessageEmbeddingClaimInput,
+} from './message-embedding-claim.js'
+export {
   buildAgentVisibilityWhere,
   buildOwnedAgentWhere,
   buildVisibleAgentWhere,

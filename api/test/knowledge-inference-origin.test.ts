@@ -79,6 +79,22 @@ test('teamless project page keeps the authenticated request team in its job orig
   assert.equal(origin.systemComponent, 'knowledge-indexer')
 })
 
+test('a request origin captures the saving session identity for the signed embed', async () => {
+  const uoaIdentity = {
+    organizationId: 'uoa-org',
+    subject: 'uoa-subject',
+    teamId: 'uoa-team',
+    tokenVersion: 19,
+  }
+  const context = actorContext(TEAM_ID)
+  const origin = await withKnowledgeInferenceActorContext(
+    { ...context, actionContext: { ...context.actionContext, uoaIdentity } },
+    () => requireApiKnowledgeInferenceOrigin({} as PrismaClient, event, 'knowledge-indexer'),
+  )
+
+  assert.deepEqual(origin.uoaIdentity, uoaIdentity)
+})
+
 test('teamless project mutation fails explicitly when the request has no team', async () => {
   const prisma = {} as PrismaClient
 
