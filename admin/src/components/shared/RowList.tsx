@@ -181,7 +181,7 @@ const bodyClass = [
 // stylesheet rule to attach to, which is how the page header's hover became a
 // live rule that painted nothing.
 const finderBodyClass = [
-  'finder-row flex w-full items-center gap-2.5 px-3 text-left',
+  'finder-row flex w-full items-center gap-1.5 px-2 text-left',
   'transition-colors',
 ].join(' ')
 
@@ -235,7 +235,7 @@ export const Row = ({
     <>
       <span className="finder-row-icon flex items-center">{leading}</span>
       <span className="flex min-w-0 items-center gap-2">
-        <span className="finder-row-title min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
+        <span className="finder-row-title min-w-0 flex-1 truncate text-[color:var(--tx)]">
           {title}
         </span>
         {children}
@@ -249,7 +249,7 @@ export const Row = ({
         <span className="finder-row-icon flex shrink-0 items-center">{leading}</span>
       ) : null}
       <span className="min-w-0 flex-1">
-        <span className="finder-row-title block truncate text-sm text-[color:var(--tx)]">
+        <span className="finder-row-title block truncate text-[color:var(--tx)]">
           {title}
         </span>
         {subtitle ? (
@@ -267,7 +267,7 @@ export const Row = ({
 
   const classes = finder
     ? [
-        grid ? 'finder-row finder-grid-row px-3 text-left transition-colors' : finderBodyClass,
+        grid ? 'finder-row finder-grid-row px-2 text-left transition-colors' : finderBodyClass,
         className ?? '',
       ].filter(Boolean).join(' ')
     : [
@@ -286,7 +286,7 @@ export const Row = ({
   const style = grid
     ? { ['--finder-grid-columns' as string]: gridTemplate }
     : depth > 0
-      ? { paddingLeft: `${12 + depth * 18}px` }
+      ? { paddingLeft: `${8 + depth * 14}px` }
       : undefined
 
   // Spelt out rather than spread: a rest prop here would also let a call site

@@ -108,40 +108,47 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
   const ownerAgentId = input.ownerAgentId
 
   return [
-    ...(writable
-      ? [{
-          icon: faPlus,
-          id: 'new-file',
-          items: [
-            {
-              icon: faFileLines,
-              id: 'new-document',
-              label: 'Document',
-              onSelect: input.onCreateDocument,
-            },
-            {
-              icon: faFileArrowUp,
-              id: 'upload-file',
-              label: 'Upload…',
-              onSelect: input.onUploadFile,
-            },
-          ],
-          kind: 'menu',
-          label: 'New file',
-          primary: true,
-          priority: 100,
-        } satisfies PageHeaderAction]
-      : []),
+    // One New. Folder, document and upload are four words apart, not two
+    // buttons apart: a toolbar that asks "which button" before "which kind"
+    // makes the person answer the same question twice.
     ...(writable || input.isRootColumn
       ? [{
-          icon: faFolderPlus,
-          id: 'new-folder',
-          // At the root there is no folder to create a folder *in*: the row
-          // you would be adding is a whole root folder, which needs a
-          // visibility choice an inline name field cannot carry.
-          label: input.isRootColumn ? 'New shared folder…' : 'New folder',
-          onSelect: input.onCreateFolder,
-          priority: 90,
+          icon: faPlus,
+          id: 'new',
+          items: [
+            ...(writable || input.isRootColumn
+              ? [{
+                  icon: faFolderPlus,
+                  id: 'new-folder',
+                  // At the root there is no folder to create a folder *in*:
+                  // the row you would be adding is a whole root folder, which
+                  // needs a visibility choice an inline name field cannot
+                  // carry, so it opens a dialog and says so with an ellipsis.
+                  label: input.isRootColumn ? 'Folder…' : 'Folder',
+                  onSelect: input.onCreateFolder,
+                }]
+              : []),
+            ...(writable
+              ? [
+                  {
+                    icon: faFileLines,
+                    id: 'new-document',
+                    label: 'Document',
+                    onSelect: input.onCreateDocument,
+                  },
+                  {
+                    icon: faFileArrowUp,
+                    id: 'upload-file',
+                    label: 'Upload…',
+                    onSelect: input.onUploadFile,
+                  },
+                ]
+              : []),
+          ],
+          kind: 'menu',
+          label: 'New',
+          primary: true,
+          priority: 100,
         } satisfies PageHeaderAction]
       : []),
     {

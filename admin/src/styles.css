@@ -4449,11 +4449,28 @@ button.reaction-pill-active:focus-visible {
   padding-inline: 6px;
 }
 
+/* Finder's own row: 24px with 13px type, which is what makes a column read as
+   a file list rather than a settings menu. It is a pointer question, not a
+   width one — a mouse can hit 24px and a finger cannot — so the touch height
+   is restored below on any coarse pointer, phone or tablet at any width. */
 .finder-row {
-  min-height: 44px;
+  min-height: 24px;
   padding-block: 0;
   border-radius: var(--radius-sm);
   color: var(--tx);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.finder-row .finder-row-title {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+@media (pointer: coarse) {
+  .finder-row {
+    min-height: 44px;
+  }
 }
 
 /* Every hover and focus rule is guarded: the rules are unlayered, so a bare

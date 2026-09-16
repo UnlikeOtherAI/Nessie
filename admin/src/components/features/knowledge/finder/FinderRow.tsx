@@ -200,9 +200,9 @@ export const FinderRow = ({
 
   const leadingNode = leading ?? (icon
     ? (
-      <span className="relative flex h-5 w-5 items-center justify-center">
+      <span className="relative flex h-4 w-4 items-center justify-center">
         <FontAwesomeIcon
-          className="h-4 w-4"
+          className="h-3.5 w-3.5"
           fixedWidth
           icon={icon}
           style={{ color: `var(${iconTone})` }}

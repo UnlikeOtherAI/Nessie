@@ -110,15 +110,16 @@ test('every header action the old sidebar and header carried has a home', () => 
 
   const ids = actions.map((action) => action.id)
   assert.deepEqual(ids, [
-    'new-file', 'new-folder', 'sort', 'view', 'needs-review', 'open-agent', 'sharing-settings',
+    'new', 'sort', 'view', 'needs-review', 'open-agent', 'sharing-settings',
   ])
 
-  // Upload is not gone, it is the second item of the one creation menu.
-  const newFile = actions.find((action) => action.id === 'new-file')
-  assert.equal(newFile?.kind, 'menu')
+  // Folder, document and upload are one question with three answers, so they
+  // are three items of one New menu rather than two buttons plus a menu.
+  const create = actions.find((action) => action.id === 'new')
+  assert.equal(create?.kind, 'menu')
   assert.deepEqual(
-    newFile?.kind === 'menu' ? newFile.items.map((item) => item.label) : [],
-    ['Document', 'Upload…'],
+    create?.kind === 'menu' ? create.items.map((item) => item.label) : [],
+    ['Folder', 'Document', 'Upload…'],
   )
 })
 
@@ -142,7 +143,7 @@ test('exactly one action is primary, and it is the creation', () => {
     sort: 'name',
     view: 'columns',
   })
-  assert.deepEqual(actions.filter((action) => action.primary).map((action) => action.id), ['new-file'])
+  assert.deepEqual(actions.filter((action) => action.primary).map((action) => action.id), ['new'])
 })
 
 test('the root column offers a whole root folder, not a folder inside one', () => {
@@ -165,9 +166,15 @@ test('the root column offers a whole root folder, not a folder inside one', () =
     sort: 'name',
     view: 'columns',
   })
-  const newFolder = actions.find((action) => action.id === 'new-folder')
-  assert.equal(newFolder?.label, 'New shared folder…')
-  // Nothing is created *in* the root, so there is no New file there.
+  // The root has no folder to create anything *in*, so the one New menu
+  // offers exactly one answer there — a whole root folder, which needs a
+  // visibility choice and therefore an ellipsis.
+  const create = actions.find((action) => action.id === 'new')
+  assert.equal(create?.kind, 'menu')
+  assert.deepEqual(
+    create?.kind === 'menu' ? create.items.map((item) => item.label) : [],
+    ['Folder…'],
+  )
   assert.equal(actions.find((action) => action.id === 'new-file'), undefined)
 })
 
