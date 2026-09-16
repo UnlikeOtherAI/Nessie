@@ -21,6 +21,7 @@ import { ADMIN_URL, API_URL, databaseUrl } from '../navigation/lib/config.mjs'
 import { startAdmin, startApi, stopProcess } from '../navigation/lib/servers.mjs'
 import { CaseFailure } from '../navigation/lib/expect.mjs'
 import { SCREENSHOT_DIR, openSpreadsheet } from './lib/grid.mjs'
+import { createAgentRunner, seedAgent } from './lib/agent.mjs'
 import { createSpreadsheet, seedOrganisation } from './lib/seed.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -63,7 +64,7 @@ const contextFor = async (browser, person, options = {}) => {
  * `openSheet` is called, so a case that ignores it never becomes a third peer
  * in somebody else's presence assertion.
  */
-const caseContext = async (browser, seed) => {
+const caseContext = async (browser, seed, agentRunner) => {
   const context = await contextFor(browser, seed.people[0])
   const page = await context.newPage()
   return {
@@ -73,17 +74,12 @@ const caseContext = async (browser, seed) => {
     openSheet: (pageId) => openSpreadsheet(page, { pageId, spaceId: seed.spaceId }),
     page,
     /**
-     * `runAgentScenario` belongs to Phase 4: it needs the mock-LLM scenario,
-     * the worker's sheet-tool dispatch and an agent to run as, none of which
-     * this phase owns. It is declared here so a case that needs one fails
-     * saying so rather than on `undefined is not a function`.
+     * Runs a named mock-LLM scenario's tool calls as the seeded agent, through
+     * the worker's own builtin dispatch, publishing on the same database this
+     * API replica is listening to. Deliberately **not** awaited by the caller
+     * before it looks at the browser: the drafts only exist mid-flight.
      */
-    runAgentScenario: () => {
-      throw new Error(
-        'runAgentScenario is Phase 4\'s: wire it into caseContext in '
-          + 'admin/e2e/spreadsheets/run.mjs beside the mock-LLM scenario it drives',
-      )
-    },
+    runAgentScenario: (input) => agentRunner.runAgentScenario({ agent: seed.agent, ...input }),
     seed: {
       ...seed,
       createSpreadsheet: (input) => createSpreadsheet({
@@ -115,13 +111,22 @@ const main = async () => {
   // with nothing in the message to say whose database it was talking to.
   const api = await startApi({ reuseExisting: false })
   let admin = null
+  let agentRunner = null
   let browser = null
   const results = []
   try {
     admin = await startAdmin({ reuseExisting: false })
     console.log(`spreadsheets e2e: API ${API_URL}, admin ${ADMIN_URL}`)
     const seed = await seedOrganisation(api)
-    console.log(`spreadsheets e2e: seeded ${seed.people.map((p) => p.displayName).join(' and ')}`)
+    // The agent is one of the collaborators, seeded beside the people: the
+    // agent case needs an identity to edit as and the others simply never use
+    // it.
+    seed.agent = await seedAgent(seed)
+    agentRunner = await createAgentRunner(seed)
+    console.log(
+      `spreadsheets e2e: seeded ${seed.people.map((p) => p.displayName).join(' and ')}`
+      + ` plus ${seed.agent.name}`,
+    )
     browser = await launchBrowser()
 
     for (const name of CASES) {
@@ -142,7 +147,7 @@ const main = async () => {
           ? module.run
           : Object.values(module).find((value) => typeof value?.run === 'function')?.run
         if (!run) throw new Error(`${name} exports no run()`)
-        const context = await caseContext(browser, seed)
+        const context = await caseContext(browser, seed, agentRunner)
         let checks
         try {
           checks = await run(context)
@@ -160,6 +165,7 @@ const main = async () => {
       }
     }
   } finally {
+    await agentRunner?.close()
     await browser?.close()
     await stopProcess(admin)
     await stopProcess(api)

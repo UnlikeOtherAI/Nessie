@@ -9,6 +9,7 @@ import {
   stageSpreadsheetImport,
   toSheetToolRefusal,
   runSheetPageTool,
+  spreadsheetClientOpId,
   withSpreadsheetAtHead,
   type SheetToolId,
   type SpreadsheetEditActor,
@@ -146,7 +147,7 @@ export const runSheetTool = async (
         attribution: spreadsheetAttributionFor(context),
         // Idempotent on the tool call: a run resumed after a crash replays the
         // call and is answered with the batch that already landed.
-        clientOpId: context.toolCallId ?? `${context.run.id}:${toolId}`,
+        clientOpId: spreadsheetClientOpId(context.toolCallId ?? `${context.run.id}:${toolId}`),
       },
       toolId,
       args,
@@ -187,7 +188,7 @@ export const runSheetCreateTool = async (
   const who: SpreadsheetEditActor = {
     actor,
     attribution: spreadsheetAttributionFor(context),
-    clientOpId: context.toolCallId ?? `${context.run.id}:sheet_create`,
+    clientOpId: spreadsheetClientOpId(context.toolCallId ?? `${context.run.id}:sheet_create`),
   }
   const organizationId = String(context.channel.organizationId)
   const fromAttachmentId = str(args.fromAttachmentId)

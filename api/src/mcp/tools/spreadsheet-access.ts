@@ -5,6 +5,7 @@ import {
   canReadSpace,
   canWriteSpace,
   runSheetPageTool,
+  spreadsheetClientOpId,
   toSheetToolRefusal,
   type SheetToolId,
   type SpreadsheetWriteActor,
@@ -117,9 +118,14 @@ export const actorFor = async (
         : {}),
     },
     attribution: attributionFromActorContext(context.actorContext),
-    clientOpId: typeof input.requestId === 'string' && input.requestId.trim()
-      ? input.requestId.trim()
-      : randomUUID(),
+    // A caller's `requestId` is free text, and the wire form a peer receives
+    // requires a uuid; the derivation is deterministic, so retrying with the
+    // same requestId is still recognised as the same write.
+    clientOpId: spreadsheetClientOpId(
+      typeof input.requestId === 'string' && input.requestId.trim()
+        ? input.requestId.trim()
+        : randomUUID(),
+    ),
   }
 }
 

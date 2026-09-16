@@ -75,11 +75,13 @@
   },
   "devDependencies": {
     "@nessie/mock-llm": "workspace:*",
+    "@nessie/runtime": "workspace:*",
     "@types/jmespath": "^0.15.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
     "jsdom": "^30.0.1",
+    "pg": "^8.16.3",
     "vite": "^7.1.10"
   }
 }

@@ -183,6 +183,9 @@ importers:
       '@nessie/mock-llm':
         specifier: workspace:*
         version: link:../packages/mock-llm
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../packages/runtime
       '@types/jmespath':
         specifier: ^0.15.2
         version: 0.15.2
@@ -198,6 +201,9 @@ importers:
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
+      pg:
+        specifier: ^8.16.3
+        version: 8.20.0
       vite:
         specifier: ^7.1.10
         version: 7.3.2(@types/node@22.20.1)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0)
