@@ -44,6 +44,9 @@ const main = async () => {
     admin = await startAdmin()
     await runBrowserSuite(resolve(here, '../browser-cloud/run.mjs'), 'browser-cloud')
     await runBrowserSuite(resolve(here, '../app-connect-scope/run.mjs'), 'app-connect-scope')
+    // A pure-fixture suite: it drives the real members popup over both answers
+    // to `viewerCanManageAgents`, so it needs the admin and nothing behind it.
+    await runBrowserSuite(resolve(here, '../channel-agent-controls/run.mjs'), 'channel-agent-controls')
     // This is a stateful, provider-boundary fixture: it proves the member
     // management screen never sends an email or touches UOA while running CI.
     await runBrowserSuite(resolve(here, '../member-management/run.mjs'), 'member-management')
