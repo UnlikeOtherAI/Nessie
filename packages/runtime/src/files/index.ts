@@ -534,9 +534,12 @@ export const createFileService = (deps: {
     // ./attachment-thumbnails.ts, constructed with this service's own
     // prisma/storage/scope so it stays inside the chokepoint.
     ...createThumbnailOps({ prisma, storage, deriveScope: (row) => deriveScope(row) }),
-    // copy + reassignScope. Declared now so 1E and every consumer compile
-    // against one shape; they throw until 1E fills them.
-    ...createFileTransferOps({ prisma, storage }),
+    // copy + reassignScope, in ./transfer.ts only because this file is at its
+    // size limit. `copy` is handed this service's own `store` rather than
+    // rebuilding one: the quota gate, the `store` ledger event and the
+    // thumbnail are all inside it, and a second way to reach them is precisely
+    // what the chokepoint exists to prevent.
+    ...createFileTransferOps({ prisma, storage, store }),
     store,
     openDownload,
     openStream,
