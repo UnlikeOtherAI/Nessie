@@ -66,7 +66,10 @@ export const useFinderSpreadsheets = ({
   const [progress, setProgress] = useState<UploadProgress | null>(null)
   const [warnings, setWarnings] = useState<SpreadsheetImportWarningList>()
   const [importedPageId, setImportedPageId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // One per dialog: a refusal from an import the person has closed must not
+  // reappear under the title field of a create they open afterwards.
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const create = useCreateSpreadsheet(spaceId)
   const importSpreadsheet = useImportSpreadsheet(spaceId)
@@ -98,7 +101,7 @@ export const useFinderSpreadsheets = ({
     setImportingIn(undefined)
     setWarnings(undefined)
     setImportedPageId(null)
-    setError(null)
+    setImportError(null)
     setProgress(null)
   }, [])
 
@@ -115,12 +118,19 @@ export const useFinderSpreadsheets = ({
     <>
       {creatingIn !== undefined ? (
         <SpreadsheetCreateDialog
-          onClose={() => setCreatingIn(undefined)}
+          error={createError}
+          onClose={() => {
+            setCreatingIn(undefined)
+            setCreateError(null)
+          }}
           onSubmit={(title) => {
             const parentPageId = creatingIn
+            setCreateError(null)
             create.mutate(
               { parentPageId, title },
               {
+                // A refused create used to leave the dialog open and silent.
+                onError: (failure) => setCreateError((failure as Error).message),
                 onSuccess: (created) => {
                   setCreatingIn(undefined)
                   openCreated(parentPageId, created.id)
@@ -134,7 +144,7 @@ export const useFinderSpreadsheets = ({
       ) : null}
       {importingIn !== undefined ? (
         <SpreadsheetImportDialog
-          error={error}
+          error={importError}
           onClose={closeImport}
           onOpenImported={importedPageId
             ? () => {
@@ -149,15 +159,15 @@ export const useFinderSpreadsheets = ({
             // an `.xls` and a corrupt zip fail identically, and the answer
             // would read as a broken file rather than a format we cannot open.
             if (spreadsheetSourceFor(file.name) === 'legacy-xls') {
-              setError(LEGACY_XLS_REASON)
+              setImportError(LEGACY_XLS_REASON)
               return
             }
-            setError(null)
+            setImportError(null)
             setProgress({ loaded: 0, pct: 0, total: file.size })
             importSpreadsheet.mutate(
               { file, onProgress: setProgress, parentPageId: importingIn ?? undefined },
               {
-                onError: (failure) => setError((failure as Error).message),
+                onError: (failure) => setImportError((failure as Error).message),
                 onSettled: () => setProgress(null),
                 onSuccess: (result) => {
                   setWarnings(result.warnings)

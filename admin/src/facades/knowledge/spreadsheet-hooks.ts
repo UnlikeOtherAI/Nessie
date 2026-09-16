@@ -90,13 +90,27 @@ const invalidateSpace = (
   void queryClient.invalidateQueries({ queryKey: knowledgeKeys.myDocs })
 }
 
+/**
+ * Create. `parentPageId` is **omitted** when there is no parent, never sent as
+ * `null`: the route's body schema declares it `.optional()`, and a zod
+ * `.optional()` field rejects an explicit `null` with a 400 naming the field.
+ * Every "New spreadsheet" at a space's root answered
+ * `VALIDATION_ERROR: Expected string, received null` — a browser run found it;
+ * no unit test could, because the schema lives on the other side of the wire.
+ */
 export const useCreateSpreadsheet = (spaceId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { parentPageId?: string | null; taskId?: string; title: string }) =>
-      apiClient.post<KnowledgePageRecord>(`${base}/spaces/${spaceId}/spreadsheets`, input),
+    mutationFn: ({
+      parentPageId,
+      ...input
+    }: { parentPageId?: string | null; taskId?: string; title: string }) =>
+      apiClient.post<KnowledgePageRecord>(`${base}/spaces/${spaceId}/spreadsheets`, {
+        ...input,
+        ...(parentPageId ? { parentPageId } : {}),
+      }),
     onSuccess: () => invalidateSpace(queryClient, spaceId),
   })
 }
