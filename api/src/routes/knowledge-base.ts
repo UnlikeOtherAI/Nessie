@@ -41,13 +41,13 @@ import {
   type KnowledgeRouteDeps,
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
+import { listSharedRootSubtree, readSharedRootPageId } from './knowledge-shares.js'
 import {
   createSpreadsheetRouteContext,
   sendSpreadsheetError,
   spreadsheetActorFor,
   type SpreadsheetRouteContext,
 } from './knowledge-spreadsheets-context.js'
-import { listSharedRootSubtree, readSharedRootPageId } from './knowledge-shares.js'
 
 export const registerKnowledgeBaseRoutes = (
   app: FastifyInstance,

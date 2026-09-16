@@ -58,10 +58,10 @@ import { registerKnowledgeFinderRoutes } from './routes/knowledge-finder.js'
 import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
 import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
 import { registerKnowledgeRecentPagesRoutes } from './routes/knowledge-recent-pages.js'
-import { registerKnowledgeSpreadsheetRoutes } from './routes/knowledge-spreadsheets.js'
-import { createSpreadsheetRouteContext } from './routes/knowledge-spreadsheets-context.js'
 import { registerKnowledgeSharedWithMeRoutes } from './routes/knowledge-shared-with-me.js'
 import { registerKnowledgeShareRoutes } from './routes/knowledge-shares.js'
+import { registerKnowledgeSpreadsheetRoutes } from './routes/knowledge-spreadsheets.js'
+import { createSpreadsheetRouteContext } from './routes/knowledge-spreadsheets-context.js'
 import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
 import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
 import { registerKnowledgeTransferRoutes } from './routes/knowledge-transfers.js'
@@ -220,9 +220,9 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerKnowledgeLibrarianRoutes(app, deps)
   registerKnowledgeLinkRoutes(app, deps)
   registerKnowledgeRecentPagesRoutes(app, deps)
-  registerKnowledgeSpreadsheetRoutes(app, deps, spreadsheetContext)
   registerKnowledgeSharedWithMeRoutes(app, deps)
   registerKnowledgeShareRoutes(app, deps)
+  registerKnowledgeSpreadsheetRoutes(app, deps, spreadsheetContext)
   registerKnowledgeSummaryRoutes(app, deps)
   registerKnowledgeTaskRoutes(app, deps)
   registerKnowledgeTransferRoutes(app, deps)

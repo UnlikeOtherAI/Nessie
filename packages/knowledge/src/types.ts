@@ -24,14 +24,13 @@ export type KnowledgeVisibility =
 export type KnowledgeSensitivityTier = 'normal' | 'sensitive' | 'restricted'
 export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
 // A page is an editable rich-text document, a stored file node (each version
-// backed by an Attachment), a folder, or a spreadsheet. A folder is a page of
-// kind `folder`: no versions, never published, never indexed; its children are
-// the pages whose `parentPageId` is it. A spreadsheet is a live IronCalc
-// workbook whose journal is `spreadsheet_op_batches` and whose durable
-// versions are xlsx renditions — never a file node that happens to be an xlsx.
-// Every branch over this union is exhaustive on purpose — a kind added later
-// must say what it does rather than read as a document.
-export type KnowledgePageKind = 'document' | 'file' | 'folder' | 'spreadsheet'
+// backed by an Attachment), a spreadsheet — a live IronCalc workbook whose
+// journal is `spreadsheet_op_batches` and whose durable versions are xlsx
+// renditions — or a folder. A folder is a page of kind `folder`: no versions,
+// never published, never indexed; its children are the pages whose
+// `parentPageId` is it. Every branch over this union is exhaustive on purpose —
+// a kind added later must say what it does rather than read as a document.
+export type KnowledgePageKind = 'document' | 'file' | 'spreadsheet' | 'folder'
 export type KnowledgeAuthorType = 'user' | 'agent'
 export type KnowledgeDocumentRole =
   | 'identity'

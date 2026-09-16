@@ -581,8 +581,8 @@ enum KnowledgePageStatus {
 enum KnowledgePageKind {
   document
   file
-  folder
   spreadsheet
+  folder
 }
 
 // What a person-to-person share lets the recipient do. `view`: read, download,

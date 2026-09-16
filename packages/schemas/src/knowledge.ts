@@ -40,7 +40,7 @@ export const KnowledgePageStatusSchema = z.enum(['draft', 'published', 'archived
  * — deliberately: indexing status, the row icon and Get Info must each say what
  * the new kind does rather than silently reading as a document.
  */
-export const KnowledgePageKindSchema = z.enum(['document', 'file', 'folder', 'spreadsheet'])
+export const KnowledgePageKindSchema = z.enum(['document', 'file', 'spreadsheet', 'folder'])
 export type KnowledgePageKind = z.infer<typeof KnowledgePageKindSchema>
 
 /**
