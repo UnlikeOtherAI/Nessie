@@ -5,7 +5,7 @@ import type { KnowledgePageShareAccess, KnowledgePageShareRecord } from '@nessie
 import { toFormErrors } from '../../../../facades/forms/form-errors'
 import { useUsers } from '../../../../facades/users/hooks'
 import { useTeamMembers } from '../../../../facades/users/team-members'
-import { useAuthSession } from '../../../../providers/AuthSessionProvider'
+import { useOptionalAuthSession } from '../../../../providers/AuthSessionProvider'
 import { ChoiceGroup } from '../../../shared/ChoiceGroup'
 import { Dialog } from '../../../shared/Dialog'
 import { FormError } from '../../../shared/FormActions'
@@ -137,7 +137,12 @@ export const ShareDialog = ({
   subjectKind,
   title,
 }: ShareDialogProps) => {
-  const { me, token } = useAuthSession()
+  // Optional on purpose: this dialog is rendered in isolation by its own
+  // suite, and a hook that throws outside the provider would make the copy
+  // untestable without a whole signed-in shell around it.
+  const session = useOptionalAuthSession()
+  const me = session?.me ?? null
+  const token = session?.token ?? null
   const isUoaSession = me?.auth.providerType === 'uoa'
   const usersQuery = useUsers(open && !isUoaSession)
   const teamMembersQuery = useTeamMembers(open && isUoaSession)

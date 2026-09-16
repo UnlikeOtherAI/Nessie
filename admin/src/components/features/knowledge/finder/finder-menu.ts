@@ -278,18 +278,17 @@ const selectionItems = (
   const owned = pages.every((page) => page.access === undefined)
   return tidy([
     item('get-info', 'Get Info', on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
+    // The design's words, not a count: the confirm and the toast carry the
+    // number, and a menu item that changes width with the selection is noise.
     ...(files.length > 0
-      ? [item('download', `Download ${files.length} files`, on.download, { icon: faDownload })]
+      ? [item('download', 'Download', on.download, { icon: faDownload })]
       : []),
     ...(caps.canWrite && owned
       ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
       : []),
     SEPARATOR,
     ...(caps.canWrite && owned
-      ? [item('delete', `Delete ${pages.length} items…`, on.remove, {
-        destructive: true,
-        icon: faTrash,
-      })]
+      ? [item('delete', 'Delete…', on.remove, { destructive: true, icon: faTrash })]
       : []),
   ])
 }

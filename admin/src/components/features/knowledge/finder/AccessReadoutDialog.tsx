@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { KnowledgeAccessSummary } from '@nessie/schemas'
 import { useProjectMembers } from '../../../../facades/projects/hooks'
 import { useUsers } from '../../../../facades/users/hooks'
-import { useAuthSession } from '../../../../providers/AuthSessionProvider'
+import { useOptionalAuthSession } from '../../../../providers/AuthSessionProvider'
 import { Dialog } from '../../../shared/Dialog'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { UserAvatar } from '../../../shared/UserAvatar'
@@ -66,7 +66,9 @@ const PersonRow = ({
 )
 
 const ProjectMembers = ({ projectId }: { projectId: string }) => {
-  const { me, token } = useAuthSession()
+  const session = useOptionalAuthSession()
+  const me = session?.me ?? null
+  const token = session?.token ?? null
   const query = useProjectMembers(projectId)
   const members = query.data ?? []
 
