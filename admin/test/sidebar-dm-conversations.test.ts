@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  DM_QUIET_DAYS,
+  isListedPersonDm,
   resolveAgentDms,
   resolvePeopleDirectory,
   resolvePeopleWithConversations,
@@ -28,6 +30,15 @@ const channel = (overrides: Partial<ChannelRecord> & { id: string }): ChannelRec
 const agent = (id: string, name: string, channelIds: string[]): AgentRecord =>
   ({ id, name, channelIds } as unknown as AgentRecord)
 
+/**
+ * One fixed "now" for every recency case. The window is a fortnight wide, so a
+ * test that let `Date.now()` in would start failing a fortnight after whoever
+ * wrote its fixture dates — which is exactly how these cases used to be
+ * written, and what the 14-day rule turned into a time bomb.
+ */
+const NOW = Date.parse('2026-09-16T12:00:00.000Z')
+const daysAgo = (days: number): string => new Date(NOW - days * 24 * 60 * 60 * 1000).toISOString()
+
 const me = { user: { id: 'user-me', displayName: 'Me' } } as unknown as MeResponse
 const colleague = {
   id: 'user-them',
@@ -46,17 +57,31 @@ test('a colleague with no conversation is in the directory but not in Direct mes
     ['user-me', 'user-them'],
   )
   assert.equal(directory[1]?.dmChannelId, 'dm-1')
-  assert.deepEqual(resolvePeopleWithConversations(directory, channels), [])
+  assert.deepEqual(resolvePeopleWithConversations(directory, channels, undefined, NOW), [])
 })
 
 test('a colleague appears once their DM holds a message', () => {
   const channels = [
-    channel({ id: 'dm-1', dmUserId: 'user-them', lastMessageAt: '2026-09-02T09:00:00.000Z' }),
+    channel({ id: 'dm-1', dmUserId: 'user-them', lastMessageAt: daysAgo(1) }),
   ]
   const directory = resolvePeopleDirectory(me, [colleague], channels)
 
   assert.deepEqual(
-    resolvePeopleWithConversations(directory, channels).map((person) => person.id),
+    resolvePeopleWithConversations(directory, channels, undefined, NOW).map((person) => person.id),
+    ['user-them'],
+  )
+})
+
+test('and drops off once it has been quiet for the whole window', () => {
+  const quiet = [channel({ id: 'dm-1', dmUserId: 'user-them', lastMessageAt: daysAgo(15) })]
+  const directory = resolvePeopleDirectory(me, [colleague], quiet)
+  assert.deepEqual(resolvePeopleWithConversations(directory, quiet, undefined, NOW), [])
+
+  // The way back is a message, not a setting: the same channel, listed again
+  // the moment it carries something newer.
+  const spokenTo = [{ ...quiet[0]!, lastMessageAt: daysAgo(0) }]
+  assert.deepEqual(
+    resolvePeopleWithConversations(directory, spokenTo, undefined, NOW).map((person) => person.id),
     ['user-them'],
   )
 })
@@ -66,9 +91,37 @@ test('the conversation being viewed stays listed before its first message', () =
   const directory = resolvePeopleDirectory(me, [colleague], channels)
 
   assert.deepEqual(
-    resolvePeopleWithConversations(directory, channels, 'dm-1').map((person) => person.id),
+    resolvePeopleWithConversations(directory, channels, 'dm-1', NOW).map((person) => person.id),
     ['user-them'],
   )
+})
+
+test('the window is a fortnight, counted from the last message', () => {
+  const dm = (days: number): ChannelRecord =>
+    channel({ id: 'dm-1', dmUserId: 'user-them', lastMessageAt: daysAgo(days) })
+
+  assert.equal(isListedPersonDm(dm(DM_QUIET_DAYS - 1), { now: NOW }), true)
+  // The boundary is the fortnight itself: at exactly 14 days it is out, so the
+  // rule reads the way it is written rather than lasting a fifteenth day.
+  assert.equal(isListedPersonDm(dm(DM_QUIET_DAYS), { now: NOW }), false)
+  assert.equal(isListedPersonDm(dm(DM_QUIET_DAYS + 1), { now: NOW }), false)
+})
+
+test('a quiet DM stays while it still holds something unread', () => {
+  const unread = channel({
+    id: 'dm-1',
+    dmUserId: 'user-them',
+    lastMessageAt: daysAgo(40),
+    unreadCount: 2,
+  })
+  // Tidying a list must never hide a message nobody has read.
+  assert.equal(isListedPersonDm(unread, { now: NOW }), true)
+  assert.equal(isListedPersonDm({ ...unread, unreadCount: 0 }, { now: NOW }), false)
+})
+
+test('the DM on screen never ages out underneath the reader', () => {
+  const stale = channel({ id: 'dm-1', dmUserId: 'user-them', lastMessageAt: daysAgo(90) })
+  assert.equal(isListedPersonDm(stale, { currentChannelId: 'dm-1', now: NOW }), true)
 })
 
 test("the Agent Designer's provisioned home DM is not listed until it is used", () => {
