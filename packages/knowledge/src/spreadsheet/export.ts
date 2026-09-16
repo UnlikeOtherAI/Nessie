@@ -16,6 +16,14 @@ import type { SpreadsheetServiceDeps } from './deps.js'
  * milliseconds and the request path is the right place for it.
  */
 
+/**
+ * A downloaded CSV is opened in Excel far more often than it is parsed by a
+ * script, and Excel needs both of these: CRLF line endings, and a UTF-8 BOM
+ * without which it reads the file as the local code page and mangles every
+ * non-ASCII name in it.
+ */
+const CSV_FOR_EXCEL = { newline: '\r\n', bom: true } as const
+
 export type ExportFormat = 'xlsx' | 'csv'
 
 export type SpreadsheetExport = {
@@ -54,7 +62,7 @@ export const exportSpreadsheet = async (
       : {
           filename: `${base}.csv`,
           mime: 'text/csv; charset=utf-8',
-          bytes: Buffer.from(exportCsv(workbook.model, input.sheet ?? 0), 'utf8'),
+          bytes: Buffer.from(exportCsv(workbook.model, input.sheet ?? 0, CSV_FOR_EXCEL), 'utf8'),
         }
   }
 
@@ -73,7 +81,7 @@ export const exportSpreadsheet = async (
     return {
       filename: `${base} - ${sheets[sheet]?.name ?? sheet}.csv`,
       mime: 'text/csv; charset=utf-8',
-      bytes: Buffer.from(exportCsv(workbook.model, sheet), 'utf8'),
+      bytes: Buffer.from(exportCsv(workbook.model, sheet, CSV_FOR_EXCEL), 'utf8'),
     }
   })
 }
