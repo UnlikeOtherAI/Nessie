@@ -2253,7 +2253,11 @@ button {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.n-dept-tab:hover {
+/* Not the selected one. `.n-dept-tab:hover` is a class plus a pseudo-class, so
+   it outranks `.n-dept-tab-on` and repainted the selected pill's label almost
+   black on blue — and since the pointer is still on the tab you just clicked,
+   that was its resting state rather than an edge case. */
+.n-dept-tab:not(.n-dept-tab-on):hover {
   color: var(--n-text);
 }
 
