@@ -95,21 +95,49 @@ const EntryRow = ({
   )
 }
 
-const EntryList = ({ queue }: { queue: UploadQueueApi }) => (
-  <ul
-    className="max-h-[180px] min-w-0 overflow-y-auto"
-    data-upload-list
-  >
-    {queue.entries.map((entry) => (
-      <EntryRow
-        entry={entry}
-        key={entry.id}
-        onCancel={queue.cancel}
-        onRetry={queue.retry}
-      />
-    ))}
-  </ul>
-)
+/**
+ * The expanded rows are a band of their own *above* the status bar, not
+ * content inside it: `.finder-status-bar` is a fixed 28px row, and a list that
+ * grew inside it was drawn off the bottom of the window.
+ */
+export const UploadQueueRows = ({
+  expanded,
+  extraRows,
+  queue,
+}: {
+  expanded: boolean
+  /**
+   * A live cross-space transfer's own row (2D's `TransferProgressRow`). It is
+   * always visible, never behind the chevron, and it is mounted as a row of
+   * its own: it says what a failed move and a failed copy each leave behind,
+   * and a summary line wrapped around it would contradict it.
+   */
+  extraRows?: ReactNode
+  queue: UploadQueueApi
+}) => {
+  const rows = expanded && queue.entries.length > 0
+  if (!rows && !extraRows) return null
+  return (
+    <div
+      className="max-h-[180px] min-w-0 flex-shrink-0 overflow-y-auto border-t border-[color:var(--sep)] bg-[color:var(--main)] px-[var(--page-gutter)] py-1 text-xs"
+      data-upload-list
+    >
+      {extraRows}
+      {rows ? (
+        <ul className="min-w-0">
+          {queue.entries.map((entry) => (
+            <EntryRow
+              entry={entry}
+              key={entry.id}
+              onCancel={queue.cancel}
+              onRetry={queue.retry}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
 
 /**
  * The warning that comes before the refusal (§6). The server is the authority
@@ -136,37 +164,30 @@ const StorageWarning = ({ queued }: { queued: number }) => {
  * columns above it.
  */
 export const UploadQueueTray = ({
-  extraRows,
+  expanded,
+  onToggle,
   queue,
 }: {
-  /** A queued cross-space transfer's row, mounted beside the uploads (2D). */
-  extraRows?: ReactNode
+  expanded: boolean
+  onToggle: () => void
   queue: UploadQueueApi
 }) => {
-  const [expanded, setExpanded] = useState(false)
   const empty = queue.entries.length === 0
-
-  // A fresh drop after a settled one should not open into yesterday's list.
-  useEffect(() => {
-    if (empty) setExpanded(false)
-  }, [empty])
-
-  if (empty && !extraRows) return null
+  if (empty) return null
 
   const queued = queue.entries.filter((entry) => entry.state.kind === 'queued').length
 
   return (
-    <span className="flex min-w-0 flex-1 flex-col justify-center" data-upload-tray>
+    <span className="flex min-w-0 flex-1 items-center" data-upload-tray>
       <span className="flex min-w-0 items-center gap-2">
         <span
           aria-live="polite"
           className="min-w-0 truncate text-[color:var(--tx2)]"
           data-upload-summary
         >
-          {empty ? '' : queueHeadline(queue.entries)}
+          {queueHeadline(queue.entries)}
         </span>
-        {empty ? null : (
-          <>
+        <>
             <span className="hidden h-1 w-24 shrink-0 overflow-hidden rounded-full bg-[color:var(--overlay)] sm:block">
               <span
                 className="block h-full rounded-full bg-[color:var(--accent)]"
@@ -183,7 +204,7 @@ export const UploadQueueTray = ({
               aria-label={expanded ? 'Hide upload details' : 'Show upload details'}
               className="shrink-0 rounded px-1 text-[color:var(--tx3)]"
               data-upload-toggle
-              onClick={() => setExpanded((open) => !open)}
+              onClick={onToggle}
               type="button"
             >
               <FontAwesomeIcon className="h-3 w-3" icon={expanded ? faChevronDown : faChevronUp} />
@@ -196,11 +217,8 @@ export const UploadQueueTray = ({
             >
               <span className="text-xs">{queue.summary.settled ? 'Dismiss' : 'Cancel all'}</span>
             </button>
-          </>
-        )}
+        </>
       </span>
-      {expanded ? <EntryList queue={queue} /> : null}
-      {extraRows}
     </span>
   )
 }
@@ -240,6 +258,10 @@ export const UploadLeaveGuard = ({ queue }: { queue: UploadQueueApi }) => {
 // ── What the Finder mounts ──────────────────────────────────────────────────
 
 export type FinderUploads = {
+  /** Whether the tray's per-file rows are open. Held here, not in the tray,
+   *  because the rows render as a band above the status bar the tray sits in. */
+  expanded: boolean
+  toggleExpanded: () => void
   /** The file picker's own props; the toolbar's "Upload…" clicks it. */
   openPicker: () => void
   pickerRef: React.RefObject<HTMLInputElement | null>
@@ -285,6 +307,13 @@ export const useFinderUploads = ({
   const queue = useUploadQueue({ driver: useUploadDriver(), onNotice: notice })
   useIndexingRefresh(spaceId, hasPendingIndexing(pages))
 
+  const [expanded, setExpanded] = useState(false)
+  // A fresh drop after a settled one should not open into yesterday's list.
+  const empty = queue.entries.length === 0
+  useEffect(() => {
+    if (empty) setExpanded(false)
+  }, [empty])
+
   const pickerRef = useRef<HTMLInputElement>(null)
   const openPicker = useCallback(() => pickerRef.current?.click(), [])
 
@@ -296,12 +325,14 @@ export const useFinderUploads = ({
   }, [notice])
 
   return {
+    expanded,
     notice,
     openPicker,
     pickerRef,
     queue,
     refuseProps: { onDragOver: refuse, onDrop: refuse },
     statusMessage,
+    toggleExpanded: useCallback(() => setExpanded((open) => !open), []),
   }
 }
 

@@ -38,9 +38,8 @@ import type { UploadQueue, UploadTarget } from './useUploadQueue'
  * One level of one root folder (browser-ui.md §11): the rows, the inline
  * "new folder" row, the upload placeholders and the column's own drop target.
  *
- * It renders rows and nothing else. The menu, the dialogs, the upload queue
- * and the cross-root drop prompt are Wave 2's, and reach it through the four
- * props below rather than through this file learning about them.
+ * It renders rows and nothing else. The menu, the dialogs and the upload queue
+ * reach it through props rather than through this file learning about them.
  */
 
 export type FinderUploadEntry = {
@@ -340,11 +339,20 @@ export const FinderFolderHost = ({
       leadingRows={siblingSpaces.length > 0
         ? (
           <RowList label="Other folders in this project" role="listbox" variant="finder">
+            {/* A sibling root folder is one of the only two places a *different*
+                root can be dropped on, so it is a cross-root transfer target
+                (transfer.md §1); the other is the root column. */}
             {siblingSpaces.map((space) => (
               <Fragment key={space.id}>
                 <FinderRow
                   chevron
                   columnActive={false}
+                  dragHandlers={drag.dropHandlersFor(space.id, {
+                    kind: 'folder',
+                    parentPageId: null,
+                    spaceId: space.id,
+                  })}
+                  dropTarget={drag.dropTargetKey === space.id}
                   icon={faLayerGroup}
                   iconTone="--accent"
                   id={space.id}
@@ -390,17 +398,13 @@ export const FinderFolderHost = ({
 /**
  * The column's file drop (uploads-and-indexing.md §1).
  *
- * Two things this has to get right. **Where it lands**: the destination is the
- * folder row under the pointer if there is one, and the column's own folder
- * otherwise, so dropping onto *Contracts* in a list files into Contracts
- * rather than beside it. The row is found through `data-finder-folder`, which
- * `FinderRow` already writes, rather than by this column learning the row's
- * geometry.
+ * **Where it lands**: the folder row under the pointer if there is one, the
+ * column's own folder otherwise — found through `data-finder-folder`, which
+ * `FinderRow` already writes, not by learning the row's geometry.
  *
- * **What a read-only column does**: refusing by doing nothing would let the
- * browser take the drop and navigate away from the app to the dropped file.
- * So it still swallows the event, sets `dropEffect = 'none'`, and says the one
- * sentence.
+ * **A read-only column** still swallows the event and sets
+ * `dropEffect = 'none'`: refusing by doing nothing would let the browser take
+ * the drop and navigate away from the app to the dropped file.
  */
 const folderRowIdAt = (event: DragEvent<HTMLElement>): string | null => {
   const target = event.target as HTMLElement | null

@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react'
 import { StorageUsageMeter } from '../StorageUsageMeter'
+import {
+  UploadQueueRows,
+  UploadQueueTray,
+  type FinderUploads,
+} from './UploadQueue'
 
 /**
  * The strip under the columns (browser-ui.md §2) — the one Finder itself uses
@@ -83,19 +88,37 @@ export const FinderStatusBar = ({
  */
 export const FinderStatusStrip = ({
   single,
-  tray,
-  trayActive,
+  transferRows,
+  uploads,
   ...bar
 }: FinderStatusBarProps & {
   single: boolean
-  tray: ReactNode
-  /** Whether the tray has anything to say; `single` shows nothing otherwise. */
-  trayActive: boolean
+  /** A live cross-space transfer's row, mounted beside the uploads (2D). */
+  transferRows?: ReactNode
+  uploads: FinderUploads
 }) => {
-  if (single) {
-    return trayActive
-      ? <div className="finder-status-bar text-xs" data-finder-status-bar>{tray}</div>
-      : null
-  }
-  return <FinderStatusBar {...bar}>{tray}</FinderStatusBar>
+  const tray = (
+    <UploadQueueTray
+      expanded={uploads.expanded}
+      onToggle={uploads.toggleExpanded}
+      queue={uploads.queue}
+    />
+  )
+  return (
+    <>
+      {/* The expanded rows are a band of their own: `.finder-status-bar` is a
+          fixed 28px row, and a list that grew inside it was drawn off the
+          bottom of the window. */}
+      <UploadQueueRows
+        expanded={uploads.expanded}
+        extraRows={transferRows}
+        queue={uploads.queue}
+      />
+      {single
+        ? (uploads.queue.entries.length > 0
+          ? <div className="finder-status-bar text-xs" data-finder-status-bar>{tray}</div>
+          : null)
+        : <FinderStatusBar {...bar}>{tray}</FinderStatusBar>}
+    </>
+  )
 }

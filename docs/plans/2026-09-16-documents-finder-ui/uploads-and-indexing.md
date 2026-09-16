@@ -204,3 +204,52 @@ drop's total would exceed the remaining quota the overlay still accepts it
 (the server is the authority) but the tray's summary line warns first:
 "This may exceed your storage — {remaining} left". The refusal itself is
 §2's `STORAGE_QUOTA_EXCEEDED` handling.
+
+## 7. As built (Wave 2B)
+
+What shipped, and where it differs from §1–6. Each deviation names the code
+fact that forced it.
+
+- **`indexing-copy.ts` is written and tested, but `FinderRow` does not read it
+  yet.** `FinderRow.tsx` carries its own inline `IndexingGlyph` with a
+  different vocabulary ("Not searchable — this is a draft") and it paints a
+  `faMagnifyingGlassMinus` on a draft, which §4 says stays quiet. That file
+  belongs to Wave 2A, so 2B did not edit it. The one change it needs is to
+  replace the `IndexingGlyph` body with `indexingCopy(indexing,
+  familyLabel[familyForRow(page)])` and render `copy.icon` / `copy.tone` /
+  `copy.sentence`, skipping the glyph when `copy.glyph === 'none'`.
+  **Until that lands, F-ROW-01, F-INDEX-01 and F-INDEX-03 will not pass.**
+- **The unsupported sentence uses `familyLabel`**, so an `.xlsx` reads
+  "Not indexed — Spreadsheets aren't searchable" rather than §5's "Excel
+  documents". The template in §4 (`{familyLabel}s`) is the rule; §5's wording
+  predates `file-icons.ts`'s label table.
+- **`FILE_TOO_LARGE` says "Too large to upload"**, not §3's "the limit is
+  {formatBytes(limit)}": the per-file ceiling is the server's
+  `NESSIE_MAX_UPLOAD_BYTES` and is not published to the client, and a number
+  hard-coded here would be wrong the day it moves.
+- **The poll is an interval that invalidates `knowledgeKeys.pages(spaceId)`**
+  (`useIndexingRefresh`), not `refetchInterval` on the query: the pages query
+  lives in `facades/knowledge/hooks.ts`, which no Wave 2 agent owns. Same
+  5 s cadence, same ten-minute ceiling, same start and stop conditions.
+- **On `single` the tray is a bottom strip, not a Sheet behind an "Uploads
+  ({k})" header action.** Adding that action means editing
+  `finder-toolbar-actions.ts`, which is Wave 2A's. The strip is the same
+  component as the docked one and appears only while the queue is non-empty.
+- **The expanded rows are a band above the status bar, not inside it.**
+  `.finder-status-bar` is a fixed 28px row, and a list that grew inside it was
+  drawn off the bottom of the window.
+- **A cancelled upload almost never leaves a page to delete.** `xhr.abort()`
+  rejects with `UploadAbortedError` and no page id ever arrives, and
+  `storeFileWithRollback` already unwinds a partial store. `DELETE /pages/:id`
+  therefore runs in exactly one case: the abort lost the race with the
+  server's commit, the result resolved anyway, and the queue has a real id to
+  remove.
+- **`useFinderMenus` and `useFinderTransfers` are mounted by name.** 2B
+  shipped both as seam files (`useFinderMenus.ts`, `useFinderTransfers.ts`)
+  with the declared shapes and inert bodies so the branch compiles and runs on
+  its own; Waves 2A and 2D replace the bodies and the call sites do not move.
+- **The root column's cross-root drop is handed over by prop name.**
+  `FinderRootColumn` gains `dropHandlersForSpace?(spaceId)` and
+  `dropTargetId?` from Wave 2A; `DocumentsFinder` already passes both. The
+  sibling-space rows inside a project's column — the other place a foreign
+  root appears — are wired here.
