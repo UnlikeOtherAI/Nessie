@@ -150,6 +150,21 @@ summary and points here; **this file is the rule**.
   `GET /api/agents` omits `systemManaged` agents — which is why the Personal
   Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
+- **One actor name, and it is never an id.** The two governance surfaces —
+  `/approvals` ("which agent is asking") and `/audit` ("which agent did this")
+  — name their actor through `components/shared/ActorName.tsx`
+  (`useActorNames` + `<ActorName>`), which resolves an agent through
+  `providers/AgentIdentityProvider.tsx` for the reason above and a person
+  through the `users` directory. Both screens used to print eight characters of
+  a uuid (`Agent: a0000000`, `agent:a0000000 → email_message`) while the
+  roster, the agents table, the channel agent panel and the chat feed all
+  showed the name, which defeats the one question each screen exists to
+  answer. Three rules travel with the component: the kind word (`person`,
+  `agent`, `service`, `system`) is always printed beside the name, because a
+  name alone cannot tell the person who approved something from the agent that
+  asked; an actor no directory can name falls back to its short id, never to a
+  blank or a generic "Agent"; and the exact id stays on the element's `title`
+  either way, since the trail's value is being able to identify the exact row.
 - **One agent-visibility marker wherever identity drives an action.** Every
   agent picker and actionable agent row uses
   `components/shared/AgentVisibilityPill.tsx`: `Shared` for an agent that

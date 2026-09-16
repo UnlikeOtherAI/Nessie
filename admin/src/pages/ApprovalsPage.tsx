@@ -4,6 +4,7 @@ import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
 import { Row, RowList } from '../components/shared/RowList'
+import { ActorName, useActorNames } from '../components/shared/ActorName'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { MailboxSendApprovalPreview } from '../components/features/channels/MailboxSendApprovalPreview'
 import {
@@ -129,6 +130,9 @@ const ApprovalActions = ({ approval }: { approval: ApprovalRequest }) => {
 export const ApprovalsPage = () => {
   const navigate = useNavigate()
   const { me } = useAuthSession()
+  // Agents only: no pending request names a person, so this screen must not
+  // fetch the organisation roster to render its subtitles.
+  const resolveActor = useActorNames({ people: false })
 
   // Not raw keys: `approvalKeys.all` is the factory; 'pending'/'history' only
   // distinguish this page's two cache entries from each other and from any
@@ -204,7 +208,7 @@ export const ApprovalsPage = () => {
                                   the point: "who is asking" is most of what a
                                   person needs to decide. */}
                               {approval.agentId
-                                ? `Agent: ${approval.agentId.slice(0, 8)}`
+                                ? <ActorName actor={resolveActor('agent', approval.agentId)} />
                                 : 'Asked by a paired agent working as you'}
                             </span>
                           </span>
