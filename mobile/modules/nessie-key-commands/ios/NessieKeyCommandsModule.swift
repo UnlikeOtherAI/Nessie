@@ -104,32 +104,38 @@ public class NessieKeyCommandsModule: Module {
             UIDevice.current.userInterfaceIdiom == .pad
         }
 
+        // Synchronous from JS; the UIKit work (installing the swizzle, replacing
+        // the command list UIKit will read) is hopped to the main thread inside,
+        // because a plain `Function` body runs on the JS thread and `UIWindow`
+        // must only be touched on main.
         Function("register") { (commands: [[String: Any]]) in
-            let built: [UIKeyCommand] = commands.compactMap { entry in
-                guard
-                    let id = entry["id"] as? String,
-                    let input = entry["input"] as? String,
-                    let title = entry["title"] as? String
-                else { return nil }
-                // `modifierFlags` arrives as a JS number; accept whichever
-                // numeric type the bridge hands us.
-                let rawFlags = (entry["modifierFlags"] as? Int)
-                    ?? (entry["modifierFlags"] as? Double).map(Int.init)
-                    ?? 0
-                let command = UIKeyCommand(
-                    title: title,
-                    image: nil,
-                    action: #selector(UIWindow.nessieHandleKeyCommand(_:)),
-                    input: input,
-                    modifierFlags: UIKeyModifierFlags(rawValue: rawFlags),
-                    propertyList: id
-                )
-                // Fire even where UIKit has a default for the chord (e.g. ⌘R).
-                command.wantsPriorityOverSystemBehavior = true
-                return command
+            DispatchQueue.main.async {
+                let built: [UIKeyCommand] = commands.compactMap { entry in
+                    guard
+                        let id = entry["id"] as? String,
+                        let input = entry["input"] as? String,
+                        let title = entry["title"] as? String
+                    else { return nil }
+                    // `modifierFlags` arrives as a JS number; accept whichever
+                    // numeric type the bridge hands us.
+                    let rawFlags = (entry["modifierFlags"] as? Int)
+                        ?? (entry["modifierFlags"] as? Double).map(Int.init)
+                        ?? 0
+                    let command = UIKeyCommand(
+                        title: title,
+                        image: nil,
+                        action: #selector(UIWindow.nessieHandleKeyCommand(_:)),
+                        input: input,
+                        modifierFlags: UIKeyModifierFlags(rawValue: rawFlags),
+                        propertyList: id
+                    )
+                    // Fire even where UIKit has a default for the chord (e.g. ⌘R).
+                    command.wantsPriorityOverSystemBehavior = true
+                    return command
+                }
+                NessieKeyCommandRegistry.shared.replace(with: built)
+                NessieKeyCommandSwizzle.installIfNeeded()
             }
-            NessieKeyCommandRegistry.shared.replace(with: built)
-            NessieKeyCommandSwizzle.installIfNeeded()
-        }.runOnQueue(.main)
+        }
     }
 }
