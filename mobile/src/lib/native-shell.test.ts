@@ -105,6 +105,9 @@ test('updates the iPhone WebView clearance when its safe-area inset changes', ()
   execute(document)
 
   assert.equal(values.get('--nessie-native-phone-tabbar-clearance'), '83px')
+
+  new Function('document', nativePhoneTabBarClearanceScript(34, true))(document)
+  assert.equal(values.get('--nessie-native-phone-tabbar-clearance'), '0px')
 })
 
 test('retains a new push target until the React bridge acknowledges it', () => {
