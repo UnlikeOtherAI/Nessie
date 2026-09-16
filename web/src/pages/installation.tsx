@@ -15,13 +15,13 @@ export const InstallationPage = () => (
     <ul>
       <li>
         <strong>PostgreSQL with <code>pgvector</code>.</strong> Not optional, and not substitutable —
-        the migrations run <code>CREATE EXTENSION vector</code> and create <code>vector(1024)</code>
+        the migrations run <code>CREATE EXTENSION vector</code> and create <code>vector(1024)</code>{' '}
         columns. Production runs <code>pgvector/pgvector:pg17</code>.
       </li>
       <li>
-        <strong>Node 22 and pnpm.</strong> Every Dockerfile in <code>infrastructure/docker/</code>
-        builds on <code>node:22-slim</code>, and the repository pins its package manager in the root
-        <code> package.json</code> (<code>pnpm@10.22.0</code>).
+        <strong>Node 22 and pnpm.</strong> Every Dockerfile in <code>infrastructure/docker/</code>{' '}
+        builds on <code>node:22-slim</code>, and the repository pins its package manager in the root{' '}
+        <code>package.json</code> (<code>pnpm@10.22.0</code>).
       </li>
       <li>
         <strong>An OpenAI-compatible model endpoint and a key for it.</strong> Agents and embeddings
@@ -111,7 +111,7 @@ export const InstallationPage = () => (
     </p>
     <p>
       Production is a different matter and is unchanged by that rule. The API container listens
-      internally on <code>5554</code> (pinned with <code>NESSIE_API_PORT</code>) and the push relay on
+      internally on <code>5554</code> (pinned with <code>NESSIE_API_PORT</code>) and the push relay on{' '}
       <code>5556</code>, both behind the reverse proxy.
     </p>
 
@@ -139,15 +139,15 @@ pnpm dev`}</code></pre>
 
     <h2>Postgres, and the pgvector requirement</h2>
     <p>
-      Three extensions are created by the migrations themselves — <code>vector</code>,
-      <code> pg_trgm</code> and <code>pgcrypto</code> — so the role that runs them must be allowed to
+      Three extensions are created by the migrations themselves — <code>vector</code>,{' '}
+      <code>pg_trgm</code> and <code>pgcrypto</code> — so the role that runs them must be allowed to
       create extensions. On a managed Postgres that is the thing to check before anything else.
     </p>
     <p>
-      The vector width is part of the schema, not a setting. <code>thoughts.embedding</code>,
-      <code> thought_recalls.query_embedding</code> and <code>knowledge_page_chunks.embedding</code> are
-      <code> vector(N)</code> columns, and <code>N</code> is stated once as
-      <code> EMBEDDING_DIMENSIONS</code> in <code>packages/schemas/src/embedding.ts</code> — currently
+      The vector width is part of the schema, not a setting. <code>thoughts.embedding</code>,{' '}
+      <code>thought_recalls.query_embedding</code> and <code>knowledge_page_chunks.embedding</code> are{' '}
+      <code>vector(N)</code> columns, and <code>N</code> is stated once as{' '}
+      <code>EMBEDDING_DIMENSIONS</code> in <code>packages/schemas/src/embedding.ts</code> — currently
       1024, the native width of the embedding model production uses. Every embed request sends that
       width, so a provider that would answer at another one fails loudly instead of writing vectors the
       database rejects. Moving to an embedding model of a different width means editing that constant,
@@ -156,7 +156,7 @@ pnpm dev`}</code></pre>
     </p>
     <p>
       If you run Nessie beside other applications on a shared Docker network, give its database container
-      a distinct name. The project’s own Compose service is called <code>nessie-postgres</code> and never
+      a distinct name. The project’s own Compose service is called <code>nessie-postgres</code> and never{' '}
       <code>postgres</code>, because the service name becomes a DNS alias on the shared network and a
       collision makes <code>postgres:5432</code> round-robin between two databases.
     </p>
@@ -164,8 +164,8 @@ pnpm dev`}</code></pre>
     <h2>Configuration</h2>
     <p>
       Runtime configuration is layered: a <code>nessie.config.json</code> file mounted read-only into the
-      API and the worker, with environment variables over the top of it. The mapping between the two is
-      <code> ConfigEnvMap</code> in <code>packages/config</code>, which is the authoritative list.
+      API and the worker, with environment variables over the top of it. The mapping between the two is{' '}
+      <code>ConfigEnvMap</code> in <code>packages/config</code>, which is the authoritative list.
     </p>
     <p>
       <code>NESSIE_MODE</code> picks the deployment shape: <code>local</code> (the default, and the
@@ -195,11 +195,11 @@ pnpm dev`}</code></pre>
         </tr>
         <tr>
           <td>
-            <code>NESSIE_ENCRYPTION_KEY_RING</code>,
-            <code> NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION</code>
+            <code>NESSIE_ENCRYPTION_KEY_RING</code>,{' '}
+            <code>NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION</code>
           </td>
           <td>
-            A JSON key ring and the label selecting the active root, required outside <code>local</code>
+            A JSON key ring and the label selecting the active root, required outside <code>local</code>{' '}
             mode. This is a <em>separate</em> root from the signing secret — the ring encrypts every
             durable secret Nessie stores. Do not reuse one as the other.
           </td>
@@ -207,8 +207,8 @@ pnpm dev`}</code></pre>
         <tr>
           <td><code>NESSIE_STORAGE_PROVIDER</code></td>
           <td>
-            Must be <code>s3</code>. <code>filesystem</code> is the default and is refused in
-            <code> hosted</code> and <code>selfHosted</code> mode, so a deployment that sets nothing here
+            Must be <code>s3</code>. <code>filesystem</code> is the default and is refused in{' '}
+            <code>hosted</code> and <code>selfHosted</code> mode, so a deployment that sets nothing here
             fails to start rather than writing uploads to a disk no other container can read.
           </td>
         </tr>
@@ -240,8 +240,8 @@ pnpm dev`}</code></pre>
 
     <h2>Deploying with Docker Compose</h2>
     <p>
-      Copy <code>.env.prod.example</code> to <code>.env</code> beside
-      <code> docker-compose.prod.yml</code> and fill it in, then bring the database up, build, migrate and
+      Copy <code>.env.prod.example</code> to <code>.env</code> beside{' '}
+      <code>docker-compose.prod.yml</code> and fill it in, then bring the database up, build, migrate and
       start. The order matters: the migrations and the seeds run against a database that is already up,
       before any service is serving.
     </p>
@@ -289,22 +289,22 @@ $COMPOSE up -d`}</code></pre>
 
     <h2>Configuring inference</h2>
     <p>
-      Chat is OpenAI-compatible. <code>NESSIE_MODEL_BASE_URL</code> is the endpoint,
-      <code> NESSIE_MODEL_API_KEY</code> the bearer, and <code>NESSIE_MODEL_PROVIDER</code> names the
-      adapter — Nessie compiles adapters for <code>openai</code>, <code>kimi</code> and
-      <code> deepseek</code>, and reaches anything else through the generic OpenAI-compatible connector.
-      <code> NESSIE_MODEL_NAME</code> sets the deployment’s default model, which an individual agent’s own
+      Chat is OpenAI-compatible. <code>NESSIE_MODEL_BASE_URL</code> is the endpoint,{' '}
+      <code>NESSIE_MODEL_API_KEY</code> the bearer, and <code>NESSIE_MODEL_PROVIDER</code> names the
+      adapter — Nessie compiles adapters for <code>openai</code>, <code>kimi</code> and{' '}
+      <code>deepseek</code>, and reaches anything else through the generic OpenAI-compatible connector.{' '}
+      <code>NESSIE_MODEL_NAME</code> sets the deployment’s default model, which an individual agent’s own
       model selection still outranks.
     </p>
     <p>
       <strong>Embeddings are routed separately</strong>, because the chat provider may not serve them at
-      all — DeepSeek, for instance, has no embeddings endpoint. Every unset
-      <code> NESSIE_EMBEDDING_*</code> field inherits the chat provider, so a deployment that sets none of
-      them embeds through the chat endpoint. Set <code>NESSIE_EMBEDDING_PROVIDER</code>,
-      <code> NESSIE_EMBEDDING_MODEL</code> and, on a proxy that routes by service, the service segment,
+      all — DeepSeek, for instance, has no embeddings endpoint. Every unset{' '}
+      <code>NESSIE_EMBEDDING_*</code> field inherits the chat provider, so a deployment that sets none of
+      them embeds through the chat endpoint. Set <code>NESSIE_EMBEDDING_PROVIDER</code>,{' '}
+      <code>NESSIE_EMBEDDING_MODEL</code> and, on a proxy that routes by service, the service segment,
       when the chat provider cannot embed. Getting this wrong fails quietly rather than loudly: memory
-      recall and knowledge-base search degrade to a lexical channel and carry on, logging
-      <code> kb_search: query embedding failed</code> as they go.
+      recall and knowledge-base search degrade to a lexical channel and carry on, logging{' '}
+      <code>kb_search: query embedding failed</code> as they go.
     </p>
     <p>
       Nessie’s own spend accounting — the per-organisation token ledger and the budget gate — is unaffected
@@ -319,11 +319,11 @@ $COMPOSE up -d`}</code></pre>
     </p>
     <p>
       The integration is a config-JWT flow rather than standard OIDC: the API serves a signed RS256 config
-      document at <code>GET /api/auth/sso/config</code> and the matching JWKS at
-      <code> GET /.well-known/jwks.json</code>, both on the API host. Standing it up is a one-time
-      sequence — generate an RSA-2048 keypair and set <code>UOA_CONFIG_JWT_PRIVATE_KEY_B64</code>,
-      <code> UOA_CONFIG_JWT_KID</code>, <code>UOA_DOMAIN</code>, <code>UOA_CONFIG_URL</code>,
-      <code> UOA_JWKS_URL</code>, <code>UOA_REDIRECT_URL</code> and <code>UOA_CONTACT_EMAIL</code>; click the
+      document at <code>GET /api/auth/sso/config</code> and the matching JWKS at{' '}
+      <code>GET /.well-known/jwks.json</code>, both on the API host. Standing it up is a one-time
+      sequence — generate an RSA-2048 keypair and set <code>UOA_CONFIG_JWT_PRIVATE_KEY_B64</code>,{' '}
+      <code>UOA_CONFIG_JWT_KID</code>, <code>UOA_DOMAIN</code>, <code>UOA_CONFIG_URL</code>,{' '}
+      <code>UOA_JWKS_URL</code>, <code>UOA_REDIRECT_URL</code> and <code>UOA_CONTACT_EMAIL</code>; click the
       button once, which raises an integration request; have it approved, which sends a one-time link to
       the contact address carrying the client secret; set <code>UOA_CLIENT_SECRET</code> and restart the
       API. The <code>kid</code> must be unique per domain.
@@ -332,8 +332,8 @@ $COMPOSE up -d`}</code></pre>
     <h2>Putting it behind a domain, with TLS</h2>
     <p>
       A deployment serves three names: the public site, the admin, and the API. <strong>The admin and the
-      API origins are not interchangeable.</strong> <code>Dockerfile.admin</code> bakes
-      <code> VITE_API_BASE_URL</code> into the bundle at build time, so every built admin artifact — including
+      API origins are not interchangeable.</strong> <code>Dockerfile.admin</code> bakes{' '}
+      <code>VITE_API_BASE_URL</code> into the bundle at build time, so every built admin artifact — including
       a desktop build that embeds it — must be built against the API origin. Build it against the admin’s
       own origin and <code>/api/auth/providers</code> resolves to the admin’s HTML shell, leaving login
       stuck on “Loading providers...”.
@@ -345,7 +345,7 @@ $COMPOSE up -d`}</code></pre>
     </p>
     <p>
       Set <code>NESSIE_API_TRUSTED_PROXY_HOPS</code> to the number of proxies in front of the API — 1 behind
-      a single reverse proxy. It defaults to <code>0</code>, which ignores <code>X-Forwarded-For</code>
+      a single reverse proxy. It defaults to <code>0</code>, which ignores <code>X-Forwarded-For</code>{' '}
       entirely. This is one decision with two consequences: it is also what keys the authentication
       rate limits, so too low and every client shares the proxy’s bucket, too high and a client can forge
       its own address. Err low and measure it.
@@ -384,24 +384,24 @@ $COMPOSE up -d`}</code></pre>
       </tbody>
     </table>
     <p>
-      On <code>SIGTERM</code> the API drains rather than dying where it stands.
-      <code> NESSIE_SHUTDOWN_TIMEOUT_MS</code> bounds that drain and defaults to 25 seconds; keep it under
+      On <code>SIGTERM</code> the API drains rather than dying where it stands.{' '}
+      <code>NESSIE_SHUTDOWN_TIMEOUT_MS</code> bounds that drain and defaults to 25 seconds; keep it under
       whatever grace period your orchestrator gives the container, or the runtime kills the process first
       and the drain buys nothing.
     </p>
 
     <h2>Upgrading</h2>
     <p>
-      An upgrade is <code>prisma migrate deploy</code> against the existing database, then the seeds, then
-      <code> reconcile</code>. The same four commands as the first deploy.
+      An upgrade is <code>prisma migrate deploy</code> against the existing database, then the seeds, then{' '}
+      <code>reconcile</code>. The same four commands as the first deploy.
     </p>
     <p>
       The path is tested for the route a self-hoster actually takes rather than against a fresh database:
       CI restores a snapshot taken twenty migrations behind, migrates it to the current head, validates
       the schema and runs a smoke check over the core tables. Any release inside that trailing window is
       a proven upgrade source. Migration folders are immutable once committed, and a lint step fails the
-      build if one is renamed, renumbered, deleted or modified, because all four break
-      <code> migrate deploy</code> for a database that already recorded the old row.
+      build if one is renamed, renumbered, deleted or modified, because all four break{' '}
+      <code>migrate deploy</code> for a database that already recorded the old row.
     </p>
     <p>
       <strong>One failed migration parks every deploy after it.</strong> <code>migrate deploy</code> stops
@@ -427,14 +427,14 @@ $COMPOSE up -d`}</code></pre>
       Scaling past one machine changes three things, all of which are enforced rather than advised.
       Outside <code>local</code> mode Nessie runs the API and the worker as separate processes, and as
       several copies of each, so any capability that assumes one process owns the machine’s disk is
-      refused: filesystem object storage (a start-up failure), execution-environment templates with the
-      <code> docker</code> provider (inert, and provisioning fails loudly), and the
-      <code> file_read</code>, <code>file_write</code> and <code>file_glob</code> builtin tools (a failed
+      refused: filesystem object storage (a start-up failure), execution-environment templates with the{' '}
+      <code>docker</code> provider (inert, and provisioning fails loudly), and the{' '}
+      <code>file_read</code>, <code>file_write</code> and <code>file_glob</code> builtin tools (a failed
       tool result the agent can read). Each refusal names the setting, the mode, and what to use instead.
     </p>
     <p>
-      For a managed cloud the repository carries a Terraform tree in
-      <code> infrastructure/terraform/</code> targeting Google Cloud: the API as a Cloud Run service with a
+      For a managed cloud the repository carries a Terraform tree in{' '}
+      <code>infrastructure/terraform/</code> targeting Google Cloud: the API as a Cloud Run service with a
       minimum of one instance — it holds a persistent Postgres <code>LISTEN</code> client and runs
       maintenance sweeps, so scaling it to zero stops realtime delivery — the worker as a Cloud Run worker
       pool, because it binds no port and a Service would never become ready, a migrate job that gates every
