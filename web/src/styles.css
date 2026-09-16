@@ -1719,13 +1719,13 @@ button {
    quiet — a rail on the page's own white, not another coloured band competing
    with the hero directly beneath it. */
 
+/* The band mirrors the hero's geometry rather than inventing its own: the
+   hero is a full-width section with 24px of side padding holding a centred
+   `max-width: 1232px` inner block, and anything narrower here — the old
+   `min(100% - 40px, var(--n-max))`, which is 1109px — put the yellow rule and
+   the headline below it on two different left edges. */
 .n-teams {
-  width: min(100% - 40px, var(--n-max));
-  /* Room to breathe on both sides. This band sits between the header's wave
-     and the hero's headline, and with the old 28px it read as something that
-     had slid down from the navigation rather than a thing of its own. */
-  margin: 0 auto;
-  padding: 56px 0 48px;
+  padding: 56px 24px 48px;
 }
 
 /* The rule that says "this is not the page".
@@ -1735,7 +1735,11 @@ button {
    it and the cards, and grows on its own as teams are added — ten
    organisations wrap to more rows and the bar simply gets longer. */
 .n-teams-inner {
-  padding-left: 18px;
+  max-width: 1232px;
+  margin: 0 auto;
+  /* The rule's own left edge is what lines up with the hero, so the gap to the
+     cards is padding inside it rather than a narrower block. */
+  padding-left: 28px;
   border-left: 4px solid var(--n-sun);
 }
 
@@ -1756,13 +1760,30 @@ button {
   font-size: 15px;
 }
 
+/* Three equal tracks, not `auto-fill`: with auto-fill the column count — and
+   so every card's width — changed with how many teams a person happened to be
+   in, and two teams drew two half-width cards where three would have been
+   thirds. Fixed tracks also give the wrap the person asked for: a fourth and
+   fifth team start a second row at the left, under the first and second. */
 .n-teams-list {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .n-teams-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .n-teams-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .n-teams-entry {
@@ -2192,4 +2213,118 @@ button {
   border-radius: 10px;
   color: var(--n-muted);
   font-size: 14.5px;
+}
+
+/* --------------------------------------------------------- departments ---
+   Three jobs, as tabs. Four cards each, because the work is four distinct
+   things and a paragraph would blur them into "does sales"; two rows of two
+   keeps every card the same width at every size and leaves no widow. */
+
+.n-dept-tabs {
+  display: flex;
+  overflow-x: auto;
+  gap: 6px;
+  margin-top: 22px;
+  padding: 5px;
+  border: 1px solid var(--n-line);
+  border-radius: 999px;
+  /* The strip scrolls rather than wrapping on a narrow screen: a pill that
+     drops to a second line stops reading as one control. */
+  scrollbar-width: none;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.n-dept-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.n-dept-tab {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--n-muted);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.n-dept-tab:hover {
+  color: var(--n-text);
+}
+
+.n-dept-tab-on {
+  background: var(--n-sea);
+  color: #fff;
+}
+
+.n-dept-tab:focus-visible {
+  outline: 2px solid var(--n-sea);
+  outline-offset: 2px;
+}
+
+.n-dept-panel {
+  margin-top: 28px;
+}
+
+/* The panel is focusable so the keyboard lands somewhere after the tabs, and
+   a focus ring on a whole panel is noise. */
+.n-dept-panel:focus {
+  outline: none;
+}
+
+.n-dept-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .n-dept-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.n-dept-card {
+  padding: 28px 30px;
+  border: 1px solid var(--n-line);
+  border-radius: var(--n-radius);
+  background: #fff;
+}
+
+.n-dept-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  border-radius: 11px;
+  background: var(--n-foam);
+  color: var(--n-sea);
+  font-size: 16px;
+  place-items: center;
+}
+
+.n-dept-card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.n-dept-card p {
+  margin: 0;
+  color: var(--n-muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* The one line that is about all four cards at once, so it sits under them. */
+.n-dept-note {
+  margin: 24px 0 0;
+  color: var(--n-muted);
+  font-size: 15px;
 }
