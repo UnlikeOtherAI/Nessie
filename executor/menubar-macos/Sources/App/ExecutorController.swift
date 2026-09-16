@@ -47,10 +47,10 @@ enum ExecutorPaths {
 @MainActor
 final class ExecutorController: ObservableObject {
     @Published private(set) var model = MenuModel(pairing: .unpaired, daemon: .stopped)
-    /// The last refusal a person has not yet dismissed, shown by whichever panel
-    /// raised it. Never swallowed: a policy change that did not land has to say
-    /// so in the CLI's own words.
-    @Published var refusal: String?
+    /// The last failure a person has not yet dismissed, translated into what it
+    /// means and what they can do about it. Never swallowed, and never shown as
+    /// the API's own sentence alone — see `ExecutorFailure`.
+    @Published var failure: ExecutorFailure?
     @Published private(set) var busy = false
     /// The fingerprint the most recent `pair` printed, held until the daemon
     /// starts, because confirming it in Nessie is the next thing a person does.
@@ -59,9 +59,15 @@ final class ExecutorController: ObservableObject {
     let isDevelopmentBuild: Bool
     let stateDirectory: String
     private let runtime: Result<PackagedRuntime, ExecutorRefusal>
-    private let work = DispatchQueue(label: "works.nessie.executor.menubar.cli")
+    private let work = DispatchQueue(label: "com.unlikeotherai.nessie.executor.menubar.cli")
     private var daemon: (process: Process, parentLiveness: FileHandle)?
     private var refreshTimer: Timer?
+
+    /// How many fresh revisions `reProposePolicy` will offer before it gives up.
+    /// A state file that fell behind is behind by a handful of revisions, not by
+    /// hundreds; a loop with no ceiling would hammer Nessie instead of saying it
+    /// could not fix this.
+    private static let reProposalCeiling = 25
 
     init(isDevelopmentBuild: Bool) {
         self.isDevelopmentBuild = isDevelopmentBuild
@@ -157,7 +163,7 @@ final class ExecutorController: ObservableObject {
         onSuccess: @escaping @MainActor (String) -> Void
     ) {
         guard let runner else {
-            refusal = PackagedRuntime.missingRefusal
+            fail(PackagedRuntime.missingRefusal)
             return
         }
         busy = true
@@ -178,7 +184,7 @@ final class ExecutorController: ObservableObject {
                 case let .success(output):
                     onSuccess(output)
                 case let .failure(refusal):
-                    self.refusal = refusal.message
+                    self.fail(refusal.message)
                 }
                 self.refresh()
             }
@@ -188,11 +194,11 @@ final class ExecutorController: ObservableObject {
     func pair(invitationText: String, workspaceRoot: String) {
         switch InvitationParser.parse(invitationText, isDevelopmentBuild: isDevelopmentBuild) {
         case let .failure(refusal):
-            self.refusal = refusal.message
+            self.fail(refusal.message)
         case let .success(invitation):
             switch ApprovedAPIOrigin.approve(invitation.apiBaseUrl, isDevelopmentBuild: isDevelopmentBuild) {
             case let .failure(refusal):
-                self.refusal = refusal.message
+                self.fail(refusal.message)
             case let .success(apiBaseUrl):
                 do {
                     try ExecutorPaths.prepare(stateDirectory)
@@ -210,7 +216,7 @@ final class ExecutorController: ObservableObject {
                         self?.pendingFingerprint = PairingOutput.fingerprint(in: output)
                     }
                 } catch {
-                    refusal = "Nessie Executor could not prepare its private state directory."
+                    fail("Nessie Executor could not prepare its private state directory.")
                 }
             }
         }
@@ -225,7 +231,7 @@ final class ExecutorController: ObservableObject {
         commandAllowlist: [String]? = nil
     ) {
         guard let description = model.description else {
-            refusal = "Pair this Mac with Nessie before changing its local policy."
+            fail("Pair this Mac with Nessie before changing its local policy.")
             return
         }
         do {
@@ -244,7 +250,105 @@ final class ExecutorController: ObservableObject {
                 if wasRunning { self?.startDaemon() }
             }
         } catch {
-            refusal = "Nessie Executor could not prepare the local policy input."
+            fail("Nessie Executor could not prepare the local policy input.")
+        }
+    }
+
+    /// Every failure reaches a person through here, so there is one place that
+    /// decides what a refusal means and exactly one banner shape it can take.
+    func fail(_ message: String) {
+        failure = ExecutorFailureTranslator.translate(message)
+    }
+
+    /// The remedy a banner offers, performed.
+    func apply(_ remedy: ExecutorFailure.Remedy) {
+        failure = nil
+        switch remedy {
+        case .none:
+            return
+        case .openNessie:
+            NSWorkspace.shared.open(nessieExecutorsURL)
+        case .restartExecutor:
+            if stopDaemon() { startDaemon() }
+        case .reProposePolicy:
+            reProposePolicy()
+        }
+    }
+
+    var nessieExecutorsURL: URL {
+        // Force-unwrapped against a literal this file owns: both spellings are
+        // valid URLs, and a nil here would be a typo caught by the first launch.
+        URL(string: isDevelopmentBuild
+            ? "http://localhost:5455/agents/executors"
+            : "https://app.nessie.works/agents/executors")!
+    }
+
+    /// Offers the settings this Mac already has as a *newer* revision, until
+    /// Nessie stops calling them a rollback.
+    ///
+    /// Nessie refuses a revision lower than the highest it has recorded, and its
+    /// refusal does not say which number that is — so the only way back is to
+    /// propose the next one and ask again. Nothing about what the executor may
+    /// do changes: each proposal restates the operations, workspace and
+    /// permitted commands `describe` just reported, and every one of them still
+    /// lands as a revision a person reviews in Nessie.
+    private func reProposePolicy() {
+        guard let runner, let description = model.description else {
+            fail("Pair this Mac with Nessie before changing its local policy.")
+            return
+        }
+        let stateDirectory = self.stateDirectory
+        let operationKeys = description.policy.operations
+        let workspaceRoot = description.reach.workspaceRoot
+        let commandAllowlist = description.policy.permittedPrograms
+        let wasRunning = model.daemon == .running
+        if wasRunning { _ = stopDaemon() }
+        busy = true
+        work.async { [weak self] in
+            var attempts = 0
+            var lastRefusal = "Nessie Executor could not propose these settings again."
+            while attempts < ExecutorController.reProposalCeiling {
+                attempts += 1
+                guard let invocation = try? ExecutorCLI.configure(
+                    operationKeys: operationKeys,
+                    workspaceRoot: workspaceRoot,
+                    commandAllowlist: commandAllowlist,
+                    stateDirectory: stateDirectory
+                ), let configured = try? runner.run(invocation), configured.succeeded else {
+                    break
+                }
+                guard let connected = try? runner.run(ExecutorCLI.connect(stateDirectory: stateDirectory))
+                else { break }
+                if connected.succeeded {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.busy = false
+                        self.failure = nil
+                        if wasRunning { self.startDaemon() } else { self.refresh() }
+                    }
+                    return
+                }
+                lastRefusal = ExecutorProcessRunner.refusal(
+                    from: connected, fallback: lastRefusal
+                ).message
+                // Only a rollback is worth another revision. Any other refusal
+                // is a different problem and gets its own words.
+                guard ExecutorFailureTranslator.translate(lastRefusal).remedy == .reProposePolicy else {
+                    break
+                }
+            }
+            let attempted = attempts
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.busy = false
+                self.fail(
+                    ExecutorFailureTranslator.translate(lastRefusal).code == "EXECUTOR_DESCRIPTOR_ROLLBACK"
+                        ? "Nessie still considers this Mac's settings older than the ones it has "
+                            + "recorded after \(attempted) attempts. Pair this Mac again from Settings."
+                        : lastRefusal
+                )
+                self.refresh()
+            }
         }
     }
 
@@ -252,16 +356,16 @@ final class ExecutorController: ObservableObject {
 
     func startDaemon() {
         guard let runner else {
-            refusal = PackagedRuntime.missingRefusal
+            fail(PackagedRuntime.missingRefusal)
             return
         }
         guard model.description != nil else {
-            refusal = "Pair this Mac with Nessie before starting its executor."
+            fail("Pair this Mac with Nessie before starting its executor.")
             return
         }
         if daemon?.process.isRunning == true { return }
         if leaseBlocksStart(DaemonLeaseReader.read(in: stateDirectory), daemonIsLive: { kill($0, 0) == 0 }) {
-            refusal = "The prior local daemon is still tearing down. Wait for it to finish before starting again."
+            fail("The prior local daemon is still tearing down. Wait for it to finish before starting again.")
             return
         }
         let stateDirectory = self.stateDirectory
@@ -274,12 +378,12 @@ final class ExecutorController: ObservableObject {
             guard let connect, connect.succeeded else {
                 Task { @MainActor [weak self] in
                     self?.busy = false
-                    self?.refusal = connect.map {
+                    self?.fail(connect.map {
                         ExecutorProcessRunner.refusal(
                             from: $0,
                             fallback: "Confirm this executor's fingerprint in Nessie before starting its daemon."
                         ).message
-                    } ?? "Confirm this executor's fingerprint in Nessie before starting its daemon."
+                    } ?? "Confirm this executor's fingerprint in Nessie before starting its daemon.")
                     self?.refresh()
                 }
                 return
@@ -289,7 +393,7 @@ final class ExecutorController: ObservableObject {
                 guard let self else { return }
                 self.busy = false
                 guard let spawned else {
-                    self.refusal = "Nessie Executor could not start the executor daemon."
+                    self.fail("Nessie Executor could not start the executor daemon.")
                     return
                 }
                 self.daemon = spawned
@@ -320,7 +424,7 @@ final class ExecutorController: ObservableObject {
             }
             Thread.sleep(forTimeInterval: 0.05)
         }
-        refusal = "The executor is still stopping. Nessie Executor will not force-kill a sandbox daemon."
+        fail("The executor is still stopping. Nessie Executor will not force-kill a sandbox daemon.")
         refresh()
         return false
     }

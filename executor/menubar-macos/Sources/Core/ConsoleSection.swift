@@ -42,7 +42,7 @@ public enum ConsoleSection: String, CaseIterable, Identifiable, Sendable {
         case .reach:
             return "Everything outside this list is outside the executor's reach."
         case .tools:
-            return "The programs the guest may start. Anything not on this list is refused before a guest starts."
+            return "The commands the guest may start. Anything that does not match this list is refused before a guest starts."
         }
     }
 }

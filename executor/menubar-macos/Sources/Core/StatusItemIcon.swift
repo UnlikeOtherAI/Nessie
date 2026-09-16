@@ -6,12 +6,22 @@ import AppKit
 /// the first version of this app drew `circle.dashed` and an
 /// `exclamationmark.triangle`, and among fifteen other status items that read as
 /// a loading spinner belonging to nobody — a person told us they could not find
-/// the icon at all. Two rules came out of that, and both are asserted below:
+/// the icon at all. Three rules came out of that, and all three are asserted
+/// below:
 ///
-/// 1. **One silhouette, always.** The footprint never changes between states, so
-///    a person learns where it is once. State is said by how the mark is
-///    *filled*, not by swapping in a different picture.
-/// 2. **Always a template image.** A template is masked and tinted by the system,
+/// 1. **Always the same letter, always filled.** Every state draws the same `N`
+///    and every state fills it. The second version stroked it instead, and
+///    `markPath` is a composite of two stems plus the diagonal, so stroking
+///    outlined *every* subpath — including the interior edges where the stems
+///    meet the diagonal. At 18pt the letter dissolved into hairline loops that
+///    read as two hollow lozenges. A stroked composite path can never be the
+///    union outline; only a fill is.
+/// 2. **State is said by tint and by a badge, not by a different picture.**
+///    Stopped is the same letter at a lower tint. Attention is the letter plus a
+///    dot, and it is the one state that moves: the mark steps aside by about a
+///    sixth so the badge gets a corner of its own, because a dot laid over the
+///    letterform reads as part of the letter rather than as a badge.
+/// 3. **Always a template image.** A template is masked and tinted by the system,
 ///    which is the only way an icon is legible on a light menu bar, a dark one,
 ///    a tinted desktop behind a translucent bar, and in Reduce Transparency.
 public enum StatusItemIcon {
@@ -38,28 +48,33 @@ public enum StatusItemIcon {
     }
 
     private static func draw(_ icon: MenuIcon, in rect: NSRect) {
-        NSColor.black.set()
         switch icon {
         case .running:
-            // Solid: the executor is working for you.
+            NSColor.black.set()
             markPath(in: rect).fill()
         case .stopped:
-            // Outlined: the same mark, hollow. Legible at 18pt because the stroke
-            // is a full point wide, unlike the hairline dashed circle it replaces.
-            let path = markPath(in: rect)
-            path.lineWidth = 1.2
-            path.stroke()
+            // The same silhouette at a lower tint. This was a stroked composite
+            // path, which outlines every subpath — including the interior edges
+            // where the stems meet the diagonal — so at 18pt the N dissolved
+            // into hairline loops nobody could read as a letter.
+            NSColor.black.withAlphaComponent(0.35).set()
+            markPath(in: rect).fill()
         case .needsAttention:
-            // Solid, with a badge punched out and re-filled at the corner. The
-            // gap around the badge is what makes it read as a badge rather than
-            // as part of the mark, in a single tint.
-            let path = markPath(in: rect)
-            path.fill()
-            let badge = NSRect(
-                x: rect.maxX - 7.5, y: rect.minY - 0.5, width: 7, height: 7
+            // The badge gets its own corner rather than sitting on the
+            // letterform: the mark steps aside, the dot takes the space, and
+            // the cleared ring is what makes it read as a badge in one tint.
+            let diameter = rect.width * 0.30
+            let markBox = NSRect(
+                x: rect.minX,
+                y: rect.minY + diameter * 0.55,
+                width: rect.width - diameter * 0.55,
+                height: rect.height - diameter * 0.55
             )
+            NSColor.black.set()
+            markPath(in: markBox).fill()
+            let badge = NSRect(x: rect.maxX - diameter, y: rect.minY, width: diameter, height: diameter)
             NSGraphicsContext.current?.compositingOperation = .clear
-            NSBezierPath(ovalIn: badge.insetBy(dx: -1.4, dy: -1.4)).fill()
+            NSBezierPath(ovalIn: badge.insetBy(dx: -diameter * 0.28, dy: -diameter * 0.28)).fill()
             NSGraphicsContext.current?.compositingOperation = .sourceOver
             NSColor.black.set()
             NSBezierPath(ovalIn: badge).fill()

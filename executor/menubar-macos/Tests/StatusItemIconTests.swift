@@ -15,9 +15,8 @@ final class StatusItemIconTests: XCTestCase {
         }
     }
 
-    /// One silhouette, always the same size, so a person learns where it is once
-    /// and does not have to hunt for a different picture each time the state
-    /// changes.
+    /// One letter, always the same box, so a person learns where it is once and
+    /// does not have to hunt for a different picture each time the state changes.
     func testEveryStateOccupiesTheSameFootprint() {
         for icon in [MenuIcon.stopped, .running, .needsAttention] {
             XCTAssertEqual(StatusItemIcon.image(for: icon).size, StatusItemIcon.size)
@@ -25,40 +24,96 @@ final class StatusItemIconTests: XCTestCase {
         XCTAssertEqual(StatusItemIcon.size, NSSize(width: 18, height: 18))
     }
 
-    /// Same footprint is not the same picture: the three states have to be
-    /// distinguishable from each other at a glance.
-    func testEveryStateDrawsSomethingDifferent() throws {
-        let drawn = try [MenuIcon.stopped, .running, .needsAttention].map { icon in
-            try XCTUnwrap(StatusItemIcon.image(for: icon).tiffRepresentation)
-        }
-        for (index, image) in drawn.enumerated() {
-            XCTAssertFalse(image.isEmpty, "state \(index) drew nothing at all")
-            for (other, candidate) in drawn.enumerated() where index != other {
-                XCTAssertNotEqual(image, candidate, "states \(index) and \(other) draw the same mark")
-            }
+    /// The defect this replaces: `.stopped` stroked `markPath`, a composite of
+    /// two stems plus the diagonal. Stroking outlines every subpath, interior
+    /// edges included, so at 18pt the letter became hairline loops. A stroked
+    /// state is detectable from the drawing alone — an outline leaves the
+    /// letter's inside transparent, while a fill does not — so this asserts on
+    /// the pixels rather than trusting the source to stay a fill.
+    func testNoStateIsDrawnAsAnOutline() throws {
+        for icon in [MenuIcon.stopped, .running, .needsAttention] {
+            let opaque = try coverage(of: icon)
+            XCTAssertGreaterThan(
+                opaque.interiorFilled, 0.6,
+                "\(icon) leaves the inside of the letter hollow, which is a stroked path"
+            )
         }
     }
 
-    /// A template image is a mask, so the colour is the system's. What has to be
-    /// true of the mask is that it is not empty — an all-transparent image is a
-    /// status item that looks like it failed to launch.
+    /// Stopped and running are the same letter at different tints, so they must
+    /// cover the same pixels and differ in what those pixels contain.
+    func testStoppedAndRunningAreTheSameLetterAtDifferentTints() throws {
+        let stopped = try XCTUnwrap(StatusItemIcon.image(for: .stopped).tiffRepresentation)
+        let running = try XCTUnwrap(StatusItemIcon.image(for: .running).tiffRepresentation)
+        XCTAssertNotEqual(stopped, running, "stopped and running must be distinguishable")
+        let stoppedCoverage = try coverage(of: .stopped)
+        let runningCoverage = try coverage(of: .running)
+        XCTAssertEqual(
+            stoppedCoverage.anyInk, runningCoverage.anyInk, accuracy: 0.02,
+            "the same letter must cover the same area whatever the tint"
+        )
+        XCTAssertLessThan(
+            stoppedCoverage.meanAlpha, runningCoverage.meanAlpha * 0.7,
+            "stopped must read as the quieter of the two"
+        )
+    }
+
+    /// What a template image must never be: empty. An all-transparent status
+    /// item looks exactly like an app that failed to launch.
     func testTheMarkActuallyCoversPartOfItsBox() throws {
         for icon in [MenuIcon.stopped, .running, .needsAttention] {
-            let image = StatusItemIcon.image(for: icon)
-            let cgImage = try XCTUnwrap(
-                image.cgImage(forProposedRect: nil, context: nil, hints: nil)
-            )
-            let bitmap = NSBitmapImageRep(cgImage: cgImage)
-            var opaque = 0
+            let measured = try coverage(of: icon)
+            XCTAssertGreaterThan(measured.anyInk, 0.15, "\(icon) draws almost nothing")
+            XCTAssertLessThan(measured.anyInk, 0.95, "\(icon) fills its whole box")
+        }
+    }
+
+    /// `anyInk` is the share of the box carrying any ink; `meanAlpha` is the
+    /// average alpha over that ink, which is what a tint changes; `interiorFilled`
+    /// is the share of the mark's own bounding box rows that are solid between
+    /// their first and last inked pixel — the measurement an outline fails.
+    private struct Coverage {
+        var anyInk: Double
+        var meanAlpha: Double
+        var interiorFilled: Double
+    }
+
+    private func coverage(
+        of icon: MenuIcon, file: StaticString = #filePath, line: UInt = #line
+    ) throws -> Coverage {
+        let image = StatusItemIcon.image(for: icon)
+        let cgImage = try XCTUnwrap(
+            image.cgImage(forProposedRect: nil, context: nil, hints: nil), file: file, line: line
+        )
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        var inked = 0
+        var alphaTotal = 0.0
+        var spanPixels = 0
+        var filledPixels = 0
+        for y in 0..<bitmap.pixelsHigh {
+            var first: Int?
+            var last: Int?
             for x in 0..<bitmap.pixelsWide {
-                for y in 0..<bitmap.pixelsHigh where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.2 {
-                    opaque += 1
+                let alpha = Double(bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+                if alpha > 0.05 {
+                    inked += 1
+                    alphaTotal += alpha
+                    if first == nil { first = x }
+                    last = x
                 }
             }
-            let coverage = Double(opaque) / Double(bitmap.pixelsWide * bitmap.pixelsHigh)
-            XCTAssertGreaterThan(coverage, 0.04, "\(icon) draws almost nothing")
-            XCTAssertLessThan(coverage, 0.95, "\(icon) fills its whole box")
+            guard let first, let last, last > first else { continue }
+            for x in first...last {
+                spanPixels += 1
+                if Double(bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 { filledPixels += 1 }
+            }
         }
+        let area = Double(bitmap.pixelsWide * bitmap.pixelsHigh)
+        return Coverage(
+            anyInk: Double(inked) / area,
+            meanAlpha: inked == 0 ? 0 : alphaTotal / Double(inked),
+            interiorFilled: spanPixels == 0 ? 0 : Double(filledPixels) / Double(spanPixels)
+        )
     }
 
     func testEveryStateNamesItselfForVoiceOver() {

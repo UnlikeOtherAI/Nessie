@@ -25,9 +25,9 @@ struct ToolsSection: View {
                 Text(
                     description.commandRunEnabled
                         ? "command.run is enabled for this executor, so the list must always name at "
-                            + "least one program: an operation that can never succeed is a "
+                            + "least one command: an operation that can never succeed is a "
                             + "misconfiguration, not a policy."
-                        : "command.run is not enabled for this executor. These programs take effect when "
+                        : "command.run is not enabled for this executor. These commands take effect when "
                             + "somebody enables it in Nessie."
                 )
                 .font(.callout)
@@ -36,14 +36,15 @@ struct ToolsSection: View {
         }
     }
 
-    /// Entries are rendered as the policy states them, never re-derived. That is
-    /// what lets a wildcard entry — a form the policy is gaining — appear here
-    /// correctly the moment the CLI accepts one, with no change to this view.
+    /// Entries are rendered as the policy states them, never re-derived, so a
+    /// wildcard entry such as `npm run *` appears exactly as it was reviewed.
+    /// `describe` still names this field `permittedPrograms`; what it carries is
+    /// a command pattern, which is why the wording here says command.
     private func list(_ description: ExecutorDescription) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Permitted programs").font(.headline)
+            Text("Permitted commands").font(.headline)
             if description.policy.permittedPrograms.isEmpty {
-                Text("No program is permitted, so no command may start.")
+                Text("No command is permitted, so nothing may start.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -62,9 +63,9 @@ struct ToolsSection: View {
 
     private func addField(_ description: ExecutorDescription) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Add a program").font(.headline)
+            Text("Add a command").font(.headline)
             HStack {
-                TextField("git", text: $draft)
+                TextField("git *", text: $draft)
                     .textFieldStyle(.roundedBorder)
                     .font(.body.monospaced())
                     .onSubmit { add(to: description) }
@@ -80,7 +81,7 @@ struct ToolsSection: View {
     private func add(to description: ExecutorDescription) {
         switch PermittedProgram.validate(adding: draft, to: description.policy.permittedPrograms) {
         case let .failure(refusal):
-            controller.refusal = refusal.message
+            controller.fail(refusal.message)
         case let .success(programs):
             draft = ""
             controller.proposePolicy(commandAllowlist: programs)
@@ -94,7 +95,7 @@ struct ToolsSection: View {
             commandRunEnabled: description.commandRunEnabled
         ) {
         case let .failure(refusal):
-            controller.refusal = refusal.message
+            controller.fail(refusal.message)
         case let .success(programs):
             controller.proposePolicy(commandAllowlist: programs)
         }

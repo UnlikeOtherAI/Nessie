@@ -23,7 +23,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         super.init()
         // Named so macOS remembers where a person dragged it and keeps it across
         // launches instead of appending it at the end of a crowded menu bar.
-        statusItem.autosaveName = "works.nessie.executor.menubar.status"
+        statusItem.autosaveName = "com.unlikeotherai.nessie.executor.menubar.status"
         statusItem.behavior = []
         statusItem.isVisible = true
         statusItem.menu = NSMenu()

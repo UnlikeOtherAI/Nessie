@@ -65,7 +65,7 @@ struct SettingsSection: View {
 
             Button("Pair this Mac") {
                 guard let workspace = chosenWorkspace else {
-                    controller.refusal = "Choose the folder this executor may read before pairing."
+                    controller.fail("Choose the folder this executor may read before pairing.")
                     return
                 }
                 controller.pair(invitationText: invitation, workspaceRoot: workspace.path)
@@ -150,7 +150,7 @@ struct SettingsSection: View {
             get: { LaunchAtLogin.isEnabled },
             set: { enabled in
                 if let refusal = LaunchAtLogin.set(enabled) {
-                    controller.refusal = refusal.message
+                    controller.fail(refusal.message)
                 }
             }
         )

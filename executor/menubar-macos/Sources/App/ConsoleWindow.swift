@@ -67,9 +67,9 @@ struct ConsoleView: View {
             section
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
-            if let refusal = controller.refusal {
+            if let failure = controller.failure {
                 Divider()
-                refusalBar(refusal)
+                FailureBanner(failure: failure)
             }
         }
         // A fixed width, because a window that changed width as a person moved
@@ -110,14 +110,48 @@ struct ConsoleView: View {
         }
     }
 
-    private func refusalBar(_ refusal: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+}
+
+/// What a person reads when something failed.
+///
+/// The headline is what happened in their terms and the button does the thing
+/// that fixes it. The API's own sentence is kept underneath, because it is what
+/// somebody would quote in a support conversation — but it is never the whole
+/// of the message, which is what "Executor descriptor revisions cannot move
+/// backwards." with a lone Dismiss button was.
+struct FailureBanner: View {
+    @EnvironmentObject private var controller: ExecutorController
+    let failure: ExecutorFailure
+    @State private var showingDetail = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text(refusal).font(.callout).textSelection(.enabled)
-            Spacer(minLength: 8)
-            Button("Dismiss") { controller.refusal = nil }
+            VStack(alignment: .leading, spacing: 8) {
+                Text(failure.explanation).font(.callout).textSelection(.enabled)
+                if showingDetail {
+                    Text(failure.detail)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                HStack(spacing: 10) {
+                    if let title = failure.remedyTitle {
+                        Button(title) { controller.apply(failure.remedy) }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(controller.busy)
+                    }
+                    Button("Dismiss") { controller.failure = nil }
+                    Spacer(minLength: 0)
+                    Button(showingDetail ? "Hide details" : "Details") {
+                        showingDetail.toggle()
+                    }
+                    .buttonStyle(.link)
+                }
+            }
         }
         .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.4))
     }
 }
