@@ -52,6 +52,13 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
   CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
   between the navigation and independent connected-mail suites.
+- **Mailbox onboarding browser coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:mailbox-onboarding`. CI runs it in
+  Navigation Transitions after the connected-mail suite, on the same admin
+  lifecycle. It walks the connect ladder — password, one mail server, the one
+  leg still missing, then every field — and asserts the posted payload as well
+  as the screen, because a form that posts an untyped port looks identical and
+  silently disables the server-side sweep.
 - **Member-management browser coverage:** run
   `pnpm --filter @nessie/admin test:e2e:member-management`. CI alone includes
   its fixture in the preview build; details and cache rules are in
@@ -71,6 +78,32 @@ sentence changes only if the invariant itself did.
   behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip; two assertions
   deliberately pin known gaps and say so in their own message.
+- **Agent proposal card coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:agent-proposal-card`. A pure fixture
+  suite — it drives the real card renderer over a stubbed presenter, so it
+  needs no database. CI runs it in the project-usability lifecycle, after the
+  app-connect-scope suite. It pins the Agent Designer's standard proposal
+  card: name and role, the three-line description, where the agent lives, the
+  model dropdown, and the tool/app fold that arrives closed.
+- **A CI browser fixture takes three edits, not one.** Navigation Transitions
+  serves a *preview build* (`NAV_E2E_ADMIN_MODE: preview`), not the dev
+  server, so a new `admin/e2e/<name>/index.html` is not served at all unless
+  **(1)** it is a rollup input in `admin/vite.config.ts` behind its own
+  `NESSIE_<NAME>_E2E_FIXTURE` flag, which keeps it out of release bundles,
+  **(2)** that flag is set on the job in `.github/workflows/ci.yml`, and
+  **(3)** the flag is listed under `@nessie/admin#build`'s `env` in
+  `turbo.json`. Miss (3) and CI restores a cached bundle built without the
+  fixture, which fails exactly like missing (1) — the flag has to be in the
+  build's hash or it changes nothing. All of this passes locally either way,
+  because `startAdmin()` defaults to the dev server. Verify a new suite with
+  `NAV_E2E_ADMIN_MODE=preview` against a build made with the flag, and confirm
+  the flag actually changes `admin/dist`, before trusting it.
+- **Channel agent-control coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
+  suite — it drives the real members popup over both answers to
+  `ChannelRecord.viewerCanManageAgents`, so it needs no database. CI runs it in
+  the same lifecycle, after the proposal-card suite. It pins that placing an
+  agent is owner-only while adding a person is any member.
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the
@@ -86,6 +119,12 @@ sentence changes only if the invariant itself did.
   in silence — so free `5454`/`5455` before running it. The invariants it
   defends are in
   [`docs/standards/spreadsheets.md`](docs/standards/spreadsheets.md).
+- **Full-width tab bar geometry:** run
+  `pnpm --filter @nessie/admin test:e2e:tabbar-full` after touching
+  `.tabbar-shell*` or adding a `<TabBar fullWidth />` call site. It needs no
+  API or database, and its fixture must gain the new call site's container —
+  the rule it guards is in
+  [`docs/standards/design-system.md`](docs/standards/design-system.md).
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Production promotion uses the exact-SHA gate:** Deploy resolves the current

@@ -11,7 +11,7 @@ import {
   MAX_SOURCE_FILES,
   assertOrdinaryDirectory,
   missing,
-  sandboxPaths,
+  sandboxFolderPaths,
   writeAll,
   type SandboxUsage,
 } from './sandbox-layout.js'
@@ -22,13 +22,15 @@ import {
   configureOrdinaryDirectory,
   isInsideDirectory,
 } from './workspace-paths.js'
-import { configureWorkspaceRoot } from './workspace.js'
+import type { ExecutorWorkspaceFolder } from './workspace-folders.js'
+import { configureWorkspaceFolderPath } from './workspace.js'
 
 /**
- * Building a run's copy-on-write snapshot from the paired host root. The copy
- * follows no link, admits no special file, stays within the source budget, and
- * records the content hash of every file it copies as the base manifest the
- * review later compares against. The paired root is only ever read here.
+ * Building one workspace folder's copy-on-write snapshot from its paired host
+ * directory. The copy follows no link, admits no special file, stays within the
+ * source budget, and records the content hash of every file it copies as the
+ * base manifest the review later compares against. A paired folder is only ever
+ * read here.
  */
 
 const copyFileWithoutFollowingLinks = async (
@@ -116,22 +118,33 @@ const copyTreeWithoutLinks = async (
 }
 
 /**
- * Lazily creates a daemon-owned, copy-on-write snapshot for one run. The host
- * pairing root is read only here; no command can write it. A future promote
- * operation must perform its own reviewed host-write protocol.
+ * Lazily creates a daemon-owned, copy-on-write snapshot of one workspace folder
+ * for one run. The folder's host directory is read only here; no command can
+ * write it. A future promote operation must perform its own reviewed host-write
+ * protocol.
+ *
+ * Each folder is staged and renamed on its own, so a run that drafts two
+ * folders ends up with two independent snapshots and a failed copy of the
+ * second leaves the first intact.
  */
 export const ensureSandboxWorkspace = async (
   stateDir: string,
-  workspaceRoot: string,
+  folder: ExecutorWorkspaceFolder,
   runId: string,
 ): Promise<string> => {
-  const source = await configureWorkspaceRoot(workspaceRoot)
-  const paths = await sandboxPaths(stateDir, runId)
+  const source = await configureWorkspaceFolderPath(folder.path)
+  const paths = await sandboxFolderPaths(stateDir, runId, folder.name)
   try {
     await assertOrdinaryDirectory(paths.root, 'The executor sandbox is unavailable.')
   } catch (error) {
     if (!missing(error)) throw error
-    const staging = resolve(paths.parent, `.${RunIdSchema.parse(runId)}.${randomUUID()}.new`)
+    // The run root and its `folders/` level are shared by every folder of this
+    // run, so they are created idempotently; only the folder itself is renamed
+    // into place, which is what makes one folder's snapshot atomic.
+    await mkdir(paths.parent, { mode: 0o700, recursive: true })
+    await assertOrdinaryDirectory(paths.run, 'The executor sandbox is unavailable.')
+    await assertOrdinaryDirectory(paths.parent, 'The executor sandbox is unavailable.')
+    const staging = resolve(paths.parent, `.${paths.name}.${RunIdSchema.parse(runId)}.${randomUUID()}.new`)
     if (!isInsideDirectory(paths.parent, staging)) {
       throw new WorkspacePathError('The executor sandbox staging path is invalid.')
     }

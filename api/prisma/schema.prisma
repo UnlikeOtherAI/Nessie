@@ -1601,6 +1601,7 @@ model Project {
   knowledgeSpaces          KnowledgeSpace[]
   knowledgePages           KnowledgePage[]
   knowledgePageChunks      KnowledgePageChunk[]
+  dashboards               Dashboard[]
   pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
   userPushSurfacePresences UserPushSurfacePresence[]
   executors                Executor[]
@@ -7098,14 +7099,6 @@ model RateLimitBucket {
 /// Which container a dashboard belongs to. Exactly one matching scope column is
 /// set; the pairing is enforced by a CHECK constraint in the migration, not by
 /// convention, because an unmatched pair would silently widen an audience.
-enum DashboardHome {
-  organization
-  project
-  team
-  channel
-  personal
-}
-
 enum DashboardAuthorType {
   user
   agent
@@ -7135,14 +7128,17 @@ enum DashboardAccessMode {
   viewer
 }
 
+/// A dashboard lives in a project. It had five possible homes — organization,
+/// project, team, channel, personal — each with its own nullable scope column
+/// and a CHECK constraint pairing the two, because a row claiming one home
+/// while carrying another's id would read as one audience in the UI and
+/// another in an entitlement query. One home removes the pairing problem
+/// rather than guarding it: `project_id` is NOT NULL, the audience is the
+/// project's members, and there is no second column to disagree with it.
 model Dashboard {
-  id             String        @id @default(uuid()) @db.Uuid
-  organizationId String        @map("organization_id") @db.Uuid
-  home           DashboardHome
-  projectId      String?       @map("project_id") @db.Uuid
-  teamId         String?       @map("team_id") @db.Uuid
-  channelId      String?       @map("channel_id") @db.Uuid
-  ownerUserId    String?       @map("owner_user_id") @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  projectId      String @map("project_id") @db.Uuid
 
   title        String
   description  String?
@@ -7161,12 +7157,14 @@ model Dashboard {
   updatedAt     DateTime            @updatedAt @map("updated_at")
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   widgets      DashboardWidget[]
   versions     DashboardVersion[]
   deltas       DashboardDelta[]
 
-  @@index([organizationId, home, archivedAt])
-  @@index([organizationId, projectId])
+  // The project list is the only list: every read is "this project's
+  // dashboards, unarchived, newest first".
+  @@index([organizationId, projectId, archivedAt])
   @@map("dashboards")
 }
 

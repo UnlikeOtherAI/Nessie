@@ -15,6 +15,9 @@ use tauri::{AppHandle, Manager};
 pub(super) mod availability;
 pub(super) mod integrity;
 mod local_pairing;
+/// Opening the Nessie Executor menu bar app, and stepping aside while it has the
+/// daemon. It lives under `runtime` because it reads the same daemon lease.
+pub(super) mod menu_bar;
 /// The Win32 process-handle probe behind `daemon_is_live` on Windows.
 #[cfg(windows)]
 mod windows_process;
@@ -26,7 +29,7 @@ pub(super) use local_pairing::{
     forget_local_pairing, has_deeptest_source_grant, local_policy_summary,
 };
 
-pub use availability::{CompanionAvailability, ExecutorCompanionAvailability};
+pub use availability::{CompanionAvailability, ExecutorCompanionAvailability, MenuBarCompanion};
 
 const EXECUTOR_DIRECTORY: &str = "executors";
 const EXECUTOR_DAEMON_LEASE_FILE: &str = "daemon.pid";
@@ -305,6 +308,22 @@ pub(super) fn daemon_status(
     } else {
         Ok(local_status)
     }
+}
+
+/// Whether the Nessie Executor menu bar app — not Nessie Desktop — is the thing
+/// supervising this Mac's executor daemon right now.
+///
+/// The daemon lease is what already stops two daemons from running; this exists so
+/// the Executors panel says that instead of offering a start button that would
+/// lose the race for it. A daemon Desktop started itself stays Desktop's to stop.
+pub(super) fn menu_bar_supervises_this_mac(
+    state: &ExecutorCompanionState, executor_id: &str, state_dir: &Path,
+) -> Result<bool, String> {
+    let desktop_owns_running_daemon = daemon_status(state, executor_id, state_dir)? == "running";
+    Ok(menu_bar::defers_to_menu_bar_app(
+        menu_bar::menu_bar_daemon_live(),
+        desktop_owns_running_daemon,
+    ))
 }
 
 pub(super) fn start_daemon(

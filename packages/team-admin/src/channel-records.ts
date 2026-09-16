@@ -10,6 +10,7 @@ import {
 } from '@nessie/schemas'
 import type { ChannelRecord } from '@nessie/schemas'
 
+import { canManageChannelAgents } from './channel-agent-authority.js'
 import { canModifyChannel } from './resource-authority.js'
 
 type ChannelWithProject = Channel & {
@@ -321,8 +322,13 @@ export const mapChannelRecord = async (
   prisma: PrismaClient,
   channel: ChannelWithProject,
   userId?: string,
-  /** See `ChannelModifier.isOrganizationAdmin`: the caller's verified role. */
-  viewer: { isOrganizationAdmin?: boolean } = {},
+  /**
+   * See `ChannelModifier.isOrganizationAdmin`: the caller's verified role.
+   * `isOrganizationOwner` is the narrower owner-only standing the agent
+   * binding routes require; omitted, it is read from the membership row, so a
+   * caller that has it saves a query rather than deciding the answer.
+   */
+  viewer: { isOrganizationAdmin?: boolean; isOrganizationOwner?: boolean } = {},
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
@@ -357,6 +363,21 @@ export const mapChannelRecord = async (
       })) !== null
     : false
 
+  // Placing an agent is owner-only, so it is its own answer rather than a
+  // reading of `viewerCanManage` — which is any member of the channel and
+  // would draw the control for everyone the binding routes refuse.
+  const viewerCanManageAgents = userId
+    ? await canManageChannelAgents(prisma, {
+        channel: {
+          id: channel.id,
+          organizationId: channel.organizationId,
+          systemChannelType: channel.systemChannelType ?? null,
+        },
+        isOrganizationOwner: viewer.isOrganizationOwner,
+        userId,
+      })
+    : false
+
   return {
     defaultThreadId: parseThreadId(defaultThreadId),
     id: parseChannelId(channel.id),
@@ -379,6 +400,7 @@ export const mapChannelRecord = async (
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     viewerCanManage,
+    viewerCanManageAgents,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }

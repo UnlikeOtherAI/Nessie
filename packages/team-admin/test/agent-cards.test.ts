@@ -302,3 +302,37 @@ test('the presenter replaces a secret destination with a label, never an instanc
   assert.equal(secret.destinationLabel, 'Linear')
   assert.equal(JSON.stringify(presented).includes(INSTANCE), false)
 })
+
+// An agent proposal folds its tool list away on screen. Every other reader of
+// that card — search, a push preview, the model's own transcript window — gets
+// this string instead of the card, so the fold must not travel with it: the
+// list the person approved would otherwise be readable in exactly one client.
+test('a folded details block is unfolded in the card\'s plain text', () => {
+  const proposal: AgentCardSpec = {
+    actions: [
+      { key: 'accept', label: 'Accept', style: 'primary', submits: true },
+      { key: 'edit', label: 'Edit', style: 'secondary', submits: false },
+      { key: 'discard', label: 'Discard', style: 'danger', submits: false },
+    ],
+    blocks: [
+      { markdown: 'Fetches deal details from Sales Portal on request.', type: 'text' },
+      { items: [{ label: 'Lives in', value: 'KiloMayo / Sales' }], type: 'fields' },
+      {
+        blocks: [
+          { items: ['send_message', 'ticket_read'], label: 'Tools', type: 'chips' },
+          { items: ['Sales Portal'], label: 'Apps', type: 'chips' },
+        ],
+        summary: 'What it can reach',
+        type: 'details',
+      },
+    ],
+    schemaVersion: 1,
+    title: 'Sales agent',
+  }
+
+  const text = renderAgentCardPlainText(proposal)
+  assert.match(text, /What it can reach:/)
+  assert.match(text, /Tools: send_message, ticket_read/)
+  assert.match(text, /Apps: Sales Portal/)
+  assert.match(text, /Buttons: Accept, Edit, Discard/)
+})

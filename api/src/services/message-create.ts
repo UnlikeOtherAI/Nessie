@@ -10,7 +10,12 @@ import {
   resolveMessageMentions,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
-import type { AgentMention } from '@nessie/schemas'
+import { claimMessageEmbeddingInTransaction } from '@nessie/db'
+import type {
+  AgentMention,
+  AuthorizedActionContext,
+  MessageEmbedOrigin,
+} from '@nessie/schemas'
 import {
   buildAgentVisibilityWhere,
   deriveConversationTitle,
@@ -152,6 +157,44 @@ export type CreateThreadMessageResult =
       kind: 'invalid_agent_mention'
     }
 
+/** The embedding claim a send makes, when the deployment embeds at all. */
+export type MessageEmbeddingRequest = { model: string; origin?: MessageEmbedOrigin }
+
+/**
+ * A person's send claims its own embedding while their session exists. The
+ * sweep that would otherwise claim it has no session, and a signing deployment
+ * refuses an embed without the sender's UOA identity.
+ */
+export const messageEmbeddingForSender = (
+  sharedModelClient: { embeddingModel: string } | null | undefined,
+  actorContext: AuthorizedActionContext,
+): MessageEmbeddingRequest | undefined => {
+  if (!sharedModelClient) return undefined
+  const uoaIdentity = actorContext.actionContext.uoaIdentity
+  return {
+    model: sharedModelClient.embeddingModel,
+    ...(uoaIdentity && actorContext.actor.actorType === 'user'
+      ? { origin: { userId: actorContext.actor.actorId, uoaIdentity } }
+      : {}),
+  }
+}
+
+const claimSentMessageEmbedding = async (
+  tx: Prisma.TransactionClient,
+  embedding: MessageEmbeddingRequest | undefined,
+  message: { content: string; id: string },
+  organizationId: string,
+): Promise<void> => {
+  if (!embedding) return
+  await claimMessageEmbeddingInTransaction(tx, {
+    content: message.content,
+    embeddingModel: embedding.model,
+    id: message.id,
+    organizationId,
+    ...(embedding.origin ? { origin: embedding.origin } : {}),
+  })
+}
+
 export const createThreadMessage = async (
   prisma: PrismaClient,
   input: {
@@ -162,6 +205,7 @@ export const createThreadMessage = async (
     alsoSendToChannel?: boolean
     agentMentions?: AgentMention[]
     clientMessageId?: string
+    embedding?: MessageEmbeddingRequest
   },
 ): Promise<CreateThreadMessageResult> => {
   // Idempotent send: the same key in the same thread is the same message. The
@@ -397,6 +441,10 @@ export const createThreadMessage = async (
           include: messageInclude,
         })
         : undefined
+      await claimSentMessageEmbedding(tx, input.embedding, created, thread.channel.organizationId)
+      if (broadcast) {
+        await claimSentMessageEmbedding(tx, input.embedding, broadcast, thread.channel.organizationId)
+      }
       const metadata = await applyReplyBookkeeping(tx, {
         rootMessageId,
         replyCreatedAt: created.createdAt,
@@ -454,6 +502,7 @@ export const createThreadMessage = async (
         },
         include: messageInclude,
       })
+      await claimSentMessageEmbedding(tx, input.embedding, created, thread.channel.organizationId)
       await followReplyThread(tx, {
         rootMessageId: created.id,
         // A direct mention is an explicit invitation into this reply

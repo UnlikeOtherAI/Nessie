@@ -279,6 +279,190 @@ const relativeWorkspacePath = (value: string): boolean => (
   )
 )
 
+const distinctExecutorWorkspaceFolderNames = (value: readonly string[]): boolean =>
+  new Set(value).size === value.length
+
+/**
+ * How many host folders one executor may expose, and what a folder may be
+ * called. The name is the first segment of every workspace path an agent
+ * writes, so it is also a directory name in the daemon's copy-on-write layout
+ * and a token in the audit trail.
+ *
+ * Lowercase ASCII, digits and interior hyphens only:
+ *
+ *  - lowercase-only makes case-insensitive distinctness structural rather than
+ *    a check somebody can forget. Two folders differing only in case would be
+ *    one directory on a case-insensitive filesystem, which is a trap.
+ *  - no dot means `.` and `..` are unrepresentable, and so is the executor's
+ *    own promotion journal directory.
+ *  - a name starts and ends alphanumeric, so it never reads as a command-line
+ *    flag and never leaves a trailing separator-adjacent hyphen.
+ *  - one bounded ASCII token is byte-stable in a receipt: no locale, no case
+ *    folding, no Unicode normalization can change what a reviewer approved.
+ */
+export const EXECUTOR_WORKSPACE_FOLDER_MAXIMUM = 16
+export const EXECUTOR_WORKSPACE_FOLDER_NAME_MAXIMUM_LENGTH = 40
+export const EXECUTOR_WORKSPACE_FOLDER_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/u
+
+/**
+ * Windows turns these basenames into devices wherever a path is opened, so a
+ * folder may not be called one even on a host where it would work today: the
+ * name travels with the reviewed policy, and the same policy has to be legal on
+ * the next machine that loads it.
+ */
+export const EXECUTOR_RESERVED_WORKSPACE_FOLDER_NAMES = [
+  'aux',
+  'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+  'con',
+  'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+  'nul',
+  'prn',
+] as const
+
+export const executorWorkspaceFolderNameIsLegal = (value: string): boolean => (
+  EXECUTOR_WORKSPACE_FOLDER_NAME_PATTERN.test(value)
+  && value.length <= EXECUTOR_WORKSPACE_FOLDER_NAME_MAXIMUM_LENGTH
+  && !(EXECUTOR_RESERVED_WORKSPACE_FOLDER_NAMES as readonly string[]).includes(value)
+)
+
+export const ExecutorWorkspaceFolderNameSchema = z
+  .string()
+  .max(EXECUTOR_WORKSPACE_FOLDER_NAME_MAXIMUM_LENGTH)
+  .refine(
+    executorWorkspaceFolderNameIsLegal,
+    'A workspace folder name is 1 to 40 lowercase letters, digits and interior hyphens.',
+  )
+
+/**
+ * The folder names the reviewed policy exposes. Present exactly when the
+ * executor names its folders — absent from every descriptor signed before this
+ * field existed, which each describe exactly one folder. Carrying a synthesized
+ * single name into those descriptors would change them at an unchanged
+ * revision, and the control plane refuses that outright.
+ */
+export const ExecutorWorkspaceFolderNamesSchema = z
+  .array(ExecutorWorkspaceFolderNameSchema)
+  .min(1)
+  .max(EXECUTOR_WORKSPACE_FOLDER_MAXIMUM)
+  .refine(distinctExecutorWorkspaceFolderNames, 'Each workspace folder is named once.')
+
+export const EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM = 64
+export const EXECUTOR_COMMAND_PATTERN_MAXIMUM_LENGTH = 512
+/** The final token that widens an entry to "and any further arguments". */
+export const EXECUTOR_COMMAND_WILDCARD = '*'
+
+/**
+ * One permitted command, written the way a person would type it: a program,
+ * then the arguments that must match, then an optional trailing `*` meaning
+ * "and anything after this".
+ *
+ *   git *          every git command
+ *   git status *   git status with any flags, but never git push
+ *   npm run *      every script, but never npm publish
+ *   node           node with no arguments at all
+ *
+ * The guest micro-VM bounds what a running command can reach; it says nothing
+ * about which command runs. This is that second boundary, and it belongs to the
+ * local policy so widening it costs a revision a person reviews.
+ *
+ * The program position is always a literal: a wildcard there would permit the
+ * shells `commandProgram` deliberately refuses, so `*` alone — or `gi*` — is
+ * not an entry this grammar accepts.
+ */
+export type ExecutorCommandPattern = {
+  /** The arguments that must match literally, in order. */
+  argumentPrefix: string[]
+  /** True when further arguments are permitted after the prefix. */
+  permitsFurtherArguments: boolean
+  program: string
+}
+
+/**
+ * The single parser both sides use: the one that decides whether an entry is
+ * writable, and the one that decides whether a command matches it. A reading
+ * that differed between them is the whole class of bug this avoids.
+ */
+export const parseExecutorCommandPattern = (
+  entry: string,
+): ExecutorCommandPattern | undefined => {
+  if (entry.length === 0 || entry.length > EXECUTOR_COMMAND_PATTERN_MAXIMUM_LENGTH) return undefined
+  if (entry.includes('\u0000')) return undefined
+  // Written by hand, so runs of whitespace are a typo rather than an argument.
+  const tokens = entry.trim().split(/\s+/u).filter((token) => token.length > 0)
+  const [program, ...rest] = tokens
+  if (program === undefined) return undefined
+  if (!commandProgram.safeParse(program).success) return undefined
+  const permitsFurtherArguments = rest.at(-1) === EXECUTOR_COMMAND_WILDCARD
+  const argumentPrefix = permitsFurtherArguments ? rest.slice(0, -1) : rest
+  // A `*` is only ever the final token. Anywhere else it is a rule whose
+  // meaning depends on where a reader stops reading, and in the program
+  // position — `*` alone, or `gi*` — it reads as "any program" while matching
+  // a program name no PATH can resolve. Both are refused rather than given a
+  // meaning a person would have to be told.
+  if ([program, ...argumentPrefix].some((token) => token.includes(EXECUTOR_COMMAND_WILDCARD))) {
+    return undefined
+  }
+  if (argumentPrefix.some((argument) => argument.length > 4_096)) return undefined
+  return { argumentPrefix, permitsFurtherArguments, program }
+}
+
+/** The entry as it is stored and displayed, with hand-typed spacing normalised. */
+export const formatExecutorCommandPattern = (pattern: ExecutorCommandPattern): string => [
+  pattern.program,
+  ...pattern.argumentPrefix,
+  ...(pattern.permitsFurtherArguments ? [EXECUTOR_COMMAND_WILDCARD] : []),
+].join(' ')
+
+const commandPattern = z.string().superRefine((value, context) => {
+  if (parseExecutorCommandPattern(value) !== undefined) return
+  context.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: 'A permitted command is a program the guest resolves through its fixed PATH, '
+      + 'optionally followed by arguments and a trailing "*". Shells, paths and a leading "*" are refused.',
+  })
+})
+
+const distinctEntries = (value: readonly string[]): boolean =>
+  new Set(value).size === value.length
+const commandAllowlistEntries = z.array(commandPattern).max(EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM)
+export const ExecutorCommandAllowlistSchema = commandAllowlistEntries
+  .refine(distinctEntries, 'Each permitted command is listed once.')
+export type ExecutorCommandAllowlist = z.infer<typeof ExecutorCommandAllowlistSchema>
+
+/**
+ * The same list where an empty one would be meaningless — on the wire and in a
+ * stored policy, a list is carried only when it names a command.
+ */
+export const ExecutorNonEmptyCommandAllowlistSchema = commandAllowlistEntries
+  .min(1)
+  .refine(distinctEntries, 'Each permitted command is listed once.')
+
+/**
+ * The one allowlist decision every reader shares — the daemon before it starts
+ * a guest, and any surface that explains why a command was refused.
+ *
+ * The arguments are not optional. A caller that knew only the program could
+ * only ask a weaker question than the policy answers, and every call site has
+ * the argv it is about to run.
+ *
+ * An absent list is not an empty one, and neither permits anything: a daemon
+ * paired before the allowlist existed advertises no list, and the safe reading
+ * of "this policy has never named a command" is that none is permitted. The
+ * remedy is one `configure --tools` call, which a person reviews.
+ */
+export const executorCommandAllowlistPermits = (
+  allowlist: readonly string[] | undefined,
+  program: string,
+  args: readonly string[],
+): boolean => (allowlist ?? []).some((entry) => {
+  const pattern = parseExecutorCommandPattern(entry)
+  if (pattern === undefined || pattern.program !== program) return false
+  if (pattern.argumentPrefix.some((argument, index) => args[index] !== argument)) return false
+  return pattern.permitsFurtherArguments
+    ? args.length >= pattern.argumentPrefix.length
+    : args.length === pattern.argumentPrefix.length
+})
+
 /** A shell-free argv command confined to the guest's COW workspace. */
 export const ExecutorCommandRunArgumentsSchema = z
   .object({
@@ -391,6 +575,17 @@ export const ExecutorCapabilityDescriptorSchema = z
     supervisor: ExecutorSupervisorSchema,
     sandboxBackend: ExecutorSandboxBackendSchema,
     operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
+    // Present exactly when the policy names permitted programs, so a reviewer
+    // approving `command.run` reads the list they are approving rather than a
+    // digest. Absent from a daemon paired before the allowlist existed; that
+    // daemon runs nothing through `command.run` until its policy names one.
+    commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
+    // The named host folders this executor exposes, so adding one is a revision
+    // a person reviews. Only the names travel: the host paths stay local,
+    // because a reviewer of an organisation-scoped executor has no business
+    // reading somebody's home directory layout. Absent means the single
+    // unnamed folder every pre-naming pairing has.
+    workspaceFolders: ExecutorWorkspaceFolderNamesSchema.optional(),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
       .object({
@@ -860,11 +1055,23 @@ export type ExecutorPrivateAssignmentResponse = z.infer<
 
 /** A reviewed, signed local policy proposal. The raw signature remains server-only. */
 export const ExecutorDescriptorReviewResponseSchema = z.object({
+  // Projected verbatim from the signed descriptor, so a reviewer approving
+  // `command.run` reads the programs they are approving rather than only the
+  // digest that covers them. Absent exactly when the descriptor named none —
+  // which permits none — and never an empty array, because that would be a
+  // third reading of a two-state fact.
+  commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
   localPolicyDigest: Sha256DigestSchema,
   operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(100),
   profiles: z.array(ExecutorProfileSchema).min(1).max(10),
   reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
   revision: z.number().int().positive(),
+  // Projected for the same reason as the programs: adding a folder changes the
+  // digest, so it is a revision somebody approves, and a reviewer should read
+  // which folders they are approving. Names only — the host paths stay on the
+  // machine. Absent on a descriptor signed before folders had names, which
+  // describes exactly one folder.
+  workspaceFolders: ExecutorWorkspaceFolderNamesSchema.optional(),
 }).strict()
 export type ExecutorDescriptorReviewResponse = z.infer<
   typeof ExecutorDescriptorReviewResponseSchema

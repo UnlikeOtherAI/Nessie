@@ -197,6 +197,8 @@ const uoaTeamDirectoryFromEntries = (
     const teamId = typeof values.teamId === 'string' ? values.teamId.trim() : ''
     const label = typeof values.label === 'string' ? values.label.trim() : ''
     const orgName = typeof values.orgName === 'string' ? values.orgName.trim() : ''
+    const teamSlug = typeof values.teamSlug === 'string' ? values.teamSlug.trim() : ''
+    const orgSlug = typeof values.orgSlug === 'string' ? values.orgSlug.trim() : ''
     if (!organizationId || !teamId || !label) return []
     const avatarImageUrl = uoaTeamAvatarImageUrl(teamId, values.avatarImageUrl)
     return [{
@@ -205,6 +207,8 @@ const uoaTeamDirectoryFromEntries = (
       ...(avatarImageUrl ? { avatarImageUrl } : {}),
       label,
       ...(orgName ? { orgName } : {}),
+      ...(teamSlug ? { teamSlug } : {}),
+      ...(orgSlug ? { orgSlug } : {}),
       active: teamId === activeTeamId,
     }]
   })

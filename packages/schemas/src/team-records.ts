@@ -94,6 +94,23 @@ export const ChannelRecordSchema = z.object({
   // fall back to showing the control when a producer forgot to set it — see
   // `docs/standards/disclosure-boundaries.md` on `ChannelMember` writes.
   viewerCanManage: z.boolean(),
+  // Server-computed: may the viewer add or remove an AGENT in this channel
+  // right now? Deliberately separate from `viewerCanManage`, because the two
+  // authorities genuinely differ — adding a person is any member of the
+  // channel, while `POST/DELETE /api/agents/:agentId/bindings` require the
+  // organisation OWNER role on top of channel membership, and never on a
+  // system channel. The client drew the agent "Add" control unconditionally
+  // while the server refused every non-owner, which is the control-that-403s
+  // Rule zero names.
+  //
+  // It mirrors the routes' pre-policy gate exactly: channel member, not a
+  // system channel, organisation owner. Those routes ALSO run
+  // `checkPolicy('agent','bind')`, which an organisation can retune per scope;
+  // a tightened policy is a deliberate narrowing and surfaces as the refusal
+  // it is, rather than by silently hiding a control from the people the
+  // default rules allow. Required, not optional, for the same reason as
+  // `viewerCanManage`.
+  viewerCanManageAgents: z.boolean(),
   // The list read fills this viewer-relative projection. Other ChannelRecord
   // producers omit it and clients refresh their channel-list entry after a
   // mutation rather than treating a generic record as an authority.

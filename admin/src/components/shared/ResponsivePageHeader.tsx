@@ -22,6 +22,13 @@ import {
 
 type PageHeaderMenuItemBase = {
   checked?: boolean
+  /**
+   * The row is an independent on and off — "Show archived" — rather than one
+   * choice out of a set, which is what a `checked` row otherwise means. It
+   * decides how the row is announced: a checkbox stands alone, where a radio
+   * says "3 of 3" and implies the rows beside it are the alternatives.
+   */
+  checkbox?: boolean
   disabled?: boolean
   icon?: IconDefinition
   id: string
@@ -54,6 +61,9 @@ type PageHeaderActionBase = {
   icon?: IconDefinition
   id: string
   label: string
+  // Never collapses into More. For a control that carries the screen's own
+  // state rather than firing an action — a menu row could not stand in for it.
+  pinned?: boolean
   primary?: boolean
   priority: number
   pressed?: boolean
@@ -92,8 +102,21 @@ export type PageHeaderToggleAction = PageHeaderActionBase & {
   onChange: (checked: boolean) => void
 }
 
+// A control the screen draws itself, sitting in the action row so it keeps the
+// row's order and its measured share of the width. For the few filters whose
+// picker is a surface of its own — avatars, a search field — and so cannot be
+// expressed as menu rows. It is always `pinned`: More renders menu items, and
+// this action has none. `measuring` renders the same box inert, for the
+// off-screen mirror the overflow controller measures.
+export type PageHeaderCustomAction = PageHeaderActionBase & {
+  kind: 'custom'
+  pinned: true
+  render: (measuring: boolean) => ReactNode
+}
+
 export type PageHeaderAction =
   | PageHeaderButtonAction
+  | PageHeaderCustomAction
   | PageHeaderLinkAction
   | PageHeaderMenuAction
   | PageHeaderToggleAction
@@ -216,6 +239,13 @@ export const ResponsivePageHeader = ({
           {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
           {action.compact ? null : <span>{action.label}</span>}
         </a>
+      )
+    }
+    if (action.kind === 'custom') {
+      return (
+        <span className="inline-flex items-center" data-page-header-action={action.id}>
+          {action.render(measuring)}
+        </span>
       )
     }
     if (action.kind === 'toggle') {

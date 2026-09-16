@@ -49,7 +49,7 @@ const permissionControls = (page) => ({
   addSprint: page.getByRole('button', { name: 'Add sprint', exact: true }),
   // Responsive headers retain a second action in the DOM for a transition.
   // The primary page action is the first matching control.
-  configure: page.locator('[data-page-header-action="board-admin"]').first(),
+  configure: page.locator('[data-page-header-action="board-configure"]:visible').first(),
 })
 
 /**

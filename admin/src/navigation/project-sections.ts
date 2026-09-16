@@ -15,6 +15,7 @@ import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import {
   faBook,
   faChartColumn,
+  faChartPie,
   faGaugeHigh,
   faGear,
   faListCheck,
@@ -31,6 +32,7 @@ export type ProjectSectionId =
   | 'backlog'
   | 'insights'
   | 'docs'
+  | 'dashboards'
   | 'executors'
   | 'settings'
 
@@ -52,6 +54,7 @@ export const projectSectionIdFromPathname = (pathname: string): ProjectSectionId
     case 'backlog':
     case 'insights':
     case 'docs':
+    case 'dashboards':
     case 'executors':
     case 'settings':
       return suffix
@@ -108,6 +111,15 @@ export const projectSections = ({
     id: 'docs',
     label: withCount('Docs', knowledgeCount),
     to: `/projects/${projectId}/docs`,
+  },
+  // Dashboards used to be a sub-page of Knowledge, where a project's own live
+  // data sat behind a doorway that said "documents". They belong to the
+  // project whose numbers they show.
+  {
+    icon: faChartPie,
+    id: 'dashboards',
+    label: 'Dashboards',
+    to: `/projects/${projectId}/dashboards`,
   },
   { icon: faServer, id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
   { icon: faGear, id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },

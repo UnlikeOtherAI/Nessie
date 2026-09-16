@@ -42,11 +42,13 @@ export * from './global-agent-blueprints.js'
 export * from './global-agent-bootstrap.js'
 export * from './global-agent-brief.js'
 export * from './global-agent-catalogue.js'
+export * from './channel-agent-authority.js'
 export * from './channel-create.js'
 export * from './channel-manage.js'
 export * from './channel-records.js'
 export * from './message-include.js'
 export * from './system-authored-message.js'
+export * from './approval-card.js'
 export * from './external-agent-dm-key.js'
 export * from './deepsignal-digest.js'
 export * from './deepsignal-insight.js'
@@ -177,8 +179,11 @@ export {
   deleteMailboxConnection,
   isCredentialRejection,
   listMailboxConnectionsForUser,
+  listManageableMailboxConnectionsForUser,
   loadManageableMailboxConnection,
+  mailboxConnectionFailureMessage,
   mailboxConnectionTestFailure,
+  mailboxResolutionRefusal,
   presentMailboxConnection,
   setMailboxAgentAccess,
   verifyMailboxConnection,

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { enqueueQueueJob } from '@nessie/db'
+import { claimMessageEmbeddingInTransaction, enqueueQueueJob } from '@nessie/db'
 import {
   RUN_COMPLETION_FOLLOWUP_TOPIC,
   type RunCompletionFollowupJobPayload,
@@ -110,6 +110,22 @@ export const completeRunExecution = async (
                 : {}),
               ...(rootMessageId ? { rootMessageId } : {}),
             })
+        // The reply is indexed as the person it answered, while this run still
+        // holds their session identity; the embed job that follows has none.
+        const requesterId = payload.actorContext.actionContext.effectiveUserId
+          ?? (payload.actorContext.actor.actorType === 'user'
+            ? payload.actorContext.actor.actorId
+            : null)
+        const requesterIdentity = payload.actorContext.actionContext.uoaIdentity
+        if (requesterId && requesterIdentity) {
+          await claimMessageEmbeddingInTransaction(tx, {
+            content: assistantMessage.content,
+            embeddingModel: deps.modelClient.embeddingModel,
+            id: assistantMessage.id,
+            organizationId: context.channel.organizationId,
+            origin: { userId: requesterId, uoaIdentity: requesterIdentity },
+          })
+        }
         const reply = rootMessageId
           ? await applyRunReplyBookkeeping(tx, context, assistantMessage.createdAt)
           : undefined

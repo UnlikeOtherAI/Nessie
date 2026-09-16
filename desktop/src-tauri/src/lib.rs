@@ -20,6 +20,12 @@ const ADHOC_MACOS_CONFIG: &str = include_str!("../tauri.adhoc-macos.conf.json");
 const DIRECT_UPDATER_CONFIG: &str = include_str!("../tauri.direct-updater.conf.json");
 #[cfg(test)]
 const APP_STORE_CONFIG: &str = include_str!("../tauri.appstore.conf.json");
+#[cfg(test)]
+const BASE_CONFIG: &str = include_str!("../tauri.conf.json");
+#[cfg(test)]
+const EXECUTOR_MENU_BAR_CONFIG: &str = include_str!("../tauri.executor-menubar.conf.json");
+#[cfg(test)]
+const DESKTOP_PACKAGE_MANIFEST: &str = include_str!("../../package.json");
 const PRODUCTION_ADMIN_URL: &str = "https://app.nessie.works/";
 
 // An embedded Tauri bundle is served from tauri://localhost. Its requests to
@@ -78,6 +84,7 @@ pub fn run() {
             executor_companion::executor_companion_change_workspace,
             executor_companion::executor_companion_configure_workspace,
             executor_companion::executor_companion_forget,
+            executor_companion::executor_companion_open_menu_bar_app,
             executor_companion::executor_companion_pair,
             executor_companion::executor_companion_start,
             executor_companion::executor_companion_status,
@@ -136,10 +143,76 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_webview_url, ADHOC_MACOS_CONFIG, APP_STORE_CONFIG, DEFAULT_DESKTOP_CAPABILITIES,
-        DEVELOPMENT_DESKTOP_CAPABILITIES, DIRECT_UPDATER_CONFIG, PRODUCTION_ADMIN_URL,
+        desktop_webview_url, ADHOC_MACOS_CONFIG, APP_STORE_CONFIG, BASE_CONFIG,
+        DEFAULT_DESKTOP_CAPABILITIES, DESKTOP_PACKAGE_MANIFEST, DEVELOPMENT_DESKTOP_CAPABILITIES,
+        DIRECT_UPDATER_CONFIG, EXECUTOR_MENU_BAR_CONFIG, PRODUCTION_ADMIN_URL,
     };
     use tauri::utils::config::WebviewUrl;
+
+    const EXECUTOR_MENU_BAR_CONFIG_FILE: &str = "src-tauri/tauri.executor-menubar.conf.json";
+
+    /// The nested menu bar app is placed by `bundle.macOS.files`, whose keys Tauri
+    /// resolves relative to the bundle's `Contents` directory — the same mechanism
+    /// the App Store configuration already uses for its provisioning profile.
+    /// `Library/LoginItems` is where macOS expects a menu bar helper and the only
+    /// place `SMAppService.loginItem` can register one, so the path is the
+    /// contract, not a convenience.
+    #[test]
+    fn the_nested_menu_bar_app_lands_where_macos_expects_a_login_item() {
+        let config: serde_json::Value = serde_json::from_str(EXECUTOR_MENU_BAR_CONFIG).unwrap();
+        let files = config["bundle"]["macOS"]["files"].as_object().unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files["Library/LoginItems/Nessie Executor.app"],
+            "./resources/executor-menubar/Nessie Executor.app",
+        );
+        assert_eq!(
+            super::executor_companion::NESTED_MENU_BAR_APP_PATH,
+            "Library/LoginItems/Nessie Executor.app",
+            "the path Desktop opens must be the path the bundler wrote",
+        );
+    }
+
+    /// The sandboxed App Store build deliberately carries no executor. It keeps
+    /// `resources: []`, and — because it never passes the nesting configuration —
+    /// there is no merge that could hand it the menu bar app either. That is a
+    /// structural exclusion rather than an override to get wrong: a `files` object
+    /// merged over another `files` object would have kept the nested entry.
+    #[test]
+    fn the_app_store_build_carries_no_executor_at_all() {
+        let store: serde_json::Value = serde_json::from_str(APP_STORE_CONFIG).unwrap();
+        assert_eq!(store["bundle"]["resources"], serde_json::json!([]));
+        let files = store["bundle"]["macOS"]["files"].as_object().unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files.contains_key("embedded.provisionprofile"));
+        assert!(
+            !files.keys().any(|path| path.contains("LoginItems")),
+            "the sandboxed store build must not nest the executor menu bar app",
+        );
+
+        // The base configuration has no `files` of its own, so nothing is inherited
+        // into the store build from it either.
+        let base: serde_json::Value = serde_json::from_str(BASE_CONFIG).unwrap();
+        assert!(base["bundle"]["macOS"].get("files").is_none());
+
+        let manifest: serde_json::Value = serde_json::from_str(DESKTOP_PACKAGE_MANIFEST).unwrap();
+        let scripts = &manifest["scripts"];
+        let store_build = scripts["tauri:build:appstore"].as_str().unwrap();
+        assert!(store_build.contains("tauri.appstore.conf.json"));
+        assert!(
+            !store_build.contains(EXECUTOR_MENU_BAR_CONFIG_FILE),
+            "the store build must never be handed the nesting configuration",
+        );
+        assert!(!store_build.contains("prepare:executor-menubar"));
+
+        // The Developer ID executor build is the one that nests it, and it stages
+        // the bundle before Tauri seals the enclosing app around it.
+        let executor_build = scripts["tauri:build:executor"].as_str().unwrap();
+        assert!(executor_build.contains(EXECUTOR_MENU_BAR_CONFIG_FILE));
+        let staged = executor_build.find("prepare:executor-menubar").unwrap();
+        let bundled = executor_build.find("tauri build").unwrap();
+        assert!(staged < bundled, "signing is inside-out: the nested app is staged first");
+    }
 
     #[test]
     fn release_window_uses_the_hosted_same_site_admin() {

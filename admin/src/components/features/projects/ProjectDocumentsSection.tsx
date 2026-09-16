@@ -6,7 +6,7 @@ import {
   SectionNotice,
   dashboardRowClass,
 } from './DashboardSectionCard'
-import { formatRelativeAge } from './project-dashboard-data'
+import { RECENT_PAGE_LIMIT, formatRelativeAge } from './project-dashboard-data'
 
 type ProjectDocumentsSectionProps = {
   className?: string
@@ -14,9 +14,14 @@ type ProjectDocumentsSectionProps = {
 }
 
 /**
- * What was last written down. The Docs tab is the working surface; this answers
- * "what changed lately", which the Docs tab can only answer by opening every
- * space by hand. Rows deep-link straight into that tab.
+ * What was last written down, all of it, newest first. The Docs tab is the
+ * working surface; this answers "what changed lately", which the Docs tab can
+ * only answer by opening every space by hand. Rows deep-link straight into
+ * that tab.
+ *
+ * It is a column of the Overview rather than one card of a five-card wall, so
+ * it asks for `RECENT_PAGE_LIMIT` pages rather than the hook's default five —
+ * the same limit the Docs tile reads, so the two share one cache entry.
  */
 export const ProjectDocumentsSection = ({
   className,
@@ -24,13 +29,14 @@ export const ProjectDocumentsSection = ({
 }: ProjectDocumentsSectionProps) => {
   const navigate = useNavigate()
   const docsHref = `/projects/${projectId}/docs`
-  const { data: pages, isError, isPending } = useProjectRecentPages(projectId)
+  const { data: pages, isError, isPending } = useProjectRecentPages(projectId, RECENT_PAGE_LIMIT)
 
   return (
     <DashboardSectionCard
       className={className}
+      count={isPending ? undefined : (pages ?? []).length}
       links={[{ label: 'Open docs', to: docsHref }]}
-      title="Documents"
+      title="Latest documents"
     >
       {isPending ? <Skeleton className="p-2" variant="list" /> : null}
       {isError ? (
@@ -59,7 +65,9 @@ export const ProjectDocumentsSection = ({
             {page.kind === 'file' ? '📎' : page.kind === 'spreadsheet' ? '📊' : '📄'}
           </span>
           <span className="truncate text-sm text-[color:var(--tx)]">{page.title}</span>
-          <span className="truncate text-xs text-[color:var(--tx3)]">{page.spaceName}</span>
+          <span className="project-doc-row-space truncate text-xs text-[color:var(--tx3)]">
+            {page.spaceName}
+          </span>
           <span className="ml-auto whitespace-nowrap text-xs text-[color:var(--tx3)]">
             {formatRelativeAge(page.updatedAt)}
           </span>

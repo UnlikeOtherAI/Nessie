@@ -17,7 +17,11 @@ type PageHeaderMenuProps = {
 }
 
 export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
-  const items = action.kind === 'menu' ? action.items : [action]
+  // A `custom` action is pinned, so More never receives one — and if it ever
+  // did, it has no rows to draw.
+  const items = action.kind === 'custom'
+    ? []
+    : action.kind === 'menu' ? action.items : [action]
 
   return (
     <>
@@ -47,12 +51,15 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
 
         // A toggle that overflowed keeps its meaning here: it is still one
         // state you turn on and off, so it is a checkbox item rather than the
-        // radio choice a menu action's `checked` marks.
+        // radio choice a menu action's `checked` marks. A row can say the same
+        // of itself with `checkbox`, for a menu that carries both — a view to
+        // choose between, and an independent "Show archived".
         const toggle = 'kind' in item && item.kind === 'toggle'
+        const standalone = toggle || ('checkbox' in item && item.checkbox === true)
         const checked = 'checked' in item ? item.checked : undefined
         const role = checked === undefined
           ? 'menuitem'
-          : toggle ? 'menuitemcheckbox' : 'menuitemradio'
+          : standalone ? 'menuitemcheckbox' : 'menuitemradio'
         return (
           <button
             aria-checked={checked}

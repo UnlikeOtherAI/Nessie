@@ -13,12 +13,21 @@ import {
   type SandboxUsage,
 } from './sandbox-layout.js'
 import { ensureSandboxWorkspace } from './sandbox-snapshot.js'
+import {
+  executorWorkspacePath,
+  findExecutorWorkspaceFolder,
+  splitExecutorWorkspacePath,
+  type ExecutorWorkspaceFolder,
+} from './workspace-folders.js'
 import { WorkspacePathError, resolveWorkspaceWritePath } from './workspace-paths.js'
 
 /**
- * A file write into a run's draft. It lands only inside the COW snapshot,
- * traverses no symbolic link, stays within the scratch budget, and replaces an
- * existing file atomically — the paired root is never opened for writing.
+ * A file write into a run's draft. The first path segment names the workspace
+ * folder, and only that folder is snapshotted: writing into `nessie` never
+ * copies, opens or touches any other paired directory. The write lands inside
+ * that folder's COW snapshot, traverses no symbolic link, stays within the
+ * scratch budget, and replaces an existing file atomically — a paired host
+ * folder is never opened for writing.
  */
 
 const ensureWriteParents = async (
@@ -69,13 +78,20 @@ const scratchUsage = async (root: string): Promise<SandboxUsage> => {
 
 export const writeSandboxFile = async (
   stateDir: string,
-  workspaceRoot: string,
+  folders: readonly ExecutorWorkspaceFolder[],
   runId: string,
   input: unknown,
 ): Promise<Record<string, unknown>> => {
   const args = ExecutorFileWriteArgumentsSchema.parse(input)
-  const workspace = await ensureSandboxWorkspace(stateDir, workspaceRoot, runId)
-  const destination = await resolveWorkspaceWritePath(workspace, args.path)
+  const requested = splitExecutorWorkspacePath(args.path)
+  if (requested.folderName === undefined || requested.path === '.') {
+    throw new WorkspacePathError(
+      'A workspace file path names a folder and a file inside it, for example "nessie/notes.md".',
+    )
+  }
+  const folder = findExecutorWorkspaceFolder(folders, requested.folderName)
+  const workspace = await ensureSandboxWorkspace(stateDir, folder, runId)
+  const destination = await resolveWorkspaceWritePath(workspace, requested.path)
   await ensureWriteParents(workspace, destination.path, args.createParents === true)
   let existingBytes = 0
   let isNewFile = true
@@ -115,7 +131,7 @@ export const writeSandboxFile = async (
   }
   return {
     byteCount: Buffer.byteLength(args.content, 'utf8'),
-    path: destination.relativePath,
+    path: executorWorkspacePath(folder.name, destination.relativePath),
     success: true,
   }
 }

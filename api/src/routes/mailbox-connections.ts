@@ -101,6 +101,11 @@ export const registerMailboxConnectionRoutes = (
         STATUS_BY_REFUSAL[error.refusal] ?? 400,
         error.refusal.toUpperCase(),
         error.message,
+        undefined,
+        // Per-leg, so the form can ask for the one setting still missing. It
+        // carries hostnames and ports only — the ones the person supplied or
+        // that were derived from their own address domain.
+        error.diagnosis,
       )
     }
     throw error
@@ -223,18 +228,19 @@ export const registerMailboxConnectionRoutes = (
         {
           actor: actingMember(actorContext),
           address: body.address,
-          imapHost: body.imapHost,
-          imapPort: body.imapPort,
-          imapSecurity: body.imapSecurity,
+          imapHost: body.imapHost ?? null,
+          imapPort: body.imapPort ?? null,
+          imapSecurity: body.imapSecurity ?? null,
           label: body.label,
           organizationId: actorContext.tenant.organizationId,
           password: body.password,
           scope: body.scope,
-          smtpHost: body.smtpHost,
-          smtpPort: body.smtpPort,
-          smtpSecurity: body.smtpSecurity,
+          server: body.server ?? null,
+          smtpHost: body.smtpHost ?? null,
+          smtpPort: body.smtpPort ?? null,
+          smtpSecurity: body.smtpSecurity ?? null,
           teamId: body.teamId ?? null,
-          username: body.username,
+          username: body.username ?? null,
         },
         { encryptionSecret: encryptionKeyRing },
       )

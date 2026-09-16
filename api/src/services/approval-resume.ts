@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   createSystemAuthoredMessage,
   createSystemAuthoredReply,
+  updateApprovalCardsStatus,
 } from '@nessie/team-admin'
 import { ResumeRollback, resumeSuspendedRun, type RunResumeFailure } from './run-resume-core.js'
 
@@ -16,39 +17,6 @@ const ApprovalResumeStateSchema = z.object({
 }).strict()
 
 type ResumeFailure = RunResumeFailure
-
-const updateApprovalGateNoticeStatus = async (
-  tx: Prisma.TransactionClient,
-  input: {
-    approvalId: string
-    status: 'approved' | 'cancelled' | 'expired' | 'rejected'
-    threadId: string
-  },
-): Promise<void> => {
-  const notice = await tx.message.findFirst({
-    where: {
-      metadata: { equals: input.approvalId, path: ['approvalGate', 'approvalId'] },
-      threadId: input.threadId,
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, metadata: true },
-  })
-  if (!notice || !notice.metadata || Array.isArray(notice.metadata)) return
-  const approvalGate = (notice.metadata as Record<string, unknown>)['approvalGate']
-  if (!approvalGate || typeof approvalGate !== 'object' || Array.isArray(approvalGate)) return
-  await tx.message.update({
-    where: { id: notice.id },
-    data: {
-      metadata: {
-        ...(notice.metadata as Record<string, unknown>),
-        approvalGate: {
-          ...(approvalGate as Record<string, unknown>),
-          status: input.status,
-        },
-      } as Prisma.InputJsonValue,
-    },
-  })
-}
 
 export type ResumeApprovalResult =
   | { kind: 'resumed'; runId: string; taskId: string }
@@ -113,10 +81,9 @@ export const resumeRunFromApproval = async (
         triggerMessageId: resumeState.data.messageId,
       })
 
-      await updateApprovalGateNoticeStatus(tx, {
+      await updateApprovalCardsStatus(tx, {
         approvalId: approval.id,
         status: 'approved',
-        threadId: scoped.threadId,
       })
 
       return { kind: 'resumed' as const, runId: resumed.runId, taskId: resumed.taskId }
@@ -174,10 +141,9 @@ export const terminalizeWaitingApprovalRunInTransaction = async (
     data: { finishedAt: new Date(), status },
   })
   if (changed.count !== 1) return null
-  await updateApprovalGateNoticeStatus(tx, {
+  await updateApprovalCardsStatus(tx, {
     approvalId: approval.id,
     status: outcome,
-    threadId: run.threadId,
   })
 
   const content = outcome === 'rejected'
@@ -318,10 +284,9 @@ export const expirePendingToolApprovalsForRun = async (
       })
       if (update.count !== 1) continue
       claimed.push(approval.id)
-      await updateApprovalGateNoticeStatus(tx, {
+      await updateApprovalCardsStatus(tx, {
         approvalId: approval.id,
         status: 'cancelled',
-        threadId: run.threadId,
       })
       // Same follower decision as the rejected/expired notice above: the run's
       // participants already follow, and the server adds nobody.

@@ -138,6 +138,13 @@ const parseTeamDirectoryEntries = (
     const teamId = trimString(entry.teamId)
     const label = trimString(entry.name)
     const orgName = trimString(entry.orgName)
+    // UOA names the team `name` and its address label `slug`; the organisation
+    // label is `orgSlug`. Dropping these was why every "Your teams" link fell
+    // back to the app-wide URL: the landing then asked `/domain/teams/:id/address`
+    // for them, and that route only sees organisations founded on this
+    // product's own domain and 404s silently for the rest.
+    const teamSlug = trimString(entry.slug)
+    const orgSlug = trimString(entry.orgSlug)
     const avatarImageUrl = parseAvatarImageUrl(entry.avatarImageUrl, baseUrl)
     if (!organizationId || !teamId || !label) return []
     return [{
@@ -146,6 +153,8 @@ const parseTeamDirectoryEntries = (
       ...(avatarImageUrl ? { avatarImageUrl } : {}),
       label,
       ...(orgName ? { orgName } : {}),
+      ...(teamSlug ? { teamSlug } : {}),
+      ...(orgSlug ? { orgSlug } : {}),
     }]
   })
 }

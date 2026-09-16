@@ -7,6 +7,7 @@ import type {
 import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCreatePanel'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
+import { ExecutorReviewedPolicy } from '../components/features/executors/ExecutorReviewedPolicy'
 import { ExecutorWorkspacePromotionsPanel } from '../components/features/executors/ExecutorWorkspacePromotionsPanel'
 import { FormError } from '../components/shared/FormActions'
 import { QueryState } from '../components/shared/QueryState'
@@ -30,6 +31,7 @@ import {
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { getExecutorApiOrigin } from '../lib/api-client'
+import { buildPairingCommand } from '../lib/executor-pairing'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
@@ -99,6 +101,11 @@ export const ExecutorsPage = () => {
 
   const reviewChange = changeQuery.data
   const promotionChange = promotionQuery.data
+  // The loaded revisions belong to the selected executor, so they describe the
+  // prepared change only when that change is this executor's.
+  const reviewedRevisions = reviewChange && reviewChange.executorId === accessQuery.data?.executorId
+    ? accessQuery.data?.descriptorRevisions
+    : undefined
   const setSelection = (executorId: string) => {
     const next = new URLSearchParams(searchParams)
     next.set('executorId', executorId)
@@ -200,8 +207,16 @@ export const ExecutorsPage = () => {
     }
   }
 
+  // The state directory is not a free choice, so the command is built where a
+  // test can hold it against the systemd unit itself — see
+  // `lib/executor-pairing.ts`.
   const pairingCommand = useMemo(() => created
-    ? `nessie-executor pair --api ${getExecutorApiOrigin(created.invitation.apiBaseUrl)} --state-dir "$HOME/.nessie-executor" --workspace "/absolute/read-only/workspace" --enrollment ${created.invitation.enrollmentId} --challenge ${created.invitation.challenge}`
+    ? buildPairingCommand({
+      apiOrigin: getExecutorApiOrigin(created.invitation.apiBaseUrl),
+      challenge: created.invitation.challenge,
+      enrollmentId: created.invitation.enrollmentId,
+      executorId: created.executor.id,
+    })
     : null, [created])
 
   return (
@@ -265,6 +280,7 @@ export const ExecutorsPage = () => {
           <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">Finish pairing on the companion</h2>
             <p className="text-xs text-[color:var(--tx3)]">Replace the workspace placeholder with one existing absolute directory. The companion stores its canonical root and machine key in owner-only state, and can only read bounded files under that root. This invitation expires at {created.invitation.expiresAt}.</p>
+            <p className="text-xs text-[color:var(--tx3)]">This command is the Linux package’s: its systemd service reads that exact state directory, so pairing anywhere else leaves the service unable to start. On macOS, pair from the desktop companion below instead. On Windows the service owns its own state under <code>%ProgramData%\Nessie Executor</code> and pairs itself.</p>
             <p className="text-xs text-[color:var(--tx3)]">Supported platforms: macOS 15+ on Apple Silicon, Ubuntu Linux x86_64, Windows 11/10 x86_64 (Windows and Linux support arrive with their releases).</p>
             <code className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx)]">{pairingCommand}</code>
           </section>
@@ -279,6 +295,10 @@ export const ExecutorsPage = () => {
               <p className="mt-1 text-xs text-[color:var(--tx3)]">This one-time change expires at {reviewChange.expiresAt}. It is bound to your account and the executor’s current authorization revision.</p>
             </div>
             <pre className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{JSON.stringify(reviewChange.change, null, 2)}</pre>
+            <ExecutorReviewedPolicy
+              change={reviewChange.change}
+              descriptorRevisions={reviewedRevisions}
+            />
             <FormError>
               {!confirmationToken
                 ? 'The confirmation token is missing. Recreate the change from this page or reopen the Personal Assistant review link.'

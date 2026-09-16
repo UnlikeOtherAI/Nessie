@@ -26,6 +26,88 @@ export const OVERLAY_MOTION = Object.freeze({
   cardMs: 200,
 })
 
+// A screen that grows out of the thing that opened it — a dashboard tile on a
+// project's Overview becoming that dashboard full screen. It is a third kind
+// of motion beside the stack's slide and the overlay family's fade, and it
+// lives here for the reason they do: one module owns navigation motion, so
+// there is one place to change a curve and one place a test can pin.
+//
+// It does not move a screen: the route change is the framework's ordinary one,
+// with its own registry row, its own Back and its own ledger entry. This only
+// says how the arriving screen appears. On `single` the stack already slides
+// the push, so the caller runs this on `split`, where nothing animated before.
+export const ZOOM_MOTION = Object.freeze({
+  durationMs: 260,
+  // Matches the stack's curve: two kinds of navigation motion in one product
+  // should decelerate the same way.
+  easing: NAV_MOTION.easing,
+})
+
+/** A rectangle in viewport coordinates — what `getBoundingClientRect` gives. */
+export type ExpandRect = {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+/**
+ * The transform that puts `to` exactly over `from`, so an element already in
+ * its final place can be animated *from* the rectangle it grew out of.
+ *
+ * Scale is derived from width alone rather than per-axis: a tile and a page
+ * rarely share an aspect ratio, and scaling the two axes differently stretches
+ * the type inside for the length of the animation.
+ */
+export const expandFromPose = (from: ExpandRect, to: ExpandRect): string => {
+  if (to.width <= 0 || to.height <= 0) return 'none'
+  const scale = from.width / to.width
+  const translateX = from.left + from.width / 2 - (to.left + to.width / 2)
+  const translateY = from.top + from.height / 2 - (to.top + to.height / 2)
+  return `translate3d(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`
+}
+
+export type ExpandTransitionSpec = {
+  element: Element | null
+  from: ExpandRect
+  reducedMotion: boolean
+}
+
+/**
+ * Grows `element` from `from` to wherever it already is. Returns the same
+ * shape `runStackTransition` does, so a caller treats the two the same way.
+ */
+export const runExpandTransition = ({
+  element,
+  from,
+  reducedMotion,
+}: ExpandTransitionSpec): StackTransitionRun => {
+  const durationMs = reducedMotion ? 0 : ZOOM_MOTION.durationMs
+  const target = element as Animatable | null
+  const to = target?.getBoundingClientRect?.()
+  const run = durationMs > 0 && target && typeof target.animate === 'function' && to
+    ? target.animate(
+      [
+        { opacity: '0.4', transform: expandFromPose(from, to) },
+        { opacity: '1', transform: 'none' },
+      ],
+      { duration: durationMs, easing: ZOOM_MOTION.easing, fill: 'both' },
+    )
+    : null
+
+  return {
+    durationMs,
+    finished: new Promise<void>((resolve) => {
+      if (!run) {
+        resolve()
+        return
+      }
+      run.onfinish = () => resolve()
+    }),
+    cancel: () => run?.cancel(),
+  }
+}
+
 export type StackDirection = 'forward' | 'back'
 
 export type StackPoses = {

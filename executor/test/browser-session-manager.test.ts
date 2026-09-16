@@ -91,7 +91,7 @@ const browserStateFor = (workspaceRoot: string) => ({
   executorId: '00000000-0000-4000-8000-000000000305',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 test('browser sessions use the exact run lease, reject a second launch, and stop before sandbox teardown', async () => {
@@ -138,7 +138,7 @@ test('browser sessions use the exact run lease, reject a second launch, and stop
     executorId: '00000000-0000-4000-8000-000000000305',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot,
+    workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
   }
   try {
     const manager = createExecutorBrowserSessionManager(stateDir, state, {
@@ -244,7 +244,7 @@ test('browser session startup is cancelled by fencing before it can open a page'
     executorId: '00000000-0000-4000-8000-000000000305',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot,
+    workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
   }
   try {
     const manager = createExecutorBrowserSessionManager(stateDir, state, {
@@ -288,7 +288,7 @@ test('failed browser startup releases the exact COW lease so sandbox.stop can te
     executorId: '00000000-0000-4000-8000-000000000305',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot,
+    workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
   }
   try {
     const manager = createExecutorBrowserSessionManager(stateDir, state, {
@@ -326,7 +326,7 @@ test('a rejected guest stop cannot strand a startup lease', async () => {
     executorId: '00000000-0000-4000-8000-000000000305',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot,
+    workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
   }
   try {
     const manager = createExecutorBrowserSessionManager(stateDir, state, {

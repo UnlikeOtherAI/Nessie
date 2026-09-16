@@ -9,7 +9,7 @@
 # on lingering so this daemon starts at boot and outlives a logout.
 [Unit]
 Description=Nessie Executor (%i)
-Documentation=https://nessie.works/docs/executor
+Documentation=https://nessie.works/docs/executors
 After=network-online.target
 Wants=network-online.target
 

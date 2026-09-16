@@ -5,10 +5,13 @@ import { fileURLToPath } from 'node:url'
 import {
   DIM_SELECTOR,
   dimAt,
+  expandFromPose,
   NAV_MOTION,
+  runExpandTransition,
   runStackTransition,
   stackDurationMs,
   stackPoses,
+  ZOOM_MOTION,
 } from '../src/navigation/motion'
 
 const readSource = (relativePath: string): string =>
@@ -131,4 +134,70 @@ test('with an animation timeline the run finishes when the top layer finishes an
   run.cancel()
   assert.equal(top.cancelled, true)
   assert.equal(bottom.cancelled, true)
+})
+
+// A screen that grows out of the thing that opened it: a dashboard tile on a
+// project's Overview becoming that dashboard full screen. The route change is
+// the framework's ordinary one — this is only how the arriving screen appears.
+
+test('the expand pose puts the arriving screen exactly over the tile it came from', () => {
+  // A 300x200 tile at (100, 50); a 1200x800 page at (0, 0).
+  const pose = expandFromPose(
+    { height: 200, left: 100, top: 50, width: 300 },
+    { height: 800, left: 0, top: 0, width: 1200 },
+  )
+
+  // Scale is the width ratio alone: a tile and a page rarely share an aspect
+  // ratio, and two different axis scales stretch the type inside for the
+  // length of the animation.
+  assert.match(pose, /scale\(0\.2500\)$/)
+  // Centre to centre - tile centre (250, 150), page centre (600, 400).
+  assert.match(pose, /^translate3d\(-350\.00px, -250\.00px, 0\)/)
+})
+
+test('a degenerate destination has no pose rather than a division by zero', () => {
+  assert.equal(
+    expandFromPose(
+      { height: 200, left: 0, top: 0, width: 300 },
+      { height: 0, left: 0, top: 0, width: 0 },
+    ),
+    'none',
+  )
+})
+
+test('the expand is zero-length under reduced motion, and animates otherwise', async () => {
+  const rect = { height: 200, left: 100, top: 50, width: 300 }
+  const element = {
+    animate: () => ({ cancel: () => undefined, onfinish: null }),
+    getBoundingClientRect: () => ({ height: 800, left: 0, top: 0, width: 1200 }),
+  }
+
+  const still = runExpandTransition({
+    element: element as unknown as Element,
+    from: rect,
+    reducedMotion: true,
+  })
+  assert.equal(still.durationMs, 0)
+  // It resolves immediately, so a caller never waits on a run that never began.
+  await still.finished
+
+  const moving = runExpandTransition({
+    element: element as unknown as Element,
+    from: rect,
+    reducedMotion: false,
+  })
+  assert.equal(moving.durationMs, ZOOM_MOTION.durationMs)
+})
+
+test('the expand decelerates on the same curve as the stack', () => {
+  // Two kinds of navigation motion in one product move the same way.
+  assert.equal(ZOOM_MOTION.easing, NAV_MOTION.easing)
+})
+
+test('the expand belongs to split alone, because the stack already slides a push', () => {
+  const page = readSource('../src/pages/project/ProjectDashboardPage.tsx')
+  assert.match(page, /navigationLayout === 'split' && expandFrom !== null/)
+  // A layout effect, not a passive one: in a passive effect the page paints at
+  // full size for a frame before the small pose lands.
+  assert.match(page, /useLayoutEffect/)
 })

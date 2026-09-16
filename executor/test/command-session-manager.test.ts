@@ -78,6 +78,9 @@ const stateFor = (workspaceRoot: string) => ({
     vmHelperPath: '/private/helper',
   },
   descriptor: {
+    // `command.run` is refused before a guest exists unless the reviewed policy
+    // names the command, so a fixture that starts one has to name it too.
+    commandAllowlist: ['pnpm *'],
     limits: { maxCommandRuntimeSeconds: 20, maxResultBytes: 20_000, maxSessions: 1 },
     operationKeys: ['command.run', 'workspace.review', 'sandbox.stop'],
     profiles: ['workspace_sandbox'],
@@ -86,7 +89,7 @@ const stateFor = (workspaceRoot: string) => ({
   executorId: '00000000-0000-4000-8000-000000000454',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 test('command session starts one no-egress COW guest and forwards an argv request without a shell', async () => {

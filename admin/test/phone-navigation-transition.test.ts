@@ -86,8 +86,6 @@ test('clears the Knowledge space highlight when a phone returns to its list', ()
   assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base', true), false)
   assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base/spaces/space_a', true), true)
   assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base', false), true)
-  assert.equal(shouldHighlightKnowledgeSidebarSelection('/dashboards', false), false)
-  assert.equal(shouldHighlightKnowledgeSidebarSelection('/dashboards/dash_a', false), false)
 })
 
 test('pushes Admin destinations from the Admin menu and returns to it', () => {
@@ -209,8 +207,8 @@ test('gives every phone detail route a deterministic in-app Back destination', (
     { label: 'Back to Projects', pathname: '/projects' },
   )
   assert.deepEqual(
-    getPhoneNavigationBackTarget('/dashboards/dashboard_a'),
-    { label: 'Back to Dashboards', pathname: '/dashboards' },
+    getPhoneNavigationBackTarget('/projects/project_a/dashboards/dashboard_a'),
+    { label: 'Back to Dashboards', pathname: '/projects/project_a/dashboards' },
   )
   assert.deepEqual(
     getPhoneNavigationBackTarget('/agents/triggers'),
@@ -255,10 +253,10 @@ test('keeps the drawer control at phone section roots', () => {
   ]) {
     assert.equal(getPhoneNavigationBackTarget(pathname), null)
   }
-  // /dashboards is a Knowledge-section detail: its Back returns to Knowledge.
+  // A project's Dashboards list is one of its sections: Back returns to Projects.
   assert.deepEqual(
-    getPhoneNavigationBackTarget('/dashboards'),
-    { label: 'Back to Knowledge', pathname: '/knowledge-base' },
+    getPhoneNavigationBackTarget('/projects/project_a/dashboards'),
+    { label: 'Back to Projects', pathname: '/projects' },
   )
 })
 

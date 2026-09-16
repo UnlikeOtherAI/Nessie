@@ -4,7 +4,7 @@
 // project rather than at the board somebody just left
 // (docs/navigation/overview.md §1, "Tab hosts").
 import { hasPhoneViewport, waitForStackSettled, watchForMotion } from '../lib/freeze.mjs'
-import { clickTab, gotoPath, selectedTab, shot } from '../lib/page.mjs'
+import { clickTab, gotoPath, selectedTab, shot, waitForTabBar } from '../lib/page.mjs'
 import { ensureSecondBoard } from '../lib/seed.mjs'
 import { createChecks } from '../lib/expect.mjs'
 
@@ -33,9 +33,13 @@ export const phoneBoardSwitch = {
 
     await gotoPath(page, `/projects/${seed.project.id}/board`)
     await waitForStackSettled(page)
+    // The stack settles around "Loading boards…": the switcher is not in the
+    // DOM until `GET /api/projects/:id/boards` lands, and reading the selection
+    // before then answers null rather than the board a person is looking at.
+    await waitForTabBar(page, 'Boards')
 
     checks.ok('phone stack is mounted', await hasPhoneViewport(page))
-    checks.equal('starts on the default board', await selectedBoardTab(page), 'Board')
+    checks.equal('starts on the default board', await selectedBoardTab(page), 'Main board')
     const frames = [await shot(page, 'phone-board-switch', '00-default-board')]
 
     const motion = await watchForMotion(page, { selectors: REGIONS, windowMs: WATCH_MS })
