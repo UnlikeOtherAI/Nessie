@@ -17,6 +17,7 @@ export type FailoverReason =
   | 'credits_exhausted'
   | 'billing'
   | 'provider_forbidden'
+  | 'provider_rejected'
   | 'context_overflow'
   | 'timeout'
   | 'overloaded'
@@ -36,7 +37,10 @@ export type RecoveryStrategy =
   | { action: 'surface_error'; userMessage: string }
   | { action: 'abort' }
 
-export const userMessageForFailureReason = (reason: FailoverReason): string => {
+export const userMessageForFailureReason = (
+  reason: FailoverReason,
+  context?: { provider?: string; model?: string },
+): string => {
   switch (reason) {
     case 'credentials_missing':
       return 'No API key is configured for the model provider. Ask a team owner to add the provider credential, then try again.'
@@ -48,6 +52,8 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
       return 'The model provider could not authenticate this request. Ask a team owner to verify the provider credential, then try again.'
     case 'provider_forbidden':
       return 'The model provider refused this request: the deployment\'s credential is not permitted to use the configured model. Ask a team owner to check the configured model against what the credential allows, then try again.'
+    case 'provider_rejected':
+      return `The model provider${context?.provider ? ` (${context.provider})` : ''} rejected this request for the configured model${context?.model ? ` \`${context.model}\`` : ''}. Ask a team owner to check the model configuration.`
     case 'rate_limit':
       return 'The model provider is rate limited. Please try again shortly.'
     case 'credits_exhausted':
@@ -118,6 +124,16 @@ export const classifyError = (error: unknown): FailoverReason => {
       return 'auth_permanent'
     }
     return 'auth'
+  }
+  // 400 is a terminal request rejection: the provider read the request and
+  // refused it (wrong model, unsupported parameter, account policy). Retrying
+  // the same request never reshapes it, so it must not fall through to
+  // `unknown` and its "unexpected error" reply. The recovery is `abort` for
+  // interactive runs and a surfaced error that names the provider and model
+  // configuration for everyone else — exactly the path the 403 and 404
+  // incidents below needed.
+  if (status === 400 || message.includes('bad request')) {
+    return 'provider_rejected'
   }
   // 403 is authenticated-but-not-permitted, and it had no branch at all: it
   // fell to `unknown`, whose reply says "an unexpected error" and whose
@@ -231,6 +247,7 @@ export const resolveRecovery = (
     case 'auth_permanent':
     case 'auth':
     case 'provider_forbidden':
+    case 'provider_rejected':
     case 'billing':
     case 'model_not_found':
     case 'content_filter':

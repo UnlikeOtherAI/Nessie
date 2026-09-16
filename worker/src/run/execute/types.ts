@@ -154,6 +154,9 @@ export type RunContext = {
      */
     replyPlacement: RunReplyPlacement | null
     trigger?: { agentId: string | null; targetThreadId: string | null } | null
+    /** Pinned subscription lane, when this run was admitted on one. */
+    modelSubscriptionId?: string | null
+    modelSubscriptionEpoch?: number | null
   }
   task: {
     id: string

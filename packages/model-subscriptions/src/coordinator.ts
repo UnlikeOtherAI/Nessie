@@ -292,6 +292,7 @@ const HEALTH_BY_FAILURE: Record<SubscriptionFailureKind, ModelSubscriptionHealth
   entitlement: 'provider_rejected',
   policy: null,
   quota: 'quota_exhausted',
+  rejected: 'provider_rejected',
   transient: null,
   unknown: null,
 }
@@ -316,7 +317,11 @@ export const recordSubscriptionFailure = async (
 ): Promise<{ transitioned: boolean }> => {
   const reason = HEALTH_BY_FAILURE[input.kind]
   if (!reason) return { transitioned: false }
-  const status = reason === 'needs_reauthorization' ? 'needs_reauthorization' : 'active'
+  const status = reason === 'needs_reauthorization'
+    ? 'needs_reauthorization'
+    : reason === 'provider_rejected'
+      ? 'error'
+      : 'active'
   const updated = await deps.prisma.modelSubscription.updateMany({
     data: {
       healthDetail: input.detail ?? null,
@@ -338,8 +343,20 @@ export const recordSubscriptionSuccess = async (
   deps: SubscriptionCoordinatorDeps,
   input: { subscriptionId: string; epoch: number },
 ): Promise<void> => {
+  const now = nowOf(deps)
+  // Always bump lastUsedAt so a person can see whether a healthy subscription
+  // is actually being spent, not just whether it was ever marked broken.
   await deps.prisma.modelSubscription.updateMany({
-    data: { healthDetail: null, healthReason: 'ok', lastUsedAt: nowOf(deps) },
+    data: { lastUsedAt: now },
+    where: {
+      credentialEpoch: input.epoch,
+      id: input.subscriptionId,
+    },
+  })
+  // Clear any previous health problem only when there is one to clear, so a
+  // success does not churn healthRevision.
+  await deps.prisma.modelSubscription.updateMany({
+    data: { healthDetail: null, healthReason: 'ok' },
     where: {
       credentialEpoch: input.epoch,
       id: input.subscriptionId,

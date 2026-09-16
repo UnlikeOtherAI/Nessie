@@ -198,3 +198,41 @@ test('a provider 404 is a model-availability failure, not an unexpected error', 
     },
   )
 })
+
+test('a provider 400 is a terminal request rejection, not an unexpected error', () => {
+  // Production, 2026-09-09 onwards. A ChatGPT Codex personal subscription
+  // answered every run with HTTP 400; without its own branch the failure fell
+  // through to `unknown`, whose "unexpected error" reply sent the owner to
+  // worker logs that contained no explanation.
+  const error = new ProviderInvocationError(
+    'codex-subscription chat request failed with HTTP 400: Invalid model: gpt-5-codex',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-400',
+      latencyMs: 1,
+      model: 'gpt-5-codex',
+      operationType: 'chat',
+      provider: 'codex-subscription',
+      requestId: 'request-400',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 400 },
+  )
+
+  assert.equal(classifyError(error), 'provider_rejected')
+  const genericMessage = userMessageForFailureReason(classifyError(error))
+  assert.match(genericMessage, /model configuration/)
+
+  const contextualMessage = userMessageForFailureReason(classifyError(error), {
+    model: 'gpt-5-codex',
+    provider: 'subscription/openai_codex',
+  })
+  assert.match(contextualMessage, /subscription\/openai_codex/)
+  assert.match(contextualMessage, /gpt-5-codex/)
+  assert.match(contextualMessage, /model configuration/)
+
+  const recovery = resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 })
+  assert.equal(recovery.action, 'surface_error')
+  assert.match(recovery.userMessage, /model configuration/)
+})
