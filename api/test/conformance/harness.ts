@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import {
+  isAdminActor,
   parseOrganizationId,
   parseProjectId,
   parseTeamId,
@@ -130,6 +131,16 @@ export const buildDeps = (store: TenantStore): RouteDeps => {
     return false
   }
 
+  // Owner **or** admin, exactly as `createServerContext` defines it. The agent
+  // binding routes moved onto this guard when management stopped requiring
+  // channel membership, and a harness missing it fails as a 500 TypeError
+  // rather than as the refusal under test.
+  const requireOrgAdmin = (ctx: AuthorizedActionContext, reply: unknown): boolean => {
+    if (isAdminActor(ctx)) return true
+    sendApiError(reply as never, 403, 'FORBIDDEN', 'Owner or admin access required')
+    return false
+  }
+
   const requireUserActor = (ctx: AuthorizedActionContext, reply: unknown): boolean => {
     if (ctx.actor.actorType === 'user') return true
     sendApiError(reply as never, 403, 'FORBIDDEN', 'User actor required')
@@ -156,6 +167,7 @@ export const buildDeps = (store: TenantStore): RouteDeps => {
     config: { mode: 'local' },
     authSecret: 'test-conformance-secret',
     requireActorContext,
+    requireOrgAdmin,
     requireOwner,
     requireUserActor,
     requireSuperAdmin,

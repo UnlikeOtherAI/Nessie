@@ -255,11 +255,24 @@ Introduce a new predicate:
 resolveProjectAccess(viewer, project) -> 'none' | 'limited' | 'full'
 ```
 
-- `'none'` — caller gets `404 PROJECT_NOT_FOUND`.
-- `'limited'` — caller is an org member but not a project member, and the project
-  is `public` (or the caller is an admin viewing a protected project they do not
-  manage). Return the limited directory shape.
-- `'full'` — caller is a project member, or an org owner/admin.
+- `'none'` — no such project, soft-deleted, or another organisation's. Caller
+  gets `404 PROJECT_NOT_FOUND`.
+- `'full'` — a project member, an org owner/admin, **or any org member looking at
+  a `public` project**. Public means browsable without joining, so nothing is
+  withheld.
+- `'limited'` — an org member opening a **`protected`** project they are not in.
+  Return the limited directory shape.
+
+**Corrected 2026-09-16 during implementation.** An earlier revision of this list
+had the two middle arms the other way round — `'limited'` for public and
+`'none'` for protected — while this document's own route-changes table and test
+plan both described the mapping above. The list was the error, and it is the one
+the first implementation followed. Backwards, it withholds a project every
+organisation member may browse, and it makes a protected project unreachable by
+direct URL, which is the only way into one and the whole of decision 4's
+"discoverable, not invisible". It also disagreed with `GET /api/projects`, which
+lists public projects as full records to the same person, and with the matching
+channel read, which is `full` for public and `limited` for protected.
 
 `canModifyProject` keeps its current definition: project members, or org
 owner/admin. It is **not** replaced by `resolveProjectAccess`. Every existing

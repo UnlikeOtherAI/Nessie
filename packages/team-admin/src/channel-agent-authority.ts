@@ -57,3 +57,81 @@ export const canManageChannelAgents = async (
       }))?.role,
     )
 }
+
+/**
+ * What `POST` and `DELETE /api/agents/:agentId/bindings` need before they act:
+ * the channel, and whether this caller may place an agent in it.
+ *
+ * It replaces `getChannelIfMember` at those two routes. That helper answers
+ * *membership*, which was the old gate and is the wrong question now — an
+ * organisation admin manages a room without joining it, and the route must not
+ * join them to it as a side effect of adding an agent.
+ *
+ * The two refusals stay distinguishable, because they mean different things to
+ * the person:
+ *
+ * - `not_found` — no such channel, another organisation's, soft-deleted, or one
+ *   this caller may not manage agents in. The route answers `404`, never `403`:
+ *   a 403 would confirm a room exists, and for a direct message the label alone
+ *   discloses who is talking to whom.
+ * - `system_managed` — a real channel the caller can see, but a single-agent
+ *   system surface whose binding is owned by its bootstrap. Worth saying out
+ *   loud as a `403`, because the answer is "not this room, ever", not "not
+ *   you".
+ */
+export type ChannelAgentManagementOutcome =
+  | { kind: 'ok'; channel: { id: string; systemChannelType: string | null; type: string } }
+  | { kind: 'not_found' }
+  | { kind: 'system_managed' }
+
+export const loadChannelForAgentManagement = async (
+  prisma: Pick<PrismaClient, 'channel' | 'channelMember' | 'organizationMember'>,
+  input: {
+    channelId: string
+    organizationId: string
+    /** Known from the request's live roles; read from the row when omitted. */
+    isOrganizationAdmin?: boolean
+    userId: string
+  },
+): Promise<ChannelAgentManagementOutcome> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: input.channelId },
+    select: {
+      deletedAt: true,
+      dmKey: true,
+      id: true,
+      organizationId: true,
+      systemChannelType: true,
+      type: true,
+      members: { where: { userId: input.userId }, select: { id: true }, take: 1 },
+    },
+  })
+  if (!channel || channel.deletedAt || channel.organizationId !== input.organizationId) {
+    return { kind: 'not_found' }
+  }
+
+  // Said before the authority check, and only to somebody already in the room:
+  // to everybody else a system surface is simply not found, so the refusal
+  // never becomes a way to probe which system channels exist.
+  if (channel.systemChannelType) {
+    return channel.members.length > 0 ? { kind: 'system_managed' } : { kind: 'not_found' }
+  }
+
+  const mayManage = await canManageChannelAgents(prisma, {
+    channel: {
+      organizationId: channel.organizationId,
+      systemChannelType: channel.systemChannelType,
+      type: channel.type,
+    },
+    ...(input.isOrganizationAdmin === undefined
+      ? {}
+      : { isOrganizationAdmin: input.isOrganizationAdmin }),
+    userId: input.userId,
+  })
+  if (!mayManage) return { kind: 'not_found' }
+
+  return {
+    kind: 'ok',
+    channel: { id: channel.id, systemChannelType: channel.systemChannelType, type: channel.type },
+  }
+}

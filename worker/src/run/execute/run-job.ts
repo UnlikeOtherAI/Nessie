@@ -137,6 +137,25 @@ const runJobUnderFence = async (
   if (!context) {
     return
   }
+  // Run admission for a soft-deleted agent. `DELETE /api/agents/:agentId`
+  // cancels everything queued and asks every running loop to stop, but a job
+  // already in flight in the queue can still arrive here afterwards — and the
+  // agent row deliberately still exists, so nothing else refuses it.
+  //
+  // Quiet cancellation, like the presence guard below and for the same reason:
+  // posting a failure notice would be the deleted agent speaking.
+  if (context.agent.deletedAt) {
+    await updateRunStatus(deps.prisma, context.run.id, 'cancelled', deps.realtimeTransport)
+    await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
+    await publishRunUpdated(deps.realtimeTransport, context, 'cancelled')
+    await publishTaskUpdated(
+      deps.realtimeTransport,
+      buildScopes(context),
+      context.task.id,
+      'cancelled',
+    )
+    return
+  }
   // A queued PA presence run must not act after its owner leaves the room or
   // is deactivated. This is deliberately a quiet cancellation, not the normal
   // failure path: posting a failure would itself be an unauthorized PA action.

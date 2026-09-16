@@ -104,7 +104,12 @@ test('channel_create makes the acting user the owner of a channel in the run tea
     projectMember: { count: async () => 1, findFirst: async () => null },
     // `mapChannelRecord` computes `viewerCanManage` through `canModifyChannel`,
     // which re-reads the channel row and the creator's channel membership.
-    channelMember: { findUnique: async () => ({ role: 'owner' }) },
+    channelMember: {
+      findUnique: async () => ({ role: 'owner' }),
+      // `mapChannelRecord` answers `viewerIsMember` for the composer with a
+      // count. The creator is in the channel they just made.
+      count: async () => 1,
+    },
     channel: {
       findFirst: async () => null,
       findUnique: async () => ({
@@ -122,7 +127,7 @@ test('channel_create makes the acting user the owner of a channel in the run tea
           type: 'standard',
           systemChannelType: null,
           dmKey: null,
-          visibility: 'private',
+          visibility: 'protected',
           organizationId: ORG_ID,
           projectId: PROJECT_ID,
           project: { channelRoot: false, id: PROJECT_ID, name: 'Nessie' },
@@ -144,7 +149,7 @@ test('channel_create makes the acting user the owner of a channel in the run tea
     label: 'Release planning',
     projectId: PROJECT_ID,
     teamId: TEAM_ID,
-    visibility: 'private',
+    visibility: 'protected',
   })
 
   assert.equal(created.length, 1)
@@ -376,7 +381,9 @@ test('agent_bind_channel refuses a non-owner and never writes a binding', async 
         systemChannelType: null,
         type: 'standard',
         organizationId: ORG_ID,
-        visibility: 'private',
+        // A standard room is never stored `private` after the visibility
+        // backfill; `protected` is the non-public value it moved to.
+        visibility: 'protected',
         members: [{ id: 'membership-1' }],
       }),
     },
@@ -439,7 +446,9 @@ test('agent_bind_channel honours an explicit policy deny for an owner', async ()
         systemChannelType: null,
         type: 'standard',
         organizationId: ORG_ID,
-        visibility: 'private',
+        // A standard room is never stored `private` after the visibility
+        // backfill; `protected` is the non-public value it moved to.
+        visibility: 'protected',
         members: [{ id: 'membership-1' }],
       }),
     },

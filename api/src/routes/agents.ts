@@ -11,7 +11,7 @@ import {
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts/agents.js'
-import { AgentMessagePageSchema, parseAgentId } from '@nessie/schemas'
+import { AgentMessagePageSchema, isAdminActor, parseAgentId } from '@nessie/schemas'
 import { canReadSpace, readCanonicalAgentCore, writeCanonicalAgentCore } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -43,6 +43,7 @@ import {
   generateAvatarForNewAgent,
   ledgerAgentModelCatalogRequestHeaders,
   listAgentModelOptionsForUser,
+  loadChannelForAgentManagement,
   randomAgentAvatarBackgroundColor,
   resolveAgentAvatarStyleSafely,
   unbindAgentFromChannel,
@@ -57,6 +58,7 @@ import {
   sendProtectedPolicyError,
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
+import { registerAgentDeleteRoutes } from './agent-delete.js'
 import { registerAgentDocumentRoutes } from './agent-documents.js'
 import { createKnowledgeAccess } from './knowledge-base-access.js'
 import { migrateLegacyAgentCoreDocuments } from '../services/agent-core-documents.js'
@@ -98,8 +100,8 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     prisma,
     realtimeHub,
     requireActorContext,
+    requireOrgAdmin,
     requireOwner,
-    getChannelIfMember,
     isAgentAccessibleToActor,
     createAgentVisibilityScope,
   } = deps
@@ -110,6 +112,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
   const coreKnowledge = createKnowledgeAccess(deps)
 
   registerAgentDocumentRoutes(app, deps)
+  registerAgentDeleteRoutes(app, deps)
 
   app.get('/api/agents', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -117,7 +120,12 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const isOwner = actorContext.actor.roles?.includes('owner') ?? false
+    // Owner OR admin: an admin manages everything they can see, so narrowing
+    // the list to bound agents for them hid exactly the agents they are
+    // entitled to place. The route that acts on the list agrees (the binding
+    // routes below take `requireOrgAdmin`), which is the pairing Rule zero
+    // asks for — a picker must offer what the route accepts.
+    const isOwner = isAdminActor(actorContext)
     // `?scope=all` opts the Agents page into the read-only system tier (the
     // Personal Assistant and other `systemManaged` agents) so it can group them
     // under its Personal / Global tabs. Every other caller omits it and gets the
@@ -709,18 +717,28 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const channel = await getChannelIfMember(
-      actorContext.actor.actorId,
-      actorContext.tenant.organizationId,
-      body.channelId,
-    )
-    if (!channel) {
+    // Owner or admin standing on a standard room, and NOT membership: an
+    // organisation admin places an agent in a room they never joined, and
+    // doing so must not quietly make them a member of it (decision 1 of the
+    // visibility spec). `loadChannelForAgentManagement` is the one decision
+    // `ChannelRecord.viewerCanManageAgents` also reports, so the control the
+    // client draws and the answer this route gives cannot drift apart.
+    if (!requireOrgAdmin(actorContext, reply)) {
+      return reply
+    }
+    const outcome = await loadChannelForAgentManagement(prisma, {
+      channelId: body.channelId,
+      isOrganizationAdmin: true,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (outcome.kind === 'not_found') {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
     // Every system DM is a single-agent surface (see `bindAgentToChannel`), so
     // the refusal covers all of them, not only the Personal Assistant's.
-    if (channel.systemChannelType) {
+    if (outcome.kind === 'system_managed') {
       sendApiError(
         reply,
         403,
@@ -731,10 +749,6 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     const { agentId } = request.params as { agentId: string }
-
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
 
     // Policy check: user must be allowed to bind agents
     const bindDecision = await checkPolicy(prisma, actorContext, 'agent', 'bind', {
@@ -801,26 +815,28 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     const { agentId, channelId } = request.params as { agentId: string; channelId: string }
-    const channel = await getChannelIfMember(
-      actorContext.actor.actorId,
-      actorContext.tenant.organizationId,
+    // Removing an agent takes the same standing as placing one, resolved
+    // through the same loader: whoever the popup draws the Remove control for.
+    if (!requireOrgAdmin(actorContext, reply)) {
+      return reply
+    }
+    const outcome = await loadChannelForAgentManagement(prisma, {
       channelId,
-    )
-    if (!channel) {
+      isOrganizationAdmin: true,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (outcome.kind === 'not_found') {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
-    if (channel.systemChannelType) {
+    if (outcome.kind === 'system_managed') {
       sendApiError(
         reply,
         403,
         'CHANNEL_SYSTEM_MANAGED',
         'System-managed conversation bindings are owned by their bootstrap',
       )
-      return reply
-    }
-
-    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 

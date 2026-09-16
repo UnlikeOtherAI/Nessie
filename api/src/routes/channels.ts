@@ -25,6 +25,7 @@ import {
 import { emitAuditEvent } from '../services/audit.js'
 import { ChannelTeamAccessError } from '@nessie/team-admin'
 import { resolveSystemAgentConversation } from '../services/system-agent-conversations.js'
+import { registerChannelDirectoryRoutes } from './channel-directory.js'
 import { registerChannelMemberRoutes } from './channel-members.js'
 import { registerGlobalAgentRoutes } from './global-agents.js'
 import { registerPersonalAssistantRoutes } from './personal-assistant.js'
@@ -34,7 +35,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   const {
     prisma,
     requireActorContext,
-    requireOwner,
+    requireOrgAdmin,
     requireUserActor,
   } = deps
 
@@ -47,6 +48,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   registerPersonalAssistantRoutes(app, deps)
   registerGlobalAgentRoutes(app, deps)
   registerChannelMemberRoutes(app, deps)
+  registerChannelDirectoryRoutes(app, deps)
 
   app.get('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -206,6 +208,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         ...(body.label !== undefined ? { label: body.label } : {}),
         ...(body.topic !== undefined ? { topic: body.topic } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.visibility !== undefined ? { visibility: body.visibility } : {}),
       })
     } catch (error) {
       if (error instanceof ChannelValidationError) {
@@ -434,7 +437,12 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         .send(createApiResponse(ChannelRecordSchema.parse(outcome.channel)))
     }
 
-    if (agentIds.length > 0 && !requireOwner(actorContext, reply)) {
+    // Owner or admin, matching `selectAddressableAgents` in
+    // `admin/src/lib/channel-compose-recipients.ts` exactly. The two must
+    // change together: when the picker offered agents this route then refused,
+    // an admin starting a direct message got a control that 403s — the defect
+    // the whole visibility change was opened for.
+    if (agentIds.length > 0 && !requireOrgAdmin(actorContext, reply)) {
       return reply
     }
 

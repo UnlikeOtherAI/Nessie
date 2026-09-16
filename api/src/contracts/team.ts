@@ -21,19 +21,38 @@ export {
   type TeamRecord,
 } from '@nessie/schemas'
 
+/**
+ * The two visibilities a person may choose, for a project or a channel.
+ *
+ * `private` is deliberately absent. It remains in the stored
+ * `ChannelVisibility` enum — six migrations' CHECK constraints and two
+ * PL/pgSQL functions require the literal for every DM and system-managed
+ * surface — but it is never user-selectable, never offered in a create form and
+ * never accepted from a request body. A person choosing "not everyone" gets
+ * `protected`, which is discoverable and has a member list; `private` means
+ * "this is a direct message", which is not a choice a create form can make.
+ */
+export const SelectableVisibilitySchema = z.enum(['public', 'protected'])
+export type SelectableVisibility = z.infer<typeof SelectableVisibilitySchema>
+
 // sp-channels: body for PATCH /api/channels/:channelId
 export const UpdateChannelBodySchema = z
   .object({
     label: NonEmptyStringSchema.optional(),
     topic: z.string().max(500).nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
+    visibility: SelectableVisibilitySchema.optional(),
   })
   .refine(
     (body) =>
       body.label !== undefined
       || body.topic !== undefined
-      || body.description !== undefined,
-    { message: 'At least one of label, topic, or description is required' },
+      || body.description !== undefined
+      || body.visibility !== undefined,
+    {
+      message:
+        'At least one of label, topic, description, or visibility is required',
+    },
   )
 export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>
 
@@ -88,8 +107,22 @@ export const CreateChannelBodySchema = z.object({
   scope: z.enum(['standalone']).optional(),
   teamId: TeamIdSchema.optional(),
   projectId: z.string().uuid().optional(),
-  visibility: z.enum(['public', 'protected', 'private']).optional(),
+  // `private` is not accepted here. A DM or system surface is created by the
+  // services that own those lifecycles, never by a person posting this body.
+  visibility: SelectableVisibilitySchema.optional(),
 })
+
+/**
+ * `POST /api/projects`. Named rather than inline so the route, the tests and
+ * the admin agree on one shape — the inline `z.object({ name, teamId })` it
+ * replaces could not carry `visibility` without being re-spelled per caller.
+ */
+export const CreateProjectBodySchema = z.object({
+  name: NonEmptyStringSchema,
+  teamId: z.string().uuid(),
+  visibility: SelectableVisibilitySchema.optional(),
+})
+export type CreateProjectBody = z.infer<typeof CreateProjectBodySchema>
 
 export const UpdateProjectBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
@@ -98,11 +131,13 @@ export const UpdateProjectBodySchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   avatarEmoji: z.string().trim().min(1).max(32).nullable().optional(),
   avatarAttachmentId: z.string().uuid().nullable().optional(),
+  visibility: SelectableVisibilitySchema.optional(),
 }).refine(
   (body) => body.name !== undefined
     || body.description !== undefined
     || body.avatarEmoji !== undefined
-    || body.avatarAttachmentId !== undefined,
+    || body.avatarAttachmentId !== undefined
+    || body.visibility !== undefined,
   { message: 'At least one project field is required' },
 )
 

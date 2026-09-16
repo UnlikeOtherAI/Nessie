@@ -129,14 +129,29 @@ export const isProjectAccessibleToUser = async (
 }
 
 /**
- * Resolve how a viewer may read a project. Used by the single-project read to
- * decide between `404`, a limited directory entry, or the full record.
+ * Resolve how a viewer may read ONE project — the question a direct URL asks,
+ * which is different from what the browse listing shows.
  *
- * - `'none'` — the project does not exist, is soft-deleted, or the caller is
- *   not entitled to know it exists (a non-member of a protected project).
- * - `'limited'` — the caller is an organisation member but not a project
- *   member, and the project is `public`. They get the directory entry.
- * - `'full'` — the caller is a project member, or an organisation owner/admin.
+ * - `'full'` — a project member, an organisation owner/admin, or ANY
+ *   organisation member looking at a `public` project. Public means browsable
+ *   without joining, so there is nothing to withhold.
+ * - `'limited'` — an organisation member opening a `protected` project they are
+ *   not in. Name, description and members: enough to know it exists and whom to
+ *   ask. This is the arm that makes a protected project reachable at all, since
+ *   it is deliberately absent from the directory for this person.
+ * - `'none'` — no such project, soft-deleted, or another organisation's.
+ *
+ * Note which way round the two middle arms go, because an earlier revision of
+ * the spec had them swapped in prose (while its own route table and test plan
+ * had them this way). Returning `'limited'` for public and `'none'` for
+ * protected would be exactly backwards: it would withhold a room anyone may
+ * browse, and make a protected room unreachable by direct URL — which is the
+ * only way in, and the "discoverable, not invisible" half of decision 4.
+ *
+ * `canModifyProject` is deliberately NOT this predicate. Reading a public
+ * project is now wider than changing it, and collapsing the two would hand
+ * every organisation member write access to every board, field, source,
+ * iteration and watcher.
  */
 export const resolveProjectAccess = async (
   prisma: PrismaClient,
@@ -152,10 +167,9 @@ export const resolveProjectAccess = async (
     },
   })
   if (!project || project.organizationId !== viewer.organizationId) return 'none'
-  const viewerIsMember = project.members.length > 0
-  if (viewerIsMember || viewer.isOrganizationAdmin) return 'full'
-  if (project.visibility === 'public') return 'limited'
-  return 'none'
+  if (project.members.length > 0 || viewer.isOrganizationAdmin) return 'full'
+  if (project.visibility === 'public') return 'full'
+  return 'limited'
 }
 
 /** The list `GET /api/projects` returns, scoped by the entitlement above. */

@@ -111,7 +111,9 @@ test('the channel list carries lastMessageAt, null for a channel with no message
 // `canModifyChannel` return `null`, so `viewerCanManage` comes back `false`.
 const noManagementAuthority = {
   channel: { findUnique: async () => null },
-  channelMember: { findUnique: async () => null },
+  // `count` answers `viewerIsMember`, which the composer rides on; `findUnique`
+  // answers `canModifyChannel`. Two reads, two delegates, both modelled.
+  channelMember: { findUnique: async () => null, count: async () => 0 },
   organizationMember: { findFirst: async () => null },
   teamMember: { findFirst: async () => null },
 }

@@ -103,7 +103,11 @@ const seed = async (prisma: PrismaClient) => {
       projectId,
       slug: `priv-${suite}`,
       teamId,
-      visibility: 'private',
+      // `protected`, not `private`: a standard room a person closed is stored
+      // `protected` since the visibility change, and the migration moved every
+      // existing one. `private` is now reserved for DMs and system surfaces,
+      // which the direct message below still carries.
+      visibility: 'protected',
     },
   })
   await prisma.channel.create({
@@ -317,24 +321,59 @@ dbTest('an organisation admin who is not in a public channel may change it', asy
   })
 })
 
-// Slack/Teams: an administrator outside a private channel cannot read it,
-// change it, or let themselves in.
-dbTest('an organisation admin outside a private channel is told it does not exist', async () => {
+/**
+ * The deliberate reversal of the Slack/Teams rule, and the reason
+ * `docs/standards/team-model.md` changed in the same work.
+ *
+ * An organisation admin manages any standard room they can see, protected
+ * included, without joining it — and MAY add themselves to one. Management is
+ * not participation: nothing here makes them a member as a side effect, so the
+ * membership assertions below are as load-bearing as the successes.
+ */
+dbTest('an organisation admin manages a protected channel without being in it', async () => {
   await withDb(async (prisma) => {
     const admin = actorFor(orgAdminUserId, 'admin')
-    assert.deepEqual(
-      await addMemberToChannel(prisma, admin, { channelId, userId: orgAdminUserId }),
-      { kind: 'channel_not_found' },
-    )
+    const asAdmin = { ...manageInput(channelId, orgAdminUserId), isOrganizationAdmin: true }
+
+    // Renaming and archiving, neither of which joins them to the room.
+    const renamed = await updateChannel(prisma, { ...asAdmin, topic: 'Set by an admin' })
+    assert.equal(renamed?.topic, 'Set by an admin')
+    assert.equal(renamed?.viewerCanManage, true)
+    assert.equal(renamed?.viewerIsMember, false)
+    assert.equal(await isChannelMember(prisma, channelId, orgAdminUserId), false)
+
+    // Adding somebody else, still without joining.
     assert.deepEqual(
       await addMemberToChannel(prisma, admin, { channelId, userId: targetUserId }),
+      { kind: 'changed' },
+    )
+    assert.equal(await isChannelMember(prisma, channelId, orgAdminUserId), false)
+
+    // And adding THEMSELVES, which is the rule this change reversed.
+    assert.deepEqual(
+      await addMemberToChannel(prisma, admin, { channelId, userId: orgAdminUserId }),
+      { kind: 'changed' },
+    )
+    assert.equal(await isChannelMember(prisma, channelId, orgAdminUserId), true)
+  })
+})
+
+// An ordinary member outside the room is refused, and told it does not exist
+// rather than that it is closed. Unchanged, and the half that must not drift.
+dbTest('an outsider who is not an admin is told a protected channel does not exist', async () => {
+  await withDb(async (prisma) => {
+    const outsider = actorFor(outsiderUserId)
+    assert.deepEqual(
+      await addMemberToChannel(prisma, outsider, { channelId, userId: outsiderUserId }),
       { kind: 'channel_not_found' },
     )
-    const asAdmin = { ...manageInput(channelId, orgAdminUserId), isOrganizationAdmin: true }
-    assert.equal(await updateChannel(prisma, { ...asAdmin, label: `x-${suite}` }), null)
-    assert.equal(await setChannelArchived(prisma, { ...asAdmin, archived: true }), null)
-    // The same answer when the role is read from the membership row instead.
-    assert.equal(await updateChannel(prisma, { ...manageInput(channelId, orgAdminUserId), topic: 'no' }), null)
+    assert.deepEqual(
+      await addMemberToChannel(prisma, outsider, { channelId, userId: targetUserId }),
+      { kind: 'channel_not_found' },
+    )
+    const asOutsider = manageInput(channelId, outsiderUserId)
+    assert.equal(await updateChannel(prisma, { ...asOutsider, label: `x-${suite}` }), null)
+    assert.equal(await setChannelArchived(prisma, { ...asOutsider, archived: true }), null)
 
     const row = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } })
     assert.equal(row.label, `priv-${suite}`)
@@ -440,14 +479,25 @@ dbTest('a member deletes a channel: it is kept, hidden, and nothing changes it a
   })
 })
 
-dbTest('an outsider cannot delete a private channel they cannot see', async () => {
+dbTest('an outsider cannot delete a protected channel they cannot see', async () => {
   await withDb(async (prisma) => {
     assert.equal(await deleteChannel(prisma, manageInput(channelId, outsiderUserId)), null)
-    assert.equal(
+    const row = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } })
+    assert.equal(row.deletedAt, null)
+  })
+})
+
+// The admin arm of the same question, and the reversal again: deleting a room
+// is management, so an organisation admin reaches a protected one they never
+// joined. Kept apart from the refusal above so neither can be weakened by
+// accident while the other still passes.
+dbTest('an organisation admin deletes a protected channel they are not in', async () => {
+  await withDb(async (prisma) => {
+    assert.notEqual(
       await deleteChannel(prisma, { ...manageInput(channelId, orgAdminUserId), isOrganizationAdmin: true }),
       null,
     )
     const row = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } })
-    assert.equal(row.deletedAt, null)
+    assert.notEqual(row.deletedAt, null)
   })
 })
