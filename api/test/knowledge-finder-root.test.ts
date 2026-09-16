@@ -156,6 +156,21 @@ dbTest('the documents root names exactly the folders a person can open', async (
   assert.equal(carolRoot.shared.some((space) => space.spaceId === teamSpace.id), false)
   assert.notEqual(carolRoot.myDocuments.spaceId, first.myDocuments.spaceId)
 
+  // Past the cap the root says so rather than silently showing a partial tree:
+  // the status bar is what tells a person there are more folders than this.
+  await prisma.knowledgeSpace.createMany({
+    data: Array.from({ length: 200 }, (_, index) => ({
+      createdBy: alice.id,
+      name: `Bulk folder ${String(index).padStart(3, '0')}`,
+      organizationId: organization.id,
+      projectId: project.id,
+      visibility: 'project' as const,
+    })),
+  })
+  const capped = await rootAs('alice')
+  assert.equal(capped.sharedTruncated, true)
+  assert.ok(capped.shared.length <= 200, `shared returned ${capped.shared.length} rows`)
+
   // The root is a person's view. An agent has no standing place in it.
   const agentResponse = await app.inject({
     method: 'GET',
