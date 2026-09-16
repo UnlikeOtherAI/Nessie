@@ -29,6 +29,14 @@ export const SPREADSHEET_LIMITS = {
   destructiveCellsThreshold: 1_000,
   maxTouchedRectangles: 64,
   maxIntentsPerBatch: 200,
+  /** Compressed upload size for an imported workbook. */
+  maxImportBytes: 16 * 1024 * 1024,
+  /** Declared uncompressed size across the package (~2 M cells, ~1.7 GB RSS).
+   *  File size is the wrong cap: sheet XML decompresses about 11:1, so a
+   *  64 MiB file can need roughly 15 GB. The engine has no cap of its own. */
+  maxImportUncompressedBytes: 256 * 1024 * 1024,
+  /** A CSV is not compressed, so its own cap is lower. */
+  maxCsvImportBytes: 32 * 1024 * 1024,
 } as const
 
 export const SPREADSHEET_MAX_ROWS = 1_048_576

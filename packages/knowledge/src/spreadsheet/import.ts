@@ -1,6 +1,7 @@
 import { Readable } from 'node:stream'
 
 import type { LedgerAttribution } from '@nessie/runtime'
+import { SPREADSHEET_LIMITS } from '@nessie/schemas'
 import { importCsv } from '@nessie/spreadsheet'
 import {
   detectWorkbookFormat,
@@ -37,18 +38,13 @@ import type { KnowledgePageRecord } from '../types.js'
  * parse cap would admit a workbook needing roughly 15 GB. The binding has no
  * cap of its own, so this is the only place one exists.
  *
- * TODO(coordinator): these belong in `SPREADSHEET_LIMITS`
- * (`packages/schemas/src/spreadsheet.ts`, Phase 0's file) as `maxImportBytes`
- * / `maxImportUncompressedBytes` / `maxCsvImportBytes`. They are here so this
- * phase is buildable; moving them is an import change.
+ * They live in `SPREADSHEET_LIMITS` (`packages/schemas/src/spreadsheet.ts`)
+ * so the admin, the tools and this path refuse the same upload.
  */
 export const SPREADSHEET_IMPORT_LIMITS = {
-  /** Compressed upload size. */
-  maxImportBytes: 16 * 1024 * 1024,
-  /** Declared uncompressed size across the package (~2 M cells, ~1.7 GB RSS). */
-  maxImportUncompressedBytes: 256 * 1024 * 1024,
-  /** A CSV is not compressed, so its own cap is lower. */
-  maxCsvBytes: 32 * 1024 * 1024,
+  maxImportBytes: SPREADSHEET_LIMITS.maxImportBytes,
+  maxImportUncompressedBytes: SPREADSHEET_LIMITS.maxImportUncompressedBytes,
+  maxCsvBytes: SPREADSHEET_LIMITS.maxCsvImportBytes,
 } as const
 
 export type { XlsxImportWarning }
