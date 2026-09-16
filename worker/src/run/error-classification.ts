@@ -125,16 +125,6 @@ export const classifyError = (error: unknown): FailoverReason => {
     }
     return 'auth'
   }
-  // 400 is a terminal request rejection: the provider read the request and
-  // refused it (wrong model, unsupported parameter, account policy). Retrying
-  // the same request never reshapes it, so it must not fall through to
-  // `unknown` and its "unexpected error" reply. The recovery is `abort` for
-  // interactive runs and a surfaced error that names the provider and model
-  // configuration for everyone else — exactly the path the 403 and 404
-  // incidents below needed.
-  if (status === 400 || message.includes('bad request')) {
-    return 'provider_rejected'
-  }
   // 403 is authenticated-but-not-permitted, and it had no branch at all: it
   // fell to `unknown`, whose reply says "an unexpected error" and whose
   // recovery is `abort`. A Ledger proxy token that authenticates fine but is
@@ -180,6 +170,15 @@ export const classifyError = (error: unknown): FailoverReason => {
   }
   if (message.includes('json') && (message.includes('parse') || message.includes('unexpected'))) {
     return 'format'
+  }
+  // 400 is a terminal request rejection only once the message-shaped branches
+  // above have had their say. Providers also use HTTP 400 for context length,
+  // content-policy refusals and malformed responses; those must keep their own
+  // classifications and recoveries (compact_and_retry, rephrase, retry). A 400
+  // that none of them explain — wrong model, unsupported parameter, account
+  // policy — is the one that names the provider/model configuration and stops.
+  if (status === 400) {
+    return 'provider_rejected'
   }
   if (status && status >= 500) {
     return 'transient'
