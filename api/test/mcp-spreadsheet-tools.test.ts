@@ -375,3 +375,139 @@ runDatabaseTest('the engine\'s own refusal is returned verbatim, not flattened',
     await prisma.$disconnect()
   }
 })
+
+runDatabaseTest('a credential reaches a shared spreadsheet exactly as far as the share', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  const grantee = await prisma.user.create({
+    data: { displayName: 'Ravi', email: `mcp-sheet-grantee-${randomUUID()}@example.test` },
+  })
+  try {
+    await prisma.organizationMember.create({
+      data: { organizationId: s.organizationId, role: 'member', userId: grantee.id },
+    })
+    // The sharer's own documents: private, so nothing but a share reaches in.
+    const personal = await prisma.knowledgeSpace.create({
+      data: {
+        createdBy: s.userId,
+        userId: s.userId,
+        metadata: { personal: true },
+        name: 'My Documents',
+        organizationId: s.organizationId,
+        projectId: s.projectId,
+        visibility: 'private',
+      },
+    })
+    const created = await tool('nessie_sheet_create').run(contextFor(s), {
+      spaceId: personal.id,
+      title: 'Runway',
+      sheets: [{ name: 'Model', rows: [['Month', 'Spend'], ['Jan', 1000]] }],
+    }) as { error?: string; pageId?: string }
+    assert.equal(created.error, undefined, `create failed: ${created.error}`)
+    const pageId = created.pageId as string
+
+    // A credential resolves as the person who approved it, so the grantee's
+    // context is an ordinary viewer — not the bypass one the other tests use.
+    const asGrantee = contextFor(s, {
+      actorContext: AuthorizedActionContextSchema.parse({
+        actionContext: { requestId: randomUUID(), agentCredentialId: s.credentialId },
+        actor: { actorId: grantee.id, actorType: 'user', roles: ['member'] },
+        tenant: { organizationId: s.organizationId, projectId: s.projectId },
+      }),
+      knowledge: {
+        buildDisclosureViewer: () => null,
+        buildViewer: async () => ({
+          baseEntitled: true,
+          bypass: false,
+          organizationRole: 'member',
+          uoaMembershipVerified: false,
+          userId: grantee.id,
+          projectIds: new Set<string>(),
+          visibleAgentIds: new Set<string>(),
+        }) as never,
+        filterReadablePages: async (_viewer, pages) => [...pages],
+        provider: createNativeKnowledgeProvider(prisma, {}),
+      },
+    })
+
+    const read = () => tool('nessie_sheet_read_range').run(asGrantee, {
+      pageId,
+      sheet: 'Model',
+      range: 'A1:B2',
+    }) as Promise<{ error?: string; rows?: string[][] }>
+    const write = () => tool('nessie_sheet_write_range').run(asGrantee, {
+      pageId,
+      sheet: 'Model',
+      range: 'A3',
+      rows: [['Feb', 1500]],
+      requestId: randomUUID(),
+    }) as Promise<{ error?: string }>
+
+    // Nothing at all without a share: the page is in somebody else's private
+    // space, and a page id is never a grant.
+    assert.match((await read()).error ?? '', /not one this account can use/)
+
+    const share = await prisma.knowledgePageShare.create({
+      data: {
+        organizationId: s.organizationId,
+        pageId,
+        spaceId: personal.id,
+        granteeUserId: grantee.id,
+        grantedByUserId: s.userId,
+        access: 'view',
+      },
+    })
+    const viewed = await read()
+    assert.equal(viewed.error, undefined, `a view share reads: ${viewed.error}`)
+    assert.deepEqual(viewed.rows?.[0], ['Month', 'Spend'])
+    assert.match((await write()).error ?? '', /not one this account can use/)
+
+    await prisma.knowledgePageShare.update({ where: { id: share.id }, data: { access: 'edit' } })
+    assert.equal((await write()).error, undefined, 'an edit share writes')
+
+    // Creating is the HTTP door's rule, mirrored: the space root is the
+    // owner's, a folder they shared at `edit` is not.
+    const atRoot = await tool('nessie_sheet_create').run(asGrantee, {
+      spaceId: personal.id,
+      title: 'Not theirs to file here',
+    }) as { error?: string }
+    assert.match(atRoot.error ?? '', /not one this account can use/)
+
+    const folder = await prisma.knowledgePage.create({
+      data: {
+        organizationId: s.organizationId,
+        projectId: s.projectId,
+        spaceId: personal.id,
+        title: 'Models',
+        kind: 'folder',
+        status: 'published',
+        createdBy: s.userId,
+      },
+      select: { id: true },
+    })
+    await prisma.knowledgePageShare.create({
+      data: {
+        organizationId: s.organizationId,
+        pageId: folder.id,
+        spaceId: personal.id,
+        granteeUserId: grantee.id,
+        grantedByUserId: s.userId,
+        access: 'edit',
+      },
+    })
+    const inside = await tool('nessie_sheet_create').run(asGrantee, {
+      spaceId: personal.id,
+      title: 'Grantee model',
+      parentPageId: folder.id,
+    }) as { error?: string }
+    assert.equal(inside.error, undefined, 'an edit share on a folder is write access inside it')
+
+    // Revocation is a hard delete, so the very next call finds nothing.
+    await prisma.knowledgePageShare.delete({ where: { id: share.id } })
+    assert.match((await read()).error ?? '', /not one this account can use/)
+  } finally {
+    await cleanup(s)
+    await prisma.user.delete({ where: { id: grantee.id } }).catch(() => undefined)
+    await prisma.$disconnect()
+  }
+})

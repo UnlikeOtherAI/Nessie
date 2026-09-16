@@ -21,6 +21,7 @@ import {
   actorFor,
   openPage,
   pageTool,
+  parentShareAllowsCreate,
   pageId,
   range,
   requestId,
@@ -241,7 +242,17 @@ export const spreadsheetTools = (): McpToolDefinition[] => [
       const spaceId = input.spaceId as string
       const space = await access.provider.getSpace(organizationId, spaceId)
       const viewer = await access.buildViewer(context.actorContext)
-      if (!space || !canWriteSpace(space, viewer)) return SPACE_UNREACHABLE
+      if (!space) return SPACE_UNREACHABLE
+      // The HTTP door's rule, mirrored: the space's write grant, or an `edit`
+      // share on the page this one is being filed under. Creating at the space
+      // root never consults shares, and a parent in another space would let a
+      // grant in one authorize a create in another.
+      if (
+        !canWriteSpace(space, viewer)
+        && !(await parentShareAllowsCreate(context, spaceId, input.parentPageId))
+      ) {
+        return SPACE_UNREACHABLE
+      }
 
       const who = await actorFor(context, input)
       try {

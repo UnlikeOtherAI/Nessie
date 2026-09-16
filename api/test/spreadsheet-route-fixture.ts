@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { runKnowledgeInferenceRequestContext } from '../src/services/knowledge-inference-origin.js'
 import { registerKnowledgeSpreadsheetRoutes } from '../src/routes/knowledge-spreadsheets.js'
 import { registerKnowledgeBaseRoutes } from '../src/routes/knowledge-base.js'
 import { createSpreadsheetRouteContext } from '../src/routes/knowledge-spreadsheets-context.js'
@@ -32,6 +33,12 @@ export type SpreadsheetRouteFixture = {
   spaceId: string
   /** A space the reader may read but not write. */
   readOnlySpaceId: string
+  /**
+   * The owner's personal documents: private, and nobody else's by any space
+   * rule. A `KnowledgePageShare` is the only way another person reaches a page
+   * in it, which is what makes it the space the sharing matrix runs in.
+   */
+  personalSpaceId: string
   ids: Record<RouteActor, string>
   published: { event: string; pageId: string; data: unknown }[]
   enqueued: { topic: string; payload: unknown }[]
@@ -159,6 +166,18 @@ export const seedSpreadsheetRoutes = async (
       userId,
     })),
   })
+  const personalSpace = await prisma.knowledgeSpace.create({
+    data: {
+      organizationId,
+      projectId: project.id,
+      name: `${label} personal space`,
+      visibility: 'private',
+      metadata: { personal: true },
+      userId: ids.owner,
+      createdBy: ids.owner,
+      teamId: team.id,
+    },
+  })
   await seedDefaultPolicies(prisma, organizationId, ids.owner)
 
   const published: SpreadsheetRouteFixture['published'] = []
@@ -170,12 +189,24 @@ export const seedSpreadsheetRoutes = async (
       {
         actionContext: { requestId: `${label}-${actor}` },
         actor: { actorId: ids[actor], actorType: 'user', roles: [actor === 'owner' ? 'owner' : 'member'] },
-        tenant: { organizationId, projectId: project.id },
+        // `teamId` as a real request carries it: a version's inference origin is
+        // built from the actor context first, and `completeLedgerAttribution`
+        // refuses one without a team. Omitting it let the persisted-origin
+        // fallback answer instead, which is not the path production takes.
+        tenant: { organizationId, projectId: project.id, teamId: team.id },
       } as AuthorizedActionContext,
     ]),
   ) as Record<RouteActor, AuthorizedActionContext>
 
   const app = Fastify({ logger: false })
+  // The same hook `buildApp` installs: every request gets its own async
+  // context, so the actor a route resolves reaches the provider's
+  // transactional hooks. Without it a version written deeper than one await
+  // from the route falls through to the persisted-origin lookup and 500s — a
+  // fixture artefact that looked exactly like a permission bug.
+  app.addHook('onRequest', (_request, _reply, done) => {
+    runKnowledgeInferenceRequestContext(done)
+  })
   await app.register(multipart)
 
   const deps = {
@@ -225,6 +256,7 @@ export const seedSpreadsheetRoutes = async (
     projectId: project.id,
     spaceId: space.id,
     readOnlySpaceId: readOnlySpace.id,
+    personalSpaceId: personalSpace.id,
     ids,
     published,
     enqueued,

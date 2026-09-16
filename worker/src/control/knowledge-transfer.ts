@@ -149,6 +149,7 @@ const prepare = async (
     sourceProjectId: sourceScope.projectId,
     targetSpace: targetScope,
     parentPageId: payload.target.parentPageId,
+    operation: payload.operation,
   })
   if (refusal) throw new TransferRefusedError(refusal.code, refusal.message)
 

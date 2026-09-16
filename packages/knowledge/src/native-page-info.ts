@@ -286,6 +286,9 @@ const accessSummaryFor = async (
   }
 }
 
+// A spreadsheet counts as a document: it is a page somebody wrote, and the
+// panel's three numbers are "containers, things written, things uploaded". A
+// fourth number would have to cross the wire before any screen asked for one.
 const countsFor = (rows: readonly SubtreeRow[]): KnowledgeItemInfo['counts'] => {
   const counts = { folders: 0, documents: 0, files: 0 }
   for (const row of rows) {

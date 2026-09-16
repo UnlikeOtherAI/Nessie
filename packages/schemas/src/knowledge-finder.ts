@@ -104,7 +104,9 @@ export type KnowledgeLatestQuery = z.infer<typeof KnowledgeLatestQuerySchema>
 /** A row in a virtual folder: a real page that lives somewhere else. */
 export const KnowledgeVirtualRowSchema = z.object({
   id: UuidSchema,
-  kind: z.enum(['document', 'file']), // Latest excludes folders
+  // Latest excludes folders; every other kind is a change somebody made, and
+  // a spreadsheet reaches this listing exactly as its siblings do.
+  kind: z.enum(['document', 'file', 'spreadsheet']),
   title: NonEmptyStringSchema,
   status: KnowledgePageStatusSchema,
   // file: the current version's attachment mime.
@@ -244,7 +246,7 @@ export type KnowledgeAccessSummary = z.infer<typeof KnowledgeAccessSummarySchema
 export const KnowledgeItemInfoSchema = z.object({
   id: UuidSchema, // page id, or space id for a root folder
   target: z.enum(['page', 'space']),
-  kind: z.enum(['folder', 'document', 'file', 'space']),
+  kind: z.enum(['folder', 'document', 'file', 'spreadsheet', 'space']),
   title: NonEmptyStringSchema,
   mime: z.string().nullable(), // files only
   // "Size": what a person means — current bytes of every file inside, plus

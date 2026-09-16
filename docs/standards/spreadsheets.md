@@ -10,6 +10,45 @@ Every rule here was paid for by a measurement. The measurements are in
 and its sibling spike records; this file states what follows from them. When a
 rule changes, change it here in the same turn.
 
+## Access: a page's rules, never the kind's own
+
+A spreadsheet is a page, so who may open it and who may write it is decided by
+the document access model and nothing in this file. In practice that is two
+helpers, and every spreadsheet surface goes through one of them:
+`accessPageSpace(read|write)` for the page routes and the live lane's connect,
+and `accessSpaceForPageCreate` for creating or importing one.
+
+- **Both halves, always.** The space grant *and* every retained version
+  readable. A version's disclosure basis is what stops an agent's private
+  material reaching somebody the conversation was never shared with, and the
+  live lane is not an exception to it.
+- **A person-to-person share reaches a spreadsheet** exactly as it reaches any
+  other page (`KnowledgePageShare`,
+  [documents data-and-api.md §2](../plans/2026-09-16-documents-finder-ui/data-and-api.md)).
+  A `view` grant opens bootstrap, catch-up, range, find, export and presence; an
+  `edit` grant also opens the write door, the filter routes, save-a-version and
+  restore. Publish, move, delete and re-share stay the owner's however
+  generously they shared — those routes call `requirePageOwnerWrite`, which
+  ignores shares. A share on a **folder** covers the spreadsheets inside it by
+  the ancestor walk, never by a row of its own.
+- **Three places, not one**, and all three have to agree or the pane is subtly
+  broken. The routes' authorization; `bootstrapSpreadsheet`'s `viewer.canWrite`
+  (both ways write can be true, or an `edit` grantee opens read-only); and the
+  lane's *delivery-time* recheck, `canReadSpaceForDocumentLane`, which is re-run
+  on the entitlement gate and must therefore answer the same question the
+  connect did — otherwise a grantee connects, stays open and receives nothing.
+  Because revocation is a hard delete, that recheck is also what stops an open
+  lane within one window.
+- **Agents hold no shares.** `viewerHoldsPageShare` refuses any actor that is
+  not a person, so the worker's `sheet_*` builtins reach exactly what the space
+  rules give them. The MCP `nessie_sheet_*` mirror is different on purpose: a
+  credential resolves as the person who approved it, so it inherits that
+  person's shares.
+- **The batch summary decides none of this.** Access is settled from the actor
+  context and the page before `applySpreadsheetBatch` is called, which is why
+  the summary travels to the write door as a separate argument the access layer
+  never sees.
+
 ## One write door, one lock, one order
 
 `applySpreadsheetBatch` (`packages/knowledge/src/spreadsheet/apply.ts`) is the
@@ -165,6 +204,12 @@ replica rejects a whole subscribe frame.
   opaque id, never a grant. Delivery-time rechecks have no request session, so
   they authorize through the stored-identity arm; `loadUserViewer` will not
   infer a viewer from persisted membership and returns the denied one.
+- The recheck asks the same question the connect asked, share arm included
+  (see "Access" above). It also builds its space through `mapSpace`, never a
+  raw row: `canReadSpace` reads `memberUserIds` for every visibility but
+  `organization` and `project`, and a bare `findFirst` has none — the
+  resulting TypeError lands in an unawaited promise, which on Node 22 ends the
+  process.
 - The lane and the write door are **two connections, not one**. A proxy that
   refuses a POST while an SSE stream it opened minutes ago keeps flowing is
   ordinary, so the send path has its own jittered retry ladder, reset by a
@@ -351,11 +396,23 @@ the answer in the plan's `decisions.md`.
   database: ops cross, presence re-announces, the cache is fast-forwarded.
 - `worker/test/db/spreadsheet-sweeps.test.ts` — the three sweeps against real
   rows.
+- `api/test/spreadsheet-sharing.test.ts` — the sharing matrix above, end to
+  end through the routes, plus the live lane under a revoked share.
+- `packages/knowledge/test/spreadsheet-documents.test.ts` — a spreadsheet in a
+  folder: its indexing state, the Latest listing, and the move rules.
 
 ## Known gaps
 
 - **Server-built structural batches carry no intents** (see above). Every agent
   structural write is unrebasable by an open pane.
+- **A spreadsheet cannot be copied by a transfer**, only moved
+  (`TRANSFER_COPY_SPREADSHEET`). A move keeps the page id, so the head, the
+  journal and the filters follow it; a copy writes a new page, and nothing in
+  `planTransferCopy` writes the `SpreadsheetHead` that makes one a workbook, so
+  the copy would be a row that says `spreadsheet` and throws on `loadHead`. The
+  implementation this is waiting for is the one the import pipeline already is
+  — the copied version's `.xlsx` staged and parsed by the worker — which needs
+  an asynchronous per-page state the transfer contract does not have yet.
 - **`sheet_export` renders synchronously on the API, with no threshold, and
   that is a measured decision rather than an oversight.** `exportXlsxBytes`
   costs about 1.2 µs a cell on this hardware — 22 ms at 20 000 cells, 97 ms at
