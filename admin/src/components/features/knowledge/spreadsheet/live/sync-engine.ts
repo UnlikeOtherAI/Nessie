@@ -111,6 +111,16 @@ export type SyncDeps = {
    *
    * Rolling back is the only way to get the model back to `baseSeq` before the
    * foreign batches are applied: the engine has no "apply underneath" door.
+   *
+   * **Measured on @ironcalc/wasm 0.8.4: `applyExternalDiffs` does not enter
+   * the undo stack.** That is what makes this safe while peers' batches are
+   * landing between a local edit and its verdict — `undo()` rolls back this
+   * client's own last action, not the peer's. Were it otherwise, every
+   * foreign batch that arrived during a round trip would have to be held back
+   * until the verdict, because the rollback would undo the wrong person's
+   * work. The probe: two models from the same base, a local edit on A2 and a
+   * peer's on A3, the peer's diffs applied, then one `undo()` — A2 cleared,
+   * A3 kept.
    */
   rollback: (count: number) => void
   /**
@@ -325,6 +335,9 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
       seq = next
       painted = true
     }
+    // Anything at or below the applied seq is spent, whether it was applied
+    // here, skipped as an echo or carried in by a rebase.
+    for (const buffup of [...buffered.keys()]) if (buffup <= seq) buffered.delete(buffup)
     if (painted) deps.redraw()
   }
 
@@ -332,6 +345,12 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
     if (buffered.size === 0) return false
     const next = buffered.get(seq + 1)
     return !next || next.diffs === null
+  }
+
+  /** Apply what can be applied, then ask for what is missing. */
+  const settle = (): void => {
+    drain()
+    if (needsRepair()) scheduleGapRepair()
   }
 
   const scheduleGapRepair = (): void => {
@@ -384,9 +403,9 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
         buffered.set(batch.seq, batch)
       }
     }
-    drain()
-    if (!options.repaired) {
-      if (needsRepair()) scheduleGapRepair()
+    if (options.repaired) drain()
+    else {
+      settle()
       publish()
     }
   }
@@ -433,7 +452,7 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
         queue.shift()
         ownOpIds.delete(batch.clientOpId)
         if (outcome.batch.seq > seq) ownSeqs.add(outcome.batch.seq)
-        drain()
+        settle()
         if (status === 'offline') status = 'live'
         break
       case 'conflict':
@@ -473,31 +492,42 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
     // (a) undo the pending batches; their undo diffs are drained and dropped.
     deps.rollback(rolled.length)
 
-    // (b) apply the foreign batches in order. One the fan-out could not inline
-    //     arrives with `diffs: null` and is fetched by seq.
-    let foreign = since.filter((batch) => batch.seq > seq)
-    if (foreign.some((batch) => batch.diffs === null)) {
+    // (b) apply the foreign batches in order.
+    //
+    // Two different sets, and conflating them is a bug in both directions.
+    // **Applied** are the ones this model has not seen — the lane usually
+    // delivered some of them already, and `insertRows` is not idempotent, so
+    // re-applying one would push the grid down twice. **Shifted through** is
+    // every batch the server named, applied or not: the recorded intents were
+    // recorded against `baseSeq`, so a row that moved still moved, whoever
+    // told this client about it first.
+    const ordered = [...since].sort((left, right) => left.seq - right.seq)
+    let unapplied = ordered.filter((batch) => batch.seq > seq)
+    if (unapplied.some((batch) => batch.diffs === null)) {
+      // One the fan-out could not inline; fetch it by seq.
       try {
         const fetched = await deps.fetchOps(seq)
         const bySeq = new Map(fetched.map((batch) => [batch.seq, batch]))
-        foreign = foreign.map((batch) => (batch.diffs === null ? bySeq.get(batch.seq) ?? batch : batch))
+        unapplied = unapplied.map((batch) =>
+          (batch.diffs === null ? bySeq.get(batch.seq) ?? batch : batch))
       } catch {
         // An un-fetchable batch leaves a gap the repair timer owns; the rebase
         // below is still the right thing to attempt.
       }
     }
-    foreign = [...foreign].sort((left, right) => left.seq - right.seq)
-    for (const batch of foreign) {
+    for (const batch of unapplied) {
       applyBatch(batch)
       if (batch.seq > seq) seq = batch.seq
     }
     if (headSeq > seq) seq = headSeq
+    // Anything the lane buffered in this range is spent now.
+    for (const spent of [...buffered.keys()]) if (spent <= seq) buffered.delete(spent)
     deps.redraw()
 
     // (c) re-issue the recorded intents with their indexes shifted.
     const summaries: SpreadsheetBatchSummary[] = []
     let unreadable = false
-    for (const batch of foreign) {
+    for (const batch of ordered) {
       const summary = foreignSummary(batch)
       if (!summary) { unreadable = true; continue }
       summaries.push(summary)
@@ -535,7 +565,7 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
       }
     }
     notice = conflictNotice(
-      foreign[foreign.length - 1]?.actor.displayName ?? 'somebody else',
+      ordered[ordered.length - 1]?.actor.displayName ?? 'somebody else',
       dropped,
       unrebasable,
     )

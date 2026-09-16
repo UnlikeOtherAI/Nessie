@@ -321,6 +321,46 @@ test('a structural conflict undoes, applies the foreign batch and re-issues shif
   )
 })
 
+test('a foreign batch the lane already delivered is not applied a second time by the rebase', async () => {
+  const structural = batch({
+    seq: 6,
+    marker: 0x06,
+    structuralKind: 'insertRows',
+    structuralIntents: [insertRowAt(2)],
+    who: 'Dana',
+  })
+  const outcomes: SubmitOutcome[] = [
+    { kind: 'conflict', headSeq: 6, since: [structural] },
+    { kind: 'applied', batch: batch({ seq: 7 }) },
+  ]
+  const { deps, log } = harness({
+    submit: async (outgoing) => {
+      log.submitted.push(outgoing)
+      return outcomes.shift() ?? { kind: 'offline' }
+    },
+  })
+  const sync = createSpreadsheetSync(deps, 5)
+  sync.enqueue({
+    diffs: bytes(0x11),
+    intents: [{ kind: 'setUserInput', sheet: 0, row: 4, column: 2, value: '42' }],
+    unrebasableCalls: 0,
+    sheet: 0,
+  })
+  // Dana's insert arrives on the lane before the 409 does — the ordinary case,
+  // since the same commit publishes it. `insertRows` is not idempotent, so a
+  // rebase that re-applied it would push everything down two rows instead of
+  // one, and the workbook would silently disagree with the server's.
+  sync.receive(structural)
+  await settle()
+
+  assert.deepEqual(log.applied, [0x06], 'applied once, by the lane')
+  assert.deepEqual(
+    log.replayed,
+    [[{ kind: 'setUserInput', sheet: 0, row: 5, column: 2, value: '42' }]],
+    'and still shifted by it exactly once',
+  )
+})
+
 test('an edit whose row the foreign batch deleted is dropped, and only then is a notice shown', async () => {
   const { deps, log } = harness({
     submit: async (outgoing) => {
