@@ -397,6 +397,12 @@ Phase 2 retention rules:
 
 - **Audit log page** accessible from settings/admin navigation
 - **Filterable table** with columns: timestamp, actor, action, resource, outcome
+- **The actor column is a name, not an id.** `actorType` + `actorId` are
+  resolved to a display name by `admin/src/components/shared/ActorName.tsx`,
+  shared with the approvals surface; the kind word is always printed beside it
+  and the exact `actorId` stays on the row's `title`. An actor no directory can
+  name (a deleted agent, a named system component) keeps its id rather than
+  rendering blank.
 - **Filter controls**: action type dropdown, actor search, date range picker, outcome filter
 - **Entry detail** expandable row showing full metadata and request context
 - **Summary widget** on the settings dashboard showing recent activity counts
