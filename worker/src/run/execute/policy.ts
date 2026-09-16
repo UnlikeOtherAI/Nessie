@@ -67,6 +67,9 @@ type ToolDeniedOutputReason =
   | 'approval_required'
   | 'explicit_policy_deny'
   | 'private_conversation_disclosure_required'
+  // An email lifecycle tool was called with arguments its strict schema
+  // refuses — an unknown field, or a malformed id.
+  | 'tool_arguments_invalid'
 
 export const buildToolActorContext = (
   actorContext: AuthorizedActionContext,
