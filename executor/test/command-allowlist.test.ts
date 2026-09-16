@@ -8,6 +8,7 @@ import test from 'node:test'
 import { canonicalExecutorJson, type ExecutorCommandEnvelope } from '@nessie/schemas'
 
 import { executeExecutorCommand } from '../src/daemon.js'
+import { describeExecutor } from '../src/describe.js'
 import { buildSignedDescriptor } from '../src/descriptor.js'
 import { parseCommand } from '../src/index.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
@@ -240,5 +241,27 @@ test('the CLI names permitted programs, clears them, or refuses to guess', () =>
       '--clear-tools',
     ]),
     /Usage/,
+  )
+})
+
+test('describe answers what this executor may reach and run, without its key', () => {
+  const described = describeExecutor(stateWith(['git', 'pnpm']))
+
+  assert.deepEqual(described.policy.permittedPrograms, ['git', 'pnpm'])
+  assert.deepEqual(described.reach, {
+    allowedOrigins: ['https://app.example.test'],
+    workspaceRoot: '/private/workspace',
+  })
+  assert.equal(described.sandbox.browserConfigured, true)
+  assert.deepEqual(describeExecutor(stateWith()).policy.permittedPrograms, [])
+  // The machine key is the one thing this projection must never carry, by
+  // name or by value.
+  assert.equal(JSON.stringify(described).includes('machinePrivateKey'), false)
+  assert.equal(
+    JSON.stringify(describeExecutor({
+      ...stateWith(['git']),
+      machinePrivateKey: 'SECRET-MACHINE-KEY',
+    })).includes('SECRET-MACHINE-KEY'),
+    false,
   )
 })

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { dirname } from 'node:path'
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
+import { describeExecutor } from './describe.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveDeepTestExecutionAdapter } from './deeptest-execution-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
@@ -66,6 +67,7 @@ type ParsedCommand =
     vmHelperPath: string
   }
   | { kind: 'connect'; stateDir: string }
+  | { kind: 'describe'; stateDir: string }
   | { kind: 'deeptest-source'; sourceGrantFile: string }
   | { executionGrantFile: string; kind: 'deeptest-execution' }
   | { kind: 'heartbeat'; stateDir: string }
@@ -108,6 +110,7 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor describe --state-dir <owner-only-path>\n'
     + '       nessie-executor deeptest-source --source-grant-file <absolute-owner-only-file>\n'
     + '       nessie-executor deeptest-execution --execution-grant-file <absolute-owner-only-file>\n'
     + '       nessie-executor publish-deeptest-source-grant --state-dir <owner-only-path>\n'
@@ -312,6 +315,9 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       vmHelperPath: option(args, '--vm-helper'),
     }
   }
+  if (command === 'describe') {
+    return { kind: 'describe', stateDir: option(args, '--state-dir') }
+  }
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
@@ -481,6 +487,10 @@ export const run = async (args: string[]): Promise<void> => {
     process.stdout.write(
       `Codex session policy saved as revision ${updated.descriptor.revision}. Run connect (or restart serve), then have a person review it in Nessie.\n`,
     )
+    return
+  }
+  if (command.kind === 'describe') {
+    process.stdout.write(`${JSON.stringify(describeExecutor(state), undefined, 2)}\n`)
     return
   }
   if (command.kind === 'connect') {
