@@ -129,7 +129,7 @@ export const whatsNew = {
     { icon: faHashtag, tag: 'New feature', title: 'Invite into several teams at once', text: 'One invitation from the organisation roster.' },
     { icon: faGlobe, tag: 'New feature', title: 'Private browser access', text: 'Lend an agent a browser and take control any time.' },
     { icon: faEnvelopeOpenText, tag: 'Improvement', title: 'Mail drafts in chat', text: 'Review and approve an agent’s replies without opening your inbox.' },
-    { icon: faPlug, tag: 'New feature', title: 'Paired agents', text: 'Publish a Nessie agent as an MCP server for other tools.' },
+    { icon: faPlug, tag: 'New feature', title: 'Paired agents', text: 'Pair an outside agent so it can work in Nessie as you.' },
     { icon: faVideo, tag: 'Improvement', title: 'Voice calls on iPhone', text: 'Call an agent from the native app.' },
     { icon: faCoins, tag: 'Improvement', title: 'Cost per project', text: 'See what each project’s agents spend.' },
   ] satisfies Card[],

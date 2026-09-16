@@ -2093,6 +2093,11 @@ button {
   background: var(--n-sand);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.88em;
+  /* An inline route like `GET /api/auth/providers/:providerId/authorize` has
+     no space in it, so on a phone it refuses to wrap and drags the whole page
+     wider than the screen. Code blocks are exempt below: they scroll on their
+     own axis, and breaking a line inside one would change what it says. */
+  overflow-wrap: anywhere;
 }
 
 .n-prose pre {
@@ -2112,6 +2117,7 @@ button {
   background: none;
   color: inherit;
   font-size: inherit;
+  overflow-wrap: normal;
 }
 
 .n-prose table {

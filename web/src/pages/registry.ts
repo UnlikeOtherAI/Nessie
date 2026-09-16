@@ -59,7 +59,7 @@ export const pages: Page[] = [
     group: 'resources',
     navLabel: 'MCP',
     path: '/docs/mcp',
-    summary: 'Connect Nessie to MCP servers, and publish a Nessie agent as an MCP server of its own.',
+    summary: 'Connect Nessie to MCP servers, and pair an outside agent so it can work in Nessie as you.',
     title: 'MCP and connected tools',
   },
   {
