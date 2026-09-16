@@ -27,6 +27,7 @@
     "test:e2e:project-team-channel": "node e2e/project-usability/project-team-channel.mjs",
     "test:e2e:project-usability": "node e2e/project-usability/run.mjs",
     "test:e2e:spreadsheet-shell": "node e2e/spreadsheet-shell/run.mjs",
+    "test:e2e:spreadsheets": "node e2e/spreadsheets/run.mjs",
     "verify:spreadsheet-lazy": "node e2e/spreadsheet-shell/lazy-chunk.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\" \"test/**/*.test.tsx\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -46,6 +47,7 @@
     "@nessie/config": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@nessie/sign-in-surface": "workspace:*",
+    "@nessie/spreadsheet": "workspace:*",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query": "^5.96.2",
     "@tauri-apps/api": "^2.11.0",
