@@ -70,23 +70,20 @@ dbTest('400 interleaved batches produce a gapless order and one workbook', async
     })
     const snapshot = Buffer.from(bootstrap.snapshot.bytes, 'base64')
 
-    // Two simulated panes. Each builds its diffs up front against its own
-    // model, so the submissions really do race rather than serialise behind
-    // the engine calls.
-    const submissions: { column: number; diffs: Buffer }[] = []
-    for (const column of [1, 2]) {
+    // Two simulated panes, each submitting its 200 batches **in order**, the
+    // two chains raced against each other. That is what a pair of open panes
+    // actually does, and it is what the interleaving here has to model: a
+    // browser flushes one batch, waits for its ack, flushes the next.
+    //
+    // Firing all 400 at once instead would prove nothing about ordering and
+    // everything about Prisma's connection pool — 400 simultaneous interactive
+    // transactions want 400 connections, and the pool holds 21. The burst that
+    // *is* worth asserting is the one below, sized to fit.
+    const chain = async (column: number) => {
       const client = loadWorkbook(snapshot)
+      const seqs: number[] = []
       for (let row = 1; row <= BATCHES_PER_CLIENT; row++) {
-        submissions.push({
-          column,
-          diffs: diffsFor(client, () => client.model.setUserInput(0, row, column, `c${column}r${row}`)),
-        })
-      }
-    }
-
-    const results = await Promise.all(
-      submissions.map((submission) =>
-        applySpreadsheetBatch(
+        const result = await applySpreadsheetBatch(
           service,
           {
             organizationId: seed.organizationId,
@@ -94,22 +91,37 @@ dbTest('400 interleaved batches produce a gapless order and one workbook', async
             clientOpId: randomUUID(),
             actor: userActor(seed),
             attribution: attributionFor(seed),
-            // Deliberately stale for everything after the first: none of these
-            // is structural, so staleness is not a conflict — the server's
-            // order is the order.
-            source: { kind: 'client', diffs: submission.diffs, baseSeq: 0 },
+            // Deliberately stale after the first: none of these is structural,
+            // so staleness is not a conflict — the server's order is the order.
+            source: {
+              kind: 'client',
+              diffs: diffsFor(client, () => client.model.setUserInput(0, row, column, `c${column}r${row}`)),
+              baseSeq: 0,
+            },
           },
           cellSummary(),
-        ),
-      ),
-    )
+        )
+        seqs.push(result.batch?.seq ?? 0)
+      }
+      return seqs
+    }
 
-    const seqs = results.map((result) => result.batch?.seq).sort((a, b) => (a ?? 0) - (b ?? 0))
+    const results = (await Promise.all([chain(1), chain(2)])).flat()
+
+    const seqs = [...results].sort((a, b) => a - b)
     assert.equal(seqs.length, BATCHES_PER_CLIENT * 2)
     assert.deepEqual(
       seqs,
       Array.from({ length: BATCHES_PER_CLIENT * 2 }, (_, index) => index + 1),
       'seq must be 1..400 with no gaps and no duplicates',
+    )
+    // And the two chains really did interleave rather than run one after the
+    // other, which is the only thing that makes the assertion above mean
+    // anything: each pane's own seqs are ascending but not contiguous.
+    const firstPane = results.slice(0, BATCHES_PER_CLIENT)
+    assert.ok(
+      firstPane.some((seq, index) => index > 0 && seq !== (firstPane[index - 1] as number) + 1),
+      'the two panes were serialised, so this proved nothing about ordering',
     )
 
     const head = await seed.prisma.spreadsheetHead.findUniqueOrThrow({ where: { pageId: page.id } })
@@ -145,6 +157,68 @@ dbTest('400 interleaved batches produce a gapless order and one workbook', async
       assert.equal(fromZero.model.formattedValue(0, row, 1), `c1r${row}`)
       assert.equal(fromZero.model.formattedValue(0, row, 2), `c2r${row}`)
     }
+  } finally {
+    await seed.teardown()
+  }
+})
+
+/**
+ * A genuinely simultaneous burst — every submission in flight at once, all
+ * wanting the same page's advisory lock. Sized to what a connection pool
+ * holds, because beyond that the only thing under test is the pool.
+ */
+dbTest('a simultaneous burst serialises behind the page lock rather than failing', async () => {
+  const seed = await seedSpreadsheetFixture('sheet-burst')
+  const service = createTestService(seed)
+  const BURST = 16
+  try {
+    const page = await createSpreadsheetPage(service, {
+      organizationId: seed.organizationId,
+      spaceId: seed.spaceId,
+      projectId: seed.projectId,
+      title: 'All at once',
+      authorId: seed.userId,
+      authorType: 'user',
+      createdBy: seed.userId,
+    })
+    const bootstrap = await bootstrapSpreadsheet(service, {
+      organizationId: seed.organizationId,
+      pageId: page.id,
+      viewer: { canWrite: true, actor: userActor(seed) },
+    })
+    const snapshot = Buffer.from(bootstrap.snapshot.bytes, 'base64')
+
+    // Every payload is built before anything is submitted, so the submissions
+    // really are simultaneous rather than serialised behind the engine calls.
+    const payloads = Array.from({ length: BURST }, (_, index) => {
+      const client = loadWorkbook(snapshot)
+      return diffsFor(client, () => client.model.setUserInput(0, index + 1, 1, `burst ${index + 1}`))
+    })
+
+    const results = await Promise.all(
+      payloads.map((diffs) =>
+        applySpreadsheetBatch(
+          service,
+          {
+            organizationId: seed.organizationId,
+            pageId: page.id,
+            clientOpId: randomUUID(),
+            actor: userActor(seed),
+            attribution: attributionFor(seed),
+            source: { kind: 'client', diffs, baseSeq: 0 },
+          },
+          cellSummary(),
+        ),
+      ),
+    )
+
+    assert.deepEqual(
+      results.map((result) => result.batch?.seq).sort((a, b) => (a ?? 0) - (b ?? 0)),
+      Array.from({ length: BURST }, (_, index) => index + 1),
+      'the lock gives every writer a distinct seq; nobody is refused and nobody shares one',
+    )
+    const head = await seed.prisma.spreadsheetHead.findUniqueOrThrow({ where: { pageId: page.id } })
+    assert.equal(Number(head.headSeq), BURST)
   } finally {
     await seed.teardown()
   }
