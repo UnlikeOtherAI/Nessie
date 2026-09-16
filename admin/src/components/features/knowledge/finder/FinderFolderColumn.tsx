@@ -16,6 +16,7 @@ import type {
 import type { RowDragHandlers } from '../../../shared/RowList'
 import { useFileDrop, type FileDrop } from '../../../../hooks/useFileDrop'
 import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
+import { QueryState } from '../../../shared/QueryState'
 import { EmptyState } from '../../../shared/EmptyState'
 import { RowList } from '../../../shared/RowList'
 import { familyForFilename, familyTone, iconForFamily } from '../../../shared/file-icons'
@@ -57,6 +58,12 @@ export type FinderFolderColumnProps = {
   columnActive: boolean
   focusedRowId?: string
   emptyLabel: string
+  /**
+   * The read behind these rows. A failed read must not be drawn as an empty
+   * folder: "Nothing here yet" is a fact about the folder, and saying it when
+   * the server never answered is the one thing this column must never do.
+   */
+  query: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   /** Rows to draw above the page rows — a project tab's other root folders. */
   leadingRows?: ReactNode
   creatingFolder?: boolean
@@ -111,6 +118,7 @@ export const FinderFolderColumn = ({
   dropHandlersForRow,
   dropTargetId,
   emptyLabel,
+  query,
   focusedRowId,
   leadingRows,
   onBackgroundContextMenu,
@@ -154,7 +162,16 @@ export const FinderFolderColumn = ({
           pending={createFolderPending}
         />
       ) : null}
-      {empty ? (
+      {query.isError || query.isLoading ? (
+        <QueryState
+          className="py-6"
+          errorLabel="Couldn’t load these documents."
+          loadingLabel="Loading documents…"
+          query={query}
+        >
+          {() => null}
+        </QueryState>
+      ) : empty ? (
         <EmptyState className="mt-2">{emptyLabel}</EmptyState>
       ) : (
         <RowList label="Items" role="listbox" variant="finder">
@@ -246,6 +263,8 @@ type FinderFolderHostProps = {
   onCreateFolder: () => void
   onOpen: (page: KnowledgePageRecord) => void
   onOpenSiblingSpace: (spaceId: string) => void
+  /** The read behind this level's rows, passed through to the column. */
+  query: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   onSubmitFolder: (name: string) => void
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   pathSelectionId?: string
@@ -280,6 +299,7 @@ export const FinderFolderHost = ({
   onCreateFolder,
   onOpen,
   onOpenSiblingSpace,
+  query,
   onSubmitFolder,
   pageById,
   pathSelectionId,
@@ -336,6 +356,7 @@ export const FinderFolderHost = ({
       emptyLabel={canWrite
         ? 'Nothing here yet — use New file, or drop a file to upload.'
         : 'Nothing here yet.'}
+      query={query}
       leadingRows={siblingSpaces.length > 0
         ? (
           <RowList label="Other folders in this project" role="listbox" variant="finder">

@@ -11,6 +11,7 @@ import { getCookie, setCookie } from '../../../../lib/storage'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { ColumnBrowserColumn } from '../../../shared/column-browser/ColumnBrowserColumn'
+import { QueryState } from '../../../shared/QueryState'
 import { ScreenHeader } from '../../../shared/ScreenHeader'
 import { ColumnBrowserViewport } from '../../../shared/column-browser/ColumnBrowserViewport'
 import { useKnowledge } from '../KnowledgeProvider'
@@ -107,6 +108,18 @@ export const DocumentsFinder = ({
   }, [selectSort])
 
   const { browseTo, childrenOf, pagePath, pageById, rootPages, selectedSpaceId } = knowledge
+  // A failed read must reach the column, or an empty folder and a dead server
+  // look identical on screen. In project and agent scope the spaces read is
+  // what resolves the folder at all, so its failure counts here too — and
+  // Retry has to re-run whichever one actually failed.
+  const pagesQuery = {
+    isError: knowledge.pagesLoadFailed || knowledge.spacesLoadFailed,
+    isLoading: knowledge.pagesLoading,
+    refetch: () => {
+      if (knowledge.spacesLoadFailed) knowledge.refetchSpaces()
+      if (knowledge.pagesLoadFailed) knowledge.refetchPages()
+    },
+  }
 
   // `?folder=` — the deepest open folder, read cold and mirrored on browse.
   useFinderFolderParam({
@@ -409,6 +422,7 @@ export const DocumentsFinder = ({
             onCancelFolder={() => closeNewFolder()}
             onCreateFolder={() => openNewFolderIn(level.key)}
             onOpen={(page) => openPageIn(level, page)}
+            query={pagesQuery}
             onSubmitFolder={(name) => {
               void knowledge.createFolder(level.parentPageId, name)
                 .finally(() => closeNewFolder())
@@ -456,11 +470,27 @@ export const DocumentsFinder = ({
     />
   )
 
+  // Outside the Knowledge section there is no root column, so a failed spaces
+  // read leaves no column to report it — the screen would simply be blank.
+  // Say so where the columns would have been, with the Retry beside it.
+  const scopeReadFailed = !orgScope && knowledge.spacesLoadFailed
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[color:var(--main)] text-[color:var(--tx)]">
       {toolbar}
       <div className="flex min-h-0 flex-1">
-        {listView ? (
+        {scopeReadFailed ? (
+          <div className="min-w-0 flex-1">
+            <QueryState
+              className="py-6"
+              errorLabel="Couldn’t load these documents."
+              loadingLabel="Loading documents…"
+              query={pagesQuery}
+            >
+              {() => null}
+            </QueryState>
+          </div>
+        ) : listView ? (
           <>
             {orgScope ? (
               <div className="h-full flex-shrink-0" style={{ width: columnWidth }}>
