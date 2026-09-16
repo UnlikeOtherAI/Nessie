@@ -200,6 +200,45 @@ const seedRows = async (input) => {
   })
 }
 
+/**
+ * A file node in the space, from bytes this process makes.
+ *
+ * Used by the doorway case to stand up the two things "Open as spreadsheet"
+ * has to tell apart: an `.xlsx` the engine can read, and an `.xls` it cannot.
+ * The `.xls` bytes are only its OLE2 magic — nothing ever opens them, and the
+ * whole point is that the doorway refuses before anything tries.
+ */
+export const uploadFileNode = async ({ bytes, filename, mime, spaceId, token }) => {
+  const form = new FormData()
+  form.set('file', new Blob([bytes], { type: mime }), filename)
+  const response = await fetch(`${API_URL}/api/knowledge-base/spaces/${spaceId}/files`, {
+    body: form,
+    headers: { authorization: `Bearer ${token}` },
+    method: 'POST',
+  })
+  const text = await response.text()
+  if (!response.ok) throw new Error(`upload ${filename} → ${response.status} ${text.slice(0, 300)}`)
+  return JSON.parse(text).data
+}
+
+/**
+ * Real `.xlsx` bytes: a seeded spreadsheet, exported through the route the
+ * Export button calls. Genuine rather than synthesised, so "Open as
+ * spreadsheet" is asked to read a file the engine actually wrote.
+ */
+export const serverXlsx = async (pageId, token) => {
+  const response = await fetch(
+    `${API_URL}/api/knowledge-base/pages/${pageId}/spreadsheet/export?format=xlsx`,
+    { headers: { authorization: `Bearer ${token}` } },
+  )
+  if (!response.ok) throw new Error(`export xlsx → ${response.status}`)
+  return Buffer.from(await response.arrayBuffer())
+}
+
+/** The OLE2 header, and nothing else: an `.xls` in every way that matters here. */
+export const legacyXlsBytes = () =>
+  Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0])
+
 /** The workbook as the server holds it — the oracle every case checks against,
  *  because a value read back out of the browser that wrote it proves nothing. */
 export const serverCsv = async (pageId, token) =>

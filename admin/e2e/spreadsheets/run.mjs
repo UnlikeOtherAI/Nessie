@@ -30,7 +30,12 @@ const here = dirname(fileURLToPath(import.meta.url))
 // missing line here instead of silence. `agent-presence` is Phase 4's — it
 // runs when that file exists and is skipped out loud when it does not, which
 // is what lets the two phases land in either order.
-const CASES = ['two-browsers', 'structural-rebase', 'offline-queue', 'phone-touch', 'agent-presence']
+const CASES = [
+  // First, because it is the only one that proves the feature is reachable:
+  // every case below opens a spreadsheet by its address.
+  'finder-doorway',
+  'two-browsers', 'structural-rebase', 'offline-queue', 'phone-touch', 'agent-presence',
+]
 
 /**
  * Cases that exist but cannot run yet, with the reason printed on every run.
