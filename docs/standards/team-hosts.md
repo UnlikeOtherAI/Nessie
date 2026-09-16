@@ -73,9 +73,53 @@ one module, `admin/src/lib/tenant-navigation.ts`, and must keep doing so —
 
 | Entry point | Browser | Native shell |
 |---|---|---|
-| `TeamSwitcher` (rail / menu switch) | team's address from `GET /api/hosts/address?teamId=` when it is a different host; otherwise in-app `/channels` | in-app `/channels`; the address is not even looked up |
-| `OrgPortal` (team picked on `<org>.<base>`) | team's address; if there is none, `signInOrigin/channels`; if neither is known, stays on the portal | `signInOrigin/channels` |
+| `TeamSwitcher`, `useAcceptTeamInvitation`, `useProvisionAndSwitch` — every in-app switch, through `facades/team/navigation.ts` | team's address from `GET /api/hosts/address?teamId=` when it is a different host; on the canonical origin with no address, in-app `/channels`; on a tenant host with no address, the canonical origin | in-app `/channels` on the canonical origin; the address is not even looked up |
+| `OrgPortal` (team picked on `<org>.<base>`) | team's address; if there is none, the canonical origin; if neither is known, stays on the portal | the canonical origin |
 | `TenantReturnHandoff` (stored `?return=` after sign-in) | the stored tenant address | dropped: forgotten and not followed, so the person stays on the canonical origin |
+
+**No tenant host keeps a team that is not its own.** A team address serves the
+app, so staying there once looked like the cheap answer, and it was the defect:
+switching teams on `general.kilomayo.nessie.works` left that URL over another
+organisation's channels, a copied link sent a colleague to the wrong place, and
+the next load of the address switched the session back. The canonical origin is
+different — it serves every team — so there it stays and routes.
+
+**Not every team has an address to go to instead**, which is why the rule is
+"never keep another team" rather than simply "follow the address" — the section
+below is about the teams that have no address at all.
+
+### A team with no address leaves for the canonical origin
+
+Every lookup behind a tenant hostname — `/api/hosts/resolve`, the
+`tls-check` gate, `/api/hosts/address` — is a UOA `/domain/*` read, and those
+are scoped to this deployment's own UOA client domain (`UOA_DOMAIN`, in
+production `api.nessie.works`). A person's teams are not: `/org/me` lists every
+organisation they belong to, including ones founded on **another product's**
+client domain.
+
+So a team can be in the picker and have no address here at all. Measured
+against production, an organisation on another domain resolves `kind: null`,
+and `<team>.<that org>.nessie.works` does not complete a TLS handshake —
+`tls-check` refuses, so no certificate is ever issued for it. **A hostname
+built from UOA's labels alone is a dead link, not a shortcut**, which is why
+`api/src/services/landing-teams.ts` treats *the address lookup answering* as
+the test of whether an address exists, rather than the labels in the directory.
+That file has now been written both ways; the labels-only version shipped
+briefly and produced links to hostnames that cannot be reached, and this note
+exists so the third attempt does not repeat the second.
+
+Those switches go to the canonical origin, which serves every team. **Nothing
+is carried in the URL, deliberately.** Every caller awaits the switch before
+the document moves, so the session is already on the target when the canonical
+origin loads and simply opens on it. A team id in a URL that triggers a session
+change would be a forced-switch primitive — membership-checked, so it could
+never place anybody in a team they are not in, but enough to move somebody
+between their own teams from a third-party link, churn the refresh family and
+leave another tab rendering a team the session has left.
+
+**A team an in-app switch cannot address is still opened correctly; a team a
+*link* names is not.** That is the remaining gap, and it is the landing's
+(below).
 
 **A native shell never loads a tenant hostname as its top-level document.**
 `isNativeShell()` is `isDesktopApp()` or `isReactNativeWebView()`. The desktop
@@ -106,6 +150,40 @@ that host reloads the portal instead of opening the team.
 (`admin/src/facades/team/invitations.ts`) and creating a team
 (`admin/src/facades/team/provisioning.ts`) still navigate in-app and do not
 follow the new team's address. Native shells are unaffected.
+
+**A team host does not draw the app until the address and the session agree.**
+Firing the switch and rendering the app underneath it was the second half of
+the same defect: the routes below began fetching in the previous team's scope,
+and a switch that then failed — silently, because the rejection was swallowed —
+left the previous team's channels, projects and search on screen under a URL
+naming a different team.
+
+The states that may draw the app are now enumerated in
+`admin/src/layouts/tenant/tenant-host-render.ts` rather than implied by a chain
+of early returns, because **the bug was a missing branch**, and a missing
+branch is invisible in a chain and obvious in an enumeration. A team address
+draws the app only when the ids have answered, the session has answered, and
+the session is on the team the address names. Everything else waits or refuses
+— including `/api/hosts/team` failing or answering `{team: null}`, which on a
+hostname that already resolved as a team means UOA is unreachable or the team
+is no longer federated. **An address that cannot be verified is not served**,
+and the refusal is branded, names no team, and always offers a way out.
+
+**Waiting is a `switchNeeded` fact, not just an in-flight request.** The switch
+is fired from an effect, which runs *after* the render that decides — so a gate
+that waited only on "a request is in flight" draws one frame of the team the
+session arrived on. `tenantTeamSwitchNeeded` is therefore an input to the
+enumeration as well as the guard on the request. A refusal outranks it: a
+switch that failed leaves the session on its old team, so "needed" stays true
+forever, and waiting on it would be a curtain that never lifts.
+
+**What the wait looks like is the tenant's, not the product's.**
+`TeamSwitchCurtain` covers the gap in the organisation's own colours and fades
+off the app once it mounts, so no part of the wrong organisation is ever
+visible and the arrival is not a blank frame. The fade is released by a timer
+rather than `transitionend`: a browser that never fires the event — a
+background tab, reduced motion, a transition the stylesheet dropped — would
+otherwise leave the curtain up over a working app.
 
 **A team host does not re-switch onto the team the session is already on.**
 `TenantHostGate` compares the host's `externalOrgId`/`externalTeamId` with the
@@ -404,11 +482,16 @@ active flag, link (`LandingTeamSchema`); no ids, no email. Rate limited by
 `landingTeamsIp` (docs/rate-limiting.md). The landing's CSP names
 `https://api.nessie.works` in `connect-src` and UOA's host in `img-src`.
 
-**Known gap:** a team with no resolvable address that is not the active one
-opens the app on the session's current team; the person switches from there.
-There is no cross-origin "switch into this team" handoff on the canonical
-origin, and this change does not invent one. Native shells are unaffected:
-the landing is a browser page and never runs inside them.
+**Known gap, and why it stays one:** a team with no resolvable address that is
+not the active one opens the app on the session's current team; the person
+switches from there. The app's own entry points do not have this problem —
+they switch before they navigate — but a *link* cannot, and the obvious fix is
+the one the section above refuses: putting the team's ids in the URL and
+switching on arrival. That is a forced-switch primitive on any origin that
+serves it, and the landing is a separate origin whose URLs and logs would then
+carry them. Closing this properly means a one-shot, session-bound token the
+landing asks the API for — not ids the API volunteers. Native shells are
+unaffected: the landing is a browser page and never runs inside them.
 
 ## Local development
 
