@@ -1,10 +1,11 @@
 //! The right-click menu, rebuilt from the service's answer on every poll.
 //!
 //! The first line is disabled and says what the icon means. Then one submenu per
-//! paired executor carrying **Start** and **Stop**, then the four things that
-//! are not about a particular executor. **Quit** says what it does and does not
-//! do, because a tray whose Quit silently stopped a boot-time service would be
-//! the single most surprising thing this application could do.
+//! paired executor carrying **Start** and **Stop**, then the three surfaces this
+//! app exists for — Settings, Where it can reach, Tools it can run — followed by
+//! Pair, Open Nessie, Open logs and Quit. **Quit** says what it does and does
+//! not do, because a tray whose Quit silently stopped a boot-time service would
+//! be the single most surprising thing this application could do.
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
@@ -13,6 +14,9 @@ use tauri::{
 
 use crate::state::{header_label, short_id, ServiceView};
 
+pub const SETTINGS_ID: &str = "settings";
+pub const REACH_ID: &str = "reach";
+pub const TOOLS_ID: &str = "tools";
 pub const PAIR_ID: &str = "pair";
 pub const OPEN_NESSIE_ID: &str = "open-nessie";
 pub const OPEN_LOGS_ID: &str = "open-logs";
@@ -29,8 +33,11 @@ pub enum MenuAction {
     OpenNessie,
     Pair,
     Quit,
+    Reach,
+    Settings,
     Start(String),
     Stop(String),
+    Tools,
     Unknown,
 }
 
@@ -43,6 +50,9 @@ pub fn parse_menu_id(id: &str) -> MenuAction {
     }
     match id {
         PAIR_ID => MenuAction::Pair,
+        SETTINGS_ID => MenuAction::Settings,
+        REACH_ID => MenuAction::Reach,
+        TOOLS_ID => MenuAction::Tools,
         OPEN_NESSIE_ID => MenuAction::OpenNessie,
         OPEN_LOGS_ID => MenuAction::OpenLogs,
         QUIT_ID => MenuAction::Quit,
@@ -84,6 +94,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, view: &ServiceView) -> tauri::Resul
             menu.append(&PredefinedMenuItem::separator(app)?)?;
         }
     }
+    menu.append(&MenuItem::with_id(app, SETTINGS_ID, "Settings…", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, REACH_ID, "Where it can reach…", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, TOOLS_ID, "Tools it can run…", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, PAIR_ID, "Pair a new executor…", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, OPEN_NESSIE_ID, "Open Nessie", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, OPEN_LOGS_ID, "Open logs folder", true, None::<&str>)?)?;
@@ -100,7 +113,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, view: &ServiceView) -> tauri::Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_menu_id, MenuAction, OPEN_LOGS_ID, OPEN_NESSIE_ID, PAIR_ID, QUIT_ID};
+    use super::{
+        parse_menu_id, MenuAction, OPEN_LOGS_ID, OPEN_NESSIE_ID, PAIR_ID, QUIT_ID, REACH_ID,
+        SETTINGS_ID, TOOLS_ID,
+    };
 
     #[test]
     fn a_clicked_line_carries_the_executor_it_belongs_to() {
@@ -115,8 +131,11 @@ mod tests {
     }
 
     #[test]
-    fn the_four_standing_entries_are_the_only_other_ones() {
+    fn the_seven_standing_entries_are_the_only_other_ones() {
         assert_eq!(parse_menu_id(PAIR_ID), MenuAction::Pair);
+        assert_eq!(parse_menu_id(SETTINGS_ID), MenuAction::Settings);
+        assert_eq!(parse_menu_id(REACH_ID), MenuAction::Reach);
+        assert_eq!(parse_menu_id(TOOLS_ID), MenuAction::Tools);
         assert_eq!(parse_menu_id(OPEN_NESSIE_ID), MenuAction::OpenNessie);
         assert_eq!(parse_menu_id(OPEN_LOGS_ID), MenuAction::OpenLogs);
         assert_eq!(parse_menu_id(QUIT_ID), MenuAction::Quit);

@@ -8,6 +8,19 @@ struct SettingsSection: View {
     @EnvironmentObject private var selection: ConsoleSelection
     @State private var invitation = ""
     @State private var chosenWorkspace: URL?
+    /// Nil until a person picks: the starting choice depends on the build, and a
+    /// `@State` default cannot read the environment object that knows which one
+    /// this is.
+    @State private var target: PairingTarget?
+    @State private var typedOrigin = ""
+
+    /// Which Nessie the pairing panel is pointed at. `custom` is never a label a
+    /// person reads on its own — the panel shows the host underneath it.
+    private enum PairingTarget: Hashable {
+        case preset(String)
+        case localDevelopment
+        case custom
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -28,10 +41,69 @@ struct SettingsSection: View {
 
     // MARK: - Pairing
 
+    /// The choices offered, in the order they are offered. A release build never
+    /// gains the local development origin: it is a compile-time fact, not a
+    /// setting, and a release that could be talked into plain HTTP would not be
+    /// a release.
+    private var targets: [PairingTarget] {
+        ApprovedAPIOrigin.presets.map { PairingTarget.preset($0.id) }
+            + (controller.isDevelopmentBuild ? [.localDevelopment] : [])
+            + [.custom]
+    }
+
+    private var selectedTarget: PairingTarget {
+        target ?? (controller.isDevelopmentBuild
+            ? .localDevelopment
+            : .preset(ApprovedAPIOrigin.presets[0].id))
+    }
+
+    private func name(of target: PairingTarget) -> String {
+        switch target {
+        case let .preset(id):
+            return ApprovedAPIOrigin.preset(id)?.label ?? id
+        case .localDevelopment:
+            return "Local development"
+        case .custom:
+            return "A Nessie you host yourself"
+        }
+    }
+
+    /// What the choice currently means, before approval. A preset is named by
+    /// its id — `ApprovedAPIOrigin` resolves it to the pinned origin, so this
+    /// panel never carries a second copy of those URLs.
+    private var chosenOrigin: String {
+        switch selectedTarget {
+        case let .preset(id):
+            return id
+        case .localDevelopment:
+            return ApprovedAPIOrigin.localDevelopment
+        case .custom:
+            return typedOrigin
+        }
+    }
+
     private var pairingForm: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Pair with Nessie").font(.headline)
-            FactRow(label: "API origin this build may pair with", value: controller.apiOrigin)
+
+            Picker("Which Nessie", selection: Binding(
+                get: { selectedTarget },
+                set: { target = $0 }
+            )) {
+                ForEach(targets, id: \.self) { candidate in
+                    Text(name(of: candidate)).tag(candidate)
+                }
+            }
+            .pickerStyle(.radioGroup)
+
+            if selectedTarget == .custom {
+                TextField("https://nessie.example.com", text: $typedOrigin)
+                    .font(.body.monospaced())
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            pairingTargetVerdict
+
             Text(
                 "In Nessie, open Agents → Executors, create an executor, and copy the pairing command "
                     + "or invitation link it offers. It carries the enrollment id and the one-time "
@@ -69,10 +141,50 @@ struct SettingsSection: View {
                     controller.fail("Choose the folder this executor may read before pairing.")
                     return
                 }
-                controller.pair(invitationText: invitation, workspaceRoot: workspace.path)
+                controller.pair(
+                    invitationText: invitation,
+                    chosenOrigin: chosenOrigin,
+                    workspaceRoot: workspace.path
+                )
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(controller.busy)
+            .disabled(controller.busy || approvedOrigin == nil)
+        }
+    }
+
+    private var approvedOrigin: String? {
+        try? controller.approvedOrigin(
+            invitationText: invitation,
+            chosenOrigin: chosenOrigin
+        ).get()
+    }
+
+    /// The host this Mac is about to hand a machine key to, on screen before the
+    /// button is pressed. An invitation that names its own `--api` is what will
+    /// be used, and this says so rather than letting the picker imply otherwise.
+    @ViewBuilder
+    private var pairingTargetVerdict: some View {
+        let named = InvitationParser.apiBaseUrl(in: invitation)
+        switch controller.approvedOrigin(invitationText: invitation, chosenOrigin: chosenOrigin) {
+        case let .success(origin):
+            VStack(alignment: .leading, spacing: 2) {
+                FactRow(
+                    label: named == nil
+                        ? "Pairing with"
+                        : "Pairing with, as named by this invitation",
+                    value: "\(ApprovedAPIOrigin.label(for: origin)) — \(origin)"
+                )
+            }
+        case let .failure(refusal):
+            if selectedTarget == .custom && typedOrigin.isEmpty && named == nil {
+                Text("Enter the address of the Nessie you host, such as https://nessie.example.com.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label(refusal.message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
@@ -80,11 +192,18 @@ struct SettingsSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Paired").font(.headline)
             FactRow(label: "Executor", value: description.executorId)
-            FactRow(label: "Nessie API", value: description.apiBaseUrl)
+            // Named and spelled out: an already-paired executor has to be able
+            // to say which Nessie it belongs to, and the host is the fact that
+            // answers it.
+            FactRow(
+                label: "Paired with \(ApprovedAPIOrigin.label(for: description.apiBaseUrl))",
+                value: description.apiBaseUrl
+            )
             if let fingerprint = controller.pendingFingerprint {
                 Label(
-                    "Confirm fingerprint \(fingerprint) in Nessie, then start the executor from the "
-                        + "menu bar icon. Nothing runs until somebody confirms it there.",
+                    "Confirm fingerprint \(fingerprint) at \(description.apiBaseUrl), then start the "
+                        + "executor from the menu bar icon. Nothing runs until somebody confirms it "
+                        + "there.",
                     systemImage: "checkmark.shield"
                 )
                 .font(.callout)

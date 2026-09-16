@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type {
-  ExecutorCreateResponse,
-  PreparedExecutorAccessChangeResponse,
+import {
+  executorPairingOriginLabel,
+  type ExecutorCreateResponse,
+  type PreparedExecutorAccessChangeResponse,
 } from '@nessie/schemas'
 import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCreatePanel'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
@@ -210,14 +211,21 @@ export const ExecutorsPage = () => {
   // The state directory is not a free choice, so the command is built where a
   // test can hold it against the systemd unit itself — see
   // `lib/executor-pairing.ts`.
-  const pairingCommand = useMemo(() => created
+  // One resolution of the origin, used by the command and named on screen
+  // beside it: the `--api` in a command nobody reads is not the same as being
+  // told which server this machine is about to trust.
+  const pairingOrigin = useMemo(
+    () => created ? getExecutorApiOrigin(created.invitation.apiBaseUrl) : null,
+    [created],
+  )
+  const pairingCommand = useMemo(() => created && pairingOrigin
     ? buildPairingCommand({
-      apiOrigin: getExecutorApiOrigin(created.invitation.apiBaseUrl),
+      apiOrigin: pairingOrigin,
       challenge: created.invitation.challenge,
       enrollmentId: created.invitation.enrollmentId,
       executorId: created.executor.id,
     })
-    : null, [created])
+    : null, [created, pairingOrigin])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -279,6 +287,16 @@ export const ExecutorsPage = () => {
         {pairingCommand && created ? (
           <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">Finish pairing on the companion</h2>
+            <p className="text-xs text-[color:var(--tx3)]">
+              This pairs the machine with{' '}
+              <span className="font-semibold text-[color:var(--tx)]">
+                {pairingOrigin ? executorPairingOriginLabel(pairingOrigin) : ''}
+              </span>
+              {' · '}
+              <code className="rounded bg-[color:var(--overlay-weak)] px-1 py-0.5 text-[color:var(--tx2)]">{pairingOrigin}</code>
+              . Confirm that host alongside the fingerprint the companion prints: the fingerprint
+              says a key belongs to that machine, the host says which Nessie it now talks to.
+            </p>
             <p className="text-xs text-[color:var(--tx3)]">Replace the workspace placeholder with one existing absolute directory. The companion stores its canonical root and machine key in owner-only state, and can only read bounded files under that root. This invitation expires at {created.invitation.expiresAt}.</p>
             <p className="text-xs text-[color:var(--tx3)]">This command is the Linux package’s: its systemd service reads that exact state directory, so pairing anywhere else leaves the service unable to start. On macOS, pair from the desktop companion below instead. On Windows the service owns its own state under <code>%ProgramData%\Nessie Executor</code> and pairs itself.</p>
             <p className="text-xs text-[color:var(--tx3)]">Supported platforms: macOS 15+ on Apple Silicon, Ubuntu Linux x86_64, Windows 11/10 x86_64 (Windows and Linux support arrive with their releases).</p>
