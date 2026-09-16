@@ -29,13 +29,22 @@ export const signInUrl = 'https://app.nessie.works/login?launch=sso'
 export const docsUrl = 'https://github.com/UnlikeOtherAI/nessie'
 export const contactUrl = 'mailto:hello@nessie.works'
 
+/**
+ * The top navigation.
+ *
+ * `menu` means this item opens a real dropdown, built from `pages.ts` — it is
+ * not decoration. An item that only scrolls the homepage has no chevron,
+ * because a chevron on a link that goes straight somewhere is a promise the
+ * header does not keep.
+ */
 export const navItems = [
-  { label: 'AI employees', href: '#teammates', menu: true },
-  { label: 'Teamwork', href: '#teamwork', menu: true },
-  { label: 'Your people', href: '#people', menu: false },
-  { label: 'Resources', href: '#resources', menu: true },
-  { label: 'Pricing', href: '#pricing', menu: false },
-]
+  { href: '#teammates', label: 'AI employees', menu: 'none' },
+  { href: '#teamwork', label: 'Teamwork', menu: 'none' },
+  { href: '#people', label: 'Your people', menu: 'none' },
+  { href: '#pricing', label: 'Pricing', menu: 'none' },
+  { href: '/docs/installation', label: 'Docs', menu: 'resources' },
+  { href: '/eu', label: 'Why Nessie', menu: 'why' },
+] satisfies { href: string; label: string; menu: 'resources' | 'why' | 'none' }[]
 
 export const cookieCopy = {
   text: 'We use essential cookies to run this site. With your permission we also use analytics cookies to learn which pages help people.',
@@ -324,14 +333,45 @@ export const promos = {
 
 export const finalCta = { title: 'Your team is about to get a lot bigger.' }
 
+/**
+ * Footer columns. Every entry is a destination that exists — a link to a page
+ * nobody has written is worse than no link, and the columns shrank to what is
+ * real rather than keeping four tidy rows of `#top`.
+ */
 export const footerColumns = [
-  { title: 'Product', links: ['AI employees', 'Agent email', 'Channels', 'Knowledge', 'Apps'] },
-  { title: 'Why Nessie', links: ['Your people', 'Self-hosting', 'Security', 'Licence'] },
-  { title: 'Resources', links: ['Docs', 'Changelog', 'Guides', 'Support'] },
-  { title: 'Company', links: ['About', 'Careers', 'Contact', 'Press'] },
-]
+  {
+    links: [
+      { href: '#teammates', label: 'AI employees' },
+      { href: '#teamwork', label: 'Teamwork' },
+      { href: '#people', label: 'Your people' },
+      { href: '#pricing', label: 'Pricing' },
+    ],
+    title: 'Product',
+  },
+  {
+    links: [
+      { href: '/docs/installation', label: 'Installation' },
+      { href: '/docs/api', label: 'API' },
+      { href: '/docs/mcp', label: 'MCP' },
+      { href: '/docs/executors', label: 'Remote executors' },
+    ],
+    title: 'Documentation',
+  },
+  {
+    links: [
+      { href: '/eu', label: 'EU made and data residency' },
+      { href: docsUrl, label: 'Source code' },
+      { href: `${docsUrl}/blob/main/LICENSE`, label: 'Licence' },
+      { href: contactUrl, label: 'Contact' },
+    ],
+    title: 'Why Nessie',
+  },
+] satisfies { links: { href: string; label: string }[]; title: string }[]
 
-export const legalLinks = ['Privacy', 'Terms', 'Cookie policy']
+export const legalLinks = [
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/terms', label: 'Terms' },
+]
 
 // Case colours for the 3D desktop: `front` tints the chin and stand, `back`
 // the rear shell. The choice is remembered in a cookie (colour-cookie.ts).

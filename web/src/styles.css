@@ -1830,3 +1830,336 @@ button {
 .n-teams-current + .n-teams-chevron {
   margin-left: 0;
 }
+
+/* ------------------------------------------------------- header menus ---
+   The chevron belongs only to items that really open something. These panels
+   are what it now promises: they open on hover, on click and on keyboard
+   focus, and close on Escape or a click outside. */
+
+.n-nav-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.n-nav-menu-trigger {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.n-nav-chevron {
+  font-size: 11px;
+  opacity: 0.75;
+  transition: transform 0.15s ease;
+}
+
+.n-nav-chevron-up {
+  transform: rotate(180deg);
+}
+
+.n-nav-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 14px);
+  left: -16px;
+  display: grid;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: var(--n-deep);
+  box-shadow: 0 24px 60px rgba(4, 12, 24, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.n-nav-panel-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.n-nav .n-nav-panel-item {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.n-nav .n-nav-panel-item:hover,
+.n-nav .n-nav-panel-item:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.n-nav .n-nav-panel-item strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.n-nav .n-nav-panel-item span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+/* On a phone the nav is already a stacked drawer, so a floating panel would
+   cover the items under it. The panel becomes part of the column instead. */
+@media (max-width: 900px) {
+  .n-nav-menu {
+    display: block;
+  }
+
+  .n-nav-panel {
+    position: static;
+    max-width: none;
+    padding: 4px 0 4px 12px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  .n-nav .n-nav-panel-item span {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------- inner pages ---
+   One column of prose under the same header as the homepage, with the
+   documentation set listed beside it. */
+
+.n-page {
+  padding: 56px 24px 96px;
+  background: #fff;
+}
+
+.n-page-inner {
+  width: min(100%, 760px);
+  margin: 0 auto;
+}
+
+.n-page-inner-doc {
+  display: grid;
+  width: min(100%, var(--n-max));
+  gap: 56px;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.n-doc-side {
+  position: sticky;
+  top: 104px;
+  align-self: start;
+  display: grid;
+  gap: 10px;
+}
+
+.n-doc-side-title {
+  color: var(--n-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.n-doc-side ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.n-doc-side-link {
+  display: block;
+  padding: 7px 12px;
+  border-left: 2px solid var(--n-line);
+  color: var(--n-muted);
+  font-size: 14.5px;
+  text-decoration: none;
+}
+
+.n-doc-side-link:hover {
+  color: var(--n-text);
+}
+
+.n-doc-side-link-on {
+  border-left-color: var(--n-sea);
+  color: var(--n-sea);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .n-page-inner-doc {
+    gap: 32px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .n-doc-side {
+    position: static;
+  }
+}
+
+/* ------------------------------------------------------------- prose ---
+   Long-form type. Sized for reading rather than for the homepage's display
+   headlines, and deliberately narrow: a documentation line that runs the full
+   width of a desktop window is not read, it is skimmed. */
+
+.n-prose {
+  color: var(--n-text);
+  font-size: 16.5px;
+  line-height: 1.7;
+}
+
+.n-prose h1 {
+  margin: 0 0 12px;
+  font-size: clamp(34px, 5vw, 46px);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.n-page-lede {
+  margin: 0 0 40px;
+  color: var(--n-muted);
+  font-size: 19px;
+  line-height: 1.55;
+}
+
+.n-prose h2 {
+  margin: 48px 0 14px;
+  font-size: 25px;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  scroll-margin-top: 110px;
+}
+
+.n-prose h3 {
+  margin: 34px 0 10px;
+  font-size: 18.5px;
+  line-height: 1.35;
+  scroll-margin-top: 110px;
+}
+
+.n-prose h4 {
+  margin: 26px 0 8px;
+  font-size: 16.5px;
+}
+
+.n-prose p,
+.n-prose li {
+  margin: 0 0 14px;
+}
+
+.n-prose ul,
+.n-prose ol {
+  margin: 0 0 18px;
+  padding-left: 22px;
+}
+
+.n-prose li {
+  margin-bottom: 8px;
+}
+
+.n-prose a {
+  color: var(--n-sea);
+  text-decoration-color: rgba(2, 102, 250, 0.35);
+  text-underline-offset: 2px;
+}
+
+.n-prose a:hover {
+  text-decoration-color: currentcolor;
+}
+
+.n-prose strong {
+  font-weight: 600;
+}
+
+.n-prose code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--n-sand);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.n-prose pre {
+  overflow-x: auto;
+  margin: 0 0 20px;
+  padding: 16px 18px;
+  border-radius: var(--n-radius);
+  background: var(--n-ink);
+  color: #e8eef7;
+  font-size: 13.5px;
+  line-height: 1.6;
+  -webkit-overflow-scrolling: touch;
+}
+
+.n-prose pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.n-prose table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 0 0 22px;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.n-prose th,
+.n-prose td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--n-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.n-prose th {
+  color: var(--n-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.n-prose blockquote {
+  margin: 0 0 20px;
+  padding: 2px 0 2px 18px;
+  border-left: 3px solid var(--n-sea);
+  color: var(--n-muted);
+}
+
+.n-prose hr {
+  margin: 44px 0;
+  border: 0;
+  border-top: 1px solid var(--n-line);
+}
+
+/* A fact nobody has supplied yet, shown as an obvious gap rather than
+   guessed at — the same rule the homepage's unproven claims follow. */
+.n-prose .n-placeholder {
+  display: block;
+  padding: 12px 14px;
+  border: 1px dashed var(--n-line);
+  border-radius: 10px;
+  color: var(--n-muted);
+  font-size: 14.5px;
+}

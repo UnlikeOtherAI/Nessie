@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { faGithub } from '@fortawesome/free-brands-svg-icons'
 import { faArrowRight, faPlay } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -109,22 +110,30 @@ export function FinalCta() {
   )
 }
 
+/** Same rule as the header: an anchor still works from a page that has none. */
+const FooterLink = ({ children, href }: { children: React.ReactNode; href: string }) => {
+  if (href.startsWith('http') || href.startsWith('mailto:')) {
+    return <a href={href} rel="noreferrer" target="_blank">{children}</a>
+  }
+  return <Link to={href.startsWith('#') ? `/${href}` : href}>{children}</Link>
+}
+
 export function Footer() {
   return (
     <footer className="n-footer">
       <div className="n-container">
         <div className="n-footer-grid">
-          <a className="n-brand" href="#top">
+          <Link className="n-brand" to="/">
             <img alt="" src="/nessie-mark.svg" />
             nessie
-          </a>
+          </Link>
           {footerColumns.map((column) => (
             <div key={column.title}>
               <h4>{column.title}</h4>
               <ul>
                 {column.links.map((link) => (
-                  <li key={link}>
-                    <a href="#top">{link}</a>
+                  <li key={link.label}>
+                    <FooterLink href={link.href}>{link.label}</FooterLink>
                   </li>
                 ))}
               </ul>
@@ -135,9 +144,9 @@ export function Footer() {
           <span>© {new Date().getFullYear()} UnlikeOtherAI. Licensed under FSL-1.1-ALv2.</span>
           <div>
             {legalLinks.map((link) => (
-              <a href="#top" key={link}>
-                {link}
-              </a>
+              <FooterLink href={link.href} key={link.label}>
+                {link.label}
+              </FooterLink>
             ))}
             <button onClick={() => window.dispatchEvent(new Event(openCookieEvent))} type="button">
               Cookie preferences
