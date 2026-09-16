@@ -128,3 +128,28 @@ test('entries missing an id or a name are dropped, not half-rendered', async () 
 
   assert.deepEqual(directory?.entries.map((entry) => entry.label), ['Good'])
 })
+
+test("the directory keeps the two labels a tenant hostname is built from", async () => {
+  const directory = await call(ORG_ME_BODY)
+  const [general, design] = directory.entries
+  // UOA calls them `slug` and `orgSlug`; a team slug is unique only inside its
+  // organisation, so a product needs both or neither.
+  assert.equal(general?.teamSlug, 'general')
+  assert.equal(general?.orgSlug, 'nessie-works')
+  assert.equal(design?.teamSlug, 'design')
+  assert.equal(design?.orgSlug, 'kilomayo')
+})
+
+test('an older UOA build without the labels still yields its teams', async () => {
+  const withoutSlugs = {
+    ...ORG_ME_BODY,
+    org: {
+      ...ORG_ME_BODY.org,
+      team_directory: ORG_ME_BODY.org.team_directory.map(({ slug, orgSlug, ...rest }) => rest),
+    },
+  }
+  const directory = await call(withoutSlugs)
+  assert.equal(directory.entries.length, 2, 'a missing slug must degrade, never hide the row')
+  assert.equal(directory.entries[0]?.teamSlug, undefined)
+  assert.equal(directory.entries[0]?.orgSlug, undefined)
+})
