@@ -1708,7 +1708,7 @@ button {
    teams rail is, that space reads as a hole, so the hero gives most of it back
    — the visitor who has teams came to click one, not to admire the gap. */
 .n-teams + .n-hero {
-  padding-top: 32px;
+  padding-top: 8px;
 }
 
 /* ---------------------------------------------------------------- teams ---
@@ -1720,16 +1720,28 @@ button {
 
 .n-teams {
   width: min(100% - 40px, var(--n-max));
-  margin: 28px auto 0;
+  /* Room to breathe on both sides. This band sits between the header's wave
+     and the hero's headline, and with the old 28px it read as something that
+     had slid down from the navigation rather than a thing of its own. */
+  margin: 0 auto;
+  padding: 56px 0 48px;
 }
 
 .n-teams-title {
-  margin: 0 0 12px;
+  margin: 0 0 6px;
+  color: var(--n-text);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+/* Says what the list is for. Without it the band is three unexplained tiles
+   above a sales page: you can see your teams, but nothing tells you the site
+   recognised you or that pressing one takes you into it. */
+.n-teams-lede {
+  margin: 0 0 18px;
   color: var(--n-muted);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 15px;
 }
 
 .n-teams-list {

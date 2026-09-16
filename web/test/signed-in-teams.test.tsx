@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { SignedInTeams, SignedInTeamsSection } from '../src/signed-in-teams/SignedInTeams'
 import { fetchLandingTeams, LANDING_TEAMS_PATH } from '../src/signed-in-teams/landing-teams'
+import { LandingTeamsProvider } from '../src/signed-in-teams/use-landing-teams'
 
 const design = {
   label: 'Design',
@@ -23,13 +24,18 @@ test('an empty list renders nothing at all', () => {
 })
 
 test('the first render, before any answer, renders nothing (no flash for anonymous visitors)', () => {
-  assert.equal(renderToStaticMarkup(<SignedInTeams apiOrigin="https://api.nessie.works" />), '')
+  assert.equal(
+    renderToStaticMarkup(
+      <LandingTeamsProvider apiOrigin="https://api.nessie.works"><SignedInTeams /></LandingTeamsProvider>,
+    ),
+    '',
+  )
 })
 
 test('signed in, every team is listed with its organisation, avatar and link', () => {
   const html = renderToStaticMarkup(<SignedInTeamsSection teams={[design, sales]} />)
   assert.match(html, /<section[^>]*aria-labelledby="n-teams-title"/)
-  assert.match(html, />Your teams</)
+  assert.match(html, />You\u2019re signed in</)
   assert.match(html, /href="https:\/\/design\.acme\.nessie\.works\/channels"/)
   assert.match(html, /href="https:\/\/app\.nessie\.works\/channels"/)
   assert.match(html, />Design</)

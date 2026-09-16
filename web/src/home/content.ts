@@ -26,6 +26,8 @@ import {
 // rating or customer story ships until it is real and approved.
 
 export const signInUrl = 'https://app.nessie.works/login?launch=sso'
+/** Where the top bar sends someone who is already signed in. */
+export const accountUrl = 'https://app.nessie.works/settings/account'
 export const docsUrl = 'https://github.com/UnlikeOtherAI/nessie'
 export const contactUrl = 'mailto:hello@nessie.works'
 

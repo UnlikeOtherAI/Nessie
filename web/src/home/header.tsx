@@ -3,7 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { pagesInGroup } from '../pages/registry'
-import { cookieCopy, navItems, signInUrl } from './content'
+import { useLandingTeams } from '../signed-in-teams/use-landing-teams'
+import { accountUrl, cookieCopy, navItems, signInUrl } from './content'
 import { openCookieEvent } from './ui'
 import { HangingWave } from './wave'
 
@@ -92,6 +93,7 @@ const NavMenu = ({ item, onNavigate }: {
 
 export function Header() {
   const [open, setOpen] = useState(false)
+  const { settled, signedIn } = useLandingTeams()
   return (
     <header className="n-header">
       <div className="n-header-inner">
@@ -114,13 +116,17 @@ export function Header() {
           <button aria-label="Search" className="n-icon-btn" type="button">
             <FontAwesomeIcon icon={faMagnifyingGlass} />
           </button>
-          {/* One door, not two. "Sign in" and "Get started" sat an inch apart
-              here and went to the same URL, so the quiet link and the primary
-              button promised a returning customer and a newcomer two different
-              journeys and delivered one. The page's own calls to action are
-              the invitation; the top bar is for the person who already has an
-              account. */}
-          <a className="n-signin" href={signInUrl}>Sign in</a>
+          {/* One door, and which door depends on who is at it. A page that has
+              just listed your teams by name has no business offering you a
+              "Sign in" button; it should offer you your account. Nothing is
+              drawn until the read settles, because the anonymous visitor is
+              almost all of this page's traffic and must not see it change its
+              mind. */}
+          {settled
+            ? (signedIn
+              ? <a className="n-signin" href={accountUrl}>Your account</a>
+              : <a className="n-signin" href={signInUrl}>Sign in</a>)
+            : null}
           <button aria-label="Menu" className="n-icon-btn n-menu" onClick={() => setOpen(!open)} type="button">
             <FontAwesomeIcon icon={open ? faXmark : faBars} />
           </button>
