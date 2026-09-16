@@ -129,10 +129,16 @@ Full record in [spike-cd-render-touch.md](spike-cd-render-touch.md).
   insert-row with the formula following, a peer's diffs applied paused and
   landing correctly, and the method-shadowing bridge (52 own-property
   wrappers, no fork) recording intents and draining diffs.
-- **The patch is 6 lines of code** (`patches/@ironcalc__workbook@0.8.3.patch`,
-  registered in the root `package.json`): it publishes the widget's private
-  redraw setter. Proved necessary — with the repaint suppressed the canvas was
-  byte-identical after a peer batch.
+- **The repaint needs no patch** (corrected 2026-09-16; the spike shipped one
+  and it has been deleted). A peer's batch really is invisible without a
+  repaint — the canvas was byte-identical after it landed — but the repaint is
+  reachable from outside: the widget bumps its private redraw counter for every
+  key it handles, and `Escape` is the one whose handler changes nothing else
+  worth keeping, so one synthetic `keydown` aimed at `.ic-workbook-container`
+  does it. Measured identical to the patched `redraw()` on the canvas bytes, the
+  address box, the formula bar, the sheet tab bar, frozen panes, a batch landing
+  mid-scroll and an editor left open mid-edit. Its one cost is that Escape also
+  clears the cut outline and disarms the format painter, both drawing state.
 - **Phone editing ships**, verified in real Mobile Safari on iOS 26.5, not
   only Chromium: long-press-drag selected a range with handles and did not
   scroll the page, and a plain drag still scrolled. The overlay is 182 lines.
@@ -148,7 +154,17 @@ Full record in [spike-cd-render-touch.md](spike-cd-render-touch.md).
 - **An empty send queue flushes as one `0x00` byte**, so a naive flush loop
   would burn a `seq` per microtask.
 - `workbookState` is built in the render body, so a root re-render discards
-  in-cell editing state; `redraw()` is safe because it re-renders the subtree.
+  in-cell editing state; the repaint is safe because it re-renders the subtree.
+- **A `window` resize and a synthetic `scroll` on the worksheet wrapper repaint
+  the canvas but not the widget's own chrome** — they re-render `Worksheet`
+  only, so the address box, formula bar and sheet tab bar stay stale, which
+  would break find/replace stepping. Only the `Workbook` subtree counts as a
+  repaint.
+- **A synthetic Escape is visible to capture-phase listeners**, and
+  `SpreadsheetPane`'s fullscreen handler was one: without an `event.isTrusted`
+  check every peer batch threw the person out of fullscreen. React's synthetic
+  `stopPropagation()` calls the native one, so nothing on `document`, `body` or
+  `window` sees it in the bubble phase.
 
 ## Test isolation: the engine's panic can abort the runner
 

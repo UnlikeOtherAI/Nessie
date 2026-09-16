@@ -36,12 +36,16 @@ Copy says **spreadsheet** for the document and **sheet** for a tab.
   dark mode passes `darkThemeVariables` merged with the same mapping. The
   grid canvas follows because IronCalc draws from the model theme and these
   variables — no CSS override file is needed.
-- **The one patch:** `pnpm patch @ironcalc/workbook` adds `redraw()` to
-  `IronCalcHandle` (lift `setRedrawId` from `Workbook.tsx` into a ref the
-  root exposes; ≈ 20 lines on `dist/ironcalc.js` + `index.d.ts`). Without
-  it, a remote batch applied to the model is not painted until the person
-  acts. Phase 0 files the upstream PR (`redraw` + `onModelChange`) and
-  records the patch in `patches/`.
+- **The repaint, and there is no patch:** a remote batch applied to the model
+  is not painted until the person acts, and `IronCalcHandle` publishes no
+  repaint. `WorkbookHost`'s `repaintGrid` dispatches a synthetic `Escape`
+  `keydown` at `.ic-workbook-container` — the one key whose handler bumps
+  `Workbook`'s private redraw counter without changing anything worth keeping,
+  and aimed so the cell editor never sees it. Measured against the `pnpm patch`
+  it replaced in `spike-cd-render-touch.md` §"The repaint, from outside the
+  package"; `admin/test/spreadsheet-repaint-contract.test.ts` makes an IronCalc
+  upgrade that moves the anchors fail loudly. `redraw()` + `onModelChange`
+  remain the upstream PR worth filing.
 - **Method shadowing, not a fork** (`spreadsheet-model-bridge.ts`): after
   creating the `Model`, define own-property wrappers on the instance for
   every mutating method (the list is generated from `Model.prototype` at

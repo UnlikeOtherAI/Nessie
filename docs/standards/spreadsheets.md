@@ -237,23 +237,59 @@ Bumping the pin, in order:
 
 ## The UI: wrap, do not fork
 
-- **One `pnpm patch`**, `patches/@ironcalc__workbook@0.8.3.patch`, six lines of
-  code: it publishes the widget's private redraw setter. Proved necessary — with
-  the repaint suppressed the canvas was byte-identical after a peer's batch
-  landed. Adding to the patch is a last resort; everything else is done from
-  outside.
-- **The DOM reach-in it replaces:** without `redraw()` the only way to repaint
-  after `applyExternalDiffs` is to reach into the widget's canvas and force a
-  paint from the outside — a private-internals dependency with no version
-  contract. One published setter is the smaller debt.
+- **Nothing in the repo modifies the library.** All three IronCalc packages are
+  plain version references (`@ironcalc/workbook` 0.8.3, `@ironcalc/wasm` 0.8.4,
+  `@ironcalc/nodejs` 0.8.3), there is no `patches/` directory and no
+  `pnpm.patchedDependencies`. Everything Nessie needs that the package does not
+  publish is done from outside it.
+- **The repaint: one synthetic `Escape`** (`WorkbookHost.tsx` → `repaintGrid`).
+  `IronCalcHandle` has `setLanguage` and nothing else, and the only thing that
+  paints the canvas from the current model is a re-render of the widget's
+  **`Workbook` subtree** — `Worksheet` rebuilds `WorksheetCanvas` and calls
+  `renderSheet()` in a dependency-free effect. `Workbook` drives that from a
+  private `useState` counter, every keyboard action it handles bumps that
+  counter, and Escape is the one whose handler changes nothing else worth
+  keeping. So `redraw()` is
+  `container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', … }))`
+  aimed at `.ic-workbook-container`.
+- **Aiming it at that element is the whole safety argument.** The widget's key
+  handler starts with `event.target !== root` → return, so targeting the
+  container is both what makes it run and what keeps the event away from the
+  cell editor's `<textarea>` handlers below it: a peer's batch landing while
+  somebody is typing leaves their editor open with its text. React's synthetic
+  `stopPropagation()` calls the native one, so the event dies at React's root
+  container — measured: 0 listeners reached on `document`, `body` or `window` in
+  the bubble phase. Capture-phase listeners still see it, which is why
+  **`SpreadsheetPane`'s fullscreen Escape requires `event.isTrusted`**; without
+  that line every peer batch threw the person out of fullscreen.
+- **What it costs, exactly.** Escape also clears the cut outline and disarms the
+  format painter (`WorkbookState.clearCutRange()` / `setCopyStyles(null)`). Both
+  are drawing state: a paste reads `type: "cut"` off the clipboard payload, so
+  paste semantics do not ride on `cutRange`. That is the only measured
+  difference from the patch this replaces.
+- **Two cheaper nudges do not work** and the measurement is in
+  [the spike record](../plans/2026-09-15-spreadsheets-ironcalc/spike-cd-render-touch.md):
+  a `window` `resize` and a synthetic `scroll` on `.ic-worksheet-wrapper` both
+  repaint the canvas, but they only re-render `Worksheet`, so the address box,
+  the formula bar and the sheet tab bar stay stale — which breaks find/replace
+  stepping, whose whole job is to move the selection and show where it went.
+- **An upgrade must fail loudly**, which is what a patch file did for free and a
+  DOM reach-in does not: `admin/test/spreadsheet-repaint-contract.test.ts` pins
+  the version, the container class, the `target !== root` guard, Escape's route
+  to `onEscape`, that `onEscape` still bumps the counter and gained no side
+  effect worth keeping, and `Worksheet`'s dependency-free repaint effect. If it
+  goes red, do not loosen it — re-read the new `dist/ironcalc.js`, and check
+  first whether upstream has published a repaint on `IronCalcHandle`, because a
+  published method beats a synthetic key press.
 - The rest is own-property wrappers on the wasm `Model` instance (52 of them,
   no fork) for intent recording, flush and selection frames; a delegated
   `input` listener on the editor textarea for drafts; our own presence overlay;
   our own action bar.
 - **`IronCalc` builds `WorkbookState` in its root render body**, so a parent's
   re-render discards in-cell editing state even with referentially stable
-  props. Memoising the element is what makes React skip the subtree.
-  `redraw()` is safe because it re-renders the subtree rather than the root.
+  props. Memoising the element is what makes React skip the subtree. The
+  synthetic Escape is safe because it re-renders the subtree rather than the
+  root.
 - **An empty send queue flushes as one `0x00` byte**, so a naive flush loop
   burns a `seq` per microtask. `isEmptyDiffPayload` is the guard.
 - `darkThemeVariables` does not exist in the published package; one token

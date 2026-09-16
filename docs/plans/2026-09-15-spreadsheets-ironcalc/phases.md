@@ -27,8 +27,8 @@ Owns: `packages/schemas/src/spreadsheet.ts` (+ `__tests__/spreadsheet.test.ts`),
 `packages/schemas/src/realtime-document.ts` (event names and data shapes),
 `api/prisma/schema.prisma` + `api/prisma/migrations/2026091600_spreadsheets/`,
 `packages/spreadsheet/{package.json,tsconfig.json,src/index.ts,src/engine.ts}`
-(skeleton + the `SpreadsheetEngineModel` interface below), `patches/@ironcalc__workbook@<ver>.patch`
-(`redraw`), dependency pins (`@ironcalc/workbook`, `@ironcalc/wasm`,
+(skeleton + the `SpreadsheetEngineModel` interface below), dependency pins
+(`@ironcalc/workbook`, `@ironcalc/wasm`,
 `i18next`, `react-i18next`, `lucide-react` in `admin`; `@ironcalc/nodejs` in
 `packages/spreadsheet`), `turbo.json` / `pnpm-workspace.yaml`, `decisions.md`
 (spike record).
@@ -67,7 +67,7 @@ Deliverables:
    the basis of the import `warnings` list.
 6. **Spike C — render.** `<IronCalc>` mounts in the admin under React 19.2
    inside a throwaway page (not committed): edit, undo, insert row,
-   `applyExternalDiffs` from a second model + `redraw()` via the patch, the
+   `applyExternalDiffs` from a second model + a repaint, the
    method-shadowing bridge, `themeVariables` from admin tokens,
    `darkThemeVariables`. Measure the served wasm and chunk sizes with
    `pnpm --filter @nessie/admin build`. Any failure → `library-assessment.md`
