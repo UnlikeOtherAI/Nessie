@@ -48,9 +48,15 @@ import {
  *    shared with gets the same 403 as a stranger, so the list never discloses
  *    the other recipients.
  *
- * The `knowledge_shared` alert to the recipient is Wave 2A's: the reader side
- * of that enum shipped in Wave 0, and the writer lands one deploy later so a
- * replica running the previous build never receives a kind it cannot parse.
+ * 3. **The recipient is told once, durably.** A grant is silent otherwise: a
+ *    row appears in Shared with me and nothing points at it. The
+ *    `knowledge_shared` bell row is that pointer — the reader side of the enum
+ *    shipped one deploy before this writer, so a replica running the previous
+ *    build never receives a kind it cannot parse
+ *    (`nessie-new-realtime-kind-must-be-inert`). It is a durable row only, not
+ *    a push: a push carrying a private document's title needs its own
+ *    preference kind and its own delivery-time revalidation, which is not this
+ *    change.
  *
  * Contract: docs/plans/2026-09-16-documents-finder-ui/data-and-api.md §2.
  */
@@ -117,6 +123,51 @@ export const readSharedRootPageId = (query: unknown): string | null => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
     ? value
     : null
+}
+
+
+/**
+ * The recipient's bell row for a document somebody just handed them.
+ *
+ * Keyed on the share rather than on the moment, so re-granting after a revoke
+ * writes one row and a retried request writes none. It is deliberately *not*
+ * an approval and not a review queue item: nothing here waits for anybody, and
+ * the row is a doorway to a document the person already has.
+ *
+ * A failure to write it must never fail the share: the grant is the act, and
+ * the bell is how the recipient hears about it.
+ */
+const writeSharedAlert = async (
+  prisma: PrismaClient,
+  input: {
+    actorUserId: string
+    granteeUserId: string
+    organizationId: string
+    pageId: string
+  },
+): Promise<void> => {
+  try {
+    await prisma.userAlert.upsert({
+      where: {
+        userId_eventKey: {
+          eventKey: `knowledge-shared:${input.pageId}:${input.granteeUserId}`,
+          userId: input.granteeUserId,
+        },
+      },
+      create: {
+        actorUserId: input.actorUserId,
+        eventKey: `knowledge-shared:${input.pageId}:${input.granteeUserId}`,
+        kind: 'knowledge_shared',
+        knowledgePageId: input.pageId,
+        organizationId: input.organizationId,
+        userId: input.granteeUserId,
+      },
+      update: {},
+      select: { id: true },
+    })
+  } catch {
+    // Swallowed on purpose; see above.
+  }
 }
 
 export const registerKnowledgeShareRoutes = (
@@ -298,6 +349,14 @@ export const registerKnowledgeShareRoutes = (
           spaceId: target.spaceId,
         },
         ...requestIds(request),
+      })
+    }
+    if (result.created) {
+      await writeSharedAlert(prisma, {
+        actorUserId: actorContext.actor.actorId,
+        granteeUserId: body.granteeUserId,
+        organizationId,
+        pageId,
       })
     }
     const payload = createApiResponse(shareRecord(result.share))

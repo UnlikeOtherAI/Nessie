@@ -1,4 +1,4 @@
-import { Fragment, type MouseEvent } from 'react'
+import { Fragment } from 'react'
 import {
   faBook,
   faChartColumn,
@@ -18,6 +18,10 @@ import { QueryState } from '../../../shared/QueryState'
 import { RowList } from '../../../shared/RowList'
 import { Skeleton } from '../../../primitives/Skeleton'
 import { FinderRow } from './FinderRow'
+import type {
+  FinderBackgroundMenuProps,
+  FinderRowMenuProps,
+} from './FinderContextMenus'
 
 /**
  * The root column (browser-ui.md §3): the first column of the browser, and
@@ -78,10 +82,11 @@ type FinderRootColumnProps = {
   activeRowId?: string
   columnActive: boolean
   focusedRowId?: string
-  /** Wave 2 hangs "New shared folder…" off the column's empty background. */
-  onBackgroundContextMenu?: (event: MouseEvent<HTMLElement>) => void
+  /** "New shared folder…" and Refresh, off the column's empty background. */
+  backgroundProps?: FinderBackgroundMenuProps
   onOpen: (row: FinderRootRow) => void
-  onRowContextMenu?: (row: FinderRootRow, event: MouseEvent<HTMLElement>) => void
+  /** `useFinderMenus().rowProps`, spread on each row. */
+  rowProps?: (row: FinderRootRow) => FinderRowMenuProps
   query: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   root?: KnowledgeRoot
 }
@@ -92,13 +97,13 @@ const Separator = () => <li aria-hidden="true" className="finder-separator" role
 
 export const FinderRootColumn = ({
   activeRowId,
+  backgroundProps,
   columnActive,
   focusedRowId,
-  onBackgroundContextMenu,
   onOpen,
-  onRowContextMenu,
   query,
   root,
+  rowProps,
 }: FinderRootColumnProps) => {
   const { token } = useAuthSession()
   const { documentsSections } = useProductSurfaces()
@@ -139,9 +144,7 @@ export const FinderRootColumn = ({
       chevron: true,
       columnActive,
       id: row.id,
-      onContextMenu: onRowContextMenu
-        ? (event: MouseEvent<HTMLElement>) => onRowContextMenu(row, event)
-        : undefined,
+      ...(rowProps ? rowProps(row) : {}),
       onOpen: () => onOpen(row),
       prewarm: to ? prewarmRowHandlers(prewarm, to) : undefined,
       selected,
@@ -265,7 +268,7 @@ export const FinderRootColumn = ({
   }
 
   return (
-    <div className="h-full" onContextMenu={onBackgroundContextMenu}>
+    <div className="h-full" {...backgroundProps}>
       <QueryState
         className="py-6"
         errorLabel="Couldn’t load your documents."

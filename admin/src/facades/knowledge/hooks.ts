@@ -84,6 +84,10 @@ export type UpdateSpaceInput = {
   description?: string | null
   memberAgentIds?: string[]
   memberUserIds?: string[]
+  // `PATCH /spaces/:id` has always accepted this; nothing in the admin ever
+  // sent it, so a folder's audience could be chosen once at creation and never
+  // changed — the Rule-zero gap `SpaceSettingsDialog` now closes.
+  visibility?: KnowledgeSpaceRecord['visibility']
   writeRestricted?: boolean
 }
 

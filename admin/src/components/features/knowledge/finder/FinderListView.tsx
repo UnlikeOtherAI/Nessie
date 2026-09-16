@@ -9,6 +9,10 @@ import { familyTone, iconForFamily } from '../../../shared/file-icons'
 import { AgentDraftBadge } from '../AgentDraftBadge'
 import { isAgentDraft } from '../page-status'
 import { FinderRow } from './FinderRow'
+import type {
+  FinderBackgroundMenuProps,
+  FinderRowMenuProps,
+} from './FinderContextMenus'
 import { ResponsivePageHeader, type PageHeaderAction } from '../../../shared/ResponsivePageHeader'
 import type { FinderFolderLevel } from './FinderFolderColumn'
 import {
@@ -50,12 +54,15 @@ const SIZE_MIN = 480
 export type FinderBreadcrumbCrumb = { id: string | null; title: string }
 
 type FinderListViewProps = {
+  /** The folder's own menu, off the list's empty background. */
+  backgroundProps?: FinderBackgroundMenuProps
   columnActive: boolean
   crumbs: FinderBreadcrumbCrumb[]
   emptyLabel: string
   focusedRowId?: string
   onBrowseTo: (pageId: string | null) => void
-  onContextMenu?: (page: KnowledgePageRecord, event: MouseEvent<HTMLElement>) => void
+  /** `useFinderMenus().rowProps`, spread on each row. */
+  rowProps?: (page: KnowledgePageRecord) => FinderRowMenuProps
   onOpen: (page: KnowledgePageRecord) => void
   onRowKeyDown?: (event: KeyboardEvent<HTMLElement>, id: string) => void
   onSelect: (page: KnowledgePageRecord, event: MouseEvent<HTMLElement>) => void
@@ -94,17 +101,18 @@ const Breadcrumb = ({
 )
 
 export const FinderListView = ({
+  backgroundProps,
   columnActive,
   crumbs,
   emptyLabel,
   focusedRowId,
   onBrowseTo,
-  onContextMenu,
   onOpen,
   onRowKeyDown,
   onSelect,
   onSelectSort,
   rows,
+  rowProps,
   selectedIds,
   sort,
 }: FinderListViewProps) => {
@@ -180,6 +188,7 @@ export const FinderListView = ({
       <div
         className="min-h-0 flex-1 overflow-y-auto px-1.5"
         ref={gridRef}
+        {...backgroundProps}
         style={{ ['--finder-grid-columns' as string]: template }}
       >
         <div
@@ -205,6 +214,7 @@ export const FinderListView = ({
               const folder = page.kind === 'folder'
               return (
                 <FinderRow
+                  {...(rowProps ? rowProps(page) : {})}
                   ariaLabel={folder ? `Open folder ${page.title}` : undefined}
                   chevron={folder}
                   columnActive={columnActive}
@@ -232,9 +242,6 @@ export const FinderListView = ({
                     </>
                   )}
                   gridTemplate={template}
-                  onContextMenu={onContextMenu
-                    ? (event) => onContextMenu(page, event)
-                    : undefined}
                   onKeyDown={onRowKeyDown
                     ? (event) => onRowKeyDown(event, page.id)
                     : undefined}
@@ -260,6 +267,8 @@ export const FinderListView = ({
 type FinderListHostProps = {
   /** Project and agent scope only: the org root column carries them instead. */
   actions?: PageHeaderAction[]
+  backgroundProps?: FinderBackgroundMenuProps
+  rowProps?: (page: KnowledgePageRecord) => FinderRowMenuProps
   dispatch: (event: FinderSelectionEvent) => void
   level: FinderFolderLevel
   onBrowseTo: (pageId: string | null) => void
@@ -285,6 +294,7 @@ type FinderListHostProps = {
  */
 export const FinderListHost = ({
   actions,
+  backgroundProps,
   dispatch,
   level,
   onBrowseTo,
@@ -295,6 +305,7 @@ export const FinderListHost = ({
   pathPages,
   rootLabel,
   rows,
+  rowProps,
   selection,
   sort,
 }: FinderListHostProps) => {
@@ -326,6 +337,7 @@ export const FinderListHost = ({
         />
       ) : null}
       <FinderListView
+        backgroundProps={backgroundProps}
         columnActive
         crumbs={[
           { id: null, title: rootLabel },
@@ -343,6 +355,7 @@ export const FinderListHost = ({
           type: 'click',
         })}
         onSelectSort={onSelectSort}
+        rowProps={rowProps}
         rows={rows}
         selectedIds={selectedIds}
         sort={sort}

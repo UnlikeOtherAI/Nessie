@@ -1,7 +1,5 @@
 import {
   faArrowDownWideShort,
-  faFileArrowUp,
-  faFileLines,
   faFolderPlus,
   faGear,
   faPlus,
@@ -19,6 +17,7 @@ import {
   type FinderSortKey,
 } from './finder-sort'
 import { finderViewOptions, type FinderView } from './finder-view'
+import { newFileTypeItems } from './new-file-types'
 
 /**
  * Every header action the Finder has (browser-ui.md §6), in one place.
@@ -128,21 +127,17 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
                   onSelect: input.onCreateFolder,
                 }]
               : []),
+            // Document and Upload — and any kind a later integrator adds —
+            // come from `new-file-types.ts`, the one registry the background
+            // menu reads too. Adding a third answer is one entry there, not an
+            // edit here and another one over in `FinderContextMenus`.
             ...(writable
-              ? [
-                  {
-                    icon: faFileLines,
-                    id: 'new-document',
-                    label: 'Document',
-                    onSelect: input.onCreateDocument,
-                  },
-                  {
-                    icon: faFileArrowUp,
-                    id: 'upload-file',
-                    label: 'Upload…',
-                    onSelect: input.onUploadFile,
-                  },
-                ]
+              ? newFileTypeItems({
+                  openCreate: () => input.onCreateDocument(),
+                  openUploadPicker: () => input.onUploadFile(),
+                  parentPageId: null,
+                  spaceId: '',
+                })
               : []),
           ],
           kind: 'menu',
