@@ -88,7 +88,12 @@ export const useTenantHost = () => {
     // for the document — so never refetch it.
     staleTime: Infinity,
     gcTime: Infinity,
-    retry: false,
+    // One retry, because this answer is cached for the life of the page and
+    // everything downstream reads a failure as "not a tenant host". A single
+    // dropped request would otherwise leave the whole document believing it is
+    // on the canonical origin: the branding never appears and a team switch
+    // stays put instead of leaving for an origin that can serve it.
+    retry: 1,
     placeholderData: keepPreviousData,
     queryFn: () =>
       apiClient.get<TenantHost>(`/api/hosts/resolve?host=${encodeURIComponent(hostname)}`),

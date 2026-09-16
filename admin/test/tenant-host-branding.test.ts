@@ -49,17 +49,24 @@ test('it never names the team behind the address', () => {
   assert.doesNotMatch(source, /teamName|team\.name|useTenantTeam/)
 })
 
-test('the gate shows it only once the session has settled as signed out', () => {
+/**
+ * WHICH state draws this card is `tenant-host-render.ts`, enumerated in
+ * `tenant-host-render.test.ts` — including that 'loading' does not (it would
+ * flash the card at somebody who is signed in) and that 'bootstrap' does not
+ * (first-run setup owns the screen). What is checked here is only that the
+ * gate still asks that function and honours its answer, rather than deciding
+ * again on its own.
+ */
+test('the gate draws the tenant door through the shared render decision', () => {
   const source = readSource('../src/layouts/tenant/TenantHostGate.tsx')
 
+  assert.match(source, /tenantHostRender\(\{/)
   assert.match(
     source,
-    /data\?\.kind === 'team' && sessionState === 'unauthenticated'/,
+    /render === 'sign-in'[\s\S]*?<TeamHostSignIn/,
     'a team host must not fall through to the product marketing page when signed out',
   )
-  // 'loading' would flash the card at somebody who is signed in; 'bootstrap'
-  // owns the screen during first-run setup.
-  assert.doesNotMatch(source, /sessionState !== 'authenticated'/)
+  assert.match(source, /render === 'unavailable'[\s\S]*?<TeamHostUnavailable/)
 })
 
 test('the organisation portal and a team address share one brand frame', () => {

@@ -25,6 +25,20 @@ import { isReactNativeWebView } from './native-shell'
  *   the portal for that hostname whatever the path, so `/channels` on the same
  *   host reloads the portal. It goes to the team's address, or failing that to
  *   the canonical origin.
+ * - **No tenant host ever keeps a team that is not its own.** A team address
+ *   serves the app, so staying there used to look like the cheap option — but
+ *   the URL then names one team while the session is on another, a copied link
+ *   sends a colleague to the wrong place, and the next load of that address
+ *   switches the session back. Not every team has an address to go to instead:
+ *   the lookups behind one are scoped to this product's UOA client domain, so
+ *   an organisation founded on another product's domain has none, and its
+ *   hostname does not even complete a TLS handshake. Those switches leave for
+ *   the canonical origin, which serves every team. Every caller here has
+ *   already awaited the switch, so the session is on the target team before
+ *   the document moves and the canonical origin simply opens on it — there is
+ *   nothing to carry in the URL, and an id in a URL that triggers a session
+ *   change would be a forced-switch primitive for anybody who could get the
+ *   person to follow a link.
  */
 
 export const TEAM_LANDING_PATH = '/channels'
@@ -52,6 +66,7 @@ const parseHost = (url: string | null): URL | null => {
 export const teamSwitchDestination = ({
   canonicalOrigin,
   currentHost,
+  currentHostIsTenant,
   currentHostServesApp,
   inNativeShell,
   teamUrl,
@@ -59,6 +74,12 @@ export const teamSwitchDestination = ({
   /** The product's own origin (`signInOrigin`), used only where this host cannot show the app. */
   canonicalOrigin: string | null
   currentHost: string
+  /**
+   * Whether this hostname belongs to a tenant — an organisation portal or a
+   * team address — rather than being the product's own origin. A tenant host
+   * may serve the app and still be the wrong place to stay.
+   */
+  currentHostIsTenant: boolean
   /** False on an organisation portal, which renders the portal for every path. */
   currentHostServesApp: boolean
   inNativeShell: boolean
@@ -66,15 +87,26 @@ export const teamSwitchDestination = ({
   teamUrl: string | null
 }): TeamSwitchDestination => {
   const team = inNativeShell ? null : parseHost(teamUrl)
-  if (team && team.host !== currentHost) {
-    return { kind: 'document', href: new URL(TEAM_LANDING_PATH, team.origin).href }
+  if (team) {
+    if (team.host !== currentHost) {
+      return { kind: 'document', href: new URL(TEAM_LANDING_PATH, team.origin).href }
+    }
+    // Already at the team's own address: the URL is right, so routing is.
+    if (currentHostServesApp) return { kind: 'in-app', path: TEAM_LANDING_PATH }
   }
-  if (currentHostServesApp) return { kind: 'in-app', path: TEAM_LANDING_PATH }
+  // The product's own origin serves every team, including the ones with no
+  // address, so there is nothing to leave for.
+  if (currentHostServesApp && !currentHostIsTenant) {
+    return { kind: 'in-app', path: TEAM_LANDING_PATH }
+  }
 
   const canonical = parseHost(canonicalOrigin)
   if (canonical && canonical.host !== currentHost) {
     return { kind: 'document', href: new URL(TEAM_LANDING_PATH, canonical.origin).href }
   }
+  // A tenant host with nowhere better to go. Staying is wrong, but a blank
+  // screen is worse than a stale address bar, so the app still opens.
+  if (currentHostServesApp) return { kind: 'in-app', path: TEAM_LANDING_PATH }
   return { kind: 'none' }
 }
 
@@ -89,6 +121,7 @@ export const resolveTeamSwitchDestination = async ({
 }: {
   canonicalOrigin: string | null
   currentHost: string
+  currentHostIsTenant: boolean
   currentHostServesApp: boolean
   fetchTeamUrl: () => Promise<string | null>
   inNativeShell: boolean
