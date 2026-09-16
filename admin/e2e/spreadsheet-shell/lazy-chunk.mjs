@@ -20,7 +20,11 @@ const assets = resolve(dist, 'assets')
 const files = readdirSync(assets)
 const read = (file) => readFileSync(resolve(assets, file), 'utf8')
 
-const chunk = files.find((file) => /^SpreadsheetPane-.*\.js$/.test(file))
+// Matched on the suffix, not the exact name: Phase 3b made
+// `LiveSpreadsheetPane` the lazy entry point (the pane with the live lane
+// wired into its seams), and the thing this file is about is the *boundary*,
+// not which module sits on the far side of it.
+const chunk = files.find((file) => /SpreadsheetPane-[\w-]+\.js$/.test(file))
 assert.ok(chunk, 'no SpreadsheetPane chunk: the lazy() boundary is gone')
 const wasm = files.find((file) => /^wasm_bg-.*\.wasm$/.test(file))
 assert.ok(wasm, 'no wasm asset was emitted')

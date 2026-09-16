@@ -15,7 +15,11 @@ import { PagePreview } from './PagePreview'
 // 1.9 MB wasm — sits behind this one dynamic import. Nothing is fetched while a
 // person browses `/knowledge-base`; the chunk arrives the first time a
 // spreadsheet page opens, and is cached from then on.
-const SpreadsheetPane = lazy(() => import('./spreadsheet/SpreadsheetPane'))
+// `LiveSpreadsheetPane` is `SpreadsheetPane` with the live lane wired into its
+// seams — the ordering rules, presence and the touch overlay (Phase 3b). It is
+// the chunk's entry point rather than a second import, so the boundary this
+// comment is about is still exactly one dynamic import.
+const SpreadsheetPane = lazy(() => import('./spreadsheet/live/LiveSpreadsheetPane'))
 
 type KnowledgeDocumentPaneProps = {
   // The on-demand full-body fetch, handed on so the preview can render the

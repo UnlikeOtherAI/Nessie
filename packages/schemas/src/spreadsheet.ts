@@ -167,6 +167,18 @@ export const SPREADSHEET_STRUCTURAL_KINDS = [
   'deleteSheet',
   'renameSheet',
   'moveSheet',
+  /**
+   * Not an edit anybody can apply: the workbook was replaced wholesale by a
+   * version. The batch carries no diffs and its only job is to tell every open
+   * pane to bootstrap again (`realtime-and-presence.md` rule 3).
+   *
+   * It has to be in this enum because the restore path writes it to
+   * `spreadsheet_op_batches.structural_kind` and publishes it on the live
+   * lane, and both the publish door and the client validate the batch against
+   * this list — a value missing from it is refused *after* the restore has
+   * already landed, which is the worst possible moment.
+   */
+  'restore',
 ] as const
 export const SpreadsheetStructuralKindSchema = z.enum(SPREADSHEET_STRUCTURAL_KINDS)
 export type SpreadsheetStructuralKind = (typeof SPREADSHEET_STRUCTURAL_KINDS)[number]
@@ -286,6 +298,25 @@ export const SpreadsheetAppliedBatchSchema = z.object({
   structuralKind: SpreadsheetStructuralKindSchema.nullable(),
   sheetIndexes: z.array(z.number().int().min(0)),
   cellCount: z.number().int().min(0),
+  /**
+   * The row/column intents this batch performed, and nothing else it did.
+   *
+   * A client that lost a structural race is handed every batch since its
+   * `baseSeq` and has to move its own recorded intents through them
+   * (`shiftIntents`, `realtime-and-presence.md` rule 4). `structuralKind`
+   * alone says *that* rows moved, never *which*, so without this the replay
+   * would re-issue every index unchanged — silently landing the edit on the
+   * wrong row. Absent on a plain cell batch, and absent on a server-built
+   * structural batch (those summaries carry no intents by construction), which
+   * the client reads as "cannot be rebased" rather than as "nothing moved".
+   *
+   * Advisory, exactly like the summary it is derived from: it is never an
+   * input to authorization, tenancy or a permission decision.
+   */
+  structuralIntents: z
+    .array(SpreadsheetIntentSchema)
+    .max(SPREADSHEET_LIMITS.maxIntentsPerBatch)
+    .optional(),
   createdAt: z.string().datetime(),
 })
 export type SpreadsheetAppliedBatch = z.infer<typeof SpreadsheetAppliedBatchSchema>

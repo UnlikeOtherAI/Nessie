@@ -6,7 +6,7 @@ import {
   mapVersion,
   versionInclude,
 } from '@nessie/knowledge'
-import { resolveDisclosureViewer } from '@nessie/runtime'
+import { resolveDisclosureViewer, resolveLiveEntitlements } from '@nessie/runtime'
 
 /**
  * "May this person still read this page?", for the document lane.
@@ -40,17 +40,36 @@ export const canReadSpaceForDocumentLane = async (
   })
   if (!space) return false
 
-  const viewer = await loadSpaceViewer(prisma, input.organizationId, {
-    actorType: 'user',
-    actorId: input.userId,
+  // **The live entitlement proof is not optional here.** `loadUserViewer`
+  // never infers a viewer from persisted membership — without a proof it
+  // returns the denied viewer, whose `baseEntitled: false` makes
+  // `canReadSpace` refuse before it looks at anything. Called without one,
+  // this gate denied *every* document event to *every* connection, so the
+  // lane connected, stayed open, and delivered nothing at all.
+  //
+  // `allowStoredIdentity` is the arm this case is written for: a delivery-time
+  // recheck has no request session to carry a UOA assertion, and the stored
+  // link's subject and epoch still have to survive `/org/me`. On a local
+  // install with no identity provider it resolves the current active
+  // membership, which is the same authority the request path uses.
+  const liveEntitlements = await resolveLiveEntitlements(prisma, {
+    allowStoredIdentity: true,
+    organizationId: input.organizationId,
+    userId: input.userId,
   })
+  const viewer = await loadSpaceViewer(
+    prisma,
+    input.organizationId,
+    { actorType: 'user', actorId: input.userId },
+    { liveEntitlements },
+  )
   if (!canReadSpace(space as never, viewer)) return false
 
   const disclosureViewer = await resolveDisclosureViewer(
     prisma,
     input.organizationId,
     input.userId,
-    {},
+    { liveEntitlements },
   )
   if (!disclosureViewer) return true
 

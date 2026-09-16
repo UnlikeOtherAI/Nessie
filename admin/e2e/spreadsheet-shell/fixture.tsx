@@ -135,7 +135,12 @@ window.fetch = async (input, init) => {
     return Response.json({ data: bootstrap })
   }
   if (url.pathname === `/api/knowledge-base/pages/${PAGE_ID}/spreadsheet/filters/0`) {
-    return Response.json({ data: filterModel })
+    // `{ sheet, filter }`, which is what the route actually answers: the sheet
+    // is echoed so a late response cannot be mistaken for another sheet's.
+    // This stub used to answer the bare model, and that disagreement is what
+    // hid a crash on every unfiltered sheet in the real app — a fixture that
+    // invents a kinder contract than the server's proves nothing.
+    return Response.json({ data: { filter: filterModel, sheet: 0 } })
   }
   if (url.pathname === `/api/knowledge-base/pages/${PAGE_ID}/versions`) {
     return Response.json({
