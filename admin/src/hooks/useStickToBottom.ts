@@ -186,11 +186,23 @@ export const useStickToBottom = (
       return
     }
 
+    let lastScrollTop = container.scrollTop
     const onScroll = () => {
       if (!follow) return
       const distanceFromBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight
-      pinnedRef.current = distanceFromBottom <= NEAR_BOTTOM_PX
+      // Only the reader moving up lets go of the bottom. iOS backs a scroller
+      // with a native scroll view that reports a scroll when its *size*
+      // changes — the soft keyboard shrinking the feed fires one with an
+      // unchanged scrollTop — and reading that as "the reader left" unpinned
+      // the feed before the resize observer could re-pin it, leaving the
+      // newest messages hidden behind the composer.
+      if (distanceFromBottom <= NEAR_BOTTOM_PX) {
+        pinnedRef.current = true
+      } else if (container.scrollTop < lastScrollTop) {
+        pinnedRef.current = false
+      }
+      lastScrollTop = container.scrollTop
       if (
         container.scrollTop <= HISTORY_TOP_THRESHOLD_PX
         && !olderContentRef.current?.failed
