@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 import {
@@ -113,4 +114,58 @@ test('the settled frame keeps the selection and clears the draft', () => {
   assert.deepEqual(plan.settled.selection, selection)
   assert.equal(plan.settled.draft, null)
   assert.equal(plan.settled.clientId, 'run:page')
+})
+
+test('the draft choreography survives an otherwise idle process', () => {
+  // The sleeps between drafts must hold the event loop open. Unref'd, a process
+  // with nothing else pending drains while the choreography is mid-flight: the
+  // `await` never returns, the tool call stops halfway, and under `node --test`
+  // the whole file dies as `cancelledByParent` with no location to chase. It
+  // passed locally for weeks because concurrent work kept the loop alive, and
+  // failed in CI every time.
+  //
+  // Proven in a child process with nothing else scheduled: it prints the frame
+  // count only if the run actually reached the end.
+  const script = `
+    void (async () => {
+      const m = await import(${JSON.stringify(
+        new URL('./spreadsheet-presence.ts', import.meta.url).href,
+      )})
+      const published = []
+      const publisher = m.createAgentPresencePublisher(
+        { publish: async (event) => { published.push(event) } },
+        {
+          actor: {
+            type: 'agent',
+            id: 'agent-1',
+            displayName: 'Sheets',
+            color: '#2563eb',
+            agentId: '00000000-0000-4000-8000-000000000009',
+          },
+          canWrite: true,
+          clientId: 'run:00000000-0000-4000-8000-000000000003',
+          organizationId: '00000000-0000-4000-8000-000000000001',
+          pageId: '00000000-0000-4000-8000-000000000002',
+        },
+      )
+      await publisher.announce({
+        sheet: 0,
+        sheetName: 'Sheet1',
+        selection: { r0: 2, c0: 2, r1: 2, c1: 3 },
+        rows: [['hello', 'there']],
+      })
+      process.stdout.write('FRAMES:' + published.length)
+    })()
+  `
+  const run = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
+    encoding: 'utf8',
+  })
+  // The marker is what matters: it prints only if every `await sleep(...)`
+  // returned. What the frames carry is asserted by the tests above, against the
+  // plan rather than a transport.
+  assert.match(
+    run.stdout,
+    /FRAMES:\d/u,
+    `the choreography stopped in an idle process — stdout ${JSON.stringify(run.stdout)}, stderr ${run.stderr}`,
+  )
 })

@@ -147,9 +147,16 @@ export type PresencePublisherInput = {
   now?: () => Date
 }
 
+// Deliberately NOT unref'd. An awaited sleep has to hold the event loop open:
+// unref'd, the loop can drain while this promise is still pending, and then the
+// caller's `await` never returns. In a worker that is a tool call that stops
+// mid-choreography; under `node --test` it is the whole file reported as
+// `cancelledByParent` with no location, which is how this reached CI three
+// times while passing locally, where other pending work kept the loop alive.
+// The total is bounded by DRAFT_BUDGET_MS, so nothing waits long.
 const sleepFor = (ms: number): Promise<void> =>
   new Promise((resolve) => {
-    setTimeout(resolve, ms).unref?.()
+    setTimeout(resolve, ms)
   })
 
 /**
