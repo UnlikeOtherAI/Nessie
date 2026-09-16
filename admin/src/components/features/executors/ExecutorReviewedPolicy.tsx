@@ -1,6 +1,7 @@
 import type { ExecutorAccessViewResponse } from '@nessie/schemas'
 
 import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
+import { ExecutorReachableFolders } from './ExecutorReachableFolders'
 
 type DescriptorRevision = NonNullable<ExecutorAccessViewResponse['descriptorRevisions']>[number]
 
@@ -51,6 +52,10 @@ export const ExecutorReviewedPolicy = ({
       <p className="text-[color:var(--tx2)]">
         {revision.profiles.join(', ')} · {revision.operationKeys.join(', ')}
       </p>
+      <ExecutorReachableFolders
+        operationKeys={revision.operationKeys}
+        workspaceFolders={revision.workspaceFolders}
+      />
       <ExecutorPermittedPrograms
         commandAllowlist={revision.commandAllowlist}
         operationKeys={revision.operationKeys}

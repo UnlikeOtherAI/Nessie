@@ -502,6 +502,11 @@ export const getExecutorAccessView = async (
             profiles: descriptor.data.profiles,
             reviewStatus: revision.reviewStatus,
             revision: revision.revision,
+            // Same rule as the allowlist: an absent key is how a descriptor
+            // signed before folders had names says it named none.
+            ...(descriptor.data.workspaceFolders
+              ? { workspaceFolders: descriptor.data.workspaceFolders }
+              : {}),
           }]
         : []
     }),

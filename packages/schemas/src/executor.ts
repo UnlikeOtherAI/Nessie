@@ -1066,6 +1066,12 @@ export const ExecutorDescriptorReviewResponseSchema = z.object({
   profiles: z.array(ExecutorProfileSchema).min(1).max(10),
   reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
   revision: z.number().int().positive(),
+  // Projected for the same reason as the programs: adding a folder changes the
+  // digest, so it is a revision somebody approves, and a reviewer should read
+  // which folders they are approving. Names only — the host paths stay on the
+  // machine. Absent on a descriptor signed before folders had names, which
+  // describes exactly one folder.
+  workspaceFolders: ExecutorWorkspaceFolderNamesSchema.optional(),
 }).strict()
 export type ExecutorDescriptorReviewResponse = z.infer<
   typeof ExecutorDescriptorReviewResponseSchema

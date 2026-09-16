@@ -13,6 +13,7 @@ import type {
 } from '@nessie/schemas'
 
 import { ExecutorDetailPanels } from '../src/components/features/executors/ExecutorDetailPanels.js'
+import { ExecutorReachableFolders } from '../src/components/features/executors/ExecutorReachableFolders'
 import { ExecutorPermittedPrograms } from '../src/components/features/executors/ExecutorPermittedPrograms.js'
 import { ExecutorReviewedPolicy } from '../src/components/features/executors/ExecutorReviewedPolicy.js'
 
@@ -184,4 +185,36 @@ test('a revision this page did not load renders nothing rather than a guess', ()
     ),
     '',
   )
+})
+
+test('a reviewer reads the folders a revision reaches, and the three states differ', () => {
+  const named = renderToStaticMarkup(
+    createElement(ExecutorReachableFolders, {
+      operationKeys: ['file.read'],
+      workspaceFolders: ['code', 'notes'],
+    }),
+  )
+  const unnamed = renderToStaticMarkup(
+    createElement(ExecutorReachableFolders, { operationKeys: ['file.read'] }),
+  )
+  const guestRefused = renderToStaticMarkup(
+    createElement(ExecutorReachableFolders, {
+      operationKeys: ['command.run'],
+      workspaceFolders: ['code', 'notes'],
+    }),
+  )
+
+  assert.match(named, /Folders \(2\)/u)
+  assert.match(named, /code, notes/u)
+  // A descriptor signed before folders had names reaches exactly one folder;
+  // rendering nothing would read as "no folders", the opposite of the truth.
+  assert.match(unnamed, /one, named before this revision recorded folder names/u)
+  assert.notEqual(named, unnamed)
+  // Several folders with a guest operation enabled says so, because the guest
+  // refuses rather than silently binding one of them.
+  assert.match(guestRefused, /a guest session mounts one folder/u)
+  assert.notEqual(named, guestRefused)
+  // Host paths never reach a reviewer: the visible text carries names only, so
+  // it holds no path separator once the markup's own tags are removed.
+  assert.equal(named.replace(/<[^>]*>/gu, '').includes('/'), false)
 })
