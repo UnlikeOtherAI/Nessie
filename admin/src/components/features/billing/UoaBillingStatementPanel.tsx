@@ -37,6 +37,78 @@ const actionButtonClass = (
     ? 'admin-button admin-button-primary'
     : 'admin-button admin-button-secondary'
 
+/**
+ * The prototype's "Your plan" card, on the usage view. Reads the same
+ * `useUoaBillingStatement()` query `UoaBillingStatementPanel` uses (same
+ * cache key, so switching between the usage and statement views never
+ * double-fetches) — "Compare plans" and "Upgrade plan" both run the real
+ * `upgrade` hosted action; there is no separate in-app plan-comparison
+ * screen to route "Compare plans" to.
+ */
+export const UoaBillingPlanSummary = () => {
+  const statement = useUoaBillingStatement()
+  const hostedAction = useUoaBillingHostedAction()
+  const data = statement.data
+  const upgrade = data?.actions.find((action) => action.id === 'upgrade')
+
+  if (statement.isLoading || statement.isError || !data) return null
+
+  const runUpgrade = () => {
+    if (!upgrade?.enabled) return
+    hostedAction.mutate('upgrade', {
+      onSuccess: (result) => {
+        window.location.assign(result.redirect_url)
+      },
+    })
+  }
+
+  return (
+    <section className="mb-8" data-testid="uoa-billing-plan-summary">
+      <SectionLabel>Your plan</SectionLabel>
+      <Card className="mt-2" variant="section">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-lg font-semibold text-[color:var(--tx)]">
+              {data.plan.display_name}
+            </div>
+            <div className="mt-1 text-sm text-[color:var(--tx2)]">
+              {data.plan.monthly_subscription.display}/mo · {data.plan.markup_display} · credits
+              and subscriptions billed separately
+            </div>
+          </div>
+          {upgrade && (
+            <div className="flex flex-none items-center gap-3">
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                disabled={!upgrade.enabled || hostedAction.isPending}
+                onClick={runUpgrade}
+                title={upgrade.disabled_reason ?? undefined}
+                type="button"
+              >
+                Compare plans
+              </button>
+              <button
+                className="admin-button admin-button-primary"
+                disabled={!upgrade.enabled || hostedAction.isPending}
+                onClick={runUpgrade}
+                title={upgrade.disabled_reason ?? undefined}
+                type="button"
+              >
+                {upgrade.label}
+              </button>
+            </div>
+          )}
+        </div>
+        {hostedAction.error instanceof Error && (
+          <div className="mt-3 text-xs text-[color:var(--danger-text)]">
+            {hostedAction.error.message}
+          </div>
+        )}
+      </Card>
+    </section>
+  )
+}
+
 export const UoaBillingStatementPanel = () => {
   const statement = useUoaBillingStatement()
   const hostedAction = useUoaBillingHostedAction()

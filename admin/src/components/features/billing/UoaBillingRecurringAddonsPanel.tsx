@@ -14,8 +14,8 @@ import { SectionLabel } from '../../primitives/SectionLabel'
 import { Card } from '../../shared/Card'
 import { Dialog } from '../../shared/Dialog'
 import { KeyValueList } from '../../shared/KeyValueList'
-import { QueryState } from '../../shared/QueryState'
 import { Row, RowList } from '../../shared/RowList'
+import { UoaBillingSeatsRow } from './UoaBillingSeatsSection'
 
 export const UoaBillingRecurringAddonsPanel = () => {
   const addons = useUoaBillingRecurringAddons()
@@ -36,98 +36,98 @@ export const UoaBillingRecurringAddonsPanel = () => {
     cancellationConfirm.error,
   ].find((value): value is Error => value instanceof Error)
 
-  if (!addons.isLoading && !addons.error && data?.offers.length === 0) {
-    return null
-  }
-
   return (
     <section className="mb-8" data-testid="uoa-billing-recurring-addons">
       <SectionLabel>Subscriptions &amp; add-ons</SectionLabel>
       <Card className="mt-2" variant="section">
-        <QueryState
-          errorLabel="Subscriptions and add-ons are unavailable."
-          loadingLabel="Loading subscriptions and add-ons…"
-          query={addons}
-        >
-          {() => data && (
-            <>
-              <div>
-                <h2 className="text-lg font-semibold text-[color:var(--tx)]">
-                  {data.title}
-                </h2>
-                <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
-                  {data.description}
-                </p>
-              </div>
-              <RowList className="mt-4" label="Subscriptions &amp; add-ons">
-                {data.offers.map((offer) => (
-                  <Row
-                    key={offer.id}
-                    subtitle={offer.description}
-                    title={offer.name}
-                    trailing={
-                      <span className="text-sm font-semibold text-[color:var(--tx)]">
-                        {offer.monthly_price.display}/month
-                      </span>
-                    }
-                  >
-                    <p className="mt-1 text-xs text-[color:var(--tx2)]">
-                      {offer.entitlement.display_status} · {offer.entitlement.description}
-                    </p>
-                    {offer.benefits.length > 0 && (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[color:var(--tx2)]">
-                        {offer.benefits.map((benefit) => (
-                          <li key={benefit}>{benefit}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {data.viewer.role === 'billing_manager' && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {offer.actions.map((action) => (
-                          <button
-                            className={action.id === 'subscribe'
-                              ? 'admin-button admin-button-primary admin-button-compact'
-                              : 'admin-button admin-button-secondary admin-button-compact'}
-                            disabled={!action.enabled || actionPending}
-                            key={action.id}
-                            onClick={() => {
-                              if (action.id === 'subscribe') {
-                                checkout.mutate(offer.id, {
-                                  onSuccess: (result) => {
-                                    window.location.assign(result.redirect_url)
-                                  },
-                                })
-                                return
-                              }
-                              cancellationPreview.mutate(
-                                action.request.body.subscription_id,
-                                {
-                                  onSuccess: (result) => {
-                                    setConfirmation(null)
-                                    setPreview(result)
-                                  },
-                                },
-                              )
-                            }}
-                            title={action.disabled_reason ?? action.description}
-                            type="button"
-                          >
-                            {action.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </Row>
-                ))}
-              </RowList>
-              {actionError && !preview && (
-                <div className="mt-4 text-sm text-[color:var(--danger-text)]">
-                  {actionError.message}
+        {data && (
+          <div>
+            <h2 className="text-lg font-semibold text-[color:var(--tx)]">
+              {data.title}
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
+              {data.description}
+            </p>
+          </div>
+        )}
+        <RowList className="mt-4" label="Subscriptions &amp; add-ons">
+          <UoaBillingSeatsRow />
+          {addons.isLoading ? (
+            <li className="p-3 text-center text-sm text-[color:var(--tx3)]">
+              Loading subscriptions and add-ons…
+            </li>
+          ) : addons.isError ? (
+            <li className="p-3 text-center text-sm text-[color:var(--danger-text)]">
+              Subscriptions and add-ons are unavailable.{' '}
+              <button className="underline" onClick={() => void addons.refetch()} type="button">
+                Retry
+              </button>
+            </li>
+          ) : data?.offers.map((offer) => (
+            <Row
+              key={offer.id}
+              subtitle={offer.description}
+              title={offer.name}
+              trailing={
+                <span className="text-sm font-semibold text-[color:var(--tx)]">
+                  {offer.monthly_price.display}/month
+                </span>
+              }
+            >
+              <p className="mt-1 text-xs text-[color:var(--tx2)]">
+                {offer.entitlement.display_status} · {offer.entitlement.description}
+              </p>
+              {offer.benefits.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[color:var(--tx2)]">
+                  {offer.benefits.map((benefit) => (
+                    <li key={benefit}>{benefit}</li>
+                  ))}
+                </ul>
+              )}
+              {data.viewer.role === 'billing_manager' && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {offer.actions.map((action) => (
+                    <button
+                      className={action.id === 'subscribe'
+                        ? 'admin-button admin-button-primary admin-button-compact'
+                        : 'admin-button admin-button-secondary admin-button-compact'}
+                      disabled={!action.enabled || actionPending}
+                      key={action.id}
+                      onClick={() => {
+                        if (action.id === 'subscribe') {
+                          checkout.mutate(offer.id, {
+                            onSuccess: (result) => {
+                              window.location.assign(result.redirect_url)
+                            },
+                          })
+                          return
+                        }
+                        cancellationPreview.mutate(
+                          action.request.body.subscription_id,
+                          {
+                            onSuccess: (result) => {
+                              setConfirmation(null)
+                              setPreview(result)
+                            },
+                          },
+                        )
+                      }}
+                      title={action.disabled_reason ?? action.description}
+                      type="button"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
                 </div>
               )}
-            </>
-          )}
-        </QueryState>
+            </Row>
+          ))}
+        </RowList>
+        {actionError && !preview && (
+          <div className="mt-4 text-sm text-[color:var(--danger-text)]">
+            {actionError.message}
+          </div>
+        )}
       </Card>
       {preview && (
         <AddonCancellationDialog
