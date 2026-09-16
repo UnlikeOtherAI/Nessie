@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
@@ -8,7 +8,7 @@ import { useProjectRecentPages } from '../../../facades/knowledge/recent-pages-h
 import { useCanModifyProject } from '../../../facades/projects/administration'
 import { useProjectMembers, useProjects } from '../../../facades/projects/hooks'
 import { useTasks } from '../../../facades/tasks/hooks'
-import { ScaledDashboard, TILE_CANVAS_WIDTH } from '../dashboards/ScaledDashboard'
+import { ScaledDashboard } from '../dashboards/ScaledDashboard'
 import { SkeletonBlock } from '../../primitives/Skeleton'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
 import {
@@ -98,16 +98,42 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
 const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
   const navigate = useNavigate()
   const { data: dashboard } = useDashboard(tile.dashboardId)
+  const frameRef = useRef<HTMLDivElement | null>(null)
+
+  // The rectangle the full-screen dashboard grows out of, handed over in
+  // `location.state` — the framework's own channel for a navigation's
+  // context. The navigation itself is the ordinary one; this only tells the
+  // arriving screen where it came from.
+  const open = () => {
+    if (!tile.to) return
+    const rect = frameRef.current?.getBoundingClientRect()
+    void navigate(tile.to, {
+      state: rect
+        ? {
+          expandFrom: {
+            height: rect.height,
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+          },
+        }
+        : undefined,
+    })
+  }
 
   return (
-    <div className="project-nav-tile" data-dashboard="true" data-tone={tile.tone}>
+    <div
+      className="project-nav-tile"
+      data-dashboard="true"
+      data-tone={tile.tone}
+      ref={frameRef}
+    >
       {dashboard ? (
         <ScaledDashboard
           ariaLabel={`Open ${tile.label}`}
-          canvasWidth={TILE_CANVAS_WIDTH}
           dashboard={dashboard}
           fill
-          onOpen={() => { if (tile.to) void navigate(tile.to) }}
+          onOpen={open}
         />
       ) : (
         <SkeletonBlock className="scaled-dashboard rounded-none" />

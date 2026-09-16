@@ -212,6 +212,26 @@ One spec, `admin/src/navigation/motion.ts`:
   swipe all call it; nothing else may animate a `.phone-navigation-screen`.
 - Reduced motion is 0 ms through the same path: the transition still runs,
   settles and commits.
+- `ZOOM_MOTION` + `runExpandTransition({ element, from, reducedMotion })` is
+  the third kind: a screen that **grows out of the thing that opened it** — a
+  dashboard tile on a project's Overview becoming that dashboard full screen.
+  It does not move a navigation layer and is not a second way to push one: the
+  route change is the ordinary one, with its own registry row, its own Back
+  and its own ledger entry. It only says how the arriving screen *appears*, so
+  it runs on `split`, where nothing animated before; on `single` the stack
+  already slides the push and a second animation over it would be exactly the
+  second mover this rulebook forbids.
+  The origin rectangle travels in `location.state`, and the arriving screen
+  **spends it** — replacing the entry once the growth lands — because Chrome
+  restores a history entry's state on reload and a replay would zoom out of a
+  tile that is not on screen. Spending it immediately instead cancels the run
+  through the effect's own cleanup, one frame after starting it.
+  Scale comes from width alone: a tile and a page rarely share an aspect
+  ratio, and scaling the two axes differently stretches the type inside for
+  the length of the animation. Reduced motion is 0 ms through the same path.
+  A browser case (`desktop-project-dashboard-tile`) polls for the run from the
+  moment of the click rather than sampling after it — 260 ms later the run has
+  finished and left `getAnimations()`, so a single late read proves nothing.
 - `styles.css` declares only the **static poses** (`--forward-ready`,
   `--underlay`, `--current`, …) and mirrors the numbers as `--nav-duration`,
   `--nav-easing`, `--nav-parallax`, `--nav-shadow`. There are no
