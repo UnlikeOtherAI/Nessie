@@ -72,7 +72,10 @@ export type OutgoingBatch = {
 }
 
 export type SubmitOutcome =
-  | { kind: 'applied'; batch: SpreadsheetAppliedBatch }
+  | { kind: 'applied'; batch: SpreadsheetAppliedBatch; safetyNetVersionId?: string }
+  /** The door took the request and numbered nothing: an empty payload, or a
+   *  retry the idempotency key had already answered. */
+  | { kind: 'noop'; headSeq: number }
   /** The write door refused: somebody moved the rows under this batch. */
   | { kind: 'conflict'; headSeq: number; since: SpreadsheetAppliedBatch[] }
   /** The request never reached a verdict — retry when the lane is back. */
@@ -131,6 +134,8 @@ export type SyncDeps = {
   /** Throw the model away and bootstrap again (rule 3). */
   rebootstrap: () => void
   onState: (state: SyncState) => void
+  /** The write door saved a pre-destructive version for this batch. */
+  onSafetyNetVersion?: (versionId: string) => void
   /** Mint a `clientOpId`. Injected so a test can make them predictable. */
   newOpId: () => string
   /** Injected so the 250 ms repair timer does not make a unit test wait. */
@@ -452,6 +457,17 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
         queue.shift()
         ownOpIds.delete(batch.clientOpId)
         if (outcome.batch.seq > seq) ownSeqs.add(outcome.batch.seq)
+        // The door saved a version before this change: the writer sees the
+        // same "Saved a version before … — Restore" line their colleagues get
+        // from `sheet.snapshot`, at the moment they caused it.
+        if (outcome.safetyNetVersionId) deps.onSafetyNetVersion?.(outcome.safetyNetVersionId)
+        settle()
+        if (status === 'offline') status = 'live'
+        break
+      case 'noop':
+        queue.shift()
+        ownOpIds.delete(batch.clientOpId)
+        if (outcome.headSeq > seq) seq = outcome.headSeq
         settle()
         if (status === 'offline') status = 'live'
         break

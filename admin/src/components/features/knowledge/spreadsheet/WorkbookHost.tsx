@@ -126,6 +126,41 @@ export const WorkbookHost = ({
   // new identity every render would restyle (and re-render) on every keystroke.
   const themeVariables = useMemo(() => theme, [theme])
 
+  /**
+   * The widget element itself is memoised, and that is load-bearing.
+   *
+   * `IronCalc` builds `new WorkbookState()` in its **root render body**, so
+   * every re-render of the root throws away whatever cell was being edited
+   * (decisions.md §"Spike C/D" item 7). Referentially stable *props* do not
+   * prevent that: React re-renders a child whenever its parent renders,
+   * whatever the props are. The one thing that does is handing React the same
+   * element object, which makes it bail out of the subtree entirely.
+   *
+   * Without this, typing into a cell does nothing at all in the real app. The
+   * widget's key handler sets the editing cell on the `WorkbookState` it was
+   * holding, a parent render — a presence frame, a peer's batch, a filter
+   * query settling — replaces that object before the paint, and the editor
+   * reads `getEditingCell() === null` and stays hidden. Measured by driving
+   * the running page: the editing cell was set with the typed character, and
+   * the `workbookState` the next commit rendered against was a different
+   * object.
+   */
+  const workbook = useMemo(
+    () =>
+      built && themeVariables
+        ? (
+            <IronCalc
+              canEdit={canEdit}
+              model={built.model}
+              ref={handleRef}
+              rootContainer={hostRef.current}
+              themeVariables={themeVariables}
+            />
+          )
+        : null,
+    [built, canEdit, themeVariables],
+  )
+
   if (error) {
     return (
       <div
@@ -139,15 +174,7 @@ export const WorkbookHost = ({
 
   return (
     <div className="spreadsheet-widget-host flex" data-testid="spreadsheet-widget-host" ref={hostRef}>
-      {built && themeVariables ? (
-        <IronCalc
-          canEdit={canEdit}
-          model={built.model}
-          ref={handleRef}
-          rootContainer={hostRef.current}
-          themeVariables={themeVariables}
-        />
-      ) : (
+      {workbook ?? (
         <div
           className="flex h-full w-full items-center justify-center text-sm text-[color:var(--tx3)]"
           data-testid="spreadsheet-engine-loading"

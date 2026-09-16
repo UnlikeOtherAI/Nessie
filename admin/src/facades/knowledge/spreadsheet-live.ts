@@ -41,7 +41,34 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 
 const base = '/api/knowledge-base'
 
-const OpsPageSchema = z.array(SpreadsheetAppliedBatchSchema)
+/**
+ * The catch-up route's envelope. It is a *page*, not an array: `headSeq` says
+ * where the journal actually ends and `hasMore` says this page did not reach
+ * it, which is what stops a client that fell a long way behind mistaking one
+ * page of 200 for "I am up to date".
+ */
+const OpsPageSchema = z.object({
+  batches: z.array(SpreadsheetAppliedBatchSchema),
+  headSeq: z.number().int().min(0),
+  hasMore: z.boolean(),
+})
+
+/**
+ * The write door's answer, which is not the batch — it is the batch plus what
+ * the door decided around it. `noop` is an empty payload it refused to burn a
+ * `seq` on, `replayed` is the idempotency key answering a retry, and
+ * `safetyNetVersionId` names the version it saved *before* a destructive
+ * change, which is the writer's own copy of the notice a peer gets from
+ * `sheet.snapshot`.
+ */
+const OpsWriteResultSchema = z.object({
+  batch: SpreadsheetAppliedBatchSchema.nullable(),
+  replayed: z.boolean(),
+  noop: z.boolean(),
+  headSeq: z.number().int().min(0),
+  sheetNames: z.array(z.string()),
+  safetyNetVersionId: z.string().nullable().optional(),
+})
 
 /**
  * The lane's own path. Deliberately *not* a `*Keys` family: this is a socket,
@@ -60,10 +87,11 @@ export const useSpreadsheetOpsFetcher = (pageId?: string) => {
   const apiClient = useApiClient()
   return useRef(async (afterSeq: number): Promise<SpreadsheetAppliedBatch[]> => {
     if (!pageId) return []
-    return apiClient.get(
+    const page = await apiClient.get(
       `${base}/pages/${pageId}/spreadsheet/ops?afterSeq=${afterSeq}`,
       OpsPageSchema,
     )
+    return page.batches
   }).current
 }
 
@@ -79,7 +107,7 @@ export const submitSpreadsheetBatch = async (
   batch: OutgoingBatch,
 ): Promise<SubmitOutcome> => {
   try {
-    const applied = await apiClient.post(
+    const result = await apiClient.post(
       `${base}/pages/${pageId}/spreadsheet/ops`,
       {
         clientOpId: batch.clientOpId,
@@ -88,14 +116,23 @@ export const submitSpreadsheetBatch = async (
         summary: batch.summary,
       },
       undefined,
-      SpreadsheetAppliedBatchSchema,
+      OpsWriteResultSchema,
     )
-    return { kind: 'applied', batch: applied }
+    // An empty payload the door declined to number. Nothing landed and nothing
+    // is missing, so the batch simply leaves the queue.
+    if (!result.batch) return { kind: 'noop', headSeq: result.headSeq }
+    return {
+      kind: 'applied',
+      batch: result.batch,
+      ...(result.safetyNetVersionId ? { safetyNetVersionId: result.safetyNetVersionId } : {}),
+    }
   } catch (error) {
     if (!(error instanceof ApiClientError)) return { kind: 'offline' }
     if (error.code === SPREADSHEET_ERROR_CODES.structuralConflict) {
+      // The 409's own `details`, which carries every batch since `baseSeq` —
+      // a plain array here, not the catch-up route's page envelope.
       const details = z
-        .object({ headSeq: z.number(), since: OpsPageSchema })
+        .object({ headSeq: z.number(), since: z.array(SpreadsheetAppliedBatchSchema) })
         .safeParse(error.details)
       // A 409 whose details will not parse is not a conflict this client can
       // repair. Re-bootstrapping is the only honest answer, and `refused` is

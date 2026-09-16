@@ -162,13 +162,29 @@ export const useRestructureSpreadsheet = (pageId?: string) => {
   })
 }
 
+/**
+ * The per-sheet filter model, or null when the sheet has none.
+ *
+ * The route answers `{ sheet, filter }` — the sheet is echoed so a late
+ * response cannot be mistaken for another sheet's — and it is the `filter`
+ * that this returns. Reading the envelope as the model meant the query was
+ * *never* null, so `FilterChipsBar` rendered for an unfiltered sheet and threw
+ * on `Object.entries(undefined)`: opening any spreadsheet in the real app hit
+ * React Router's error boundary. The stub harness could not see it, because a
+ * fixture answered with the model.
+ */
 export const useSpreadsheetFilter = (pageId?: string, sheet?: number) => {
   const apiClient = useApiClient()
 
   return useQuery<SpreadsheetFilterModel | null>({
     enabled: Boolean(pageId) && sheet !== undefined,
-    queryFn: () =>
-      apiClient.get(`${base}/pages/${pageId}/spreadsheet/filters/${sheet}`),
+    queryFn: async () => {
+      const envelope = await apiClient.get<{
+        filter: SpreadsheetFilterModel | null
+        sheet: number
+      }>(`${base}/pages/${pageId}/spreadsheet/filters/${sheet}`)
+      return envelope?.filter ?? null
+    },
     queryKey: knowledgeKeys.spreadsheetFilter(pageId, sheet),
   })
 }

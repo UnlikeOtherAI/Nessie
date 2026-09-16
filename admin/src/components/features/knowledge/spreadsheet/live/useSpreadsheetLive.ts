@@ -249,6 +249,9 @@ export const useSpreadsheetLive = (input: {
         },
         rebootstrap,
         onState: setState,
+        onSafetyNetVersion: (versionId) => {
+          void noticeForSnapshot(queryClient, pageId, versionId).then(setVersionNotice)
+        },
         newOpId: newId,
       },
       session.appliedSeq,
@@ -259,7 +262,7 @@ export const useSpreadsheetLive = (input: {
     announce(true)
     // `fetchOps` and `apiClient` are stable refs; `announce` closes over a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiClient, fetchOps, pageId, publishPeers, rebootstrap])
+  }, [apiClient, fetchOps, pageId, publishPeers, queryClient, rebootstrap])
 
   const onFlush = useCallback((flush: BridgeFlush) => {
     if (flushMode.current === 'discard') return
