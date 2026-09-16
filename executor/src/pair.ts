@@ -12,7 +12,9 @@ import { resolve } from 'node:path'
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM,
   EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
+  ExecutorCommandAllowlistSchema,
   ExecutorEnrollmentRequestSchema,
   ImplementedExecutorOperationKeySchema,
   type ExecutorEnrollmentRequest,
@@ -103,11 +105,29 @@ const initialLocalPolicy = {
   revision: 1,
 }
 
+/**
+ * The permitted programs, in one canonical order so that re-stating the same
+ * policy in a different order is not a new revision for a person to review.
+ * Duplicates and unparseable names are refused rather than quietly dropped: a
+ * list that does not say what its author wrote is worse than no list.
+ */
+const configuredCommandAllowlist = (requested: readonly string[]): string[] => {
+  const parsed = ExecutorCommandAllowlistSchema.safeParse([...requested])
+  if (!parsed.success) {
+    throw new Error(
+      'Permitted programs are distinct bare names the guest resolves through its '
+      + `fixed PATH — no paths, no shells, at most ${EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM}.`,
+    )
+  }
+  return [...parsed.data].sort()
+}
+
 const configuredOperationKeys = (
   requestedOperationKeys: string[],
   browserConfigured: boolean,
   codexConfigured: boolean,
   host: ExecutorHost,
+  commandAllowlist: readonly string[],
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -150,6 +170,12 @@ const configuredOperationKeys = (
     !requested.has('workspace.review') || !requested.has('sandbox.stop')
   )) {
     throw new Error('command.run requires workspace.review and sandbox.stop.')
+  }
+  // An enabled operation that can never succeed is a misconfiguration, not a
+  // policy: with no permitted program, every command.run would be refused at
+  // dispatch while the executor advertised the capability.
+  if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0) {
+    throw new Error('Name at least one permitted program before enabling command.run.')
   }
   const operationKeys = [
     ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
@@ -195,6 +221,10 @@ const assertWorkspaceMayChange = async (stateDir: string): Promise<void> => {
  * an owner-verified native helper. This deliberately does not submit a
  * descriptor: `connect` signs and proposes the new revision, then an entitled
  * human must confirm its review in Nessie before it is usable.
+ *
+ * An omitted `commandAllowlist` keeps the permitted programs the policy already
+ * names — a caller changing operations does not silently disarm the list — and
+ * an empty one clears them, which `command.run` then refuses.
  */
 export const configureExecutorLocalPolicy = async (
   stateDir: string,
@@ -203,16 +233,19 @@ export const configureExecutorLocalPolicy = async (
   nativeHelperPath?: string,
   host: ExecutorHost = detectExecutorHost(),
   workspaceRoot: string = state.workspaceRoot,
+  commandAllowlist: readonly string[] = state.descriptor.commandAllowlist ?? [],
 ): Promise<ExecutorLocalState> => {
   if (workspaceRoot !== state.workspaceRoot) await assertWorkspaceMayChange(stateDir)
   const canonicalWorkspaceRoot = workspaceRoot === state.workspaceRoot
     ? state.workspaceRoot
     : await configureWorkspaceRoot(workspaceRoot)
+  const permittedPrograms = configuredCommandAllowlist(commandAllowlist)
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
     Boolean(state.browserSandbox),
     Boolean(state.codexSandbox),
     host,
+    permittedPrograms,
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -222,8 +255,12 @@ export const configureExecutorLocalPolicy = async (
   }
   const next: ExecutorLocalState = {
     ...state,
+    // Rebuilt field by field rather than spread over the previous descriptor:
+    // an emptied allowlist has to leave no key behind, because a `commandAllowlist`
+    // present but undefined is not canonicalizable and would fail the next digest.
     descriptor: {
-      ...state.descriptor,
+      ...(permittedPrograms.length > 0 ? { commandAllowlist: permittedPrograms } : {}),
+      limits: state.descriptor.limits,
       operationKeys,
       profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
@@ -269,7 +306,7 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox), host)
+  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [])
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -319,7 +356,7 @@ export const configureExecutorCodexSandbox = async (
     'workspace.review',
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
-  ])], Boolean(state.browserSandbox), true, host)
+  ])], Boolean(state.browserSandbox), true, host, state.descriptor.commandAllowlist ?? [])
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,

@@ -42,6 +42,7 @@ const state: ExecutorLocalState = {
     vmHelperPath: '/private/helper',
   },
   descriptor: {
+    commandAllowlist: ['pnpm'],
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
     operationKeys: ['browser.act', 'command.run'],
     profiles: ['workspace_sandbox'],

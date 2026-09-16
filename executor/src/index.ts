@@ -39,6 +39,8 @@ type ParsedCommand =
   }
   | {
     configurationInputFromStandardInput?: true
+    /** Absent keeps the permitted programs; `[]` clears them. */
+    commandAllowlist?: string[]
     kind: 'configure'
     nativeHelperPath?: string
     operationKeys?: string[]
@@ -93,7 +95,8 @@ const usage = (): never => {
     + '--operations <file.list,file.read,file.write,command.run,browser.open,browser.observe,'
     + 'browser.act,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop> '
     + '[--native-helper </absolute/owner-only/nessie-executor-native>] '
-    + '[--workspace <absolute-read-only-root>]\n'
+    + '[--workspace <absolute-read-only-root>] '
+    + '[--tools <program,program,...>|--clear-tools]\n'
     + '       nessie-executor configure --configuration-input-stdin '
     + '--state-dir <owner-only-path>\n'
     + '       nessie-executor configure-browser --state-dir <owner-only-path> '
@@ -181,7 +184,11 @@ const readPairingInput = async (): Promise<{ challenge: string; workspaceRoot: s
   return parsed as { challenge: string; workspaceRoot: string }
 }
 
-const readConfigurationInput = async (): Promise<{ operationKeys: string[]; workspaceRoot: string }> => {
+const readConfigurationInput = async (): Promise<{
+  commandAllowlist?: string[]
+  operationKeys: string[]
+  workspaceRoot: string
+}> => {
   const chunks: Buffer[] = []
   let byteLength = 0
   for await (const chunk of process.stdin) {
@@ -196,6 +203,7 @@ const readConfigurationInput = async (): Promise<{ operationKeys: string[]; work
   } catch {
     throw new Error('Local policy input on standard input is malformed.')
   }
+  const allowlist = (parsed as { commandAllowlist?: unknown }).commandAllowlist
   if (
     !parsed
     || typeof parsed !== 'object'
@@ -204,10 +212,15 @@ const readConfigurationInput = async (): Promise<{ operationKeys: string[]; work
     || !(parsed as { operationKeys: unknown[] }).operationKeys.every((key) => typeof key === 'string')
     || typeof (parsed as { workspaceRoot?: unknown }).workspaceRoot !== 'string'
     || !(parsed as { workspaceRoot: string }).workspaceRoot
+    // Absent keeps the permitted programs the policy already names; present it
+    // must be a list of names, and `[]` is the instruction to clear them.
+    || (allowlist !== undefined && (
+      !Array.isArray(allowlist) || !allowlist.every((program) => typeof program === 'string')
+    ))
   ) {
     throw new Error('Local policy input on standard input is malformed.')
   }
-  return parsed as { operationKeys: string[]; workspaceRoot: string }
+  return parsed as { commandAllowlist?: string[]; operationKeys: string[]; workspaceRoot: string }
 }
 
 const secureApiUrl = (value: string): string => {
@@ -250,9 +263,20 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       args.includes('--operations')
       || args.includes('--workspace')
       || args.includes('--native-helper')
+      || args.includes('--tools')
+      || args.includes('--clear-tools')
     )) return usage()
+    // Naming programs and clearing them are opposite instructions; a call that
+    // carries both says nothing this command may act on.
+    if (args.includes('--tools') && args.includes('--clear-tools')) return usage()
     return {
       ...(configurationInputFromStandardInput ? { configurationInputFromStandardInput: true } : {}),
+      ...(!configurationInputFromStandardInput && args.includes('--tools')
+        ? { commandAllowlist: option(args, '--tools').split(',').map((value) => value.trim()) }
+        : {}),
+      ...(!configurationInputFromStandardInput && args.includes('--clear-tools')
+        ? { commandAllowlist: [] }
+        : {}),
       kind: 'configure',
       ...(!configurationInputFromStandardInput && args.includes('--native-helper')
         ? { nativeHelperPath: option(args, '--native-helper') }
@@ -424,7 +448,11 @@ export const run = async (args: string[]): Promise<void> => {
   if (command.kind === 'configure') {
     const input = command.configurationInputFromStandardInput
       ? await readConfigurationInput()
-      : { operationKeys: command.operationKeys!, workspaceRoot: command.workspaceRoot }
+      : {
+        commandAllowlist: command.commandAllowlist,
+        operationKeys: command.operationKeys!,
+        workspaceRoot: command.workspaceRoot,
+      }
     const updated = await configureExecutorLocalPolicy(
       command.stateDir,
       state,
@@ -432,6 +460,7 @@ export const run = async (args: string[]): Promise<void> => {
       command.nativeHelperPath,
       undefined,
       input.workspaceRoot,
+      input.commandAllowlist,
     )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `

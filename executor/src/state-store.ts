@@ -6,6 +6,7 @@ import {
   canonicalExecutorJson,
   ExecutorEnrollmentRequestSchema,
   ExecutorIdSchema,
+  ExecutorNonEmptyCommandAllowlistSchema,
   ExecutorProfileSchema,
   ImplementedExecutorOperationKeySchema,
   type ExecutorEnrollmentRequest,
@@ -45,6 +46,11 @@ export type ExecutorLocalState = {
   apiBaseUrl: string
   connectionEpoch?: string
   descriptor: {
+    /**
+     * The programs `command.run` may start. Absent means the policy has never
+     * named one, which permits nothing — see `executorCommandAllowlistPermits`.
+     */
+    commandAllowlist?: string[]
     limits: { maxCommandRuntimeSeconds: number; maxResultBytes: number; maxSessions: number }
     operationKeys: string[]
     profiles: string[]
@@ -231,7 +237,17 @@ const parseDeepTestSourceGrant = (value: unknown): ExecutorDeepTestSourceGrant =
     throw new Error('invalid grant')
   }
   const descriptor = grant.descriptor as Record<string, unknown>
-  if (!exactKeys(descriptor, ['limits', 'operationKeys', 'profiles', 'revision'])) throw new Error('invalid grant')
+  // The allowlist is carried only when the policy has one, so both key sets are
+  // valid; a child that receives no list runs no command, which is the same
+  // refusal the daemon makes.
+  if (
+    !exactKeys(descriptor, ['limits', 'operationKeys', 'profiles', 'revision'])
+    && !exactKeys(descriptor, ['commandAllowlist', 'limits', 'operationKeys', 'profiles', 'revision'])
+  ) throw new Error('invalid grant')
+  if (
+    descriptor.commandAllowlist !== undefined
+    && !ExecutorNonEmptyCommandAllowlistSchema.safeParse(descriptor.commandAllowlist).success
+  ) throw new Error('invalid grant')
   if (!descriptor.limits || typeof descriptor.limits !== 'object' || Array.isArray(descriptor.limits)) {
     throw new Error('invalid grant')
   }
@@ -290,6 +306,9 @@ const parseDeepTestExecutionGrant = (value: unknown): ExecutorDeepTestExecutionG
 
 const sourceGrantFor = (state: ExecutorLocalState): ExecutorDeepTestSourceGrant => ({
   descriptor: {
+    ...(state.descriptor.commandAllowlist?.length
+      ? { commandAllowlist: [...state.descriptor.commandAllowlist] }
+      : {}),
     limits: {
       maxCommandRuntimeSeconds: state.descriptor.limits.maxCommandRuntimeSeconds,
       maxResultBytes: state.descriptor.limits.maxResultBytes,

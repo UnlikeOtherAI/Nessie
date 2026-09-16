@@ -14,6 +14,8 @@ import {
 import { detectExecutorHost, sandboxRemedyForHost, type ExecutorHost } from './host-platform.js'
 
 type LocalDescriptorConfig = {
+  /** The programs `command.run` may start; absent until a policy names one. */
+  commandAllowlist?: string[]
   limits: { maxCommandRuntimeSeconds: number; maxResultBytes: number; maxSessions: number }
   operationKeys: string[]
   profiles: string[]
@@ -61,6 +63,10 @@ export const buildSignedDescriptor = (
 ): ExecutorSignedDescriptor => {
   assertHostSupportsOperations(host, config.operationKeys, config.profiles)
   const descriptor = ExecutorCapabilityDescriptorSchema.parse({
+    // The list travels with the descriptor only when it says something: an
+    // empty array would advertise a rule where the policy has none, and the
+    // schema refuses it rather than letting the two readings blur.
+    ...(config.commandAllowlist?.length ? { commandAllowlist: config.commandAllowlist } : {}),
     limits: config.limits,
     localPolicyDigest: policyDigest(config),
     operationKeys: config.operationKeys.map((key) => ImplementedExecutorOperationKeySchema.parse(key)),

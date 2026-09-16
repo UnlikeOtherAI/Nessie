@@ -3,6 +3,7 @@ import type { Readable } from 'node:stream'
 
 import {
   canonicalExecutorJson,
+  executorCommandAllowlistPermits,
   ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
@@ -251,7 +252,17 @@ export const executeExecutorCommand = async (
       : { code: 'EXECUTOR_CONNECTED_BROWSER_UNAVAILABLE', success: false }
   }
   if (command.operationKey === 'command.run') {
-    if (!ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args).success) {
+    const commandArguments = ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args)
+    if (!commandArguments.success) {
+      return { code: 'EXECUTOR_COMMAND_DENIED', success: false }
+    }
+    // Refused here as well as in the session manager, against the same
+    // predicate: this is the dispatch a person reads when they ask why a run
+    // was refused, and it must not depend on a session backend being wired.
+    if (!executorCommandAllowlistPermits(
+      state.descriptor.commandAllowlist,
+      commandArguments.data.program,
+    )) {
       return { code: 'EXECUTOR_COMMAND_DENIED', success: false }
     }
     return dependencies.commandSessions

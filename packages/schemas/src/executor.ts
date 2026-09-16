@@ -279,6 +279,48 @@ const relativeWorkspacePath = (value: string): boolean => (
   )
 )
 
+export const EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM = 64
+
+/**
+ * The programs an executor may start. The guest micro-VM bounds what a running
+ * program can reach; it says nothing about which program runs. The allowlist is
+ * that second boundary, and it belongs to the local policy so that widening it
+ * costs a policy revision a person reviews — the same price as enabling an
+ * operation.
+ *
+ * Entries are bare program names because that is the only grammar `program`
+ * accepts: a path could never match what the guest resolves through its fixed
+ * PATH, so storing one would be a rule that silently never matches.
+ */
+const distinctPrograms = (value: readonly string[]): boolean =>
+  new Set(value).size === value.length
+const commandAllowlistEntries = z.array(commandProgram).max(EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM)
+export const ExecutorCommandAllowlistSchema = commandAllowlistEntries
+  .refine(distinctPrograms, 'Each permitted program is listed once.')
+export type ExecutorCommandAllowlist = z.infer<typeof ExecutorCommandAllowlistSchema>
+
+/**
+ * The same list where an empty one would be meaningless — on the wire and in a
+ * stored policy, a list is carried only when it names a program.
+ */
+export const ExecutorNonEmptyCommandAllowlistSchema = commandAllowlistEntries
+  .min(1)
+  .refine(distinctPrograms, 'Each permitted program is listed once.')
+
+/**
+ * The one allowlist decision every reader shares — the daemon before it starts
+ * a guest, and any surface that explains why a command was refused.
+ *
+ * An absent list is not an empty one, and neither permits anything: a daemon
+ * paired before the allowlist existed advertises no list, and the safe reading
+ * of "this policy has never named a program" is that none is permitted. The
+ * remedy is one `configure --tools` call, which a person reviews.
+ */
+export const executorCommandAllowlistPermits = (
+  allowlist: readonly string[] | undefined,
+  program: string,
+): boolean => allowlist !== undefined && allowlist.includes(program)
+
 /** A shell-free argv command confined to the guest's COW workspace. */
 export const ExecutorCommandRunArgumentsSchema = z
   .object({
@@ -391,6 +433,11 @@ export const ExecutorCapabilityDescriptorSchema = z
     supervisor: ExecutorSupervisorSchema,
     sandboxBackend: ExecutorSandboxBackendSchema,
     operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
+    // Present exactly when the policy names permitted programs, so a reviewer
+    // approving `command.run` reads the list they are approving rather than a
+    // digest. Absent from a daemon paired before the allowlist existed; that
+    // daemon runs nothing through `command.run` until its policy names one.
+    commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
       .object({

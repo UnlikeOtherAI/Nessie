@@ -1,4 +1,5 @@
 import {
+  executorCommandAllowlistPermits,
   ExecutorCommandRunArgumentsSchema,
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
@@ -169,6 +170,13 @@ export const createExecutorCommandSessionManager = (
     run: async (command, runId) => {
       const args = ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args)
       if (!args.success) return denied()
+      // The allowlist decides before a guest exists, so a program nobody
+      // permitted cannot even cost a VM boot. This is the one path both the
+      // control plane and the DeepTest execution adapter reach, which is why
+      // the decision lives here rather than only at the daemon's dispatch.
+      if (!executorCommandAllowlistPermits(state.descriptor.commandAllowlist, args.data.program)) {
+        return denied()
+      }
       let active = activeByRun.get(runId)
       if (!active) {
         const session = await start(command, runId)
