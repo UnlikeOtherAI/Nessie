@@ -21,6 +21,16 @@ export type SearchMessageCandidatesInput = {
   queryEmbedding: number[] | null
   runningAgentId: string
   take?: number
+  /**
+   * Narrows recall to these threads inside the reachable channels.
+   *
+   * A channel is the right boundary for a room, whose history is one
+   * conversation. It is the wrong one for a channel that holds several
+   * conversations *with the same agent* as separate threads: there, a
+   * channel-wide recall feeds one conversation the other's messages. Absent
+   * means the whole channel, which is what every room wants.
+   */
+  threadIds?: readonly string[]
 }
 
 /**
@@ -57,6 +67,7 @@ export const searchMessageCandidates = async (
          AND m.deleted_at IS NULL
          AND c.organization_id = $5::uuid
          AND t.channel_id = ANY($3::uuid[])
+         AND ($11::uuid[] IS NULL OR m.thread_id = ANY($11::uuid[]))
          AND NOT EXISTS (
            SELECT 1 FROM message_basis_scopes mbs
            WHERE mbs.message_id = m.id
@@ -83,6 +94,7 @@ export const searchMessageCandidates = async (
        WHERE m.deleted_at IS NULL
          AND c.organization_id = $5::uuid
          AND t.channel_id = ANY($3::uuid[])
+         AND ($11::uuid[] IS NULL OR m.thread_id = ANY($11::uuid[]))
          AND to_tsvector('english', m.content) @@ query
          AND NOT EXISTS (
            SELECT 1 FROM message_basis_scopes mbs
@@ -115,6 +127,7 @@ export const searchMessageCandidates = async (
       toVectorLiteral(input.queryEmbedding),
       input.query,
       take * 4,
+      input.threadIds && input.threadIds.length > 0 ? [...input.threadIds] : null,
     ],
   )
   const rows = result.rows as MessageSearchCandidate[]
