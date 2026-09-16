@@ -17,6 +17,11 @@ person's My Docs. When `kb_list`, `kb_search`, `kb_document_compose`, and
 `kb_document_edit` are all actually available, the structural system-prompt
 block injects that home id and title so the model never invents a `spaceId`.
 
+A folder is a page of kind `folder` — `ensureTaskFolder` creates one and finds
+it again by `(kind: 'folder', metadata.taskId)`; it has no version, is never
+published and is never indexed, and no writer or reader anywhere may use the
+retired `metadata.folder` flag or "has children" to mean folder.
+
 Spec: [docs/plans/2026-08-31-agent-documents.md](../plans/2026-08-31-agent-documents.md).
 
 Forward changes to Markdown authority, document roles, history retrieval and

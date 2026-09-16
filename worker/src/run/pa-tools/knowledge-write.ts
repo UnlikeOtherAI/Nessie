@@ -225,6 +225,23 @@ export const runKbFileTool = async (
   const changes: string[] = []
 
   if (input.parentPageId !== undefined || input.position !== undefined) {
+    // Read the target's `kind` before asking for the move. `movePage` refuses a
+    // `file` parent — a blob cannot contain anything, and a page filed under
+    // one could never be reached — but it refuses by returning null, which is
+    // indistinguishable from "no such page". An agent told only "check that the
+    // target parent exists" would retry the same id forever, so name the reason
+    // here. A `folder` is the intended target; a `document` still parents
+    // sub-pages (wikilinks and the open document's Sub-pages section depend on
+    // it) and stays allowed.
+    if (input.parentPageId) {
+      const parent = await provider.getPage(organizationId, input.parentPageId)
+      if (parent && parent.kind === 'file') {
+        throw new Error(
+          `Cannot file a page under ${input.parentPageId}: that is an uploaded file, `
+          + 'not a folder. File it under a folder or a document instead.',
+        )
+      }
+    }
     const moved = await provider.movePage({
       organizationId,
       pageId: page.id,
@@ -232,7 +249,10 @@ export const runKbFileTool = async (
       position: input.position ?? page.position,
     })
     if (!moved) {
-      throw new Error('Could not move the page — check that the target parent exists in the same space.')
+      throw new Error(
+        'Could not move the page — check that the target parent is a folder or document '
+        + 'in the same space.',
+      )
     }
     changes.push('location')
   }

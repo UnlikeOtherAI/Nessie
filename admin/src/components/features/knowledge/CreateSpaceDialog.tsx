@@ -12,6 +12,13 @@ import { MemberChecklist } from './MemberChecklist'
 type SpaceVisibility = KnowledgeSpaceRecord['visibility']
 
 type CreateSpaceDialogProps = {
+  /**
+   * The Finder calls a top-level space a "shared folder", because that is what
+   * a person sees in the root column; the word "space" survives only in the
+   * API. One prop rather than a second dialog: the form is identical.
+   */
+  title?: string
+  submitLabel?: string
   onClose: () => void
   onCreate: (
     name: string,
@@ -30,7 +37,14 @@ const VISIBILITY_OPTIONS: { value: SpaceVisibility; label: string; description: 
   { value: 'organization', label: 'Organization', description: 'Everyone in the organization' },
 ]
 
-export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSpaceDialogProps) => {
+export const CreateSpaceDialog = ({
+  onClose,
+  onCreate,
+  open,
+  pending,
+  submitLabel = 'Create space',
+  title = 'Create a space',
+}: CreateSpaceDialogProps) => {
   const [name, setName] = useState('')
   const [memberAgentIds, setMemberAgentIds] = useState<string[]>([])
   const [visibility, setVisibility] = useState<SpaceVisibility>('private')
@@ -72,7 +86,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
       initialFocusRef={initialFieldRef}
       onClose={handleClose}
       open={open}
-      title="Create a space"
+      title={title}
     >
       <form className="grid gap-4" onSubmit={handleSubmit}>
         <FormField label="Name" required>
@@ -117,7 +131,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
             disabled={!name.trim() || pending}
             type="submit"
           >
-            Create space
+            {submitLabel}
           </button>
         </FormActions>
       </form>

@@ -202,6 +202,11 @@ No new page-level entity, column, or kind:
   popup.
 - **Folders** are what they already are: a `document` page with children;
   `kb_file` reorganizes. No collections table.
+  *2026-09-16: superseded.* A folder is now its own `KnowledgePageKind`,
+  `folder` — no version, never published, never indexed — and neither
+  `metadata.folder` nor "has children" means folder any more. `kb_file` still
+  reorganizes, and there is still no collections table. See
+  [the Finder plan](2026-09-16-documents-finder-ui/data-and-api.md) §1.
 - **Versioning, labels, wikilinks, annotations, chunks/search** — all
   inherited untouched. Humans commenting on an agent's doc use the existing
   `kb_comment_*` machinery, and the agent reads those comments back with the

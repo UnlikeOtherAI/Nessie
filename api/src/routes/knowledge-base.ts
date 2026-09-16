@@ -40,6 +40,7 @@ import {
   type KnowledgeRouteDeps,
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
+import { listSharedRootSubtree, readSharedRootPageId } from './knowledge-shares.js'
 
 export const registerKnowledgeBaseRoutes = (
   app: FastifyInstance,
@@ -50,9 +51,11 @@ export const registerKnowledgeBaseRoutes = (
     provider,
     buildViewer,
     accessSpace,
+    accessSpaceForPageCreate,
     accessPageSpace,
     canReadVersion,
     filterReadablePages,
+    requirePageOwnerWrite,
     buildDisclosureViewer,
   } = createKnowledgeAccess(deps)
 
@@ -253,6 +256,28 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
+    // A folder somebody shared with this person lives in a space that is
+    // private to the sharer. Naming the shared folder opens exactly its
+    // subtree; without the parameter the ordinary 403 stands.
+    const sharedRootPageId = readSharedRootPageId(request.query)
+    if (sharedRootPageId !== null) {
+      const shared = await listSharedRootSubtree(prisma, provider, {
+        actorContext,
+        viewer,
+        spaceId,
+        rootPageId: sharedRootPageId,
+      })
+      if (shared) {
+        const readable = await filterReadablePages(viewer, shared.pages)
+        return createApiResponse(
+          readable.map((page) => attachPageEnvelope(page, decision)),
+          // `PaginationMeta` has no `truncated`, and widening it would change
+          // every response in the instance; a subtree cut at its row cap says
+          // so with the field that already means "there is more than this".
+          { hasMore: shared.truncated, nextCursor: null, prevCursor: null },
+        )
+      }
+    }
     if (!(await accessSpace(actorContext, spaceId, viewer, 'read', reply))) return reply
     const pages = await provider.listPages({
       disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
@@ -273,7 +298,16 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    const space = await accessSpace(actorContext, spaceId, viewer, 'write', reply)
+    // Creating *under* a folder somebody shared at `edit` is writing inside the
+    // grant's subtree, so it is allowed; creating at the space root never
+    // consults shares at all.
+    const space = await accessSpaceForPageCreate(
+      actorContext,
+      spaceId,
+      viewer,
+      body.parentPageId,
+      reply,
+    )
     if (!space) return reply
     if (body.projectId !== undefined && body.projectId !== space.projectId) {
       return sendApiError(
@@ -472,7 +506,9 @@ export const registerKnowledgeBaseRoutes = (
     const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
-    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    // Archiving is the owner's act: the tree and the bytes stay theirs however
+    // generously they shared the page.
+    if (!(await requirePageOwnerWrite(actorContext, existingPage, viewer, reply))) return reply
     if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     // Free the page's stored files (file-node versions + drawer attachments) and
     // decrement storage usage before archiving, so deletion always updates usage.
@@ -514,7 +550,10 @@ export const registerKnowledgeBaseRoutes = (
     const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
-    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    // Publication is the owner's statement that a version is current. An editor
+    // who could publish would replace the owner's published version without an
+    // act of theirs, so this arm ignores shares entirely.
+    if (!(await requirePageOwnerWrite(actorContext, existingPage, viewer, reply))) return reply
     if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     let page: KnowledgePageRecord | null
     try {
@@ -554,7 +593,8 @@ export const registerKnowledgeBaseRoutes = (
     const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
-    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    // The tree is the owner's structure, including inside a folder they shared.
+    if (!(await requirePageOwnerWrite(actorContext, existingPage, viewer, reply))) return reply
     if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
     const ifMatch = readIfMatchRevision(request)
     if (ifMatch.kind === 'malformed') return sendMalformedIfMatch(reply)

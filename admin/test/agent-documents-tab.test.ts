@@ -11,7 +11,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { AgentDocumentsTab } from '../src/components/features/agents/AgentDocumentsTab.js'
-import { buildKnowledgeWorkspaceActions } from '../src/components/features/knowledge/knowledge-workspace-actions.js'
+import { buildFinderToolbarActions } from '../src/components/features/knowledge/finder/finder-toolbar-actions.js'
 import { ResponsivePageHeader } from '../src/components/shared/ResponsivePageHeader.js'
 import { agentKeys } from '../src/facades/agents/keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
@@ -29,9 +29,11 @@ test('agent detail mounts documents through the shared knowledge team seam', () 
   assert.match(tabs, /label: 'Documents', value: 'documents'/)
   assert.match(tabs, /documents: \{/)
   assert.match(documents, /<KnowledgeProvider agentId=\{agent\.id\} spaceId=\{space\.id\}>/)
-  assert.match(documents, /<KnowledgeWorkspace canManageSpace=\{isOwner\} \/>/)
+  // Both mounts are the same Finder, parameterised by scope: the agent's tab
+  // starts inside the agent's own folder, the project's inside the project's.
+  assert.match(documents, /scope=\{\{ agentId, kind: 'agent', spaceId: selectedSpace\.id \}\}/)
   assert.match(projectDocs, /<KnowledgeProvider projectId=\{projectId\}>/)
-  assert.match(projectDocs, /<KnowledgeWorkspace \/>/)
+  assert.match(projectDocs, /scope=\{\{ kind: 'project', projectId \}\}/)
 })
 
 test('agent documents show the honest empty state and no-secrets warning', () => {
@@ -74,21 +76,25 @@ test('an agent-owned space renders a working Open agent doorway from the shared 
   })
   let openedAgentId: string | null = null
   const noop = () => undefined
-  const actions = buildKnowledgeWorkspaceActions({
+  const actions = buildFinderToolbarActions({
     agentDraftCount: 0,
     canManageSpace: true,
     canWrite: space.canWrite,
+    isRootColumn: false,
+    isVirtualColumn: false,
     needsReviewOnly: false,
+    onCreateDocument: noop,
     onCreateFolder: noop,
-    onCreatePage: noop,
-    onOpenAgent: (agentId) => { openedAgentId = agentId },
+    onOpenAgent: (agentId: string) => { openedAgentId = agentId },
     onOpenSettings: noop,
+    onSelectSort: noop,
     onSelectView: noop,
     onToggleNeedsReview: noop,
     onUploadFile: noop,
     ownerAgentId: space.ownerAgentId,
-    selectedSpaceId: space.id,
-    viewMode: 'column',
+    showViewAction: true,
+    sort: 'name',
+    view: 'columns',
   })
 
   const markup = renderToStaticMarkup(

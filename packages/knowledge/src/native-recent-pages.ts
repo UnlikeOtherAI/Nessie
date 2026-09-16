@@ -21,7 +21,10 @@ type RecentPageRow = {
   updatedAt: Date
 }
 
-const readableVersionSql = (viewer: DisclosureViewer | undefined): Prisma.Sql => {
+// The version-basis predicate, exported because "Latest" applies the identical
+// rule over every readable space (native-latest-pages.ts). Two copies of a
+// disclosure filter is how one of them ends up a version behind.
+export const readableVersionSql = (viewer: DisclosureViewer | undefined): Prisma.Sql => {
   if (!viewer) return Prisma.empty
   if (viewer.kind === 'denied') return Prisma.sql`AND FALSE`
   if (viewer.kind === 'autonomous') {
@@ -89,6 +92,9 @@ export const listNativeRecentPages = async (
       AND p.project_id = ${input.projectId}::uuid
       AND p.deleted_at IS NULL
       AND p.status <> 'archived'::"KnowledgePageStatus"
+      -- A folder is a container, not something that was written down: it would
+      -- show up in "recently updated" whenever a child moved under it.
+      AND p.kind <> 'folder'::"KnowledgePageKind"
       AND s.deleted_at IS NULL
       ${spaceFilter ? Prisma.sql`AND p.space_id IN (${spaceFilter})` : Prisma.empty}
       ${versionFilter}

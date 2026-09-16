@@ -72,18 +72,28 @@ export const exerciseProjectLoadFailures = async ({
     await page.getByText(sourceTask.title, { exact: true }).waitFor()
     await shot(page, 'desktop-project-board-load-recovered')
 
+    // Documents is a Finder now: the project tab starts inside the project's
+    // own folder, so a failed spaces read is reported by the column itself.
+    // The rule is unchanged — an empty folder and a dead server must never
+    // look the same, which is exactly what "Nothing here yet" would claim.
     failSpaces = true
     await page.goto(`${adminUrl}/projects/${project.id}/docs`, { waitUntil: 'domcontentloaded' })
-    await page.getByText('Failed to load this project’s document spaces.').waitFor()
+    const docsFailure = page.getByText('Couldn’t load these documents.')
+    await docsFailure.waitFor()
     assert.equal(
-      await page.getByText('This project has no document spaces yet. Create one to file its docs here.', { exact: true }).count(),
+      await page.getByText('Nothing here yet', { exact: false }).count(),
       0,
-      'a failed space read does not claim the project is empty',
+      'a failed space read does not claim the folder is empty',
     )
+    await docsFailure.getByRole('button', { name: 'Retry', exact: true }).waitFor()
     await shot(page, 'desktop-project-docs-load-failure')
     failSpaces = false
-    await page.getByText('Failed to load this project’s document spaces.').getByRole('button', { name: 'Retry', exact: true }).click()
-    await page.getByText('This project has no document spaces yet. Create one to file its docs here.', { exact: true }).waitFor()
+    await docsFailure.getByRole('button', { name: 'Retry', exact: true }).click()
+    // Recovered means the failure is gone and the browser is on screen — not
+    // any particular folder contents, which depend on what this project
+    // happens to have been seeded with.
+    await docsFailure.waitFor({ state: 'detached' })
+    await page.locator('[data-finder-status-bar]').first().waitFor()
     await shot(page, 'desktop-project-docs-load-recovered')
 
     await page.goto(`${adminUrl}/projects/${project.id}/board?board=${sourceBoard.id}`, { waitUntil: 'domcontentloaded' })

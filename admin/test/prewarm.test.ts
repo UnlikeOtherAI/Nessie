@@ -199,7 +199,7 @@ test('navigating rows prewarm before the click', () => {
     'admin/src/layouts/admin-shell/SidebarProjectsSection.tsx',
     'admin/src/layouts/admin-shell/SidebarDmSection.tsx',
     'admin/src/layouts/admin-shell/SidebarStarredSection.tsx',
-    'admin/src/components/features/knowledge/KnowledgeSpaceList.tsx',
+    'admin/src/components/features/knowledge/finder/FinderRootColumn.tsx',
     'admin/src/components/features/agents/AgentListRow.tsx',
     'admin/src/components/features/apps/AppCard.tsx',
     'admin/src/pages/project/ProjectDashboardsTab.tsx',
