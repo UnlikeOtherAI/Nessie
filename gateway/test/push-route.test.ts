@@ -125,6 +125,29 @@ test('POST /v1/push rejects missing or wrong bearer token', async () => {
   await app.close()
 })
 
+// The key is compared with timingSafeEqual, which throws on unequal lengths;
+// these pin both paths of the length pre-check plus an equal-length near-miss
+// so the comparison structure cannot quietly revert to `!==`.
+test('POST /v1/push rejects wrong-length and equal-length wrong keys alike', async () => {
+  const { sender, calls } = fakeSender()
+  const app = buildGatewayApp({ config: config(), sender, logger: false })
+  const injectWith = (key: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/v1/push',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { targets: [], payload: { title: 'T', body: 'B' } },
+    })
+
+  assert.equal((await injectWith('sesret')).statusCode, 401) // same length, one byte off
+  assert.equal((await injectWith('secret-longer')).statusCode, 401)
+  assert.equal((await injectWith('sec')).statusCode, 401)
+  assert.equal((await injectWith('secret')).statusCode, 200)
+  assert.equal(calls.apns.length, 0)
+  assert.equal(calls.fcm.length, 0)
+  await app.close()
+})
+
 test('POST /v1/push reports provider not configured without sending', async () => {
   const { sender, calls } = fakeSender()
   const app = buildGatewayApp({
