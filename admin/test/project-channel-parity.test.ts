@@ -83,7 +83,9 @@ test('every project section is reachable from the Projects sidebar', () => {
 
   // The sidebar is now the only doorway to a project's sections, so the list it
   // renders has to name every routed section (AGENTS.md -> "Rule zero").
-  for (const id of ['overview', 'board', 'backlog', 'insights', 'docs', 'executors', 'settings']) {
+  for (const id of [
+    'overview', 'board', 'backlog', 'insights', 'docs', 'dashboards', 'executors', 'settings',
+  ]) {
     assert.ok(sections.includes(`id: '${id}'`), `project-sections is missing ${id}`)
   }
   // ... and the router has to answer every path the list produces.
@@ -91,7 +93,7 @@ test('every project section is reachable from the Projects sidebar', () => {
   // scrollers; the remaining project tabs retain the document surface. Both
   // route entries still have to cover every sidebar doorway.
   assert.ok(surfaces.includes('(?:\\/board)?$'), 'project board route is missing')
-  assert.match(surfaces, /backlog\|insights\|docs\|executors\|settings/)
+  assert.match(surfaces, /backlog\|insights\|docs\|dashboards\|executors\|settings/)
   assert.match(projectSectionRows, /projectSections\(\{ assignedWorkCount, isScrum, knowledgeCount, projectId \}\)/)
 })
 

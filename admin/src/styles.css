@@ -805,6 +805,63 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
    the one tile that does not compete for the eye. */
 .project-nav-tile[data-tone='config'] { --tile: var(--tx3); }
 
+/* ── A dashboard rendered small ────────────────────────────────────────────
+   The frame clips a canvas laid out at `SCALED_CANVAS_WIDTH` and scaled down,
+   so what is inside is the real dashboard rather than a picture of one. The
+   button on top is the whole target: the canvas beneath it is `inert`, so
+   there is nothing else in there to click. */
+.scaled-dashboard {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--panel-soft);
+}
+
+.scaled-dashboard-open {
+  position: absolute;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  inset: 0;
+  padding: 0;
+}
+
+.scaled-dashboard-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* A dashboard tile continues the coloured navigation cards: same box, same
+   radius, same hover lift — the live dashboard replaces the icon-and-blurb
+   body rather than sitting in a section of its own. It carries no `--tile`
+   tint on the canvas area, because a wash over a chart changes what the chart
+   appears to say. */
+.project-nav-tile[data-dashboard='true'] {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.project-nav-tile[data-dashboard='true'] .scaled-dashboard {
+  width: 100%;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* The name sits under the dashboard, where a caption goes, so the tile reads
+   top-to-bottom as picture-then-label like every other card reads
+   art-then-label. */
+.project-nav-tile-caption {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--tile) 24%, transparent);
+  background: color-mix(in srgb, var(--tile) 12%, transparent);
+}
+
 /* One column — a phone, or the grid inside a narrow panel. Five poster-shaped
    cards stacked there fill the whole screen and push the summaries below the
    fold, so the tile turns on its side: the art moves beside the words instead

@@ -71,11 +71,7 @@ export const useAdminShell = () => {
   const organization = useCurrentOrganization();
   const canManageOrganization = organization.data?.administration.status === 'allowed';
   const isAgentsRoute = location.pathname.startsWith('/agents');
-  // Dashboards render inside the Knowledge section (they are filed between
-  // My Docs and Spaces), so they share its secondary column rather than
-  // owning one.
-  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base')
-    || location.pathname.startsWith('/dashboards');
+  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
   const isProjectsRoute = location.pathname.startsWith('/projects');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);

@@ -27,8 +27,7 @@ test('the rail item carries aria-current through the shared helper', () => {
 
 // Every file that renders a sidebar row carrying the `active` class must
 // also carry `sidebarAriaCurrent(` (this file's own helper, or `NavLink`
-// which sets aria-current="page" automatically for its own active link —
-// pinned separately below for the one row that relies on it).
+// which sets aria-current="page" automatically for its own active link).
 test('every section-sidebar row file wires sidebarAriaCurrent alongside its active class', () => {
   const files = [
     '../src/layouts/admin-shell/SidebarNav.tsx',
@@ -68,13 +67,11 @@ test('every section-sidebar row file wires sidebarAriaCurrent alongside its acti
   }
 })
 
-test('the Knowledge dashboards row relies on NavLink\'s own aria-current, not the helper', () => {
-  const knowledge = source('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx')
-  assert.match(
-    knowledge,
-    /<NavLink\s+className=\{\(\{ isActive \}\) => \['admin-sb-item', isActive \? 'active' : ''\]\.join\(' '\)\}/,
-  )
-})
+// The Knowledge sidebar's one `NavLink` row was "All dashboards", which
+// relied on NavLink's own aria-current rather than the helper and was pinned
+// here as the single exception to the rule above. Dashboards moved into
+// Projects, that row is gone, and the exception went with it — every remaining
+// row in these files pairs its `active` class with `sidebarAriaCurrent(...)`.
 
 test('the skip link is mounted at the top of the shell and targets its own main', () => {
   const shell = source('../src/layouts/AdminShellLayout.tsx')

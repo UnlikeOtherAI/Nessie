@@ -205,20 +205,21 @@ const embedAudienceAlreadyReaches = async (
 
   const dashboard = await prisma.dashboard.findFirst({
     where: { id: dashboardId, organizationId: actor.organizationId },
-    select: { home: true, channelId: true },
+    select: { projectId: true },
   })
   if (!dashboard) return false
-  // Organization-wide dashboards reach everyone in the tenant already.
-  if (dashboard.home === 'organization') return true
 
   if (input.targetType === 'message') {
     const message = await prisma.message.findFirst({
       where: { id: input.targetId },
-      select: { thread: { select: { channelId: true } } },
+      select: { thread: { select: { channel: { select: { id: true, projectId: true } } } } },
     })
-    const channelId = message?.thread?.channelId
-    if (!channelId) return false
-    if (dashboard.home === 'channel' && dashboard.channelId === channelId) return true
+    const channel = message?.thread?.channel
+    if (!channel) return false
+    // A channel inside the dashboard's own project is already its audience:
+    // placing it there reaches nobody new. Anywhere else needs a grant.
+    if (channel.projectId === dashboard.projectId) return true
+    const channelId = channel.id
 
     const grant = await prisma.dashboardGrant.findFirst({
       where: {
@@ -257,23 +258,44 @@ const embedAudienceAlreadyReaches = async (
 /** A presented dashboard is also a reference in a channel, so it cannot widen reach. */
 export const assertDashboardAudienceForChannel = async (
   context: DashboardContext,
-  input: { dashboardId: string; channelId: string; allowOwnerPersonalDm?: boolean },
+  input: {
+    dashboardId: string
+    channelId: string
+    /**
+     * This channel is the acting person's own structurally single-user home
+     * DM: the only human who can read it is that person. Presenting anything
+     * they can already read into it therefore reaches nobody new — which
+     * covers both the dashboard itself and any source whose audience basis is
+     * that person alone. Only the worker sets it, and only after its
+     * global-home predicate has proved the room really is that shape.
+     */
+    allowOwnerPersonalDm?: boolean
+  },
 ): Promise<void> => {
   const dashboard = await context.prisma.dashboard.findFirst({
     where: { id: input.dashboardId, organizationId: context.actor.organizationId },
-    select: { home: true, channelId: true, ownerUserId: true },
+    select: { projectId: true },
   })
   if (!dashboard) throw new DashboardServiceError(404, 'DASHBOARD_NOT_FOUND', 'dashboard not found')
-  // A Dashboard Designer runs in a structurally single-user home DM. A
-  // personal dashboard owned by that same effective user is therefore already
-  // visible to every human who can read this message; it is not a share into a
-  // room. The worker may opt in only after its global-home predicate proves
-  // that structural fact.
-  const homeCoversChannel = (input.allowOwnerPersonalDm === true
-      && dashboard.home === 'personal'
-      && dashboard.ownerUserId === context.actor.userId)
-    || dashboard.home === 'organization'
-    || (dashboard.home === 'channel' && dashboard.channelId === input.channelId)
+  const channel = await context.prisma.channel.findFirst({
+    where: { id: input.channelId, organizationId: context.actor.organizationId },
+    select: { projectId: true },
+  })
+  // Two ways presenting reaches nobody new:
+  //
+  //   - the room is inside the dashboard's own project, so its readers are
+  //     already the dashboard's audience. This replaced two arms that cannot
+  //     exist now that a dashboard has one home: an organization home reaching
+  //     the whole tenant, and a channel home matching this exact room.
+  //   - the room is the acting person's own structurally single-user home DM,
+  //     where the only human reader is that person — and the caller has
+  //     already proved they can read this dashboard. A Dashboard Designer run
+  //     builds a dashboard in a project and then shows it back in that DM;
+  //     without this the reply would be refused for widening an audience of
+  //     one to an audience of one. The worker opts in only after its
+  //     global-home predicate proves the structural fact.
+  const homeCoversChannel = channel?.projectId === dashboard.projectId
+    || input.allowOwnerPersonalDm === true
   const grant = homeCoversChannel ? null : await context.prisma.dashboardGrant.findFirst({
     where: {
       organizationId: context.actor.organizationId,

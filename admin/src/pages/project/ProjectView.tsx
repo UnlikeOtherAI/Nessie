@@ -21,6 +21,7 @@ import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectDocsTab } from './ProjectDocsTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
+import { ProjectDashboardsTab } from './ProjectDashboardsTab'
 import { ProjectExecutorsTab } from './ProjectExecutorsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
@@ -225,6 +226,8 @@ export const ProjectView = () => {
           <ProjectBacklogTab projectId={projectId} />
         ) : tab === 'insights' ? (
           <ProjectInsightsTab projectId={projectId} />
+        ) : tab === 'dashboards' ? (
+          <ProjectDashboardsTab projectId={projectId} />
         ) : tab === 'executors' ? (
           <ProjectExecutorsTab projectId={projectId} />
         ) : tab === 'overview' ? (

@@ -89,7 +89,12 @@ test('the shell mounts the split stack in its detail column with no edge swipe',
 test('a cold start seeds the parent chain beneath the landed route, nearest first', () => {
   assert.deepEqual(surfaceSeedChain('/channels/c1/info/members'), ['/channels/c1/info', '/channels/c1', '/channels'])
   assert.deepEqual(surfaceSeedChain('/agents/a1'), ['/agents', '/settings'])
-  assert.deepEqual(surfaceSeedChain('/dashboards/d1'), ['/dashboards', '/knowledge-base'])
+  // A dashboard is `parent: 'origin'` — reached from the project's Overview as
+  // well as its Dashboards list — so a cold start seeds only its section root
+  // and the ledger supplies the real predecessor. It used to be a Knowledge
+  // page seeding ['/dashboards', '/knowledge-base']; the Back *fallback* it
+  // names on a cold link is asserted in phone-navigation-routes.test.ts.
+  assert.deepEqual(surfaceSeedChain('/projects/p1/dashboards/d1'), ['/projects'])
   assert.deepEqual(surfaceSeedChain('/channels'), [], 'a root seeds nothing')
   // An origin screen's real predecessor is unknowable on a cold link: it
   // seeds only its section root.

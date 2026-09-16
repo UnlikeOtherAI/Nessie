@@ -53,15 +53,12 @@ import { DashboardDeltaSchema, DashboardLayoutSchema } from '@nessie/schemas'
 import { randomUUID } from 'node:crypto'
 import { enqueueQueueJob } from '@nessie/db'
 
-const HomeSchema = z.enum(['organization', 'project', 'team', 'channel', 'personal'])
-
+// A dashboard lives in a project, so its project is not optional and there is
+// no `home` to disagree with it.
 const CreateDashboardBodySchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(500).optional(),
-  home: HomeSchema,
-  projectId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
-  channelId: z.string().uuid().optional(),
+  projectId: z.string().uuid(),
 }).strict()
 
 const CreateSourceBodySchema = z.object({
@@ -214,9 +211,8 @@ export const registerDashboardRoutes = (
   app.get('/api/dashboards', async (request, reply) => {
     const context = await contextFor(request, reply as never)
     if (!context) return reply
-    const query = request.query as { home?: string; projectId?: string }
+    const query = request.query as { projectId?: string }
     const dashboards = await listDashboardsForActor(context, {
-      ...(query.home ? { home: HomeSchema.parse(query.home) } : {}),
       ...(query.projectId ? { projectId: query.projectId } : {}),
     })
     return createApiResponse(dashboards)

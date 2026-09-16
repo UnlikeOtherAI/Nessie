@@ -135,7 +135,9 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     },
   },
   {
-    pattern: /^\/dashboards\/([^/]+)$/,
+    // A dashboard's address is its project's; the id this warms is the
+    // dashboard's, which is the second capture.
+    pattern: /^\/projects\/[^/]+\/dashboards\/([^/]+)$/,
     run: (dashboardId, context) => {
       prefetch(context, dashboardKeys.detail(dashboardId), () =>
         fetchDashboard(context.apiClient, dashboardId))

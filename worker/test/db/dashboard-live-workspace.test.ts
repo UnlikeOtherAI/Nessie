@@ -67,7 +67,10 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
 const contextFor = (prisma: PrismaClient, seed: Seed): BuiltinToolRuntimeContext => {
   const consumedSources = createConsumedSourceSink()
   // The test models a source the agent received from this same conversation.
-  consumedSources.add({ scopeId: seed.channelId, scopeType: 'channel' })
+  // Its basis is the project, because that is the dashboard's audience now: a
+  // source verified only for one channel may no longer feed a dashboard every
+  // member of the project can open, and the service refuses it.
+  consumedSources.add({ scopeId: seed.projectId, scopeType: 'project' })
   const runContext: RunContext = {
     agent: {
       agentKind: 'shared',
@@ -151,9 +154,10 @@ runDatabaseTest('dashboard tools create, present, and edit one live conversation
     prisma,
   })
 
+  // A dashboard lives in a project; the tool used to take a `home` and the
+  // scope column that went with it.
   const created = await runDashboardTool('dashboard_create', context, {
-    channelId: fixture.channelId,
-    home: 'channel',
+    projectId: fixture.projectId,
     title: 'Quarterly revenue',
   }, services)
   assert.match(created.outputPreview, /Created dashboard/)

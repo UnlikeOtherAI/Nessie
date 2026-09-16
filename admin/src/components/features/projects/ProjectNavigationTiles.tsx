@@ -1,12 +1,15 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { useChannels } from '../../../facades/channels/hooks'
+import { useDashboard, useDashboards } from '../../../facades/dashboards/hooks'
 import { useProjectRecentPages } from '../../../facades/knowledge/recent-pages-hooks'
 import { useCanModifyProject } from '../../../facades/projects/administration'
 import { useProjectMembers, useProjects } from '../../../facades/projects/hooks'
 import { useTasks } from '../../../facades/tasks/hooks'
+import { ScaledDashboard } from '../dashboards/ScaledDashboard'
+import { SkeletonBlock } from '../../primitives/Skeleton'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
 import {
   RECENT_PAGE_LIMIT,
@@ -45,6 +48,7 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
   const { data: channels = [] } = useChannels()
   const { data: tasks = [] } = useTasks(projectId)
   const { data: pages = [] } = useProjectRecentPages(projectId, RECENT_PAGE_LIMIT)
+  const { data: dashboards = [] } = useDashboards(projectId)
   const canManageMembers = useCanModifyProject(projectId)
   const [membersOpen, setMembersOpen] = useState(false)
 
@@ -54,6 +58,7 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
     backlogCount: isScrum ? backlogTaskCount(tasks) : 0,
     canManageMembers,
     channels: projectChannelRows(channels, projectId),
+    dashboards,
     documentsUpdatedAge: formatRelativeAge(pages[0]?.updatedAt),
     isScrum,
     memberCount: members.length,
@@ -79,6 +84,45 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
   )
 }
 
+/**
+ * The tallest a dashboard tile grows. The tile sits in a grid row beside the
+ * fixed doorways, so it is a card, not a band: a dashboard taller than this is
+ * clipped and opened rather than stretching its whole row.
+ */
+const DASHBOARD_TILE_HEIGHT = 190
+
+/**
+ * A dashboard as a tile: the live thing, scaled, with its name captioned
+ * underneath. It is its own component because it reads the dashboard's widgets
+ * — the grid's list read carries titles only — and a hook cannot be called
+ * from inside a `map`.
+ */
+const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
+  const navigate = useNavigate()
+  const { data: dashboard } = useDashboard(tile.dashboardId)
+
+  return (
+    <div className="project-nav-tile" data-dashboard="true" data-tone={tile.tone}>
+      {dashboard ? (
+        <ScaledDashboard
+          ariaLabel={`Open ${tile.label}`}
+          dashboard={dashboard}
+          maxHeight={DASHBOARD_TILE_HEIGHT}
+          minHeight={DASHBOARD_TILE_HEIGHT}
+          onOpen={() => { if (tile.to) void navigate(tile.to) }}
+        />
+      ) : (
+        <div style={{ height: DASHBOARD_TILE_HEIGHT }}>
+          <SkeletonBlock className="h-full w-full rounded-none" />
+        </div>
+      )}
+      <span className="project-nav-tile-caption">
+        <span className="project-nav-tile-title">{tile.label}</span>
+      </span>
+    </div>
+  )
+}
+
 const Tile = ({
   onOpenMembers,
   tile,
@@ -86,6 +130,8 @@ const Tile = ({
   onOpenMembers: () => void
   tile: ProjectNavigationTile
 }) => {
+  if (tile.dashboardId) return <DashboardTile tile={tile} />
+
   const body: ReactNode = (
     <>
       <span aria-hidden="true" className="project-nav-tile-art">
