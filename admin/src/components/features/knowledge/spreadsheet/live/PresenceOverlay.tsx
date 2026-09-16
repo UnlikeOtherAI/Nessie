@@ -51,7 +51,9 @@ type PlacedPeer = {
   draft: { left: number; text: string; top: number; width: number } | null
   isAgent: boolean
   name: string
-  /** The name tag sits above the cursor cell, or below it at the top edge. */
+  /** The name tag sits above the cursor cell, or inside its top edge when
+   *  there is no room — never over the cell below, whose contents belong to
+   *  somebody else and would be hidden by a name they did not ask for. */
   tag: { below: boolean; left: number; top: number } | null
   rect: { height: number; left: number; top: number; width: number } | null
 }
@@ -123,7 +125,7 @@ export const PresenceOverlay = ({
           ? {
               below: cursor.top - 18 < HEADER_ROW_HEIGHT,
               left: dx + Math.max(cursor.left, HEADER_COLUMN_WIDTH),
-              top: dy + (cursor.top - 18 < HEADER_ROW_HEIGHT ? cursor.top + cursor.height : cursor.top - 18),
+              top: dy + (cursor.top - 18 < HEADER_ROW_HEIGHT ? cursor.top : cursor.top - 18),
             }
           : null
         const draftCell = peer.draft ? cellRect(model, sheet, peer.draft.r, peer.draft.c) : null

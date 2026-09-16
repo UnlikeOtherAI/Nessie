@@ -43,15 +43,7 @@ const CASES = ['two-browsers', 'structural-rebase', 'offline-queue', 'phone-touc
  * Delete an entry the moment its reason is gone; never add one for a case that
  * fails on the code under test.
  */
-const PENDING = new Map([
-  [
-    'agent-presence',
-    "Phase 4's: `runAgentScenario` is still the placeholder in `caseContext` "
-      + 'below, and the case reads cells as `[data-cell="B2"]`, which nothing '
-      + "renders — IronCalc's grid is a canvas, and `lib/grid.mjs` is how the "
-      + 'other cases read it',
-  ],
-])
+const PENDING = new Map()
 
 /**
  * One browser context per person per case.
