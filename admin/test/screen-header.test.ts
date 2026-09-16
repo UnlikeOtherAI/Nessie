@@ -365,6 +365,10 @@ test('every screen-level phone header publishes the native bar', () => {
     // doorway, so it names a region rather than a screen and the native bar
     // has nothing to say about it.
     'components/features/workflow-designer/WorkflowToolbar.tsx',
+    // Same shape: list view's header in a project's or an agent's Documents
+    // tab, where the Finder has no root column to carry its toolbar. It is
+    // `titleTone="section"` — an `h2` naming the folder, not the screen.
+    'components/features/knowledge/finder/FinderListView.tsx',
   ])
 
   for (const relative of PUBLISHERS) {

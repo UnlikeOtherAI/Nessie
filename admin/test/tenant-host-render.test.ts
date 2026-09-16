@@ -10,6 +10,7 @@ const settled = {
   recovering: false,
   sessionState: 'authenticated' as const,
   signedIn: true,
+  switchNeeded: false,
   switchState: 'idle' as const,
   teamAnswered: true,
   teamFailed: false,
@@ -33,6 +34,7 @@ test('a settled team address renders the app', () => {
  */
 test('a team address never renders the app before it agrees with the session', () => {
   const mustNotBeApp: Array<[string, Partial<typeof settled>]> = [
+    ['the switch onto this team is needed and has not started', { switchNeeded: true }],
     ['the switch onto this team is in flight', { switchState: 'switching' }],
     ['the switch was refused', { switchState: 'failed' }],
     ['/api/hosts/team failed', { teamFailed: true }],
@@ -49,9 +51,19 @@ test('an unverifiable address refuses; an undecided one waits', () => {
   assert.equal(renderOf({ switchState: 'failed' }), 'unavailable')
   assert.equal(renderOf({ teamFailed: true }), 'unavailable')
   assert.equal(renderOf({ teamKnown: false }), 'unavailable')
+  assert.equal(renderOf({ switchNeeded: true }), 'waiting')
   assert.equal(renderOf({ switchState: 'switching' }), 'waiting')
   assert.equal(renderOf({ teamAnswered: false, teamKnown: false }), 'waiting')
   assert.equal(renderOf({ sessionState: 'loading' }), 'waiting')
+})
+
+/**
+ * A refused switch leaves the session on its old team, so "needed" stays true
+ * forever. Waiting on it would be a curtain that never lifts; the refusal has
+ * to win.
+ */
+test('a refused switch refuses rather than waiting on the switch it still needs', () => {
+  assert.equal(renderOf({ switchNeeded: true, switchState: 'failed' }), 'unavailable')
 })
 
 test('signed out on a team address shows the tenant door, not the product', () => {

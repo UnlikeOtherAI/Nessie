@@ -418,6 +418,9 @@ export const KnowledgeExtractJobPayloadSchema = z.object({
 })
 export type KnowledgeExtractJobPayload = z.infer<typeof KnowledgeExtractJobPayloadSchema>
 
+// The byte cap this job obeys, and the `knowledge.transfer` topic, live in
+// ./knowledge-jobs.ts — this file was already at the 500-line cap.
+
 // `attachment.thumbnail` queue job — enqueued after an upload whose preview
 // could not be produced inline at the FileService store chokepoint: PDFs
 // (first-page raster), animated/exotic images, images above the metadata-strip

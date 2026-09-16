@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -15,21 +14,25 @@ import {
   useKnowledgePages,
   useKnowledgeSpace,
   useKnowledgeSpaces,
-  useSeedKnowledgeBase,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
   type SavePageInput,
   type UpdateSpaceInput,
 } from '../../../facades/knowledge/hooks'
-import {
-  EXAMPLE_PAGE_HTML,
-  EXAMPLE_PAGE_SUMMARY,
-  EXAMPLE_PAGE_TITLE,
-} from './example-page'
+import { useEnsureProjectDocuments } from '../../../facades/knowledge/finder-hooks'
 import { useKnowledgeMutations } from './useKnowledgeMutations'
-import { useKnowledgeNavigation, type KnowledgeEditorState } from './useKnowledgeNavigation'
+import {
+  useKnowledgeNavigation,
+  type KnowledgeEditorState,
+  type KnowledgeSelectedRoot,
+  type KnowledgeVirtualKind,
+} from './useKnowledgeNavigation'
 
 export type { KnowledgeEditorState } from './useKnowledgeNavigation'
+export type {
+  KnowledgeSelectedRoot,
+  KnowledgeVirtualKind,
+} from './useKnowledgeNavigation'
 
 type KnowledgeContextValue = {
   // Set when this provider is scoped to one project (a project's Documents
@@ -58,9 +61,24 @@ type KnowledgeContextValue = {
   // The caller's personal "My Docs" space, read separately from the paged
   // shared-space list so its pinned doorway never vanishes on another page.
   myDocsSpace?: KnowledgeSpaceRecord | null
+  /**
+   * Which row of the Finder's root is open. Two of them are not spaces at all,
+   * so this — not `selectedSpaceId` — is the source of truth; the space id
+   * below is derived from it and left in place for every pane that only ever
+   * meant "the space on screen".
+   */
+  selectedRoot: KnowledgeSelectedRoot
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
+  /** Open Latest or Shared with me; `null` leaves the one that is open. */
+  selectVirtual: (kind: KnowledgeVirtualKind | null) => void
+  /**
+   * Provision a project's Documents folder and open it. `GET /root` leaves
+   * `space: null` for a project nobody has opened, so the row's first click is
+   * what creates it. Resolves with the space id, or undefined on a refusal.
+   */
+  openProjectDocuments: (projectId: string) => Promise<string | undefined>
   // A product-contributed Documents view (e.g. DeepWater's "Research") pinned in
   // the Knowledge sidebar. When set the team renders that product view
   // instead of a space's pages; selecting any space clears it.
@@ -187,46 +205,37 @@ export const KnowledgeProvider = ({
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
-  const seedMutation = useSeedKnowledgeBase()
+  const ensureProjectDocuments = useEnsureProjectDocuments()
 
   useEffect(() => {
-    if (spaceId && selectedSpaceId !== spaceId) {
-      setSelectedSpaceId(spaceId)
+    if (spaceId) {
+      if (selectedSpaceId !== spaceId) setSelectedSpaceId(spaceId)
       return
     }
-    if (!selectedSpaceId && spaces[0]) {
-      setSelectedSpaceId(spaces[0].id)
-    }
-  }, [selectedSpaceId, setSelectedSpaceId, spaceId, spaces])
-
-  // First visit with no spaces: seed a "General" space + one example page.
-  const seededRef = useRef(false)
-  useEffect(() => {
-    if (projectId || spaceId || seededRef.current || !spacesQuery.query.isSuccess || spacesQuery.total !== 0) return
-    // Seed at most once per mount — never reset the guard on error, so a
-    // persistent failure can't spin into a retry loop of failed POSTs.
-    seededRef.current = true
-    seedMutation.mutate(
-      {
-        body: EXAMPLE_PAGE_HTML,
-        projectId: me?.context.projectId,
-        spaceName: 'General',
-        summary: EXAMPLE_PAGE_SUMMARY,
-        title: EXAMPLE_PAGE_TITLE,
-      },
-      {
-        onSuccess: (space) => setSelectedSpaceId(space.id),
-      },
-    )
+    // The Knowledge section lands on the Finder's root column, which is a real
+    // screen: opening the alphabetically-first space underneath it would skip
+    // past the one thing that screen exists to show. A scoped mount has no
+    // root column, so there it still opens the scope's own space. A virtual
+    // folder is a deliberate "no space" and must not be overwritten either.
+    if (!projectId) return
+    if (navigation.selectedRoot === null && spaces[0]) setSelectedSpaceId(spaces[0].id)
   }, [
-    me,
+    navigation.selectedRoot,
     projectId,
-    seedMutation,
+    selectedSpaceId,
     setSelectedSpaceId,
     spaceId,
-    spacesQuery.query.isSuccess,
-    spacesQuery.total,
+    spaces,
   ])
+
+  const openProjectDocuments = useCallback(
+    async (targetProjectId: string): Promise<string | undefined> => {
+      const space = await ensureProjectDocuments.mutateAsync(targetProjectId)
+      setSelectedSpaceId(space.id)
+      return space.id
+    },
+    [ensureProjectDocuments, setSelectedSpaceId],
+  )
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()
@@ -327,9 +336,12 @@ export const KnowledgeProvider = ({
     spacesLoadFailed: spaceId ? spaceQuery.isError : spacesQuery.query.isError,
     refetchSpaces,
     myDocsSpace: myDocsSpaceQuery.data ?? null,
+    selectedRoot: navigation.selectedRoot,
     selectedSpaceId,
     selectedSpace,
     selectSpace: navigation.selectSpace,
+    selectVirtual: navigation.selectVirtual,
+    openProjectDocuments,
     activeProductView,
     selectProductView: navigation.selectProductView,
     createSpace: mutations.createSpace,
@@ -380,6 +392,7 @@ export const KnowledgeProvider = ({
     mutations,
     myDocsSpaceQuery.data,
     navigation,
+    openProjectDocuments,
     pageById,
     pages,
     pagesQuery.isError,

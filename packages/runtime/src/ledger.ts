@@ -9,6 +9,7 @@ import { releaseBudgetReservation } from './budget-reservations.js'
 
 export {
   currentStorageUsageBytes,
+  recordStorageScopeMoved,
   recordStorageStored,
 } from './storage-usage-ledger.js'
 export type {

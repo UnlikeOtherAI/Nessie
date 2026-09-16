@@ -19,6 +19,24 @@ export const KnowledgeSensitivityTierSchema = z.enum([
   'restricted',
 ])
 
+export const KnowledgePageStatusSchema = z.enum(['draft', 'published', 'archived'])
+
+/**
+ * A page is a rich-text document, a stored file node, or a folder.
+ *
+ * A folder is a real kind, not a convention: it has no versions, is never
+ * published and is never indexed. Before this existed a folder was a document
+ * carrying `metadata.folder` (or merely having children), which meant any
+ * document that gained a sub-page turned into a folder on screen, and no
+ * server-side listing could exclude folders without loading a whole space.
+ *
+ * Adding a value here is a breaking change for every exhaustive branch over it
+ * — deliberately: indexing status, the row icon and Get Info must each say what
+ * the new kind does rather than silently reading as a document.
+ */
+export const KnowledgePageKindSchema = z.enum(['document', 'file', 'folder'])
+export type KnowledgePageKind = z.infer<typeof KnowledgePageKindSchema>
+
 /**
  * The knowledge-space shape returned to browser clients. Keeping this in the
  * shared contract package makes a server/client field mismatch a type error

@@ -128,14 +128,18 @@ export const useKnowledgeMutations = ({
     updatePageMutation,
   ])
 
-  // A folder is a title-only page flagged `metadata.folder` so it renders as a
-  // container even while empty. Unlike savePage we never open it as a document —
-  // it just appears in the active column, ready to be drilled into.
+  // A folder is a real page kind, not a `metadata.folder` convention. The flag
+  // is deliberately *not* written any more: the backfill has run, `kind` is
+  // what every reader uses, and a new row still carrying the retired flag keeps
+  // the convention alive for the next person who greps for it — which is how a
+  // second source of truth survives its own migration. Unlike savePage we never
+  // open it as a document: it appears in the active column, ready to be drilled
+  // into.
   const createFolder = useCallback(async (
     parentPageId: string | null,
     title: string,
   ): Promise<void> => {
-    await createPageMutation.mutateAsync({ title, parentPageId, metadata: { folder: true } })
+    await createPageMutation.mutateAsync({ kind: 'folder', parentPageId, title })
   }, [createPageMutation])
 
   // Publish and restore are fire-and-forget from their menu items, so they run

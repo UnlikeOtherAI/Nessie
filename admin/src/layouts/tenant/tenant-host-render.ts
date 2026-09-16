@@ -37,6 +37,7 @@ export const tenantHostRender = ({
   recovering,
   sessionState,
   signedIn,
+  switchNeeded,
   switchState,
   teamAnswered,
   teamFailed,
@@ -54,6 +55,13 @@ export const tenantHostRender = ({
    * `/api/auth/me` has answered.
    */
   signedIn: boolean
+  /**
+   * The session is not on this address's team yet. True before the switch is
+   * even sent — it is fired from an effect, so a gate that waited only for
+   * `switchState` would paint one frame of the previous organisation's
+   * workspace first.
+   */
+  switchNeeded: boolean
   switchState: 'idle' | 'switching' | 'failed'
   /** `/api/hosts/team` has answered, either way. */
   teamAnswered: boolean
@@ -81,7 +89,7 @@ export const tenantHostRender = ({
   if (switchState === 'failed' || teamFailed || (teamAnswered && !teamKnown)) {
     return 'unavailable'
   }
-  if (switchState === 'switching' || !teamAnswered) return 'waiting'
+  if (switchState === 'switching' || switchNeeded || !teamAnswered) return 'waiting'
   // The session has to have answered too, or the routes below mount and fetch
   // in whatever team the previous page left behind.
   if (sessionState !== 'authenticated') return 'waiting'

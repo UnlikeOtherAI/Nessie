@@ -8,7 +8,13 @@ import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
 import { useIsOwner } from '../../../facades/auth/hooks'
 
-const AgentDocumentsTeam = ({ core }: { core?: { estimatedTokens: number; state: 'active' | 'oversized'; tokenBudget?: number } }) => {
+const AgentDocumentsTeam = ({
+  agentId,
+  core,
+}: {
+  agentId: string
+  core?: { estimatedTokens: number; state: 'active' | 'oversized'; tokenBudget?: number }
+}) => {
   const isOwner = useIsOwner()
   const { selectedSpace, spacesLoaded, spacesLoadFailed } = useKnowledge()
 
@@ -36,7 +42,10 @@ const AgentDocumentsTeam = ({ core }: { core?: { estimatedTokens: number; state:
         </Notice>
       </div>
       <div className="min-h-0 flex-1">
-        <KnowledgeWorkspace canManageSpace={isOwner} />
+        <KnowledgeWorkspace
+          canManageSpace={isOwner}
+          scope={{ agentId, kind: 'agent', spaceId: selectedSpace.id }}
+        />
       </div>
     </div>
   )
@@ -73,7 +82,7 @@ export const AgentDocumentsTab = ({ agent }: { agent: AgentRecord }) => {
 
         return (
           <KnowledgeProvider agentId={agent.id} spaceId={space.id}>
-            <AgentDocumentsTeam core={documentsQuery.data?.core} />
+            <AgentDocumentsTeam agentId={agent.id} core={documentsQuery.data?.core} />
           </KnowledgeProvider>
         )
       }}

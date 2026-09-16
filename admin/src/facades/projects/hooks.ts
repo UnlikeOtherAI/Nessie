@@ -64,8 +64,14 @@ export const useRenameTeam = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ teamId, name }: { teamId: string; name: string }) =>
-      apiClient.patch<{ id: string; name: string }>(`/api/teams/${teamId}`, { name }),
+    // `slug` is the team's address label. It is sent on the same request as the
+    // name because UnlikeOtherAI stores them together and validates the label
+    // there; omitting it leaves the current address alone.
+    mutationFn: ({ name, slug, teamId }: { name: string; slug?: string; teamId: string }) =>
+      apiClient.patch<{ id: string; name: string; slug?: string }>(
+        `/api/teams/${teamId}`,
+        { name, ...(slug === undefined ? {} : { slug }) },
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: teamKeys.all })
     },

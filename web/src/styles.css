@@ -10,6 +10,7 @@
   --n-sea: #0266fa;
   --n-sea-hover: #0052d1;
   --n-teal: #3ff0b2;
+  --n-sun: #fcc503;
   --n-foam: #eaf3ff;
   --n-sand: #f6f1e9;
   --n-text: #1d1c1d;
@@ -1725,6 +1726,17 @@ button {
      had slid down from the navigation rather than a thing of its own. */
   margin: 0 auto;
   padding: 56px 0 48px;
+}
+
+/* The rule that says "this is not the page".
+   A blockquote's bar, borrowed for the same job: everything to its right is
+   addressed to you personally and is not part of the pitch below. It is on the
+   inner block rather than the section so it spans the heading, the line under
+   it and the cards, and grows on its own as teams are added — ten
+   organisations wrap to more rows and the bar simply gets longer. */
+.n-teams-inner {
+  padding-left: 18px;
+  border-left: 4px solid var(--n-sun);
 }
 
 .n-teams-title {

@@ -1,5 +1,66 @@
 import { z } from 'zod'
-import { KnowledgeSpaceResponseSchema } from '@nessie/schemas'
+import {
+  KnowledgeIndexingStateSchema,
+  KnowledgePageKindSchema,
+  KnowledgePageTransferStateSchema,
+  KnowledgeSpaceResponseSchema,
+} from '@nessie/schemas'
+
+// The Finder's own wire shapes — listings, Get Info, shares, the root and
+// transfers — live in @nessie/schemas (`knowledge-finder.ts`) so the admin and
+// the API compile against one definition instead of two that can drift, which
+// is exactly how `kind` went missing from this file. Re-exported here so a
+// knowledge route keeps one import surface.
+//
+// `KnowledgeVisibilitySchema`, `KnowledgeSensitivityTierSchema` and
+// `KnowledgePageStatusSchema` are deliberately *not* re-exported: this file
+// declares its own, and two bindings of one name cannot both be exported.
+export {
+  CreateKnowledgePageShareBodySchema,
+  KnowledgeAccessSummarySchema,
+  KnowledgeHomeSchema,
+  KnowledgeIndexingStateSchema,
+  KnowledgeItemInfoSchema,
+  KnowledgeLatestQuerySchema,
+  KnowledgeLatestResponseSchema,
+  KnowledgePageKindSchema,
+  KnowledgePageShareAccessSchema,
+  KnowledgePageShareRecordSchema,
+  KnowledgePageTransferStateSchema,
+  KnowledgeRootSchema,
+  KnowledgeRootSpaceSchema,
+  KnowledgeSharedRowSchema,
+  KnowledgeSharedWithMeQuerySchema,
+  KnowledgeSharedWithMeResponseSchema,
+  KnowledgeVirtualRowSchema,
+  TRANSFER_REFUSAL_CODES,
+  TRANSFER_SYNCHRONOUS_MAX_PAGES,
+  TransferPagesBodySchema,
+  TransferResultSchema,
+  TransferStatusSchema,
+  UpdateKnowledgePageShareBodySchema,
+} from '@nessie/schemas'
+export type {
+  CreateKnowledgePageShareBody,
+  KnowledgeAccessSummary,
+  KnowledgeHome,
+  KnowledgeIndexingState,
+  KnowledgeItemInfo,
+  KnowledgeLatestQuery,
+  KnowledgePageShareAccess,
+  KnowledgePageShareRecord,
+  KnowledgePageTransferState,
+  KnowledgeRoot,
+  KnowledgeRootSpace,
+  KnowledgeSharedRow,
+  KnowledgeSharedWithMeQuery,
+  KnowledgeVirtualRow,
+  TransferPagesBody,
+  TransferRefusalCode,
+  TransferResult,
+  TransferStatus,
+  UpdateKnowledgePageShareBody,
+} from '@nessie/schemas'
 
 const NonEmptyStringSchema = z.string().trim().min(1)
 const UuidSchema = z.string().uuid()
@@ -74,9 +135,31 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   summary: z.string().nullable(),
   metadata: JsonRecordSchema.nullable(),
   documentRole: KnowledgeDocumentRoleSchema,
+  // `kind` and `revision` were missing from this contract while the provider
+  // record and the admin type both carried them and the route spread the
+  // record onto the wire unparsed — the drift that motivated putting the rest
+  // of the Finder's shapes in one shared file.
+  kind: KnowledgePageKindSchema,
+  revision: z.number().int().nonnegative(),
   parentPageId: UuidSchema.nullable(),
   position: z.number().int().nonnegative(),
   status: KnowledgePageStatusSchema,
+  // The Finder's row fields. `.optional()` in Wave 0 and required here in Wave
+  // 1A, now that the listing enrichment (`native-list-enrichment.ts`, called
+  // from the provider's `listPages`) computes all four — the one deliberate
+  // two-step in this contract.
+  //
+  // A file's mime/bytes come from its current version's attachment, a
+  // document's bytes from octet_length(body); a folder has neither.
+  // `sizeBytes` is a decimal string because it is a BigInt
+  // (docs/standards/file-storage.md).
+  mime: z.string().nullable(),
+  sizeBytes: z.string().nullable(),
+  // KnowledgePageShare rows on this page; 0 outside personal spaces.
+  shareCount: z.number().int().nonnegative(),
+  indexing: KnowledgeIndexingStateSchema,
+  // Set while a cross-space move or copy of this page is in flight.
+  transfer: KnowledgePageTransferStateSchema.nullable().optional(),
   // Set when this page is a ticket-bound document (or a ticket's document folder).
   taskId: UuidSchema.nullable(),
   labels: z.array(NonEmptyStringSchema),
@@ -129,6 +212,12 @@ export const UpdateKnowledgeSpaceBodySchema = z.object({
 
 export const CreateKnowledgePageBodySchema = OptionalScopeSchema.extend({
   title: NonEmptyStringSchema.max(240),
+  // Only these two: a file node is created by uploading bytes
+  // (`POST /spaces/:spaceId/files`), never by asking for the kind, so `file`
+  // here would be a page with no version and no attachment. A folder carries
+  // no body, bodyRef, changeComment or labels-on-a-version — the provider
+  // refuses content on one rather than dropping it.
+  kind: z.enum(['document', 'folder']).optional(),
   summary: z.string().max(2000).nullable().optional(),
   metadata: JsonRecordSchema.nullable().optional(),
   parentPageId: UuidSchema.nullable().optional(),
@@ -195,7 +284,9 @@ export const KnowledgeRecentPageRecordSchema = z.object({
   spaceId: UuidSchema,
   spaceName: NonEmptyStringSchema,
   title: NonEmptyStringSchema,
-  kind: z.enum(['document', 'file']),
+  // The full kind enum: folders are excluded from this list by the provider's
+  // query, not by a narrower wire type that would misdescribe the column.
+  kind: KnowledgePageKindSchema,
   status: KnowledgePageStatusSchema,
   updatedAt: NonEmptyStringSchema,
 })

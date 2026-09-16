@@ -30,6 +30,7 @@ import {
 } from './download.js'
 import { isStrippableImageMime, prepareImageUpload } from './strip-image-metadata.js'
 import type { GeneratedThumbnail } from './thumbnail.js'
+import { createFileTransferOps, type FileTransferOps } from './transfer.js'
 
 /**
  * The single chokepoint for blob file work. Everything that stores, streams,
@@ -126,7 +127,10 @@ export {
   SIGNED_DOWNLOAD_MIN_BYTES,
 } from './download.js'
 
-export type FileService = ThumbnailOps & {
+// `FileTransferOps` (copy, reassignScope) is declared in ./transfer.ts and is
+// part of this service, not a second one: a transfer's bytes and its ledger
+// events belong at the same chokepoint as every other file operation.
+export type FileService = ThumbnailOps & FileTransferOps & {
   store(input: StoreFileInput): Promise<{ attachment: Attachment; bytesWritten: number }>
   openStream(
     attachmentId: string,
@@ -530,6 +534,12 @@ export const createFileService = (deps: {
     // ./attachment-thumbnails.ts, constructed with this service's own
     // prisma/storage/scope so it stays inside the chokepoint.
     ...createThumbnailOps({ prisma, storage, deriveScope: (row) => deriveScope(row) }),
+    // copy + reassignScope, in ./transfer.ts only because this file is at its
+    // size limit. `copy` is handed this service's own `store` rather than
+    // rebuilding one: the quota gate, the `store` ledger event and the
+    // thumbnail are all inside it, and a second way to reach them is precisely
+    // what the chokepoint exists to prevent.
+    ...createFileTransferOps({ prisma, storage, store }),
     store,
     openDownload,
     openStream,
