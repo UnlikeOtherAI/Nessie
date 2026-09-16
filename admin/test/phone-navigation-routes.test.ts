@@ -22,7 +22,7 @@ test('URL state never changes the semantic route: search/hash normalize away', (
   assert.equal(phoneRouteHasBackDepth('/projects/proj_a?tab=board'), true)
 })
 
-test('tab roots are exactly the depth-0 roots; Search has no contextual list', () => {
+test('tab roots are exactly the depth-0 roots; Search and Knowledge have no contextual list', () => {
   assert.deepEqual(
     ['/channels', '/projects', '/knowledge-base', '/settings', '/search'].map(isPhoneTabRoot),
     [true, true, true, true, true],
@@ -31,14 +31,19 @@ test('tab roots are exactly the depth-0 roots; Search has no contextual list', (
   assert.equal(isPhoneTabRoot('/projects/p1/dashboards'), false)
   assert.equal(phoneTabRootHasContextualList('/channels'), true)
   assert.equal(phoneTabRootHasContextualList('/projects'), true)
-  assert.equal(phoneTabRootHasContextualList('/knowledge-base'), true)
+  // Knowledge lost its secondary sidebar with the redesign, so on a phone its
+  // root screen is the outlet — the Documents Finder's own root column —
+  // exactly as /search and /dashboards already work.
+  assert.equal(phoneTabRootHasContextualList('/knowledge-base'), false)
   assert.equal(phoneTabRootHasContextualList('/settings'), true)
   assert.equal(phoneTabRootHasContextualList('/search'), false)
   assert.equal(phoneTabRootHasContextualList('/projects/p1/dashboards'), false)
 })
 
-test('Knowledge routes: root depth0, spaces and views depth1', () => {
+test('Knowledge routes: root depth0, spaces, views and the virtual folders depth1', () => {
   assert.equal(getPhoneNavigationScreen('/knowledge-base')?.depth, 0)
+  assert.equal(getPhoneNavigationScreen('/knowledge-base/latest')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/knowledge-base/shared-with-me')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/knowledge-base/spaces/space_a')?.depth, 1)
   assert.equal(getPhoneNavigationScreen('/knowledge-base/views/view_a')?.depth, 1)
   assert.deepEqual(getPhoneNavigationBackTarget('/knowledge-base/spaces/space_a'), {

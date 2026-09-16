@@ -4570,3 +4570,218 @@ button.reaction-pill-active:focus-visible {
     border-color: CanvasText;
   }
 }
+
+/* ── The Documents Finder ──────────────────────────────────────────────────
+   docs/plans/2026-09-16-documents-finder-ui/browser-ui.md §4 and §9.
+
+   Every value here is a token. The browser looks like the macOS Finder in the
+   default `nessie` theme because `--main` there *is* white — not because
+   anything writes `#fff`. In `midnight` the same rules give a dark browser
+   with the same accent pill; in `contrast` the hairlines are `--sep`'s near
+   white on black and the pill is that theme's own high-contrast accent. A
+   hard-coded white here is the one thing that would not survive; `.kb-reader`
+   does that deliberately for the paper a document is printed on, and this is
+   not that.
+
+   These live in the stylesheet rather than as utilities on the row because
+   the reset's `button { font: inherit }` and friends are unlayered: a `:hover`
+   spelt as a Tailwind utility on a `<button>` loses to them, which is how a
+   hover rule ends up live in the file and dead on the screen. */
+
+/* The column's list. It cancels the column body's page gutter and re-applies
+   6px, so a selected row's pill runs the full width of the column minus a
+   hair — Finder's inset — instead of the 16px a reading column wants. */
+.finder-rows {
+  margin-inline: calc(var(--page-gutter) * -1);
+  padding-inline: 6px;
+}
+
+/* Finder's own row: 24px with 13px type, which is what makes a column read as
+   a file list rather than a settings menu. It is a pointer question, not a
+   width one — a mouse can hit 24px and a finger cannot — so the touch height
+   is restored below on any coarse pointer, phone or tablet at any width. */
+.finder-row {
+  min-height: 24px;
+  padding-block: 0;
+  border-radius: var(--radius-sm);
+  color: var(--tx);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.finder-row .finder-row-title {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+@media (pointer: coarse) {
+  .finder-row {
+    min-height: 44px;
+  }
+}
+
+/* Every hover and focus rule is guarded: the rules are unlayered, so a bare
+   `:hover` would repaint the one cue that a row cannot be pressed exactly as
+   the pointer arrives. */
+.finder-row:not([aria-disabled='true']):hover {
+  background: var(--overlay-weak);
+}
+
+/* Finder's grey inactive selection: the column you are not in still shows the
+   folder you came through, quietly. */
+.finder-row[aria-selected='true'] {
+  background: var(--overlay);
+}
+
+/* …and the active column's selection is the full-width accent pill. */
+.finder-row[aria-selected='true'][data-column-active='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.finder-row[aria-selected='true'][data-column-active='true'] .finder-row-title,
+.finder-row[aria-selected='true'][data-column-active='true'] .finder-row-sub,
+.finder-row[aria-selected='true'][data-column-active='true'] .finder-row-icon,
+.finder-row[aria-selected='true'][data-column-active='true'] .finder-row-trailing,
+.finder-row[aria-selected='true'][data-column-active='true'] .finder-row-meta,
+.finder-row[aria-selected='true'][data-column-active='true'] .finder-row-chevron {
+  color: var(--on-accent);
+}
+
+.finder-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.finder-row[data-dragging='true'] {
+  opacity: 0.6;
+}
+
+.finder-row[data-drop-target='true'] {
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.finder-row[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A hairline between the root column's groups. Not a heading: a group of two
+   rows with a title over it is mostly title. */
+.finder-separator {
+  margin-block: 6px;
+  border-top: 1px solid var(--sep);
+}
+
+/* The column's empty body under a drag — the same target a folder row is. */
+.finder-drop-body[data-drop-target='true'] {
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* List view's grid. Tabular numerals so a column of sizes lines up on the
+   digit rather than on the glyph width. */
+.finder-grid-row {
+  display: grid;
+  grid-template-columns: var(--finder-grid-columns);
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+}
+
+.finder-grid-size {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The status bar under the track: one 28px strip, hairline on top. */
+.finder-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 28px;
+  flex-shrink: 0;
+  padding-inline: var(--page-gutter);
+  border-top: 1px solid var(--sep);
+  background: var(--main);
+  color: var(--tx3);
+}
+
+/* List view's rows share one grid with the sortable header above them, so the
+   list takes its side padding from the scroller rather than insetting itself
+   the way a column's list does. A row 6px narrower than its header is a Date
+   column that lands in a different place on every screen width. */
+.finder-rows-flush {
+  margin-inline: 0;
+  padding-inline: 0;
+}
+/* ------------------------------------------------ team switch curtain ---
+   Covers the gap between arriving at a team's address and the session
+   actually being on that team. It paints in the tenant's own colours because
+   the alternative it replaced was the *previous* organisation's workspace,
+   drawn in full and then swapped out. */
+
+.team-switch-curtain {
+  position: fixed;
+  z-index: 9000;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: var(--main);
+  inset: 0;
+  opacity: 1;
+  transition: opacity 300ms ease;
+}
+
+.team-switch-curtain[data-fading='true'] {
+  opacity: 0;
+  /* Nothing under it is clickable until it has gone, but the moment it starts
+     fading the app beneath is real and should take the next click. */
+  pointer-events: none;
+}
+
+.team-switch-curtain__mark {
+  display: grid;
+  overflow: hidden;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 24px;
+  font-weight: 600;
+  place-items: center;
+}
+
+.team-switch-curtain__mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.team-switch-curtain__name {
+  margin: 0;
+  color: var(--tx);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.team-switch-curtain__hint {
+  margin: 0;
+  color: var(--tx3);
+  font-size: 13.5px;
+}
+
+/* The curtain's job is to hide a change, so a person who has asked for less
+   motion still gets it — it simply stops animating and cuts instead. */
+@media (prefers-reduced-motion: reduce) {
+  .team-switch-curtain {
+    transition: none;
+  }
+}

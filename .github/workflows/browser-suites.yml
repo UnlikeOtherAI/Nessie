@@ -1,0 +1,257 @@
+name: Browser Suites
+
+# The browser end-to-end suites — navigation transitions, disclosure, browser
+# cloud, project usability, connected mail, mailbox onboarding and agent
+# conversations — run **on request**, not on every push. They are the longest
+# job in the estate by a wide margin, and paying that on every branch push was
+# not worth the wall-clock.
+#
+# Run them with:
+#   gh workflow run browser-suites.yml --ref <branch>
+# or from the Actions tab, picking the branch.
+#
+# Because they no longer report on every push, "Navigation Transitions" is no
+# longer a required status check on `main` — a required check that never runs
+# blocks a pull request forever. Nothing else about the suites changed: this is
+# the same job, moved.
+
+on:
+  workflow_dispatch:
+    inputs:
+      even_if_docs_only:
+        description: Run even when the diff touches no runtime code
+        type: boolean
+        default: true
+
+concurrency:
+  group: browser-suites-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_CACHE_DIR: .turbo/cache
+  TURBO_SCM_BASE: origin/main
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  navigation-e2e:
+    name: Navigation Transitions
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nessie_test
+          POSTGRES_USER: nessie
+          POSTGRES_PASSWORD: nessie
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test
+      # A built bundle rather than the dev server: CI has no hot-reload loop
+      # to preserve, and preview serves the same code deterministically.
+      NAV_E2E_ADMIN_MODE: preview
+      # The isolated member-management fixture is a separate Vite entry only
+      # for this browser evaluation; release bundles never include either one.
+      NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE: '1'
+      NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE: '1'
+      NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE: '1'
+      NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Determine CI scope
+        id: scope
+        run: |
+          # A dispatch is somebody asking for these suites by name, so the
+          # documentation-only skip does not apply to it.
+          if [ "${{ inputs.even_if_docs_only }}" = "true" ]; then
+            echo "code=1" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/ci-scope.mjs
+          fi
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-navigation-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-navigation-
+
+      - name: Install dependencies
+        if: steps.scope.outputs.code == '1'
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
+
+      - name: Generate Prisma client
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/api prisma:generate
+
+      # One Turbo invocation instead of three sequential pnpm builds. The suite
+      # runs the API in local mode, which starts the worker in-process from its
+      # built dist, and serves the admin bundle from admin/dist — both are
+      # declared Turbo outputs, so an unchanged tree restores them from cache.
+      - name: Build admin, api and worker
+        if: steps.scope.outputs.code == '1'
+        run: pnpm exec turbo run build --filter=@nessie/admin... --filter=@nessie/api... --filter=@nessie/worker...
+        env:
+          # See the Type Check step: an uncached Prisma-loading tsc wave is
+          # OOM-killed at Turbo's default concurrency.
+          TURBO_CONCURRENCY: 4
+
+      - name: Apply database migrations
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/api prisma:migrate:deploy
+
+      # playwright-core ships the same `install` CLI as the playwright
+      # package, so the repo needs no extra dependency for this.
+      - name: Install Chromium
+        if: steps.scope.outputs.code == '1'
+        run: pnpm exec playwright-core install --with-deps chromium
+
+      # The disclosure boundary needs a browser recipient, while its source
+      # travels through the real queue and worker. Run it first: it owns the
+      # fixed-port API/admin lifecycle and fails closed if a different suite
+      # has already adopted those ports.
+      - name: Run private conversation disclosure browser evaluation
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:disclosure
+
+      # Real-browser navigation transitions: each case freezes the actual
+      # animation with document.getAnimations() at 0 %, 50 % and 100 %,
+      # asserts layer positions and scrollLeft numerically, and saves the
+      # frames (docs/navigation/overview.md → "Verification").
+      - name: Run navigation transition suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:navigation
+
+      - name: Run browser and project usability suites
+        if: steps.scope.outputs.code == '1'
+        env:
+          PROJECT_USABILITY_SCREENSHOTS: 1
+        run: node admin/e2e/project-usability/ci.mjs
+
+      # Connected mail uses a deterministic provider boundary, but renders the
+      # production admin shell, mailbox and chat doorway in Chromium.
+      - name: Run connected mail browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:connected-mail
+
+      # The connect ladder: which question the mailbox form asks next after
+      # each kind of refusal. It shares connected mail's admin lifecycle and
+      # intercepts the API, because the interesting states (one leg reachable
+      # and the other not, a rejected password) are server verdicts.
+      - name: Run mailbox onboarding browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:mailbox-onboarding
+
+      # Many isolated conversations with one agent, on the same real stack:
+      # two runs for one agent at once, a request log that proves neither saw
+      # the other's turns, and the live doorway card at three widths.
+      - name: Run agent conversations browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:agent-conversations
+
+      # Two Chromium contexts on one spreadsheet: a batch from one pane landing
+      # live in the other, the presence overlay, and a structural batch forcing
+      # the intent replay. Its own `ci.mjs` starts and stops the API and admin
+      # rather than adopting them, so the suite reports on this commit and
+      # leaves the fixed ports free for whatever runs next.
+      - name: Run spreadsheets browser suite
+        if: steps.scope.outputs.code == '1'
+        run: node admin/e2e/spreadsheets/ci.mjs
+
+      - name: Upload transition frames
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: navigation-transition-frames
+          path: e2e/screenshots/navigation
+          if-no-files-found: warn
+
+      - name: Upload project usability screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-usability-screenshots
+          path: e2e/screenshots/project-usability
+          if-no-files-found: warn
+
+      - name: Upload mailbox onboarding screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mailbox-onboarding-screenshots
+          path: e2e/screenshots/mailbox-onboarding
+          if-no-files-found: warn
+
+      - name: Upload member management screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: member-management-screenshots
+          path: e2e/screenshots/member-management
+          if-no-files-found: warn
+
+      - name: Upload browser cloud screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-cloud-screenshots
+          path: e2e/screenshots/browser-cloud
+          if-no-files-found: warn
+
+      - name: Upload connected mail screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: connected-mail-screenshots
+          path: e2e/screenshots/connected-mail
+          if-no-files-found: warn
+
+      - name: Upload disclosure browser screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-conversation-disclosure-screenshots
+          path: e2e/screenshots/disclosure
+          if-no-files-found: warn
+
+      - name: Upload agent conversations screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-conversations-screenshots
+          path: e2e/screenshots/agent-conversations
+          if-no-files-found: warn
+
+      - name: Upload spreadsheets screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spreadsheets-screenshots
+          path: e2e/screenshots/spreadsheets
+          if-no-files-found: warn
+
+      - name: Report skip
+        if: steps.scope.outputs.code != '1'
+        run: echo "Documentation-only change — no UI or API code for the browser suites to render."

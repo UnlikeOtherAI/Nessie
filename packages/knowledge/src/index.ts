@@ -29,8 +29,25 @@ export {
   canReadSpace,
   canWriteSpace,
   loadSpaceViewer,
+  pageSharedWithUser,
   readableKnowledgeSpaceWhere,
+  sharedPageIdsSql,
 } from './access.js'
+export type { KnowledgePageShareAccessLevel } from './access.js'
+export {
+  countPageShares,
+  findPageShare,
+  listPageShares,
+  listSharesForGrantee,
+  mapPageShare,
+  pageAncestorPaths,
+  removePageShare,
+  setPageShareAccess,
+  sharedSubtreePageIds,
+  upsertPageShare,
+  viewerHoldsPageShare,
+} from './page-shares.js'
+export type { GranteeShareRow, KnowledgePageShareRow } from './page-shares.js'
 // Mapper + include shape re-exported so callers that need to list pages by a
 // filter the KnowledgeProvider interface doesn't expose (e.g. by taskId) can
 // query knowledgePage directly and still get the same KnowledgePageRecord shape.
@@ -43,6 +60,29 @@ export {
   readableSpaceIdsSqlForViewer,
 } from './native-search-access.js'
 export { clampRecentLimit, listNativeRecentPages } from './native-recent-pages.js'
+// The Finder's server-side reads (docs/plans/2026-09-16-documents-finder-ui/).
+export {
+  buildKnowledgeHome,
+  clampLatestLimit,
+  listNativeLatestPages,
+  rootKindForSpace,
+} from './native-latest-pages.js'
+export type { ListLatestPagesInput } from './native-latest-pages.js'
+export {
+  indexingStateFor,
+  indexingStatesFor,
+  knowledgeExtractJobKey,
+  knowledgeExtractRetryJobKey,
+  latestKnowledgeExtractJob,
+} from './native-indexing-status.js'
+export type { IndexingStatusPage } from './native-indexing-status.js'
+export { enrichKnowledgePageRecords, pageRowFactsFor } from './native-list-enrichment.js'
+export {
+  getKnowledgePageInfo,
+  getKnowledgeSpaceInfo,
+  SUBTREE_ROW_CAP,
+} from './native-page-info.js'
+export { buildKnowledgeRoot, ROOT_SHARED_SPACE_CAP } from './native-root.js'
 export {
   groupFusedChunksByPage,
   searchNativePagesHybrid,
@@ -163,6 +203,55 @@ export type {
   UpdateSpaceInput,
 } from './types.js'
 export { KnowledgePageRevisionConflictError } from './types.js'
+export {
+  classifyUpload,
+  DOCX_MIME,
+  EXTRACTABLE_TEXT_EXTENSIONS,
+  isExtractableUpload,
+} from './extractable.js'
+export type { ExtractKind } from './extractable.js'
+// Cross-space move and copy (transfer.md §2–5). Each is a function of a
+// `Prisma.TransactionClient`, so the API's synchronous path and the worker's
+// batched one run the same statements rather than two drifting copies.
+export {
+  clearTransferStamp,
+  collectTransferAttachmentIds,
+  collectTransferSubtree,
+  evaluateTransferRefusals,
+  isValidTransferParent,
+  loadTransferSpaceScope,
+  lockKnowledgeSpaceTrees,
+  nextTransferPosition,
+  stampTransferOnRoots,
+  TRANSFER_MAX_DEPTH,
+} from './transfer/collect.js'
+export type {
+  TransferRefusal,
+  TransferSpaceScope,
+  TransferSubtreeNode,
+} from './transfer/collect.js'
+export { destinationScopeForSpace, findTransferBasisRefusal } from './transfer/basis-check.js'
+export type {
+  TransferBasisRefusal,
+  TransferDestinationScope,
+} from './transfer/basis-check.js'
+export { applyTransferMove } from './transfer/move.js'
+export type {
+  ApplyTransferMoveInput,
+  EndedShare,
+  TransferMoveResult,
+} from './transfer/move.js'
+export {
+  applyTransferCopyAttachments,
+  planTransferCopy,
+  rollbackTransferCopy,
+} from './transfer/copy.js'
+export type {
+  PlanTransferCopyInput,
+  TransferCopyAttachmentWork,
+  TransferCopyFileOps,
+  TransferCopyPlan,
+} from './transfer/copy.js'
 export { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
 export { canReadKnowledgePageVersion } from './version-disclosure-access.js'
 export { readableKnowledgePageVersionsWhere } from './version-disclosure-where.js'

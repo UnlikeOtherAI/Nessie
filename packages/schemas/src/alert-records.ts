@@ -38,6 +38,11 @@ export const UserAlertKindSchema = z.enum([
   // A workflow run entered its terminal failed state. The linked run is the
   // recovery doorway, and visibility is rechecked on every bell read.
   'workflow_run_failed',
+  // Somebody shared one of their own documents with this person. Reader side
+  // only for now: the value is parseable one deploy before anything writes it,
+  // because a realtime payload carrying a kind an older replica cannot parse
+  // crashes that replica during a blue-green swap.
+  'knowledge_shared',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 

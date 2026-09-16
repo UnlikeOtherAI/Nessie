@@ -28,7 +28,8 @@ test('every native touch sidebar uses Slack-scale density while desktop remains 
   const sidebars = [
     readSource('../src/layouts/admin-shell/SidebarNav.tsx'),
     readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx'),
-    readSource('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx'),
+    // Knowledge has no secondary sidebar: its section's first column is the
+    // Documents Finder's root, whose rows are 44px targets by construction.
     readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx'),
   ]
   const styles = readSource('../src/styles.css')
@@ -94,11 +95,9 @@ test('selected sidebar affordances follow the project selection hierarchy', () =
 
 test('secondary sidebar menus do not repeat the active tab title above their items', () => {
   const projects = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
-  const knowledge = readSource('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx')
   const admin = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
 
   assert.doesNotMatch(projects, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Projects<\/span>/)
-  assert.doesNotMatch(knowledge, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Knowledge<\/span>/)
   assert.doesNotMatch(admin, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Admin<\/span>/)
 })
 

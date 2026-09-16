@@ -174,7 +174,21 @@ export type TaskFolderTask = {
 // Ensures a ticket has a document folder inside `spaceId` (the project's
 // "Project Documents" space) and returns its page id — every ticket-bound
 // document/file is created as a child of this folder. Idempotent: a folder is
-// identified by (kind: document, metadata.folder: true, metadata.taskId).
+// identified by (kind: 'folder', metadata.taskId).
+//
+// `kind: 'folder'` is the whole answer to "is this a folder". The old
+// convention — a `document` page carrying `metadata.folder: true`, or merely a
+// document that has children — is retired: a writer that still set it would
+// produce a folder every reader of the kind renders as a document, which is
+// the split-brain the kind exists to prevent. The backfill migration converted
+// every flagged row, so this lookup needs no legacy arm; there are no flagged
+// `document` rows left to find.
+//
+// `metadata.taskId` stays, and it is what makes the lookup exact: the `taskId`
+// *column* is set on every document filed inside the folder too, so a lookup
+// on the column alone would match the folder's own contents. The column stays
+// on the folder as well, because the ticket's document list is keyed by it.
+//
 // No advisory lock here (unlike the two space-ensure functions above) — a
 // duplicate folder is a cosmetic annoyance, not a data-integrity problem, and
 // the spec for this helper does not call for one.
@@ -194,12 +208,9 @@ export const ensureTaskFolder = async (
     where: {
       organizationId: input.organizationId,
       spaceId: input.spaceId,
-      kind: 'document',
+      kind: 'folder',
       deletedAt: null,
-      AND: [
-        { metadata: { path: ['folder'], equals: true } },
-        { metadata: { path: ['taskId'], equals: input.task.id } },
-      ],
+      metadata: { path: ['taskId'], equals: input.task.id },
     },
     select: { id: true },
   })
@@ -209,9 +220,11 @@ export const ensureTaskFolder = async (
     organizationId: input.organizationId,
     projectId: input.projectId,
     spaceId: input.spaceId,
-    kind: 'document',
+    // No body, no attachment: `createPage` refuses content on a folder rather
+    // than swallowing it, and this helper has never had any to pass.
+    kind: 'folder',
     title: input.task.title?.trim() || `Task ${input.task.id}`,
-    metadata: { folder: true, taskId: input.task.id },
+    metadata: { taskId: input.task.id },
     taskId: input.task.id,
     authorId: input.actorId,
     authorType: input.authorType,

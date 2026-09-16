@@ -2,8 +2,17 @@ import { createRequire } from 'node:module'
 import type { Readable } from 'node:stream'
 import type { PrismaClient } from '@prisma/client'
 import type { FileService, ModelClient } from '@nessie/runtime'
-import { knowledgeEmbeddingJobKey, replaceKnowledgePageVersionChunks } from '@nessie/knowledge'
-import { KNOWLEDGE_EMBED_TOPIC, type KnowledgeExtractJobPayload } from '@nessie/schemas'
+import {
+  classifyUpload,
+  type ExtractKind,
+  knowledgeEmbeddingJobKey,
+  replaceKnowledgePageVersionChunks,
+} from '@nessie/knowledge'
+import {
+  KNOWLEDGE_EMBED_TOPIC,
+  KNOWLEDGE_EXTRACT_MAX_ATTACHMENT_BYTES,
+  type KnowledgeExtractJobPayload,
+} from '@nessie/schemas'
 import mammoth from 'mammoth'
 import { enqueueQueueJob } from '../queue.js'
 
@@ -28,39 +37,21 @@ const pdfParseLib = require('pdf-parse') as (
 // upstream, before a file-node page exists.
 
 // Bounds memory/CPU: pdf/docx parsers need the whole blob buffered, so a hard
-// byte cap on the source attachment keeps that bounded regardless of kind.
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+// byte cap on the source attachment keeps that bounded regardless of kind. The
+// number lives in @nessie/schemas because the API answers "why is this file not
+// indexed?" from the same one; a local copy that drifted would make that answer
+// wrong for every file between the two values.
+const MAX_ATTACHMENT_BYTES = KNOWLEDGE_EXTRACT_MAX_ATTACHMENT_BYTES
 // Bounds how much plain text ever reaches the chunker, independent of the
 // source attachment's byte size (a 20 MiB plain-text file still has far more
 // than 500k characters worth of useful index content).
 const MAX_EXTRACTED_CHARS = 500_000
 const TEXT_STREAM_MAX_BYTES = MAX_EXTRACTED_CHARS * 4
 
-const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-const EXTRACTABLE_TEXT_EXTENSIONS = new Set([
-  'txt', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml', 'html', 'htm', 'css',
-  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'rb', 'php', 'go', 'rs', 'java',
-  'c', 'h', 'cpp', 'hpp', 'cs', 'swift', 'kt', 'sh', 'bash', 'sql', 'toml', 'ini',
-  'log', 'env', 'conf', 'properties',
-])
-
-type ExtractKind = 'text' | 'pdf' | 'docx' | 'unsupported'
-
-const extensionOf = (filename: string): string | undefined =>
-  filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
-
-// Mirrors api/src/routes/knowledge-base-file-extract.ts's isExtractableUpload —
-// deliberately re-checked here (defense in depth: a job enqueued by an older
-// api build, or hand-inserted, still gets judged before any bytes are read).
-const classifyUpload = (filename: string, mime: string): ExtractKind => {
-  const ext = extensionOf(filename)
-  if (mime === 'application/pdf' || ext === 'pdf') return 'pdf'
-  if (mime === DOCX_MIME || ext === 'docx') return 'docx'
-  if (mime.startsWith('text/') || (ext !== undefined && EXTRACTABLE_TEXT_EXTENSIONS.has(ext))) {
-    return 'text'
-  }
-  return 'unsupported'
-}
+// `classifyUpload` is imported, not restated: the defensive re-check stays
+// (a job enqueued by an older api build, or hand-inserted, is still judged
+// before any bytes are read), it just judges against the one shared predicate
+// in @nessie/knowledge instead of a second copy of the extension list.
 
 const normalizeExtractedText = (text: string): string =>
   text

@@ -373,7 +373,8 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/components/features/agents/AgentDetailTabs.tsx', 'agentTab'],
     ['../src/components/features/agents/AgentsList.tsx', 'scope'],
     ['../src/components/features/executors/ExecutorDetailPanels.tsx', 'tab'],
-    ['../src/components/features/knowledge/KnowledgeWorkspace.tsx', 'view'],
+    ['../src/components/features/knowledge/finder/DocumentsFinder.tsx', 'view'],
+    ['../src/components/features/knowledge/finder/DocumentsFinder.tsx', 'sort'],
     ['../src/pages/project/ProjectView.tsx', 'board'],
     ['../src/pages/project/ProjectSettingsPage.tsx', 'section'],
     ['../src/components/features/triggers/useTriggersPageState.ts', 'type'],
@@ -398,14 +399,15 @@ test('the hook is the only place a tab is written, and it always replaces', () =
   assert.doesNotMatch(hook, /useNavigate/)
 })
 
-test("the knowledge view mode keeps its cookie as the URL's default", () => {
-  const team = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
-  // The cookie seeds the fallback…
-  assert.match(team, /const \[storedViewMode\] = useState<KnowledgeViewMode>\(\(\) => \{/)
-  assert.match(team, /KNOWLEDGE_VIEW_MODES,\n {4}storedViewMode,/)
-  // …and is rewritten on every change, so the preference still follows the reader.
-  assert.match(
-    team,
-    /selectViewMode\(nextMode\)\n {4}setCookie\(VIEW_MODE_COOKIE, nextMode\)/,
-  )
+test("the Finder's view and sort keep their cookies as the URL's default", () => {
+  const finder = readSource('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+  // The cookie seeds the fallback, read once per mount so it cannot move
+  // under the hook that deletes the param when the fallback is selected…
+  assert.match(finder, /const \[storedView\] = useState\(\(\) => migrateStoredFinderView\(/)
+  assert.match(finder, /useTabParam\('view', FINDER_VIEWS, storedView\)/)
+  assert.match(finder, /useTabParam\('sort', FINDER_SORTS, storedSort\)/)
+  // …and is rewritten on every change, so the preference still follows the
+  // reader across folders and sessions.
+  assert.match(finder, /setCookie\(FINDER_VIEW_COOKIE, next\)/)
+  assert.match(finder, /setCookie\(FINDER_SORT_COOKIE, next\)/)
 })
