@@ -16,6 +16,7 @@ import {
 import { applySpreadsheetBatch, type ApplySpreadsheetBatchResult } from './apply.js'
 import { invalidRequest, tooLarge } from './errors.js'
 import { restructureSpreadsheet, type SpreadsheetAction } from './writes.js'
+import { spreadsheetStepOpId } from './agent-tools.js'
 import {
   resolveRangeArgument,
   resolveSheetIndexByName,
@@ -153,7 +154,7 @@ export const writeSpreadsheetRange = async (
           count: height,
         },
       },
-      `${who.clientOpId}:insert`,
+      spreadsheetStepOpId(who.clientOpId, 'insert'),
     )
     inserted = shift.noop ? 0 : height
   }

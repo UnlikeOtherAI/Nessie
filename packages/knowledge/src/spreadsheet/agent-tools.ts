@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import type { LedgerAttribution } from '@nessie/runtime'
 import { SPREADSHEET_LIMITS } from '@nessie/schemas'
 
@@ -70,6 +72,49 @@ export const SHEET_READ_TOOL_IDS: ReadonlySet<string> = new Set([
   'sheet_find',
   'sheet_export',
 ])
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * A tool's idempotency key, as a uuid.
+ *
+ * `spreadsheet_op_batches.client_op_id` is free text, but the *wire* form a
+ * peer receives is not: `SpreadsheetAppliedBatchSchema.clientOpId` is
+ * `z.string().uuid()`, and `publishDocumentEphemeral` parses every event before
+ * it goes out. A tool call id is not a uuid — `call_01H…`, or anything a
+ * provider chooses — so every agent batch committed fine and then failed to
+ * publish, which meant an agent's edit never reached a pane that was already
+ * open. A browser is the only thing that could have shown that: the write
+ * succeeded, the journal was right, and the person watching simply never saw it.
+ *
+ * Derived rather than random, because the whole point of the key is that a
+ * replayed call is recognised: the same tool call id always yields the same
+ * uuid. A key that already is one passes through untouched, so a browser's own
+ * batch keeps the id it minted.
+ */
+export const spreadsheetClientOpId = (key: string): string => {
+  if (UUID.test(key)) return key
+  const bytes = Buffer.from(createHash('sha256').update(key).digest().subarray(0, 16))
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = bytes.toString('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join('-')
+}
+
+/**
+ * The key for one step of a tool call that needs more than one batch — an
+ * `insertRowsBelow` write, a `sheet_create` that seeds several sheets. Distinct
+ * per step, so the second batch is not mistaken for a replay of the first, and
+ * still deterministic, so a retried call is.
+ */
+export const spreadsheetStepOpId = (base: string, step: string): string =>
+  spreadsheetClientOpId(`${base}:${step}`)
 
 export type SheetToolContext = {
   organizationId: string
@@ -393,7 +438,7 @@ export const createSpreadsheetForTool = async (
   const ref = { organizationId: input.organizationId, pageId: page.id }
   const warnings: string[] = []
   for (const [index, sheet] of requested.entries()) {
-    const step = { ...who, clientOpId: `${who.clientOpId}:sheet${index}` }
+    const step = { ...who, clientOpId: spreadsheetStepOpId(who.clientOpId, `sheet${index}`) }
     if (index > 0) {
       await manageSpreadsheetTabs(deps, step, {
         ...ref,
@@ -401,7 +446,10 @@ export const createSpreadsheetForTool = async (
         newName: sheet.name ?? `Sheet${index + 1}`,
       })
     } else if (sheet.name) {
-      await manageSpreadsheetTabs(deps, { ...step, clientOpId: `${step.clientOpId}:name` }, {
+      await manageSpreadsheetTabs(deps, {
+        ...step,
+        clientOpId: spreadsheetStepOpId(step.clientOpId, 'name'),
+      }, {
         ...ref,
         action: 'rename',
         name: null,
@@ -409,7 +457,10 @@ export const createSpreadsheetForTool = async (
       })
     }
     if (!sheet.rows?.length) continue
-    await writeSpreadsheetRange(deps, { ...step, clientOpId: `${step.clientOpId}:rows` }, {
+    await writeSpreadsheetRange(deps, {
+      ...step,
+      clientOpId: spreadsheetStepOpId(step.clientOpId, 'rows'),
+    }, {
       ...ref,
       sheet: sheet.name ?? null,
       range: 'A1',

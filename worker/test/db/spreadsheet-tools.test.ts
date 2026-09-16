@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict'
 
+import { listSpreadsheetBatches } from '@nessie/knowledge'
+import { shiftIntents } from '@nessie/spreadsheet'
+import type { SpreadsheetAppliedBatch, SpreadsheetBatchSummary, SpreadsheetIntent } from '@nessie/schemas'
+
+import { spreadsheetServiceFor } from '../../src/run/pa-tools/spreadsheet-access.js'
 import { executeBuiltinTool } from '../../src/run/tools.js'
 import type { BuiltinToolRuntimeContext } from '../../src/run/tool-types.js'
 import { answerOf, seedSpreadsheetRun, type SpreadsheetFixture } from './spreadsheet-fixture.js'
@@ -23,6 +28,34 @@ const call = async (
   const result = await executeBuiltinTool(toolName, args, { ...context, toolCallId })
   assert.equal(result.success, true, `${toolName} failed: ${result.output}`)
   return answerOf(result)
+}
+
+const headSeqOf = async (fixture: SpreadsheetFixture, pageId: string): Promise<number> => {
+  const head = await fixture.prisma.spreadsheetHead.findUniqueOrThrow({
+    where: { pageId },
+    select: { headSeq: true },
+  })
+  return Number(head.headSeq)
+}
+
+/**
+ * The client's own gate, restated here rather than imported: it lives in the
+ * admin bundle (`live/sync-engine.ts` `foreignSummary`) and a worker suite
+ * cannot import React code. Keeping the two in step is what the assertions
+ * below are for — if the client's rule changes, this one has to change with it.
+ */
+const foreignSummaryOf = (batch: SpreadsheetAppliedBatch): SpreadsheetBatchSummary | null => {
+  if (!batch.structuralKind) {
+    return { structuralKind: null, sheetIndexes: batch.sheetIndexes, cellCount: 0, touched: [] }
+  }
+  if (!batch.structuralIntents || batch.structuralIntents.length === 0) return null
+  return {
+    structuralKind: batch.structuralKind,
+    sheetIndexes: batch.sheetIndexes,
+    cellCount: batch.cellCount,
+    touched: [],
+    intents: batch.structuralIntents,
+  }
 }
 
 const create = async (fixture: SpreadsheetFixture, title: string): Promise<string> => {
@@ -173,13 +206,28 @@ runDatabaseTest('a run\'s first write and every destructive one take a version f
     'an agent run\'s first write to a page should snapshot',
   )
 
-  const deleted = await call(fixture.context, 'sheet_structure', {
+  // A three-row delete is under the hundred-row destructive threshold, so it
+  // takes no version of its own — the run-start one above is what a restore
+  // goes back to. The threshold exists so an agent working through a sheet does
+  // not write an xlsx per trivial edit.
+  const small = await call(fixture.context, 'sheet_structure', {
     pageId,
     action: 'deleteRows',
     range: '2:4',
   })
+  assert.equal(
+    (small.outcome as { versionId: string | null }).versionId,
+    null,
+    'a small delete should lean on the run-start version rather than take its own',
+  )
+
+  const deleted = await call(fixture.context, 'sheet_structure', {
+    pageId,
+    action: 'deleteRows',
+    range: '10:200',
+  })
   const versionId = (deleted.outcome as { versionId: string | null }).versionId
-  assert.ok(versionId, 'a row delete should have snapshotted first')
+  assert.ok(versionId, 'a delete over the threshold should have snapshotted first')
 
   const listed = await call(fixture.context, 'sheet_versions', { pageId, action: 'list' })
   const versions = listed.versions as { id: string; comment: string | null; author: { type: string } }[]
@@ -201,7 +249,93 @@ runDatabaseTest('a run\'s first write and every destructive one take a version f
   assert.ok(restored.previousVersionId)
 
   const back = await call(fixture.context, 'sheet_read_range', { pageId, range: 'A1:A5' })
-  assert.deepEqual(back.rows, [['row 0'], ['row 1'], ['row 2'], ['row 3'], ['row 4']])
+  assert.deepEqual(back.rows, [['row 0'], ['row 4'], [''], [''], ['']])
+})
+
+runDatabaseTest('a peer\'s pending edit survives an agent inserting rows above it', async (t) => {
+  const fixture = await seedSpreadsheetRun('sheet-rebase')
+  t.after(fixture.cleanup)
+  const pageId = await create(fixture, 'Shared')
+  const organizationId = String(fixture.context.channel.organizationId)
+
+  await call(fixture.context, 'sheet_write_range', {
+    pageId,
+    range: 'A1',
+    rows: Array.from({ length: 6 }, (_, index) => [`row ${index + 1}`]),
+  })
+  const baseSeq = await headSeqOf(fixture, pageId)
+
+  // What a person had typed but not yet had acknowledged when the agent moved
+  // the grid under them. This is the exact shape the pane records.
+  const pending: SpreadsheetIntent = {
+    kind: 'setUserInput',
+    sheet: 0,
+    row: 5,
+    column: 2,
+    value: 'mine',
+  }
+
+  await call(fixture.context, 'sheet_structure', {
+    pageId,
+    action: 'insertRows',
+    range: '2:4',
+  })
+
+  const service = spreadsheetServiceFor(fixture.context)
+  const { batches } = await listSpreadsheetBatches(service, {
+    organizationId,
+    pageId,
+    afterSeq: baseSeq,
+  })
+  const structural = batches.find((batch) => batch.structuralKind === 'insertRows')
+  assert.ok(structural, 'the insert should be on the journal as a structural batch')
+
+  // Without these the client cannot tell *which* rows moved, reads the batch as
+  // unrebasable, and drops the person's edit with a notice.
+  assert.deepEqual(structural.structuralIntents, [
+    { kind: 'insertRows', sheet: 0, row: 2, count: 3 },
+  ])
+
+  const foreign = foreignSummaryOf(structural)
+  assert.ok(foreign, 'a structural batch carrying intents can be rebased against')
+  const shifted = shiftIntents([pending], [foreign])
+  assert.equal(shifted.length, 1, 'the pending edit should survive, not be dropped')
+  assert.deepEqual(shifted[0], { ...pending, row: 8 })
+})
+
+runDatabaseTest('a sort is honestly unrebasable rather than falsely shiftable', async (t) => {
+  const fixture = await seedSpreadsheetRun('sheet-rebase-sort')
+  t.after(fixture.cleanup)
+  const pageId = await create(fixture, 'Sorted')
+  const organizationId = String(fixture.context.channel.organizationId)
+
+  await call(fixture.context, 'sheet_write_range', {
+    pageId,
+    range: 'A1',
+    rows: [['Zoe'], ['Ana'], ['Mo']],
+  })
+  const baseSeq = await headSeqOf(fixture, pageId)
+  await call(fixture.context, 'sheet_structure', {
+    pageId,
+    action: 'sort',
+    range: 'A1:A3',
+    sort: { by: ['A'] },
+  })
+
+  const service = spreadsheetServiceFor(fixture.context)
+  const { batches } = await listSpreadsheetBatches(service, {
+    organizationId,
+    pageId,
+    afterSeq: baseSeq,
+  })
+  const sorted = batches.find((batch) => batch.structuralKind === 'sort')
+  assert.ok(sorted)
+  // A sort reorders rows by content, not by an index delta, so there is no
+  // shift that would carry a pending edit correctly. Saying "cannot be
+  // rebased" is the honest answer; inventing one would land somebody's edit on
+  // whichever row now happens to sit at that index.
+  assert.equal(sorted.structuralIntents, undefined)
+  assert.equal(foreignSummaryOf(sorted), null)
 })
 
 runDatabaseTest('replaying a tool call by its id does not apply the write twice', async (t) => {

@@ -83,6 +83,8 @@ export {
   SHEET_TOOL_IDS,
   createSpreadsheetForTool,
   runSheetPageTool,
+  spreadsheetClientOpId,
+  spreadsheetStepOpId,
   toSheetToolRefusal,
   type CreateSheetToolInput,
   type SheetToolContext,

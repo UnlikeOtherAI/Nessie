@@ -2,7 +2,13 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { SPREADSHEET_LIMITS } from '@nessie/schemas'
 
 import { engineMismatch, spreadsheetNotFound } from './errors.js'
-import { applyDiffs, engineVersion, loadWorkbook, type SpreadsheetWorkbook } from './engine.js'
+import {
+  applyDiffs,
+  engineVersion,
+  isEmptyDiffPayload,
+  loadWorkbook,
+  type SpreadsheetWorkbook,
+} from './engine.js'
 import type { SpreadsheetServiceDeps } from './deps.js'
 
 /**
@@ -90,15 +96,36 @@ export const modelAtHead = async (
   }
 
   if (from < headSeq) {
-    const batches = await tx.spreadsheetOpBatch.findMany({
+    let batches = await tx.spreadsheetOpBatch.findMany({
       where: { pageId: head.pageId, seq: { gt: BigInt(from), lte: head.headSeq } },
       orderBy: { seq: 'asc' },
-      select: { seq: true, diffs: true },
+      select: { seq: true, diffs: true, structuralKind: true },
     })
+
+    // A restore (and an import, which uses the same shape) is an instruction to
+    // start again, not a payload: it carries no diffs, and no sequence of diffs
+    // could turn this model into the restored workbook anyway. Replaying it
+    // threw `Error parsing diff list` and took the whole request with it — on
+    // *another* replica than the one that restored, because that replica's
+    // cache still held the pre-restore model and fast-forwarded across the
+    // marker. The restore writes the hot snapshot at its own seq, so rebuilding
+    // from there is both correct and already paid for.
+    const restart = batches.some((batch) => batch.structuralKind === 'restore')
+    if (restart) {
+      deps.cache.evict(head.pageId)
+      workbook = loadWorkbook(head.hotSnapshot)
+      from = Number(head.hotSnapshotSeq)
+      batches = batches.filter((batch) => Number(batch.seq) > from)
+    }
+
     // One pause/resume/evaluate for the whole catch-up, not one per batch.
     workbook.model.pauseEvaluation()
     try {
-      for (const batch of batches) workbook.model.applyExternalDiffs(batch.diffs)
+      for (const batch of batches) {
+        // An empty payload is the encoded empty list, never a diff to apply.
+        if (isEmptyDiffPayload(batch.diffs)) continue
+        workbook.model.applyExternalDiffs(batch.diffs)
+      }
     } finally {
       workbook.model.resumeEvaluation()
     }
