@@ -4566,3 +4566,69 @@ button.reaction-pill-active:focus-visible {
     border-color: CanvasText;
   }
 }
+
+/* ------------------------------------------------ team switch curtain ---
+   Covers the gap between arriving at a team's address and the session
+   actually being on that team. It paints in the tenant's own colours because
+   the alternative it replaced was the *previous* organisation's workspace,
+   drawn in full and then swapped out. */
+
+.team-switch-curtain {
+  position: fixed;
+  z-index: 9000;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: var(--main);
+  inset: 0;
+  opacity: 1;
+  transition: opacity 300ms ease;
+}
+
+.team-switch-curtain[data-fading='true'] {
+  opacity: 0;
+  /* Nothing under it is clickable until it has gone, but the moment it starts
+     fading the app beneath is real and should take the next click. */
+  pointer-events: none;
+}
+
+.team-switch-curtain__mark {
+  display: grid;
+  overflow: hidden;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 24px;
+  font-weight: 600;
+  place-items: center;
+}
+
+.team-switch-curtain__mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.team-switch-curtain__name {
+  margin: 0;
+  color: var(--tx);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.team-switch-curtain__hint {
+  margin: 0;
+  color: var(--tx3);
+  font-size: 13.5px;
+}
+
+/* The curtain's job is to hide a change, so a person who has asked for less
+   motion still gets it — it simply stops animating and cuts instead. */
+@media (prefers-reduced-motion: reduce) {
+  .team-switch-curtain {
+    transition: none;
+  }
+}
