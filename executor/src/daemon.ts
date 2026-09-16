@@ -229,7 +229,9 @@ export const executeExecutorCommand = async (
         return {
           code: 'EXECUTOR_PROMOTION_SINGLE_FOLDER_REQUIRED',
           folders: manifest.folders.map((folder) => folder.name),
-          message: 'This review changed more than one workspace folder, and promotion applies one.',
+          message: manifest.folders.length === 0
+            ? 'This run has no workspace folder draft to promote.'
+            : 'This review changed more than one workspace folder, and promotion applies one.',
           success: false,
         }
       }
