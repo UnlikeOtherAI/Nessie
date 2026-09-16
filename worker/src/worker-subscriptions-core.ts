@@ -1,4 +1,4 @@
-import { enqueueQueueJob } from '@nessie/db'
+import { enqueueQueueJob, withSweepLock } from '@nessie/db'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import {
   AttachmentThumbnailJobPayloadSchema,
@@ -77,6 +77,16 @@ import {
   SpreadsheetImportJobPayloadSchema,
   executeSpreadsheetImportJob,
 } from './control/spreadsheet-import.js'
+import {
+  SPREADSHEET_ENGINE_MIGRATE_TOPIC,
+  SPREADSHEET_SWEEP_INTERVAL_MS,
+  SPREADSHEET_SWEEP_LOCK,
+  SpreadsheetEngineMigrateJobPayloadSchema,
+  executeSpreadsheetEngineMigrateJob,
+  pruneSpreadsheetOpBatches,
+  sweepIdleSpreadsheets,
+  sweepStaleSpreadsheetEngines,
+} from './control/spreadsheet-sweeps.js'
 import {
   createNativeKnowledgeProvider,
   createSpreadsheetModelCache,
@@ -409,6 +419,51 @@ subscribe(
   },
   { signal: abortSignal },
 )
+subscribe(
+  SPREADSHEET_ENGINE_MIGRATE_TOPIC,
+  async (job) => {
+    await executeSpreadsheetEngineMigrateJob(
+      spreadsheetDeps,
+      SpreadsheetEngineMigrateJobPayloadSchema.parse(job.payload),
+    )
+  },
+  { signal: abortSignal },
+)
+
+// The spreadsheet sweeps live here rather than in `worker-sweeps.ts` because
+// this is where the spreadsheet deps are: the model cache, the file service
+// and the knowledge provider are closure state of *this* registration, and a
+// second copy of them in the sweep module would be a second cache.
+//
+// One indivisible bounded pass per tick, so the primitive is `withSweepLock`
+// (horizontal-scaling invariant 2). The three sweeps are awaited in sequence
+// and each one catches its own failure, so a database error in the prune does
+// not stop the engine migration behind it.
+let spreadsheetSweepInFlight = false
+const spreadsheetSweepInterval = setInterval(() => {
+  if (spreadsheetSweepInFlight || abortSignal.aborted) return
+  spreadsheetSweepInFlight = true
+  void withSweepLock(pool, SPREADSHEET_SWEEP_LOCK, async () => {
+    for (const [label, run] of [
+      ['idle-compact', () => sweepIdleSpreadsheets(prisma)],
+      ['prune', () => pruneSpreadsheetOpBatches(prisma)],
+      ['engine-migrate', () => sweepStaleSpreadsheetEngines(prisma)],
+    ] as const) {
+      try {
+        await run()
+      } catch (error) {
+        console.error(`[worker.spreadsheet-sweeps] ${label} failed`, error)
+      }
+    }
+  })
+    .catch((error: unknown) => {
+      console.error('[worker.spreadsheet-sweeps] failed', error)
+    })
+    .finally(() => {
+      spreadsheetSweepInFlight = false
+    })
+}, SPREADSHEET_SWEEP_INTERVAL_MS)
+abortSignal.addEventListener('abort', () => clearInterval(spreadsheetSweepInterval), { once: true })
 subscribe(
   KNOWLEDGE_EMBED_TOPIC,
   async (job) => {
