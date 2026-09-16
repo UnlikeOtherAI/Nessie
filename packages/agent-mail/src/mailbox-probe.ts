@@ -271,6 +271,42 @@ const smtpConversation = async (
   }
 }
 
+/**
+ * Which registered ports each leg may be dialled on. A discovered document, or
+ * a person's typed settings, can name any port at all; this module opens
+ * sockets, so an unexpected one is `skipped` without a dial rather than turned
+ * into a port scan somebody could aim through us.
+ */
+export const mailboxProbePortAllowed = (
+  protocol: MailboxProbeProtocol,
+  port: number,
+): boolean => (protocol === 'imap' ? IMAP_PROBE_PORTS : SMTP_PROBE_PORTS).has(port)
+
+export type MailboxProbeProtocol = 'imap' | 'smtp'
+
+/**
+ * One leg, on its own budget.
+ *
+ * Exported for the credentialed resolver, which must decide whether a *guessed*
+ * hostname may be dialled with a password at all. It asks this first precisely
+ * because it cannot pass a credential here: the answer arrives before the
+ * secret exists on the wire, which is the only ordering that makes guessing a
+ * hostname safe. The pair probe below is the discovery caller's entry point.
+ */
+export const probeMailboxLeg = async (
+  protocol: MailboxProbeProtocol,
+  endpoint: MailEndpoint,
+  options: MailboxProbeOptions,
+): Promise<MailboxProbeOutcome> => {
+  if (!mailboxProbePortAllowed(protocol, endpoint.port)) return 'skipped'
+  return probeLeg(
+    endpoint,
+    options.deadline ?? Date.now() + MAILBOX_PROBE_BUDGET_MS,
+    options,
+    protocol === 'imap' ? runImapCapabilityProbe : runSmtpCapabilityProbe,
+  )
+}
+
 const probeLeg = async (
   endpoint: MailEndpoint,
   deadline: number,
@@ -302,9 +338,10 @@ const probeLeg = async (
  * access leg does not answer is not worth a second dial.
  */
 export const probeMailboxCapability: MailboxCapabilityProbe = async (config, options) => {
-  if (!IMAP_PROBE_PORTS.has(config.imap.port) || !SMTP_PROBE_PORTS.has(config.smtp.port)) {
-    return 'skipped'
-  }
+  if (
+    !mailboxProbePortAllowed('imap', config.imap.port)
+    || !mailboxProbePortAllowed('smtp', config.smtp.port)
+  ) return 'skipped'
   const deadline = Date.now() + MAILBOX_PROBE_BUDGET_MS
   const imap = await probeLeg(config.imap, deadline, options, runImapCapabilityProbe)
   if (imap !== 'confirmed') return imap

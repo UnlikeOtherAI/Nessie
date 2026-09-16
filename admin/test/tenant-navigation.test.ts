@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  nativeShellRecoveryHref,
   resolveTeamSwitchDestination,
   teamSwitchDestination,
   tenantReturnDestination,
@@ -111,6 +112,37 @@ test('a stored tenant return is followed in a browser and dropped in a native sh
   assert.equal(tenantReturnDestination({ inNativeShell: false, target }), target)
   assert.equal(tenantReturnDestination({ inNativeShell: true, target }), null)
   assert.equal(tenantReturnDestination({ inNativeShell: false, target: null }), null)
+})
+
+test('a native shell on a tenant host goes back to the canonical origin', () => {
+  const shell = { canonicalOrigin, inNativeShell: true }
+  assert.equal(
+    nativeShellRecoveryHref({ ...shell, currentUrl: `${teamUrl}/channels/abc?x=1#m`, hostKind: 'team' }),
+    `${canonicalOrigin}/channels/abc?x=1#m`,
+  )
+  assert.equal(
+    nativeShellRecoveryHref({ ...shell, currentUrl: `https://${portalHost}/anything`, hostKind: 'organisation' }),
+    `${canonicalOrigin}/channels`,
+  )
+})
+
+test('recovery leaves browsers, ordinary hosts and the canonical origin alone', () => {
+  const facts = { canonicalOrigin, currentUrl: `${teamUrl}/channels`, hostKind: 'team' as const }
+  assert.equal(nativeShellRecoveryHref({ ...facts, inNativeShell: false }), null)
+  assert.equal(nativeShellRecoveryHref({ ...facts, hostKind: null, inNativeShell: true }), null)
+  assert.equal(nativeShellRecoveryHref({ ...facts, canonicalOrigin: null, inNativeShell: true }), null)
+  assert.equal(
+    nativeShellRecoveryHref({ ...facts, currentUrl: `${canonicalOrigin}/channels`, inNativeShell: true }),
+    null,
+  )
+})
+
+test('TenantHostGate sends a native shell off a tenant host through the shared policy', () => {
+  const gate = readSource('../src/layouts/tenant/TenantHostGate.tsx')
+  assert.match(gate, /nativeShellRecoveryHref\(\{/)
+  assert.match(gate, /inNativeShell: isNativeShell\(\)/)
+  assert.match(gate, /if \(recoveryHref\) window\.location\.replace\(recoveryHref\)/)
+  assert.match(gate, /if \(recoveryHref \|\| !token/)
 })
 
 // The components must route through the shared decision. Each test below fails

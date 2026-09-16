@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { MailboxDiscoveryResult } from '../src/lib/api-client.js'
+import type {
+  MailboxConnectionDiagnosis,
+  MailboxDiscoveryResult,
+} from '../src/lib/api-client.js'
 import { connectionAnchorId } from '../src/lib/connection-anchor.js'
 import { mailboxDiscoveryRequest } from '../src/facades/mailbox-connections/hooks.js'
 import {
   commsOAuthProvider,
+  failingLeg,
+  mailboxConnectionDiagnosis,
+  nextStepAfterConnectFailure,
   appPasswordAccountName,
   appPasswordPageUrl,
   appPasswordPages,
@@ -332,4 +338,73 @@ test('a deployment that never configured a provider does not invite a retry', ()
     'This server does not know its own public address, so sign-in cannot start. '
       + 'An administrator has to set it.',
   )
+})
+
+const diagnosis = (
+  imap: MailboxConnectionDiagnosis['imap'],
+  smtp: MailboxConnectionDiagnosis['smtp'],
+): MailboxConnectionDiagnosis => ({ imap, smtp })
+
+const reached = { host: 'imap.example.com', ok: true, port: 993 } as const
+const missing = { failure: 'unreachable', host: 'smtp.example.com', ok: false } as const
+
+test('an undiscoverable domain now asks for a password, not for ten server fields', () => {
+  const unknown = discovery({
+    ui: {
+      providerIcon: 'generic',
+      providerName: 'Example Mail',
+      requiresAdvancedSettings: false,
+      // The old behaviour: this alone sent somebody to the advanced form before
+      // anything had been tried. The connect route resolves endpoints now.
+      requiresManualSettings: true,
+      requiresProviderConfirmation: false,
+    },
+  })
+  assert.equal(nextMailboxOnboardingStep(unknown, 'user'), 'password')
+})
+
+test('the failing leg is named only when exactly one of them failed', () => {
+  assert.equal(failingLeg(diagnosis(reached, missing)), 'smtp')
+  assert.equal(failingLeg(diagnosis({ ...missing, host: 'imap.example.com' }, { ...reached, host: 'smtp.example.com' })), 'imap')
+  assert.equal(failingLeg(diagnosis(reached, { ...reached, host: 'smtp.example.com' })), null)
+  assert.equal(failingLeg(diagnosis({ ...missing }, { ...missing })), null)
+})
+
+test('one working leg escalates to that leg alone, never to the whole form', () => {
+  assert.equal(nextStepAfterConnectFailure('password', diagnosis(reached, missing)), 'leg')
+  assert.equal(nextStepAfterConnectFailure('server', diagnosis(reached, missing)), 'leg')
+})
+
+test('the password screen escalates to one mail server before the full form', () => {
+  const bothMissing = diagnosis({ failure: 'unreachable', ok: false }, { failure: 'unreachable', ok: false })
+  assert.equal(nextStepAfterConnectFailure('password', bothMissing), 'server')
+  assert.equal(nextStepAfterConnectFailure('server', bothMissing), 'manual')
+})
+
+test('a step never repeats itself: the leg screen escalates to the full form', () => {
+  assert.equal(nextStepAfterConnectFailure('leg', diagnosis(reached, missing)), 'manual')
+})
+
+test('a rejected credential keeps the person where they are', () => {
+  const rejected = diagnosis(
+    { failure: 'credential_rejected', ok: false },
+    { failure: 'credential_rejected', ok: false },
+  )
+  // Every other screen would ask them to fix settings that are not broken.
+  assert.equal(nextStepAfterConnectFailure('password', rejected), 'password')
+  assert.equal(nextStepAfterConnectFailure('leg', rejected), 'leg')
+  assert.equal(nextStepAfterConnectFailure('manual', rejected), 'manual')
+})
+
+test('a refusal with no diagnosis falls forward rather than stalling', () => {
+  assert.equal(nextStepAfterConnectFailure('password', null), 'server')
+  assert.equal(nextStepAfterConnectFailure('manual', null), 'manual')
+})
+
+test('the diagnosis is parsed off the refusal, and a wrong shape is refused', () => {
+  const details = diagnosis(reached, missing)
+  assert.deepEqual(mailboxConnectionDiagnosis({ details }), details)
+  assert.equal(mailboxConnectionDiagnosis({ details: { imap: 'yes' } }), null)
+  assert.equal(mailboxConnectionDiagnosis({ message: 'no details at all' }), null)
+  assert.equal(mailboxConnectionDiagnosis(null), null)
 })

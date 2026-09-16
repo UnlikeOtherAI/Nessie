@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 
 import { useTenantHost, useTenantTeam } from '../../facades/team/tenant-host'
+import { isNativeShell, nativeShellRecoveryHref } from '../../lib/tenant-navigation'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
@@ -35,9 +36,26 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { data: teamData } = useTenantTeam(Boolean(token) && data?.kind === 'team')
   const team = teamData?.team ?? null
 
+  // A native shell's bridge is refused on a tenant host — the title bar stops
+  // dragging the window — so it goes back to the canonical origin however it
+  // got here (lib/tenant-navigation.ts).
+  const recoveryHref = data?.kind
+    ? nativeShellRecoveryHref({
+        canonicalOrigin: data.signInOrigin,
+        currentUrl: window.location.href,
+        hostKind: data.kind,
+        inNativeShell: isNativeShell(),
+      })
+    : null
+
   useEffect(() => {
-    // `me` is needed to know which team the session is already on.
-    if (!token || !team || !me) return
+    if (recoveryHref) window.location.replace(recoveryHref)
+  }, [recoveryHref])
+
+  useEffect(() => {
+    // `me` is needed to know which team the session is already on. A shell
+    // leaving this host keeps the team it has rather than switching onto this one.
+    if (recoveryHref || !token || !team || !me) return
     const key = `${team.externalOrgId}:${team.externalTeamId}`
     // Once per team per page load: a failed switch must leave the person where
     // they are rather than retrying forever against a team they cannot open.
@@ -52,12 +70,15 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
       organizationId: team.externalOrgId,
       teamId: team.externalTeamId,
     }).catch(() => undefined)
-  }, [me, team, switchUoaTeam, token])
+  }, [me, recoveryHref, team, switchUoaTeam, token])
 
   // Render nothing at all while the hostname is still being resolved, but only
   // when it could plausibly be a tenant host — otherwise every ordinary load
   // would flash an empty frame waiting for a request it never made.
   if (isLoading && !data) return null
+
+  // Leaving this host: nothing of the tenant is drawn on the way out.
+  if (recoveryHref) return null
 
   if (data?.kind === 'organisation') {
     return <OrgPortal organisation={data.organisation} signInOrigin={data.signInOrigin} />

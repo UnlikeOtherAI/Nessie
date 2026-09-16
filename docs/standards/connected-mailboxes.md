@@ -51,13 +51,14 @@ Plan and as-built deltas:
 - **One panel, two homes** (`components/features/mailbox-connections/`): personal
   mailboxes on `/settings/connections`, shared ones on `/settings/organization`,
   scope as a parameter â€” the `CloudBrowserPanel` shape. Both carry per-agent
-  access rows: a connection no agent may use does nothing. Connecting tests both
-  legs before it stores, and only a provider rejection (`auth`-kind) flips a
-  connection to `needs_reauthorization`. The personal Email doorway is
-  address-first: a server-approved Google or Microsoft OAuth route starts its
-  native connector, while a reviewed IMAP/SMTP route keeps its server details
-  hidden until the person chooses Advanced settings. A team shared mailbox stays
-  Model A-only and never starts a personal OAuth connection.
+  access rows: a connection no agent may use does nothing. Connecting resolves
+  and proves both legs before it stores, and only a provider rejection
+  (`auth`-kind) flips a connection to `needs_reauthorization`. The personal
+  Email doorway is address-first: a server-approved Google or Microsoft OAuth
+  route starts its native connector, while an IMAP/SMTP route asks for a
+  password and lets the server find the endpoints, escalating one question at a
+  time only when it cannot. A team shared mailbox stays Model A-only and never
+  starts a personal OAuth connection.
 - **One live review surface, several content-free doorways.** `/mail` owns the
   connected-account list, structural thread view, bounded conversation reader,
   and human compose/reply flow for Gmail and SMTP/IMAP. The provider remains the
@@ -148,9 +149,47 @@ Plan and as-built deltas:
   withholds the configuration entirely and sends the person to manual settings,
   and an unreachable or skipped probe changes nothing â€” a transient failure is
   the connect step's error to report, not a reason to distrust a reviewed
-  configuration. The UI may show the password
-  screen only when that server-authored property exists; manual settings remain
-  an explicit user override and the dial path still re-vets every endpoint.
+  configuration. Manual settings remain an explicit user override and the dial
+  path still re-vets every endpoint.
+- **Connecting resolves the endpoints; it does not demand them.** A password is
+  the one thing only the person has, so it is the one thing the form asks for.
+  `mailbox-resolve.ts` then finds the endpoints *with* that credential â€” a fixed
+  port matrix per leg (IMAP 993/143, SMTP 587/465/25, each with the one secure
+  transport its port is defined to carry) across at most three hostnames
+  (`imap.`/`smtp.`, `mail.`, the bare domain), first success wins. It is the
+  step after `mailbox-probe.ts`, not a replacement for it, and the two stay
+  separate files because the probe's guarantee is that it *cannot* carry a
+  secret and a module that logs in cannot promise that. **A hostname the person
+  did not type is probed credential-free before it is ever logged into**: only
+  `confirmed` earns a login. Guessing a *port* on a host somebody named is safe,
+  because TLS is pinned to that hostname on every dial and a wrong port cannot
+  hand the password to a stranger; guessing the *hostname* is the part that
+  could, which is what the gate covers. A refused credential ends the whole
+  resolution rather than replaying the password across a host's remaining
+  ports â€” that traffic is what gets an address blocked. A hostname the person
+  typed is authoritative and no derived host is tried behind it, so the failure
+  message stays true.
+- **Every server field is optional on the wire, and absence means "resolve it".**
+  `CreateMailboxConnectionBodySchema` accepts `server`, `imap*`, `smtp*` and
+  `username` as optional; a field that is present is an instruction used exactly
+  as given, never second-guessed. That is what makes one route serve the whole
+  ladder, and why the browser must leave a field out rather than post a
+  placeholder â€” a port input defaulted to 993 posts 993 and silently disables
+  the sweep. Blank is therefore the default on every screen, the advanced form
+  included, where a port and a transport may both read "Automatic".
+- **A refusal is per leg, and the form asks only for what is missing.** The
+  refusal carries a `MailboxConnectionDiagnosis` â€” `ok`, `failure`, `host`,
+  `port` for each leg â€” in the error envelope's `details`. It exists because
+  "could not connect this mailbox" is true of every failure and therefore tells
+  nobody what to fix, while "we connected to your incoming server but could not
+  reach an outgoing one" names the single remaining problem. The ladder
+  (`nextStepAfterConnectFailure`) climbs one rung per refusal and never repeats
+  a rung: password, then one mail-server hostname, then the one leg still
+  missing with its working partner pinned, then every field. A rejected
+  credential does not climb at all â€” every screen above would be asking somebody
+  to fix a server that is fine. Browser coverage is
+  `admin/e2e/mailbox-onboarding/`, which asserts the posted payload as well as
+  the screen, because a form that posts an untyped port looks identical.
 - **Seams.** Protocol clients live in `@nessie/agent-mail` (`dial`, `wire`,
   `smtp`, `imap`, `mailbox-client`) beside the SES transport, because MIME
   building and address handling are transport-neutral and `buildOutboundMime`

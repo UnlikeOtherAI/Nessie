@@ -310,7 +310,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
           aria-haspopup="menu"
           aria-label="Switch team"
           className={[
-            'mb-4 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
+            'mt-2 mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
             open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
           ].join(' ')}
           onClick={toggleMenu}

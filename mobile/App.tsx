@@ -41,6 +41,7 @@ import {
 import { useNativePushNavigation } from './src/lib/native-push-navigation'
 import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
+import { useIosKeyboardOverlap } from './src/lib/ios-keyboard-overlap'
 import { shouldInstallNativeBackHandler } from './src/lib/native-phone-navigation'
 import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
 import {
@@ -298,10 +299,13 @@ const Shell = (): React.JSX.Element => {
     void orientation.catch(() => undefined)
   }, [largePhoneLandscapeCapable])
 
+  const keyboardOverlap = useIosKeyboardOverlap(windowHeight)
+  const keyboardOpen = keyboardOverlap > 0
+
   useEffect(() => {
     if (IS_IPAD || Platform.OS !== 'ios') return
-    runScript(nativePhoneTabBarClearanceScript(insets.bottom))
-  }, [insets.bottom, runScript])
+    runScript(nativePhoneTabBarClearanceScript(insets.bottom, keyboardOpen))
+  }, [insets.bottom, keyboardOpen, runScript])
 
   const bootRecovery = useNativeBootRecovery(currentPathRef)
   const phoneBack = useNativePhoneBack(
@@ -577,7 +581,13 @@ const Shell = (): React.JSX.Element => {
     showNativePhoneNavBar,
     showTabBar: showBar,
   })
-  const webviewLayerStyle = { ...styles.webviewLayer, top: webviewInsets.top, bottom: webviewInsets.bottom }
+  // The frame ends at the keyboard's top edge (src/lib/keyboard-overlap.ts), so
+  // WebKit has nothing to pan and the page keeps its header and history.
+  const webviewLayerStyle = {
+    ...styles.webviewLayer,
+    top: webviewInsets.top,
+    bottom: Math.max(webviewInsets.bottom, keyboardOverlap),
+  }
   const ipadChromeTheme = createIpadNativeChromeTheme({
     activeTintColor: accent,
     dark: isDark(bg),

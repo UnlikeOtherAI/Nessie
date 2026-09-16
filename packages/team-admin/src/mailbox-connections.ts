@@ -4,16 +4,21 @@ import {
   MailDialError,
   MailWireError,
   normalizeAddress,
+  resolveMailboxEndpoints,
   SmtpError,
   testMailboxConnection,
+  type MailboxLegResolution,
+  type MailboxResolution,
   type MailSecurity,
 } from '@nessie/agent-mail'
 // The record and scope shapes are the wire contract, so they live in
 // `@nessie/schemas` and are imported here rather than restated — the API
 // response and this presenter are one type by construction.
 import type {
+  MailboxConnectionDiagnosis,
   MailboxConnectionRecord,
   MailboxConnectionScope,
+  MailboxLegDiagnosis,
 } from '@nessie/schemas'
 import {
   AT_REST_SECRET_PURPOSE,
@@ -56,6 +61,13 @@ export class MailboxConnectionError extends Error {
   constructor(
     readonly refusal: MailboxConnectionRefusal,
     message: string,
+    /**
+     * Present when the refusal came from resolving endpoints. It is what lets
+     * the form ask for the one setting that is still missing instead of
+     * offering the whole advanced screen to somebody whose inbox already
+     * worked.
+     */
+    readonly diagnosis?: MailboxConnectionDiagnosis,
   ) {
     super(message)
     this.name = 'MailboxConnectionError'
@@ -145,6 +157,88 @@ export const presentMailboxConnection = (
   username: connection.username,
 })
 
+/**
+ * One leg's outcome, in the shape a browser receives. The endpoint it names is
+ * either a hostname the person typed or one derived from their own address
+ * domain — the resolver has no other source — so naming it tells them which
+ * server we mean without disclosing anything they did not already supply.
+ */
+const legDiagnosis = (leg: MailboxLegResolution): MailboxLegDiagnosis => {
+  if (leg.ok) {
+    return { host: leg.endpoint.host, ok: true, port: leg.endpoint.port }
+  }
+  const last = leg.tried.at(-1)
+  return {
+    failure: leg.failure,
+    ok: false,
+    ...(last ? { host: last.host, port: last.port } : {}),
+  }
+}
+
+const INCOMING = 'incoming mail (IMAP) server'
+const OUTGOING = 'outgoing mail (SMTP) server'
+
+/**
+ * What to say when endpoints could not be resolved.
+ *
+ * Deliberately per leg. "Could not connect this mailbox" is true of every
+ * failure and therefore useless: a person whose inbox was reached and whose
+ * sending was not needs to be told that, because the only thing left to fix is
+ * one server. The refusal code still collapses to the four the API already
+ * maps, so nothing downstream has to learn a new vocabulary — the detail rides
+ * on `diagnosis` instead.
+ */
+export const mailboxResolutionRefusal = (
+  resolution: MailboxResolution,
+): MailboxConnectionError => {
+  const diagnosis: MailboxConnectionDiagnosis = {
+    imap: legDiagnosis(resolution.imap),
+    smtp: legDiagnosis(resolution.smtp),
+  }
+  const failures = [resolution.imap, resolution.smtp]
+    .filter((leg): leg is Extract<MailboxLegResolution, { ok: false }> => !leg.ok)
+
+  if (failures.some((leg) => leg.failure === 'credential_rejected')) {
+    return new MailboxConnectionError(
+      'credential_rejected',
+      'The email address or password was not accepted.',
+      diagnosis,
+    )
+  }
+  if (failures.some((leg) => leg.failure === 'insecure')) {
+    const host = failures.find((leg) => leg.failure === 'insecure')?.tried.at(-1)?.host
+    return new MailboxConnectionError(
+      'invalid_certificate',
+      host
+        ? `We reached ${host} but could not open a secure connection to it.`
+        : 'We cannot connect securely to this mail server.',
+      diagnosis,
+    )
+  }
+
+  // A hostname that produced no candidate at all was refused before any dial —
+  // it is not a public mail hostname. Reporting that as "nothing answered"
+  // would send somebody hunting for a network fault they do not have.
+  if (failures.every((leg) => leg.failure === 'no_candidate')) {
+    return new MailboxConnectionError(
+      'invalid_address',
+      'That mail server name cannot be used. Enter a public host name, such as '
+        + 'mail.company.com.',
+      diagnosis,
+    )
+  }
+
+  // Naming the leg that *did* work is the useful half: it tells the person the
+  // password is right and the only thing left to fix is one host or port.
+  const reached = resolution.imap.ok ? INCOMING : resolution.smtp.ok ? OUTGOING : null
+  const missing = resolution.imap.ok ? OUTGOING : INCOMING
+  const message = reached === null
+    ? 'We could not find a mail server for this address. Enter its settings to continue.'
+    : `We connected to your ${reached}, but could not reach an ${missing}. `
+      + 'Enter its settings to continue.'
+  return new MailboxConnectionError('server_unavailable', message, diagnosis)
+}
+
 const MANAGER_ROLES = new Set(['owner', 'admin'])
 
 export type ActingMember = { userId: string; role: string }
@@ -176,24 +270,32 @@ export type CreateMailboxConnectionInput = {
   teamId?: string | null
   label: string
   address: string
-  username: string
+  /** Defaults to the address when absent. */
+  username?: string | null
   password: string
-  imapHost: string
-  imapPort: number
-  imapSecurity: MailSecurity
-  smtpHost: string
-  smtpPort: number
-  smtpSecurity: MailSecurity
+  /** One hostname for both legs; a leg's own host wins over it. */
+  server?: string | null
+  /** Anything absent is resolved; anything present is used exactly as given. */
+  imapHost?: string | null
+  imapPort?: number | null
+  imapSecurity?: MailSecurity | null
+  smtpHost?: string | null
+  smtpPort?: number | null
+  smtpSecurity?: MailSecurity | null
 }
 
 /**
  * Connect a mailbox.
  *
- * The connection is **tested before anything is written**. A row that has never
- * proved it can read and send is a mailbox an agent will fail at halfway
- * through a task, and the person who connected it would have been told it
- * worked. Testing first also means a typo in a hostname is a message on the
- * form rather than a broken connection somebody has to notice later.
+ * The endpoints are **resolved and proved before anything is written**. A row
+ * that has never shown it can read and send is a mailbox an agent will fail at
+ * halfway through a task, and the person who connected it would have been told
+ * it worked. Resolving first also means a typo in a hostname is a message on
+ * the form rather than a broken connection somebody has to notice later.
+ *
+ * What is stored is what answered, not what was submitted: the caller may send
+ * nothing but an address and a password, and the row still carries the exact
+ * host, port and transport the successful login used.
  */
 export const createMailboxConnection = async (
   prisma: PrismaClient,
@@ -218,22 +320,29 @@ export const createMailboxConnection = async (
     await assertTeamInOrganization(prisma, input.organizationId, teamId)
   }
 
-  const endpoints = {
-    address,
-    imap: { host: input.imapHost, port: input.imapPort, security: input.imapSecurity },
-    password: input.password,
-    smtp: { host: input.smtpHost, port: input.smtpPort, security: input.smtpSecurity },
-    username: input.username,
-  }
-  try {
-    await testMailboxConnection(endpoints, mailboxDialOptions())
-  } catch (error) {
-    const failure = mailboxConnectionTestFailure(error)
-    throw new MailboxConnectionError(
-      failure,
-      testFailureMessage(failure),
-    )
-  }
+  const username = input.username?.trim() || address
+  const resolution = await resolveMailboxEndpoints(
+    {
+      address,
+      password: input.password,
+      username,
+      ...(input.server ? { server: input.server } : {}),
+      imap: {
+        host: input.imapHost ?? null,
+        port: input.imapPort ?? null,
+        security: input.imapSecurity ?? null,
+      },
+      smtp: {
+        host: input.smtpHost ?? null,
+        port: input.smtpPort ?? null,
+        security: input.smtpSecurity ?? null,
+      },
+    },
+    mailboxDialOptions(),
+  )
+  if (!resolution.imap.ok || !resolution.smtp.ok) throw mailboxResolutionRefusal(resolution)
+  const imap = resolution.imap.endpoint
+  const smtp = resolution.smtp.endpoint
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -241,18 +350,18 @@ export const createMailboxConnection = async (
         data: {
           address,
           createdByUserId: input.actor.userId,
-          imapHost: input.imapHost,
-          imapPort: input.imapPort,
-          imapSecurity: input.imapSecurity,
+          imapHost: imap.host,
+          imapPort: imap.port,
+          imapSecurity: imap.security,
           label: input.label.trim() || address,
           lastVerifiedAt: new Date(),
           organizationId: input.organizationId,
           ownerUserId: input.scope === 'user' ? input.actor.userId : null,
-          smtpHost: input.smtpHost,
-          smtpPort: input.smtpPort,
-          smtpSecurity: input.smtpSecurity,
+          smtpHost: smtp.host,
+          smtpPort: smtp.port,
+          smtpSecurity: smtp.security,
           teamId,
-          username: input.username,
+          username,
         },
       })
       await tx.mailboxConnectionCredential.create({

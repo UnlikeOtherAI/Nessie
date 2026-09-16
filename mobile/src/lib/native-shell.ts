@@ -55,13 +55,17 @@ ${info.pendingPushPath ? `try {
 true;
 `
 
-export const nativePhoneTabBarClearanceScript = (bottomInset: number): string => {
+// While the keyboard is up the WebView frame ends at its top edge, above the
+// tab bar and the home indicator, so there is nothing left to clear — keeping
+// the clearance would open a tab-bar-sized gap between composer and keyboard.
+export const nativePhoneTabBarClearanceScript = (bottomInset: number, keyboardOpen = false): string => {
   const safeBottomInset = Number.isFinite(bottomInset) ? Math.max(0, bottomInset) : 0
+  const clearance = keyboardOpen ? 0 : IPHONE_TAB_BAR_HEIGHT + safeBottomInset
   return `
 try {
   document.documentElement.style.setProperty(
     '--nessie-native-phone-tabbar-clearance',
-    ${JSON.stringify(`${IPHONE_TAB_BAR_HEIGHT + safeBottomInset}px`)},
+    ${JSON.stringify(`${clearance}px`)},
   );
 } catch (e) {}
 true;
