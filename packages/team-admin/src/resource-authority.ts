@@ -1,6 +1,7 @@
 import type { Channel, PrismaClient } from '@prisma/client'
 import { isAdminRole } from '@nessie/schemas'
 
+import { isGroupDm } from './channel-records.js'
 import { isProjectAccessibleToUser, type ProjectViewer } from './project-structure.js'
 
 /**
@@ -17,8 +18,10 @@ import { isProjectAccessibleToUser, type ProjectViewer } from './project-structu
  *    creator is simply the first member; `ProjectMember.role` and
  *    `ChannelMember.role` grant nothing extra.
  * 3. Only an organisation owner or admin may change a project or channel they
- *    are not a member of — and for a channel, only one they can already see:
- *    a private or protected channel stays closed to a non-member admin.
+ *    are not a member of. For a channel, the admin must be able to see it:
+ *    any standard, non-system, non-group-DM channel (public or protected) is
+ *    manageable by an organisation admin, who may also add themselves to a
+ *    protected room. A direct message stays reachable only by its participants.
  *
  * Out of scope, and deliberately so: system channels (the Personal Assistant's
  * home, a global agent's home DM) are lifecycle-protected and refused for
@@ -27,10 +30,10 @@ import { isProjectAccessibleToUser, type ProjectViewer } from './project-structu
  */
 
 /**
- * A project's members, or an organisation owner or admin. Project read and
- * modify entitlement coincide under the model — whoever can open a project can
- * change it — so this asks exactly the question `isProjectAccessibleToUser`
- * answers, and the two can never drift apart.
+ * A project's members, or an organisation owner or admin. `canModifyProject`
+ * keeps its membership-or-org-admin definition: public projects may be readable
+ * by any organisation member (`resolveProjectAccess`), but only members and
+ * org admins may change boards, fields, sources, iterations and watchers.
  */
 export const canModifyProject = async (
   prisma: PrismaClient,
@@ -66,9 +69,10 @@ const resolveOrganizationAdmin = async (
 }
 
 /**
- * A channel's members, or an organisation owner or admin on a public channel.
- * The channel row comes back with the answer so a caller that needs its scope —
- * the rename's slug pre-check needs `projectId` — does not read it twice.
+ * A channel's members, or an organisation owner or admin on a standard,
+ * non-system, non-group-DM channel. The channel row comes back with the answer
+ * so a caller that needs its scope — the rename's slug pre-check needs
+ * `projectId` — does not read it twice.
  *
  * A team role is not an arm: rule 3 names the organisation owner or admin as
  * the only people who reach into a channel they are not in.
@@ -121,12 +125,16 @@ export const canModifyChannel = async (
     return { channel }
   }
 
-  // The organisation owner/admin arm reaches only what they can already see.
-  // A private or protected channel they are not in stays closed to them — they
-  // can neither read it, change it, nor add themselves to it — exactly as in
-  // Slack or Teams. A public channel is readable by every member, so an admin
-  // may manage it without joining.
-  return isOrganizationAdmin && channel.visibility === 'public' ? { channel } : null
+  // The organisation owner/admin arm reaches any standard, non-system,
+  // non-group-DM channel they can see. A direct message stays reachable only by
+  // its participants. Management is not participation: an admin may manage a
+  // protected room without being a member, and may add themselves to it.
+  return isOrganizationAdmin
+    && channel.type === 'standard'
+    && channel.systemChannelType === null
+    && !isGroupDm(channel)
+    ? { channel }
+    : null
 }
 
 /**

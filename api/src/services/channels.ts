@@ -1,7 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   isAdminRole,
-  isOwnerRole,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -51,7 +50,7 @@ export const listChannelsForUser = async (
    * (`isAdminActor(actorContext)`). Omitted only by callers with no request
    * role, which fall back to the `OrganizationMember` row.
    */
-  viewer: { isOrganizationAdmin?: boolean; isOrganizationOwner?: boolean } = {},
+  viewer: { isOrganizationAdmin?: boolean } = {},
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
@@ -173,7 +172,7 @@ export const listChannelsForUser = async (
     channels.filter((channel) => channel.type === 'dm').map((channel) => channel.teamId),
   )]
   const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
-    viewer.isOrganizationAdmin !== undefined && viewer.isOrganizationOwner !== undefined
+    viewer.isOrganizationAdmin !== undefined
       ? Promise.resolve(null)
       : prisma.organizationMember.findFirst({
         where: { organizationId, userId },
@@ -187,10 +186,6 @@ export const listChannelsForUser = async (
       }),
   ])
   const viewerIsOrgAdmin = viewer.isOrganizationAdmin ?? isAdminRole(viewerOrgMember?.role)
-  // Owner, not owner-or-admin: `POST/DELETE /api/agents/:agentId/bindings`
-  // gate on `requireOwner`, so an admin who may rename this channel and add
-  // people to it still may not place an agent in it.
-  const viewerIsOrgOwner = viewer.isOrganizationOwner ?? isOwnerRole(viewerOrgMember?.role)
   const viewerTeamRoleByTeamId = new Map(
     viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
   )
@@ -206,7 +201,10 @@ export const listChannelsForUser = async (
         || isAdminRole(viewerTeamRoleByTeamId.get(channel.teamId))
     }
     if (isParticipant) return true
-    return viewerIsOrgAdmin && channel.visibility === 'public'
+    // Management is not participation: an admin may manage any standard
+    // non-system channel they can see. The list only contains public + member
+    // channels, so this arm covers public channels for admins.
+    return viewerIsOrgAdmin
   }
 
   const principalUserIds = [...new Set(
@@ -273,15 +271,18 @@ export const listChannelsForUser = async (
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
+    viewerIsMember: channel.members[0] !== undefined,
     viewerCanManage: viewerMayModify(channel),
-    // The binding routes' pre-policy gate, in their order: not a system
-    // channel, an organisation owner, and a live ChannelMember row — which is
-    // already loaded above as `channel.members[0]`, so this costs no query.
-    // Deliberately not `viewerCanManage`, which is any member of the channel.
+    // The binding routes' pre-policy gate, in their order: a standard
+    // non-system channel, an organisation owner or admin who can see it, or a
+    // channel member. The list only contains channels the viewer can see, so
+    // membership is enough for non-admins; admins may also manage public
+    // channels they have not joined. Deliberately not `viewerCanManage`, which
+    // is any member of the channel.
     viewerCanManageAgents:
-      !channel.systemChannelType
-      && viewerIsOrgOwner
-      && channel.members[0] !== undefined,
+      channel.type === 'standard'
+      && !channel.systemChannelType
+      && (viewerIsOrgAdmin || channel.members[0] !== undefined),
     personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),

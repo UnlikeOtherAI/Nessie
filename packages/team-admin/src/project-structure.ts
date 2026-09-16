@@ -47,6 +47,7 @@ type ProjectWithCounts = {
   avatarEmoji: string | null
   avatarAttachmentId: string | null
   description?: string | null
+  visibility: string
   organizationId: string
   createdAt: Date
   members: { userId: string; role: string }[]
@@ -62,6 +63,7 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
   avatarAttachmentId: project.avatarAttachmentId,
   description: project.description ?? null,
   organizationId: parseOrganizationId(project.organizationId),
+  visibility: project.visibility as ProjectRecord['visibility'],
   memberCount: project.members.length,
   teamCount: project.team ? 1 : project.teams.length,
   channelCount: project.channels.length,
@@ -126,6 +128,36 @@ export const isProjectAccessibleToUser = async (
   )
 }
 
+/**
+ * Resolve how a viewer may read a project. Used by the single-project read to
+ * decide between `404`, a limited directory entry, or the full record.
+ *
+ * - `'none'` — the project does not exist, is soft-deleted, or the caller is
+ *   not entitled to know it exists (a non-member of a protected project).
+ * - `'limited'` — the caller is an organisation member but not a project
+ *   member, and the project is `public`. They get the directory entry.
+ * - `'full'` — the caller is a project member, or an organisation owner/admin.
+ */
+export const resolveProjectAccess = async (
+  prisma: PrismaClient,
+  viewer: ProjectViewer,
+  projectId: string,
+): Promise<'none' | 'limited' | 'full'> => {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId, deletedAt: null },
+    select: {
+      organizationId: true,
+      visibility: true,
+      members: { where: { userId: viewer.userId }, select: { id: true }, take: 1 },
+    },
+  })
+  if (!project || project.organizationId !== viewer.organizationId) return 'none'
+  const viewerIsMember = project.members.length > 0
+  if (viewerIsMember || viewer.isOrganizationAdmin) return 'full'
+  if (project.visibility === 'public') return 'limited'
+  return 'none'
+}
+
 /** The list `GET /api/projects` returns, scoped by the entitlement above. */
 export const listProjectsForUser = async (
   prisma: PrismaClient,
@@ -137,7 +169,14 @@ export const listProjectsForUser = async (
       channelRoot: false,
       deletedAt: null,
       organizationId: viewer.organizationId,
-      ...(accessible === 'all' ? {} : { id: { in: accessible } }),
+      ...(accessible === 'all'
+        ? {}
+        : {
+            OR: [
+              { id: { in: accessible } },
+              { visibility: 'public' },
+            ],
+          }),
     },
     include: projectCountsInclude,
     orderBy: { createdAt: 'asc' },
@@ -162,7 +201,21 @@ export const listProjectDirectory = async (
 ): Promise<ProjectDirectoryEntry[]> => {
   const [projects, activeMembers] = await Promise.all([
     prisma.project.findMany({
-      where: { channelRoot: false, deletedAt: null, organizationId: viewer.organizationId },
+      where: {
+        channelRoot: false,
+        deletedAt: null,
+        organizationId: viewer.organizationId,
+        // Non-members only see public projects in the directory; protected
+        // projects are hidden from them. Members and admins see everything.
+        ...(viewer.isOrganizationAdmin
+          ? {}
+          : {
+              OR: [
+                { visibility: 'public' },
+                { members: { some: { userId: viewer.userId } } },
+              ],
+            }),
+      },
       include: {
         ...projectCountsInclude,
         members: {
@@ -197,6 +250,7 @@ export const listProjectDirectory = async (
       id: parseProjectId(project.id),
       members,
       name: project.name,
+      visibility: project.visibility as ProjectDirectoryEntry['visibility'],
     }
     if (!viewerIsMember && !viewer.isOrganizationAdmin) {
       return { access: 'limited', ...base }
@@ -274,9 +328,16 @@ const requireName = (value: string | undefined, what: string): string => {
  */
 export const createProjectForUser = async (
   prisma: PrismaClient,
-  input: { name: string; organizationId: string; teamId: string; userId: string },
+  input: {
+    name: string
+    organizationId: string
+    teamId: string
+    userId: string
+    visibility?: 'public' | 'protected'
+  },
 ): Promise<ProjectRecord> => {
   const name = requireName(input.name, 'Project')
+  const visibility = input.visibility ?? 'public'
   // The legacy Team.projectId still exists for rows that have not passed the
   // audited inversion backfill. It establishes the team's tenant here; this
   // write itself uses the canonical Project.teamId relation.
@@ -307,6 +368,7 @@ export const createProjectForUser = async (
       name,
       organizationId: input.organizationId,
       teamId: team.id,
+      visibility,
       members: { create: { userId: input.userId, role: 'owner' } },
       boards: { create: defaultBoardCreateData(input.organizationId) },
       // A project starts with its own #general and nothing else. Memberless and

@@ -324,11 +324,11 @@ export const mapChannelRecord = async (
   userId?: string,
   /**
    * See `ChannelModifier.isOrganizationAdmin`: the caller's verified role.
-   * `isOrganizationOwner` is the narrower owner-only standing the agent
-   * binding routes require; omitted, it is read from the membership row, so a
+   * Agent binding management now admits owner or admin, so this passes
+   * `isOrganizationAdmin`; omitted, it is read from the membership row, so a
    * caller that has it saves a query rather than deciding the answer.
    */
-  viewer: { isOrganizationAdmin?: boolean; isOrganizationOwner?: boolean } = {},
+  viewer: { isOrganizationAdmin?: boolean } = {},
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
@@ -354,6 +354,11 @@ export const mapChannelRecord = async (
   // A single-record mapping, so one extra lookup here is not the N+1 a list
   // read would be — `listChannelsForUser` computes this batched instead of
   // calling through this function per row.
+  const viewerIsMember = userId
+    ? (await prisma.channelMember.count({
+        where: { channelId: channel.id, userId },
+      })) > 0
+    : false
   const viewerCanManage = userId
     ? (await canModifyChannel(prisma, {
         channelId: channel.id,
@@ -372,8 +377,9 @@ export const mapChannelRecord = async (
           id: channel.id,
           organizationId: channel.organizationId,
           systemChannelType: channel.systemChannelType ?? null,
+          type: channel.type,
         },
-        isOrganizationOwner: viewer.isOrganizationOwner,
+        isOrganizationAdmin: viewer.isOrganizationAdmin,
         userId,
       })
     : false
@@ -399,6 +405,7 @@ export const mapChannelRecord = async (
     topic: channel.topic ?? null,
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,
+    viewerIsMember,
     viewerCanManage,
     viewerCanManageAgents,
     createdAt: channel.createdAt.toISOString(),
