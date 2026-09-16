@@ -19,6 +19,7 @@ import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentDocumentsTab } from './AgentDocumentsTab'
 import { AgentConversationList } from './conversations/AgentConversationList'
 import { AgentMessagePreview } from './AgentMessagePreview'
+import { AgentRunFailuresPanel } from './AgentRunFailuresPanel'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { SubAgentTree } from './SubAgentTree'
@@ -234,6 +235,7 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
               )}
             </section>
             <AgentTriggerPanel agent={agent} />
+            <AgentRunFailuresPanel agentId={agent.id} />
             <ToolExecutionLog entries={toolEntries} />
             <AgentThoughtStream />
           </div>

@@ -11,7 +11,7 @@ import {
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts/agents.js'
-import { AgentMessagePageSchema, parseAgentId } from '@nessie/schemas'
+import { AgentMessagePageSchema, AgentRunFailuresResponseSchema, parseAgentId } from '@nessie/schemas'
 import { canReadSpace, readCanonicalAgentCore, writeCanonicalAgentCore } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -24,6 +24,7 @@ import {
   loadAgentActivity,
   loadAgentChildren,
   loadAgentMessages,
+  loadAgentRunFailures,
   loadAgentStatus,
   loadRunToolCalls,
   updateAgentRecord,
@@ -946,6 +947,23 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     return createApiResponse(activity)
+  })
+
+  app.get('/api/agents/:agentId/run-failures', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const failures = await loadAgentRunFailures(prisma, agentId, { visibility })
+    return createApiResponse(AgentRunFailuresResponseSchema.parse({ failures }))
   })
 
   app.get('/api/agents/:agentId/messages', async (request, reply) => {

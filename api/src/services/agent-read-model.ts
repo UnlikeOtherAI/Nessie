@@ -5,6 +5,7 @@ import {
   parseTaskId,
   type AgentActivityResponse,
   type AgentChild,
+  type AgentRunFailureRecord,
   type AgentStatusResponse,
   type ToolCallEntry,
 } from '@nessie/schemas'
@@ -266,6 +267,71 @@ export const loadAgentActivity = async (
       })
       .filter((value): value is NonNullable<typeof value> => value !== null),
   }
+}
+
+/**
+ * Recent unattended run failures for an agent.
+ *
+ * Only runs with a `triggerDeliveryId` are included — these are scheduled or
+ * event-triggered runs that failed without a person watching. The failure
+ * message comes from the latest `run.failed` task event on the run's task.
+ */
+export const loadAgentRunFailures = async (
+  prisma: PrismaClient,
+  agentId: string,
+  options?: {
+    limit?: number
+    visibility?: DisclosureAgentVisibilityScope
+  },
+): Promise<AgentRunFailureRecord[]> => {
+  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
+  const runs = await prisma.run.findMany({
+    orderBy: { finishedAt: 'desc' },
+    select: { finishedAt: true, id: true },
+    take: options?.limit ?? 20,
+    where: {
+      agentId,
+      status: 'failed',
+      triggerDeliveryId: { not: null },
+      ...runVisibilityWhere,
+    },
+  })
+  if (runs.length === 0) return []
+
+  const events = await prisma.taskEvent.findMany({
+    orderBy: { createdAt: 'desc' },
+    where: {
+      eventType: 'run.failed',
+      task: { runId: { in: runs.map((run) => run.id) } },
+    },
+    include: { task: { select: { runId: true } } },
+  })
+
+  const eventByRunId = new Map<string, typeof events[0]>()
+  for (const event of events) {
+    const runId = event.task.runId
+    if (runId === null) continue
+    if (!eventByRunId.has(runId)) eventByRunId.set(runId, event)
+  }
+
+  return runs
+    .map((run) => {
+      const event = eventByRunId.get(run.id)
+      if (!event) return null
+      const payload =
+        typeof event.payload === 'object' && event.payload !== null
+          ? (event.payload as Record<string, unknown>)
+          : {}
+      return {
+        failedAt: event.createdAt.toISOString(),
+        message:
+          typeof payload.message === 'string'
+            ? payload.message
+            : 'Run failed',
+        runId: parseRunId(run.id),
+      }
+    })
+    .filter((record): record is NonNullable<typeof record> => record !== null)
 }
 
 export {
