@@ -122,7 +122,13 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
   registerMcpAgentAuthRoutes(app, deps)
-  registerMcpEndpointRoutes(app, deps)
+  // One spreadsheet service per process: the model cache and the presence
+  // budget are its closure state, and the page routes' restore branch, the
+  // spreadsheet routes, the live lane and the MCP endpoint all read the same
+  // cache. Built here rather than beside the knowledge routes because the MCP
+  // endpoint registers first and needs the same instance.
+  const spreadsheetContext = createSpreadsheetRouteContext(deps)
+  registerMcpEndpointRoutes(app, deps, spreadsheetContext)
   registerWellKnownMcpResourceRoutes(app, deps)
   registerPlanRoutes(app, deps)
   registerWorkflowRoutes(app, deps)
@@ -203,10 +209,6 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentCardRoutes(app, { ...deps, dashboardCredentials })
   registerBrowserCloudRoutes(app, { ...deps, dashboardCredentials })
   registerScopedSettingsRoutes(app, deps)
-  // One spreadsheet service per process: the model cache and the presence
-  // budget are its closure state, and the page routes' restore branch, the
-  // spreadsheet routes and the live lane all read the same cache.
-  const spreadsheetContext = createSpreadsheetRouteContext(deps)
   registerKnowledgeBaseRoutes(app, deps, spreadsheetContext)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
