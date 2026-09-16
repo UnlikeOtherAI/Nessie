@@ -1,10 +1,11 @@
-import type { Attachment, PrismaClient } from '@prisma/client'
+import type { Attachment, Prisma, PrismaClient } from '@prisma/client'
 
 import type { LedgerAttribution } from '../ledger.js'
+import { recordStorageScopeMoved } from '../storage-usage-ledger.js'
 import type { Storage } from '../storage/index.js'
 // Type-only, so it is erased: no runtime cycle with ./index.js, which imports
 // this module for the values.
-import type { FileScope } from './index.js'
+import type { FileScope, StoreFileInput } from './index.js'
 
 /**
  * The two file operations a cross-space transfer needs, declared apart from
@@ -16,10 +17,6 @@ import type { FileScope } from './index.js'
  * the file operation: a caller that re-stored bytes or re-homed a scope on its
  * own would have to write `StorageUsageEvent` rows itself, which nothing
  * outside this service may do.
- *
- * The bodies land in Wave 1E. Until then they throw, loudly and by name, so a
- * caller wired up early fails where it called rather than silently writing
- * nothing.
  */
 export type FileTransferOps = {
   /**
@@ -57,7 +54,12 @@ export type FileTransferOps = {
    * pairing `delete.thumbnail`/`store.thumbnail` already uses.
    *
    * No quota check runs: the pair sums to zero, so the organisation total is
-   * unchanged by construction.
+   * unchanged by construction — which is also why this is the one file
+   * operation that can accept the caller's transaction. It touches no object
+   * storage and takes no admission lock, so a cross-space move commits its page
+   * rows, its chunk mirrors and its ledger together or not at all. A caller
+   * that ran it afterwards on its own connection could leave a committed batch
+   * of pages charged to the space they just left.
    */
   reassignScope(
     attachmentIds: string[],
@@ -66,11 +68,19 @@ export type FileTransferOps = {
       from: FileScope
       to: FileScope
       attribution: LedgerAttribution
+      /** The caller's open transaction; defaults to this service's client. */
+      client?: FileTransferLedgerClient
     },
   ): Promise<{ attachmentsMoved: number; bytesMoved: bigint }>
 }
 
-/** Thrown by a declared-but-unbuilt file operation. Wave 1E removes both. */
+/**
+ * Thrown by a declared-but-unbuilt file operation.
+ *
+ * Retained after Wave 1E filled both bodies because it is part of this
+ * module's exported surface and a consumer may still be catching it; nothing
+ * throws it now.
+ */
 export class FileTransferNotImplementedError extends Error {
   constructor(operation: 'copy' | 'reassignScope') {
     super(`FileService.${operation} is declared but not implemented yet`)
@@ -78,14 +88,112 @@ export class FileTransferNotImplementedError extends Error {
   }
 }
 
-export const createFileTransferOps = (_deps: {
+// The one part of `FileService` these operations genuinely need. Taking it as a
+// dependency rather than importing `createFileService` keeps the cycle between
+// this module and ./index.ts type-only: `store` is where the quota gate, the
+// `store` ledger event and the thumbnail live, and a second path to any of them
+// is exactly what this service exists to prevent.
+export type FileTransferStore = (
+  input: StoreFileInput,
+) => Promise<{ attachment: Attachment; bytesWritten: number }>
+
+// What `reassignScope` runs on: the service's own client, or the caller's open
+// transaction. A `PrismaClient` satisfies it too, so the default needs no cast.
+export type FileTransferLedgerClient = Prisma.TransactionClient
+
+// Same derivation `deleteFile` uses for its negative deltas, kept here because
+// a move's two events must name the *page's* scope columns, not the caller's
+// idea of them. `uploaderId` travels with the attachment so the per-uploader
+// dimension nets to zero as well.
+const usageScopeFor = (
+  attachment: Pick<Attachment, 'organizationId' | 'uploaderId'>,
+  scope: FileScope,
+) => ({
+  organizationId: attachment.organizationId,
+  projectId: scope.projectId ?? null,
+  teamId: scope.teamId ?? null,
+  spaceId: scope.spaceId ?? null,
+  uploaderId: attachment.uploaderId,
+})
+
+export const createFileTransferOps = (deps: {
   prisma: PrismaClient
   storage: Storage
-}): FileTransferOps => ({
-  copy: () => {
-    throw new FileTransferNotImplementedError('copy')
-  },
-  reassignScope: () => {
-    throw new FileTransferNotImplementedError('reassignScope')
-  },
-})
+  store: FileTransferStore
+}): FileTransferOps => {
+  const { prisma, storage, store } = deps
+
+  const copy: FileTransferOps['copy'] = async (attachmentId, input) => {
+    const source = await prisma.attachment.findUnique({ where: { id: attachmentId } })
+    // An attachment id that resolves to another organisation's row is
+    // indistinguishable here from one that resolves to nothing, exactly as in
+    // `openStream`.
+    if (!source || source.organizationId !== input.organizationId) return null
+    const stream = await storage.getStream(source.storageKey)
+    if (!stream) return null
+
+    // Straight through `store`: the quota decision, the `store` event in the
+    // destination scope and the fresh thumbnail are all its job. The copy gets
+    // its own object key, its own row and its own bytes — there is deliberately
+    // no path here that reuses the source's `storageKey`.
+    return store({
+      attribution: input.attribution,
+      organizationId: input.organizationId,
+      uploaderId: input.uploaderId,
+      filename: source.filename,
+      mime: source.mime,
+      body: stream,
+      scope: input.scope,
+      knowledgePageId: input.knowledgePageId ?? null,
+      width: source.width,
+      height: source.height,
+    })
+  }
+
+  const reassignScope: FileTransferOps['reassignScope'] = async (attachmentIds, input) => {
+    if (attachmentIds.length === 0) return { attachmentsMoved: 0, bytesMoved: 0n }
+    const client = input.client ?? prisma
+    const attachments = await client.attachment.findMany({
+      where: { id: { in: attachmentIds }, organizationId: input.organizationId },
+      select: {
+        id: true,
+        organizationId: true,
+        uploaderId: true,
+        sizeBytes: true,
+        thumbnailKey: true,
+        thumbnailSizeBytes: true,
+      },
+    })
+
+    let bytesMoved = 0n
+    for (const attachment of attachments) {
+      const from = usageScopeFor(attachment, input.from)
+      const to = usageScopeFor(attachment, input.to)
+      await recordStorageScopeMoved(client, {
+        attribution: input.attribution,
+        from,
+        to,
+        deltaBytes: attachment.sizeBytes,
+        attachmentId: attachment.id,
+      })
+      bytesMoved += attachment.sizeBytes
+      // A thumbnail is stored bytes like any other and carries its own signed
+      // pair, so the preview follows its original into the new scope instead of
+      // staying charged to the old one forever.
+      if (attachment.thumbnailKey && attachment.thumbnailSizeBytes) {
+        await recordStorageScopeMoved(client, {
+          attribution: input.attribution,
+          from,
+          to,
+          deltaBytes: attachment.thumbnailSizeBytes,
+          attachmentId: attachment.id,
+        })
+        bytesMoved += attachment.thumbnailSizeBytes
+      }
+    }
+
+    return { attachmentsMoved: attachments.length, bytesMoved }
+  }
+
+  return { copy, reassignScope }
+}

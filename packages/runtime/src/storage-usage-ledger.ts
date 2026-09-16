@@ -66,6 +66,52 @@ export const recordStorageStored = async (
   })
 }
 
+/**
+ * Re-home one object's accounted bytes: a `move.out` in the old scope and a
+ * `move.in` in the new, written as one pair.
+ *
+ * Callers never write the two halves themselves. A caller that wrote only the
+ * negative would free bytes nobody is charged for; one that wrote only the
+ * positive would charge them twice; one that used different magnitudes would
+ * change the organisation total, which a move must never do — the pair sums to
+ * zero by construction, which is precisely why a move runs no quota check.
+ * Keeping both inserts in one function is what makes that sentence true rather
+ * than a convention two call sites are trusted to honour.
+ *
+ * `deltaBytes` is the object's size; its sign is ignored. A zero-byte object
+ * writes nothing — two zero rows would be noise in an auditable ledger.
+ */
+export const recordStorageScopeMoved = async (
+  prisma: AdmissionPrismaClient,
+  input: {
+    attribution: LedgerAttribution
+    from: StorageUsageScope
+    to: StorageUsageScope
+    deltaBytes: bigint
+    attachmentId?: string | null
+    metadata?: Record<string, unknown> | null
+  },
+): Promise<void> => {
+  const size = input.deltaBytes < 0n ? -input.deltaBytes : input.deltaBytes
+  if (size === 0n) return
+  await recordStorageStored(prisma, {
+    attribution: input.attribution,
+    scope: input.from,
+    deltaBytes: -size,
+    operation: 'move.out',
+    attachmentId: input.attachmentId ?? null,
+    metadata: input.metadata ?? null,
+  })
+  await recordStorageStored(prisma, {
+    attribution: input.attribution,
+    scope: input.to,
+    deltaBytes: size,
+    operation: 'move.in',
+    attachmentId: input.attachmentId ?? null,
+    metadata: input.metadata ?? null,
+  })
+}
+
 /** Sum stored bytes for an organization and any supplied narrower dimensions. */
 export const currentStorageUsageBytes = async (
   prisma: AdmissionPrismaClient,
