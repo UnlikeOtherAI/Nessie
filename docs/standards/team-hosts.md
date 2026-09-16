@@ -151,7 +151,7 @@ that host reloads the portal instead of opening the team.
 (`admin/src/facades/team/provisioning.ts`) still navigate in-app and do not
 follow the new team's address. Native shells are unaffected.
 
-**A team host renders nothing until the address and the session agree.**
+**A team host does not draw the app until the address and the session agree.**
 Firing the switch and rendering the app underneath it was the second half of
 the same defect: the routes below began fetching in the previous team's scope,
 and a switch that then failed — silently, because the rejection was swallowed —
@@ -168,6 +168,22 @@ the session is on the team the address names. Everything else waits or refuses
 hostname that already resolved as a team means UOA is unreachable or the team
 is no longer federated. **An address that cannot be verified is not served**,
 and the refusal is branded, names no team, and always offers a way out.
+
+**Waiting is a `switchNeeded` fact, not just an in-flight request.** The switch
+is fired from an effect, which runs *after* the render that decides — so a gate
+that waited only on "a request is in flight" draws one frame of the team the
+session arrived on. `tenantTeamSwitchNeeded` is therefore an input to the
+enumeration as well as the guard on the request. A refusal outranks it: a
+switch that failed leaves the session on its old team, so "needed" stays true
+forever, and waiting on it would be a curtain that never lifts.
+
+**What the wait looks like is the tenant's, not the product's.**
+`TeamSwitchCurtain` covers the gap in the organisation's own colours and fades
+off the app once it mounts, so no part of the wrong organisation is ever
+visible and the arrival is not a blank frame. The fade is released by a timer
+rather than `transitionend`: a browser that never fires the event — a
+background tab, reduced motion, a transition the stylesheet dropped — would
+otherwise leave the curtain up over a working app.
 
 **A team host does not re-switch onto the team the session is already on.**
 `TenantHostGate` compares the host's `externalOrgId`/`externalTeamId` with the

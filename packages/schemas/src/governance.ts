@@ -295,6 +295,15 @@ export const AuditActionSchema = z.enum([
   'kb.page.moved',
   'kb.page.restored',
   'kb.page.archived',
+  // A person asked for an item's indexing to be tried again after the queue
+  // job exhausted its attempts (the Finder's "Retry indexing").
+  'kb.page.reindexed',
+  // Person-to-person sharing of a page in the sharer's own personal space.
+  // Revoking is a hard delete, so these three entries are the whole history a
+  // share leaves behind.
+  'kb.page.shared',
+  'kb.page.share_changed',
+  'kb.page.unshared',
   'kb.librarian.ensured',
   'kb.search.summarized',
   'kb.annotation.created',

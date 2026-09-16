@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import { listVisibleAgentIdsForUser, visibleKnowledgeSpaceWhere } from '@nessie/db'
 import type { DisclosureViewer, LiveEntitlements } from '@nessie/runtime'
 import type { KnowledgeSpaceRecord } from './types.js'
@@ -370,3 +370,92 @@ export const loadSpaceViewer = async (
     : true
   return loadAgentViewer(prisma, organizationId, principal.actorId, baseEntitled)
 }
+
+// ───────────────────────── page-level shares ──────────────────────────────
+//
+// A person-to-person share is a grant on one page in the sharer's own personal
+// space; for a folder it covers every descendant, resolved by walking up from
+// the page at read time rather than by copying a row onto each child. The walk
+// is depth-capped at 64, like the Get Info walk: a deeper tree is a data error,
+// not a case to support.
+//
+// The nearest share wins. A `view` share on a folder and an `edit` share on one
+// document inside it therefore grant edit on that document and view on its
+// siblings — the closer grant is the more deliberate one, and letting an outer
+// `edit` override an inner `view` would silently widen a narrowing the owner
+// made on purpose.
+const PAGE_SHARE_WALK_DEPTH = 64
+
+const SHARE_ACCESS_RANK: Record<KnowledgePageShareAccessLevel, number> = { view: 0, edit: 1 }
+
+export type KnowledgePageShareAccessLevel = 'view' | 'edit'
+
+/**
+ * True when `userId` holds a share at or above `minimum` on `pageId` or on the
+ * nearest ancestor of it that carries one.
+ *
+ * This is never a grant on the space: it answers for one page id, which is what
+ * keeps an `edit` share from becoming write access to the owner's documents.
+ */
+export const pageSharedWithUser = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    pageId: string
+    userId: string
+    minimum: KnowledgePageShareAccessLevel
+  },
+): Promise<boolean> => {
+  const rows = await prisma.$queryRaw<{ access: KnowledgePageShareAccessLevel }[]>(Prisma.sql`
+    WITH RECURSIVE chain AS (
+      SELECT id, parent_page_id, 0 AS depth
+        FROM knowledge_pages
+       WHERE id = ${input.pageId}::uuid
+         AND organization_id = ${input.organizationId}::uuid
+         AND deleted_at IS NULL
+      UNION ALL
+      SELECT p.id, p.parent_page_id, chain.depth + 1
+        FROM knowledge_pages p
+        JOIN chain ON p.id = chain.parent_page_id
+       WHERE chain.depth < ${PAGE_SHARE_WALK_DEPTH}
+         AND p.organization_id = ${input.organizationId}::uuid
+         AND p.deleted_at IS NULL
+    )
+    SELECT s.access::text AS access
+      FROM knowledge_page_shares s
+      JOIN chain ON s.page_id = chain.id
+     WHERE s.grantee_user_id = ${input.userId}::uuid
+       AND s.organization_id = ${input.organizationId}::uuid
+     ORDER BY chain.depth ASC
+     LIMIT 1
+  `)
+  const nearest = rows[0]
+  if (!nearest) return false
+  return SHARE_ACCESS_RANK[nearest.access] >= SHARE_ACCESS_RANK[input.minimum]
+}
+
+/**
+ * The SQL arm for listings: every page id the user reaches through a share,
+ * shared roots plus their descendants. Usable as `id IN (${sharedPageIdsSql(…)})`.
+ *
+ * Deliberately structural — it says nothing about status or version basis, so a
+ * caller still applies its own archived filter and the disclosure check.
+ */
+export const sharedPageIdsSql = (organizationId: string, userId: string): Prisma.Sql => Prisma.sql`
+  WITH RECURSIVE shared_root AS (
+    SELECT p.id, 0 AS depth
+      FROM knowledge_page_shares s
+      JOIN knowledge_pages p ON p.id = s.page_id
+     WHERE s.grantee_user_id = ${userId}::uuid
+       AND s.organization_id = ${organizationId}::uuid
+       AND p.deleted_at IS NULL
+    UNION ALL
+    SELECT c.id, shared_root.depth + 1
+      FROM knowledge_pages c
+      JOIN shared_root ON c.parent_page_id = shared_root.id
+     WHERE shared_root.depth < ${PAGE_SHARE_WALK_DEPTH}
+       AND c.organization_id = ${organizationId}::uuid
+       AND c.deleted_at IS NULL
+  )
+  SELECT id FROM shared_root
+`

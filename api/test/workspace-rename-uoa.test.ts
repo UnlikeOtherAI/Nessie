@@ -239,3 +239,53 @@ test('a local-mode team still renames locally with no upstream call', async () =
     assert.deepEqual(projectUpdates, [])
   })
 })
+
+/**
+ * The address rides the same write, and only when it changed.
+ *
+ * The first of these is the one CI caught: adding `slug` to every answer
+ * changed the shape of this route for every caller that only ever renamed a
+ * team, to describe something none of them did.
+ */
+test('a plain rename does not gain an address it never asked about', async () => {
+  await withUoaEnv(async () => {
+    const { app, calls } = makeApp({})
+    const response = await rename(app)
+    assert.deepEqual(JSON.parse(calls[0]?.body ?? '{}'), { name: 'Design guild' })
+    assert.deepEqual(response.json().data, { id: teamId, name: 'Design guild' })
+  })
+})
+
+test('an address change is relayed on the same PUT and answered with what UOA stored', async () => {
+  await withUoaEnv(async () => {
+    const { app, calls } = makeApp({
+      respond: () => json({ id: externalTeamId, name: 'Design guild', slug: 'main' }),
+    })
+    const response = await app.inject({
+      method: 'PATCH',
+      payload: { name: 'Design guild', slug: 'main' },
+      url: `/api/teams/${teamId}`,
+    })
+    assert.equal(response.statusCode, 200)
+    assert.equal(calls.length, 1, 'one write, not a rename followed by an address change')
+    assert.deepEqual(
+      JSON.parse(calls[0]?.body ?? '{}'),
+      { name: 'Design guild', slug: 'main' },
+    )
+    assert.deepEqual(response.json().data, { id: teamId, name: 'Design guild', slug: 'main' })
+  })
+})
+
+test('UOA normalizing the address is what comes back, not what was requested', async () => {
+  await withUoaEnv(async () => {
+    const { app } = makeApp({
+      respond: () => json({ id: externalTeamId, name: 'Design guild', slug: 'main' }),
+    })
+    const response = await app.inject({
+      method: 'PATCH',
+      payload: { name: 'Design guild', slug: 'MAIN' },
+      url: `/api/teams/${teamId}`,
+    })
+    assert.equal(response.json().data.slug, 'main')
+  })
+})

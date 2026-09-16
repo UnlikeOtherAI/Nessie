@@ -49,10 +49,19 @@ type PagePreviewProps = {
   spaceName: string
 }
 
+/**
+ * A folder is the `folder` kind, never "a document that happens to have
+ * children". Inferring it from `childPageIds` disagreed with the Finder in
+ * both directions — a document with sub-pages drew a folder here and a
+ * document there, and a real empty folder drew a document — which is the
+ * convention the kind column replaced.
+ */
+const isFolderPage = (page: KnowledgePageRecord): boolean => page.kind === 'folder'
+
 const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
   [...pages].sort((left, right) => {
-    const leftFolder = (left.childPageIds?.length ?? 0) > 0
-    const rightFolder = (right.childPageIds?.length ?? 0) > 0
+    const leftFolder = isFolderPage(left)
+    const rightFolder = isFolderPage(right)
     if (leftFolder !== rightFolder) return leftFolder ? -1 : 1
     return left.position - right.position || left.title.localeCompare(right.title)
   })
@@ -252,7 +261,7 @@ export const PagePreview = ({
             ) : (
               <RowList>
                 {sortedSubPages(subPages).map((child) => {
-                  const isFolder = (child.childPageIds?.length ?? 0) > 0
+                  const isFolder = isFolderPage(child)
                   return (
                     <Row
                       key={child.id}

@@ -36,6 +36,14 @@ import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
 // Documents" space plus this ticket's document folder inside it — before
 // branching per method, so a GET can 404/403 exactly like the writes and the
 // folder always exists by the time a client lists or creates a document.
+//
+// That folder is a `kind: 'folder'` page (`ensureTaskFolder`), which is the
+// only thing that makes it one: nothing here reads `metadata.folder` or infers
+// folder-ness from having children. `createPage` accepts it as a parent — a
+// folder and a document may both parent pages; only a `file` node may not.
+// The GET below is keyed by the `taskId` column, which the folder carries too,
+// so the ticket's own container is one of the rows it returns; that has always
+// been true and the kind did not change it.
 const loadTask = (
   prisma: PrismaClient,
   organizationId: string,

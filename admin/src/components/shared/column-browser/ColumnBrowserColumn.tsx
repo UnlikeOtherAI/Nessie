@@ -13,7 +13,11 @@ import { useColumnBackContext } from '../../../navigation/LocalBackContext'
 import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useScreenBarLayer } from '../../../navigation/ScreenBarLayer'
 import { ScreenHeader } from '../ScreenHeader'
-import type { PageHeaderAction, PageHeaderButtonAction } from '../ResponsivePageHeader'
+import {
+  ResponsivePageHeader,
+  type PageHeaderAction,
+  type PageHeaderButtonAction,
+} from '../ResponsivePageHeader'
 
 // A keyboard step for the resize handle below — arbitrary but matches the
 // step every other pixel-resizable surface in the admin uses.
@@ -131,14 +135,18 @@ const ColumnResizeHandle = ({ max, min, onResize, width }: ColumnResizeConfig) =
   )
 }
 
-// A non-screen column's own action row is a plain button strip, not the
-// measured overflow: only a `screen` column composes `ScreenHeader` (and, by
-// extension, `ResponsivePageHeader`'s partition). Every current caller of
-// `actions` is a `screen` column — TriggerListColumn's "New trigger" and
-// WorkflowsPage's "New workflow" — but a deeper section bar takes the same
-// typed shape rather than a second, untyped one.
+// A non-screen column's action row. A plain button strip is enough for the
+// simple case, but a column that is the *only* header its browser has — the
+// Documents Finder in a project's Docs tab, which has no root column to carry
+// its toolbar — needs the menus, the toggles and the measured overflow too.
+// That is `ResponsivePageHeader`'s job, and it is delegated rather than
+// re-implemented: a second renderer is a second set of rules about what a
+// header action looks like.
 const isButtonAction = (action: PageHeaderAction): action is PageHeaderButtonAction =>
   !action.kind || action.kind === 'button'
+
+const needsMeasuredHeader = (actions: PageHeaderAction[]): boolean =>
+  actions.some((action) => !isButtonAction(action))
 
 const ColumnHeaderActions = ({ actions }: { actions: PageHeaderAction[] }) => (
   <div className="flex flex-shrink-0 items-center gap-2">
@@ -249,6 +257,26 @@ export const ColumnBrowserColumn = ({
             <ColumnHeaderActions actions={actions} />
           </div>
         ) : null
+      ) : actions && needsMeasuredHeader(actions) ? (
+        // A section header, not a screen one: `titleTone="section"` renders a
+        // `SectionLabel as="h2"` with no `h1` and no doorway, so the screen
+        // above keeps its own title and its own native bar.
+        <ResponsivePageHeader
+          actions={actions}
+          heading="h2"
+          leading={
+            <>
+              {leading}
+              {showBack && onBack
+                ? stacked
+                  ? <PhoneNavigationButton />
+                  : <PhoneBackButton label={backLabel} onBack={onBack} />
+                : null}
+            </>
+          }
+          title={title}
+          titleTone="section"
+        />
       ) : (
         <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
           {leading}

@@ -14,6 +14,11 @@ import type { TenantTeam } from '../../facades/team/tenant-host'
  * never `me.context`, which carries local ids. A session without a UOA
  * directory cannot be proven to be on the team, so it still switches and the
  * server decides.
+ *
+ * It is also the fact `tenant-host-render.ts` holds the app on: "needed" is
+ * true before the request is ever sent, and the switch is fired from an
+ * effect, so a gate keyed only on "in flight" would draw one frame of the
+ * previous organisation's workspace before the effect ran.
  */
 const switchNeeded = (
   me: MeResponse | null,
@@ -33,4 +38,3 @@ export const tenantTeamSwitchNeeded = (
   organizationId: team.externalOrgId,
   teamId: team.externalTeamId,
 })
-

@@ -9,6 +9,7 @@ import { isNativeShell, nativeShellRecoveryHref, TEAM_LANDING_PATH } from '../..
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
+import { TeamSwitchCurtain, useCurtainReveal } from './TeamSwitchCurtain'
 import { TenantBrandFrame } from './tenant-brand'
 import { tenantHostRender } from './tenant-host-render'
 import { tenantTeamSwitchNeeded } from './tenant-team-switch'
@@ -103,6 +104,12 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     )
   }, [me, recoveryHref, team, switchUoaTeam, token])
 
+  // Not the same question as `switchState`: the effect above runs after this
+  // render, so on the first paint the switch is needed and has not started.
+  // Holding on `switchState` alone would show a frame of the team the session
+  // came from.
+  const switchNeeded = team !== null && me !== null && tenantTeamSwitchNeeded(me, team)
+
   const render = tenantHostRender({
     hostKind: data?.kind ?? null,
     // Only a hostname that could plausibly be a tenant's waits: otherwise
@@ -112,13 +119,14 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     recovering: Boolean(recoveryHref),
     sessionState,
     signedIn: Boolean(token),
+    switchNeeded,
     switchState,
     teamAnswered: Boolean(teamData),
     teamFailed,
     teamKnown: Boolean(team),
   })
 
-  if (render === 'recovering' || render === 'resolving' || render === 'waiting') return null
+  if (render === 'recovering' || render === 'resolving') return null
   if (render === 'portal' && data?.kind === 'organisation') {
     return <OrgPortal organisation={data.organisation} signInOrigin={data.signInOrigin} />
   }
@@ -129,9 +137,40 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     if (render === 'unavailable') {
       return <TeamHostUnavailable organisation={data.organisation} signInOrigin={data.signInOrigin} />
     }
+    // 'waiting' and 'app' share this subtree so the curtain can fade off the
+    // app it was covering rather than cutting to it.
+    return (
+      <TeamHostCurtain organisation={data.organisation} settling={render === 'waiting'}>
+        {children}
+      </TeamHostCurtain>
+    )
   }
 
+  // Off a team host there is no tenant to brand a wait with, and nothing that
+  // would render the wrong team underneath.
+  if (render === 'waiting') return null
   return <>{children}</>
+}
+
+/**
+ * Mounts the app only once the session is on this host's team, and fades the
+ * tenant's curtain off the top of it.
+ *
+ * Separate from the gate because the reveal is stateful and the gate above it
+ * returns early in several different ways; a hook cannot live behind those.
+ */
+const TeamHostCurtain = ({ children, organisation, settling }: {
+  children: ReactNode
+  organisation: TenantOrganisation
+  settling: boolean
+}) => {
+  const revealed = useCurtainReveal(!settling)
+  return (
+    <>
+      {settling ? null : children}
+      {revealed ? null : <TeamSwitchCurtain fading={!settling} organisation={organisation} />}
+    </>
+  )
 }
 
 /**

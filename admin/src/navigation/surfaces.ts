@@ -60,7 +60,10 @@ const redirect = (row: Pick<Surface, 'pattern' | 'root' | 'section'>): Surface =
 // a research run, and `?view=` is the view-mode strip.
 const KNOWLEDGE_INTENT: SurfaceIntent = {
   consume: ['spaceId', 'pageId'],
-  state: ['view'],
+  // `view` is the Finder's columns/list strip, `sort` its ordering and
+  // `folder` the deepest open folder — all three are linkable state the screen
+  // currently shows, written with `replace` rather than as history entries.
+  state: ['view', 'sort', 'folder'],
 }
 
 /**
@@ -345,13 +348,39 @@ export const SURFACES: Surface[] = [
 
   // ── Knowledge ────────────────────────────────────────────────────────────
   {
-    contextualList: true,
+    // No `contextualList`: the Knowledge section no longer has a secondary
+    // sidebar, so on a phone the root screen is the outlet — the Finder's own
+    // root column — exactly as `/dashboards` and `/search` already work.
     depth: 0,
     intent: KNOWLEDGE_INTENT,
     pattern: /^\/knowledge-base$/,
     root: KNOWLEDGE_ROOT,
     section: 'knowledge',
     type: 'root',
+  },
+  {
+    // Latest and Shared with me are listings the server computes, so they are
+    // routes of their own rather than a selection inside the root: a surface
+    // reached by leaving another screen has to be a route, or its state dies
+    // with the popped layer.
+    depth: 1,
+    identityOf: () => 'virtual:latest',
+    intent: KNOWLEDGE_INTENT,
+    parentOf: toKnowledge,
+    pattern: /^\/knowledge-base\/latest$/,
+    root: KNOWLEDGE_ROOT,
+    section: 'knowledge',
+    type: 'detail',
+  },
+  {
+    depth: 1,
+    identityOf: () => 'virtual:shared',
+    intent: KNOWLEDGE_INTENT,
+    parentOf: toKnowledge,
+    pattern: /^\/knowledge-base\/shared-with-me$/,
+    root: KNOWLEDGE_ROOT,
+    section: 'knowledge',
+    type: 'detail',
   },
   {
     // A Knowledge space keeps one screen identity across spaces: the mounted
