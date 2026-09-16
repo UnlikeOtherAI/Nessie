@@ -2,20 +2,26 @@ import { useCallback } from 'react'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { useMovePages } from '../../../../facades/knowledge/finder-hooks'
 import { useToasts } from '../../../../providers/ToastProvider'
-import { useFinderDrag } from './useFinderDrag'
+import { useFinderDrag, type UseFinderDragInput } from './useFinderDrag'
 
 /**
  * Dragging rows onto a folder inside the same root folder.
  *
  * A move across root folders is a transfer and asks move-or-copy first; that
- * branch is wired separately and never reaches this hook — everything here
- * assumes one space, which is why the payload carries a single `spaceId`.
+ * branch never reaches the mutation below — everything here assumes one space,
+ * which is why the payload carries a single `spaceId`. It is handed straight
+ * through to `useFinderDrag` as `onForeignDrop`, which is where
+ * `useFinderTransfers` receives it. This hook is the only caller of
+ * `useFinderDrag`, so without the pass-through the cross-root branch would have
+ * no way in at all.
  */
 export const useFinderMove = ({
+  onForeignDrop,
   pageById,
   selectedIds,
   selectedSpaceId,
 }: {
+  onForeignDrop?: UseFinderDragInput['onForeignDrop']
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   selectedIds: readonly string[]
   selectedSpaceId: string | undefined
@@ -73,5 +79,5 @@ export const useFinderMove = ({
     [selectedIds, selectedSpaceId],
   )
 
-  return useFinderDrag({ canDrop, onMove, rowsForDrag })
+  return useFinderDrag({ canDrop, onForeignDrop, onMove, rowsForDrag })
 }

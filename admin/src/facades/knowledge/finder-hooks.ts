@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -11,6 +12,8 @@ import type {
   KnowledgeSharedRow,
   KnowledgeVirtualRow,
   PaginationMeta,
+  TransferResult,
+  TransferStatus,
 } from '@nessie/schemas'
 import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -275,5 +278,101 @@ export const useMovePages = () => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
     },
     onSettled: (_pages, _error, input) => invalidateFinder(queryClient, input.spaceId),
+  })
+}
+
+// ── Cross-root transfers (transfer.md §2-§5) ────────────────────────────────
+
+export type TransferPagesInput = {
+  operation: 'move' | 'copy'
+  /** The selected roots; descendants are the server's business. */
+  pageIds: string[]
+  /** Where they are leaving, so the cache entry they are leaving is refreshed. */
+  sourceSpaceId: string
+  target: { spaceId: string; parentPageId: string | null }
+}
+
+/**
+ * The one write both doorways make: the drop-point prompt and Move to…'s
+ * two-button footer.
+ *
+ * `acknowledged: true` is set here and nowhere else — it is the client saying
+ * it has already shown the audience line and, where it applies, the sentence
+ * that sharing ends. The server refuses the body without it so no caller can
+ * widen an audience blind, which is why it is not a parameter.
+ *
+ * **No optimistic write.** An in-space move can put a row back where it was;
+ * a transfer cannot, because a refusal may arrive after the server has already
+ * counted a 600-page subtree, and because a copy's result is rows that did not
+ * exist to put back. The rows move when the server says they moved.
+ */
+export const useTransferPages = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation<TransferResult, Error, TransferPagesInput>({
+    mutationFn: ({ operation, pageIds, target }) =>
+      apiClient.post<TransferResult>(`${BASE}/transfers`, {
+        acknowledged: true,
+        operation,
+        pageIds,
+        target,
+      }),
+    onSuccess: (result, input) => {
+      // Both ends of the transfer, plus every corpus computed across spaces.
+      // A queued transfer invalidates the same keys: the roots are stamped
+      // `metadata.transfer` by the same request, and the rows have to start
+      // reading "Moving…" before the job has done anything.
+      invalidateTransferReach(queryClient, input)
+      if (result.status !== 'done') return
+      for (const page of result.pages) {
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pageInfo(page.sourcePageId) })
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pageInfo(page.pageId) })
+      }
+    },
+  })
+}
+
+const invalidateTransferReach = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  input: TransferPagesInput,
+): void => {
+  void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(input.sourceSpaceId) })
+  void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(input.target.spaceId) })
+  void queryClient.invalidateQueries({ queryKey: knowledgeKeys.root })
+  void queryClient.invalidateQueries({ queryKey: knowledgeKeys.latest() })
+  void queryClient.invalidateQueries({ queryKey: knowledgeKeys.sharedWithMe })
+}
+
+/** Re-read both ends of a transfer that finished somewhere else (the worker). */
+export const useInvalidateTransferReach = () => {
+  const queryClient = useQueryClient()
+  return useCallback(
+    (input: TransferPagesInput) => invalidateTransferReach(queryClient, input),
+    [queryClient],
+  )
+}
+
+/** Below this the tray is idle; at or above it the poll is running. */
+export const TRANSFER_POLL_MS = 2_000
+
+/**
+ * A queued transfer's progress, polled every 2 s while it is `queued` or
+ * `running` and never afterwards. `done`/`total` are pages, not bytes, and a
+ * failed **move** keeps the batches that committed — the caller must not
+ * render them as "nothing happened".
+ */
+export const useTransferStatus = (transferId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<TransferStatus>({
+    enabled: Boolean(transferId),
+    placeholderData: keepPreviousData,
+    queryFn: () => apiClient.get(`${BASE}/transfers/${transferId}`),
+    queryKey: knowledgeKeys.transfer(transferId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'queued' || status === 'running' ? TRANSFER_POLL_MS : false
+    },
   })
 }
