@@ -436,7 +436,12 @@ a {
 :where([data-theme="nessie"]) .mobile-web-home-header,
 :where([data-theme="nessie"]) .mobile-tabbar,
 :where([data-theme="nessie"]) .admin-frame > .native-chrome-palette,
-:where([data-theme="nessie"]) aside[class~='bg-[color:var(--sb)]']:not(.focus-mode *):not(.overlays-focus-mode *) {
+:where([data-theme="nessie"]) aside[class~='bg-[color:var(--sb)]']:not(.focus-mode *):not(.overlays-focus-mode *),
+/* A navigational page is chrome that happens to sit in the content area — see
+   `.admin-nav-surface` below. The focus-mode guards are the aside's: focus mode
+   is declared on an ancestor, and an element-level rule would otherwise beat
+   the palette it inherits. */
+:where([data-theme="nessie"]) .admin-nav-surface:not(.focus-mode *):not(.overlays-focus-mode *) {
   /* The chrome is dark; the native shell reads this scheme (and every token
      here) off `.native-chrome-palette` to set its status bar. */
   color-scheme: dark;
@@ -592,6 +597,256 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 .focus-mode .sidebar-unread-count {
   display: none;
 }
+
+/* ── Navigational pages ───────────────────────────────────────────────────
+   A project's Overview is not a work surface: nothing is written there, every
+   element on it is a way out of it. So it takes the colour the menus take —
+   the sidebar plane, one step above the rail — rather than the white paper the
+   board and the docs reader use. In the default theme that palette only exists
+   on the chrome, which is why `.admin-nav-surface` is listed with the topbar
+   and the sidebars above; in a theme whose menus are already the surface's own
+   colour this simply repeats it, which is the right answer there.
+
+   The panel tokens are derived from `--sb` rather than restated, so a card on
+   a navigational page sits one step *above* its background in every theme
+   without another eleven declarations — `--panel` in the chrome palette is
+   darker than `--sb`, and a card that reads as a hole is worse than no card. */
+.admin-nav-surface,
+/* Repeated with the chrome rule's own guards, because that rule carries two
+   `:not()` clauses and so outranks a bare class: the palette above would
+   otherwise hand a card `--panel`, which in the chrome is *darker* than the
+   page it sits on. */
+.admin-nav-surface:not(.focus-mode *):not(.overlays-focus-mode *) {
+  /* One step above the sidebar rather than exactly it: the page sits directly
+     beside that sidebar, and painted the same colour the two merge into one
+     plane with no edge between them. A step is also what rescues the themes
+     whose menus are already white — there the page would otherwise be the work
+     surface it is trying not to be. */
+  --nav-plane: color-mix(in srgb, var(--sb) 92%, var(--tx) 8%);
+  background: var(--nav-plane);
+  color: var(--tx);
+  --main: var(--nav-plane);
+  /* Cards lift *toward the paper*, not toward the text. `--surface-inverse` is
+     each theme's near-white in every one of them, so a card is lighter than the
+     page it sits on whether the page is navy or oatmeal; mixing toward `--tx`
+     instead inverted the stack on the light themes, where it darkened. */
+  --main-hover: color-mix(in srgb, var(--nav-plane) 92%, var(--surface-inverse) 8%);
+  --panel: color-mix(in srgb, var(--nav-plane) 92%, var(--surface-inverse) 8%);
+  --panel-soft: color-mix(in srgb, var(--nav-plane) 96%, var(--surface-inverse) 4%);
+  --sep: color-mix(in srgb, var(--nav-plane) 86%, var(--tx) 14%);
+  --border-strong: color-mix(in srgb, var(--nav-plane) 74%, var(--tx) 26%);
+}
+
+/* The doorways themselves. `auto-fill` rather than a breakpoint for the reason
+   the dashboard's `columns` uses the same trick: this page renders behind a
+   chat shell on one route and full-width on another, so the viewport says
+   nothing useful about the room the grid actually has. */
+.project-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  /* The grid is also the query container for its tiles. Its own width is the
+     honest signal for how much room they have — the viewport is not, because
+     the same grid renders behind a chat shell on one route and full-width on
+     another. */
+  container: project-nav / inline-size;
+}
+
+/* One tile. `--tile` is the only thing a tone changes; everything below is
+   written against it, so the palette is seven declarations and not seven
+   copies of this rule. Each tile is a real destination, so it carries its
+   colour as a tint of its own card rather than as a label on a grey one. */
+.project-nav-tile {
+  --tile: var(--accent);
+  /* The wash the card is tinted with. A dark hue laid straight over a dark
+     navy goes muddy — amber over `--panel` read as brown — so the hue is
+     lifted toward the text colour first and the *result* is what tints the
+     card. In a light theme `--tx` is dark, so the same expression deepens a
+     pale hue instead of washing it out. */
+  --tile-wash: color-mix(in srgb, var(--tile) 72%, var(--tx) 28%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  /* No min-height: grid items stretch, so every tile in a row is already as
+     tall as the tallest, and a floor only adds slack under the short ones. */
+  padding: 0.875rem 1rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--tile) 32%, transparent);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--tile-wash) 26%, transparent),
+      color-mix(in srgb, var(--tile-wash) 8%, transparent)
+    ),
+    var(--panel);
+  text-align: left;
+  transition:
+    border-color var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard);
+}
+
+/* Guarded, for the reason the page-header actions are: these rules are
+   unlayered, so a bare `:hover` would repaint a disabled tile exactly as the
+   pointer arrives. */
+.project-nav-tile:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--tile) 62%, transparent);
+  transform: translateY(-1px);
+}
+
+/* A doorway with nothing behind it yet — a project before its first channel.
+   It keeps its place in the grid and says so, rather than vanishing and
+   leaving the reader to wonder where this project's rooms are. */
+.project-nav-tile:disabled,
+.project-nav-tile[data-empty='true'] {
+  opacity: 0.6;
+}
+
+.project-nav-tile-art {
+  display: flex;
+  width: 3rem;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--tile) 100%, transparent),
+    color-mix(in srgb, var(--tile) 66%, var(--ink) 34%)
+  );
+  color: var(--on-accent);
+  font-size: 1.125rem;
+}
+
+.project-nav-tile-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  color: var(--tx);
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+}
+
+.project-nav-tile-meta {
+  color: color-mix(in srgb, var(--tile) 70%, var(--tx));
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.project-nav-tile-blurb {
+  color: var(--tx3);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+/* Two columns where they fit, one where they do not, never three: `auto-fit`
+   over exactly two children. `start` so each column is its own height — the
+   Work list and the document list are rarely the same length, and stretching
+   them to match leaves whichever is shorter with a tall empty box. */
+.project-overview-columns {
+  display: grid;
+  align-items: start;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+}
+
+.project-overview-column {
+  container: project-column / inline-size;
+  min-width: 0;
+}
+
+/* A narrow column — a phone, or this dashboard behind a chat shell. A ticket
+   row is four things on one line (status, title, when) and the title is the
+   only one a person reads first, so at this width it takes the whole line and
+   the rest drops beneath it. Truncating the title to keep an uppercase status
+   chip whole had it right the wrong way round. */
+@container project-column (max-width: 26rem) {
+  .project-work-row {
+    display: grid;
+    align-items: center;
+    row-gap: 0.25rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .project-work-row-title {
+    grid-area: 1 / 1 / 2 / 3;
+  }
+
+  .project-work-row-status {
+    grid-area: 2 / 1;
+    justify-self: start;
+  }
+
+  .project-work-row-meta {
+    margin-left: 0;
+    grid-area: 2 / 2;
+  }
+
+  /* Which space a document is in matters when several are on screen; at this
+     width the title needs the room more, and the Docs tab names the space on
+     arrival. */
+  .project-doc-row-space {
+    display: none;
+  }
+}
+
+.project-nav-tile[data-tone='work'] { --tile: var(--accent); }
+.project-nav-tile[data-tone='plan'] { --tile: var(--thinking); }
+.project-nav-tile[data-tone='insight'] { --tile: var(--info); }
+.project-nav-tile[data-tone='knowledge'] { --tile: var(--warning); }
+.project-nav-tile[data-tone='rooms'] { --tile: var(--info); }
+.project-nav-tile[data-tone='people'] { --tile: var(--success); }
+.project-nav-tile[data-tone='compute'] { --tile: var(--lnk); }
+/* Settings is the one doorway a person is not here to walk through, so it is
+   the one tile that does not compete for the eye. */
+.project-nav-tile[data-tone='config'] { --tile: var(--tx3); }
+
+/* One column — a phone, or the grid inside a narrow panel. Five poster-shaped
+   cards stacked there fill the whole screen and push the summaries below the
+   fold, so the tile turns on its side: the art moves beside the words instead
+   of above them, and the same five doorways fit in a glance. */
+@container project-nav (max-width: 30rem) {
+  .project-nav-tile {
+    display: grid;
+    align-items: center;
+    padding: 0.75rem 0.875rem;
+    column-gap: 0.875rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 0.125rem;
+  }
+
+  .project-nav-tile-art {
+    width: 2.5rem;
+    height: 2.5rem;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    font-size: 1rem;
+  }
+
+  .project-nav-tile-title {
+    margin-top: 0;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .project-nav-tile-blurb {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+/* Focus mode is monochrome by contract, so the tiles give up their hues with
+   the rest of the surface rather than becoming the loudest thing on a screen
+   that exists to be quiet. */
+.focus-mode .project-nav-tile,
+body.overlays-focus-mode .project-nav-tile {
+  --tile: var(--tx3);
+}
+
 
 .admin-shell {
   display: flex;

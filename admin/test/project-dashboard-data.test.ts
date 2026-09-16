@@ -2,16 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  type DashboardAgent,
   type DashboardChannel,
   type DashboardTask,
-  canManageProjectMembers,
+  type QueueTask,
+  backlogTaskCount,
   formatRelativeAge,
-  orderProjectMembers,
-  projectAgentRows,
   projectChannelRows,
+  projectWorkQueue,
   scopeTasksToBoard,
-  showsChannelTeamName,
   summarizeWork,
 } from '../src/components/features/projects/project-dashboard-data.js'
 
@@ -76,14 +74,6 @@ test('channel rows fall back to alphabetical when lastMessageAt is absent', () =
   assert.deepEqual(rows.map((row) => row.label), ['alpha', 'charlie'])
 })
 
-test('team names are only shown when the project spans more than one team', () => {
-  assert.equal(showsChannelTeamName([channel({ id: 'a' }), channel({ id: 'b' })]), false)
-  assert.equal(
-    showsChannelTeamName([channel({ id: 'a' }), channel({ id: 'b', teamName: 'Design' })]),
-    true,
-  )
-})
-
 test('relative age is coarse and never negative', () => {
   const now = Date.parse('2026-08-11T12:00:00.000Z')
   assert.equal(formatRelativeAge('2026-08-11T11:30:00.000Z', now), 'now')
@@ -123,63 +113,102 @@ test('scrum work counts are scoped to the active sprint, like the board', () => 
   assert.equal(scopeTasksToBoard(tasks, { activeIterationId: null, isScrum: false }).length, 3)
 })
 
-test('members order by project role rank then name', () => {
-  const ordered = orderProjectMembers([
-    { userId: '1', displayName: 'Zoe', email: 'z@x', role: 'member' },
-    { userId: '2', displayName: 'Ada', email: 'a@x', role: 'viewer' },
-    { userId: '3', displayName: 'Bob', email: 'b@x', role: 'owner' },
-    { userId: '4', displayName: 'Ann', email: 'an@x', role: 'member' },
-  ])
-
-  assert.deepEqual(ordered.map((member) => member.displayName), ['Bob', 'Ann', 'Zoe', 'Ada'])
+const queued = (overrides: Partial<QueueTask> & { id?: string }): QueueTask & { id: string } => ({
+  id: overrides.id ?? 't',
+  status: 'in_progress',
+  priority: 'medium',
+  dueDate: null,
+  archivedAt: null,
+  iterationId: null,
+  assigneeUserId: null,
+  title: null,
+  updatedAt: '2026-08-01T00:00:00.000Z',
+  ...overrides,
 })
 
-test('every project member manages members, whatever their project role', () => {
-  const members = [
-    { userId: 'u1', displayName: 'Ada', email: 'a@x', role: 'owner' },
-    { userId: 'u2', displayName: 'Bob', email: 'b@x', role: 'member' },
-    { userId: 'u4', displayName: 'Cy', email: 'c@x', role: 'viewer' },
-  ]
+test('the work queue shows the reader’s own open tickets, latest first', () => {
+  const queue = projectWorkQueue(
+    [
+      queued({ id: 'old-mine', assigneeUserId: 'me', updatedAt: '2026-08-01T00:00:00.000Z' }),
+      queued({ id: 'new-mine', assigneeUserId: 'me', updatedAt: '2026-08-09T00:00:00.000Z' }),
+      queued({ id: 'theirs', assigneeUserId: 'other', updatedAt: '2026-08-10T00:00:00.000Z' }),
+      queued({ id: 'unclaimed', status: 'inbox', updatedAt: '2026-08-11T00:00:00.000Z' }),
+    ],
+    { userId: 'me' },
+  )
 
-  for (const userId of ['u1', 'u2', 'u4']) {
-    assert.equal(
-      canManageProjectMembers({ isOrganizationAdmin: false, members, userId }),
-      true,
-      `project member ${userId} has the same rights as the creator`,
-    )
-  }
-  // A plain organisation member outside the project may not.
-  assert.equal(
-    canManageProjectMembers({ isOrganizationAdmin: false, members, userId: 'u3' }),
-    false,
-  )
-  // An organisation owner or admin who is not a member has no row here.
-  assert.equal(
-    canManageProjectMembers({ isOrganizationAdmin: true, members, userId: 'u3' }),
-    true,
-  )
+  assert.equal(queue.focus, 'mine')
+  assert.deepEqual(queue.tasks.map((t) => t.id), ['new-mine', 'old-mine'])
+  assert.equal(queue.matched, 2)
 })
 
-test('project agents are those bound to project channels, most urgent first', () => {
-  const channels = [channel({ id: 'c1' }), channel({ id: 'c2' })]
-  const agents: DashboardAgent[] = [
-    { id: 'a1', name: 'Idle One', role: 'r', status: 'idle', channelIds: ['c2'] },
-    { id: 'a2', name: 'Broken', role: 'r', status: 'error', channelIds: ['c1'] },
-    { id: 'a3', name: 'Elsewhere', role: 'r', status: 'error', channelIds: ['other'] },
-    {
-      id: 'a4',
-      agentKind: 'personal_assistant',
-      name: 'PA',
-      role: 'r',
-      status: 'error',
-      channelIds: ['c1'],
-    },
-    { id: 'a5', name: 'Waiting', role: 'r', status: 'waiting_approval', channelIds: ['c2'] },
-  ]
+test('with nothing of their own it falls back to what nobody has picked up', () => {
+  const queue = projectWorkQueue(
+    [
+      queued({ id: 'theirs', assigneeUserId: 'other' }),
+      queued({ id: 'unclaimed', status: 'inbox', updatedAt: '2026-08-05T00:00:00.000Z' }),
+      queued({ id: 'older-unclaimed', status: 'inbox', updatedAt: '2026-08-02T00:00:00.000Z' }),
+    ],
+    { userId: 'me' },
+  )
 
-  const rows = projectAgentRows(agents, channels)
+  assert.equal(queue.focus, 'todo')
+  assert.deepEqual(queue.tasks.map((t) => t.id), ['unclaimed', 'older-unclaimed'])
+})
 
-  assert.deepEqual(rows.map((row) => row.agent.id), ['a2', 'a5', 'a1'])
-  assert.equal(rows[0]?.channelId, 'c1')
-  assert.equal(rows[1]?.channelId, 'c2')
+test('with nothing unclaimed either it shows everything still open', () => {
+  // A blank column while the project has work in flight reads as "no work
+  // here", which is the one thing this page must not say wrongly.
+  const queue = projectWorkQueue(
+    [queued({ id: 'theirs', assigneeUserId: 'other' }), queued({ id: 'review', status: 'review' })],
+    { userId: 'me' },
+  )
+
+  assert.equal(queue.focus, 'open')
+  assert.equal(queue.matched, 2)
+})
+
+test('the work queue never offers finished or archived work', () => {
+  const queue = projectWorkQueue(
+    [
+      queued({ id: 'done', assigneeUserId: 'me', status: 'done' }),
+      queued({ id: 'cancelled', assigneeUserId: 'me', status: 'cancelled' }),
+      queued({ id: 'archived', assigneeUserId: 'me', archivedAt: '2026-01-01T00:00:00.000Z' }),
+      queued({ id: 'live', assigneeUserId: 'me' }),
+    ],
+    { userId: 'me' },
+  )
+
+  assert.deepEqual(queue.tasks.map((t) => t.id), ['live'])
+})
+
+test('a signed-out reader has no tickets of their own, so the fallback applies', () => {
+  const queue = projectWorkQueue([queued({ id: 'a', assigneeUserId: 'me' })], { userId: undefined })
+  assert.equal(queue.focus, 'open')
+})
+
+test('the cap is honoured and the remainder is reported', () => {
+  const many = Array.from({ length: 12 }, (_, index) =>
+    queued({
+      id: `t${index}`,
+      assigneeUserId: 'me',
+      updatedAt: `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+    }))
+
+  const queue = projectWorkQueue(many, { limit: 8, userId: 'me' })
+  assert.equal(queue.tasks.length, 8)
+  assert.equal(queue.matched, 12)
+  assert.equal(queue.tasks[0]?.id, 't11')
+})
+
+test('the backlog count is open work in no sprint', () => {
+  assert.equal(
+    backlogTaskCount([
+      task({ iterationId: 'it-1' }),
+      task({ iterationId: null }),
+      task({ iterationId: null, status: 'done' }),
+      task({ iterationId: null, archivedAt: '2026-01-01T00:00:00.000Z' }),
+    ]),
+    1,
+  )
 })

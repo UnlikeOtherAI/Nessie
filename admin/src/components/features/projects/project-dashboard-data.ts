@@ -1,8 +1,12 @@
 /**
- * Pure derivations behind the project dashboard. Everything here is a plain
+ * Pure derivations behind the project Overview. Everything here is a plain
  * function over records the facades already fetch — no hooks, no fetching —
- * so the ordering/counting rules the four sections depend on are testable
- * without rendering React.
+ * so the ordering, counting and fallback rules the page depends on are
+ * testable without rendering React.
+ *
+ * The Members and Agents derivations were removed with the cards that used
+ * them: People is a navigation tile carrying its own count, and an agent is
+ * reached through the channel it works in.
  */
 
 // ─── Channels ───────────────────────────────────────────────────────────────
@@ -23,9 +27,13 @@ export type DashboardChannel = {
   lastMessageAt?: string | null
 }
 
-export const CHANNEL_ROW_CAP = 8
-export const MEMBER_ROW_CAP = 8
-export const AGENT_ROW_CAP = 8
+/**
+ * How many recent documents the Documents column asks for. One constant,
+ * imported by that column and by the Docs tile, so both resolve the same
+ * `knowledgeKeys.recentPages(projectId, limit)` cache entry — a second limit
+ * would be a second request for the same list.
+ */
+export const RECENT_PAGE_LIMIT = 12
 
 const parseMs = (value: string | null | undefined): number | null => {
   if (!value) return null
@@ -66,14 +74,6 @@ export const projectChannelRows = <T extends DashboardChannel>(
       return a.label.localeCompare(b.label)
     })
 
-/**
- * Whether a channel row should name its team. A project whose channels all sit
- * under one team gains nothing from repeating that team on every row; a project
- * spanning teams needs it to tell two same-named rooms apart.
- */
-export const showsChannelTeamName = (channels: readonly DashboardChannel[]): boolean =>
-  new Set(channels.map((channel) => channel.teamName)).size > 1
-
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 /**
@@ -106,6 +106,8 @@ export type DashboardTask = {
   dueDate: string | null
   archivedAt: string | null
   iterationId: string | null
+  /** Optional: only the Work queue's stable tie-break reads it. */
+  title?: string | null
 }
 
 export type WorkCounts = {
@@ -154,108 +156,75 @@ export const scopeTasksToBoard = <T extends DashboardTask>(
     ? tasks.filter((task) => task.iterationId === (input.activeIterationId ?? null))
     : tasks.slice()
 
-// ─── Members ────────────────────────────────────────────────────────────────
-
-export type DashboardMember = {
-  userId: string
-  displayName: string
-  email: string
-  role: string
-}
-
-const MEMBER_ROLE_RANK: Record<string, number> = { owner: 0, admin: 1, member: 2, viewer: 3 }
-
-export const orderProjectMembers = <T extends DashboardMember>(members: readonly T[]): T[] =>
-  members
-    .slice()
-    .sort((a, b) => {
-      const rankA = MEMBER_ROLE_RANK[a.role] ?? 2
-      const rankB = MEMBER_ROLE_RANK[b.role] ?? 2
-      if (rankA !== rankB) return rankA - rankB
-      return a.displayName.localeCompare(b.displayName)
-    })
-
 /**
- * Who sees "Manage →". Every member of a project has equal rights in it, so any
- * member manages people whatever their project role; an organisation owner or
- * admin may manage a project they are not a member of at all (no row of their
- * own in the list). Mirrors `canModifyProject` on the server.
+ * What a person is shown in the Work column, and why that list and not
+ * another. Overview answers "where is the work at the moment", which for the
+ * reader means their own tickets first:
+ *
+ *   `mine` — open tickets assigned to them. The only list they can act on
+ *            without picking something up first.
+ *   `todo` — nothing is theirs, so the project's unclaimed `inbox` tickets:
+ *            what anyone could take next.
+ *   `open` — nothing is theirs and nothing is unclaimed, so everything still
+ *            open. A column that went blank while the project had ten tickets
+ *            in flight would be read as "no work here".
+ *
+ * The focus is returned rather than inferred at the call site, because the
+ * card names which of the three it is showing — an unlabelled list of somebody
+ * else's tickets reads as yours.
  */
-export const canManageProjectMembers = (input: {
-  isOrganizationAdmin: boolean
-  members: readonly DashboardMember[]
-  userId: string | null | undefined
-}): boolean => {
-  if (input.isOrganizationAdmin) return true
-  return input.members.some((member) => member.userId === input.userId)
+export type WorkFocus = 'mine' | 'todo' | 'open'
+
+export type QueueTask = DashboardTask & {
+  assigneeUserId: string | null
+  updatedAt: string
 }
 
-// ─── Agents ─────────────────────────────────────────────────────────────────
-
-export type DashboardAgentStatus =
-  | 'error'
-  | 'waiting_approval'
-  | 'waiting_input'
-  | 'executing'
-  | 'thinking'
-  | 'idle'
-  | 'offline'
-
-export type DashboardAgent = {
-  id: string
-  name: string
-  role: string
-  status: DashboardAgentStatus
-  agentKind?: 'shared' | 'personal_assistant'
-  channelIds: string[]
+export type WorkQueue<T> = {
+  focus: WorkFocus
+  /** How many the focus matched in total, before the cap. */
+  matched: number
+  tasks: T[]
 }
 
-export type ProjectAgentRow<T extends DashboardAgent = DashboardAgent> = {
-  agent: T
-  // The project channel to open when the row is clicked.
-  channelId: string
+export const WORK_ROW_CAP = 8
+
+/** Most recently touched first — "latest" — then by title so the order is stable. */
+const byRecency = <T extends QueueTask>(a: T, b: T): number => {
+  const aAt = parseMs(a.updatedAt) ?? Number.NEGATIVE_INFINITY
+  const bAt = parseMs(b.updatedAt) ?? Number.NEGATIVE_INFINITY
+  if (aAt !== bAt) return bAt - aAt
+  return (a.title ?? '').localeCompare(b.title ?? '')
 }
 
-const AGENT_STATUS_RANK: Record<DashboardAgentStatus, number> = {
-  error: 0,
-  waiting_approval: 1,
-  waiting_input: 2,
-  executing: 3,
-  thinking: 4,
-  idle: 5,
-  offline: 6,
+export const isOpenTask = (task: DashboardTask): boolean =>
+  !task.archivedAt && !CLOSED_STATUSES.has(task.status)
+
+export const projectWorkQueue = <T extends QueueTask>(
+  tasks: readonly T[],
+  input: { limit?: number; userId: string | null | undefined },
+): WorkQueue<T> => {
+  const limit = input.limit ?? WORK_ROW_CAP
+  const open = tasks.filter(isOpenTask)
+  const mine = input.userId
+    ? open.filter((task) => task.assigneeUserId === input.userId)
+    : []
+  const todo = open.filter((task) => task.status === 'inbox')
+
+  const [focus, matched]: [WorkFocus, T[]] =
+    mine.length > 0 ? ['mine', mine] : todo.length > 0 ? ['todo', todo] : ['open', open]
+
+  return {
+    focus,
+    matched: matched.length,
+    tasks: matched.slice().sort(byRecency).slice(0, limit),
+  }
 }
 
 /**
- * The agents actually working in this project: those bound to one of its
- * channels. Personal assistants are excluded — a PA belongs to a person, not to
- * the project. Ordered by how much attention the agent needs.
+ * Tickets in no sprint — what the Backlog section holds. Only meaningful on a
+ * scrum project, where the board shows the active iteration and everything
+ * else waits here.
  */
-export const projectAgentRows = <T extends DashboardAgent>(
-  agents: readonly T[],
-  channels: readonly DashboardChannel[],
-): ProjectAgentRow<T>[] => {
-  const channelOrder = new Map(channels.map((channel, index) => [channel.id, index]))
-  return agents
-    .flatMap((agent) => {
-      if (agent.agentKind === 'personal_assistant') return []
-      const bound = agent.channelIds
-        .filter((channelId) => channelOrder.has(channelId))
-        .sort((a, b) => (channelOrder.get(a) ?? 0) - (channelOrder.get(b) ?? 0))
-      const channelId = bound[0]
-      return channelId ? [{ agent, channelId }] : []
-    })
-    .sort((a, b) => {
-      const rankA = AGENT_STATUS_RANK[a.agent.status] ?? 4
-      const rankB = AGENT_STATUS_RANK[b.agent.status] ?? 4
-      if (rankA !== rankB) return rankA - rankB
-      return a.agent.name.localeCompare(b.agent.name)
-    })
-}
-
-/** Human label for an agent status dot. */
-export const agentStatusLabel = (status: DashboardAgentStatus): string => {
-  if (status === 'waiting_approval') return 'waiting for approval'
-  if (status === 'waiting_input') return 'waiting for an answer'
-  return status
-}
+export const backlogTaskCount = (tasks: readonly DashboardTask[]): number =>
+  tasks.filter((task) => isOpenTask(task) && task.iterationId === null).length

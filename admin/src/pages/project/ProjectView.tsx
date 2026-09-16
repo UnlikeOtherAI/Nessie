@@ -190,7 +190,15 @@ export const ProjectView = () => {
   ]
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
+    // Overview is navigational, so the whole screen — header included — takes
+    // the menus' colour; every other section is a work surface and keeps the
+    // white one. See `.admin-nav-surface` in `styles.css`.
+    <section
+      className={[
+        tab === 'overview' ? 'admin-nav-surface' : '',
+        'flex h-full min-h-0 flex-col',
+      ].join(' ')}
+    >
       <ProjectPageHeader
         actions={headerActions}
         project={project}
