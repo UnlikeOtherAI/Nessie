@@ -982,6 +982,12 @@ export type ExecutorPrivateAssignmentResponse = z.infer<
 
 /** A reviewed, signed local policy proposal. The raw signature remains server-only. */
 export const ExecutorDescriptorReviewResponseSchema = z.object({
+  // Projected verbatim from the signed descriptor, so a reviewer approving
+  // `command.run` reads the programs they are approving rather than only the
+  // digest that covers them. Absent exactly when the descriptor named none —
+  // which permits none — and never an empty array, because that would be a
+  // third reading of a two-state fact.
+  commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
   localPolicyDigest: Sha256DigestSchema,
   operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(100),
   profiles: z.array(ExecutorProfileSchema).min(1).max(10),

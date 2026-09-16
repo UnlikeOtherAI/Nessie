@@ -156,7 +156,11 @@ export const runExecutorInspectTool = async (
         'Local policy proposals',
         (access.descriptorRevisions ?? []).map((revision) => (
           `- revision=${revision.revision} status=${revision.reviewStatus} `
-          + `operations=${revision.operationKeys.join(', ')} digest=${revision.localPolicyDigest}`
+          + `operations=${revision.operationKeys.join(', ')} `
+          // A person asked to approve a revision here reads this line and
+          // nothing else, so "named none" has to be said rather than omitted.
+          + `programs=${revision.commandAllowlist?.join(', ') ?? 'none named'} `
+          + `digest=${revision.localPolicyDigest}`
         )),
       )
     : null
