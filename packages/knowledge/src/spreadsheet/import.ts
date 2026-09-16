@@ -10,6 +10,7 @@ import {
   type XlsxImportWarning,
 } from '@nessie/spreadsheet/xlsx-warnings'
 
+import { spreadsheetClientOpId } from './agent-tools.js'
 import { writeSpreadsheetHead } from './create.js'
 import {
   createEmptyWorkbook,
@@ -234,7 +235,10 @@ export const completeSpreadsheetImport = async (
         organizationId: input.organizationId,
         seq: BigInt(next),
         baseSeq: head.headSeq,
-        clientOpId: `import:${input.attachmentId}`,
+        // A wire batch's clientOpId must be a uuid: a catch-up read of an
+        // imported page hands this row to a client whose schema would reject
+        // the literal form. Derived, so a replayed import keeps one identity.
+        clientOpId: spreadsheetClientOpId(`import:${input.attachmentId}`),
         actorType: input.actor.type,
         actorId: input.actor.id,
         agentId: input.actor.agentId ?? null,

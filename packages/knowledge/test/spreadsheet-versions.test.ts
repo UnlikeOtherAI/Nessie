@@ -1,16 +1,25 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { Readable } from 'node:stream'
 import test from 'node:test'
 
-import { SPREADSHEET_LIMITS, type SpreadsheetBatchSummary } from '@nessie/schemas'
+import {
+  SPREADSHEET_ENGINE_VERSION,
+  SPREADSHEET_LIMITS,
+  SpreadsheetAppliedBatchSchema,
+  type SpreadsheetBatchSummary,
+} from '@nessie/schemas'
 
 import {
   applySpreadsheetBatch,
   createEmptyWorkbook,
   createSpreadsheetPage,
   createSpreadsheetSnapshot,
+  completeSpreadsheetImport,
   describeDestructiveOperation,
+  listSpreadsheetBatches,
   readSpreadsheetRange,
+  spreadsheetClientOpId,
   restoreSpreadsheetVersion,
   restructureSpreadsheet,
   SPREADSHEET_ICALC_MIME,
@@ -407,6 +416,56 @@ dbTest('a server-built structural batch reports the summary it actually produced
     })
     assert.equal(row.structuralKind, 'insertRows')
     assert.equal(Number(row.baseSeq), 0, 'a server batch is built at head, so it cannot be stale')
+  } finally {
+    await seed.teardown()
+  }
+})
+
+dbTest('an imported page catches up: its marker batch parses on the wire', async () => {
+  // The import writes a marker batch, and a client opening the page afterwards
+  // reads it through listSpreadsheetBatches. The wire form requires a uuid
+  // clientOpId, so the literal `import:<attachmentId>` this once carried would
+  // have been refused by the reader's own schema — after the import succeeded.
+  const seed = await seedSpreadsheetFixture('sheet-import-marker')
+  const service = createTestService(seed)
+  try {
+    const page = await newPage(seed, service, 'Imported')
+    const { attachment } = await seed.files.store({
+      organizationId: seed.organizationId,
+      uploaderId: seed.userId,
+      knowledgePageId: page.id,
+      mime: 'text/csv',
+      filename: 'rows.csv',
+      body: Readable.from([Buffer.from('Region,Q3\nNorth,120\nSouth,80\n')]),
+    })
+
+    await completeSpreadsheetImport(service, {
+      organizationId: seed.organizationId,
+      pageId: page.id,
+      attachmentId: attachment.id,
+      filename: 'rows.csv',
+      actor: userActor(seed),
+      attribution: attributionFor(seed),
+    })
+
+    const row = await seed.prisma.spreadsheetOpBatch.findFirstOrThrow({
+      where: { pageId: page.id },
+      orderBy: { seq: 'desc' },
+    })
+    assert.notEqual(
+      row.clientOpId,
+      `import:${attachment.id}`,
+      'the literal form never reaches the journal',
+    )
+
+    const caught = await listSpreadsheetBatches(service, {
+      organizationId: seed.organizationId,
+      pageId: page.id,
+      afterSeq: 0,
+    })
+    const batches = Array.isArray(caught) ? caught : caught.batches
+    assert.ok(batches.length > 0, 'the page has something to catch up on')
+    for (const batch of batches) SpreadsheetAppliedBatchSchema.parse(batch)
   } finally {
     await seed.teardown()
   }
