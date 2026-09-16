@@ -295,6 +295,9 @@ export const AuditActionSchema = z.enum([
   'kb.page.moved',
   'kb.page.restored',
   'kb.page.archived',
+  // A person asked for an item's indexing to be tried again after the queue
+  // job exhausted its attempts (the Finder's "Retry indexing").
+  'kb.page.reindexed',
   'kb.librarian.ensured',
   'kb.search.summarized',
   'kb.annotation.created',

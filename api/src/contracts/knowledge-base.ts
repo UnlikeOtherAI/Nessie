@@ -144,21 +144,20 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   parentPageId: UuidSchema.nullable(),
   position: z.number().int().nonnegative(),
   status: KnowledgePageStatusSchema,
-  // The Finder's row fields. `.optional()` in Wave 0 and required in Wave 1A,
-  // which is when the listing enrichment that computes them lands — the one
-  // deliberate two-step in this contract. Requiring them before anything
-  // produced them would make every existing construction site a compile error
-  // for a value nobody could supply.
+  // The Finder's row fields. `.optional()` in Wave 0 and required here in Wave
+  // 1A, now that the listing enrichment (`native-list-enrichment.ts`, called
+  // from the provider's `listPages`) computes all four — the one deliberate
+  // two-step in this contract.
   //
   // A file's mime/bytes come from its current version's attachment, a
   // document's bytes from octet_length(body); a folder has neither.
   // `sizeBytes` is a decimal string because it is a BigInt
   // (docs/standards/file-storage.md).
-  mime: z.string().nullable().optional(),
-  sizeBytes: z.string().nullable().optional(),
+  mime: z.string().nullable(),
+  sizeBytes: z.string().nullable(),
   // KnowledgePageShare rows on this page; 0 outside personal spaces.
-  shareCount: z.number().int().nonnegative().optional(),
-  indexing: KnowledgeIndexingStateSchema.optional(),
+  shareCount: z.number().int().nonnegative(),
+  indexing: KnowledgeIndexingStateSchema,
   // Set while a cross-space move or copy of this page is in flight.
   transfer: KnowledgePageTransferStateSchema.nullable().optional(),
   // Set when this page is a ticket-bound document (or a ticket's document folder).
