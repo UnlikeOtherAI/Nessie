@@ -3,7 +3,9 @@ import XCTest
 
 /// The exact bytes `nessie-executor describe --state-dir …` printed for the
 /// paired development executor on 2026-09-16. Decoding this — rather than a
-/// hand-written literal — is what proves the app renders the CLI's own answer.
+/// hand-written literal — is what proves the app renders the CLI's own answer,
+/// and keeping a real wildcard entry in it proves the panels render a permitted
+/// *command* rather than assuming a bare program name.
 let describeFixtureJSON = """
 {
   "apiBaseUrl": "http://127.0.0.1:5454",
@@ -22,14 +24,14 @@ let describeFixtureJSON = """
       "sandbox.stop"
     ],
     "permittedPrograms": [
-      "git",
+      "git *",
       "node",
-      "pnpm"
+      "npm run *"
     ],
     "profiles": [
       "workspace_sandbox"
     ],
-    "revision": 2
+    "revision": 3
   },
   "reach": {
     "allowedOrigins": [],
