@@ -170,3 +170,26 @@ export const formatFinderDate = (value: string): string => {
     minute: '2-digit',
   })
 }
+
+/**
+ * "Needs review": the agent drafts in a space, plus every folder above them so
+ * the tree stays navigable while the filter is on. A client-side filter over
+ * the already-loaded page list — no extra request, and no server-side view of
+ * a thing that is only ever asked about one space at a time.
+ */
+export const agentDraftVisibleIds = (
+  pages: KnowledgePageRecord[],
+  isDraft: (page: KnowledgePageRecord) => boolean,
+  pageById: (pageId: string) => KnowledgePageRecord | undefined,
+): Set<string> => {
+  const visible = new Set<string>()
+  for (const page of pages) {
+    if (!isDraft(page)) continue
+    let current: KnowledgePageRecord | undefined = page
+    while (current && !visible.has(current.id)) {
+      visible.add(current.id)
+      current = current.parentPageId ? pageById(current.parentPageId) : undefined
+    }
+  }
+  return visible
+}

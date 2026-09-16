@@ -1,6 +1,11 @@
+import { useEffect, useState } from 'react'
+import type { SetURLSearchParams } from 'react-router-dom'
 import { faColumns, faList, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
+import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 
 /**
+ * What the URL says the browser is showing: which view, and which folder.
+ *
  * Two view modes, not three (browser-ui.md §6, overview decision 8).
  *
  * `column` becomes `columns`; `full` *is* `list`, so it keeps the rows and
@@ -58,3 +63,84 @@ export const finderViewOptions: Array<{
     value: 'list',
   },
 ]
+
+type FolderParamInput = {
+  browseTo: (path: string[]) => void
+  pageById: (pageId: string) => KnowledgePageRecord | undefined
+  pagePath: string[]
+  pagesLoading: boolean
+  searchParams: URLSearchParams
+  selectedSpaceId?: string
+  setSearchParams: SetURLSearchParams
+}
+
+/**
+ * `?folder=<pageId>` — the deepest open folder.
+ *
+ * It is **read before it is written**. The mirror would otherwise delete the
+ * param on the first render, because the path is empty until the space's pages
+ * arrive, and a cold start would land at the root with the link it was given
+ * already gone. So the seed runs once per space, and the mirror waits for it.
+ *
+ * Rebuilding the path is a walk up `parentPageId`: the space's page list is
+ * loaded whole, so it costs no request. A folder id that is not in this space
+ * simply reads as the root.
+ *
+ * The mirror writes with `replace`: which folder is open is part of what the
+ * screen currently shows, not a place Back should walk through
+ * (docs/navigation/overview.md §1).
+ */
+export const useFinderFolderParam = ({
+  browseTo,
+  pageById,
+  pagePath,
+  pagesLoading,
+  searchParams,
+  selectedSpaceId,
+  setSearchParams,
+}: FolderParamInput): void => {
+  const folderParam = searchParams.get('folder')
+  const [seeded, setSeeded] = useState(false)
+
+  useEffect(() => setSeeded(false), [selectedSpaceId])
+
+  useEffect(() => {
+    if (seeded) return
+    if (!folderParam) {
+      setSeeded(true)
+      return
+    }
+    // Wait for a space *and* its pages. Treating "no space yet" as nothing to
+    // do is what made a cold `?folder=` link land at the root: the route's own
+    // effect has not chosen the space on the first render, so the seed gave up
+    // one frame before the thing it needed arrived.
+    if (!selectedSpaceId || pagesLoading) return
+    setSeeded(true)
+    const target = pageById(folderParam)
+    if (!target) return
+    const path: string[] = []
+    const visited = new Set<string>()
+    let current: KnowledgePageRecord | undefined = target
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id)
+      path.unshift(current.id)
+      current = current.parentPageId ? pageById(current.parentPageId) : undefined
+    }
+    browseTo(path)
+  }, [browseTo, folderParam, pageById, pagesLoading, seeded, selectedSpaceId])
+
+  useEffect(() => {
+    if (!seeded) return
+    const open = pagePath.at(-1) ?? null
+    if ((folderParam ?? null) === open) return
+    setSearchParams(
+      (current) => {
+        const params = new URLSearchParams(current)
+        if (open) params.set('folder', open)
+        else params.delete('folder')
+        return params
+      },
+      { replace: true },
+    )
+  }, [folderParam, pagePath, seeded, setSearchParams])
+}

@@ -135,6 +135,16 @@ export type RowProps = {
    * audit counted six.
    */
   selectionStyle?: 'border' | 'pill'
+  /**
+   * List view's cells, after the name and before the trailing lane. They are
+   * laid out on the *row's* own grid rather than inside the trailing lane, so
+   * a column lines up with the sortable header above it — a second grid
+   * nested in a shrink-to-fit lane does not, which is how a Date column ends
+   * up a different width on every row.
+   */
+  gridCells?: ReactNode
+  /** The row's track, without the leading and trailing lanes it adds itself. */
+  gridTemplate?: string
   /** `finder` is 44px with no vertical padding of its own. */
   size?: 'default' | 'finder'
   tabIndex?: number
@@ -199,6 +209,8 @@ export const Row = ({
   dragging,
   dropTarget,
   elementRef,
+  gridCells,
+  gridTemplate,
   href,
   leading,
   onClick,
@@ -218,7 +230,20 @@ export const Row = ({
 }: RowProps) => {
   const interactive = Boolean(href || onClick)
   const finder = size === 'finder' || selectionStyle === 'pill'
-  const content = (
+  const grid = Boolean(gridTemplate)
+  const content = grid ? (
+    <>
+      <span className="finder-row-icon flex items-center">{leading}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="finder-row-title min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
+          {title}
+        </span>
+        {children}
+      </span>
+      {gridCells}
+      <span className="finder-row-trailing flex items-center justify-end gap-2">{trailing}</span>
+    </>
+  ) : (
     <>
       {leading ? (
         <span className="finder-row-icon flex shrink-0 items-center">{leading}</span>
@@ -241,7 +266,10 @@ export const Row = ({
   )
 
   const classes = finder
-    ? [finderBodyClass, className ?? ''].filter(Boolean).join(' ')
+    ? [
+        grid ? 'finder-row finder-grid-row px-3 text-left transition-colors' : finderBodyClass,
+        className ?? '',
+      ].filter(Boolean).join(' ')
     : [
         bodyClass,
         // The accent edge marks the selected row; the transparent one on every
@@ -255,7 +283,11 @@ export const Row = ({
         .filter(Boolean)
         .join(' ')
 
-  const style = depth > 0 ? { paddingLeft: `${12 + depth * 18}px` } : undefined
+  const style = grid
+    ? { ['--finder-grid-columns' as string]: gridTemplate }
+    : depth > 0
+      ? { paddingLeft: `${12 + depth * 18}px` }
+      : undefined
 
   // Spelt out rather than spread: a rest prop here would also let a call site
   // pass `style`, a second radius or its own colours, which is the drift the

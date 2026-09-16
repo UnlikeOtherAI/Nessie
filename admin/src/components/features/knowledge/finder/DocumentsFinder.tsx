@@ -4,13 +4,11 @@ import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import {
   useKnowledgeRoot,
   useLatestPages,
-  useMovePages,
   useSharedWithMe,
   virtualRows,
 } from '../../../../facades/knowledge/finder-hooks'
 import { getCookie, setCookie } from '../../../../lib/storage'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
-import { useToasts } from '../../../../providers/ToastProvider'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { ColumnBrowserColumn } from '../../../shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../../../shared/column-browser/ColumnBrowserViewport'
@@ -24,14 +22,20 @@ import { FinderFolderHost, type FinderFolderLevel } from './FinderFolderColumn'
 import { buildFinderToolbarActions } from './finder-toolbar-actions'
 import { emptyFinderSelection, finderSelectionReducer } from './finder-selection'
 import {
+  agentDraftVisibleIds,
   DEFAULT_FINDER_SORT,
   FINDER_SORTS,
   FINDER_SORT_COOKIE,
   isFinderSort,
   sortFinderRows,
 } from './finder-sort'
-import { FINDER_VIEWS, FINDER_VIEW_COOKIE, migrateStoredFinderView } from './finder-view'
-import { useFinderDrag } from './useFinderDrag'
+import {
+  FINDER_VIEWS,
+  FINDER_VIEW_COOKIE,
+  migrateStoredFinderView,
+  useFinderFolderParam,
+} from './finder-view'
+import { useFinderMove } from './useFinderMove'
 
 /**
  * The Documents Finder: the viewport, its columns, the status bar, and the
@@ -83,7 +87,6 @@ export const DocumentsFinder = ({
   const knowledge = useKnowledge()
   const navigate = useNavigate()
   const single = useNavigationLayout() === 'single'
-  const { pushToast } = useToasts()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const orgScope = scope.kind === 'org'
@@ -98,7 +101,6 @@ export const DocumentsFinder = ({
     virtualKind === 'latest',
   )
   const sharedQuery = useSharedWithMe(virtualKind === 'shared-with-me')
-  const movePages = useMovePages()
 
   // ── View, sort and the open folder, all in the URL ────────────────────────
   // Read once per mount: the fallback must not move under the hook that
@@ -116,43 +118,18 @@ export const DocumentsFinder = ({
   }, [selectSort])
 
   const { browseTo, childrenOf, pagePath, pageById, rootPages, selectedSpaceId } = knowledge
-  const folderParam = searchParams.get('folder')
-  // `?folder=` is written with `replace` on every browse: which folder is open
-  // is part of what the screen shows, not a place Back should walk through.
-  useEffect(() => {
-    const open = pagePath.at(-1) ?? null
-    if ((folderParam ?? null) === open) return
-    setSearchParams(
-      (current) => {
-        const params = new URLSearchParams(current)
-        if (open) params.set('folder', open)
-        else params.delete('folder')
-        return params
-      },
-      { replace: true },
-    )
-  }, [folderParam, pagePath, setSearchParams])
 
-  // …and read back on a cold start, by walking `parentPageId` up from it. The
-  // space's whole page list is already loaded, so this costs no request; a
-  // folder id that is not in this space simply reads as the root.
-  const [seededSpaceId, setSeededSpaceId] = useState<string | undefined>()
-  useEffect(() => {
-    if (!folderParam || pagePath.length > 0) return
-    if (!selectedSpaceId || seededSpaceId === selectedSpaceId) return
-    const target = pageById(folderParam)
-    if (!target) return
-    setSeededSpaceId(selectedSpaceId)
-    const path: string[] = []
-    const visited = new Set<string>()
-    let current: KnowledgePageRecord | undefined = target
-    while (current && !visited.has(current.id)) {
-      visited.add(current.id)
-      path.unshift(current.id)
-      current = current.parentPageId ? pageById(current.parentPageId) : undefined
-    }
-    browseTo(path)
-  }, [browseTo, folderParam, pageById, pagePath.length, seededSpaceId, selectedSpaceId])
+  // `?folder=` — the deepest open folder, read on a cold start and mirrored
+  // back on every browse.
+  useFinderFolderParam({
+    browseTo,
+    pageById,
+    pagePath,
+    pagesLoading: knowledge.pagesLoading,
+    searchParams,
+    selectedSpaceId,
+    setSearchParams,
+  })
 
   // ── Needs review ──────────────────────────────────────────────────────────
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
@@ -161,19 +138,12 @@ export const DocumentsFinder = ({
     () => knowledge.pages.filter(isAgentDraft).length,
     [knowledge.pages],
   )
-  const reviewVisibleIds = useMemo(() => {
-    if (!needsReviewOnly) return null
-    const visible = new Set<string>()
-    for (const page of knowledge.pages) {
-      if (!isAgentDraft(page)) continue
-      let current: KnowledgePageRecord | undefined = page
-      while (current && !visible.has(current.id)) {
-        visible.add(current.id)
-        current = current.parentPageId ? pageById(current.parentPageId) : undefined
-      }
-    }
-    return visible
-  }, [knowledge.pages, needsReviewOnly, pageById])
+  const reviewVisibleIds = useMemo(
+    () => (needsReviewOnly
+      ? agentDraftVisibleIds(knowledge.pages, isAgentDraft, pageById)
+      : null),
+    [knowledge.pages, needsReviewOnly, pageById],
+  )
 
   // ── The columns, as data ──────────────────────────────────────────────────
   const pathPages = useMemo(
@@ -285,45 +255,10 @@ export const DocumentsFinder = ({
   )
 
   // ── Drag: in-space moves ──────────────────────────────────────────────────
-  const drag = useFinderDrag({
-    canDrop: (payload, target) => {
-      if (target.parentPageId && payload.pageIds.includes(target.parentPageId)) return false
-      // A folder dropped into its own descendant is refused here rather than
-      // waiting for the server's cycle check to answer 409.
-      let walk = target.parentPageId ? pageById(target.parentPageId) : undefined
-      const seen = new Set<string>()
-      while (walk && !seen.has(walk.id)) {
-        seen.add(walk.id)
-        if (payload.pageIds.includes(walk.id)) return false
-        walk = walk.parentPageId ? pageById(walk.parentPageId) : undefined
-      }
-      return true
-    },
-    onMove: (payload, target) => {
-      movePages.mutate(
-        {
-          pageIds: payload.pageIds,
-          parentPageId: target.parentPageId,
-          revisions: Object.fromEntries(payload.pageIds.map((id) => [id, pageById(id)?.revision])),
-          spaceId: payload.spaceId,
-        },
-        {
-          // The rows go back where they were (the facade reverts the
-          // optimistic write); a move that silently undid itself would read
-          // as a drag that missed.
-          onError: (error) => pushToast({
-            body: error instanceof Error
-              ? error.message
-              : 'This item changed since you opened it. Refresh and try again.',
-            title: 'Couldn’t move that',
-          }),
-        },
-      )
-    },
-    rowsForDrag: (id) => ({
-      pageIds: selection.ids.includes(id) ? [...selection.ids] : [id],
-      spaceId: selectedSpaceId ?? '',
-    }),
+  const drag = useFinderMove({
+    pageById,
+    selectedIds: selection.ids,
+    selectedSpaceId,
   })
 
   // ── The toolbar ───────────────────────────────────────────────────────────
@@ -384,6 +319,16 @@ export const DocumentsFinder = ({
     ? knowledge.spaces.filter((space) => space.id !== selectedSpaceId)
     : []
 
+  // In the section the root column is a screen of its own, so leaving a root
+  // folder is a route change rather than a selection change. In project and
+  // agent scope there is no root column to return to.
+  const backToRoot = orgScope
+    ? () => {
+        knowledge.selectVirtual(null)
+        void navigate('/knowledge-base')
+      }
+    : undefined
+
   const rootColumn = (
     <ColumnBrowserColumn
       actions={actions}
@@ -413,7 +358,7 @@ export const DocumentsFinder = ({
       ? [(
         <ColumnBrowserColumn
           key={virtualColumnKey}
-          onBack={() => knowledge.selectVirtual(null)}
+          onBack={backToRoot}
           resize={resize}
           showBack
           title={virtualKind === 'latest' ? 'Latest' : 'Shared with me'}
@@ -436,10 +381,16 @@ export const DocumentsFinder = ({
         <ColumnBrowserColumn
           actions={!orgScope && index === 0 ? actions : undefined}
           key={level.key}
-          onBack={level.depth > 0 ? () => browseTo(pagePath.slice(0, level.depth - 1)) : undefined}
+          // Every column beyond the root is a real layer on `single`, and a
+          // pushed layer with no way out is a trap. A folder returns to its
+          // parent folder; a root folder's own listing returns to the root
+          // column, which in the section is the screen it was pushed over.
+          onBack={level.depth > 0
+            ? () => browseTo(pagePath.slice(0, level.depth - 1))
+            : backToRoot}
           resize={resize}
           scrollKey={`finder:${level.key}`}
-          showBack={level.depth > 0}
+          showBack={level.depth > 0 || Boolean(backToRoot)}
           title={level.title}
         >
           <FinderFolderHost

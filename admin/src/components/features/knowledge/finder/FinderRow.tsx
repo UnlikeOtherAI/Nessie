@@ -61,7 +61,14 @@ export type FinderRowProps = {
   indexing?: KnowledgeIndexingState
   /** An identity tile in place of a glyph: a project's picture, an agent's. */
   leading?: ReactNode
-  /** Right-aligned detail. List view's date/size/kind cells go here. */
+  /**
+   * List view's Date modified / Size / Kind cells, laid out on the row's own
+   * grid so each lines up with the sortable header above it. Pair with
+   * `gridTemplate`.
+   */
+  gridCells?: ReactNode
+  gridTemplate?: string
+  /** Right-aligned detail beside the status glyphs, in columns view. */
   meta?: ReactNode
   onContextMenu?: (event: MouseEvent<HTMLElement>) => void
   onDoubleClick?: (event: MouseEvent<HTMLElement>) => void
@@ -163,6 +170,8 @@ export const FinderRow = ({
   dragging,
   dropTarget,
   elementRef,
+  gridCells,
+  gridTemplate,
   icon,
   iconTone = '--tx3',
   id,
@@ -229,6 +238,8 @@ export const FinderRow = ({
       dragging={dragging}
       dropTarget={dropTarget}
       elementRef={elementRef}
+      gridCells={gridCells}
+      gridTemplate={gridTemplate}
       leading={leadingNode}
       onClick={(event) => {
         if (disabled) return

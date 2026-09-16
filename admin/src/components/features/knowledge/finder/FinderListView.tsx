@@ -124,11 +124,22 @@ export const FinderListView = ({
 
   const showKind = width >= KIND_MIN
   const showSize = width >= SIZE_MIN
+  // The leading glyph and the trailing chevron are lanes of the same track, so
+  // a row and the header above it are laid out on one grid rather than two
+  // that happen to be near each other.
+  // Every row is its own grid, so an intrinsic track (`max-content`, `auto`)
+  // resolves against that row's own content and lands in a different place on
+  // each one — measured at 858px on the header and 826px on the first row.
+  // Only `1fr` and fixed tracks resolve identically across separate grids, so
+  // Date modified is a fixed 168px: wider than the longest short-form date,
+  // and it is the first thing to go when the grid narrows anyway.
   const template = [
-    'minmax(240px, 1fr)',
-    'max-content',
+    '20px',
+    'minmax(200px, 1fr)',
+    '168px',
     showSize ? '88px' : null,
     showKind ? '160px' : null,
+    '16px',
   ]
     .filter(Boolean)
     .join(' ')
@@ -167,23 +178,28 @@ export const FinderListView = ({
     <div className="flex h-full min-h-0 flex-col bg-[color:var(--main)]">
       <Breadcrumb crumbs={crumbs} onBrowseTo={onBrowseTo} />
       <div
-        className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)]"
+        className="min-h-0 flex-1 overflow-y-auto px-1.5"
         ref={gridRef}
         style={{ ['--finder-grid-columns' as string]: template }}
       >
         <div
-          className="finder-grid-row sticky top-0 z-[var(--layer-stack)] border-b border-[color:var(--sep)] bg-[color:var(--main)]"
+          className="finder-grid-row sticky top-0 z-[var(--layer-stack)] border-b border-[color:var(--sep)] bg-[color:var(--main)] px-3"
           role="row"
         >
+          <span />
           {headerCell('name')}
           {headerCell('modified')}
           {showSize ? headerCell('size', 'justify-end') : null}
           {showKind ? headerCell('kind') : null}
+          <span />
         </div>
         {rows.length === 0 ? (
           <EmptyState className="mt-3">{emptyLabel}</EmptyState>
         ) : (
-          <RowList label="Items" role="listbox" variant="finder">
+          // Flush: the columns view's list insets itself so a selected pill
+          // stands off the column edge, but here every row has to line up with
+          // the sortable header above it, to the pixel.
+          <RowList className="finder-rows-flush" label="Items" role="listbox" variant="finder">
             {rows.map((page) => {
               const family = familyForRow(page)
               const folder = page.kind === 'folder'
@@ -198,24 +214,24 @@ export const FinderListView = ({
                   indexing={page.indexing}
                   key={page.id}
                   kind={page.kind}
-                  meta={(
-                    <span
-                      className="finder-grid-row"
-                      // The name lane is the row's own; these are the three
-                      // that follow it, on the same template so the header
-                      // above lines up with every row under it.
-                      style={{ ['--finder-grid-columns' as string]: template }}
-                    >
-                      <span />
-                      <span>{formatFinderDate(page.updatedAt)}</span>
+                  gridCells={(
+                    <>
+                      <span className="finder-row-meta truncate text-xs text-[color:var(--tx3)]">
+                        {formatFinderDate(page.updatedAt)}
+                      </span>
                       {showSize ? (
-                        <span className="finder-grid-size">
+                        <span className="finder-row-meta finder-grid-size text-xs text-[color:var(--tx3)]">
                           {folder || !page.sizeBytes ? '—' : formatBytes(Number(page.sizeBytes))}
                         </span>
                       ) : null}
-                      {showKind ? <span className="truncate">{kindLabelForRow(page)}</span> : null}
-                    </span>
+                      {showKind ? (
+                        <span className="finder-row-meta truncate text-xs text-[color:var(--tx3)]">
+                          {kindLabelForRow(page)}
+                        </span>
+                      ) : null}
+                    </>
                   )}
+                  gridTemplate={template}
                   onContextMenu={onContextMenu
                     ? (event) => onContextMenu(page, event)
                     : undefined}

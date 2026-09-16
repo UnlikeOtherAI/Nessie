@@ -4547,3 +4547,12 @@ button.reaction-pill-active:focus-visible {
   background: var(--main);
   color: var(--tx3);
 }
+
+/* List view's rows share one grid with the sortable header above them, so the
+   list takes its side padding from the scroller rather than insetting itself
+   the way a column's list does. A row 6px narrower than its header is a Date
+   column that lands in a different place on every screen width. */
+.finder-rows-flush {
+  margin-inline: 0;
+  padding-inline: 0;
+}
