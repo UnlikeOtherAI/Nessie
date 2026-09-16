@@ -189,10 +189,12 @@ ChannelDirectoryEntrySchema = z.discriminatedUnion('access', [
 ])
 ```
 
-A non-member who opens a protected channel sees the limited row. A member, or an
-org owner/admin, sees the full `ChannelRecord`. The full record carries
-`viewerIsMember: boolean` so the client can suppress the composer for admins who
-are managing but not participating.
+A non-member who opens a protected channel sees the limited row. A member sees
+the full `ChannelRecord`. An org owner/admin who is not a member also sees the
+full management record, but with message-history-derived fields omitted:
+`lastMessageAt` and `unreadCount` are participation metadata, not management
+metadata, and decision 2 says management is not participation. The record still
+carries `viewerIsMember: false` so the client suppresses the composer.
 
 ### What is deliberately omitted from the limited shape
 
@@ -262,7 +264,7 @@ Add a test that a non-member of a **public** project is refused `PATCH
 | `POST /api/channels/:channelId/join` | Public channels only | Public channels only; protected channels refuse with `CHANNEL_JOIN_FORBIDDEN` |
 | `POST /api/channels/:channelId/members` | `canModifyChannel` (member, or admin on public) | `canModifyChannel` extended to allow admins on protected standard channels they can see |
 | `PATCH /api/channels/:channelId` | Label/topic/description only | Also accepts `visibility` (`public`/`protected`). Update `UpdateChannelBodySchema.refine` so `{ visibility }` alone is valid. |
-| `POST /api/channels/conversations` | `requireOwner` when `agentIds` present | `requireAdminActor` when `agentIds` present, matching the new address-book gate |
+| `POST /api/channels/conversations` + `admin/src/lib/channel-compose-recipients.ts` (`selectAddressableAgents`) | `requireOwner` / `{ isOwner }` when `agentIds` present | `requireAdminActor` / `{ isAdmin }` when `agentIds` present. Both sites must change together so the picker offers exactly what the route accepts. |
 | `GET /api/projects` | Projects the caller is a member of, plus all projects for owner/admin | Public projects are now listed for every org member; protected projects listed only for members and admins |
 | `GET /api/projects/directory` | Every live project, limited for non-members/full for members and admins | Excludes protected projects for non-members (admins still see all); public projects remain limited for non-members |
 | `GET /api/projects/:projectId` | Member or admin only; 404 for everyone else | Public project → full record for any org member; protected project → limited `ProjectDirectoryEntry` for non-members; full record for members/admins |
@@ -339,7 +341,8 @@ non-DM channel)". This requires plumbing an `isOrganizationAdmin` flag through
   name, member list. No message feed, no composer, no tabs.
 - An admin who is not a member sees the **full management view** (settings gear,
   members popup, channel info) but still no composer. The server returns the full
-  record; message/thread routes remain gated by membership.
+  record with `lastMessageAt` and `unreadCount` omitted; message/thread routes
+  remain gated by membership.
 
 ### Composer suppression
 
@@ -366,7 +369,9 @@ non-DM channel)". This requires plumbing an `isOrganizationAdmin` flag through
   `selectAddressableAgents(..., { isOwner })` to `selectAddressableAgents(...,
   { isAdmin })`, matching the new server-side authority. The corresponding
   `POST /api/channels/conversations` gate changes from `requireOwner` to
-  `requireAdminActor` for requests that include `agentIds`.
+  `requireAdminActor` for requests that include `agentIds`. Both sites change in
+  the same commit so the picker and the route cannot disagree again. Update the
+  file's docstring that currently says the gate is owner-only.
 
 ## Agent delete contract
 
@@ -412,11 +417,13 @@ in one transaction:
    `KnowledgeSpace.ownerAgentId` to `null` so the `ON DELETE NO ACTION` FK is not
    violated. The space and its pages remain under the project; a later cleanup
    job can remove empty ones.
-5. **Mailbox** — `AgentMailbox.agentId` is `@unique` and non-null, so the agent
-   keeps its address and inbound mail path. Disconnect or disable the mailbox so
-   inbound mail no longer reaches the deleted agent. The exact mechanism (set
-   `deletedAt` on `AgentMailbox`, null the address, or reject inbound) is left to
-   implementation; the requirement is that inbound mail stops.
+5. **Mailbox** — soft-delete the `AgentMailbox` row (add `AgentMailbox.deletedAt
+   DateTime?` or set an equivalent `isDeleted` flag) and refuse inbound mail for
+   a deleted mailbox in `api/src/routes/agent-email-inbound.ts`. The address is
+   held, not released for reuse: `AgentMailbox.agentId` is `@unique` and non-null,
+   so re-binding the same address to a different agent would let mail sent to a
+   person's old agent silently reach a new one. Reuse can be a later, deliberate
+   feature.
 6. **Grants** — delete or revoke `SendAuthorizationGrant`, `ToolGrant`,
    `ExecutorAgentOperationGrant`, `BrowserPersonalAccessGrant` and
    `MailboxConnectionAgentAccess` rows for this agent.
@@ -461,7 +468,7 @@ The following sites must change because they explicitly handle `private`, write
 | `packages/runtime/src/builtin-channel-tools.ts:121-128,164` | Tool schema and prose drop `private`; seeded copy in `admin/e2e/marketing-shots/snapshot.sql:2673` must match. |
 | `admin/src/components/shared/CreateChannelDialog.tsx:137` | Remove the `<option value="private">`. |
 | `admin/src/components/features/projects/project-dashboard-data.ts:18` | Add `visibility` handling. |
-| `packages/browser-cloud/src/private-browser-home.ts:67-68` | This positive `=== 'private'` test breaks after a backfill. Keep it as-is: the channels it guards remain `private` (DM/system), and the new gating guarantees no standard channel stays `private`. |
+| `packages/browser-cloud/src/private-browser-home.ts:67-68` | This positive `=== 'private'` test is safe: the channels it guards are DM/system channels, and the backfill below moves any stray standard `private` row to `protected` so the invariant holds. |
 | `simulation/lib/api.ts:96,128`, `simulation/lib/actions.ts:177` | Update fixtures if they create standard channels with `private`. |
 | `admin/e2e/connected-mail/fixtures.mjs:112`, `admin/e2e/disclosure/fixture.mjs:48,55`, `admin/e2e/agent-conversations/fixture.mjs:56,84`, `admin/e2e/marketing-shots/snapshot.sql:168-174`, `packages/team-admin/test/project-structure-db.test.ts:203`, `packages/memory/test/capture.test.ts:242,276` | Update only if they model standard channels; DM/system fixtures stay `private`. |
 | `api/src/contracts/team.ts:25-37` | Add `visibility` to `UpdateChannelBodySchema` and extend the `.refine`. |
@@ -507,6 +514,10 @@ standard channel:
   cases to cover owner and admin.
 - `packages/db/test/agent-visibility.test.ts`: verify `buildVisibleAgentWhere`
   excludes soft-deleted agents.
+- A new migration test (e.g. `api/test/channel-visibility-backfill.test.ts`):
+  - A standard channel with `visibility = 'private'` is backfilled to
+    `'protected'`.
+  - A DM or system channel with `visibility = 'private'` stays `'private'`.
 
 ### API tests
 
@@ -569,6 +580,21 @@ Use real package test paths:
    - Backfill existing projects to `public`.
    - Add `Agent.deletedAt DateTime?`.
    - Do **not** alter `ChannelVisibility`. Keep `{ public, protected, private }`.
+   - Backfill `Channel.visibility` in two populations:
+
+     ```sql
+     -- 1. User-created private standard channels become protected.
+     --    In this deployment this touches 1 row.
+     UPDATE "channels"
+     SET "visibility" = 'protected'
+     WHERE "visibility" = 'private'
+       AND "type" = 'standard'
+       AND "system_channel_type" IS NULL
+       AND "dm_key" IS NULL;
+
+     -- 2. DM and system-managed channels stay private. Do not touch them.
+     --    In this deployment this is the remaining 27 private rows.
+     ```
 
 2. **Code deploy order**
    - Deploy the API first. The `Project.visibility` column and `Agent.deletedAt`
@@ -578,8 +604,11 @@ Use real package test paths:
 3. **Behaviour for existing data**
    - Existing **public** channels remain public and visible to all organisation
      members.
-   - Existing **private** channels remain `private` (DM and system channels).
-     No backfill changes their storage value.
+   - Existing **private standard** channels become `protected`, so their
+     non-member participants see the new limited overview instead of the old
+     `channel_not_found`.
+   - Existing **private DM and system channels** stay `private`; nothing about
+     their visibility changes.
    - Existing **projects** become `public`, granting every organisation member
      the full record and browsable contents on deploy day.
    - No existing member loses access to anything they could already open.
@@ -592,15 +621,10 @@ Use real package test paths:
 
 ## Open questions
 
-1. **What is the exact mailbox revocation shape on agent soft-delete?**
-   The requirement is that inbound mail to a soft-deleted agent stops. Options:
-   soft-delete the `AgentMailbox` row, null its address, or reject inbound in the
-   route. The choice depends on whether the address must be released for reuse.
+None. The two questions from the previous revision are closed:
 
-2. **Should a non-member admin receive `lastMessageAt` and `unreadCount` in a
-   full `ChannelRecord`?**
-   These fields are derived from message history. The spec recommends returning
-   the full management record to admins, which currently includes them. If they
-   are considered participation metadata rather than management metadata, they
-   should be omitted from the admin non-member response; this needs a product
-   call.
+1. **Mailbox revocation** — soft-delete the `AgentMailbox` row and refuse inbound
+   mail; hold the address, do not release it for reuse.
+2. **Admin non-member channel record** — omit `lastMessageAt` and `unreadCount`,
+   because they are derived from message history and management is not
+   participation.
