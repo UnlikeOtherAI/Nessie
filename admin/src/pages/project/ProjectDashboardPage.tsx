@@ -18,8 +18,8 @@
  */
 
 import { faPlus } from '@fortawesome/free-solid-svg-icons'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiClientError } from '@nessie/client-core'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
@@ -37,9 +37,70 @@ import { LOCAL_BACK_PRIORITY } from '../../navigation/LocalBackContext'
 import { dashboardKeys } from '../../facades/dashboards/keys'
 import { draftKey, useDraft } from '../../navigation/useDraft'
 import { NestedStage } from '../../navigation/NestedStage'
+import { runExpandTransition, type ExpandRect } from '../../navigation/motion'
+import { useNavigationLayout } from '../../navigation/mobile-shell'
+import { useReducedMotion } from '../../navigation/reduced-motion'
+
+/**
+ * The tile a person tapped on the project's Overview, in viewport
+ * coordinates. Present only on that navigation; a cold link, a Back or the
+ * Dashboards list all arrive without one and the screen simply appears.
+ */
+const expandRectFrom = (state: unknown): ExpandRect | null => {
+  const candidate = (state as { expandFrom?: unknown } | null)?.expandFrom
+  if (!candidate || typeof candidate !== 'object') return null
+  const rect = candidate as Record<string, unknown>
+  const numbers = ['top', 'left', 'width', 'height'] as const
+  if (!numbers.every((key) => typeof rect[key] === 'number')) return null
+  return {
+    height: rect.height as number,
+    left: rect.left as number,
+    top: rect.top as number,
+    width: rect.width as number,
+  }
+}
 
 export const ProjectDashboardPage = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const navigationLayout = useNavigationLayout()
+  const reducedMotion = useReducedMotion()
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
+  const expandFrom = expandRectFrom(location.state)
+
+  // Grow out of the tile that opened this. Only on `split`: on `single` the
+  // stack already slides the push, and a second animation over it would be
+  // the "second way to move a screen" the navigation rulebook forbids.
+  // `useLayoutEffect` so the first painted frame is already the small pose —
+  // in a passive effect the page flashes at full size first.
+  const shouldExpand = navigationLayout === 'split' && expandFrom !== null
+  useLayoutEffect(() => {
+    if (!shouldExpand || !expandFrom) return undefined
+    const run = runExpandTransition({
+      element: surfaceRef.current,
+      from: expandFrom,
+      reducedMotion,
+    })
+    // Spend the rectangle, but only once the growth has landed. Chrome
+    // restores a history entry's state on reload, so without this a reload
+    // would zoom the dashboard out of a tile that is not on screen. The
+    // replace changes `location.key`, which re-runs this effect — with no
+    // rectangle left to find, so it stops there. Doing it immediately instead
+    // cancelled the animation through this effect's own cleanup, one frame
+    // after starting it.
+    let alive = true
+    void run.finished.then(() => {
+      if (alive) navigate(`${location.pathname}${location.search}`, { replace: true })
+    })
+    return () => {
+      alive = false
+      run.cancel()
+    }
+    // The rectangle is this navigation's, so the run is keyed to the entry
+    // rather than to a value that changes as the dashboard loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key])
   const dashboardQuery = useDashboard(dashboardId)
   const { data: dashboard, isLoading } = dashboardQuery
   const saveLayout = useSaveLayout(dashboardId ?? '')
@@ -121,7 +182,11 @@ export const ProjectDashboardPage = () => {
   // grid of cards, so its first load shows one rather than the word Loading.
   if (isLoading || !dashboard) {
     return (
-      <div className="flex h-full min-h-0 flex-col" data-testid="dashboard-detail">
+      <div
+        className="flex h-full min-h-0 flex-col"
+        data-testid="dashboard-detail"
+        ref={surfaceRef}
+      >
         <ScreenHeader title="Dashboard" />
         {isLoading ? (
           <Skeleton className="p-6" count={6} variant="board" />
@@ -141,7 +206,7 @@ export const ProjectDashboardPage = () => {
   }
 
   return (
-    <div className="flex h-full min-h-0" data-testid="dashboard-detail">
+    <div className="flex h-full min-h-0" data-testid="dashboard-detail" ref={surfaceRef}>
       <div className="flex min-w-0 flex-1 flex-col">
         {/* The description line is the header's subtitle slot; History,
             Add widget and Edit/Done are its measured actions. */}
