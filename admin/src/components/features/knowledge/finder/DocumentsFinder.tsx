@@ -45,6 +45,7 @@ import { MoveToDialog } from './MoveToDialog'
 import { useFinderMove } from './useFinderMove'
 import { useFinderToolbar } from './useFinderToolbar'
 import { useFinderTransfers } from './useFinderTransfers'
+import { useFinderSpreadsheets } from './useFinderSpreadsheets'
 
 /**
  * The Documents Finder: the viewport, its columns, the status bar and the
@@ -251,6 +252,19 @@ export const DocumentsFinder = ({
     [browseTo, knowledge, pagePath],
   )
 
+  // ── Spreadsheets ──────────────────────────────────────────────────────────
+  // "New spreadsheet", "Import spreadsheet…" and "Open as spreadsheet" — the
+  // three doorways onto the spreadsheet page kind, and the two dialogs they
+  // open. Every one of them lands the new page *in the folder the person is
+  // standing in* and then opens it, because a workbook nobody was taken to is
+  // a row in a list somewhere.
+  const spreadsheets = useFinderSpreadsheets({
+    openPagePath: knowledge.openPagePath,
+    pageById,
+    pagePath,
+    spaceId: selectedSpaceId,
+  })
+
   // ── Uploads, menus, the transfer prompt ───────────────────────────────────
   const transfers = useFinderTransfers({ pageById, root: rootQuery.data })
   const uploads = useFinderUploads({ pages: knowledge.pages, spaceId: selectedSpaceId })
@@ -274,6 +288,8 @@ export const DocumentsFinder = ({
     needsReviewOnly,
     onCreateDocument: (parentPageId) => knowledge.openCreate(parentPageId),
     onCreateRootFolder,
+    onCreateSpreadsheet: spaceCanWrite ? spreadsheets.openCreate : undefined,
+    onImportSpreadsheet: spaceCanWrite ? spreadsheets.openImport : undefined,
     onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
     onOpenSettings,
     onSelectSort: chooseSort,
@@ -304,7 +320,10 @@ export const DocumentsFinder = ({
   }
 
   const menus = useFinderMenus({
+    onConvertToSpreadsheet: spaceCanWrite ? spreadsheets.convert : undefined,
     onCreateRootFolder,
+    onCreateSpreadsheet: spaceCanWrite ? spreadsheets.openCreate : undefined,
+    onImportSpreadsheet: spaceCanWrite ? spreadsheets.openImport : undefined,
     onNewFolderIn: openNewFolderIn,
     onRefresh: () => void virtualQuery.refetch(),
     onUploadFiles: uploads.openPicker,
@@ -534,6 +553,7 @@ export const DocumentsFinder = ({
         uploads={uploads}
       />
       <UploadLeaveGuard queue={uploads.queue} />
+      {spreadsheets.dialogs}
       {menus.dialogs}
       {transfers.prompt}
     </div>

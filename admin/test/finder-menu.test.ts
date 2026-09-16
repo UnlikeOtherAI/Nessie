@@ -10,7 +10,11 @@ import {
   type FinderMenuPage,
   type FinderMenuTarget,
 } from '../src/components/features/knowledge/finder/finder-menu'
-import { NEW_FILE_TYPES } from '../src/components/features/knowledge/finder/new-file-types'
+import {
+  NEW_FILE_TYPES,
+  newFileTypeItems,
+  type NewFileTypeContext,
+} from '../src/components/features/knowledge/finder/new-file-types'
 
 /**
  * What a right-click offers
@@ -41,6 +45,7 @@ const handlers = (): FinderMenuHandlers => {
     newSharedFolder: record('newSharedFolder'),
     open: record('open'),
     openAgent: record('openAgent'),
+    openAsSpreadsheet: record('openAsSpreadsheet'),
     openEditor: record('openEditor'),
     openProject: record('openProject'),
     openTicket: record('openTicket'),
@@ -308,22 +313,116 @@ test('the panel is named after what it acts on', () => {
 
 // ── The New-file registry ───────────────────────────────────────────────────
 
+const newContext = (
+  calls: string[],
+  overrides: Partial<NewFileTypeContext> = {},
+): NewFileTypeContext => ({
+  openCreate: (parentPageId) => void calls.push(`create:${parentPageId}`),
+  openSpreadsheetCreate: (parentPageId) => void calls.push(`sheet:${parentPageId}`),
+  openSpreadsheetImport: (parentPageId) => void calls.push(`import:${parentPageId}`),
+  openUploadPicker: (parentPageId) => void calls.push(`upload:${parentPageId}`),
+  parentPageId: 'folder-1',
+  spaceId: 's1',
+  ...overrides,
+})
+
 test('New offers exactly the kinds this build can actually make', () => {
-  // Two, not three: the spreadsheet kind does not exist here, and a greyed
-  // "coming soon" would be a promise this build cannot keep. A future
-  // integrator adds one entry to NEW_FILE_TYPES and both call sites grow a row.
-  assert.deepEqual(NEW_FILE_TYPES.map((type) => type.id), ['document', 'upload'])
-  assert.deepEqual(NEW_FILE_TYPES.map((type) => type.label), ['Document', 'Upload…'])
+  assert.deepEqual(
+    NEW_FILE_TYPES.map((type) => type.id),
+    ['document', 'spreadsheet', 'spreadsheet-import', 'upload'],
+  )
+  assert.deepEqual(
+    NEW_FILE_TYPES.map((type) => type.label),
+    ['Document', 'Spreadsheet', 'Spreadsheet from a file…', 'Upload…'],
+  )
 })
 
 test('a New kind invokes the doorway it names and nothing else', () => {
   const calls: string[] = []
-  const context = {
-    openCreate: (parentPageId: string | null) => void calls.push(`create:${parentPageId}`),
-    openUploadPicker: () => void calls.push('upload'),
-    parentPageId: 'folder-1',
-    spaceId: 's1',
-  }
-  for (const type of NEW_FILE_TYPES) type.invoke(context)
-  assert.deepEqual(calls, ['create:folder-1', 'upload'])
+  for (const type of NEW_FILE_TYPES) type.invoke(newContext(calls))
+  assert.deepEqual(calls, ['create:folder-1', 'sheet:folder-1', 'import:folder-1', 'upload:folder-1'])
+})
+
+test('a kind whose doorway is not mounted is absent, never a greyed promise', () => {
+  const calls: string[] = []
+  const rows = newFileTypeItems(newContext(calls, {
+    openSpreadsheetCreate: undefined,
+    openSpreadsheetImport: undefined,
+  }))
+  assert.deepEqual(rows.map((row) => row.id), ['new-document', 'new-upload'])
+})
+
+test('the folder background reads the same registry as the toolbar', () => {
+  const calls: string[] = []
+  const context = newContext(calls, { parentPageId: 'folder-9' })
+  const rows = ids({ column: 'folder', kind: 'background' })
+  // Without the context the column keeps its own two rows; with it, every
+  // registry kind appears — which is the claim `new-file-types.ts` makes.
+  assert.deepEqual(rows.filter((id) => id.startsWith('new-')), ['new-folder', 'new-document'])
+
+  const withRegistry = buildFinderMenu({
+    capabilities: caps(),
+    handlers: { ...handlers(), newFileTypeContext: context },
+    target: { column: 'folder', kind: 'background' },
+  })
+  assert.deepEqual(
+    withRegistry.flatMap((item) => (item.kind === 'item' ? [item.label] : [])),
+    [
+      'New folder', 'New document', 'New spreadsheet', 'Import spreadsheet…',
+      'Upload files…', 'Get Info', 'Sharing…',
+    ],
+  )
+  const sheet = withRegistry.find((item) => item.kind === 'item' && item.id === 'new-spreadsheet')
+  if (sheet?.kind !== 'item') throw new Error('no New spreadsheet row')
+  sheet.onSelect()
+  assert.deepEqual(calls, ['sheet:folder-9'], 'it lands in the folder it was opened on')
+})
+
+// ── A spreadsheet row ───────────────────────────────────────────────────────
+
+test('a spreadsheet row says what a spreadsheet does, not what a document does', () => {
+  const rows = ids({ kind: 'page', page: page({ kind: 'spreadsheet', title: 'Q3' }), virtual: false })
+  // Opening it *is* opening its editor, so there is no second "Edit" row
+  // promising another screen.
+  assert.ok(!rows.includes('edit'))
+  // It is not a file node: nothing to download as bytes, no new version to
+  // upload over it.
+  assert.ok(!rows.includes('download'))
+  assert.ok(!rows.includes('upload-version'))
+  // It does keep versions — "Save version" is this feature's safety net.
+  assert.ok(rows.includes('history'))
+  assert.ok(rows.includes('rename') && rows.includes('delete') && rows.includes('copy-link'))
+})
+
+test('"Open as spreadsheet" is offered on the formats the engine reads', () => {
+  const on = (title: string) =>
+    ids({ kind: 'page', page: page({ kind: 'file', title }), virtual: false })
+  assert.ok(on('forecast.xlsx').includes('open-as-spreadsheet'))
+  assert.ok(on('export.csv').includes('open-as-spreadsheet'))
+  assert.ok(on('export.tsv').includes('open-as-spreadsheet'))
+  assert.ok(!on('lease.pdf').includes('open-as-spreadsheet'))
+  // A spreadsheet page never offers to convert itself.
+  assert.ok(!ids({
+    kind: 'page', page: page({ kind: 'spreadsheet', title: 'Q3' }), virtual: false,
+  }).includes('open-as-spreadsheet'))
+})
+
+test('an .xls is refused with the reason, not silently missing', () => {
+  const items = buildFinderMenu({
+    capabilities: caps(),
+    handlers: handlers(),
+    target: { kind: 'page', page: page({ kind: 'file', title: 'legacy.xls' }), virtual: false },
+  })
+  const row = items.find((item) => item.kind === 'item' && item.id === 'open-as-spreadsheet')
+  if (row?.kind !== 'item') throw new Error('the .xls row is missing entirely')
+  assert.equal(row.disabled, true)
+  assert.match(row.disabledReason ?? '', /\.xlsx/)
+})
+
+test('a viewer who cannot write is offered no conversion at all', () => {
+  const rows = ids(
+    { kind: 'page', page: page({ kind: 'file', title: 'forecast.xlsx' }), virtual: false },
+    caps({ canWrite: false }),
+  )
+  assert.ok(!rows.includes('open-as-spreadsheet'))
 })

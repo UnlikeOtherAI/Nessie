@@ -101,6 +101,13 @@ export const useCreateSpreadsheet = (spaceId?: string) => {
   })
 }
 
+/**
+ * Import. `parentPageId` is a **query** parameter, not a body field: the
+ * request body is the multipart file. Omitting it lands the workbook at the
+ * space's root, which is why the Finder always passes the folder it was
+ * invoked in — an import that silently ignored the open folder was the whole
+ * reason this signature grew an argument.
+ */
 export const useImportSpreadsheet = (spaceId?: string) => {
   const { token } = useAuthSession()
   const queryClient = useQueryClient()
@@ -109,13 +116,20 @@ export const useImportSpreadsheet = (spaceId?: string) => {
     mutationFn: ({
       file,
       onProgress,
-    }: { file: File; onProgress?: (progress: UploadProgress) => void }) =>
-      uploadFileWithProgress<SpreadsheetImportResult>(
-        `${base}/spaces/${spaceId}/spreadsheets/import`,
+      parentPageId,
+    }: {
+      file: File
+      onProgress?: (progress: UploadProgress) => void
+      parentPageId?: string
+    }) => {
+      const query = parentPageId ? `?parentPageId=${encodeURIComponent(parentPageId)}` : ''
+      return uploadFileWithProgress<SpreadsheetImportResult>(
+        `${base}/spaces/${spaceId}/spreadsheets/import${query}`,
         file,
         token,
         onProgress,
-      ),
+      )
+    },
     onSuccess: () => invalidateSpace(queryClient, spaceId),
   })
 }
