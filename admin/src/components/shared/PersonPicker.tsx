@@ -8,6 +8,13 @@ export type PersonOption = { id: string; name: string; subtitle?: string }
 
 type PersonPickerProps = {
   disabled?: boolean
+  /**
+   * `modal` when the picker sits inside a `Dialog`. A popover's own layer is
+   * *below* the modal layer, so without this the list opens behind the dialog
+   * that contains it — visible nowhere and clickable nowhere, which is how the
+   * Share dialog's picker first shipped.
+   */
+  layer?: 'popover' | 'modal'
   // Rendered when the search matches nobody.
   emptyLabel?: string
   id?: string
@@ -38,6 +45,7 @@ export const PersonPicker = ({
   disabled = false,
   emptyLabel = 'No matches',
   id,
+  layer = 'popover',
   label = 'People',
   onSelect,
   options,
@@ -107,6 +115,7 @@ export const PersonPicker = ({
         anchorRef={triggerRef}
         className="overflow-hidden rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] shadow-lg"
         label={label}
+        layer={layer}
         matchAnchorWidth
         onClose={() => setOpen(false)}
         open={open}

@@ -204,5 +204,22 @@ export const visibleUserAlertWhere = (input: {
         },
       },
     },
+    {
+      // Somebody handed this person one of their own documents. Revalidated
+      // against the live share row rather than against the space: the whole
+      // point of a page share is that the recipient cannot read the space it
+      // lives in, so `visibleKnowledgeSpaceWhere` would refuse every one of
+      // these. Revoking the share — or archiving the page — stops the bell row
+      // surfacing on the next read, with nothing to remember to delete.
+      kind: 'knowledge_shared',
+      knowledgePage: {
+        is: {
+          deletedAt: null,
+          organizationId: input.organizationId,
+          status: { not: 'archived' },
+          shares: { some: { granteeUserId: input.userId } },
+        },
+      },
+    },
   ],
 })

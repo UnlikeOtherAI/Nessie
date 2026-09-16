@@ -86,6 +86,11 @@ const describeAlert = (alert: UserAlertRecord): string => {
   }
   if (alert.kind === 'task_assigned') return `${actor} assigned work to you`
   if (alert.kind === 'knowledge_published') return `${actor} published knowledge for you`
+  // Deliberately without the document's title: this row reaches a bell a
+  // colleague may be looking over, and the title of somebody's private
+  // document is exactly what a one-line summary must not carry. The row opens
+  // it, and Shared with me lists it.
+  if (alert.kind === 'knowledge_shared') return `${actor} shared a document with you`
   if (alert.kind === 'call_missed') {
     return `Missed call from ${actor}${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
   }

@@ -7,11 +7,16 @@ import type {
   KnowledgePageKind,
   KnowledgePageShareAccess,
 } from '@nessie/schemas'
+import { ActorName, useActorNames } from '../../../shared/ActorName'
 import { EmptyState } from '../../../shared/EmptyState'
 import { QueryState } from '../../../shared/QueryState'
 import { RowList } from '../../../shared/RowList'
 import { familyTone, iconForFamily } from '../../../shared/file-icons'
 import { FinderRow } from './FinderRow'
+import type {
+  FinderBackgroundMenuProps,
+  FinderRowMenuProps,
+} from './FinderContextMenus'
 import { familyForRow } from './finder-sort'
 import type { FinderSelection, FinderSelectionEvent } from './finder-selection'
 
@@ -33,6 +38,8 @@ export type FinderVirtualRow = {
   home: KnowledgeHome
   /** Shared with me only: what the viewer may do with it. */
   access?: KnowledgePageShareAccess
+  /** Shared with me only: who shared it, for the subtitle and the read-out. */
+  sharedByUserId?: string
 }
 
 /** "My Documents › Contracts" — the root folder, then the folders under it. */
@@ -49,37 +56,42 @@ type FinderVirtualColumnProps = {
   onOpen: (row: FinderVirtualRow) => void
   onRowKeyDown?: (event: KeyboardEvent<HTMLElement>, id: string) => void
   onSelect: (row: FinderVirtualRow, event: MouseEvent<HTMLElement>) => void
-  /** Wave 2's menu. A virtual row's menu is the short one: Open, Get Info. */
-  onContextMenu?: (row: FinderVirtualRow, event: MouseEvent<HTMLElement>) => void
+  /** Refresh: a computed listing has no other way to be asked again. */
+  backgroundProps?: FinderBackgroundMenuProps
+  /** `useFinderMenus().rowProps`, spread on each row. */
+  rowProps?: (row: FinderVirtualRow) => FinderRowMenuProps
   query: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   rows: FinderVirtualRow[]
   selectedIds: readonly string[]
 }
 
 export const FinderVirtualColumn = ({
+  backgroundProps,
   columnActive,
   emptyLabel,
   focusedRowId,
   hasMore,
   loadingMore,
-  onContextMenu,
   onLoadMore,
   onOpen,
   onRowKeyDown,
   onSelect,
   query,
   rows,
+  rowProps,
   selectedIds,
 }: FinderVirtualColumnProps) => {
   const tabbableId = focusedRowId ?? selectedIds[0] ?? rows[0]?.id
+  const resolveActor = useActorNames()
 
   return (
-    <QueryState
-      className="py-6"
-      errorLabel="Couldn’t load these documents."
-      loadingLabel="Loading documents…"
-      query={query}
-    >
+    <div className="h-full" {...backgroundProps}>
+      <QueryState
+        className="py-6"
+        errorLabel="Couldn’t load these documents."
+        loadingLabel="Loading documents…"
+        query={query}
+      >
       {() =>
         rows.length === 0 ? (
           <EmptyState className="mt-2">{emptyLabel}</EmptyState>
@@ -89,6 +101,7 @@ export const FinderVirtualColumn = ({
               const family = familyForRow(row)
               return (
                 <FinderRow
+                  {...(rowProps ? rowProps(row) : {})}
                   columnActive={columnActive}
                   icon={iconForFamily(family)}
                   iconTone={familyTone[family]}
@@ -96,17 +109,23 @@ export const FinderVirtualColumn = ({
                   indexing={row.indexing}
                   key={row.id}
                   kind={row.kind}
-                  onContextMenu={onContextMenu
-                    ? (event) => onContextMenu(row, event)
-                    : undefined}
                   onKeyDown={onRowKeyDown
                     ? (event) => onRowKeyDown(event, row.id)
                     : undefined}
                   onOpen={() => onOpen(row)}
                   onSelect={(event) => onSelect(row, event)}
                   selected={selectedIds.includes(row.id)}
-                  subtitle={row.access === 'edit'
-                    ? `${homeLine(row.home)} · You can edit`
+                  subtitle={row.access && row.sharedByUserId
+                    ? (
+                      // "{Sharer} · Can edit · My Documents › Contracts": who
+                      // gave it to you, what you may do, and where it lives —
+                      // a virtual row with no home line is a name with no way
+                      // back to the thing it names.
+                      <span className="flex min-w-0 gap-1 truncate">
+                        <ActorName actor={resolveActor('user', row.sharedByUserId)} />
+                        {` · ${row.access === 'edit' ? 'Can edit' : 'Can view'} · ${homeLine(row.home)}`}
+                      </span>
+                    )
                     : homeLine(row.home)}
                   tabIndex={tabbableId === row.id ? 0 : -1}
                   title={row.title}
@@ -133,7 +152,8 @@ export const FinderVirtualColumn = ({
           </RowList>
         )
       }
-    </QueryState>
+      </QueryState>
+    </div>
   )
 }
 
@@ -147,12 +167,14 @@ type VirtualQuery = {
 }
 
 type FinderVirtualHostProps = {
+  backgroundProps?: FinderBackgroundMenuProps
   columnKey: string
   dispatch: (event: FinderSelectionEvent) => void
   kind: 'latest' | 'shared-with-me'
   onOpen: (row: FinderVirtualRow) => void
   query: VirtualQuery
   rows: FinderVirtualRow[]
+  rowProps?: (row: FinderVirtualRow) => FinderRowMenuProps
   selection: FinderSelection
 }
 
@@ -163,15 +185,18 @@ const EMPTY_LABEL: Record<FinderVirtualHostProps['kind'], string> = {
 
 /** The virtual column's wiring: the paging, the selection and the empty line. */
 export const FinderVirtualHost = ({
+  backgroundProps,
   columnKey,
   dispatch,
   kind,
   onOpen,
   query,
   rows,
+  rowProps,
   selection,
 }: FinderVirtualHostProps) => (
   <FinderVirtualColumn
+    backgroundProps={backgroundProps}
     columnActive={selection.columnKey === columnKey}
     emptyLabel={EMPTY_LABEL[kind]}
     hasMore={Boolean(query.hasNextPage)}
@@ -186,6 +211,7 @@ export const FinderVirtualHost = ({
       type: 'click',
     })}
     query={{ isError: query.isError, isLoading: query.isLoading, refetch: query.refetch }}
+    rowProps={rowProps}
     rows={rows}
     selectedIds={selection.columnKey === columnKey ? selection.ids : []}
   />

@@ -178,6 +178,12 @@ export const getAlertLink = (
   if (alert.kind === 'knowledge_published' && alert.projectId && alert.knowledgePageId) {
     return { to: `/projects/${alert.projectId}/docs?pageId=${alert.knowledgePageId}` }
   }
+  if (alert.kind === 'knowledge_shared') {
+    // Shared with me, not the owner's folder: the recipient cannot read the
+    // space the page lives in, so a space-scoped address would 403. The
+    // virtual folder is the only surface that lists it.
+    return { to: '/knowledge-base/shared-with-me' }
+  }
   if (alert.kind === 'approval_requested') {
     // An approval raised by a suspended run belongs to the channel it is
     // waiting in, where the card and its buttons are. One raised anywhere else

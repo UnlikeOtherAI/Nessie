@@ -12,6 +12,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState } from '@nessie/schemas'
 import { MiddleTruncate } from '../../../shared/MiddleTruncate'
 import { Row, type RowDragHandlers, type RowProps } from '../../../shared/RowList'
+import { RenameRow, type FinderRowRename } from './RenameRow'
 
 /**
  * One row of the Documents Finder (browser-ui.md §4). 44px, an icon, a
@@ -79,6 +80,13 @@ export type FinderRowProps = {
   onSelect?: (event: MouseEvent<HTMLElement>) => void
   /** `prewarmRowHandlers(prewarm, to)` for a row that navigates. */
   prewarm?: RowProps['prewarm']
+  /**
+   * Set while this row is being renamed: the name becomes a field in place,
+   * and the row stops being a control until it commits or reverts. Handed in
+   * by `useFinderMenus().rowProps(row)` together with `onContextMenu`, so a
+   * column spreads one bag rather than threading two unrelated props.
+   */
+  rename?: FinderRowRename
   kind?: 'folder' | 'document' | 'file' | 'space' | 'virtual' | 'link'
   selected?: boolean
   /** How many people the page is shared with; 0 or absent shows nothing. */
@@ -186,6 +194,7 @@ export const FinderRow = ({
   onOpen,
   onSelect,
   prewarm,
+  rename,
   selected = false,
   shareCount = 0,
   subtitle,
@@ -197,6 +206,13 @@ export const FinderRow = ({
   variant,
 }: FinderRowProps) => {
   const transferring = Boolean(transfer)
+
+  // A row being renamed is a field, not a control: it must not stay clickable,
+  // draggable or selectable underneath the editor, and the editor keeps the
+  // row's place in the list so nothing below it moves.
+  if (rename) {
+    return <RenameRow {...rename} icon={icon} iconTone={iconTone} title={title} />
+  }
 
   const leadingNode = leading ?? (icon
     ? (
