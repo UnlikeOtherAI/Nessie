@@ -26,9 +26,30 @@ export type ExecutorCompanionAvailability =
   /** Pairing works, but with no virtualization only the COW workspace bundle. */
   | 'workspace_only'
 
+/**
+ * The Nessie Executor menu bar app, as one per-Mac fact rather than a
+ * per-executor one. Nessie Desktop nests a copy of that app inside its own
+ * bundle, so a Mac with Desktop installs nothing extra to run an executor; once
+ * that app is supervising the daemon it owns this Mac, and Desktop says so
+ * instead of offering a start button that would race it for the daemon lease.
+ */
+export type ExecutorMenuBarCompanion = {
+  /** There is a copy Desktop can open: its nested helper, or a verified install. */
+  openable: boolean
+  /** That app is running this Mac's executor daemon right now. */
+  supervising: boolean
+}
+
 export type ExecutorCompanionStatusResponse = {
   availability: ExecutorCompanionAvailability
   executors: ExecutorCompanionStatus[]
+  /**
+   * Optional because the shell ships separately from this admin. A Nessie
+   * Desktop built before the menu bar app existed answers without this field,
+   * and the hosted admin it loads is always the newest one — so a required
+   * field here would be a crash on somebody else's release schedule.
+   */
+  menuBar?: ExecutorMenuBarCompanion
   platform: 'linux' | 'macos' | 'windows'
   /** Person-readable, names the remedy, and carries no local path or secret. */
   reason: string
@@ -84,3 +105,17 @@ export const changeExecutorWorkspaceWithCompanion = (
 export const forgetExecutorWithCompanion = (
   executorId: string,
 ): Promise<void> => invokeCompanion('executor_companion_forget', { executorId })
+
+/**
+ * Hands this Mac over to the menu bar app. The shell chooses which copy to open
+ * and verifies an install it did not ship before launching it; nothing about
+ * that choice is made here, because a renderer cannot check a code signature.
+ */
+export const openExecutorMenuBarApp = (): Promise<void> =>
+  invokeCompanion('executor_companion_open_menu_bar_app')
+
+/** What a shell that predates the menu bar app is taken to have said. */
+export const NO_MENU_BAR_COMPANION: ExecutorMenuBarCompanion = {
+  openable: false,
+  supervising: false,
+}

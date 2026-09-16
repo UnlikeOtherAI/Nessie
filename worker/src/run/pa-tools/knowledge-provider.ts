@@ -40,6 +40,9 @@ const buildOrigin = (
     requestId: context.actorContext.actionContext.requestId,
     runId: context.run.id,
     teamId,
+    ...(context.actorContext.actionContext.uoaIdentity
+      ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }
+      : {}),
     userId,
   }
 }

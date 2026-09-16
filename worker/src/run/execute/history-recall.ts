@@ -277,6 +277,21 @@ export const retrieveRelevantHistory = async (
     return { context: null, messageIds: [], tokenCount: 0 }
   }
 
+  // A channel is the right recall boundary for a room: one room, one history.
+  // It is the wrong one for a channel that holds several conversations with
+  // the same agent, because those are separate threads in that one channel —
+  // `Thread.agentId` is precisely "the agent this thread is a conversation
+  // *with*", and null is the channel's own General thread. Without this, a
+  // channel-wide recall hands one conversation the other's messages, which is
+  // what the agent-conversations suite proves against on the inference side.
+  //
+  // It went unnoticed while background embeds were being refused: with no
+  // `message_embeddings` rows the semantic arm returned nothing, so the leak
+  // had no material to carry. Signing those jobs is what made it reachable.
+  const conversationThread = await deps.prisma.thread.findFirst({
+    select: { agentId: true },
+    where: { id: context.run.threadId },
+  })
   const candidates = await searchMessageCandidates({
     channelIds: scopes.channelIds,
     embeddingModel: deps.modelClient.embeddingModel,
@@ -286,6 +301,7 @@ export const retrieveRelevantHistory = async (
     runningAgentId: context.agent.id,
     scopeIds: scopes.audienceIds,
     scopeTypes: scopes.audienceTypes,
+    ...(conversationThread?.agentId ? { threadIds: [context.run.threadId] } : {}),
   }, deps.searchConfig.pool)
   const candidateIds = candidates.map((candidate) => candidate.id)
   if (candidateIds.length === 0) return { context: null, messageIds: [], tokenCount: 0 }

@@ -19,12 +19,48 @@
   min-height: 0;
   overflow: hidden;
   --signin-font-display: 'Geist Variable', 'Geist', var(--font-family-body);
-  /* The brand bar and its wave take the chrome's ink; the hero stands on the
-     panel and settles into the soft accent wash, exactly as the homepage hero
-     runs from white into foam. */
-  --signin-bar: var(--ink, #0b172a);
-  --signin-on-bar: var(--signin-on-stage, #ffffff);
-  --signin-wash: color-mix(in srgb, var(--accent) 9%, var(--panel));
+
+  /* The doorway is brand, not chrome.
+     ----------------------------------
+     These are the marketing site's deep-water values, and the surface pins
+     them for every host rather than reading the theme underneath. The front
+     door of the product is the same door for everyone: nessie.works, the
+     admin login and the desktop and mobile shells all open on it before there
+     is a signed-in person to have a preference. Taking the app's palette meant
+     a person who had picked Sandstone met a brown bar and brown buttons where
+     the website has navy and blue, and an organisation palette would have
+     repainted the doorway for its members only.
+
+     Redeclaring the host's own token names shadows them for this subtree, so
+     every `.signin-*` rule below — and the admin controls the login mounts
+     inside itself — resolves to the brand without naming it twice. The theme
+     resumes at the first element outside `.signin-page`. */
+  --panel: #ffffff;
+  --main-hover: #f6f8fc;
+  --sep: #e5e3e6;
+  --tx: #1d1c1d;
+  --tx2: #5c5a5e;
+  --tx3: #85838a;
+  --accent: #0266fa;
+  --accent-hover: #0052d1;
+  --accent-soft: rgba(2, 102, 250, 0.12);
+  --on-accent: #ffffff;
+  --scrim-weak: rgba(11, 23, 42, 0.06);
+  --scrim-strong: rgba(11, 23, 42, 0.42);
+  --shadow-float: 0 20px 60px rgba(11, 23, 42, 0.35);
+  --danger-soft: rgba(214, 59, 59, 0.1);
+  --danger-border: rgba(214, 59, 59, 0.28);
+  --danger-text: #c23232;
+  --signin-stage: #0b172a;
+  --signin-on-stage: #ffffff;
+  --signin-stage-card: #ffffff;
+  --signin-stage-card-fg: #0b172a;
+  /* The brand bar and its wave take the icon's navy; the hero stands on white
+     and settles into foam, exactly as the homepage hero does. */
+  --signin-bar: #0b172a;
+  --signin-on-bar: #ffffff;
+  --signin-wash: #eaf3ff;
+  color-scheme: light;
   background: var(--panel);
   color: var(--tx);
   font-family: var(--font-family-body);
@@ -404,6 +440,35 @@
 
 .signin-app-choices[hidden] {
   display: none;
+}
+
+/* The line that says the tiles below are a different product. Without it two
+   tiles reading "Mac" sit under one heading and a person downloads the wrong
+   one. */
+.signin-app-note {
+  margin: 16px 0 10px;
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Quiet on purpose: the files live on GitHub, but nobody is sent there to find
+   a download. */
+.signin-app-releases {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-decoration-color: var(--sep);
+  text-underline-offset: 3px;
+}
+
+.signin-app-releases:hover,
+.signin-app-releases:focus-visible {
+  color: var(--tx);
+  text-decoration-color: currentColor;
 }
 
 /* The homepage's card: white, a hairline, a generous radius and the faintest

@@ -3,4 +3,5 @@ dist
 .turbo
 src-tauri/target
 src-tauri/resources/executor-runtime/
+src-tauri/resources/executor-menubar/
 src-tauri/gen

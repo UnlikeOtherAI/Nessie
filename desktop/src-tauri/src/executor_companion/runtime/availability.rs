@@ -23,6 +23,22 @@ pub struct ExecutorCompanionAvailability {
     pub reason: String,
     pub platform: &'static str,
     pub executors: Vec<ExecutorCompanionStatus>,
+    pub menu_bar: MenuBarCompanion,
+}
+
+/// The Nessie Executor menu bar app, as one per-Mac fact rather than a
+/// per-executor one: a Mac has one status bar app, it holds one pairing of its
+/// own, and what Desktop has to say about it is whether it can be opened and
+/// whether it is the thing supervising this Mac right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuBarCompanion {
+    /// There is a copy this Desktop can open: its own nested helper, or a
+    /// standalone install whose signature it will verify first.
+    pub openable: bool,
+    /// A daemon supervised by that app is running here, so Desktop's own start
+    /// button would only race it for the lease.
+    pub supervising: bool,
 }
 
 pub const AVAILABLE_REASON: &str =
