@@ -294,20 +294,25 @@ summary and points here; **this file is the rule**.
 - **One sign-in surface, and it is the homepage's doorway.** The admin login
   (`/login`) and the public landing (`nessie.works`) are the same screen:
   `packages/sign-in-surface` owns the layout (`SignInSurface`), the showcase
-  panel, the app-download tiles and the shared copy, and ships only
-  `.signin-*` classes that read host tokens. The admin supplies its themes;
-  the landing imports the package's `tokens.css`, which owns the doorway
-  palette for that themeless host — the marketing site's deep-water values, so
-  the doorway and the pages behind it are one design. A change to the sign-in
-  doorway is made in the package, never by restyling one host.
+  panel, the app-download tiles and the shared copy. A change to the sign-in
+  doorway is made in the package, never by restyling one host; the landing
+  imports the package's `tokens.css` for the page *around* the doorway.
+  **The doorway's colours are brand, not chrome, and the package pins them.**
+  `styles.css` redeclares the host's colour token names on `.signin-page` with
+  the marketing site's deep-water values, so every `.signin-*` rule — and every
+  admin control the login mounts inside itself — resolves to the brand, and the
+  theme resumes at the first element outside. The front door is the same door
+  for everyone: it opens before there is a signed-in person to have a
+  preference, and letting a personal pick through repainted it (Sandstone gave
+  a brown bar and brown buttons where the website has navy and blue). Geometry,
+  motion and the body face still come from the host.
   The surface is the marketing homepage's hero, not a floating card: a brand
-  bar in `--ink` carrying the mark and the wordmark, the site's water edge
-  hanging off it, then a full-bleed hero that runs from `--panel` into a soft
-  `--accent` wash, with the copy and controls left-aligned and the showcase
-  band on the right from `lg` up. Its display face is Geist, self-hosted by the
+  bar in the icon's navy carrying the mark and the wordmark, the site's water
+  edge hanging off it, then a full-bleed hero that runs from white into foam,
+  with the copy and controls left-aligned and the showcase band on the right
+  from `lg` up. Its display face is Geist, self-hosted by the
   package (`@fontsource-variable/geist`) so the doorway does not depend on a
-  host's theme fonts. The showcase band is `--signin-stage` — the icon's navy
-  in every theme — and everything drawn on its white thread card takes its
+  host's theme fonts. The showcase band is the same navy, and everything drawn on its white thread card takes its
   colour from the card (`currentColor`), never from the host's text tokens,
   which on a dark theme left pale type on white.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
