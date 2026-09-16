@@ -69,19 +69,44 @@ export const renameUoaTeam = async (
   team: UoaRosterTeam,
   name: string,
   deps: UoaRosterDeps = {},
-): Promise<string> => {
+): Promise<string> => (await updateUoaTeamIdentity(team, { name }, deps)).name ?? name
+
+/**
+ * A team's name and its address, both written where they are owned.
+ *
+ * The address — UOA's `slug` — is the team's DNS label, the left-most part of
+ * `<teamSlug>.<orgSlug>.<base>`. It matters that this is the same `PUT` as the
+ * rename rather than a second door: UOA validates the label there
+ * (`@unlikeotherai/slug` refuses a bad or reserved one with a reason rather
+ * than coercing it), checks it is free inside the organisation, and answers
+ * with what it stored. A local write, or a direct edit to UOA's database,
+ * would skip every one of those.
+ *
+ * Both fields are optional and only what is supplied is sent: an omitted field
+ * leaves UOA's value alone, and sending a slug equal to the current one is a
+ * no-op rather than an error.
+ */
+export const updateUoaTeamIdentity = async (
+  team: UoaRosterTeam,
+  changes: { name?: string; slug?: string },
+  deps: UoaRosterDeps = {},
+): Promise<{ name: string | null; slug: string | null }> => {
+  const body: Record<string, string> = {}
+  if (changes.name !== undefined) body.name = changes.name
+  if (changes.slug !== undefined) body.slug = changes.slug
   const payload = await rosterRequest(
     requireSettings(),
     teamPath(team),
-    { method: 'PUT', body: { name } },
+    { method: 'PUT', body },
     deps,
   )
-  // UOA echoes the stored team record; its `name` is the authority, because UOA
-  // normalizes what it accepted. Fall back to the requested name only when the
-  // response carries none.
   const record = payload && typeof payload === 'object' && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
     : null
-  const stored = typeof record?.name === 'string' ? record.name.trim() : ''
-  return stored.length > 0 ? stored : name
+  const trimmed = (value: unknown): string | null => {
+    const text = typeof value === 'string' ? value.trim() : ''
+    return text.length > 0 ? text : null
+  }
+  // UOA normalizes what it accepted, so its echo is the authority for both.
+  return { name: trimmed(record?.name), slug: trimmed(record?.slug) }
 }

@@ -51,7 +51,7 @@ export {
 // people in them: a rename of either is relayed, never stored locally as an
 // independent value. Same seam, same package, same reason the roster lives
 // there.
-export { renameUoaOrganization, renameUoaTeam } from '@nessie/team-admin'
+export { renameUoaOrganization, renameUoaTeam, updateUoaTeamIdentity } from '@nessie/team-admin'
 
 // The organisation-wide roster (every member, no team join) — distinct from
 // `listTeamMembers` above, which is correctly team-scoped. An

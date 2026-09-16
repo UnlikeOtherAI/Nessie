@@ -15,7 +15,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { renameCachedUoaTeam } from '../services/uoa-directory-cache.js'
 import {
-  renameUoaTeam,
+  updateUoaTeamIdentity,
   resolveUoaRosterTeam,
   UoaRosterIdentityError,
   UoaRosterRejectedError,
@@ -45,6 +45,12 @@ import type { RouteDeps } from './types.js'
  */
 const RenameTeamBodySchema = z.object({
   name: z.string().trim().min(1).max(200),
+  // The team's address label, the left-most part of
+  // `<teamSlug>.<orgSlug>.<base>`. Bounds only: the shape, the reserved words
+  // and whether it is free inside the organisation are UOA's to judge, and it
+  // refuses with a reason rather than coercing. Guessing those rules here
+  // would mean two answers to the same question.
+  slug: z.string().trim().min(2).max(63).optional(),
 }).strict()
 
 const UpdateTeamSettingsBodySchema = z.object({
@@ -93,8 +99,13 @@ export const registerTeamRoutes = (
   const renameOnUnlikeOtherAI = async (
     request: FastifyRequest,
     reply: FastifyReply,
-    input: { actorContext: AuthorizedActionContext; name: string; teamId: string },
-  ): Promise<string | null> => {
+    input: {
+      actorContext: AuthorizedActionContext
+      name: string
+      slug?: string | undefined
+      teamId: string
+    },
+  ): Promise<{ name: string; slug: string | null } | null> => {
     const team = await resolveUoaRosterTeam(prisma, {
       organizationId: input.actorContext.tenant.organizationId,
       teamId: input.teamId,
@@ -105,15 +116,16 @@ export const registerTeamRoutes = (
     }
 
     try {
-      return await renameUoaTeam(
+      const stored = await updateUoaTeamIdentity(
         team,
-        input.name,
+        { name: input.name, ...(input.slug === undefined ? {} : { slug: input.slug }) },
         withUoaRosterSubjectAssertion(
           team,
           input.actorContext.actionContext.uoaIdentity,
           rosterDeps,
         ),
       )
+      return { name: stored.name ?? input.name, slug: stored.slug }
     } catch (error) {
       if (error instanceof UoaRosterIdentityError) {
         sendApiError(reply, 403, 'UOA_SESSION_REQUIRED', UOA_SESSION_MESSAGE)
@@ -127,8 +139,8 @@ export const registerTeamRoutes = (
           reply,
           error.statusCode === 403 || error.statusCode === 404 ? error.statusCode : 400,
           'TEAM_RENAME_REJECTED',
-          'UnlikeOtherAI refused the rename. You may not have permission to rename this '
-            + 'team there.',
+          'UnlikeOtherAI refused the change. The address may already be taken or not '
+            + 'allowed, or you may not have permission to change this team there.',
         )
         return null
       }
@@ -309,28 +321,39 @@ export const registerTeamRoutes = (
       ? await renameOnUnlikeOtherAI(request, reply, {
         actorContext,
         name: body.name,
+        ...(body.slug === undefined ? {} : { slug: body.slug }),
         teamId: team.id,
       })
-      : body.name
+      // A local install owns its own names. It has no addresses at all, so a
+      // slug sent to one is ignored rather than stored somewhere nothing reads.
+      : { name: body.name, slug: null }
     if (stored === null) return reply
 
     if (team.externalTeamId) {
       // Both rows carry the team label, so heal them exactly as the
       // directory sync would rather than leaving the Project on the old name.
-      await mirrorExternalTeamName(prisma, team.externalTeamId, stored)
+      await mirrorExternalTeamName(prisma, team.externalTeamId, stored.name)
       // The switcher reads its labels from the cached UOA directory, so a
       // rename that did not reach it would show the old name until the next
       // rotation — the team a person renamed while looking at it.
       renameCachedUoaTeam(
         actorContext.actor.actorId,
         team.externalTeamId,
-        stored,
+        stored.name,
       )
-      return createApiResponse({ id: team.id, name: stored })
+      // `slug` only when UOA actually echoed one. Every existing caller of this
+      // route asked to rename a team and nothing else; returning a field that
+      // is null for all of them would change the answer's shape for everybody
+      // to describe something none of them did.
+      return createApiResponse({
+        id: team.id,
+        name: stored.name,
+        ...(stored.slug === null ? {} : { slug: stored.slug }),
+      })
     }
 
     const updated = await prisma.team.update({
-      data: { name: stored },
+      data: { name: stored.name },
       where: { id: team.id },
       select: { id: true, name: true },
     })

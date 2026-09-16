@@ -1,11 +1,12 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { useTenantHost, useTenantTeam } from '../../facades/team/tenant-host'
+import { useTenantHost, useTenantTeam, type TenantOrganisation } from '../../facades/team/tenant-host'
 import { isNativeShell, nativeShellRecoveryHref } from '../../lib/tenant-navigation'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
-import { tenantTeamSwitchNeeded } from './tenant-team-switch'
+import { TeamSwitchCurtain, useCurtainReveal } from './TeamSwitchCurtain'
+import { teamHostSettling, tenantTeamSwitchNeeded } from './tenant-team-switch'
 
 /**
  * What the browser's hostname means, decided once, above the router.
@@ -33,8 +34,12 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
 
   // The ids only exist for a signed-in caller on a team host — the public
   // resolver above never carries them.
-  const { data: teamData } = useTenantTeam(Boolean(token) && data?.kind === 'team')
-  const team = teamData?.team ?? null
+  const teamQuery = useTenantTeam(Boolean(token) && data?.kind === 'team')
+  const team = teamQuery.data?.team ?? null
+  // A switch that is running, as distinct from one that is merely needed: the
+  // predicate below goes false the moment the request is sent, and without
+  // this the curtain would lift while the session was still moving.
+  const [switching, setSwitching] = useState(false)
 
   // A native shell's bridge is refused on a tenant host — the title bar stops
   // dragging the window — so it goes back to the canonical origin however it
@@ -66,11 +71,34 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     // team; switching again only races the page-load refresh into a 409.
     if (!tenantTeamSwitchNeeded(me, team)) return
 
+    setSwitching(true)
     void switchUoaTeam({
       organizationId: team.externalOrgId,
       teamId: team.externalTeamId,
-    }).catch(() => undefined)
+    })
+      .catch(() => undefined)
+      // Whether it worked or not. A failed switch leaves the person on the
+      // team they had — which is the existing behaviour — and the curtain must
+      // lift onto that rather than hang over a working app forever.
+      .finally(() => setSwitching(false))
   }, [me, recoveryHref, team, switchUoaTeam, token])
+
+  // Everything that has to finish before the app may be drawn on a team host:
+  // the address has to resolve to a team, the session has to be readable, and
+  // the session has to be on that team. Any one of them outstanding and the
+  // app would render against whichever team the session was on before — which
+  // is the previous organisation's workspace, shown and then swapped out.
+  //
+  // A signed-out visitor is not settling: they get the tenant's sign-in below.
+  const settling = teamHostSettling({
+    hasToken: Boolean(token),
+    hostKind: data?.kind,
+    me,
+    sessionState,
+    switching,
+    team,
+    teamLoading: teamQuery.isLoading,
+  })
 
   // Render nothing at all while the hostname is still being resolved, but only
   // when it could plausibly be a tenant host — otherwise every ordinary load
@@ -92,5 +120,34 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
   }
 
-  return <>{children}</>
+  return (
+    <TeamHostCurtain
+      organisation={data?.kind === 'team' ? data.organisation : null}
+      settling={settling}
+    >
+      {children}
+    </TeamHostCurtain>
+  )
+}
+
+/**
+ * Mounts the app only once the session is on this host's team, and fades the
+ * tenant's curtain off the top of it.
+ *
+ * Separate from the gate because the reveal is stateful and the gate above it
+ * returns early in four different ways; a hook cannot live behind those.
+ */
+const TeamHostCurtain = ({ children, organisation, settling }: {
+  children: ReactNode
+  organisation: TenantOrganisation | null
+  settling: boolean
+}) => {
+  const revealed = useCurtainReveal(!settling)
+  if (!organisation) return <>{children}</>
+  return (
+    <>
+      {settling ? null : children}
+      {revealed ? null : <TeamSwitchCurtain fading={!settling} organisation={organisation} />}
+    </>
+  )
 }
