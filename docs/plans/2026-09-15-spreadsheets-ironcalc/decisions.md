@@ -120,3 +120,41 @@ forces on this plan, all measured:
   or edit them.
 - An imported autofilter is read into `Table` and never written back, so that
   one is genuinely lost on round trip.
+
+## Spike C/D — render and touch (agent branch `agent/spike-render`, 2026-09-16)
+
+Full record in [spike-cd-render-touch.md](spike-cd-render-touch.md).
+
+- **Render passes** under React 19.2 in `StrictMode`: editing, undo/redo,
+  insert-row with the formula following, a peer's diffs applied paused and
+  landing correctly, and the method-shadowing bridge (52 own-property
+  wrappers, no fork) recording intents and draining diffs.
+- **The patch is 6 lines of code** (`patches/@ironcalc__workbook@0.8.3.patch`,
+  registered in the root `package.json`): it publishes the widget's private
+  redraw setter. Proved necessary — with the repaint suppressed the canvas was
+  byte-identical after a peer batch.
+- **Phone editing ships**, verified in real Mobile Safari on iOS 26.5, not
+  only Chromium: long-press-drag selected a range with handles and did not
+  scroll the page, and a plain drag still scrolled. The overlay is 182 lines.
+  The upstream `usePointer` change is optional, not a prerequisite.
+- **Bundle**: lazy chunk 667 kB (173 kB gzipped) + 72 kB CSS + 1.97 MB wasm
+  (675 kB gzipped), proven lazy on a production build.
+- `darkThemeVariables` **does not exist** in the published package (the plan
+  promised it); one token mapping covers all eleven admin themes. A four-rule
+  CSS override *is* needed, against `admin-ui.md`'s claim, because iOS answers
+  a long press with its own text selection.
+- `--palette-common-black` is a foreground token; mapping it to a surface
+  erased the toolbar, and only a screenshot caught it.
+- **An empty send queue flushes as one `0x00` byte**, so a naive flush loop
+  would burn a `seq` per microtask.
+- `workbookState` is built in the render body, so a root re-render discards
+  in-cell editing state; `redraw()` is safe because it re-renders the subtree.
+
+## Test isolation: the engine's panic can abort the runner
+
+`@nessie/spreadsheet`'s files must run one at a time
+(`--test-concurrency=1`). Run concurrently, the memory-heavy xlsx fixtures and
+the engine-pair suite together produced `fatal runtime error: failed to
+initiate panic, error 5, aborting` — a Rust panic while panicking, which kills
+the test process and fails the package for a reason no assertion explains.
+Serialised, the same 25 tests pass repeatedly with exit code 0.
