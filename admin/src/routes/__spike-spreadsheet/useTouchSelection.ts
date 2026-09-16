@@ -20,6 +20,8 @@ export interface TouchSelectionOptions {
   model: Model
   redraw: () => void
   onModeChange?: (selecting: boolean) => void
+  /** Spike-only readout, so a real device can be debugged without a console. */
+  onDebug?: (line: string) => void
 }
 
 const cellFromPoint = (model: Model, x: number, y: number): [number, number] => {
@@ -73,6 +75,12 @@ export const attachTouchSelection = (
   let anchor: [number, number] | undefined
   let origin: { x: number, y: number } | undefined
   let draggingHandle: 'end' | 'start' | undefined
+  const counts = { down: 0, longPress: 0, move: 0, prevented: 0, up: 0 }
+  const report = (): void => options.onDebug?.(
+    `down ${counts.down} move ${counts.move} up ${counts.up} `
+    + `hold ${counts.longPress} prevented ${counts.prevented} sel ${selecting} `
+    + `range ${model.getSelectedView().range.join(':')}`,
+  )
 
   const point = (event: PointerEvent): [number, number] => {
     const rect = canvas.getBoundingClientRect()
@@ -130,32 +138,42 @@ export const attachTouchSelection = (
     }
     const [x, y] = point(event)
     origin = { x, y }
+    counts.down += 1
+    report()
     timer = setTimeout(() => {
+      counts.longPress += 1
       anchor = cellFromPoint(model, x, y)
       setMode(true)
       model.setSelectedCell(anchor[0], anchor[1])
       redraw()
       paintHandles()
       container.setPointerCapture(event.pointerId)
+      report()
     }, LONG_PRESS_MS)
   }
 
   const onPointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== 'touch') return
+    counts.move += 1
     const [x, y] = point(event)
     if (!selecting) {
+      report()
       if (origin && Math.hypot(x - origin.x, y - origin.y) > SLOP_PX) clearTimeout(timer)
       return
     }
     event.preventDefault()
+    counts.prevented += 1
     extendTo(x, y)
+    report()
   }
 
   const onPointerUp = (): void => {
+    counts.up += 1
     clearTimeout(timer)
     origin = undefined
     draggingHandle = undefined
     if (selecting) { setMode(false); paintHandles() }
+    report()
   }
 
   // A non-passive touchmove is the only thing Safari honours once a finger is

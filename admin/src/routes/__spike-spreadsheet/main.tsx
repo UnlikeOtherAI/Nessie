@@ -10,8 +10,12 @@ import './spike.css'
 // lazy() the real pane. Nothing is fetched until "Open spreadsheet".
 const SpikeWorkbook = lazy(() => import('./SpikeWorkbook'))
 
+// `?auto=1` skips the lazy-load gate, for driving the page by hand on a real
+// device where the network-log proof is not what is being measured.
+const autoOpen = new URLSearchParams(window.location.search).get('auto') === '1'
+
 const Spike = (): React.ReactElement => {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(autoOpen)
   if (!open) {
     return (
       <button data-testid="open-spreadsheet" onClick={() => setOpen(true)} type="button">

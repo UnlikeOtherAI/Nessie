@@ -13,3 +13,14 @@ html, body, #root { height: 100%; margin: 0; }
 .ic-root .ironcalc-cell-handle { border-color: var(--palette-common-white); }
 .ic-root .ic-sheet-tab:hover { background-color: var(--palette-grey-100); }
 .ic-root .ic-db-swatch-row + .ic-db-swatch-row { border-top-color: var(--palette-grey-300); }
+
+/* iOS Safari answers a long press with its own text-selection gesture, which
+   paints a page-wide selection over the chrome while our range selection runs
+   (measured on iOS 26.5, iPhone 17 Pro simulator). Turning selection and the
+   callout off over the widget is the whole fix; the grid is a canvas, so
+   nothing selectable is lost. */
+.spike-shell {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

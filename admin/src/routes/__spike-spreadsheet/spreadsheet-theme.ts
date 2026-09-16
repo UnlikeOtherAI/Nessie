@@ -10,8 +10,10 @@ type ThemeVariables = Record<string, string>
 const token = (styles: CSSStyleDeclaration, name: string, fallback: string): string =>
   styles.getPropertyValue(name).trim() || fallback
 
-/** The nine-step grey ramp IronCalc's chrome uses, walked surface -> ink. */
-const ramp = (steps: string[]): ThemeVariables => ({
+type Ramp = [string, string, string, string, string, string, string, string, string, string]
+
+/** The ten-step grey ramp IronCalc's chrome uses, walked surface -> ink. */
+const ramp = (steps: Ramp): ThemeVariables => ({
   '--palette-grey-50': steps[0],
   '--palette-grey-100': steps[1],
   '--palette-grey-200': steps[2],
@@ -47,7 +49,7 @@ export const spreadsheetThemeVariables = (root: HTMLElement): ThemeVariables => 
   const overlay = token(s, '--overlay', 'rgba(0, 0, 0, 0.08)')
   const font = token(s, '--font-family-body', 'system-ui, sans-serif')
   const fontSize = token(s, '--font-size-base', '0.9375rem')
-  const greys = dark
+  const greys: Ramp = dark
     ? [surface, surface2, hover, line, lineStrong, ink3, ink3, ink2, ink2, ink]
     : [surface2, hover, line, line, lineStrong, ink3, ink3, ink2, ink2, ink]
 

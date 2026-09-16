@@ -50,6 +50,7 @@ const SpikeWorkbook = (): React.ReactElement => {
   const [model, setModel] = useState<Model | undefined>()
   const [theme, setTheme] = useState<Record<string, string>>({})
   const [status, setStatus] = useState('loading engine…')
+  const [touchDebug, setTouchDebug] = useState('')
   const bridge = useRef<ModelBridge>(undefined)
   const peer = useRef<Model>(undefined)
 
@@ -204,6 +205,7 @@ const SpikeWorkbook = (): React.ReactElement => {
     if (!container) return
     return attachTouchSelection(container, {
       model,
+      onDebug: setTouchDebug,
       redraw: () => handle.current?.redraw(),
     })
   }, [model, status])
@@ -212,6 +214,7 @@ const SpikeWorkbook = (): React.ReactElement => {
     <div className="spike-shell" ref={host}>
       <div className="spike-bar">
         <span data-testid="spike-status">{status}</span>
+        <span data-testid="spike-touch-debug">{touchDebug}</span>
         <button onClick={() => window.__spike?.setTheme('daylight')} type="button">Light</button>
         <button onClick={() => window.__spike?.setTheme('midnight')} type="button">Dark</button>
         <button onClick={() => window.__spike?.applyPeerBatch()} type="button">Peer edit</button>
@@ -220,7 +223,15 @@ const SpikeWorkbook = (): React.ReactElement => {
         <button onClick={() => window.__spike?.redo()} type="button">Redo</button>
       </div>
       <div className="spike-widget">
-        {model ? <IronCalc canEdit model={model} ref={handle} rootContainer={host.current} themeVariables={theme} /> : null}
+        {model ? (
+          <IronCalc
+            canEdit
+            model={model}
+            ref={handle}
+            rootContainer={host.current}
+            themeVariables={theme}
+          />
+        ) : null}
       </div>
     </div>
   )
