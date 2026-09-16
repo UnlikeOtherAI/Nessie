@@ -63,13 +63,6 @@
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  /* The sign-in showcase (packages/sign-in-surface) is the marketing
-     homepage's deep-water band in every theme — the icon's navy, with a white
-     thread card on it; the theme does not restyle it. */
-  --signin-stage: #0b172a;
-  --signin-on-stage: #ffffff;
-  --signin-stage-card: #ffffff;
-  --signin-stage-card-fg: #0b172a;
   /* rem-relative so FontScaleProvider's root html font-size scales all type.
      0.9375rem === 15px at the default 16px root. */
   --font-size-base: 0.9375rem;
