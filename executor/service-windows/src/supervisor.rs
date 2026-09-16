@@ -14,7 +14,7 @@
 use std::{
     collections::BTreeMap,
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     thread::sleep,
@@ -87,6 +87,23 @@ pub fn configure_arguments(state_dir: &Path, operation_keys: &[String]) -> Vec<S
     ]
 }
 
+pub fn configure_input_arguments(state_dir: &Path) -> Vec<String> {
+    vec![
+        "configure".to_owned(),
+        "--configuration-input-stdin".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+    ]
+}
+
+pub fn describe_arguments(state_dir: &Path) -> Vec<String> {
+    vec![
+        "describe".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+    ]
+}
+
 fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, String> {
     let deadline = Instant::now() + timeout;
     loop {
@@ -97,6 +114,21 @@ fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, Str
             Ok(None) => sleep(Duration::from_millis(50)),
         }
     }
+}
+
+/// Reads the fingerprint the CLI prints on successful pairing. The whole
+/// point of the pairing surface is that a person compares this in Nessie
+/// before the executor is allowed to do anything, so it is taken from the
+/// CLI's own output rather than recomputed here from a machine key this
+/// service never sees.
+fn parse_fingerprint(output: &str) -> Option<String> {
+    let prefix = "Confirm fingerprint ";
+    output.lines().find_map(|line| {
+        line.find(prefix).and_then(|index| {
+            let rest = &line[index + prefix.len()..];
+            rest.split_whitespace().next().map(|value| value.to_owned())
+        })
+    })
 }
 
 impl Supervisor {
@@ -133,6 +165,69 @@ impl Supervisor {
             None => {
                 // A wedged one-shot command is not a daemon with guests to tear
                 // down, and it must not hold the control pipe open forever.
+                let _ = child.kill();
+                Err(refusal.to_owned())
+            }
+        }
+    }
+
+    /// Runs a one-shot command that reads its payload from stdin. Used for
+    /// `configure --configuration-input-stdin` so the whole policy travels on a
+    /// pipe, never in a process list.
+    fn run_to_completion_with_input(
+        &self,
+        arguments: Vec<String>,
+        input: serde_json::Value,
+        refusal: &str,
+    ) -> Result<(), String> {
+        let mut child = self
+            .command()
+            .args(arguments)
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
+        let mut standard_input = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Nessie Executor could not provide the configuration input securely.".to_owned())?;
+        let bytes = serde_json::to_vec(&input)
+            .map_err(|_| "Nessie Executor could not prepare the configuration input.".to_owned())?;
+        standard_input
+            .write_all(&bytes)
+            .map_err(|_| "Nessie Executor could not provide the configuration input securely.".to_owned())?;
+        drop(standard_input);
+        match wait_bounded(&mut child, COMMAND_TIMEOUT)? {
+            Some(0) => Ok(()),
+            Some(_) => Err(refusal.to_owned()),
+            None => {
+                let _ = child.kill();
+                Err(refusal.to_owned())
+            }
+        }
+    }
+
+    /// Runs a one-shot command and returns its stdout. Used for `describe`,
+    /// whose credential-free JSON is handed straight back to the tray.
+    fn run_to_completion_with_output(
+        &self,
+        arguments: Vec<String>,
+        refusal: &str,
+    ) -> Result<String, String> {
+        let mut child = self
+            .command()
+            .args(arguments)
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
+        let outcome = wait_bounded(&mut child, COMMAND_TIMEOUT)?;
+        let mut stdout = String::new();
+        if let Some(mut pipe) = child.stdout.take() {
+            let _ = pipe.read_to_string(&mut stdout);
+        }
+        match outcome {
+            Some(0) => Ok(stdout),
+            Some(_) => Err(refusal.to_owned()),
+            None => {
                 let _ = child.kill();
                 Err(refusal.to_owned())
             }
@@ -256,6 +351,51 @@ impl Supervisor {
         }
     }
 
+    /// Runs `nessie-executor describe --state-dir` and returns the credential-free
+    /// JSON the CLI prints. The tray uses this to render folders, origins, and
+    /// permitted commands without ever opening `executor-state.json` itself.
+    pub fn describe(&mut self, executor_id: &str) -> Result<serde_json::Value, String> {
+        let state_dir = self.state_dir(executor_id)?;
+        if !has_executor_state(&state_dir) {
+            return Err("This executor has not been paired on this computer.".to_owned());
+        }
+        let output = self.run_to_completion_with_output(
+            describe_arguments(&state_dir),
+            "This executor's local state could not be read.",
+        )?;
+        serde_json::from_str(&output)
+            .map_err(|_| "the service answered in a shape this tray does not understand".to_owned())
+    }
+
+    /// Runs `nessie-executor configure --configuration-input-stdin`, stopping
+    /// and restarting the daemon the same way the older `--operations` path
+    /// does. The whole policy payload travels on stdin, so nothing sensitive
+    /// sits in a command line.
+    pub fn configure_input(
+        &mut self,
+        executor_id: &str,
+        configuration_input: serde_json::Value,
+    ) -> Result<String, String> {
+        let state_dir = self.state_dir(executor_id)?;
+        if !has_executor_state(&state_dir) {
+            return Err("This executor has not been paired on this computer.".to_owned());
+        }
+        let was_running = self.status(executor_id)? == "running";
+        if was_running {
+            self.stop(executor_id)?;
+        }
+        self.run_to_completion_with_input(
+            configure_input_arguments(&state_dir),
+            configuration_input,
+            "The local executor policy was rejected. No command output was retained.",
+        )?;
+        if was_running {
+            self.start(executor_id)
+        } else {
+            Ok("stopped".to_owned())
+        }
+    }
+
     /// Pairs into a staging directory named by the enrollment id, because only
     /// the API can name the executor id and it does so in its reply. The
     /// directory moves to its executor id once the state file names one, which
@@ -265,24 +405,28 @@ impl Supervisor {
         command: &PairCommand,
         paired_by: Option<&str>,
         secure_directory: impl Fn(&Path) -> Result<(), String>,
-    ) -> Result<String, String> {
+    ) -> Result<(String, String), String> {
         let staging = pending_root(&self.root).join(&command.enrollment_id);
         let _ = fs::remove_dir_all(&staging);
         secure_directory(&staging)?;
-        let outcome = self.run_pair(command, &staging);
-        if outcome.is_err() {
+        let output = self.run_pair(command, &staging);
+        if output.is_err() {
             let _ = fs::remove_dir_all(&staging);
-            return outcome.map(|_| String::new());
+            return output.map(|_| (String::new(), String::new()));
         }
+        let output = output.unwrap();
+        let fingerprint = parse_fingerprint(&output)
+            .ok_or_else(|| "Nessie executor pairing succeeded but returned no fingerprint.".to_owned())?;
         let executor_id = self.promote(&staging, paired_by)?;
-        Ok(executor_id)
+        Ok((executor_id, fingerprint))
     }
 
-    fn run_pair(&self, command: &PairCommand, staging: &Path) -> Result<(), String> {
+    fn run_pair(&self, command: &PairCommand, staging: &Path) -> Result<String, String> {
         let mut spawned = self
             .command()
             .args(pair_arguments(&command.api_base_url, &command.enrollment_id, staging))
             .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
             .spawn()
             .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
         let mut standard_input = spawned
@@ -298,8 +442,13 @@ impl Supervisor {
             .write_all(&input)
             .map_err(|_| "Nessie Executor could not provide the pairing challenge securely.".to_owned())?;
         drop(standard_input);
-        match wait_bounded(&mut spawned, COMMAND_TIMEOUT)? {
-            Some(0) => Ok(()),
+        let outcome = wait_bounded(&mut spawned, COMMAND_TIMEOUT)?;
+        let mut stdout = String::new();
+        if let Some(mut pipe) = spawned.stdout.take() {
+            let _ = pipe.read_to_string(&mut stdout);
+        }
+        match outcome {
+            Some(0) => Ok(stdout),
             _ => {
                 let _ = spawned.kill();
                 Err("Nessie executor pairing was rejected. No pairing output was retained.".to_owned())
@@ -352,7 +501,7 @@ impl Supervisor {
 
 #[cfg(test)]
 mod tests {
-    use super::{configure_arguments, pair_arguments, serve_arguments};
+    use super::{configure_arguments, configure_input_arguments, describe_arguments, parse_fingerprint, pair_arguments, serve_arguments};
     use std::path::Path;
 
     #[test]
@@ -386,5 +535,31 @@ mod tests {
             ),
             vec!["configure", "--state-dir", "/service/state", "--operations", "file.read,sandbox.stop"],
         );
+    }
+
+    #[test]
+    fn configuration_input_uses_stdin_and_keeps_the_payload_off_argv() {
+        assert_eq!(
+            configure_input_arguments(Path::new("/service/state")),
+            vec!["configure", "--configuration-input-stdin", "--state-dir", "/service/state"],
+        );
+    }
+
+    #[test]
+    fn describe_asks_for_the_credential_free_projection() {
+        assert_eq!(
+            describe_arguments(Path::new("/service/state")),
+            vec!["describe", "--state-dir", "/service/state"],
+        );
+    }
+
+    #[test]
+    fn fingerprint_is_read_from_the_cli_success_line() {
+        assert_eq!(
+            parse_fingerprint("Pairing request submitted. Confirm fingerprint abc123 in Nessie, then run connect.\n"),
+            Some("abc123".to_owned()),
+        );
+        assert_eq!(parse_fingerprint(""), None);
+        assert_eq!(parse_fingerprint("no fingerprint here"), None);
     }
 }

@@ -19,9 +19,9 @@ window.__trayCalls = [];
 window.__TAURI__ = { core: { invoke: async (command, args = {}) => {
   window.__trayCalls.push({ command, args });
   if (command === 'executor_pairing_backends') return [
-    ['https://api.nessie.works', 'Nessie cloud'],
-    ['http://127.0.0.1:5454', 'Local development API (127.0.0.1:5454)'],
-    ['http://localhost:5454', 'Local development API (localhost:5454)'],
+    ['nessie', 'Nessie'],
+    ['deeptest', 'DeepTest'],
+    ['custom', 'Self-hosted Nessie'],
   ];
   if (command === 'executor_view') return { kind: 'reachable', executors: [] };
   if (command === 'executor_pair') throw 'The invitation belongs to a different Nessie backend. Select the backend that created it; pairing never falls back to another origin.';
@@ -33,7 +33,7 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
   ?? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const browser = await chromium.launch({ executablePath, headless: true })
 try {
-  const page = await browser.newPage({ viewport: { width: 420, height: 320 } })
+  const page = await browser.newPage({ viewport: { width: 520, height: 480 } })
   page.setDefaultTimeout(5_000)
   await page.route('http://localhost:5455/__tray-preview', (route) => route.fulfill({
     body: html.replace('<head>', `<head>${bridge}`), contentType: 'text/html', status: 200,
@@ -42,17 +42,19 @@ try {
   await page.waitForSelector('#backend option:nth-child(3)', { state: 'attached' })
   assert.equal(await page.locator('#backend option').count(), 3)
   await page.click('#pair')
-  await page.selectOption('#backend', 'http://localhost:5454')
+  await page.selectOption('#backend', 'custom')
+  await page.fill('#custom-url', 'http://127.0.0.1:5454')
   await page.locator('#open-nessie').evaluate((button) => button.click())
   assert.deepEqual(await page.evaluate(() => window.__trayCalls.find((call) => call.command === 'executor_open_nessie')), {
-    command: 'executor_open_nessie', args: { apiBaseUrl: 'http://localhost:5454' },
+    command: 'executor_open_nessie', args: { apiBaseUrl: 'http://127.0.0.1:5454' },
   })
   await page.fill('#invitation', 'pair --api https://api.nessie.works --enrollment id --challenge value')
   await page.locator('#pair-form button[type="submit"]').click()
   assert.deepEqual(await page.evaluate(() => window.__trayCalls.find((call) => call.command === 'executor_pair')), {
     command: 'executor_pair', args: {
       invitation: 'pair --api https://api.nessie.works --enrollment id --challenge value',
-      selectedApiBaseUrl: 'http://localhost:5454',
+      backend: 'custom',
+      customApiBaseUrl: 'http://127.0.0.1:5454',
     },
   })
   const mismatch = await page.evaluate(() => String(document.querySelector('#headline')?.textContent))

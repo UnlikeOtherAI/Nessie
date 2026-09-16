@@ -1,11 +1,12 @@
 //! The named-pipe control protocol: one JSON object per line, in and out.
 //!
-//! It is the desktop companion's five commands and nothing else — `status`,
-//! `pair`, `start`, `stop`, `configure` — with the same argument validation, so
-//! a person controlling the executor from the tray reaches exactly what a person
-//! controlling it from **Agents → Executors** reaches. The one response rule the
-//! design fixes: a response carries executor ids and daemon states, never a
-//! path, a key, a challenge, or a child process's output.
+//! The tray is a stateless client of the CLI, so the protocol exposes the
+//! commands it needs: `status`, `pair`, `start`, `stop`, `describe`, and
+//! `configureInput`. `describe` returns the same credential-free JSON the CLI
+//! prints; `configureInput` carries the whole stdin payload for
+//! `configure --configuration-input-stdin`. This keeps the tray from ever
+//! opening `executor-state.json` while still letting it show folders, origins,
+//! and permitted commands.
 //!
 //! Everything here is a pure function of the request text, so both halves of the
 //! contract are tested on any host.
@@ -31,7 +32,8 @@ const MAX_IDENTIFIER_BYTES: usize = 128;
 /// a caller that has lost the protocol, not a command.
 pub const MAX_REQUEST_BYTES: usize = 65_536;
 
-const APPROVED_API_BASE_URL: &str = "https://api.nessie.works";
+const NESSIE_API_BASE_URL: &str = "https://api.nessie.works";
+const DEEPTEST_API_BASE_URL: &str = "https://api.deeptest.live";
 const LOOPBACK_API_BASE_URLS: [&str; 2] = ["http://127.0.0.1:5454", "http://localhost:5454"];
 
 /// A validated command. Construction is the validation: nothing downstream
@@ -39,6 +41,8 @@ const LOOPBACK_API_BASE_URLS: [&str; 2] = ["http://127.0.0.1:5454", "http://loca
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Configure { executor_id: String, operation_keys: Vec<String> },
+    ConfigureInput { executor_id: String, configuration_input: serde_json::Value },
+    Describe { executor_id: String },
     Pair(PairCommand),
     Start { executor_id: String },
     Status,
@@ -65,6 +69,8 @@ pub struct PairCommand {
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "command")]
 enum Request {
     Configure { executor_id: String, operation_keys: Vec<String> },
+    ConfigureInput { executor_id: String, configuration_input: serde_json::Value },
+    Describe { executor_id: String },
     Pair {
         api_base_url: String,
         challenge: String,
@@ -85,13 +91,18 @@ pub struct ExecutorStatus {
     pub workspace_configured: bool,
 }
 
-/// The answer. There is no third variant on purpose: a caller parses one of two
-/// shapes, and neither carries a place to put a path or a secret.
+/// The answer. Each variant carries only what the tray asked for: an executor
+/// list, a pairing result, or the credential-free `describe` JSON. Paths that
+/// belong to the person reading them travel only inside `describe`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase", tag = "status")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "status")]
 pub enum Response {
     Error { reason: String },
     Ok { executors: Vec<ExecutorStatus> },
+    #[serde(rename = "pairOk")]
+    PairOk { executor_id: String, fingerprint: String },
+    #[serde(rename = "describe")]
+    DescribeOk { description: serde_json::Value },
 }
 
 impl Response {
@@ -127,7 +138,7 @@ fn identifier(value: String, field: &str) -> Result<String, String> {
 }
 
 fn approved_api_base_url(value: &str) -> Result<String, String> {
-    if value == APPROVED_API_BASE_URL {
+    if value == NESSIE_API_BASE_URL || value == DEEPTEST_API_BASE_URL {
         return Ok(value.to_owned());
     }
     // A local owner may deliberately pair to this machine's development API.
@@ -136,7 +147,26 @@ fn approved_api_base_url(value: &str) -> Result<String, String> {
     if LOOPBACK_API_BASE_URLS.contains(&value) {
         return Ok(value.to_owned());
     }
-    Err("Choose Nessie cloud or one of the approved local development API origins.".to_owned())
+    // Nessie is open source and self-hosted. Anything else must be an HTTPS
+    // origin with no credentials, path, query or fragment — the same rule the
+    // shared schema enforces so one host cannot be dressed up as another.
+    let parsed = value
+        .parse::<url::Url>()
+        .map_err(|_| "Choose Nessie cloud, DeepTest, an approved local API, or an HTTPS origin.".to_owned())?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("A pairing address carries no username or password.".to_owned());
+    }
+    if parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || !(parsed.path() == "/" || parsed.path().is_empty())
+    {
+        return Err("A pairing address is an origin only — no path, query or fragment.".to_owned());
+    }
+    if parsed.scheme() == "https" {
+        Ok(parsed.origin().unicode_serialization())
+    } else {
+        Err("A pairing address must be HTTPS.".to_owned())
+    }
 }
 
 fn challenge(value: String) -> Result<String, String> {
@@ -192,6 +222,13 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
             executor_id: identifier(executor_id, "executor id")?,
             operation_keys: workspace_operation_keys(operation_keys)?,
         }),
+        Request::ConfigureInput { executor_id, configuration_input } => Ok(Command::ConfigureInput {
+            executor_id: identifier(executor_id, "executor id")?,
+            configuration_input,
+        }),
+        Request::Describe { executor_id } => Ok(Command::Describe {
+            executor_id: identifier(executor_id, "executor id")?,
+        }),
         Request::Pair {
             api_base_url,
             challenge: value,
@@ -217,13 +254,18 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
 mod tests {
     use super::{
         parse_request, valid_identifier, workspace_operation_keys, Command, ExecutorStatus,
-        Response, APPROVED_API_BASE_URL, LOOPBACK_API_BASE_URLS, MAX_REQUEST_BYTES,
+        Response, LOOPBACK_API_BASE_URLS, MAX_REQUEST_BYTES, NESSIE_API_BASE_URL,
     };
 
     const EXECUTOR: &str = "00000000-0000-4000-8000-000000000001";
 
     fn pair_line(challenge: &str, workspace: &str) -> String {
-        let api = if cfg!(debug_assertions) { "http://127.0.0.1:5454" } else { APPROVED_API_BASE_URL };
+        format!(
+            r#"{{"command":"pair","apiBaseUrl":"{NESSIE_API_BASE_URL}","challenge":"{challenge}","enrollmentId":"{EXECUTOR}","workspaceRoot":"{workspace}"}}"#,
+        )
+    }
+
+    fn pair_line_with_api(api: &str, challenge: &str, workspace: &str) -> String {
         format!(
             r#"{{"command":"pair","apiBaseUrl":"{api}","challenge":"{challenge}","enrollmentId":"{EXECUTOR}","workspaceRoot":"{workspace}"}}"#,
         )
@@ -250,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn the_five_companion_commands_are_the_whole_protocol() {
+    fn the_seven_companion_commands_are_the_whole_protocol() {
         assert_eq!(parse_request(r#"{"command":"status"}"#).unwrap(), Command::Status);
         assert_eq!(
             parse_request(&format!(r#"{{"command":"start","executorId":"{EXECUTOR}"}}"#)).unwrap(),
@@ -260,7 +302,15 @@ mod tests {
             parse_request(&format!(r#"{{"command":"stop","executorId":"{EXECUTOR}"}}"#)).unwrap(),
             Command::Stop { executor_id: EXECUTOR.to_owned() },
         );
-        // A sixth command is not a command: nothing here falls back to `status`.
+        assert_eq!(
+            parse_request(&format!(r#"{{"command":"describe","executorId":"{EXECUTOR}"}}"#)).unwrap(),
+            Command::Describe { executor_id: EXECUTOR.to_owned() },
+        );
+        assert_eq!(
+            parse_request(&format!(r#"{{"command":"configureInput","executorId":"{EXECUTOR}","configurationInput":{{}}}}"#)).unwrap(),
+            Command::ConfigureInput { executor_id: EXECUTOR.to_owned(), configuration_input: serde_json::json!({}) },
+        );
+        // An eighth command is not a command: nothing here falls back to `status`.
         for line in [
             r#"{"command":"uninstall"}"#,
             r#"{"command":"serve"}"#,
@@ -294,21 +344,32 @@ mod tests {
     }
 
     #[test]
-    fn pairing_refuses_an_api_origin_this_release_does_not_serve() {
-        let line = pair_line("challenge-value", absolute_workspace())
-            .replace("api.nessie.works", "api.example.test")
-            .replace("127.0.0.1", "10.0.0.1");
+    fn pairing_accepts_self_hosted_https_and_refuses_everything_else() {
+        let https = pair_line_with_api("https://api.example.test", "challenge-value", absolute_workspace());
+        assert!(
+            matches!(parse_request(&https).unwrap(), Command::Pair(_)),
+            "a self-hosted HTTPS origin must be accepted",
+        );
+        let http = pair_line_with_api("http://api.example.test", "challenge-value", absolute_workspace());
         assert_eq!(
-            parse_request(&line),
-            Err("Choose Nessie cloud or one of the approved local development API origins.".to_owned()),
+            parse_request(&http),
+            Err("A pairing address must be HTTPS.".to_owned()),
+        );
+        let with_path = pair_line_with_api(
+            "https://api.example.test/api.nessie.works",
+            "challenge-value",
+            absolute_workspace(),
+        );
+        assert_eq!(
+            parse_request(&with_path),
+            Err("A pairing address is an origin only — no path, query or fragment.".to_owned()),
         );
     }
 
     #[test]
     fn every_build_accepts_both_spellings_of_the_local_development_api() {
         for api in LOOPBACK_API_BASE_URLS {
-            let line = pair_line("challenge-value", absolute_workspace())
-                .replace("http://127.0.0.1:5454", api);
+            let line = pair_line_with_api(api, "challenge-value", absolute_workspace());
             assert!(parse_request(&line).is_ok(), "{api} must be accepted");
         }
     }
@@ -338,8 +399,8 @@ mod tests {
         );
     }
 
-    /// The response rule, asserted on the encoding rather than restated: the
-    /// only keys that ever leave the service are these.
+    /// The response rule, asserted on the encoding rather than restated: every
+    /// variant declares its shape in the `status` tag.
     #[test]
     fn a_response_carries_executor_ids_and_states_and_nothing_else() {
         let encoded = Response::Ok {
@@ -361,6 +422,31 @@ mod tests {
         assert_eq!(
             refusal.trim_end(),
             r#"{"status":"error","reason":"This executor has not been paired on this computer."}"#,
+        );
+    }
+
+    #[test]
+    fn a_pair_ok_response_carries_executor_id_and_fingerprint() {
+        let encoded = Response::PairOk {
+            executor_id: EXECUTOR.to_owned(),
+            fingerprint: "abc123".to_owned(),
+        }
+        .encode();
+        assert_eq!(
+            encoded.trim_end(),
+            format!(r#"{{"status":"pairOk","executorId":"{EXECUTOR}","fingerprint":"abc123"}}"#),
+        );
+    }
+
+    #[test]
+    fn a_describe_response_carries_the_description_json() {
+        let encoded = Response::DescribeOk {
+            description: serde_json::json!({ "executorId": EXECUTOR }),
+        }
+        .encode();
+        assert_eq!(
+            encoded.trim_end(),
+            format!(r#"{{"status":"describe","description":{{"executorId":"{EXECUTOR}"}}}}"#),
         );
     }
 }

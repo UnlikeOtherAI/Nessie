@@ -24,12 +24,16 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 mod commands;
+mod description;
 mod grant;
 mod invitation;
 mod menu;
+mod pairing_origin;
+mod permitted_command;
 mod pipe_client;
 mod service_identity;
 mod state;
+mod workspace_folder;
 
 use std::time::Duration;
 
@@ -93,6 +97,21 @@ fn handle_menu(app: &AppHandle, id: &str) {
             let app = app.clone();
             async move { commands::stop(app, executor_id).await.map(|_| ()) }
         }),
+        // The three surfaces this app exists for. They always open the status
+        // window and select their section, even unpaired, because a hidden
+        // capability is a capability nobody can find.
+        MenuAction::Settings => {
+            commands::show_status(app);
+            let _ = app.emit_to("status", "tray://section/settings", ());
+        }
+        MenuAction::Reach => {
+            commands::show_status(app);
+            let _ = app.emit_to("status", "tray://section/reach", ());
+        }
+        MenuAction::Tools => {
+            commands::show_status(app);
+            let _ = app.emit_to("status", "tray://section/tools", ());
+        }
         // Pairing needs a text field, so it opens the status window on its pair
         // form rather than trying to be a dialog.
         MenuAction::Pair => {
@@ -167,11 +186,17 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            commands::executor_add_command,
+            commands::executor_add_folder,
+            commands::executor_choose_folder,
+            commands::executor_describe,
             commands::executor_hide_status,
             commands::executor_open_logs,
             commands::executor_open_nessie,
-            commands::executor_pairing_backends,
             commands::executor_pair,
+            commands::executor_pairing_backends,
+            commands::executor_remove_command,
+            commands::executor_remove_folder,
             commands::executor_start,
             commands::executor_stop,
             commands::executor_view,
