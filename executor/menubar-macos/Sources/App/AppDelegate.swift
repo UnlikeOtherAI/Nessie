@@ -6,15 +6,17 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: ExecutorController?
+    // Held for the app's whole life: the status item lives inside this object,
+    // and an unretained status item disappears from the menu bar immediately.
     private var statusItem: StatusItemController?
-    private var panels: PanelPresenter?
+    private var console: ConsoleWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = ExecutorController(isDevelopmentBuild: AppBuild.isDevelopment)
-        let panels = PanelPresenter(controller: controller)
+        let console = ConsoleWindowController(controller: controller)
         self.controller = controller
-        self.panels = panels
-        self.statusItem = StatusItemController(controller: controller, panels: panels)
+        self.console = console
+        self.statusItem = StatusItemController(controller: controller, console: console)
         controller.start()
     }
 

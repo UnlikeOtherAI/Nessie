@@ -1,19 +1,17 @@
 import SwiftUI
 
 /// Where it can reach: the two facts of the local state that bound this
-/// executor's view of the world — the one read-only folder, and the origins its
+/// executor's view of the world — the read-only workspace, and the origins its
 /// guest browser may open. Both are read from `describe`; neither is inferred.
-struct ReachPanel: View {
+struct ReachSection: View {
     @EnvironmentObject private var controller: ExecutorController
+    @EnvironmentObject private var selection: ConsoleSelection
 
     var body: some View {
-        PanelChrome(
-            title: "Where it can reach",
-            subtitle: "Everything outside this list is outside the executor's reach."
-        ) {
+        VStack(alignment: .leading, spacing: 18) {
             switch controller.model.pairing {
             case let .unavailable(reason):
-                Label(reason, systemImage: "exclamationmark.triangle.fill").font(.callout)
+                UnavailableNotice(reason: reason)
             case .unpaired:
                 UnpairedNotice()
             case let .paired(description):
@@ -26,6 +24,9 @@ struct ReachPanel: View {
         }
     }
 
+    // One folder today, several named folders shortly. The list below is already
+    // a list so that the second one does not need a different shape here; only
+    // its rows and the add/remove controls arrive with that contract.
     private func workspace(_ description: ExecutorDescription) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Workspace", systemImage: "folder").font(.headline)
@@ -44,15 +45,11 @@ struct ReachPanel: View {
                 systemImage: description.sandbox.promotionHelperConfigured ? "arrow.up.doc" : "lock.doc"
             )
             .font(.callout)
-            Button("Change workspace folder…") { controller.refusal = ReachPanel.workspaceDoorway }
-                .help("The workspace folder is chosen in Settings, where the picker lives.")
+            // The picker itself lives in Settings; this is its doorway rather
+            // than a second copy of it.
+            Button("Change it in Settings") { selection.section = .settings }
         }
     }
-
-    /// The doorway rather than a second picker: one surface owns choosing the
-    /// folder, and this panel points at it instead of forking it.
-    private static let workspaceDoorway =
-        "The workspace folder is chosen in Settings → Workspace folder, from the menu bar icon."
 
     private func origins(_ description: ExecutorDescription) -> some View {
         VStack(alignment: .leading, spacing: 10) {

@@ -1,48 +1,5 @@
 import SwiftUI
 
-/// The frame every panel shares: a title, the refusal line, and a body. One
-/// component parameterised by its content rather than three panels that each
-/// grew their own header and their own way of showing an error.
-struct PanelChrome<Content: View>: View {
-    @EnvironmentObject private var controller: ExecutorController
-    let title: String
-    let subtitle: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.title2).bold()
-                Text(subtitle).font(.callout).foregroundStyle(.secondary)
-            }
-            .padding(20)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    content()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-            }
-
-            if let refusal = controller.refusal {
-                Divider()
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text(refusal).font(.callout).textSelection(.enabled)
-                    Spacer(minLength: 8)
-                    Button("Dismiss") { controller.refusal = nil }
-                }
-                .padding(16)
-                .background(.quaternary.opacity(0.4))
-            }
-        }
-        .frame(minWidth: 480, minHeight: 380)
-    }
-}
-
 /// A labelled fact with its value selectable. Paths and ids exist here to be
 /// compared against what Nessie shows, which means they have to be copyable.
 struct FactRow: View {
@@ -76,15 +33,30 @@ struct PolicyReviewNote: View {
     }
 }
 
-/// The one thing to say when nothing is paired, on every panel, with the doorway
-/// to the surface that fixes it.
+/// The one thing to say when nothing is paired, on every section, with the
+/// doorway to the section that fixes it.
 struct UnpairedNotice: View {
+    @EnvironmentObject private var selection: ConsoleSelection
+
     var body: some View {
-        Label(
-            "This Mac is not paired with Nessie yet. Open Settings from the menu bar icon and paste "
-                + "the invitation from Agents → Executors.",
-            systemImage: "link.badge.plus"
-        )
-        .font(.callout)
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                "This Mac is not paired with Nessie yet. Paste the invitation from Agents → Executors "
+                    + "in Nessie to pair it.",
+                systemImage: "link.badge.plus"
+            )
+            .font(.callout)
+            Button("Go to Settings") { selection.section = .settings }
+        }
+    }
+}
+
+/// The refusal a section shows when the packaged runtime could not be used. It
+/// is the CLI's or the app's own wording, never a substitute.
+struct UnavailableNotice: View {
+    let reason: String
+
+    var body: some View {
+        Label(reason, systemImage: "exclamationmark.triangle.fill").font(.callout)
     }
 }

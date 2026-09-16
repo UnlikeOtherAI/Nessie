@@ -8,60 +8,44 @@ import Combine
 /// same value — there is no second place that decides what the app is showing.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    /// Held strongly and for the app's whole life. An `NSStatusItem` that is not
+    /// retained is removed from the menu bar the moment it is released, which
+    /// looks exactly like an app that never started.
+    private let statusItem: NSStatusItem
     private let controller: ExecutorController
-    private let panels: PanelPresenter
-    private var observation: AnyCancellable?
+    private let console: ConsoleWindowController
+    private var observations: Set<AnyCancellable> = []
 
-    init(controller: ExecutorController, panels: PanelPresenter) {
+    init(controller: ExecutorController, console: ConsoleWindowController) {
         self.controller = controller
-        self.panels = panels
+        self.console = console
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
+        // Named so macOS remembers where a person dragged it and keeps it across
+        // launches instead of appending it at the end of a crowded menu bar.
+        statusItem.autosaveName = "works.nessie.executor.menubar.status"
+        statusItem.behavior = []
+        statusItem.isVisible = true
         statusItem.menu = NSMenu()
         statusItem.menu?.delegate = self
-        observation = controller.$model.sink { [weak self] model in
-            Task { @MainActor in self?.render(model) }
-        }
+        controller.$model
+            .sink { [weak self] model in Task { @MainActor in self?.render(model) } }
+            .store(in: &observations)
+        controller.$busy
+            .sink { [weak self] _ in Task { @MainActor in self?.render(self?.controller.model) } }
+            .store(in: &observations)
         render(controller.model)
     }
 
-    private func render(_ model: MenuModel) {
-        guard let button = statusItem.button else { return }
+    private func render(_ model: MenuModel?) {
+        guard let model, let button = statusItem.button else { return }
         let icon = menuIcon(for: model)
-        button.image = StatusItemController.image(for: icon)
-        button.image?.isTemplate = icon == .stopped
-        button.contentTintColor = StatusItemController.tint(for: icon)
+        button.image = StatusItemIcon.image(for: icon)
+        button.imagePosition = .imageOnly
         button.toolTip = menuHeader(for: model)
         button.setAccessibilityLabel(menuHeader(for: model))
+        statusItem.isVisible = true
         rebuildMenu(model)
-    }
-
-    /// A shape per state, not a colour per state: the menu bar is the one place
-    /// on macOS where a person may be looking at a monochrome rendering, so the
-    /// symbol itself has to differ before the tint does.
-    private static func image(for icon: MenuIcon) -> NSImage? {
-        let name: String
-        let label: String
-        switch icon {
-        case .stopped:
-            name = "circle.dashed"
-            label = "Nessie Executor is stopped"
-        case .running:
-            name = "circle.circle.fill"
-            label = "Nessie Executor is running"
-        case .needsAttention:
-            name = "exclamationmark.triangle.fill"
-            label = "Nessie Executor needs attention"
-        }
-        return NSImage(systemSymbolName: name, accessibilityDescription: label)
-    }
-
-    private static func tint(for icon: MenuIcon) -> NSColor? {
-        switch icon {
-        case .stopped: return nil
-        case .running: return .systemGreen
-        case .needsAttention: return .systemOrange
-        }
     }
 
     private func rebuildMenu(_ model: MenuModel) {
@@ -86,15 +70,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // The three surfaces this app exists for. They are always offered, even
         // unpaired: "where it can reach" answering "nothing yet, pair this Mac"
         // is the answer a person came for, and a hidden menu line is a capability
-        // nobody can find.
-        for (title, panel) in [
-            ("Settings…", Panel.settings),
-            ("Where it can reach…", Panel.reach),
-            ("Tools it can run…", Panel.tools),
-        ] {
-            let item = NSMenuItem(title: title, action: #selector(openPanel(_:)), keyEquivalent: "")
+        // nobody can find. Each one opens the single window on that section.
+        for section in ConsoleSection.allCases {
+            let item = NSMenuItem(
+                title: section.menuTitle,
+                action: #selector(openSection(_:)),
+                keyEquivalent: ""
+            )
             item.target = self
-            item.representedObject = panel.rawValue
+            item.representedObject = section.rawValue
             menu.addItem(item)
         }
         menu.addItem(.separator())
@@ -117,9 +101,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func stopDaemon() { controller.stopDaemon() }
 
-    @objc private func openPanel(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let panel = Panel(rawValue: raw) else { return }
-        panels.show(panel)
+    @objc private func openSection(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let section = ConsoleSection(rawValue: raw)
+        else { return }
+        console.show(section)
     }
 
     @objc private func openNessie() {

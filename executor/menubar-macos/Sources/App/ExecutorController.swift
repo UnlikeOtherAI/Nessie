@@ -25,6 +25,15 @@ enum ExecutorPaths {
             .path
     }
 
+    /// The file `pair` writes. Its presence is the difference between "nobody
+    /// has paired this Mac" and "something is wrong with a pairing that exists",
+    /// and those two need different words. The file is never opened here.
+    static func hasPairingFile(_ directory: String) -> Bool {
+        FileManager.default.fileExists(
+            atPath: (directory as NSString).appendingPathComponent("executor-state.json")
+        )
+    }
+
     /// Owner-only, created before anything is written into it.
     static func prepare(_ directory: String) throws {
         try FileManager.default.createDirectory(
@@ -107,19 +116,21 @@ final class ExecutorController: ObservableObject {
         lease: DaemonLease
     ) {
         guard let description else {
-            // A state directory that does not exist yet is not a failure; it is
-            // the ordinary state of a Mac nobody has paired.
-            let notPaired = !FileManager.default.fileExists(atPath: stateDirectory)
-                || completion?.standardError.contains("ENOENT") == true
-                || completion?.standardError.contains("executor-state.json") == true
+            // No pairing file is the ordinary state of a Mac nobody has paired,
+            // not a failure. Only its *presence* is checked — never its contents:
+            // the moment this app read that file it would become a second
+            // interpretation of the policy the daemon enforces.
             model = MenuModel(
-                pairing: notPaired
-                    ? .unpaired
-                    : .unavailable(
+                pairing: ExecutorPaths.hasPairingFile(stateDirectory)
+                    ? .unavailable(
                         completion.map {
-                            ExecutorProcessRunner.refusal(from: $0, fallback: "nothing paired").message
-                        } ?? "nothing paired"
-                    ),
+                            ExecutorProcessRunner.refusal(
+                                from: $0,
+                                fallback: "this executor's local state could not be read"
+                            ).message
+                        } ?? "the packaged executor runtime could not be run"
+                    )
+                    : .unpaired,
                 daemon: .stopped
             )
             return

@@ -3,20 +3,17 @@ import SwiftUI
 /// Tools it can run: the permitted programs of the reviewed local policy.
 ///
 /// Adding or removing one is a policy revision, exactly like enabling an
-/// operation — the panel says so before the change and the CLI enforces it. The
-/// app never edits the list itself; it hands the whole list to `configure`.
-struct ToolsPanel: View {
+/// operation — the section says so before the change and the CLI enforces it.
+/// The app never edits the list itself; it hands the whole list to `configure`.
+struct ToolsSection: View {
     @EnvironmentObject private var controller: ExecutorController
     @State private var draft = ""
 
     var body: some View {
-        PanelChrome(
-            title: "Tools it can run",
-            subtitle: "The programs the guest may start. Anything not on this list is refused before a guest starts."
-        ) {
+        VStack(alignment: .leading, spacing: 18) {
             switch controller.model.pairing {
             case let .unavailable(reason):
-                Label(reason, systemImage: "exclamationmark.triangle.fill").font(.callout)
+                UnavailableNotice(reason: reason)
             case .unpaired:
                 UnpairedNotice()
             case let .paired(description):
@@ -39,8 +36,11 @@ struct ToolsPanel: View {
         }
     }
 
+    /// Entries are rendered as the policy states them, never re-derived. That is
+    /// what lets a wildcard entry — a form the policy is gaining — appear here
+    /// correctly the moment the CLI accepts one, with no change to this view.
     private func list(_ description: ExecutorDescription) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Permitted programs").font(.headline)
             if description.policy.permittedPrograms.isEmpty {
                 Text("No program is permitted, so no command may start.")
@@ -50,12 +50,12 @@ struct ToolsPanel: View {
             ForEach(description.policy.permittedPrograms, id: \.self) { program in
                 HStack {
                     Image(systemName: "terminal")
-                    Text(program).font(.body.monospaced())
+                    Text(program).font(.body.monospaced()).textSelection(.enabled)
                     Spacer()
                     Button("Remove") { remove(program, from: description) }
                         .disabled(controller.busy)
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, 1)
             }
         }
     }

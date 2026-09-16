@@ -3,19 +3,16 @@ import ServiceManagement
 import SwiftUI
 
 /// Pairing, the workspace folder, and starting at login.
-struct SettingsPanel: View {
+struct SettingsSection: View {
     @EnvironmentObject private var controller: ExecutorController
     @State private var invitation = ""
     @State private var chosenWorkspace: URL?
 
     var body: some View {
-        PanelChrome(
-            title: "Nessie Executor",
-            subtitle: "Pair this Mac, choose the folder it may read, and decide whether it starts at login."
-        ) {
+        VStack(alignment: .leading, spacing: 18) {
             switch controller.model.pairing {
             case let .unavailable(reason):
-                Label(reason, systemImage: "exclamationmark.triangle.fill").font(.callout)
+                UnavailableNotice(reason: reason)
             case .unpaired:
                 pairingForm
             case let .paired(description):
@@ -44,11 +41,13 @@ struct SettingsPanel: View {
 
             TextEditor(text: $invitation)
                 .font(.body.monospaced())
-                .frame(height: 78)
+                .frame(height: 72)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
 
             HStack(spacing: 10) {
-                Button("Choose workspace folder…") { chooseWorkspace() }
+                Button("Choose workspace folder…") {
+                    if let selected = pickFolder() { chosenWorkspace = selected }
+                }
                 Text(chosenWorkspace?.path ?? "No folder chosen")
                     .font(.callout)
                     .foregroundStyle(chosenWorkspace == nil ? .secondary : .primary)
@@ -96,14 +95,15 @@ struct SettingsPanel: View {
 
     // MARK: - Workspace
 
+    // The workspace is one folder today. It is becoming several named folders,
+    // at which point the picker below becomes an add/remove list and this
+    // section hands that list to `configure` the same way it hands one path now.
     private func workspaceSection(_ description: ExecutorDescription) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Workspace folder").font(.headline)
             FactRow(label: "Read-only root", value: description.reach.workspaceRoot)
             Button("Change workspace folder…") {
-                guard let selected = pickFolder(
-                    title: "Select the executor's read-only workspace"
-                ) else { return }
+                guard let selected = pickFolder() else { return }
                 controller.proposePolicy(workspaceRoot: selected.path)
             }
             .disabled(controller.busy)
@@ -117,14 +117,9 @@ struct SettingsPanel: View {
         }
     }
 
-    private func chooseWorkspace() {
-        guard let selected = pickFolder(title: "Select the executor's read-only workspace") else { return }
-        chosenWorkspace = selected
-    }
-
-    private func pickFolder(title: String) -> URL? {
+    private func pickFolder() -> URL? {
         let panel = NSOpenPanel()
-        panel.message = title
+        panel.message = "Select the executor's read-only workspace"
         panel.prompt = "Choose"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
