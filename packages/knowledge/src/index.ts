@@ -1,4 +1,17 @@
 export {
+  CORE_DOCUMENT_ROLES,
+  CoreDocumentIntegrityError,
+  isAgentCoreDocumentPage,
+  loadActiveAgentCoreDocuments,
+} from './agent-core-documents.js'
+export { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
+export { readCanonicalAgentCore, writeCanonicalAgentCore } from './agent-core-write.js'
+export type { CanonicalAgentCore } from './agent-core-write.js'
+export type {
+  ActiveCoreDocument,
+  CoreDocumentRole,
+} from './agent-core-documents.js'
+export {
   buildNativeSourceRef,
   buildSpaceSourceRef,
   createNativeKnowledgeProvider,
@@ -7,6 +20,11 @@ export type {
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
+export type {
+  AgentCoreMigrationDraft,
+  AgentCoreMigrationInput,
+  AgentCoreMigrationResult,
+} from './types.js'
 export {
   canReadSpace,
   canWriteSpace,
@@ -16,7 +34,7 @@ export {
 // Mapper + include shape re-exported so callers that need to list pages by a
 // filter the KnowledgeProvider interface doesn't expose (e.g. by taskId) can
 // query knowledgePage directly and still get the same KnowledgePageRecord shape.
-export { mapPage, pageInclude } from './native-mappers.js'
+export { mapPage, mapVersion, pageInclude, versionInclude } from './native-mappers.js'
 export type { PageRow } from './native-mappers.js'
 export type { SpaceViewer, SpaceViewerAgentScopes, SpaceViewerPrincipal } from './access.js'
 export {
@@ -112,11 +130,17 @@ export type {
   CreatePageInput,
   CreateSpaceInput,
   KnowledgeAuthorType,
+  KnowledgeDocumentOrigin,
+  KnowledgeDocumentRole,
+  KnowledgeDocumentTrust,
   KnowledgePageKind,
   KnowledgePageRecord,
   KnowledgePageStatus,
   KnowledgePageTreeNode,
   KnowledgePageVersionRecord,
+  KnowledgePageVersionBasisScope,
+  KnowledgePageVersionDisclosureInput,
+  KnowledgePageVersionDisclosureSource,
   KnowledgeProvider,
   KnowledgeProviderCapabilities,
   KnowledgeProviderKind,
@@ -139,3 +163,6 @@ export type {
   UpdateSpaceInput,
 } from './types.js'
 export { KnowledgePageRevisionConflictError } from './types.js'
+export { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
+export { canReadKnowledgePageVersion } from './version-disclosure-access.js'
+export { readableKnowledgePageVersionsWhere } from './version-disclosure-where.js'

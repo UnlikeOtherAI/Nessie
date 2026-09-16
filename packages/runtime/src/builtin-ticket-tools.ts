@@ -116,6 +116,6 @@ export const TICKET_BOARD_CREATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'ticket_board_create', category: 'projects', label: 'Create Ticket Board',
   personalAssistantOnly: true, projectDelegatedOnly: true, requiresExplicitGrant: true,
   summary: 'Create a board in the current project.', safe: false,
-  description: 'Create a board in the project this conversation belongs to. Requires a live project administrator or their bounded peer delegation.',
+  description: 'Create a board in the project this conversation belongs to. Requires a live member of the project (or an organisation owner or admin) or their bounded peer delegation.',
   parameters: { type: 'object', properties: { name: { type: 'string' }, iconEmoji: { type: ['string', 'null'] }, style: { type: 'string', enum: ['kanban', 'scrum'] } }, required: ['name'] },
 }

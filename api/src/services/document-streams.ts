@@ -1,9 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   canWriteSpace,
+  readableKnowledgePageVersionsWhere,
   type KnowledgeProvider,
   type SpaceViewer,
 } from '@nessie/knowledge'
+import { resolveDisclosureViewer, type DisclosureViewerAuthority } from '@nessie/runtime'
 import {
   DocumentStreamErrorReasonSchema,
   parseRunId,
@@ -121,7 +123,9 @@ const effectiveTarget = (row: SessionRow): { parentPageId: string | null; spaceI
 const resolveTargetNames = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
   rows: SessionRow[],
+  authority?: DisclosureViewerAuthority,
 ): Promise<TargetNames> => {
   const targets = rows.map(effectiveTarget)
   const spaceIds = [...new Set(targets.map((target) => target.spaceId).filter(
@@ -131,6 +135,12 @@ const resolveTargetNames = async (
     (id): id is string => id !== null,
   ))]
 
+  const disclosureViewer = await resolveDisclosureViewer(
+    prisma,
+    organizationId,
+    userId,
+    authority,
+  )
   const [spaces, pages] = await Promise.all([
     spaceIds.length > 0
       ? prisma.knowledgeSpace.findMany({
@@ -140,7 +150,11 @@ const resolveTargetNames = async (
       : Promise.resolve([]),
     pageIds.length > 0
       ? prisma.knowledgePage.findMany({
-          where: { id: { in: pageIds }, organizationId },
+          where: {
+            id: { in: pageIds },
+            organizationId,
+            ...readableKnowledgePageVersionsWhere(disclosureViewer),
+          },
           select: { id: true, title: true },
         })
       : Promise.resolve([]),
@@ -222,6 +236,7 @@ export const listThreadDocumentStreams = async (
   prisma: PrismaClient,
   input: {
     activeOnly?: boolean
+    authority?: DisclosureViewerAuthority
     organizationId: string
     threadId: string
     uoaIdentity: UoaSessionIdentity | undefined
@@ -240,7 +255,13 @@ export const listThreadDocumentStreams = async (
   })
 
   const readableRows = await filterRowsByRunBasis(prisma, input, rows)
-  const names = await resolveTargetNames(prisma, input.organizationId, readableRows)
+  const names = await resolveTargetNames(
+    prisma,
+    input.organizationId,
+    input.userId,
+    readableRows,
+    input.authority,
+  )
   return readableRows.map((row) => toSummary(row, names))
 }
 
@@ -274,6 +295,7 @@ const findSession = async (
 export const getThreadDocumentStream = async (
   prisma: PrismaClient,
   input: {
+    authority?: DisclosureViewerAuthority
     organizationId: string
     sessionId: string
     threadId: string
@@ -301,7 +323,13 @@ export const getThreadDocumentStream = async (
     select: { content: true },
   })
   const markdown = chunks.map((chunk) => chunk.content).join('')
-  const names = await resolveTargetNames(prisma, input.organizationId, [session])
+  const names = await resolveTargetNames(
+    prisma,
+    input.organizationId,
+    input.userId,
+    [session],
+    input.authority,
+  )
 
   return {
     lastSeq: 0,
@@ -313,13 +341,25 @@ export const getThreadDocumentStream = async (
 
 const reloadSummary = async (
   prisma: PrismaClient,
-  input: { organizationId: string; sessionId: string; threadId: string },
+  input: {
+    authority?: DisclosureViewerAuthority
+    organizationId: string
+    sessionId: string
+    threadId: string
+    userId: string
+  },
 ): Promise<DocumentStreamSummary | null> => {
   const row = await findSession(prisma, input)
   if (!row) {
     return null
   }
-  const names = await resolveTargetNames(prisma, input.organizationId, [row])
+  const names = await resolveTargetNames(
+    prisma,
+    input.organizationId,
+    input.userId,
+    [row],
+    input.authority,
+  )
   return toSummary(row, names)
 }
 
@@ -418,7 +458,10 @@ export const retargetDocumentStream = async (
       return { kind: 'page_missing' }
     }
     await persistOverride(prisma, session.id, { parentPageId, spaceId: space.id })
-    const summary = await reloadSummary(prisma, input)
+    const summary = await reloadSummary(prisma, {
+      ...input,
+      authority: { uoaIdentity: ctx.actorContext.actionContext.uoaIdentity },
+    })
     return summary ? { kind: 'ok', moved: true, session: summary } : { kind: 'not_found' }
   }
 
@@ -427,7 +470,10 @@ export const retargetDocumentStream = async (
   }
 
   await persistOverride(prisma, session.id, { parentPageId, spaceId: space.id })
-  const summary = await reloadSummary(prisma, input)
+  const summary = await reloadSummary(prisma, {
+    ...input,
+    authority: { uoaIdentity: ctx.actorContext.actionContext.uoaIdentity },
+  })
   if (!summary) {
     return { kind: 'not_found' }
   }

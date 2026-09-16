@@ -64,7 +64,7 @@ runDatabaseTest('an archived shared channel releases its name', async (t) => {
   t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
 
   const first = await createChannelForUser(prisma, {
-    label: 'random',
+    label: 'design',
     organizationId: seeded.organizationId,
     scope: 'standalone',
     userId: seeded.ownerId,
@@ -75,14 +75,14 @@ runDatabaseTest('an archived shared channel releases its name', async (t) => {
   // The name is taken while the channel is visible.
   await assert.rejects(
     createChannelForUser(prisma, {
-      label: 'random',
+      label: 'design',
       organizationId: seeded.organizationId,
       scope: 'standalone',
       userId: seeded.ownerId,
       visibility: 'public',
     }),
     (error: unknown) => error instanceof ChannelSlugConflictError
-      && error.message === 'A standalone channel with slug "random" already exists',
+      && error.message === 'A standalone channel with slug "design" already exists',
   )
 
   // Archiving is what `DELETE /api/channels/:id` does. The name comes back.
@@ -95,7 +95,7 @@ runDatabaseTest('an archived shared channel releases its name', async (t) => {
   assert.ok(archived?.archivedAt)
 
   const second = await createChannelForUser(prisma, {
-    label: 'random',
+    label: 'design',
     organizationId: seeded.organizationId,
     scope: 'standalone',
     userId: seeded.ownerId,
@@ -103,7 +103,7 @@ runDatabaseTest('an archived shared channel releases its name', async (t) => {
   })
   assert.ok(second)
   assert.notEqual(second.id, first.id)
-  assert.equal(second.slug, 'random')
+  assert.equal(second.slug, 'design')
 })
 
 runDatabaseTest('unarchiving into a taken name is refused in words', async (t) => {
@@ -112,7 +112,7 @@ runDatabaseTest('unarchiving into a taken name is refused in words', async (t) =
   t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
 
   const first = await createChannelForUser(prisma, {
-    label: 'random',
+    label: 'design',
     organizationId: seeded.organizationId,
     scope: 'standalone',
     userId: seeded.ownerId,
@@ -126,7 +126,7 @@ runDatabaseTest('unarchiving into a taken name is refused in words', async (t) =
     userId: seeded.ownerId,
   })
   await createChannelForUser(prisma, {
-    label: 'random',
+    label: 'design',
     organizationId: seeded.organizationId,
     scope: 'standalone',
     userId: seeded.ownerId,
@@ -141,7 +141,7 @@ runDatabaseTest('unarchiving into a taken name is refused in words', async (t) =
       userId: seeded.ownerId,
     }),
     (error: unknown) => error instanceof ChannelSlugConflictError
-      && error.message === 'A standalone channel with slug "random" already exists.'
+      && error.message === 'A standalone channel with slug "design" already exists.'
         + ' Rename that channel, or rename this one, before unarchiving',
   )
 
@@ -154,12 +154,12 @@ runDatabaseTest('unarchiving into a taken name is refused in words', async (t) =
 
   // Renaming the live one frees the name, and the restore then goes through.
   const live = await prisma.channel.findFirstOrThrow({
-    where: { archivedAt: null, organizationId: seeded.organizationId, slug: 'random' },
+    where: { archivedAt: null, organizationId: seeded.organizationId, slug: 'design' },
     select: { id: true },
   })
   await updateChannel(prisma, {
     channelId: live.id,
-    label: 'random-two',
+    label: 'design-two',
     organizationId: seeded.organizationId,
     userId: seeded.ownerId,
   })
@@ -178,7 +178,7 @@ runDatabaseTest('the shared list and a project keep separate names', async (t) =
   t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
 
   const shared = await createChannelForUser(prisma, {
-    label: 'general',
+    label: 'launch',
     organizationId: seeded.organizationId,
     scope: 'standalone',
     userId: seeded.ownerId,
@@ -194,7 +194,7 @@ runDatabaseTest('the shared list and a project keep separate names', async (t) =
   })
   // The same name in a project is a different channel, not a conflict.
   const inProject = await createChannelForUser(prisma, {
-    label: 'general',
+    label: 'launch',
     organizationId: seeded.organizationId,
     projectId: project.id,
     teamId: seeded.teamId,
@@ -208,7 +208,7 @@ runDatabaseTest('the shared list and a project keep separate names', async (t) =
   // Twice within one project is still a conflict, and it names that project.
   await assert.rejects(
     createChannelForUser(prisma, {
-      label: 'general',
+      label: 'launch',
       organizationId: seeded.organizationId,
       projectId: project.id,
       teamId: seeded.teamId,
@@ -216,6 +216,6 @@ runDatabaseTest('the shared list and a project keep separate names', async (t) =
       visibility: 'public',
     }),
     (error: unknown) => error instanceof ChannelSlugConflictError
-      && error.message === 'A channel with slug "general" already exists in this project',
+      && error.message === 'A channel with slug "launch" already exists in this project',
   )
 })

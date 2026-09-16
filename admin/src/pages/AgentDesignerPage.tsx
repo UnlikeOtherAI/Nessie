@@ -31,6 +31,7 @@ import { useAgentDesigner } from '../components/features/agents/designer/useAgen
 import type { AgentFormState } from '../facades/designer/types'
 import {
   useAgentModelOptions,
+  useAgentDocuments,
   useAgents,
   useCreateAgent,
   useUpdateAgent,
@@ -50,6 +51,7 @@ export const AgentDesignerPage = () => {
   const agents = agentsQuery.data ?? []
   const editingAgent = agentId ? agents.find((a) => a.id === agentId) : undefined
   const isEditMode = Boolean(agentId)
+  const coreDocumentsQuery = useAgentDocuments(editingAgent?.id)
 
   // The reducer inside the designer initialises once, so wait for the agent
   // record before mounting it in edit mode (deep links load agents async) and
@@ -68,11 +70,24 @@ export const AgentDesignerPage = () => {
       </QueryState>
     )
   }
+  if (isEditMode && coreDocumentsQuery.isPending) {
+    return (
+      <QueryState
+        className="flex h-full items-center justify-center"
+        errorLabel="The agent instructions could not be loaded."
+        loadingLabel="Loading agent instructions…"
+        query={coreDocumentsQuery}
+      >
+        {() => null}
+      </QueryState>
+    )
+  }
 
   return (
     <AgentDesignerContent
       agents={agents}
       editingAgent={editingAgent}
+      coreDocuments={coreDocumentsQuery.data?.coreDocuments}
       key={agentId ?? 'new'}
     />
   )
@@ -81,6 +96,7 @@ export const AgentDesignerPage = () => {
 type AgentDesignerContentProps = {
   agents: AgentRecord[]
   editingAgent?: AgentRecord
+  coreDocuments?: { markdown: string; role: 'identity' | 'working_rules'; versionId: string; versionNumber: number; pageId: string }[]
   // `embedded` renders the editor as a panel (no page header, an inline Save
   // bar, no navigation on save) so it can live as the Edit tab inside the agent
   // detail page. `onDone` fires after a successful embedded save.
@@ -103,6 +119,7 @@ type AgentDesignerContentProps = {
 export const AgentDesignerContent = ({
   agents,
   editingAgent,
+  coreDocuments,
   embedded = false,
   leadIn,
   onDone,
@@ -165,14 +182,16 @@ export const AgentDesignerContent = ({
       provider: editingAgent.provider ?? '',
       model: editingAgent.model ?? '',
       runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
-      speakingStyle: editingAgent.speakingStyle ?? '',
-      systemPrompt: editingAgent.systemPrompt ?? '',
+      speakingStyle: coreDocuments?.find((document) => document.role === 'working_rules')?.markdown
+        ?? editingAgent.speakingStyle ?? '',
+      systemPrompt: coreDocuments?.find((document) => document.role === 'identity')?.markdown
+        ?? editingAgent.systemPrompt ?? '',
       todosEnabled: editingAgent.todosEnabled,
       tools: editingAgent.toolPolicy ?? {},
       visibility: editingAgent.visibility ?? 'team',
       voiceName: editingAgent.voiceName ?? '',
     }
-  }, [editingAgent, requestedVisibility])
+  }, [coreDocuments, editingAgent, requestedVisibility])
 
   const { actions, clearDraft, state } = useAgentDesigner(
     initialState, modelOptions, editingAgent?.id, toolCatalog.options,
@@ -283,7 +302,9 @@ export const AgentDesignerContent = ({
         // `undefined` would carry the stored value forward instead.
         speakingStyle: state.speakingStyle.trim() || null,
         voiceName: state.voiceName || null,
-        systemPrompt: state.systemPrompt.trim() || undefined,
+        // An empty core field is an intentional replacement, never an omitted
+        // legacy-column carry-forward.
+        systemPrompt: state.systemPrompt,
         todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,
         model: state.model || undefined,

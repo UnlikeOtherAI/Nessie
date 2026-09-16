@@ -1,20 +1,6 @@
-/**
- * One row of `GET /api/auth/landing-teams`.
- *
- * Declared here rather than imported from `@nessie/schemas` for the same
- * reason the guard below is hand-written: five fields are not worth pulling
- * the schemas bundle into a public marketing page. The API validates its
- * answer against the shared schema before it sends it, and `toLandingTeam`
- * re-checks every field here, so a drift shows up as a dropped row rather
- * than a broken page.
- */
-export type LandingTeam = {
-  label: string
-  orgName?: string
-  avatarImageUrl?: string
-  active: boolean
-  href: string
-}
+import type { LandingTeam } from '@nessie/schemas'
+
+export type { LandingTeam }
 
 export const LANDING_TEAMS_PATH = '/api/auth/landing-teams'
 

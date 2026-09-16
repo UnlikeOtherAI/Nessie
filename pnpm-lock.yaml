@@ -689,6 +689,9 @@ importers:
 
   packages/dashboard:
     dependencies:
+      '@nessie/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -751,6 +754,9 @@ importers:
       '@nessie/retrieval':
         specifier: workspace:*
         version: link:../retrieval
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas
@@ -935,7 +941,7 @@ importers:
 
   packages/sign-in-surface:
     dependencies:
-      '@fontsource/dm-serif-display':
+      '@fontsource-variable/geist':
         specifier: ^5.3.0
         version: 5.3.0
       '@fortawesome/fontawesome-svg-core':
@@ -1112,6 +1118,9 @@ importers:
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../packages/retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
@@ -2431,9 +2440,6 @@ packages:
 
   '@fontsource-variable/geist@5.3.0':
     resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
-
-  '@fontsource/dm-serif-display@5.3.0':
-    resolution: {integrity: sha512-ecRclUcYeto9fB7ghkB36H4MtUoaUYFjjornWYYeLCMHzaWEDPk2kIWgZOq0mKBNRxclRSieKcFeLonlMYDTKg==}
 
   '@fortawesome/fontawesome-common-types@7.3.1':
     resolution: {integrity: sha512-k0C0sdHmZtAo6dRDtd1Z/qcpyHbL0CKsjV8seMY/21xGhY5Wsv0XRmiI/xEEH4y2c9b1+jvgNs/3EqhV27yUEA==}
@@ -9741,8 +9747,6 @@ snapshots:
     optional: true
 
   '@fontsource-variable/geist@5.3.0': {}
-
-  '@fontsource/dm-serif-display@5.3.0': {}
 
   '@fortawesome/fontawesome-common-types@7.3.1': {}
 

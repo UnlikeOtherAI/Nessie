@@ -31,6 +31,16 @@ type AgentConversationListProps = {
    * leaves the room admits it.
    */
   activeChannelId?: string | null
+  /**
+   * The conversation to point the eye at, and which press asked for it.
+   *
+   * The panel sets it when the server hands back an empty conversation instead
+   * of opening another (`startAgentConversation` → `reused`): that row blinks
+   * so the notice above the list has something to be about. `press` is what
+   * makes a second press blink again — it re-keys the row, and a CSS animation
+   * only plays when the element it is on is new.
+   */
+  flash?: { conversationId: string; press: number } | null
   /** How often the list refreshes while it is visible; the caller decides. */
   refetchInterval?: number | ((conversations: AgentConversationRecord[]) => number)
   /** Selected after the navigation — the panel focuses its composer with it. */
@@ -53,6 +63,7 @@ export const AgentConversationList = ({
   activeChannelId = null,
   activeThreadId = null,
   agentId,
+  flash = null,
   onSelect,
   refetchInterval,
 }: AgentConversationListProps) => {
@@ -99,13 +110,19 @@ export const AgentConversationList = ({
       <div className="flex flex-col" role="list">
         {conversations.map((conversation) => {
           const current = conversation.id === activeThreadId
+          // The press that asked for this row's blink, or null: it is the key
+          // suffix as much as the flag, so pressing twice plays it twice.
+          const blink = flash && flash.conversationId === conversation.id ? flash.press : null
           const running = conversation.activeRun !== null
           const elsewhere =
             activeChannelId !== null && conversation.channel.id !== activeChannelId
           const age = formatConversationTime(conversation.lastActivityAt)
           const to = conversationPath(conversation)
           return (
-            <div key={conversation.id} role="listitem">
+            <div
+              key={blink === null ? conversation.id : `${conversation.id}:${blink}`}
+              role="listitem"
+            >
               <button
                 aria-current={current ? 'true' : undefined}
                 className={[
@@ -114,7 +131,8 @@ export const AgentConversationList = ({
                   current
                     ? 'bg-[color:var(--main-hover)]'
                     : 'hover:bg-[color:var(--main-hover)] focus-visible:bg-[color:var(--main-hover)]',
-                ].join(' ')}
+                  blink === null ? '' : 'admin-attention-pulse',
+                ].filter(Boolean).join(' ')}
                 data-testid="agent-conversation-row"
                 onClick={() => {
                   void navigate(to)

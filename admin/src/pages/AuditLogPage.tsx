@@ -1,27 +1,14 @@
 import { useState } from 'react'
-import { Pill } from '../components/primitives/Pill'
+import { AuditEventList, type AuditEntry } from '../components/features/audit/AuditEventList'
 import { ListToolbar } from '../components/shared/ListToolbar'
 import { PageBody, Section } from '../components/shared/PageBody'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { QueryState } from '../components/shared/QueryState'
-import { Row, RowList } from '../components/shared/RowList'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { OwnerGate } from '../components/shared/OwnerGate'
 import { useIsOwner } from '../facades/auth/hooks'
 import { auditLogKeys } from '../lib/query-keys'
 import { usePagedList } from '../facades/pagination/usePagedList'
-
-type AuditEntry = {
-  id: string
-  action: string
-  actorType: string
-  actorId: string
-  resourceType: string
-  resourceId: string | null
-  outcome: string
-  createdAt: string
-  metadata: Record<string, unknown> | null
-}
 
 export const AuditLogPage = () => {
   const [actionFilter, setActionFilter] = useState('')
@@ -68,34 +55,7 @@ export const AuditLogPage = () => {
             >
               {() => (
                 <>
-                  <RowList label="Audit events">
-                    {rows.items.map((entry) => (
-                      <Row
-                        key={entry.id}
-                        subtitle={
-                          `${entry.actorType}:${entry.actorId.slice(0, 8)} → `
-                          + `${entry.resourceType}${entry.resourceId ? `:${entry.resourceId.slice(0, 8)}` : ''}`
-                        }
-                        title={
-                          <span className="flex items-center gap-2">
-                            <span className="font-mono text-[color:var(--tx)]">{entry.action}</span>
-                            <Pill
-                              radius="chip"
-                              size="sm"
-                              tone={entry.outcome === 'success' ? 'success' : 'danger'}
-                            >
-                              {entry.outcome}
-                            </Pill>
-                          </span>
-                        }
-                        trailing={
-                          <span className="text-xs text-[color:var(--tx3)]">
-                            {new Date(entry.createdAt).toLocaleString()}
-                          </span>
-                        }
-                      />
-                    ))}
-                  </RowList>
+                  <AuditEventList entries={rows.items} />
                   <PaginationFooter
                     canNext={rows.canNext}
                     canPrevious={rows.canPrevious}

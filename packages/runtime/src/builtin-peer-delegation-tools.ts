@@ -6,7 +6,7 @@ export const AGENT_PEER_DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   category: 'agents',
   label: 'Ask Bound Peer',
   summary: 'Ask another agent bound to this project channel for a focused review.',
-  description: 'Send a durable, bounded request to an ordinary agent already bound to this project channel. The original project administrator remains the requester; use it only to reach agreement or ask one focused follow-up.',
+  description: 'Send a durable, bounded request to an ordinary agent already bound to this project channel. The original requester, a member of the project, remains the requester; use it only to reach agreement or ask one focused follow-up.',
   parameters: { type: 'object', properties: { agentId: { type: 'string' }, brief: { type: 'string' } }, required: ['agentId', 'brief'] },
   safe: false,
   requiresExplicitGrant: true,

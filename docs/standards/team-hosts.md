@@ -65,6 +65,55 @@ Consequently:
   identity from `x-forwarded-host` still stands; the hostname arrives as an
   explicit query parameter from the client asking about itself.
 
+## The address bar follows the switch — in a browser only
+
+Every place that moves the page between tenants decides where to go through
+one module, `admin/src/lib/tenant-navigation.ts`, and must keep doing so —
+`admin/test/tenant-navigation.test.ts` pins each entry point to it:
+
+| Entry point | Browser | Native shell |
+|---|---|---|
+| `TeamSwitcher` (rail / menu switch) | team's address from `GET /api/hosts/address?teamId=` when it is a different host; otherwise in-app `/channels` | in-app `/channels`; the address is not even looked up |
+| `OrgPortal` (team picked on `<org>.<base>`) | team's address; if there is none, `signInOrigin/channels`; if neither is known, stays on the portal | `signInOrigin/channels` |
+| `TenantReturnHandoff` (stored `?return=` after sign-in) | the stored tenant address | dropped: forgotten and not followed, so the person stays on the canonical origin |
+
+**A native shell never loads a tenant hostname as its top-level document.**
+`isNativeShell()` is `isDesktopApp()` or `isReactNativeWebView()`. The desktop
+shell grants IPC only to `https://app.nessie.works/**`
+(`desktop/src-tauri/capabilities/default.json`), so a tenant hostname as its
+top-level document loses the deep-link bridge: `ExternalAuthProvider` then
+toasts "The external sign-in could not be completed." while the UI stays on the
+old team. Tenant hostnames remain unsupported as a desktop top-level document;
+widening that allowlist is a separate security decision, not a fix for this.
+**A native shell that is already on a tenant hostname leaves it.** The entry
+points above are not the only way a document gets there — a link opened in the
+window or an older bundle can still land one — and on that host every IPC call
+is refused: on macOS the overlay title bar stops dragging the window, because
+`data-tauri-drag-region` works by invoking `start_dragging`. `TenantHostGate`
+therefore asks `nativeShellRecoveryHref` once the hostname resolves and
+`location.replace`s to the canonical origin: the same path from a team host,
+`/channels` from an organisation portal. It renders nothing and runs no team
+switch meanwhile; the canonical origin opens on the session's current team.
+A stored tenant return is dropped rather than converted into an in-app switch:
+the ids behind a return address are not known without another lookup, and the
+signed-in canonical origin is already a complete place to land.
+
+**An organisation portal never navigates in-app.** `TenantHostGate` renders
+`OrgPortal` for an organisation hostname whatever the path, so `/channels` on
+that host reloads the portal instead of opening the team.
+
+**Known gap, browsers only:** accepting an invitation
+(`admin/src/facades/team/invitations.ts`) and creating a team
+(`admin/src/facades/team/provisioning.ts`) still navigate in-app and do not
+follow the new team's address. Native shells are unaffected.
+
+**A team host does not re-switch onto the team the session is already on.**
+`TenantHostGate` compares the host's `externalOrgId`/`externalTeamId` with the
+active `me.uoaTeams` entry (`tenantTeamSwitchNeeded`) and switches only when
+they differ. A redundant `POST /api/auth/uoa/team` races the page-load refresh,
+which rotates the same refresh-cookie family, and loses with
+`TEAM_SWITCH_CONFLICT`.
+
 ## Matching a hostname is a label comparison, never a suffix test
 
 `https://design.acme.evil-nessie.works` ends with `nessie.works`. So does
@@ -282,6 +331,53 @@ afterwards. Because that address arrives in a URL, it is checked twice before
 it is ever stored — its shape (https, no credentials, not this origin), and
 then `/api/hosts/resolve`, which answers only for hostnames that really are
 tenants of this deployment. Never trust the parameter alone.
+
+## The landing lists the teams you are signed into
+
+`https://nessie.works` (`web/`) opens, for a signed-in visitor, with a "Your
+teams" section before everything else: every team the person belongs to, its
+organisation, its avatar, and which one the session is on. Signed out, the
+section does not exist — no placeholder, nothing that moves.
+
+**The read is `GET /api/auth/landing-teams`, and it admits only the landing's
+own origins.** It lives under `/api/auth` because that is the refresh cookie's
+path. `NESSIE_LANDING_ORIGIN` is an exact-match list — production is
+`https://nessie.works,https://www.nessie.works`, because the landing answers on
+both — validated at config load: every entry must be a bare `http(s)` origin,
+and a path or malformed entry refuses to start. The route echoes
+`Access-Control-Allow-Origin` with the one listed origin the request came from,
+never `*` and never the list, keeps `Vary: Origin, Cookie`, and refuses every
+other `Origin` with a 403 — the app, tenant hosts and lookalikes such as
+`https://nessie.works.evil.com` included. The landing is deliberately **not** in
+`NESSIE_CORS_ORIGINS`: that list grants every credentialed route, and this page
+needs one answer. Unset means no landing is admitted and the section never
+renders.
+
+**It reads the refresh session without consuming it.** The cookie is shared
+with the app; rotating it here would race the app's page-load refresh on the
+same family, the failure the section above already avoids. A revoked,
+expired, rotated-away or unbindable session answers `200 { teams: [] }`, the
+same as no cookie, so anonymous traffic produces no errors.
+
+**The list is the one `/api/auth/me` serves.** Under UOA it is
+`loadUoaTeamDirectory` — the bounded in-memory directory, freshness read and
+cold-cache fallback — so nothing new is stored. Each entry links to the team's
+address from the same UOA lookup `/api/hosts/address` uses, at `/channels`,
+where `TenantHostGate` runs the ordinary silent switch; with no address it
+links to the app's canonical origin (`NESSIE_ADMIN_PUBLIC_URL`). Without an
+IdP the teams are the local membership tree and the active one is the first
+membership, which is the team a refresh of that session lands on.
+
+**The wire carries only what is drawn** — label, organisation name, avatar URL,
+active flag, link (`LandingTeamSchema`); no ids, no email. Rate limited by
+`landingTeamsIp` (docs/rate-limiting.md). The landing's CSP names
+`https://api.nessie.works` in `connect-src` and UOA's host in `img-src`.
+
+**Known gap:** a team with no resolvable address that is not the active one
+opens the app on the session's current team; the person switches from there.
+There is no cross-origin "switch into this team" handoff on the canonical
+origin, and this change does not invent one. Native shells are unaffected:
+the landing is a browser page and never runs inside them.
 
 ## Local development
 

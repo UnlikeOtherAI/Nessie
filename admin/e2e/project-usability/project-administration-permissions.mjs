@@ -18,21 +18,17 @@ const refreshPermission = async (page) => {
   })
 }
 
-const setProjectRole = async (projectId, userId, role) => {
+const withPrisma = async (run) => {
   const prisma = new PrismaClient()
   try {
-    await prisma.projectMember.update({
-      where: { projectId_userId: { projectId, userId } },
-      data: { role },
-    })
+    return await run(prisma)
   } finally {
     await prisma.$disconnect()
   }
 }
 
 const deleteFixtureUser = async (userId) => {
-  const prisma = new PrismaClient()
-  try {
+  await withPrisma(async (prisma) => {
     // Creating the browser user provisions private global-agent home DMs.
     // Those channels require their named owner while they exist, so remove the
     // fixture's private homes first and let their cascading members/bindings
@@ -44,10 +40,9 @@ const deleteFixtureUser = async (userId) => {
         type: 'dm',
       },
     })
+    await prisma.projectMember.deleteMany({ where: { userId } })
     await prisma.user.delete({ where: { id: userId } })
-  } finally {
-    await prisma.$disconnect()
-  }
+  })
 }
 
 const permissionControls = (page) => ({
@@ -58,10 +53,11 @@ const permissionControls = (page) => ({
 })
 
 /**
- * Drives a real non-owner browser session through the same project role rows
- * the server's `requireProjectAdmin` guard reads. The role changes happen in
- * the disposable fixture database only; focus causes the mounted entitlement
- * query to refresh without a browser reload.
+ * Drives a real non-owner browser session through the equal-rights rule the
+ * server's `requireProjectModifier` guard enforces: any member of a project —
+ * whatever `ProjectMember.role` says — gets the project's controls, and losing
+ * the membership takes them away. The membership changes happen in the
+ * disposable fixture database only.
  */
 export const exerciseProjectAdministrationPermissions = async ({
   adminUrl,
@@ -81,14 +77,11 @@ export const exerciseProjectAdministrationPermissions = async ({
   })
   let context
   try {
-    const prisma = new PrismaClient()
-    try {
-      await prisma.projectMember.create({
-        data: { projectId: project.id, role: 'viewer', userId: user.id },
-      })
-    } finally {
-      await prisma.$disconnect()
-    }
+    // The lowest project role there is. It used to hide every shape control;
+    // under the model it is simply a member, with the creator's rights.
+    await withPrisma((prisma) => prisma.projectMember.create({
+      data: { projectId: project.id, role: 'viewer', userId: user.id },
+    }))
     const session = await api('/api/auth/session', {
       body: { email, password }, method: 'POST',
     })
@@ -99,22 +92,6 @@ export const exerciseProjectAdministrationPermissions = async ({
       await page.goto(`${adminUrl}/projects/${project.id}/board`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-kanban-board-viewport]').waitFor()
       const boardControls = permissionControls(page)
-      await boardControls.configure.waitFor({ state: 'hidden' })
-
-      await page.goto(`${adminUrl}/projects/${project.id}/backlog`, { waitUntil: 'domcontentloaded' })
-      await page.getByRole('heading', { name: 'Sprints', exact: true }).waitFor()
-      const backlogControls = permissionControls(page)
-      await backlogControls.addSprint.waitFor({ state: 'hidden' })
-
-      // A project owner who is only an organisation member gets the same
-      // board/sprint controls as an organisation owner, without reloading.
-      await setProjectRole(project.id, user.id, 'owner')
-      await refreshPermission(page)
-      await waitFor(
-        () => backlogControls.addSprint.isVisible(),
-        'a promoted project owner did not receive the sprint control',
-      )
-      await page.goto(`${adminUrl}/projects/${project.id}/board`, { waitUntil: 'domcontentloaded' })
       await boardControls.configure.waitFor()
       await boardControls.configure.click()
       await page.getByRole('menuitem', { name: 'New board…', exact: true }).click()
@@ -123,44 +100,42 @@ export const exerciseProjectAdministrationPermissions = async ({
       await boardDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
       await boardDialog.waitFor({ state: 'hidden' })
 
-      // An admin receives the same lifecycle controls. Creating through the UI
-      // proves the client gate and the route agree for a non-owner.
-      await setProjectRole(project.id, user.id, 'admin')
+      // Creating through the UI proves the client gate and the route agree for
+      // a plain project member who is only an organisation member.
       await page.goto(`${adminUrl}/projects/${project.id}/backlog`, { waitUntil: 'domcontentloaded' })
-      await refreshPermission(page)
-      await waitFor(
-        () => backlogControls.addSprint.isVisible(),
-        'a promoted project admin did not receive the sprint control',
-      )
+      await page.getByRole('heading', { name: 'Sprints', exact: true }).waitFor()
+      const backlogControls = permissionControls(page)
+      await backlogControls.addSprint.waitFor()
       const sprintName = `Permission sprint ${runId}`
       await page.getByLabel('Sprint name').fill(sprintName)
       await backlogControls.addSprint.click()
       await waitFor(
         async () => (await api(`/api/projects/${project.id}/iterations`, { token: session.token }))
           .some((iteration) => iteration.name === sprintName),
-        'a project admin could not create a sprint',
+        'a plain project member could not create a sprint',
       )
       const start = page.getByRole('button', { name: 'Start', exact: true })
       await start.waitFor()
       await shot(page, 'desktop-project-administration-permissions')
 
-      // Keep the old control mounted, revoke the role, and press it. The real
-      // 403 must invalidate the shared entitlement query, hiding all shape
-      // controls while the read-only backlog remains on screen.
-      await setProjectRole(project.id, user.id, 'viewer')
+      // Keep the old control mounted, remove the membership, and press it. The
+      // person can no longer see the project, so the server answers 404; that
+      // refusal must invalidate the shared entitlement query and hide the
+      // controls rather than leave a button every click of which fails.
+      await withPrisma((prisma) => prisma.projectMember.delete({
+        where: { projectId_userId: { projectId: project.id, userId: user.id } },
+      }))
       const refusal = page.waitForResponse((response) =>
         response.request().method() === 'PATCH'
         && /\/api\/iterations\//u.test(new URL(response.url()).pathname),
       )
       await start.click()
-      assert.equal((await refusal).status(), 403, 'revoked project admin action reaches the server and is refused')
+      assert.equal((await refusal).status(), 404, 'a removed member reaches the server and is refused')
+      await refreshPermission(page)
       await waitFor(
         async () => !(await backlogControls.addSprint.isVisible()),
-        'a server 403 did not remove the stale sprint control',
+        'a server refusal did not remove the stale sprint control',
       )
-      await boardControls.configure.waitFor({ state: 'hidden' })
-      await page.locator('span.font-semibold').filter({ hasText: sprintName }).waitFor()
-      assert.equal(await page.getByRole('button', { name: 'Start', exact: true }).count(), 0)
     } finally {
       await memberPage.close()
     }

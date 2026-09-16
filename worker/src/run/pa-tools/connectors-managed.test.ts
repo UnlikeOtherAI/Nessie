@@ -82,7 +82,7 @@ test('connector_uninstall leaves integration-managed DeepWater to its team toggl
     instanceId: INSTANCE_ID,
   })
 
-  assert.match(result.outputPreview, /managed from Integrations/)
+  assert.match(result.outputPreview, /managed by its product/)
   assert.deepEqual(mutations, {
     instanceDelete: 0,
     registryDelete: 0,

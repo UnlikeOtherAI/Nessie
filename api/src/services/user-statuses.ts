@@ -201,7 +201,7 @@ const validateRuleTargets = async (
       : null,
     input.projectId
       ? prisma.project.findFirst({
-          where: { id: input.projectId, organizationId: owner.organizationId },
+          where: { id: input.projectId, organizationId: owner.organizationId, deletedAt: null },
           select: { id: true },
         })
       : null,

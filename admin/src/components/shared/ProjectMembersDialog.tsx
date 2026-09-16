@@ -18,14 +18,19 @@ import { useUserMemberFilters } from './channel-members/useMemberFilters'
 
 type ProjectMembersDialogProps = {
   project: ProjectRecord
-  isOwner: boolean
+  /**
+   * `useCanModifyProject` — any member of the project, or an organisation owner
+   * or admin. Gates the add and remove controls; the list itself is readable by
+   * everyone who can open the project.
+   */
+  canManage: boolean
   onClose: () => void
 }
 
-export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembersDialogProps) => {
+export const ProjectMembersDialog = ({ project, canManage, onClose }: ProjectMembersDialogProps) => {
   const { me } = useAuthSession()
   const { data: members = [] } = useProjectMembers(project.id)
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const addMember = useAddProjectMember()
   const removeMember = useRemoveProjectMember()
   const [search, setSearch] = useState('')
@@ -39,7 +44,10 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
     members: memberUsers,
     search,
   })
-  const hasAvailable = isOwner && availableUsers.length > 0
+  const hasAvailable = canManage && availableUsers.length > 0
+  // A refused add or remove (a team-mirrored project, a person who is no
+  // longer in the organisation) is said here rather than dropped silently.
+  const mutationError = addMember.error ?? removeMember.error
 
   return (
     <MemberManagementPopup
@@ -49,12 +57,18 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
       search={search}
       totalMembers={members.length}
     >
+      {mutationError ? (
+        <div className="px-3 py-2 text-sm text-[color:var(--danger-text)]" role="alert">
+          {mutationError instanceof Error ? mutationError.message : 'That change could not be made.'}
+        </div>
+      ) : null}
+
       {filteredUsers.length > 0 ? (
         <div>
           <div className={sectionHeadingClass}>In this project</div>
           {filteredUsers.map((user) => (
             <CurrentUserRow
-              canRemove={isOwner}
+              canRemove={canManage}
               currentUserId={me?.user.id ?? ''}
               key={user.id}
               onRemove={(userId) => removeMember.mutate({ projectId: project.id, userId })}

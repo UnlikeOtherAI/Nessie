@@ -25,11 +25,24 @@ summary and points here; **this file is the rule**.
   an existing person.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](../plans/2026-06-10-design-system-theming.md).
+  The id is also listed in `admin/index.html` (first paint), `theme-storage.ts`,
+  `UserPreferencesSchema` in `@nessie/schemas`, and `SsoThemeSchema` +
+  `UOA_SIGN_IN_THEMES` in the API, which hand the hosted sign-in page concrete
+  colours.
+- **The default theme is `nessie`** (`DEFAULT_THEME`, `theme-resolution.ts`):
+  the icon's navy (`#0b172a`) for the top bar and rail, a lighter violet-leaning
+  navy (`#232646`) for the sidebars, and a white work surface. The text tokens are global — the sidebar draws `--tx` on `--sb`
+  — so a theme whose chrome and surface differ in lightness cannot be one
+  block. Its `[data-theme="nessie"]` block holds the surface's tokens, and a
+  `:where([data-theme="nessie"])` rule beside focus mode re-scopes the navy
+  tokens onto the chrome elements. `:where()` keeps that rule at focus mode's
+  specificity, and focus mode is declared after it, so focus mode still wins.
+  Overlays render outside the shell and take the surface palette.
 - **One theme is data, not CSS: the organisation's own.** An organisation
   administrator authors a palette on `/settings/organization?tab=appearance`; it
   appears as one more card on the per-user Colours panel, labelled with the
   organisation's name, and is the default for anyone who has not chosen. It is
-  **colours only** — type, radii, spacing, motion and `--aura-wash` are `:root`
+  **colours only** — type, radii, spacing and motion are `:root`
   in `styles.css` and are not authorable, which the `.strict()` four-field seed
   schema enforces at the wire. The admin authors four seeds
   (appearance, accent, surface, optional sidebar) and `@nessie/schemas`
@@ -137,6 +150,21 @@ summary and points here; **this file is the rule**.
   `GET /api/agents` omits `systemManaged` agents — which is why the Personal
   Assistant was a portrait in the sidebar and a `⚡` in the thread panel; see
   [identity avatars](../plans/2026-09-02-identity-avatars.md).
+- **One actor name, and it is never an id.** The two governance surfaces —
+  `/approvals` ("which agent is asking") and `/audit` ("which agent did this")
+  — name their actor through `components/shared/ActorName.tsx`
+  (`useActorNames` + `<ActorName>`), which resolves an agent through
+  `providers/AgentIdentityProvider.tsx` for the reason above and a person
+  through the `users` directory. Both screens used to print eight characters of
+  a uuid (`Agent: a0000000`, `agent:a0000000 → email_message`) while the
+  roster, the agents table, the channel agent panel and the chat feed all
+  showed the name, which defeats the one question each screen exists to
+  answer. Three rules travel with the component: the kind word (`person`,
+  `agent`, `service`, `system`) is always printed beside the name, because a
+  name alone cannot tell the person who approved something from the agent that
+  asked; an actor no directory can name falls back to its short id, never to a
+  blank or a generic "Agent"; and the exact id stays on the element's `title`
+  either way, since the trail's value is being able to identify the exact row.
 - **One agent-visibility marker wherever identity drives an action.** Every
   agent picker and actionable agent row uses
   `components/shared/AgentVisibilityPill.tsx`: `Shared` for an agent that
@@ -179,14 +207,25 @@ summary and points here; **this file is the rule**.
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never
   the page.
-- **One sign-in surface.** The admin login (`/login`) and the public landing
-  (`nessie.works`) are the same screen: `packages/sign-in-surface` owns the
-  layout (`SignInSurface`), the showcase panel, the app-download tiles and
-  the shared copy, and ships only `.signin-*` classes that read host tokens.
-  The admin supplies its themes; the landing imports the package's
-  `tokens.css`, which owns the doorway palette for that themeless host. A
-  change to the sign-in doorway is made in the package, never by restyling
-  one host.
+- **One sign-in surface, and it is the homepage's doorway.** The admin login
+  (`/login`) and the public landing (`nessie.works`) are the same screen:
+  `packages/sign-in-surface` owns the layout (`SignInSurface`), the showcase
+  panel, the app-download tiles and the shared copy, and ships only
+  `.signin-*` classes that read host tokens. The admin supplies its themes;
+  the landing imports the package's `tokens.css`, which owns the doorway
+  palette for that themeless host — the marketing site's deep-water values, so
+  the doorway and the pages behind it are one design. A change to the sign-in
+  doorway is made in the package, never by restyling one host.
+  The surface is the marketing homepage's hero, not a floating card: a brand
+  bar in `--ink` carrying the mark and the wordmark, the site's water edge
+  hanging off it, then a full-bleed hero that runs from `--panel` into a soft
+  `--accent` wash, with the copy and controls left-aligned and the showcase
+  band on the right from `lg` up. Its display face is Geist, self-hosted by the
+  package (`@fontsource-variable/geist`) so the doorway does not depend on a
+  host's theme fonts. The showcase band is `--signin-stage` — the icon's navy
+  in every theme — and everything drawn on its white thread card takes its
+  colour from the card (`currentColor`), never from the host's text tokens,
+  which on a dark theme left pale type on white.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
   minted on the admin origin, so the landing hands off and the admin starts
   the provider flow at once.

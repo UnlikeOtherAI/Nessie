@@ -15,6 +15,56 @@ reconciled from every verified UOA `/org/me` read, follow the user's current
 local organisation for bell visibility, and are deleted—not read-marked—when
 UOA no longer returns the invite or acceptance succeeds.
 
+## Who a mention can address
+
+**Anyone active in the organisation can be @mentioned; only somebody who can
+read the room is ever notified.** Candidates are people with an active
+`OrganizationMember` row — they accepted their invitation and have a Nessie
+principal. A UOA roster entry with no local user, a pending invitation and a
+deactivated member are never candidates, in the composer or on the server.
+
+- **The composer offers everyone.** `useChannelParticipants` hands
+  `useChannelMentions` the whole active directory (`mentionableUsers`, from
+  `GET /api/users`), not the room's participants.
+- **The server resolves against the room's audience.** `resolveMessageMentions`
+  matches against the channel's members plus, for an **open** channel,
+  `listOpenChannelMentionCandidates` — every active organisation member.
+  `isOpenMentionChannel` (`@nessie/runtime`) is the one definition: public, not
+  a DM, not a system conversation. The API's message create and the worker's
+  agent-authored `createMessageMentionAlerts` both use it, so a person and an
+  agent address exactly the same people.
+- **A private or protected channel addresses members only.** A non-member named
+  there is not in `metadata.mentions.userIds`, so they get no `UserAlert` row,
+  no reply-thread follow, no `alert.created`, and — because push recipients are
+  channel members and the job's `mentionUserIds` never names them — no push and
+  no content snippet. `visibleUserAlertWhere` enforces the same rule on read: a
+  `mention` row surfaces only while its recipient is a member of the channel or
+  the channel is open, so even a stray row stays hidden.
+- **An open channel rings a non-member.** `handlePushDispatch` adds the active
+  organisation members in `mentionUserIds` who never joined an open channel,
+  framed as a mention; a private channel never widens its recipients.
+- **Invite before sending.** Before a draft that @mentions people is posted in
+  a standard channel, the composer (`useMentionInviteGate`) asks
+  `GET /api/channels/:channelId/mention-audience?userIds=…` which of them cannot
+  read the room (`resolveChannelMentionAudience`). The server answers: an open
+  channel, a DM and a system conversation have no outsiders (no prompt — DM
+  membership is fixed); a private or protected channel's outsiders are the
+  named active members with no `ChannelMember` row; an unknown id is dropped,
+  and a reader who cannot see the channel gets `404 CHANNEL_NOT_FOUND`.
+  `viewerCanAddMembers` is `canModifyChannel`, the gate
+  `POST /api/channels/:channelId/members` applies, so the dialog never offers
+  an invite the write would refuse — it says so and offers only "Send without
+  inviting". **Invite and send** adds each person through that member write,
+  then posts; **Send without inviting** posts unchanged; **Cancel** puts the
+  draft back. Project membership plays no part: a channel's readers are decided
+  by its visibility and membership alone (`getVisibleChannel`).
+
+Coverage: `api/test/org-wide-mentions-postgres.test.ts`,
+`worker/test/mention-alerts.test.ts`, `worker/test/push-dispatch.test.ts`,
+`admin/test/org-wide-mentions.test.ts`.
+
+## Team invitations
+
 A `team_invitation` row's `organizationId` is the **bell it appears in**, never
 the invitation's own organisation. An invitation routinely arrives from an
 organisation the recipient does not belong to yet, and `visibleUserAlertWhere`

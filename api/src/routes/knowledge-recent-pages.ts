@@ -22,7 +22,7 @@ export const registerKnowledgeRecentPagesRoutes = (
   deps: KnowledgeRouteDeps,
 ): void => {
   const { requireActorContext, isProjectAccessibleToActor } = deps
-  const { provider, buildViewer } = createKnowledgeAccess(deps)
+  const { provider, buildViewer, buildDisclosureViewer, filterReadablePages } = createKnowledgeAccess(deps)
 
   app.get('/api/knowledge-base/recent-pages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -45,11 +45,20 @@ export const registerKnowledgeRecentPagesRoutes = (
     }
     const viewer = await buildViewer(actorContext)
     const data = await provider.listRecentPages({
+      disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
       organizationId: actorContext.tenant.organizationId,
       projectId: query.projectId,
       limit: query.limit,
       viewer,
     })
-    return createApiResponse(data)
+    // The provider's compact recency projection has only title metadata. Load
+    // the bounded result set through the shared version reader before exposing
+    // those titles; space membership alone is not sufficient for a
+    // private-derived version.
+    const pages = (await Promise.all(data.map((row) =>
+      provider.getPage(actorContext.tenant.organizationId, row.id))))
+      .filter((page): page is NonNullable<typeof page> => page !== null)
+    const readable = new Set((await filterReadablePages(viewer, pages)).map((page) => page.id))
+    return createApiResponse(data.filter((row) => readable.has(row.id)))
   })
 }

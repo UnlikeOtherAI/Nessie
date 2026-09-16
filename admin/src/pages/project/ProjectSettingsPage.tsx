@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useCanAdministerProject } from '../../facades/projects/administration'
+import { useCanModifyProject } from '../../facades/projects/administration'
 import { FormError, FormSuccess } from '../../components/shared/FormActions'
 import { PageBody } from '../../components/shared/PageBody'
 import { useConsumedIntents } from '../../navigation/intent'
@@ -46,7 +46,7 @@ const ProjectSettingsContent = ({
   section: (typeof SECTIONS)[number]
   selectSection: (section: (typeof SECTIONS)[number]) => void
 }) => {
-  const canAdminister = useCanAdministerProject(projectId)
+  const canModify = useCanModifyProject(projectId)
   const [selectedSourceId, selectSource] = useTabParam('source', [] as string[], '')
   const intents = useConsumedIntents(PROJECT_SETTINGS_INTENTS)
   const startWithConnect = Boolean(intents.values.connect)
@@ -71,9 +71,9 @@ const ProjectSettingsContent = ({
         <FormSuccess>{saveState.status === 'success' ? 'Saved.' : undefined}</FormSuccess>
         <FormError>{saveState.status === 'error' ? saveState.message : undefined}</FormError>
 
-        {!canAdminister ? (
+        {!canModify ? (
           <p className="text-sm text-[color:var(--tx3)]">
-            Only project administrators can change project settings.
+            Only members of this project, or an organisation owner or admin, can change its settings.
           </p>
         ) : null}
 
@@ -92,7 +92,7 @@ const ProjectSettingsContent = ({
 
         {section === 'sources' ? (
           <SourcesSettingsSection
-            canAdminister={canAdminister}
+            canAdminister={canModify}
             onSaveError={(message) => setSaveState({ status: 'error', message })}
             onSaved={() => setSaveState({ status: 'success' })}
             onSelectSource={selectSource}
@@ -102,7 +102,7 @@ const ProjectSettingsContent = ({
           />
         ) : (
           <FieldsSettingsSection
-            canAdminister={canAdminister}
+            canAdminister={canModify}
             onSaveError={(message) => setSaveState({ status: 'error', message })}
             onSaved={() => setSaveState({ status: 'success' })}
             projectId={projectId}

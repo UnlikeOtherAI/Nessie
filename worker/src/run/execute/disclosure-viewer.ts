@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   resolveDisclosureViewer as resolveRuntimeDisclosureViewer,
+  type LiveEntitlements,
   type DisclosureViewer,
 } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
@@ -26,6 +27,7 @@ export const resolveDisclosureViewer = async (
   prisma: PrismaClient,
   payload: RunExecuteJobPayload,
   organizationId: string,
+  liveEntitlements?: LiveEntitlements,
 ): Promise<DisclosureViewer> => {
   const effectiveUserId =
     payload.actorContext.actionContext.effectiveUserId
@@ -40,5 +42,6 @@ export const resolveDisclosureViewer = async (
         : payload.actorContext.actionContext.agentId
     ),
     uoaIdentity: payload.actorContext.actionContext.uoaIdentity,
+    liveEntitlements,
   })
 }

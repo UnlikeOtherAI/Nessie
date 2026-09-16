@@ -1,7 +1,12 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
-import { AddChannelMemberBodySchema } from '../contracts/team.js'
-import { parseInput, sendApiError } from '../lib/api.js'
+import {
+  AddChannelMemberBodySchema,
+  ChannelMentionAudienceRecordSchema,
+  ChannelMentionAudienceUserIdsSchema,
+} from '../contracts/team.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { resolveChannelMentionAudience } from '../services/channel-mention-audience.js'
 import {
   addMemberToChannel,
   removeMemberFromChannel,
@@ -45,7 +50,7 @@ const sendChannelMemberRefusal = (
         reply,
         403,
         'CHANNEL_FORBIDDEN',
-        'Only a channel, team or organisation administrator can change who is in this channel.',
+        'Only a member of this channel, or an organisation owner or admin, can change who is in it.',
       )
       return
     case 'target_not_in_organization':
@@ -61,14 +66,14 @@ const sendChannelMemberRefusal = (
 /**
  * Who is in a channel. Registered by `registerChannelRoutes` beside the
  * channel's own lifecycle, kept in its own module because the authorization
- * these two writes take — `canManageChannel`, with a carve-out for leaving —
+ * these two writes take — `canModifyChannel`, with a carve-out for leaving —
  * is the channel surface's one genuinely distinct decision.
  */
 export const registerChannelMemberRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext } = deps
 
   // Adding somebody to a channel hands them its whole history, so the gate is
-  // `canManageChannel` — the same one rename and archive take.
+  // `canModifyChannel` — the same one rename and archive take.
   app.post('/api/channels/:channelId/members', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -90,6 +95,40 @@ export const registerChannelMemberRoutes = (app: FastifyInstance, deps: RouteDep
       return reply
     }
     return reply.code(204).send()
+  })
+
+  // Asked before a send: which of the people a draft @mentions cannot read this
+  // channel, and whether the author may add them. Read-only; the invite itself
+  // is the member write above.
+  app.get('/api/channels/:channelId/mention-audience', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const raw = (request.query as { userIds?: unknown }).userIds
+    const userIds = parseInput(
+      ChannelMentionAudienceUserIdsSchema,
+      typeof raw === 'string'
+        ? [...new Set(raw.split(',').map((id) => id.trim()).filter(Boolean))]
+        : raw,
+      reply,
+      'query',
+    )
+    if (!userIds) {
+      return reply
+    }
+
+    const result = await resolveChannelMentionAudience(prisma, actorContext, {
+      channelId,
+      userIds,
+    })
+    if (result.kind === 'channel_not_found') {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    return reply.send(createApiResponse(ChannelMentionAudienceRecordSchema.parse(result.audience)))
   })
 
   // Same gate as the add path, with one carve-out: a person may always remove

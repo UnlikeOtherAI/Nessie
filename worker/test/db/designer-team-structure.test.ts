@@ -260,7 +260,7 @@ runDatabaseTest('the Designer stands up a project and a channel in its team', as
   ])
 })
 
-runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) => {
+runDatabaseTest('a plain member creates a project and a channel in it; team_create stays owner-only', async (t) => {
   const prisma = new PrismaClient()
   const team = await seed(prisma)
   t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
@@ -273,21 +273,25 @@ runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) 
     where: { project: { organizationId: team.organizationId } },
   })
 
-  const projectRefusal = await refusal(
-    runProjectCreateTool(context, { name: 'Marketing', teamId: team.teamId }),
+  // Any organisation member creates a project in a team they are in, and is its
+  // only member (`createProjectForUser`, the same function `POST /api/projects`
+  // calls).
+  const projectResult = await runProjectCreateTool(context, { name: 'Marketing', teamId: team.teamId })
+  const memberProjectId = idFrom(projectResult.outputPreview, 'projectId')
+  assert.deepEqual(
+    await prisma.projectMember.findMany({ where: { projectId: memberProjectId }, select: { userId: true } }),
+    [{ userId: team.memberId }],
   )
-  assert.match(projectRefusal, /Only an organisation owner can create a project/)
-  assert.match(projectRefusal, /Ask an owner/)
+  assert.equal(
+    await prisma.project.count({ where: { organizationId: team.organizationId } }),
+    projectsBefore + 1,
+  )
 
+  // Creating a team is still an organisation-owner action.
   const teamRefusal = await refusal(
     runTeamCreateTool(context, { name: 'Campaigns', projectId: team.projectId }),
   )
   assert.match(teamRefusal, /Only an organisation owner can create a team/)
-
-  assert.equal(
-    await prisma.project.count({ where: { organizationId: team.organizationId } }),
-    projectsBefore,
-  )
   assert.equal(
     await prisma.team.count({
       where: { project: { organizationId: team.organizationId } },
@@ -295,14 +299,12 @@ runDatabaseTest('a non-owner is refused in words and writes nothing', async (t) 
     teamsBefore,
   )
 
-  // `channel_create` is deliberately NOT owner-gated: `POST /api/channels`
-  // carries only `requireActorContext` plus standing in the target team
-  // (`canPlaceChannelInTeam`), and a tool mirrors its route exactly — no
-  // weaker, no stronger. `member` holds a `TeamMember` row on `team.teamId`
-  // (seeded above), which is exactly the standing the route requires.
+  // `channel_create` mirrors `POST /api/channels`: standing in the team, and —
+  // because adding a room changes the project — membership of the project
+  // (`canModifyProject`). The member's own new project satisfies both.
   const channelResult = await runChannelCreateTool(context, {
     label: 'Member room',
-    projectId: team.projectId,
+    projectId: memberProjectId,
     teamId: team.teamId,
   })
   const channelId = idFrom(channelResult.outputPreview, 'channelId')
@@ -336,7 +338,8 @@ runDatabaseTest('channel_create refuses a team the caller has no standing in', a
       teamId: strangeTeam.id,
     }),
   )
-  assert.match(message, /not a member of that team/)
+  // Refused on the project first: `member` is in neither the project nor the team.
+  assert.match(message, /not a member of that (project|team)/)
 
   assert.equal(
     await prisma.channel.count({ where: { teamId: strangeTeam.id } }),

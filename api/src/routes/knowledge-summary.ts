@@ -32,7 +32,7 @@ export const registerKnowledgeSummaryRoutes = (
   deps: KnowledgeRouteDeps,
 ): void => {
   const { prisma, requireActorContext } = deps
-  const { provider, buildViewer } = createKnowledgeAccess(deps)
+  const { provider, buildViewer, buildDisclosureViewer, filterReadablePages } = createKnowledgeAccess(deps)
 
   app.post('/api/knowledge-base/search-summary', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -71,6 +71,7 @@ export const registerKnowledgeSummaryRoutes = (
       }),
     )
     const result = await hybridSearch({
+      disclosureViewer: buildDisclosureViewer(viewer) ?? undefined,
       organizationId,
       query,
       queryEmbedding,
@@ -82,11 +83,17 @@ export const registerKnowledgeSummaryRoutes = (
       limit: body.limit,
     })
 
-    if (result.data.length === 0) {
+    const readablePageIds = new Set((await filterReadablePages(
+      viewer,
+      result.data.map((hit) => hit.page),
+    )).map((page) => page.id))
+    const readableHits = result.data.filter((hit) => readablePageIds.has(hit.page.id))
+
+    if (readableHits.length === 0) {
       return createApiResponse(noMatchesResponse(trace))
     }
 
-    const passages = buildSummaryPassages(result.data)
+    const passages = buildSummaryPassages(readableHits)
     if (passages.length === 0) {
       return createApiResponse(noMatchesResponse(trace))
     }
@@ -104,7 +111,7 @@ export const registerKnowledgeSummaryRoutes = (
       return reply
     }
 
-    const hitByPageId = new Map(result.data.map((hit) => [hit.page.id, hit]))
+    const hitByPageId = new Map(readableHits.map((hit) => [hit.page.id, hit]))
     const citations = synthesis.citations.map((citation) => {
       const hit = hitByPageId.get(citation.pageId)
       return {

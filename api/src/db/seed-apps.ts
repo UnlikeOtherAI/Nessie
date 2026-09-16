@@ -64,7 +64,7 @@ const APP_LISTINGS: AppListing[] = [
     name: 'deep-water',
     productSlug: 'deep-water',
     slug: 'deep-water',
-    // 'Deep Water' is the name the Integrations page, the product row, and the
+    // 'Deep Water' is the name the product row, and the
     // plugin manifest all use; the store must not be the one surface that
     // renames it.
     displayName: 'Deep Water',

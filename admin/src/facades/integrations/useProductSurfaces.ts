@@ -29,7 +29,7 @@ export type ProductSurfaceRegistry = {
 // Evaluate a surface's `requires` against the live product record. Every clause
 // is ANDed; an omitted clause is not checked. This is the single gate that
 // makes a surface appear only for an activated product.
-export const meetsRequirements = (
+const meetsRequirements = (
   product: IntegratedProductResponse,
   requires: ProductSurfaceRequirement,
 ): boolean => {

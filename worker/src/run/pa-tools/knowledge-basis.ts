@@ -1,7 +1,11 @@
 import { scopeForVisibility } from '@nessie/memory'
-import type { KnowledgeSpaceRecord } from '@nessie/knowledge'
+import type { KnowledgePageVersionRecord, KnowledgeSpaceRecord } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
-import { subtractImpliedScopes, type BasisScope } from '../execute/disclosure-basis.js'
+import {
+  subtractImpliedScopes,
+  type BasisScope,
+  type PrivateConversationSource,
+} from '../execute/disclosure-basis.js'
 
 // The database default for `KnowledgeSpace.visibility`. The record type makes
 // the field optional, so a space that did not project it is treated as what the
@@ -97,3 +101,32 @@ export const sourcesOutsideAgentDocumentAudience = (
       { scopeId: audience.organizationId, scopeType: 'organization' },
     ],
   )
+
+/**
+ * A document version is retained output, so it receives every source the run
+ * has actually admitted. The version reader intersects these rows with the
+ * document-home entitlement; keeping the source boundary here means a draft
+ * cannot become a private-conversation disclosure bypass.
+ */
+export const versionDisclosureFromConsumedSources = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+): { basisScopes: BasisScope[]; disclosureSources: PrivateConversationSource[] } => ({
+  basisScopes: context.consumedSources?.list() ?? [],
+  disclosureSources: context.consumedSources?.privateConversationSources() ?? [],
+})
+
+/**
+ * A document's page-home scope alone is insufficient once a version retains
+ * material from a narrower source. Record the version's exact basis and
+ * original private conversation authors as soon as its body, title, or
+ * snippet reaches the model, so a later draft inherits that boundary.
+ */
+export const recordKnowledgeVersionRead = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  version: Pick<KnowledgePageVersionRecord, 'basisScopes' | 'disclosureSources'>,
+): void => {
+  const sink = context.consumedSources
+  if (!sink) return
+  for (const scope of version.basisScopes) sink.add(scope)
+  for (const source of version.disclosureSources) sink.addPrivateConversationSource(source)
+}

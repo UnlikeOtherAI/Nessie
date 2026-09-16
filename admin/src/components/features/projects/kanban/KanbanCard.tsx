@@ -203,7 +203,7 @@ export const KanbanCard = ({
       className={[
         view === 'lines' ? `${LINE_CLASS} pr-12` : `${CARD_CLASS} pr-12`,
         isDragging ? '[&>*]:invisible' : '',
-        pulse ? 'kanban-card-pulse' : '',
+        pulse ? 'admin-attention-pulse' : '',
       ].join(' ')}
       onAnimationEnd={pulse ? onPulseEnd : undefined}
       onClick={handleClick}

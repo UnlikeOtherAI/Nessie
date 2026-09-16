@@ -92,6 +92,18 @@ export const createServerContext = () => {
     .replace(/^\.+|\.+$/g, '') || undefined
 
   /**
+   * The public landing's exact origins, e.g. `https://nessie.works` and
+   * `https://www.nessie.works` (`NESSIE_LANDING_ORIGIN`, validated by
+   * `loadConfig`).
+   *
+   * Admitted by `GET /api/auth/landing-teams` and by nothing else: they are
+   * deliberately NOT added to `allowedCorsOrigins`, so the landing can read
+   * its one signed-in answer without becoming an origin that may call the rest
+   * of the API with credentials. Empty means the landing shows no team list.
+   */
+  const landingOrigins: ReadonlySet<string> = new Set(config.api.landingOrigins)
+
+  /**
    * Shared secret the edge presents when asking whether a hostname may be
    * issued a certificate (`GET /api/hosts/tls-check`).
    *
@@ -366,24 +378,25 @@ export const createServerContext = () => {
   const requestHelpers = createRequestHelpers(prisma)
 
   /**
-   * Guard for changing a project's *shape* — its boards, columns, custom
-   * fields and data sources. An organisation owner passes, and so does
-   * somebody the project itself records as its owner or admin.
+   * Guard for changing a project — its name and avatar, its members, its
+   * lifecycle, and its shape (boards, columns, custom fields, data sources,
+   * iterations, watchers). Any member of the project passes, whatever their
+   * `ProjectMember.role`, and so does an organisation owner or admin who is
+   * not a member (`canModifyProject` in `@nessie/team-admin`).
    *
-   * Board mutations were owner-only while a project had one board of four
-   * columns; with many boards per project that is unworkable, and
-   * `ProjectMember.role` is Nessie-owned data (a project has no UOA
-   * counterpart), so gating on it adds no second identity authority.
+   * A refusal is a 404 `PROJECT_NOT_FOUND`: under the model the people who may
+   * change a project are exactly the people who may read it, so a caller who
+   * fails here cannot see the project and must not learn that it exists.
    */
-  const requireProjectAdmin = async (
+  const requireProjectModifier = async (
     actorContext: AuthorizedActionContext,
     projectId: string,
     reply: FastifyReply,
   ): Promise<boolean> => {
-    if (await requestHelpers.canActorAdministerProject(actorContext, projectId)) {
+    if (await requestHelpers.canActorModifyProject(actorContext, projectId)) {
       return true
     }
-    sendApiError(reply, 403, 'FORBIDDEN', 'Project administrator access required')
+    sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
     return false
   }
 
@@ -394,6 +407,7 @@ export const createServerContext = () => {
     authSecret,
     encryptionKeyRing,
     allowedCorsOrigins,
+    landingOrigins,
     teamHostBaseDomain,
     tlsCheckKey,
     DEFAULT_LOCAL_PROVIDER_TYPE,
@@ -422,7 +436,7 @@ export const createServerContext = () => {
     rateLimiter,
     disconnectPrismaClient,
     ...requestHelpers,
-    requireProjectAdmin,
+    requireProjectModifier,
   }
 }
 

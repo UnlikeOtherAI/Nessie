@@ -8,6 +8,7 @@ import {
   ensureTaskFolder,
   mapPage,
   pageInclude,
+  readableKnowledgePageVersionsWhere,
   type KnowledgePageRecord,
   type TaskFolderTask,
 } from '@nessie/knowledge'
@@ -50,7 +51,7 @@ export const registerKnowledgeTaskRoutes = (
   deps: KnowledgeRouteDeps,
 ): void => {
   const { prisma, requireActorContext, fileService } = deps
-  const { provider, buildViewer, accessSpace } = createKnowledgeAccess(deps)
+  const { provider, buildViewer, buildDisclosureViewer, accessSpace } = createKnowledgeAccess(deps)
 
   // ─── Provision the caller's personal "My Docs" space ──────────────────────
   app.post('/api/knowledge-base/my-docs', async (request, reply) => {
@@ -159,6 +160,8 @@ export const registerKnowledgeTaskRoutes = (
     const team = await resolveTicketTeam(request, reply, actorContext, taskId, 'read')
     if (!team) return reply
 
+    const viewer = await buildViewer(actorContext)
+    const disclosureViewer = buildDisclosureViewer(viewer)
     const pages = await prisma.knowledgePage.findMany({
       where: {
         taskId,
@@ -166,6 +169,7 @@ export const registerKnowledgeTaskRoutes = (
         projectId: team.projectId,
         spaceId: team.docsSpaceId,
         deletedAt: null,
+        ...readableKnowledgePageVersionsWhere(disclosureViewer ?? undefined),
         status: { not: 'archived' },
       },
       include: pageInclude,

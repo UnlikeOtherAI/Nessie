@@ -1,7 +1,7 @@
 # Architecture audit — structure, naming, layering (2026-08-13)
 
 Status: **complete — primary audit, all six area passes, and both external
-reviews (Kimix, Codex Sol) folded in and verified** (Appendix A). No code was
+reviews (reviewer B, Codex Sol) folded in and verified** (Appendix A). No code was
 changed; this document is the deliverable.
 
 Scope: every workspace (`api`, `admin`, `web`, `worker`, `cli`, `mobile`,
@@ -15,7 +15,7 @@ buckets; shared rules in the smallest owning package; egress IP-pinned via
 Method: direct inspection at `eab4622c` (Sol addendum verified at
 `bde3b1cc`); six parallel area subagents (api, worker, admin,
 packages/dependency-graph, peripheral/hygiene, docs-drift); two independent
-external reviewers on a shared brief (Kimix, Codex Sol). Every high-severity
+external reviewers on a shared brief (reviewer B, Codex Sol). Every high-severity
 claim below was re-verified against the working tree before acceptance;
 reviewer disagreements are recorded in Appendix A rather than silently
 resolved. Sol's deeper security-boundary findings are in the Addendum before
@@ -54,7 +54,7 @@ already exist.**
 
 ### 2. Login-flow egress sits outside the pinned-egress chokepoint
 
-**Evidence (flagged by Kimix; confirmed by direct inspection).** The repo's
+**Evidence (flagged by reviewer B; confirmed by direct inspection).** The repo's
 headline egress rule is `safeFetch`/`pinnedFetch` for any operator- or
 caller-influenced address, because validate-then-`fetch` leaves a
 DNS-rebinding window. The rule is honored on the model/tool/MCP surface
@@ -457,7 +457,7 @@ framing: "the first four should block a production security sign-off."
   dials raw global `fetch` (fresh DNS, follows redirects) — rebind/redirect
   SSRF from the worker on member-registered endpoints. *Fix:* pinned fetch at
   the socket boundary, `maxRedirects: 0`. (High; medium.) *(Corrects the
-  Kimix-era "Web Push is handled correctly" note in "notably healthy," which
+  earlier "Web Push is handled correctly" note in "notably healthy," which
   described the validation but not the dial.)*
 - **S9 — Targeted session revocation leaves access JWTs live.** "Revoke
   session" and password change revoke refresh families only
@@ -546,7 +546,7 @@ designed in `docs/plans/2026-08-11-unsurfaced-capabilities.md`).
   `@nessie/x/src` imports (outside the two test files in finding 11); uniform
   tsconfig/NodeNext/composite discipline; the comms and mcp package families
   are textbook layering. Confirmed independently by the packages pass and
-  Kimix.
+  reviewer B.
 - **Credential-at-rest crypto is centralized:** one AES-256-GCM primitive set
   (`runtime/src/secret-crypto.ts`) reused by every store — no duplication.
   FCM/APNs egress is pinned (`safeFcmFetch`, fixed APNs host); Web Push
@@ -607,7 +607,7 @@ refactor (4) and the `document_read`/GCP decisions (7, 12) as tracked tasks.
 **Complete and folded in** (every high-severity claim re-verified against the
 tree before acceptance): primary audit; api, worker, admin,
 packages/dependency-graph, peripheral/hygiene, docs-drift area passes;
-**Kimix** and **Codex Sol** external reviews.
+**Reviewer B** and **Codex Sol** external reviews.
 
 **On Sol:** its pass went deepest on trust boundaries (Addendum). Nineteen of
 its claims were sampled for direct verification — session-issuer tuple
@@ -619,43 +619,43 @@ missing `deactivatedAt` check, forwarded-header parsing, `McpOAuthSecret`
 columns, `imageUrl` contract divergence, `cli/src/local.ts` 898 lines,
 tracked `.dash-storage`/`.playwright-mcp` files, the react-hooks lint gap,
 and the surfaceless inference control plane — **all nineteen confirmed
-verbatim**; no sampled claim failed. Sol avoided both of Kimix's factual
+verbatim**; no sampled claim failed. Sol avoided both of reviewer B's factual
 errors (it did not call gateway orphaned, and it correctly identified the
 intent-regex exports as dead).
 
 **Agreements (independent convergence):** workflows oversize (primary + api +
-worker passes + Kimix); comms-connections route violation (api pass + Kimix);
-worker index wiring monolith (worker pass + Kimix); `designer.ts` raw-SSE
-transport leak (api pass + Kimix); Executors/workflow-designer theming
-violations (admin pass + Kimix); dependency-direction cleanliness, secret-
+worker passes + reviewer B); comms-connections route violation (api pass + reviewer B);
+worker index wiring monolith (worker pass + reviewer B); `designer.ts` raw-SSE
+transport leak (api pass + reviewer B); Executors/workflow-designer theming
+violations (admin pass + reviewer B); dependency-direction cleanliness, secret-
 crypto centralization, and the documented api→worker embedded edge (packages
-pass + Kimix); client-core DTO drift (packages + admin passes, disjoint
+pass + reviewer B); client-core DTO drift (packages + admin passes, disjoint
 drifted fields, both verified).
 
 **Disagreements, with resolutions:**
 
-- *Gateway "orphaned, no production wiring" (Kimix G2)* — **rejected**:
+- *Gateway "orphaned, no production wiring" (Review B G2)* — **rejected**:
   `nessie-gateway` is built and deployed in
-  `infrastructure/compose/docker-compose.prod.yml:215-220`; Kimix quoted a
+  `infrastructure/compose/docker-compose.prod.yml:215-220`; reviewer B quoted a
   stale README sentence. (The README staleness itself is worth fixing.)
-- *`content-tools.ts` live keyword intent detection (Kimix E1, "HIGH")* —
+- *`content-tools.ts` live keyword intent detection (Review B E1, "HIGH")* —
   **downgraded**: `shouldUse*` have zero callers (dead code, finding 8);
   live `selectDocumentPath` ranks files against the tool's explicit query
   argument after the model chose to call it — lexical search, not intent
   gating. The worker pass's reading was confirmed by call-site inspection.
-- *`routes/workflows.ts` shim as "split to satisfy the limit" (Kimix C)* —
+- *`routes/workflows.ts` shim as "split to satisfy the limit" (Review B C)* —
   **rejected**: the `workflows/{templates,installations,runs}` directory is a
   cohesive domain split with a registrar, i.e. the sanctioned shape — and the
   model the oversized *service* tier should follow.
-- *`avatar.ts` gradients as theming violations (Kimix F1)* — **rejected**
+- *`avatar.ts` gradients as theming violations (Review B F1)* — **rejected**
   (siding with the admin pass): stable per-identity colors are data, not
   theme surface; they must not change with the theme.
-- *`docs/deployment.md` references retired port 5555 (Kimix H3)* —
+- *`docs/deployment.md` references retired port 5555 (Review B H3)* —
   **rejected**: no `5555` occurrences in that file; the stale-port hits are
   in `corporate-usability-assessment.md` (already flagged) and
   `video-calling.md`'s diagram.
 
-Kimix's genuinely new contributions, verified and adopted: finding 2 (OIDC
+Reviewer B's genuinely new contributions, verified and adopted: finding 2 (OIDC
 discovery/token/userinfo bare-fetch + missing issuer-origin pinning; UOA
 session fetches), the `executor/src/sandbox-workspace.ts` cap breach, the
 `knowledge-*` route-directory observation, and the IdP-trust-anchor

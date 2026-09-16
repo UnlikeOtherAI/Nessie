@@ -11,7 +11,7 @@ actually in the tree.
 
 > ## ⛔ Round 4 — the decision that comes before the work packages
 >
-> Three independent reviews of the amended plan (Fable, Kimix, Codex Sol) agree on
+> Three independent reviews of the amended plan (Fable, reviewer B, Codex Sol) agree on
 > a conclusion the plan itself does not state: **as specified, this boundary is
 > all-or-nothing, and the current work-package list still does not close it.**
 > Round 4 found a fourth escape class *and* a missing durable object. That is four
@@ -649,7 +649,7 @@ Each WP is one landable change. WP3 is explicitly three.
 
 ## Review record
 
-Reviewed 2026-08-11 by **Fable** and **Kimix** independently; every claim
+Reviewed 2026-08-11 by **Fable** and **Reviewer B** independently; every claim
 re-verified against the tree before acceptance.
 
 Both found, independently: the five-path stamping gap (WP0 — verification added
@@ -660,7 +660,7 @@ sink; `viewer` required with the autonomous case named; WP9's URL parse as
 structural and permitted.
 
 Found by one and confirmed: the mention-alert leak and the second `orchestrate.ts`
-read (Kimix); the delegated-PA `role: 'user'` predicate gap and the
+read (reviewer B); the delegated-PA `role: 'user'` predicate gap and the
 `messages.ts` 487-line cap risk (Fable).
 
 Split and adjudicated: the `has_basis` denormalisation — see Open decision 2.
@@ -681,7 +681,7 @@ follow-up receives placeholders for both. Repeat with `send_message` triggering 
 second agent. Without transitive inheritance this passes turn one and fails turn
 two — which is exactly how it would have reached production.
 
-**Round 4 (Fable, Kimix, Codex Sol — all three on the amended plan).** Verified
+**Round 4 (Fable, reviewer B, Codex Sol — all three on the amended plan).** Verified
 every unreviewed amendment claim; all confirmed except line-number drift and one
 correction (`send_message` capture is user-private, not channel memory). Found:
 the create-path set is nine not five, plus a second edit path; cross-thread

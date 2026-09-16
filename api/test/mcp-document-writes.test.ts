@@ -75,12 +75,15 @@ const contextFor = (
   knowledge: {
     // A viewer that can reach everything in this org, which is what an owner
     // is; the point of these tests is the tool's behaviour, not the predicate,
-    // which has its own coverage.
+    // which has its own coverage. A bypass viewer carries no disclosure viewer,
+    // so production's version filter returns every page for it.
+    buildDisclosureViewer: () => null,
     buildViewer: async () => ({
       bypass: true,
       userId: s.userId,
       visibleAgentIds: new Set<string>(),
     }) as never,
+    filterReadablePages: async (_viewer, pages) => [...pages],
     provider: createNativeKnowledgeProvider(prisma, {}),
   },
   prisma,
@@ -231,6 +234,7 @@ runDatabaseTest('a document in a space the viewer cannot write is refused', asyn
 
     const outsider = contextFor(prisma, s, {
       knowledge: {
+        buildDisclosureViewer: () => null,
         buildViewer: async () => ({
           bypass: false,
           memberSpaceIds: new Set<string>(),
@@ -238,6 +242,7 @@ runDatabaseTest('a document in a space the viewer cannot write is refused', asyn
           userId: randomUUID(),
           visibleAgentIds: new Set<string>(),
         }) as never,
+        filterReadablePages: async (_viewer, pages) => [...pages],
         provider: createNativeKnowledgeProvider(prisma, {}),
       },
     })

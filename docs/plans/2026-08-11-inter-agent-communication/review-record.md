@@ -24,7 +24,7 @@
 # Part 7 — Review record
 
 Reviewed 2026-08-11 by three independent models against the tree at
-`claude/inter-agent-communication-plan-b20c44`: **Kimix** (Kimi via Codex),
+`claude/inter-agent-communication-plan-b20c44`: **Reviewer B**,
 **Fable** (claude-fable-5), and **Codex Sol** (gpt-5.6-sol). Every claim below
 was re-verified against the code before being accepted; two reviewer claims were
 rejected on verification.
@@ -38,7 +38,7 @@ rejected on verification.
 - **G2 fix is write-side, not prompt-side — Fable.** Verified: `prompt.ts:40-58`
   already attributes foreign-agent turns; the mailbox routes around it by writing
   `role: 'user'`. A prompt-only fix would have forked the rendering.
-- **`promptOverride` and `triggerIsHuman` — Kimix.** Verified: the trigger prompt
+- **`promptOverride` and `triggerIsHuman` — reviewer B.** Verified: the trigger prompt
   never passes through the `Message` row, and the engagement path classifies
   mailbox deliveries as human turns.
 - **Keep `agent_task_events` separate but slim it — Fable.** Verified:
@@ -51,11 +51,11 @@ rejected on verification.
 
 **Rejected on verification:**
 
-- *"An admin surface references the mailbox"* (Kimix, Sol). A case-insensitive
+- *"An admin surface references the mailbox"* (reviewer B, Sol). A case-insensitive
   search for `mailbox` across `admin/src` returns **0**. `OpsHealthPage.tsx`
   renders a generic `deadLetters` field, never the mailbox concept — which G5
-  already stated. Kimix's grep matched on its own `deadLetter` alternative.
-- *"Merge into `TaskEvent`"* (Kimix). Overturned by the cascade-delete and
+  already stated. Reviewer B's grep matched on its own `deadLetter` alternative.
+- *"Merge into `TaskEvent`"* (reviewer B). Overturned by the cascade-delete and
   missing-`organizationId` facts; dissent recorded in Part 4 Option B.
 
 **Corrected factual errors in Part 2:** backoff described as exponential (it is

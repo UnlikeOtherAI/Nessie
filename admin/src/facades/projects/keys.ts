@@ -5,6 +5,9 @@
 
 export const projectKeys = {
   all: ['projects'] as const,
+  // Nested so creating, renaming, deleting a project or changing its members —
+  // all of which invalidate `projects` — refresh the directory too.
+  directory: ['projects', 'directory'] as const,
   // Nested so the family rule holds. The cost is that create/rename/delete
   // project and add/remove member, which already invalidate `projects`, now
   // also refetch a mounted board — one cheap `GET /api/projects/:id/boards`

@@ -41,6 +41,11 @@ export type NativeShellPresentation = {
   inactive: string
   listColumn: NativeListColumn | null
   nativeAccount: NativeAccount
+  /**
+   * The latest `theme` came from the admin's own chrome palette, which already
+   * reflects focus mode, so the shell's fallback focus palette must not apply.
+   */
+  pageOwnsChrome: boolean
   phoneHeaderSurface: string
   phoneHeaderText: string
   phoneOnAccent: string
@@ -50,6 +55,8 @@ export type NativeShellPresentation = {
   strongAccent: string
   toolbarState: ToolbarState
   teamAvatarUrl: string | null
+  /** Bumped by the admin after a team avatar upload, whose URL does not change. */
+  teamAvatarRevision: number
   teamName: string | null
 }
 
@@ -64,6 +71,7 @@ export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   inactive: '#8a8f98',
   listColumn: null,
   nativeAccount: { avatarUrl: null, focusModeEnabled: false, name: null, presence: 'offline', statusEmoji: null },
+  pageOwnsChrome: false,
   phoneHeaderSurface: '#2b2018',
   phoneHeaderText: '#fffdf8',
   phoneOnAccent: '#fffdf8',
@@ -73,6 +81,7 @@ export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   strongAccent: '#5b21b6',
   toolbarState: DEFAULT_TOOLBAR_STATE,
   teamAvatarUrl: null,
+  teamAvatarRevision: 0,
   teamName: null,
 }
 
@@ -121,6 +130,7 @@ export const reduceNativeShellPresentation = (
       accent: optionalText(message.accent) ?? current.accent,
       chromeSurface: optionalText(message.surface) ?? current.chromeSurface,
       inactive: optionalText(message.inactive) ?? current.inactive,
+      pageOwnsChrome: message.chromeSource === 'page',
       phoneHeaderSurface: optionalText(message.headerSurface) ?? current.phoneHeaderSurface,
       phoneHeaderText: optionalText(message.headerText) ?? current.phoneHeaderText,
       phoneOnAccent: optionalText(message.onAccent) ?? current.phoneOnAccent,
@@ -174,6 +184,11 @@ export const reduceNativeShellPresentation = (
     return {
       ...current,
       teamAvatarUrl: optionalText(message.teamAvatarUrl ?? message.workspaceAvatarUrl),
+      // Only the current message carries the revision; the legacy one that
+      // follows it must not reset the counter and trigger a second reload.
+      teamAvatarRevision: message.type === 'nessie:team'
+        ? badgeCount(message.teamAvatarRevision)
+        : current.teamAvatarRevision,
       teamName: optionalText(message.name),
     }
   }

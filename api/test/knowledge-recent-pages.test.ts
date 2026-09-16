@@ -112,12 +112,25 @@ const makeApp = (options: {
     },
     agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
+    // The knowledge viewer resolves a live entitlement first: an unbound local
+    // organisation with an active membership, plus channel and team reach for
+    // the version disclosure viewer.
+    channelMember: { findMany: async () => [] },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
+    teamMember: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
   } as unknown as PrismaClient
 
   // A provider that resolves the same access question the SQL pre-filter
   // encodes, so the route test proves the viewer actually reaches it.
   const knowledgeProvider = {
+    // The route re-reads each recent page and checks its retained versions
+    // against the viewer's disclosure; these fixtures carry no restricted
+    // version, and the check needs only the page's identity.
+    getPage: async (requestedOrganizationId: string, id: string) =>
+      ({ id, organizationId: requestedOrganizationId }) as never,
+    listVersions: async () => [],
     listRecentPages: async (input: ListRecentPagesInput) => {
       calls.push(input)
       const readable = [openSpace, privateSpace].filter((space) =>

@@ -223,6 +223,12 @@ const makeApp = (
     projectMember: { findMany: async () => [{ projectId }] },
     agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
+    // The knowledge viewer resolves a live entitlement first: an unbound local
+    // organisation with an active membership.
+    channelMember: { findMany: async () => [] },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
+    teamMember: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
   } as unknown as PrismaClient
   const app = Fastify({ logger: false })

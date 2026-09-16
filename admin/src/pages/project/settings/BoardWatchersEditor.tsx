@@ -9,7 +9,6 @@ import { type Recipient } from '../../../lib/channel-compose-recipients'
 import { selectBoardWatcherAgents } from '../../../lib/board-watcher-recipients'
 import { FormError } from '../../../components/shared/FormActions'
 import { QueryState } from '../../../components/shared/QueryState'
-import { useIsOwner } from '../../../facades/auth/hooks'
 import { RecipientBar } from '../../../components/shared/RecipientBar'
 import { Section } from '../../../components/shared/PageBody'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -34,8 +33,7 @@ export const BoardWatchersEditor = ({
   boardName,
 }: BoardWatchersEditorProps) => {
   const { me, token } = useAuthSession()
-  const isOwner = useIsOwner()
-  const { data: users = [] } = useUsers(isOwner)
+  const { data: users = [] } = useUsers()
   const { data: allAgents = [] } = useAgents({ scope: 'all' })
   const watchersQuery = useBoardWatchers(projectId, boardId)
   const setWatchers = useSetBoardWatchers(projectId, boardId)

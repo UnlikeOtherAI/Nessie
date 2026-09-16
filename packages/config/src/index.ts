@@ -3,6 +3,7 @@
 export * from './config-schema.js'
 export * from './config-loader.js'
 export * from './encryption-key-ring.js'
+export * from './origin-allowlist.js'
 export {
   assertLocalOnlyCapability,
   DOCKER_EXECUTION_PROVIDER,

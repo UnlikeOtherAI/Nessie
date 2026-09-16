@@ -13,12 +13,12 @@ const resolve = (over: Partial<ThemeResolutionInput> = {}) =>
     ...over,
   })
 
-test('a person who never chose gets the organisation palette, else Sandstone', () => {
+test('a person who never chose gets the organisation palette, else Nessie', () => {
   assert.deepEqual(resolve({ organizationHasTheme: true }), {
     applied: 'organization',
     choice: 'organization',
   })
-  assert.deepEqual(resolve(), { applied: 'sandstone', choice: 'sandstone' })
+  assert.deepEqual(resolve(), { applied: 'nessie', choice: 'nessie' })
 })
 
 test('an explicit choice always beats the organisation palette', () => {
@@ -45,7 +45,7 @@ test('choosing the organisation theme is a choice like any other', () => {
   // not rewritten, so a palette that returns comes back to them.
   assert.deepEqual(
     resolve({ organizationHasTheme: false, serverChoice: 'organization' }),
-    { applied: 'sandstone', choice: 'organization' },
+    { applied: 'nessie', choice: 'organization' },
   )
 })
 
@@ -65,7 +65,7 @@ test('signed out, only the browser has an answer', () => {
   // there is no organisation to ask — the sign-in screen is instance state.
   assert.deepEqual(
     resolve({ serverChoice: 'ocean', signedIn: false }),
-    { applied: 'sandstone', choice: 'sandstone' },
+    { applied: 'nessie', choice: 'nessie' },
   )
   assert.deepEqual(
     resolve({ localChoice: 'forest', signedIn: false }),
@@ -73,6 +73,6 @@ test('signed out, only the browser has an answer', () => {
   )
   assert.deepEqual(
     resolve({ localChoice: 'organization', organizationHasTheme: false, signedIn: false }),
-    { applied: 'sandstone', choice: 'organization' },
+    { applied: 'nessie', choice: 'organization' },
   )
 })

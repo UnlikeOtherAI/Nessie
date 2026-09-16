@@ -1,0 +1,10 @@
+{
+  "name": "nessie-app-icon",
+  "version": "0.1.0",
+  "description": "Switches the Nessie Home Screen icon between light and dark.",
+  "main": "index.ts",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Nessie",
+  "homepage": "https://nessie.works"
+}

@@ -175,11 +175,27 @@ The stack settles a slide, never mid-slide (`navigation/settle.ts`):
   new-conversation composer read it (`padding-bottom` /
   `margin-bottom: var(--keyboard-inset, 0px)`) so the active composer stays
   above the keyboard instead of sliding under it; the message composer's
-  editable region carries `enterKeyHint="send"`. Every overlay panel that
+  editable region carries `enterKeyHint="send"`. Inside the iOS app the
+  native shell owns the keyboard instead: WKWebView never shrinks the layout
+  viewport, it pans the whole document up, and that pan plus the inset lifted
+  the composer twice and slid the header and history out of view. The shell
+  ends the WebView frame at the keyboard's top edge
+  (`mobile/src/lib/keyboard-overlap.ts`, `useIosKeyboardOverlap`) and zeroes
+  `--nessie-native-phone-tabbar-clearance` while it is up, so WebKit has
+  nothing to pan and the inset above measures 0. A feed that shrinks under
+  the keyboard stays on its newest message: `useStickToBottom` releases its
+  pin only when the reader scrolls *up*, because iOS reports a scroll with an
+  unchanged `scrollTop` when a scroller's size changes. Every overlay panel that
   sized with a bare `vh` unit — nine dialogs/popups plus two `styles.css`
   rules — now sizes with `dvh` (the dynamic viewport, which a soft keyboard
-  can shrink; the static `vh` cannot), including the shared `Dialog`'s `xl`
-  size.
+  can shrink; the static `vh` cannot). `Dialog` also caps every size from the
+  live visual viewport when a browser does not apply that reduction to `dvh`,
+  and moves the panel's flex viewport above the reported keyboard inset. It
+  keeps its natural height until it exceeds that safe visible area, then makes
+  the panel —
+  never the obscured page behind it — scrollable. The overlay primitive also
+  reveals the focused control after a focus or Visual Viewport resize, so the
+  active field remains above the keyboard.
 - **Scroll owners on split**: `useScrollMemory` already covered the two
   lists that swap for their own detail at stack depth 1 on `split`
   (`ColumnBrowserColumn`, `AgentsList`, keyed per list identity). The channel

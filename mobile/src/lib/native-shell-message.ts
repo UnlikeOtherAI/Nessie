@@ -38,8 +38,12 @@ export type NativeShellMessage = {
   hasBackDepth?: boolean
   haptic?: HapticKind
   color?: string
+  /** `theme`: `'page'` when the admin resolved the chrome palette, focus mode included. */
+  chromeSource?: string
   headerSurface?: string
   headerText?: string
+  /** `nessie:app-icon`'s chosen Home Screen icon — see native-app-icon.ts. */
+  icon?: string
   inactive?: string
   id?: number
   left?: number
@@ -68,6 +72,8 @@ export type NativeShellMessage = {
   voiceCall?: unknown
   muted?: boolean
   teamAvatarUrl?: string
+  /** `nessie:team`: the admin's avatar revision, bumped by an upload or removal. */
+  teamAvatarRevision?: number
   /** LEGACY_NATIVE_SHELL: `nessie:workspace`'s spelling of `teamAvatarUrl`. */
   workspaceAvatarUrl?: string
 }

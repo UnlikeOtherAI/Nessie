@@ -88,6 +88,7 @@ interface ChannelConversationSurfaceProps {
     | 'confirmSecretCapture'
     | 'dismissPendingAgent'
     | 'dismissSecretCapture'
+    | 'mentionInvite'
     | 'insertEmoji'
     | 'inviteErrors'
     | 'invitePendingAgent'
@@ -421,6 +422,7 @@ export const ChannelConversationSurface = ({
           onChangeMessage={composer.setMessage}
           onDismissPendingAgent={composer.dismissPendingAgent}
           onDismissSecretCapture={composer.dismissSecretCapture}
+          mentionInvite={composer.mentionInvite}
           onInsertAtSign={() => composer.mentionRef.current?.insertAtSign()}
           onInsertEmoji={composer.insertEmoji}
           onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}

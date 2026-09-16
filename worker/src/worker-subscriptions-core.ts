@@ -23,6 +23,8 @@ import {
   KNOWLEDGE_EXTRACT_TOPIC,
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
+  MESSAGE_EMBED_TOPIC,
+  MessageEmbedJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RUN_COMPLETION_FOLLOWUP_TOPIC,
@@ -48,6 +50,7 @@ import { executeAutomaticMembershipReconcileJob } from './control/automatic-memb
 import { executeAutomaticMembershipRevalidateJob } from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
+import { executeMessageEmbedJob } from './control/message-embed.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
 import { handleTriggerHealthAlert } from './control/trigger-health-dispatch.js'
@@ -338,6 +341,14 @@ subscribe(
   async (job) => {
     const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
     await executeKnowledgeExtractJob({ fileService, modelClient, prisma }, payload)
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  MESSAGE_EMBED_TOPIC,
+  async (job) => {
+    const payload = MessageEmbedJobPayloadSchema.parse(job.payload)
+    await executeMessageEmbedJob({ modelClient, prisma }, payload)
   },
   { signal: abortSignal },
 )

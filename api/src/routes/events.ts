@@ -15,6 +15,7 @@ export const registerEventRoutes = (app: FastifyInstance, deps: RouteDeps): void
     requireActorContext,
     requireUserActor,
     buildChannelRealtimeScopes,
+    teamHostBaseDomain,
   } = deps
 
   app.get('/api/events/stream', async (request, reply) => {
@@ -51,6 +52,7 @@ export const registerEventRoutes = (app: FastifyInstance, deps: RouteDeps): void
         origin: request.headers.origin,
         allowedOrigins: allowedCorsOrigins,
         mode: config.mode,
+        teamHostBaseDomain,
       }),
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',

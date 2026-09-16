@@ -44,6 +44,7 @@ const runShellScript = (
 
 test('caches a cold-start push path before the WebView application mounts', () => {
   const { events, window } = runShellScript(nativeShellInfoScript({
+    appIcon: 'dark',
     bottomInset: 34,
     clientId: 'client-id',
     formFactor: 'phone',
@@ -54,17 +55,21 @@ test('caches a cold-start push path before the WebView application mounts', () =
 
   assert.equal(window.__nessiePendingPushPath, '/channels/channel-a/threads/thread-a/replies/root-a')
   assert.deepEqual(window.__nessieNativeShell, {
+    appIcon: true,
     bottomInset: 34,
     formFactor: 'phone',
     platform: 'ios',
     voiceCall: true,
   })
+  // The icon in effect rides every load, so a reload never forgets a switch.
+  assert.equal(window.__nessieNativeAppIcon, 'dark')
   assert.equal(events.at(-1)?.type, 'nessie:native-push-path')
   assert.equal(events.at(-1)?.detail, '/channels/channel-a/threads/thread-a/replies/root-a')
 })
 
 test('publishes the large-phone landscape form factor after rotation', () => {
   const { events, window } = runShellScript(nativeShellInfoScript({
+    appIcon: null,
     bottomInset: 21,
     clientId: 'client-id',
     formFactor: 'large-phone-landscape',
@@ -74,11 +79,13 @@ test('publishes the large-phone landscape form factor after rotation', () => {
   }))
 
   assert.deepEqual(window.__nessieNativeShell, {
+    appIcon: false,
     bottomInset: 21,
     formFactor: 'large-phone-landscape',
     platform: 'ios',
     voiceCall: true,
   })
+  assert.equal(window.__nessieNativeAppIcon, undefined)
   assert.equal(events.at(-1)?.type, 'nessie:native-shell-info')
 })
 
@@ -98,6 +105,9 @@ test('updates the iPhone WebView clearance when its safe-area inset changes', ()
   execute(document)
 
   assert.equal(values.get('--nessie-native-phone-tabbar-clearance'), '83px')
+
+  new Function('document', nativePhoneTabBarClearanceScript(34, true))(document)
+  assert.equal(values.get('--nessie-native-phone-tabbar-clearance'), '0px')
 })
 
 test('retains a new push target until the React bridge acknowledges it', () => {

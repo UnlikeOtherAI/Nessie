@@ -387,6 +387,16 @@ export const createWsNotificationDelivery = (input: {
     const existing = connectionGates.get(connection)
     if (existing) return existing
     const clock = input.now ? { now: input.now } : {}
+    const organization = createEntitlementGate(
+      async (organizationId: string) =>
+        input.entitlements?.canAccessOrganizationEvent
+          ? input.entitlements.canAccessOrganizationEvent({
+              organizationId,
+              userId: identity.userId,
+            })
+          : true,
+      clock,
+    )
     const gates = {
       agent: createEntitlementGate(
         async (agentId: string) =>
@@ -395,11 +405,19 @@ export const createWsNotificationDelivery = (input: {
             : true,
         clock,
       ),
+      // Deactivation leaves `ChannelMember` rows behind as history and the
+      // channel predicate asks only "public, or a member", so the channel lanes
+      // (ws, user SSE, and the thread stream, which asks this gate) must also
+      // require an active organisation membership. It goes through the same
+      // memoized organization gate, so it adds at most one membership query per
+      // TTL window per connection — never one per event.
       channel: createEntitlementGate(
-        async (channelId: string) =>
-          input.canAccessChannelEvent
+        async (channelId: string) => {
+          if (!(await organization(identity.organizationId))) return false
+          return input.canAccessChannelEvent
             ? input.canAccessChannelEvent({ channelId, ...identity })
-            : fallback.channel(channelId),
+            : fallback.channel(channelId)
+        },
         clock,
       ),
       dashboard: createEntitlementGate(
@@ -409,16 +427,7 @@ export const createWsNotificationDelivery = (input: {
             : fallback.dashboard(dashboardId),
         clock,
       ),
-      organization: createEntitlementGate(
-        async (organizationId: string) =>
-          input.entitlements?.canAccessOrganizationEvent
-            ? input.entitlements.canAccessOrganizationEvent({
-                organizationId,
-                userId: identity.userId,
-              })
-            : true,
-        clock,
-      ),
+      organization,
     }
     connectionGates.set(connection, gates)
     return gates

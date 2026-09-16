@@ -24,7 +24,7 @@ export const DEFAULT_BOOTSTRAP_RECORD_IDS = {
 }
 
 export const DEFAULT_BOOTSTRAP_RECORD_NAMES = {
-  channel: 'General',
+  channel: 'general',
   organization: 'Default Organization',
   project: 'Default Project',
   team: 'Default Team',

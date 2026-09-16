@@ -48,6 +48,12 @@ test('GET /api/knowledge-base/spaces forwards the caller\'s org to the provider'
     // empty result for every scoped where/select combination.
     agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
+    // The knowledge viewer resolves a live entitlement first: an unbound local
+    // organisation with an active membership.
+    channelMember: { findMany: async () => [] },
+    organization: { findUnique: async () => ({ externalOrgId: null }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
+    teamMember: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
   }
 

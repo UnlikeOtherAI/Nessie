@@ -49,7 +49,7 @@ export const registerKnowledgeCommentRoutes = (
   deps: KnowledgeRouteDeps,
 ): void => {
   const { prisma, requireActorContext } = deps
-  const { provider, buildViewer, accessSpace } = createKnowledgeAccess(deps)
+  const { provider, buildViewer, accessPageSpace } = createKnowledgeAccess(deps)
   const service = createAnnotationService({ prisma })
 
   // Load a page and enforce space access, returning the AnnotationAccess the
@@ -67,7 +67,8 @@ export const registerKnowledgeCommentRoutes = (
       sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
       return null
     }
-    const space = await accessSpace(actorContext, page.spaceId, viewer, mode, reply)
+    if (!(await accessPageSpace(actorContext, page, viewer, mode, reply))) return null
+    const space = await provider.getSpace(organizationId, page.spaceId)
     if (!space) return null
     return { space, viewer, organizationId, pageId: page.id, spaceId: page.spaceId }
   }

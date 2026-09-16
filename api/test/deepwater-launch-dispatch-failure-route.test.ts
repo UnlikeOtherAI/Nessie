@@ -225,7 +225,7 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
         type: 'dm',
         unreadCount: 0,
         lastMessageAt: null,
-        // A system channel is never manageable: `canManageChannel` refuses
+        // A system channel is never manageable: `canModifyChannel` refuses
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
         updatedAt: now.toISOString(),

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { EncryptionConfigSchema } from './encryption-key-ring.js'
+import { isBareOrigin } from './origin-allowlist.js'
 
 export type { LocalOnlyCapability } from './local-only.js'
 
@@ -237,6 +238,10 @@ export const NessieConfigSchema = z.object({
       agentWriteIp: RateLimitRuleSchema.default({ max: 60, windowMs: 60_000 }),
       // `GET /api/auth/me` is public and counts users when unauthenticated.
       authMeIp: RateLimitRuleSchema.default({ max: 600, windowMs: 60_000 }),
+      // `GET /api/auth/landing-teams`: the public landing asks once per page
+      // view, and a signed-in answer can fan out to one UOA address read per
+      // team, so it sits well below `/api/auth/me`.
+      landingTeamsIp: RateLimitRuleSchema.default({ max: 120, windowMs: 60_000 }),
       // Unauthenticated key-guessing surface: a bearer webhook key is the only
       // thing between a caller and a trigger fire, so this is the tightest of
       // the intake buckets.
@@ -266,6 +271,13 @@ export const NessieConfigSchema = z.object({
     // outside an HTTP request (the worker's personal assistant). Defaults to
     // localhost:{port} for local dev.
     publicUrl: z.string().url().optional(),
+    // `NESSIE_LANDING_ORIGIN`: the exact origins of the public landing, e.g.
+    // `https://nessie.works` and `https://www.nessie.works`. Admitted by
+    // `GET /api/auth/landing-teams` only — never part of the API-wide CORS
+    // allowlist (docs/standards/team-hosts.md). Empty: no landing is admitted.
+    landingOrigins: z
+      .array(z.string().refine(isBareOrigin, 'must be a bare http(s) origin, e.g. https://example.com'))
+      .default([]),
   }),
   // GitHub integration for the in-app Feedback section: submitted feedback
   // becomes an issue in this repo. The token is required to actually create

@@ -1,6 +1,5 @@
 import { Prisma } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
-import { markRecallsReferenced } from '@nessie/memory'
 import {
   RUN_COMPLETION_FOLLOWUP_TOPIC,
   type RunCompletionFollowupJobPayload,
@@ -12,7 +11,6 @@ import { persistInvocationLedgerEvents } from '../inference.js'
 import { createAgentMessage } from './agent-message.js'
 import { commitSuccessfulRun } from './completion-commit.js'
 import { applyRunReplyBookkeeping } from './lifecycle.js'
-import { detectReferencedRecallIds } from './memory.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext, RunPlanContext } from './types.js'
 import { foldWatchStatus } from './watch-status.js'
 
@@ -38,11 +36,6 @@ export const completeRunExecution = async (
     runId: context.run.id,
     invocations: input.invocations,
   })
-
-  const referencedRecallIds = detectReferencedRecallIds(input.responseText, input.memories)
-  if (referencedRecallIds.length > 0) {
-    await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
-  }
 
   const completedAt = new Date()
   await commitSuccessfulRun(

@@ -1,6 +1,13 @@
+import type { AppIconVariant } from '../../modules/nessie-app-icon'
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
 export type NativeShellInfo = {
+  /**
+   * The Home Screen icon in effect, or null when this build cannot switch it
+   * (nessie-app-icon). Published with every load, because a reload starts a
+   * page that has never heard the answer to an earlier switch.
+   */
+  appIcon: AppIconVariant | null
   bottomInset: number
   clientId: string
   formFactor: 'ipad' | 'large-phone-landscape' | 'phone'
@@ -30,12 +37,13 @@ export const createNativePushSurfaceClientId = (): string => {
 }
 
 export const nativeShellInfoScript = (info: NativeShellInfo): string => `
-window.__nessieNativeShell = { bottomInset: ${JSON.stringify(info.bottomInset)}, platform: ${
-  JSON.stringify(info.platform)
-}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
+window.__nessieNativeShell = { appIcon: ${JSON.stringify(info.appIcon !== null)}, bottomInset: ${
+  JSON.stringify(info.bottomInset)
+}, platform: ${JSON.stringify(info.platform)}, formFactor: ${JSON.stringify(info.formFactor)}, voiceCall: ${
   JSON.stringify(info.voiceCall)
 } };
 window.__nessieNativeAppForeground = true;
+${info.appIcon ? `window.__nessieNativeAppIcon = ${JSON.stringify(info.appIcon)};` : ''}
 window.__nessiePushSurfaceClientId = ${JSON.stringify(info.clientId)};
 ${info.pendingPushPath ? `window.__nessiePendingPushPath = ${JSON.stringify(info.pendingPushPath)};` : ''}
 try { window.dispatchEvent(new Event('nessie:native-shell-info')); } catch (e) {}
@@ -47,13 +55,17 @@ ${info.pendingPushPath ? `try {
 true;
 `
 
-export const nativePhoneTabBarClearanceScript = (bottomInset: number): string => {
+// While the keyboard is up the WebView frame ends at its top edge, above the
+// tab bar and the home indicator, so there is nothing left to clear — keeping
+// the clearance would open a tab-bar-sized gap between composer and keyboard.
+export const nativePhoneTabBarClearanceScript = (bottomInset: number, keyboardOpen = false): string => {
   const safeBottomInset = Number.isFinite(bottomInset) ? Math.max(0, bottomInset) : 0
+  const clearance = keyboardOpen ? 0 : IPHONE_TAB_BAR_HEIGHT + safeBottomInset
   return `
 try {
   document.documentElement.style.setProperty(
     '--nessie-native-phone-tabbar-clearance',
-    ${JSON.stringify(`${IPHONE_TAB_BAR_HEIGHT + safeBottomInset}px`)},
+    ${JSON.stringify(`${clearance}px`)},
   );
 } catch (e) {}
 true;

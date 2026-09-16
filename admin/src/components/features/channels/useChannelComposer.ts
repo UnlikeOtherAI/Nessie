@@ -27,6 +27,7 @@ import {
 } from './composer-draft'
 import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
+import { useMentionInviteGate, type MentionInviteController } from './useMentionInviteGate'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
@@ -72,6 +73,8 @@ interface UseChannelComposerResult {
   secretCapture: SecretCapture | null
   confirmSecretCapture: (secret: SecretRecord) => Promise<void>
   dismissSecretCapture: () => void
+  // The invite-before-send question for people who cannot read this channel.
+  mentionInvite: MentionInviteController
 }
 
 const newClientMessageId = (): string =>
@@ -193,7 +196,7 @@ export const useChannelComposer = ({
     clientMessageIdRef.current = null
   }, [activeChannel?.id, activeThreadId])
 
-  const sendText = useCallback(
+  const deliverText = useCallback(
     async (rawText: string, agentMentions: AgentMention[] = []) => {
       const text = rawText.trim()
       const attachmentIds = attachments.attachmentIds
@@ -293,6 +296,38 @@ export const useChannelComposer = ({
       }
     },
     [activeChannel, attachments, clearDraft, sendMessage, getSendExtras, setMessage],
+  )
+
+  // A held draft goes back into the editor, so Cancel leaves it where it was.
+  const restoreDraft = useCallback((text: string) => {
+    setMessage(text)
+    mentionRef.current?.setText(text)
+  }, [setMessage])
+  const mentionGate = useMentionInviteGate({
+    activeChannel,
+    currentUserId,
+    deliver: deliverText,
+    restoreDraft,
+  })
+  const { clearToSend } = mentionGate
+
+  // Asks before a post that @mentions somebody who cannot read the channel.
+  // A draft the delivery path would refuse anyway (too long, carrying a
+  // secret, empty) goes straight there, so its own dialog comes first.
+  const sendText = useCallback(
+    async (rawText: string, agentMentions: AgentMention[] = []) => {
+      const text = rawText.trim()
+      if (text && text.length <= CHAT_MESSAGE_MAX_CHARS && !detectSecrets(text)[0]) {
+        try {
+          if (!(await clearToSend(text, agentMentions))) return
+        } catch (error) {
+          setSendError(error instanceof Error ? error.message : 'Could not send this message.')
+          return
+        }
+      }
+      await deliverText(rawText, agentMentions)
+    },
+    [clearToSend, deliverText],
   )
 
   const insertEmoji = useCallback((emoji: string) => {
@@ -457,5 +492,6 @@ export const useChannelComposer = ({
     secretCapture,
     confirmSecretCapture,
     dismissSecretCapture: () => setSecretCapture(null),
+    mentionInvite: mentionGate.controller,
   }
 }

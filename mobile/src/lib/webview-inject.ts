@@ -116,8 +116,15 @@ export const INJECTED = `
     }
     return '';
   }
+  // A page that publishes its own chrome palette (NativeChromeThemeBridge,
+  // docs/navigation/native-shell.md "theme and bg") owns both messages: the
+  // document root describes its work surface, not the chrome this shell draws.
+  function pagePublishesChrome() {
+    return window.__nessieChromeThemePublisher === true;
+  }
   var lastBg = '';
   function post() {
+    if (pagePublishesChrome()) return;
     var c = pick();
     if (c && c !== lastBg) {
       lastBg = c;
@@ -131,6 +138,7 @@ export const INJECTED = `
   }
   var lastTheme = '';
   function postTheme() {
+    if (pagePublishesChrome()) return;
     var accent = cssVar('--accent');
     var accentStrong = cssVar('--accent-strong');
     var inactive = cssVar('--tx3');

@@ -85,7 +85,7 @@ const actions: Record<string, ActionFn> = {
     const content = str(args.content ?? args.message)
     if (!content) return { status: 'fail', detail: 'no content' }
     const channels = (await listChannels(ctx.token)).filter((c) => c.type === 'standard' && !c.systemChannelType)
-    const general = channels.find((c) => c.label === 'General')
+    const general = channels.find((c) => c.label.toLowerCase() === 'general')
     const target = (label ? fuzzyFindByLabel(channels, label) : general) ?? general
     if (!target) return { status: 'fail', detail: `no channels available` }
     try {
@@ -132,7 +132,7 @@ const actions: Record<string, ActionFn> = {
     const agent = fuzzyFindByName(agents, name)
     if (!agent) return { status: 'fail', detail: `agent not found: ${name}` }
     const channels = (await listChannels(ctx.token)).filter((c) => c.type === 'standard' && !c.systemChannelType)
-    const general = channels.find((c) => c.label === 'General')
+    const general = channels.find((c) => c.label.toLowerCase() === 'general')
     const wanted = fuzzyFindByLabel(channels, channelLabel) ?? general
     if (!wanted) return { status: 'fail', detail: `no bindable channel found` }
     if (agent.channelIds.includes(wanted.id)) {
@@ -189,7 +189,7 @@ const actions: Record<string, ActionFn> = {
     const channels = await listChannels(ctx.token)
     let target = channels.find((c) => agent.channelIds.includes(c.id))
     if (!target) {
-      const general = channels.find((c) => c.label === 'General')
+      const general = channels.find((c) => c.label.toLowerCase() === 'general')
       if (!general) return { status: 'fail', detail: `no General channel to auto-bind to` }
       await bindAgent(ctx.token, agent.id, general.id)
       target = general

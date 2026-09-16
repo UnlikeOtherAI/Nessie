@@ -49,6 +49,24 @@ test('listNativeRecentPages applies the space read pre-filter for a non-bypass v
   assert.doesNotMatch(capture.sql ?? '', /s\.visibility = 'project'/)
 })
 
+test('listNativeRecentPages filters unreadable historical versions before applying its limit', async () => {
+  const capture: Capture = {}
+  await listNativeRecentPages(stubPrisma(capture), {
+    disclosureViewer: {
+      kind: 'user',
+      scopes: [{ scopeId: userId, scopeType: 'user' }],
+      userId,
+    },
+    organizationId,
+    projectId,
+    viewer: viewer(),
+  })
+
+  assert.match(capture.sql ?? '', /NOT EXISTS \(\s*SELECT 1 FROM knowledge_page_versions v/)
+  assert.match(capture.sql ?? '', /knowledge_page_version_basis_scopes b/)
+  assert.match(capture.sql ?? '', /knowledge_page_version_disclosure_sources ds/)
+  assert.ok((capture.sql ?? '').indexOf('NOT EXISTS') < (capture.sql ?? '').indexOf('LIMIT'))
+})
 test('listNativeRecentPages widens to project-visible spaces only for a member of that project', async () => {
   const capture: Capture = {}
   await listNativeRecentPages(stubPrisma(capture), {

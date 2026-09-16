@@ -1,6 +1,8 @@
 import {
   createNativeKnowledgeProvider,
   knowledgeEmbeddingJobKey,
+  mergeVersionDisclosure,
+  type KnowledgePageVersionDisclosureInput,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import {
@@ -10,6 +12,7 @@ import {
 import { enqueueQueueJob } from '../../queue.js'
 import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { versionDisclosureFromConsumedSources } from './knowledge-basis.js'
 
 const buildOrigin = (
   context: BuiltinToolRuntimeContext,
@@ -41,6 +44,13 @@ const buildOrigin = (
   }
 }
 
+/** Resolves the sink at the version mutation boundary, never at provider setup. */
+export const mergeCurrentWorkerVersionDisclosure = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  input: KnowledgePageVersionDisclosureInput,
+): KnowledgePageVersionDisclosureInput =>
+  mergeVersionDisclosure(input, versionDisclosureFromConsumedSources(context))
+
 // Knowledge provider for worker tools, with the same transactional
 // knowledge.embed enqueue the api wires (api/src/routes/knowledge-base-access.ts)
 // — without it, agent-authored drafts would be chunked but never embedded and
@@ -49,8 +59,8 @@ const buildOrigin = (
 // pre-existing duplication of the queue write itself).
 export const createWorkerKnowledgeProvider = (
   context: BuiltinToolRuntimeContext,
-): KnowledgeProvider =>
-  createNativeKnowledgeProvider(context.prisma, {
+): KnowledgeProvider => {
+  const native = createNativeKnowledgeProvider(context.prisma, {
     readMarkdownAttachment: async (attachmentId, organizationId) => {
       const opened = await fileServiceFor(context.prisma).openStream(attachmentId, organizationId)
       return opened?.stream ?? null
@@ -74,3 +84,20 @@ export const createWorkerKnowledgeProvider = (
       })
     },
   })
+  const withRunDisclosure = (input: KnowledgePageVersionDisclosureInput) =>
+    mergeCurrentWorkerVersionDisclosure(context, input)
+
+  // Every worker-owned version writer crosses this one adapter. The consumed
+  // basis is read at mutation time, after a tool's reads, so neither draft
+  // writes nor metadata-only updates can omit newly consumed private sources.
+  return {
+    ...native,
+    addFileVersion: (input) => native.addFileVersion({ ...input, ...withRunDisclosure(input) }),
+    createPage: (input) => native.createPage({ ...input, ...withRunDisclosure(input) }),
+    restoreVersion: (input) => native.restoreVersion({ ...input, ...withRunDisclosure(input) }),
+    updatePage: (pageId, input) => native.updatePage(pageId, {
+      ...input,
+      ...withRunDisclosure(input),
+    }),
+  }
+}

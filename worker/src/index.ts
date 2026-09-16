@@ -221,6 +221,7 @@ export const startWorker = async (
     automaticMembershipEnabled,
     cloudBrowser,
     encryptionKeyRing,
+    modelClient,
     pool,
     prisma,
     realtimeTransport,

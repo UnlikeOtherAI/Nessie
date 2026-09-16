@@ -144,7 +144,37 @@ const makeApp = (
         agents.set(where.id, row)
         return row
       },
+      // The knowledge viewer lists the agents a person can see; every agent in
+      // this fixture is team-visible.
+      findMany: async ({ where }: { where?: { organizationId?: string } } = {}) =>
+        [...agents.values()]
+          .filter((row) => !where?.organizationId || row.organizationId === where.organizationId)
+          .map((row) => ({ id: row.id })),
+      // A created or cloned agent's project decides whether its core documents
+      // home is prepared.
+      findUnique: async ({
+        select,
+        where,
+      }: {
+        select?: Record<string, true>
+        where: { id: string }
+      }) => {
+        const row = agents.get(where.id)
+        return row ? selectRow(row, select) : null
+      },
     },
+    // Core instructions live in the agent's documents home. These agents have
+    // no legacy instructions and no migration marker yet, so preparing that
+    // home finds it and asks the provider for the (empty) migration.
+    agentBinding: { findMany: async () => [] },
+    agentCoreDocumentMigration: { findUnique: async () => null },
+    channelMember: { findMany: async () => [] },
+    knowledgeSpace: {
+      findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000040' }),
+    },
+    knowledgeSpaceMember: { findMany: async () => [] },
+    projectMember: { findMany: async () => [{ projectId }] },
+    teamMember: { findMany: async () => [] },
     // Agent creation now stamps the acting user as the agent's steward, which
     // first checks they are an active member of the agent's organization.
     organizationMember: {
@@ -214,6 +244,12 @@ const makeApp = (
       _context: AuthorizedActionContext,
       id: string,
     ) => agents.get(id)?.organizationId === organizationId,
+    // These agents carry no legacy instructions, so preparing a documents home
+    // stages no files and the provider records the empty core migration.
+    knowledgeProvider: {
+      getSpace: async () => null,
+      migrateAgentCoreDocuments: async () => ({ kind: 'migrated', pageIds: [] }),
+    },
     prisma,
     requireActorContext: () => actorContext,
     requireOwner: (_context: AuthorizedActionContext, reply) => {
@@ -383,9 +419,12 @@ test('an entitled member may edit a team-owned agent', async () => {
   // reaching it through a channel you can see IS the edit entitlement.
   const state = makeApp('member', [makeAgent(agentId, organizationId)])
   try {
+    // A record field, so the edit reaches `updateAgentRecord` through the same
+    // `canEditAgent` decision. Instruction text is now written as canonical
+    // core documents through FileService, which has its own coverage.
     const response = await state.app.inject({
       method: 'PUT',
-      payload: { systemPrompt: 'Summarise the weekly numbers.' },
+      payload: { name: 'Weekly numbers' },
       url: `/api/agents/${agentId}`,
     })
 

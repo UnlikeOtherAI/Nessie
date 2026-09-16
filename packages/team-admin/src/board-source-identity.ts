@@ -293,14 +293,15 @@ export const reprojectIdentityLinks = async (
 }
 
 /** Every source in the organisation that reads this provider tenant. */
-const tenantSourceIds = async (
+const tenantSources = async (
   prisma: PrismaClient,
   tenant: IdentityTenant,
-): Promise<string[]> => {
+): Promise<{ id: string; projectId: string }[]> => {
   const sources = await prisma.boardSource.findMany({
     where: { organizationId: tenant.organizationId, provider: tenant.provider },
     select: {
       id: true,
+      projectId: true,
       provider: true,
       container: true,
       connection: { select: { externalTenantId: true } },
@@ -308,5 +309,21 @@ const tenantSourceIds = async (
   })
   return sources
     .filter((source) => externalTenantKeyFor(source) === tenant.externalTenantKey)
-    .map((source) => source.id)
+    .map((source) => ({ id: source.id, projectId: source.projectId }))
 }
+
+const tenantSourceIds = async (
+  prisma: PrismaClient,
+  tenant: IdentityTenant,
+): Promise<string[]> => (await tenantSources(prisma, tenant)).map((source) => source.id)
+
+/**
+ * Every project an identity mapping for this tenant reaches — the projects
+ * whose tasks `reprojectIdentityLinks` rewrites, so the set a change to one is
+ * authorized against.
+ */
+export const tenantSourceProjectIds = async (
+  prisma: PrismaClient,
+  tenant: IdentityTenant,
+): Promise<string[]> =>
+  [...new Set((await tenantSources(prisma, tenant)).map((source) => source.projectId))]

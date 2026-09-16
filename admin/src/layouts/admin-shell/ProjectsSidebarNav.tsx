@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useProjectBoards, type BoardRecord } from '../../facades/boards/hooks'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
@@ -22,7 +22,6 @@ import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMen
 import type { StarredItem } from './types'
 
 type ProjectsSidebarNavProps = {
-  isOwner: boolean
   onToggleStar: (type: StarredItem['type'], id: string) => void
   pathname: string
   starredCollapsed: boolean
@@ -55,7 +54,6 @@ const currentProjectIdFromPathname = (pathname: string): string | undefined =>
   /^\/projects\/([^/?#]+)/.exec(pathname)?.[1]
 
 export const ProjectsSidebarNav = ({
-  isOwner,
   onToggleStar,
   pathname,
   starredCollapsed,
@@ -215,7 +213,6 @@ export const ProjectsSidebarNav = ({
         currentProjectId={currentProjectId}
         currentSectionId={currentSectionId}
         isExpanded={isExpanded}
-        isOwner={isOwner}
         isStarred={starredProjectIds.has(project.id)}
         key={`${listId}:${project.id}`}
         knowledgeCount={attention?.knowledge.projects[project.id] ?? 0}
@@ -265,17 +262,17 @@ export const ProjectsSidebarNav = ({
         ) : null}
 
         <SidebarMenuSection
+          // Any member may create a project (in a team they belong to), so the
+          // doorway is offered to everyone the list is shown to.
           action={
-            isOwner ? (
-              <button
-                aria-label="New project"
-                className="admin-sidebar-plus"
-                onClick={() => setCreateOpen(true)}
-                type="button"
-              >
-                +
-              </button>
-            ) : null
+            <button
+              aria-label="New project"
+              className="admin-sidebar-plus"
+              onClick={() => setCreateOpen(true)}
+              type="button"
+            >
+              +
+            </button>
           }
           id="projects-nav-projects"
           isCollapsed={collapsedSections.projects ?? false}
@@ -289,6 +286,27 @@ export const ProjectsSidebarNav = ({
             // above, so there is nothing left to say here.
             unstarredProjects.map((project) => renderProjectRow(project, 'projects'))
           )}
+          {/*
+            The list above is only the projects this person can open. The
+            directory is where they find the rest — each one's name,
+            description and members — and so whom to ask to be added.
+          */}
+          <div className="mt-1">
+            <div
+              className={[
+                'admin-sb-item sidebar-project-tile group',
+                pathname === '/projects/directory' ? 'active' : '',
+              ].join(' ')}
+            >
+              <Link
+                aria-current={pathname === '/projects/directory' ? 'page' : undefined}
+                className="sidebar-project-link"
+                to="/projects/directory"
+              >
+                <span className="min-w-0 flex-1 truncate text-[color:var(--tx3)]">Browse all projects</span>
+              </Link>
+            </div>
+          </div>
         </SidebarMenuSection>
       </nav>
 

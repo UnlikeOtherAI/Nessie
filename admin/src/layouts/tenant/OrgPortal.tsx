@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 
-import type { TenantOrganisation } from '../../facades/team/tenant-host'
+import { fetchTeamHostUrl, type TenantOrganisation } from '../../facades/team/tenant-host'
+import { isNativeShell, resolveTeamSwitchDestination } from '../../lib/tenant-navigation'
 import { teamsFromMe, type Team } from '../../lib/teams'
+import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { TenantBrandFrame, TenantSignInButton, initialsOf } from './tenant-brand'
 
@@ -32,6 +34,7 @@ export const OrgPortal = ({
   organisation: TenantOrganisation
   signInOrigin: string | null
 }) => {
+  const apiClient = useApiClient()
   const { me, sessionState, switchUoaTeam } = useAuthSession()
 
   // Only this person's own memberships, and only those inside the organisation
@@ -57,7 +60,21 @@ export const OrgPortal = ({
     setBusyTeamId(team.teamId)
     try {
       await switchUoaTeam({ organizationId: team.organizationId, teamId: team.teamId })
-      window.location.assign('/channels')
+      // Not `/channels` on this host: TenantHostGate renders this portal for
+      // the organisation's hostname whatever the path, so that reloads the
+      // portal. Go to the team's own address, or the canonical origin.
+      const destination = await resolveTeamSwitchDestination({
+        canonicalOrigin: signInOrigin,
+        currentHost: window.location.host,
+        currentHostServesApp: false,
+        fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
+        inNativeShell: isNativeShell(),
+      })
+      if (destination.kind === 'document') {
+        window.location.assign(destination.href)
+        return
+      }
+      setBusyTeamId(null)
     } catch {
       // Leave the portal up rather than a blank screen; the person can retry
       // or pick another team.

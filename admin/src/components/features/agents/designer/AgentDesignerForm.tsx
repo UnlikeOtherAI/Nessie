@@ -299,14 +299,10 @@ export const AgentDesignerForm = ({
               Explicit-grant tools are protected from Agent Designer edits.{' '}
               {canManageExplicitTools ? (
                 <>
-                  Manage them in <Link className="underline" to="/agents/tools">Tools</Link>
-                  {' '}or{' '}
-                  <Link className="underline" to="/settings/integrations">
-                    Integrations
-                  </Link>.
+                  Manage them in <Link className="underline" to="/agents/tools">Tools</Link>.
                 </>
               ) : (
-                'An organization owner manages them in Tools or Integrations.'
+                'An organization owner manages them in Tools.'
               )}
             </p>
             <p className="text-xs text-[color:var(--tx3)]">

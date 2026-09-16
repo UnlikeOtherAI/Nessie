@@ -37,7 +37,7 @@ export const AppDetailHero = ({
   // Two shapes reach here. `none` is the state with no control at all
   // (unavailable / turned off by an admin); `disabled` is a button that is
   // visible but cannot be pressed — an integration-managed app like Deep Water,
-  // which is switched on from Integrations rather than connected here.
+  // which is switched on for the team by its product rather than connected here.
   //
   // The disabled case carries its reason in the button's `title`, which is
   // enough on a card but not here: a tooltip is invisible on touch and to

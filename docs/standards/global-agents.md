@@ -23,7 +23,7 @@ file is the rule**.
   home-membership trigger. Sole membership is what makes `effectiveUserId =
   poster` and the single-candidate fast path safe, so it must hold at rest. Three
   refusals keep it true: no agent binds into ANY system channel
-  (`bindAgentToChannel`, both routes, the PA tool; `canManageChannel` likewise
+  (`bindAgentToChannel`, both routes, the PA tool; `canModifyChannel` likewise
   refuses rename, archive and re-membering), `createAgentTrigger` refuses a
   `systemSlug` target (a scheduled run re-arms its creator's identity), and
   `assertGlobalAgentRunPlacement` admits, before any inference, only the home DM
@@ -104,11 +104,12 @@ file is the rule**.
 ## Bounded ordinary-agent project collaboration
 
 Ordinary shared agents do not wake one another by posting a chat message: the
-channel orchestrator accepts human turns only. A project administrator may
+channel orchestrator accepts human turns only. Any member of the project may
 explicitly grant an ordinary agent `agent_peer_delegate` and the selected
 project ticket tools. On a live project-channel turn, or a bounded durable peer
 delivery from one, the worker re-reads the original requester. Peer delegation
-and board creation require `canAdministerProject`; ticket operations mirror
+and board creation require `canModifyProject` (any member of the project, or
+an organisation owner or admin); ticket operations mirror
 the existing live project-access gate. The target must be a
 non-system shared agent already bound to that exact channel. The durable mailbox
 row carries the requester capability, a maximum depth of four, and the source
@@ -168,9 +169,22 @@ channels made the section a roster of the team, with the Agent Designer
 pinned in it from day one. A row appears once its channel carries a message,
 plus the channel the viewer is standing in, so opening a fresh conversation
 never pulls its own row out from under them
-(`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). Starring is unaffected —
+(`admin/src/layouts/admin-shell/sidebar-dm-lists.ts`). **A person's DM row then
+lasts `DM_QUIET_DAYS` — 14 — from the last thing said in it**, because a list of
+everyone they have ever messaged is the roster again a year later; messaging
+that person again brings the row straight back, since the only thing that ages
+out is the row. The channel, its history and its URL are untouched, and every
+door back to it (the section's `+`, a project member row, any `useNavigateToDm`
+caller) resolves that same DM through `POST /api/dm/:userId`. Two facts outrank
+the window because hiding the row would cost the reader something: the channel
+they are standing in, and a DM still holding unread messages. Agent DMs keep the
+plain "has a message" rule — `ChannelRecord.lastMessageAt` is the default
+thread's only, so an agent DM busy with conversations reads as silent and would
+age out while in daily use (`docs/plans/2026-09-08-agent-conversations.md` →
+Later). Starring is unaffected —
 it resolves through the full people directory, because starring somebody *is*
-adding them. The section's `+` owns the combined doorway: its **People** tab
+adding them, and a starred person renders in Starred rather than here, so an
+explicit "keep this" never depends on recency. The section's `+` owns the combined doorway: its **People** tab
 starts a human conversation, while **Agents** both addresses an existing agent
 and creates a new one after the person explicitly chooses **Private** or
 **Public**. Public means organization-visible and inviteable to any normal

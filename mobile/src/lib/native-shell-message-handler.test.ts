@@ -16,6 +16,7 @@ const buildInput = () => {
     lastBackDepth: undefined as boolean | undefined,
     lastKnownScreen: DEFAULT_LAST_KNOWN_SCREEN as LastKnownScreen,
     screenBar: null as NativeScreenBar | null,
+    appIcons: [] as string[],
     voiceCalls: [] as Array<{ action: string; detail?: unknown }>,
   }
   const screenActiveRef = { current: false }
@@ -39,6 +40,7 @@ const buildInput = () => {
     runExternalAuth: async () => undefined,
     runScript: () => undefined,
     screenActiveRef,
+    setAppIcon: (icon: string) => { state.appIcons.push(icon) },
     setCurrentPath: () => undefined,
     setIndex: (value: number | ((current: number) => number)) => {
       state.index = typeof value === 'function' ? value(state.index) : value
@@ -226,4 +228,22 @@ test('the native bar reads the admin\'s per-layer descriptor, not the screen mes
   } as never, input)
   assert.equal(state.screenBar?.title, 'Onboarding')
   assert.equal(state.lastKnownScreen.type, 'root')
+})
+
+test('nessie:app-icon hands a known icon to the native switch', () => {
+  const { input, state } = buildInput()
+
+  handleNativeShellMessage({ type: 'nessie:app-icon', icon: 'dark' }, input)
+  handleNativeShellMessage({ type: 'nessie:app-icon', icon: 'light' }, input)
+
+  assert.deepEqual(state.appIcons, ['dark', 'light'])
+})
+
+test('nessie:app-icon ignores an icon the shell does not ship', () => {
+  const { input, state } = buildInput()
+
+  handleNativeShellMessage({ type: 'nessie:app-icon', icon: 'sepia' }, input)
+  handleNativeShellMessage({ type: 'nessie:app-icon' }, input)
+
+  assert.deepEqual(state.appIcons, [])
 })

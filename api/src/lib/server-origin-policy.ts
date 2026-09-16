@@ -103,8 +103,16 @@ export const createCorsOriginChecker = (input: {
     }))
   }
 
+/**
+ * CORS headers for a hijacked streaming response, which @fastify/cors never
+ * sees. `teamHostBaseDomain` is required here (optional elsewhere) because
+ * every stream route once omitted it: an admin served from a tenant host
+ * (`acme.nessie.works`) passed REST CORS but had its SSE streams refused, so
+ * that client never saw a thinking bubble or live reply while an
+ * `app.nessie.works` client on the same thread did.
+ */
 export const buildStreamCorsHeaders = (
-  input: OriginPolicy,
+  input: OriginPolicy & { teamHostBaseDomain: string | undefined },
 ): Record<string, string> => {
   if (!input.origin || !isOriginAllowed(input)) return {}
   return {

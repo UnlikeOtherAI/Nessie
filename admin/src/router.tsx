@@ -45,6 +45,9 @@ const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactE
 )
 
 const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })))
+const ProjectDirectoryPage = lazy(() =>
+  import('./pages/project/ProjectDirectoryPage').then((m) => ({ default: m.ProjectDirectoryPage })),
+)
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
 const AgentDesignerPage = lazy(() =>
   import('./pages/AgentDesignerPage').then((m) => ({ default: m.AgentDesignerPage })),
@@ -81,9 +84,6 @@ const UnreadMessagesPage = lazy(() =>
   import('./pages/UnreadMessagesPage').then((m) => ({ default: m.UnreadMessagesPage })),
 )
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })))
-const IntegrationsPage = lazy(() =>
-  import('./pages/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
-)
 const KnowledgeBasePage = lazy(() =>
   import('./pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })),
 )
@@ -264,10 +264,6 @@ export const router = createBrowserRouter([
     element: <RedirectRoute to="/settings/account?tab=appearance" />,
   },
   {
-    path: '/integrations',
-    element: <RedirectRoute to="/settings/integrations" />,
-  },
-  {
     element: <AdminShellLayout />,
     children: [
       { path: '/threads', element: lazyElement(ThreadsPage, 'list') },
@@ -321,6 +317,10 @@ export const router = createBrowserRouter([
       {
         path: '/projects',
         element: lazyElement(ProjectsIndexPage, 'list'),
+      },
+      {
+        path: '/projects/directory',
+        element: lazyElement(ProjectDirectoryPage, 'list'),
       },
       {
         path: '/projects/:projectId',
@@ -504,10 +504,6 @@ export const router = createBrowserRouter([
         // page rather than a 404 — the code in the query survives the redirect.
         path: '/settings/agent-access',
         element: <AgentAccessRedirect />,
-      },
-      {
-        path: '/settings/integrations',
-        element: lazyElement(IntegrationsPage, 'board'),
       },
       {
         path: '/settings/members',

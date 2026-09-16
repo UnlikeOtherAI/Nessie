@@ -133,6 +133,7 @@ export const ThreadReplyPanel = ({
     dismissPendingAgent,
     confirmSecretCapture,
     dismissSecretCapture,
+    mentionInvite,
     secretCapture,
   } = useChannelComposer({
     activeChannel,
@@ -364,6 +365,7 @@ export const ThreadReplyPanel = ({
                   onOversizePaste={(paste) => setOversizePaste(paste)}
                   onConfirmSecretCapture={confirmSecretCapture}
                   onDismissSecretCapture={dismissSecretCapture}
+                  mentionInvite={mentionInvite}
                   onSubmitForm={(event) => {
                     threadScroll.pinToBottom()
                     markReplySent()

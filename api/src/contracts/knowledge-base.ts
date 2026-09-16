@@ -19,6 +19,15 @@ export const KnowledgeSensitivityTierSchema = z.enum([
 ])
 export const KnowledgePageStatusSchema = z.enum(['draft', 'published', 'archived'])
 export const KnowledgeAuthorTypeSchema = z.enum(['user', 'agent'])
+export const KnowledgeDocumentRoleSchema = z.enum([
+  'identity', 'working_rules', 'knowledge', 'template', 'example', 'procedure', 'experience',
+])
+export const KnowledgeDocumentTrustSchema = z.enum([
+  'observed', 'explicitly_confirmed', 'inferred', 'unverified_import',
+])
+export const KnowledgeDocumentOriginSchema = z.enum([
+  'user_authored', 'agent_authored', 'legacy_migration', 'import',
+])
 
 const OptionalScopeSchema = z.object({
   projectId: UuidSchema.optional(),
@@ -40,6 +49,8 @@ export const KnowledgePageVersionRecordSchema = z.object({
   // SHA-256 of canonical Markdown attachment bytes. The admin uses this
   // persisted proof to keep Markdown editing available after a display rename.
   sourceContentHash: z.string().nullable(),
+  trust: KnowledgeDocumentTrustSchema,
+  origin: KnowledgeDocumentOriginSchema,
   authorType: KnowledgeAuthorTypeSchema,
   authorId: NonEmptyStringSchema,
   changeComment: z.string().nullable(),
@@ -62,6 +73,7 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   title: NonEmptyStringSchema,
   summary: z.string().nullable(),
   metadata: JsonRecordSchema.nullable(),
+  documentRole: KnowledgeDocumentRoleSchema,
   parentPageId: UuidSchema.nullable(),
   position: z.number().int().nonnegative(),
   status: KnowledgePageStatusSchema,

@@ -19,6 +19,7 @@ import {
   actorAuthorType,
   attachPageEnvelope,
   createKnowledgeAccess,
+  requireAgentCoreDocumentEditAuthority,
   requireKnowledgePolicy,
   requestIds,
   type KnowledgeRouteDeps,
@@ -79,7 +80,18 @@ export const registerKnowledgeBaseFileRoutes = (
   deps: KnowledgeRouteDeps,
 ): void => {
   const { prisma, requireActorContext, fileService } = deps
-  const { provider, buildViewer, accessSpace, accessPageSpace } = createKnowledgeAccess(deps)
+  const { provider, buildViewer, accessSpace, accessPageSpace, canReadVersion } = createKnowledgeAccess(deps)
+
+  const canReadRequestedVersion = async (
+    organizationId: string,
+    viewer: Awaited<ReturnType<typeof buildViewer>>,
+    pageId: string,
+    versionId: string,
+  ): Promise<boolean> => {
+    const version = (await provider.listVersions(organizationId, pageId))
+      .find((candidate) => candidate.id === versionId)
+    return version !== undefined && canReadVersion(viewer, version)
+  }
 
   const requireFilePart = async (request: FastifyRequest, reply: FastifyReply) => {
     const file = await request.file()
@@ -256,6 +268,7 @@ export const registerKnowledgeBaseFileRoutes = (
     }
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'write', reply))) return reply
+    if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
 
     const file = await requireFilePart(request, reply)
     if (!file) return reply
@@ -365,6 +378,9 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
+    if (!(await canReadRequestedVersion(actorContext.tenant.organizationId, viewer, pageId, versionId))) {
+      return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
+    }
 
     const version = await prisma.knowledgePageVersion.findFirst({
       where: { id: versionId, pageId },
@@ -399,6 +415,9 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
+    if (!(await canReadRequestedVersion(actorContext.tenant.organizationId, viewer, pageId, versionId))) {
+      return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
+    }
 
     const version = await prisma.knowledgePageVersion.findFirst({
       where: { id: versionId, pageId },
@@ -431,6 +450,9 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
+    if (!(await canReadRequestedVersion(actorContext.tenant.organizationId, viewer, pageId, versionId))) {
+      return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
+    }
 
     const version = await prisma.knowledgePageVersion.findFirst({
       where: { id: versionId, pageId },

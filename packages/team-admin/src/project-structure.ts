@@ -3,6 +3,8 @@ import {
   parseOrganizationId,
   parseProjectId,
   parseTeamId,
+  parseUserId,
+  type ProjectDirectoryEntry,
   type ProjectRecord,
   type TeamRecord,
 } from '@nessie/schemas'
@@ -19,12 +21,14 @@ import { defaultBoardCreateData } from './board-structure.js'
  * membership row into a second place, the operations live here and the routes
  * call them, exactly as channel/agent/trigger creation already do.
  *
- * Both writes are organisation-owner operations at every call site: the routes
- * gate with `requireOwner`, and the `project_create` / `team_create` tools gate
- * with `requireOwnerMember` against the live `OrganizationMember` row. The gate
- * is deliberately NOT inside these functions — bootstrap and team
- * provisioning create projects with no acting owner at all — so a new caller
- * must state its own authorization rather than inherit one silently.
+ * Any active organisation member may create a project, in a team they are a
+ * member of — `createProjectForUser` checks that placement itself (an
+ * organisation owner or admin may place one in any team). Creating a team is
+ * still an organisation-owner operation: `POST /api/teams` gates with
+ * `requireOwner` and `team_create` with `requireOwnerMember`, deliberately
+ * outside `createTeamForUser` because bootstrap and team provisioning create
+ * rows with no acting owner at all, so a new caller must state its own
+ * authorization rather than inherit one silently.
  */
 
 // The columns every project starts with. Historically in `api/src/services/board.ts`;
@@ -42,6 +46,7 @@ type ProjectWithCounts = {
   name: string
   avatarEmoji: string | null
   avatarAttachmentId: string | null
+  description?: string | null
   organizationId: string
   createdAt: Date
   members: { userId: string; role: string }[]
@@ -55,6 +60,7 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
   name: project.name,
   avatarEmoji: project.avatarEmoji,
   avatarAttachmentId: project.avatarAttachmentId,
+  description: project.description ?? null,
   organizationId: parseOrganizationId(project.organizationId),
   memberCount: project.members.length,
   teamCount: project.team ? 1 : project.teams.length,
@@ -63,23 +69,38 @@ export const mapProjectRecord = (project: ProjectWithCounts): ProjectRecord => (
 })
 
 /**
- * Project read entitlement: an organisation owner sees every project in their
- * organisation; everybody else only the projects they are an explicit
- * `ProjectMember` of. `'all'` means "no project filter at all".
+ * Who is asking about a project. `isOrganizationAdmin` is an organisation owner
+ * **or** admin (`isAdminRole` / `isAdminActor`), resolved by the caller from the
+ * live membership row — the pair `docs/standards/team-model.md` names as the
+ * only people who reach a project they are not a member of.
+ */
+export type ProjectViewer = {
+  isOrganizationAdmin: boolean
+  organizationId: string
+  userId: string
+}
+
+/**
+ * Project entitlement: an organisation owner or admin reaches every project in
+ * their organisation; everybody else only the projects they are an explicit
+ * `ProjectMember` of, whatever that row's role. `'all'` means "no project
+ * filter at all".
  *
  * This is the predicate behind `GET /api/projects`, the task list, the board
- * and the iterations routes. It is here so the `project_list` tool asks the
- * same question rather than a second one that could answer differently.
+ * and the iterations routes, and — because every member of a project has equal
+ * rights in it — `canModifyProject` too. It is here so the `project_list` tool
+ * asks the same question rather than a second one that could answer
+ * differently.
  */
 export const listAccessibleProjectIds = async (
   prisma: PrismaClient,
-  viewer: { isOwner: boolean; organizationId: string; userId: string },
+  viewer: ProjectViewer,
 ): Promise<string[] | 'all'> => {
-  if (viewer.isOwner) return 'all'
+  if (viewer.isOrganizationAdmin) return 'all'
   const memberships = await prisma.projectMember.findMany({
     where: {
       userId: viewer.userId,
-      project: { organizationId: viewer.organizationId },
+      project: { organizationId: viewer.organizationId, deletedAt: null },
     },
     select: { projectId: true },
   })
@@ -88,14 +109,16 @@ export const listAccessibleProjectIds = async (
 
 export const isProjectAccessibleToUser = async (
   prisma: PrismaClient,
-  viewer: { isOwner: boolean; organizationId: string; userId: string },
+  viewer: ProjectViewer,
   projectId: string,
 ): Promise<boolean> => {
+  // A soft-deleted project is gone for everybody, organisation admins included:
+  // every route that gates on this refuses it with the read's own 404.
   const project = await prisma.project.count({
-    where: { id: projectId, organizationId: viewer.organizationId },
+    where: { id: projectId, organizationId: viewer.organizationId, deletedAt: null },
   })
   if (project === 0) return false
-  if (viewer.isOwner) return true
+  if (viewer.isOrganizationAdmin) return true
   return (
     (await prisma.projectMember.count({
       where: { projectId, userId: viewer.userId },
@@ -106,12 +129,13 @@ export const isProjectAccessibleToUser = async (
 /** The list `GET /api/projects` returns, scoped by the entitlement above. */
 export const listProjectsForUser = async (
   prisma: PrismaClient,
-  viewer: { isOwner: boolean; organizationId: string; userId: string },
+  viewer: ProjectViewer,
 ): Promise<ProjectRecord[]> => {
   const accessible = await listAccessibleProjectIds(prisma, viewer)
   const projects = await prisma.project.findMany({
     where: {
       channelRoot: false,
+      deletedAt: null,
       organizationId: viewer.organizationId,
       ...(accessible === 'all' ? {} : { id: { in: accessible } }),
     },
@@ -122,6 +146,66 @@ export const listProjectsForUser = async (
 }
 
 /**
+ * Every live project in the organisation, shaped by who is asking
+ * (`ProjectDirectoryEntrySchema`). Any active organisation member may read it:
+ * a person outside a project learns its name, description and members and
+ * nothing else, so they know who to ask; a member of it, or an organisation
+ * owner or admin, gets the full record too.
+ *
+ * The limited row is built field by field rather than by deleting keys from the
+ * full one, so a field added to the project read can never reach an outsider by
+ * default. Only active organisation members are listed as members.
+ */
+export const listProjectDirectory = async (
+  prisma: PrismaClient,
+  viewer: ProjectViewer,
+): Promise<ProjectDirectoryEntry[]> => {
+  const [projects, activeMembers] = await Promise.all([
+    prisma.project.findMany({
+      where: { channelRoot: false, deletedAt: null, organizationId: viewer.organizationId },
+      include: {
+        ...projectCountsInclude,
+        members: {
+          select: {
+            role: true,
+            userId: true,
+            user: { select: { avatarAttachmentId: true, avatarUrl: true, displayName: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.organizationMember.findMany({
+      where: { organizationId: viewer.organizationId, deactivatedAt: null },
+      select: { userId: true },
+    }),
+  ])
+  const active = new Set(activeMembers.map((member) => member.userId))
+  return projects.map((project): ProjectDirectoryEntry => {
+    const members = project.members
+      .filter((member) => active.has(member.userId))
+      .map((member) => ({
+        avatarAttachmentId: member.user.avatarAttachmentId,
+        avatarUrl: member.user.avatarUrl,
+        displayName: member.user.displayName,
+        userId: parseUserId(member.userId),
+      }))
+    const viewerIsMember = project.members.some((member) => member.userId === viewer.userId)
+    const base = {
+      description: project.description,
+      id: parseProjectId(project.id),
+      members,
+      name: project.name,
+    }
+    if (!viewerIsMember && !viewer.isOrganizationAdmin) {
+      return { access: 'limited', ...base }
+    }
+    return { access: 'full', ...base, project: mapProjectRecord(project), viewerIsMember }
+  })
+}
+
+/**
  * The teams `GET /api/teams` returns: every non-system team in the caller's
  * organisation, optionally narrowed to one project. Team reads are org-wide
  * (the route carries only `requireActorContext`), so a caller narrowing this to
@@ -129,7 +213,7 @@ export const listProjectsForUser = async (
  */
 export const listTeamsForOrganization = async (
   prisma: PrismaClient,
-  input: { organizationId: string; projectIds?: string[] },
+  input: { organizationId: string; projectIds?: string[]; viewerUserId?: string },
 ): Promise<(TeamRecord & { memberCount: number })[]> => {
   const teams = await prisma.team.findMany({
     where: {
@@ -139,7 +223,10 @@ export const listTeamsForOrganization = async (
         { projects: { some: { organizationId: input.organizationId } } },
       ],
     },
-    include: { members: { select: { userId: true } }, projects: { select: { id: true } } },
+    include: {
+      members: { select: { userId: true } },
+      projects: { where: { deletedAt: null }, select: { id: true } },
+    },
     orderBy: { createdAt: 'asc' },
   })
   return teams.flatMap((team) => {
@@ -154,6 +241,9 @@ export const listTeamsForOrganization = async (
     externallyManaged: team.externalTeamId !== null,
     id: parseTeamId(team.id),
     memberCount: team.members.length,
+    ...(input.viewerUserId
+      ? { viewerIsMember: team.members.some((member) => member.userId === input.viewerUserId) }
+      : {}),
     name: team.name,
     projectId: parseProjectId(team.projectId),
     projectIds: projectIds.map(parseProjectId),
@@ -162,6 +252,9 @@ export const listTeamsForOrganization = async (
 }
 
 export class ProjectValidationError extends Error {}
+
+/** The one channel every new project starts with. */
+export const PROJECT_DEFAULT_CHANNEL_NAME = 'general'
 
 const requireName = (value: string | undefined, what: string): string => {
   const name = value?.trim()
@@ -216,6 +309,18 @@ export const createProjectForUser = async (
       teamId: team.id,
       members: { create: { userId: input.userId, role: 'owner' } },
       boards: { create: defaultBoardCreateData(input.organizationId) },
+      // A project starts with its own #general and nothing else. Memberless and
+      // public like every seeded channel, and in the project's own team — never
+      // the organisation's shared channel root.
+      channels: {
+        create: {
+          label: PROJECT_DEFAULT_CHANNEL_NAME,
+          slug: PROJECT_DEFAULT_CHANNEL_NAME,
+          organizationId: input.organizationId,
+          teamId: team.id,
+          visibility: 'public',
+        },
+      },
     },
     include: projectCountsInclude,
   })

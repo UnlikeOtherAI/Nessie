@@ -4,14 +4,18 @@ import {
   createNativeKnowledgeProvider,
   findAnnotationLocation,
   htmlToPlainText,
-  loadSpaceViewer,
   type AnnotationAccess,
   type AnnotationActor,
   type AnnotationRecord,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
+import { resolveEffectiveUserId } from './access.js'
 import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
+import {
+  canReadPageVersions,
+  recordPageVersionRead,
+  resolveKnowledgeAccessViewers,
+} from './knowledge.js'
 import { truncate } from './tool-output.js'
 
 // A delegating PA authors as its owning user (with the agent recorded); an
@@ -30,7 +34,11 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   if (!page) throw new Error(`Knowledge page not found: ${pageId}`)
   const space = await provider.getSpace(organizationId, page.spaceId)
   if (!space) throw new Error(`Knowledge space not found for page: ${pageId}`)
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, buildSpaceViewerPrincipal(context))
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
+
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
+    throw new Error('You do not have access to this knowledge page.')
+  }
   const access: AnnotationAccess = {
     space,
     viewer,
@@ -42,6 +50,7 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   // knowledge read has to be recorded as run provenance: annotation bodies are
   // content from the page's space just as the page body is.
   recordKnowledgeSpaceRead(context, [space])
+  recordPageVersionRead(context, page)
 
   return { access, page }
 }

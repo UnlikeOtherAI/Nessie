@@ -36,11 +36,11 @@ const TeamAvatar = ({ team }: { team: LandingTeam }) => {
 /**
  * The "Your teams" list, above everything the page has to say.
  *
- * A visitor who is already signed in did not come to read the pitch — they
- * came to get back into their team, and the doorway has to be the first thing
- * on the page rather than something to scroll past. Renders nothing for an
- * empty list, which is what a signed-out visitor always gets, so the anonymous
- * homepage has no section, no placeholder and nothing that moves.
+ * A visitor who is already signed in did not come to read the pitch — they came
+ * to get back into their team, and the doorway has to be the first thing on the
+ * page rather than something to scroll past. Renders nothing for an empty list,
+ * which is what a signed-out visitor always gets, so the anonymous homepage has
+ * no section, no placeholder and nothing that moves.
  */
 export const SignedInTeamsSection = ({ teams }: { teams: readonly LandingTeam[] }) => {
   if (teams.length === 0) return null

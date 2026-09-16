@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { listVisibleAgentIdsForUser, visibleKnowledgeSpaceWhere } from '@nessie/db'
+import type { DisclosureViewer, LiveEntitlements } from '@nessie/runtime'
 import type { KnowledgeSpaceRecord } from './types.js'
 
 // Per-space access. The space creator always has full access. `bypass` is now
@@ -21,7 +22,17 @@ export type SpaceViewerAgentScopes = {
 }
 
 export type SpaceViewer = {
+  // A live UOA organization assertion is the human base entitlement where SSO
+  // owns the tenant. Explicit Nessie grants only apply after this passes.
+  // Every non-service viewer carries a fresh, exact organization proof.
+  // An explicit false is the only representation for denied/mismatched proof.
+  baseEntitled: boolean
   bypass: boolean
+  // The request-level disclosure resolver is attached by API/worker adapters.
+  // Keeping it with the space proof prevents a second UOA freshness read.
+  disclosureViewer?: DisclosureViewer | null
+  organizationRole: string | null
+  uoaMembershipVerified: boolean
   userId: string | null
   projectIds: Set<string>
   visibleAgentIds: Set<string>
@@ -111,6 +122,7 @@ const canAgentWriteSpace = (
 
 export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
+  if (viewer.baseEntitled === false) return false
   if (viewer.agent) return canAgentReadSpace(space, viewer.agent)
   if (space.ownerAgentId !== null) {
     // Agent homes derive their audience from live agent visibility; stored
@@ -132,6 +144,7 @@ export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): bool
 
 export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
+  if (viewer.baseEntitled === false) return false
   if (viewer.agent) return canAgentWriteSpace(space, viewer.agent)
   if (space.ownerAgentId !== null) {
     // `writeRestricted` is the steward's explicit narrowing switch and wins
@@ -166,9 +179,14 @@ export const readableKnowledgeSpaceWhere = (
   viewer: SpaceViewer,
 ): Prisma.KnowledgeSpaceWhereInput | null => {
   if (viewer.bypass) return null
+  if (viewer.baseEntitled === false) return { id: { in: [] } }
   if (!viewer.agent) {
     if (viewer.userId === null) return { id: { in: [] } }
-    return visibleKnowledgeSpaceWhere({ organizationId, userId: viewer.userId })
+    return visibleKnowledgeSpaceWhere({
+      organizationId,
+      userId: viewer.userId,
+      ...(viewer.uoaMembershipVerified ? { uoaMembershipVerified: true } : {}),
+    })
   }
 
   const { agent } = viewer
@@ -197,23 +215,64 @@ export const readableKnowledgeSpaceWhere = (
   }
 }
 
+const deniedUserViewer = (userId: string): SpaceViewer => ({
+  baseEntitled: false,
+  bypass: false,
+  organizationRole: null,
+  uoaMembershipVerified: false,
+  userId,
+  projectIds: new Set(),
+  visibleAgentIds: new Set(),
+})
+
+const entitlementMatches = (
+  entitlement: LiveEntitlements | undefined,
+  organizationId: string,
+  userId: string,
+): entitlement is Exclude<LiveEntitlements, { kind: 'denied' }> =>
+  entitlement !== undefined
+  && entitlement.kind !== 'denied'
+  && entitlement.organizationId === organizationId
+  && entitlement.userId === userId
+
 const loadUserViewer = async (
   prisma: PrismaClient,
   organizationId: string,
   userId: string,
+  liveEntitlements?: LiveEntitlements,
 ): Promise<SpaceViewer> => {
-  const [memberships, visibleAgentIds] = await Promise.all([
+  // A user viewer is never inferred from persisted membership. In an UOA
+  // tenant the passed proof is `/org/me`; in an unbound tenant it is the
+  // current active local membership resolved by the shared runtime seam.
+  if (!entitlementMatches(liveEntitlements, organizationId, userId)) {
+    return deniedUserViewer(userId)
+  }
+  const uoa = liveEntitlements.kind === 'uoa'
+  const [memberships, visibleAgentIds, localMembership] = await Promise.all([
     prisma.projectMember.findMany({
       select: { projectId: true },
-      // A user can be a member of projects in more than one organization.
-      // The active organization is an authorization boundary, so a project
-      // membership from another organization must never widen this viewer.
       where: { userId, project: { organizationId } },
     }),
-    listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
+    listVisibleAgentIdsForUser(prisma, {
+      organizationId,
+      userId,
+      ...(uoa ? { uoaMembershipVerified: true } : {}),
+    }),
+    uoa
+      ? Promise.resolve(null)
+      : prisma.organizationMember.findFirst({
+          where: { deactivatedAt: null, organizationId, userId },
+          select: { role: true },
+        }),
   ])
+  // The local role comes from the same active-membership authority that
+  // produced the local proof; a concurrent deactivation narrows immediately.
+  if (!uoa && !localMembership) return deniedUserViewer(userId)
   return {
+    baseEntitled: true,
     bypass: false,
+    organizationRole: uoa ? liveEntitlements.organizationRole : localMembership?.role ?? null,
+    uoaMembershipVerified: uoa,
     userId,
     projectIds: new Set(memberships.map((m) => m.projectId)),
     visibleAgentIds: new Set(visibleAgentIds),
@@ -224,6 +283,7 @@ const loadAgentViewer = async (
   prisma: PrismaClient,
   organizationId: string,
   agentId: string,
+  baseEntitled: boolean,
 ): Promise<SpaceViewer> => {
   // One tenant-scoped agent read carries the parent, binding reach, and
   // explicit grants together. Besides avoiding another round trip, this makes
@@ -256,7 +316,10 @@ const loadAgentViewer = async (
     projectIds.add(binding.channel.projectId)
   }
   return {
+    baseEntitled,
     bypass: false,
+    organizationRole: null,
+    uoaMembershipVerified: false,
     userId: null,
     projectIds: new Set(),
     visibleAgentIds: new Set(),
@@ -280,17 +343,30 @@ export const loadSpaceViewer = async (
   prisma: PrismaClient,
   organizationId: string,
   principal: SpaceViewerPrincipal,
+  options: {
+    // Must be the shared runtime proof resolved for this request/tool.
+    liveEntitlements?: LiveEntitlements
+    // An agent delegated to a human carries that human's exact proof too.
+    effectiveUserId?: string | null
+  } = {},
 ): Promise<SpaceViewer> => {
   if (principal.actorType === 'service') {
     return {
+      baseEntitled: true,
       bypass: true,
+      organizationRole: null,
+      uoaMembershipVerified: false,
       userId: null,
       projectIds: new Set(),
       visibleAgentIds: new Set(),
     }
   }
   if (principal.actorType === 'user') {
-    return loadUserViewer(prisma, organizationId, principal.actorId)
+    return loadUserViewer(prisma, organizationId, principal.actorId, options.liveEntitlements)
   }
-  return loadAgentViewer(prisma, organizationId, principal.actorId)
+  const delegatedUserId = options.effectiveUserId
+  const baseEntitled = delegatedUserId
+    ? entitlementMatches(options.liveEntitlements, organizationId, delegatedUserId)
+    : true
+  return loadAgentViewer(prisma, organizationId, principal.actorId, baseEntitled)
 }

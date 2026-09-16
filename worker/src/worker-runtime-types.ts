@@ -43,5 +43,5 @@ export type WorkerIntegrationSubscriptionDeps = Pick<
 
 export type WorkerSweepDeps = Pick<
   WorkerCoreSubscriptionDeps,
-  'abortSignal' | 'cloudBrowser' | 'encryptionKeyRing' | 'pool' | 'prisma' | 'realtimeTransport' | 'runnerLabelPrefix'
+  'abortSignal' | 'cloudBrowser' | 'encryptionKeyRing' | 'modelClient' | 'pool' | 'prisma' | 'realtimeTransport' | 'runnerLabelPrefix'
 > & { automaticMembershipEnabled: boolean }

@@ -4,7 +4,7 @@
 > §17 records what shipped, what changed against this plan during the build,
 > and what is deliberately not built yet.
 > **Date:** 2026-08-13
-> **Provenance:** three independent designs (Fable, Kimix, Codex Sol) against one
+> **Provenance:** three independent designs (Fable, reviewer B, Codex Sol) against one
 > shared brief, merged here. §15 records every place they disagreed and which
 > answer won. §16 lists what still needs the owner's call.
 > **Routes:** `/dashboards`, `/dashboards/:dashboardId`

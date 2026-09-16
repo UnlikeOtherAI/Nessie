@@ -11,6 +11,7 @@ import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/native-shell'
+import { isNativeShell, resolveTeamSwitchDestination } from '../../lib/tenant-navigation'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -159,11 +160,19 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
       // deployment does not route by hostname, when UOA cannot be reached, or
       // when the team has no address, so the ordinary same-origin navigation
-      // below stays the behaviour everywhere else.
+      // below stays the behaviour everywhere else. A native shell never
+      // follows: its bridge is granted to the canonical origin only
+      // (see lib/tenant-navigation.ts), so it is not even asked.
       if (team.uoaTeam) {
-        const hostUrl = await fetchTeamHostUrl(apiClient, team.teamId)
-        if (hostUrl && new URL(hostUrl).host !== window.location.host) {
-          window.location.assign(`${hostUrl}/channels`)
+        const destination = await resolveTeamSwitchDestination({
+          canonicalOrigin: null,
+          currentHost: window.location.host,
+          currentHostServesApp: true,
+          fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
+          inNativeShell: isNativeShell(),
+        })
+        if (destination.kind === 'document') {
+          window.location.assign(destination.href)
           return
         }
       }
@@ -272,14 +281,21 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     const bridge = (window as NativeTeamWindow).ReactNativeWebView
     const name = active?.label ?? null
     const avatarImageUrl = active?.avatarImageUrl ?? null
-    bridge?.postMessage(JSON.stringify({ name, type: 'nessie:team', teamAvatarUrl: avatarImageUrl }))
+    // An upload keeps the avatar's URL, so the revision is what tells the native
+    // chrome to reload the picture instead of keeping its cached copy.
+    bridge?.postMessage(JSON.stringify({
+      name,
+      type: 'nessie:team',
+      teamAvatarUrl: avatarImageUrl,
+      teamAvatarRevision: avatarRevision,
+    }))
     // Same reason, in the other direction: an older build recognises only the
     // old message type and field, and drops anything else, so it would stop
     // updating its identity bar the moment this deploy lands.
     bridge?.postMessage(
       JSON.stringify({ name, type: 'nessie:workspace', workspaceAvatarUrl: avatarImageUrl }),
     )
-  }, [active?.avatarImageUrl, active?.label, variant])
+  }, [active?.avatarImageUrl, active?.label, avatarRevision, variant])
 
   // The switcher is the rail's single team identity control, including
   // when there is currently only one team.

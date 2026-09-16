@@ -13,8 +13,10 @@ import type { SecretRecord } from '../../../facades/secrets/hooks'
 import { toolbarButtonClass } from './channel-presentation'
 import { ComposerAttachments } from './ComposerAttachments'
 import { ComposerEmojiButton } from './ComposerEmojiButton'
+import { MentionInviteDialog } from './MentionInviteDialog'
 import { SecretCaptureDialog } from './SecretCaptureDialog'
 import type { SecretCapture } from './useChannelComposer'
+import type { MentionInviteController } from './useMentionInviteGate'
 import type { ComposerAttachments as ComposerAttachmentsState } from './useComposerAttachments'
 
 interface ChannelComposerProps {
@@ -40,6 +42,8 @@ interface ChannelComposerProps {
   secretCapture: SecretCapture | null
   onConfirmSecretCapture: (secret: SecretRecord) => Promise<void>
   onDismissSecretCapture: () => void
+  // Required so no composer can hold a draft for a question it never shows.
+  mentionInvite: MentionInviteController
   onOpenDeepWaterResearch?: () => void
   onOpenExecutorRun?: () => void
 }
@@ -67,6 +71,7 @@ export const ChannelComposer = ({
   secretCapture,
   onConfirmSecretCapture,
   onDismissSecretCapture,
+  mentionInvite,
   onOpenDeepWaterResearch,
   onOpenExecutorRun,
 }: ChannelComposerProps) => {
@@ -286,6 +291,7 @@ export const ChannelComposer = ({
           onSaved={onConfirmSecretCapture}
         />
       ) : null}
+      <MentionInviteDialog controller={mentionInvite} />
     </div>
   )
 }

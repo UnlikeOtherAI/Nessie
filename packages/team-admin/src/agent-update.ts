@@ -116,6 +116,23 @@ export const updateAgentRecord = async (
       )
     }
 
+    // After cutover these columns are inert migration inputs. Every supported
+    // caller first commits FileService-backed canonical Markdown through
+    // `writeCanonicalAgentCore`, then calls this record writer with the core
+    // fields removed. Keeping this refusal here prevents a new caller from
+    // silently creating a second active prompt representation.
+    if (input.systemPrompt !== undefined || input.speakingStyle !== undefined) {
+      const migrated = await tx.agentCoreDocumentMigration.findUnique({
+        where: { agentId }, select: { id: true },
+      })
+      if (migrated) {
+        throw new AgentEditAuthorityError(
+          AGENT_EDIT_AUTHORITY_ERROR_CODES.CORE_CANONICAL_WRITE_REQUIRED,
+          'Agent core instructions must be updated through their canonical document versions.',
+        )
+      }
+    }
+
     // Edit authority plus the two narrower field gates, over the row actually
     // being written and the entitlement resolved before this transaction — never
     // the session claim or a network read while this lock is held.

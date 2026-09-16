@@ -768,10 +768,49 @@ doing" — rendering the same `AgentConversationList` the rail column uses
 (`/agents/:id?agentTab=activity`). Eight tabs, one list component, no
 collapse.
 
+### One empty conversation at a time (2026-09-14)
+
+Pressing "New conversation" repeatedly filled a room with rows that all said
+"No messages yet" — nothing distinguished them (an unnamed conversation is
+named by its first message, and there was none), and nothing stopped the next
+one.
+
+The rule is the start door's, not the button's: `startAgentConversation`
+answers a **bare** start — no opening message, no title, which is the button
+and nothing else — with `{ kind: 'reused' }` and the caller's own still-empty
+unnamed conversation in that room, when there is one. "Empty" is
+`messages: { none: {} }`, the same structural fact the list renders "No
+messages yet" from (`lastActivityAt`, `MAX(messages.created_at)`), so the
+button and the row it points at cannot disagree. A start that carries a job
+(`agent_conversation_start`) or a typed title always opens its own: the opener
+belongs in a fresh context, and a name is a decision reuse would drop. Another
+person's empty conversation in a shared room is theirs, not a row this press
+may claim.
+
+`POST /api/agents/:agentId/conversations` answers 200 rather than 201 for a
+reused conversation and carries `reused` in the body either way, because a
+client cannot tell "your new conversation" from "the one you already have" by
+comparing ids it never held.
+
+A refusal nobody can read is a broken button, so the column says so: the
+returned conversation's row blinks (`admin-attention-pulse`, three pulses —
+the kanban drop's own class, generalised and stripped of its 1.04 scale, which
+gave a full-width row's column a horizontal scrollbar while it played) and a
+`status` notice under the button reads "This one is still empty — try talking
+to me here first." for eight seconds. Pressing again re-keys the row so the
+blink plays again rather than standing still on a class that never changed.
+The reader lands in that conversation with the caret in its composer, as any
+start does; already standing in it, the press leaves no second history entry.
+
+Proved in `api/test/agent-conversations-postgres.test.ts` (the second press
+returns the first thread and the room still holds one, a message makes the
+button a button again, and a job, a title, and another person each open their
+own) and in the browser by `run.mjs` → `one-empty-at-a-time`.
+
 ## Cross-model review (2026-09-08)
 
 Codex Sol reviewed the committed tip read-only in three briefs (server
-contract, worker tools + orchestrator, admin rail/card/panel); Kimix was down
+contract, worker tools + orchestrator, admin rail/card/panel); the second reviewer was down
 for the whole evening (five runs, provider "high demand", no findings), so
 this round is Sol's. Findings were re-verified against the code before any
 were accepted — the roster's standing rule.

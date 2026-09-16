@@ -41,6 +41,7 @@ import {
 import { useNativePushNavigation } from './src/lib/native-push-navigation'
 import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
+import { useIosKeyboardOverlap } from './src/lib/ios-keyboard-overlap'
 import { shouldInstallNativeBackHandler } from './src/lib/native-phone-navigation'
 import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
 import {
@@ -68,6 +69,13 @@ import {
   startNativeVoiceCall,
 } from './modules/nessie-voice-call'
 import { nativeVoiceCallStateScript } from './src/lib/native-voice-call'
+import {
+  getAppIcon,
+  isAppIconSwitchAvailable,
+  setAppIcon,
+  type AppIconVariant,
+} from './modules/nessie-app-icon'
+import { nativeAppIconScript } from './src/lib/native-app-icon'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
   createIpadNativeChromeTheme,
@@ -98,6 +106,7 @@ import {
   reduceNativeShellPresentation,
 } from './src/components/native-shell-presentation'
 import { useNativeFocusChrome } from './src/lib/use-native-focus-chrome'
+import { requestNativeAvatarRefresh } from './src/lib/native-avatar-source'
 import {
   createNativeTabNavigationState,
   DEFAULT_LAST_KNOWN_SCREEN,
@@ -239,6 +248,7 @@ const Shell = (): React.JSX.Element => {
     statusBarStyle,
     strongAccent,
     toolbarState,
+    teamAvatarRevision,
     teamAvatarUrl: nativeTeamAvatarUrl,
     teamName: ipadTeamName,
   } = focusedPresentation
@@ -265,6 +275,18 @@ const Shell = (): React.JSX.Element => {
     return () => subscription?.remove()
   }, [runScript])
 
+  // Held in state so every later page load is told the icon in effect through
+  // the shell info, not only the page that asked for the change.
+  const [appIcon, setAppIconState] = useState(() => (isAppIconSwitchAvailable() ? getAppIcon() : null))
+  const changeAppIcon = useCallback((icon: AppIconVariant): void => {
+    void setAppIcon(icon)
+      .catch(() => getAppIcon())
+      .then((applied) => {
+        setAppIconState(applied)
+        runScript(nativeAppIconScript(applied))
+      })
+  }, [runScript])
+
   const flushExternalAuthDelivery = useCallback((): void => {
     flushNativeExternalAuthDelivery(externalAuthDeliveries.current, runScript)
   }, [runScript])
@@ -277,10 +299,13 @@ const Shell = (): React.JSX.Element => {
     void orientation.catch(() => undefined)
   }, [largePhoneLandscapeCapable])
 
+  const keyboardOverlap = useIosKeyboardOverlap(windowHeight)
+  const keyboardOpen = keyboardOverlap > 0
+
   useEffect(() => {
     if (IS_IPAD || Platform.OS !== 'ios') return
-    runScript(nativePhoneTabBarClearanceScript(insets.bottom))
-  }, [insets.bottom, runScript])
+    runScript(nativePhoneTabBarClearanceScript(insets.bottom, keyboardOpen))
+  }, [insets.bottom, keyboardOpen, runScript])
 
   const bootRecovery = useNativeBootRecovery(currentPathRef)
   const phoneBack = useNativePhoneBack(
@@ -305,6 +330,7 @@ const Shell = (): React.JSX.Element => {
   // layout without relying on a reload.
   useEffect(() => {
     runScript(nativeShellInfoScript({
+      appIcon,
       bottomInset: insets.bottom,
       clientId: pushSurfaceClientId.current,
       formFactor: nativeFormFactor,
@@ -312,7 +338,7 @@ const Shell = (): React.JSX.Element => {
       platform: Platform.OS,
       voiceCall: isNativeVoiceCallAvailable(),
     }))
-  }, [insets.bottom, nativeFormFactor, pendingPushPath, runScript])
+  }, [appIcon, insets.bottom, nativeFormFactor, pendingPushPath, runScript])
   const sourceUri = bootRecovery.reloadNonce === 0
     ? ADMIN_URL
     : (() => {
@@ -382,6 +408,11 @@ const Shell = (): React.JSX.Element => {
 
   useEffect(() => subscribeToCallPushCancellation(), [])
 
+  // An upload in the WebView bumps the revision without changing the URL.
+  useEffect(() => {
+    if (teamAvatarRevision > 0) requestNativeAvatarRefresh()
+  }, [teamAvatarRevision])
+
   // WKWebView does not reliably emit `visibilitychange` while React Native is
   // backgrounding the app. Tell the hosted admin explicitly so it clears its
   // page-aware push target before iOS suspends the WebView.
@@ -390,6 +421,9 @@ const Shell = (): React.JSX.Element => {
       nativeAppForeground.current = nextState === 'active'
       runScript(nativeAppForegroundScript(nativeAppForeground.current))
       if (nativeAppForeground.current) {
+        // The team avatar may have been replaced on another device while the
+        // app was away; its URL never changes, so revalidate on return.
+        requestNativeAvatarRefresh()
         // ASWebAuthenticationSession may finish before WKWebView is ready to
         // execute injected JavaScript. The result stays in the native queue
         // until the SPA acknowledges it, so app activation is the exact event
@@ -446,6 +480,7 @@ const Shell = (): React.JSX.Element => {
       endNativeVoiceCall: () => void endNativeVoiceCall().catch(() => undefined),
       runExternalAuth,
       runScript,
+      setAppIcon: changeAppIcon,
       setNativeVoiceCallMuted: (muted) => void setNativeVoiceCallMuted(muted).catch(() => undefined),
       startNativeVoiceCall: (provisioning) => void startNativeVoiceCall(provisioning)
         .catch(() => undefined),
@@ -546,7 +581,13 @@ const Shell = (): React.JSX.Element => {
     showNativePhoneNavBar,
     showTabBar: showBar,
   })
-  const webviewLayerStyle = { ...styles.webviewLayer, top: webviewInsets.top, bottom: webviewInsets.bottom }
+  // The frame ends at the keyboard's top edge (src/lib/keyboard-overlap.ts), so
+  // WebKit has nothing to pan and the page keeps its header and history.
+  const webviewLayerStyle = {
+    ...styles.webviewLayer,
+    top: webviewInsets.top,
+    bottom: Math.max(webviewInsets.bottom, keyboardOverlap),
+  }
   const ipadChromeTheme = createIpadNativeChromeTheme({
     activeTintColor: accent,
     dark: isDark(bg),
@@ -583,6 +624,7 @@ const Shell = (): React.JSX.Element => {
 
       <View style={webviewLayerStyle}>
         <MobileAdminWebView
+          appIcon={appIcon}
           backgroundColor={bg}
           bottomInset={insets.bottom}
           formFactor={nativeFormFactor}

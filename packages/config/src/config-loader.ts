@@ -10,6 +10,7 @@ import {
 } from './config-schema.js'
 import { assertLocalOnlyCapability, FILESYSTEM_STORAGE } from './local-only.js'
 import { parseEncryptionKeyRingEnv } from './encryption-key-ring.js'
+import { parseOriginAllowlist } from './origin-allowlist.js'
 
 export const ConfigEnvMap = {
   NESSIE_MODE: 'mode',
@@ -90,6 +91,8 @@ export const ConfigEnvMap = {
   NESSIE_RATE_LIMIT_AGENT_WRITE_IP_WINDOW_MS: 'api.rateLimit.agentWriteIp.windowMs',
   NESSIE_RATE_LIMIT_AUTH_ME_IP_MAX: 'api.rateLimit.authMeIp.max',
   NESSIE_RATE_LIMIT_AUTH_ME_IP_WINDOW_MS: 'api.rateLimit.authMeIp.windowMs',
+  NESSIE_RATE_LIMIT_LANDING_TEAMS_IP_MAX: 'api.rateLimit.landingTeamsIp.max',
+  NESSIE_RATE_LIMIT_LANDING_TEAMS_IP_WINDOW_MS: 'api.rateLimit.landingTeamsIp.windowMs',
   NESSIE_RATE_LIMIT_TRIGGER_WEBHOOK_IP_MAX: 'api.rateLimit.triggerWebhookIp.max',
   NESSIE_RATE_LIMIT_TRIGGER_WEBHOOK_IP_WINDOW_MS: 'api.rateLimit.triggerWebhookIp.windowMs',
   NESSIE_RATE_LIMIT_COMMS_WEBHOOK_IP_MAX: 'api.rateLimit.commsWebhookIp.max',
@@ -208,6 +211,7 @@ const DEFAULT_CONFIG: NessieConfig = {
       mailboxDiscoverIp: { max: 30, windowMs: 60_000 },
       agentWriteIp: { max: 60, windowMs: 60_000 },
       authMeIp: { max: 600, windowMs: 60_000 },
+      landingTeamsIp: { max: 120, windowMs: 60_000 },
       triggerWebhookIp: { max: 120, windowMs: 60_000 },
       commsWebhookIp: { max: 600, windowMs: 60_000 },
       boardSourceWebhookIp: { max: 600, windowMs: 60_000 },
@@ -215,6 +219,7 @@ const DEFAULT_CONFIG: NessieConfig = {
       executorDaemonSessionIp: { max: 6_000, windowMs: 60_000 },
       publicRouteIp: { max: 1_200, windowMs: 60_000 },
     },
+    landingOrigins: [],
   },
   github: {
     owner: 'UnlikeOtherAI',
@@ -437,6 +442,11 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
     ),
     loadCliOverrides(argv),
   )
+  // A list, so it cannot ride the scalar env map. Parsed strictly here so a
+  // malformed entry refuses to start rather than silently never matching.
+  if (env.NESSIE_LANDING_ORIGIN !== undefined) {
+    setByPath(merged, 'api.landingOrigins', parseOriginAllowlist(env.NESSIE_LANDING_ORIGIN, 'NESSIE_LANDING_ORIGIN'))
+  }
 
   const config = NessieConfigSchema.parse(merged)
 

@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
-import { mapPage, mapVersion, pageInclude } from './native-mappers.js'
+import { mapPage, mapVersion, pageInclude, versionInclude } from './native-mappers.js'
 import { listNativeRecentPages } from './native-recent-pages.js'
 import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
@@ -14,6 +14,7 @@ import {
   updatePage,
   type NativeKnowledgeProviderOptions,
 } from './native-version-writer.js'
+import { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
 import {
   archiveSpace,
   createSpace,
@@ -216,6 +217,8 @@ export const createNativeKnowledgeProvider = (
   getPage: fetchPage.bind(null, prisma),
   getSpace: (organizationId, spaceId) => getSpace(prisma, organizationId, spaceId),
   listPages: (input) => listPages(prisma, input),
+  migrateAgentCoreDocuments: (input) => migrateAgentCoreDocuments(prisma, options, input),
+  updateAgentCoreDocuments: (input) => updateAgentCoreDocuments(prisma, options, input),
   listRecentPages: (input) => listNativeRecentPages(prisma, input),
   listSpaces: (input) => listSpaces(prisma, input),
   listVersions: async (organizationId, pageId) => {
@@ -227,6 +230,7 @@ export const createNativeKnowledgeProvider = (
     const versions = await prisma.knowledgePageVersion.findMany({
       where: { pageId },
       orderBy: { versionNumber: 'desc' },
+      include: versionInclude,
     })
     return versions
       .map((version) => mapVersion(version))

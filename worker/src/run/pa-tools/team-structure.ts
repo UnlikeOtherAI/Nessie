@@ -15,12 +15,14 @@ import { formatSection } from './tool-output.js'
 /**
  * Projects and the teams inside them — the containers a channel needs.
  *
- * `project_create` mirrors `POST /api/projects` and `team_create` mirrors
- * `POST /api/teams`: both routes are `requireOwner`, so both tools are
- * organisation-owner actions, refused in words (naming who can do it) for
- * anybody else rather than hidden. Role comes from the live
- * `OrganizationMember` row at call time, never the run's enqueue-time snapshot.
- * `project_list` mirrors `GET /api/projects`, which any active member may call.
+ * `project_create` mirrors `POST /api/projects`, which any active member may
+ * call: `createProjectForUser` itself refuses a team the person is not in
+ * (unless they are an organisation owner or admin). `team_create` mirrors
+ * `POST /api/teams`, which is `requireOwner`, so it is an organisation-owner
+ * action refused in words (naming who can do it) for anybody else rather than
+ * hidden. Role comes from the live `OrganizationMember` row at call time, never
+ * the run's enqueue-time snapshot. `project_list` mirrors `GET /api/projects`,
+ * which any active member may call.
  *
  * Each calls the very same `@nessie/team-admin` function its route calls,
  * so the board columns a project starts with and its single owner membership row
@@ -41,9 +43,9 @@ const ProjectListInputSchema = z.object({
 /**
  * Provenance for a project-directory read.
  *
- * An organisation OWNER reaches every project by role, so for them a project
- * name is organisation-level material the destination already implies —
- * stamping `project:<id>` would compute a basis the requesting owner does not
+ * An organisation OWNER or ADMIN reaches every project by role, so for them a
+ * project name is organisation-level material the destination already implies —
+ * stamping `project:<id>` would compute a basis the requesting person does not
  * satisfy (viewer project scopes come from `ProjectMember` rows alone) and
  * withhold the answer from the only reader of their own DM. That is exactly the
  * reasoning `recordVisibleAgentRead` applies to team-visible agents.
@@ -57,11 +59,11 @@ const ProjectListInputSchema = z.object({
  */
 const recordProjectDirectoryRead = (
   context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
-  viewer: { isOwner: boolean },
+  viewer: { isOrganizationAdmin: boolean },
   projectIds: readonly string[],
 ): void => {
   const sink = context.consumedSources
-  if (!sink || viewer.isOwner) return
+  if (!sink || viewer.isOrganizationAdmin) return
   for (const projectId of projectIds) {
     sink.add({ scopeId: projectId, scopeType: 'project' })
   }
@@ -75,7 +77,7 @@ export const runProjectListTool = async (
   const member = await resolveActingMember(context)
 
   const projects = await listProjectsForUser(context.prisma, {
-    isOwner: member.isOwner,
+    isOrganizationAdmin: member.isOrganizationAdmin,
     organizationId: member.organizationId,
     userId: member.userId,
   })
@@ -133,8 +135,6 @@ export const runProjectCreateTool = async (
   const args = ProjectCreateInputSchema.parse(input)
   const member = await resolveActingMember(context)
 
-  requireOwnerMember(member, 'create a project')
-
   let project
   try {
     project = await createProjectForUser(context.prisma, {
@@ -155,8 +155,10 @@ export const runProjectCreateTool = async (
     outputPreview: [
       `Created project "${project.name}"`,
       `projectId=${project.id}`,
-      'You are its only member and its owner — nobody else was added.',
-      `It belongs to teamId=${args.teamId}. Pass both ids to channel_create.`,
+      'You are its only member — nobody else was added. Anyone you add later has the same rights in it as you.',
+      `It belongs to teamId=${args.teamId}.`,
+      'It already has its own #general channel. Do not create any other channel '
+      + 'for it unless the person asked for one; if they did, pass both ids to channel_create.',
     ].join('\n'),
     toolName: 'project_create',
   }

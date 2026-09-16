@@ -9,6 +9,7 @@ import {
   isConnectorAuthorizationMessage,
 } from './connector-authorization'
 import { isHapticMessage } from './haptics'
+import { isAppIconMessage } from './native-app-icon'
 import { isVoiceCallControlMessage, isVoiceCallStartMessage } from './native-voice-call'
 import {
   isAuthGateRoute,
@@ -21,6 +22,7 @@ import {
   isScreenMessage,
   isScreenTransitionMessage,
 } from './native-shell-message'
+import type { AppIconVariant } from '../../modules/nessie-app-icon'
 import type { NativeVoiceCallProvisioning } from '../../modules/nessie-voice-call'
 import type { HapticKind, NativeShellMessage } from './native-shell-message'
 import { nativePushPathScript } from './native-shell'
@@ -44,6 +46,7 @@ type Input = {
   replayPendingPushPath: () => string | null
   runExternalAuth: (url: string, state?: string) => Promise<void>
   runScript: (script: string) => void
+  setAppIcon: (icon: AppIconVariant) => void
   setNativeVoiceCallMuted: (muted: boolean) => void
   startNativeVoiceCall: (provisioning: NativeVoiceCallProvisioning) => void
   endNativeVoiceCall: () => void
@@ -112,6 +115,10 @@ export const handleNativeShellMessage = (message: NativeShellMessage, input: Inp
     } else {
       input.setNativeVoiceCallMuted(message.muted === true)
     }
+    return
+  }
+  if (isAppIconMessage(message)) {
+    input.setAppIcon(message.icon)
     return
   }
   if (isOpenExternalMessage(message)) {

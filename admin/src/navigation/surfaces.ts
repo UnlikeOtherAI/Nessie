@@ -85,7 +85,6 @@ export const SURFACES: Surface[] = [
   redirect({ pattern: /^\/workflows\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/settings\/tools$/, root: ADMIN_ROOT, section: 'admin' }),
   redirect({ pattern: /^\/settings\/agents$/, root: ADMIN_ROOT, section: 'admin' }),
-  redirect({ pattern: /^\/integrations$/, root: ADMIN_ROOT, section: 'admin' }),
 
   // ── Connected mail ───────────────────────────────────────────────────────
   ...createConnectedMailSurfaces(ADMIN_ROOT),
@@ -259,6 +258,17 @@ export const SURFACES: Surface[] = [
     type: 'root',
   },
   {
+    // Every project in the organisation, including ones the viewer is not in
+    // (name, description and members only). Before the project rows below,
+    // which would otherwise read `directory` as a project id.
+    depth: 1,
+    parentOf: toProjects,
+    pattern: /^\/projects\/directory$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'detail',
+  },
+  {
     depth: 3,
     identityOf: (match) => `project-board-settings:${match[1]}:${match[2]}`,
     intent: { state: ['tab'] },
@@ -297,7 +307,8 @@ export const SURFACES: Surface[] = [
     keyScope: () => 'project',
     intent: PROJECT_INTENT,
     parentOf: toProjects,
-    pattern: /^\/projects\/([^/]+)(?:\/board)?$/,
+    // `directory` is the organisation-wide project list above, never an id.
+    pattern: /^\/projects\/(?!directory(?:\/|$))([^/]+)(?:\/board)?$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'tabHost',

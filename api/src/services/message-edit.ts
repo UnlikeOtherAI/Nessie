@@ -63,7 +63,6 @@ export const softDeleteMessage = async (
     messageId: string
     threadId: string
     userId: string
-    isChannelManager: boolean
   },
 ): Promise<SoftDeleteMessageResult> => {
   const existing = await prisma.message.findFirst({
@@ -73,8 +72,11 @@ export const softDeleteMessage = async (
   if (!existing || existing.deletedAt) {
     return { kind: 'not_found' }
   }
-  // Author or channel manager may delete.
-  if (existing.userId !== input.userId && !input.isChannelManager) {
+  // Only the author deletes a message. Nobody else — a fellow channel member,
+  // an organisation owner or admin, a team role — may remove what somebody
+  // else said (`docs/standards/team-model.md` → "Who may change a project or a
+  // channel").
+  if (existing.userId !== input.userId) {
     return { kind: 'forbidden' }
   }
 

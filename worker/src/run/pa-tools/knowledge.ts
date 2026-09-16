@@ -1,5 +1,6 @@
 import {
   canReadSpace,
+  canReadKnowledgePageVersion,
   createNativeKnowledgeProvider,
   htmlToPlainText,
   isMarkdownAttachment,
@@ -12,18 +13,85 @@ import {
   type KnowledgeSpaceRecord,
   type SpaceViewer,
 } from '@nessie/knowledge'
-import { attributionFromActorContext } from '@nessie/runtime'
+import { attributionFromActorContext, resolveDisclosureViewer, resolveLiveEntitlements, type DisclosureViewer } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { buildSpaceViewerPrincipal } from './access.js'
+import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
 import { fileServiceFor } from '../file-service.js'
-import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import { readMarkdownAttachmentContent } from './knowledge-document-io.js'
+import { recordKnowledgeSpaceRead, recordKnowledgeVersionRead } from './knowledge-basis.js'
 import { truncate } from './tool-output.js'
 
 const MAX_KB_SEARCH_LIMIT = 8
 const DEFAULT_KB_SEARCH_LIMIT = 5
 const PAGE_BODY_CHAR_CAP = 20_000
 const MAX_LIST_SPACES = 50
+
+export type KnowledgeAccessViewers = {
+  disclosureViewer: DisclosureViewer
+  viewer: SpaceViewer
+}
+
+// One fresh human UOA proof governs both ordinary KB home access and version
+// disclosure. A tool reuses this pair through all of its reads and mutations;
+// resolving either side per page would be both slower and an authority split.
+export const resolveKnowledgeAccessViewers = async (
+  context: BuiltinToolRuntimeContext,
+): Promise<KnowledgeAccessViewers> => {
+  const organizationId = String(context.channel.organizationId)
+  const effectiveUserId = resolveEffectiveUserId(context)
+  const liveEntitlements = effectiveUserId
+    ? await resolveLiveEntitlements(context.prisma, {
+        organizationId,
+        userId: effectiveUserId,
+        uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      })
+    : undefined
+  const disclosureViewer = await resolveDisclosureViewer(
+    context.prisma,
+    organizationId,
+    effectiveUserId,
+    effectiveUserId
+      ? { liveEntitlements }
+      : { agentId: context.agentId },
+  )
+  const viewer = await loadSpaceViewer(
+    context.prisma,
+    organizationId,
+    buildSpaceViewerPrincipal(context),
+    liveEntitlements ? { liveEntitlements, effectiveUserId } : {},
+  )
+  return { disclosureViewer, viewer }
+}
+
+export const resolveKnowledgeDisclosureViewer = async (
+  context: BuiltinToolRuntimeContext,
+): Promise<DisclosureViewer> => (await resolveKnowledgeAccessViewers(context)).disclosureViewer
+
+export const canReadPageVersions = async (
+  context: BuiltinToolRuntimeContext,
+  page: KnowledgePageRecord,
+  disclosureViewer?: Awaited<ReturnType<typeof resolveKnowledgeDisclosureViewer>>,
+): Promise<boolean> => {
+  const viewer = disclosureViewer ?? await resolveKnowledgeDisclosureViewer(context)
+  const versions = await context.prisma.knowledgePageVersion.findMany({
+    where: { pageId: page.id },
+    select: {
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      disclosureSources: { select: { sourceAuthorUserId: true, sourceChannelId: true } },
+    },
+  })
+  if (versions.length === 0) return true
+  return versions.every((version) => canReadKnowledgePageVersion(version, viewer))
+}
+
+export const recordPageVersionRead = (
+  context: BuiltinToolRuntimeContext,
+  page: KnowledgePageRecord,
+): void => {
+  for (const version of [page.latestVersion, page.publishedVersion]) {
+    if (version) recordKnowledgeVersionRead(context, version)
+  }
+}
 
 export const clampKbSearchLimit = (value: unknown): number => {
   const parsed = Number(value)
@@ -65,18 +133,14 @@ export const runKbSearchTool = async (
 
   const organizationId = String(context.channel.organizationId)
   const limit = clampKbSearchLimit(input.limit)
-  const viewer = await loadSpaceViewer(
-    context.prisma,
-    organizationId,
-    buildSpaceViewerPrincipal(context),
-  )
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   const queryEmbedding = await resolveQueryEmbedding(context, query)
 
   const result = await searchNativePagesHybrid(context.prisma, {
+    disclosureViewer,
     organizationId,
     query,
     queryEmbedding,
-    embeddingModel: context.modelClient?.embeddingModel ?? null,
     viewer,
     projectId: input.projectId,
     spaceId: input.spaceId,
@@ -84,7 +148,12 @@ export const runKbSearchTool = async (
     limit,
   })
 
-  if (result.data.length === 0) {
+  const readableHits = (
+    await Promise.all(result.data.map(async (hit) =>
+      (await canReadPageVersions(context, hit.page, disclosureViewer)) ? hit : null)))
+    .filter((hit): hit is (typeof result.data)[number] => hit !== null)
+
+  if (readableHits.length === 0) {
     return {
       inputSummary: `query=${query}`,
       outputPreview: `No knowledge-base pages matched "${query}".`,
@@ -96,13 +165,14 @@ export const runKbSearchTool = async (
   // distinct spaces behind this page of results are recorded before the
   // snippets reach the model.
   const provider = createNativeKnowledgeProvider(context.prisma)
-  const hitSpaceIds = [...new Set(result.data.map((hit) => hit.page.spaceId))]
+  const hitSpaceIds = [...new Set(readableHits.map((hit) => hit.page.spaceId))]
   const hitSpaces = (
     await Promise.all(hitSpaceIds.map((id) => provider.getSpace(organizationId, id)))
   ).filter((space): space is KnowledgeSpaceRecord => space !== null)
   recordKnowledgeSpaceRead(context, hitSpaces)
+  for (const hit of readableHits) recordPageVersionRead(context, hit.page)
 
-  const lines = result.data.map((hit, index) =>
+  const lines = readableHits.map((hit, index) =>
     [
       `${index + 1}. ${hit.page.title}`,
       `   pageId=${hit.page.id} spaceId=${hit.page.spaceId}`,
@@ -119,9 +189,7 @@ export const runKbSearchTool = async (
 
 const ACCESS_DENIED_MESSAGE = 'You do not have access to this knowledge page.'
 
-type PageReadDependencies = {
-  files?: Parameters<typeof readMarkdownAttachmentContent>[0]
-}
+type PageReadDependencies = { files?: Parameters<typeof readMarkdownAttachmentContent>[0] }
 
 export const runKbPageReadTool = async (
   context: BuiltinToolRuntimeContext,
@@ -154,7 +222,7 @@ export const runKbPageReadTool = async (
   }
 
   const principal = buildSpaceViewerPrincipal(context)
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
   if (!canReadSpace(space, viewer)) {
     return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
   }
@@ -171,26 +239,31 @@ export const runKbPageReadTool = async (
     }
   }
 
+  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
+    return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
+  }
+
   // Past every gate: the agent is about to read this page's body, so the space
   // it lives in is provenance for whatever the run says next.
   recordKnowledgeSpaceRead(context, [space])
+  recordPageVersionRead(context, page)
 
   const version = page.publishedVersion ?? page.latestVersion
   const attachment = version?.attachmentId
     ? await context.prisma.attachment.findUnique({
-      where: { id: version.attachmentId },
-      select: { filename: true, mime: true, organizationId: true },
-    })
+        where: { id: version.attachmentId },
+        select: { filename: true, mime: true, organizationId: true },
+      })
     : null
   const isCanonicalMarkdown = attachment
     && attachment.organizationId === organizationId
     && isMarkdownAttachment(attachment)
   const markdown = isCanonicalMarkdown
     ? await readMarkdownAttachmentContent(
-      dependencies.files ?? fileServiceFor(context.prisma),
-      version?.attachmentId ?? '',
-      organizationId,
-    )
+        dependencies.files ?? fileServiceFor(context.prisma),
+        version?.attachmentId ?? '',
+        organizationId,
+      )
     : null
   const plain = isCanonicalMarkdown
     ? markdown ?? '(Markdown attachment bytes are unavailable.)'
@@ -243,6 +316,7 @@ const renderPageTree = (nodes: KnowledgePageTreeNode[]): string => {
 const runKbListByTaskTool = async (
   context: BuiltinToolRuntimeContext,
   organizationId: string,
+  disclosureViewer: Awaited<ReturnType<typeof resolveKnowledgeDisclosureViewer>>,
   viewer: SpaceViewer,
   taskId: string,
 ): Promise<ToolExecutionResult> => {
@@ -262,7 +336,8 @@ const runKbListByTaskTool = async (
       space = await provider.getSpace(organizationId, page.spaceId)
       spaceCache.set(page.spaceId, space)
     }
-    if (space && canReadSpace(space, viewer)) visible.push(page)
+    if (space && canReadSpace(space, viewer)
+      && await canReadPageVersions(context, page, disclosureViewer)) visible.push(page)
   }
 
   if (visible.length === 0) {
@@ -280,6 +355,7 @@ const runKbListByTaskTool = async (
     context,
     [...spaceCache.values()].filter((space): space is KnowledgeSpaceRecord => space !== null),
   )
+  for (const page of visible) recordPageVersionRead(context, page)
 
   const lines = visible.map(
     (page, index) => `${index + 1}. ${page.title} (pageId=${page.id}, kind=${page.kind})`,
@@ -293,14 +369,10 @@ export const runKbListTool = async (
 ): Promise<ToolExecutionResult> => {
   const organizationId = String(context.channel.organizationId)
   const provider = createNativeKnowledgeProvider(context.prisma)
-  const viewer = await loadSpaceViewer(
-    context.prisma,
-    organizationId,
-    buildSpaceViewerPrincipal(context),
-  )
+  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
 
   if (input.taskId) {
-    return runKbListByTaskTool(context, organizationId, viewer, input.taskId)
+    return runKbListByTaskTool(context, organizationId, disclosureViewer, viewer, input.taskId)
   }
 
   if (!input.spaceId) {
@@ -347,10 +419,14 @@ export const runKbListTool = async (
     }
   }
 
+  const pages = await provider.listPages({ disclosureViewer, organizationId, spaceId })
+  const visiblePages = (
+    await Promise.all(pages.map(async (page) =>
+      (await canReadPageVersions(context, page, disclosureViewer)) ? page : null)))
+    .filter((page): page is KnowledgePageTreeNode => page !== null)
   recordKnowledgeSpaceRead(context, [space])
-
-  const pages = await provider.listPages({ organizationId, spaceId })
-  if (pages.length === 0) {
+  for (const page of visiblePages) recordPageVersionRead(context, page)
+  if (visiblePages.length === 0) {
     return {
       inputSummary: `spaceId=${spaceId}`,
       outputPreview: `${space.name} has no pages yet.`,
@@ -358,5 +434,5 @@ export const runKbListTool = async (
     }
   }
 
-  return { inputSummary: `spaceId=${spaceId}`, outputPreview: renderPageTree(pages), toolName: 'kb_list' }
+  return { inputSummary: `spaceId=${spaceId}`, outputPreview: renderPageTree(visiblePages), toolName: 'kb_list' }
 }

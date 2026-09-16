@@ -41,7 +41,7 @@ test('agent documents show the honest empty state and no-secrets warning', () =>
   assert.doesNotMatch(documents, /ensure|createSpace|provision/i)
   assert.match(
     documents,
-    /These documents are visible to everyone who can see this agent\. Don’t store secrets here\./,
+    /Documents can have narrower access than this agent\. Don’t store secrets here\./,
   )
   assert.match(documents, /selectedSpace\.canWrite/)
   assert.match(documents, /Read-only/)

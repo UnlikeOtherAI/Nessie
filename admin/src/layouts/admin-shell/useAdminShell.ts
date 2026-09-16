@@ -65,7 +65,9 @@ export const useAdminShell = () => {
   // UOA owns membership on an UnlikeOtherAI session, which changes who the
   // Members doorway belongs to (any active member reads the roster).
   const isUoaSession = me?.auth.providerType === 'uoa';
-  const { data: users = [] } = useUsers(isOwner);
+  // Every member reads the people directory (owners get the management view
+  // of the same list), so the DM picker and sidebar resolve colleagues.
+  const { data: users = [] } = useUsers();
   const organization = useCurrentOrganization();
   const canManageOrganization = organization.data?.administration.status === 'allowed';
   const isAgentsRoute = location.pathname.startsWith('/agents');
@@ -315,20 +317,21 @@ export const useAdminShell = () => {
     void navigate('/unread-messages');
   }, [navigate]);
 
-  const navigateToConversationCompose = useCallback((target: 'people' | 'agents') => {
+  const navigateToNewConversation = useCallback(() => {
     setSidebarMenu(null);
-    void navigate(target === 'agents' ? '/channels/new?with=agents' : '/channels/new', {
+    void navigate('/channels/new', {
       state: newChannelComposeLocationState(`${location.pathname}${location.search}${location.hash}`),
     });
   }, [location.hash, location.pathname, location.search, navigate]);
 
-  const navigateToNewConversation = useCallback(() => {
-    navigateToConversationCompose('people');
-  }, [navigateToConversationCompose]);
-
+  // The designer carries its own visibility picker, so Create → Agent opens it
+  // directly and returns to wherever the person was.
   const navigateToNewAgent = useCallback(() => {
-    navigateToConversationCompose('agents');
-  }, [navigateToConversationCompose]);
+    setSidebarMenu(null);
+    void navigate('/agents/designer', {
+      state: { returnTo: `${location.pathname}${location.search}${location.hash}` },
+    });
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   const navigateToSettings = useCallback((subPage?: string) => {
     void navigate(subPage ? `/settings/${subPage}` : '/settings');

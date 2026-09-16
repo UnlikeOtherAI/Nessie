@@ -41,6 +41,10 @@ import { sweepPendingThreadMessages } from './run/thread-serialization.js'
 import { enqueueBoardSourceSync, enqueueCommsIncrementalSweep, enqueueCommsSubscriptionsRenew, enqueueQueueJob } from './queue.js'
 import { listIncrementalPollingConnectors } from '@nessie/comms-connect'
 import { maybeSyncRegistry } from './control/registry-sync-sweep.js'
+import {
+  reapDeletedMessageEmbeddings,
+  sweepMessageEmbeddings,
+} from './control/message-embedding-sweep.js'
 import { sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import type { WorkerSweepDeps } from './worker-runtime-types.js'
 
@@ -52,6 +56,7 @@ export const startWorkerSweeps = (
     automaticMembershipEnabled,
     cloudBrowser,
     encryptionKeyRing,
+    modelClient,
     pool,
     prisma,
     realtimeTransport,
@@ -465,6 +470,15 @@ const registrySyncSweepInterval = setInterval(() => {
   })
 }, registrySyncSweepMs)
 
+const messageEmbeddingSweepInterval = setInterval(() => {
+  void withSweepLock(pool, 'message-embedding-sweep', async () => {
+    await reapDeletedMessageEmbeddings(prisma)
+    return sweepMessageEmbeddings(prisma, { embeddingModel: modelClient.embeddingModel })
+  }).catch((error: unknown) => {
+    console.error('[worker.message-embedding-sweep] failed', error)
+  })
+}, 60_000)
+
   return {
     stop: () => {
       clearInterval(triggerSweepInterval)
@@ -487,6 +501,7 @@ const registrySyncSweepInterval = setInterval(() => {
       clearInterval(commsRenewInterval)
       clearInterval(commsIncrementalSweepInterval)
       clearInterval(registrySyncSweepInterval)
+      clearInterval(messageEmbeddingSweepInterval)
     },
   }
 }

@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { ChannelTeamAccessError, createChannelForUser } from '@nessie/team-admin'
+import {
+  ChannelProjectAccessError,
+  ChannelTeamAccessError,
+  createChannelForUser,
+} from '@nessie/team-admin'
 
 /**
  * A team is the unit people are members of, so an organisation membership does
@@ -94,16 +98,41 @@ dbTest('an organisation member with no standing in the team is refused', async (
   })
 })
 
-dbTest('a team member, a project member and an organisation admin may each place one', async () => {
+dbTest('a project member and an organisation admin may each place one', async () => {
   await withDb(async (prisma) => {
     for (const [userId, label] of [
-      [teamMemberUserId, 'by-team-member'],
       [projectMemberUserId, 'by-project-member'],
       [orgAdminUserId, 'by-org-admin'],
     ] as const) {
       const channel = await create(prisma, userId, label)
       assert.equal(channel?.label, label)
     }
-    assert.equal(await prisma.channel.count({ where: { organizationId: orgId } }), 3)
+    assert.equal(await prisma.channel.count({ where: { organizationId: orgId } }), 2)
+  })
+})
+
+// Adding a room to an existing project changes that project, so standing in the
+// project's team is not enough: the project's own gate (`canModifyProject`)
+// decides. A team member who is not in the project is refused.
+dbTest('a team member outside the project cannot add a channel to it', async () => {
+  await withDb(async (prisma) => {
+    await assert.rejects(
+      create(prisma, teamMemberUserId, 'by-team-member'),
+      (error: unknown) => error instanceof ChannelProjectAccessError,
+    )
+    assert.equal(await prisma.channel.count({ where: { organizationId: orgId } }), 0)
+  })
+})
+
+dbTest('a shared channel keeps the organisation-wide rule', async () => {
+  await withDb(async (prisma) => {
+    const channel = await createChannelForUser(prisma, {
+      label: 'shared-by-stranger',
+      organizationId: orgId,
+      scope: 'standalone',
+      userId: strangerUserId,
+      visibility: 'public',
+    })
+    assert.equal(channel?.label, 'shared-by-stranger')
   })
 })
