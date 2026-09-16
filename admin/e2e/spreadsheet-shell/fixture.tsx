@@ -11,6 +11,10 @@ import { lazy, StrictMode, Suspense, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import icalcUrl from '../../test/fixtures/q3-forecast.icalc?url'
+import {
+  cellRect,
+} from '../../src/components/features/knowledge/spreadsheet/spreadsheet-geometry'
+import type { WorkbookSession } from '../../src/components/features/knowledge/spreadsheet/WorkbookHost'
 import type { KnowledgePageRecord } from '../../src/facades/knowledge/hooks'
 import { ApiClientProvider } from '../../src/providers/ApiClientProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
@@ -145,6 +149,39 @@ window.fetch = async (input, init) => {
   return Response.json({ data: null })
 }
 
+// The driver the e2e run selects a range through. IronCalc's own
+// `.ic-worksheet-cell-outline` covers the canvas, so a Playwright click on a
+// cell needs raw coordinates, and only the model knows the column widths. This
+// is fixture-only: the pane exposes `onSession` for Phase 3b's live lane, and
+// this is that same seam used to drive a test.
+declare global {
+  interface Window {
+    __spreadsheetShell?: {
+      cellPoint: (row: number, column: number) => { x: number; y: number }
+      selection: () => number[]
+    }
+  }
+}
+
+const publishDriver = (session: WorkbookSession | null): void => {
+  if (!session) {
+    delete window.__spreadsheetShell
+    return
+  }
+  window.__spreadsheetShell = {
+    cellPoint: (row, column) => {
+      const container = document.querySelector('.ic-worksheet-sheet-container')
+      const frame = container?.getBoundingClientRect() ?? { left: 0, top: 0 }
+      const rect = cellRect(session.model, session.model.getSelectedView().sheet, row, column)
+      return {
+        x: frame.left + rect.left + rect.width / 2,
+        y: frame.top + rect.top + rect.height / 2,
+      }
+    },
+    selection: () => Array.from(session.model.getSelectedView().range),
+  }
+}
+
 const Fixture = () => {
   // The gate the lazy-load proof needs: nothing IronCalc is fetched until it is
   // pressed, which is what `KnowledgeDocumentPane` does on a page open.
@@ -172,7 +209,7 @@ const Fixture = () => {
       <Suspense
         fallback={<p data-testid="spreadsheet-chunk-loading">Opening Q3 Forecast…</p>}
       >
-        <SpreadsheetPane canWrite page={page} />
+        <SpreadsheetPane canWrite onSession={publishDriver} page={page} />
       </Suspense>
     </div>
   )

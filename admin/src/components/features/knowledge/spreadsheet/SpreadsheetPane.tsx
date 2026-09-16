@@ -117,6 +117,9 @@ export const SpreadsheetPane = ({
   const onActionError = (what: string) => (error: unknown) =>
     setActionError(`${what} failed: ${error instanceof Error ? error.message : String(error)}`)
 
+  // Read by the fullscreen Escape handler, which must not re-subscribe on every
+  // surface toggle.
+  const openRef = useRef<boolean>(false)
   const filterAnchor = useRef<HTMLButtonElement>(null)
   const findAnchor = useRef<HTMLButtonElement>(null)
   const columnAnchor = useRef<HTMLButtonElement | null>(null)
@@ -154,10 +157,18 @@ export const SpreadsheetPane = ({
   useEffect(() => {
     if (!fullscreen) return undefined
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setFullscreen(false)
+      // A dialog or popover over the grid owns Escape first; this only leaves
+      // fullscreen when nothing else is open.
+      if (event.key !== 'Escape' || openRef.current) return
+      event.preventDefault()
+      setFullscreen(false)
     }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    // Capture, not bubble: IronCalc uses Escape to cancel cell editing and
+    // stops the event inside React's root, which a document-level bubbling
+    // listener never sees while the grid has focus. Measured — Escape simply
+    // did nothing in fullscreen until this moved to the capture phase.
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
   }, [fullscreen])
 
   const handleSession = useCallback((next: WorkbookSession | null) => {
@@ -245,8 +256,11 @@ export const SpreadsheetPane = ({
       event.preventDefault()
       setOpen('find')
     }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    // Capture, for the same reason as Escape above: the widget swallows the
+    // keystroke while the grid has focus, which is exactly when a person
+    // reaches for Find.
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
   }, [])
 
   const headerActions: PageHeaderAction[] = [
@@ -254,6 +268,21 @@ export const SpreadsheetPane = ({
   ]
 
   const busy = restoreVersion.isPending || saveVersion.isPending
+
+  // IronCalc's workbook container takes focus back after any of our surfaces
+  // has taken it — measured: with the sort dialog open, `document.activeElement`
+  // is `.ic-workbook-container`, not the dialog. Two things break silently as a
+  // result. A modal's Escape and focus trap are installed by `useModalA11y` on
+  // the *panel*, so a panel that has lost focus has lost both. A popover's
+  // Escape rides a document listener, and the widget's own Escape handler stops
+  // the event inside React's root before it gets there. Worse, a find box that
+  // cannot hold focus sends the next keystroke into a cell.
+  //
+  // `inert` is the fix and the right semantics: while one of our surfaces is
+  // up, the grid behind it is inert. The funnel buttons go inert with it, which
+  // is correct — a second column's filter waits for the first to be answered.
+  const overlayOpen = open !== null || filterColumn !== null
+  openRef.current = overlayOpen
 
   const body = (
     <div className="spreadsheet-pane relative flex h-full min-h-0 flex-col" data-testid="spreadsheet-pane">
@@ -349,6 +378,7 @@ export const SpreadsheetPane = ({
         <div
           className="relative flex min-h-0 flex-1 flex-col"
           data-format-bar={formatBarVisible || !phone ? 'shown' : 'hidden'}
+          inert={overlayOpen}
           ref={gridBounds}
         >
           <WorkbookHost
@@ -492,6 +522,19 @@ export const SpreadsheetPane = ({
             setFilterColumn(null)
           }}
           onClose={() => setFilterColumn(null)}
+          onSort={(direction) => {
+            restructure.mutate(
+              {
+                action: 'sort',
+                hasHeaderRow: true,
+                keys: [{ column: filterColumn, direction }],
+                range: filterModel.range,
+                sheet,
+              },
+              { onError: onActionError('Sort') },
+            )
+            setFilterColumn(null)
+          }}
           open
         />
       ) : null}

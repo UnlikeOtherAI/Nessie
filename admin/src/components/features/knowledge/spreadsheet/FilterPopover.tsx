@@ -109,13 +109,21 @@ export const FilterPopover = ({
   return (
     <Popover
       anchorRef={anchorRef}
-      className="w-72"
+      // `Popover` places and dismisses; the panel's own chrome is the caller's,
+      // as it is at every other call site. Without it the panel is transparent
+      // and the grid reads straight through the checklist.
+      className="w-80 overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 shadow-lg"
       label={`Filter ${title}`}
       onClose={onClose}
       open={open}
       placement="bottom-start"
     >
-      <div className="grid gap-3 p-3" data-testid="spreadsheet-filter-popover">
+      {/* `min-w-0` on the grid container, not only on the input inside it:
+          a grid whose `min-width` is `auto` sizes to its own items' min-content
+          and overflows the scroll panel around it, which `overflow: auto` then
+          turns into a clip -- the step button and "Replace all" were simply
+          outside the panel and unclickable. */}
+      <div className="grid min-w-0 gap-3" data-testid="spreadsheet-filter-popover">
         <div className="text-xs font-semibold text-[color:var(--tx3)]">{title}</div>
 
         {onSort ? (

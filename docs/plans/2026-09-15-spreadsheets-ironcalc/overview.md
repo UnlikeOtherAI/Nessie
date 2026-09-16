@@ -32,6 +32,9 @@ turn and says why.
 - [spike-b-xlsx.md](spike-b-xlsx.md) — xlsx and CSV fidelity measurements.
 - [spike-cd-render-touch.md](spike-cd-render-touch.md) — the admin render
   and phone-touch spikes.
+- [phase-3a-ui.md](phase-3a-ui.md) — the admin UI shell as built: its
+  screenshots, its bundle numbers, the departures from `admin-ui.md` and what
+  each one was measured against.
 
 ## Goal
 

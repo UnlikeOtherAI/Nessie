@@ -83,7 +83,13 @@ export const SpreadsheetHistoryPanel = ({
                 </span>
                 {version.authorType === 'agent' ? (
                   <Pill size="sm" tone="info">
-                    <FontAwesomeIcon icon={faRobot} /> agent
+                    {/* The glyph and the word need an explicit gap: `Pill`
+                        uppercases and letter-spaces its label, and a literal
+                        space between two JSX children collapses against that. */}
+                    <span className="inline-flex items-center gap-1">
+                      <FontAwesomeIcon icon={faRobot} />
+                      agent
+                    </span>
                   </Pill>
                 ) : null}
               </div>

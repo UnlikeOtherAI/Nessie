@@ -89,6 +89,131 @@ try {
     await context.close()
   }
 
+  // ── 1b. dialogs.png — Rule zero: every surface is reachable by pressing ────
+  {
+    const context = await browser.newContext({
+      deviceScaleFactor: 2,
+      viewport: { height: 900, width: 1280 },
+    })
+    const page = await context.newPage()
+    const errors = []
+    page.on('pageerror', (error) => errors.push(String(error)))
+    await page.goto(`${url}?open=1`)
+    await page.locator('.ic-worksheet-sheet-canvas').waitFor()
+
+    // Select A1:C5 the way a person does, by dragging across the grid.
+    // IronCalc's own `.ic-worksheet-cell-outline` covers the canvas, so raw
+    // mouse coordinates are the only honest route (decisions.md's Phase 3a
+    // note), and only the model knows the column widths — hence the fixture's
+    // `cellPoint`, published through the same `onSession` seam Phase 3b uses.
+    const from = await page.evaluate(() => window.__spreadsheetShell.cellPoint(1, 1))
+    const to = await page.evaluate(() => window.__spreadsheetShell.cellPoint(5, 3))
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.mouse.move(to.x, to.y, { steps: 8 })
+    await page.mouse.up()
+    const selected = await page.evaluate(() => window.__spreadsheetShell.selection())
+    assert.deepEqual(selected, [1, 1, 5, 3], `the drag selected ${selected.join(':')}`)
+
+    // Sort.
+    await page.getByTestId('spreadsheet-action-sort').click()
+    await page.getByTestId('spreadsheet-sort-dialog').waitFor()
+    await page.getByRole('heading', { name: 'Sort range' }).waitFor()
+    // The header row is on by default, so the key dropdown is named by the
+    // header text rather than by "Column A" — the Sheets behaviour.
+    await page.getByLabel('Sort by column').waitFor()
+    const firstKey = await page.getByLabel('Sort by column').innerText()
+    assert.ok(/Region/.test(firstKey), `the sort key is not named by its header: ${firstKey}`)
+    assert.equal(await page.getByTestId('spreadsheet-sort-submit').isEnabled(), true)
+    await page.screenshot({ path: resolve(output, 'sort.png') })
+    // Escape is the overlay contract, not decoration: every dialog here goes
+    // through the shared `Dialog`, so if one of them swallowed it the scrim
+    // would stay and the next press would land on nothing.
+    await page.keyboard.press('Escape')
+    await page.getByTestId('spreadsheet-sort-dialog').waitFor({ state: 'detached' })
+
+    // Filter, from the funnel drawn on the column header.
+    await page.getByTestId('spreadsheet-filter-header-3').click()
+    await page.getByTestId('spreadsheet-filter-popover').waitFor()
+    // The value checklist is the distinct formatted values of the column.
+    for (const value of ['Dana', 'Ravi', 'Mo']) {
+      await page.getByRole('checkbox', { name: value, exact: true }).waitFor()
+    }
+    await page.screenshot({ path: resolve(output, 'filter.png') })
+    await page.keyboard.press('Escape')
+    await page.getByTestId('spreadsheet-filter-popover').waitFor({ state: 'detached' })
+
+    // Find & replace, and its live count.
+    await page.getByTestId('spreadsheet-action-find').click()
+    await page.getByTestId('spreadsheet-find-popover').waitFor()
+    await page.getByLabel('Find', { exact: true }).fill('Dana')
+    await page.getByTestId('spreadsheet-find-count').filter({ hasText: '1 of 2' }).waitFor()
+    // Nothing in a popover may sit outside its own panel: an overflowing control
+    // is invisible to a click and to a screen reader alike, and `overflow: auto`
+    // turns the overflow into a clip rather than a visible mistake. Polled,
+    // because `Popover` renders its panel at its natural size for one frame
+    // before it has measured and placed it.
+    await page.waitForFunction(() => {
+      const panel = document.querySelector('[data-testid="spreadsheet-find-popover"]')?.parentElement
+      return panel ? getComputedStyle(panel).visibility !== 'hidden' : false
+    })
+    const overflow = await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="spreadsheet-find-popover"]')?.parentElement
+      if (!panel) return null
+      const box = panel.getBoundingClientRect()
+      return [...panel.querySelectorAll('button, input, select')]
+        .filter((node) => {
+          const rect = node.getBoundingClientRect()
+          return rect.right > box.right + 1 || rect.left < box.left - 1
+        })
+        .map((node) => {
+          const rect = node.getBoundingClientRect()
+          const label = node.getAttribute('aria-label') ?? node.textContent?.trim()
+          return `${label} [${Math.round(rect.left)}..${Math.round(rect.right)}] in [${Math.round(box.left)}..${Math.round(box.right)}]`
+        })
+    })
+    assert.deepEqual(overflow, [], `controls outside the find panel: ${overflow?.join(', ')}`)
+    await page.screenshot({ path: resolve(output, 'find.png') })
+    await page.keyboard.press('Escape')
+    await page.getByTestId('spreadsheet-find-popover').waitFor({ state: 'detached' })
+
+    // History, with the agent badge and Restore in two places.
+    await page.getByTestId('spreadsheet-action-history').click()
+    await page.getByTestId('spreadsheet-history').waitFor()
+    await page.getByTestId('spreadsheet-version-3').getByText('agent').waitFor()
+    await page.getByTestId('spreadsheet-restore-3').waitFor()
+    await page.getByTestId('spreadsheet-restore-selected').waitFor()
+    await page.screenshot({ path: resolve(output, 'history.png') })
+    // Restore is confirmed, never one press away.
+    await page.getByTestId('spreadsheet-restore-3').click()
+    await page.getByRole('dialog').getByText('Restore v3?').waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByRole('dialog').getByText('Restore v3?').waitFor({ state: 'detached' })
+    await page.getByRole('button', { name: 'Close' }).click()
+
+    // Export, and the sentence a filtered workbook owes its reader.
+    await page.getByTestId('spreadsheet-action-export').click()
+    await page.getByTestId('spreadsheet-export-dialog').waitFor()
+    await page.getByText('the filter itself is not written', { exact: false }).waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByTestId('spreadsheet-export-dialog').waitFor({ state: 'detached' })
+
+    // Save version.
+    await page.getByTestId('spreadsheet-action-save-version').click()
+    await page.getByTestId('spreadsheet-save-version-dialog').waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByTestId('spreadsheet-save-version-dialog').waitFor({ state: 'detached' })
+
+    // Fullscreen is an overlay, and Escape closes it.
+    await page.getByTestId('spreadsheet-action-fullscreen').click()
+    await page.getByTestId('spreadsheet-fullscreen').waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByTestId('spreadsheet-fullscreen').waitFor({ state: 'detached' })
+
+    assert.equal(errors.length, 0, `Dialog errors: ${errors.join(' | ')}`)
+    await context.close()
+  }
+
   // ── 2. theme-light.png / theme-dark.png ───────────────────────────────────
   {
     const context = await browser.newContext({

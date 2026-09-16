@@ -110,7 +110,7 @@ export const FindReplacePopover = ({
   return (
     <Popover
       anchorRef={anchorRef}
-      className="w-80"
+      className="w-96 overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 shadow-lg"
       label="Find and replace"
       onClose={onClose}
       onKeyDown={(event) => {
@@ -120,21 +120,34 @@ export const FindReplacePopover = ({
         }
       }}
       open={open}
-      placement="bottom-end"
+      placement="bottom-start"
     >
-      <div className="grid gap-3 p-3" data-testid="spreadsheet-find-popover">
+      {/* `min-w-0` on the grid container, not only on the input inside it:
+          a grid whose `min-width` is `auto` sizes to its own items' min-content
+          and overflows the scroll panel around it, which `overflow: auto` then
+          turns into a clip -- the step button and "Replace all" were simply
+          outside the panel and unclickable. */}
+      <div className="grid min-w-0 gap-3" data-testid="spreadsheet-find-popover">
         <div className="flex items-center gap-2">
           <Input
             aria-label="Find"
             autoFocus
+            // A flex item's `min-width` defaults to its intrinsic size, and an
+            // `<input>`'s intrinsic size is the UA's `size=20` -- about 177px.
+            // Left alone it refuses to shrink and pushes the counter and the
+            // step buttons past the panel's right edge, where `overflow: auto`
+            // clips them and nothing can click them. Inline, because the class
+            // did not win: `.admin-input` is an unlayered component class and
+            // this is the same cascade trap as `button { font: inherit }`.
             className="flex-1"
+            style={{ minWidth: 0 }}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Find"
             size="compact"
             value={query}
           />
           <span
-            className="w-16 shrink-0 text-right text-xs text-[color:var(--tx3)]"
+            className="w-14 shrink-0 text-right text-xs text-[color:var(--tx3)]"
             data-testid="spreadsheet-find-count"
           >
             {matches === undefined

@@ -15,6 +15,10 @@ Measured 2026-09-16 against `@ironcalc/workbook` 0.8.3 + `@ironcalc/wasm`
 | [`phase-3a/theme-light.png`](phase-3a/theme-light.png) | `daylight`: surface `rgb(255,255,255)`, grid `rgb(216,222,232)` — the spike's numbers, reproduced. |
 | [`phase-3a/theme-dark.png`](phase-3a/theme-dark.png) | `midnight`: surface `rgb(17,24,39)`, grid `rgb(31,41,55)`, toolbar icons **painted** (the `--palette-common-black` trap, not re-entered), no white band across the formula bar. |
 | [`phase-3a/phone.png`](phase-3a/phone.png) | 390×844, `hasTouch`: the action bar collapsed to icons, IronCalc's toolbar parked behind "Format", formula bar and sheet tabs kept, `canEdit` on. |
+| [`phase-3a/sort.png`](phase-3a/sort.png) | The sort dialog over a dragged A1:C5 selection: header-row checkbox, the key named by its header (`Region (A)`), direction, "Add another sort column". |
+| [`phase-3a/filter.png`](phase-3a/filter.png) | The funnel's popover: sort this column, filter by values or condition, the distinct-value checklist with search and Select all / Clear, `(Blanks)`. |
+| [`phase-3a/find.png`](phase-3a/find.png) | Find & replace: live "1 of 2", the four Sheets options, the current match named (`Sheet1 · C2 — Dana`), Replace / Replace all. |
+| [`phase-3a/history.png`](phase-3a/history.png) | Versions with the `agent` badge and the comment that says *why* (`before: delete rows 2-4`), Restore on every row and again for the selected version. |
 
 Regenerate with
 `NAV_E2E_ADMIN_PORT=5561 pnpm --filter @nessie/admin test:e2e:spreadsheet-shell`
@@ -75,11 +79,23 @@ only through a dynamic import, never names the wasm URL, and that
    inherited the pane's 15 px, filled the 16 px box edge to edge and stopped
    reading as a funnel. Measured (`svg` 15×15 in a 16×16 button), then fixed,
    then looked at again.
-8. **`shiftIntent` is not imported from `@nessie/spreadsheet`.** It does not
+8. **A pane surface makes the grid `inert` while it is open.** Measured: with
+   the sort dialog open, `document.activeElement` is `.ic-workbook-container`
+   — the widget takes focus back after one of our overlays has taken it. Two
+   things then break silently. `useModalA11y` installs Escape and the focus
+   trap on the *panel*, so a panel that has lost focus has lost both. A
+   popover's Escape rides a document listener, and the widget's own Escape
+   handler stops the event inside React's root before it arrives. Worse, a
+   find box that cannot hold focus sends the next keystroke into a cell.
+   `inert` is both the fix and the right semantics.
+9. **Fullscreen's Escape and Ctrl/Cmd-F are capture-phase listeners**, for the
+   same reason: the widget swallows both while the grid has focus, which is
+   exactly when a person reaches for them.
+10. **`shiftIntent` is not imported from `@nessie/spreadsheet`.** It does not
    exist yet; the A1 helpers come from `@nessie/schemas`, which already
    exports them. Phase 3b picks the rebase helper up.
-9. **The e2e suite is `admin/e2e/spreadsheet-shell/`**, because Phase 3b owns
-   `admin/e2e/spreadsheets/**`.
+11. **The e2e suite is `admin/e2e/spreadsheet-shell/`**, because Phase 3b owns
+    `admin/e2e/spreadsheets/**`.
 
 ## Corrections this phase forces elsewhere
 
@@ -92,6 +108,31 @@ only through a dynamic import, never names the wasm URL, and that
   Replaying either from the previously open page builds the wrong workbook or
   draws another sheet's filters over this one. Recorded in `skeleton`'s
   exemption list with that reason.
+
+## What the screenshots caught that the assertions did not
+
+Each of these passed every assertion in place at the time, and was obvious the
+moment somebody looked.
+
+- **The funnel buttons were not on screen at all.** `cellRect` answers in the
+  scroll container's frame while the layer is positioned against the pane, and
+  the container is discovered after IronCalc mounts — as a ref, whose
+  assignment schedules no render, so the layer measured `null` once and never
+  looked again.
+- **The collapsed toolbar still reserved its 40 px**, because the worksheet
+  area is absolutely positioned at `top: var(--toolbar-height)` while the
+  wrapper itself measured zero.
+- **The funnel glyph filled its 16 px box** and stopped reading as a funnel:
+  the unlayered `button { font: inherit }` reset beats every layered `text-*`
+  utility, and FontAwesome sizes its `svg` at `1em`.
+- **Both popovers were transparent.** `Popover` places and dismisses; the
+  panel's chrome belongs to the caller, as it does at every other call site.
+- **Controls sat outside their popover.** The panels were too narrow for their
+  content and `overflow: auto` turned the overflow into a clip, so the step
+  button and "Replace all" were drawn and unclickable. The run now asserts
+  that no control's box escapes its panel's.
+- **The `agent` pill read as one word.** `Pill` letter-spaces its label, and a
+  literal space between two JSX children collapses against that.
 
 ## Seams left for Phase 3b
 
