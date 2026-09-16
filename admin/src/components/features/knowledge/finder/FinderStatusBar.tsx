@@ -16,8 +16,16 @@ import { StorageUsageMeter } from '../StorageUsageMeter'
  */
 
 type FinderStatusBarProps = {
-  /** The upload queue docks here while it is running (Wave 2). */
+  /** The upload queue docks here while it is running. */
   children?: ReactNode
+  /**
+   * A transient sentence in place of the item count — a refused drop, a folder
+   * this browser could not read. It is the status bar's because it is about
+   * the column, not about a thing that is running: a toast for "drop files
+   * into a folder to upload them" would be a card over the folder the person
+   * is being told to use.
+   */
+  message?: string | null
   /** Rows in the active column. */
   itemCount: number
   /** Selected rows in the active column; 0 says nothing. */
@@ -46,16 +54,48 @@ const itemLine = (
 export const FinderStatusBar = ({
   children,
   itemCount,
+  message = null,
   more = false,
   selectedCount = 0,
   showStorage,
   truncated = false,
 }: FinderStatusBarProps) => (
   <div className="finder-status-bar text-xs" data-finder-status-bar>
-    <span className="min-w-0 truncate">
-      {itemLine(itemCount, selectedCount, more, truncated)}
+    <span
+      className={message ? 'min-w-0 truncate text-[color:var(--danger-text)]' : 'min-w-0 truncate'}
+      data-finder-status-message={message ? 'true' : undefined}
+    >
+      {message ?? itemLine(itemCount, selectedCount, more, truncated)}
     </span>
     {children ? <span className="min-w-0 flex-1">{children}</span> : null}
     {showStorage ? <StorageUsageMeter /> : null}
   </div>
 )
+
+
+/**
+ * Which strip the Finder actually shows.
+ *
+ * On `split` it is the status bar, with the upload tray docked into it. Below
+ * `split` there is no status bar — an item count is not worth 28px on a screen
+ * showing one column — but a running upload is, so the tray gets that row to
+ * itself for exactly as long as there is something in it.
+ */
+export const FinderStatusStrip = ({
+  single,
+  tray,
+  trayActive,
+  ...bar
+}: FinderStatusBarProps & {
+  single: boolean
+  tray: ReactNode
+  /** Whether the tray has anything to say; `single` shows nothing otherwise. */
+  trayActive: boolean
+}) => {
+  if (single) {
+    return trayActive
+      ? <div className="finder-status-bar text-xs" data-finder-status-bar>{tray}</div>
+      : null
+  }
+  return <FinderStatusBar {...bar}>{tray}</FinderStatusBar>
+}

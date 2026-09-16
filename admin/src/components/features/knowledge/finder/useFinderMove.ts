@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { useMovePages } from '../../../../facades/knowledge/finder-hooks'
 import { useToasts } from '../../../../providers/ToastProvider'
-import { useFinderDrag } from './useFinderDrag'
+import { useFinderDrag, type FinderDropTarget, type FinderDragPayload } from './useFinderDrag'
 
 /**
  * Dragging rows onto a folder inside the same root folder.
@@ -12,10 +12,22 @@ import { useFinderDrag } from './useFinderDrag'
  * assumes one space, which is why the payload carries a single `spaceId`.
  */
 export const useFinderMove = ({
+  onForeignDrop,
   pageById,
   selectedIds,
   selectedSpaceId,
 }: {
+  /**
+   * A drop whose source root differs from the target's. Passed straight
+   * through to `useFinderDrag`, which is where the branch is decided; this
+   * hook has nothing to say about a transfer beyond not handling it.
+   */
+  onForeignDrop?: (
+    payload: FinderDragPayload,
+    target: FinderDropTarget,
+    point: { x: number; y: number },
+    altKey: boolean,
+  ) => void
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   selectedIds: readonly string[]
   selectedSpaceId: string | undefined
@@ -73,5 +85,5 @@ export const useFinderMove = ({
     [selectedIds, selectedSpaceId],
   )
 
-  return useFinderDrag({ canDrop, onMove, rowsForDrag })
+  return useFinderDrag({ canDrop, onForeignDrop, onMove, rowsForDrag })
 }
