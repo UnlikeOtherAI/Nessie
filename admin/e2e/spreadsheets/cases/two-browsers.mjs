@@ -39,8 +39,20 @@ export const run = async ({ browser, contextFor, seed }) => {
   const adaPage = await adaContext.newPage()
   const brunoPage = await brunoContext.newPage()
   const errors = []
-  adaPage.on('pageerror', (error) => errors.push(`ada: ${error}`))
-  brunoPage.on('pageerror', (error) => errors.push(`bruno: ${error}`))
+  const noisy = []
+  for (const [who, target] of [['ada', adaPage], ['bruno', brunoPage]]) {
+    target.on('pageerror', (error) => errors.push(`${who}: ${error}`))
+    // A render loop is a console error, never a page error, so an assertion on
+    // `pageerror` alone would never see one. "Maximum update depth exceeded"
+    // is the shape a presence frame that feeds its own re-render takes, and it
+    // is the failure this lane is most likely to have: every frame from every
+    // peer arrives as state.
+    target.on('console', (message) => {
+      if (message.type() !== 'error') return
+      const text = message.text()
+      if (/Maximum update depth|Too many re-renders/.test(text)) noisy.push(`${who}: ${text.slice(0, 160)}`)
+    })
+  }
 
   try {
     await openSpreadsheet(adaPage, { pageId: page.id, spaceId: seed.spaceId })
@@ -120,6 +132,7 @@ export const run = async ({ browser, contextFor, seed }) => {
     await shot(brunoPage, 'two-browsers-presence')
 
     checks.ok('no page errors in either browser', errors.length === 0, errors.join(' | '))
+    checks.ok('and no render loop', noisy.length === 0, noisy.join(' | '))
   } finally {
     await adaContext.close()
     await brunoContext.close()

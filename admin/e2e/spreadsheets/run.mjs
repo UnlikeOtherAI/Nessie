@@ -20,8 +20,8 @@ import { launchBrowser } from '../navigation/lib/browser.mjs'
 import { ADMIN_URL, API_URL, databaseUrl } from '../navigation/lib/config.mjs'
 import { startAdmin, startApi, stopProcess } from '../navigation/lib/servers.mjs'
 import { CaseFailure } from '../navigation/lib/expect.mjs'
-import { SCREENSHOT_DIR } from './lib/grid.mjs'
-import { seedOrganisation } from './lib/seed.mjs'
+import { SCREENSHOT_DIR, openSpreadsheet } from './lib/grid.mjs'
+import { createSpreadsheet, seedOrganisation } from './lib/seed.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -29,7 +29,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 // missing line here instead of silence. `agent-presence` is Phase 4's — it
 // runs when that file exists and is skipped out loud when it does not, which
 // is what lets the two phases land in either order.
-const CASES = ['two-browsers', 'structural-rebase', 'phone-touch', 'agent-presence']
+const CASES = ['two-browsers', 'structural-rebase', 'offline-queue', 'phone-touch', 'agent-presence']
 
 /**
  * One browser context per person per case.
@@ -53,6 +53,48 @@ const contextFor = async (browser, person, options = {}) => {
   return context
 }
 
+/**
+ * What a case is handed.
+ *
+ * Two vocabularies, deliberately: this phase's cases drive two browsers
+ * themselves (`browser`, `contextFor`), and Phase 4's agent case wants one
+ * signed-in person already sitting in front of the document (`page`,
+ * `openSheet`). The person's tab is opened blank and navigates nowhere unless
+ * `openSheet` is called, so a case that ignores it never becomes a third peer
+ * in somebody else's presence assertion.
+ */
+const caseContext = async (browser, seed) => {
+  const context = await contextFor(browser, seed.people[0])
+  const page = await context.newPage()
+  return {
+    browser,
+    contextFor,
+    close: () => context.close(),
+    openSheet: (pageId) => openSpreadsheet(page, { pageId, spaceId: seed.spaceId }),
+    page,
+    /**
+     * `runAgentScenario` belongs to Phase 4: it needs the mock-LLM scenario,
+     * the worker's sheet-tool dispatch and an agent to run as, none of which
+     * this phase owns. It is declared here so a case that needs one fails
+     * saying so rather than on `undefined is not a function`.
+     */
+    runAgentScenario: () => {
+      throw new Error(
+        'runAgentScenario is Phase 4\'s: wire it into caseContext in '
+          + 'admin/e2e/spreadsheets/run.mjs beside the mock-LLM scenario it drives',
+      )
+    },
+    seed: {
+      ...seed,
+      createSpreadsheet: (input) => createSpreadsheet({
+        spaceId: seed.spaceId,
+        token: seed.ownerToken,
+        ...input,
+      }),
+    },
+  }
+}
+
 const main = async () => {
   if (!databaseUrl()) throw new Error('the spreadsheets suite requires DATABASE_URL')
 
@@ -64,12 +106,19 @@ const main = async () => {
   process.env.NESSIE_RATE_LIMIT_LOGIN_IP_MAX ??= '200'
   process.env.NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_MAX ??= '200'
 
-  const api = await startApi()
+  // **Never adopt a server that is already listening.** The navigation suites
+  // reuse a local `pnpm dev` on purpose, and it is right for them. It is wrong
+  // here: this suite asserts what *this* checkout's admin and API do, and a
+  // sibling worktree holding the port would have it drive somebody else's code
+  // and report the result as this branch's. It happened — a run adopted
+  // another worktree's API, seeded nothing, and failed on "No users exist yet"
+  // with nothing in the message to say whose database it was talking to.
+  const api = await startApi({ reuseExisting: false })
   let admin = null
   let browser = null
   const results = []
   try {
-    admin = await startAdmin()
+    admin = await startAdmin({ reuseExisting: false })
     console.log(`spreadsheets e2e: API ${API_URL}, admin ${ADMIN_URL}`)
     const seed = await seedOrganisation(api)
     console.log(`spreadsheets e2e: seeded ${seed.people.map((p) => p.displayName).join(' and ')}`)
@@ -84,7 +133,22 @@ const main = async () => {
       const start = Date.now()
       try {
         const module = await import(path)
-        const checks = await module.run({ browser, contextFor, seed })
+        // A case exports `run`, or an object with one. Both shapes are in the
+        // suite because the phases wrote their cases against each other's
+        // description of the harness rather than against the harness, and a
+        // three-line reader here is cheaper than a rename in somebody else's
+        // file.
+        const run = typeof module.run === 'function'
+          ? module.run
+          : Object.values(module).find((value) => typeof value?.run === 'function')?.run
+        if (!run) throw new Error(`${name} exports no run()`)
+        const context = await caseContext(browser, seed)
+        let checks
+        try {
+          checks = await run(context)
+        } finally {
+          await context.close()
+        }
         results.push({ checks, name, passed: true })
         console.log(`spreadsheets e2e: ${name} passed (${checks.length} checks, ${Date.now() - start} ms)`)
       } catch (error) {

@@ -5,7 +5,7 @@
 // without an identity provider (UOA owns invitations), so they are written
 // straight into the database and then sign in through the ordinary session
 // route. That is the same shape `admin/e2e/navigation/lib/seed.mjs` uses.
-import { randomBytes, scrypt as nodeScrypt } from 'node:crypto'
+import { randomBytes, randomUUID, scrypt as nodeScrypt } from 'node:crypto'
 import { promisify } from 'node:util'
 
 import { PrismaClient } from '@prisma/client'
@@ -129,12 +129,76 @@ export const PEOPLE = [
  * about it, so a case that inherited another's journal would be asserting
  * against numbers it did not choose.
  */
-export const createSpreadsheet = async (input) =>
-  call(`/api/knowledge-base/spaces/${input.spaceId}/spreadsheets`, {
+export const createSpreadsheet = async (input) => {
+  const page = await call(`/api/knowledge-base/spaces/${input.spaceId}/spreadsheets`, {
     body: { title: input.title },
     method: 'POST',
     token: input.token,
   })
+  if (input.rows?.length) await seedRows({ ...input, pageId: page.id })
+  return { ...page, pageId: page.id }
+}
+
+/**
+ * Cells in a brand-new workbook, without a browser.
+ *
+ * There is no "write these values" route — every write is engine diff bytes
+ * through the one write door, which is the point of the design. So the harness
+ * builds them the way any other client does: load the bootstrap snapshot into
+ * the **Node** binding, type into it, and post what its send queue produces.
+ * Spike A proved the pinned pair converges, so bytes from `@ironcalc/nodejs`
+ * 0.8.3 apply in the browser's `@ironcalc/wasm` 0.8.4.
+ *
+ * It is worth the forty lines: a case that has to type its fixture through the
+ * UI is a case whose setup can fail for reasons that have nothing to do with
+ * what it is testing.
+ */
+const seedRows = async (input) => {
+  const { loadNodeModel } = await import('@nessie/spreadsheet/node')
+  const bootstrap = await call(
+    `/api/knowledge-base/pages/${input.pageId}/spreadsheet`,
+    { token: input.token },
+  )
+  const model = loadNodeModel(Buffer.from(bootstrap.snapshot.bytes, 'base64'))
+  for (const batch of bootstrap.batches) {
+    if (batch.diffs) model.applyExternalDiffs(Buffer.from(batch.diffs, 'base64'))
+  }
+  model.flushSendQueue()
+
+  const intents = []
+  model.pauseEvaluation()
+  input.rows.forEach((row, rowIndex) => {
+    row.forEach((value, columnIndex) => {
+      if (value === null || value === undefined || value === '') return
+      const at = { row: rowIndex + 1, column: columnIndex + 1 }
+      model.setUserInput(0, at.row, at.column, String(value))
+      intents.push({ kind: 'setUserInput', sheet: 0, ...at, value: String(value) })
+    })
+  })
+  model.resumeEvaluation()
+  model.evaluate()
+
+  const diffs = Buffer.from(model.flushSendQueue())
+  if (diffs.byteLength <= 1) return
+  await call(`/api/knowledge-base/pages/${input.pageId}/spreadsheet/ops`, {
+    body: {
+      clientOpId: randomUUID(),
+      baseSeq: bootstrap.headSeq,
+      diffs: diffs.toString('base64'),
+      summary: {
+        structuralKind: null,
+        sheetIndexes: [0],
+        cellCount: intents.length,
+        touched: intents.map((intent) => ({
+          sheet: 0, r0: intent.row, c0: intent.column, r1: intent.row, c1: intent.column,
+        })),
+        intents,
+      },
+    },
+    method: 'POST',
+    token: input.token,
+  })
+}
 
 /** The workbook as the server holds it — the oracle every case checks against,
  *  because a value read back out of the browser that wrote it proves nothing. */

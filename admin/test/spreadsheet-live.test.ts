@@ -512,6 +512,36 @@ test('a batch that never reached a verdict is held, and one reconnect sends it o
   assert.equal(log.states.at(-1)?.status, 'live')
 })
 
+test('a write refused while the lane is healthy comes back on a ladder of its own', async () => {
+  let online = false
+  const { deps, log } = harness({
+    submit: async (outgoing) => {
+      log.submitted.push(outgoing)
+      return online
+        ? { kind: 'applied', batch: batch({ seq: 9, clientOpId: outgoing.clientOpId }) }
+        : { kind: 'offline' }
+    },
+  })
+  const sync = createSpreadsheetSync(deps, 8)
+  sync.enqueue({ diffs: bytes(0x11), intents: [], unrebasableCalls: 0, sheet: 0 })
+  await settle()
+  assert.equal(log.submitted.length, 1)
+  assert.equal(log.timers.length, 1, 'a retry is scheduled without any lane event')
+
+  // The proxy is still refusing: the ladder escalates rather than spinning.
+  log.timers.shift()?.()
+  await settle()
+  assert.equal(log.submitted.length, 2)
+  assert.equal(log.timers.length, 1)
+
+  online = true
+  log.timers.shift()?.()
+  await settle()
+  assert.equal(log.submitted.length, 3)
+  assert.equal(log.states.at(-1)?.unsent, 0, 'the queue drained without the lane doing anything')
+  assert.equal(log.states.at(-1)?.status, 'live')
+})
+
 test('a queued batch is re-based on the head this client has since seen', async () => {
   let online = false
   const { deps, log } = harness({

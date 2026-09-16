@@ -24,8 +24,11 @@ const main = async () => {
   let api = null
   let admin = null
   try {
-    api = await startApi()
-    admin = await startAdmin()
+    // Not adopted, for the same reason `run.mjs` refuses to: CI's job is to
+    // report on the commit it checked out, and a port that answers is not
+    // evidence that it answers for this one.
+    api = await startApi({ reuseExisting: false })
+    admin = await startAdmin({ reuseExisting: false })
     const child = spawn(process.execPath, [resolve(here, 'run.mjs')], {
       env: process.env,
       stdio: 'inherit',

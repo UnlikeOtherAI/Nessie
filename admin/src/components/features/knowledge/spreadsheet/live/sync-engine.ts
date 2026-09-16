@@ -34,6 +34,20 @@ import { shiftIntents } from '@nessie/spreadsheet/rebase'
  *  that a person watching a peer type does not notice the stall. */
 export const GAP_REPAIR_MS = 250
 
+/**
+ * How long a queue that could not be sent waits before trying again, doubling
+ * to `SEND_RETRY_MAX_MS`.
+ *
+ * The lane and the write door are **different connections**, and rule 5 reads
+ * as if they were one: "on reconnect, flush the queue". A proxy that refuses a
+ * POST while the SSE stream stays open is an ordinary failure, and waiting for
+ * a lane event that is never coming leaves the edit queued for the rest of the
+ * session — measured, in the offline case, which sat on a healthy stream with
+ * an unsendable batch and no notice that anything was wrong.
+ */
+export const SEND_RETRY_MS = 1_000
+export const SEND_RETRY_MAX_MS = 30_000
+
 const STRUCTURAL_INTENT_KINDS: ReadonlySet<SpreadsheetIntent['kind']> = new Set([
   'insertRows',
   'deleteRows',
@@ -308,6 +322,8 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
   let inFlight = false
   let disposed = false
   let cancelGapRepair: (() => void) | null = null
+  let cancelSendRetry: (() => void) | null = null
+  let sendAttempt = 0
   let repairing = false
 
   const publish = (): void => {
@@ -434,6 +450,24 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
     void pump()
   }
 
+  const scheduleSendRetry = (): void => {
+    if (cancelSendRetry || disposed) return
+    const window = Math.min(SEND_RETRY_MAX_MS, SEND_RETRY_MS * 2 ** sendAttempt)
+    sendAttempt += 1
+    // Equal jitter, for the reason the stream ladder uses it: N panes cut off
+    // by one proxy must not all come back at the same millisecond.
+    cancelSendRetry = schedule(() => {
+      cancelSendRetry = null
+      void pump()
+    }, Math.round(window / 2 + Math.random() * (window / 2)))
+  }
+
+  const sendSucceeded = (): void => {
+    sendAttempt = 0
+    cancelSendRetry?.()
+    cancelSendRetry = null
+  }
+
   const pump = async (): Promise<void> => {
     if (inFlight || disposed) return
     const batch = queue[0]
@@ -456,6 +490,7 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
       case 'applied':
         queue.shift()
         ownOpIds.delete(batch.clientOpId)
+        sendSucceeded()
         if (outcome.batch.seq > seq) ownSeqs.add(outcome.batch.seq)
         // The door saved a version before this change: the writer sees the
         // same "Saved a version before … — Restore" line their colleagues get
@@ -466,6 +501,7 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
         break
       case 'noop':
         queue.shift()
+        sendSucceeded()
         ownOpIds.delete(batch.clientOpId)
         if (outcome.headSeq > seq) seq = outcome.headSeq
         settle()
@@ -479,7 +515,9 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
         ownOpIds.delete(batch.clientOpId)
         status = 'offline'
         publish()
-        // Rule 5: hold the queue. `resume()` pumps it when the lane is back.
+        // Rule 5: hold the queue — and come back to it on a ladder of its own,
+        // because the lane may never drop.
+        scheduleSendRetry()
         return
       case 'refused':
         queue.shift()
@@ -597,6 +635,9 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
       if (disposed) return
       status = 'live'
       error = null
+      // The lane is back, so whatever the send ladder was waiting out no
+      // longer applies: try immediately rather than at the next rung.
+      sendSucceeded()
       publish()
       await repairGap()
       void pump()
@@ -615,6 +656,8 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
       disposed = true
       cancelGapRepair?.()
       cancelGapRepair = null
+      cancelSendRetry?.()
+      cancelSendRetry = null
     },
   }
 }

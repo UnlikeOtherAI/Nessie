@@ -24,6 +24,11 @@ import type { TouchSelectionHandle } from './useTouchSelection'
  * ghost — with a glyph before the name. That is the point of the whole lane:
  * Phase 4 publishes an agent's frames through the same route, and nothing here
  * branches on `actor.type` except for that one glyph.
+ *
+ * Each mark carries a stable class name — `spreadsheet-presence-cursor`,
+ * `-label`, `-draft` — beside its `data-testid`. The class is the name the
+ * other phases' cases reach for, and it survives a change of test id; the test
+ * id stays because the rest of this suite is written in them.
  */
 
 type PresenceOverlayProps = {
@@ -168,7 +173,7 @@ export const PresenceOverlay = ({
         <div key={peer.clientId}>
           {peer.rect ? (
             <div
-              className="absolute"
+              className="spreadsheet-presence-cursor absolute"
               data-peer={peer.clientId}
               data-testid="spreadsheet-peer-range"
               style={{
@@ -183,7 +188,7 @@ export const PresenceOverlay = ({
           ) : null}
           {peer.tag ? (
             <div
-              className="absolute truncate rounded-sm px-1 text-[10px] leading-4 text-white"
+              className="spreadsheet-presence-label absolute truncate rounded-sm px-1 text-[10px] leading-4 text-white"
               data-testid="spreadsheet-peer-tag"
               style={{
                 backgroundColor: peer.color,
@@ -197,7 +202,7 @@ export const PresenceOverlay = ({
           ) : null}
           {peer.draft ? (
             <div
-              className="absolute truncate px-1 text-xs leading-5"
+              className="spreadsheet-presence-draft absolute truncate px-1 text-xs leading-5"
               data-draft-for={peer.clientId}
               data-testid="spreadsheet-peer-draft"
               style={{

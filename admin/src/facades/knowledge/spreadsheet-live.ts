@@ -227,6 +227,7 @@ export const useSpreadsheetLiveLane = (input: {
     const attempt = async (): Promise<StreamAttemptOutcome> => {
       const request = new AbortController()
       controller = request
+
       try {
         const response = await fetch(
           `${getBaseUrl()}${spreadsheetLiveStreamPath(pageId, clientId)}`,
@@ -238,6 +239,7 @@ export const useSpreadsheetLiveLane = (input: {
         )
         const outcome = classifyStreamResponse(response)
         if (outcome !== 'connected' || !response.body) return outcome
+
         latest.current.onOpen()
         try {
           await readSseStream(response.body, (frame) => {
@@ -252,10 +254,15 @@ export const useSpreadsheetLiveLane = (input: {
           // Dropped mid-stream. The response itself was readable, so this is
           // still 'connected' and the loop decides on the cycle's length.
         }
-        latest.current.onClose()
         return 'connected'
       } finally {
         if (controller === request) controller = null
+        // Every attempt that ends without a live stream closes the lane,
+        // including one that never opened. Announcing only the *drop* of an
+        // established stream left a client whose very first connect was
+        // refused sitting on "connecting" forever — editing happily, queueing
+        // silently, and never told that nothing was going out.
+        latest.current.onClose()
       }
     }
 
