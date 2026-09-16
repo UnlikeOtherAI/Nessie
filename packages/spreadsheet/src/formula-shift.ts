@@ -112,13 +112,45 @@ export function tokenizeFormula(formula: string, options: TokenizeOptions = {}):
   return (options.getTokens ?? formulaTokenizer())(formula)
 }
 
-/** True when the engine's own lexer accepts the text as a formula. */
+const OPEN = new Set(['LeftParenthesis', 'LeftBracket', 'LeftBrace'])
+const CLOSE = new Set(['RightParenthesis', 'RightBracket', 'RightBrace'])
+const DANGLING = new Set(['Comma', 'Semicolon', 'Colon', 'Power', 'Bang', 'And', 'Backslash'])
+
+function isOperator(token: unknown): boolean {
+  if (typeof token === 'string') return DANGLING.has(token) || OPEN.has(token)
+  if (typeof token !== 'object' || token === null) return false
+  return 'Compare' in token || 'Sum' in token || 'Product' in token || 'Addition' in token
+}
+
+/**
+ * Whether the text is well-formed enough to be written back as a formula.
+ *
+ * `getTokens` is IronCalc's *lexer*, not its parser: `=SUM(` lexes cleanly, so
+ * an Illegal token alone under-detects. This adds the two structural faults a
+ * careless find-and-replace actually produces — unbalanced brackets, and a
+ * trailing operator or separator — on top of the lexer's own verdict (which
+ * does catch an unterminated string, the third). It is deliberately
+ * conservative: it never claims a formula is broken when the lexer is happy and
+ * the brackets balance.
+ */
 export function formulaParses(formula: string, options: TokenizeOptions = {}): boolean {
+  let marked: MarkedToken[]
   try {
-    return !tokenizeFormula(formula, options).some((marked) => isIllegal(marked.token))
+    marked = tokenizeFormula(formula, options)
   } catch {
     return false
   }
+  let depth = 0
+  let last: unknown = null
+  for (const entry of marked) {
+    if (isIllegal(entry.token)) return false
+    if (typeof entry.token === 'string' && OPEN.has(entry.token)) depth++
+    if (typeof entry.token === 'string' && CLOSE.has(entry.token)) depth--
+    if (depth < 0) return false
+    if (entry.token !== 'EOF') last = entry.token
+  }
+  if (depth !== 0) return false
+  return !isOperator(last)
 }
 
 // ------------------------------------------------------------------ shifting
