@@ -9,6 +9,7 @@ import {
   type BoardStyle,
   type ColumnCategory,
   DEFAULT_BOARD_FILTER,
+  DEFAULT_BOARD_NAME,
   parseBoardColumnId,
   parseBoardId,
   parseProjectId,
@@ -25,7 +26,7 @@ import {
  * board along with its columns and placements.
  */
 
-export const DEFAULT_BOARD_NAME = 'Board'
+export { DEFAULT_BOARD_NAME }
 
 export const DEFAULT_BOARD_COLUMNS: {
   name: string

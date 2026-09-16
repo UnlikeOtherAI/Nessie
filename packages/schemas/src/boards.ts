@@ -57,6 +57,13 @@ export type BoardFilter = z.infer<typeof BoardFilterSchema>
 
 export const DEFAULT_BOARD_FILTER: BoardFilter = { sources: 'all' }
 
+/**
+ * The name a project's first board is created with. "Main board" rather than
+ * "Board", so the row does not read as a second copy of the "Boards" section
+ * it sits under in the project sidebar.
+ */
+export const DEFAULT_BOARD_NAME = 'Main board'
+
 export const BoardColumnRecordSchema = z.object({
   id: BoardColumnIdSchema,
   boardId: BoardIdSchema,
