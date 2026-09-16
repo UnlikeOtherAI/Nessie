@@ -29,7 +29,10 @@
     "test:e2e:project-usability": "node e2e/project-usability/run.mjs",
     "test:e2e:tabbar-full": "node e2e/tabbar-full/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "shots": "node e2e/marketing-shots/run.mjs",
+    "shots:save": "node e2e/marketing-shots/snapshot.mjs save",
+    "shots:restore": "node e2e/marketing-shots/snapshot.mjs restore"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -28,7 +28,7 @@ test('the first render, before any answer, renders nothing (no flash for anonymo
 
 test('signed in, every team is listed with its organisation, avatar and link', () => {
   const html = renderToStaticMarkup(<SignedInTeamsSection teams={[design, sales]} />)
-  assert.match(html, /<section[^>]*aria-labelledby="landing-teams-title"/)
+  assert.match(html, /<section[^>]*aria-labelledby="n-teams-title"/)
   assert.match(html, />Your teams</)
   assert.match(html, /href="https:\/\/design\.acme\.nessie\.works\/channels"/)
   assert.match(html, /href="https:\/\/app\.nessie\.works\/channels"/)

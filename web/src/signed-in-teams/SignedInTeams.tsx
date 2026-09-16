@@ -18,7 +18,7 @@ const TeamAvatar = ({ team }: { team: LandingTeam }) => {
     return (
       <img
         alt=""
-        className="landing-teams-avatar"
+        className="n-teams-avatar"
         height={40}
         onError={() => setFailed(true)}
         src={team.avatarImageUrl}
@@ -27,37 +27,41 @@ const TeamAvatar = ({ team }: { team: LandingTeam }) => {
     )
   }
   return (
-    <span aria-hidden="true" className="landing-teams-avatar landing-teams-avatar-initials">
+    <span aria-hidden="true" className="n-teams-avatar n-teams-avatar-initials">
       {initialsOf(team.label)}
     </span>
   )
 }
 
 /**
- * The "Your teams" list. Renders nothing for an empty list, which is what a
- * signed-out visitor always gets — so the anonymous page has no section, no
- * placeholder and nothing that moves.
+ * The "Your teams" list, above everything the page has to say.
+ *
+ * A visitor who is already signed in did not come to read the pitch — they came
+ * to get back into their team, and the doorway has to be the first thing on the
+ * page rather than something to scroll past. Renders nothing for an empty list,
+ * which is what a signed-out visitor always gets, so the anonymous homepage has
+ * no section, no placeholder and nothing that moves.
  */
 export const SignedInTeamsSection = ({ teams }: { teams: readonly LandingTeam[] }) => {
   if (teams.length === 0) return null
   return (
-    <section aria-labelledby="landing-teams-title" className="landing-teams">
-      <h2 className="landing-teams-title" id="landing-teams-title">Your teams</h2>
-      <ul className="landing-teams-list">
+    <section aria-labelledby="n-teams-title" className="n-teams">
+      <h2 className="n-teams-title" id="n-teams-title">Your teams</h2>
+      <ul className="n-teams-list">
         {teams.map((team, index) => (
           <li key={`${team.href}-${team.label}-${index}`}>
             <a
               aria-current={team.active ? 'true' : undefined}
-              className={team.active ? 'landing-teams-entry landing-teams-entry-active' : 'landing-teams-entry'}
+              className={team.active ? 'n-teams-entry n-teams-entry-active' : 'n-teams-entry'}
               href={team.href}
             >
               <TeamAvatar team={team} />
-              <span className="landing-teams-text">
-                <span className="landing-teams-label">{team.label}</span>
-                {team.orgName ? <span className="landing-teams-org">{team.orgName}</span> : null}
+              <span className="n-teams-text">
+                <span className="n-teams-label">{team.label}</span>
+                {team.orgName ? <span className="n-teams-org">{team.orgName}</span> : null}
               </span>
-              {team.active ? <span className="landing-teams-current">Current</span> : null}
-              <FontAwesomeIcon aria-hidden="true" className="landing-teams-chevron" icon={faChevronRight} />
+              {team.active ? <span className="n-teams-current">Current</span> : null}
+              <FontAwesomeIcon aria-hidden="true" className="n-teams-chevron" icon={faChevronRight} />
             </a>
           </li>
         ))}
