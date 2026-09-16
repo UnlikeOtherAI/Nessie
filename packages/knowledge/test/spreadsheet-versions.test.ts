@@ -4,7 +4,6 @@ import { Readable } from 'node:stream'
 import test from 'node:test'
 
 import {
-  SPREADSHEET_ENGINE_VERSION,
   SPREADSHEET_LIMITS,
   SpreadsheetAppliedBatchSchema,
   type SpreadsheetBatchSummary,
@@ -19,7 +18,6 @@ import {
   describeDestructiveOperation,
   listSpreadsheetBatches,
   readSpreadsheetRange,
-  spreadsheetClientOpId,
   restoreSpreadsheetVersion,
   restructureSpreadsheet,
   SPREADSHEET_ICALC_MIME,
