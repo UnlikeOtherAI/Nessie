@@ -126,6 +126,7 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     },
   ]
   const approvalCreateCalls: unknown[] = []
+  const cardCreateCalls: Array<Record<string, unknown>> = []
   const createPageCalls: Array<Record<string, unknown>> = []
   const createVersionCalls: Array<Record<string, unknown>> = []
   const updatePageCalls: unknown[] = []
@@ -241,6 +242,18 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     task: {
       findFirst: async () => options.task === undefined ? { id: 'task-1' } : options.task,
     },
+    channel: {
+      findFirst: async () => ({ id: 'channel-1', members: [{ id: 'member-1' }], systemChannelType: null, visibility: 'private' }),
+    },
+    message: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        cardCreateCalls.push(data)
+        return { ...data, createdAt: new Date(), id: 'card-1', reactions: [] }
+      },
+    },
+    thread: {
+      findFirst: async () => ({ id: 'thread-1' }),
+    },
     approvalRequest: {
       findMany: async () => options.pendingApprovals ?? [],
       create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -261,6 +274,7 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   return {
     prisma: prisma as unknown as BuiltinToolRuntimeContext['prisma'],
     approvalCreateCalls,
+    cardCreateCalls,
     createPageCalls,
     createVersionCalls,
     movePageCalls,
@@ -518,11 +532,20 @@ test('kb_publish_request returns the existing pending approval instead of creati
 test('kb_publish_request creates a new approval when none is pending', async () => {
   const page = buildPageRow({ status: 'draft', authorType: 'agent' })
   const space = buildSpaceRow()
-  const { prisma, approvalCreateCalls } = buildFakePrisma({ page, space, pendingApprovals: [] })
-  const context = makeContext(prisma)
+  const { prisma, approvalCreateCalls, cardCreateCalls } = buildFakePrisma({ page, space, pendingApprovals: [] })
+  const context = makeContext(prisma, {
+    realtimeTransport: { publishWs: async () => undefined } as unknown as BuiltinToolRuntimeContext['realtimeTransport'],
+  })
 
   const result = await runKbPublishRequestTool(context, { pageId: 'page-1' })
 
   assert.match(result.outputPreview, /approval-new/)
   assert.equal(approvalCreateCalls.length, 1)
+  // The card is the only way this can be answered — there is no approvals
+  // list behind it — so the request and the card are one act, not two.
+  assert.equal(cardCreateCalls.length, 1)
+  const card = cardCreateCalls[0] as { metadata: { approvalGate: Record<string, unknown> }; threadId: string }
+  assert.equal(card.threadId, 'thread-1')
+  assert.equal(card.metadata.approvalGate['action'], 'knowledge.page.publish')
+  assert.equal(card.metadata.approvalGate['status'], 'pending')
 })

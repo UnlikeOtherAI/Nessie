@@ -9,7 +9,6 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/workflows',
   // `/apps/:slug` belongs to the same section as its list.
   '/apps',
-  '/approvals',
   '/audit',
   '/tokens',
   '/policy',
@@ -131,10 +130,7 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'knowledge',
     label: 'Knowledge',
     to: '/knowledge-base',
-    // Dashboards live inside Knowledge rather than owning a first-column
-    // section, so the Knowledge entry stays lit while you are in one.
-    isActive: (pathname) =>
-      pathname.startsWith('/knowledge-base') || pathname.startsWith('/dashboards'),
+    isActive: (pathname) => pathname.startsWith('/knowledge-base'),
     icon: KnowledgeIcon,
   },
   {

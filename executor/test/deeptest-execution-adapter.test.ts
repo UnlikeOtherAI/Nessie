@@ -20,7 +20,7 @@ test('revoking a grant stops a blocked command before it can report success', as
   try {
     await exec('git', ['init', '--quiet', root]); await exec('git', ['-C', root, 'config', 'user.email', 'test@example']); await exec('git', ['-C', root, 'config', 'user.name', 'Test']); await writeFile(join(root, 'app.ts'), 'export {}\n'); await exec('git', ['-C', root, 'add', '.']); await exec('git', ['-C', root, 'commit', '--quiet', '-m', 'test'])
     const snapshot = await createDeepTestSourceSnapshot(root, root)
-    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: ['https://assessment.example'] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['command.run'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceRoot: root }
+    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: ['https://assessment.example'] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['command.run'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceFolders: [{ name: 'workspace', path: root }] }
     let current: ExecutorDeepTestExecutionGrant | undefined = grant
     let stopped = false
     let markStarted!: () => void
@@ -40,7 +40,7 @@ test('stdin EOF closes a running command before it can emit a successful result'
   try {
     await exec('git', ['init', '--quiet', root]); await exec('git', ['-C', root, 'config', 'user.email', 'test@example']); await exec('git', ['-C', root, 'config', 'user.name', 'Test']); await writeFile(join(root, 'app.ts'), 'export {}\n'); await exec('git', ['-C', root, 'add', '.']); await exec('git', ['-C', root, 'commit', '--quiet', '-m', 'test'])
     const snapshot = await createDeepTestSourceSnapshot(root, root)
-    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: [] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['command.run'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceRoot: root }
+    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: [] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['command.run'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceFolders: [{ name: 'workspace', path: root }] }
     let finish!: () => void; let started!: () => void; let stopped = false
     const running = new Promise<Record<string, unknown>>((resolve) => { finish = () => resolve({ success: true }) })
     const startedRun = new Promise<void>((resolve) => { started = resolve })
@@ -87,7 +87,7 @@ test('a run cannot reuse a guest lease under a different reviewed source snapsho
         guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime',
         kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper',
       },
-      workspaceRoot: root,
+      workspaceFolders: [{ name: 'workspace', path: root }],
     }
     let commandRuns = 0
     const adapter = createDeepTestExecutionAdapter('/state', grant, async () => grant, () => ({
@@ -146,7 +146,7 @@ test('the execution adapter bounds retained reviewed source snapshots by the ses
         guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime',
         kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper',
       },
-      workspaceRoot: root,
+      workspaceFolders: [{ name: 'workspace', path: root }],
     }
     let commandRuns = 0
     const adapter = createDeepTestExecutionAdapter('/state', grant, async () => grant, () => ({
@@ -198,7 +198,7 @@ test('a failed manager stop keeps a run available for a later release retry', as
         guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime',
         kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper',
       },
-      workspaceRoot: root,
+      workspaceFolders: [{ name: 'workspace', path: root }],
     }
     let failStop = true
     const adapter = createDeepTestExecutionAdapter('/state', grant, async () => grant, () => ({
@@ -257,7 +257,7 @@ test('grant revocation during source materialization settles before any guest st
         guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime',
         kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper',
       },
-      workspaceRoot: root,
+      workspaceFolders: [{ name: 'workspace', path: root }],
     }
     let current: ExecutorDeepTestExecutionGrant | undefined = grant
     let guestStarted = false
@@ -305,7 +305,7 @@ test('a browser remains watched after a command completes in the same run', asyn
   try {
     await exec('git', ['init', '--quiet', root]); await exec('git', ['-C', root, 'config', 'user.email', 'test@example']); await exec('git', ['-C', root, 'config', 'user.name', 'Test']); await writeFile(join(root, 'app.ts'), 'export {}\n'); await exec('git', ['-C', root, 'add', '.']); await exec('git', ['-C', root, 'commit', '--quiet', '-m', 'test'])
     const snapshot = await createDeepTestSourceSnapshot(root, root)
-    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: ['https://assessment.example'] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['browser.open', 'command.run'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceRoot: root }
+    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: ['https://assessment.example'] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['browser.open', 'command.run'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceFolders: [{ name: 'workspace', path: root }] }
     let current: ExecutorDeepTestExecutionGrant | undefined = grant; let browserStopped = false
     const adapter = createDeepTestExecutionAdapter('/state', grant, async () => { if (!current) throw new Error('revoked'); return current }, () => ({
       browser: {
@@ -330,7 +330,7 @@ test('a thrown browser operation receives a bounded response and does not block 
   try {
     await exec('git', ['init', '--quiet', root]); await exec('git', ['-C', root, 'config', 'user.email', 'test@example']); await exec('git', ['-C', root, 'config', 'user.name', 'Test']); await writeFile(join(root, 'app.ts'), 'export {}\n'); await exec('git', ['-C', root, 'add', '.']); await exec('git', ['-C', root, 'commit', '--quiet', '-m', 'test'])
     const snapshot = await createDeepTestSourceSnapshot(root, root)
-    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: ['https://assessment.example'] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['browser.open', 'browser.observe'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceRoot: root }
+    const grant: ExecutorDeepTestExecutionGrant = { browser: { allowedOrigins: ['https://assessment.example'] }, descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 }, operationKeys: ['browser.open', 'browser.observe'], profiles: ['workspace_sandbox'], revision: 1 }, executorId: '00000000-0000-4000-8000-000000000005', runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' }, workspaceFolders: [{ name: 'workspace', path: root }] }
     const input = new PassThrough(); const output = new PassThrough(); const responses: string[] = []
     let flush!: () => void; const flushed = new Promise<void>((resolve) => { flush = resolve })
     output.on('data', (chunk) => { responses.push(...chunk.toString().trim().split('\n').filter(Boolean)); if (responses.length >= 4) flush() })

@@ -47,3 +47,43 @@ export const ResolveApprovalBodySchema = z.object({
   note: z.string().max(2000).optional(),
 }).strict()
 export type ResolveApprovalBody = z.infer<typeof ResolveApprovalBodySchema>
+
+/**
+ * The card an approval is answered in.
+ *
+ * An approval lives in the conversation it came from and nowhere else: there
+ * is no governance page to fall back to, so this metadata is the approval's
+ * only doorway and every path that opens one writes it. It was previously
+ * written inline by the run tool gate alone — the four other creators
+ * (`knowledge.page.publish` from a PA tool and from the MCP endpoint,
+ * `agent.todo_template.publish`, `workflow.template.adopt`) opened a request
+ * with no card at all, which is what left them reachable only from the list
+ * that no longer exists.
+ *
+ * `toolName`, `runId` and `checkpointId` are set only by the run gate, which
+ * is the one kind that suspends a run and has a checkpoint to resume from.
+ * `action` is always present and is what the card renders from.
+ */
+export const ApprovalGateMetadataSchema = z.object({
+  action: z.string().min(1),
+  approvalId: z.string().min(1),
+  checkpointId: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
+  status: z.enum(['pending', 'approved', 'cancelled', 'expired', 'rejected']),
+  toolName: z.string().min(1).optional(),
+})
+export type ApprovalGateMetadata = z.infer<typeof ApprovalGateMetadataSchema>
+
+/**
+ * Where an approval's card was posted, and why there.
+ *
+ * `origin` is the thread the run was already speaking in — which is also the
+ * requester's thread for a delegated run, because a sub-agent run and a peer
+ * delegation are both created on their parent's `threadId` rather than in a
+ * conversation of their own. `assistant` is the approver's own Personal
+ * Assistant conversation, used when there is no originating channel (a paired
+ * MCP credential has none) or when the person who must answer cannot see the
+ * one there is (an owner-gated proposal raised in a channel they are not in).
+ */
+export const ApprovalCardPlacementSchema = z.enum(['origin', 'assistant'])
+export type ApprovalCardPlacement = z.infer<typeof ApprovalCardPlacementSchema>

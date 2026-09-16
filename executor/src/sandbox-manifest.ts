@@ -10,15 +10,30 @@ import {
   COPY_BUFFER_BYTES,
   MAX_SOURCE_FILES,
   assertOrdinaryDirectory,
+  sandboxDraftFolderNames,
+  sandboxFolderPaths,
   sandboxPaths,
 } from './sandbox-layout.js'
+import { executorWorkspacePath } from './workspace-folders.js'
 import { WorkspacePathError, configureOrdinaryDirectory } from './workspace-paths.js'
 
 /**
  * The content-hash manifest a snapshot writes beside itself and a review
- * compares the draft against. Nothing here opens the paired host root: the
+ * compares the draft against. Nothing here opens a paired host folder: the
  * base manifest is the only memory of what the snapshot copied, and the draft
  * is hashed in place.
+ *
+ * A run drafts each workspace folder separately, so there is a manifest per
+ * folder plus one run-level view of all of them. The two exist for different
+ * readers and are deliberately not the same bytes:
+ *
+ *  - the per-folder manifest is what the native promotion helper verifies. Its
+ *    paths are folder-relative, because the helper resolves them against one
+ *    directory descriptor and recomputes this exact digest itself.
+ *  - the run-level manifest is what a person reviews and what `workspace.promote`
+ *    quotes back as the approval it is acting on. Its paths carry the folder
+ *    name, because "changed README.md" is not a reviewable sentence when an
+ *    executor can reach several folders.
  */
 
 const MAX_REVIEW_CHANGES = 100
@@ -29,14 +44,33 @@ const MAX_REVIEW_RESULT_BYTES = 60 * 1024
 
 export type ManifestEntry = { byteCount: number; digest: string }
 export type BaseManifest = { files: Record<string, ManifestEntry>; version: 1 }
-type WorkspaceChange = {
+export type WorkspaceChange = {
   base?: ManifestEntry
   draft?: ManifestEntry
   kind: 'created' | 'deleted' | 'modified'
   path: string
 }
-export type SandboxPromotionManifest = {
+
+/** Exactly the fields the native promotion helper recomputes its digest over. */
+export type SandboxFolderManifest = {
   changes: WorkspaceChange[]
+  manifestDigest: string
+  protocolVersion: 1
+  runId: string
+}
+
+/** One folder's draft, with the host directory a promotion would write into. */
+export type SandboxFolderPromotion = SandboxFolderManifest & {
+  name: string
+  /** The daemon-owned draft directory; never a paired host path. */
+  workspace: string
+}
+
+export type SandboxPromotionManifest = {
+  /** Every change in the run, each path prefixed with its folder name. */
+  changes: WorkspaceChange[]
+  /** The same changes per folder, each digested the way the helper will. */
+  folders: SandboxFolderPromotion[]
   manifestDigest: string
   protocolVersion: 1
   runId: string
@@ -168,43 +202,64 @@ const changesFrom = (base: BaseManifest, current: Record<string, ManifestEntry>)
 }
 
 /**
- * Reconstructs the exact, content-hash-bound manifest that a future native
- * promotion helper must verify. This does not open the paired host root and
- * never leaves the daemon; only its digest is included in review receipts.
+ * Reconstructs the exact, content-hash-bound manifests the native promotion
+ * helper must verify — one per workspace folder this run drafted — and the
+ * run-level view a person reviews. This opens no paired host folder and never
+ * leaves the daemon; only the run digest is included in review receipts.
  */
 export const promotionManifestForSandbox = async (
   stateDir: string,
   runId: string,
 ): Promise<SandboxPromotionManifest> => {
+  const parsedRunId = RunIdSchema.parse(runId)
   const paths = await sandboxPaths(stateDir, runId)
   await assertOrdinaryDirectory(paths.root, 'The executor sandbox is unavailable.')
   // A guest whose shares are block devices holds its edits in a draft image
   // until they are streamed back. Reviewing before that flush would report a
   // change set the person has already made and cannot see.
-  await flushSandboxDrafts(RunIdSchema.parse(runId))
-  const workspace = await configureOrdinaryDirectory(paths.workspace, 'The executor sandbox workspace')
-  const [base, current] = await Promise.all([
-    readBaseManifest(paths.baseManifest),
-    workspaceManifest(workspace),
-  ])
-  const changes = changesFrom(base, current)
+  await flushSandboxDrafts(parsedRunId)
+  const folders: SandboxFolderPromotion[] = []
+  for (const name of await sandboxDraftFolderNames(stateDir, runId)) {
+    const folderPaths = await sandboxFolderPaths(stateDir, runId, name)
+    const workspace = await configureOrdinaryDirectory(
+      folderPaths.workspace,
+      'The executor sandbox workspace',
+    )
+    const [base, current] = await Promise.all([
+      readBaseManifest(folderPaths.baseManifest),
+      workspaceManifest(workspace),
+    ])
+    const unsigned = {
+      changes: changesFrom(base, current),
+      protocolVersion: 1 as const,
+      runId: parsedRunId,
+    }
+    folders.push({
+      ...unsigned,
+      manifestDigest: digest(canonicalExecutorJson(unsigned)),
+      name,
+      workspace,
+    })
+  }
+  const changes = folders.flatMap((folder) => folder.changes.map((change) => ({
+    ...change,
+    path: executorWorkspacePath(folder.name, change.path),
+  })))
   if (changes.length > MAX_REVIEW_CHANGES) {
     throw new WorkspacePathError('The executor sandbox change set exceeds the review limit.')
   }
-  const unsigned = {
-    changes,
-    protocolVersion: 1 as const,
-    runId: RunIdSchema.parse(runId),
-  }
+  const unsigned = { changes, protocolVersion: 1 as const, runId: parsedRunId }
   return {
     ...unsigned,
+    folders,
     manifestDigest: digest(canonicalExecutorJson(unsigned)),
   }
 }
 
 /**
- * Returns the exact bounded delta between a run's COW snapshot and its draft.
- * This is a review-only primitive: it never opens or mutates the paired root.
+ * Returns the exact bounded delta between a run's COW snapshots and its drafts,
+ * across every folder it touched. This is a review-only primitive: it never
+ * opens or mutates a paired host folder.
  */
 export const reviewSandboxWorkspace = async (
   stateDir: string,

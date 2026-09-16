@@ -21,6 +21,7 @@ import {
   type DeepTestExecutionResponse,
   type DeepTestExecutionRoe,
 } from './deeptest-execution-protocol.js'
+import { guestSessionFolder } from './guest-workspace-lease.js'
 import { executorGuestVmExecutionConfig, type ExecutorDeepTestExecutionGrant } from './state-store.js'
 
 const MAX_FRAME_BYTES = 1024 * 1024
@@ -83,7 +84,12 @@ export const createDeepTestExecutionAdapter = (
   }
   const verifySnapshot = async (request: Extract<DeepTestExecutionRequest, { expected_commit: string }>): Promise<DeepTestSourceSnapshot | null> => {
     try {
-      const snapshot = await createDeepTestSourceSnapshot(grant.workspaceRoot, grant.workspaceRoot, async () => {
+      // Active execution runs inside a guest VM, which mounts one workspace, so
+      // this refuses a multi-folder grant for the same reason `command.run`
+      // does — it fails closed here, returning null, and the command session
+      // manager raises the named refusal.
+      const folder = guestSessionFolder(grant.workspaceFolders)
+      const snapshot = await createDeepTestSourceSnapshot(folder.path, folder.path, async () => {
         if (!(await assertGrant())) throw new Error('CAPABILITY_UNAVAILABLE')
       })
       // The lease is materialized from the retained reviewed blobs. Only a

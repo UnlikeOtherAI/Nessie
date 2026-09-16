@@ -39,8 +39,6 @@ export class DashboardServiceError extends Error {
   }
 }
 
-export type DashboardHome = 'organization' | 'project' | 'team' | 'channel' | 'personal'
-
 export type DashboardPrisma = PrismaClient | Prisma.TransactionClient
 
 export type DashboardContext = {
@@ -53,51 +51,17 @@ const EMPTY_LAYOUT: DashboardLayout = { lg: [], md: [], sm: [] }
 const EMPTY_PRESENTATION = DashboardPresentationSchema.parse({})
 
 /**
- * The scope column that must accompany each home. Mirrors the database CHECK
- * constraint rather than replacing it: this produces a useful error, the
- * constraint guarantees no path can bypass it.
- */
-type DashboardScopeColumns = Partial<
-  Pick<Prisma.DashboardUncheckedCreateInput, 'projectId' | 'teamId' | 'channelId' | 'ownerUserId'>
->
-
-const scopeColumnFor = (
-  home: DashboardHome,
-  input: { projectId?: string; teamId?: string; channelId?: string; userId: string },
-): DashboardScopeColumns => {
-  switch (home) {
-    case 'organization':
-      return {}
-    case 'project':
-      if (!input.projectId) {
-        throw new DashboardServiceError(400, 'DASHBOARD_SCOPE_REQUIRED', 'projectId is required')
-      }
-      return { projectId: input.projectId }
-    case 'team':
-      if (!input.teamId) {
-        throw new DashboardServiceError(400, 'DASHBOARD_SCOPE_REQUIRED', 'teamId is required')
-      }
-      return { teamId: input.teamId }
-    case 'channel':
-      if (!input.channelId) {
-        throw new DashboardServiceError(400, 'DASHBOARD_SCOPE_REQUIRED', 'channelId is required')
-      }
-      return { channelId: input.channelId }
-    case 'personal':
-      return { ownerUserId: input.userId }
-  }
-}
-
-/**
- * Lists everything the actor may read across the organization.
+ * Lists the dashboards the actor may read, narrowed to one project when the
+ * caller names one.
  *
- * Filters are applied only when the caller asks for them. The list is never
- * silently narrowed to a session's project or team — Rule zero §2, and the
- * specific mistake that once hid people's own documents from them.
+ * The narrowing is the caller's, never the session's — Rule zero §2, and the
+ * specific mistake that once hid people's own documents from them. A caller
+ * that names no project gets every project's dashboards it may read, which is
+ * what a cross-project search needs.
  */
 export const listDashboardsForActor = async (
   context: DashboardContext,
-  filter: { home?: DashboardHome; projectId?: string } = {},
+  filter: { projectId?: string } = {},
 ) => {
   const { prisma, actor, membership } = context
   const isManager = isAdminRole(actor.role)
@@ -106,7 +70,6 @@ export const listDashboardsForActor = async (
     where: {
       organizationId: actor.organizationId,
       archivedAt: null,
-      ...(filter.home ? { home: filter.home } : {}),
       ...(filter.projectId ? { projectId: filter.projectId } : {}),
     },
     orderBy: { updatedAt: 'desc' },
@@ -131,32 +94,15 @@ export const listDashboardsForActor = async (
       .map((grant) => grant.resourceId),
   )
 
+  // One home, one question: are you in the project? A grant still widens that
+  // for a named subject, which is how a dashboard reaches somebody outside the
+  // project without a second home to live in.
   const visible = await Promise.all(
-    candidates.map(async (dashboard) => {
-      if (granted.has(dashboard.id)) return dashboard
-      switch (dashboard.home) {
-        case 'organization':
-          return dashboard
-        case 'project':
-          return dashboard.projectId
-            && (await membership.isProjectMember(actor.userId, dashboard.projectId))
-            ? dashboard
-            : null
-        case 'team':
-          return dashboard.teamId && (await membership.isTeamMember(actor.userId, dashboard.teamId))
-            ? dashboard
-            : null
-        case 'channel':
-          return dashboard.channelId
-            && (await membership.isChannelMember(actor.userId, dashboard.channelId))
-            ? dashboard
-            : null
-        case 'personal':
-          return dashboard.ownerUserId === actor.userId ? dashboard : null
-        default:
-          return null
-      }
-    }),
+    candidates.map(async (dashboard) =>
+      granted.has(dashboard.id)
+        || (await membership.isProjectMember(actor.userId, dashboard.projectId))
+        ? dashboard
+        : null),
   )
   return visible.filter((dashboard): dashboard is (typeof candidates)[number] => dashboard !== null)
 }
@@ -166,53 +112,33 @@ export const createDashboard = async (
   input: {
     title: string
     description?: string
-    home: DashboardHome
-    projectId?: string
-    teamId?: string
-    channelId?: string
+    projectId: string
     createdByType?: 'user' | 'agent'
   },
 ) => {
   const { prisma, actor, membership } = context
 
-  // Creating inside a container requires belonging to it: a dashboard's home
-  // decides its default audience, so this is an audience decision.
-  if (input.home === 'project' && input.projectId) {
-    if (!(await membership.isProjectMember(actor.userId, input.projectId))) {
-      throw new DashboardServiceError(403, 'DASHBOARD_SCOPE_FORBIDDEN', 'not a member of that project')
-    }
-  }
-  if (input.home === 'team' && input.teamId) {
-    if (!(await membership.isTeamMember(actor.userId, input.teamId))) {
-      throw new DashboardServiceError(403, 'DASHBOARD_SCOPE_FORBIDDEN', 'not a member of that team')
-    }
-  }
-  if (input.home === 'channel' && input.channelId) {
-    if (!(await membership.isChannelMember(actor.userId, input.channelId))) {
-      throw new DashboardServiceError(403, 'DASHBOARD_SCOPE_FORBIDDEN', 'not a member of that channel')
-    }
-  }
-  if (input.home === 'organization' && actor.role === 'member') {
+  // Creating inside a project requires belonging to it: the project is the
+  // dashboard's audience, so this is an audience decision. It was one of four
+  // such checks, one per home; there is one home now, so there is one check.
+  if (!(await membership.isProjectMember(actor.userId, input.projectId))) {
     throw new DashboardServiceError(
       403,
       'DASHBOARD_SCOPE_FORBIDDEN',
-      'an organization-wide dashboard is created by an owner or admin',
+      'not a member of that project',
     )
   }
-
-  const scope = scopeColumnFor(input.home, { ...input, userId: actor.userId })
 
   return prisma.dashboard.create({
     data: {
       organizationId: actor.organizationId,
-      home: input.home,
+      projectId: input.projectId,
       title: input.title,
       description: input.description ?? null,
       layout: EMPTY_LAYOUT as unknown as Prisma.InputJsonValue,
       presentation: EMPTY_PRESENTATION as unknown as Prisma.InputJsonValue,
       createdByType: input.createdByType ?? 'user',
       createdBy: actor.userId,
-      ...scope,
     },
   })
 }

@@ -22,6 +22,7 @@ export const createMailFixtures = () => {
   const unhandled = []
   let doorwayAllowed = true
   let doorwayVisible = false
+  let gmailApprovalCardVisible = false
   let gmailDraftState = 'draft'
   let gmailSendAfter = null
   let loseNextGmailSendResponse = false
@@ -104,7 +105,11 @@ export const createMailFixtures = () => {
     lastMessageAt: now, memberRole: 'owner', organizationId: ids.organization,
     projectId: ids.project, projectName: 'Launch', scope: 'project', slug: 'email-triage',
     teamId: ids.team, teamName: 'Delivery', type: 'standard', unreadCount: 0,
-    updatedAt: now, viewerCanManage: true, visibility: 'private',
+    updatedAt: now, viewerCanManage: true,
+    // Required beside `viewerCanManage`, and a different authority: placing
+    // an agent is owner-only, adding a person is any member. A stubbed
+    // record without it fails `ChannelRecordSchema.parse` in the client.
+    viewerCanManageAgents: false, visibility: 'private',
   }
 
   const threadDoorway = { accountId: 'gmail-1', mode: 'thread', source: 'gmail', threadId: 'thread-1' }
@@ -193,6 +198,7 @@ export const createMailFixtures = () => {
       }),
       contentType: 'application/json', status: 200,
     })
+    if (pathname === `/api/approvals/${gmailApprovalId}`) return json(gmailApproval)
     if (pathname === `/api/gmail/drafts/approvals/${gmailApprovalId}/draft`) {
       await new Promise((resolve) => { releaseGmailApprovalPreview = resolve })
       return json(gmailApprovalPreview)
@@ -273,11 +279,28 @@ export const createMailFixtures = () => {
         status: gmail ? 'sending' : 'sent',
       })
     }
-    if (pathname === `/api/threads/${ids.thread}/messages`) return json(doorwayVisible
-      ? [{ ...doorwayMessage, metadata: mailboxComposeCardVisible
-        ? { agentCard: { cardId: mailboxComposeCardId, schemaVersion: 1 } }
-        : { mailSurfaceDoorway: doorway } }]
-      : [])
+    if (pathname === `/api/threads/${ids.thread}/messages`) {
+      // An approval lives on its card in the conversation, so the mail-send
+      // preview is reached the way a person reaches it: by opening the room.
+      if (gmailApprovalCardVisible) {
+        return json([{
+          ...doorwayMessage,
+          metadata: {
+            approvalGate: {
+              action: 'tool.invoke',
+              approvalId: gmailApprovalId,
+              status: 'pending',
+              toolName: 'gmail_draft_send',
+            },
+          },
+        }])
+      }
+      return json(doorwayVisible
+        ? [{ ...doorwayMessage, metadata: mailboxComposeCardVisible
+          ? { agentCard: { cardId: mailboxComposeCardId, schemaVersion: 1 } }
+          : { mailSurfaceDoorway: doorway } }]
+        : [])
+    }
     if (pathname === `/api/threads/${ids.thread}/thinking`) return json({ runs: [] })
     if (pathname === `/api/threads/${ids.thread}/document-streams`) return json([])
     if (pathname === `/api/threads/${ids.thread}/stream`) return route.fulfill({
@@ -298,10 +321,16 @@ export const createMailFixtures = () => {
     ids: { ...ids, gmailDraft: gmailDraftId, mailboxComposeCard: mailboxComposeCardId },
     unhandled,
     respond,
-    showDoorway: () => { doorway = threadDoorway; doorwayVisible = true; mailboxComposeCardVisible = false },
+    showDoorway: () => {
+      doorway = threadDoorway
+      doorwayVisible = true
+      gmailApprovalCardVisible = false
+      mailboxComposeCardVisible = false
+    },
     showComposeDoorway: () => {
       gmailDraftState = 'draft'
       gmailSendAfter = null
+      gmailApprovalCardVisible = false
       mailboxComposeCardVisible = false
       doorway = { accountId: 'gmail-1', draftId: gmailDraftId, mode: 'compose', source: 'gmail' }
     },
@@ -309,20 +338,27 @@ export const createMailFixtures = () => {
       mailboxComposeCardResolution = null
       mailboxComposeCardVisible = true
       doorwayVisible = true
+      gmailApprovalCardVisible = false
     },
     showAccountDoorway: () => {
       doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail' }
       doorwayVisible = true
       mailboxComposeCardVisible = false
+      gmailApprovalCardVisible = false
     },
     showSelectedAccountDoorway: () => {
       doorway = { accountId: 'gmail-1', mode: 'account', source: 'gmail', threadIds: ['thread-1', 'thread-2'] }
       doorwayVisible = true
       mailboxComposeCardVisible = false
+      gmailApprovalCardVisible = false
     },
     denyDoorway: () => { doorwayAllowed = false },
     loseNextGmailSendResponse: () => { loseNextGmailSendResponse = true },
-    showPendingGmailApproval: () => { gmailApprovalVisible = true },
+    showPendingGmailApproval: () => {
+      gmailApprovalVisible = true
+      gmailApprovalCardVisible = true
+      doorwayVisible = true
+    },
     releasePendingGmailApprovalPreview: () => { releaseGmailApprovalPreview?.() },
     setGmailDraftActionStatus: (next) => {
       gmailDraftState = next.state

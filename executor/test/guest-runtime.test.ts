@@ -20,7 +20,7 @@ test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown'
   const runId = '00000000-0000-4000-8000-000000000109'
   try {
     await writeFile(join(root, 'base.txt'), 'host source')
-    const lease = await createGuestWorkspaceLease(stateDir, root, {
+    const lease = await createGuestWorkspaceLease(stateDir, { name: 'workspace', path: root }, {
       bindingFence: '1',
       commandId: '00000000-0000-4000-8000-000000000110',
       runId,
@@ -127,7 +127,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
       version: 1,
     }))
     await chmod(join(runtimeBundlePath, 'nessie-guest-runtime.json'), 0o600)
-    const lease = await createGuestWorkspaceLease(stateDir, root, {
+    const lease = await createGuestWorkspaceLease(stateDir, { name: 'workspace', path: root }, {
       bindingFence: '1',
       commandId: '00000000-0000-4000-8000-000000000122',
       runId,

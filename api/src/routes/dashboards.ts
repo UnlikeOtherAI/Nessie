@@ -53,15 +53,12 @@ import { DashboardDeltaSchema, DashboardLayoutSchema } from '@nessie/schemas'
 import { randomUUID } from 'node:crypto'
 import { enqueueQueueJob } from '@nessie/db'
 
-const HomeSchema = z.enum(['organization', 'project', 'team', 'channel', 'personal'])
-
+// A dashboard lives in a project, so its project is not optional and there is
+// no `home` to disagree with it.
 const CreateDashboardBodySchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(500).optional(),
-  home: HomeSchema,
-  projectId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
-  channelId: z.string().uuid().optional(),
+  projectId: z.string().uuid(),
 }).strict()
 
 const CreateSourceBodySchema = z.object({
@@ -77,6 +74,12 @@ const CreateSourceBodySchema = z.object({
 
 const ImportStaticSourceBodySchema = z.object({
   name: z.string().trim().min(1).max(80),
+  // The project this source is being uploaded for. It is the audience the
+  // uploader is choosing, and the basis the source is recorded with — a
+  // dashboard may only be fed by a source whose verified audience covers it,
+  // and every dashboard is a project's. Without it an uploaded file could be
+  // charted on nothing at all.
+  projectId: z.string().uuid(),
   format: z.enum(DASHBOARD_STATIC_IMPORT_FORMATS),
   // XLSX is base64 over this JSON API, which expands a 256 KiB binary source
   // to at most 350 KiB before the importer rechecks the decoded byte cap.
@@ -214,9 +217,8 @@ export const registerDashboardRoutes = (
   app.get('/api/dashboards', async (request, reply) => {
     const context = await contextFor(request, reply as never)
     if (!context) return reply
-    const query = request.query as { home?: string; projectId?: string }
+    const query = request.query as { projectId?: string }
     const dashboards = await listDashboardsForActor(context, {
-      ...(query.home ? { home: HomeSchema.parse(query.home) } : {}),
       ...(query.projectId ? { projectId: query.projectId } : {}),
     })
     return createApiResponse(dashboards)
@@ -490,12 +492,20 @@ export const registerDashboardRoutes = (
     const body = parseInput(ImportStaticSourceBodySchema, request.body, reply, 'body')
     if (!body) return reply
     try {
+      // Uploading a file into a project is the sharing decision, exactly as
+      // it is for a document in a project's space — so the basis is that
+      // project, checked against the actor's own membership rather than
+      // trusted from the body. It used to be the submitting user alone, which
+      // only ever fed a personal dashboard; there is no such thing now, so
+      // that basis would make every upload uncharteable.
+      if (!(await context.membership.isProjectMember(context.actor.userId, body.projectId))) {
+        sendApiError(reply, 403, 'DASHBOARD_SCOPE_FORBIDDEN', 'not a member of that project')
+        return reply
+      }
+      const { projectId, ...source } = body
       return createApiResponse(await importStaticDashboardSource(context, {
-        ...body,
-        // HTTP uploads are private to the submitting user until an entitled
-        // source basis is established by an agent run. This is never inferred
-        // from an arbitrary client-supplied locator.
-        accessBasis: [{ scopeId: context.actor.userId, scopeType: 'user' }],
+        ...source,
+        accessBasis: [{ scopeId: projectId, scopeType: 'project' }],
       }, deps.fileService))
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply

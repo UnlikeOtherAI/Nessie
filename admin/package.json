@@ -13,6 +13,8 @@
     "test:e2e:connected-mail": "node e2e/connected-mail/run.mjs",
     "test:e2e:browser-cloud": "node e2e/browser-cloud/run.mjs",
     "test:e2e:app-connect-scope": "node e2e/app-connect-scope/run.mjs",
+    "test:e2e:agent-proposal-card": "node e2e/agent-proposal-card/run.mjs",
+    "test:e2e:channel-agent-controls": "node e2e/channel-agent-controls/run.mjs",
     "test:e2e:connected-board-sources": "node e2e/connected-board-sources/run.mjs",
     "test:e2e:agent-conversations": "node --import tsx e2e/agent-conversations/run.mjs",
     "test:e2e:disclosure": "node --import tsx e2e/disclosure/run.mjs",
@@ -29,7 +31,10 @@
     "test:e2e:project-usability": "node e2e/project-usability/run.mjs",
     "test:e2e:tabbar-full": "node e2e/tabbar-full/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "shots": "node e2e/marketing-shots/run.mjs",
+    "shots:save": "node e2e/marketing-shots/snapshot.mjs save",
+    "shots:restore": "node e2e/marketing-shots/snapshot.mjs restore"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

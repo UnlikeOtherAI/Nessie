@@ -33,7 +33,7 @@ const stateFor = (workspaceRoot: string, revision = 1): ExecutorLocalState => ({
   executorId: '00000000-0000-4000-8000-000000000005',
   machinePrivateKey: 'machine-private-secret',
   machinePublicKey: 'machine-public-value',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 const fixture = async (): Promise<{ stateDir: string; workspaceRoot: string }> => {
@@ -53,7 +53,7 @@ test('only explicit active-testing opt-in publishes a credential-free execution 
     const path = await publishExecutorDeepTestExecutionGrant(stateDir, { activeTesting: true })
     const raw = await readFile(path, 'utf8')
     assert.deepEqual(Object.keys(JSON.parse(raw) as object).sort(), [
-      'browser', 'descriptor', 'executorId', 'runtime', 'workspaceRoot',
+      'browser', 'descriptor', 'executorId', 'runtime', 'workspaceFolders',
     ])
     assert.doesNotMatch(
       raw,
@@ -69,7 +69,7 @@ test('only explicit active-testing opt-in publishes a credential-free execution 
         kernelPath: '/private/vm/kernel',
         vmHelperPath: '/private/vm/helper',
       },
-      workspaceRoot,
+      workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
     })
   } finally {
     await rm(join(stateDir, '..'), { force: true, recursive: true })

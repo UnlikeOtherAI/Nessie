@@ -13,6 +13,12 @@ type KanbanColumnProps = {
   itemIds: string[]
   /** One-line tickets sit closer together than full cards. */
   dense?: boolean
+  /**
+   * Whether a dragged card may be dropped here. The Archived column is drawn
+   * by the board but is not one of its columns — there is nothing behind it to
+   * place a ticket in — so it reads as a column and refuses the drop.
+   */
+  droppable?: boolean
 }
 
 export const KanbanColumn = ({
@@ -24,13 +30,14 @@ export const KanbanColumn = ({
   headerAction,
   itemIds,
   dense = false,
+  droppable = true,
 }: KanbanColumnProps) => {
   // The column is itself a drop target so cards can be dropped into an empty
   // column or below the last card. It is also the scroll container for its own
   // cards: the board viewport pages horizontally and clips vertically, so a
   // column taller than the board scrolls here rather than being cut off.
   // dnd-kit auto-scrolls this element while a card is dragged near its edge.
-  const { setNodeRef, isOver } = useDroppable({ id: columnId })
+  const { setNodeRef, isOver } = useDroppable({ disabled: !droppable, id: columnId })
 
   return (
     <div
@@ -53,7 +60,7 @@ export const KanbanColumn = ({
           'rounded-lg p-2 transition-colors',
           isOver ? 'bg-[color:var(--overlay)]' : 'bg-[color:var(--sb)]',
         ].join(' ')}
-        data-kanban-dropzone={columnId}
+        data-kanban-dropzone={droppable ? columnId : undefined}
       >
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
           {children}

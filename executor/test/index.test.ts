@@ -10,14 +10,25 @@ import { parseCommand } from '../src/index.js'
 import type { ExecutorHost } from '../src/host-platform.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
+  deriveExecutorWorkspaceFolderName,
+  type ExecutorWorkspaceFolder,
+} from '../src/workspace-folders.js'
+import {
   promotionManifestForSandbox,
   stopSandboxWorkspace,
   workspaceForRun,
+  workspaceViewForRun,
   writeSandboxFile,
 } from '../src/sandbox-workspace.js'
 import { loadExecutorState, loadExecutorStatesFromRoot, saveExecutorState } from '../src/state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
 import { canonicalExecutorJson, type ExecutorCommandEnvelope } from '@nessie/schemas'
+
+/** Reads straight from the paired host folders, with no run draft involved. */
+const hostView = (...folders: ExecutorWorkspaceFolder[]) => ({
+  directoryFor: async (folder: ExecutorWorkspaceFolder) => folder.path,
+  folders,
+})
 
 // The configure path now asks the host what sandbox it can start, so this
 // pins a host with one instead of depending on the machine running the suite.
@@ -58,7 +69,7 @@ test('pair requires an explicit API URL and owner-controlled state directory', (
       enrollmentId: '00000000-0000-4000-8000-000000000001',
       kind: 'pair',
       stateDir: '/private/tmp/nessie-executor',
-      workspaceRoot: '/private/tmp/nessie-workspace',
+      workspaceFolders: [{ name: 'nessie-workspace', path: '/private/tmp/nessie-workspace' }],
     },
   )
 })
@@ -79,7 +90,7 @@ test('pair accepts a challenge from standard input without putting it in process
       enrollmentId: '00000000-0000-4000-8000-000000000001',
       kind: 'pair',
       stateDir: '/private/tmp/nessie-executor',
-      workspaceRoot: '/private/tmp/nessie-workspace',
+      workspaceFolders: [{ name: 'nessie-workspace', path: '/private/tmp/nessie-workspace' }],
     },
   )
   assert.throws(
@@ -245,7 +256,7 @@ test('local policy configuration proposes only implemented COW operations', asyn
     executorId: '00000000-0000-4000-8000-000000000006',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: '/private/tmp/nessie-workspace',
+    workspaceFolders: [{ name: 'work', path: '/private/tmp/nessie-workspace' }],
   }
   try {
     await saveExecutorState(stateDir, state)
@@ -260,7 +271,10 @@ test('local policy configuration proposes only implemented COW operations', asyn
         kind: 'configure',
         operationKeys: ['file.write', 'file.read'],
         stateDir,
-        workspaceRoot: replacementWorkspace,
+        workspaceFolders: [{
+          name: deriveExecutorWorkspaceFolderName(replacementWorkspace),
+          path: replacementWorkspace,
+        }],
       },
     )
     const configured = await configureExecutorLocalPolicy(
@@ -269,16 +283,19 @@ test('local policy configuration proposes only implemented COW operations', asyn
       ['file.write', 'file.read'],
       undefined,
       sandboxHost,
-      replacementWorkspace,
+      [{ name: 'replacement', path: replacementWorkspace }],
     )
     assert.deepEqual(configured.descriptor, {
       ...state.descriptor,
       operationKeys: ['file.read', 'file.write'],
       profiles: ['workspace_sandbox'],
       revision: 4,
+      workspaceFolders: ['replacement'],
     })
     assert.deepEqual((await loadExecutorState(stateDir)).descriptor, configured.descriptor)
-    assert.equal((await loadExecutorState(stateDir)).workspaceRoot, await realpath(replacementWorkspace))
+    assert.deepEqual((await loadExecutorState(stateDir)).workspaceFolders, [
+      { name: 'replacement', path: await realpath(replacementWorkspace) },
+    ])
     await assert.rejects(
       configureExecutorLocalPolicy(stateDir, configured, ['browser.open'], undefined, sandboxHost),
       /browser\.open, browser\.observe, and browser\.act must be enabled together/,
@@ -296,7 +313,7 @@ test('local policy configuration proposes only implemented COW operations', asyn
         configured.descriptor.operationKeys,
         undefined,
         sandboxHost,
-        blockedWorkspace,
+        [{ name: 'blocked', path: blockedWorkspace }],
       ),
       /Remove every local draft and stop every sandbox/,
     )
@@ -323,7 +340,7 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
     executorId: '00000000-0000-4000-8000-000000000001',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: '/private/tmp/nessie-workspace',
+    workspaceFolders: [{ name: 'work', path: '/private/tmp/nessie-workspace' }],
   }
   try {
     await saveExecutorState(shared, state)
@@ -355,7 +372,7 @@ test('native-host state-root dispatch accepts only protected matching pairing di
     executorId,
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: '/private/tmp/nessie-workspace',
+    workspaceFolders: [{ name: 'work', path: '/private/tmp/nessie-workspace' }],
   })
   try {
     await saveExecutorState(join(root, firstId), stateFor(firstId))
@@ -382,31 +399,32 @@ test('the read-only workspace backend keeps every path inside the paired root', 
     await writeFile(join(outside, 'secret.txt'), 'not readable')
     await symlink(join(outside, 'secret.txt'), join(root, 'outside-link'))
 
+    const view = hostView({ name: 'work', path: root })
     assert.deepEqual(
-      await listWorkspaceFiles(root, { path: 'nested' }),
+      await listWorkspaceFiles(view, { path: 'work/nested' }),
       {
         entries: [{ kind: 'file', name: 'notes.txt' }],
-        path: 'nested',
+        path: 'work/nested',
         success: true,
         truncated: false,
       },
     )
     assert.deepEqual(
-      await readWorkspaceFile(root, { path: 'nested/notes.txt', maxBytes: 5 }),
+      await readWorkspaceFile(view, { path: 'work/nested/notes.txt', maxBytes: 5 }),
       {
         byteCount: 5,
         content: 'hello',
-        path: 'nested/notes.txt',
+        path: 'work/nested/notes.txt',
         success: true,
         truncated: true,
       },
     )
     await assert.rejects(
-      readWorkspaceFile(root, { path: '../outside/secret.txt' }),
-      /escapes its root/,
+      readWorkspaceFile(view, { path: 'work/../outside/secret.txt' }),
+      /may not contain/,
     )
     await assert.rejects(
-      readWorkspaceFile(root, { path: 'outside-link' }),
+      readWorkspaceFile(view, { path: 'work/outside-link' }),
       /symbolic links/,
     )
   } finally {
@@ -423,20 +441,23 @@ test('sandbox writes use a daemon-owned COW workspace and never touch the paired
     await mkdir(join(root, 'nested'))
     await writeFile(join(root, 'nested', 'base.txt'), 'host source')
 
+    const folders = [{ name: 'work', path: root }]
     assert.deepEqual(
-      await writeSandboxFile(stateDir, root, runId, {
+      await writeSandboxFile(stateDir, folders, runId, {
         content: 'draft only',
-        path: 'nested/draft.txt',
+        path: 'work/nested/draft.txt',
       }),
-      { byteCount: 10, path: 'nested/draft.txt', success: true },
+      { byteCount: 10, path: 'work/nested/draft.txt', success: true },
     )
-    const scratch = await workspaceForRun(stateDir, root, runId)
     assert.deepEqual(
-      await readWorkspaceFile(scratch, { path: 'nested/draft.txt' }),
+      await readWorkspaceFile(
+        workspaceViewForRun(stateDir, folders, runId),
+        { path: 'work/nested/draft.txt' },
+      ),
       {
         byteCount: 10,
         content: 'draft only',
-        path: 'nested/draft.txt',
+        path: 'work/nested/draft.txt',
         success: true,
         truncated: false,
       },
@@ -445,7 +466,7 @@ test('sandbox writes use a daemon-owned COW workspace and never touch the paired
     await assert.rejects(readFile(join(root, 'nested', 'draft.txt'), 'utf8'), { code: 'ENOENT' })
 
     assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
-    assert.equal(await workspaceForRun(stateDir, root, runId), await realpath(root))
+    assert.equal(await workspaceForRun(stateDir, folders[0]!, runId), await realpath(root))
   } finally {
     await rm(root, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })
@@ -458,25 +479,44 @@ test('sandbox workspace paths exclude the native promotion journal', async () =>
   try {
     await mkdir(join(root, '.nessie-executor-promotions'))
     await writeFile(join(root, '.nessie-executor-promotions', 'private.txt'), 'journal secret')
+    const folders = [{ name: 'work', path: root }]
     for (const path of [
-      '.nessie-executor-promotions/private.txt',
-      './.nessie-executor-promotions/private.txt',
-      'ordinary/../.nessie-executor-promotions/private.txt',
-      '.nessie-executor-promotions\\private.txt',
-      '.\\.nessie-executor-promotions\\private.txt',
+      'work/.nessie-executor-promotions/private.txt',
+      'work/./.nessie-executor-promotions/private.txt',
+      'work/.nessie-executor-promotions\\private.txt',
+      'work\\.nessie-executor-promotions\\private.txt',
     ]) {
-      await assert.rejects(readWorkspaceFile(root, { path }), /journal state/)
+      await assert.rejects(readWorkspaceFile(hostView(...folders), { path }), /journal state/)
       await assert.rejects(
-        writeSandboxFile(stateDir, root, '00000000-0000-4000-8000-000000000105', {
+        writeSandboxFile(stateDir, folders, '00000000-0000-4000-8000-000000000105', {
           content: 'forbidden',
           path,
         }),
         /journal state/,
       )
     }
+    // A `..` that used to be collapsed away is now refused outright, because a
+    // collapsed first segment could name a different folder.
+    await assert.rejects(
+      readWorkspaceFile(hostView(...folders), {
+        path: 'work/ordinary/../.nessie-executor-promotions/private.txt',
+      }),
+      /may not contain/,
+    )
+    // The folder's own listing hides the journal; the namespace root lists the
+    // folders themselves so an agent can discover what it may reach.
     assert.deepEqual(
-      await listWorkspaceFiles(root, { path: '.' }),
-      { entries: [], path: '.', success: true, truncated: false },
+      await listWorkspaceFiles(hostView(...folders), { path: 'work' }),
+      { entries: [], path: 'work', success: true, truncated: false },
+    )
+    assert.deepEqual(
+      await listWorkspaceFiles(hostView(...folders), { path: '.' }),
+      {
+        entries: [{ kind: 'directory', name: 'work' }],
+        path: '.',
+        success: true,
+        truncated: false,
+      },
     )
   } finally {
     await rm(root, { force: true, recursive: true })
@@ -491,9 +531,9 @@ test('copy-on-write sandbox setup fails closed on symbolic links in the paired r
   try {
     await symlink(outside, join(root, 'outside-link'))
     await assert.rejects(
-      writeSandboxFile(stateDir, root, '00000000-0000-4000-8000-000000000102', {
+      writeSandboxFile(stateDir, [{ name: 'work', path: root }], '00000000-0000-4000-8000-000000000102', {
         content: 'must not write',
-        path: 'draft.txt',
+        path: 'work/draft.txt',
       }),
       /symbolic links/,
     )
@@ -519,23 +559,23 @@ test('daemon commands bind COW drafts to one run and never write the paired root
     executorId: '00000000-0000-4000-8000-000000000204',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: root,
+    workspaceFolders: [{ name: 'work', path: root }],
   }
   try {
     await writeFile(join(root, 'original.txt'), 'host root')
     assert.deepEqual(
       await executeExecutorCommand(stateDir, state, commandFor('file.write', {
-        args: { content: 'draft', path: 'draft.txt' },
+        args: { content: 'draft', path: 'work/draft.txt' },
         runId,
       })),
-      { byteCount: 5, path: 'draft.txt', success: true },
+      { byteCount: 5, path: 'work/draft.txt', success: true },
     )
     assert.deepEqual(
       await executeExecutorCommand(stateDir, state, commandFor('file.read', {
-        args: { path: 'draft.txt' },
+        args: { path: 'work/draft.txt' },
         runId,
       })),
-      { byteCount: 5, content: 'draft', path: 'draft.txt', success: true, truncated: false },
+      { byteCount: 5, content: 'draft', path: 'work/draft.txt', success: true, truncated: false },
     )
     await assert.rejects(readFile(join(root, 'draft.txt'), 'utf8'), { code: 'ENOENT' })
     const review = await executeExecutorCommand(stateDir, state, commandFor('workspace.review', {
@@ -544,7 +584,7 @@ test('daemon commands bind COW drafts to one run and never write the paired root
     }))
     assert.deepEqual(review, {
       changeCount: 1,
-      changes: [{ byteCount: 5, kind: 'created', path: 'draft.txt' }],
+      changes: [{ byteCount: 5, kind: 'created', path: 'work/draft.txt' }],
       manifestDigest: review.manifestDigest,
       success: true,
     })
@@ -553,10 +593,21 @@ test('daemon commands bind COW drafts to one run and never write the paired root
       await executeExecutorCommand(stateDir, state, commandFor('sandbox.stop', { args: {}, runId })),
       { status: 'stopped', success: true },
     )
+    // With the draft discarded, the folder reads the host copy again — and the
+    // namespace root still answers with the folder itself.
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('file.list', { args: { path: 'work' }, runId })),
+      {
+        entries: [{ kind: 'file', name: 'original.txt' }],
+        path: 'work',
+        success: true,
+        truncated: false,
+      },
+    )
     assert.deepEqual(
       await executeExecutorCommand(stateDir, state, commandFor('file.list', { args: {}, runId })),
       {
-        entries: [{ kind: 'file', name: 'original.txt' }],
+        entries: [{ kind: 'directory', name: 'work' }],
         path: '.',
         success: true,
         truncated: false,
@@ -583,12 +634,12 @@ test('promotion remains unavailable without an owner-verified native helper', as
     executorId: '00000000-0000-4000-8000-000000000208',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: root,
+    workspaceFolders: [{ name: 'work', path: root }],
   }
   try {
     await writeFile(join(root, 'original.txt'), 'base')
     await executeExecutorCommand(stateDir, state, commandFor('file.write', {
-      args: { content: 'draft', overwrite: true, path: 'original.txt' },
+      args: { content: 'draft', overwrite: true, path: 'work/original.txt' },
       runId,
     }))
     const manifest = await promotionManifestForSandbox(stateDir, runId)
@@ -616,16 +667,17 @@ test('a draft review digest binds file hashes even when byte counts do not chang
   const runId = '00000000-0000-4000-8000-000000000206'
   try {
     await writeFile(join(root, 'original.txt'), 'base')
-    await writeSandboxFile(stateDir, root, runId, {
+    const folders = [{ name: 'work', path: root }]
+    await writeSandboxFile(stateDir, folders, runId, {
       content: 'draft',
       overwrite: true,
-      path: 'original.txt',
+      path: 'work/original.txt',
     })
     const first = await promotionManifestForSandbox(stateDir, runId)
-    await writeSandboxFile(stateDir, root, runId, {
+    await writeSandboxFile(stateDir, folders, runId, {
       content: 'other',
       overwrite: true,
-      path: 'original.txt',
+      path: 'work/original.txt',
     })
     const second = await promotionManifestForSandbox(stateDir, runId)
     assert.equal(first.changes[0]?.draft?.byteCount, second.changes[0]?.draft?.byteCount)
@@ -651,12 +703,12 @@ test('daemon commands reject a missing server-provenanced run identity', async (
     executorId: '00000000-0000-4000-8000-000000000205',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: root,
+    workspaceFolders: [{ name: 'work', path: root }],
   }
   try {
     assert.deepEqual(
       await executeExecutorCommand(stateDir, state, commandFor('file.write', {
-        args: { content: 'draft', path: 'draft.txt' },
+        args: { content: 'draft', path: 'work/draft.txt' },
       })),
       { code: 'EXECUTOR_COMMAND_RUN_INVALID', success: false },
     )

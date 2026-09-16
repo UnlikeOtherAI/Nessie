@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { openApprovalCard } from '../approval-card.js'
 import {
   AGENT_TODO_APPROVAL_EXPIRY_MS,
   AGENT_TODO_PENDING_PROPOSAL_LIMIT,
@@ -88,7 +89,7 @@ export const runTodoTemplateProposeTool = async (
     throw new Error(PROPOSAL_RESTRICTED_MESSAGE)
   }
   const organizationId = String(context.channel.organizationId)
-  const approval = await context.prisma.$transaction(async (tx) => {
+  const { approval, approvers } = await context.prisma.$transaction(async (tx) => {
     // Equivalent proposals have no stable dedupe id, so lock and count the
     // pending set itself rather than trusting the model to stop at ten.
     await acquireAgentTodoAgentLock(tx, context.agentId)
@@ -136,15 +137,33 @@ export const runTodoTemplateProposeTool = async (
     // Owners are the ones who can answer this, so owners are the ones told.
     // Without it the proposal sat behind the Approvals badge until somebody
     // happened to look, and expired if nobody did.
-    await createApprovalUserAlerts(tx, {
+    const approvers = await createApprovalUserAlerts(tx, {
       actorAgentId: context.agentId,
       approvalId: approval.id,
       channelId: context.channel.id,
       organizationId,
       requiredApproverRole: 'owner',
     })
-    return approval
+    return { approval, approvers }
   })
+  // The badge that comment describes is gone with the page behind it, so the
+  // card is now the whole surface: in this room for an owner who is in it, and
+  // in the assistant conversation of every owner who is not.
+  await openApprovalCard(context, {
+    agentId: context.agentId,
+    approverUserIds: approvers,
+    content: `I have drafted a to-do template, **${args.name}**, and it needs an owner's approval before it can be used.`,
+    gate: {
+      action: 'agent.todo_template.publish',
+      approvalId: approval.id,
+      status: 'pending',
+    },
+    organizationId,
+    originChannelId: context.channel.id,
+    originSystemChannelType: context.channel.systemChannelType ?? null,
+    originThreadId: context.run.threadId,
+  })
+
   return {
     inputSummary: `template=${JSON.stringify(args.name)}`,
     outputPreview: `Template proposal submitted for owner review (approval ${approval.id}).`,

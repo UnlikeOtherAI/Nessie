@@ -2,6 +2,10 @@ import { canReadSpace, canWriteSpace } from '@nessie/knowledge'
 import { z } from 'zod'
 
 import {
+  postApprovalCards,
+  resolveApprovalCardTargets,
+} from '@nessie/team-admin'
+import {
   createApprovalRequestOnce,
   TooManyPendingApprovalsError,
 } from '../../services/approvals.js'
@@ -407,6 +411,39 @@ export const documentTools = (): McpToolDefinition[] => [
       }
 
       const { approval, created } = opened
+
+      if (created) {
+        // A paired credential has no channel — a program on somebody's laptop
+        // asked — so the one conversation this can belong to is the assistant
+        // conversation of the person whose account it borrowed. Nothing else
+        // surfaces it: the approvals page it used to wait on is gone.
+        const targets = await resolveApprovalCardTargets(context.prisma, {
+          approverUserIds: [context.actorContext.actor.actorId],
+          organizationId: context.actorContext.tenant.organizationId,
+          originChannelId: null,
+          originThreadId: null,
+        })
+        const cards = await postApprovalCards(context.prisma, {
+          agentId: null,
+          content: `A paired agent working as you asked to publish **${existing.title}**.`,
+          gate: {
+            action: 'knowledge.page.publish',
+            approvalId: approval.id,
+            status: 'pending',
+          },
+          targets,
+        })
+        // The bell needs somewhere to go. This request was opened with no
+        // channel, so its alert had none either and used to link to the
+        // approvals page; now it links to the conversation the card is in.
+        const card = cards[0]
+        if (card) {
+          await context.prisma.userAlert.updateMany({
+            data: { channelId: card.channelId },
+            where: { approvalRequestId: approval.id, channelId: null },
+          })
+        }
+      }
 
       if (!created) {
         return {

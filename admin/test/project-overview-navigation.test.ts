@@ -22,6 +22,7 @@ const tiles = (overrides: Partial<Parameters<typeof projectNavigationTiles>[0]> 
     backlogCount: 0,
     canManageMembers: true,
     channels: [{ id: 'c1', label: 'general' }],
+    dashboards: [],
     documentsUpdatedAge: '2h',
     isScrum: false,
     memberCount: 3,
@@ -44,6 +45,7 @@ test('every section of the project has a tile, and Overview does not link to its
     // own but the page below no longer lists them, so the grid must.
     for (const key of tileKeys) {
       if (key === 'channels' || key === 'people') continue
+      if (key.startsWith('dashboard:')) continue
       assert.ok(sectionIds.includes(key), `tile "${key}" is not a project section`)
     }
     assert.ok(tileKeys.includes('channels'))
@@ -65,7 +67,8 @@ test('a scrum project gains Backlog and Insights, a kanban one does not', () => 
 test('the tiles keep the sidebar order, with Channels and People before the manage-it doorways', () => {
   const keys = tiles({ isScrum: true }).map((tile) => tile.key)
   assert.deepEqual(keys, [
-    'board', 'backlog', 'insights', 'docs', 'channels', 'people', 'executors', 'settings',
+    'board', 'backlog', 'insights', 'docs', 'dashboards',
+    'channels', 'people', 'executors', 'settings',
   ])
 })
 
@@ -99,13 +102,20 @@ test('Channels opens the busiest room, and says so when there is none', () => {
 })
 
 test('each tile says what is in it — once, and only where a number is honest', () => {
-  const found = tiles({ backlogCount: 4, isScrum: true, memberCount: 1, openWorkCount: 12 })
+  const found = tiles({
+    backlogCount: 4,
+    dashboards: [{ id: 'd1', title: 'Revenue' }, { id: 'd2', title: 'Latency' }],
+    isScrum: true,
+    memberCount: 1,
+    openWorkCount: 12,
+  })
   const meta = (key: string) => found.find((tile) => tile.key === key)?.meta
 
   assert.equal(meta('board'), '12 open')
   assert.equal(meta('backlog'), '4 waiting')
   assert.equal(meta('people'), '1 person')
   assert.equal(meta('channels'), '1 channel')
+  assert.equal(meta('dashboards'), '2 dashboards')
   // The recent-pages read is capped, so it knows when the newest document
   // changed but not how many exist. Recency is the honest signal.
   assert.equal(meta('docs'), 'updated 2h')
@@ -118,6 +128,7 @@ test('each tile says what is in it — once, and only where a number is honest',
   const empty = tiles({
     backlogCount: 0,
     channels: [],
+    dashboards: [],
     documentsUpdatedAge: null,
     memberCount: 0,
     openWorkCount: 0,
@@ -185,4 +196,34 @@ test('the page below the grid is two columns, and nothing a tile already says', 
   assert.doesNotMatch(dashboard, /<ProjectChannelsSection/)
   assert.doesNotMatch(dashboard, /<ProjectAgentsSection/)
   assert.match(dashboard, /className="project-overview-columns"/)
+})
+
+test('a project’s dashboards continue the grid as live tiles, after the fixed doorways', () => {
+  const found = tiles({
+    dashboards: [{ id: 'd1', title: 'Revenue' }, { id: 'd2', title: 'Latency' }],
+  })
+  const dashboardTiles = found.filter((tile) => tile.dashboardId)
+
+  // They are tiles in the same grid rather than a band of their own, and they
+  // come after every fixed doorway so that block keeps the shape a person
+  // learns.
+  assert.deepEqual(dashboardTiles.map((tile) => tile.label), ['Revenue', 'Latency'])
+  assert.deepEqual(found.slice(-2).map((tile) => tile.dashboardId), ['d1', 'd2'])
+
+  // Each opens the full-screen dashboard inside its own project.
+  assert.deepEqual(
+    dashboardTiles.map((tile) => tile.to),
+    ['/projects/p1/dashboards/d1', '/projects/p1/dashboards/d2'],
+  )
+  // A live dashboard says what it is; a blurb under one would caption a caption.
+  for (const tile of dashboardTiles) assert.equal(tile.blurb, '')
+})
+
+test('a project with no dashboards still has the doorway to make one', () => {
+  const found = tiles({ dashboards: [] })
+  assert.equal(found.filter((tile) => tile.dashboardId).length, 0)
+  const section = found.find((tile) => tile.key === 'dashboards')
+  assert.equal(section?.to, '/projects/p1/dashboards')
+  // No count, rather than "0 dashboards".
+  assert.equal(section?.meta, undefined)
 })

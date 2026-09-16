@@ -1,5 +1,10 @@
 export type PageHeaderActionLayout = {
   id: string
+  // Never collapses into More, whatever the width — for a control that carries
+  // the screen's own state rather than firing an action, and would lose its
+  // meaning as a menu row (the board's assignee filter names who the board is
+  // narrowed to). `primary` holds the same position for the opposite reason.
+  pinned?: boolean
   primary?: boolean
   priority: number
   width: number
@@ -36,7 +41,7 @@ export const partitionPageHeaderActions = (
 
   while (actionRowWidth(visible, gap, moreWidth, overflow.size > 0) > availableWidth) {
     const next = visible
-      .filter((action) => !action.primary)
+      .filter((action) => !action.primary && !action.pinned)
       .sort((left, right) => left.priority - right.priority)[0]
     if (!next) break
     overflow.add(next.id)

@@ -21,7 +21,7 @@ test('client-recovery: durable enrollment preparation reuses its key after respo
     challenge: Buffer.alloc(32, 7).toString('base64url'),
     enrollmentId: '00000000-0000-4000-8000-000000000601',
     stateDir: join(root, 'state'),
-    workspaceRoot,
+    workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
   }
   let prepared: ExecutorPreparedPairing | null = null
   let savedState: ExecutorLocalState | null = null
@@ -82,7 +82,7 @@ test('client-recovery: unfinished pairing rejects different enrollment input', a
     challenge: Buffer.alloc(32, 9).toString('base64url'),
     enrollmentId: '00000000-0000-4000-8000-000000000611',
     stateDir: join(root, 'state'),
-    workspaceRoot,
+    workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
   }
   const dependencies = {
     clearPrepared: async () => undefined,

@@ -153,6 +153,7 @@ const createHarness = (options: HarnessOptions = {}) => {
         // A system channel is never manageable: `canModifyChannel` refuses
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
+        viewerCanManageAgents: false,
         updatedAt: '2026-07-19T10:00:00.000Z',
         visibility: 'private',
       },

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { faBook, faChartColumn, faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { faBook, faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
@@ -164,32 +164,6 @@ export const KnowledgeSidebarNav = () => {
               : null}
           </SidebarMenuSection>
         ) : null}
-
-        {/* Dashboards sit inside Knowledge, between the personal docs and the
-            shared spaces: a dashboard is something you read, filed with the
-            other things you read, rather than a section of its own. This also
-            makes it reachable on mobile, whose native tab bar has a Knowledge
-            tab and no room for another. */}
-        <SidebarMenuSection
-          className="border-b border-[color:var(--sep)] pb-1"
-          id="kb-dashboards"
-          isCollapsed={collapsedSections.dashboards ?? false}
-          onToggle={() => toggleSection('dashboards')}
-          title="Dashboards"
-          titleIcon={sectionIcon(faChartColumn)}
-        >
-          <NavLink
-            className={({ isActive }) => ['admin-sb-item', isActive ? 'active' : ''].join(' ')}
-            to="/dashboards"
-          >
-            <FontAwesomeIcon
-              className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--accent)]"
-              fixedWidth
-              icon={faChartColumn}
-            />
-            <span className="min-w-0 flex-1 truncate font-medium">All dashboards</span>
-          </NavLink>
-        </SidebarMenuSection>
 
         {documentsSections.length > 0 ? (
           <SidebarMenuSection

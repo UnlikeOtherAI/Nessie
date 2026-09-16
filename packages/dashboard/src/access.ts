@@ -80,11 +80,7 @@ const NOT_FOUND: DashboardAccessDecision = { allowed: false, reason: 'not_found'
 type DashboardRow = {
   id: string
   organizationId: string
-  home: string
-  projectId: string | null
-  teamId: string | null
-  channelId: string | null
-  ownerUserId: string | null
+  projectId: string
   createdBy: string
   archivedAt: Date | null
 }
@@ -123,32 +119,19 @@ const loadDashboardFor = async (
   }) as Promise<DashboardRow | null>
 }
 
+/**
+ * A dashboard's audience is its project's members — the whole rule.
+ *
+ * This was a five-armed switch over the `home` column, each arm reading a
+ * different nullable scope column, with a fail-closed default for a home the
+ * code did not understand. One home means one question, and the column it asks
+ * about cannot be null.
+ */
 const homeGrantsView = async (
   membership: DashboardMembership,
   actor: DashboardActor,
   dashboard: DashboardRow,
-): Promise<boolean> => {
-  switch (dashboard.home) {
-    case 'organization':
-      return true
-    case 'project':
-      return dashboard.projectId
-        ? membership.isProjectMember(actor.userId, dashboard.projectId)
-        : false
-    case 'team':
-      return dashboard.teamId ? membership.isTeamMember(actor.userId, dashboard.teamId) : false
-    case 'channel':
-      return dashboard.channelId
-        ? membership.isChannelMember(actor.userId, dashboard.channelId)
-        : false
-    case 'personal':
-      return dashboard.ownerUserId === actor.userId
-    default:
-      // An unknown home is a schema the code does not understand. Fail closed
-      // rather than guessing an audience.
-      return false
-  }
-}
+): Promise<boolean> => membership.isProjectMember(actor.userId, dashboard.projectId)
 
 const activeGrantLevel = async (
   prisma: PrismaClient | Prisma.TransactionClient,

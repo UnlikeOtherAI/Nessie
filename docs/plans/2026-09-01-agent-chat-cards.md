@@ -220,6 +220,9 @@ AgentCardSpec = {
 AgentCardBlock =
   | { type: 'text';   markdown: string /* ≤2000, rendered by MessageMarkdown */ }
   | { type: 'fields'; items: { label: string; value: string }[] /* ≤12 */ }
+  | { type: 'chips';  label?: string /* ≤60 */; items: string[] /* ≤40, each ≤60 */ }
+  | { type: 'details'; summary: string /* ≤80 */;
+                      blocks: (text | fields | chips | link)[] /* 1–6 */ }
   | { type: 'image';  attachmentId: uuid; alt: string; caption?: string }
   | { type: 'link';   href: string /* https: only */; label: string }
   | { type: 'input';  key: Key; label: string; input: 'text' | 'textarea' | 'number'
@@ -250,6 +253,17 @@ a `secret` block requires at least one `submits: true` action; an `image`
 the same reach `pa-tools/attachments.ts` enforces), never a URL; `link.href`
 is `https:` only and rendered with `rel="noopener noreferrer"` and its host
 visible. Nothing in the spec is a URL the client fetches.
+
+`chips` and `details` were added for the Agent Designer's proposal card and are
+ordinary vocabulary, not a card kind: a proposal has to carry the agent's whole
+tool and app selection, because that list *is* the person's approval of it, and
+still be readable while they decide whether the name is right. `chips` is a set
+of named things that reads as a set; `details` is the fold that lets a card say
+both at once. Both are deliberately narrow — `details` nests one level, takes no
+`input` and no `secret` (a field nobody has to open is a field somebody can
+submit unseen), and is **unfolded** by `renderAgentCardPlainText`, since that
+string is what search, push previews and the model's own transcript window get
+instead of the card.
 
 ### 2.4 The service mark
 

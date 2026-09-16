@@ -3,6 +3,7 @@ import type { Readable } from 'node:stream'
 
 import {
   canonicalExecutorJson,
+  executorCommandAllowlistPermits,
   ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
@@ -44,10 +45,11 @@ import {
   stopSandboxWorkspace,
   reviewSandboxWorkspace,
   promotionManifestForSandbox,
-  workspaceForRun,
+  workspaceViewForRun,
   writeSandboxFile,
 } from './sandbox-workspace.js'
 import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
+import { executorWorkspaceFolderNames } from './workspace-folders.js'
 import { listWorkspaceFiles, readWorkspaceFile, workspaceFailure } from './workspace.js'
 
 export const claimExecutor = async (
@@ -125,6 +127,26 @@ const receipt = async (
   })
 }
 
+/**
+ * A guest VM mounts one workspace. Until the guest protocol in
+ * `executor/guest/*.go` can bind several, an executor that exposes more than one
+ * folder refuses to start a guest session here — at the dispatch a person reads
+ * when they ask why a run was refused — rather than silently binding to the
+ * first folder and letting them believe an agent inside that VM can see the
+ * rest. The file operations are unaffected: they reach every folder.
+ */
+const guestSessionRefusal = (state: ExecutorLocalState): Record<string, unknown> | null =>
+  state.workspaceFolders.length === 1
+    ? null
+    : {
+      code: 'EXECUTOR_GUEST_SINGLE_FOLDER_REQUIRED',
+      folders: executorWorkspaceFolderNames(state.workspaceFolders),
+      message:
+        'A guest session mounts one workspace folder, and this executor exposes '
+        + `${state.workspaceFolders.length}. The workspace file operations reach every folder.`,
+      success: false,
+    }
+
 export const executeExecutorCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
@@ -157,23 +179,27 @@ export const executeExecutorCommand = async (
   }
   if (command.operationKey === 'file.list') {
     try {
-      const workspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
-      return await listWorkspaceFiles(workspace, command.payload.args)
+      return await listWorkspaceFiles(
+        workspaceViewForRun(stateDir, state.workspaceFolders, runId.data),
+        command.payload.args,
+      )
     } catch (error) {
       return workspaceFailure(error)
     }
   }
   if (command.operationKey === 'file.read') {
     try {
-      const workspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
-      return await readWorkspaceFile(workspace, command.payload.args)
+      return await readWorkspaceFile(
+        workspaceViewForRun(stateDir, state.workspaceFolders, runId.data),
+        command.payload.args,
+      )
     } catch (error) {
       return workspaceFailure(error)
     }
   }
   if (command.operationKey === 'file.write') {
     try {
-      return await writeSandboxFile(stateDir, state.workspaceRoot, runId.data, command.payload.args)
+      return await writeSandboxFile(stateDir, state.workspaceFolders, runId.data, command.payload.args)
     } catch (error) {
       return workspaceFailure(error)
     }
@@ -192,17 +218,39 @@ export const executeExecutorCommand = async (
       if (manifest.manifestDigest !== args.manifestDigest) {
         return { code: 'EXECUTOR_PROMOTION_REVIEW_STALE', success: false }
       }
-      const draftWorkspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
+      // The native helper writes one reviewed draft into one host directory it
+      // holds as a descriptor, and recomputes the manifest digest itself. A
+      // run that drafted several folders needs several of those write
+      // protocols, which is a change to that separately packaged binary — so it
+      // is refused here, named, rather than promoting one folder and reporting
+      // success for a review that covered more.
+      const [only] = manifest.folders
+      if (!only || manifest.folders.length !== 1) {
+        return {
+          code: 'EXECUTOR_PROMOTION_SINGLE_FOLDER_REQUIRED',
+          folders: manifest.folders.map((folder) => folder.name),
+          message: manifest.folders.length === 0
+            ? 'This run has no workspace folder draft to promote.'
+            : 'This review changed more than one workspace folder, and promotion applies one.',
+          success: false,
+        }
+      }
+      const folder = state.workspaceFolders.find((candidate) => candidate.name === only.name)
+      if (!folder) return { code: 'EXECUTOR_PROMOTION_FOLDER_UNKNOWN', success: false }
       return await applyNativePromotion({
-        draftWorkspace,
+        approvedManifestDigest: manifest.manifestDigest,
+        draftWorkspace: only.workspace,
         helperPath: state.nativeHelperPath,
         request: {
-          ...manifest,
           approvalDigest: args.approvalDigest,
           bindingFence: command.bindingFence,
+          changes: only.changes,
+          manifestDigest: only.manifestDigest,
           promotionId: args.promotionId,
+          protocolVersion: only.protocolVersion,
+          runId: only.runId,
         },
-        workspaceRoot: state.workspaceRoot,
+        workspaceRoot: folder.path,
       })
     } catch (error) {
       return workspaceFailure(error)
@@ -212,6 +260,8 @@ export const executeExecutorCommand = async (
     if (!ExecutorBrowserOpenArgumentsSchema.safeParse(command.payload.args).success) {
       return { code: 'EXECUTOR_BROWSER_DENIED', success: false }
     }
+    const refusal = guestSessionRefusal(state)
+    if (refusal) return refusal
     return dependencies.browserSessions
       ? dependencies.browserSessions.open(command, runId.data)
       : { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false }
@@ -251,9 +301,22 @@ export const executeExecutorCommand = async (
       : { code: 'EXECUTOR_CONNECTED_BROWSER_UNAVAILABLE', success: false }
   }
   if (command.operationKey === 'command.run') {
-    if (!ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args).success) {
+    const commandArguments = ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args)
+    if (!commandArguments.success) {
       return { code: 'EXECUTOR_COMMAND_DENIED', success: false }
     }
+    // Refused here as well as in the session manager, against the same
+    // predicate: this is the dispatch a person reads when they ask why a run
+    // was refused, and it must not depend on a session backend being wired.
+    if (!executorCommandAllowlistPermits(
+      state.descriptor.commandAllowlist,
+      commandArguments.data.program,
+      commandArguments.data.args,
+    )) {
+      return { code: 'EXECUTOR_COMMAND_DENIED', success: false }
+    }
+    const refusal = guestSessionRefusal(state)
+    if (refusal) return refusal
     return dependencies.commandSessions
       ? dependencies.commandSessions.run(command, runId.data)
       : { code: 'EXECUTOR_COMMAND_UNAVAILABLE', success: false }
@@ -262,6 +325,8 @@ export const executeExecutorCommand = async (
     if (!ExecutorCodingLaunchArgumentsSchema.safeParse(command.payload.args).success) {
       return { code: 'EXECUTOR_CODING_DENIED', success: false }
     }
+    const refusal = guestSessionRefusal(state)
+    if (refusal) return refusal
     return dependencies.codingSessions
       ? dependencies.codingSessions.launch(command, runId.data)
       : { code: 'EXECUTOR_CODING_UNAVAILABLE', success: false }

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 // inline where no NestedStageHostContext is present — the split-layout /
 // no-stack-host case NestedStage itself branches on) was attempted and
 // dropped for both:
-// - DashboardDetailPage transitively imports DashboardGrid, which imports
+// - ProjectDashboardPage transitively imports DashboardGrid, which imports
 //   'react-grid-layout/css/styles.css' at module scope. Vite's dev/build
 //   pipeline handles that; the plain `node --test --import tsx` loader this
 //   suite runs under has no CSS loader, so importing the page crashes with
@@ -30,13 +30,14 @@ import { fileURLToPath } from 'node:url'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('DashboardDetailPage wraps its side panels in NestedStage with the shared ids and priorities', () => {
-  const source = readSource('../src/pages/DashboardDetailPage.tsx')
+test('ProjectDashboardPage wraps its side panels in NestedStage with the shared ids and priorities', () => {
+  const source = readSource('../src/pages/project/ProjectDashboardPage.tsx')
 
-  assert.match(source, /^import \{ NestedStage \} from '\.\.\/navigation\/NestedStage'$/m)
+  // The page sits one directory deeper than it did under `pages/`.
+  assert.match(source, /^import \{ NestedStage \} from '\.\.\/\.\.\/navigation\/NestedStage'$/m)
   assert.match(
     source,
-    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/navigation\/LocalBackContext'$/m,
+    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/\.\.\/navigation\/LocalBackContext'$/m,
   )
 
   assert.match(source, /<NestedStage[\s\S]{0,200}id="dashboard:add-widget"/)

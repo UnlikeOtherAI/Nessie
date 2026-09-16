@@ -12,30 +12,37 @@ export const isInsideDirectory = (root: string, candidate: string): boolean => {
   return path === '' || (!path.startsWith('..') && !isAbsolute(path))
 }
 
+/**
+ * Normalise a path already known to be folder-relative, and refuse the shapes
+ * that must never reach a filesystem call.
+ *
+ * `..` is refused rather than collapsed. Under a single root, collapsing it and
+ * then re-checking containment was safe; it is not safe once the first segment
+ * of an agent's path selects which folder it means, because a collapsed path can
+ * name a different folder than the one it was written against. The folder split
+ * in `workspace-folders.ts` refuses `..` for that reason, and this refuses it
+ * again so no caller can reach a resolver through a weaker door.
+ */
 export const safeRelativeWorkspacePath = (value: string | undefined): string => {
   const path = value?.trim() || '.'
-  if (path.includes('\0') || isAbsolute(path)) {
+  if (path.includes('\0') || isAbsolute(path) || path.startsWith('/') || path.startsWith('\\')) {
     throw new WorkspacePathError('Workspace paths must be relative.')
   }
   // Interpret both separator spellings before making reserved-path decisions.
   // A Windows executor accepts `/` and `\\`, while POSIX must still reject a
   // Windows-shaped alias instead of treating the backslash as an ordinary byte.
-  const normalized = path.replaceAll('\\', '/').split('/').reduce<string[]>((segments, segment) => {
-    if (!segment || segment === '.') return segments
-    if (segment === '..') {
-      segments.pop()
-      return segments
-    }
-    segments.push(segment)
-    return segments
-  }, []).join('/') || '.'
+  const segments = path.replaceAll('\\', '/').split('/').filter((segment) => segment && segment !== '.')
+  if (segments.some((segment) => segment === '..')) {
+    throw new WorkspacePathError('Workspace paths may not contain "..".')
+  }
+  const normalized = segments.join('/') || '.'
   if (
     normalized === EXECUTOR_PROMOTION_JOURNAL_DIRECTORY
     || normalized.startsWith(`${EXECUTOR_PROMOTION_JOURNAL_DIRECTORY}/`)
   ) {
     throw new WorkspacePathError('Workspace paths may not access executor journal state.')
   }
-  return path
+  return normalized
 }
 
 /** Validate a canonical ordinary directory without following a declared link. */
@@ -60,13 +67,13 @@ export const configureOrdinaryDirectory = async (value: string, label: string): 
  * exists, is real, and remains beneath the root.
  */
 export const resolveExistingWorkspacePath = async (
-  workspaceRoot: string,
+  folderRoot: string,
   requestedPath: string,
 ): Promise<string> => {
-  const root = await configureOrdinaryDirectory(workspaceRoot, 'The workspace root')
+  const root = await configureOrdinaryDirectory(folderRoot, 'The workspace folder')
   const unresolved = resolve(root, safeRelativeWorkspacePath(requestedPath))
   if (!isInsideDirectory(root, unresolved)) {
-    throw new WorkspacePathError('Workspace path escapes its root.')
+    throw new WorkspacePathError('Workspace path escapes its folder.')
   }
   let current = root
   for (const segment of relative(root, unresolved).split(sep).filter(Boolean)) {
@@ -77,22 +84,22 @@ export const resolveExistingWorkspacePath = async (
   }
   const canonical = await realpath(unresolved)
   if (!isInsideDirectory(root, canonical)) {
-    throw new WorkspacePathError('Workspace path resolves outside its root.')
+    throw new WorkspacePathError('Workspace path resolves outside its folder.')
   }
   return canonical
 }
 
 /** Validate all existing parent components for a path that may be created. */
 export const resolveWorkspaceWritePath = async (
-  workspaceRoot: string,
+  folderRoot: string,
   requestedPath: string,
 ): Promise<{ path: string; relativePath: string; root: string }> => {
-  const root = await configureOrdinaryDirectory(workspaceRoot, 'The workspace root')
+  const root = await configureOrdinaryDirectory(folderRoot, 'The workspace folder')
   const relativePath = safeRelativeWorkspacePath(requestedPath)
   if (relativePath === '.') throw new WorkspacePathError('A workspace file path is required.')
   const destination = resolve(root, relativePath)
   if (!isInsideDirectory(root, destination)) {
-    throw new WorkspacePathError('Workspace path escapes its root.')
+    throw new WorkspacePathError('Workspace path escapes its folder.')
   }
   const segments = relative(root, destination).split(sep).filter(Boolean)
   let current = root

@@ -154,7 +154,6 @@ export const shouldHighlightKnowledgeSidebarSelection = (
   phoneLayout: boolean,
 ): boolean => {
   const normalized = normalizePathname(pathname)
-  if (normalized.startsWith('/dashboards')) return false
   return !phoneLayout || normalized !== '/knowledge-base'
 }
 

@@ -336,3 +336,64 @@ test('signed in through UOA: the directory, active team first, each linking to i
     await app.close()
   }
 })
+
+/**
+ * The bug this pins, and why the old test did not catch it.
+ *
+ * The directory already carries a team's two address labels — UOA sends them
+ * so a product need not ask twice — but Nessie dropped them and asked anyway,
+ * through `/domain/teams/:id/address`. That route only sees organisations
+ * founded on this product's own domain, so for every other organisation it
+ * answered null and the row silently collapsed onto the app-wide link. Both
+ * cards then pointed at the same place and picking a team did nothing.
+ *
+ * The case above passes either way, because its `resolveTeamAddress` stub
+ * answers for the one team it is asked about. This one refuses every lookup —
+ * exactly as `/domain/*` does for a cross-domain organisation — so it fails
+ * unless the slugs on the entry are used.
+ */
+test('a team the /domain lookup cannot resolve still links to its own tenant host', async () => {
+  clearUoaTeamDirectoryCache()
+  rememberUoaTeamDirectory(USER_A, {
+    entries: [
+      {
+        active: true,
+        label: 'General',
+        orgName: 'KiloMayo',
+        orgSlug: 'kilomayo',
+        organizationId: 'uoa-org-kilomayo',
+        teamId: 'uoa-team-general',
+        teamSlug: 'general',
+      },
+    ],
+    pendingInvites: [],
+  } as never)
+  let lookups = 0
+  const app = Fastify()
+  await app.register(cookie)
+  registerAuthLandingTeamsRoute(app, {
+    adminOrigin: APP,
+    landingOrigins: new Set([LANDING]),
+    prisma: createFakePrisma({
+      tokens: [tokenRow('raw-a', { providerId: 'uoa', providerType: 'uoa' })],
+      uoa: true,
+    }) as never,
+    // Every lookup refused, the way `/domain/*` refuses a cross-domain org.
+    resolveTeamAddress: async () => { lookups += 1; return null },
+    teamHostBaseDomain: 'nessie.works',
+    uoaDirectoryRefreshDeps: { settings: null },
+  })
+  try {
+    const response = await get(app, { origin: LANDING, cookie: `${REFRESH_COOKIE_NAME}=raw-a` })
+    assert.equal(response.statusCode, 200)
+    assert.equal(
+      response.json().data.teams[0]?.href,
+      'https://general.kilomayo.nessie.works/channels',
+      'the entry carries both labels, so the address must be built from them',
+    )
+    assert.equal(lookups, 0, 'a directory that already has the labels must not ask UOA again')
+  } finally {
+    clearUoaTeamDirectoryCache()
+    await app.close()
+  }
+})

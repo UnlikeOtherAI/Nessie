@@ -26,3 +26,21 @@ export const isAdminRole = (role: string | null | undefined): boolean =>
  */
 export const isAdminActor = (actorContext: AccessContext): boolean =>
   (actorContext.actor.roles ?? []).some((role) => ORGANIZATION_ADMIN_ROLES.has(role))
+
+/**
+ * Owner, and only owner, among the roles an action context carries — the
+ * comparison `requireOwner` makes.
+ *
+ * It is a third predicate rather than a parameter on `isAdminActor` because
+ * the two answer different questions and the file's own note says so: several
+ * decisions are deliberately owner-only and admin is not a substitute. Placing
+ * an agent in a channel is one of them (`POST /api/agents/:agentId/bindings`),
+ * and a client that needs to know whether to draw that control must read one
+ * server-computed answer rather than re-derive this comparison.
+ */
+export const isOwnerActor = (actorContext: AccessContext): boolean =>
+  (actorContext.actor.roles ?? []).includes('owner')
+
+/** Owner, and only owner, from the role on a membership row. */
+export const isOwnerRole = (role: string | null | undefined): boolean =>
+  role === 'owner'

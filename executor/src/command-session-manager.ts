@@ -1,4 +1,5 @@
 import {
+  executorCommandAllowlistPermits,
   ExecutorCommandRunArgumentsSchema,
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
@@ -6,6 +7,7 @@ import {
 import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } from './guest-vm-session.js'
 import {
   createGuestWorkspaceLease,
+  guestSessionFolder,
   releaseGuestWorkspaceLeaseIfCurrent,
   type GuestWorkspaceLease,
 } from './guest-workspace-lease.js'
@@ -104,11 +106,13 @@ export const createExecutorCommandSessionManager = (
     }
     try {
       prepared = await dependencies.prepareLeaseSource?.(command)
-      lease = await createGuestWorkspaceLease(stateDir, prepared?.workspaceRoot ?? state.workspaceRoot, {
-        bindingFence: command.bindingFence,
-        commandId: command.commandId,
-        runId,
-      })
+      lease = await createGuestWorkspaceLease(
+        stateDir,
+        // Refuses when more than one folder is configured; the daemon dispatch
+        // has already answered with the named reason before reaching here.
+        guestSessionFolder(state.workspaceFolders, prepared?.workspaceRoot),
+        { bindingFence: command.bindingFence, commandId: command.commandId, runId },
+      )
       await prepared?.release()
       prepared = undefined
       if (opening.cancelled) {
@@ -169,6 +173,17 @@ export const createExecutorCommandSessionManager = (
     run: async (command, runId) => {
       const args = ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args)
       if (!args.success) return denied()
+      // The allowlist decides before a guest exists, so a program nobody
+      // permitted cannot even cost a VM boot. This is the one path both the
+      // control plane and the DeepTest execution adapter reach, which is why
+      // the decision lives here rather than only at the daemon's dispatch.
+      if (!executorCommandAllowlistPermits(
+        state.descriptor.commandAllowlist,
+        args.data.program,
+        args.data.args,
+      )) {
+        return denied()
+      }
       let active = activeByRun.get(runId)
       if (!active) {
         const session = await start(command, runId)

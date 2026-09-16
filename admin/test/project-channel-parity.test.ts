@@ -83,7 +83,9 @@ test('every project section is reachable from the Projects sidebar', () => {
 
   // The sidebar is now the only doorway to a project's sections, so the list it
   // renders has to name every routed section (AGENTS.md -> "Rule zero").
-  for (const id of ['overview', 'board', 'backlog', 'insights', 'docs', 'executors', 'settings']) {
+  for (const id of [
+    'overview', 'board', 'backlog', 'insights', 'docs', 'dashboards', 'executors', 'settings',
+  ]) {
     assert.ok(sections.includes(`id: '${id}'`), `project-sections is missing ${id}`)
   }
   // ... and the router has to answer every path the list produces.
@@ -91,7 +93,7 @@ test('every project section is reachable from the Projects sidebar', () => {
   // scrollers; the remaining project tabs retain the document surface. Both
   // route entries still have to cover every sidebar doorway.
   assert.ok(surfaces.includes('(?:\\/board)?$'), 'project board route is missing')
-  assert.match(surfaces, /backlog\|insights\|docs\|executors\|settings/)
+  assert.match(surfaces, /backlog\|insights\|docs\|dashboards\|executors\|settings/)
   assert.match(projectSectionRows, /projectSections\(\{ assignedWorkCount, isScrum, knowledgeCount, projectId \}\)/)
 })
 
@@ -107,7 +109,14 @@ test('the project header is shared by both project doorways and opens the shared
   // spans several lines. What matters is that it is the shared header, driven
   // by the same actions and project.
   assert.match(projectView, /<ProjectPageHeader/)
-  assert.match(projectView, /actions=\{headerActions\}/)
+  // The board spends no header slot on Members — it is a row in that screen's
+  // own Configure menu — so it supplies its actions as a function and takes
+  // the doorway the header hands it. Every other project section still gets
+  // the header's own Members action.
+  assert.match(projectView, /actions=\{onBoard \? boardActions : \[\]\}/)
+  assert.match(projectView, /membersAction=\{!onBoard\}/)
+  assert.match(header, /typeof actions === 'function' \? actions\(openMembers\) : actions/)
+  assert.match(projectView, /label: `Members \(\$\{project\.memberCount\}\)`/)
   assert.match(projectView, /project=\{project\}/)
   assert.match(channelOverview, /<ProjectPageHeader project=\{project\}/)
 })

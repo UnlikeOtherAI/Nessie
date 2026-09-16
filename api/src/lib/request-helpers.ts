@@ -283,6 +283,9 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         // every viewer on one, so the Personal Assistant's home is never
         // manageable — a decision the predicate makes, not a placeholder.
         viewerCanManage: false,
+        // Same decision, same reason: every system DM is a single-agent
+        // surface, so both binding routes refuse one outright.
+        viewerCanManageAgents: false,
         createdAt: channel.createdAt.toISOString(),
         updatedAt: channel.updatedAt.toISOString(),
       },
