@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { KnowledgeAccessSummary } from '@nessie/schemas'
+import type { KnowledgeAccessSummary, KnowledgeIndexingState } from '@nessie/schemas'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { useReindexPage, useRenamePage } from '../../../../facades/knowledge/finder-hooks'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
@@ -97,7 +97,13 @@ type ActiveTarget =
   | { kind: 'background'; column: FinderMenuColumnRef }
 
 type FinderDialogState =
-  | { kind: 'info'; target: GetInfoTarget; pageId?: string; spaceId?: string }
+  | {
+      kind: 'info'
+      target: GetInfoTarget
+      pageId?: string
+      spaceId?: string
+      indexing?: KnowledgeIndexingState
+    }
   | {
       kind: 'share'
       pageId: string
@@ -313,7 +319,15 @@ export const useFinderMenus = ({
       },
       getInfo: () => {
         const target = infoTarget()
-        if (target) setDialog({ kind: 'info', pageId: first?.id, spaceId: space?.id, target })
+        if (target) {
+          setDialog({
+            indexing: first?.indexing ?? virtualRow?.indexing,
+            kind: 'info',
+            pageId: first?.id ?? virtualRow?.id,
+            spaceId: space?.id,
+            target,
+          })
+        }
       },
       moveTo: () => {
         if (targetPages.length > 0) setDialog({ kind: 'move', pages: targetPages })
@@ -480,6 +494,7 @@ export const useFinderMenus = ({
       />
       {dialog?.kind === 'info' ? (
         <GetInfoDialog
+          indexing={dialog.indexing}
           onBrowseHome={({ folderId, spaceId }) => {
             setDialog(null)
             void navigate(

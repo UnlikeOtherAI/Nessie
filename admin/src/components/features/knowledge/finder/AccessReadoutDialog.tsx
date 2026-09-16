@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { KnowledgeAccessSummary } from '@nessie/schemas'
-import { useProjectMembers } from '../../../../facades/projects/hooks'
+import { useProjectMembers, useProjects } from '../../../../facades/projects/hooks'
 import { useUsers } from '../../../../facades/users/hooks'
 import { useOptionalAuthSession } from '../../../../providers/AuthSessionProvider'
 import { Dialog } from '../../../shared/Dialog'
@@ -135,12 +135,26 @@ export const AccessReadoutDialog = ({
   open,
   projectName,
 }: AccessReadoutDialogProps) => {
+  // The project's own name, not its documents folder's. A space named after
+  // what it holds ("Project Documents") is the wrong noun in a sentence about
+  // who can see something, and the menu builds its summary from the space
+  // before the click — this is where the real name arrives.
+  const projectsQuery = useProjects(open && access.mode === 'project')
   const usersQuery = useUsers(open && access.mode === 'shared_to_me')
   const sharerName = access.mode === 'shared_to_me'
     ? (usersQuery.data ?? []).find((user) => user.id === access.sharedByUserId)?.displayName
       ?? 'The person who shared it'
     : ''
-  const readout = readoutFor(access, sharerName, projectName)
+  const namedProject = access.mode === 'project'
+    ? (projectsQuery.data ?? []).find((project) => project.id === access.projectId)?.name
+    : undefined
+  const readout = readoutFor(
+    access.mode === 'project' && namedProject
+      ? { ...access, projectName: namedProject }
+      : access,
+    sharerName,
+    projectName,
+  )
 
   return (
     <Dialog onClose={onClose} open={open} title="Who can see this">

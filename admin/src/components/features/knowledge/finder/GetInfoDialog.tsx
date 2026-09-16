@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { KnowledgeItemInfo } from '@nessie/schemas'
+import type { KnowledgeIndexingState, KnowledgeItemInfo } from '@nessie/schemas'
 import { ActorName, useActorNames } from '../../../shared/ActorName'
 import { Dialog } from '../../../shared/Dialog'
 import { QueryState } from '../../../shared/QueryState'
@@ -39,6 +39,13 @@ type GetInfoDialogProps = {
   onClose: () => void
   /** Opens the sharing surface for this item; absent where there is none. */
   onSharing?: () => void
+  /**
+   * The row's own indexing state, from the listing that drew it. Get Info's
+   * own `indexing` is the subtree triple — "2 not indexed" over a folder of
+   * drafts is not a failure — so Retry is offered from this instead, and only
+   * where the pipeline actually failed.
+   */
+  indexing?: KnowledgeIndexingState
   onRetryIndexing?: () => void
   /** Browse to one of the segments of the "Where" line. */
   onBrowseHome?: (input: { spaceId: string; folderId: string | null }) => void
@@ -163,14 +170,14 @@ const InfoBody = ({
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center gap-3">
-        <FontAwesomeIcon
-          className="h-10 w-10 shrink-0"
-          icon={iconForFamily(family)}
-          style={{ color: `var(${familyTone[family]})` }}
-        />
-        <span className="min-w-0 break-words text-sm text-[color:var(--tx)]">{info.title}</span>
-      </div>
+      {/* The name is the dialog's own h2; a second copy beside the icon would
+          be the same word twice in one glance. */}
+      <FontAwesomeIcon
+        aria-hidden="true"
+        className="h-10 w-10"
+        icon={iconForFamily(family)}
+        style={{ color: `var(${familyTone[family]})` }}
+      />
 
       <dl
         className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm"
@@ -237,6 +244,7 @@ const InfoBody = ({
 }
 
 export const GetInfoDialog = ({
+  indexing,
   onBrowseHome,
   onClose,
   onOpenTicket,
@@ -263,13 +271,10 @@ export const GetInfoDialog = ({
             info={info}
             onBrowseHome={onBrowseHome}
             onOpenTicket={onOpenTicket}
-            onRetryIndexing={
-              // Offered only where retrying is a real answer: a failed pipeline
-              // the viewer may write to.
-              onRetryIndexing && info.indexing.notIndexed > 0 && info.target === 'page'
-                ? onRetryIndexing
-                : undefined
-            }
+            // Offered only where retrying is a real answer: a pipeline that
+            // actually failed. "Not indexed — draft" is not a failure, and a
+            // Retry beside it would promise something no retry can do.
+            onRetryIndexing={indexing?.state === 'failed' ? onRetryIndexing : undefined}
           />
         ) : null)}
       </QueryState>

@@ -91,6 +91,7 @@ const ShareRow = ({
         anchorRef={buttonRef}
         className="min-w-[180px] rounded-[var(--radius-md)] border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-[0_16px_40px_var(--scrim-strong)]"
         label={`Access for ${name}`}
+        layer="modal"
         onClose={() => setOpen(false)}
         open={open}
         placement="bottom-end"
@@ -187,6 +188,7 @@ export const ShareDialog = ({
         <div className="grid gap-2">
           <PersonPicker
             label="People to share with"
+            layer="modal"
             onSelect={add}
             options={options}
             placeholder="Add a person…"
