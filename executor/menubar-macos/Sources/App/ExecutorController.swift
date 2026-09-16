@@ -230,7 +230,7 @@ final class ExecutorController: ObservableObject {
     /// re-states the two it is not editing exactly as `describe` reported them.
     func proposePolicy(
         operationKeys: [String]? = nil,
-        workspaceRoot: String? = nil,
+        workspaceFolders: [ExecutorDescription.Folder]? = nil,
         commandAllowlist: [String]? = nil
     ) {
         guard let description = model.description else {
@@ -240,7 +240,7 @@ final class ExecutorController: ObservableObject {
         do {
             let invocation = try ExecutorCLI.configure(
                 operationKeys: operationKeys ?? description.policy.operations,
-                workspaceRoot: workspaceRoot ?? description.reach.workspaceRoot,
+                workspaceFolders: workspaceFolders ?? description.reach.folders,
                 commandAllowlist: commandAllowlist ?? description.policy.permittedPrograms,
                 stateDirectory: stateDirectory
             )
@@ -302,7 +302,7 @@ final class ExecutorController: ObservableObject {
         }
         let stateDirectory = self.stateDirectory
         let operationKeys = description.policy.operations
-        let workspaceRoot = description.reach.workspaceRoot
+        let workspaceFolders = description.reach.folders
         let commandAllowlist = description.policy.permittedPrograms
         let wasRunning = model.daemon == .running
         if wasRunning { _ = stopDaemon() }
@@ -314,7 +314,7 @@ final class ExecutorController: ObservableObject {
                 attempts += 1
                 guard let invocation = try? ExecutorCLI.configure(
                     operationKeys: operationKeys,
-                    workspaceRoot: workspaceRoot,
+                    workspaceFolders: workspaceFolders,
                     commandAllowlist: commandAllowlist,
                     stateDirectory: stateDirectory
                 ), let configured = try? runner.run(invocation), configured.succeeded else {

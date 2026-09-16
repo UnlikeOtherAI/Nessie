@@ -14,17 +14,37 @@ public struct ExecutorDescription: Equatable, Decodable, Sendable {
     public struct Policy: Equatable, Decodable, Sendable {
         public let limits: Limits
         public let operations: [String]
-        /// Empty means no program may start, not "no restriction".
+        /// Empty means no command may start, not "no restriction".
         public let permittedPrograms: [String]
         public let profiles: [String]
         public let revision: Int
+        /// The folder names the last proposed revision names. Empty means the
+        /// descriptor predates named folders.
+        public let workspaceFolders: [String]
+    }
+
+    /// One read-only host folder, under the name that starts every workspace
+    /// path an agent writes: `file.read nessie/api/src/index.ts` reads inside
+    /// the folder named `nessie`.
+    public struct Folder: Equatable, Decodable, Sendable, Identifiable {
+        public let name: String
+        public let path: String
+        public var id: String { name }
+    }
+
+    /// Whether a guest VM session can start at all. A guest mounts one
+    /// workspace, so `command.run` and `coding.launch` refuse outright while
+    /// more than one folder is configured.
+    public enum GuestSessions: String, Equatable, Decodable, Sendable {
+        case available
+        case refusedMultipleFolders = "refused_multiple_folders"
     }
 
     public struct Reach: Equatable, Decodable, Sendable {
         /// HTTPS origins the guest browser may open; empty until one is configured.
         public let allowedOrigins: [String]
-        /// The single read-only host directory this executor was paired against.
-        public let workspaceRoot: String
+        public let folders: [Folder]
+        public let guestSessions: GuestSessions
     }
 
     public struct Sandbox: Equatable, Decodable, Sendable {
@@ -48,13 +68,6 @@ public struct ExecutorDescription: Equatable, Decodable, Sendable {
     /// what a person compares against the Executors page in Nessie.
     public var shortExecutorId: String {
         String(executorId.split(separator: "-").first ?? Substring(executorId))
-    }
-
-    /// The folder name a person recognises. The full path stays on this computer
-    /// either way, and the panels show it in full beside this label.
-    public var workspaceLabel: String {
-        let name = (reach.workspaceRoot as NSString).lastPathComponent
-        return name.isEmpty || name == "/" ? reach.workspaceRoot : name
     }
 
     public var commandRunEnabled: Bool { policy.operations.contains(ExecutorPolicy.commandOperationKey) }

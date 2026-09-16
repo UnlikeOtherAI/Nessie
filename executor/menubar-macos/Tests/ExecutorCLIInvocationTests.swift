@@ -34,7 +34,10 @@ final class ExecutorCLIInvocationTests: XCTestCase {
     func testConfigureStatesTheWholeLocalPolicyOnStandardInput() throws {
         let invocation = try ExecutorCLI.configure(
             operationKeys: ["file.read", "sandbox.stop"],
-            workspaceRoot: "/private/workspace",
+            workspaceFolders: [
+                ExecutorDescription.Folder(name: "nessie", path: "/private/workspace"),
+                ExecutorDescription.Folder(name: "notes", path: "/private/notes"),
+            ],
             commandAllowlist: ["git", "node"],
             stateDirectory: stateDirectory
         )
@@ -44,12 +47,21 @@ final class ExecutorCLIInvocationTests: XCTestCase {
         )
         XCTAssertFalse(invocation.arguments.contains("--tools"))
         XCTAssertFalse(invocation.arguments.contains("--operations"))
+        XCTAssertFalse(invocation.arguments.contains("--folder"))
 
         let payload = try XCTUnwrap(invocation.standardInput)
         let parsed = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
         XCTAssertEqual(parsed["operationKeys"] as? [String], ["file.read", "sandbox.stop"])
         XCTAssertEqual(parsed["commandAllowlist"] as? [String], ["git", "node"])
-        XCTAssertEqual(parsed["workspaceRoot"] as? String, "/private/workspace")
+        // The named form, never `workspaceRoot`: the single spelling derives a
+        // name from the directory, which would rename a person's folder every
+        // time this app re-stated a policy it was not editing.
+        XCTAssertNil(parsed["workspaceRoot"])
+        let folders = try XCTUnwrap(parsed["workspaceFolders"] as? [[String: String]])
+        XCTAssertEqual(folders, [
+            ["name": "nessie", "path": "/private/workspace"],
+            ["name": "notes", "path": "/private/notes"],
+        ])
     }
 
     /// An emptied list has to be sent as `[]` rather than omitted: an absent
@@ -58,7 +70,7 @@ final class ExecutorCLIInvocationTests: XCTestCase {
     func testAnEmptiedAllowlistIsSentExplicitly() throws {
         let invocation = try ExecutorCLI.configure(
             operationKeys: ["file.read"],
-            workspaceRoot: "/private/workspace",
+            workspaceFolders: [ExecutorDescription.Folder(name: "nessie", path: "/private/workspace")],
             commandAllowlist: [],
             stateDirectory: stateDirectory
         )

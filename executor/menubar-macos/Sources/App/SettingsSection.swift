@@ -5,6 +5,7 @@ import SwiftUI
 /// Pairing, the workspace folder, and starting at login.
 struct SettingsSection: View {
     @EnvironmentObject private var controller: ExecutorController
+    @EnvironmentObject private var selection: ConsoleSelection
     @State private var invitation = ""
     @State private var chosenWorkspace: URL?
 
@@ -18,7 +19,7 @@ struct SettingsSection: View {
             case let .paired(description):
                 pairedSummary(description)
                 Divider()
-                workspaceSection(description)
+                foldersSection(description)
             }
             Divider()
             launchAtLoginSection
@@ -93,27 +94,19 @@ struct SettingsSection: View {
         }
     }
 
-    // MARK: - Workspace
+    // MARK: - Folders
 
-    // The workspace is one folder today. It is becoming several named folders,
-    // at which point the picker below becomes an add/remove list and this
-    // section hands that list to `configure` the same way it hands one path now.
-    private func workspaceSection(_ description: ExecutorDescription) -> some View {
+    /// Settings shows what this executor reaches and hands the editing to the
+    /// surface that owns it. There is one add/remove list of folders and it
+    /// lives in "Where it can reach"; a second picker here would be a second
+    /// implementation of the same thing.
+    private func foldersSection(_ description: ExecutorDescription) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Workspace folder").font(.headline)
-            FactRow(label: "Read-only root", value: description.reach.workspaceRoot)
-            Button("Change workspace folder…") {
-                guard let selected = pickFolder() else { return }
-                controller.proposePolicy(workspaceRoot: selected.path)
+            Text("Folders it may read").font(.headline)
+            ForEach(description.reach.folders) { folder in
+                FactRow(label: folder.name, value: folder.path)
             }
-            .disabled(controller.busy)
-            Text(
-                "Changing the folder is refused while any local draft or sandbox exists: remove every "
-                    + "local draft and stop every sandbox first. The new folder lands as a policy "
-                    + "revision a person reviews in Nessie."
-            )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            Button("Add or remove folders…") { selection.section = .reach }
         }
     }
 

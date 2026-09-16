@@ -39,6 +39,11 @@ public enum ExecutorCLI {
     /// The challenge and the workspace path travel on standard input, never in
     /// `argv`: a pairing challenge in a process list is a credential anybody
     /// signed into this Mac can read.
+    ///
+    /// Pairing sends the single `workspaceRoot` spelling on purpose: a person
+    /// pairing a Mac has chosen one folder and has not been asked to name it,
+    /// and the CLI derives the name from the directory. Naming and adding more
+    /// folders is the reach surface's job, afterwards.
     public static func pair(
         apiBaseUrl: String,
         enrollmentId: String,
@@ -61,14 +66,19 @@ public enum ExecutorCLI {
         )
     }
 
-    /// One local-policy proposal. Operations, workspace and permitted programs
-    /// are always stated together because that is what `configure
-    /// --configuration-input-stdin` reads; a panel that changed one of them
-    /// re-states the other two exactly as `describe` reported them, so no panel
-    /// can silently narrow a policy it was not editing.
+    /// One local-policy proposal. Operations, folders and permitted commands are
+    /// always stated together because that is what `configure
+    /// --configuration-input-stdin` reads; a section that changed one of them
+    /// re-states the other two exactly as `describe` reported them, so no
+    /// section can silently narrow a policy it was not editing.
+    ///
+    /// The folders go over as `workspaceFolders`, the named form. The older
+    /// `workspaceRoot` spelling is still accepted by the CLI, but it derives a
+    /// name from the directory — which would rename a person's folder the moment
+    /// this app re-stated a policy it was not editing.
     public static func configure(
         operationKeys: [String],
-        workspaceRoot: String,
+        workspaceFolders: [ExecutorDescription.Folder],
         commandAllowlist: [String],
         stateDirectory: String
     ) throws -> ExecutorCLIInvocation {
@@ -77,7 +87,7 @@ public enum ExecutorCLI {
             standardInput: try canonicalJSON([
                 "commandAllowlist": commandAllowlist,
                 "operationKeys": operationKeys,
-                "workspaceRoot": workspaceRoot,
+                "workspaceFolders": workspaceFolders.map { ["name": $0.name, "path": $0.path] },
             ])
         )
     }
