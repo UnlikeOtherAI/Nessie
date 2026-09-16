@@ -124,8 +124,8 @@ dbTest('a saved spreadsheet reports the indexing state its chunks actually have'
     assert.deepEqual(states.get(folder.id), { state: 'not_applicable' })
     assert.deepEqual(
       states.get(fresh.id),
-      { state: 'not_indexed', reason: 'empty' },
-      'the first durable version is deferred to the first snapshot, so there is genuinely no text yet',
+      { state: 'not_indexed', reason: 'unsaved' },
+      'the first durable version is deferred to the first snapshot, so there is nothing saved to search — which is not the same as a document whose text is empty, and the Finder says so differently',
     )
 
     const saved = states.get(savedId)
