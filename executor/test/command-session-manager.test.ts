@@ -78,6 +78,9 @@ const stateFor = (workspaceRoot: string) => ({
     vmHelperPath: '/private/helper',
   },
   descriptor: {
+    // `command.run` is refused before a guest exists unless the reviewed policy
+    // names the command, so a fixture that starts one has to name it too.
+    commandAllowlist: ['pnpm *'],
     limits: { maxCommandRuntimeSeconds: 20, maxResultBytes: 20_000, maxSessions: 1 },
     operationKeys: ['command.run', 'workspace.review', 'sandbox.stop'],
     profiles: ['workspace_sandbox'],
