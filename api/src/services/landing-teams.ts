@@ -87,8 +87,20 @@ const uoaLandingTeams = async (
   )
 
   const teams = await Promise.all(ordered.map(async (team): Promise<LandingTeam | null> => {
+    // The directory already carries both labels — UOA sends them so a product
+    // can build the address without a second lookup. Asking anyway was the
+    // bug: `resolveTeamAddress` reads `/domain/teams/:id/address`, which only
+    // sees organisations founded on this product's own domain and returns null
+    // for every other one, so each row silently collapsed onto the app-wide
+    // link and picking a team did nothing.
+    //
+    // The lookup stays as a fallback for a directory from an older UOA build
+    // that omits the slugs, and it is skipped entirely when they are present —
+    // which also removes one UOA request per team from this route.
     const address = deps.teamHostBaseDomain
-      ? await deps.resolveTeamAddress(team.teamId)
+      ? (team.teamSlug && team.orgSlug
+        ? { orgSlug: team.orgSlug, teamSlug: team.teamSlug }
+        : await deps.resolveTeamAddress(team.teamId))
       : null
     const href = address
       ? `https://${address.teamSlug}.${address.orgSlug}.${deps.teamHostBaseDomain}${TEAM_LANDING_PATH}`
