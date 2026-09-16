@@ -1,0 +1,54 @@
+diff --git a/dist/IronCalc.d.ts b/dist/IronCalc.d.ts
+index 12850c8353fa95cb6dee3a8349edbe8a2277ac9b..083f01d130ddda066d91b7c9a015033288b8a82e 100644
+--- a/dist/IronCalc.d.ts
++++ b/dist/IronCalc.d.ts
+@@ -11,6 +11,8 @@ interface IronCalcProperties {
+ }
+ export interface IronCalcHandle {
+     setLanguage: (language: string) => void;
++    /** Repaints the grid after the model changed from outside the widget. */
++    redraw: () => void;
+ }
+ declare const IronCalc: import("react").ForwardRefExoticComponent<IronCalcProperties & import("react").RefAttributes<IronCalcHandle>>;
+ export default IronCalc;
+diff --git a/dist/ironcalc.js b/dist/ironcalc.js
+index 42fcacca7bb89977fa0cf7a27f8a0b6a936e5b50..57f16c456270b8fef7a2e7dfea97bb3fda7023e3 100644
+--- a/dist/ironcalc.js
++++ b/dist/ironcalc.js
+@@ -21881,7 +21881,7 @@ function No(e) {
+ 	return e === void 0 ? "" : typeof e == "string" ? e : `[${e[0]}, ${e[1]}]`;
+ }
+ var Po = (e) => {
+-	let { model: t, workbookState: n, canEdit: r = !0 } = e, { t: i } = D(), a = w(null), o = w(null), s = w(null), l = T(0)[1], [u, d] = T(null), [f, p] = T(!1), [m, h] = T(360), [g, v] = T("namedRanges"), b = _((e) => {
++	let { model: t, workbookState: n, canEdit: r = !0 } = e, { t: i } = D(), a = w(null), o = w(null), s = w(null), l = T(0)[1], __icRedraw = e.redrawRef ? e.redrawRef.current = () => l((e) => e + 1) : null, [u, d] = T(null), [f, p] = T(!1), [m, h] = T(360), [g, v] = T("namedRanges"), b = _((e) => {
+ 		v(e), p(!0);
+ 	}, []), x = t.getWorksheetsProperties().map(({ name: e, color: n, sheet_id: r, state: i }) => ({
+ 		name: e,
+@@ -24597,7 +24597,7 @@ function Vo(e = document.documentElement) {
+ //#endregion
+ //#region src/IronCalc.tsx
+ var Ho = g(({ themeVariables: e, model: t, rootContainer: n, canEdit: r = !0 }, i) => {
+-	let a = n ?? document.body;
++	let a = n ?? document.body, __icRedrawRef = w(null);
+ 	return y(() => (a.classList.contains("ic-root") && console.warn("rootContainer already in use:", a), a.classList.add("ic-root"), () => a.classList.remove("ic-root")), [a]), y(() => {
+ 		if (e) return Bo(e, a), () => Vo(a);
+ 	}, [a, e]), x(i, () => ({ setLanguage(e) {
+@@ -24606,6 +24606,8 @@ var Ho = g(({ themeVariables: e, model: t, rootContainer: n, canEdit: r = !0 },
+ 			let n = e.split("-")[0];
+ 			t.setLanguage(n);
+ 		}
++	}, redraw() {
++		__icRedrawRef.current?.();
+ 	} })), /* @__PURE__ */ W("div", {
+ 		className: "ic-widget",
+ 		children: /* @__PURE__ */ W(E, {
+@@ -24613,7 +24615,8 @@ var Ho = g(({ themeVariables: e, model: t, rootContainer: n, canEdit: r = !0 },
+ 			children: /* @__PURE__ */ W(Po, {
+ 				model: t,
+ 				workbookState: new vo(),
+-				canEdit: r
++				canEdit: r,
++				redrawRef: __icRedrawRef
+ 			})
+ 		})
+ 	});
