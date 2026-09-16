@@ -174,7 +174,11 @@ export const createExecutorCommandSessionManager = (
       // permitted cannot even cost a VM boot. This is the one path both the
       // control plane and the DeepTest execution adapter reach, which is why
       // the decision lives here rather than only at the daemon's dispatch.
-      if (!executorCommandAllowlistPermits(state.descriptor.commandAllowlist, args.data.program)) {
+      if (!executorCommandAllowlistPermits(
+        state.descriptor.commandAllowlist,
+        args.data.program,
+        args.data.args,
+      )) {
         return denied()
       }
       let active = activeByRun.get(runId)

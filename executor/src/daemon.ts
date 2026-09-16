@@ -262,6 +262,7 @@ export const executeExecutorCommand = async (
     if (!executorCommandAllowlistPermits(
       state.descriptor.commandAllowlist,
       commandArguments.data.program,
+      commandArguments.data.args,
     )) {
       return { code: 'EXECUTOR_COMMAND_DENIED', success: false }
     }

@@ -73,9 +73,9 @@ const countingSessions = (): { calls: string[]; sessions: ExecutorCommandSession
   return { calls, sessions }
 }
 
-test('a permitted program runs and an unlisted one never reaches a session', async () => {
+test('a permitted command runs and an unlisted one never reaches a session', async () => {
   const { calls, sessions } = countingSessions()
-  const state = stateWith(['git', 'pnpm'])
+  const state = stateWith(['git *', 'pnpm'])
 
   assert.deepEqual(
     await executeExecutorCommand('/private/state', state, commandFor({ args: ['status'], program: 'git' }), {
@@ -92,6 +92,28 @@ test('a permitted program runs and an unlisted one never reaches a session', asy
   // The refusal is the point: a program nobody named must not reach a backend
   // that could boot a guest for it.
   assert.deepEqual(calls, ['git'])
+})
+
+test('a wildcard widens an entry only to the right of what it names', async () => {
+  const { calls, sessions } = countingSessions()
+  // The case the user asked for: every script, but never `npm publish`.
+  const state = stateWith(['npm run *', 'git status *', 'node'])
+  const permits = async (program: string, args: string[]): Promise<boolean> => (
+    (await executeExecutorCommand('/private/state', state, commandFor({ args, program }), {
+      commandSessions: sessions,
+    })).success === true
+  )
+
+  assert.equal(await permits('npm', ['run', 'build']), true)
+  assert.equal(await permits('npm', ['run']), true)
+  assert.equal(await permits('npm', ['publish']), false)
+  assert.equal(await permits('npm', []), false)
+  assert.equal(await permits('git', ['status', '--short']), true)
+  assert.equal(await permits('git', ['push', '--force']), false)
+  // Without a trailing wildcard an entry is exactly itself.
+  assert.equal(await permits('node', []), true)
+  assert.equal(await permits('node', ['--eval', 'process.exit(0)']), false)
+  assert.deepEqual(calls, ['npm', 'npm', 'git', 'node'])
 })
 
 test('a policy that never named a program permits none of them', async () => {
@@ -112,11 +134,11 @@ test('the permitted programs are part of what a person reviews', () => {
     .toString('base64url')
   const limits = { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 }
   const base = { limits, operationKeys: ['file.read'], profiles: ['workspace_sandbox'], revision: 2 }
-  const withGit = buildSignedDescriptor(key, { ...base, commandAllowlist: ['git'] }, sandboxHost)
-  const withNode = buildSignedDescriptor(key, { ...base, commandAllowlist: ['node'] }, sandboxHost)
+  const withGit = buildSignedDescriptor(key, { ...base, commandAllowlist: ['git *'] }, sandboxHost)
+  const withNode = buildSignedDescriptor(key, { ...base, commandAllowlist: ['git status *'] }, sandboxHost)
   const without = buildSignedDescriptor(key, base, sandboxHost)
 
-  assert.deepEqual(withGit.descriptor.commandAllowlist, ['git'])
+  assert.deepEqual(withGit.descriptor.commandAllowlist, ['git *'])
   assert.equal(without.descriptor.commandAllowlist, undefined)
   // Swapping one permitted program for another is a different policy, so it
   // cannot reuse a digest a person already approved.
@@ -151,7 +173,27 @@ test('configure stores a canonical list and refuses command.run without one', as
       state.workspaceRoot,
       ['/usr/bin/git'],
     ),
-    /bare names/,
+    /permitted command is a program/,
+  )
+  // A leading wildcard would permit the shells the program grammar refuses.
+  await assert.rejects(
+    configureExecutorLocalPolicy(
+      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceRoot, ['*'],
+    ),
+    /permitted command is a program/,
+  )
+  await assert.rejects(
+    configureExecutorLocalPolicy(
+      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceRoot, ['sh *'],
+    ),
+    /permitted command is a program/,
+  )
+  // A wildcard in the middle would mean different things to different readers.
+  await assert.rejects(
+    configureExecutorLocalPolicy(
+      stateDir, state, ['file.read'], undefined, sandboxHost, state.workspaceRoot, ['git * --force'],
+    ),
+    /permitted command is a program/,
   )
   await assert.rejects(
     configureExecutorLocalPolicy(
@@ -161,9 +203,9 @@ test('configure stores a canonical list and refuses command.run without one', as
       undefined,
       sandboxHost,
       state.workspaceRoot,
-      ['git', 'git'],
+      ['git *', 'git  *'],
     ),
-    /bare names/,
+    /listed once/,
   )
 
   const configured = await configureExecutorLocalPolicy(
@@ -173,9 +215,11 @@ test('configure stores a canonical list and refuses command.run without one', as
     undefined,
     sandboxHost,
     state.workspaceRoot,
-    ['pnpm', 'git'],
+    ['pnpm  run   *', 'git *'],
   )
-  assert.deepEqual(configured.descriptor.commandAllowlist, ['git', 'pnpm'])
+  // Hand-typed spacing is normalised, so the same policy typed twice is not two
+  // revisions to review.
+  assert.deepEqual(configured.descriptor.commandAllowlist, ['git *', 'pnpm run *'])
   assert.equal(configured.descriptor.revision, 2)
 
   // Changing operations without saying anything about tools keeps the tools.
@@ -187,7 +231,7 @@ test('configure stores a canonical list and refuses command.run without one', as
     sandboxHost,
     configured.workspaceRoot,
   )
-  assert.deepEqual(kept.descriptor.commandAllowlist, ['git', 'pnpm'])
+  assert.deepEqual(kept.descriptor.commandAllowlist, ['git *', 'pnpm run *'])
 
   // Clearing them leaves no key behind, so the next digest stays canonicalizable.
   const cleared = await configureExecutorLocalPolicy(
@@ -213,9 +257,9 @@ const configureAllowlist = (args: string[]): string[] | undefined => {
 
 test('the CLI names permitted programs, clears them, or refuses to guess', () => {
   assert.deepEqual(
-    parseCommand(['configure', '--state-dir', '/private/state', '--operations', 'file.read', '--tools', 'git, pnpm']),
+    parseCommand(['configure', '--state-dir', '/private/state', '--operations', 'file.read', '--tools', 'git *, pnpm run *']),
     {
-      commandAllowlist: ['git', 'pnpm'],
+      commandAllowlist: ['git *', 'pnpm run *'],
       kind: 'configure',
       operationKeys: ['file.read'],
       stateDir: '/private/state',
@@ -245,9 +289,9 @@ test('the CLI names permitted programs, clears them, or refuses to guess', () =>
 })
 
 test('describe answers what this executor may reach and run, without its key', () => {
-  const described = describeExecutor(stateWith(['git', 'pnpm']))
+  const described = describeExecutor(stateWith(['git *', 'pnpm run *']))
 
-  assert.deepEqual(described.policy.permittedPrograms, ['git', 'pnpm'])
+  assert.deepEqual(described.policy.permittedPrograms, ['git *', 'pnpm run *'])
   assert.deepEqual(described.reach, {
     allowedOrigins: ['https://app.example.test'],
     workspaceRoot: '/private/workspace',
@@ -259,7 +303,7 @@ test('describe answers what this executor may reach and run, without its key', (
   assert.equal(JSON.stringify(described).includes('machinePrivateKey'), false)
   assert.equal(
     JSON.stringify(describeExecutor({
-      ...stateWith(['git']),
+      ...stateWith(['git *']),
       machinePrivateKey: 'SECRET-MACHINE-KEY',
     })).includes('SECRET-MACHINE-KEY'),
     false,

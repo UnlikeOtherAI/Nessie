@@ -16,6 +16,8 @@ import {
   EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
   ExecutorCommandAllowlistSchema,
   ExecutorEnrollmentRequestSchema,
+  formatExecutorCommandPattern,
+  parseExecutorCommandPattern,
   ImplementedExecutorOperationKeySchema,
   type ExecutorEnrollmentRequest,
   type ExecutorSignedDescriptor,
@@ -106,20 +108,32 @@ const initialLocalPolicy = {
 }
 
 /**
- * The permitted programs, in one canonical order so that re-stating the same
- * policy in a different order is not a new revision for a person to review.
- * Duplicates and unparseable names are refused rather than quietly dropped: a
- * list that does not say what its author wrote is worse than no list.
+ * The permitted commands, normalised and in one canonical order so that
+ * re-stating the same policy — or typing two spaces — is not a new revision
+ * for a person to review. Unparseable entries are refused rather than quietly
+ * dropped: a list that does not say what its author wrote is worse than none.
  */
 const configuredCommandAllowlist = (requested: readonly string[]): string[] => {
   const parsed = ExecutorCommandAllowlistSchema.safeParse([...requested])
   if (!parsed.success) {
     throw new Error(
-      'Permitted programs are distinct bare names the guest resolves through its '
-      + `fixed PATH — no paths, no shells, at most ${EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM}.`,
+      'A permitted command is a program the guest resolves through its fixed PATH, '
+      + 'optionally followed by arguments and a trailing "*" — for example "git *" or '
+      + `"npm run *". Paths, shells and a leading "*" are refused, at most ${
+        EXECUTOR_COMMAND_ALLOWLIST_MAXIMUM
+      } entries.`,
     )
   }
-  return [...parsed.data].sort()
+  const normalised = parsed.data.map((entry) => {
+    const pattern = parseExecutorCommandPattern(entry)
+    // The schema just proved every entry parses; this keeps the compiler honest
+    // without inventing a second refusal for a state that cannot happen.
+    return pattern === undefined ? entry : formatExecutorCommandPattern(pattern)
+  })
+  if (new Set(normalised).size !== normalised.length) {
+    throw new Error('Each permitted command is listed once.')
+  }
+  return normalised.sort()
 }
 
 const configuredOperationKeys = (
