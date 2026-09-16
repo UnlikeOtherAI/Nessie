@@ -9,6 +9,7 @@ import {
   createEntitlementGate,
   type RealtimeDeliveryEntitlements,
 } from './delivery-entitlements.js'
+import { createDocumentLane } from './document-lane.js'
 import {
   createWatermarkDuplicateWarning,
   defaultFanOutLogger,
@@ -83,6 +84,8 @@ export type UserSseConnection = {
 }
 
 export type SseConnection = ThreadSseConnection | UserSseConnection
+
+export type { DocumentSseConnection } from './document-lane.js'
 
 export type WsConnection = {
   // Closing the socket is the route's business — the hub only tracks the
@@ -326,6 +329,15 @@ export const createWsNotificationDelivery = (input: {
   const threadSseConnections = new Set<ThreadSseConnection>()
   const userSseConnections = new Set<UserSseConnection>()
   const wsConnections = new Set<WsConnection>()
+  // The per-document lane owns its own registry and its own entitlement memo;
+  // this file is already at its size budget, and the lane shares nothing with
+  // the scope-addressed lanes but the notification that arrives.
+  const documentLane = createDocumentLane({
+    ...(input.entitlements?.canAccessKnowledgePage
+      ? { canAccessKnowledgePage: input.entitlements.canAccessKnowledgePage }
+      : {}),
+    ...(input.now ? { now: input.now } : {}),
+  })
 
   // One gate per connection: the cache is keyed inside the closure, so it dies
   // with the connection and can never outlive the entitlement it caches.
@@ -526,6 +538,16 @@ export const createWsNotificationDelivery = (input: {
       return
     }
 
+    // The per-document lane. Answered ahead of the `message` guard below,
+    // which would otherwise drop the payload — a document envelope
+    // deliberately carries no `message`. The branch body and the connection
+    // bookkeeping live in `document-lane.ts` because this file is at the
+    // 500-line cap.
+    if (notification.kind === 'document') {
+      await documentLane.deliverDocumentNotification(notification)
+      return
+    }
+
     // The publisher persisted the row and notified in one transaction and
     // carried the row id in the payload; a listener must never append — with N
     // api replicas that wrote N copies of the same event and duplicated every
@@ -651,6 +673,7 @@ export const createWsNotificationDelivery = (input: {
 
   return {
     deliverNotification,
+    documentConnections: documentLane.documentConnections,
     threadSseConnections,
     userSseConnections,
     wsConnections,

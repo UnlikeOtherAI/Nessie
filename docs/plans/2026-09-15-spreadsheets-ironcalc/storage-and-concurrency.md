@@ -115,14 +115,24 @@ model SpreadsheetOpBatch {
 }
 ```
 
+**Phase 2 correction — the write door names its transaction bounds.** Prisma's
+defaults (2 s to acquire a transaction, 5 s to finish one) are sized for a
+transaction that contends with nothing. Every write to one page queues behind
+that page's advisory lock, so a burst is *expected* to wait, and the default
+turned ordinary contention into a 500 whose only client recovery is to
+resubmit — which makes the queue longer. `maxWait` is 30 s and `timeout` is
+15 s: waiting for the lock is normal, holding it for fifteen seconds is not.
+
 `KnowledgePage` gains the two back-relations. `KnowledgePageVersion` is
 reused unchanged: `attachmentId` → the `.xlsx` rendition
 (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
-`<title>.xlsx`), `body` → text projection, `sourceContentHash` → SHA-256 of
-the xlsx bytes. The engine bytes of a *durable* version are stored as a
-second attachment on the version's page (`Attachment.knowledgePageId`,
-filename `<title>@<seq>.icalc`, hidden from the drawer by MIME
-`application/vnd.ironcalc`) so a restore of an old version is a fast load
+`<title>.xlsx`), `body` → text projection, `sourceContentHash` → `canonicalHash`
+of the workbook (**not** a hash of any bytes: `toBytes()` is not
+byte-deterministic, so an unchanged workbook would hash differently on every
+save — decisions.md §"Spike A"). The engine bytes of a *durable* version are
+stored as a second attachment on the version's page
+(`Attachment.knowledgePageId`, filename `<title>@<versionId>.icalc`, hidden
+from the drawer by MIME `application/vnd.ironcalc`) so a restore of an old version is a fast load
 when the engine version still matches and an xlsx re-import when it does not.
 
 ## Shared contract — `packages/schemas/src/spreadsheet.ts`
@@ -279,6 +289,15 @@ Rules that follow:
   version"; before a destructive agent op; after import; after restore.
   `changeComment` says why (`compaction`, `named: …`, `before: delete sheet
   "Q3"`, `import: file.xlsx`, `restore: v12`).
+**Phase 2 correction — the engine blob is keyed by version id, not by seq.**
+This file said `<title>@<seq>.icalc`. A `KnowledgePageVersion` row carries no
+seq, so a restore could only guess one from the head — and by then the head's
+`snapshotSeq` has already moved, because a restore snapshots the *current*
+state first. The guess found the blob for the state being replaced and restored
+it over itself: the restore silently did nothing. The version id is the only
+name both the writer and the reader hold. Caught by
+`packages/knowledge/test/spreadsheet-versions.test.ts`.
+
 - **Restore** (existing `POST …/versions/:versionId/restore`, kind-aware):
   load the version's `.icalc` attachment if `engineVersion` matches, else
   `UserModel.fromXlsx` of the xlsx attachment; replace `hotSnapshot`, append
@@ -356,12 +375,34 @@ run once per deploy that changes the pin:
 - `POST /spaces/:spaceId/spreadsheets` `{title, parentPageId?, taskId?}` →
   new page (`kind: 'spreadsheet'`), head with an empty `UserModel` (one
   sheet), first snapshot deferred to first compaction.
-- `POST /spaces/:spaceId/spreadsheets/import` (multipart `.xlsx` or
-  `.csv`; 64 MiB parse cap): `UserModel.fromXlsx` or `pasteCsvString` into
-  a fresh model; page + head + snapshot (`import: <name>`); the upload kept
-  as a page attachment. Response carries `warnings` (pivot/charts/images
-  dropped — derived by comparing the source package's part list, since the
-  engine reports nothing).
+- `POST /spaces/:spaceId/spreadsheets/import` (multipart `.xlsx` or `.csv`).
+  **The API never parses the workbook.** `fromXlsx` plus `evaluate()` on a
+  foreign file writes one diagnostic line per affected cell to fd 1 from a Rust
+  thread, and when that write fails the engine panics inside the napi call and
+  the process aborts — uncatchably. On an API replica that is every open stream
+  in the building. So the route does everything that is safe without the engine
+  — sniff the container (`detectWorkbookFormat`, so a 1997 `.xls` is refused by
+  name rather than as "a corrupt file"), apply the caps, derive the loss list
+  (`scanXlsxWarnings`: the part list **and** a marker scan of the worksheet
+  parts, because autofilter, validation, hyperlinks, protection and outlines
+  have no part of their own), create the page and store the upload — then
+  enqueues `spreadsheet.import` and answers **202**. The page is reachable
+  immediately (Rule zero) and shows as importing; the worker parses, replaces
+  the hot snapshot, appends a `restore` batch so any open pane re-bootstraps,
+  and takes the import version. `packages/knowledge/src/spreadsheet/engine.ts`
+  makes parsing a capability the API is never granted, so a later route cannot
+  reintroduce the hazard by calling the wrong function.
+- **The caps are on the uncompressed size, not the file.** Sheet XML
+  decompresses about 11:1 and a 3.27 MB workbook already needs ~864 MB
+  resident, so this file's original 64 MiB parse cap would have admitted a
+  workbook needing roughly 15 GB. `SPREADSHEET_IMPORT_LIMITS` (16 MiB
+  compressed / 256 MiB declared uncompressed / 32 MiB for a CSV) lives in
+  `packages/knowledge/src/spreadsheet/import.ts` pending a move into
+  `SPREADSHEET_LIMITS`, which Phase 0 owns.
+- **CSV import cannot delegate to `pasteCsvString`** — that call is TSV despite
+  its name. `@nessie/spreadsheet`'s `importCsv` parses the CSV itself.
+- **A downloaded CSV carries CRLF and a UTF-8 BOM.** Without them Excel reads
+  the file in the local code page and mangles every non-ASCII name in it.
 - `POST /pages/:pageId/convert-to-spreadsheet` for a `.xlsx`/`.csv` file
   node: new spreadsheet page beside it, original kept; `.xls` refused.
 
@@ -433,7 +474,13 @@ SpreadsheetFilterModel = {
 - Structural batches remap the model: the write door shifts `range` and
   the column keys by the batch summary's `insertRows/Columns`,
   `deleteRows/Columns`, `moveRows/Columns` and drops the model when its
-  range is deleted; sheet insert/delete/move re-key the map. A stale model
+  range is deleted; sheet insert/delete/move re-key the map. **A
+  server-built batch carries no `intents`** — those are the browser's record
+  of its own calls, for replay after a structural refusal — so the write
+  door's per-batch remap is a no-op for the pane's own insert or delete, and
+  `restructureSpreadsheet` rebuilds the edit from the action it issued and
+  remaps there. Missing that cost the filter model its rows;
+  `packages/knowledge/test/spreadsheet-filters.test.ts` pins it. A stale model
   (range outside the sheet) is dropped with an audit note, never applied.
 - xlsx export writes the hidden rows (the engine carries them) but not the
   filter object, because the engine has no autofilter; the pane says so on

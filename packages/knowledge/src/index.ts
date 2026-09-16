@@ -166,3 +166,7 @@ export { KnowledgePageRevisionConflictError } from './types.js'
 export { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
 export { canReadKnowledgePageVersion } from './version-disclosure-access.js'
 export { readableKnowledgePageVersionsWhere } from './version-disclosure-where.js'
+// Spreadsheets: the write door, the reads, versions and the live-lane payload
+// builders. A separate namespace rather than a flat re-export — the surface is
+// large and every name in it is spreadsheet-specific.
+export * from './spreadsheet/index.js'

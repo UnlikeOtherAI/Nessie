@@ -768,6 +768,9 @@ importers:
       '@chonkiejs/core':
         specifier: 0.0.11
         version: 0.0.11
+      '@ironcalc/nodejs':
+        specifier: 0.8.3
+        version: 0.8.3
       '@nessie/db':
         specifier: workspace:*
         version: link:../db
@@ -780,6 +783,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas
+      '@nessie/spreadsheet':
+        specifier: workspace:*
+        version: link:../spreadsheet
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)

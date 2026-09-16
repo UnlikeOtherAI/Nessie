@@ -167,15 +167,15 @@ Routes (all under `/api/knowledge-base`):
 | Method | Path | Service |
 |---|---|---|
 | POST | `/spaces/:spaceId/spreadsheets` | `createSpreadsheetPage` |
-| POST | `/spaces/:spaceId/spreadsheets/import` | `importSpreadsheet` |
-| POST | `/pages/:pageId/convert-to-spreadsheet` | `convertFileToSpreadsheet` |
+| POST | `/spaces/:spaceId/spreadsheets/import` | `stageSpreadsheetImport` → `spreadsheet.import` (**202**; the API never parses a workbook) |
+| POST | `/pages/:pageId/convert-to-spreadsheet` | `stageFileConversion` → `spreadsheet.import` (**202**) |
 | GET | `/pages/:pageId/spreadsheet` | `bootstrapSpreadsheet` |
 | GET | `/pages/:pageId/spreadsheet/ops?afterSeq&limit` | `listSpreadsheetBatches` |
 | POST | `/pages/:pageId/spreadsheet/ops` | `applySpreadsheetBatch` (browser) |
 | POST | `/pages/:pageId/spreadsheet/structure` | `restructureSpreadsheet` (rows/cols/merges/freeze/sort for the pane) |
 | GET / PUT / DELETE | `/pages/:pageId/spreadsheet/filters/:sheet` | filter model get / set+apply / clear; POST `…/reapply` |
 | POST | `/pages/:pageId/spreadsheet/replace` | `replaceInSpreadsheet` |
-| GET | `/pages/:pageId/spreadsheet/versions` | list (existing versions route reused with kind-aware fields) |
+| GET | `/pages/:pageId/versions` | the existing versions route, unchanged — a spreadsheet's history is the same list, and a second path for it would be a second thing to keep in step |
 | GET | `/pages/:pageId/spreadsheet/range?sheet&a1&values` | `readSpreadsheetRange` |
 | GET | `/pages/:pageId/spreadsheet/find?q&sheet&limit` | `findInSpreadsheet` |
 | POST | `/pages/:pageId/spreadsheet/versions` | `createSpreadsheetSnapshot` (named) |

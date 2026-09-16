@@ -658,6 +658,36 @@ hybrid search described in §3 (TypeScript RRF fusion via `@nessie/retrieval`,
 not PL/pgSQL `match_*` functions). Body-ref and file-backed versions still
 need a streaming ingestion/extraction path (redesign plan Phase 5).
 
+## 9e) Spreadsheet pages (implemented: persistence, API, live lane)
+
+A third page kind beside `document` and `file`. Its canonical state is an
+IronCalc workbook, not rows: `spreadsheet_heads.hot_snapshot` plus every
+`spreadsheet_op_batches` row after `hot_snapshot_seq` rebuilds it identically
+on any replica. `applySpreadsheetBatch` (`packages/knowledge/src/spreadsheet/`)
+is the one write door — browsers, worker builtins and the MCP server all
+arrive there — and it holds a per-page advisory lock, assigns `seq`, and is
+idempotent on `(pageId, actorId, clientOpId)`.
+
+Two things a reader of this file needs to know, because they differ from every
+other kind here:
+
+- **A spreadsheet's durable versions are xlsx renditions**, written through
+  `FileService` and indexed by the same `indexVersionChunks` seam as every
+  other version — the `body` is a text projection of the workbook. There is no
+  retention policy on them: with no approval gate on agent writes, versions are
+  the only thing that makes an edit reversible, so one is taken automatically
+  before every destructive operation and at an agent run's first write.
+- **The API process never parses a workbook.** `fromXlsx` on a foreign file
+  can abort the process from inside Rust, so imports are staged by the route
+  (format sniff, caps, loss list, page, upload) and parsed by the worker
+  (`spreadsheet.import`); the route answers `202` and the page is reachable at
+  once.
+
+The live lane is `GET /api/knowledge-base/pages/:pageId/live`, a hijacked SSE
+route on the new `document` realtime kind. Nothing durable rides it.
+
+Full design: `docs/plans/2026-09-15-spreadsheets-ironcalc/`.
+
 ## 9d) Retrieval tools + Librarian agent (implemented, read path)
 
 Agents get read-only, ACL-checked knowledge-base access via three builtin
