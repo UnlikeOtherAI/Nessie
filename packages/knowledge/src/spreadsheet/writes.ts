@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { SpreadsheetBatchSummary } from '@nessie/schemas'
+import { selectionCellCount, type SpreadsheetBatchSummary, type SpreadsheetStructuralKind } from '@nessie/schemas'
 import {
   clearRange,
   formatRange,
@@ -142,6 +142,74 @@ const remapFiltersForAction = async (
   })
 }
 
+const TAB_STRUCTURAL_KINDS: Record<string, SpreadsheetStructuralKind | null> = {
+  addSheet: 'addSheet',
+  deleteSheet: 'deleteSheet',
+  renameSheet: 'renameSheet',
+  moveSheet: 'moveSheet',
+  hideSheet: null,
+  unhideSheet: null,
+}
+
+/**
+ * What this action is *about* to do, stated before it does it.
+ *
+ * The write door reads the summary it is handed to decide whether to take the
+ * automatic pre-write version, and it reads it **before** the mutation runs —
+ * which is the only moment a version of the previous state can be taken. A
+ * server batch's real summary comes back out of the engine helper afterwards,
+ * so handing in a blank one here meant `structuralKind` was always `null` at
+ * the moment the decision was made: no delete, no sort and no sheet removal
+ * ever snapshotted, on any server path. Versioning is the whole safety net for
+ * writes that have no approval gate, so a blank placeholder was not a
+ * harmless one.
+ *
+ * It stays advisory. Only the version decision, the conflict check and the
+ * audit text read it, never an authorization one, and the journal still
+ * records whatever the engine actually reported.
+ */
+const advisorySummaryForAction = (action: SpreadsheetAction): SpreadsheetBatchSummary => {
+  const blank = { sheetIndexes: [] as number[], touched: [] }
+  switch (action.op) {
+    case 'writeRange': {
+      const height = action.rows.length
+      const width = action.rows.reduce((widest, row) => Math.max(widest, row.length), 0)
+      return { ...blank, structuralKind: null, sheetIndexes: [action.sheet], cellCount: height * width }
+    }
+    case 'clearRange':
+    case 'formatRange':
+      return {
+        ...blank,
+        structuralKind: null,
+        sheetIndexes: [action.sheet],
+        cellCount: selectionCellCount(action.range),
+      }
+    case 'sortRange':
+      return {
+        ...blank,
+        structuralKind: 'sort',
+        sheetIndexes: [action.sheet],
+        cellCount: selectionCellCount(action.range),
+      }
+    case 'axis': {
+      const kind = action.action.kind
+      const structural = kind === 'insertRows' || kind === 'deleteRows'
+        || kind === 'insertColumns' || kind === 'deleteColumns'
+        || kind === 'moveRows' || kind === 'moveColumns'
+        ? kind
+        : null
+      return { ...blank, structuralKind: structural, sheetIndexes: [action.action.sheet], cellCount: 0 }
+    }
+    case 'tab':
+      return {
+        ...blank,
+        structuralKind: TAB_STRUCTURAL_KINDS[action.action.kind] ?? null,
+        sheetIndexes: 'sheet' in action.action ? [action.action.sheet] : [],
+        cellCount: 0,
+      }
+  }
+}
+
 export const restructureSpreadsheet = async (
   deps: SpreadsheetServiceDeps,
   input: RestructureInput,
@@ -164,9 +232,7 @@ export const restructureSpreadsheet = async (
         },
       },
     },
-    // The advisory summary a server batch starts with: the real one is
-    // whatever the engine helper reports, and the write door prefers it.
-    { structuralKind: null, sheetIndexes: [], cellCount: 0, touched: [] },
+    advisorySummaryForAction(input.action),
   )
   if (!result.noop) await remapFiltersForAction(deps, input, edits)
   return result

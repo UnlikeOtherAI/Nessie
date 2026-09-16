@@ -3,6 +3,7 @@ import { SPREADSHEET_LIMITS } from '@nessie/schemas'
 
 import { SpreadsheetEngineError, SpreadsheetServiceError, invalidRequest } from './errors.js'
 import { replaceInSpreadsheet } from './writes.js'
+import { ensureSpreadsheetFormulaTokenizer } from './formula-tokenizer.js'
 import { createSpreadsheetPage } from './create.js'
 import {
   describeSpreadsheet,
@@ -265,6 +266,10 @@ const replaceForTool = async (
 ): Promise<Record<string, unknown>> => {
   const find = findArgs(args)
   const all = bool(args.all) === true
+  // `formulaParses` answers a missing tokenizer with `false`, which would
+  // refuse every in-formula replacement with a message blaming the
+  // replacement rather than us.
+  if (find.inFormulas) await ensureSpreadsheetFormulaTokenizer()
   const scope = await withSpreadsheetAtHead(deps, ref, (workbook) =>
     findScopeOf(workbook.model, find))
 

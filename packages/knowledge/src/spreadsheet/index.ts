@@ -1,3 +1,4 @@
+import { ensureSpreadsheetFormulaTokenizer } from './formula-tokenizer.js'
 import { createPresenceBudget, type PresenceBudget } from './presence.js'
 import { createSpreadsheetModelCache, type SpreadsheetModelCache } from './model-cache.js'
 import type { SpreadsheetServiceDeps } from './deps.js'
@@ -15,11 +16,21 @@ export const createSpreadsheetService = (
     cache?: SpreadsheetModelCache
     presenceBudget?: PresenceBudget
   },
-): SpreadsheetServiceDeps & { presenceBudget: PresenceBudget } => ({
-  ...input,
-  cache: input.cache ?? createSpreadsheetModelCache(),
-  presenceBudget: input.presenceBudget ?? createPresenceBudget(),
-})
+): SpreadsheetServiceDeps & { presenceBudget: PresenceBudget } => {
+  // Warm the formula tokenizer for this process. Sort and in-formula replace
+  // both degrade *silently* without it — an unshifted reference, a refused
+  // replacement — so it is started as early as anything can know the process
+  // will touch a spreadsheet, and awaited again at the two call sites that
+  // actually need it.
+  void ensureSpreadsheetFormulaTokenizer().catch((error: unknown) => {
+    console.error('[spreadsheet] formula tokenizer unavailable', error)
+  })
+  return {
+    ...input,
+    cache: input.cache ?? createSpreadsheetModelCache(),
+    presenceBudget: input.presenceBudget ?? createPresenceBudget(),
+  }
+}
 
 export {
   describeSpreadsheet,
@@ -66,6 +77,7 @@ export {
   type SpreadsheetVersionSummary,
   type VersionActor,
 } from './agent-versions.js'
+export { ensureSpreadsheetFormulaTokenizer } from './formula-tokenizer.js'
 export {
   SHEET_READ_TOOL_IDS,
   SHEET_TOOL_IDS,

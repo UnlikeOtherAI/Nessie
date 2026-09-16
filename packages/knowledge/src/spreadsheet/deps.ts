@@ -26,13 +26,24 @@ export type SpreadsheetWriteActor = {
   runId?: string | null
   /** A paired MCP credential acting as its granting human. */
   agentCredentialId?: string | null
+  /**
+   * The colour presence paints this actor in, when the caller knows one.
+   *
+   * An agent editing has to look like a person editing, and looking like
+   * *itself*: the colour a person sees on the cursor in the grid is the colour
+   * of that agent's avatar everywhere else in the product. The worker resolves
+   * it from the agent record (`fallbackAgentBackgroundColor` when the agent has
+   * chosen none) and hands it in here; anything that does not know one still
+   * gets the stable per-actor palette entry below.
+   */
+  color?: string | null
 }
 
 export const toSpreadsheetActor = (actor: SpreadsheetWriteActor): SpreadsheetActor => ({
   type: actor.type,
   id: actor.id,
   displayName: actor.displayName,
-  color: presenceColorFor(actor.agentId ?? actor.id),
+  color: actor.color ?? presenceColorFor(actor.agentId ?? actor.id),
   ...(actor.agentId ? { agentId: actor.agentId } : {}),
   ...(actor.runId ? { runId: actor.runId } : {}),
 })

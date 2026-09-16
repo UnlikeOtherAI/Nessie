@@ -13,6 +13,7 @@ import {
 } from '@nessie/spreadsheet'
 
 import { applySpreadsheetBatch } from './apply.js'
+import { ensureSpreadsheetFormulaTokenizer } from './formula-tokenizer.js'
 import { invalidRequest, tooLarge, unsupportedFeature } from './errors.js'
 import type { SpreadsheetAction } from './writes.js'
 import {
@@ -102,6 +103,12 @@ export const structureSpreadsheet = async (
       + 'merges in an imported file are preserved but cannot be read or changed.',
     )
   }
+
+  // A sort rewrites every formula it moves, and `shiftFormula` answers a
+  // missing tokenizer by returning the formula unchanged — so without this the
+  // rows reorder and every relative reference keeps pointing at the row it used
+  // to be on, with nothing to say so.
+  if (input.action === 'sort') await ensureSpreadsheetFormulaTokenizer()
 
   const plan = await withSpreadsheetAtHead(deps, input, (workbook) => {
     const sheet = resolveSheetIndexByName(workbook.model, input.sheet)
