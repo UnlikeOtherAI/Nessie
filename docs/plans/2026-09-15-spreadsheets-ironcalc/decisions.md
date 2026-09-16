@@ -68,4 +68,25 @@ The first three are the ones this plan assumed present: `phases.md` lists
 API exists. Merges cannot be added in our layer: the grid is IronCalc's own
 canvas renderer and the workbook model has no place to store them, so this
 is upstream Rust work (model, renderer, xlsx round-trip) or a gap we accept.
-Raised with the owner on 2026-09-16 — see the decision recorded below.
+**Owner decision, 2026-09-16: stay on IronCalc and accept the gap.** Ship
+without merged cells, data validation or cell comments; an imported xlsx that
+has merges loses them (the import warning list says so). Every reference to
+merges elsewhere in this plan is therefore struck: `phases.md`'s Phase 0
+interface drops `mergeCells*`/`unmergeCells`/`getMergedCells`, and sort has no
+merged-range case to refuse. Revisit if upstream adds them.
+
+## Phase 0 outcomes (orchestrator, 2026-09-16)
+
+| Item | Outcome |
+|---|---|
+| Rebase onto `origin/main` | done, base `4992a38ca` (carries PR #501's stream CORS fix) |
+| Engine pin | `SPREADSHEET_ENGINE_VERSION = '0.8.3'`; `@ironcalc/nodejs` 0.8.3 + `@ironcalc/wasm` 0.8.4, exact |
+| Shared contract | `packages/schemas/src/spreadsheet.ts` + 11 tests; `spreadsheets` tool category added |
+| Engine interface | `packages/spreadsheet/src/engine.ts`: `SpreadsheetEngineModel` with `wrapNodeModel`, `wrapWasmModel`, `createUnimplementedModel` |
+| Convergence oracle | `canonicalWorkbook` / `canonicalHash` / `assertSameWorkbook` in `src/canonical.ts` — replaces every byte comparison |
+| Spike A test in CI | `packages/spreadsheet/test/engine-pair.test.ts`, 5 tests, green |
+| Migration | `20260916090000_spreadsheets`, whole chain applied on a throwaway pgvector container, no drift on the new objects |
+
+A1 addressing note: `A1Schema` deliberately refuses a sheet-qualified
+reference (`Sheet1!B2`). Every tool and route takes the sheet separately, so a
+range can never disagree with the sheet it was addressed to.
