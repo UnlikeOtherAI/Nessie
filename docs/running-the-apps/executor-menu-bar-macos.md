@@ -86,14 +86,28 @@ for the lease. A daemon Desktop started itself stays Desktop's to stop.
 
 Pairing is started in Nessie, not on the Mac: **Agents → Executors → Pair
 executor** issues an enrollment id and a one-time challenge. In the menu bar
-app's **Settings** those two go in beside the API origin
-(`https://api.nessie.works` for the hosted service, or your own instance's API
-origin), together with the workspace folder the executor may read — chosen
-through a normal macOS folder picker.
+app's **Settings** those two are pasted, together with the workspace folder the
+executor may read — chosen through a normal macOS folder picker.
+
+**Which Nessie** is its own choice above the paste: **Nessie**
+(`https://api.nessie.works`) and **DeepTest** (`https://api.deeptest.live`) are
+named, so the hosted cases are one click and cannot be typo-squatted, and
+**A Nessie you host yourself** takes the HTTPS origin of your own instance's
+API. The panel names the host it is about to trust underneath that choice — an
+invitation that carries its own `--api` wins over the picker and the panel says
+so — and refuses plain HTTP, credentials in the address, and anything carrying a
+path, query or fragment, because `https://evil.example.com/api.nessie.works` is
+how one host is dressed up as another in a label. A development build adds the
+local API (`http://127.0.0.1:5454`) as a fourth choice; a release never has it.
+The list is one contract read by three apps —
+`packages/schemas/src/executor-pairing-origins.ts`, restated in Swift and Rust
+with tests that hold them against that file.
 
 The app then runs the bundled `nessie-executor pair`, which creates the
 machine's private key and prints a fingerprint. **Confirm that fingerprint in
-Nessie.** Until an entitled human has confirmed it there and reviewed the local
+Nessie** — the app shows it beside the host this Mac is now paired with,
+because confirming a key belongs to a machine says nothing on its own about
+which Nessie that machine talks to. Settings keeps naming that host afterwards. Until an entitled human has confirmed it there and reviewed the local
 policy, the executor does nothing: the policy revision lands as
 `pending_review`, exactly as it does when a tool is added to the allowlist
 later.

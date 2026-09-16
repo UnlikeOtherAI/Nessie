@@ -21,9 +21,13 @@ public struct Invitation: Equatable, Sendable {
 }
 
 public enum InvitationParser {
+    /// `defaultApiBaseUrl` is the Nessie the person chose on the pairing panel.
+    /// It is a fallback, not an override: an invitation that names its own
+    /// `--api` is pairing with that host, and the panel shows which one wins
+    /// before anybody presses the button.
     public static func parse(
         _ text: String,
-        isDevelopmentBuild: Bool
+        defaultApiBaseUrl: String
     ) -> Result<Invitation, ExecutorRefusal> {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -40,10 +44,20 @@ public enum InvitationParser {
         }
         let api = nonEmpty(flagValue(tokens, "--api") ?? queryValue(trimmed, "api"))
         return .success(Invitation(
-            apiBaseUrl: api ?? ApprovedAPIOrigin.default(isDevelopmentBuild: isDevelopmentBuild),
+            apiBaseUrl: api ?? defaultApiBaseUrl,
             challenge: challenge,
             enrollmentId: enrollmentId
         ))
+    }
+
+    /// The origin an invitation names, if it names one. The pairing panel reads
+    /// it while a person is still looking at the paste, so the host it is about
+    /// to trust is on screen before the button is pressed rather than after.
+    public static func apiBaseUrl(in text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let tokens = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        return nonEmpty(flagValue(tokens, "--api") ?? queryValue(trimmed, "api"))
     }
 
     private static func nonEmpty(_ value: String?) -> String? {
