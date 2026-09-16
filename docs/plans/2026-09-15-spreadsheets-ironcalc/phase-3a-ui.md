@@ -153,3 +153,29 @@ moment somebody looked.
 - `PresenceStrip` takes `peers` as a prop and resolves nothing itself.
 - `buildWorkbook` reports `missingSeqs` for batches the fan-out cap dropped,
   and stops at the first gap rather than applying past it.
+
+## Phase 5 correction — the pane's chrome (2026-09-16)
+
+Two cosmetic defects visible in [`phase-3a/create.png`](phase-3a/create.png),
+both fixed; the result is
+[`phase-5/pane-chrome.png`](phase-5/pane-chrome.png) (from the live
+`two-browsers` e2e run, not a fixture).
+
+- **"History" appeared twice on one screen with one meaning** — a page-header
+  button and the action bar's fifth item. The header action is gone;
+  `SpreadsheetPane`'s `headerActions` is now empty. The bar keeps History,
+  beside "Save version", where somebody deciding about versions is already
+  looking. Every other spreadsheet action was already in the bar, so nothing
+  was left stranded in the header.
+- **Our action bar was a second bordered band above IronCalc's toolbar**, which
+  itself sits above the formula bar: three rows of chrome before the grid, two
+  of them ours. The bar now renders in `ResponsivePageHeader`'s `below` slot —
+  the design system's own answer, "one bordered block, never a second header" —
+  so it shares the header's surface instead of drawing its own. It keeps its
+  border and background only in fullscreen (`framed`), where there is no header
+  block to sit in. `KnowledgePane` gained the `below` pass-through and renders
+  it even when the native bar has taken the header, because otherwise Sort,
+  Filter, Find and Export would vanish on iPad and in the desktop shell.
+
+Neither change touches a `data-testid`, a popover anchor ref or a pressed
+state, and the four runnable e2e cases pass unchanged.

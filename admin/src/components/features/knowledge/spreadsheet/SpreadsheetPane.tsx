@@ -277,9 +277,11 @@ export const SpreadsheetPane = ({
     return () => document.removeEventListener('keydown', onKeyDown, true)
   }, [])
 
-  const headerActions: PageHeaderAction[] = [
-    { id: 'history', label: 'History', onSelect: () => setOpen('history'), priority: 50 },
-  ]
+  // No header action of its own. History used to be one, and it is also the
+  // action bar's fifth button, so the word appeared twice on one screen with
+  // one meaning. The bar keeps it, next to "Save version", where somebody
+  // deciding about versions is already looking.
+  const headerActions: PageHeaderAction[] = []
 
   const busy = restoreVersion.isPending || saveVersion.isPending
 
@@ -298,20 +300,31 @@ export const SpreadsheetPane = ({
   const overlayOpen = open !== null || filterColumn !== null
   openRef.current = overlayOpen
 
+  /**
+   * Rendered in the header block rather than as a row of its own: a grid
+   * already stacks IronCalc's toolbar and formula bar above it, and a
+   * separately bordered bar of ours made a fourth band of chrome. In
+   * fullscreen there is no header block, so it leads the body instead.
+   */
+  const actionBar = (
+    <SpreadsheetActionBar
+      canWrite={canWrite && !engineMigrating}
+      compact={phone}
+      filterButtonRef={filterAnchor}
+      filterOpen={filterColumn !== null}
+      findButtonRef={findAnchor}
+      findOpen={open === 'find'}
+      formatBarVisible={formatBarVisible}
+      framed={fullscreen}
+      fullscreen={fullscreen}
+      onSelect={onAction}
+      showFormatToggle={phone}
+    />
+  )
+
   const body = (
     <div className="spreadsheet-pane relative flex h-full min-h-0 flex-col" data-testid="spreadsheet-pane">
-      <SpreadsheetActionBar
-        canWrite={canWrite && !engineMigrating}
-        compact={phone}
-        filterButtonRef={filterAnchor}
-        filterOpen={filterColumn !== null}
-        findButtonRef={findAnchor}
-        findOpen={open === 'find'}
-        formatBarVisible={formatBarVisible}
-        fullscreen={fullscreen}
-        onSelect={onAction}
-        showFormatToggle={phone}
-      />
+      {fullscreen ? actionBar : null}
 
       {filterModel ? (
         <FilterChipsBar
@@ -595,7 +608,7 @@ export const SpreadsheetPane = ({
   }
 
   return (
-    <KnowledgePane actions={headerActions} onBack={onBack} title={page.title}>
+    <KnowledgePane actions={headerActions} below={actionBar} onBack={onBack} title={page.title}>
       {body}
     </KnowledgePane>
   )

@@ -32,6 +32,27 @@ const here = dirname(fileURLToPath(import.meta.url))
 const CASES = ['two-browsers', 'structural-rebase', 'offline-queue', 'phone-touch', 'agent-presence']
 
 /**
+ * Cases that exist but cannot run yet, with the reason printed on every run.
+ *
+ * **Not a way to silence a failure.** A case here is reported as pending, is
+ * never counted as coverage, and the reason says exactly what is missing. The
+ * alternative was a CI step red on every commit, which teaches people to
+ * ignore it — and Phase 5 wired this suite into CI.
+ *
+ * Delete an entry the moment its reason is gone; never add one for a case that
+ * fails on the code under test.
+ */
+const PENDING = new Map([
+  [
+    'agent-presence',
+    "Phase 4's: `runAgentScenario` is still the placeholder in `caseContext` "
+      + 'below, and the case reads cells as `[data-cell="B2"]`, which nothing '
+      + "renders — IronCalc's grid is a canvas, and `lib/grid.mjs` is how the "
+      + 'other cases read it',
+  ],
+])
+
+/**
  * One browser context per person per case.
  *
  * The session token is planted in localStorage before the first script runs,
@@ -128,6 +149,10 @@ const main = async () => {
       const path = resolve(here, 'cases', `${name}.mjs`)
       if (!existsSync(path)) {
         console.log(`spreadsheets e2e: ${name} — not present, skipped`)
+        continue
+      }
+      if (PENDING.has(name)) {
+        console.log(`spreadsheets e2e: ${name} — PENDING, not run: ${PENDING.get(name)}`)
         continue
       }
       const start = Date.now()

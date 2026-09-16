@@ -57,6 +57,12 @@ type SpreadsheetActionBarProps = {
   findButtonRef?: RefObject<HTMLButtonElement | null>
   findOpen?: boolean
   formatBarVisible?: boolean
+  /**
+   * Draw the bar's own surface and bottom border. False in the pane, where it
+   * sits inside the header block and takes that block's background; true in
+   * fullscreen, where there is no header block to sit in.
+   */
+  framed?: boolean
   fullscreen?: boolean
   onSelect: (id: SpreadsheetActionId) => void
   /** Only drawn on the phone layout, where IronCalc's toolbar costs grid height. */
@@ -77,6 +83,7 @@ export const SpreadsheetActionBar = ({
   findButtonRef,
   findOpen = false,
   formatBarVisible = true,
+  framed = false,
   fullscreen = false,
   onSelect,
   showFormatToggle = false,
@@ -133,7 +140,12 @@ export const SpreadsheetActionBar = ({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-1.5 border-b border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2"
+      className={[
+        'flex flex-wrap items-center gap-1.5',
+        framed
+          ? 'border-b border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2'
+          : '',
+      ].filter(Boolean).join(' ')}
       data-testid="spreadsheet-action-bar"
       role="toolbar"
       aria-label="Spreadsheet actions"
