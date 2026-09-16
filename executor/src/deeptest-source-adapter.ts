@@ -145,10 +145,19 @@ export const createDeepTestSourceAdapter = (
       // which workspace folder this snapshot is of. Nothing is guessed: a root
       // that is not one of the paired folders is refused, and the snapshot
       // re-verifies the match against the folder it was handed.
+      //
+      // Both sides are canonicalised before they are compared. A stored folder
+      // path is canonical when `configure` wrote it, but the comparison must not
+      // depend on that: on macOS `/var/...` and `/private/var/...` are the same
+      // directory, and a folder that only matched by spelling would refuse a
+      // review of a directory it really does expose.
       const requestedRoot = await configureWorkspaceFolderPath(request.expected_source_root).catch(() => null)
-      const requestedFolder = requestedRoot === null
-        ? undefined
-        : state.workspaceFolders.find((folder) => folder.path === requestedRoot)
+      const requestedFolder = requestedRoot === null ? undefined : (await Promise.all(
+        state.workspaceFolders.map(async (folder) => ({
+          canonical: await configureWorkspaceFolderPath(folder.path).catch(() => null),
+          folder,
+        })),
+      )).find((candidate) => candidate.canonical === requestedRoot)?.folder
       if (!requestedFolder) {
         return failure(
           request.request_id,
