@@ -54,6 +54,22 @@ test('an unverifiable address refuses; an undecided one waits', () => {
   assert.equal(renderOf({ sessionState: 'loading' }), 'waiting')
 })
 
+/**
+ * The client half of `/api/hosts/team`'s membership gate (PR #536). That route
+ * answers `{ team: null }` for a caller who is not in the team a hostname
+ * names — byte-identical to the answer for a hostname that names no team,
+ * because a refusal a caller can tell apart from nonexistence is still an
+ * oracle. Here that has to land on the branded card, which names no team
+ * either: rendering the app instead would put the outsider's own team on
+ * screen under somebody else's address, and rendering anything team-specific
+ * would give back what the API just withheld.
+ */
+test('a non-member gets the branded refusal, never the app and never a name', () => {
+  assert.equal(renderOf({ teamKnown: false }), 'unavailable')
+  // Indistinguishable from UOA being unreachable, which answers the same way.
+  assert.equal(renderOf({ teamKnown: false }), renderOf({ teamFailed: true }))
+})
+
 test('signed out on a team address shows the tenant door, not the product', () => {
   assert.equal(
     renderOf({ sessionState: 'unauthenticated', signedIn: false, teamAnswered: false, teamKnown: false }),
