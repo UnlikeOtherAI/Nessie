@@ -18,6 +18,9 @@ enum ExecutorPaths {
            !override.isEmpty {
             return (override as NSString).expandingTildeInPath
         }
+        // Named after the product, never derived from the bundle identifier: an
+        // identifier is a packaging decision and changing one must not strand a
+        // person's pairing in a folder the new build never looks in.
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support
             .appendingPathComponent("Nessie Executor")
