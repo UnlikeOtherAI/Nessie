@@ -14,10 +14,19 @@ import {
 import { detectExecutorHost, sandboxRemedyForHost, type ExecutorHost } from './host-platform.js'
 
 type LocalDescriptorConfig = {
+  /** The programs `command.run` may start; absent until a policy names one. */
+  commandAllowlist?: string[]
   limits: { maxCommandRuntimeSeconds: number; maxResultBytes: number; maxSessions: number }
   operationKeys: string[]
   profiles: string[]
   revision: number
+  /**
+   * The workspace folder names this policy exposes; absent for a descriptor
+   * signed before folders had names, which describes exactly one folder. The
+   * names are part of the digest, so adding a folder is a revision a person
+   * reviews — the host paths stay local and never reach Nessie.
+   */
+  workspaceFolders?: string[]
 }
 
 const isWorkspaceOnlyOperation = (operationKey: string): boolean =>
@@ -61,6 +70,11 @@ export const buildSignedDescriptor = (
 ): ExecutorSignedDescriptor => {
   assertHostSupportsOperations(host, config.operationKeys, config.profiles)
   const descriptor = ExecutorCapabilityDescriptorSchema.parse({
+    // The list travels with the descriptor only when it says something: an
+    // empty array would advertise a rule where the policy has none, and the
+    // schema refuses it rather than letting the two readings blur.
+    ...(config.commandAllowlist?.length ? { commandAllowlist: config.commandAllowlist } : {}),
+    ...(config.workspaceFolders?.length ? { workspaceFolders: config.workspaceFolders } : {}),
     limits: config.limits,
     localPolicyDigest: policyDigest(config),
     operationKeys: config.operationKeys.map((key) => ImplementedExecutorOperationKeySchema.parse(key)),

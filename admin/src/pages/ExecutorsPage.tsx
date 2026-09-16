@@ -7,6 +7,7 @@ import type {
 import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCreatePanel'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
+import { ExecutorReviewedPolicy } from '../components/features/executors/ExecutorReviewedPolicy'
 import { ExecutorWorkspacePromotionsPanel } from '../components/features/executors/ExecutorWorkspacePromotionsPanel'
 import { FormError } from '../components/shared/FormActions'
 import { QueryState } from '../components/shared/QueryState'
@@ -100,6 +101,11 @@ export const ExecutorsPage = () => {
 
   const reviewChange = changeQuery.data
   const promotionChange = promotionQuery.data
+  // The loaded revisions belong to the selected executor, so they describe the
+  // prepared change only when that change is this executor's.
+  const reviewedRevisions = reviewChange && reviewChange.executorId === accessQuery.data?.executorId
+    ? accessQuery.data?.descriptorRevisions
+    : undefined
   const setSelection = (executorId: string) => {
     const next = new URLSearchParams(searchParams)
     next.set('executorId', executorId)
@@ -289,6 +295,10 @@ export const ExecutorsPage = () => {
               <p className="mt-1 text-xs text-[color:var(--tx3)]">This one-time change expires at {reviewChange.expiresAt}. It is bound to your account and the executor’s current authorization revision.</p>
             </div>
             <pre className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{JSON.stringify(reviewChange.change, null, 2)}</pre>
+            <ExecutorReviewedPolicy
+              change={reviewChange.change}
+              descriptorRevisions={reviewedRevisions}
+            />
             <FormError>
               {!confirmationToken
                 ? 'The confirmation token is missing. Recreate the change from this page or reopen the Personal Assistant review link.'

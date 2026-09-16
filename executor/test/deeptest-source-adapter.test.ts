@@ -52,7 +52,7 @@ const stateFor = (workspaceRoot: string, operationKeys = ['file.list', 'file.rea
   executorId: '00000000-0000-4000-8000-000000000005',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 const git = async (root: string, args: string[]): Promise<string> => {

@@ -28,6 +28,7 @@ import {
   ExecutorScopeSchema,
   ExecutorWorkspaceReviewRecordResponseSchema,
 } from '../executor.js'
+import { canonicalExecutorJson } from '../executor-canonical.js'
 
 const ids = {
   agent: '2c85024e-a05b-4c89-8adc-36448a51d121',
@@ -94,6 +95,57 @@ test('agents can use but cannot administer a private executor', () => {
       extra: 'not-allowed',
     }).success,
     false,
+  )
+})
+
+test('a descriptor carries workspace folder names only when the policy names them', () => {
+  const base = {
+    limits: { maxCommandRuntimeSeconds: 300, maxResultBytes: 10_000, maxSessions: 1 },
+    localPolicyDigest: digest,
+    operationKeys: ['file.list', 'file.read'],
+    platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+    profiles: ['workspace_sandbox'],
+    protocolVersion: 1,
+    revision: 1,
+    sandboxBackend: 'virtualization_framework',
+    supervisor: 'desktop',
+  }
+  // Absent is what every descriptor signed before folders had names looks like,
+  // and it must keep validating: the control plane refuses two different
+  // policies at one revision, so synthesizing a name would break connect.
+  assert.equal(ExecutorCapabilityDescriptorSchema.parse(base).workspaceFolders, undefined)
+  assert.deepEqual(
+    ExecutorCapabilityDescriptorSchema.parse({ ...base, workspaceFolders: ['nessie', 'notes'] })
+      .workspaceFolders,
+    ['nessie', 'notes'],
+  )
+  for (const workspaceFolders of [
+    [],
+    ['Nessie'],
+    ['nessie', 'nessie'],
+    ['.'],
+    ['..'],
+    ['con'],
+    ['-lead'],
+    ['trail-'],
+    ['has/slash'],
+    [''],
+    ['a'.repeat(41)],
+    Array.from({ length: 17 }, (_value, index) => `f${index}`),
+  ]) {
+    assert.equal(
+      ExecutorCapabilityDescriptorSchema.safeParse({ ...base, workspaceFolders }).success,
+      false,
+      JSON.stringify(workspaceFolders),
+    )
+  }
+  // The names change the signed policy, so they change its digest too — which is
+  // what makes adding a folder a revision somebody reviews.
+  assert.notEqual(
+    canonicalExecutorJson(ExecutorCapabilityDescriptorSchema.parse(base)),
+    canonicalExecutorJson(
+      ExecutorCapabilityDescriptorSchema.parse({ ...base, workspaceFolders: ['nessie'] }),
+    ),
   )
 })
 

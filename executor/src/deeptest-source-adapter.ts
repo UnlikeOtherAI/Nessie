@@ -1,6 +1,8 @@
 import type { Readable, Writable } from 'node:stream'
 
 import type { ExecutorDeepTestSourceGrant } from './state-store.js'
+import { executorWorkspaceFolderNames } from './workspace-folders.js'
+import { configureWorkspaceFolderPath } from './workspace.js'
 import {
   DEEPTEST_SOURCE_CAPABILITIES,
   DEEPTEST_SOURCE_PROTOCOL_VERSION,
@@ -71,11 +73,17 @@ export const createDeepTestSourceAdapter = (
   let binding: DeepTestSourceBinding | undefined
   const snapshots = new Map<string, DeepTestSourceSnapshot>()
 
+  const folderNames = executorWorkspaceFolderNames(state.workspaceFolders).join(', ')
+
   const assertGrant = async (): Promise<void> => {
     const current = await refreshState()
     if (
       current.executorId !== state.executorId
-      || current.workspaceRoot !== state.workspaceRoot
+      || current.workspaceFolders.length !== state.workspaceFolders.length
+      || current.workspaceFolders.some((folder, index) => (
+        folder.name !== state.workspaceFolders[index]?.name
+        || folder.path !== state.workspaceFolders[index]?.path
+      ))
       || current.descriptor.revision !== state.descriptor.revision
       || !current.descriptor.operationKeys.includes('file.list')
       || !current.descriptor.operationKeys.includes('file.read')
@@ -117,7 +125,9 @@ export const createDeepTestSourceAdapter = (
         capabilities: DEEPTEST_SOURCE_CAPABILITIES,
         executor_id: state.executorId,
         protocol_version: DEEPTEST_SOURCE_PROTOCOL_VERSION,
-        workspace_label: state.workspaceRoot.split(/[\\/]/u).filter(Boolean).at(-1) ?? 'Workspace',
+        // The names are the label: they are what an agent types and what a
+        // reviewer approved, and a multi-folder executor has no single one.
+        workspace_label: folderNames || 'Workspace',
       })
     }
     if (binding === undefined || !sameDeepTestSourceBinding(binding, requestedBinding)) {
@@ -131,9 +141,33 @@ export const createDeepTestSourceAdapter = (
           'Release the open source snapshot before starting another one.',
         )
       }
+      // A review names the host directory it expects, so that directory selects
+      // which workspace folder this snapshot is of. Nothing is guessed: a root
+      // that is not one of the paired folders is refused, and the snapshot
+      // re-verifies the match against the folder it was handed.
+      //
+      // Both sides are canonicalised before they are compared. A stored folder
+      // path is canonical when `configure` wrote it, but the comparison must not
+      // depend on that: on macOS `/var/...` and `/private/var/...` are the same
+      // directory, and a folder that only matched by spelling would refuse a
+      // review of a directory it really does expose.
+      const requestedRoot = await configureWorkspaceFolderPath(request.expected_source_root).catch(() => null)
+      const requestedFolder = requestedRoot === null ? undefined : (await Promise.all(
+        state.workspaceFolders.map(async (folder) => ({
+          canonical: await configureWorkspaceFolderPath(folder.path).catch(() => null),
+          folder,
+        })),
+      )).find((candidate) => candidate.canonical === requestedRoot)?.folder
+      if (!requestedFolder) {
+        return failure(
+          request.request_id,
+          'SOURCE_UNAVAILABLE',
+          'The review source does not match a folder this Nessie executor is paired against.',
+        )
+      }
       try {
         const snapshot = await createDeepTestSourceSnapshot(
-          state.workspaceRoot,
+          requestedFolder.path,
           request.expected_source_root,
           assertGrant,
         )

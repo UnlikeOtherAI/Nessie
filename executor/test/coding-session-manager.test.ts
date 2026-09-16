@@ -46,7 +46,7 @@ const stateFor = (workspaceRoot: string) => ({
   executorId: '00000000-0000-4000-8000-000000000355',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 test('Codex sessions use the private guest profile and expose typed lifecycle only', async () => {

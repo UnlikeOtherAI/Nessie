@@ -4,12 +4,18 @@ import { lstat, open, readFile, unlink } from 'node:fs/promises'
 
 import { canonicalExecutorJson, RunIdSchema } from '@nessie/schemas'
 
-import { ensureSandboxWorkspace, sandboxPaths } from './sandbox-workspace.js'
+import { ensureSandboxWorkspace, sandboxFolderPaths } from './sandbox-workspace.js'
+import {
+  assertExecutorWorkspaceFolderName,
+  executorWorkspaceFolderNames,
+  type ExecutorWorkspaceFolder,
+} from './workspace-folders.js'
 import { WorkspacePathError, configureOrdinaryDirectory } from './workspace-paths.js'
 
 type GuestLeaseRecord = {
   bindingFence: string
   commandId: string
+  folderName: string
   leaseId: string
   runId: string
   version: 1
@@ -18,9 +24,39 @@ type GuestLeaseRecord = {
 export type GuestWorkspaceLease = {
   bindingFence: string
   commandId: string
+  /** The workspace folder this lease exposes; a guest mounts exactly one. */
+  folderName: string
   leaseId: string
   runId: string
   workspace: string
+}
+
+/**
+ * A guest VM mounts one workspace. Teaching it to mount several is a change to
+ * the guest protocol in `executor/guest/*.go` and to the share layout the VM
+ * helper builds, which this tranche does not make — so an executor that exposes
+ * more than one folder refuses to start a guest session rather than binding to
+ * whichever folder happens to be first and letting a person believe an agent
+ * inside that VM can see the rest.
+ *
+ * The refusal is loud on purpose. Silently narrowing an agent's reach is the
+ * failure mode worth more than the convenience of a partially working session.
+ */
+export const guestSessionFolder = (
+  folders: readonly ExecutorWorkspaceFolder[],
+  overridePath?: string,
+): ExecutorWorkspaceFolder => {
+  const [only] = folders
+  if (!only || folders.length !== 1) {
+    throw new WorkspacePathError(
+      `A guest session mounts one workspace folder, but this executor exposes ${
+        folders.length
+      } (${executorWorkspaceFolderNames(folders).join(', ')}). `
+      + 'Configure a single folder for guest sessions, or use the workspace file operations, '
+      + 'which reach every folder.',
+    )
+  }
+  return overridePath === undefined ? only : { name: only.name, path: overridePath }
 }
 
 const missing = (error: unknown): boolean =>
@@ -31,6 +67,7 @@ const parseLease = (value: unknown): GuestLeaseRecord => {
     !value || typeof value !== 'object' || Array.isArray(value)
     || typeof (value as Record<string, unknown>).bindingFence !== 'string'
     || typeof (value as Record<string, unknown>).commandId !== 'string'
+    || typeof (value as Record<string, unknown>).folderName !== 'string'
     || typeof (value as Record<string, unknown>).leaseId !== 'string'
     || typeof (value as Record<string, unknown>).runId !== 'string'
     || (value as Record<string, unknown>).version !== 1
@@ -39,6 +76,7 @@ const parseLease = (value: unknown): GuestLeaseRecord => {
   }
   const record = value as GuestLeaseRecord
   RunIdSchema.parse(record.runId)
+  assertExecutorWorkspaceFolderName(record.folderName)
   if (!/^[1-9][0-9]*$/.test(record.bindingFence) || !UUID_PATTERN.test(record.commandId)) {
     throw new WorkspacePathError('The executor guest lease is malformed.')
   }
@@ -83,26 +121,29 @@ const readLease = async (path: string): Promise<GuestLeaseRecord> => {
 }
 
 /**
- * Creates the sole local authority to expose a COW draft to a guest VM. It
- * never accepts a host path: the path is derived after creating the exact
- * server-run COW workspace. The durable marker prevents a concurrent stop from
- * erasing that draft while a separately spawned VM still has it mounted.
+ * Creates the sole local authority to expose one folder's COW draft to a guest
+ * VM. It never accepts a host path to mount: the path is derived after creating
+ * the exact server-run COW workspace for that folder. The durable marker
+ * prevents a concurrent stop from erasing that draft while a separately spawned
+ * VM still has it mounted, and it records which folder is mounted so a release
+ * cannot unlock a different one.
  */
 export const createGuestWorkspaceLease = async (
   stateDir: string,
-  workspaceRoot: string,
+  folder: ExecutorWorkspaceFolder,
   input: { bindingFence: string; commandId: string; runId: string },
 ): Promise<GuestWorkspaceLease> => {
   const parsedRunId = RunIdSchema.parse(input.runId)
   if (!/^[1-9][0-9]*$/.test(input.bindingFence) || !UUID_PATTERN.test(input.commandId)) {
     throw new WorkspacePathError('The executor guest lease identity is invalid.')
   }
-  const workspace = await ensureSandboxWorkspace(stateDir, workspaceRoot, parsedRunId)
-  const paths = await sandboxPaths(stateDir, parsedRunId)
+  const workspace = await ensureSandboxWorkspace(stateDir, folder, parsedRunId)
+  const paths = await sandboxFolderPaths(stateDir, parsedRunId, folder.name)
   await configureOrdinaryDirectory(paths.root, 'The executor sandbox')
   const record: GuestLeaseRecord = {
     bindingFence: input.bindingFence,
     commandId: input.commandId,
+    folderName: paths.name,
     leaseId: randomUUID(),
     runId: parsedRunId,
     version: 1,
@@ -118,6 +159,7 @@ export const createGuestWorkspaceLease = async (
   return {
     bindingFence: record.bindingFence,
     commandId: record.commandId,
+    folderName: record.folderName,
     leaseId: record.leaseId,
     runId: record.runId,
     workspace,
@@ -127,7 +169,7 @@ export const createGuestWorkspaceLease = async (
 /** Only the holder of the exact durable lease can unblock sandbox teardown. */
 export const releaseGuestWorkspaceLease = async (stateDir: string, lease: GuestWorkspaceLease): Promise<void> => {
   const runId = RunIdSchema.parse(lease.runId)
-  const paths = await sandboxPaths(stateDir, runId)
+  const paths = await sandboxFolderPaths(stateDir, runId, lease.folderName)
   let stored: GuestLeaseRecord
   try {
     stored = await readLease(paths.guestLease)
@@ -137,6 +179,7 @@ export const releaseGuestWorkspaceLease = async (stateDir: string, lease: GuestW
   }
   if (
     stored.runId !== runId
+    || stored.folderName !== lease.folderName
     || stored.leaseId !== lease.leaseId
     || stored.commandId !== lease.commandId
     || stored.bindingFence !== lease.bindingFence
@@ -171,10 +214,11 @@ export const assertGuestWorkspaceLeaseCurrent = async (
   lease: GuestWorkspaceLease,
 ): Promise<void> => {
   const runId = RunIdSchema.parse(lease.runId)
-  const paths = await sandboxPaths(stateDir, runId)
+  const paths = await sandboxFolderPaths(stateDir, runId, lease.folderName)
   const stored = await readLease(paths.guestLease)
   if (
     stored.runId !== runId
+    || stored.folderName !== lease.folderName
     || stored.leaseId !== lease.leaseId
     || stored.commandId !== lease.commandId
     || stored.bindingFence !== lease.bindingFence

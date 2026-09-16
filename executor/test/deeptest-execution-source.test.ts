@@ -33,7 +33,7 @@ const reviewedRepository = async (): Promise<string> => {
 
 const leaseFor = async (stateDir: string, workspaceRoot: string) => await createGuestWorkspaceLease(
   stateDir,
-  workspaceRoot,
+  { name: 'workspace', path: workspaceRoot },
   {
     bindingFence: '1',
     commandId: '00000000-0000-4000-8000-000000000402',
