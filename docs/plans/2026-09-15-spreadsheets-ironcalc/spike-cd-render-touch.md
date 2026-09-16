@@ -24,9 +24,9 @@ The throwaway page it drives (`admin/src/routes/__spike-spreadsheet/`) is
 reproduced below and is the seed for Phase 3a's `WorkbookHost.tsx`,
 `spreadsheet-model-bridge.ts`, `spreadsheet-theme.ts` and Phase 3b's
 `useTouchSelection.ts`. The complete files stay recoverable on this branch —
-`git show <the commit before this document's> -- admin/src/routes/__spike-spreadsheet`,
-or `git log --diff-filter=D -- admin/src/routes/__spike-spreadsheet`. Raw
-numbers: `spike-cd/findings.json`.
+`git checkout d8044dc54 -- admin/src/routes/__spike-spreadsheet` restores all six
+files, and `admin/e2e/spike-spreadsheet/run.mjs` (kept) then drives them again.
+Raw numbers: `spike-cd/findings.json`.
 
 ## Spike C — render
 

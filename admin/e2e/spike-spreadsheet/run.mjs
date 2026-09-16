@@ -6,7 +6,12 @@
 // the spike proves the widget, the model bridge, the redraw patch, the theme
 // mapping and the touch gestures, none of which need a server.
 //
+//   git checkout d8044dc54 -- admin/src/routes/__spike-spreadsheet
 //   NAV_E2E_ADMIN_PORT=5561 node admin/e2e/spike-spreadsheet/run.mjs
+//
+// The page this drives is deliberately NOT on the branch: it was a throwaway
+// and the checkout above is how it comes back. Phase 3a replaces it with the
+// real pane and this file with `admin/e2e/spreadsheets/`.
 //
 // The repo's admin port is 5455; `NAV_E2E_ADMIN_PORT` moves the suite off it
 // when another worktree owns it (CLAUDE.md -> "E2E on scratch ports").
