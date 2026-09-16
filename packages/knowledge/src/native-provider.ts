@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
 import { mapPage, mapVersion, pageInclude, versionInclude } from './native-mappers.js'
+import { enrichKnowledgePageRecords } from './native-list-enrichment.js'
 import { listNativeRecentPages } from './native-recent-pages.js'
 import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
@@ -105,7 +106,7 @@ const listPages = async (
     const key = page.parentPageId ?? null
     childrenByParent.set(key, [...(childrenByParent.get(key) ?? []), page.id])
   }
-  return pages.map((page) => {
+  const nodes = pages.map((page) => {
     const record = mapPage(page)
     // Space tree views never render the body. Fetch it on demand when a page
     // is opened so listing a large space does not retain every document body.
@@ -115,6 +116,9 @@ const listPages = async (
       childPageIds: childrenByParent.get(page.id) ?? [],
     }
   })
+  // The Finder's row fields (size, mime, share count, indexing state) in a fixed
+  // handful of grouped queries — never one per row.
+  return enrichKnowledgePageRecords(prisma, nodes)
 }
 
 const movePage = async (

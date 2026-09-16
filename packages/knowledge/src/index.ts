@@ -43,6 +43,29 @@ export {
   readableSpaceIdsSqlForViewer,
 } from './native-search-access.js'
 export { clampRecentLimit, listNativeRecentPages } from './native-recent-pages.js'
+// The Finder's server-side reads (docs/plans/2026-09-16-documents-finder-ui/).
+export {
+  buildKnowledgeHome,
+  clampLatestLimit,
+  listNativeLatestPages,
+  rootKindForSpace,
+} from './native-latest-pages.js'
+export type { ListLatestPagesInput } from './native-latest-pages.js'
+export {
+  indexingStateFor,
+  indexingStatesFor,
+  knowledgeExtractJobKey,
+  knowledgeExtractRetryJobKey,
+  latestKnowledgeExtractJob,
+} from './native-indexing-status.js'
+export type { IndexingStatusPage } from './native-indexing-status.js'
+export { enrichKnowledgePageRecords, pageRowFactsFor } from './native-list-enrichment.js'
+export {
+  getKnowledgePageInfo,
+  getKnowledgeSpaceInfo,
+  SUBTREE_ROW_CAP,
+} from './native-page-info.js'
+export { buildKnowledgeRoot, ROOT_SHARED_SPACE_CAP } from './native-root.js'
 export {
   groupFusedChunksByPage,
   searchNativePagesHybrid,
