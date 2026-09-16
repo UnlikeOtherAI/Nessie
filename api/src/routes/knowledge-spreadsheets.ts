@@ -92,6 +92,7 @@ const ReplaceBodySchema = z.object({
   sheet: z.number().int().min(0).optional(),
   matchCase: z.boolean().optional(),
   wholeCell: z.boolean().optional(),
+  regex: z.boolean().optional(),
   inFormulas: z.boolean().optional(),
 })
 
@@ -320,12 +321,15 @@ export const registerKnowledgeSpreadsheetRoutes = (
           actor: await spreadsheetActorFor(deps, actorContext),
           attribution: spreadsheetAttribution(actorContext),
           ...(body.clientOpId ? { clientOpId: body.clientOpId } : {}),
-          query: body.query,
-          replacement: body.replacement,
           options: {
-            ...(body.sheet === undefined ? {} : { sheet: body.sheet }),
+            query: body.query,
+            replacement: body.replacement,
+            ...(body.sheet === undefined
+              ? {}
+              : { scope: { kind: 'sheet' as const, sheet: body.sheet } }),
             ...(body.matchCase === undefined ? {} : { matchCase: body.matchCase }),
             ...(body.wholeCell === undefined ? {} : { wholeCell: body.wholeCell }),
+            ...(body.regex === undefined ? {} : { regex: body.regex }),
             ...(body.inFormulas === undefined ? {} : { inFormulas: body.inFormulas }),
           },
         }),
@@ -373,7 +377,9 @@ export const registerKnowledgeSpreadsheetRoutes = (
           organizationId: actorContext.tenant.organizationId,
           pageId,
           query: query.q,
-          ...(query.sheet === undefined ? {} : { sheet: query.sheet }),
+          ...(query.sheet === undefined
+            ? {}
+            : { scope: { kind: 'sheet' as const, sheet: query.sheet } }),
           ...(query.limit === undefined ? {} : { limit: query.limit }),
           matchCase: query.matchCase === 'true',
           wholeCell: query.wholeCell === 'true',

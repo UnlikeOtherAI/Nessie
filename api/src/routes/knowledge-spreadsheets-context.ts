@@ -1,4 +1,4 @@
-import { writeAuditEntryInTransaction } from '@nessie/db'
+import { enqueueQueueJob, writeAuditEntryInTransaction } from '@nessie/db'
 import {
   SpreadsheetServiceError,
   createSpreadsheetService,
@@ -7,11 +7,18 @@ import {
   type SpreadsheetWriteActor,
 } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
-import type { AuditAction, AuthorizedActionContext } from '@nessie/schemas'
+import { SPREADSHEET_LIMITS, type AuditAction, type AuthorizedActionContext } from '@nessie/schemas'
 import type { FastifyReply } from 'fastify'
 
 import { sendApiError } from '../lib/api.js'
 import { createKnowledgeAccess, type KnowledgeRouteDeps } from './knowledge-base-access.js'
+
+/**
+ * The compaction topic. Declared beside its publisher;
+ * `worker/src/control/spreadsheet-compact.ts` is its only consumer, and the
+ * two constants are asserted equal in `api/test/spreadsheet-io.test.ts`.
+ */
+export const SPREADSHEET_COMPACT_TOPIC = 'spreadsheet.compact'
 
 /**
  * Everything the three spreadsheet route modules share, built **once per
@@ -42,6 +49,22 @@ export const createSpreadsheetRouteContext = (
         event,
         input.data,
       )
+    },
+    // Housekeeping, enqueued after the batch committed. The key is per page
+    // and per cadence step, so two replicas crossing the threshold in the same
+    // second enqueue one job rather than two xlsx writes.
+    enqueueCompaction: async (input) => {
+      await enqueueQueueJob(deps.prisma, {
+        idempotencyKey: `sheet-compact:${input.pageId}:${Math.floor(
+          input.seq / SPREADSHEET_LIMITS.compactEveryBatches,
+        )}`,
+        topic: SPREADSHEET_COMPACT_TOPIC,
+        payload: {
+          organizationId: input.organizationId,
+          pageId: input.pageId,
+          seq: input.seq,
+        },
+      })
     },
     // Written inside the batch's own transaction, so a batch that rolled back
     // never leaves an audit row claiming it landed.

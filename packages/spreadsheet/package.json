@@ -11,6 +11,10 @@
     "./node": {
       "types": "./src/node.ts",
       "default": "./dist/node.js"
+    },
+    "./xlsx-warnings": {
+      "types": "./src/xlsx-warnings.ts",
+      "default": "./dist/xlsx-warnings.js"
     }
   },
   "scripts": {

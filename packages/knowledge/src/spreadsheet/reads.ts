@@ -10,7 +10,7 @@ import {
 import { catchUpExpired, invalidRequest } from './errors.js'
 import { loadHead, lockSpreadsheetPage, modelAtHead } from './head.js'
 import { parseFilters, type SpreadsheetFilters } from './filter-model.js'
-import { findInWorkbook, type SpreadsheetFindOptions, type SpreadsheetMatch } from './find.js'
+import { findInWorkbook, type FindOptions, type FindResult } from '@nessie/spreadsheet'
 import {
   toAppliedBatch,
   toSpreadsheetActor,
@@ -213,13 +213,11 @@ export const readSpreadsheetRange = async (
 
 export const findInSpreadsheet = async (
   deps: SpreadsheetServiceDeps,
-  input: { organizationId: string; pageId: string; query: string } & SpreadsheetFindOptions,
-): Promise<SpreadsheetMatch[]> =>
+  input: { organizationId: string; pageId: string } & FindOptions,
+): Promise<FindResult> =>
   deps.prisma.$transaction(async (tx) => {
     await lockSpreadsheetPage(tx as never, input.pageId)
     const head = await loadHead(tx as never, input.organizationId, input.pageId)
     const workbook = await modelAtHead(deps, tx as never, head)
-    return findInWorkbook(workbook.model, input.query, input)
+    return findInWorkbook(workbook.model, input)
   })
-
-export type { SpreadsheetMatch }

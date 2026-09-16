@@ -7,7 +7,7 @@ import {
 import type { SpreadsheetEngineModel } from '@nessie/spreadsheet'
 
 import { batchRejected, spreadsheetNotFound, structuralConflict, tooLarge } from './errors.js'
-import { applyDiffs, isEmptyDiffPayload, recordDiffs, type SpreadsheetWorkbook } from './engine.js'
+import { applyDiffs, isEmptyDiffPayload, type SpreadsheetWorkbook } from './engine.js'
 import {
   assertEngineMatches,
   hotSnapshotDue,
@@ -44,7 +44,17 @@ export type SpreadsheetBatchSource =
    * lock*, and its diffs come out of the send queue. Structural conflict is
    * impossible by construction.
    */
-  | { kind: 'server'; mutate: (model: SpreadsheetEngineModel) => void }
+  | {
+      kind: 'server'
+      /**
+       * Performs the mutation and returns the summary it actually produced.
+       * The helpers in `@nessie/spreadsheet` pause evaluation around their own
+       * calls and leave their diffs in the send queue, which is the contract
+       * this branch is written against — so nothing here wraps a second pause
+       * around them (a nested resume would evaluate mid-batch).
+       */
+      mutate: (model: SpreadsheetEngineModel) => SpreadsheetBatchSummary | void
+    }
 
 export type CommitBatchInput = {
   organizationId: string
@@ -172,12 +182,21 @@ export const commitSpreadsheetBatch = async (
 
     const workbook = await modelAtHead(deps, tx as never, head)
     let diffs: Uint8Array
+    // A server batch derives its own summary from what it actually did; the
+    // caller's is advisory and only ever used for the conflict check, which a
+    // server batch does not take (it is built at head).
+    let effective = summary
     try {
       if (input.source.kind === 'client') {
         applyDiffs(workbook, input.source.diffs)
         diffs = input.source.diffs
       } else {
-        diffs = recordDiffs(workbook, input.source.mutate)
+        // Drain anything a previous caller left behind so this batch carries
+        // only its own work.
+        workbook.native.flushSendQueue()
+        const produced = input.source.mutate(workbook.model)
+        if (produced) effective = produced
+        diffs = workbook.native.flushSendQueue()
       }
       if (isEmptyDiffPayload(diffs)) {
         // The mutation changed nothing the engine could describe — setting a
@@ -215,10 +234,10 @@ export const commitSpreadsheetBatch = async (
         agentCredentialId: input.actor.agentCredentialId ?? null,
         engineVersion: head.engineVersion,
         diffs: Buffer.from(diffs),
-        structuralKind: summary.structuralKind,
-        sheetIndexes: summary.sheetIndexes,
-        cellCount: summary.cellCount,
-        summary: summary as unknown as Prisma.InputJsonValue,
+        structuralKind: effective.structuralKind,
+        sheetIndexes: effective.sheetIndexes,
+        cellCount: effective.cellCount,
+        summary: effective as unknown as Prisma.InputJsonValue,
       },
     })
 
@@ -228,7 +247,7 @@ export const commitSpreadsheetBatch = async (
       data: {
         headSeq: BigInt(seq),
         sheetNames,
-        filters: remapFiltersForBatch(head.filters, summary) as Prisma.InputJsonValue,
+        filters: remapFiltersForBatch(head.filters, effective) as Prisma.InputJsonValue,
         batchesSinceSnapshot: { increment: 1 },
         lastOpAt: new Date(),
         ...(snapshotBytes
@@ -255,10 +274,10 @@ export const commitSpreadsheetBatch = async (
         metadata: {
           seq,
           clientOpId: input.clientOpId,
-          structuralKind: summary.structuralKind,
-          sheetIndexes: summary.sheetIndexes,
-          cellCount: summary.cellCount,
-          touched: summary.touched,
+          structuralKind: effective.structuralKind,
+          sheetIndexes: effective.sheetIndexes,
+          cellCount: effective.cellCount,
+          touched: effective.touched,
           ...(input.actor.agentId ? { agentId: input.actor.agentId } : {}),
           ...(input.actor.runId ? { runId: input.actor.runId } : {}),
           ...(input.actor.agentCredentialId

@@ -2,17 +2,15 @@ import { randomUUID } from 'node:crypto'
 
 import type { Prisma } from '@prisma/client'
 import type { LedgerAttribution } from '@nessie/runtime'
-import type { SpreadsheetBatchSummary } from '@nessie/schemas'
+import {
+  SpreadsheetFilterModelSchema,
+  type SpreadsheetFilterModel,
+} from '@nessie/schemas'
+import { applyFilter, clearFilter, type ApplyFilterResult } from '@nessie/spreadsheet'
 
 import { applySpreadsheetBatch, type ApplySpreadsheetBatchResult } from './apply.js'
 import { invalidRequest } from './errors.js'
-import { evaluateFilter, toRuns, type FilterDelta } from './filter-eval.js'
-import {
-  parseFilters,
-  SpreadsheetFilterModelSchema,
-  type SpreadsheetFilterModel,
-  type SpreadsheetFilters,
-} from './filter-model.js'
+import { parseFilters, type SpreadsheetFilters } from './filter-model.js'
 import { loadHead, lockSpreadsheetPage, modelAtHead } from './head.js'
 import type { SpreadsheetServiceDeps, SpreadsheetWriteActor } from './deps.js'
 
@@ -23,6 +21,11 @@ import type { SpreadsheetServiceDeps, SpreadsheetWriteActor } from './deps.js'
  * it undoes, broadcasts and versions like any other edit. **Re-application is
  * explicit** — editing a value does not re-filter until somebody asks, which
  * is the Excel and Sheets rule and stops a row vanishing under a cursor.
+ *
+ * The criteria, the hidden-row delta and the model live in
+ * `@nessie/spreadsheet`; what happens here is the two-phase dance the rest of
+ * this package uses everywhere: plan on the model at head to find out whether
+ * anything changes, then send the change through the one write door.
  */
 
 export type FilterActor = {
@@ -38,101 +41,91 @@ export const getSpreadsheetFilters = async (
   return parseFilters(head.filters)
 }
 
-type PlannedFilter = {
-  delta: FilterDelta
-  model: SpreadsheetFilterModel | null
+export type SetFilterResult = {
   filters: SpreadsheetFilters
+  batch: ApplySpreadsheetBatchResult | null
+  /** True when the stored model no longer described the sheet and was dropped. */
+  dropped: boolean
+  hidden: number[]
+  shown: number[]
 }
 
+type FilterChange =
+  | { kind: 'set'; model: SpreadsheetFilterModel }
+  | { kind: 'clear' }
+  | { kind: 'reapply' }
+
 /**
- * Work out what a filter change hides and unhides, on the model at head.
- *
- * A model whose range no longer fits its sheet is dropped rather than applied:
- * it describes a grid that a structural batch has since taken away, and
- * applying it would hide rows nobody asked about.
+ * Decide, on the model at head, what this change does — without writing
+ * anything. The engine calls `applyFilter`/`clearFilter` make are performed on
+ * the cached model and their diffs are *discarded*; the real mutation is
+ * replayed inside the write door's own transaction, on the model at head under
+ * the lock, so the journal and the head can never disagree about what landed.
  */
-const planFilter = async (
+const planFilterChange = async (
   deps: SpreadsheetServiceDeps,
   input: { organizationId: string; pageId: string; sheet: number },
-  next: SpreadsheetFilterModel | null,
-): Promise<PlannedFilter & { stale: boolean }> =>
+  change: FilterChange,
+): Promise<{ outcome: ApplyFilterResult | null; stale: boolean; current: SpreadsheetFilterModel | null }> =>
   deps.prisma.$transaction(async (tx) => {
     await lockSpreadsheetPage(tx as never, input.pageId)
     const head = await loadHead(tx as never, input.organizationId, input.pageId)
     const workbook = await modelAtHead(deps, tx as never, head)
-    const filters = parseFilters(head.filters)
-    const current = filters[String(input.sheet)] ?? null
     const sheets = workbook.model.sheets()
     if (input.sheet < 0 || input.sheet >= sheets.length) {
       throw invalidRequest('That sheet does not exist', { sheet: input.sheet })
     }
+    const filters = parseFilters(head.filters)
+    const current = filters[String(input.sheet)] ?? null
 
-    if (!next) {
-      // Clearing: unhide exactly the rows this model hid, and nothing else.
-      return {
-        delta: { hide: [], unhide: current?.hiddenRows ?? [], hiddenRows: [] },
-        model: null,
-        filters,
-        stale: false,
-      }
+    if (change.kind === 'clear') {
+      if (!current) return { outcome: null, stale: false, current: null }
+      return { outcome: clearFilter(workbook.model, input.sheet, current), stale: false, current }
     }
 
-    const [, , maxRow] = [
-      ...workbook.model.dimensions(input.sheet),
-    ] as [number, number, number, number]
-    const stale = next.range.r0 > Math.max(maxRow, 1)
-    if (stale) {
+    const wanted = change.kind === 'set' ? change.model : current
+    if (!wanted) throw invalidRequest('That sheet has no filter', { sheet: input.sheet })
+
+    // A model whose header row is past the end of the sheet describes a grid a
+    // structural batch took away. Dropped with an audit note rather than
+    // applied — applying it would hide rows nobody asked about.
+    const [, , maxRow] = workbook.model.dimensions(input.sheet)
+    if (wanted.range.r0 > Math.max(maxRow, 1)) {
       return {
-        delta: { hide: [], unhide: current?.hiddenRows ?? [], hiddenRows: [] },
-        model: null,
-        filters,
+        outcome: current ? clearFilter(workbook.model, input.sheet, current) : null,
         stale: true,
+        current,
       }
     }
 
-    const delta = evaluateFilter(workbook.model, input.sheet, {
-      ...next,
-      hiddenRows: current?.hiddenRows ?? [],
-    })
-    return { delta, model: { ...next, hiddenRows: delta.hiddenRows }, filters, stale: false }
+    return {
+      outcome: applyFilter(
+        workbook.model,
+        input.sheet,
+        // Carry forward the rows this filter hid, so a re-apply unhides
+        // exactly those and never somebody's manual hide.
+        { ...wanted, hiddenRows: current?.hiddenRows ?? wanted.hiddenRows },
+        String(Number(head.headSeq) + 1),
+      ),
+      stale: false,
+      current,
+    }
   })
 
-const applyFilterDelta = async (
+const sendFilterBatch = async (
   deps: SpreadsheetServiceDeps,
   input: {
     organizationId: string
     pageId: string
     sheet: number
     who: FilterActor
-    planned: PlannedFilter
-    headSeqAfter: (seq: number) => void
+    outcome: ApplyFilterResult
+    model: SpreadsheetFilterModel
   },
 ): Promise<ApplySpreadsheetBatchResult | null> => {
-  const { delta } = input.planned
-  if (delta.hide.length === 0 && delta.unhide.length === 0) return null
-  const summary: SpreadsheetBatchSummary = {
-    structuralKind: null,
-    sheetIndexes: [input.sheet],
-    cellCount: delta.hide.length + delta.unhide.length,
-    touched: [],
-    intents: [
-      ...toRuns(delta.unhide).map((run) => ({
-        kind: 'setRowsHidden' as const,
-        sheet: input.sheet,
-        start: run.start,
-        end: run.end,
-        hidden: false,
-      })),
-      ...toRuns(delta.hide).map((run) => ({
-        kind: 'setRowsHidden' as const,
-        sheet: input.sheet,
-        start: run.start,
-        end: run.end,
-        hidden: true,
-      })),
-    ].slice(0, 200),
-  }
-  const result = await applySpreadsheetBatch(
+  const { hidden, shown } = input.outcome
+  if (hidden.length === 0 && shown.length === 0) return null
+  return applySpreadsheetBatch(
     deps,
     {
       organizationId: input.organizationId,
@@ -143,19 +136,26 @@ const applyFilterDelta = async (
       source: {
         kind: 'server',
         mutate: (model) => {
-          for (const run of toRuns(delta.unhide)) {
-            model.setRowsHidden(input.sheet, run.start, run.end, false)
-          }
-          for (const run of toRuns(delta.hide)) {
-            model.setRowsHidden(input.sheet, run.start, run.end, true)
-          }
+          // Replayed at head under the lock rather than reusing the planning
+          // model's diffs: between planning and committing another batch may
+          // have landed, and `setRowsHidden` is idempotent by row index.
+          for (const [start, end] of runsOf(shown)) model.setRowsHidden(input.sheet, start, end, false)
+          for (const [start, end] of runsOf(hidden)) model.setRowsHidden(input.sheet, start, end, true)
         },
       },
     },
-    summary,
+    input.outcome.summary,
   )
-  input.headSeqAfter(result.headSeq)
-  return result
+}
+
+const runsOf = (rows: number[]): [number, number][] => {
+  const runs: [number, number][] = []
+  for (const row of [...rows].sort((a, b) => a - b)) {
+    const last = runs[runs.length - 1]
+    if (last && row === last[1] + 1) last[1] = row
+    else runs.push([row, row])
+  }
+  return runs
 }
 
 const persistFilters = async (
@@ -174,11 +174,65 @@ const persistFilters = async (
     return next
   })
 
-export type SetFilterResult = {
-  filters: SpreadsheetFilters
-  batch: ApplySpreadsheetBatchResult | null
-  /** True when the stored model no longer described the sheet and was dropped. */
-  dropped: boolean
+const auditDroppedFilter = async (
+  deps: SpreadsheetServiceDeps,
+  input: { organizationId: string; pageId: string; sheet: number; who: FilterActor },
+): Promise<void> => {
+  if (!deps.writeAudit) return
+  await deps.prisma.$transaction(async (tx) => {
+    const page = await tx.knowledgePage.findUniqueOrThrow({
+      where: { id: input.pageId },
+      select: { projectId: true, teamId: true },
+    })
+    await deps.writeAudit?.(tx, {
+      organizationId: input.organizationId,
+      projectId: page.projectId,
+      teamId: page.teamId,
+      actorType: input.who.actor.type,
+      actorId: input.who.actor.id,
+      action: 'kb.spreadsheet.filter_dropped',
+      resourceId: input.pageId,
+      metadata: { sheet: input.sheet, reason: 'the filtered range is no longer on the sheet' },
+    })
+  })
+}
+
+const changeFilter = async (
+  deps: SpreadsheetServiceDeps,
+  input: {
+    organizationId: string
+    pageId: string
+    sheet: number
+    who: FilterActor
+    change: FilterChange
+  },
+): Promise<SetFilterResult> => {
+  const planned = await planFilterChange(deps, input, input.change)
+  const batch = planned.outcome
+    ? await sendFilterBatch(deps, {
+        ...input,
+        outcome: planned.outcome,
+        model: planned.outcome.filter,
+      })
+    : null
+
+  const keep = !planned.stale && input.change.kind !== 'clear' && planned.outcome !== null
+  const filters = await persistFilters(deps, input.pageId, (current) => {
+    const next = { ...current }
+    if (keep && planned.outcome) next[String(input.sheet)] = planned.outcome.filter
+    else delete next[String(input.sheet)]
+    return next
+  })
+
+  if (planned.stale) await auditDroppedFilter(deps, input)
+
+  return {
+    filters,
+    batch,
+    dropped: planned.stale,
+    hidden: planned.outcome?.hidden ?? [],
+    shown: planned.outcome?.shown ?? [],
+  }
 }
 
 export const setSpreadsheetFilter = async (
@@ -195,74 +249,15 @@ export const setSpreadsheetFilter = async (
   if (!parsed.success) {
     throw invalidRequest('That filter could not be read', { issues: parsed.error.issues })
   }
-  return applyFilterModel(deps, { ...input, next: parsed.data })
+  return changeFilter(deps, { ...input, change: { kind: 'set', model: parsed.data } })
 }
 
-export const clearSpreadsheetFilter = async (
+export const clearSpreadsheetFilter = (
   deps: SpreadsheetServiceDeps,
   input: { organizationId: string; pageId: string; sheet: number; who: FilterActor },
-): Promise<SetFilterResult> => applyFilterModel(deps, { ...input, next: null })
+): Promise<SetFilterResult> => changeFilter(deps, { ...input, change: { kind: 'clear' } })
 
-export const reapplySpreadsheetFilter = async (
+export const reapplySpreadsheetFilter = (
   deps: SpreadsheetServiceDeps,
   input: { organizationId: string; pageId: string; sheet: number; who: FilterActor },
-): Promise<SetFilterResult> => {
-  const filters = await getSpreadsheetFilters(deps, input)
-  const current = filters[String(input.sheet)]
-  if (!current) throw invalidRequest('That sheet has no filter', { sheet: input.sheet })
-  return applyFilterModel(deps, { ...input, next: current })
-}
-
-const applyFilterModel = async (
-  deps: SpreadsheetServiceDeps,
-  input: {
-    organizationId: string
-    pageId: string
-    sheet: number
-    who: FilterActor
-    next: SpreadsheetFilterModel | null
-  },
-): Promise<SetFilterResult> => {
-  const planned = await planFilter(deps, input, input.next)
-  let appliedSeq = 0
-  const batch = await applyFilterDelta(deps, {
-    organizationId: input.organizationId,
-    pageId: input.pageId,
-    sheet: input.sheet,
-    who: input.who,
-    planned,
-    headSeqAfter: (seq) => {
-      appliedSeq = seq
-    },
-  })
-
-  const filters = await persistFilters(deps, input.pageId, (current) => {
-    const next = { ...current }
-    if (planned.model) next[String(input.sheet)] = { ...planned.model, appliedAtSeq: appliedSeq }
-    else delete next[String(input.sheet)]
-    return next
-  })
-
-  if (planned.stale && deps.writeAudit) {
-    // A dropped model is a fact about the person's document, not a silent
-    // repair: the audit row is where "your filter stopped existing" is said.
-    await deps.prisma.$transaction(async (tx) => {
-      const page = await tx.knowledgePage.findUniqueOrThrow({
-        where: { id: input.pageId },
-        select: { projectId: true, teamId: true },
-      })
-      await deps.writeAudit?.(tx, {
-        organizationId: input.organizationId,
-        projectId: page.projectId,
-        teamId: page.teamId,
-        actorType: input.who.actor.type,
-        actorId: input.who.actor.id,
-        action: 'kb.spreadsheet.filter_dropped',
-        resourceId: input.pageId,
-        metadata: { sheet: input.sheet, reason: 'range outside the sheet' },
-      })
-    })
-  }
-
-  return { filters, batch, dropped: planned.stale }
-}
+): Promise<SetFilterResult> => changeFilter(deps, { ...input, change: { kind: 'reapply' } })

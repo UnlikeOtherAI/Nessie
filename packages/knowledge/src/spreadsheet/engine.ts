@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { SPREADSHEET_ENGINE_VERSION } from '@nessie/schemas'
-import { wrapNodeModel, type SpreadsheetEngineModel } from '@nessie/spreadsheet'
+import { isEmptyDiffs, wrapNodeModel, type SpreadsheetEngineModel } from '@nessie/spreadsheet'
 
 import { batchRejected, unsupportedFeature } from './errors.js'
 
@@ -140,9 +140,36 @@ export const recordDiffs = (
  * payload on every microtask, and each one would burn a `seq`, write a journal
  * row and wake every open pane for a change nobody made. The write door
  * refuses them, so the guard holds however the client is written.
+ *
+ * Zero bytes counts too: that is the shape `restore` and `engine-migrate`
+ * write, and neither goes through the write door.
  */
 export const isEmptyDiffPayload = (diffs: Uint8Array): boolean =>
-  diffs.byteLength === 0 || (diffs.byteLength === 1 && diffs[0] === 0)
+  diffs.byteLength === 0 || isEmptyDiffs(diffs)
+
+/**
+ * Whether this process may hand a foreign workbook to the engine.
+ *
+ * **`fromXlsx` plus `evaluate()` on a foreign file writes to fd 1 from a Rust
+ * thread** — one `Unexpected type (empty) in Sheet!Cell` line per affected
+ * cell, tens of thousands for a small workbook. When that write fails, the
+ * engine panics inside the napi call and the panic crosses the boundary as
+ * `fatal runtime error`, which `try`/`catch` never sees: the whole process
+ * dies. On an API replica that is every open stream in the building.
+ *
+ * So parsing is a capability, granted once by a composition root that can
+ * afford to lose its process — the worker, and a test. The API grants it to
+ * nothing, and a route that tried to import inline gets a clear refusal here
+ * rather than taking the replica down in production. A grep would not have
+ * held: this is checked at the call.
+ */
+let xlsxParsingEnabled = false
+
+export const enableXlsxParsing = (): void => {
+  xlsxParsingEnabled = true
+}
+
+export const isXlsxParsingEnabled = (): boolean => xlsxParsingEnabled
 
 /**
  * A private 0700 directory whose whole contents are removed afterwards.
@@ -177,8 +204,14 @@ export const exportXlsxBytes = (workbook: SpreadsheetWorkbook): Buffer =>
  * values — an import that skipped it would write a broken version of record.
  * The call is here, not at the call sites, so it cannot be forgotten.
  */
-export const importXlsxBytes = (bytes: Buffer): SpreadsheetWorkbook =>
-  withTempDirectory((dir) => {
+export const importXlsxBytes = (bytes: Buffer): SpreadsheetWorkbook => {
+  if (!xlsxParsingEnabled) {
+    throw unsupportedFeature(
+      'This process may not parse workbooks; the import runs on the worker.',
+      { reason: 'XLSX_PARSING_NOT_ENABLED_IN_THIS_PROCESS' },
+    )
+  }
+  return withTempDirectory((dir) => {
     const file = join(dir, `${randomUUID()}.xlsx`)
     writeFileSync(file, bytes, { mode: 0o600 })
     let native: RawUserModel
@@ -193,6 +226,7 @@ export const importXlsxBytes = (bytes: Buffer): SpreadsheetWorkbook =>
     native.evaluate()
     return wrap(native)
   })
+}
 
 /**
  * Paste a rectangular block into a sheet.

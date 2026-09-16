@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
+import { SPREADSHEET_LIMITS } from '@nessie/schemas'
 import {
-  SPREADSHEET_LIMITS,
   createSpreadsheetService,
   createSpreadsheetSnapshot,
   type SpreadsheetModelCache,

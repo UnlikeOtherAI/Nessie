@@ -1,41 +1,131 @@
 import { Readable } from 'node:stream'
 
 import type { LedgerAttribution } from '@nessie/runtime'
+import { importCsv } from '@nessie/spreadsheet'
+import {
+  detectWorkbookFormat,
+  scanXlsxWarnings,
+  type XlsxImportWarning,
+} from '@nessie/spreadsheet/xlsx-warnings'
 
+import { writeSpreadsheetHead } from './create.js'
 import {
   createEmptyWorkbook,
+  engineVersion,
   importXlsxBytes,
-  pasteBlock,
   type SpreadsheetWorkbook,
 } from './engine.js'
-import { writeSpreadsheetHead } from './create.js'
 import { invalidRequest, tooLarge, unsupportedFeature } from './errors.js'
+import { lockSpreadsheetPage, loadHead } from './head.js'
 import { createSpreadsheetSnapshot } from './snapshot.js'
-import { detectWorkbookFormat, inspectXlsx, type XlsxWarning } from './xlsx-inspect.js'
+import { declaredUncompressedBytes } from './zip-size.js'
 import type { SpreadsheetServiceDeps, SpreadsheetWriteActor } from './deps.js'
 import type { KnowledgePageRecord } from '../types.js'
 
 /**
  * Import, and converting an uploaded file node into a spreadsheet.
  *
- * The caps below are the spike's, not the plan's: a 3.27 MB xlsx already needs
+ * **The parse runs on the worker, never on an API request.** `fromXlsx` plus
+ * `evaluate()` on a foreign workbook writes one diagnostic line per affected
+ * cell to fd 1 from a Rust thread — tens of thousands of them for a small file
+ * — and when that write fails the engine panics inside the napi call and the
+ * process dies, uncatchably. `engine.ts` makes that a capability the API never
+ * grants, so this module's parsing half only runs where it is safe.
+ *
+ * The caps are the spike's, not the plan's: a 3.27 MB xlsx already needs
  * ~864 MB resident and sheet XML decompresses about 11:1, so the plan's 64 MiB
  * parse cap would admit a workbook needing roughly 15 GB. The binding has no
  * cap of its own, so this is the only place one exists.
  *
- * TODO(coordinator): these three numbers belong in `SPREADSHEET_LIMITS`
- * (`packages/schemas/src/spreadsheet.ts`, which Phase 0 owns) as
- * `maxImportBytes` / `maxImportUncompressedBytes` / `maxImportCells`. They are
- * here so this phase is buildable; moving them is an import change.
+ * TODO(coordinator): these belong in `SPREADSHEET_LIMITS`
+ * (`packages/schemas/src/spreadsheet.ts`, Phase 0's file) as `maxImportBytes`
+ * / `maxImportUncompressedBytes` / `maxCsvImportBytes`. They are here so this
+ * phase is buildable; moving them is an import change.
  */
 export const SPREADSHEET_IMPORT_LIMITS = {
   /** Compressed upload size. */
   maxImportBytes: 16 * 1024 * 1024,
-  /** Declared uncompressed size across the whole package (~2 M cells, ~1.7 GB RSS). */
+  /** Declared uncompressed size across the package (~2 M cells, ~1.7 GB RSS). */
   maxImportUncompressedBytes: 256 * 1024 * 1024,
   /** A CSV is not compressed, so its own cap is lower. */
   maxCsvBytes: 32 * 1024 * 1024,
 } as const
+
+export type { XlsxImportWarning }
+
+/**
+ * Everything that can be decided about an upload **without handing it to the
+ * engine**: the format, the caps and the loss list. Safe on any process, and
+ * what the API route runs before it enqueues the parse.
+ */
+export const inspectUpload = (
+  filename: string,
+  bytes: Buffer,
+): { format: 'xlsx' | 'csv'; warnings: XlsxImportWarning[] } => {
+  const format = detectWorkbookFormat(bytes.subarray(0, 1_024))
+
+  if (format === 'xls') {
+    // Refused by name, not by the engine's message: its error for a 1997 file
+    // is byte-identical to its error for a corrupt zip, so without sniffing a
+    // person who uploaded an old file is told their file is broken.
+    throw unsupportedFeature(
+      'This is the older .xls format. Open it and save it as .xlsx, then upload that.',
+      { filename },
+    )
+  }
+
+  if (format === 'xlsx') {
+    if (bytes.byteLength > SPREADSHEET_IMPORT_LIMITS.maxImportBytes) {
+      throw tooLarge('That workbook is too large to import', {
+        bytes: bytes.byteLength,
+        maxBytes: SPREADSHEET_IMPORT_LIMITS.maxImportBytes,
+      })
+    }
+    const uncompressed = declaredUncompressedBytes(bytes)
+    if (uncompressed === null) {
+      throw unsupportedFeature('That file could not be read as a workbook', { filename })
+    }
+    if (uncompressed > SPREADSHEET_IMPORT_LIMITS.maxImportUncompressedBytes) {
+      throw tooLarge('That workbook expands to more than this instance will open', {
+        uncompressedBytes: uncompressed,
+        maxUncompressedBytes: SPREADSHEET_IMPORT_LIMITS.maxImportUncompressedBytes,
+      })
+    }
+    return { format: 'xlsx', warnings: scanXlsxWarnings(bytes) }
+  }
+
+  if (format === 'csv-or-text') {
+    if (bytes.byteLength > SPREADSHEET_IMPORT_LIMITS.maxCsvBytes) {
+      throw tooLarge('That file is too large to import', {
+        bytes: bytes.byteLength,
+        maxBytes: SPREADSHEET_IMPORT_LIMITS.maxCsvBytes,
+      })
+    }
+    return { format: 'csv', warnings: [] }
+  }
+
+  throw unsupportedFeature('That file is not a spreadsheet', { filename })
+}
+
+/**
+ * The workbook an upload becomes. **Worker only** for an xlsx — `engine.ts`
+ * refuses to parse one in a process that has not been granted the capability.
+ */
+export const workbookFromUpload = (
+  filename: string,
+  bytes: Buffer,
+): { workbook: SpreadsheetWorkbook; warnings: XlsxImportWarning[] } => {
+  const { format, warnings } = inspectUpload(filename, bytes)
+  if (format === 'xlsx') return { workbook: importXlsxBytes(bytes), warnings }
+
+  const workbook = createEmptyWorkbook('Sheet1')
+  // `pasteCsvString` is tab-separated despite its name, so a real CSV is
+  // parsed by `@nessie/spreadsheet`'s own reader and handed over as a block.
+  const result = importCsv(workbook.model, { csv: bytes.toString('utf8'), sheet: 0 })
+  if (result.rowCount === 0) throw invalidRequest('That file has no rows', { filename })
+  workbook.model.evaluate()
+  return { workbook, warnings }
+}
 
 export type ImportSpreadsheetInput = {
   organizationId: string
@@ -54,100 +144,21 @@ export type ImportSpreadsheetInput = {
 export type ImportSpreadsheetResult = {
   page: KnowledgePageRecord
   versionId: string
-  warnings: XlsxWarning[]
+  warnings: XlsxImportWarning[]
 }
 
-const parseCsv = (text: string): string[][] => {
-  // RFC 4180: quotes, doubled quotes inside them, embedded newlines and CRLF.
-  // `pasteCsvString` cannot do this — despite its name it splits on TABS — so
-  // a CSV is parsed here and handed over as a tab-joined block.
-  const rows: string[][] = []
-  let row: string[] = []
-  let field = ''
-  let quoted = false
-  for (let index = 0; index < text.length; index++) {
-    const char = text[index]
-    if (quoted) {
-      if (char === '"') {
-        if (text[index + 1] === '"') {
-          field += '"'
-          index += 1
-        } else quoted = false
-      } else field += char
-      continue
-    }
-    if (char === '"') { quoted = true; continue }
-    if (char === ',') { row.push(field); field = ''; continue }
-    if (char === '\r') continue
-    if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; continue }
-    field += char
-  }
-  if (field !== '' || row.length > 0) {
-    row.push(field)
-    rows.push(row)
-  }
-  return rows
-}
-
-/** The workbook an upload becomes, with whatever the import will lose. */
-export const workbookFromUpload = (
-  filename: string,
-  bytes: Buffer,
-): { workbook: SpreadsheetWorkbook; warnings: XlsxWarning[] } => {
-  const format = detectWorkbookFormat(bytes.subarray(0, 1_024))
-
-  if (format === 'xls') {
-    // Refused by name, not by the engine's message: its error for a 1997 file
-    // is byte-identical to its error for a corrupt zip.
-    throw unsupportedFeature(
-      'This is the older .xls format. Open it and save it as .xlsx, then upload that.',
-      { filename },
-    )
-  }
-
-  if (format === 'xlsx') {
-    if (bytes.byteLength > SPREADSHEET_IMPORT_LIMITS.maxImportBytes) {
-      throw tooLarge('That workbook is too large to import', {
-        bytes: bytes.byteLength,
-        maxBytes: SPREADSHEET_IMPORT_LIMITS.maxImportBytes,
-      })
-    }
-    const inspection = inspectXlsx(bytes)
-    if (!inspection.entries) {
-      throw unsupportedFeature('That file could not be read as a workbook', { filename })
-    }
-    if (inspection.declaredUncompressedBytes > SPREADSHEET_IMPORT_LIMITS.maxImportUncompressedBytes) {
-      throw tooLarge('That workbook expands to more than this instance will open', {
-        uncompressedBytes: inspection.declaredUncompressedBytes,
-        maxUncompressedBytes: SPREADSHEET_IMPORT_LIMITS.maxImportUncompressedBytes,
-      })
-    }
-    return { workbook: importXlsxBytes(bytes), warnings: inspection.warnings }
-  }
-
-  if (format === 'csv-or-text') {
-    if (bytes.byteLength > SPREADSHEET_IMPORT_LIMITS.maxCsvBytes) {
-      throw tooLarge('That file is too large to import', {
-        bytes: bytes.byteLength,
-        maxBytes: SPREADSHEET_IMPORT_LIMITS.maxCsvBytes,
-      })
-    }
-    const rows = parseCsv(bytes.toString('utf8'))
-    if (rows.length === 0) throw invalidRequest('That file has no rows', { filename })
-    const workbook = createEmptyWorkbook('Sheet1')
-    pasteBlock(workbook, 0, 1, 1, rows)
-    workbook.model.evaluate()
-    return { workbook, warnings: [] }
-  }
-
-  throw unsupportedFeature('That file is not a spreadsheet', { filename })
-}
-
-export const importSpreadsheet = async (
+/**
+ * Create the page, keep the upload beside it, and leave it empty.
+ *
+ * The API runs this: it decides the format, the caps and the loss list without
+ * the engine, then enqueues the parse. The page exists immediately — Rule zero
+ * — so it appears in the tree and can be opened while the worker fills it.
+ */
+export const stageSpreadsheetImport = async (
   deps: SpreadsheetServiceDeps,
   input: ImportSpreadsheetInput,
-): Promise<ImportSpreadsheetResult> => {
-  const { workbook, warnings } = workbookFromUpload(input.filename, input.bytes)
+): Promise<{ page: KnowledgePageRecord; attachmentId: string; warnings: XlsxImportWarning[] }> => {
+  const { warnings } = inspectUpload(input.filename, input.bytes)
 
   const page = await deps.createPage({
     organizationId: input.organizationId,
@@ -164,6 +175,7 @@ export const importSpreadsheet = async (
     taskId: input.taskId ?? null,
   })
 
+  const workbook = createEmptyWorkbook('Sheet1')
   await deps.prisma.$transaction((tx) =>
     writeSpreadsheetHead(tx, {
       pageId: page.id,
@@ -171,38 +183,106 @@ export const importSpreadsheet = async (
       workbook,
     }),
   )
-  deps.cache.set(page.id, {
-    workbook,
-    seq: 0,
-    engineVersion: (await import('./engine.js')).engineVersion(),
-    bytes: 0,
-  })
 
   // The upload itself is kept beside the page, so "what did I actually send?"
-  // has an answer that no import decision can take away.
-  await deps.fileService
-    .store({
-      attribution: input.attribution,
-      body: Readable.from([input.bytes]),
-      filename: input.filename,
-      mime: 'application/octet-stream',
-      organizationId: input.organizationId,
-      scope: { projectId: page.projectId, teamId: page.teamId, spaceId: page.spaceId },
-      uploaderId: input.actor.type === 'user' ? input.actor.id : null,
-      knowledgePageId: page.id,
+  // has an answer no import decision can take away — and so the worker has
+  // bytes to read rather than a payload to carry.
+  const stored = await deps.fileService.store({
+    attribution: input.attribution,
+    body: Readable.from([input.bytes]),
+    filename: input.filename,
+    mime: 'application/octet-stream',
+    organizationId: input.organizationId,
+    scope: { projectId: page.projectId, teamId: page.teamId, spaceId: page.spaceId },
+    uploaderId: input.actor.type === 'user' ? input.actor.id : null,
+    knowledgePageId: page.id,
+  })
+
+  return { page, attachmentId: stored.attachment.id, warnings }
+}
+
+/**
+ * Fill a staged page from its upload. **Worker only.**
+ *
+ * The workbook replaces the head's hot snapshot and appends a `restore` batch,
+ * exactly as a restore does, so any pane already open on the empty page
+ * re-bootstraps instead of trying to apply diffs it cannot have.
+ */
+export const completeSpreadsheetImport = async (
+  deps: SpreadsheetServiceDeps,
+  input: {
+    organizationId: string
+    pageId: string
+    attachmentId: string
+    filename: string
+    actor: SpreadsheetWriteActor
+    attribution: LedgerAttribution
+  },
+): Promise<{ versionId: string; warnings: XlsxImportWarning[] }> => {
+  const opened = await deps.fileService.openStream(input.attachmentId, input.organizationId)
+  if (!opened) throw invalidRequest('The uploaded file could not be read', { pageId: input.pageId })
+  const chunks: Buffer[] = []
+  for await (const chunk of opened.stream) chunks.push(Buffer.from(chunk as Buffer))
+
+  const { workbook, warnings } = workbookFromUpload(input.filename, Buffer.concat(chunks))
+  const bytes = Buffer.from(workbook.model.toBytes())
+  const sheetNames = workbook.model.sheets().map((sheet) => sheet.name)
+
+  const seq = await deps.prisma.$transaction(async (tx) => {
+    await lockSpreadsheetPage(tx as never, input.pageId)
+    const head = await loadHead(tx as never, input.organizationId, input.pageId)
+    const next = Number(head.headSeq) + 1
+    await tx.spreadsheetOpBatch.create({
+      data: {
+        pageId: input.pageId,
+        organizationId: input.organizationId,
+        seq: BigInt(next),
+        baseSeq: head.headSeq,
+        clientOpId: `import:${input.attachmentId}`,
+        actorType: input.actor.type,
+        actorId: input.actor.id,
+        agentId: input.actor.agentId ?? null,
+        engineVersion: engineVersion(),
+        diffs: Buffer.alloc(0),
+        structuralKind: 'restore',
+        sheetIndexes: [],
+        cellCount: 0,
+        summary: { structuralKind: 'restore', sheetIndexes: [], cellCount: 0, touched: [] },
+      },
     })
-    .catch(() => undefined)
+    await tx.spreadsheetHead.update({
+      where: { pageId: input.pageId },
+      data: {
+        headSeq: BigInt(next),
+        hotSnapshot: bytes,
+        hotSnapshotSeq: BigInt(next),
+        engineVersion: engineVersion(),
+        sheetNames,
+        batchesSinceSnapshot: { increment: 1 },
+        lastOpAt: new Date(),
+      },
+    })
+    return next
+  })
+
+  deps.cache.evict(input.pageId)
+  deps.cache.set(input.pageId, {
+    workbook,
+    seq,
+    engineVersion: engineVersion(),
+    bytes: bytes.byteLength,
+  })
 
   const snapshot = await createSpreadsheetSnapshot(deps, {
     organizationId: input.organizationId,
-    pageId: page.id,
+    pageId: input.pageId,
     actor: input.actor,
     attribution: input.attribution,
     reason: 'import',
     changeComment: `import: ${input.filename}`,
   })
 
-  return { page, versionId: snapshot.versionId, warnings }
+  return { versionId: snapshot.versionId, warnings }
 }
 
 export type ConvertFileInput = {
@@ -217,25 +297,28 @@ export type ConvertFileInput = {
  * A `.xlsx` or `.csv` file node becomes a spreadsheet page beside it. The
  * original file node is kept: converting is an addition, never a replacement.
  */
-export const convertFileToSpreadsheet = async (
+export const stageFileConversion = async (
   deps: SpreadsheetServiceDeps,
   input: ConvertFileInput,
-): Promise<ImportSpreadsheetResult> => {
+): Promise<{
+  page: KnowledgePageRecord
+  attachmentId: string
+  filename: string
+  warnings: XlsxImportWarning[]
+}> => {
   const page = await deps.prisma.knowledgePage.findFirst({
     where: { id: input.pageId, organizationId: input.organizationId, deletedAt: null },
     select: {
       id: true, title: true, kind: true, spaceId: true, projectId: true, parentPageId: true,
       taskId: true,
-      versions: {
-        orderBy: { versionNumber: 'desc' },
-        take: 1,
-        select: { attachmentId: true },
-      },
+      versions: { orderBy: { versionNumber: 'desc' }, take: 1, select: { attachmentId: true } },
     },
   })
   if (!page) throw invalidRequest('Page not found', { pageId: input.pageId })
   if (page.kind !== 'file') {
-    throw invalidRequest('Only an uploaded file can be opened as a spreadsheet', { pageId: input.pageId })
+    throw invalidRequest('Only an uploaded file can be opened as a spreadsheet', {
+      pageId: input.pageId,
+    })
   }
   const attachmentId = page.versions[0]?.attachmentId
   if (!attachmentId) throw invalidRequest('That file has no stored bytes', { pageId: input.pageId })
@@ -249,7 +332,7 @@ export const convertFileToSpreadsheet = async (
   const chunks: Buffer[] = []
   for await (const chunk of opened.stream) chunks.push(Buffer.from(chunk as Buffer))
 
-  return importSpreadsheet(deps, {
+  const staged = await stageSpreadsheetImport(deps, {
     organizationId: input.organizationId,
     spaceId: page.spaceId,
     projectId: page.projectId,
@@ -262,4 +345,5 @@ export const convertFileToSpreadsheet = async (
     attribution: input.attribution,
     createdBy: input.actor.id,
   })
+  return { ...staged, filename: attachment?.filename ?? page.title }
 }

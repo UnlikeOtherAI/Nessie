@@ -2,7 +2,7 @@ import { Readable } from 'node:stream'
 
 import { Prisma } from '@prisma/client'
 import type { LedgerAttribution } from '@nessie/runtime'
-import { canonicalHash } from '@nessie/spreadsheet'
+import { canonicalHash, projectWorkbook } from '@nessie/spreadsheet'
 
 import { exportXlsxBytes } from './engine.js'
 import {
@@ -11,7 +11,6 @@ import {
   lockSpreadsheetPage,
   modelAtHead,
 } from './head.js'
-import { projectWorkbookText } from './projection.js'
 import type { SpreadsheetServiceDeps, SpreadsheetWriteActor } from './deps.js'
 
 /**
@@ -85,7 +84,7 @@ const renderAtHead = async (
       // why a large export belongs on the worker. At Nessie's caps this is
       // tens of milliseconds.
       xlsx: exportXlsxBytes(workbook),
-      body: projectWorkbookText(workbook.model),
+      body: projectWorkbook(workbook.model),
       // Never a hash of the bytes: `toBytes()` is not byte-deterministic, so
       // an unchanged workbook would hash differently on every save.
       sourceContentHash: canonicalHash(workbook.model),

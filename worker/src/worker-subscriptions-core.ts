@@ -66,6 +66,17 @@ import { executeExecutorCommandJob } from './control/executor-commands.js'
 import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
 import { handleCallRingDispatch, handleCallRingCancel } from './control/call-ring-dispatch.js'
 import { handleCallRingTimeout } from './control/call-lifecycle.js'
+import {
+  SPREADSHEET_COMPACT_TOPIC,
+  SpreadsheetCompactJobPayloadSchema,
+  executeSpreadsheetCompactJob,
+} from './control/spreadsheet-compact.js'
+import {
+  SPREADSHEET_IMPORT_TOPIC,
+  SpreadsheetImportJobPayloadSchema,
+  executeSpreadsheetImportJob,
+} from './control/spreadsheet-import.js'
+import { createNativeKnowledgeProvider, createSpreadsheetModelCache } from '@nessie/knowledge'
 import type { WorkerCoreSubscriptionDeps } from './worker-runtime-types.js'
 export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps): boolean => {
   const {
@@ -328,6 +339,43 @@ subscribe(
   { signal: abortSignal },
 )
 
+// One model cache for this process, shared by both spreadsheet jobs: closure
+// state of this registration, never module scope. A busy page compacted twice
+// in a minute is loaded once.
+const spreadsheetCache = createSpreadsheetModelCache()
+const spreadsheetProvider = createNativeKnowledgeProvider(prisma, {
+  readMarkdownAttachment: async (attachmentId, organizationId) =>
+    (await fileService.openStream(attachmentId, organizationId))?.stream ?? null,
+})
+const spreadsheetDeps = {
+  prisma,
+  fileService,
+  cache: spreadsheetCache,
+  realtime: realtimeTransport,
+  createPage: spreadsheetProvider.createPage,
+  addFileVersion: spreadsheetProvider.addFileVersion,
+}
+
+subscribe(
+  SPREADSHEET_IMPORT_TOPIC,
+  async (job) => {
+    await executeSpreadsheetImportJob(
+      spreadsheetDeps,
+      SpreadsheetImportJobPayloadSchema.parse(job.payload),
+    )
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  SPREADSHEET_COMPACT_TOPIC,
+  async (job) => {
+    await executeSpreadsheetCompactJob(
+      spreadsheetDeps,
+      SpreadsheetCompactJobPayloadSchema.parse(job.payload),
+    )
+  },
+  { signal: abortSignal },
+)
 subscribe(
   KNOWLEDGE_EMBED_TOPIC,
   async (job) => {

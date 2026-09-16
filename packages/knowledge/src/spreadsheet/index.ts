@@ -47,10 +47,12 @@ export {
 export {
   applyDiffs,
   createEmptyWorkbook,
+  enableXlsxParsing,
   engineVersion,
   exportXlsxBytes,
   importXlsxBytes,
   isEmptyDiffPayload,
+  isXlsxParsingEnabled,
   loadWorkbook,
   pasteBlock,
   recordDiffs,
@@ -69,12 +71,10 @@ export {
   tooLarge,
   unsupportedFeature,
 } from './errors.js'
-export { evaluateFilter, toRuns, type FilterDelta } from './filter-eval.js'
 export {
   SpreadsheetFilterModelSchema,
   SpreadsheetFiltersSchema,
   parseFilters,
-  rekeyFiltersForSheetChange,
   remapFiltersForBatch,
   type SpreadsheetFilterModel,
   type SpreadsheetFilters,
@@ -87,7 +87,6 @@ export {
   type FilterActor,
   type SetFilterResult,
 } from './filters.js'
-export { findInWorkbook, replacementFor, type SpreadsheetFindOptions, type SpreadsheetMatch } from './find.js'
 export {
   assertEngineMatches,
   hotSnapshotDue,
@@ -98,13 +97,16 @@ export {
 } from './head.js'
 export {
   SPREADSHEET_IMPORT_LIMITS,
-  convertFileToSpreadsheet,
-  importSpreadsheet,
+  completeSpreadsheetImport,
+  inspectUpload,
+  stageFileConversion,
+  stageSpreadsheetImport,
   workbookFromUpload,
   type ImportSpreadsheetInput,
   type ImportSpreadsheetResult,
+  type XlsxImportWarning,
 } from './import.js'
-export { exportSpreadsheet, renderCsv, type ExportFormat, type SpreadsheetExport } from './export.js'
+export { exportSpreadsheet, type ExportFormat, type SpreadsheetExport } from './export.js'
 export {
   createSpreadsheetModelCache,
   type CachedSpreadsheetModel,
@@ -117,7 +119,6 @@ export {
   requestSpreadsheetPresence,
   type PresenceBudget,
 } from './presence.js'
-export { PROJECTION_MAX_CHARS, projectWorkbookText } from './projection.js'
 export {
   bootstrapSpreadsheet,
   findInSpreadsheet,
@@ -142,13 +143,8 @@ export {
 export {
   replaceInSpreadsheet,
   restructureSpreadsheet,
-  type ReplaceResult,
-  type RestructureAction,
+  type RestructureInput,
+  type SpreadsheetAction,
+  type SpreadsheetReplaceResult,
 } from './writes.js'
-export {
-  detectWorkbookFormat,
-  inspectXlsx,
-  readZipCentralDirectory,
-  type XlsxInspection,
-  type XlsxWarning,
-} from './xlsx-inspect.js'
+export { declaredUncompressedBytes } from './zip-size.js'

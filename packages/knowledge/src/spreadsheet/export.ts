@@ -1,3 +1,5 @@
+import { exportCsv } from '@nessie/spreadsheet'
+
 import { exportXlsxBytes } from './engine.js'
 import { invalidRequest } from './errors.js'
 import { loadHead, lockSpreadsheetPage, modelAtHead } from './head.js'
@@ -21,9 +23,6 @@ export type SpreadsheetExport = {
   mime: string
   bytes: Buffer
 }
-
-const csvCell = (value: string): string =>
-  /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 
 export const exportSpreadsheet = async (
   deps: SpreadsheetServiceDeps,
@@ -56,7 +55,7 @@ export const exportSpreadsheet = async (
       : {
           filename: `${base}.csv`,
           mime: 'text/csv; charset=utf-8',
-          bytes: Buffer.from(renderCsv(workbook.model, input.sheet ?? 0), 'utf8'),
+          bytes: Buffer.from(exportCsv(workbook.model, input.sheet ?? 0), 'utf8'),
         }
   }
 
@@ -75,29 +74,8 @@ export const exportSpreadsheet = async (
     return {
       filename: `${base} - ${sheets[sheet]?.name ?? sheet}.csv`,
       mime: 'text/csv; charset=utf-8',
-      bytes: Buffer.from(renderCsv(workbook.model, sheet), 'utf8'),
+      bytes: Buffer.from(exportCsv(workbook.model, sheet), 'utf8'),
     }
   })
 }
 
-/**
- * CSV is ours, not the engine's: formatted values within the used range, RFC
- * 4180 quoting. Hidden columns still export — the engine carries them as
- * width 0 and a download is a copy of the data, not of the view.
- */
-export const renderCsv = (
-  model: Parameters<typeof exportXlsxBytes>[0]['model'],
-  sheet: number,
-): string => {
-  const [minRow, minColumn, maxRow, maxColumn] = model.dimensions(sheet)
-  const lines: string[] = []
-  for (let row = minRow; row <= maxRow; row++) {
-    const cells: string[] = []
-    for (let column = minColumn; column <= maxColumn; column++) {
-      cells.push(csvCell(model.formattedValue(sheet, row, column) ?? ''))
-    }
-    while (cells.length > 0 && cells[cells.length - 1] === '') cells.pop()
-    lines.push(cells.join(','))
-  }
-  return lines.join('\r\n')
-}
