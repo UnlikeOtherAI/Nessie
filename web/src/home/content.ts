@@ -1,5 +1,7 @@
 import {
   faBook,
+  faBullhorn,
+  faCalendarCheck,
   faCarSide,
   faClipboardCheck,
   faClock,
@@ -7,13 +9,18 @@ import {
   faEnvelope,
   faEnvelopeOpenText,
   faGlobe,
+  faFileLines,
   faHashtag,
+  faMagnifyingGlassChart,
   faPenToSquare,
+  faNewspaper,
   faPeopleArrows,
   faPlug,
   faRepeat,
   faReply,
   faServer,
+  faShieldHalved,
+  faUserPlus,
   faVideo,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
@@ -40,13 +47,28 @@ export const contactUrl = 'mailto:hello@nessie.works'
  * header does not keep.
  */
 export const navItems = [
-  { href: '#teammates', label: 'AI employees', menu: 'none' },
-  { href: '#teamwork', label: 'Teamwork', menu: 'none' },
-  { href: '#people', label: 'Your people', menu: 'none' },
+  {
+    href: '#teammates',
+    // The three sections of the argument, under the thing they are all about.
+    // As separate top-level links they read as three unrelated destinations
+    // and crowded out the two menus beside them.
+    items: [
+      { href: '#teammates', label: 'AI employees', summary: 'Hire a teammate in minutes, not months.' },
+      { href: '#teamwork', label: 'Teamwork', summary: 'A team of agents that works like a team.' },
+      { href: '#people', label: 'Your people', summary: 'Nobody loses their job. Everyone gets a better one.' },
+    ],
+    label: 'Your team',
+    menu: 'team',
+  },
   { href: '#pricing', label: 'Pricing', menu: 'none' },
   { href: '/docs/installation', label: 'Docs', menu: 'resources' },
   { href: '/eu', label: 'Why Nessie', menu: 'why' },
-] satisfies { href: string; label: string; menu: 'resources' | 'why' | 'none' }[]
+] satisfies {
+  href: string
+  items?: { href: string; label: string; summary: string }[]
+  label: string
+  menu: 'resources' | 'team' | 'why' | 'none'
+}[]
 
 export const cookieCopy = {
   text: 'We use essential cookies to run this site. With your permission we also use analytics cookies to learn which pages help people.',
@@ -110,6 +132,115 @@ export const assistant = {
 }
 
 export type Card = { icon: IconDefinition; title: string; text: string; tag?: string }
+
+// Straight before "Not bots. Real teammates.": three jobs an AI employee
+// already does end to end, named as jobs rather than as capabilities, so the
+// page shows the work before it argues in the abstract about what an agent is.
+//
+// Every line is something the product does — research, drafts, a knowledge
+// base, an approval gate before anything reaches a customer. None of them
+// claims a number, a conversion rate or a named customer.
+export type DepartmentTab = {
+  id: string
+  label: string
+  title: string
+  text: string
+  cards: Card[]
+  note: string
+}
+
+export const departments = {
+  kicker: 'What they do all day',
+  tabs: [
+    {
+      id: 'sales',
+      label: 'Improve sales',
+      title: 'Improve your sales.',
+      text: 'Put an AI employee on the work that fills a pipeline and never gets done: the research, the first drafts, the follow-ups, the diary. Your people keep the conversations.',
+      cards: [
+        {
+          icon: faMagnifyingGlassChart,
+          title: 'Does the research first',
+          text: 'Reads the company, the people and the history before anyone picks up the phone, and writes it up where the team can see it.',
+        },
+        {
+          icon: faUserPlus,
+          title: 'Finds the prospects',
+          text: 'Works a list, checks it against what you already know, and brings back the ones worth a conversation.',
+        },
+        {
+          icon: faPenToSquare,
+          title: 'Writes the email, you send it',
+          text: 'Drafts to the person rather than to a segment, from its own address — and waits for you before anything reaches a customer.',
+        },
+        {
+          icon: faCalendarCheck,
+          title: 'Books the meeting',
+          text: 'Finds the time, sends the invitation and chases the reply, for your sales team or for you on your own.',
+        },
+      ],
+      note: 'One person selling, or a floor of them — the same agents, as many as the work needs.',
+    },
+    {
+      id: 'marketing',
+      label: 'Marketing',
+      title: 'Keep the drum beating.',
+      text: 'The work that only counts if it happens every week: the posts, the newsletter, the note that tells a customer about the thing they were waiting for.',
+      cards: [
+        {
+          icon: faBullhorn,
+          title: 'Posts and keeps posting',
+          text: 'Writes the updates and puts them out on the accounts you connect, on the rhythm you set rather than when somebody remembers.',
+        },
+        {
+          icon: faNewspaper,
+          title: 'Compiles the newsletter',
+          text: 'Gathers what actually happened — shipped features, written guides, news worth repeating — and assembles the issue for you to read before it goes.',
+        },
+        {
+          icon: faEnvelopeOpenText,
+          title: 'Tells the right customers',
+          text: 'Writes to a named person about the offer that applies to them, rather than the same mail to a list that learns to ignore it.',
+        },
+        {
+          icon: faClipboardCheck,
+          title: 'Nothing sends itself',
+          text: 'Anything going out to customers waits for a person, so a campaign is never something you find out about afterwards.',
+        },
+      ],
+      note: 'The channels are yours: the agent posts and sends through accounts you connect and can disconnect.',
+    },
+    {
+      id: 'support',
+      label: 'Customer support',
+      title: 'Answers, from what you actually know.',
+      text: 'A support agent that has read everything you have written, answers within the bounds you set, and writes the documentation you never got round to.',
+      cards: [
+        {
+          icon: faBook,
+          title: 'Answers from your knowledge base',
+          text: 'Not from the open internet and not from a guess: from the documents in your own knowledge base, which you can read and correct.',
+        },
+        {
+          icon: faShieldHalved,
+          title: 'You set what is off limits',
+          text: 'Point it at the subjects it should handle and name the ones it must not. Anything outside those bounds goes to a person.',
+        },
+        {
+          icon: faFileLines,
+          title: 'Writes the documentation itself',
+          text: 'Give it the shape you want and it drafts the pages, or it works from what you already have and fills the gaps.',
+        },
+        {
+          icon: faEnvelopeOpenText,
+          title: 'Learns from the replies you already sent',
+          text: 'Reads a connected mailbox’s past support threads and turns the answers your team has given for years into documentation anyone can check.',
+        },
+      ],
+      note: 'It answers in the same channels and inboxes your team already uses, under the same approval rules.',
+    },
+  ] satisfies DepartmentTab[],
+}
 
 export const aiBand = {
   title: 'Not bots. Real teammates.',
