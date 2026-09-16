@@ -21,7 +21,7 @@ export const REGIONS = ['North', 'South', 'East', 'West'] as const
 /** Rows of real data on `Data`; drives the total cell count. */
 export const DATA_ROWS = 2000
 /** Rows of cross-sheet formulas on `Calc`. */
-export const CALC_ROWS = 500
+export const CALC_ROWS = 50
 /** Rows of plain numbers on `Bulk`, the bulk of the cell count. */
 export const BULK_ROWS = 1700
 export const BULK_COLUMNS = 20

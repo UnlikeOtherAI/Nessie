@@ -158,3 +158,30 @@ the engine-pair suite together produced `fatal runtime error: failed to
 initiate panic, error 5, aborting` — a Rust panic while panicking, which kills
 the test process and fails the package for a reason no assertion explains.
 Serialised, the same 25 tests pass repeatedly with exit code 0.
+
+## The engine writes to stdout, and that write can abort the process
+
+Importing a foreign `.xlsx` and evaluating it prints one `Unexpected type
+(empty) in <Sheet>!<Cell>` line per affected cell — tens of thousands for a
+modest fixture — straight to fd 1 from a Rust thread we do not control. Twice
+during Phase 1 integration that ended as
+
+```text
+thread '<unnamed>' panicked at library/std/src/io/stdio.rs:1165:9
+fatal runtime error: failed to initiate panic, error 5, aborting
+```
+
+which kills the process with no failing assertion to explain it. It is the
+same hazard class as the missing-directory panic from Spike B: a Rust panic
+inside a napi call takes the whole replica, not just the request.
+
+Consequences:
+
+- `@nessie/spreadsheet` runs its files with `--test-concurrency=1`, and the
+  noisy fixture was cut from 500 to 50 formula rows. If the abort ever
+  reappears in CI, isolate the import tests in a child process with `stdio:
+  'ignore'` rather than chasing the volume.
+- **Imports belong on the worker**, never on an API request path: the chatter
+  is unbounded in the size of the imported file, and a failing stdout write
+  aborts the process that is doing it. Whatever collects worker logs must
+  drain fd 1 and never close it under a running import.
