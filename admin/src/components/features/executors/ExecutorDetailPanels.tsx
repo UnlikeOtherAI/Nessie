@@ -11,6 +11,7 @@ import type {
 import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
 import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
+import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { FormError } from '../../shared/FormActions'
 import { Pill } from '../../primitives/Pill'
@@ -157,6 +158,10 @@ export const ExecutorDetailPanels = ({
                 <div className="rounded border border-[color:var(--sep)] p-2 text-xs" key={revision.revision}>
                   <p className="font-medium text-[color:var(--tx)]">Revision {revision.revision} · {revision.reviewStatus}</p>
                   <p className="mt-1 text-[color:var(--tx2)]">{revision.profiles.join(', ')} · {revision.operationKeys.join(', ')}</p>
+                  <ExecutorPermittedPrograms
+                    commandAllowlist={revision.commandAllowlist}
+                    operationKeys={revision.operationKeys}
+                  />
                   <p className="mt-1 break-all text-[color:var(--tx3)]">{revision.localPolicyDigest}</p>
                   {canManage && index === 0 && revision.reviewStatus === 'pending_review' ? (
                     <button

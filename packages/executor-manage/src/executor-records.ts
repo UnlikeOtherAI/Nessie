@@ -75,6 +75,12 @@ export type ExecutorAccessView = {
     projectRole: ExecutorHumanAccess['projectRole']
   }
   descriptorRevisions?: Array<{
+    /**
+     * The programs this proposal permits `command.run` to start. Absent when
+     * the signed descriptor named none, which is a different fact from a list
+     * of none: it permits nothing, and no reader may flatten the two.
+     */
+    commandAllowlist?: string[]
     localPolicyDigest: string
     operationKeys: string[]
     profiles: ExecutorProfile[]
@@ -485,6 +491,12 @@ export const getExecutorAccessView = async (
       const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(revision.descriptor)
       return descriptor.success
         ? [{
+            // Carried only when the descriptor carried it: a descriptor signed
+            // before the allowlist existed names no program, and an absent key
+            // is the only projection that says so.
+            ...(descriptor.data.commandAllowlist
+              ? { commandAllowlist: descriptor.data.commandAllowlist }
+              : {}),
             localPolicyDigest: revision.localPolicyDigest,
             operationKeys: descriptor.data.operationKeys,
             profiles: descriptor.data.profiles,
