@@ -75,7 +75,7 @@ registry row lists what its route reads beyond the path under `intent`
   detail dialog. Closing leaves that board context in place; an old chat card
   never supplies authority for which board is current.
 - **A name is one or the other on a row, never both.** `?view=` had been
-  both: the Knowledge view-mode strip *and* the Integrations page's product
+  both: the Knowledge view-mode strip *and* the former Integrations page's product
   deep link, so selecting the list view fired the product-view effect, which
   cleared the page path and wiped the tab. The product view is its own route
   (`/knowledge-base/views/:productView`) and the link now uses it.

@@ -281,14 +281,21 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     const bridge = (window as NativeTeamWindow).ReactNativeWebView
     const name = active?.label ?? null
     const avatarImageUrl = active?.avatarImageUrl ?? null
-    bridge?.postMessage(JSON.stringify({ name, type: 'nessie:team', teamAvatarUrl: avatarImageUrl }))
+    // An upload keeps the avatar's URL, so the revision is what tells the native
+    // chrome to reload the picture instead of keeping its cached copy.
+    bridge?.postMessage(JSON.stringify({
+      name,
+      type: 'nessie:team',
+      teamAvatarUrl: avatarImageUrl,
+      teamAvatarRevision: avatarRevision,
+    }))
     // Same reason, in the other direction: an older build recognises only the
     // old message type and field, and drops anything else, so it would stop
     // updating its identity bar the moment this deploy lands.
     bridge?.postMessage(
       JSON.stringify({ name, type: 'nessie:workspace', workspaceAvatarUrl: avatarImageUrl }),
     )
-  }, [active?.avatarImageUrl, active?.label, variant])
+  }, [active?.avatarImageUrl, active?.label, avatarRevision, variant])
 
   // The switcher is the rail's single team identity control, including
   // when there is currently only one team.

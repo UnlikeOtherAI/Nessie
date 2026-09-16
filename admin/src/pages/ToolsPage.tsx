@@ -146,8 +146,8 @@ export const ToolsPage = () => {
   /**
    * A row is reviewable when its status is something an owner can change here:
    * connector-projected tools that no first-party integration owns. Built-ins
-   * have no review state, and DeepWater/DeepSignal projections are managed
-   * from Integrations (the API refuses those ids).
+   * have no review state, and DeepWater/DeepSignal projections are owned by
+   * their product (the API refuses those ids).
    */
   const isReviewable = useCallback(
     (tool: McpToolRegistryRecord) =>

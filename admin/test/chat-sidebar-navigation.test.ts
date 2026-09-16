@@ -123,12 +123,15 @@ test('the new-message surface excludes the sender and keeps recipients available
   // A blur that did not leave the field does not close the list underneath it.
   assert.match(recipientBar, /document\.activeElement !== inputRef\.current/)
   // The compose screen keeps its own handle, because it focuses the field on
-  // events the bar knows nothing about — switching sides, returning from the
-  // agent designer.
+  // events the bar knows nothing about — a send with no recipient chosen.
   assert.match(source, /inputRef=\{addressInputRef\}/)
   assert.match(source, /open: !phoneLayout,/)
   assert.match(source, /fixed inset-0 bg-\[color:var\(--main\)\]/)
-  assert.match(source, /target === 'people' \? 'Type a name or email address' : 'Type an agent name'/)
+  // One address book: people and agents together, no People/Agents switch.
+  assert.match(source, /placeholder="Type a name, email address or agent"/)
+  assert.match(source, /agents=\{agents\}/)
+  assert.match(source, /users=\{users\}/)
+  assert.doesNotMatch(source, /role="tablist"|role="tabpanel"|useTabParam/)
   assert.match(source, /allUsers\.filter\(\(user\) => user\.id !== me\?\.user\.id\)/)
   // Selecting somebody does not close the list: the bar keeps offering whoever
   // is left, which is what makes addressing several people one gesture. Also

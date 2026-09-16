@@ -1,8 +1,15 @@
 import { Image, StyleSheet, Text, View } from 'react-native'
 import { SvgXml } from 'react-native-svg'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 
 import { identityInitials, identityTileRadius } from '../lib/identity-shape'
+import {
+  type AvatarImageSource,
+  lastLoadedNativeAvatar,
+  loadNativeAvatar,
+  nativeAvatarRefreshGeneration,
+  subscribeNativeAvatarRefresh,
+} from '../lib/native-avatar-source'
 
 type NativeIdentityAvatarProps = {
   backgroundColor: string
@@ -22,49 +29,43 @@ type NativeIdentityAvatarProps = {
   shape?: 'tile' | 'circle'
 }
 
-type AvatarImageSource =
-  | { kind: 'fallback' }
-  | { kind: 'raster'; uri: string }
-  | { kind: 'svg'; xml: string }
+const FALLBACK: AvatarImageSource = { kind: 'fallback' }
 
-const contentType = (response: Response): string =>
-  response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? ''
-
+/**
+ * Revalidates whenever the URL changes or a refresh is requested (an upload in
+ * the WebView, or the app returning to the foreground). A refresh of the same
+ * URL keeps the current picture on screen until the new one arrives, so it
+ * never flashes back to initials — and a failed refresh keeps it too.
+ */
 const useAvatarImageSource = (imageUrl: string | null): AvatarImageSource => {
-  const [source, setSource] = useState<AvatarImageSource>({ kind: 'fallback' })
+  const generation = useSyncExternalStore(
+    subscribeNativeAvatarRefresh,
+    nativeAvatarRefreshGeneration,
+  )
+  const [loadedSource, setLoadedSource] = useState<{ source: AvatarImageSource; url: string } | null>(null)
 
   useEffect(() => {
-    if (!imageUrl) {
-      setSource({ kind: 'fallback' })
-      return undefined
-    }
-
-    setSource({ kind: 'fallback' })
+    if (!imageUrl) return undefined
     const controller = new AbortController()
     let active = true
-    void fetch(imageUrl, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Avatar request failed: ${response.status}`)
-        if (!active) return
-        if (contentType(response) !== 'image/svg+xml') {
-          setSource({ kind: 'raster', uri: imageUrl })
-          return
-        }
-        const xml = await response.text()
-        if (!active || !xml.trim()) throw new Error('Avatar SVG is empty')
-        setSource({ kind: 'svg', xml })
+    void loadNativeAvatar(imageUrl, { signal: controller.signal })
+      .then((source) => {
+        if (active) setLoadedSource({ source, url: imageUrl })
       })
       .catch(() => {
-        if (active && !controller.signal.aborted) setSource({ kind: 'fallback' })
+        if (!active || controller.signal.aborted) return
+        setLoadedSource({ source: lastLoadedNativeAvatar(imageUrl) ?? FALLBACK, url: imageUrl })
       })
 
     return () => {
       active = false
       controller.abort()
     }
-  }, [imageUrl])
+  }, [generation, imageUrl])
 
-  return source
+  if (!imageUrl) return FALLBACK
+  if (loadedSource?.url === imageUrl) return loadedSource.source
+  return lastLoadedNativeAvatar(imageUrl) ?? FALLBACK
 }
 
 /**

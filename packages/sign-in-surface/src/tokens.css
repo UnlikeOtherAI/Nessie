@@ -1,30 +1,37 @@
 /* The doorway palette for a host without a theme system (the nessie.works
    landing). These values are self-contained: the package owns them, and the
    landing is the only host that imports this file. The admin never imports
-   it — it supplies its own theme tokens to the same `.signin-*` classes. */
+   it — it supplies its own theme tokens to the same `.signin-*` classes.
+
+   The values are the marketing homepage's deep-water palette, so the doorway
+   and the pages under it are one design: the icon's navy for the brand bar and
+   the showcase stage, the logo's blue for every action, foam for the wash the
+   hero settles into. */
 
 :root {
   color-scheme: light;
-  --rail: #f3f5f8;
+  --rail: #f6f8fc;
   --panel: #ffffff;
-  --panel-soft: #f3f5f8;
-  --main-hover: #f8f8f8;
-  --sep: #e3e6ea;
-  --line: rgba(10, 10, 10, 0.1);
-  --border-strong: #b5b5b5;
-  --tx: #0a0a0a;
-  --tx2: #4b4b4b;
-  --tx3: #8a8a8a;
-  --accent: #000000;
-  --accent-hover: #1a1a1a;
-  --accent-soft: rgba(10, 10, 10, 0.08);
+  --panel-soft: #eaf3ff;
+  --main-hover: #f6f8fc;
+  --sep: #e5e3e6;
+  --line: rgba(11, 23, 42, 0.12);
+  --border-strong: #b3bfd0;
+  --ink: #0b172a;
+  --tx: #1d1c1d;
+  --tx2: #5c5a5e;
+  --tx3: #85838a;
+  --accent: #0266fa;
+  --accent-hover: #0052d1;
+  --accent-soft: rgba(2, 102, 250, 0.12);
   --on-accent: #ffffff;
-  --signin-stage: #0a0a0a;
+  --signin-stage: #0b172a;
   --signin-on-stage: #ffffff;
   --signin-stage-card: #ffffff;
-  --signin-stage-card-fg: #0a0a0a;
-  --scrim: rgba(10, 10, 10, 0.18);
-  --scrim-strong: rgba(10, 10, 10, 0.42);
+  --signin-stage-card-fg: #0b172a;
+  --scrim-weak: rgba(11, 23, 42, 0.06);
+  --scrim: rgba(11, 23, 42, 0.18);
+  --scrim-strong: rgba(11, 23, 42, 0.42);
   --danger-soft: rgba(214, 59, 59, 0.1);
   --danger-border: rgba(214, 59, 59, 0.28);
   --danger-text: #c23232;
@@ -37,13 +44,6 @@
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.06);
-  --shadow-float: 0 20px 60px rgba(0, 0, 0, 0.18);
-  --aura-wash:
-    radial-gradient(60% 50% at 30% 20%, #d9d3ee 0%, transparent 70%),
-    radial-gradient(45% 45% at 70% 20%, #f0e7bd 0%, transparent 70%),
-    radial-gradient(55% 40% at 50% 55%, #fbbed7 0%, transparent 70%),
-    radial-gradient(40% 35% at 25% 60%, #fbd3b0 0%, transparent 70%),
-    radial-gradient(60% 35% at 50% 85%, #bcd3f0 0%, transparent 70%),
-    radial-gradient(30% 30% at 85% 80%, #cfe7dc 0%, transparent 70%);
+  --shadow-panel: 0 1px 2px rgba(11, 23, 42, 0.04), 0 12px 40px rgba(11, 23, 42, 0.06);
+  --shadow-float: 0 20px 60px rgba(11, 23, 42, 0.35);
 }

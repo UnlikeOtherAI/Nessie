@@ -51,6 +51,7 @@ const payload = {
   actorContext: {
     actionContext: { requestId: 'history-test' },
     actor: { actorId: AGENT_ID, actorType: 'agent' },
+    tenant: { organizationId: ORGANIZATION_ID },
   },
 } as never
 
@@ -58,7 +59,10 @@ const historyDeps = (seed = message()) => {
   const rows = [seed]
   return {
     modelClient: {
-      embedMany: async () => [Array<number>(EMBEDDING_DIMENSIONS).fill(0.1)],
+      embedMany: async (
+        _texts: string[],
+        _options?: { usage?: Record<string, unknown> },
+      ): Promise<number[][]> => [Array<number>(EMBEDDING_DIMENSIONS).fill(0.1)],
       embeddingModel: EMBEDDING_MODEL,
     },
     prisma: {
@@ -105,6 +109,47 @@ test('history recall admits a bounded Czech passage with its full private source
     sourceAuthorUserId: AUTHOR_ID,
     sourceChannelId: CHANNEL_ID,
   }])
+})
+
+test('history recall signs its embed with the session identity and degrades when refused', async () => {
+  const uoaIdentity = {
+    organizationId: 'uoa-org',
+    subject: 'uoa-subject',
+    teamId: 'uoa-team',
+    tokenVersion: 19,
+  }
+  const signedPayload = {
+    actorContext: {
+      actionContext: { requestId: 'history-test', sessionId: 'session-1', uoaIdentity },
+      actor: { actorId: AGENT_ID, actorType: 'agent' },
+      tenant: { organizationId: ORGANIZATION_ID },
+    },
+  } as never
+  let usage: Record<string, unknown> | undefined
+  const deps = historyDeps()
+  deps.modelClient.embedMany = async (_texts: string[], options?: { usage?: Record<string, unknown> }) => {
+    usage = options?.usage
+    return [Array<number>(EMBEDDING_DIMENSIONS).fill(0.1)]
+  }
+  await retrieveRelevantHistory(deps as never, context() as never, signedPayload, {
+    prompt: 'je deploy hotový?',
+    tokenBudget: 1_000,
+    viewer: agentViewer,
+  })
+  assert.deepEqual(usage?.['uoaIdentity'], uoaIdentity)
+  assert.equal(usage?.['sessionId'], 'session-1')
+  assert.equal(usage?.['systemComponent'], 'history-recall')
+
+  const refused = historyDeps()
+  refused.modelClient.embedMany = async () => {
+    throw new Error('Ledger requires a linked UnlikeOtherAI SSO identity for the originating user.')
+  }
+  const degraded = await retrieveRelevantHistory(refused as never, context() as never, signedPayload, {
+    prompt: 'je deploy hotový?',
+    tokenBudget: 1_000,
+    viewer: agentViewer,
+  })
+  assert.deepEqual(degraded, { context: null, messageIds: [], tokenCount: 0 })
 })
 
 test('history recall returns no text for a denied viewer or a stale projection', async () => {

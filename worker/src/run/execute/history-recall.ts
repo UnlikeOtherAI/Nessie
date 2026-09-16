@@ -1,6 +1,7 @@
 import type { MessageRole, PrismaClient } from '@prisma/client'
 import { createHash } from 'node:crypto'
 import {
+  attributionFromActorContext,
   resolveGrantedScopeKeysForMessages,
   viewerSatisfiesBasis,
   type DisclosureViewer,
@@ -242,23 +243,36 @@ export const retrieveRelevantHistory = async (
   }, deps.searchConfig.pool)
   if (scopes.channelIds.length === 0) return { context: null, messageIds: [], tokenCount: 0 }
 
-  const [queryEmbedding] = await deps.modelClient.embedMany([query], {
-    usage: {
-      actorId: payload.actorContext.actor.actorId,
-      actorType: payload.actorContext.actor.actorType,
+  // The attribution comes from the actor context, never a hand-built literal:
+  // a signing deployment refuses a Ledger call whose attribution lacks the
+  // session's `uoaIdentity`, and the literal this replaced dropped it, so every
+  // signed run died here before its first model call. Recall is context, not
+  // the answer — a failed embed degrades to no recalled history, exactly as
+  // memory search does, instead of failing the run.
+  const usage = {
+    ...attributionFromActorContext(payload.actorContext, {
       agentId: context.agent.id,
-      channelId: context.channel.id,
-      correlationId: payload.actorContext.actionContext.correlationId ?? null,
-      organizationId: context.channel.organizationId,
-      projectId: context.channel.projectId,
-      requestId: payload.actorContext.actionContext.requestId,
+      agentKind: context.agent.agentKind,
       runId: context.run.id,
       systemComponent: 'history-recall',
-      teamId: context.channel.teamId,
-      threadId: context.run.threadId,
-      userId,
-    },
-  })
+    }),
+    channelId: context.channel.id,
+    organizationId: context.channel.organizationId,
+    projectId: context.channel.projectId,
+    teamId: context.channel.teamId,
+    threadId: context.run.threadId,
+    userId,
+  }
+  let queryEmbedding: number[] | undefined
+  try {
+    [queryEmbedding] = await deps.modelClient.embedMany([query], { usage })
+  } catch (error) {
+    console.warn(
+      '[worker] History recall failed, continuing without recalled history:',
+      error instanceof Error ? error.message : error,
+    )
+    return { context: null, messageIds: [], tokenCount: 0 }
+  }
   if (!queryEmbedding || queryEmbedding.length !== EMBEDDING_DIMENSIONS) {
     return { context: null, messageIds: [], tokenCount: 0 }
   }

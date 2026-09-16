@@ -42,7 +42,7 @@ summary and points here; **this file is the rule**.
   administrator authors a palette on `/settings/organization?tab=appearance`; it
   appears as one more card on the per-user Colours panel, labelled with the
   organisation's name, and is the default for anyone who has not chosen. It is
-  **colours only** — type, radii, spacing, motion and `--aura-wash` are `:root`
+  **colours only** — type, radii, spacing and motion are `:root`
   in `styles.css` and are not authorable, which the `.strict()` four-field seed
   schema enforces at the wire. The admin authors four seeds
   (appearance, accent, surface, optional sidebar) and `@nessie/schemas`
@@ -192,14 +192,25 @@ summary and points here; **this file is the rule**.
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never
   the page.
-- **One sign-in surface.** The admin login (`/login`) and the public landing
-  (`nessie.works`) are the same screen: `packages/sign-in-surface` owns the
-  layout (`SignInSurface`), the showcase panel, the app-download tiles and
-  the shared copy, and ships only `.signin-*` classes that read host tokens.
-  The admin supplies its themes; the landing imports the package's
-  `tokens.css`, which owns the doorway palette for that themeless host. A
-  change to the sign-in doorway is made in the package, never by restyling
-  one host.
+- **One sign-in surface, and it is the homepage's doorway.** The admin login
+  (`/login`) and the public landing (`nessie.works`) are the same screen:
+  `packages/sign-in-surface` owns the layout (`SignInSurface`), the showcase
+  panel, the app-download tiles and the shared copy, and ships only
+  `.signin-*` classes that read host tokens. The admin supplies its themes;
+  the landing imports the package's `tokens.css`, which owns the doorway
+  palette for that themeless host — the marketing site's deep-water values, so
+  the doorway and the pages behind it are one design. A change to the sign-in
+  doorway is made in the package, never by restyling one host.
+  The surface is the marketing homepage's hero, not a floating card: a brand
+  bar in `--ink` carrying the mark and the wordmark, the site's water edge
+  hanging off it, then a full-bleed hero that runs from `--panel` into a soft
+  `--accent` wash, with the copy and controls left-aligned and the showcase
+  band on the right from `lg` up. Its display face is Geist, self-hosted by the
+  package (`@fontsource-variable/geist`) so the doorway does not depend on a
+  host's theme fonts. The showcase band is `--signin-stage` — the icon's navy
+  in every theme — and everything drawn on its white thread card takes its
+  colour from the card (`currentColor`), never from the host's text tokens,
+  which on a dark theme left pale type on white.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is
   minted on the admin origin, so the landing hands off and the admin starts
   the provider flow at once.

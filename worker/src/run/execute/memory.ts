@@ -231,6 +231,7 @@ export const retrieveRelevantMemories = async (
         actorType: payload.actorContext.actor.actorType,
         requestId: payload.actorContext.actionContext.requestId,
         correlationId: payload.actorContext.actionContext.correlationId ?? null,
+        uoaIdentity: payload.actorContext.actionContext.uoaIdentity,
         userId: effectiveUserId ?? null,
       },
       deps.searchConfig,

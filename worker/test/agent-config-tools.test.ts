@@ -356,7 +356,7 @@ dbTest('agent_tool_catalog names the keys and the tools nobody may grant', async
     assert.match(result.outputPreview, /key=web_search/)
     assert.match(result.outputPreview, /Not grantable from a conversation/)
     assert.match(result.outputPreview, /own Personal Assistant may use it/)
-    assert.match(result.outputPreview, /owner surfaces \(Apps, Integrations\)/)
+    assert.match(result.outputPreview, /owner surfaces \(Apps, Tools\)/)
     // A narrowing query filters an already-authorized list.
     const narrowed = await runAgentToolCatalogTool(
       buildContext(prisma, otherMemberUserId),

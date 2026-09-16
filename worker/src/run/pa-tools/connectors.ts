@@ -256,7 +256,7 @@ export const runConnectorTestTool = async (
     return {
       inputSummary: `instanceId=${input.instanceId}`,
       outputPreview:
-        'This first-party connector is provisioned and monitored by Integrations. '
+        'This first-party connector is provisioned and monitored by its product. '
         + 'Its connection requires signed per-user identity, so verify it through '
         + 'the product surface instead of probing it here.',
       toolName: 'connector_test',
@@ -375,7 +375,7 @@ export const runConnectorUninstallTool = async (
     return {
       inputSummary: `instanceId=${input.instanceId}`,
       outputPreview:
-        'This first-party connector lifecycle is managed from Integrations. '
+        'This first-party connector lifecycle is managed by its product. '
         + 'Use its product controls to deactivate it.',
       toolName: 'connector_uninstall',
     }

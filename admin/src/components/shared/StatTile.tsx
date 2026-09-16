@@ -68,7 +68,7 @@ type StatGridProps = {
 /**
  * The row stat tiles sit in. Tiles are laid out **beside** each other, never
  * stacked inside a surrounding card — that arrangement is what produced the
- * nested boxes on the billing and integrations pages.
+ * nested boxes on the billing pages.
  */
 export const StatGrid = ({ children, className }: StatGridProps) => (
   <div

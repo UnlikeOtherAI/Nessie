@@ -106,6 +106,7 @@ import {
   reduceNativeShellPresentation,
 } from './src/components/native-shell-presentation'
 import { useNativeFocusChrome } from './src/lib/use-native-focus-chrome'
+import { requestNativeAvatarRefresh } from './src/lib/native-avatar-source'
 import {
   createNativeTabNavigationState,
   DEFAULT_LAST_KNOWN_SCREEN,
@@ -247,6 +248,7 @@ const Shell = (): React.JSX.Element => {
     statusBarStyle,
     strongAccent,
     toolbarState,
+    teamAvatarRevision,
     teamAvatarUrl: nativeTeamAvatarUrl,
     teamName: ipadTeamName,
   } = focusedPresentation
@@ -406,6 +408,11 @@ const Shell = (): React.JSX.Element => {
 
   useEffect(() => subscribeToCallPushCancellation(), [])
 
+  // An upload in the WebView bumps the revision without changing the URL.
+  useEffect(() => {
+    if (teamAvatarRevision > 0) requestNativeAvatarRefresh()
+  }, [teamAvatarRevision])
+
   // WKWebView does not reliably emit `visibilitychange` while React Native is
   // backgrounding the app. Tell the hosted admin explicitly so it clears its
   // page-aware push target before iOS suspends the WebView.
@@ -414,6 +421,9 @@ const Shell = (): React.JSX.Element => {
       nativeAppForeground.current = nextState === 'active'
       runScript(nativeAppForegroundScript(nativeAppForeground.current))
       if (nativeAppForeground.current) {
+        // The team avatar may have been replaced on another device while the
+        // app was away; its URL never changes, so revalidate on return.
+        requestNativeAvatarRefresh()
         // ASWebAuthenticationSession may finish before WKWebView is ready to
         // execute injected JavaScript. The result stays in the native queue
         // until the SPA acknowledges it, so app activation is the exact event
