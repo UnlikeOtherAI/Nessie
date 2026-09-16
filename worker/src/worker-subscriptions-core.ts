@@ -21,6 +21,8 @@ import {
   ExecutionEnvironmentTerminateJobPayloadSchema,
   KNOWLEDGE_EMBED_TOPIC,
   KNOWLEDGE_EXTRACT_TOPIC,
+  KNOWLEDGE_TRANSFER_TOPIC,
+  KnowledgeTransferJobPayloadSchema,
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
   MESSAGE_EMBED_TOPIC,
@@ -50,6 +52,7 @@ import { executeAutomaticMembershipReconcileJob } from './control/automatic-memb
 import { executeAutomaticMembershipRevalidateJob } from './control/automatic-membership/revalidate.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
+import { executeKnowledgeTransferJob } from './control/knowledge-transfer.js'
 import { executeMessageEmbedJob } from './control/message-embed.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
@@ -341,6 +344,17 @@ subscribe(
   async (job) => {
     const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
     await executeKnowledgeExtractJob({ fileService, modelClient, prisma }, payload)
+  },
+  { signal: abortSignal },
+)
+// Subscribed before anything enqueues it, so the consumer side is deployed
+// first: a job on a topic no replica has claimed sits in the queue, but a
+// payload shape a running replica cannot parse fails the job.
+subscribe(
+  KNOWLEDGE_TRANSFER_TOPIC,
+  async (job) => {
+    const payload = KnowledgeTransferJobPayloadSchema.parse(job.payload)
+    await executeKnowledgeTransferJob({ fileService, prisma }, payload)
   },
   { signal: abortSignal },
 )

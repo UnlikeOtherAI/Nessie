@@ -1,5 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { KnowledgeSpaceResponse } from '@nessie/schemas'
+import type {
+  KnowledgeIndexingState,
+  KnowledgePageKind,
+  KnowledgePageTransferState,
+  KnowledgeSpaceResponse,
+} from '@nessie/schemas'
 import type { ApiClient } from '../../lib/api-client'
 import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -22,7 +27,10 @@ export type KnowledgeVersionRecord = {
   policyChainTrace: string[]
 }
 
-export type KnowledgePageKind = 'document' | 'file'
+// Re-exported from the shared contract rather than hand-written: this type was
+// one of three independent spellings of the page kind, and the API's own
+// contract was missing it entirely.
+export type { KnowledgePageKind } from '@nessie/schemas'
 
 // Never hand-copy the API response here. In particular, ownerAgentId must not
 // be allowed to disappear from the server contract while the UI still compiles.
@@ -48,6 +56,17 @@ export type KnowledgePageRecord = {
   policyChainTrace: string[]
   createdAt: string
   updatedAt: string
+  // Optimistic concurrency for the page row: what a rename's `If-Match` sends.
+  revision?: number
+  // The Finder's row fields, optional until Wave 1A computes them server-side.
+  // `sizeBytes` is a decimal string because the server's value is a BigInt.
+  mime?: string | null
+  sizeBytes?: string | null
+  shareCount?: number
+  indexing?: KnowledgeIndexingState
+  // Set while a cross-space move or copy of this page is in flight: the row
+  // reads "Moving…"/"Copying…" and its menu offers Get Info only.
+  transfer?: KnowledgePageTransferState | null
 }
 
 type CreateSpaceInput = {
