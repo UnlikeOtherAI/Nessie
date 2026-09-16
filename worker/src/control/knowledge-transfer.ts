@@ -42,6 +42,11 @@ import type { KnowledgeTransferJobPayload } from '@nessie/schemas'
 // locks is the thing that must stay short. The bound is per batch, not per job.
 const TRANSFER_BATCH_PAGES = 200
 
+// A batch of 200 pages is hundreds of statements; Prisma's 5 s interactive
+// default would abort it halfway and report a closed transaction rather than
+// the real problem.
+const BATCH_TRANSACTION = { maxWait: 30_000, timeout: 180_000 } as const
+
 const jobIdempotencyKey = (transferId: string): string => `kb-transfer:${transferId}`
 
 // The person who dragged, not the worker: a transfer's ledger events belong to
@@ -158,7 +163,7 @@ const prepare = async (
       parentPageId: payload.target.parentPageId,
     }),
   }
-})
+}, BATCH_TRANSACTION)
 
 const runMove = async (
   deps: { fileService: FileService; prisma: PrismaClient },
@@ -174,8 +179,12 @@ const runMove = async (
   for (const batch of batches(prepared.nodes, TRANSFER_BATCH_PAGES)) {
     const pageIds = batch.map((node) => node.id)
     const rootsInBatch = pageIds.filter((id) => rootSet.has(id))
-    const attachmentIds = await prisma.$transaction(async (tx) => {
-      const ids = await collectTransferAttachmentIds(tx, {
+    // Rows, chunk mirrors and the ledger pair in one transaction. A batch that
+    // committed its pages and then failed to re-home their bytes would leave
+    // them charged to the space they had just left, and the retry — which only
+    // covers what did not move — could never correct it.
+    await prisma.$transaction(async (tx) => {
+      const attachmentIds = await collectTransferAttachmentIds(tx, {
         organizationId: payload.organizationId,
         pageIds,
       })
@@ -187,26 +196,22 @@ const runMove = async (
         parentPageId: payload.target.parentPageId,
         startPosition: prepared.startPosition + progress.done,
       })
-      return ids
-    })
-    // The ledger pair is outside the batch transaction on purpose: it is the
-    // one part of a move whose two halves sum to zero on their own, so a
-    // failure between the rows and the events cannot make usage wrong in a
-    // direction that matters, and `FileService` owns its own writes.
-    await fileService.reassignScope(attachmentIds, {
-      organizationId: payload.organizationId,
-      from: {
-        projectId: prepared.sourceScope.projectId,
-        teamId: prepared.sourceScope.teamId,
-        spaceId: prepared.sourceScope.id,
-      },
-      to: {
-        projectId: prepared.targetScope.projectId,
-        teamId: prepared.targetScope.teamId,
-        spaceId: prepared.targetScope.id,
-      },
-      attribution,
-    })
+      await fileService.reassignScope(attachmentIds, {
+        organizationId: payload.organizationId,
+        from: {
+          projectId: prepared.sourceScope.projectId,
+          teamId: prepared.sourceScope.teamId,
+          spaceId: prepared.sourceScope.id,
+        },
+        to: {
+          projectId: prepared.targetScope.projectId,
+          teamId: prepared.targetScope.teamId,
+          spaceId: prepared.targetScope.id,
+        },
+        attribution,
+        client: tx,
+      })
+    }, BATCH_TRANSACTION)
     progress.done += batch.length
     await writeProgress(prisma, payload.transferId, {
       done: progress.done,
@@ -235,7 +240,7 @@ const runCopy = async (
         startPosition: prepared.startPosition + progress.done,
         actor: payload.actor,
         sourceSpaceName: prepared.sourceScope.name,
-      }))
+      }), BATCH_TRANSACTION)
       createdPageIds.push(...plan.idMap.map((entry) => entry.pageId))
       await applyTransferCopyAttachments(fileService, prisma, {
         organizationId: payload.organizationId,

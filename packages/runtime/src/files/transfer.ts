@@ -1,4 +1,4 @@
-import type { Attachment, PrismaClient } from '@prisma/client'
+import type { Attachment, Prisma, PrismaClient } from '@prisma/client'
 
 import type { LedgerAttribution } from '../ledger.js'
 import { recordStorageScopeMoved } from '../storage-usage-ledger.js'
@@ -54,7 +54,12 @@ export type FileTransferOps = {
    * pairing `delete.thumbnail`/`store.thumbnail` already uses.
    *
    * No quota check runs: the pair sums to zero, so the organisation total is
-   * unchanged by construction.
+   * unchanged by construction — which is also why this is the one file
+   * operation that can accept the caller's transaction. It touches no object
+   * storage and takes no admission lock, so a cross-space move commits its page
+   * rows, its chunk mirrors and its ledger together or not at all. A caller
+   * that ran it afterwards on its own connection could leave a committed batch
+   * of pages charged to the space they just left.
    */
   reassignScope(
     attachmentIds: string[],
@@ -63,6 +68,8 @@ export type FileTransferOps = {
       from: FileScope
       to: FileScope
       attribution: LedgerAttribution
+      /** The caller's open transaction; defaults to this service's client. */
+      client?: FileTransferLedgerClient
     },
   ): Promise<{ attachmentsMoved: number; bytesMoved: bigint }>
 }
@@ -89,6 +96,10 @@ export class FileTransferNotImplementedError extends Error {
 export type FileTransferStore = (
   input: StoreFileInput,
 ) => Promise<{ attachment: Attachment; bytesWritten: number }>
+
+// What `reassignScope` runs on: the service's own client, or the caller's open
+// transaction. A `PrismaClient` satisfies it too, so the default needs no cast.
+export type FileTransferLedgerClient = Prisma.TransactionClient
 
 // Same derivation `deleteFile` uses for its negative deltas, kept here because
 // a move's two events must name the *page's* scope columns, not the caller's
@@ -141,7 +152,8 @@ export const createFileTransferOps = (deps: {
 
   const reassignScope: FileTransferOps['reassignScope'] = async (attachmentIds, input) => {
     if (attachmentIds.length === 0) return { attachmentsMoved: 0, bytesMoved: 0n }
-    const attachments = await prisma.attachment.findMany({
+    const client = input.client ?? prisma
+    const attachments = await client.attachment.findMany({
       where: { id: { in: attachmentIds }, organizationId: input.organizationId },
       select: {
         id: true,
@@ -157,7 +169,7 @@ export const createFileTransferOps = (deps: {
     for (const attachment of attachments) {
       const from = usageScopeFor(attachment, input.from)
       const to = usageScopeFor(attachment, input.to)
-      await recordStorageScopeMoved(prisma, {
+      await recordStorageScopeMoved(client, {
         attribution: input.attribution,
         from,
         to,
@@ -169,7 +181,7 @@ export const createFileTransferOps = (deps: {
       // pair, so the preview follows its original into the new scope instead of
       // staying charged to the old one forever.
       if (attachment.thumbnailKey && attachment.thumbnailSizeBytes) {
-        await recordStorageScopeMoved(prisma, {
+        await recordStorageScopeMoved(client, {
           attribution: input.attribution,
           from,
           to,

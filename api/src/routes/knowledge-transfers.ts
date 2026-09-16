@@ -236,6 +236,7 @@ export const registerKnowledgeTransferRoutes = (
       outcome = await prisma.$transaction(async (tx) => runTransferTransaction(tx, {
         actorContext,
         attribution,
+        fileService,
         organizationId,
         operation: body.operation,
         pageIds,
@@ -300,23 +301,6 @@ export const registerKnowledgeTransferRoutes = (
           statusCode: 400,
         })
       }
-    } else {
-      // A move's bytes stay put; only their accounted scope changes. The pair
-      // sums to zero, so no quota check runs.
-      await fileService.reassignScope(outcome.attachmentIds, {
-        organizationId,
-        from: {
-          projectId: sourceSpace.projectId,
-          teamId: sourceSpace.teamId,
-          spaceId: sourceSpace.id,
-        },
-        to: {
-          projectId: outcome.targetScope.projectId,
-          teamId: outcome.targetScope.teamId,
-          spaceId: outcome.targetScope.id,
-        },
-        attribution,
-      })
     }
 
     for (const event of outcome.auditEvents) {

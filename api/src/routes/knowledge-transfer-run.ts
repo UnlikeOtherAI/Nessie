@@ -50,7 +50,6 @@ export type TransferOutcome =
     pages: Array<{ sourcePageId: string; pageId: string }>
     descendants: number
     sharesEnded: number
-    attachmentIds: string[]
     targetScope: TransferSpaceScope
     auditEvents: TransferAuditEvent[]
   }
@@ -70,6 +69,7 @@ export type TransferOutcome =
 export type RunTransferInput = {
   actorContext: AuthorizedActionContext
   attribution: LedgerAttribution
+  fileService: FileService
   organizationId: string
   operation: 'move' | 'copy'
   pageIds: string[]
@@ -185,12 +185,29 @@ export const runTransferTransaction = async (
       parentPageId: input.parentPageId,
       startPosition,
     })
+    // In the same transaction as the rows and the chunk mirrors: the pair sums
+    // to zero and takes no admission lock, so there is no reason for a move to
+    // commit its pages and then discover it cannot re-home their bytes.
+    await input.fileService.reassignScope(attachmentIds, {
+      organizationId: input.organizationId,
+      from: {
+        projectId: input.sourceSpace.projectId,
+        teamId: input.sourceSpace.teamId,
+        spaceId: input.sourceSpace.id,
+      },
+      to: {
+        projectId: targetScope.projectId,
+        teamId: targetScope.teamId,
+        spaceId: targetScope.id,
+      },
+      attribution: input.attribution,
+      client: tx,
+    })
     return {
       kind: 'move',
       pages: rootIds.map((id) => ({ sourcePageId: id, pageId: id })),
       descendants,
       sharesEnded: moved.endedShares.length,
-      attachmentIds,
       targetScope,
       auditEvents: rootIds.map((id, index) => ({
         action: 'kb.page.moved' as AuditAction,
