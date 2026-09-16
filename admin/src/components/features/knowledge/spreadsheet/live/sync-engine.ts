@@ -504,17 +504,21 @@ export const createSpreadsheetSync = (deps: SyncDeps, bootstrapSeq: number) => {
     }
     const recorded = rolled.flatMap((batch) => batch.summary.intents ?? [])
     const replayable = recorded.filter((intent) => !UNREPLAYABLE_INTENT_KINDS.has(intent.kind))
-    const unrebasable =
-      rolled.reduce((total, batch) => total + batch.unrebasableCalls, 0)
-      + (recorded.length - replayable.length)
+    // Only calls the bridge could not turn into an intent at all are counted
+    // rather than named: an unreplayable *intent* still knows its cell, and
+    // "a paste at B4 was lost" is worth saying where "1 edit was lost" is not.
+    const unrebasable = rolled.reduce((total, batch) => total + batch.unrebasableCalls, 0)
 
     const shifted = unreadable ? [] : shiftIntents(replayable, summaries)
     // `shiftIntents` drops rather than marks, so what was dropped is recovered
     // by shifting each intent on its own — which is also what names the cells
     // in the notice.
-    const dropped = unreadable
-      ? [...replayable]
-      : replayable.filter((intent) => shiftIntents([intent], summaries).length === 0)
+    const dropped = [
+      ...recorded.filter((intent) => UNREPLAYABLE_INTENT_KINDS.has(intent.kind)),
+      ...(unreadable
+        ? [...replayable]
+        : replayable.filter((intent) => shiftIntents([intent], summaries).length === 0)),
+    ]
 
     if (shifted.length > 0) {
       // (d)+(e) one new batch, based at the head the server just named.

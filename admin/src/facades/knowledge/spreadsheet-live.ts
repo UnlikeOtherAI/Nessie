@@ -43,12 +43,14 @@ const base = '/api/knowledge-base'
 
 const OpsPageSchema = z.array(SpreadsheetAppliedBatchSchema)
 
-export const spreadsheetLiveKeys = {
-  /** Not a query key: the lane is a socket, not a cache entry. Exported so a
-   *  test can name the route without spelling it twice. */
-  stream: (pageId: string, clientId: string) =>
-    `${base}/pages/${pageId}/live?clientId=${encodeURIComponent(clientId)}`,
-}
+/**
+ * The lane's own path. Deliberately *not* a `*Keys` family: this is a socket,
+ * not a cache entry, and nothing about it is invalidated or refetched — the
+ * gate in `test/query-key-invariants.test.ts` is right to want those two kinds
+ * of thing to look different.
+ */
+export const spreadsheetLiveStreamPath = (pageId: string, clientId: string): string =>
+  `${base}/pages/${pageId}/live?clientId=${encodeURIComponent(clientId)}`
 
 /**
  * Catch-up. Returns batches strictly after `afterSeq`, oldest first, with the
@@ -190,7 +192,7 @@ export const useSpreadsheetLiveLane = (input: {
       controller = request
       try {
         const response = await fetch(
-          `${getBaseUrl()}${spreadsheetLiveKeys.stream(pageId, clientId)}`,
+          `${getBaseUrl()}${spreadsheetLiveStreamPath(pageId, clientId)}`,
           {
             credentials: 'include',
             headers: { authorization: `Bearer ${token}` },

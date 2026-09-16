@@ -104,7 +104,11 @@ export const createFrameThrottle = (options: {
   const interval = options.intervalMs ?? PRESENCE_THROTTLE_MS
   let pending: SpreadsheetPresenceFrame | null = null
   let cancel: (() => void) | null = null
-  let lastSentAt = 0
+  // Negative infinity, not 0: "never sent" has to be distinguishable from
+  // "sent at time 0", and an injected clock that starts at 0 is exactly the
+  // case a real one hides — the first frame would sit out a window for no
+  // reason, which is the frame a peer most needs.
+  let lastSentAt = Number.NEGATIVE_INFINITY
 
   const flush = (): void => {
     cancel = null
