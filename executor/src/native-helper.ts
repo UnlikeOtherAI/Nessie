@@ -3,7 +3,7 @@ import { lstat, open, realpath } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 
-import type { SandboxPromotionManifest } from './sandbox-workspace.js'
+import type { SandboxFolderManifest } from './sandbox-workspace.js'
 
 const MAX_NATIVE_RESPONSE_BYTES = 8 * 1024
 const NATIVE_PROMOTION_TIMEOUT_MS = 20_000
@@ -31,7 +31,13 @@ export const verifyNativeHelperPath = async (value: string): Promise<string> => 
   return canonical
 }
 
-type NativePromotionRequest = SandboxPromotionManifest & {
+/**
+ * Exactly one workspace folder's reviewed draft. The helper resolves every path
+ * against the single root descriptor it is handed and recomputes `manifestDigest`
+ * from these bytes, so the paths here are folder-relative — never the
+ * folder-qualified paths a person reviewed.
+ */
+type NativePromotionRequest = SandboxFolderManifest & {
   approvalDigest: string
   bindingFence: string
   promotionId: string
@@ -50,8 +56,16 @@ const nativeFailure = (code: string): Record<string, unknown> => ({ code, succes
 /**
  * Runs only a verified owner-controlled native helper with root and draft
  * directory descriptors. Host and draft paths never enter its JSON or argv.
+ *
+ * `approvedManifestDigest` is what the control plane approved and what a
+ * successful result quotes back; `request.manifestDigest` is the folder-scoped
+ * digest the helper itself recomputes. For a single-folder executor the two are
+ * the same value, and they diverge as soon as a review spans folders — which is
+ * why the caller supplies both rather than the helper's answer standing in for
+ * the approval.
  */
 export const applyNativePromotion = async (input: {
+  approvedManifestDigest: string
   draftWorkspace: string
   helperPath: string | undefined
   request: NativePromotionRequest
@@ -121,7 +135,7 @@ export const applyNativePromotion = async (input: {
           return
         }
         finish({
-          manifestDigest: input.request.manifestDigest,
+          manifestDigest: input.approvedManifestDigest,
           promotionId: input.request.promotionId,
           success: true,
         })

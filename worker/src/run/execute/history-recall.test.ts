@@ -55,9 +55,13 @@ const payload = {
   },
 } as never
 
-const historyDeps = (seed = message()) => {
+const historyDeps = (seed = message(), threadAgentId: string | null = null) => {
   const rows = [seed]
+  // Every call's parameter list, so a test can assert what the query was
+  // actually narrowed to rather than only what came back.
+  const searchParams: unknown[][] = []
   return {
+    searchParams,
     modelClient: {
       embedMany: async (
         _texts: string[],
@@ -70,10 +74,17 @@ const historyDeps = (seed = message()) => {
         findMany: async (input: { where: { id?: { in: string[] } } }) =>
           input.where.id ? rows : rows,
       },
+      // `Thread.agentId` is what says this thread is a conversation *with* an
+      // agent rather than a room's own General thread, and it is what decides
+      // whether recall may reach the rest of the channel.
+      thread: {
+        findFirst: async () => ({ agentId: threadAgentId }),
+      },
     },
     searchConfig: {
       pool: {
-        query: async (sql: string) => {
+        query: async (sql: string, params?: unknown[]) => {
+          if (params) searchParams.push(params)
           if (sql.includes('FROM channels c\n     JOIN agent_bindings')) {
             return { rows: [{ id: CHANNEL_ID, projectId: null, teamId: null }] }
           }
@@ -177,4 +188,52 @@ test('history recall returns no text for a denied viewer or a stale projection',
     viewer: agentViewer,
   })
   assert.equal(staleResult.context, null)
+})
+
+/**
+ * Two conversations with one agent are two threads in one channel.
+ *
+ * Recall is scoped by channel, which is right for a room — one room, one
+ * history — and wrong here: without a thread narrowing, the sibling
+ * conversation's messages are eligible candidates and the agent answers one
+ * conversation using the other's. `Thread.agentId` is the line, because that
+ * field means "the agent this thread is a conversation *with*" and is null for
+ * a channel's own General thread.
+ *
+ * It stayed invisible while background embed jobs were refused: with no
+ * `message_embeddings` rows the semantic arm returned nothing, so there was
+ * nothing for the channel-wide scope to carry across.
+ */
+test('a conversation with an agent recalls only its own thread', async () => {
+  const sink = createConsumedSourceSink()
+  const deps = historyDeps(message(), AGENT_ID)
+  await retrieveRelevantHistory(deps as never, context(sink) as never, payload, {
+    prompt: 'what did we decide?',
+    tokenBudget: 1_000,
+    viewer: agentViewer,
+  })
+
+  const candidateCall = deps.searchParams.find((params) => params.length >= 11)
+  assert.ok(candidateCall, 'the candidate search ran')
+  assert.deepEqual(
+    candidateCall[10],
+    [THREAD_ID],
+    'a conversation with an agent must not draw candidates from its siblings',
+  )
+})
+
+test("a room's own thread still recalls the whole channel", async () => {
+  const sink = createConsumedSourceSink()
+  // `agentId: null` — the channel's General thread, which is one conversation
+  // and whose history is the channel's.
+  const deps = historyDeps(message(), null)
+  await retrieveRelevantHistory(deps as never, context(sink) as never, payload, {
+    prompt: 'what did we decide?',
+    tokenBudget: 1_000,
+    viewer: agentViewer,
+  })
+
+  const candidateCall = deps.searchParams.find((params) => params.length >= 11)
+  assert.ok(candidateCall, 'the candidate search ran')
+  assert.equal(candidateCall[10], null, 'a room must not be narrowed to one thread')
 })

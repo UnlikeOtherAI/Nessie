@@ -1,12 +1,13 @@
 /* The doorway palette for a host without a theme system (the nessie.works
    landing). These values are self-contained: the package owns them, and the
    landing is the only host that imports this file. The admin never imports
-   it — it supplies its own theme tokens to the same `.signin-*` classes.
+   it.
 
-   The values are the marketing homepage's deep-water palette, so the doorway
-   and the pages under it are one design: the icon's navy for the brand bar and
-   the showcase stage, the logo's blue for every action, foam for the wash the
-   hero settles into. */
+   The doorway's own colours are no longer among them: `styles.css` pins the
+   deep-water palette for every host, so the front door looks the same whoever
+   opens it. What remains here is what the landing needs *around* the doorway —
+   the page ground its sections stand on, the body face, the gutter, the radii
+   and the motion. */
 
 :root {
   color-scheme: light;
@@ -25,10 +26,6 @@
   --accent-hover: #0052d1;
   --accent-soft: rgba(2, 102, 250, 0.12);
   --on-accent: #ffffff;
-  --signin-stage: #0b172a;
-  --signin-on-stage: #ffffff;
-  --signin-stage-card: #ffffff;
-  --signin-stage-card-fg: #0b172a;
   --scrim-weak: rgba(11, 23, 42, 0.06);
   --scrim: rgba(11, 23, 42, 0.18);
   --scrim-strong: rgba(11, 23, 42, 0.42);

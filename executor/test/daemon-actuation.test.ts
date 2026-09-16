@@ -42,6 +42,7 @@ const state: ExecutorLocalState = {
     vmHelperPath: '/private/helper',
   },
   descriptor: {
+    commandAllowlist: ['pnpm *'],
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
     operationKeys: ['browser.act', 'command.run'],
     profiles: ['workspace_sandbox'],
@@ -50,7 +51,7 @@ const state: ExecutorLocalState = {
   executorId: '00000000-0000-4000-8000-000000000404',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot: '/private/workspace',
+  workspaceFolders: [{ name: 'workspace', path: '/private/workspace' }],
 }
 
 test('daemon routes actuation only to the matching mock transport after schema validation', async () => {

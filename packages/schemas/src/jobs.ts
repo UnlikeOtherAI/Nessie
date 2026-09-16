@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { AuthorizedActionContextSchema } from './access-context.js'
+import { AuthorizedActionContextSchema, UoaSessionIdentitySchema } from './access-context.js'
 import {
   AgentIdSchema,
   ChannelIdSchema,
@@ -345,6 +345,15 @@ export const KnowledgeInferenceOriginSchema = z.object({
   requestId: NonEmptyStringSchema,
   correlationId: NonEmptyStringSchema.optional(),
   systemComponent: NonEmptyStringSchema.optional(),
+  /**
+   * The session identity of the person whose save produced this version,
+   * captured while that session existed. A job has no session, and a signing
+   * deployment refuses any Ledger call without one, exactly as a scheduled
+   * trigger's fire does. Optional because a persisted origin (backfill, a save
+   * with no live request) has none; those embeds are skipped under signing
+   * rather than signed as somebody else.
+   */
+  uoaIdentity: UoaSessionIdentitySchema.optional(),
 })
 export type KnowledgeInferenceOrigin = z.infer<
   typeof KnowledgeInferenceOriginSchema
@@ -363,11 +372,23 @@ export type KnowledgeEmbedJobPayload = z.infer<typeof KnowledgeEmbedJobPayloadSc
 // or tombstoned Message.
 export const MESSAGE_EMBED_TOPIC = 'message.embed'
 
+/**
+ * Who a message's embed is done for, captured where a session exists: the
+ * person's own send, or the run that replied to them. A sweep or backfill claim
+ * has no session and carries no origin.
+ */
+export const MessageEmbedOriginSchema = z.object({
+  userId: z.string().uuid(),
+  uoaIdentity: UoaSessionIdentitySchema,
+})
+export type MessageEmbedOrigin = z.infer<typeof MessageEmbedOriginSchema>
+
 export const MessageEmbedJobPayloadSchema = z.object({
   contentHash: z.string().regex(/^[a-f0-9]{64}$/),
   embeddingModel: NonEmptyStringSchema,
   messageId: z.string().uuid(),
   organizationId: z.string().uuid(),
+  origin: MessageEmbedOriginSchema.optional(),
 })
 export type MessageEmbedJobPayload = z.infer<typeof MessageEmbedJobPayloadSchema>
 

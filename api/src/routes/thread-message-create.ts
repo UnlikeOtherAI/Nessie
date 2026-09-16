@@ -8,7 +8,7 @@ import {
 } from '@nessie/schemas'
 import { CreateThreadMessageBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { createThreadMessage } from '../services/message-create.js'
+import { createThreadMessage, messageEmbeddingForSender } from '../services/message-create.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
 import {
   mapMessageRecord,
@@ -27,6 +27,7 @@ export const registerCreateThreadMessageRoute = (
     requireActorContext,
     buildChannelRealtimeScopes,
     messageMemoryCaptureConfig,
+    sharedModelClient,
   } = deps
 
   app.post('/api/threads/:threadId/messages', async (request, reply) => {
@@ -117,6 +118,7 @@ export const registerCreateThreadMessageRoute = (
           : {}),
         type: mention.type,
       })),
+      embedding: messageEmbeddingForSender(sharedModelClient, actorContext),
     })
 
     if (result.kind === 'thread_not_found') {

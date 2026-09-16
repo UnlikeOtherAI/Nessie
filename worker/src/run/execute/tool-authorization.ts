@@ -1,6 +1,8 @@
 import {
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_START_FAILURE_DETAIL,
+  isEmailAccountTool,
+  parseEmailAccountToolArgs,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '@nessie/runtime'
 import {
@@ -183,6 +185,28 @@ export const authorizeToolExecution = async (
   const toolActorContext = buildToolActorContext(baseActorContext, context, toolName)
   const emitAudit: ToolAuthorizationAuditEmitter =
     hooks.emitAudit ?? ((actorContext, input) => emitWorkerAuditEvent(prisma, actorContext, input))
+
+  // The email lifecycle tools are a credential boundary, so their arguments are
+  // narrowed before anything downstream can make them durable: `args` is what
+  // `summarizeToolInput` writes into the task event, what a denial hands back
+  // to the model, and what an approval freezes. A field no handler reads would
+  // otherwise still be recorded.
+  if (isEmailAccountTool(toolName)) {
+    try {
+      args = parseEmailAccountToolArgs(toolName, args)
+    } catch {
+      await auditDenial(emitAudit, toolActorContext, context, toolName, {
+        source: 'email_account_tool_arguments',
+      }, 'tool_arguments_invalid')
+      return {
+        decision: 'deny',
+        result: toolDeniedResult(toolName, {}, {
+          message: `Tool "${toolName}" was called with arguments it does not accept.`,
+          reason: 'tool_arguments_invalid',
+        }),
+      }
+    }
+  }
 
   const isExternalName = auth.externalToolNames?.has(toolName) ?? false
   if (blocksPrivateConversationWrite({ context, isExternal: isExternalName, toolName })) {

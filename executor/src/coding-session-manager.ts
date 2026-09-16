@@ -7,6 +7,7 @@ import {
 import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } from './guest-vm-session.js'
 import {
   createGuestWorkspaceLease,
+  guestSessionFolder,
   releaseGuestWorkspaceLeaseIfCurrent,
 } from './guest-workspace-lease.js'
 import type { ExecutorLocalState } from './state-store.js'
@@ -102,11 +103,13 @@ export const createExecutorCodingSessionManager = (
         }
       }
       try {
-        lease = await createGuestWorkspaceLease(stateDir, state.workspaceRoot, {
-          bindingFence: command.bindingFence,
-          commandId: command.commandId,
-          runId,
-        })
+        lease = await createGuestWorkspaceLease(
+          stateDir,
+          // Refuses when more than one folder is configured; the daemon dispatch
+          // has already answered with the named reason before reaching here.
+          guestSessionFolder(state.workspaceFolders),
+          { bindingFence: command.bindingFence, commandId: command.commandId, runId },
+        )
         session = await startSession({
           codexAuthProfilePath: sandbox.codexAuthProfilePath,
           egressPolicy: { allowedOrigins: [...CODEX_EGRESS_ORIGINS] },

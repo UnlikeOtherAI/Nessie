@@ -114,15 +114,19 @@ const assertPresentation = async (
   return presentation
 }
 
+/**
+ * A source may only feed a dashboard whose audience it already covers.
+ *
+ * The expected basis used to be chosen from the dashboard's `home` — five
+ * scope types read from five nullable columns. A dashboard has one home now,
+ * so the basis it needs is its project's, or the organisation's, which
+ * contains every project.
+ */
 const assertMaterialsFitDashboardAudience = async (
   tx: Prisma.TransactionClient,
   dashboard: {
-    channelId: string | null
-    home: string
     organizationId: string
-    ownerUserId: string | null
-    projectId: string | null
-    teamId: string | null
+    projectId: string
   },
   sourceIds: string[],
 ) => {
@@ -130,16 +134,8 @@ const assertMaterialsFitDashboardAudience = async (
     where: { sourceId: { in: sourceIds }, organizationId: dashboard.organizationId },
     select: { accessBasis: true, sourceId: true },
   })
-  const expectedId = dashboard.home === 'organization'
-    ? dashboard.organizationId
-    : dashboard.home === 'project'
-      ? dashboard.projectId
-      : dashboard.home === 'team'
-        ? dashboard.teamId
-        : dashboard.home === 'channel'
-          ? dashboard.channelId
-          : dashboard.ownerUserId
-  const expectedScopeType = dashboard.home === 'personal' ? 'user' : dashboard.home
+  const expectedId = dashboard.projectId
+  const expectedScopeType = 'project'
   for (const material of materials) {
     const basis = Array.isArray(material.accessBasis) ? material.accessBasis : null
     if (!basis || basis.length === 0) {

@@ -120,9 +120,19 @@ Plan and as-built deltas:
 - **Account lifecycle is available from the Personal Assistant without making
   chat a credential surface.** `email_account_list` returns the exact kind and
   id for every Google/Microsoft account the person owns and every SMTP/IMAP
-  mailbox they may administer. `email_account_connect` posts a doorway into the
+  mailbox they may administer. The list it returns is the mailboxes the caller may *administer*, not the
+broader set they may see: membership makes a shared mailbox visible, and only
+an owner or admin may change one, so listing by visibility handed the model
+ids whose every mutation would be refused.
+`email_account_connect` posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
-  OAuth-code argument. `email_account_check` invokes the same provider resync or
+  OAuth-code argument. Connection status carries only fixed structural remedies: a provider's own
+error text is neither persisted nor presented, and never reaches a run's
+transcript, because a mail server chooses it. `presentMailboxConnection`
+derives the remedy from `status` rather than returning the stored string, so
+a legacy row cannot leak one either, and a migration sanitises the rows that
+were already written.
+`email_account_check` invokes the same provider resync or
   live two-leg mailbox test as the account card, and
   `email_account_disconnect` is structurally approval-gated before it invokes
   the same disconnect service. `email_account_agent_access` changes only the

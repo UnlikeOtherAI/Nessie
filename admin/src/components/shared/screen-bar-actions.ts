@@ -40,6 +40,9 @@ const submitForm = (formId: string | undefined): void => {
 }
 
 const performFor = (action: PageHeaderAction): ((itemId?: string) => void) => {
+  // Filtered out before this is reached; answered rather than asserted so a
+  // future caller gets a no-op instead of a crash.
+  if (action.kind === 'custom') return () => undefined
   if (action.kind === 'menu') {
     return (itemId?: string) => {
       const item = action.items.find((candidate) => candidate.id === itemId)
@@ -72,22 +75,31 @@ const performFor = (action: PageHeaderAction): ((itemId?: string) => void) => {
   }
 }
 
+/**
+ * A `custom` action is React the screen draws itself, so the native bar has no
+ * lane for it and it is left out here rather than published as a button that
+ * would fire nothing. It is not dropped: `ScreenHeader` renders custom actions
+ * with the page under the native bar, the way `eyebrow` and `leading` already
+ * stay with the page.
+ */
 export const toScreenBarActions = (
   actions: PageHeaderAction[] | undefined,
-): ScreenBarAction[] => (actions ?? []).map((action) => ({
-  checked: action.kind === 'toggle' ? action.checked : null,
-  disabled: action.disabled ?? false,
-  icon: action.barIcon ?? null,
-  id: action.id,
-  items: action.kind === 'menu' ? action.items.map(toMenuItem) : null,
-  kind: action.kind ?? 'button',
-  label: action.label,
-  perform: performFor(action),
-  primary: action.primary ?? false,
-  priority: action.priority,
-  selected: action.selected ?? action.pressed ?? false,
-  submit: action.kind !== 'menu' && action.kind !== 'toggle' && action.kind !== 'link'
-    ? action.submit ?? false
-    : false,
-  tone: action.tone ?? null,
-}))
+): ScreenBarAction[] => (actions ?? [])
+  .filter((action) => action.kind !== 'custom')
+  .map((action) => ({
+    checked: action.kind === 'toggle' ? action.checked : null,
+    disabled: action.disabled ?? false,
+    icon: action.barIcon ?? null,
+    id: action.id,
+    items: action.kind === 'menu' ? action.items.map(toMenuItem) : null,
+    kind: action.kind ?? 'button',
+    label: action.label,
+    perform: performFor(action),
+    primary: action.primary ?? false,
+    priority: action.priority,
+    selected: action.selected ?? action.pressed ?? false,
+    submit: action.kind !== 'menu' && action.kind !== 'toggle' && action.kind !== 'link'
+      ? action.submit ?? false
+      : false,
+    tone: action.tone ?? null,
+  }))

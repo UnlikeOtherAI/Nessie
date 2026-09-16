@@ -220,6 +220,16 @@ export const UoaTeamDirectoryEntrySchema = z.object({
   avatarImageUrl: HttpUrlSchema.optional(),
   label: z.string().min(1),
   orgName: z.string().min(1).optional(),
+  // The two labels a team's tenant hostname is built from,
+  // `<teamSlug>.<orgSlug>.<baseDomain>`. UOA sends both in the directory for
+  // exactly this reason — its own contract says they are "present so a product
+  // can build a team's address without a second lookup" — and a team slug is
+  // unique only inside its organisation, so neither is a hostname alone.
+  //
+  // Optional on the wire, like `orgName`: an older UOA build omits them, and a
+  // missing slug must degrade to the app-wide link rather than hide the row.
+  teamSlug: z.string().min(1).optional(),
+  orgSlug: z.string().min(1).optional(),
   active: z.boolean(),
 })
 export type UoaTeamDirectoryEntry = z.infer<typeof UoaTeamDirectoryEntrySchema>

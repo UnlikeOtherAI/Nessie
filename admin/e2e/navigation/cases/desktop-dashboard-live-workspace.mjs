@@ -10,7 +10,11 @@ export const desktopDashboardLiveWorkspace = {
   run: async ({ page, seed }) => {
     const checks = createChecks('desktop-dashboard-live-workspace')
     const channel = seed.channels[0]
-    const { dashboard, source } = await seedDashboardWorkspace({ channel, token: seed.token })
+    const { dashboard, source } = await seedDashboardWorkspace({
+      channel,
+      projectId: seed.project.id,
+      token: seed.token,
+    })
 
     // Conversation cards must not load the workspace-sized datasets. Capture
     // this before navigation so the assertion proves the preview's first paint

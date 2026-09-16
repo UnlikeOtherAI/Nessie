@@ -219,8 +219,6 @@ export const DocumentsFinder = ({
         return void knowledge.openProjectDocuments(row.projectId).then((spaceId) => {
           if (spaceId) void navigate(`/knowledge-base/spaces/${encodeURIComponent(spaceId)}`)
         })
-      case 'dashboards':
-        return void navigate('/dashboards')
       case 'product-view':
         knowledge.selectProductView(row.view)
         return void navigate(`/knowledge-base/views/${encodeURIComponent(row.view)}`)

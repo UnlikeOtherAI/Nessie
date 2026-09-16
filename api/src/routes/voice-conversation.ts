@@ -9,7 +9,7 @@ import {
 } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { createThreadMessage } from '../services/message-create.js'
+import { createThreadMessage, messageEmbeddingForSender } from '../services/message-create.js'
 import { deliverCreatedMessage } from '../services/message-delivery.js'
 import { listThreadMessages } from '../services/message-read-model.js'
 import { findThreadForUser } from '../services/message-read-state.js'
@@ -50,6 +50,7 @@ export const registerVoiceConversationRoutes = (
     realtimeHub,
     requireActorContext,
     requireUserActor,
+    sharedModelClient,
   } = deps
 
   /**
@@ -127,6 +128,7 @@ export const registerVoiceConversationRoutes = (
         threadId: thread.id,
         userId: actorContext.actor.actorId,
         ...(clientMessageId ? { clientMessageId } : {}),
+        embedding: messageEmbeddingForSender(sharedModelClient, actorContext),
       })
 
       if (result.kind === 'replayed') {

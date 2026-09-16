@@ -374,7 +374,12 @@ test('to-do cards render sane step copy and only expose changes to entitled peop
   assert.doesNotMatch(unrelated, /<select/)
 })
 
-test('agent proposals show their review state and owner-only resolve controls', () => {
+/**
+ * The tab shows what a proposal's state is; it no longer offers the decision.
+ * An approval is answered on its card, in the conversation the agent proposed
+ * it in, and the same question in two places is two places to keep in step.
+ */
+test('agent proposals show their review state and never a second decision', () => {
   const proposal = {
     action: 'agent.todo_template.publish',
     agentId,
@@ -395,24 +400,24 @@ test('agent proposals show their review state and owner-only resolve controls', 
     onArchive: () => undefined,
     onEdit: () => undefined,
     onRefuseOwnerAction: () => undefined,
-    onResolveProposal: () => undefined,
     proposal,
     template: proposedTemplate,
   }))
   assert.match(owner, /proposed by the agent/)
-  assert.match(owner, />Approve<\/button>/)
-  assert.match(owner, />Reject<\/button>/)
+  assert.match(owner, /awaiting approval/)
+  assert.doesNotMatch(owner, />Approve<\/button>/)
+  assert.doesNotMatch(owner, />Reject<\/button>/)
 
   const member = renderToStaticMarkup(createElement(TodoTemplateCard, {
     isOwner: false,
     onArchive: () => undefined,
     onEdit: () => undefined,
     onRefuseOwnerAction: () => undefined,
-    onResolveProposal: () => undefined,
     proposal,
     template: proposedTemplate,
   }))
   assert.match(member, /proposed by the agent/)
+  assert.match(member, /awaiting approval/)
   assert.doesNotMatch(member, />Approve<\/button>/)
   assert.doesNotMatch(member, />Reject<\/button>/)
 })

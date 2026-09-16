@@ -14,7 +14,7 @@ const grant: ExecutorDeepTestExecutionGrant = {
   descriptor: { limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 4096, maxSessions: 1 }, operationKeys: ['command.run', 'browser.open', 'browser.observe', 'browser.act'], profiles: ['workspace_sandbox'], revision: 1 },
   executorId: '00000000-0000-4000-8000-000000000005',
   runtime: { guestInitrdBuilderPath: '/vm/builder', guestRuntimeBundlePath: '/vm/runtime', kernelPath: '/vm/kernel', vmHelperPath: '/vm/helper' },
-  workspaceRoot: '/workspace',
+  workspaceFolders: [{ name: 'workspace', path: '/workspace' }],
 }
 
 test('execution CLI requires an explicit active-testing confirmation', () => {

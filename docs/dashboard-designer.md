@@ -9,9 +9,19 @@ working.
 ## Home and doorways
 
 The agent's home is one per-user direct message, created through the ordinary
-global-agent home route. Its owning surface is **Dashboards**: the page header
-and the empty state both offer **Ask Dashboard Designer**. They open the same DM
-and navigate to it rather than building a dashboard-specific chat surface.
+global-agent home route. Its owning surface is a project's **Dashboards**
+section (`/projects/:projectId/dashboards`): the header and the empty state
+both offer **Ask Dashboard Designer**. They open the same DM and navigate to it
+rather than building a dashboard-specific chat surface.
+
+A dashboard lives in a project, so `dashboard_create` takes a `projectId` and
+has no default. The parameter used to be a `home` defaulting to `personal`,
+which was private and therefore harmless to guess; a project is an audience, so
+the agent asks which one rather than choosing. The same rule decides what it may
+show: a source feeds a dashboard only when its verified audience covers that
+project, and presenting one into a room is allowed in a channel of the
+dashboard's own project — or in this DM, whose only human reader is the person
+who asked.
 
 ## Connecting an API
 

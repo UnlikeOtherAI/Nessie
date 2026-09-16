@@ -65,9 +65,6 @@ const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ defaul
 const ExecutorsPage = lazy(() =>
   import('./pages/ExecutorsPage').then((m) => ({ default: m.ExecutorsPage })),
 )
-const ApprovalsPage = lazy(() =>
-  import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
-)
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
 const ChannelProjectOverviewPage = lazy(() =>
   import('./pages/channels/ChannelProjectOverviewPage').then((m) => ({
@@ -87,11 +84,8 @@ const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ de
 const KnowledgeBasePage = lazy(() =>
   import('./pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })),
 )
-const DashboardsPage = lazy(() =>
-  import('./pages/DashboardsPage').then((m) => ({ default: m.DashboardsPage })),
-)
-const DashboardDetailPage = lazy(() =>
-  import('./pages/DashboardDetailPage').then((m) => ({ default: m.DashboardDetailPage })),
+const ProjectDashboardPage = lazy(() =>
+  import('./pages/project/ProjectDashboardPage').then((m) => ({ default: m.ProjectDashboardPage })),
 )
 const AppDetailPage = lazy(() =>
   import('./pages/AppDetailPage').then((m) => ({ default: m.AppDetailPage })),
@@ -359,12 +353,15 @@ export const router = createBrowserRouter([
         element: lazyElement(ProjectView, 'board'),
       },
       {
-        path: '/dashboards',
-        element: lazyElement(DashboardsPage, 'board'),
+        path: '/projects/:projectId/dashboards',
+        element: lazyElement(ProjectView, 'board'),
       },
       {
-        path: '/dashboards/:dashboardId',
-        element: lazyElement(DashboardDetailPage, 'board'),
+        // One dashboard, full screen — its own page rather than a project tab,
+        // because it is what the Overview's live tiles open into and it takes
+        // the whole surface.
+        path: '/projects/:projectId/dashboards/:dashboardId',
+        element: lazyElement(ProjectDashboardPage, 'board'),
       },
       {
         path: '/agents',
@@ -524,10 +521,6 @@ export const router = createBrowserRouter([
       {
         path: '/audit',
         element: lazyElement(AuditLogPage, 'list'),
-      },
-      {
-        path: '/approvals',
-        element: lazyElement(ApprovalsPage, 'list'),
       },
       {
         path: '/alerts',

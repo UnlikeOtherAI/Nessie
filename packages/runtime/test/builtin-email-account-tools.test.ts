@@ -4,6 +4,8 @@ import test from 'node:test'
 import {
   BUILTIN_TOOL_DEFINITIONS,
   EMAIL_ACCOUNT_TOOL_DEFINITIONS,
+  isEmailAccountTool,
+  parseEmailAccountToolArgs,
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS,
 } from '../src/index.js'
 
@@ -49,4 +51,65 @@ test('the connection tool cannot accept a secret through model arguments', () =>
     assert.equal(connect?.parameters.properties[forbidden], undefined)
   }
   assert.match(connect?.description ?? '', /never ask them to paste an email password/)
+})
+
+/**
+ * The lifecycle tools are a credential boundary.
+ *
+ * Each handler reads only the fields it knows, so an extra field was harmless
+ * to the handler — and still travelled. `args` is what `summarizeToolInput`
+ * writes into the task event, what a denial hands back to the model, and what
+ * an approval freezes verbatim. A password or OAuth code the model was talked
+ * into emitting became durable state without any handler touching it.
+ */
+test('a lifecycle call carrying a credential is refused, not quietly trimmed', () => {
+  assert.throws(() => parseEmailAccountToolArgs('email_account_check', {
+    accountId: '00000000-0000-4000-8000-000000000001',
+    accountKind: 'mailbox',
+    password: 'hunter2',
+  }))
+
+  assert.throws(() => parseEmailAccountToolArgs('email_account_connect', {
+    oauthCode: '4/0AY0e-g7...',
+    scope: 'user',
+  }))
+
+  assert.throws(() => parseEmailAccountToolArgs('email_account_list', {
+    imapPassword: 'hunter2',
+  }))
+})
+
+test('a lifecycle call keeps its own arguments', () => {
+  assert.deepEqual(
+    parseEmailAccountToolArgs('email_account_check', {
+      accountId: '00000000-0000-4000-8000-000000000001',
+      accountKind: 'mailbox',
+    }),
+    { accountId: '00000000-0000-4000-8000-000000000001', accountKind: 'mailbox' },
+  )
+  assert.deepEqual(parseEmailAccountToolArgs('email_account_connect', {}), { scope: 'user' })
+  assert.deepEqual(parseEmailAccountToolArgs('email_account_list', {}), {})
+})
+
+test('a malformed id is refused rather than reaching a handler', () => {
+  assert.throws(() => parseEmailAccountToolArgs('email_account_disconnect', {
+    accountId: 'not-a-uuid',
+    accountKind: 'mailbox',
+  }))
+  assert.throws(() => parseEmailAccountToolArgs('email_account_check', {
+    accountId: '00000000-0000-4000-8000-000000000001',
+    accountKind: 'imap',
+  }))
+})
+
+test('every lifecycle tool is recognised, and nothing else is', () => {
+  for (const id of [
+    'email_account_list',
+    'email_account_connect',
+    'email_account_check',
+    'email_account_disconnect',
+    'email_account_agent_access',
+  ]) assert.equal(isEmailAccountTool(id), true, id)
+  assert.equal(isEmailAccountTool('gmail_draft_send'), false)
+  assert.equal(isEmailAccountTool('mailbox_search'), false)
 })

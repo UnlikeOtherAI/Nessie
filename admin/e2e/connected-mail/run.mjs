@@ -330,9 +330,10 @@ const approvalsMailSendPreview = async ({ browser, fixture }) => {
   const { page } = target
   try {
     fixture.showPendingGmailApproval()
-    await page.goto(`${adminUrl}/approvals`)
-    await page.getByRole('heading', { name: 'Approvals' }).waitFor()
-    const approve = page.getByRole('button', { name: 'Approve' })
+    // The approval is answered where it was asked. There is no list to open.
+    await page.goto(`${adminUrl}/channels/${fixture.ids.channel}`)
+    await page.getByTestId('approval-gate').waitFor()
+    const approve = page.getByTestId('approval-gate-open-confirm')
     await approve.waitFor()
     assert(await approve.isDisabled(), 'mail approval was enabled before its exact private preview loaded')
     fixture.releasePendingGmailApprovalPreview()
@@ -343,7 +344,7 @@ const approvalsMailSendPreview = async ({ browser, fixture }) => {
       'alex@example.com', 'recipient@example.com', 'team@example.com', 'audit@example.com',
       'Exact Gmail approval subject', 'Exact private Gmail body.',
     ]) await preview.getByText(value, { exact: true }).waitFor()
-    await shot(page, 'approvals-mail-send-preview')
+    await shot(page, 'approval-card-mail-send-preview')
   } finally {
     expectNoErrors(target.errors, fixture)
     await target.close()

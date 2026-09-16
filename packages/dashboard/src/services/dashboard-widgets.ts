@@ -252,6 +252,8 @@ export const buildWidgetProjection = async (
       schemaVersion: number
       spec: unknown
     }
+    /** The dashboard's project — the first half of its address. */
+    projectId: string
     source: {
       outputColumns: unknown
       kind: string
@@ -271,6 +273,7 @@ export const buildWidgetProjection = async (
   const base = {
     widgetId: input.widget.id,
     dashboardId: input.widget.dashboardId,
+    projectId: input.projectId,
     kind: input.widget.kind as DashboardWidgetProjection['kind'],
     schemaVersion: input.widget.schemaVersion,
     ...(input.source.authorityLabel ? { authorityLabel: input.source.authorityLabel } : {}),
@@ -355,7 +358,7 @@ export const loadWidgetProjection = async (
 
   const widget = await context.prisma.dashboardWidget.findFirst({
     where: { id: input.widgetId, organizationId: context.actor.organizationId },
-    include: { source: true, dashboard: { select: { presentation: true } } },
+    include: { source: true, dashboard: { select: { presentation: true, projectId: true } } },
   })
   if (!widget) {
     throw new DashboardServiceError(404, 'DASHBOARD_WIDGET_NOT_FOUND', 'widget not found')
@@ -374,6 +377,7 @@ export const loadWidgetProjection = async (
   return buildWidgetProjection(
     {
       widget,
+      projectId: widget.dashboard.projectId,
       source: widget.source,
       dataset,
       loadDataset: input.loadDataset,
@@ -413,10 +417,22 @@ export const loadSnapshotProjection = async (
   if (!snapshot) {
     throw new DashboardServiceError(404, 'DASHBOARD_SNAPSHOT_NOT_FOUND', 'snapshot not found')
   }
+  // A snapshot carries a dashboard id, not a relation, so the project is a
+  // second read. The frozen data is the snapshot's; the *address* is the
+  // dashboard's, and a dashboard can move between projects after a freeze —
+  // so this reads the dashboard now rather than trusting a copy taken then.
+  const owner = await context.prisma.dashboard.findFirst({
+    where: { id: snapshot.dashboardId, organizationId: context.actor.organizationId },
+    select: { projectId: true },
+  })
+  if (!owner) {
+    throw new DashboardServiceError(404, 'DASHBOARD_NOT_FOUND', 'dashboard not found')
+  }
 
   const base = {
     widgetId: snapshot.widgetId,
     dashboardId: snapshot.dashboardId,
+    projectId: owner.projectId,
     kind: snapshot.kind as DashboardWidgetProjection['kind'],
     schemaVersion: snapshot.schemaVersion,
     snapshotId: snapshot.id,

@@ -40,6 +40,7 @@ import {
   WorkflowRunFailureDispatchJobPayloadSchema,
 } from '@nessie/schemas'
 import { DASHBOARD_REFRESH_TOPIC } from '@nessie/dashboard'
+import { isLedgerEndpoint } from '@nessie/runtime'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
 import { refreshDashboardDataSource } from './control/dashboard-refresh.js'
 import { runDeepSignalInsightFanout } from './control/deepsignal-insight.js'
@@ -89,6 +90,11 @@ export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps
     subscribe,
     subscriptionSecrets,
   } = deps
+  // The same condition `index.ts` uses to sign every model call: a signer is
+  // configured and the model routes through Ledger. Under it, a background
+  // embed with no captured session identity is refused on every attempt.
+  const ledgerSigningConfigured =
+    ledgerIdentity !== null && isLedgerEndpoint(config.model.baseUrl)
 subscribe(
   'call.ring-timeout',
   async (job) => {
@@ -335,7 +341,7 @@ subscribe(
   KNOWLEDGE_EMBED_TOPIC,
   async (job) => {
     const payload = KnowledgeEmbedJobPayloadSchema.parse(job.payload)
-    await executeKnowledgeEmbedJob({ modelClient, prisma }, payload)
+    await executeKnowledgeEmbedJob({ ledgerSigningConfigured, modelClient, prisma }, payload)
   },
   { signal: abortSignal },
 )
@@ -362,7 +368,7 @@ subscribe(
   MESSAGE_EMBED_TOPIC,
   async (job) => {
     const payload = MessageEmbedJobPayloadSchema.parse(job.payload)
-    await executeMessageEmbedJob({ modelClient, prisma }, payload)
+    await executeMessageEmbedJob({ ledgerSigningConfigured, modelClient, prisma }, payload)
   },
   { signal: abortSignal },
 )
@@ -490,7 +496,7 @@ subscribe(
   DEMONSTRATION_GENERALIZE_TOPIC,
   async (job) => {
     const payload = DemonstrationGeneralizeJobPayloadSchema.parse(job.payload)
-    await generalizeDemonstration(prisma, payload, undefined, ledgerIdentity)
+    await generalizeDemonstration(prisma, payload, undefined, ledgerIdentity, realtimeTransport)
   },
   { signal: abortSignal },
 )

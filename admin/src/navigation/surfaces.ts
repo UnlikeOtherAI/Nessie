@@ -24,7 +24,6 @@ import { createAdminSurfaces } from './admin-surfaces'
 import { createConnectedMailSurfaces } from './connected-mail-surfaces'
 import {
   toChannels,
-  toDashboards,
   toKnowledge,
   toProjects,
 } from './surface-parents'
@@ -324,10 +323,27 @@ export const SURFACES: Surface[] = [
     keyScope: () => 'project',
     intent: PROJECT_INTENT,
     parentOf: toProjects,
-    pattern: /^\/projects\/([^/]+)\/(?:backlog|insights|docs|executors|settings)$/,
+    pattern: /^\/projects\/([^/]+)\/(?:backlog|insights|docs|dashboards|executors|settings)$/,
     root: PROJECTS_ROOT,
     section: 'projects',
     type: 'tabHost',
+  },
+  {
+    // One dashboard, full screen. Reached from the project's Dashboards list
+    // and from the live tiles on its Overview, so Back returns to whichever
+    // the reader came from and names the list only on a cold deep link.
+    depth: 2,
+    identityOf: (match) => `dashboard:${match[2]}`,
+    keyScope: (identity) => identity,
+    parent: 'origin',
+    parentOf: (match) => ({
+      label: 'Back to Dashboards',
+      pathname: `/projects/${match[1]}/dashboards`,
+    }),
+    pattern: /^\/projects\/([^/]+)\/dashboards\/([^/]+)$/,
+    root: PROJECTS_ROOT,
+    section: 'projects',
+    type: 'nested',
   },
 
   // ── Knowledge ────────────────────────────────────────────────────────────
@@ -389,24 +405,6 @@ export const SURFACES: Surface[] = [
     root: KNOWLEDGE_ROOT,
     section: 'knowledge',
     type: 'detail',
-  },
-  {
-    depth: 1,
-    parentOf: toKnowledge,
-    pattern: /^\/dashboards$/,
-    root: KNOWLEDGE_ROOT,
-    section: 'knowledge',
-    type: 'detail',
-  },
-  {
-    depth: 2,
-    identityOf: (match) => `dashboard:${match[1]}`,
-    keyScope: (identity) => identity,
-    parentOf: toDashboards,
-    pattern: /^\/dashboards\/([^/]+)$/,
-    root: KNOWLEDGE_ROOT,
-    section: 'knowledge',
-    type: 'nested',
   },
 
   // ── Admin ────────────────────────────────────────────────────────────────

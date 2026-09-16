@@ -20,13 +20,13 @@
  */
 
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
-import { faHashtag, faUsers } from '@fortawesome/free-solid-svg-icons'
+import { faChartPie, faHashtag, faUsers } from '@fortawesome/free-solid-svg-icons'
 import { projectSections, type ProjectSectionId } from '../../../navigation/project-sections'
 
 /** Everything a project section is, except Overview: a doorway does not link to itself. */
 export type ProjectTileSectionId = Exclude<ProjectSectionId, 'overview'>
 
-export type ProjectTileKey = ProjectTileSectionId | 'channels' | 'people'
+export type ProjectTileKey = ProjectTileSectionId | 'channels' | 'people' | `dashboard:${string}`
 
 /**
  * The tone names what the destination *is*, not which token it borrows, so the
@@ -44,6 +44,13 @@ export type ProjectTileTone =
 
 export type ProjectNavigationTile = {
   blurb: string
+  /**
+   * A live dashboard of this project, rendered small in place of the tile's
+   * icon and blurb. The dashboard cards continue the coloured navigation
+   * cards rather than forming a band of their own: going to a dashboard is
+   * navigation, and it belongs with the other places a person can go.
+   */
+  dashboardId?: string
   icon: IconDefinition
   key: ProjectTileKey
   label: string
@@ -64,6 +71,7 @@ export type ProjectNavigationTile = {
 const SECTION_COPY: Record<ProjectTileSectionId, { blurb: string; tone: ProjectTileTone }> = {
   backlog: { blurb: 'Shape what comes next and fill the sprint.', tone: 'plan' },
   board: { blurb: 'Every piece of work, who holds it, what is late.', tone: 'work' },
+  dashboards: { blurb: 'Live numbers from the services this project connects.', tone: 'insight' },
   docs: { blurb: 'The knowledge this project writes down and searches.', tone: 'knowledge' },
   executors: { blurb: 'The machines this project’s agents run work on.', tone: 'compute' },
   insights: { blurb: 'Velocity, burndown and where the time goes.', tone: 'insight' },
@@ -73,6 +81,8 @@ const SECTION_COPY: Record<ProjectTileSectionId, { blurb: string; tone: ProjectT
 type ProjectNavigationTilesInput = {
   /** Open tickets in no sprint. Only shown on a scrum project, which is the only one with a Backlog. */
   backlogCount: number
+  /** This project's dashboards, newest first. One tile each, after the sections. */
+  dashboards: readonly { id: string; title: string }[]
   /** The project's conversation rooms, most active first; the tile opens the first. */
   channels: readonly { id: string; label: string }[]
   /** Whether the reader may add and remove people; changes the People tile's words only. */
@@ -106,6 +116,8 @@ const sectionMeta = (
     // honest signal, and the one a person is looking for.
     case 'docs':
       return input.documentsUpdatedAge ? `updated ${input.documentsUpdatedAge}` : undefined
+    case 'dashboards':
+      return count(input.dashboards.length, 'dashboard', 'dashboards')
     // Insights is a view of the counts beside it; Executors are an
     // organisation-wide pool, so a project-scoped number would be invented;
     // Settings has nothing to count.
@@ -166,10 +178,24 @@ export const projectNavigationTiles = (
     tone: 'people',
   }
 
+  // One tile per dashboard, each rendering the live thing rather than naming
+  // it. They follow the sections instead of being mixed among them, so the
+  // fixed doorways stay in one stable block a person learns the shape of.
+  const dashboards: ProjectNavigationTile[] = input.dashboards.map((dashboard) => ({
+    blurb: '',
+    dashboardId: dashboard.id,
+    icon: faChartPie,
+    key: `dashboard:${dashboard.id}`,
+    label: dashboard.title,
+    to: `/projects/${input.projectId}/dashboards/${dashboard.id}`,
+    tone: 'insight',
+  }))
+
   // Channels and People sit with the other "manage this project" doorways
   // rather than at the top: the work is what a person came for.
   const before = sections.findIndex((tile) => tile.key === 'executors')
-  return before === -1
+  const ordered = before === -1
     ? [...sections, channels, people]
     : [...sections.slice(0, before), channels, people, ...sections.slice(before)]
+  return [...ordered, ...dashboards]
 }

@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { messageContentHash } from '@nessie/db'
 import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 import {
   redactDetectedSecrets,
@@ -8,9 +8,17 @@ import {
 } from '@nessie/schemas'
 
 type MessageEmbedDeps = {
+  /**
+   * True when every Ledger call this worker makes is signed, and therefore
+   * refused without the originating session's UOA identity.
+   */
+  ledgerSigningConfigured?: boolean
   modelClient: Pick<ModelClient, 'embedMany' | 'embeddingModel'>
   prisma: PrismaClient
 }
+
+/** `last_error` on a projection no signing deployment can ever produce. */
+export const MESSAGE_EMBED_IDENTITY_UNAVAILABLE = 'uoa_identity_unavailable'
 
 type MessageSource = {
   agentId: string | null
@@ -29,15 +37,15 @@ type ProjectionState = {
   vector: number[] | null
 }
 
-export const messageContentHash = (content: string): string =>
-  createHash('sha256').update(content, 'utf8').digest('hex')
+export { messageContentHash }
 
 const attributionForMessage = (
   message: MessageSource,
-  organizationId: string,
-  messageId: string,
+  payload: MessageEmbedJobPayload,
 ): LedgerAttribution => {
-  const userId = message.userId ?? message.onBehalfOfUserId
+  // The captured origin names who the embed is done for — the sender, or the
+  // person an agent replied to — and carries that session's identity.
+  const userId = payload.origin?.userId ?? message.userId ?? message.onBehalfOfUserId
   const actorId = message.agentId ?? userId ?? 'message-indexer'
   return {
     actorId,
@@ -45,14 +53,15 @@ const attributionForMessage = (
     agentId: message.agentId,
     channelId: message.thread.channel.id,
     correlationId: null,
-    organizationId,
+    organizationId: payload.organizationId,
     projectId: message.thread.channel.projectId,
-    requestId: `message-index:${messageId}`,
+    requestId: `message-index:${payload.messageId}`,
     runId: null,
     systemComponent: 'message-index',
     teamId: message.thread.channel.teamId,
     threadId: message.threadId,
     userId,
+    ...(payload.origin ? { uoaIdentity: payload.origin.uoaIdentity } : {}),
   }
 }
 
@@ -137,10 +146,22 @@ export const executeMessageEmbedJob = async (
     return
   }
 
+  // A signing deployment refuses an embed without the originating session's
+  // identity, and a sweep or backfill claim has none. No retry can supply one,
+  // so this source hash is recorded as skipped instead of dead-lettering.
+  if (deps.ledgerSigningConfigured && !payload.origin) {
+    await writeProjectionState(deps.prisma, payload, {
+      error: MESSAGE_EMBED_IDENTITY_UNAVAILABLE,
+      status: 'skipped',
+      vector: null,
+    })
+    return
+  }
+
   let vector: number[] | undefined
   try {
     [vector] = await deps.modelClient.embedMany([safeContent], {
-      usage: attributionForMessage(message, payload.organizationId, payload.messageId),
+      usage: attributionForMessage(message, payload),
     })
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 500) : 'embedding request failed'

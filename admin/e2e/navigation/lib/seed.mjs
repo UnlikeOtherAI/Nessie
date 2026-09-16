@@ -342,17 +342,25 @@ export const seedBrowserPushSession = async (ownerToken) => {
 export const seedDashboardWorkspace = async (input) => {
   const runId = Date.now().toString(36)
   const title = `Quarterly revenue ${runId}`
+  // A dashboard lives in a project, and so does the source that feeds it: the
+  // project is the audience both are recorded against, and creating either one
+  // requires belonging to it. That is the seed's own project — the suite's
+  // channels are standalone, so their container is the organisation's channel
+  // root, which nobody is a member of.
+  const { projectId } = input
+  if (!projectId) throw new Error('seedDashboardWorkspace needs the project to create in')
   const source = await call('/api/dashboard-sources/import', {
     body: {
       content: 'quarter,revenue\nQ1,12\nQ2,28\nQ3,19\n',
       format: 'csv',
       name: `Dashboard workspace CSV ${runId}`,
+      projectId,
     },
     method: 'POST',
     token: input.token,
   })
   const dashboard = await call('/api/dashboards', {
-    body: { home: 'personal', title },
+    body: { projectId, title },
     method: 'POST',
     token: input.token,
   })

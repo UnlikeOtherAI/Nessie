@@ -156,7 +156,7 @@ export const dispatchMailboxSendAction = async (
       await prisma.mailboxSendAction.updateMany({
         where: { id: action.id, state: 'dispatching' }, data: { state: 'ready', claimedAt: null },
       })
-      await markMailboxNeedsReauthorization(prisma, input.connection.id, 'The email address or password was not accepted.')
+      await markMailboxNeedsReauthorization(prisma, input.connection.id)
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
     throw error
@@ -172,7 +172,7 @@ export const dispatchMailboxSendAction = async (
       await prisma.mailboxSendAction.updateMany({
         where: { id: action.id, state: 'dispatching' }, data: { state: 'ready', claimedAt: null },
       })
-      await markMailboxNeedsReauthorization(prisma, input.connection.id, 'The email address or password was not accepted.')
+      await markMailboxNeedsReauthorization(prisma, input.connection.id)
       throw new ConnectedMailError('NEEDS_REAUTHORIZATION')
     }
     if (isDeterministicPreDataRejection(error)) {

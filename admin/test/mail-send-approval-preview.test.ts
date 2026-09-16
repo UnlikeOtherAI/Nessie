@@ -10,8 +10,7 @@ const source = (relativePath: string): string =>
 
 test('both private mail-send approvals use one frozen-draft preview contract', () => {
   const hooks = source('../src/facades/approvals/hooks.ts')
-  const gate = source('../src/components/features/channels/RunApprovalGate.tsx')
-  const approvals = source('../src/pages/ApprovalsPage.tsx')
+  const gate = source('../src/components/features/channels/ApprovalGate.tsx')
 
   assert.deepEqual(
     approvalKeys.mailSendDraft('mailbox_send', 'approval-1'),
@@ -27,9 +26,9 @@ test('both private mail-send approvals use one frozen-draft preview contract', (
   assert.match(gate, /active && isMailSend && mailDraft\.data/)
   assert.match(gate, /active && isGmailSend && mailDraft\.data/)
   assert.match(gate, /<MailboxSendApprovalPreview draft=\{mailDraft\.data\}/)
-  assert.match(approvals, /useMailSendApprovalDraft/)
-  assert.match(approvals, /<MailboxSendApprovalPreview draft=\{draft\.data\}/)
-  assert.match(approvals, /disabled=\{resolve\.isPending \|\| !canApprove\}/)
+  // There is no second surface to keep in step any more: an approval is
+  // answered on its card, so the frozen draft has exactly one renderer.
+  assert.match(gate, /disabled=\{resolve\.isPending \|\| \(resolution === 'approved' && !canApprove\)\}/)
   assert.match(hooks, /active: boolean/)
   assert.match(hooks, /removeQueries\(\{ queryKey: approvalKeys\.mailSendDraft\('gmail_draft_send', input\.id\) \}\)/)
   assert.doesNotMatch(gate, /inputSummary.*gmail_draft_send/)

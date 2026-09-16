@@ -250,6 +250,35 @@ summary and points here; **this file is the rule**.
   two deliberate non-sections in that grid: they have no route of their own,
   and the page below no longer lists them, so the grid is where they live or
   they are nowhere.
+- **A live thing in a tile is the live thing, scaled — never a picture of
+  one.** A project's dashboards are tiles in its Overview grid, continuing the
+  coloured navigation cards rather than forming a band of their own: going to a
+  dashboard is navigation, so it belongs with the other places a person can go.
+  Each renders `components/features/dashboards/ScaledDashboard.tsx` — the same
+  `DashboardCanvas` the full page renders, through the same authenticated
+  client, CSS-scaled — which is also what a dashboard posted into a
+  conversation renders. There is no dashboard-shaped second implementation to
+  drift, and the tile enforces the viewer's ordinary entitlement because it is
+  the real thing.
+  Four mechanics make that work and are easy to get wrong.
+  `transform: scale()` does not change layout size, so the inner canvas is
+  positioned **out of flow** — in flow, a CSS-sized frame grows to the canvas's
+  full unscaled height and a tile becomes a thousand pixels tall.
+  The canvas is laid out at a **page width** (`SCALED_CANVAS_WIDTH`, which is
+  what picks its breakpoint — `DashboardGrid`: lg ≥ 1200, md ≥ 768, sm below)
+  and then scaled, so the small one is the arrangement the person gets when
+  they open it rather than a narrower one they have never seen.
+  It is **fitted, not cropped**: the scale is whichever axis runs out first and
+  the result is centred in the slack, so the whole dashboard lands inside the
+  rectangle. A card showing the top-left corner of a dashboard is not a picture
+  of that dashboard. (A conversation card keeps the other behaviour — scaled to
+  width, clipped — because there it is a bounded strip, not a thumbnail.)
+  And the frame takes its height from **the grid row**, never from measuring
+  its own content, or the tile becomes the tallest thing in its row and
+  stretches every fixed doorway beside it.
+  The scaled copy is `inert` and `aria-hidden` with one button over it: the
+  real dashboard is one tap away and is where every control works, and tapping
+  grows it out of the tile (`docs/navigation/page-types-and-motion.md` §3).
 - **A tile carries what is in it; the page below carries what a count cannot
   say.** Overview had Members on it three times — the header button, the tile,
   and a summary card — because a card was the only way a count reached the
@@ -272,20 +301,25 @@ summary and points here; **this file is the rule**.
 - **One sign-in surface, and it is the homepage's doorway.** The admin login
   (`/login`) and the public landing (`nessie.works`) are the same screen:
   `packages/sign-in-surface` owns the layout (`SignInSurface`), the showcase
-  panel, the app-download tiles and the shared copy, and ships only
-  `.signin-*` classes that read host tokens. The admin supplies its themes;
-  the landing imports the package's `tokens.css`, which owns the doorway
-  palette for that themeless host — the marketing site's deep-water values, so
-  the doorway and the pages behind it are one design. A change to the sign-in
-  doorway is made in the package, never by restyling one host.
+  panel, the app-download tiles and the shared copy. A change to the sign-in
+  doorway is made in the package, never by restyling one host; the landing
+  imports the package's `tokens.css` for the page *around* the doorway.
+  **The doorway's colours are brand, not chrome, and the package pins them.**
+  `styles.css` redeclares the host's colour token names on `.signin-page` with
+  the marketing site's deep-water values, so every `.signin-*` rule — and every
+  admin control the login mounts inside itself — resolves to the brand, and the
+  theme resumes at the first element outside. The front door is the same door
+  for everyone: it opens before there is a signed-in person to have a
+  preference, and letting a personal pick through repainted it (Sandstone gave
+  a brown bar and brown buttons where the website has navy and blue). Geometry,
+  motion and the body face still come from the host.
   The surface is the marketing homepage's hero, not a floating card: a brand
-  bar in `--ink` carrying the mark and the wordmark, the site's water edge
-  hanging off it, then a full-bleed hero that runs from `--panel` into a soft
-  `--accent` wash, with the copy and controls left-aligned and the showcase
-  band on the right from `lg` up. Its display face is Geist, self-hosted by the
+  bar in the icon's navy carrying the mark and the wordmark, the site's water
+  edge hanging off it, then a full-bleed hero that runs from white into foam,
+  with the copy and controls left-aligned and the showcase band on the right
+  from `lg` up. Its display face is Geist, self-hosted by the
   package (`@fontsource-variable/geist`) so the doorway does not depend on a
-  host's theme fonts. The showcase band is `--signin-stage` — the icon's navy
-  in every theme — and everything drawn on its white thread card takes its
+  host's theme fonts. The showcase band is the same navy, and everything drawn on its white thread card takes its
   colour from the card (`currentColor`), never from the host's text tokens,
   which on a dark theme left pale type on white.
   The landing's sign-in link is `/login?launch=sso`: the PKCE verifier is

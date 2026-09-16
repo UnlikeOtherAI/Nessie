@@ -184,15 +184,13 @@ export const getAlertLink = (
     // virtual folder is the only surface that lists it.
     return { to: '/knowledge-base/shared-with-me' }
   }
-  if (alert.kind === 'approval_requested') {
-    // An approval raised by a suspended run belongs to the channel it is
-    // waiting in, where the card and its buttons are. One raised anywhere else
-    // — a paired agent asking to publish, for instance — has no channel at all,
-    // and without this the row marked itself read and went nowhere, which is
-    // the dead row this whole function exists to prevent.
-    return alert.channelId
-      ? { to: `/channels/${alert.channelId}` }
-      : { to: '/approvals' }
+  if (alert.kind === 'approval_requested' && alert.channelId) {
+    // An approval belongs to the conversation its card is waiting in, which is
+    // now the only place it can be answered. A request raised with no channel
+    // of its own — a paired agent asking to publish — is given one when its
+    // card is written into the approver's assistant conversation, so the
+    // channel is set by the time this row is read.
+    return { to: `/channels/${alert.channelId}` }
   }
   if (alert.kind === 'call_missed' && alert.channelId) {
     // A missed call belongs to its channel's call record/message, never to a

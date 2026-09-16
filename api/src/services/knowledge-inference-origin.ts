@@ -88,6 +88,11 @@ const originFromRequest = (
       runId: attribution.runId,
       systemComponent: attribution.systemComponent ?? undefined,
       teamId: attribution.teamId,
+      // The saving person's session identity rides with the job: the worker
+      // has no session, and a signing deployment refuses the embed without it.
+      ...(actorContext.actionContext.uoaIdentity
+        ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+        : {}),
       userId: attribution.userId,
     }
   } catch (error) {

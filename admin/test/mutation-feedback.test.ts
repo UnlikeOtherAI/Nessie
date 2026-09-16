@@ -86,7 +86,6 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'pages/AgentDesignerPage.tsx': REASON,
   'pages/AlertsPage.tsx': REASON,
   'pages/AppDetailPage.tsx': REASON,
-  'pages/ApprovalsPage.tsx': REASON,
   'pages/ChannelsPage.tsx': REASON,
   'pages/OpsHealthPage.tsx': REASON,
   'pages/WorkflowsPage.tsx': REASON,

@@ -1,7 +1,6 @@
 import { Fragment } from 'react'
 import {
   faBook,
-  faChartColumn,
   faClockRotateLeft,
   faHouse,
   faLayerGroup,
@@ -38,7 +37,6 @@ export type FinderRootRow =
   | { kind: 'shared-with-me'; id: 'virtual:shared'; count: number }
   | { kind: 'space'; id: string; space: KnowledgeRootSpace; role: 'personal' | 'project' | 'shared' }
   | { kind: 'project-unopened'; id: string; projectId: string; projectName: string }
-  | { kind: 'dashboards'; id: 'link:dashboards' }
   | {
       kind: 'product-view'
       id: string
@@ -125,8 +123,12 @@ export const FinderRootColumn = ({
   const prewarm = usePrewarm()
 
   const groups = finderRootGroups(root)
+  // Dashboards is deliberately absent. It carried an interim row here while
+  // its only doorway was the navy sidebar this redesign deleted; it is now a
+  // project section (`/projects/:projectId/dashboards`) and the global
+  // `/dashboards` route no longer exists, so a row here would be a doorway to
+  // a 404 — the opposite of the rule it was added for.
   const links: FinderRootRow[] = [
-    { id: 'link:dashboards', kind: 'dashboards' },
     ...documentsSections.map((section): FinderRootRow => ({
       glyph: section.iconGlyph,
       id: `view:${section.view}`,
@@ -146,7 +148,6 @@ export const FinderRootColumn = ({
       case 'latest': return '/knowledge-base/latest'
       case 'shared-with-me': return '/knowledge-base/shared-with-me'
       case 'space': return `/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`
-      case 'dashboards': return '/dashboards'
       case 'product-view': return `/knowledge-base/views/${encodeURIComponent(row.view)}`
       default: return null
     }
@@ -257,17 +258,6 @@ export const FinderRootColumn = ({
             kind="space"
             leading={<ProjectAvatar size={20} token={token} />}
             title={row.projectName}
-          />
-        )
-      case 'dashboards':
-        return (
-          <FinderRow
-            {...shared}
-            icon={faChartColumn}
-            iconTone="--tx2"
-            key={row.id}
-            kind="link"
-            title="Dashboards"
           />
         )
       case 'product-view':

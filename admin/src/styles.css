@@ -63,13 +63,6 @@
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-display: var(--font-family-body);
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  /* The sign-in showcase (packages/sign-in-surface) is the marketing
-     homepage's deep-water band in every theme — the icon's navy, with a white
-     thread card on it; the theme does not restyle it. */
-  --signin-stage: #0b172a;
-  --signin-on-stage: #ffffff;
-  --signin-stage-card: #ffffff;
-  --signin-stage-card-fg: #0b172a;
   /* rem-relative so FontScaleProvider's root html font-size scales all type.
      0.9375rem === 15px at the default 16px root. */
   --font-size-base: 0.9375rem;
@@ -805,12 +798,87 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
    the one tile that does not compete for the eye. */
 .project-nav-tile[data-tone='config'] { --tile: var(--tx3); }
 
+/* ── A dashboard rendered small ────────────────────────────────────────────
+   The frame clips a canvas laid out at `SCALED_CANVAS_WIDTH` and scaled down,
+   so what is inside is the real dashboard rather than a picture of one. The
+   button on top is the whole target: the canvas beneath it is `inert`, so
+   there is nothing else in there to click. */
+.scaled-dashboard {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--panel-soft);
+}
+
+.scaled-dashboard-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.scaled-dashboard-open {
+  position: absolute;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  inset: 0;
+  padding: 0;
+}
+
+.scaled-dashboard-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* A dashboard tile continues the coloured navigation cards: same box, same
+   radius, same hover lift — the live dashboard replaces the icon-and-blurb
+   body rather than sitting in a section of its own. It carries no `--tile`
+   tint on the canvas area, because a wash over a chart changes what the chart
+   appears to say. */
+.project-nav-tile[data-dashboard='true'] {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* The frame takes the row's height rather than its own content's, so a
+   dashboard tile never stretches the fixed doorways beside it. The floor is
+   what a row of nothing but dashboards falls back to. */
+.project-nav-tile[data-dashboard='true'] .scaled-dashboard {
+  width: 100%;
+  min-height: 9rem;
+  flex: 1 1 auto;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* The name sits under the dashboard, where a caption goes, so the tile reads
+   top-to-bottom as picture-then-label like every other card reads
+   art-then-label. */
+/* Opaque, not a tint: the dashboard above it is clipped by the frame, so a
+   translucent caption has half a widget showing through the title. */
+.project-nav-tile-caption {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--tile) 28%, transparent);
+  background: color-mix(in srgb, var(--tile) 16%, var(--panel));
+}
+
 /* One column — a phone, or the grid inside a narrow panel. Five poster-shaped
    cards stacked there fill the whole screen and push the summaries below the
    fold, so the tile turns on its side: the art moves beside the words instead
    of above them, and the same five doorways fit in a glance. */
 @container project-nav (max-width: 30rem) {
-  .project-nav-tile {
+  /* A dashboard tile is exempt: turning it on its side would put a scaled
+     dashboard in an `auto` column, which measures the frame at zero and
+     collapses the card. It is a picture with a caption at every width — that
+     is its whole shape. */
+  .project-nav-tile:not([data-dashboard='true']) {
     display: grid;
     align-items: center;
     padding: 0.75rem 0.875rem;
@@ -819,7 +887,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
     row-gap: 0.125rem;
   }
 
-  .project-nav-tile-art {
+  .project-nav-tile:not([data-dashboard='true']) .project-nav-tile-art {
     width: 2.5rem;
     height: 2.5rem;
     grid-column: 1;
@@ -827,15 +895,21 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
     font-size: 1rem;
   }
 
-  .project-nav-tile-title {
+  .project-nav-tile:not([data-dashboard='true']) .project-nav-tile-title {
     margin-top: 0;
     grid-column: 2;
     grid-row: 1;
   }
 
-  .project-nav-tile-blurb {
+  .project-nav-tile:not([data-dashboard='true']) .project-nav-tile-blurb {
     grid-column: 2;
     grid-row: 2;
+  }
+
+  /* One column, so the tile has the full width: a dashboard gets more of it
+     than it does in a four-across grid. */
+  .project-nav-tile[data-dashboard='true'] .scaled-dashboard {
+    min-height: 11rem;
   }
 }
 
@@ -3248,6 +3322,75 @@ button.reaction-pill-active:focus-visible {
 .agent-card-fields dd {
   margin: 0;
   color: var(--tx);
+}
+
+.agent-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.agent-card-chips-label {
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.agent-card-chips ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-card-chips li {
+  padding: 2px 7px;
+  border: 1px solid var(--sep);
+  border-radius: 999px;
+  background: var(--overlay-weak);
+  color: var(--tx2);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+/* Closed by default: the marker is the whole affordance, so it has to read as
+   a control at 11px rather than as another line of body text. */
+.agent-card-details > summary {
+  width: fit-content;
+  color: var(--tx3);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.agent-card-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-card-details > summary::before {
+  display: inline-block;
+  margin-right: 5px;
+  content: "\25B8";
+  transition: transform 120ms ease;
+}
+
+.agent-card-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.agent-card-details > summary:hover {
+  color: var(--tx2);
+}
+
+.agent-card-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--sep);
 }
 
 .agent-card-link {

@@ -303,7 +303,7 @@ const derivesFromSearchParams = (content: string, identifier: string): boolean =
 const COMPONENT_STATE_ALLOWLIST = [
   'admin/src/components/features/apps/AppConnectDialog.tsx',
   'admin/src/components/features/apps/AppSecretDialog.tsx',
-  'admin/src/components/features/channels/RunApprovalGate.tsx',
+  'admin/src/components/features/channels/ApprovalGate.tsx',
   'admin/src/layouts/admin-shell/CreateTeamDialog.tsx',
   'admin/src/components/features/settings/MemberInvitationDialog.tsx',
   // Light/Dark on the organisation theme form: one field of an unsaved draft,

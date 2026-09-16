@@ -45,30 +45,26 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'dashboard_create',
     category: 'dashboards',
-    summary: 'Create an empty dashboard at a chosen visibility home.',
+    summary: 'Create an empty dashboard in a project.',
     label: 'Create Dashboard',
     description:
-      'Create an empty dashboard. Pick the home deliberately: it decides who can '
-      + 'see the dashboard. "personal" is yours alone and is the safe default '
-      + 'when the user has not said who else should see it; "project", "team" '
-      + 'and "channel" make it visible to that container\'s members, so only use '
-      + 'them when the user asked for something the team should see. Add widgets '
-      + 'with dashboard_widget_add once a data source exists.',
+      'Create an empty dashboard in a project. A dashboard lives in exactly one '
+      + 'project, and its members are its audience — so name the project the '
+      + 'person is asking about, and ask which one if they have not said. Do '
+      + 'not guess: putting a dashboard in the wrong project shows it to the '
+      + 'wrong people. Add widgets with dashboard_widget_add once a data source '
+      + 'exists.',
     parameters: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Short, specific title.' },
         description: { type: 'string', description: 'One line on what it is for.' },
-        home: {
+        projectId: {
           type: 'string',
-          enum: ['personal', 'project', 'team', 'channel', 'organization'],
-          description: 'Who it belongs to. Defaults to "personal".',
+          description: 'The project it belongs to, and whose members will see it.',
         },
-        projectId: { type: 'string', description: 'Required when home is "project".' },
-        teamId: { type: 'string', description: 'Required when home is "team".' },
-        channelId: { type: 'string', description: 'Required when home is "channel".' },
       },
-      required: ['title'],
+      required: ['title', 'projectId'],
     },
     // Mutating: writes a row a person will see.
     safe: false,

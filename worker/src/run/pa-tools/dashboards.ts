@@ -199,7 +199,7 @@ export const runDashboardListTool = async (
     return formatSection(
       'Dashboards',
       matching.map((dashboard) =>
-        `${dashboard.title} — ${dashboard.home} · id=${dashboard.id}`,
+        `${dashboard.title} — project ${dashboard.projectId} · id=${dashboard.id}`,
       ),
     )
   })
@@ -211,16 +211,22 @@ export const runDashboardCreateTool = async (
 ): Promise<ToolExecutionResult> =>
   run('dashboard_create', `title="${String(args.title ?? '')}"`, async () => {
     const dashboardContext = await buildDashboardContext(context, services)
+    const projectId = typeof args.projectId === 'string' ? args.projectId.trim() : ''
+    if (!projectId) {
+      // There is no safe default any more. `home` used to default to
+      // "personal", which was private and therefore harmless to guess; a
+      // project is an audience, so a guess would show the dashboard to people
+      // nobody chose.
+      return 'dashboard_create needs a projectId: a dashboard lives in a project, '
+        + 'and that project\'s members are who will see it.'
+    }
     const dashboard = await services.createDashboard(dashboardContext, {
       title: String(args.title ?? '').trim(),
       ...(typeof args.description === 'string' ? { description: args.description } : {}),
-      home: (typeof args.home === 'string' ? args.home : 'personal') as never,
-      ...(typeof args.projectId === 'string' ? { projectId: args.projectId } : {}),
-      ...(typeof args.teamId === 'string' ? { teamId: args.teamId } : {}),
-      ...(typeof args.channelId === 'string' ? { channelId: args.channelId } : {}),
+      projectId,
       createdByType: 'agent',
     })
-    return `Created dashboard "${dashboard.title}" (id=${dashboard.id}, ${dashboard.home}).`
+    return `Created dashboard "${dashboard.title}" (id=${dashboard.id}) in project ${dashboard.projectId}.`
   })
 
 export const runDashboardSourceListTool = async (

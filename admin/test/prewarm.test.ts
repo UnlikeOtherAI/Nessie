@@ -86,7 +86,7 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
   await runFor('/projects/proj-1/boards', queryClient, apiClient)
   await runFor('/projects/proj-1/boards/board-1/settings?tab=watchers', queryClient, apiClient)
   await runFor('/agents/agent-1', queryClient, apiClient)
-  await runFor('/dashboards/dash-1', queryClient, apiClient)
+  await runFor('/projects/proj-1/dashboards/dash-1', queryClient, apiClient)
   await runFor('/knowledge-base/spaces/space-1', queryClient, apiClient)
   await runFor('/apps/linear', queryClient, apiClient)
 
@@ -144,7 +144,7 @@ test('every project route warms the same board, and a screen with no id does not
   // Query and hash are not part of the destination's identity.
   assert.equal(matchPrewarm('/channels/chan-2?tab=files')?.id, 'chan-2')
   // Roots and id-less screens have nothing to warm.
-  for (const path of ['/channels', '/projects', '/dashboards', '/apps', '/settings', '/']) {
+  for (const path of ['/channels', '/projects', '/apps', '/settings', '/']) {
     assert.equal(matchPrewarm(path), null, path)
   }
 })
@@ -175,7 +175,7 @@ test("a row's pointerdown prefetches once inside the TTL", async () => {
   assert.deepEqual(calls, ['GET /api/apps/linear'], 'the burst costs one request')
 
   // A different destination is not suppressed by the first one's entry.
-  prewarm('/dashboards/dash-2')
+  prewarm('/projects/proj-1/dashboards/dash-2')
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert.deepEqual(calls, ['GET /api/apps/linear', 'GET /api/dashboards/dash-2'])
 })
@@ -202,7 +202,7 @@ test('navigating rows prewarm before the click', () => {
     'admin/src/components/features/knowledge/finder/FinderRootColumn.tsx',
     'admin/src/components/features/agents/AgentListRow.tsx',
     'admin/src/components/features/apps/AppCard.tsx',
-    'admin/src/pages/DashboardsPage.tsx',
+    'admin/src/pages/project/ProjectDashboardsTab.tsx',
     'admin/src/pages/project/ProjectBoardsPage.tsx',
   ]
   const tracked = new Set(
