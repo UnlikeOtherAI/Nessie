@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Readable } from 'node:stream'
 
 import type { LedgerAttribution } from '@nessie/runtime'
@@ -21,7 +22,7 @@ import {
 import { invalidRequest, tooLarge, unsupportedFeature } from './errors.js'
 import { lockSpreadsheetPage, loadHead } from './head.js'
 import { createSpreadsheetSnapshot } from './snapshot.js'
-import type { SpreadsheetServiceDeps, SpreadsheetWriteActor } from './deps.js'
+import { toSpreadsheetActor, type SpreadsheetServiceDeps, type SpreadsheetWriteActor } from './deps.js'
 import type { KnowledgePageRecord } from '../types.js'
 
 /**
@@ -271,6 +272,30 @@ export const completeSpreadsheetImport = async (
     seq,
     engineVersion: engineVersion(),
     bytes: bytes.byteLength,
+  })
+
+  // A pane already open on the empty page has to hear this, exactly as it hears
+  // a restore: the import replaces the whole workbook, and its marker batch
+  // carries no diffs to apply, so the client re-bootstraps. Without this an
+  // import somebody else performed leaves every open pane showing the empty
+  // sheet until it is reloaded.
+  await deps.publish?.('sheet.ops', {
+    pageId: input.pageId,
+    organizationId: input.organizationId,
+    data: {
+      batchId: randomUUID(),
+      pageId: input.pageId,
+      seq,
+      baseSeq: seq - 1,
+      clientOpId: spreadsheetClientOpId(`import:${input.attachmentId}`),
+      actor: toSpreadsheetActor(input.actor),
+      engineVersion: engineVersion(),
+      diffs: null,
+      structuralKind: 'restore',
+      sheetIndexes: [],
+      cellCount: 0,
+      createdAt: new Date().toISOString(),
+    },
   })
 
   const snapshot = await createSpreadsheetSnapshot(deps, {

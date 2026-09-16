@@ -464,6 +464,17 @@ dbTest('an imported page catches up: its marker batch parses on the wire', async
     const batches = Array.isArray(caught) ? caught : caught.batches
     assert.ok(batches.length > 0, 'the page has something to catch up on')
     for (const batch of batches) SpreadsheetAppliedBatchSchema.parse(batch)
+
+    // A pane already open on the empty page only learns about the import if it
+    // is announced. The marker carries no diffs, so the client re-bootstraps —
+    // exactly as it does for a restore. Without the publish, somebody else's
+    // import leaves every open pane on the empty sheet until it is reloaded.
+    const announced = service.published.find(
+      (event) => event.event === 'sheet.ops' && event.pageId === page.id,
+    )
+    assert.ok(announced, 'the import announced itself on the page lane')
+    SpreadsheetAppliedBatchSchema.parse(announced.data)
+    assert.equal((announced.data as { diffs: unknown }).diffs, null)
   } finally {
     await seed.teardown()
   }
