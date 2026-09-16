@@ -2,16 +2,15 @@ import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
 import {
   faChevronRight,
   faLock,
-  faMagnifyingGlassMinus,
-  faSpinner,
-  faTriangleExclamation,
   faUserGroup,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState } from '@nessie/schemas'
+import { familyForFilename, familyLabel } from '../../../shared/file-icons'
 import { MiddleTruncate } from '../../../shared/MiddleTruncate'
 import { Row, type RowDragHandlers, type RowProps } from '../../../shared/RowList'
+import { indexingCopy } from './indexing-copy'
 import { RenameRow, type FinderRowRename } from './RenameRow'
 
 /**
@@ -112,43 +111,38 @@ const glyph = (icon: IconDefinition, tone: string, title?: string) => (
 )
 
 /**
- * One glyph, and only when there is something to say. Nothing for `indexed`:
- * a quiet row is the point, and a green tick on every row of a folder says
- * only that the folder exists. The full sentence is the tooltip's.
+ * One glyph, and only when there is something to say — read from the single
+ * derivation in `indexing-copy.ts` so the row, Get Info and the upload tray
+ * cannot describe the same state in three vocabularies. Nothing is painted for
+ * `indexed`: a quiet row is the point, and a tick on every row of a folder
+ * says only that the folder exists. A draft is quiet too — a document is
+ * chunked on publish, not on save, so a spinner there could never resolve.
  */
-const IndexingGlyph = ({ indexing }: { indexing: KnowledgeIndexingState }) => {
-  switch (indexing.state) {
-    case 'pending':
-      return (
-        <FontAwesomeIcon
-          className="h-3.5 w-3.5 shrink-0 animate-spin text-[color:var(--tx3)]"
-          icon={faSpinner}
-          title={indexing.stage === 'extract' ? 'Reading this file…' : 'Making this searchable…'}
-        />
-      )
-    case 'not_indexed':
-      return glyph(
-        faMagnifyingGlassMinus,
-        '--tx3',
-        indexing.reason === 'draft'
-          ? 'Not searchable — this is a draft'
-          : indexing.reason === 'too_large'
-            ? 'Not searchable — too large to read'
-            : indexing.reason === 'empty'
-              ? 'Not searchable — nothing to read'
-              : 'Not searchable — this file type cannot be read',
-      )
-    case 'failed':
-      return glyph(
-        faTriangleExclamation,
-        '--warning',
-        indexing.stage === 'extract'
-          ? 'Could not read this file'
-          : 'Could not make this searchable',
-      )
-    default:
-      return null
-  }
+const IndexingGlyph = ({
+  filename,
+  indexing,
+}: {
+  /** A file node's name, so an unsupported type can name its family. */
+  filename?: string
+  indexing: KnowledgeIndexingState
+}) => {
+  const copy = indexingCopy(
+    indexing,
+    filename ? familyLabel[familyForFilename(filename)] : undefined,
+  )
+  if (copy.glyph === 'none' || !copy.icon) return null
+  return (
+    <FontAwesomeIcon
+      aria-label={copy.sentence}
+      className={[
+        'h-3.5 w-3.5 shrink-0',
+        copy.spin ? 'animate-spin' : '',
+        `text-[color:var(${copy.tone})]`,
+      ].filter(Boolean).join(' ')}
+      icon={copy.icon}
+      title={copy.sentence}
+    />
+  )
 }
 
 const UploadLine = ({ upload }: { upload: FinderRowUpload }) =>
@@ -307,7 +301,12 @@ export const FinderRow = ({
               `Shared with ${shareCount} ${shareCount === 1 ? 'person' : 'people'}`,
             )
             : null}
-          {indexing ? <IndexingGlyph indexing={indexing} /> : null}
+          {indexing ? (
+            <IndexingGlyph
+              filename={kind === 'file' ? title : undefined}
+              indexing={indexing}
+            />
+          ) : null}
           {chevron ? (
             <FontAwesomeIcon
               className="finder-row-chevron h-3 w-3 shrink-0 text-[color:var(--tx3)]"

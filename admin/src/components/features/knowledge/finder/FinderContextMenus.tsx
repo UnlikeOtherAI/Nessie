@@ -122,6 +122,20 @@ type FinderDialogState =
   | { kind: 'move'; pages: KnowledgePageRecord[] }
   | null
 
+/** Everything a column needs from the menus, so a column imports one type. */
+export type FinderMenus = {
+  rowProps: (row: FinderMenuRowRef) => FinderRowMenuProps
+  backgroundProps: (column: FinderMenuColumnRef) => FinderBackgroundMenuProps
+  dialogs: ReactNode
+}
+
+
+/** A failed mutation says what failed, in the words the server used if it has any. */
+const failureToast = (title: string, fallback: string) => (error: unknown) => ({
+  body: error instanceof Error && error.message ? error.message : fallback,
+  title,
+})
+
 export const useFinderMenus = ({
   onCreateRootFolder,
   onNewFolderIn,
@@ -129,11 +143,7 @@ export const useFinderMenus = ({
   onUploadFiles,
   renderMoveTo,
   selectedIds,
-}: UseFinderMenusOptions): {
-  rowProps: (row: FinderMenuRowRef) => FinderRowMenuProps
-  backgroundProps: (column: FinderMenuColumnRef) => FinderBackgroundMenuProps
-  dialogs: ReactNode
-} => {
+}: UseFinderMenusOptions): FinderMenus => {
   const knowledge = useKnowledge()
   const navigate = useNavigate()
   const { me } = useAuthSession()
@@ -375,14 +385,23 @@ export const useFinderMenus = ({
       },
       removeShare: () => {
         if (virtualRow && me?.user.id) {
-          removeShare.mutate({ granteeUserId: me.user.id, pageId: virtualRow.id })
+          removeShare.mutate({ granteeUserId: me.user.id, pageId: virtualRow.id }, {
+            onError: (error) => pushToast(
+              failureToast('Couldn’t remove it', 'It is still shared with you.')(error),
+            ),
+          })
         }
       },
       rename: () => setRenamingId(first?.id ?? virtualRow?.id ?? null),
       retryIndexing: () => {
         const id = first?.id ?? virtualRow?.id
-        if (id) reindex.mutate(id)
-        pushToast({ body: '', title: 'Indexing again…' })
+        if (!id) return
+        reindex.mutate(id, {
+          onError: (error) => pushToast(
+            failureToast('Couldn’t index that', 'Nothing was queued — try again.')(error),
+          ),
+          onSuccess: () => pushToast({ body: '', title: 'Indexing again…' }),
+        })
       },
       sharing: openSharing,
       showInFolder: () => {
@@ -439,11 +458,20 @@ export const useFinderMenus = ({
           revision: page?.revision,
           spaceId: page?.spaceId ?? space?.id ?? '',
           title: next,
+        }, {
+          // The name snaps back on its own (the facade reverts the optimistic
+          // write); a rename that silently undid itself would read as a typo.
+          onError: (error) => pushToast(
+            failureToast(
+              'Couldn’t rename that',
+              'This item changed since you opened it. Refresh and try again.',
+            )(error),
+          ),
         })
       },
       pending: rename.isPending,
     }
-  }, [knowledge, rename, renamingId, space])
+  }, [knowledge, pushToast, rename, renamingId, space])
 
   const rowProps = useCallback((row: FinderMenuRowRef): FinderRowMenuProps => {
     switch (row.kind) {
@@ -544,6 +572,10 @@ export const useFinderMenus = ({
               removeShare.mutate({
                 granteeUserId: me.user.id,
                 pageId: dialog.pageId as string,
+              }, {
+                onError: (error) => pushToast(
+                  failureToast('Couldn’t remove it', 'It is still shared with you.')(error),
+                ),
               })
               setDialog(null)
             }

@@ -31,7 +31,7 @@ import {
 import { NewFolderRow } from './NewFolderRow'
 import { dragCarriesFiles, type useFinderDrag } from './useFinderDrag'
 import { useFinderKeyboard } from './useFinderKeyboard'
-import type { FinderMenus } from './useFinderMenus'
+import type { FinderMenus } from './FinderContextMenus'
 import type { UploadQueue, UploadTarget } from './useUploadQueue'
 
 /**
@@ -369,12 +369,12 @@ export const FinderFolderHost = ({
         )
         : undefined}
       onBackgroundContextMenu={menus?.backgroundProps({
+        kind: 'folder',
         parentPageId: level.parentPageId,
-        spaceId,
       }).onContextMenu}
       onCancelFolder={onCancelFolder}
       onContextMenu={menus
-        ? (page, event) => menus.rowProps(page).onContextMenu?.(event)
+        ? (page, event) => menus.rowProps({ kind: 'page', page }).onContextMenu?.(event)
         : undefined}
       onDragEnd={drag.dragEnd}
       onOpen={onOpen}

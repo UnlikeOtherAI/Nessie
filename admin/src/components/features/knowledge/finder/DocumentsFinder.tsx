@@ -39,7 +39,8 @@ import {
   useFinderFolderParam,
 } from './finder-view'
 import { FinderUploadInput, UploadLeaveGuard, useFinderUploads } from './UploadQueue'
-import { useFinderMenus } from './useFinderMenus'
+import { useFinderMenus } from './FinderContextMenus'
+import { MoveToDialog } from './MoveToDialog'
 import { useFinderMove } from './useFinderMove'
 import { useFinderToolbar } from './useFinderToolbar'
 import { useFinderTransfers } from './useFinderTransfers'
@@ -240,10 +241,8 @@ export const DocumentsFinder = ({
   )
 
   // ── Uploads, menus, the transfer prompt ───────────────────────────────────
-  const uploads = useFinderUploads({ pages: knowledge.pages, spaceId: selectedSpaceId })
-  const menus = useFinderMenus()
   const transfers = useFinderTransfers({ pageById, root: rootQuery.data })
-
+  const uploads = useFinderUploads({ pages: knowledge.pages, spaceId: selectedSpaceId })
   // ── Drag: in-space moves ──────────────────────────────────────────────────
   const drag = useFinderMove({
     onForeignDrop: transfers.onForeignDrop,
@@ -292,6 +291,28 @@ export const DocumentsFinder = ({
     }),
     dropTargetId: drag.dropTargetKey,
   }
+
+  const menus = useFinderMenus({
+    onCreateRootFolder,
+    onNewFolderIn: openNewFolderIn,
+    onRefresh: () => void virtualQuery.refetch(),
+    onUploadFiles: uploads.openPicker,
+    // Injected rather than imported: the menu owns *when* a move opens, the
+    // transfer wave owns what it does. Without this the item is absent, which
+    // is the honest state — never an item that does nothing.
+    renderMoveTo: (request) => (
+      <MoveToDialog
+        currentParentPageId={request.currentParentPageId}
+        onClose={request.onClose}
+        open={request.open}
+        pageById={pageById}
+        pages={request.pages}
+        root={rootQuery.data}
+        sourceSpaceId={request.sourceSpaceId}
+      />
+    ),
+    selectedIds: selection.ids,
+  })
 
   // ── Geometry ──────────────────────────────────────────────────────────────
   const { columnWidth, resize } = useFinderColumnWidth()
