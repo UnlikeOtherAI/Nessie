@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // and an unretained status item disappears from the menu bar immediately.
     private var statusItem: StatusItemController?
     private var console: ConsoleWindowController?
+    /// Held so the observer lives as long as the app does.
+    private var secondLaunchObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = ExecutorController(isDevelopmentBuild: AppBuild.isDevelopment)
@@ -17,6 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.controller = controller
         self.console = console
         self.statusItem = StatusItemController(controller: controller, console: console)
+        // A second copy — the nested helper inside Nessie Desktop, or the
+        // standalone install — exits rather than adding a second status icon, and
+        // asks this instance to come forward on its way out. Opening the window
+        // is what a person can actually see happen.
+        self.secondLaunchObserver = MenuBarSingleInstance.observeSecondLaunches { [weak console] in
+            console?.show(.settings)
+        }
         controller.start()
     }
 

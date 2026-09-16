@@ -406,6 +406,35 @@
   display: none;
 }
 
+/* The line that says the tiles below are a different product. Without it two
+   tiles reading "Mac" sit under one heading and a person downloads the wrong
+   one. */
+.signin-app-note {
+  margin: 16px 0 10px;
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Quiet on purpose: the files live on GitHub, but nobody is sent there to find
+   a download. */
+.signin-app-releases {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-decoration-color: var(--sep);
+  text-underline-offset: 3px;
+}
+
+.signin-app-releases:hover,
+.signin-app-releases:focus-visible {
+  color: var(--tx);
+  text-decoration-color: currentColor;
+}
+
 /* The homepage's card: white, a hairline, a generous radius and the faintest
    lift. */
 .signin-app {

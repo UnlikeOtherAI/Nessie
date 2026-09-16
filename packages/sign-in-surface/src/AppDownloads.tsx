@@ -2,7 +2,12 @@ import { faAndroid, faApple, faLinux, faWindows } from '@fortawesome/free-brands
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useId, useState } from 'react'
-import { APP_DOWNLOADS, downloadUrl } from './downloads'
+import {
+  APP_DOWNLOADS,
+  downloadUrl,
+  EXECUTOR_DOWNLOADS,
+  LATEST_RELEASE_PAGE,
+} from './downloads'
 
 const Description = ({ detail, label }: { detail: string; label: string }) => (
   <span className="signin-app-text">
@@ -16,6 +21,12 @@ const Description = ({ detail, label }: { detail: string; label: string }) => (
  * on the next. The Mac tile discloses its two architectures inline rather
  * than in a floating menu, so it works the same in the admin (which owns an
  * overlay framework) and on the landing (which has none).
+ *
+ * The Nessie Executor images sit below, labelled as the executor rather than the
+ * chat app, because they are a different product for a different machine and two
+ * tiles reading "Mac" would be a trap. Underneath is one quiet link to the
+ * release page: people download from here, and GitHub is where the files live,
+ * not where we send them.
  */
 export const AppDownloads = () => {
   const [macOpen, setMacOpen] = useState(false)
@@ -69,6 +80,29 @@ export const AppDownloads = () => {
           <Description detail="Intel processors" label={APP_DOWNLOADS.macIntel.detail} />
         </a>
       </div>
+      <p className="signin-app-note">
+        A Mac that only runs an executor — the machine an agent does local work on
+        — needs this instead of the app above. Nessie Desktop already carries it.
+      </p>
+      <div className="signin-apps signin-apps-mobile">
+        <a className="signin-app" href={downloadUrl(EXECUTOR_DOWNLOADS.macAppleSilicon)}>
+          <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
+          <Description
+            detail={EXECUTOR_DOWNLOADS.macAppleSilicon.detail}
+            label={EXECUTOR_DOWNLOADS.macAppleSilicon.label}
+          />
+        </a>
+        <a className="signin-app" href={downloadUrl(EXECUTOR_DOWNLOADS.macIntel)}>
+          <FontAwesomeIcon aria-hidden="true" className="signin-app-icon" icon={faApple} />
+          <Description
+            detail={EXECUTOR_DOWNLOADS.macIntel.detail}
+            label={EXECUTOR_DOWNLOADS.macIntel.label}
+          />
+        </a>
+      </div>
+      <a className="signin-app-releases" href={LATEST_RELEASE_PAGE} rel="noreferrer" target="_blank">
+        Checksums and earlier releases on GitHub
+      </a>
     </div>
   )
 }

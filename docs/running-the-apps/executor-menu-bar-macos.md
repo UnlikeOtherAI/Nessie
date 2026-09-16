@@ -53,6 +53,35 @@ Do **not** install an image whose file name contains `UNSIGNED-DEVELOPMENT` or
 `DO-NOT-INSTALL`. That is the local development artifact described below; it is
 never published, and macOS will refuse to open the app it contains.
 
+## You may already have it
+
+Nessie Desktop's Developer ID build carries a copy of this app inside its own
+bundle, at `Contents/Library/LoginItems/Nessie Executor.app` — the location
+macOS intends for a menu bar helper, and the only one `SMAppService` can
+register for launch at login. A Mac with that Desktop installed needs no second
+download: **Agents → Executors** has an **Open Nessie Executor** button, and
+clicking it puts the icon in the status bar.
+
+The DMG above is still the right download for two Macs: one that runs only the
+executor and has no reason to have the chat app on it, and one running the
+published direct-download Desktop DMG, which is ad-hoc signed and therefore
+offers no executor controls at all.
+
+Both copies share one bundle identifier, one state directory and one daemon
+lease, so **there is only ever one icon.** Whichever copy is launched second
+activates the first and exits
+(`Sources/Core/SingleInstance.swift`). If a standalone copy is installed in
+`/Applications` or `~/Applications`, Desktop opens that one rather than its own
+nested copy: its path survives a Desktop upgrade, which is what launch-at-login
+registration needs, and it keeps supervising the daemon after Desktop quits.
+Before opening a copy it did not ship, Desktop verifies the signature and the
+pinned Developer ID team — `/Applications/Nessie Executor.app` is a name, not an
+identity — and refuses rather than launching an unverified bundle.
+
+Once this app is supervising the daemon, it owns this Mac. Nessie Desktop's own
+**Start daemon** and **Stop daemon** say so and step aside instead of racing it
+for the lease. A daemon Desktop started itself stays Desktop's to stop.
+
 ## First run and pairing
 
 Pairing is started in Nessie, not on the Mac: **Agents → Executors → Pair
