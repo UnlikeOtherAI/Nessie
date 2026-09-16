@@ -1,8 +1,9 @@
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-import { fetchLandingTeams, type LandingTeam } from './landing-teams'
+import { type LandingTeam } from './landing-teams'
+import { useLandingTeams } from './use-landing-teams'
 
 const initialsOf = (label: string): string =>
   label
@@ -46,7 +47,10 @@ export const SignedInTeamsSection = ({ teams }: { teams: readonly LandingTeam[] 
   if (teams.length === 0) return null
   return (
     <section aria-labelledby="n-teams-title" className="n-teams">
-      <h2 className="n-teams-title" id="n-teams-title">Your teams</h2>
+      <h2 className="n-teams-title" id="n-teams-title">You’re signed in</h2>
+      <p className="n-teams-lede">
+        Open one of your teams to pick up where you left off — or keep reading.
+      </p>
       <ul className="n-teams-list">
         {teams.map((team, index) => (
           <li key={`${team.href}-${team.label}-${index}`}>
@@ -71,19 +75,11 @@ export const SignedInTeamsSection = ({ teams }: { teams: readonly LandingTeam[] 
 }
 
 /**
- * Asks the API once, after first paint, and never blocks the page: until an
- * answer with at least one team arrives there is nothing in the DOM.
+ * Reads the shared answer rather than asking again: the header needs the same
+ * one, and two fetches would disagree for a moment and cost every anonymous
+ * visitor a second credentialed request.
  */
-export const SignedInTeams = ({ apiOrigin }: { apiOrigin: string }) => {
-  const [teams, setTeams] = useState<LandingTeam[]>([])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void fetchLandingTeams({ apiOrigin, signal: controller.signal }).then((next) => {
-      if (!controller.signal.aborted) setTeams(next)
-    })
-    return () => controller.abort()
-  }, [apiOrigin])
-
+export const SignedInTeams = () => {
+  const { teams } = useLandingTeams()
   return <SignedInTeamsSection teams={teams} />
 }

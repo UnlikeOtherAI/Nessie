@@ -11,17 +11,13 @@ import { SignedInTeams } from './signed-in-teams/SignedInTeams'
 // top edge is straight.
 const light = '#fff'
 
-// Where the signed-in team list is read from. Production builds take the
-// default; a local run points it at its own API.
-const apiOrigin = import.meta.env.VITE_NESSIE_API_ORIGIN ?? 'https://api.nessie.works'
-
 export function App() {
   return (
     <>
       <Header />
       <main>
         {/* Before the pitch, for anyone who already has somewhere to be. */}
-        <SignedInTeams apiOrigin={apiOrigin} />
+        <SignedInTeams />
         <Hero />
         <Assistant />
         <AiBand />
