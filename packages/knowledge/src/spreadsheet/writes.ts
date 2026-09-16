@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
-import { selectionCellCount, type SpreadsheetBatchSummary, type SpreadsheetStructuralKind } from '@nessie/schemas'
+import {
+  selectionCellCount,
+  type SpreadsheetBatchSummary,
+  type SpreadsheetIntent,
+  type SpreadsheetStructuralKind,
+} from '@nessie/schemas'
 import {
   clearRange,
   formatRange,
@@ -78,49 +83,73 @@ export type RestructureInput = {
 }
 
 /**
- * The structural edit a server action performed, in the terms the filter remap
- * understands.
+ * The row/column intents this action is about to issue.
  *
- * It has to be rebuilt here rather than read off the summary: `intents` are the
- * *browser's* record of its own calls, for replay after a structural refusal,
- * and a server-built batch carries none. The write door's per-batch remap is
- * therefore a no-op for these, and this is where a pane's filter learns that
- * its rows moved.
+ * Not bookkeeping — this is what lets a person keep an edit they were part-way
+ * through when an agent inserted a row above it. A peer whose batch loses the
+ * structural race is handed every batch since its `baseSeq` and replays its own
+ * recorded intents through theirs (`shiftIntents`); a structural batch that
+ * arrives with no intents says only *that* the grid moved, never *which* rows,
+ * so the client reads it as "cannot be rebased" and drops the pending edit with
+ * a notice. Server-built batches carried none by construction, which meant every
+ * `sheet_structure` insert or delete an agent performed cost a human
+ * collaborator their in-flight work.
+ *
+ * Only the six rebasable kinds are here. A sort reorders rows by content rather
+ * than by an index delta, and a sheet add/delete/move is not a row at all —
+ * neither is expressible as a shift, and claiming otherwise would land somebody's
+ * edit on the wrong row, which is worse than telling them it could not be
+ * carried over.
+ *
+ * Advisory, like the rest of the summary: it feeds the rebase, the filter remap
+ * and the version decision, never an authorization one.
  */
-const structuralEditsForAction = (
+const rebaseIntentsForAction = (action: SpreadsheetAction): SpreadsheetIntent[] => {
+  if (action.op !== 'axis') return []
+  const axis = action.action
+  switch (axis.kind) {
+    case 'insertRows':
+    case 'deleteRows':
+      return [{ kind: axis.kind, sheet: axis.sheet, row: axis.row, count: axis.count }]
+    case 'insertColumns':
+    case 'deleteColumns':
+      return [{ kind: axis.kind, sheet: axis.sheet, column: axis.column, count: axis.count }]
+    case 'moveRows':
+    case 'moveColumns':
+      return [{
+        kind: axis.kind,
+        sheet: axis.sheet,
+        start: axis.start,
+        count: axis.count,
+        delta: axis.delta,
+      }]
+    default:
+      return []
+  }
+}
+
+/**
+ * The **sheet-level** edits a server action performed, which no intent can
+ * express.
+ *
+ * Adding, deleting and moving a whole sheet renumbers the sheet indexes a
+ * filter model is keyed by, and `SpreadsheetIntent` has no sheet-level member —
+ * so these are still rebuilt from the action and remapped after the commit. The
+ * row and column edits used to be rebuilt here too; now that they ride the
+ * summary as intents, the write door's own `remapFiltersForBatch` handles them,
+ * and doing it in both places would shift every filter twice.
+ */
+const sheetEditsForAction = (
   action: SpreadsheetAction,
   sheetsBefore: number,
 ): SpreadsheetStructuralEdit[] => {
-  if (action.op === 'axis') {
-    const axis = action.action
-    switch (axis.kind) {
-      case 'insertRows':
-      case 'deleteRows':
-        return [{ kind: axis.kind, sheet: axis.sheet, row: axis.row, count: axis.count }]
-      case 'insertColumns':
-      case 'deleteColumns':
-        return [{ kind: axis.kind, sheet: axis.sheet, column: axis.column, count: axis.count }]
-      case 'moveRows':
-      case 'moveColumns':
-        return [{
-          kind: axis.kind,
-          sheet: axis.sheet,
-          start: axis.start,
-          count: axis.count,
-          delta: axis.delta,
-        }]
-      default:
-        return []
-    }
-  }
-  if (action.op === 'tab') {
-    const tab = action.action
-    // `newSheet()` always appends, so the index a new sheet gets is the count
-    // before the call — the caller never chooses it.
-    if (tab.kind === 'addSheet') return [{ kind: 'addSheet', index: sheetsBefore }]
-    if (tab.kind === 'deleteSheet') return [{ kind: 'deleteSheet', index: tab.sheet }]
-    if (tab.kind === 'moveSheet') return [{ kind: 'moveSheet', from: tab.sheet, to: tab.toIndex }]
-  }
+  if (action.op !== 'tab') return []
+  const tab = action.action
+  // `newSheet()` always appends, so the index a new sheet gets is the count
+  // before the call — the caller never chooses it.
+  if (tab.kind === 'addSheet') return [{ kind: 'addSheet', index: sheetsBefore }]
+  if (tab.kind === 'deleteSheet') return [{ kind: 'deleteSheet', index: tab.sheet }]
+  if (tab.kind === 'moveSheet') return [{ kind: 'moveSheet', from: tab.sheet, to: tab.toIndex }]
   return []
 }
 
@@ -169,7 +198,12 @@ const TAB_STRUCTURAL_KINDS: Record<string, SpreadsheetStructuralKind | null> = {
  * records whatever the engine actually reported.
  */
 const advisorySummaryForAction = (action: SpreadsheetAction): SpreadsheetBatchSummary => {
-  const blank = { sheetIndexes: [] as number[], touched: [] }
+  const intents = rebaseIntentsForAction(action)
+  const blank = {
+    sheetIndexes: [] as number[],
+    touched: [],
+    ...(intents.length > 0 ? { intents } : {}),
+  }
   switch (action.op) {
     case 'writeRange': {
       const height = action.rows.length
@@ -215,6 +249,7 @@ export const restructureSpreadsheet = async (
   input: RestructureInput,
 ): Promise<ApplySpreadsheetBatchResult> => {
   let edits: SpreadsheetStructuralEdit[] = []
+  const intents = rebaseIntentsForAction(input.action)
   const result = await applySpreadsheetBatch(
     deps,
     {
@@ -227,8 +262,12 @@ export const restructureSpreadsheet = async (
         kind: 'server',
         mutate: (model) => {
           // Read before the mutation: `addSheet`'s index is the count before.
-          edits = structuralEditsForAction(input.action, model.sheets().length)
-          return runAction(model, input.action)
+          edits = sheetEditsForAction(input.action, model.sheets().length)
+          // The engine helper reports what it touched; the intents say where
+          // the grid moved. Both are journalled, because the summary this
+          // returns is the one a peer is handed to rebase against.
+          const produced = runAction(model, input.action)
+          return intents.length > 0 ? { ...produced, intents } : produced
         },
       },
     },
