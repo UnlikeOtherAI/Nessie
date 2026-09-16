@@ -59,7 +59,7 @@ test('the boards under Board are open until the reader closes them', () => {
 test('the header board strip is the single column’s doorway and nowhere else', () => {
   const view = source('pages/project/ProjectView.tsx')
   assert.match(view, /const singleColumn = usePhoneLayout\(\)/)
-  assert.match(view, /tab === 'board' && singleColumn \? \(\s*<BoardSwitcher/)
+  assert.match(view, /onBoard && singleColumn \? \(\s*<BoardSwitcher/)
 })
 
 test('the Board section lists the project boards and creates one through a dialog', () => {

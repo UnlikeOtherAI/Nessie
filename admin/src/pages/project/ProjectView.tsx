@@ -1,4 +1,10 @@
 import { useEffect, useState } from 'react'
+import {
+  faBoxArchive,
+  faList,
+  faTableCellsLarge,
+  faUsers,
+} from '@fortawesome/free-solid-svg-icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiClientError } from '@nessie/client-core'
 import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
@@ -7,6 +13,8 @@ import { TaskDialog } from '../../components/features/projects/kanban/TaskDialog
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { type BoardTaskRecord, useProjectBoards } from '../../facades/boards/hooks'
 import { BoardSwitcher } from '../../components/features/projects/kanban/BoardSwitcher'
+import { BoardAssigneeFilter } from '../../components/features/projects/kanban/BoardAssigneeFilter'
+import { useBoardChrome } from './useBoardChrome'
 import { usePhoneLayout } from '../../navigation/mobile-shell'
 import { useTabParam } from '../../navigation/useTabParam'
 import { useRedirect } from '../../navigation/redirect'
@@ -93,6 +101,10 @@ export const ProjectView = () => {
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
+  // Read here as well as in `ProjectBoardTab` — one URL and one query cache
+  // behind both, so the header's controls and the board they steer cannot
+  // disagree. Above the `projectId` guard with every other hook.
+  const chrome = useBoardChrome(projectId, board?.id)
 
   // A card message says only which ticket it refers to. Its live record is the
   // authority for the board, so an old message cannot return somebody to the
@@ -119,6 +131,8 @@ export const ProjectView = () => {
   // carries no section dropdown: two doorways to the same seven routes only
   // made the reader guess which one moved them.
   const tab = projectSectionIdFromPathname(location.pathname)
+  // A board is on screen: the only section whose header is the board's own.
+  const onBoard = tab === 'board'
 
   const openTask = (task: BoardTaskRecord) => {
     const params = new URLSearchParams(location.search)
@@ -144,14 +158,72 @@ export const ProjectView = () => {
   }
   const boardsFailedWithContent = Boolean(boardsQuery.isError && hasCurrentBoards && boardsQuery.data)
 
-  const headerActions: PageHeaderAction[] = [
-    // The doorways to board administration, from the screen a person is
-    // standing on when they want them — not only from Settings.
-    ...(tab === 'board' && canAdminister
-      ? [
-          {
-            id: 'board-admin',
-            items: [
+  // The board's whole chrome is one row: the assignee filter, everything the
+  // board can be configured to show, and New task. What used to be a second
+  // toolbar beneath the header — a view strip, the filter and a collapsible
+  // Archived drawer — is either here or, for Archived, a column of the board
+  // itself, so the only thing under the header's rule is the board.
+  const boardActions = (openMembers: () => void): PageHeaderAction[] => [
+    {
+      id: 'board-assignee',
+      kind: 'custom',
+      // Whose cards are on screen is the state the board is read through, and
+      // a menu row cannot stand in for a picker with avatars and a search.
+      label: 'Filter board by assignee',
+      pinned: true,
+      priority: 90,
+      render: () => (
+        <BoardAssigneeFilter
+          compact={singleColumn}
+          currentUserId={chrome.currentUserId}
+          onChange={chrome.setAssignee}
+          people={chrome.people}
+          remote={chrome.remote}
+          value={chrome.assignee}
+        />
+      ),
+    },
+    {
+      id: 'board-configure',
+      items: [
+        {
+          checked: chrome.view === 'cards',
+          icon: faTableCellsLarge,
+          id: 'view-cards',
+          label: 'Cards',
+          onSelect: () => chrome.setView('cards'),
+        },
+        {
+          checked: chrome.view === 'lines',
+          icon: faList,
+          id: 'view-lines',
+          label: 'Lines',
+          onSelect: () => chrome.setView('lines'),
+          title: 'One line per card: title and priority only',
+        },
+        {
+          checkbox: true,
+          checked: chrome.showArchived,
+          icon: faBoxArchive,
+          id: 'show-archived',
+          label: 'Show archived',
+          onSelect: () => chrome.setShowArchived(!chrome.showArchived),
+          title: 'Add a last column for cancelled and failed work',
+        },
+        ...(project
+          ? [
+              {
+                icon: faUsers,
+                id: 'project-members',
+                label: `Members (${project.memberCount})`,
+                onSelect: openMembers,
+              },
+            ]
+          : []),
+        // The doorways to board administration, from the screen a person is
+        // standing on when they want them — not only from Settings.
+        ...(canAdminister
+          ? [
               {
                 id: 'edit-columns',
                 label: 'Board settings…',
@@ -165,28 +237,25 @@ export const ProjectView = () => {
               {
                 id: 'new-board',
                 label: 'New board…',
-                onSelect: () =>
-                  void navigate(
-                    `/projects/${projectId}/boards?create=board`,
-                  ),
+                onSelect: () => void navigate(`/projects/${projectId}/boards?create=board`),
               },
-            ],
-            kind: 'menu',
-            // Not "Board": the sidebar already names this board on the row the
-            // reader clicked, so a second "Board" here would name no decision.
-            label: 'Configure',
-            priority: 60,
-            title: 'Configure boards',
-          } satisfies PageHeaderAction,
-          {
-            id: 'new-task',
-            label: 'New task',
-            onSelect: () => setTaskDialogOpen(true),
-            primary: true,
-            priority: 100,
-          } satisfies PageHeaderAction,
-        ]
-      : []),
+            ]
+          : []),
+      ],
+      kind: 'menu',
+      // Not "Board": the title already names this board, so a second "Board"
+      // here would name no decision.
+      label: 'Configure',
+      priority: 60,
+      title: 'Configure this board',
+    },
+    {
+      id: 'new-task',
+      label: 'New task',
+      onSelect: () => setTaskDialogOpen(true),
+      primary: true,
+      priority: 100,
+    },
   ]
 
   return (
@@ -200,13 +269,11 @@ export const ProjectView = () => {
       ].join(' ')}
     >
       <ProjectPageHeader
-        actions={headerActions}
+        actions={onBoard ? boardActions : []}
+        membersAction={!onBoard}
         project={project}
-        subtitle={
-          tab === 'board' && boards.length > 1 && !singleColumn ? board?.name : undefined
-        }
         tabs={
-          tab === 'board' && singleColumn ? (
+          onBoard && singleColumn ? (
             <BoardSwitcher
               activeBoardId={activeBoardId}
               boards={boards}
@@ -214,6 +281,10 @@ export const ProjectView = () => {
             />
           ) : undefined
         }
+        // The board names itself. The project is one row up in the sidebar and
+        // one press back on a phone, and repeating it here cost the row that
+        // used to carry the board's own name as a subtitle.
+        title={onBoard ? board?.name : undefined}
       />
 
       <div className="min-h-0 flex-1">

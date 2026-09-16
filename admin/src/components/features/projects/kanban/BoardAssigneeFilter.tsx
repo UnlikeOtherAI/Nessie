@@ -16,6 +16,13 @@ type BoardAssigneeFilterProps = {
   remote: RemoteAssigneeOption[]
   /** Absent while the session is still loading; "My issues" waits for it. */
   currentUserId: string | null
+  /**
+   * Draw the trigger as one 44px mark — the selected person's avatar, or the
+   * filter's glyph — with the name left to the accessible name and the
+   * description. For the single-column header, where the row has to hold the
+   * title as well; the picker itself is unchanged.
+   */
+  compact?: boolean
 }
 
 type StaticChoice = {
@@ -57,6 +64,7 @@ export const BoardAssigneeFilter = ({
   people,
   remote,
   currentUserId,
+  compact = false,
 }: BoardAssigneeFilterProps) => {
   const { token } = useAuthSession()
   const [open, setOpen] = useState(false)
@@ -186,17 +194,37 @@ export const BoardAssigneeFilter = ({
     </>
   )
 
+  const selectedMark = selectedPerson ? (
+    <UserAvatar displayName={selectedPerson.displayName} size={24} token={token} userId={selectedPerson.id} />
+  ) : selectedRemote ? (
+    <RemoteAssigneeAvatar label={selectedRemote.label} size={24} />
+  ) : (
+    <FontAwesomeIcon className="w-4 text-[color:var(--tx3)]" icon={selectedStatic?.icon ?? faUsers} />
+  )
+
+  const selectedLabel = selectedPerson?.displayName
+    ?? selectedRemote?.label
+    ?? selectedStatic?.label
+    ?? 'All assignees'
+
   const selectedTextId = `${listboxId}-selected`
 
   return (
-    <div className="w-fit max-w-[min(20rem,100%)]" data-board-assignee-filter>
+    <div
+      className={compact ? 'w-fit' : 'w-fit max-w-[min(20rem,100%)]'}
+      data-board-assignee-filter
+    >
       <button
         aria-controls={open ? listboxId : undefined}
         aria-describedby={selectedTextId}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label="Filter board by assignee"
-        className="admin-input flex min-h-11 w-full items-center gap-2 text-left"
+        className={
+          compact
+            ? 'admin-input flex h-11 w-11 items-center justify-center p-0'
+            : 'admin-input flex min-h-11 w-full items-center gap-2 text-left'
+        }
         onClick={() => {
           if (open) close()
           else openPicker()
@@ -210,10 +238,26 @@ export const BoardAssigneeFilter = ({
         ref={triggerRef}
         type="button"
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2" id={selectedTextId}>
-          {selectedContent}
+        {/* Compact keeps the mark and moves the name out of the box rather
+            than dropping it: `aria-describedby` still points here, so the
+            trigger is announced as the person it is filtered to. */}
+        <span
+          className={
+            compact
+              ? 'sr-only'
+              : 'flex min-w-0 flex-1 items-center gap-2'
+          }
+          id={selectedTextId}
+        >
+          {compact ? selectedLabel : selectedContent}
         </span>
-        <FontAwesomeIcon className="shrink-0 text-[10px] text-[color:var(--tx3)]" icon={faChevronDown} />
+        {compact ? (
+          <span aria-hidden="true" className="flex items-center justify-center">
+            {selectedMark}
+          </span>
+        ) : (
+          <FontAwesomeIcon className="shrink-0 text-[10px] text-[color:var(--tx3)]" icon={faChevronDown} />
+        )}
       </button>
 
       <Popover
