@@ -42,11 +42,17 @@ import { registerKnowledgeSpreadsheetLiveRoute } from './knowledge-spreadsheet-l
 /**
  * The spreadsheet REST surface.
  *
- * Permissions are the kind's siblings' exactly: create is `canWriteSpace` +
- * `page:create`; bootstrap, catch-up, read, find and export are
- * `accessPageSpace(read)` — which also enforces every-version-readable;
- * batches, structure, filters, replace, presence drafts, save-version and
- * restore are `accessPageSpace(write)` + `page:edit`.
+ * Permissions are the kind's siblings' exactly: create is
+ * `accessSpaceForPageCreate` + `page:create`; bootstrap, catch-up, read, find
+ * and export are `accessPageSpace(read)` — which also enforces
+ * every-version-readable; batches, structure, filters, replace, presence
+ * drafts, save-version and restore are `accessPageSpace(write)` + `page:edit`.
+ *
+ * A person-to-person share (`KnowledgePageShare`) reaches all of it through
+ * those same two helpers and nowhere else: a `view` share opens every read
+ * door above and none of the write ones, an `edit` share opens both, and the
+ * acts the documents contract reserves to the owner — publish, move, delete,
+ * re-share — are not on this surface at all.
  *
  * **The batch summary is never read on this path.** Access is decided from the
  * actor context and the page's space before `applySpreadsheetBatch` is called,
@@ -109,7 +115,7 @@ export const registerKnowledgeSpreadsheetRoutes = (
   const context: SpreadsheetRouteContext = spreadsheetContext ?? createSpreadsheetRouteContext(deps)
   const { service, access } = context
   const { prisma, requireActorContext } = deps
-  const { buildViewer, accessSpace, accessPageSpace } = access
+  const { buildViewer, accessPageSpace, accessSpaceForPageCreate, pageShareAllows } = access
 
   /**
    * Load a spreadsheet page and enforce the space's read or write grant.
@@ -136,11 +142,16 @@ export const registerKnowledgeSpreadsheetRoutes = (
     if (!(await accessPageSpace(actorContext, page, viewer, mode, reply))) return null
     if (mode === 'write') return { page, canWrite: true }
     // A reader is told whether they may write, so the pane opens read-only
-    // rather than discovering it on the first edit. Asked of the space alone:
-    // the version half has already been answered above, and re-running it
-    // would put a second `listVersions` on the hottest read path.
+    // rather than discovering it on the first edit. The version half has
+    // already been answered above and is not re-run — it would put a second
+    // `listVersions` on the hottest read path — but *both* ways write can be
+    // true are asked, because they are the two the write door itself accepts:
+    // the space grant, and an `edit` share on this page or a folder above it.
+    // Asking only the space question opened a shared spreadsheet read-only for
+    // the one person the owner had deliberately given edit to.
     const space = await access.provider.getSpace(actorContext.tenant.organizationId, page.spaceId)
-    return { page, canWrite: space !== null && canWriteSpace(space, viewer) }
+    if (space !== null && canWriteSpace(space, viewer)) return { page, canWrite: true }
+    return { page, canWrite: await pageShareAllows(actorContext, page, viewer, 'write') }
   }
 
   // ─── Create ───────────────────────────────────────────────────────────────
@@ -153,7 +164,17 @@ export const registerKnowledgeSpreadsheetRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    const space = await accessSpace(actorContext, spaceId, viewer, 'write', reply)
+    // Creating at the space root takes the space's write grant and never
+    // consults shares; creating *under* a page an `edit` share reaches is
+    // writing inside the grant's subtree, which the documents contract allows
+    // (data-and-api.md §2, "What an edit grant is"). One helper answers both.
+    const space = await accessSpaceForPageCreate(
+      actorContext,
+      spaceId,
+      viewer,
+      body.parentPageId ?? null,
+      reply,
+    )
     if (!space) return reply
     const projectId = requireProjectId(actorContext, body.projectId ?? space.projectId, reply)
     if (!projectId) return reply

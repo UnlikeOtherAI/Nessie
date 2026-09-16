@@ -75,7 +75,7 @@ export const registerKnowledgeSpreadsheetIoRoutes = (
 ): void => {
   const { prisma, requireActorContext } = deps
   const { service, access } = context
-  const { buildViewer, accessSpace, accessPageSpace } = access
+  const { buildViewer, accessPageSpace, accessSpaceForPageCreate } = access
 
   /**
    * Hand the parse to the worker. Enqueued *after* the page and the upload
@@ -111,7 +111,15 @@ export const registerKnowledgeSpreadsheetIoRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    const space = await accessSpace(actorContext, spaceId, viewer, 'write', reply)
+    // Same rule as creating an empty one: the space's write grant, or an `edit`
+    // share on the parent the workbook is being filed under.
+    const space = await accessSpaceForPageCreate(
+      actorContext,
+      spaceId,
+      viewer,
+      query.parentPageId ?? null,
+      reply,
+    )
     if (!space) return reply
 
     const file = await request.file()
@@ -177,9 +185,25 @@ export const registerKnowledgeSpreadsheetIoRoutes = (
     const source = await access.provider.getPage(actorContext.tenant.organizationId, pageId)
     if (!source) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
-    // Converting creates a page in this space and reads the original's bytes,
-    // so it takes the space's write grant, not just read.
+    // Converting reads the original's bytes, so it takes write on the source —
+    // not just read.
     if (!(await accessPageSpace(actorContext, source, viewer, 'write', reply))) return reply
+    // It also *creates* a page, at the source's own parent. Write on the source
+    // is not enough to authorize that on its own: an `edit` share on a file
+    // sitting at the root of somebody's personal space would otherwise put a
+    // new page at that root, which the documents contract reserves to the owner
+    // (data-and-api.md §2 — "create at the space root never consults shares").
+    // Inside a shared folder the same check passes, which is the case that
+    // should work.
+    if (
+      (await accessSpaceForPageCreate(
+        actorContext,
+        source.spaceId,
+        viewer,
+        source.parentPageId,
+        reply,
+      )) === null
+    ) return reply
 
     try {
       const staged = await stageFileConversion(service, {

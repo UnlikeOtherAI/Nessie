@@ -5,15 +5,25 @@ import {
   loadSpaceViewer,
   mapVersion,
   versionInclude,
+  viewerHoldsPageShare,
 } from '@nessie/knowledge'
 import { resolveDisclosureViewer, resolveLiveEntitlements } from '@nessie/runtime'
 
 /**
  * "May this person still read this page?", for the document lane.
  *
- * It is the same two-part question the page routes ask —
- * `canReadSpace(space, viewer)` **and** every retained version readable — and
- * it has to be both. A spreadsheet's live lane carries the workbook's changes,
+ * It is the same two-part question the page routes ask — may this person reach
+ * the page (through the space, **or** through a person-to-person share on it or
+ * on a folder above it) **and** is every retained version readable — and it has
+ * to be both.
+ *
+ * The share arm is not decoration. `accessPageSpace` lets a grantee open the
+ * lane, and this gate re-runs every 5 s per connection: without the same arm a
+ * `view` share connected, stayed open and delivered nothing at all, which is
+ * the failure mode the paragraph below was written after. With it, the two
+ * answers agree, and a revoked share stops delivery within one window rather
+ * than at the next reconnect — a hard delete is how revocation is recorded, so
+ * the very next walk finds nothing. A spreadsheet's live lane carries the workbook's changes,
  * and a version's disclosure basis is exactly the boundary that stops an
  * agent's private-conversation material reaching somebody the conversation was
  * never shared with. Asking only the space question here would have made the
@@ -31,7 +41,7 @@ export const canReadSpaceForDocumentLane = async (
 ): Promise<boolean> => {
   const page = await prisma.knowledgePage.findFirst({
     where: { id: input.pageId, organizationId: input.organizationId, deletedAt: null },
-    select: { spaceId: true },
+    select: { id: true, spaceId: true, status: true, deletedAt: true },
   })
   if (!page) return false
 
@@ -63,7 +73,24 @@ export const canReadSpaceForDocumentLane = async (
     { actorType: 'user', actorId: input.userId },
     { liveEntitlements },
   )
-  if (!canReadSpace(space as never, viewer)) return false
+  if (!canReadSpace(space as never, viewer)) {
+    // `viewerHoldsPageShare` carries the preconditions — a person, a live
+    // organization proof, and a page that is neither archived nor deleted — so
+    // the owner archiving a shared page ends delivery without anybody revoking
+    // a row.
+    const shared = await viewerHoldsPageShare(prisma, {
+      organizationId: input.organizationId,
+      actorType: 'user',
+      page: {
+        id: page.id,
+        status: page.status,
+        deletedAt: page.deletedAt === null ? null : page.deletedAt.toISOString(),
+      },
+      viewer,
+      minimum: 'view',
+    })
+    if (!shared) return false
+  }
 
   const disclosureViewer = await resolveDisclosureViewer(
     prisma,

@@ -5,6 +5,7 @@ import {
   canReadSpace,
   canWriteSpace,
   runSheetPageTool,
+  viewerHoldsPageShare,
   spreadsheetClientOpId,
   toSheetToolRefusal,
   type SheetToolId,
@@ -151,6 +152,13 @@ const auditSheetWrite = async (
  * The same two halves the HTTP route applies: the space grant, and every
  * retained version readable — the second is what stops an agent's private
  * material reaching somebody the conversation was never shared with.
+ *
+ * A credential resolves as the person who approved it, so a page that person
+ * was *shared* is reachable here exactly as far as the share allows: `view`
+ * opens the reads, `edit` opens the writes, and nothing on this surface is one
+ * of the acts the documents contract reserves to the owner. An agent holds no
+ * shares of its own — `viewerHoldsPageShare` refuses any actor that is not a
+ * person — so this widens nothing for the worker's `sheet_*` builtins.
  */
 export const openPage = async (
   context: McpToolContext,
@@ -164,10 +172,25 @@ export const openPage = async (
   if (!page || page.kind !== 'spreadsheet') return PAGE_UNREACHABLE
 
   const space = await access.provider.getSpace(organizationId, page.spaceId)
+  if (!space) return PAGE_UNREACHABLE
   const viewer = await access.buildViewer(context.actorContext)
-  if (!space || !canReadSpace(space, viewer)) return PAGE_UNREACHABLE
+  const shareAllows = (minimum: 'view' | 'edit'): Promise<boolean> => viewerHoldsPageShare(
+    context.prisma,
+    {
+      organizationId,
+      actorType: context.actorContext.actor.actorType,
+      page,
+      viewer,
+      minimum,
+    },
+  )
+  if (!canReadSpace(space, viewer) && !(await shareAllows('view'))) return PAGE_UNREACHABLE
+  // Unchanged by the share arm, and deliberately after it: a grant never opens
+  // a version whose basis this person could not already have been shown.
   if ((await access.filterReadablePages(viewer, [page])).length === 0) return PAGE_UNREACHABLE
-  if (mode === 'write' && !canWriteSpace(space, viewer)) return PAGE_UNREACHABLE
+  if (mode === 'write' && !canWriteSpace(space, viewer) && !(await shareAllows('edit'))) {
+    return PAGE_UNREACHABLE
+  }
   return { page }
 }
 
