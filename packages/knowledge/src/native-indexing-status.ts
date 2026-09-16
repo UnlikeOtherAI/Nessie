@@ -257,7 +257,8 @@ const spreadsheetState = (
   embedJobs: Map<string, string>,
   pageId: string,
 ): KnowledgeIndexingState => {
-  if (!version || version.bodyBytes === 0) return { state: 'not_indexed', reason: 'empty' }
+  if (!version) return { state: 'not_indexed', reason: 'unsaved' }
+  if (version.bodyBytes === 0) return { state: 'not_indexed', reason: 'empty' }
   return stateFromChunks(
     version.versionId,
     chunks.get(version.versionId),

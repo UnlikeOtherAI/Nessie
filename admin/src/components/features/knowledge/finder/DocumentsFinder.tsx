@@ -148,10 +148,18 @@ export const DocumentsFinder = ({
   )
 
   // ── The columns, as data ──────────────────────────────────────────────────
+  // The browse path, as pages — minus the open page on the end of it. A
+  // document is *in* a folder, never a folder itself, so a path ending in one
+  // must not grow a column: the Finder drew an empty column named after the
+  // open document, said "Nothing here yet" inside it, and on `single` that
+  // column was the whole screen.
   const pathPages = useMemo(
-    () => pagePath
-      .map((id) => pageById(id))
-      .filter((page): page is KnowledgePageRecord => Boolean(page)),
+    () => {
+      const pages = pagePath
+        .map((id) => pageById(id))
+        .filter((page): page is KnowledgePageRecord => Boolean(page))
+      return pages.at(-1) && pages.at(-1)?.kind !== 'folder' ? pages.slice(0, -1) : pages
+    },
     [pageById, pagePath],
   )
   const rowsIn = useCallback(
