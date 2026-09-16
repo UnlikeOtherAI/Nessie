@@ -69,7 +69,22 @@ export type SpreadsheetReplaceResult = {
  * (src/lib/query-keys.ts). `staleTime: Infinity` because the live lane, not a
  * refetch, is what keeps a mounted workbook current.
  */
-export const useSpreadsheetBootstrap = (pageId?: string) => {
+export const useSpreadsheetBootstrap = (
+  pageId?: string,
+  options: {
+    /**
+     * Poll until the workbook is actually in the page.
+     *
+     * Import and "Open as spreadsheet" answer `202`: the page exists at once
+     * and the worker fills it a moment later. A doorway that opens the page on
+     * the `202` lands on an empty grid — and stays there, because the pane
+     * bootstrapped before the workbook arrived. `headSeq > 0` is the first
+     * batch on the journal, and for a staged page the only batch it can have
+     * is that import's own `restore`.
+     */
+    untilFilled?: boolean
+  } = {},
+) => {
   const apiClient = useApiClient()
 
   return useQuery<SpreadsheetBootstrap>({
@@ -78,9 +93,16 @@ export const useSpreadsheetBootstrap = (pageId?: string) => {
     queryFn: () =>
       apiClient.get(`${base}/pages/${pageId}/spreadsheet`, SpreadsheetBootstrapSchema),
     queryKey: knowledgeKeys.spreadsheet(pageId),
+    refetchInterval: options.untilFilled
+      ? (query) => ((query.state.data?.headSeq ?? 0) > 0 ? false : 800)
+      : false,
     staleTime: Number.POSITIVE_INFINITY,
   })
 }
+
+/** Whether a page the worker is filling has its workbook yet. */
+export const spreadsheetIsFilled = (bootstrap?: SpreadsheetBootstrap): boolean =>
+  (bootstrap?.headSeq ?? 0) > 0
 
 const invalidateSpace = (
   queryClient: ReturnType<typeof useQueryClient>,

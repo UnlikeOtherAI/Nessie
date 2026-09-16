@@ -1,11 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import {
+  spreadsheetIsFilled,
   useConvertToSpreadsheet,
   useCreateSpreadsheet,
   useImportSpreadsheet,
+  useSpreadsheetBootstrap,
 } from '../../../../facades/knowledge/spreadsheet-hooks'
+import { useToasts } from '../../../../providers/ToastProvider'
 import { LEGACY_XLS_REASON, spreadsheetSourceFor } from '../../../shared/file-icons'
 import type { UploadProgress } from '../../../../lib/upload-xhr'
 import { SpreadsheetCreateDialog } from '../spreadsheet/SpreadsheetCreateDialog'
@@ -65,11 +68,26 @@ export const useFinderSpreadsheets = ({
   const [importingIn, setImportingIn] = useState<string | null | undefined>(undefined)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
   const [warnings, setWarnings] = useState<SpreadsheetImportWarningList>()
-  const [importedPageId, setImportedPageId] = useState<string | null>(null)
   // One per dialog: a refusal from an import the person has closed must not
   // reappear under the title field of a create they open afterwards.
   const [createError, setCreateError] = useState<string | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+
+  // A page the worker is still filling, and where it will be opened once it
+  // is. Import and convert both answer `202`, and opening the page before the
+  // workbook lands strands the reader on a grid that never fills: the pane
+  // bootstraps from an empty head and nothing tells it otherwise.
+  const [filling, setFilling] = useState<{ parentPageId: string | null; pageId: string } | null>(
+    null,
+  )
+  const fillingBootstrap = useSpreadsheetBootstrap(filling?.pageId, { untilFilled: true })
+  // The same poll for the import dialog, which keeps its own button rather
+  // than opening on its own.
+  const [importedPageId, setImportedPageId] = useState<string | null>(null)
+  const importedBootstrap = useSpreadsheetBootstrap(importedPageId ?? undefined, {
+    untilFilled: true,
+  })
+  const { pushToast } = useToasts()
 
   const create = useCreateSpreadsheet(spaceId)
   const importSpreadsheet = useImportSpreadsheet(spaceId)
@@ -97,6 +115,15 @@ export const useFinderSpreadsheets = ({
     openPagePath([...pathTo(parentPageId), pageId])
   }, [openPagePath, pathTo])
 
+  // The one place a filled page is opened. The poll has already put the real
+  // bootstrap in the cache under the pane's own key, so the pane mounts on the
+  // workbook rather than fetching an empty one again.
+  useEffect(() => {
+    if (!filling || !spreadsheetIsFilled(fillingBootstrap.data)) return
+    openPagePath([...pathTo(filling.parentPageId), filling.pageId])
+    setFilling(null)
+  }, [filling, fillingBootstrap.data, openPagePath, pathTo])
+
   const closeImport = useCallback(() => {
     setImportingIn(undefined)
     setWarnings(undefined)
@@ -109,10 +136,20 @@ export const useFinderSpreadsheets = ({
     // The disabled menu row already says why an `.xls` cannot; this guard is
     // here because the same action hangs off the file pane's own header too.
     if (spreadsheetSourceFor(page.title) !== 'convertible') return
+    // The page opens a second or two later, once the worker has read the file,
+    // so the click is acknowledged rather than looking like it missed. Worded
+    // as what was asked for, not as progress: a toast lives seven seconds, and
+    // "Reading the file…" is a lie for most of them.
+    pushToast({ body: '', title: `Building a spreadsheet from “${page.title}”` })
     convertToSpreadsheet.mutate(page.id, {
-      onSuccess: (result) => openCreated(page.parentPageId ?? null, result.page.id),
+      onError: (failure) => pushToast({
+        body: (failure as Error).message,
+        title: 'Couldn’t open that as a spreadsheet',
+      }),
+      onSuccess: (result) =>
+        setFilling({ pageId: result.page.id, parentPageId: page.parentPageId ?? null }),
     })
-  }, [convertToSpreadsheet, openCreated])
+  }, [convertToSpreadsheet, pushToast])
 
   const dialogs = (
     <>
@@ -146,7 +183,11 @@ export const useFinderSpreadsheets = ({
         <SpreadsheetImportDialog
           error={importError}
           onClose={closeImport}
-          onOpenImported={importedPageId
+          // Offered only once the worker has actually put the workbook in the
+          // page: "Open spreadsheet" landing on an empty grid is worse than
+          // waiting a second for it.
+          importing={Boolean(importedPageId) && !spreadsheetIsFilled(importedBootstrap.data)}
+          onOpenImported={importedPageId && spreadsheetIsFilled(importedBootstrap.data)
             ? () => {
               const pageId = importedPageId
               const parentPageId = importingIn
