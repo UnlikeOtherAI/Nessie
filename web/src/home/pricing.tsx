@@ -1,6 +1,7 @@
+import { Link } from 'react-router-dom'
 import { faArrowRight, faCheck, faKey, faServer } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { docsUrl, pricing, signInUrl } from './content'
+import { pricing, signInUrl } from './content'
 import { Button } from './ui'
 
 export function Pricing() {
@@ -40,9 +41,9 @@ export function Pricing() {
             </span>
             <h3>{selfHost.title}</h3>
             <p>{selfHost.text}</p>
-            <a className="n-text-link" href={docsUrl}>
-              {selfHost.cta} <FontAwesomeIcon icon={faArrowRight} />
-            </a>
+            <Link className="n-text-link" to={selfHost.cta.href}>
+              {selfHost.cta.label} <FontAwesomeIcon icon={faArrowRight} />
+            </Link>
           </aside>
           <article className="n-byo">
             <span className="n-byo-icon">

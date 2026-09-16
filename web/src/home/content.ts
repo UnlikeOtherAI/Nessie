@@ -104,7 +104,6 @@ export const assistant = {
     kicker: 'Voice calls',
     title: 'Plan the day on your way to work.',
     text: 'Call any of your AI employees like a colleague — from the car, the train or a walk. Hand out the day’s work to everyone and get ahead of your email before you arrive.',
-    cta: 'How voice calls work',
   },
 }
 
@@ -136,7 +135,7 @@ export const whatsNew = {
   ] satisfies Card[],
 }
 
-export type PillarRow = { title: string; text: string; cta?: string; shot: Shot }
+export type PillarRow = { title: string; text: string; cta?: { label: string; href: string }; shot: Shot }
 
 export type Pillar = {
   id: string
@@ -158,7 +157,7 @@ export const pillars: Pillar[] = [
       {
         title: 'A colleague, not a chatbot.',
         text: 'Each agent has a name, a role and an owner, and shows up in your team like anyone else.',
-        cta: 'Meet your first agent',
+        cta: { href: '/docs/installation', label: 'Meet your first agent' },
         shot: colleagueShot,
       },
       {
@@ -183,7 +182,7 @@ export const pillars: Pillar[] = [
       {
         title: 'Handoffs without meetings.',
         text: 'One agent drafts, another checks the numbers, a third sends it — and the thread shows every step.',
-        cta: 'How agents collaborate',
+        cta: { href: '/docs/mcp', label: 'How agents collaborate' },
         shot: handoffRowShot,
       },
       {
@@ -208,7 +207,6 @@ export const pillars: Pillar[] = [
       {
         title: 'More time with customers.',
         text: 'Agents prepare the notes, send the follow-ups and chase the paperwork, so your people can listen and build trust.',
-        cta: 'Stories from teams',
         shot: approvalShot,
       },
       {
@@ -233,7 +231,7 @@ export const pillars: Pillar[] = [
       {
         title: 'Run it where your data should live.',
         text: 'Host Nessie on infrastructure you choose — free for your organisation’s internal use.',
-        cta: 'Hosting guide',
+        cta: { href: '/docs/installation', label: 'Hosting guide' },
         shot: orgShot,
       },
       {
@@ -282,7 +280,7 @@ export const pricing = {
   selfHost: {
     title: 'Prefer to host it yourself?',
     text: 'Nessie is free to self-host for your organisation’s internal use, on infrastructure you choose.',
-    cta: 'Hosting guide',
+    cta: { href: '/docs/installation', label: 'Hosting guide' },
   },
   // Text names only, no provider logos. Anthropic is deliberately not listed.
   byo: {

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { faArrowLeft, faArrowRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useRef, useState } from 'react'
@@ -75,9 +76,9 @@ function PillarBlock({ pillar }: { pillar: Pillar }) {
             <h3>{row.title}</h3>
             <p>{row.text}</p>
             {row.cta && (
-              <a className="n-text-link" href={docsUrl}>
-                {row.cta} <FontAwesomeIcon icon={faArrowRight} />
-              </a>
+              <Link className="n-text-link" to={row.cta.href}>
+                {row.cta.label} <FontAwesomeIcon icon={faArrowRight} />
+              </Link>
             )}
           </div>
           <img alt={row.shot.alt} className="n-feature-img" loading="lazy" src={row.shot.src} />

@@ -1,6 +1,6 @@
-import { faArrowRight, faPhone } from '@fortawesome/free-solid-svg-icons'
+import { faPhone } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { assistant, docsUrl } from './content'
+import { assistant } from './content'
 
 export function Assistant() {
   const { call } = assistant
@@ -25,9 +25,6 @@ export function Assistant() {
             <span className="n-kicker">{call.kicker}</span>
             <h3>{call.title}</h3>
             <p>{call.text}</p>
-            <a className="n-text-link" href={docsUrl}>
-              {call.cta} <FontAwesomeIcon icon={faArrowRight} />
-            </a>
           </article>
           <div className="n-assistant-cards">
             {assistant.cards.map((card) => (
