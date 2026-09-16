@@ -144,3 +144,22 @@ export const useFinderFolderParam = ({
     )
   }, [folderParam, pagePath, seeded, setSearchParams])
 }
+
+/**
+ * What the Finder's bar is titled. Finder names the window after the folder
+ * you are standing in, not after the app — which is also what keeps the bar
+ * and the root column from saying the same word twice.
+ */
+export const finderBarTitle = ({
+  deepestFolderTitle,
+  spaceName,
+  virtualKind,
+}: {
+  deepestFolderTitle: string | undefined
+  spaceName: string | undefined
+  virtualKind: 'latest' | 'shared-with-me' | null
+}): string => {
+  if (virtualKind === 'latest') return 'Latest'
+  if (virtualKind === 'shared-with-me') return 'Shared with me'
+  return deepestFolderTitle ?? spaceName ?? 'Documents'
+}

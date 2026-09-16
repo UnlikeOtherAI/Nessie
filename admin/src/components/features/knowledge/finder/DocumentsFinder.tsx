@@ -11,6 +11,7 @@ import { getCookie, setCookie } from '../../../../lib/storage'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { ColumnBrowserColumn } from '../../../shared/column-browser/ColumnBrowserColumn'
+import { ScreenHeader } from '../../../shared/ScreenHeader'
 import { ColumnBrowserViewport } from '../../../shared/column-browser/ColumnBrowserViewport'
 import { useKnowledge } from '../KnowledgeProvider'
 import { isAgentDraft } from '../page-status'
@@ -30,6 +31,7 @@ import {
   sortFinderRows,
 } from './finder-sort'
 import {
+  finderBarTitle,
   FINDER_VIEWS,
   FINDER_VIEW_COOKIE,
   migrateStoredFinderView,
@@ -43,9 +45,8 @@ import { useFinderMove } from './useFinderMove'
  *
  * It composes and holds no row markup — that is each column's — and it is the
  * same component in all three places documents are browsed. What differs is
- * the scope: the Knowledge section starts at the root column, a project's Docs
- * tab starts *inside* the project's folder, and an agent's tab inside the
- * agent's.
+ * the scope: Knowledge starts at the root column, a project's Docs tab inside
+ * the project's folder, an agent's tab inside the agent's.
  */
 
 export type FinderScope =
@@ -331,7 +332,7 @@ export const DocumentsFinder = ({
 
   const rootColumn = (
     <ColumnBrowserColumn
-      actions={actions}
+      actions={single ? actions : undefined}
       key="root"
       resize={resize}
       screen
@@ -379,7 +380,7 @@ export const DocumentsFinder = ({
       )]
       : levels.map((level, index) => (
         <ColumnBrowserColumn
-          actions={!orgScope && index === 0 ? actions : undefined}
+          actions={single && !orgScope && index === 0 ? actions : undefined}
           key={level.key}
           // Every column beyond the root is a real layer on `single`, and a
           // pushed layer with no way out is a trap. A folder returns to its
@@ -437,8 +438,23 @@ export const DocumentsFinder = ({
   // folder full width, so a second way to say that would be a fork.
   const listView = view === 'list' && !single && !virtualColumnKey && levels.length > 0
 
+  // Finder's toolbar spans the window, not the first column. Below `split` the
+  // column *is* the screen and carries the actions itself, because a phone has
+  // no width for a bar above one full-width folder.
+  const toolbar = single ? null : (
+    <ScreenHeader
+      actions={actions}
+      title={finderBarTitle({
+        deepestFolderTitle: pathPages.at(-1)?.title,
+        spaceName: knowledge.selectedSpace?.name,
+        virtualKind,
+      })}
+    />
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[color:var(--main)] text-[color:var(--tx)]">
+      {toolbar}
       <div className="flex min-h-0 flex-1">
         {listView ? (
           <>
@@ -448,7 +464,6 @@ export const DocumentsFinder = ({
               </div>
             ) : null}
             <FinderListHost
-              actions={orgScope ? undefined : actions}
               dispatch={dispatch}
               level={levels.at(-1) as FinderFolderLevel}
               onBrowseTo={(pageId) => {
