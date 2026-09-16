@@ -82,6 +82,20 @@ export type CommitBatchResult = {
 const AUDIT_ACTION = 'kb.spreadsheet.batch_applied'
 
 /**
+ * Every write to one page queues behind that page's advisory lock, so a burst
+ * is *expected* to wait rather than to fail. Prisma's defaults (2 s to acquire,
+ * 5 s to finish) are sized for a transaction that contends with nothing: with a
+ * few dozen panes flushing into the same workbook they turn ordinary
+ * contention into a 500, and the client's only recovery is to resubmit — which
+ * makes the queue longer.
+ *
+ * `maxWait` is therefore generous and `timeout` is not: waiting for the lock is
+ * normal, holding it for fifteen seconds is not, and the second number is what
+ * stops one wedged apply blocking a page indefinitely.
+ */
+const SPREADSHEET_TRANSACTION_OPTIONS = { maxWait: 30_000, timeout: 15_000 } as const
+
+/**
  * Has any batch after `baseSeq` moved the grid under one of the sheets this
  * batch claims to touch?
  *
@@ -295,7 +309,7 @@ export const commitSpreadsheetBatch = async (
       sheetNames,
       snapshotBytes,
     }
-  })
+  }, SPREADSHEET_TRANSACTION_OPTIONS)
 
   // After COMMIT, outside the lock: the cached model now stands at this seq.
   if (!committed.replayed && !committed.noop) {

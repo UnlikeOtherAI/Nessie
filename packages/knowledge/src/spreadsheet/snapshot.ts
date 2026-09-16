@@ -153,8 +153,15 @@ export const createSpreadsheetSnapshot = async (
   // The engine bytes ride as a page attachment so restoring a recent version
   // is a `fromBytes` rather than an xlsx re-import. Best effort: losing it
   // costs a slower restore, never the version.
+  //
+  // Named by **version id**, not by seq. The plan said `@<seq>.icalc`, but a
+  // version row carries no seq, so a restore could only guess one from the
+  // head — and the head's `snapshotSeq` has already moved by then, because a
+  // restore snapshots the *current* state first. That guess found the blob for
+  // the state being replaced and restored it over itself: the restore silently
+  // did nothing. The version id is the only key both sides actually hold.
   await store(
-    `${safeName(page.title)}@${rendered.seq}.icalc`,
+    `${safeName(page.title)}@${version.id}.icalc`,
     SPREADSHEET_ICALC_MIME,
     rendered.bytes,
     true,

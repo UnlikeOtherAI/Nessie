@@ -73,7 +73,7 @@ export const migrateSpreadsheetEngine = async (
     organizationId: input.organizationId,
     pageId: input.pageId,
     versionId: head.snapshotVersionId,
-    seq: null,
+    xlsxOnly: true,
   })
   const bytes = Buffer.from(workbook.model.toBytes())
   const sheetNames = workbook.model.sheets().map((sheet) => sheet.name)

@@ -9,7 +9,6 @@ import {
   replaceInWorkbook,
   restructure,
   sortRange,
-  structuralEditsFromSummary,
   writeRange,
   type ClearRangeInput,
   type FormatRangeInput,
@@ -18,6 +17,7 @@ import {
   type ReplacedCell,
   type RestructureAction as AxisAction,
   type SortRangeInput,
+  type SpreadsheetStructuralEdit,
   type TabAction,
   type WriteRangeInput,
 } from '@nessie/spreadsheet'
@@ -78,18 +78,57 @@ export type RestructureInput = {
 }
 
 /**
- * Sheet insert/delete/move re-key the filter map, because its keys *are* sheet
- * indexes. The per-batch remap in the write door handles rows and columns;
- * this is the other axis, and only a tab action moves it.
+ * The structural edit a server action performed, in the terms the filter remap
+ * understands.
+ *
+ * It has to be rebuilt here rather than read off the summary: `intents` are the
+ * *browser's* record of its own calls, for replay after a structural refusal,
+ * and a server-built batch carries none. The write door's per-batch remap is
+ * therefore a no-op for these, and this is where a pane's filter learns that
+ * its rows moved.
  */
-const rekeyFiltersForTabs = async (
+const structuralEditsForAction = (
+  action: SpreadsheetAction,
+  sheetsBefore: number,
+): SpreadsheetStructuralEdit[] => {
+  if (action.op === 'axis') {
+    const axis = action.action
+    switch (axis.kind) {
+      case 'insertRows':
+      case 'deleteRows':
+        return [{ kind: axis.kind, sheet: axis.sheet, row: axis.row, count: axis.count }]
+      case 'insertColumns':
+      case 'deleteColumns':
+        return [{ kind: axis.kind, sheet: axis.sheet, column: axis.column, count: axis.count }]
+      case 'moveRows':
+      case 'moveColumns':
+        return [{
+          kind: axis.kind,
+          sheet: axis.sheet,
+          start: axis.start,
+          count: axis.count,
+          delta: axis.delta,
+        }]
+      default:
+        return []
+    }
+  }
+  if (action.op === 'tab') {
+    const tab = action.action
+    // `newSheet()` always appends, so the index a new sheet gets is the count
+    // before the call — the caller never chooses it.
+    if (tab.kind === 'addSheet') return [{ kind: 'addSheet', index: sheetsBefore }]
+    if (tab.kind === 'deleteSheet') return [{ kind: 'deleteSheet', index: tab.sheet }]
+    if (tab.kind === 'moveSheet') return [{ kind: 'moveSheet', from: tab.sheet, to: tab.toIndex }]
+  }
+  return []
+}
+
+const remapFiltersForAction = async (
   deps: SpreadsheetServiceDeps,
   input: { organizationId: string; pageId: string },
-  summary: SpreadsheetBatchSummary,
+  edits: SpreadsheetStructuralEdit[],
 ): Promise<void> => {
-  const edits = structuralEditsFromSummary(summary).filter(
-    (edit) => edit.kind === 'addSheet' || edit.kind === 'deleteSheet' || edit.kind === 'moveSheet',
-  )
   if (edits.length === 0) return
   await deps.prisma.$transaction(async (tx) => {
     await lockSpreadsheetPage(tx as never, input.pageId)
@@ -107,7 +146,7 @@ export const restructureSpreadsheet = async (
   deps: SpreadsheetServiceDeps,
   input: RestructureInput,
 ): Promise<ApplySpreadsheetBatchResult> => {
-  let summary: SpreadsheetBatchSummary | null = null
+  let edits: SpreadsheetStructuralEdit[] = []
   const result = await applySpreadsheetBatch(
     deps,
     {
@@ -119,8 +158,9 @@ export const restructureSpreadsheet = async (
       source: {
         kind: 'server',
         mutate: (model) => {
-          summary = runAction(model, input.action)
-          return summary
+          // Read before the mutation: `addSheet`'s index is the count before.
+          edits = structuralEditsForAction(input.action, model.sheets().length)
+          return runAction(model, input.action)
         },
       },
     },
@@ -128,7 +168,7 @@ export const restructureSpreadsheet = async (
     // whatever the engine helper reports, and the write door prefers it.
     { structuralKind: null, sheetIndexes: [], cellCount: 0, touched: [] },
   )
-  if (summary) await rekeyFiltersForTabs(deps, input, summary)
+  if (!result.noop) await remapFiltersForAction(deps, input, edits)
   return result
 }
 

@@ -46,7 +46,17 @@ const readAttachment = async (
  */
 export const workbookForVersion = async (
   deps: SpreadsheetServiceDeps,
-  input: { organizationId: string; pageId: string; versionId: string; seq: number | null },
+  input: {
+    organizationId: string
+    pageId: string
+    versionId: string
+    /**
+     * Refuse the `.icalc` fast path and go through the xlsx. Set by
+     * engine-migrate, whose whole problem is that the engine bytes are the
+     * *old* engine's format.
+     */
+    xlsxOnly?: boolean
+  },
 ): Promise<SpreadsheetWorkbook> => {
   const version = await deps.prisma.knowledgePageVersion.findFirst({
     where: { id: input.versionId, pageId: input.pageId },
@@ -56,13 +66,15 @@ export const workbookForVersion = async (
     throw invalidRequest('That version has no spreadsheet rendition', { versionId: input.versionId })
   }
 
-  if (input.seq !== null) {
+  if (!input.xlsxOnly) {
+    // Keyed by version id: it is the only name both the writer and this
+    // reader hold. Keying it by seq restored the wrong state (see snapshot.ts).
     const icalc = await deps.prisma.attachment.findFirst({
       where: {
         knowledgePageId: input.pageId,
         organizationId: input.organizationId,
         mime: SPREADSHEET_ICALC_MIME,
-        filename: { endsWith: `@${input.seq}.icalc` },
+        filename: { endsWith: `@${input.versionId}.icalc` },
       },
       select: { id: true },
       orderBy: { createdAt: 'desc' },
@@ -129,14 +141,10 @@ export const restoreSpreadsheetVersion = async (
     })
   }
 
-  const snapshotSeq = await deps.prisma.spreadsheetHead
-    .findUnique({ where: { pageId: input.pageId }, select: { snapshotSeq: true } })
-    .then((head) => (head ? Number(head.snapshotSeq) : null))
   const workbook = await workbookForVersion(deps, {
     organizationId: input.organizationId,
     pageId: input.pageId,
     versionId: input.versionId,
-    seq: snapshotSeq,
   })
   const bytes = Buffer.from(workbook.model.toBytes())
   const sheetNames = workbook.model.sheets().map((sheet) => sheet.name)

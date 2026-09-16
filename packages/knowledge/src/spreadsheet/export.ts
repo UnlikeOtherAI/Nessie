@@ -48,7 +48,6 @@ export const exportSpreadsheet = async (
       organizationId: input.organizationId,
       pageId: input.pageId,
       versionId: input.versionId,
-      seq: null,
     })
     return input.format === 'xlsx'
       ? { filename: `${base}.xlsx`, mime: SPREADSHEET_XLSX_MIME, bytes: exportXlsxBytes(workbook) }
