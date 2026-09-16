@@ -1,5 +1,7 @@
 import type { RealtimeNotificationPayload } from '@nessie/runtime'
 
+import { createEntitlementGate } from './delivery-entitlements.js'
+
 /**
  * The per-document live lane: connection bookkeeping and the fan-out branch,
  * kept out of `notification-delivery.ts` because that file is already near the
@@ -73,14 +75,47 @@ const documentOf = (notification: DocumentNotification): DocumentNotification['d
 
 export const createDocumentLane = (input: {
   /**
-   * May this connection still read its page? Asked on every event through the
-   * caller's own 5 s memo, the same bargain the channel and organization gates
-   * strike — a revoked reader's stream stops within the window rather than at
-   * whenever they happen to disconnect.
+   * May this person still read this page? Asked on every event, memoised for
+   * `REALTIME_ENTITLEMENT_TTL_MS` per connection — the same bargain the
+   * channel and organization gates strike, so a reader who loses the space
+   * stops receiving within the window rather than whenever they happen to
+   * disconnect.
+   *
+   * Absent means **deny**. A lane with no entitlement behind it must not fan
+   * a document out: unlike the ws lanes there is no declared-scope match to
+   * fall back on, and `pageId` alone is an opaque id, never a grant.
    */
-  canAccessPage: (connection: DocumentSseConnection) => Promise<boolean>
+  canAccessKnowledgePage?: (input: {
+    pageId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
+  /** Clock behind the per-connection entitlement cache's TTL. */
+  now?: () => number
 }) => {
   const documentConnections = new Set<DocumentSseConnection>()
+  // Keyed by the connection object in a WeakMap so the memo dies with the
+  // socket and can never outlive the entitlement it caches.
+  const gates = new WeakMap<DocumentSseConnection, (pageId: string) => Promise<boolean>>()
+
+  const canAccessPage = (connection: DocumentSseConnection): Promise<boolean> => {
+    let gate = gates.get(connection)
+    if (!gate) {
+      gate = createEntitlementGate(
+        async (pageId: string) =>
+          input.canAccessKnowledgePage
+            ? input.canAccessKnowledgePage({
+                pageId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : false,
+        input.now ? { now: input.now } : {},
+      )
+      gates.set(connection, gate)
+    }
+    return gate(connection.pageId)
+  }
 
   const deliverDocumentNotification = async (
     notification: DocumentNotification,
@@ -92,7 +127,7 @@ export const createDocumentLane = (input: {
       // Dropped before the entitlement query, not after: a saturated socket
       // cannot be written to either way, and the query is the expensive half.
       if (connection.saturated) continue
-      if (!(await input.canAccessPage(connection))) continue
+      if (!(await canAccessPage(connection))) continue
       writeDocumentSseEvent(connection, document)
     }
   }

@@ -50,6 +50,7 @@ export {
   engineVersion,
   exportXlsxBytes,
   importXlsxBytes,
+  isEmptyDiffPayload,
   loadWorkbook,
   pasteBlock,
   recordDiffs,

@@ -1,6 +1,8 @@
 import { SPREADSHEET_LIMITS, type SpreadsheetBatchSummary } from '@nessie/schemas'
 import type { LedgerAttribution } from '@nessie/runtime'
 
+import { isEmptyDiffPayload } from './engine.js'
+
 import { commitSpreadsheetBatch, type CommitBatchInput, type CommitBatchResult } from './commit.js'
 import { createSpreadsheetSnapshot, type SnapshotReason } from './snapshot.js'
 import type { SpreadsheetServiceDeps } from './deps.js'
@@ -144,10 +146,16 @@ export const applySpreadsheetBatch = async (
   input: ApplySpreadsheetBatchInput,
   summary: SpreadsheetBatchSummary,
 ): Promise<ApplySpreadsheetBatchResult> => {
+  // A payload with no operations gets no version either: an eager client
+  // flushing on every microtask would otherwise write an xlsx per keystroke
+  // the moment its summary said something destructive.
+  if (input.source.kind === 'client' && isEmptyDiffPayload(input.source.diffs)) {
+    return { ...(await commitSpreadsheetBatch(deps, input, summary)), safetyNetVersionId: null }
+  }
   const safetyNetVersionId = await takeSafetyNetVersion(deps, input, summary)
   const result = await commitSpreadsheetBatch(deps, input, summary)
 
-  if (!result.replayed && deps.publish) {
+  if (!result.replayed && !result.noop && result.batch && deps.publish) {
     await deps.publish('sheet.ops', {
       pageId: input.pageId,
       organizationId: input.organizationId,
@@ -155,7 +163,7 @@ export const applySpreadsheetBatch = async (
     })
   }
 
-  if (!result.replayed && deps.enqueueCompaction) {
+  if (!result.replayed && !result.noop && deps.enqueueCompaction) {
     const head = await deps.prisma.spreadsheetHead.findUnique({
       where: { pageId: input.pageId },
       select: { batchesSinceSnapshot: true },

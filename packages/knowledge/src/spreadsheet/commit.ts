@@ -6,8 +6,8 @@ import {
 } from '@nessie/schemas'
 import type { SpreadsheetEngineModel } from '@nessie/spreadsheet'
 
-import { batchRejected, structuralConflict, tooLarge } from './errors.js'
-import { applyDiffs, recordDiffs, type SpreadsheetWorkbook } from './engine.js'
+import { batchRejected, spreadsheetNotFound, structuralConflict, tooLarge } from './errors.js'
+import { applyDiffs, isEmptyDiffPayload, recordDiffs, type SpreadsheetWorkbook } from './engine.js'
 import {
   assertEngineMatches,
   hotSnapshotDue,
@@ -55,9 +55,16 @@ export type CommitBatchInput = {
 }
 
 export type CommitBatchResult = {
-  batch: SpreadsheetAppliedBatch
+  /** Null only for a no-op: nothing was journalled, so there is nothing to show. */
+  batch: SpreadsheetAppliedBatch | null
   /** True when `(pageId, actorId, clientOpId)` already existed: nothing changed. */
   replayed: boolean
+  /**
+   * True when the payload carried no operations. A drained send queue flushes
+   * as one `0x00` byte, so an eager client flushing on every microtask would
+   * otherwise burn a `seq`, write a row and wake every pane per keystroke.
+   */
+  noop: boolean
   headSeq: number
   sheetNames: string[]
 }
@@ -104,6 +111,20 @@ export const commitSpreadsheetBatch = async (
    */
   summary: SpreadsheetBatchSummary,
 ): Promise<CommitBatchResult> => {
+  if (input.source.kind === 'client' && isEmptyDiffPayload(input.source.diffs)) {
+    const head = await deps.prisma.spreadsheetHead.findFirst({
+      where: { pageId: input.pageId, organizationId: input.organizationId },
+      select: { headSeq: true, sheetNames: true },
+    })
+    if (!head) throw spreadsheetNotFound(input.pageId)
+    return {
+      batch: null,
+      replayed: false,
+      noop: true,
+      headSeq: Number(head.headSeq),
+      sheetNames: head.sheetNames,
+    }
+  }
   if (input.source.kind === 'client' && input.source.diffs.byteLength > SPREADSHEET_LIMITS.maxBatchBytes) {
     throw tooLarge('That change is too large to apply in one batch', {
       bytes: input.source.diffs.byteLength,
@@ -125,6 +146,7 @@ export const commitSpreadsheetBatch = async (
       return {
         row: existing as unknown as SpreadsheetBatchRow,
         replayed: true,
+        noop: false,
         headSeq: Number(head.headSeq),
         sheetNames: head.sheetNames,
         snapshotBytes: null as Uint8Array | null,
@@ -156,6 +178,19 @@ export const commitSpreadsheetBatch = async (
         diffs = input.source.diffs
       } else {
         diffs = recordDiffs(workbook, input.source.mutate)
+      }
+      if (isEmptyDiffPayload(diffs)) {
+        // The mutation changed nothing the engine could describe — setting a
+        // cell to what it already held, hiding an already-hidden row. There is
+        // nothing to journal and nothing to broadcast.
+        return {
+          row: null,
+          replayed: false,
+          noop: true,
+          headSeq,
+          sheetNames: head.sheetNames,
+          snapshotBytes: null as Uint8Array | null,
+        }
       }
     } catch (error) {
       // The model may hold a partial mutation, and this transaction is about
@@ -236,6 +271,7 @@ export const commitSpreadsheetBatch = async (
     return {
       row: row as unknown as SpreadsheetBatchRow,
       replayed: false,
+      noop: false,
       headSeq: seq,
       sheetNames,
       snapshotBytes,
@@ -243,7 +279,7 @@ export const commitSpreadsheetBatch = async (
   })
 
   // After COMMIT, outside the lock: the cached model now stands at this seq.
-  if (!committed.replayed) {
+  if (!committed.replayed && !committed.noop) {
     deps.cache.commit(
       input.pageId,
       committed.headSeq,
@@ -251,10 +287,12 @@ export const commitSpreadsheetBatch = async (
     )
   }
 
-  const batch = toAppliedBatch(committed.row, { displayName: input.actor.displayName })
   return {
-    batch,
+    batch: committed.row
+      ? toAppliedBatch(committed.row, { displayName: input.actor.displayName })
+      : null,
     replayed: committed.replayed,
+    noop: committed.noop,
     headSeq: committed.headSeq,
     sheetNames: committed.sheetNames,
   }

@@ -133,6 +133,18 @@ export const recordDiffs = (
 }
 
 /**
+ * Does this diff payload carry any operations at all?
+ *
+ * **A drained send queue flushes as one `0x00` byte, not zero bytes** — the
+ * empty-list encoding. A "flush and submit if truthy" loop therefore submits a
+ * payload on every microtask, and each one would burn a `seq`, write a journal
+ * row and wake every open pane for a change nobody made. The write door
+ * refuses them, so the guard holds however the client is written.
+ */
+export const isEmptyDiffPayload = (diffs: Uint8Array): boolean =>
+  diffs.byteLength === 0 || (diffs.byteLength === 1 && diffs[0] === 0)
+
+/**
  * A private 0700 directory whose whole contents are removed afterwards.
  *
  * `mkdtemp` satisfies every rule the binding imposes by construction: the
