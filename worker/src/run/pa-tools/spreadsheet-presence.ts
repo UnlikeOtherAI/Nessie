@@ -117,7 +117,16 @@ export type PresencePublisher = {
   announce: (input: Omit<PresencePlanInput, 'now' | 'clientId'>) => Promise<void>
   /** The batch landed: keep the selection, drop the draft. */
   settle: (input: Omit<PresencePlanInput, 'now' | 'clientId' | 'rows'>) => Promise<void>
-  /** The run finished with this page. */
+  /**
+   * The run finished with this page.
+   *
+   * Not called on a timer. `agent-tools.md` specified a 60 s idle timer on the
+   * run context, but the overlay already expires a peer that has not sent a
+   * frame for 30 s — so the timer would have made the agent linger *longer*
+   * than doing nothing does, for the cost of a dangling handle in a draining
+   * worker. This exists for a run-teardown hook to call when there is one; the
+   * expiry is what removes the agent today, and it removes it sooner.
+   */
   leave: () => Promise<void>
 }
 
