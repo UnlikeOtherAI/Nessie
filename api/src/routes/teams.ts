@@ -341,9 +341,15 @@ export const registerTeamRoutes = (
         team.externalTeamId,
         stored.name,
       )
-      // The address UOA stored comes back so the screen can show the new
-      // hostname immediately; the cached directory heals on the next rotation.
-      return createApiResponse({ id: team.id, name: stored.name, slug: stored.slug })
+      // `slug` only when UOA actually echoed one. Every existing caller of this
+      // route asked to rename a team and nothing else; returning a field that
+      // is null for all of them would change the answer's shape for everybody
+      // to describe something none of them did.
+      return createApiResponse({
+        id: team.id,
+        name: stored.name,
+        ...(stored.slug === null ? {} : { slug: stored.slug }),
+      })
     }
 
     const updated = await prisma.team.update({
