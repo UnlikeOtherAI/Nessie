@@ -209,7 +209,20 @@ const Fixture = () => {
       <Suspense
         fallback={<p data-testid="spreadsheet-chunk-loading">Opening Q3 Forecast…</p>}
       >
-        <SpreadsheetPane canWrite onSession={publishDriver} page={page} />
+        <SpreadsheetPane
+          canWrite
+          onSession={publishDriver}
+          page={page}
+          // The pre-destructive snapshot an agent's delete would have taken.
+          // Phase 3b feeds this from the live lane's batch summary; here it is
+          // supplied directly so the notice and its Restore are on screen.
+          versionNotice={{
+            action: 'delete rows 2-4',
+            actorName: 'Forecast Assistant',
+            versionId: '00000000-0000-4000-8000-000000000103',
+            versionNumber: 3,
+          }}
+        />
       </Suspense>
     </div>
   )

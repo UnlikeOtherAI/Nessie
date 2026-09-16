@@ -58,6 +58,13 @@ try {
     await page.locator('.ic-sheet-tab-bar-container').waitFor()
     await page.locator('.ic-worksheet-sheet-canvas').waitFor()
     await page.getByTestId('spreadsheet-filter-chips').waitFor()
+    // The whole of this feature's safety story: no approval gate, so the undo
+    // for a destructive act sits in the reader's eyeline at the moment it
+    // happens rather than waiting to be hunted for in History.
+    const savedNotice = page.getByTestId('spreadsheet-version-saved-notice')
+    await savedNotice.waitFor()
+    await savedNotice.getByText('Saved a version before delete rows 2-4').waitFor()
+    await page.getByTestId('spreadsheet-notice-restore').waitFor()
     // The funnel buttons sit in the column header band, over IronCalc's canvas
     // but never on it. Absent them a person can see a sheet is filtered and has
     // nowhere to press, which is the state the first run of this suite caught.

@@ -11,7 +11,7 @@ Measured 2026-09-16 against `@ironcalc/workbook` 0.8.3 + `@ironcalc/wasm`
 
 | Screenshot | What it shows |
 |---|---|
-| [`phase-3a/create.png`](phase-3a/create.png) | The grid in the default theme: our action bar, the chips bar, funnel buttons on A/B/C, IronCalc's toolbar, formula bar and sheet tabs, `B6 = 445` from `=SUM(B2:B5)`. |
+| [`phase-3a/create.png`](phase-3a/create.png) | The grid in the default theme: our action bar, the chips bar, funnel buttons on A/B/C, the pre-destructive “Saved a version before delete rows 2-4 — Restore” notice, IronCalc's toolbar, formula bar and sheet tabs, `B6 = 445` from `=SUM(B2:B5)`. |
 | [`phase-3a/theme-light.png`](phase-3a/theme-light.png) | `daylight`: surface `rgb(255,255,255)`, grid `rgb(216,222,232)` — the spike's numbers, reproduced. |
 | [`phase-3a/theme-dark.png`](phase-3a/theme-dark.png) | `midnight`: surface `rgb(17,24,39)`, grid `rgb(31,41,55)`, toolbar icons **painted** (the `--palette-common-black` trap, not re-entered), no white band across the formula bar. |
 | [`phase-3a/phone.png`](phase-3a/phone.png) | 390×844, `hasTouch`: the action bar collapsed to icons, IronCalc's toolbar parked behind "Format", formula bar and sheet tabs kept, `canEdit` on. |
@@ -136,8 +136,12 @@ moment somebody looked.
 
 ## Seams left for Phase 3b
 
-- `SpreadsheetPane`'s `onSession`, `onFlush`, `onPresence`, `peers` and
-  `liveStatus` props. `WorkbookSession` carries `{ model, handle, redraw,
+- `SpreadsheetPane`'s `onSession`, `onFlush`, `onPresence`, `peers`,
+  `liveStatus` and `versionNotice` props. The last one is the
+  “Saved a version before … — Restore” notice: 3a owns the surface and its
+  dismissal, and the *trigger* is a batch summary arriving on the live lane
+  (3b) or an agent's tool result (Phase 4), which is not something this pane
+  could know on its own. `WorkbookSession` carries `{ model, handle, redraw,
   applyExternal, flushNow, appliedSeq, missingSeqs }`.
 - `spreadsheet-geometry.ts` — `cellRect` / `cellFromPoint` with the frozen
   panes the spike's prototype skipped, already shared with the filter header

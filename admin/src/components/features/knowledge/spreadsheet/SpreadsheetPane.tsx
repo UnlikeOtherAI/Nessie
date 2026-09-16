@@ -73,6 +73,14 @@ type SpreadsheetPaneProps = {
   liveStatus?: 'connecting' | 'live' | 'offline'
   /** Set while the server is rebuilding on a newer engine: the grid is read-only. */
   engineMigrating?: boolean
+  /**
+   * The pre-destructive snapshot to offer a Restore for. 3a owns the notice;
+   * the *trigger* is a batch's summary arriving on the live lane (Phase 3b) or
+   * an agent's tool result (Phase 4), so it is a prop rather than something
+   * this pane could know on its own. The pane still owns dismissal, and the
+   * Restore inside it goes through the same mutation as History's.
+   */
+  versionNotice?: SpreadsheetVersionSavedNotice | null
 }
 
 export const SpreadsheetPane = ({
@@ -85,6 +93,7 @@ export const SpreadsheetPane = ({
   onSession,
   page,
   peers = [],
+  versionNotice = null,
 }: SpreadsheetPaneProps) => {
   const { token } = useAuthSession()
   const viewport = useViewport()
@@ -108,7 +117,12 @@ export const SpreadsheetPane = ({
   const [formatBarVisible, setFormatBarVisible] = useState(false)
   const [open, setOpen] = useState<null | 'export' | 'find' | 'history' | 'save-version' | 'sort'>(null)
   const [filterColumn, setFilterColumn] = useState<number | null>(null)
-  const [notice, setNotice] = useState<SpreadsheetVersionSavedNotice | null>(null)
+  // Dismissed locally, supplied from outside: a new snapshot arriving replaces
+  // a dismissed one rather than staying hidden behind it.
+  const [dismissedNotice, setDismissedNotice] = useState<string | null>(null)
+  const notice = versionNotice && versionNotice.versionId !== dismissedNotice
+    ? versionNotice
+    : null
   const [replaceResult, setReplaceResult] = useState<SpreadsheetReplaceResult>()
   // Every write in this pane is fire-and-forget from the grid's point of view:
   // nothing here is a form with a field to hang an error on, so a refusal that
@@ -353,13 +367,13 @@ export const SpreadsheetPane = ({
       {notice ? (
         <SpreadsheetVersionSavedNoticeBar
           notice={notice}
-          onDismiss={() => setNotice(null)}
+          onDismiss={() => setDismissedNotice(notice.versionId)}
           onRestore={(versionId) => {
             restoreVersion.mutate(
               { pageId: page.id, versionId },
               { onError: onActionError('Restore') },
             )
-            setNotice(null)
+            setDismissedNotice(notice.versionId)
           }}
           pending={busy}
         />
