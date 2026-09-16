@@ -322,6 +322,13 @@ when one changes, the same turn updates it, not this section.
   rather than a rewrite.
   Read [`docs/standards/live-document-streaming.md`](docs/standards/live-document-streaming.md)
   before writing code here.
+- **Spreadsheets.** One write door under a per-page lock assigns the `seq` that
+  is the only order; evaluation is paused around every apply; `toBytes()` is
+  not byte-stable, so identity is the canonical projection and never the bytes;
+  and an engine bump is a data migration, because two uncatchable Rust aborts
+  make imports and large exports worker work.
+  Read [`docs/standards/spreadsheets.md`](docs/standards/spreadsheets.md)
+  before writing code here.
 - **A capability that can stop working owns the way a person finds out.**
   Classify the failure into a state that names its remedy, persist the reason,
   and alert exactly once per transition; recovery is explicit, never

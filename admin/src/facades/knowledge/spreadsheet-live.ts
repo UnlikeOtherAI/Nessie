@@ -9,10 +9,7 @@ import {
   type SpreadsheetPresenceFrame,
 } from '@nessie/schemas'
 import { ApiClientError } from '@nessie/client-core'
-import type {
-  OutgoingBatch,
-  SubmitOutcome,
-} from '../../components/features/knowledge/spreadsheet/live/sync-engine'
+import type { OutgoingBatch, SubmitOutcome } from '../../lib/spreadsheet-wire'
 import { getBaseUrl } from '../../lib/api-client'
 import { readSseStream } from '../../lib/sse'
 import { useAuthSession } from '../../providers/AuthSessionProvider'

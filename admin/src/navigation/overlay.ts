@@ -19,6 +19,11 @@ export type OverlayKind = 'modal' | 'sheet' | 'popover' | 'modalPopover' | 'card
 // person actually interacts with.
 export const OVERLAY_LAYER = Object.freeze({
   stack: 1,
+  // Not a kind either: the layer an embedded third-party widget's own
+  // host needs for a marks overlay of ours. IronCalc's cell outlines sit
+  // at z-index 1 and its menus at 1000, so the presence overlay has to be
+  // above the first and below the second.
+  widgetOverlay: 5,
   card: 40,
   tooltip: 45,
   popover: 50,

@@ -75,6 +75,17 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the
   project usability suite.
+- **Spreadsheets browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:spreadsheets` — two real
+  browsers and two real accounts on one API, covering a live batch, the
+  presence overlay and draft ghost, the structural rebase, the offline queue
+  and phone touch selection. CI runs `node admin/e2e/spreadsheets/ci.mjs` last
+  in Navigation Transitions. Both entries start and stop their own API and
+  admin and **never adopt a server that is already listening** — a run that
+  adopted one drove another worktree's API and seeded into the wrong database
+  in silence — so free `5454`/`5455` before running it. The invariants it
+  defends are in
+  [`docs/standards/spreadsheets.md`](docs/standards/spreadsheets.md).
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Production promotion uses the exact-SHA gate:** Deploy resolves the current

@@ -658,7 +658,7 @@ hybrid search described in §3 (TypeScript RRF fusion via `@nessie/retrieval`,
 not PL/pgSQL `match_*` functions). Body-ref and file-backed versions still
 need a streaming ingestion/extraction path (redesign plan Phase 5).
 
-## 9e) Spreadsheet pages (implemented: persistence, API, live lane)
+## 9e) Spreadsheet pages (implemented)
 
 A third page kind beside `document` and `file`. Its canonical state is an
 IronCalc workbook, not rows: `spreadsheet_heads.hot_snapshot` plus every
@@ -683,10 +683,29 @@ other kind here:
   (`spreadsheet.import`); the route answers `202` and the page is reachable at
   once.
 
-The live lane is `GET /api/knowledge-base/pages/:pageId/live`, a hijacked SSE
-route on the new `document` realtime kind. Nothing durable rides it.
+- **Search of a spreadsheet is as fresh as its last version, and no fresher.**
+  The text projection is written when a version is, so retrieval can trail the
+  live workbook by up to 200 batches or five idle minutes — the two compaction
+  triggers `worker/src/control/spreadsheet-sweeps.ts` bounds. The pane's find
+  and the agents' `sheet_find` read the live model instead, so a person never
+  sees the stale projection.
 
-Full design: `docs/plans/2026-09-15-spreadsheets-ironcalc/`.
+The live lane is `GET /api/knowledge-base/pages/:pageId/live`, a hijacked SSE
+route on the new `document` realtime kind. Nothing durable rides it: ops are
+recoverable by `seq` from the catch-up route, and presence is not recoverable
+and need not be.
+
+People edit in the admin pane with the real IronCalc grid, including on a
+phone; agents edit the same workbook through the twelve `sheet_*` builtins and
+their `nessie_sheet_*` MCP mirror, with no approval gate and versioning as the
+safety net. Sort, filter and find/replace are Nessie's own layer over the
+engine, not IronCalc features; IronCalc 0.8 has no merged cells, data
+validation or cell comments, and an imported workbook's merges survive a round
+trip while remaining invisible to the API.
+
+The invariants, the measurements behind them and the honest feature gaps:
+[`docs/standards/spreadsheets.md`](standards/spreadsheets.md). Full design:
+`docs/plans/2026-09-15-spreadsheets-ironcalc/`.
 
 ## 9d) Retrieval tools + Librarian agent (implemented, read path)
 

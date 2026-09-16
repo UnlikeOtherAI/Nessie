@@ -288,6 +288,18 @@ row and no notice appeared.
 Acceptance: e2e green locally headless on `http://localhost:5455`; the
 `ci.mjs` entry prepared for Phase 5.
 
+**As built (2026-09-16).** Both `run.mjs` and `ci.mjs` **refuse to adopt a
+listening server** — a run that adopted one drove another worktree's API and
+seeded into the wrong database with nothing in the failure to say so — and the
+suite raises its own API's login rate limit, or a local re-run fails at
+10 sign-ins per IP per 10 minutes. An `offline-queue` case joined the three
+above. Rule 4 gained `structuralIntents` on the wire and the
+apply-above-`appliedSeq`/shift-through-all split; `'restore'` joined
+`SPREADSHEET_STRUCTURAL_KINDS`; the write door's and catch-up route's real
+envelopes are `{batch, replayed, noop, headSeq, sheetNames,
+safetyNetVersionId}` and a page. All of it is recorded in `decisions.md`
+§"Phase 3b corrections".
+
 ### Phase 4 — Agent tools
 
 Owns: `packages/runtime/src/builtin-sheet-tools.ts`,
@@ -338,6 +350,16 @@ Acceptance: all ten CI jobs green on the integration branch; multi-instance
 case green; `pnpm lint` green; the standards file exists and `AGENTS.md`
 routes to it; the final PR lists every requirement in this plan with where
 it landed and names anything deferred with the owner's decision beside it.
+
+**As built (2026-09-16).** The version-retention idea in this plan is void:
+there is no retention policy on versions and the sweeps must not add one, so
+pruning applies to journal batches alone. The engine-migrate driver landed as
+a third sweep plus a `spreadsheet.engine-migrate` job, because
+`migrateSpreadsheetEngine` had no caller outside its own test. The sweeps are
+registered in `worker-subscriptions-core.ts` rather than `worker-sweeps.ts`:
+the model cache, file service and knowledge provider are closure state of that
+registration, and a second copy in the sweep module would be a second cache.
+The requirement audit is [delivery-audit.md](delivery-audit.md).
 
 ## Integration checklist (orchestrator, per wave)
 

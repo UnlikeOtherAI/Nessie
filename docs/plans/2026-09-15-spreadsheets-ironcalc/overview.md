@@ -1,9 +1,12 @@
 # Spreadsheets in Nessie documents — IronCalc build contract
 
-Status: design complete and owner-approved (decisions below, 2026-09-16),
-not started. Written 2026-09-15 for Ondrej; reworked the same day from a
-FortuneSheet draft after the owner chose IronCalc. The integration branch
-rebases onto `origin/main` (≥ `2c9963eff`) before Phase 1. This directory is a **build contract**: each file states decisions
+Status: **built — Phases 0 to 5 landed on the integration branch, 2026-09-16.**
+What each requirement became, and the four things that did not land, are in
+[delivery-audit.md](delivery-audit.md). The invariants now live in
+[`docs/standards/spreadsheets.md`](../../standards/spreadsheets.md), which is
+the file to read before changing any of this; this directory stays as the
+record of how it was decided. Written 2026-09-15 for Ondrej; reworked the same
+day from a FortuneSheet draft after the owner chose IronCalc. This directory is a **build contract**: each file states decisions
 other agents implement, in waves, without re-deriving them. When a decision
 proves wrong during a phase, the phase changes this document in the same
 turn and says why.

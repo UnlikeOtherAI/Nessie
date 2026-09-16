@@ -9,6 +9,8 @@ import {
 } from '@nessie/schemas'
 import { shiftIntents } from '@nessie/spreadsheet/rebase'
 
+import type { OutgoingBatch, SubmitOutcome } from '../../../../../lib/spreadsheet-wire'
+
 /**
  * The client's ordering rules, with no React, no IronCalc and no `fetch` in
  * sight (`realtime-and-presence.md` §"Ordering rules the client implements").
@@ -70,34 +72,14 @@ const UNREPLAYABLE_INTENT_KINDS: ReadonlySet<SpreadsheetIntent['kind']> = new Se
   'redo',
 ])
 
-export type OutgoingBatch = {
-  clientOpId: string
-  baseSeq: number
-  /** Base64, as the write door takes it. */
-  diffs: string
-  summary: SpreadsheetBatchSummary
-  /**
-   * Calls this batch made that the contract has no intent shape for
-   * (`intentFromCall` returned null). Such a batch ships its diffs perfectly
-   * well but cannot be replayed, so a structural refusal drops it and says so
-   * rather than re-issuing a partial edit.
-   */
-  unrebasableCalls: number
-}
-
-export type SubmitOutcome =
-  | { kind: 'applied'; batch: SpreadsheetAppliedBatch; safetyNetVersionId?: string }
-  /** The door took the request and numbered nothing: an empty payload, or a
-   *  retry the idempotency key had already answered. */
-  | { kind: 'noop'; headSeq: number }
-  /** The write door refused: somebody moved the rows under this batch. */
-  | { kind: 'conflict'; headSeq: number; since: SpreadsheetAppliedBatch[] }
-  /** The request never reached a verdict — retry when the lane is back. */
-  | { kind: 'offline' }
-  /** A verdict this batch cannot recover from (too large, engine refusal). */
-  | { kind: 'refused'; message: string }
-  /** The page's head is on another engine build: read-only until it rebuilds. */
-  | { kind: 'engine-mismatch' }
+/**
+ * The wire shapes are declared in `lib/spreadsheet-wire.ts` — the facade that
+ * performs the request needs them too, and a facade may not import a component
+ * (`scripts/lint-admin-layers.mjs`). They are re-exported here because this is
+ * where everything else about a batch is decided, and a reader of this file
+ * should not have to know they moved.
+ */
+export type { OutgoingBatch, SubmitOutcome }
 
 export type LiveStatus = 'connecting' | 'live' | 'offline'
 

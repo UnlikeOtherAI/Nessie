@@ -176,9 +176,15 @@ the overlay compares.
    calls it intercepted (`SpreadsheetIntent[]`). On 409: (a)
    `pauseEvaluation()`; `undo()` once per pending batch and discard the
    undo diffs that lands in the send queue (`flushSendQueue()` to drain);
-   (b) apply the foreign `since` batches in order; (c) re-issue each
+   (b) apply the foreign `since` batches **above `appliedSeq`** — a
+   structural batch arrives twice, on the lane and again in `since`, and
+   `insertRows` is not idempotent — while shifting through **all** of them,
+   because a row that moved moved whoever reported it first; (c) re-issue each
    recorded intent with row/column indexes shifted by the foreign structural
-   batches' summaries (`shiftIntent(intent, since)` in
+   batches' `structuralIntents` — **Phase 3b correction:** the summary is the
+   writer's private record and is not on the wire, so the batch carries the
+   structural intents it performed, and one that carries none cannot be rebased
+   across at all (`shiftIntent(intent, since)` in
    `packages/spreadsheet/src/rebase.ts`; an intent whose target row/column
    was deleted, or a pending structural intent crossing a foreign
    structural one, is dropped and reported); (d) `resumeEvaluation();

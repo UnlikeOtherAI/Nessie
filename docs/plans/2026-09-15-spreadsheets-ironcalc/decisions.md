@@ -185,3 +185,52 @@ Consequences:
   is unbounded in the size of the imported file, and a failing stdout write
   aborts the process that is doing it. Whatever collects worker logs must
   drain fd 1 and never close it under a running import.
+
+## Phase 3b corrections (agent branch `agent/sheets-live`, 2026-09-16)
+
+Measured while building the live layer and its two-browser suite. Each one
+corrects something this plan asserted.
+
+- **`applyExternalDiffs` does not enter the undo stack** (`@ironcalc/wasm`
+  0.8.4). Two models from one base, a local edit on A2 and a peer's on A3, the
+  peer's diffs applied, one `undo()`: A2 cleared, A3 kept. Rule 4's rollback
+  depends on this; without it a foreign batch arriving during a round trip
+  would have to be held back until the verdict.
+- **A structural batch reaches a client twice** — once on the live lane, once
+  inside the 409's `since` list, because the same commit publishes it and then
+  refuses the racing batch. Rule 4 now **applies** only the batches above
+  `appliedSeq` and **shifts through all of them**. Re-applying one the lane
+  already delivered pushes the grid down twice (`insertRows` is not
+  idempotent); skipping its shift lands the replayed edit on the wrong row.
+- **`structuralIntents` had to be added to `SpreadsheetAppliedBatch`.** Rule 4
+  shifts by "the foreign structural batches' summaries", but a summary is the
+  writer's private record and is not on the wire. Only structural intents
+  travel; a batch that arrives without them cannot be rebased across, and the
+  client drops its pending intents with a notice rather than replaying blind.
+  **Every server-built structural batch carries none by construction**
+  (`advisorySummaryForAction` in `writes.ts` sets no `intents`), so restore,
+  import, engine-migrate and every agent `sheet_structure` write are currently
+  unrebasable by an open pane.
+- **`'restore'` had to be added to `SPREADSHEET_STRUCTURAL_KINDS`.** The
+  restore path publishes it, and the event schema threw *after* the restore had
+  landed.
+- **The write door answers `{batch, replayed, noop, headSeq, sheetNames,
+  safetyNetVersionId}`** and the catch-up route answers a page. Neither is the
+  shape the facade assumed. `safetyNetVersionId` is what gives the writer the
+  same "Saved a version before …" line their colleagues get from
+  `sheet.snapshot`.
+- **The lane and the write door are two connections.** Rule 5 reads as if they
+  were one; a proxy that refuses a POST while an SSE stream it opened minutes
+  ago keeps flowing is ordinary. The send path has its own jittered retry
+  ladder, reset by a successful write and by a lane that comes back. A lane
+  whose *first* connect was refused must also report it — `onClose` fired only
+  after an established stream dropped.
+- **`WorkbookState` is rebuilt by a parent's render**, referentially stable
+  props notwithstanding, so typing into a cell did nothing: the editor read
+  `getEditingCell() === null` on a fresh state. Memoising the element is what
+  makes React skip the subtree.
+- **The e2e suites must never adopt a listening server.** One run drove another
+  worktree's API: the port answered, the seed found no users, and nothing in
+  the failure said whose database it was talking to. Both `run.mjs` and
+  `ci.mjs` start and stop their own. The suite also raises its own API's login
+  rate limit, or a local re-run fails at 10 sign-ins per IP per 10 minutes.
