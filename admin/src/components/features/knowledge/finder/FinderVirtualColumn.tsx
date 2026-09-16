@@ -11,7 +11,7 @@ import { ActorName, useActorNames } from '../../../shared/ActorName'
 import { EmptyState } from '../../../shared/EmptyState'
 import { QueryState } from '../../../shared/QueryState'
 import { RowList } from '../../../shared/RowList'
-import { familyTone, iconForFamily } from '../../../shared/file-icons'
+import { familyLabel, familyTone, iconForFamily } from '../../../shared/file-icons'
 import { FinderRow } from './FinderRow'
 import type {
   FinderBackgroundMenuProps,
@@ -107,6 +107,7 @@ export const FinderVirtualColumn = ({
                   iconTone={familyTone[family]}
                   id={row.id}
                   indexing={row.indexing}
+                  indexingFamilyLabel={familyLabel[family]}
                   key={row.id}
                   kind={row.kind}
                   onKeyDown={onRowKeyDown

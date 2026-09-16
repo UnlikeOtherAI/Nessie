@@ -91,12 +91,6 @@ export type FinderMenuCapabilities = {
   canShare: boolean
   /** Only a person publishes. An agent's draft goes through the approval. */
   actorIsPerson: boolean
-  /**
-   * A destination picker is mounted. Where one is not, "Move to…" is absent
-   * rather than inert: a menu item that does nothing is worse than one that
-   * is not there, and the picker is the item's only doorway.
-   */
-  canMoveTo: boolean
 }
 
 /** Everything a menu item can do. The hook binds each to the current target. */
@@ -108,14 +102,14 @@ export type FinderMenuHandlers = {
   versionHistory: () => void
   publish: () => void
   rename: () => void
-  moveTo: () => void
+  moveTo?: () => void
   copyLink: () => void
   remove: () => void
   download: () => void
   uploadVersion: () => void
   newFolderInside: () => void
   newDocumentInside: () => void
-  uploadFiles: () => void
+  uploadFiles?: () => void
   showInFolder: () => void
   removeShare: () => void
   retryIndexing: () => void
@@ -123,9 +117,9 @@ export type FinderMenuHandlers = {
   openTicket: () => void
   openProject: () => void
   openAgent: () => void
-  newSharedFolder: () => void
+  newSharedFolder?: () => void
   spaceSettings: () => void
-  newFolder: () => void
+  newFolder?: () => void
   newDocument: () => void
 }
 
@@ -256,7 +250,11 @@ const pageItems = (
       icon: faPenToSquare,
       shortcut: 'F2',
     })] : []),
-    ...(mayOwn && caps.canMoveTo
+    // Every item below is gated on its own handler as well as on permission:
+    // where the host has not mounted the surface an item opens, the item is
+    // absent rather than inert. A menu row that does nothing is worse than one
+    // that is not there.
+    ...(mayOwn && on.moveTo
       ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
       : []),
     SEPARATOR,
@@ -289,7 +287,7 @@ const selectionItems = (
     ...(files.length > 0
       ? [item('download', 'Download', on.download, { icon: faDownload })]
       : []),
-    ...(caps.canWrite && caps.canMoveTo && owned
+    ...(caps.canWrite && on.moveTo && owned
       ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
       : []),
     SEPARATOR,
@@ -356,11 +354,15 @@ const backgroundItems = (
   on: FinderMenuHandlers,
 ): ContextMenuItem[] => {
   if (column === 'root') {
-    return [
-      item('new-shared-folder', 'New shared folder…', on.newSharedFolder, { icon: faFolderPlus }),
+    return tidy([
+      ...(on.newSharedFolder
+        ? [item('new-shared-folder', 'New shared folder…', on.newSharedFolder, {
+          icon: faFolderPlus,
+        })]
+        : []),
       SEPARATOR,
       item('refresh', 'Refresh', on.refresh, { icon: faArrowsRotate }),
-    ]
+    ])
   }
   // A virtual folder has no other way to ask again: its rows are a listing the
   // server computed, not a folder anybody writes into.
@@ -370,12 +372,16 @@ const backgroundItems = (
   return tidy([
     ...(caps.canWrite
       ? [
-        item('new-folder', 'New folder', on.newFolder, {
-          icon: faFolderPlus,
-          shortcut: 'Mod+Shift+N',
-        }),
+        ...(on.newFolder
+          ? [item('new-folder', 'New folder', on.newFolder, {
+            icon: faFolderPlus,
+            shortcut: 'Mod+Shift+N',
+          })]
+          : []),
         item('new-document', 'New document', on.newDocument, { icon: faFileLines }),
-        item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp }),
+        ...(on.uploadFiles
+          ? [item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp })]
+          : []),
         SEPARATOR,
       ]
       : []),

@@ -7,11 +7,10 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState } from '@nessie/schemas'
-import { familyForFilename, familyLabel } from '../../../shared/file-icons'
 import { MiddleTruncate } from '../../../shared/MiddleTruncate'
 import { Row, type RowDragHandlers, type RowProps } from '../../../shared/RowList'
-import { indexingCopy } from './indexing-copy'
 import { RenameRow, type FinderRowRename } from './RenameRow'
+import { indexingCopy } from './indexing-copy'
 
 /**
  * One row of the Documents Finder (browser-ui.md §4). 44px, an icon, a
@@ -59,6 +58,11 @@ export type FinderRowProps = {
   iconTone?: string
   id: string
   indexing?: KnowledgeIndexingState
+  /**
+   * The row's family word (`familyLabel[familyForRow(page)]`), read by the one
+   * indexing sentence that names the kind of file.
+   */
+  indexingFamilyLabel?: string
   /** An identity tile in place of a glyph: a project's picture, an agent's. */
   leading?: ReactNode
   /**
@@ -111,35 +115,33 @@ const glyph = (icon: IconDefinition, tone: string, title?: string) => (
 )
 
 /**
- * One glyph, and only when there is something to say — read from the single
- * derivation in `indexing-copy.ts` so the row, Get Info and the upload tray
- * cannot describe the same state in three vocabularies. Nothing is painted for
- * `indexed`: a quiet row is the point, and a tick on every row of a folder
- * says only that the folder exists. A draft is quiet too — a document is
- * chunked on publish, not on save, so a spinner there could never resolve.
+ * One glyph, and only when there is something to say.
+ *
+ * The vocabulary is `indexing-copy.ts`'s, not this row's: the same sentence
+ * has to come out of the tooltip here, Get Info's "Search" line and the menu
+ * that offers to retry, and this file used to carry a second wording of its
+ * own. It also painted a glyph on a draft, where a draft is quiet on purpose —
+ * nothing is running and nothing will until somebody publishes, so a mark
+ * there is a promise that never resolves.
+ *
+ * `familyLabel` reaches the one sentence that names the kind of file; the row
+ * knows its family and the copy module deliberately does not.
  */
 const IndexingGlyph = ({
-  filename,
+  familyLabel,
   indexing,
 }: {
-  /** A file node's name, so an unsupported type can name its family. */
-  filename?: string
+  familyLabel?: string
   indexing: KnowledgeIndexingState
 }) => {
-  const copy = indexingCopy(
-    indexing,
-    filename ? familyLabel[familyForFilename(filename)] : undefined,
-  )
+  const copy = indexingCopy(indexing, familyLabel)
   if (copy.glyph === 'none' || !copy.icon) return null
   return (
     <FontAwesomeIcon
       aria-label={copy.sentence}
-      className={[
-        'h-3.5 w-3.5 shrink-0',
-        copy.spin ? 'animate-spin' : '',
-        `text-[color:var(${copy.tone})]`,
-      ].filter(Boolean).join(' ')}
+      className={`h-3.5 w-3.5 shrink-0${copy.spin ? ' animate-spin' : ''}`}
       icon={copy.icon}
+      style={{ color: `var(${copy.tone})` }}
       title={copy.sentence}
     />
   )
@@ -178,6 +180,7 @@ export const FinderRow = ({
   iconTone = '--tx3',
   id,
   indexing,
+  indexingFamilyLabel,
   kind,
   leading,
   locked = false,
@@ -301,12 +304,9 @@ export const FinderRow = ({
               `Shared with ${shareCount} ${shareCount === 1 ? 'person' : 'people'}`,
             )
             : null}
-          {indexing ? (
-            <IndexingGlyph
-              filename={kind === 'file' ? title : undefined}
-              indexing={indexing}
-            />
-          ) : null}
+          {indexing
+            ? <IndexingGlyph familyLabel={indexingFamilyLabel} indexing={indexing} />
+            : null}
           {chevron ? (
             <FontAwesomeIcon
               className="finder-row-chevron h-3 w-3 shrink-0 text-[color:var(--tx3)]"

@@ -78,12 +78,16 @@ test('an empty group is omitted, and takes its separator with it', () => {
   assert.deepEqual(groups.filter((group) => group.length > 0).length, 2)
 })
 
-test('Dashboards keeps a doorway, as the root’s last row', () => {
-  // Its only doorway today is the navy sidebar this replaces; the source is
-  // the check, because the row is built beside the product views in render.
+test('Dashboards is not a row here — it has its own home now', () => {
+  // It carried an interim row while its only doorway was the navy sidebar this
+  // replaces. It is now a project section (`/projects/:projectId/dashboards`)
+  // and the global `/dashboards` route is gone, so a row here would point at a
+  // 404 — the opposite of the rule it was added for.
   const source = readSource('../src/components/features/knowledge/finder/FinderRootColumn.tsx')
-  assert.match(source, /id: 'link:dashboards', kind: 'dashboards'/)
-  assert.match(source, /faChartColumn/)
+  assert.doesNotMatch(source, /kind: 'dashboards'/)
+  assert.doesNotMatch(source, /'\/dashboards'/)
+  const router = readSource('../src/router.tsx')
+  assert.doesNotMatch(router, /path: '\/dashboards'/)
 })
 
 test('every header action the old sidebar and header carried has a home', () => {

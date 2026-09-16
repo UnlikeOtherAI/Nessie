@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { KnowledgeAccessSummary, KnowledgeIndexingState } from '@nessie/schemas'
+import type { KnowledgeAccessSummary } from '@nessie/schemas'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { useReindexPage, useRenamePage } from '../../../../facades/knowledge/finder-hooks'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
@@ -9,32 +10,40 @@ import { useToasts } from '../../../../providers/ToastProvider'
 import { ConfirmDialog } from '../../../shared/ConfirmDialog'
 import { ContextMenu } from '../../../overlays/ContextMenu'
 import { useContextMenu } from '../../../overlays/useContextMenu'
+import { knowledgeKeys } from '../../../../facades/knowledge/keys'
 import { useKnowledge } from '../KnowledgeProvider'
 import { AccessReadoutDialog } from './AccessReadoutDialog'
-import { GetInfoDialog, type GetInfoTarget } from './GetInfoDialog'
+import { GetInfoDialog } from './GetInfoDialog'
 import { ShareDialog } from './ShareDialog'
 import { useRemovePageShare } from './share-hooks'
 import { sharingSurfaceFor, buildFinderMenu, finderMenuLabel } from './finder-menu'
-import type { FinderMenuHandlers, FinderMenuRootRow, FinderMenuTarget } from './finder-menu'
-import type { FinderRootRow } from './FinderRootColumn'
-import type { FinderVirtualRow } from './FinderVirtualColumn'
+import type { FinderMenuHandlers } from './finder-menu'
+import {
+  asColumnRef,
+  asRowRef,
+  finderMenuTargetFor,
+  infoTargetFor,
+  type FinderMenuActiveTarget,
+  type FinderMenuColumnRef,
+  type FinderMenuRowRef,
+} from './finder-menu-target'
 import type { FinderRowRename } from './RenameRow'
+import type {
+  FinderBackgroundMenuProps,
+  FinderDialogState,
+  FinderMenus,
+  FinderRowMenuProps,
+  UseFinderMenusOptions,
+} from './finder-menu-types'
 import { deleteConfirmCopy, pageLink, spaceAccessSummary } from './finder-menu-context'
 
 /**
  * Right-click, everywhere in the Finder (menus-and-dialogs.md §2–§4, §8).
  *
  * One hook, mounted once by the browser, that owns the menu's anchoring and
- * focus and every dialog a menu opens. Columns stay ignorant of all of it:
- * they call `rowProps(row)` and spread the result on their `FinderRow`, and
- * `backgroundProps(column)` on the column body.
- *
- * ```tsx
- * const menus = useFinderMenus({ selectedIds, onNewFolderIn, onUploadFiles })
- * <FinderRow {...menus.rowProps({ kind: 'page', page })} … />
- * <div {...menus.backgroundProps({ kind: 'folder', parentPageId })}>…</div>
- * {menus.dialogs}
- * ```
+ * focus and every dialog a menu opens. A column calls `rowProps(row)` and
+ * spreads the result on its `FinderRow`, `backgroundProps(column)` on the
+ * column body, and renders `dialogs` once.
  *
  * What it does *not* do is decide what the menu contains: that is
  * `buildFinderMenu`, a pure function with its own suite. This file is the
@@ -42,99 +51,15 @@ import { deleteConfirmCopy, pageLink, spaceAccessSummary } from './finder-menu-c
  * opened on has just been deleted, and which dialog a label opens.
  */
 
-export type FinderMenuRowRef =
-  | { kind: 'page'; page: KnowledgePageRecord }
-  | { kind: 'virtual'; row: FinderVirtualRow }
-  | { kind: 'root'; row: FinderRootRow }
-
-export type FinderMenuColumnRef =
-  | { kind: 'root' }
-  | { kind: 'virtual' }
-  | { kind: 'folder'; parentPageId: string | null }
-
-/** Spread straight onto a `FinderRow`. Both props are ones no column computes. */
-export type FinderRowMenuProps = {
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void
-  rename?: FinderRowRename
-}
-
-export type FinderBackgroundMenuProps = {
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void
-}
-
-export type UseFinderMenusOptions = {
-  /** The rows selected in the active column; a menu on one of them acts on all. */
-  selectedIds: readonly string[]
-  /** Starts the inline "new folder" row in a folder the browser owns. */
-  onNewFolderIn: (parentPageId: string | null) => void
-  /** Opens the hidden file input for this folder; the input lives with the host. */
-  onUploadFiles: (parentPageId: string | null) => void
-  /** The root column's "New shared folder…" — a dialog, because visibility. */
-  onCreateRootFolder?: () => void
-  /** Asks a virtual column's query again; it has no other way to be refreshed. */
-  onRefresh?: () => void
-  /**
-   * The destination picker "Move to…" opens — 2D's `MoveToDialog`, injected
-   * rather than imported so the menu owns *when* it opens and the transfer
-   * wave owns what it does. Without it the item is absent, never inert.
-   */
-  renderMoveTo?: (request: FinderMoveToRequest) => ReactNode
-}
-
-/** What the menu knows about a move when it hands it to the picker. */
-export type FinderMoveToRequest = {
-  currentParentPageId: string | null
-  onClose: () => void
-  open: true
-  pages: KnowledgePageRecord[]
-  sourceSpaceId: string
-}
-
-type ActiveTarget =
-  | { kind: 'pages'; pages: KnowledgePageRecord[] }
-  | { kind: 'virtual'; row: FinderVirtualRow }
-  | { kind: 'root'; row: FinderRootRow }
-  | { kind: 'background'; column: FinderMenuColumnRef }
-
-type FinderDialogState =
-  | {
-      kind: 'info'
-      target: GetInfoTarget
-      pageId?: string
-      spaceId?: string
-      indexing?: KnowledgeIndexingState
-    }
-  | {
-      kind: 'share'
-      pageId: string
-      spaceId?: string
-      title: string
-      subjectKind: 'folder' | 'document' | 'file'
-    }
-  | {
-      kind: 'readout'
-      access: KnowledgeAccessSummary
-      projectName?: string | null
-      spaceId?: string
-      pageId?: string
-    }
-  | { kind: 'delete'; pages: KnowledgePageRecord[] }
-  | { kind: 'move'; pages: KnowledgePageRecord[] }
-  | null
-
-/** Everything a column needs from the menus, so a column imports one type. */
-export type FinderMenus = {
-  rowProps: (row: FinderMenuRowRef) => FinderRowMenuProps
-  backgroundProps: (column: FinderMenuColumnRef) => FinderBackgroundMenuProps
-  dialogs: ReactNode
-}
-
-
-/** A failed mutation says what failed, in the words the server used if it has any. */
-const failureToast = (title: string, fallback: string) => (error: unknown) => ({
-  body: error instanceof Error && error.message ? error.message : fallback,
-  title,
-})
+// The shapes every other wave compiles against, re-exported from the two
+// modules that own them so one import path answers for all of them.
+export type {
+  FinderMenuActiveTarget, FinderMenuColumnRef, FinderMenuRowRef,
+} from './finder-menu-target'
+export type {
+  FinderBackgroundMenuProps, FinderMenus, FinderMoveToRequest, FinderRowMenuProps,
+  UseFinderMenusOptions,
+} from './finder-menu-types'
 
 export const useFinderMenus = ({
   onCreateRootFolder,
@@ -142,9 +67,10 @@ export const useFinderMenus = ({
   onRefresh,
   onUploadFiles,
   renderMoveTo,
-  selectedIds,
-}: UseFinderMenusOptions): FinderMenus => {
+  selectedIds = [],
+}: UseFinderMenusOptions = {}): FinderMenus => {
   const knowledge = useKnowledge()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const { pushToast } = useToasts()
@@ -153,14 +79,19 @@ export const useFinderMenus = ({
   const reindex = useReindexPage()
   const removeShare = useRemovePageShare()
 
-  const [active, setActive] = useState<ActiveTarget | null>(null)
+  // Every write a menu starts says so when it fails: a row that silently
+  // snapped back reads as a gesture that missed, not as a refusal.
+  const failed = useCallback((title: string) => (error: unknown) => pushToast({
+    body: error instanceof Error ? error.message : 'Please try again.',
+    title,
+  }), [pushToast])
+
+  const [active, setActive] = useState<FinderMenuActiveTarget | null>(null)
   const [dialog, setDialog] = useState<FinderDialogState>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
 
-  // The row the gesture landed on, and the list it sits in. Focus returns to
-  // the row; when the row is gone — it was just deleted, or renamed into a new
-  // element — it lands on the list instead, so the keyboard walk keeps its
-  // place rather than starting again at the top of the page.
+  // Focus returns to the row the gesture landed on; when that row is gone it
+  // lands on the list instead, so the keyboard walk keeps its place.
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const fallbackFocusRef = useRef<HTMLElement | null>(null)
 
@@ -169,7 +100,7 @@ export const useFinderMenus = ({
   const ownPersonal = spacePersonal && space?.userId === me?.user.id
 
   const openMenu = useCallback(
-    (next: ActiveTarget, event: ReactMouseEvent<HTMLElement>) => {
+    (next: FinderMenuActiveTarget, event: ReactMouseEvent<HTMLElement>) => {
       const element = event.currentTarget
       returnFocusRef.current = element
       fallbackFocusRef.current = element.closest<HTMLElement>(
@@ -187,61 +118,12 @@ export const useFinderMenus = ({
   }, [menu])
 
   // ── What the current target is, in the builder's terms ───────────────────
-  const targetPages = useMemo((): KnowledgePageRecord[] => {
-    if (active?.kind !== 'pages') return []
-    return active.pages
-  }, [active])
+  const targetPages = useMemo(
+    (): KnowledgePageRecord[] => (active?.kind === 'pages' ? active.pages : []),
+    [active],
+  )
 
-  const menuTarget = useMemo((): FinderMenuTarget | null => {
-    if (!active) return null
-    switch (active.kind) {
-      case 'pages':
-        return active.pages.length > 1
-          ? {
-            kind: 'selection',
-            pages: active.pages.map((page) => ({
-              id: page.id,
-              kind: page.kind as 'folder' | 'document' | 'file',
-              status: page.status,
-              title: page.title,
-            })),
-          }
-          : active.pages[0]
-            ? {
-              kind: 'page',
-              page: {
-                id: active.pages[0].id,
-                indexing: active.pages[0].indexing,
-                kind: active.pages[0].kind as 'folder' | 'document' | 'file',
-                status: active.pages[0].status,
-                taskId: (active.pages[0].metadata?.taskId as string | undefined) ?? null,
-                title: active.pages[0].title,
-              },
-              virtual: false,
-            }
-            : null
-      case 'virtual':
-        return {
-          kind: 'page',
-          page: {
-            access: active.row.access,
-            id: active.row.id,
-            indexing: active.row.indexing,
-            kind: active.row.kind as 'folder' | 'document' | 'file',
-            status: 'published',
-            title: active.row.title,
-          },
-          virtual: true,
-        }
-      case 'root':
-        return { kind: 'root-row', row: rootRowDescriptor(active.row) }
-      case 'background':
-        return {
-          column: active.column.kind === 'folder' ? 'folder' : active.column.kind,
-          kind: 'background',
-        }
-    }
-  }, [active])
+  const menuTarget = useMemo(() => finderMenuTargetFor(active), [active])
 
   // ── The sharing branch: grant or read-out ───────────────────────────────
   const accessFor = useCallback((): KnowledgeAccessSummary | null => {
@@ -263,8 +145,8 @@ export const useFinderMenus = ({
       : active?.kind === 'virtual'
         ? active.row
         : undefined
-    // The one branch the owner asked for: a personal document he may grant, or
-    // a read-out of who is already in there.
+    // The one branch the owner asked for: a document he may grant, or a
+    // read-out of who is already in there.
     if (page && sharingSurfaceFor(mode, ownPersonal) === 'grant') {
       setDialog({
         kind: 'share',
@@ -296,15 +178,6 @@ export const useFinderMenus = ({
       : first?.parentPageId ?? null
     const spaceId = first?.spaceId ?? space?.id ?? ''
 
-    const infoTarget = (): GetInfoTarget | null => {
-      if (first) return { kind: 'page', pageId: first.id, title: first.title }
-      if (virtualRow) return { kind: 'page', pageId: virtualRow.id, title: virtualRow.title }
-      if (rootRow && rootRow.kind === 'space') {
-        return { kind: 'space', spaceId: rootRow.space.spaceId, title: rootRow.space.name }
-      }
-      return space ? { kind: 'space', spaceId: space.id, title: space.name } : null
-    }
-
     return {
       copyLink: () => {
         const id = first?.id ?? virtualRow?.id
@@ -328,7 +201,7 @@ export const useFinderMenus = ({
         }
       },
       getInfo: () => {
-        const target = infoTarget()
+        const target = infoTargetFor({ first, rootRow, space, virtualRow })
         if (target) {
           setDialog({
             indexing: first?.indexing ?? virtualRow?.indexing,
@@ -339,19 +212,21 @@ export const useFinderMenus = ({
           })
         }
       },
-      moveTo: () => {
-        if (targetPages.length > 0) setDialog({ kind: 'move', pages: targetPages })
-      },
+      moveTo: renderMoveTo
+        ? () => {
+          if (targetPages.length > 0) setDialog({ kind: 'move', pages: targetPages })
+        }
+        : undefined,
       newDocument: () => knowledge.openCreate(parentPageId),
       newDocumentInside: () => knowledge.openCreate(first?.id ?? null),
-      newFolder: () => onNewFolderIn(parentPageId),
+      newFolder: onNewFolderIn ? () => onNewFolderIn(parentPageId) : undefined,
       newFolderInside: () => {
-        if (first) {
+        if (first && onNewFolderIn) {
           knowledge.browseTo([...knowledge.pagePath, first.id])
           onNewFolderIn(first.id)
         }
       },
-      newSharedFolder: () => onCreateRootFolder?.(),
+      newSharedFolder: onCreateRootFolder,
       open: () => {
         if (first) knowledge.openPagePath([...knowledge.pagePath, first.id])
         else if (virtualRow) {
@@ -379,29 +254,34 @@ export const useFinderMenus = ({
       publish: () => {
         if (first) knowledge.publishPage(first.id)
       },
-      refresh: () => onRefresh?.(),
+      refresh: () => {
+        // Refresh is never absent: a virtual folder has no other way to be
+        // asked again, so without a host handler it invalidates the reads.
+        if (onRefresh) return onRefresh()
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.root })
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.latest() })
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.sharedWithMe })
+        if (space?.id) {
+          void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(space.id) })
+        }
+      },
       remove: () => {
         if (targetPages.length > 0) setDialog({ kind: 'delete', pages: targetPages })
       },
       removeShare: () => {
         if (virtualRow && me?.user.id) {
-          removeShare.mutate({ granteeUserId: me.user.id, pageId: virtualRow.id }, {
-            onError: (error) => pushToast(
-              failureToast('Couldn’t remove it', 'It is still shared with you.')(error),
-            ),
-          })
+          removeShare.mutate(
+            { granteeUserId: me.user.id, pageId: virtualRow.id },
+            { onError: failed('Couldn’t remove that') },
+          )
         }
       },
       rename: () => setRenamingId(first?.id ?? virtualRow?.id ?? null),
       retryIndexing: () => {
         const id = first?.id ?? virtualRow?.id
         if (!id) return
-        reindex.mutate(id, {
-          onError: (error) => pushToast(
-            failureToast('Couldn’t index that', 'Nothing was queued — try again.')(error),
-          ),
-          onSuccess: () => pushToast({ body: '', title: 'Indexing again…' }),
-        })
+        reindex.mutate(id, { onError: failed('Couldn’t start indexing') })
+        pushToast({ body: '', title: 'Indexing again…' })
       },
       sharing: openSharing,
       showInFolder: () => {
@@ -413,11 +293,11 @@ export const useFinderMenus = ({
         )
       },
       spaceSettings: () => knowledge.openSpaceSettings(),
-      uploadFiles: () => onUploadFiles(parentPageId),
+      uploadFiles: onUploadFiles ? () => onUploadFiles(parentPageId) : undefined,
+      // The file-version dialog belongs to the document pane, where the
+      // uploader and its progress already live; opening the file is the
+      // shortest honest route to it rather than a second uploader here.
       uploadVersion: () => {
-        // The file-version dialog belongs to the document pane, where the
-        // uploader and its progress already live; opening the file is the
-        // shortest honest route to it rather than a second uploader here.
         if (first) knowledge.openPagePath([...knowledge.pagePath, first.id])
       },
       versionHistory: () => {
@@ -426,8 +306,9 @@ export const useFinderMenus = ({
       },
     }
   }, [
-    active, knowledge, me?.user.id, navigate, onCreateRootFolder, onNewFolderIn, onRefresh,
-    onUploadFiles, openSharing, pushToast, reindex, removeShare, space, targetPages,
+    active, failed, knowledge, me?.user.id, navigate, onCreateRootFolder, onNewFolderIn, onRefresh,
+    onUploadFiles, openSharing, pushToast, queryClient, reindex, removeShare, renderMoveTo,
+    space, targetPages,
   ])
 
   const items = useMemo(() => (menuTarget
@@ -436,14 +317,13 @@ export const useFinderMenus = ({
         accessMode: accessFor()?.mode ?? 'unknown',
         actorIsPerson: true,
         canManageAccess: space?.canManageAccess ?? false,
-        canMoveTo: Boolean(renderMoveTo),
         canShare: ownPersonal,
         canWrite: space?.canWrite ?? false,
       },
       handlers,
       target: menuTarget,
     })
-    : []), [accessFor, handlers, menuTarget, ownPersonal, renderMoveTo, space])
+    : []), [accessFor, handlers, menuTarget, ownPersonal, space])
 
   // ── rowProps / backgroundProps ──────────────────────────────────────────
   const renameProps = useCallback((pageId: string): FinderRowRename | undefined => {
@@ -453,35 +333,28 @@ export const useFinderMenus = ({
       onCancel: () => setRenamingId(null),
       onSubmit: (next) => {
         setRenamingId(null)
-        rename.mutate({
-          pageId,
-          revision: page?.revision,
-          spaceId: page?.spaceId ?? space?.id ?? '',
-          title: next,
-        }, {
-          // The name snaps back on its own (the facade reverts the optimistic
-          // write); a rename that silently undid itself would read as a typo.
-          onError: (error) => pushToast(
-            failureToast(
-              'Couldn’t rename that',
-              'This item changed since you opened it. Refresh and try again.',
-            )(error),
-          ),
-        })
+        rename.mutate(
+          {
+            pageId,
+            revision: page?.revision,
+            spaceId: page?.spaceId ?? space?.id ?? '',
+            title: next,
+          },
+          // The facade puts the old name back; this says why.
+          { onError: failed('Couldn’t rename that') },
+        )
       },
       pending: rename.isPending,
     }
-  }, [knowledge, pushToast, rename, renamingId, space])
+  }, [failed, knowledge, rename, renamingId, space])
 
-  const rowProps = useCallback((row: FinderMenuRowRef): FinderRowMenuProps => {
+  const rowProps = useCallback((input: FinderMenuRowRef): FinderRowMenuProps => {
+    const row = asRowRef(input)
     switch (row.kind) {
       case 'page':
         return {
           onContextMenu: (event) => {
-            // A right-click inside a selection acts on the selection; on a row
-            // outside it, on that row alone — Finder's own rule, and the one
-            // that stops a menu quietly acting on rows nobody can see.
-            const pages = selectedIds.includes(row.page.id) && selectedIds.length > 1
+                const pages = selectedIds.includes(row.page.id) && selectedIds.length > 1
               ? selectedIds
                 .map((id) => knowledge.pageById(id))
                 .filter((page): page is KnowledgePageRecord => Boolean(page))
@@ -503,7 +376,10 @@ export const useFinderMenus = ({
 
   const backgroundProps = useCallback(
     (column: FinderMenuColumnRef): FinderBackgroundMenuProps => ({
-      onContextMenu: (event) => openMenu({ column, kind: 'background' }, event),
+      onContextMenu: (event) => openMenu(
+        { column: asColumnRef(column), kind: 'background' },
+        event,
+      ),
     }),
     [openMenu],
   )
@@ -531,7 +407,12 @@ export const useFinderMenus = ({
             )
           }}
           onClose={() => setDialog(null)}
-          onRetryIndexing={dialog.pageId ? () => reindex.mutate(dialog.pageId as string) : undefined}
+          onRetryIndexing={dialog.pageId
+            ? () => reindex.mutate(
+              dialog.pageId as string,
+              { onError: failed('Couldn’t start indexing') },
+            )
+            : undefined}
           onSharing={() => {
             setDialog(null)
             openSharing()
@@ -569,14 +450,10 @@ export const useFinderMenus = ({
           }}
           onRemoveShare={dialog.pageId && me?.user.id
             ? () => {
-              removeShare.mutate({
-                granteeUserId: me.user.id,
-                pageId: dialog.pageId as string,
-              }, {
-                onError: (error) => pushToast(
-                  failureToast('Couldn’t remove it', 'It is still shared with you.')(error),
-                ),
-              })
+              removeShare.mutate(
+                { granteeUserId: me.user.id, pageId: dialog.pageId as string },
+                { onError: failed('Couldn’t remove that') },
+              )
               setDialog(null)
             }
             : undefined}
@@ -607,6 +484,7 @@ export const useFinderMenus = ({
             const pages = dialog?.kind === 'delete' ? dialog.pages : []
             setDialog(null)
             void Promise.all(pages.map((page) => knowledge.archivePage(page.id)))
+              .catch(failed('Couldn’t delete that'))
           }}
           open
           pending={knowledge.archivePending}
@@ -617,29 +495,4 @@ export const useFinderMenus = ({
   )
 
   return { backgroundProps, dialogs, rowProps }
-}
-
-/** A root row, reduced to what decides its menu. */
-const rootRowDescriptor = (row: FinderRootRow): FinderMenuRootRow => {
-  switch (row.kind) {
-    case 'space':
-      if (row.role === 'personal') return { role: 'personal' }
-      if (row.role === 'project') return { projectId: row.space.projectId, role: 'project' }
-      if (row.space.ownerAgentId) {
-        return {
-          agentId: row.space.ownerAgentId,
-          canManageAccess: row.space.canManageAccess,
-          role: 'agent',
-        }
-      }
-      return {
-        canManageAccess: row.space.canManageAccess,
-        canWrite: row.space.canWrite,
-        role: 'shared',
-      }
-    case 'project-unopened':
-      return { projectId: row.projectId, role: 'project' }
-    default:
-      return { role: 'link' }
-  }
 }
