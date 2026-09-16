@@ -141,9 +141,18 @@ const parametersSection = (avatarLineText: string): string[] => [
   ),
   avatarLineText,
   bullet(
-    'bindings — which channels an agent works in. Organisation owners only, '
-    + 'and only channels they belong to; system conversations and private '
-    + 'agents are refused.',
+    'bindings — which channels an agent works in, one channel at a time. '
+    + 'There is no project-wide or team-wide binding: a project and a team are '
+    + 'where a channel lives, so "put it in the Sales project" is a set of '
+    + 'channel bindings, and a channel added to that project afterwards will '
+    + 'not have the agent in it. A binding is refused across teams once the '
+    + 'agent has one. Organisation owners only, and only channels they belong '
+    + 'to; system conversations and private agents are refused.',
+  ),
+  bullet(
+    'direct messages — not a binding anybody arranges. Anyone who can reach a '
+    + 'team-visible agent gets their own private conversation with it on '
+    + 'demand, and a private agent has exactly one, its owner\'s.',
   ),
   bullet(
     `triggers — ${AgentTriggerTypeSchema.options.join(' | ')}. Scheduled and `

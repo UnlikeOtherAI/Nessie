@@ -48,7 +48,7 @@ try {
   await mkdir(screenshots, { recursive: true })
   await page.screenshot({ fullPage: true, path: closedPath })
 
-  await page.getByText('What he can reach').click()
+  await page.getByText('What the agent can reach').click()
   await page.getByText('send_message', { exact: true }).waitFor()
   await page.getByText('Sales Portal', { exact: true }).waitFor()
   assert.equal(await details.evaluate((node) => node.open), true)

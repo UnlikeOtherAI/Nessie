@@ -31,14 +31,14 @@ const card: AgentCardPresenter = {
     {
       markdown:
         'Answers questions about deals, customers and pipeline by looking them '
-        + 'up in Sales Portal.\nWorks on demand — you ask, he fetches.\n'
-        + 'Posts what he finds back into the channel he was asked in.',
+        + 'up in Sales Portal.\nWorks on demand — you ask, it fetches.\n'
+        + 'Posts what it finds back into the channel it was asked in.',
       type: 'text',
     },
     {
       items: [
         { label: 'Lives in', value: 'KiloMayo → Sales → #sales' },
-        { label: 'Who can see him', value: 'Everyone in the KiloMayo team' },
+        { label: 'Who can see it', value: 'Everyone in the KiloMayo team' },
       ],
       type: 'fields',
     },
@@ -75,12 +75,12 @@ const card: AgentCardPresenter = {
         },
         {
           markdown:
-            'No schedule — he runs when somebody asks. He cannot post outside '
+            'No schedule — it runs when somebody asks. It cannot post outside '
             + '#sales.',
           type: 'text',
         },
       ],
-      summary: 'What he can reach',
+      summary: 'What the agent can reach',
       type: 'details',
     },
   ],

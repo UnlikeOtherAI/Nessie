@@ -191,3 +191,17 @@ test('the standard proposal card is described for the chat face and nowhere else
     assert.doesNotMatch(block({ writeSurface }), /Proposing an agent: one card/)
   }
 })
+
+// The Designer once offered to make an agent "at home in the Sales project,
+// not just a channel". It cannot: `AgentBinding` is (agentId, channelId) and
+// every reach check in the API and the worker reads exactly that pair. The
+// generated block is where the Designer learns the placement model, so the
+// limit is stated there rather than left for the model to infer.
+test('the catalogue states that a binding is a channel and never a project', () => {
+  const rendered = block()
+  assert.match(rendered, /one channel at a time/)
+  assert.match(rendered, /no project-wide or team-wide binding/)
+  assert.match(rendered, /will\s+not have the agent in it/)
+  // A DM is not a placement anybody arranges, so it is never offered as one.
+  assert.match(rendered, /direct messages — not a binding anybody arranges/)
+})
