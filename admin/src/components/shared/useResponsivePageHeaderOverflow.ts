@@ -86,6 +86,7 @@ export const useResponsivePageHeaderOverflow = ({
       const moreWidth = moreMeasureRef.current?.getBoundingClientRect().width ?? 0
       const layouts: PageHeaderActionLayout[] = actions.map((action) => ({
         id: action.id,
+        pinned: action.pinned,
         primary: action.primary,
         priority: action.priority,
         width: actionMeasureRefs.current[action.id]?.getBoundingClientRect().width ?? 0,

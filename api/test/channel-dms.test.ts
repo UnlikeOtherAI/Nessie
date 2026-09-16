@@ -35,6 +35,12 @@ test('findOrCreateDmChannel creates a one-member self DM', async () => {
     organizationMember: {
       count: async ({ where }: { where: { userId: { in: string[] } } }) =>
         where.userId.in.includes(userId) ? 1 : 0,
+      // `mapChannelRecord`'s `viewerCanManageAgents` asks whether this viewer
+      // may place an AGENT here — the organisation owner role plus channel
+      // membership, which the binding routes require and `canModifyChannel`
+      // does not cover. A fake that omits the delegate fails with a TypeError
+      // rather than a wrong answer, so the read is modelled.
+      findFirst: async () => null,
     },
     user: {
       findUnique: async () => ({ displayName: 'Owner' }),
@@ -201,6 +207,9 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
   const prisma = {
     organizationMember: {
       count: async () => 1,
+      // See the note above: `viewerCanManageAgents` reads the viewer's
+      // organisation role, and a missing delegate is a TypeError, not a false.
+      findFirst: async () => null,
     },
     agent: {
       findFirst: async () => ({ id: agentId, name: 'Planner' }),
@@ -320,6 +329,11 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
   } | null = null
 
   const prisma = {
+    // See the note above: `viewerCanManageAgents` reads the viewer's
+    // organisation role, and a missing delegate is a TypeError, not a false.
+    organizationMember: {
+      findFirst: async () => null,
+    },
     user: {
       findMany: async () => [
         { id: userId, displayName: 'Owner' },

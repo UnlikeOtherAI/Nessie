@@ -18,15 +18,32 @@ of its local connector.
 The command is part of the same bundled `nessie-executor.cjs` entry point as the
 ordinary daemon. Packaged builds apply the existing runtime-integrity check
 before accepting a frame. Workspace support itself needs only Git plus a paired
-root whose local policy contains `file.list` and `file.read`; it does not imply
+folder whose local policy contains `file.list` and `file.read`; it does not imply
 that Hyper-V, browser, command, coding, or network capabilities are present.
 Linked Git worktrees are not supported in protocol version 1 because their
-object database is outside the approved root.
+object database is outside the approved folder.
+
+An executor is paired against one or more named host folders, so a review names
+the host directory it expects and **that directory selects the folder**: the
+`expected_source_root` of `source.snapshot` must equal one paired folder's
+canonical path, and anything else is `SOURCE_UNAVAILABLE`. Nothing is guessed
+and no folder is preferred, so an adapter cannot be handed a snapshot of a
+different folder than the review was opened against. `hello` reports the folder
+names as its `workspace_label`, which is what a person reads and what an agent
+types as the first segment of a path.
+
+Active execution is different: it runs inside a guest VM, which mounts one
+workspace, so `deeptest-execution` refuses a grant that names more than one
+folder rather than snapshotting whichever came first.
 
 The source child receives one credential-free projection, never the paired
 executor state or its directory. `deeptest-source-grant.json` contains exactly
-`executorId`, `workspaceRoot`, and `descriptor`; the descriptor contains only
-its limits, operation keys, profiles, and revision. The file and its parent
+`executorId`, `workspaceFolders`, and `descriptor`; each folder is a `name` and
+its canonical host `path`, and the descriptor contains only its limits,
+operation keys, profiles, revision and — when the policy names them — its
+permitted programs and folder names. A grant file written before folders had
+names carries a single `workspaceRoot` and is still read: the name is derived
+from that directory. The file and its parent
 must be owner-only, and the adapter accepts only that fixed filename by an
 absolute path. It contains no API URL, connection epoch, machine key, native
 helper path, or browser/Codex sandbox configuration.

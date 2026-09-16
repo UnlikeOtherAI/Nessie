@@ -65,7 +65,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
 - **Member-management browser fixture builds:** the Navigation Transitions job alone enables its preview entry; ordinary bundles omit it. Read [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md) before changing that evaluation or its build cache inputs.
-- **Desktop bundles, macOS signing (never ad-hoc unless Ondrej explicitly asks), lint-gated root builds, Prisma generation ordering, and migration immutability:** read [docs/standards/build-and-release.md](docs/standards/build-and-release.md) before building a desktop app, changing a build pipeline or Dockerfile, or touching `api/prisma/migrations/`.
+- **Desktop bundles, macOS signing (never ad-hoc unless Ondrej explicitly asks), the Developer ID signed and notarized executor menu bar DMG, lint-gated root builds, Prisma generation ordering, and migration immutability:** read [docs/standards/build-and-release.md](docs/standards/build-and-release.md) before building a desktop app or an installer, changing a build pipeline or Dockerfile, or touching `api/prisma/migrations/`.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 - **Private Deep.Agent package access.** CI and Docker use the externally
@@ -216,7 +216,8 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Theming and the design system.** All colour lives in
   `admin/src/styles.css` as tokens; one tab bar, one identity tile, one
-  composer, one dialog shell, and no nesting.
+  composer, one dialog shell, no nesting, and a page a person passes *through*
+  is painted in the menus' colour rather than the work surface's.
   Read [`docs/standards/design-system.md`](docs/standards/design-system.md)
   before writing code here.
 - **Calling the Personal Assistant (Gemini Live voice).** The API is a
@@ -286,6 +287,13 @@ when one changes, the same turn updates it, not this section.
   grants preserve the requesting person's access and the research disclosure
   basis; see [global agents](docs/standards/global-agents.md) and the
   [sales workflow verification](docs/testing/sales-agent-collaboration.md).
+- **An approval is answered in the conversation it came from, and there is no
+  list of them.** Every path that opens a request writes a card into a thread;
+  a delegated run needs no special handling because a sub-agent run shares its
+  parent's thread, and an approver who cannot see that conversation gets the
+  card in their own Personal Assistant one. Read
+  [`docs/approval-gating-spec.md`](docs/approval-gating-spec.md) → "Core rules"
+  before adding an approval kind or a surface that lists them.
 - **Disclosure boundaries — what an agent read decides who may read its answer.**
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails

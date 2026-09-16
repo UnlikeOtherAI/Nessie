@@ -43,9 +43,18 @@ type ChannelMembersPopupProps = {
    * Server-computed `ChannelRecord.viewerCanManage` — any member of the
    * channel, or an organisation owner/admin. Gates every add/remove control
    * here except a person's own "leave" row, which needs no authority over the
-   * channel (see `docs/standards/disclosure-boundaries.md`).
+   * channel (see `docs/standards/disclosure-boundaries.md`), and except the
+   * agent rows, which have their own narrower authority below.
   */
   viewerCanManage: boolean
+  /**
+   * Server-computed `ChannelRecord.viewerCanManageAgents`. Adding a PERSON is
+   * any member of the channel; adding an AGENT additionally requires the
+   * organisation owner role, so the two cannot share a flag. They did share
+   * nothing at all until now: the agent rows were drawn unconditionally while
+   * the server refused every non-owner.
+   */
+  viewerCanManageAgents: boolean
   onClose: () => void
   onSelectAgent: (agentId: string) => void
 }
@@ -60,6 +69,7 @@ export const ChannelMembersPopup = ({
   currentUserId,
   personalAssistantPresences,
   viewerCanManage,
+  viewerCanManageAgents,
   onClose,
   onSelectAgent,
 }: ChannelMembersPopupProps) => {
@@ -75,6 +85,13 @@ export const ChannelMembersPopup = ({
   const hasMyPersonalAssistant = personalAssistantPresences.some(
     (presence) => presence.principalUserId === currentUserId,
   )
+  // `POST /api/channels/:channelId/personal-assistant` resolves the channel
+  // through `getChannelIfMember`, so a person who has not joined this room is
+  // answered 404. The popup opens on an unjoined public channel — the header's
+  // Members action is not gated on membership — so without this the offer was
+  // made to exactly the people it cannot be kept for. This is the membership
+  // the popup is already rendering, not a second reading of an authority rule.
+  const viewerIsChannelMember = channelUsers.some((user) => user.id === currentUserId)
   const filteredPersonalAssistantPresences = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
     return query
@@ -133,6 +150,7 @@ export const ChannelMembersPopup = ({
                 <CurrentAgentRow
                   key={agent.id}
                   agent={agent}
+                  canUnbind={viewerCanManageAgents}
                   channelId={channelId}
                   clonePending={cloneAgent.isPending}
                   unbindPending={unbindAgent.isPending}
@@ -177,6 +195,7 @@ export const ChannelMembersPopup = ({
                 <AvailableAgentRow
                   key={agent.id}
                   agent={agent}
+                  canBind={viewerCanManageAgents}
                   channelId={channelId}
                   clonePending={cloneAgent.isPending}
                   bindPending={bindAgent.isPending}
@@ -189,12 +208,12 @@ export const ChannelMembersPopup = ({
             </div>
           )}
 
-          {!hasMyPersonalAssistant ? (
+          {viewerIsChannelMember && !hasMyPersonalAssistant ? (
             <div className="mt-2">
               <div className={sectionHeadingClass}>Personal Assistant</div>
               <div className="flex items-center justify-between gap-3 rounded-lg px-3 py-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-[color:var(--tx)]">Add my assistant</div>
+                  <div className="text-sm font-medium text-[color:var(--tx)]" data-testid="channel-pa-offer">Add my assistant</div>
                   <div className="text-xs text-[color:var(--tx3)]">Let people in this channel hand it a task.</div>
                 </div>
                 <button

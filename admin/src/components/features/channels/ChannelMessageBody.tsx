@@ -19,7 +19,7 @@ import { MessageMarkdown } from './MessageMarkdown'
 import { MessageUiCards } from './MessageUiCards'
 import type { ResolveReactorName } from './ReactionPills'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
-import { RunApprovalGate } from './RunApprovalGate'
+import { ApprovalGate } from './ApprovalGate'
 import { RunStopContinue } from './RunStopContinue'
 import { TodoProgressCard } from './TodoProgressCard'
 import { VoiceCallMessage, readVoiceCallRecord } from './VoiceCallMessage'
@@ -197,7 +197,7 @@ export const ChannelMessageBody = ({
       {!isEditingMessage ? <AllowedByRuleCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <AppSetupCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <RunStopContinue metadata={message.metadata} /> : null}
-      {!isEditingMessage ? <RunApprovalGate metadata={message.metadata} /> : null}
+      {!isEditingMessage ? <ApprovalGate metadata={message.metadata} /> : null}
       {!isEditingMessage ? <AgentCardMessage metadata={message.metadata} /> : null}
       {!isEditingMessage ? <WebSearchResultsCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <TodoProgressCard metadata={message.metadata} /> : null}

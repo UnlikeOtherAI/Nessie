@@ -9,7 +9,7 @@ import {
   assertDeepTestGitLayout,
   DeepTestGitLayoutError,
 } from './deeptest-source-git-layout.js'
-import { configureWorkspaceRoot } from './workspace.js'
+import { configureWorkspaceFolderPath } from './workspace.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -301,8 +301,8 @@ export const createDeepTestSourceSnapshot = async (
   assertActive: () => Promise<void> = async () => undefined,
 ): Promise<DeepTestSourceSnapshot> => {
   await assertActive()
-  const root = await configureWorkspaceRoot(workspaceRoot)
-  if (await configureWorkspaceRoot(expectedSourceRoot) !== root) {
+  const root = await configureWorkspaceFolderPath(workspaceRoot)
+  if (await configureWorkspaceFolderPath(expectedSourceRoot) !== root) {
     throw new DeepTestSourceSnapshotError(
       'SOURCE_UNAVAILABLE',
       'The review source does not match this Nessie workspace.',
@@ -311,7 +311,7 @@ export const createDeepTestSourceSnapshot = async (
   }
   await assertGitLayout(root)
   const repositoryRoot = await text(root, ['rev-parse', '--show-toplevel'])
-  if (await configureWorkspaceRoot(repositoryRoot) !== root) {
+  if (await configureWorkspaceFolderPath(repositoryRoot) !== root) {
     throw new DeepTestSourceSnapshotError(
       'SOURCE_UNAVAILABLE',
       'Select the repository root as the Nessie workspace before starting this review.',

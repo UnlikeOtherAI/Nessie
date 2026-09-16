@@ -37,6 +37,19 @@ const TOUCH_ACTIVATION = { activationConstraint: { delay: 250, tolerance: 8 } }
 
 type ItemMap = Record<string, string[]>
 
+// Not a `BoardColumn.id`: there is no such row, and the prefix keeps it from
+// ever colliding with a uuid one.
+const ARCHIVED_COLUMN_ID = '__archived'
+const ARCHIVED_DOT = 'var(--tx3)'
+
+/** A column as the board draws it — a real one, or the Archived strip. */
+type DrawnColumn = {
+  archived: boolean
+  dot: string
+  id: string
+  name: string
+}
+
 type KanbanBoardProps = {
   /** The board being drawn; its Done column archives its own tickets only. */
   boardId?: string
@@ -52,6 +65,12 @@ type KanbanBoardProps = {
   onMoveTask: (taskId: string, columnId: string, position: number) => void
   // The project host owns task detail navigation and its one shared dialog.
   onOpenTask: (task: BoardTaskRecord) => void
+  /**
+   * Draw cancelled and failed work as a last column. Off by default, and set
+   * from the header's Configure menu — it used to be a drawer under the board
+   * that every reader paid for in height whether or not they wanted it.
+   */
+  showArchived?: boolean
   view?: BoardView
 }
 
@@ -64,9 +83,9 @@ export const KanbanBoard = ({
   projectNameById,
   onMoveTask,
   onOpenTask,
+  showArchived = false,
   view = 'cards',
 }: KanbanBoardProps) => {
-  const [showArchived, setShowArchived] = useState(false)
   const [isDraggingCard, setIsDraggingCard] = useState(false)
   // Card to pulse after it lands in a column from a drag.
   const [pulseId, setPulseId] = useState<string | null>(null)
@@ -80,13 +99,31 @@ export const KanbanBoard = ({
     useSensor(TouchSensor, TOUCH_ACTIVATION),
   )
 
+  // What the board draws. The Archived column is one of these and none of the
+  // others: it is not in `columns`, so it is never a drop target, never part
+  // of `items`, and cannot be reached by a drag — dragging a card there would
+  // ask the server to place it in a column that does not exist. It pages with
+  // the rest, as the last column.
+  const drawnColumns = useMemo<DrawnColumn[]>(() => {
+    const drawn: DrawnColumn[] = columns.map((column) => ({
+      archived: false,
+      dot: CATEGORY_DOT[column.category],
+      id: column.id,
+      name: column.name,
+    }))
+    if (showArchived) {
+      drawn.push({ archived: true, dot: ARCHIVED_DOT, id: ARCHIVED_COLUMN_ID, name: 'Archived' })
+    }
+    return drawn
+  }, [columns, showArchived])
+
   // How many columns fit at >= MIN_COLUMN_PX, and how that splits into pages.
-  const columnCount = Math.max(columns.length, 1)
+  const columnCount = Math.max(drawnColumns.length, 1)
   const perPage = Math.min(
     columnCount,
     Math.max(1, Math.floor((viewportWidth + COLUMN_GAP_PX) / (MIN_COLUMN_PX + COLUMN_GAP_PX))),
   )
-  const pageCount = Math.max(1, Math.ceil(columns.length / perPage))
+  const pageCount = Math.max(1, Math.ceil(drawnColumns.length / perPage))
   const paginated = pageCount > 1
 
   // Grouping only — the server decided placement and order.
@@ -102,6 +139,13 @@ export const KanbanBoard = ({
     }
     return { byColumn: grouped, archived: archivedTasks }
   }, [tasks, columns])
+
+  // Which drawn columns get the Done column's archive doorway. Read from
+  // `columns`, because `drawnColumns` deliberately carries no category.
+  const doneColumnIds = useMemo(
+    () => new Set(columns.filter((column) => column.category === 'done').map((c) => c.id)),
+    [columns],
+  )
 
   const taskById = useMemo(() => {
     const map = new Map<string, BoardTaskRecord>()
@@ -123,10 +167,12 @@ export const KanbanBoard = ({
 
   // Columns chunked into pages; each page is one viewport-wide scroll-snap panel.
   const pageGroups = useMemo(() => {
-    const groups: BoardColumnView[][] = []
-    for (let i = 0; i < columns.length; i += perPage) groups.push(columns.slice(i, i + perPage))
+    const groups: DrawnColumn[][] = []
+    for (let i = 0; i < drawnColumns.length; i += perPage) {
+      groups.push(drawnColumns.slice(i, i + perPage))
+    }
     return groups
-  }, [columns, perPage])
+  }, [drawnColumns, perPage])
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
@@ -155,6 +201,16 @@ export const KanbanBoard = ({
   useEffect(() => {
     if (page > pageCount - 1) showPage(pageCount - 1)
   }, [page, pageCount, showPage])
+
+  // Turning the column on should show it. It is the last column, so on a board
+  // wide enough to page it arrives on a page the reader is not looking at, and
+  // a menu row that appears to do nothing reads as broken. Only on the change:
+  // paging away from Archived afterwards is the reader's to do.
+  const archivedWasShown = useRef(showArchived)
+  useEffect(() => {
+    if (showArchived && !archivedWasShown.current) showPage(pageCount - 1)
+    archivedWasShown.current = showArchived
+  }, [pageCount, showArchived, showPage])
 
   const settleNearestPage = useCallback(() => {
     const viewport = viewportRef.current
@@ -317,6 +373,47 @@ export const KanbanBoard = ({
             {pageGroups.map((group, groupIndex) => (
               <div className="flex h-full w-full shrink-0 snap-start gap-3" key={groupIndex}>
                 {group.map((column) => {
+                  if (column.archived) {
+                    return (
+                      <KanbanColumn
+                        key={column.id}
+                        columnId={column.id}
+                        count={archived.length}
+                        dense={view === 'lines'}
+                        dot={column.dot}
+                        // Nothing is dragged into or out of here: a ticket is
+                        // archived by being cancelled or failing, not by being
+                        // moved, and there is no column behind this to place it
+                        // in.
+                        droppable={false}
+                        itemIds={[]}
+                        label={column.name}
+                      >
+                        {archived.length === 0 ? (
+                          <div className="px-1 text-xs text-[color:var(--tx3)]">
+                            No cancelled or failed work.
+                          </div>
+                        ) : (
+                          archived.map((task) => (
+                            <ArchivedTaskCard
+                              key={task.id}
+                              onOpen={(openedTask) => onOpenTask({
+                                ...openedTask,
+                                columnId: task.columnId,
+                                position: task.position,
+                              })}
+                              projectName={
+                                task.projectId ? projectNameById[task.projectId] ?? null : null
+                              }
+                              showProject={showProject}
+                              task={task}
+                              view={view}
+                            />
+                          ))
+                        )}
+                      </KanbanColumn>
+                    )
+                  }
                   const ids = items[column.id] ?? []
                   return (
                     <KanbanColumn
@@ -324,9 +421,9 @@ export const KanbanBoard = ({
                       columnId={column.id}
                       count={ids.length}
                       dense={view === 'lines'}
-                      dot={CATEGORY_DOT[column.category]}
+                      dot={column.dot}
                       headerAction={
-                        column.category === 'done' && projectId && boardId ? (
+                        doneColumnIds.has(column.id) && projectId && boardId ? (
                           <ArchiveDoneMenu boardId={boardId} projectId={projectId} />
                         ) : undefined
                       }
@@ -347,45 +444,6 @@ export const KanbanBoard = ({
           </div>
         </div>
       </DndContext>
-
-      <div
-        className={[
-          'mt-3 border-t border-[color:var(--sep)] pt-3',
-          showArchived ? 'flex min-h-0 basis-2/5 flex-col' : 'shrink-0',
-        ].join(' ')}
-      >
-        <button
-          className="flex h-11 shrink-0 items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-          onClick={() => setShowArchived((value) => !value)}
-          type="button"
-        >
-          <span>{showArchived ? '▾' : '▸'}</span>
-          Archived ({archived.length})
-        </button>
-        {showArchived ? (
-          <div className="mt-2 grid min-h-0 flex-1 grid-cols-1 content-start gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {archived.length === 0 ? (
-              <div className="text-xs text-[color:var(--tx3)]">No cancelled or failed work.</div>
-            ) : (
-              archived.map((task) => (
-                <ArchivedTaskCard
-                  key={task.id}
-                  onOpen={(openedTask) => onOpenTask({
-                    ...openedTask,
-                    columnId: task.columnId,
-                    position: task.position,
-                  })}
-                  projectName={task.projectId ? projectNameById[task.projectId] ?? null : null}
-                  showProject={showProject}
-                  task={task}
-                  view={view}
-                />
-              ))
-            )}
-          </div>
-        ) : null}
-      </div>
-
     </div>
   )
 }

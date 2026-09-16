@@ -366,3 +366,33 @@ test('toolset assembly OMITS the identity tools when the conditions do not hold'
   // And a PA-only tool it never declared is absent even at home.
   assert.equal(inHome.allowedIds.has(NON_IDENTITY_PA_TOOL), false)
 })
+
+// The Agent Designer's own connector rights. Connecting the app an agent needs
+// is part of building that agent: without these the conversation could design
+// an agent around Sales Portal and then have to send the person to the Apps
+// page to finish it, which is the "explain the inner workings" defect.
+test('the Designer can connect an app on its home DM, but never uninstall one', () => {
+  const CONNECTOR_TOOLS = [
+    'connector_authorize',
+    'connector_discover',
+    'connector_install',
+    'connector_library_search',
+    'connector_list',
+    'connector_set_secret',
+    'connector_test',
+  ]
+  const admitted = resolveIdentityDelegatedToolIds(designerHome, USER)
+  for (const toolId of CONNECTOR_TOOLS) {
+    assert.ok(admitted.has(toolId), `${toolId} is not admitted on the Designer's home DM`)
+    assert.deepEqual(authorize(toolId, 'shared', admitted), { allowed: true })
+    // And nothing changed for an ordinary shared agent that merely sits in a
+    // system DM: the admission comes from the blueprint, not the surface alone.
+    assert.equal(authorize(toolId, 'shared').allowed, false)
+  }
+
+  // Designing an agent is never a reason to take an app away from everyone
+  // else using it, so the destructive verb stays with the Personal Assistant.
+  assert.ok(!admitted.has('connector_uninstall'))
+  assert.equal(authorize('connector_uninstall', 'shared', admitted).allowed, false)
+  assert.equal(authorize('connector_uninstall', 'personal_assistant').allowed, true)
+})

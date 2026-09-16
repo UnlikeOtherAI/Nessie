@@ -24,6 +24,15 @@ const blockLines = (block: AgentCardBlock): string[] => {
       return [block.markdown]
     case 'fields':
       return block.items.map((item) => `${item.label}: ${item.value}`)
+    case 'chips':
+      return [block.label ? `${block.label}: ${block.items.join(', ')}` : block.items.join(', ')]
+    // Folded on screen, never folded here: this text is the card's message
+    // content, which is what search, a push preview and the model's own
+    // transcript window get instead of the card. Hiding the detail from them
+    // would make an agent's approved tool list unreadable everywhere but the
+    // one client that can expand it.
+    case 'details':
+      return [`${block.summary}:`, ...block.blocks.flatMap(blockLines)]
     case 'image':
       return [block.caption ? `[image: ${block.alt} — ${block.caption}]` : `[image: ${block.alt}]`]
     case 'link':

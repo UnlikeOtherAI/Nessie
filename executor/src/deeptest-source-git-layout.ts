@@ -2,7 +2,7 @@ import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import { isInsideDirectory } from './workspace-paths.js'
-import { configureWorkspaceRoot } from './workspace.js'
+import { configureWorkspaceFolderPath } from './workspace.js'
 
 export class DeepTestGitLayoutError extends Error {
   constructor(readonly inventoryLimit: boolean, message: string) {
@@ -35,10 +35,10 @@ export const assertDeepTestGitLayout = async (
   // Validate before invoking Git: even rev-parse reads local configuration,
   // reference storage and shared-object metadata.
   await assertGitMetadataContained(root, gitDirectory)
-  const resolvedGitDirectory = await configureWorkspaceRoot(
+  const resolvedGitDirectory = await configureWorkspaceFolderPath(
     await resolveGitPath(['rev-parse', '--path-format=absolute', '--git-dir']),
   )
-  const commonDirectory = await configureWorkspaceRoot(
+  const commonDirectory = await configureWorkspaceFolderPath(
     await resolveGitPath(['rev-parse', '--path-format=absolute', '--git-common-dir']),
   )
   if (

@@ -274,11 +274,19 @@ Root app layout:
   `auto_review_denied`, and an escalation, timeout, or malformed response enters
   this same human-approval pause. Each reviewer verdict is a `tool.auto_reviewed`
   task event plus an audit-chain `policy.evaluated` record.
-- Rejecting, expiry, and cancellation terminalize the waiting run, update the
-  durable approval-gate notice, leave the checkpoint unconsumed for an ordinary
-  follow-up, and release the thread slot. The entitled `/approvals` surface is
-  reachable in context through its pending-count sidebar badge and its thread
-  approval card, which resolves through the same approval API and realtime events.
+- Rejecting, expiry, and cancellation terminalize the waiting run, update every
+  copy of the approval's card, leave the checkpoint unconsumed for an ordinary
+  follow-up, and release the thread slot.
+- **An approval is answered in the conversation it came from, and nowhere else.**
+  There is no approvals list: every path that opens a request writes a card into
+  a thread, and that card is the whole surface. A delegated run needs no special
+  handling — a sub-agent run and a peer delegation are both created on their
+  parent's `threadId`, so the card already surfaces where the person made the
+  original ask. An approver who cannot see that conversation — an owner-gated
+  proposal raised in a channel they are not in, or a paired MCP credential with
+  no channel at all — gets the same card in their own Personal Assistant
+  conversation. The rule and its two halves live in
+  `packages/team-admin/src/approval-card.ts`.
 
 ### 2.0e Channel scopes
 

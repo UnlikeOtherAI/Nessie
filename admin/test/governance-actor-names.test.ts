@@ -32,17 +32,16 @@ const { renderToStaticMarkup } = await import('react-dom/server')
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 const { MemoryRouter } = await import('react-router-dom')
 const { ApiClientProvider } = await import('@nessie/client-core')
-const { DEFAULT_PAGE_LIMIT } = await import('@nessie/schemas')
 
 const { AgentIdentityProvider } = await import('../src/providers/AgentIdentityProvider.js')
+const { ToastProvider } = await import('../src/providers/ToastProvider.js')
 const { AuthSessionProvider } = await import('../src/providers/AuthSessionProvider.js')
 const { AuditEventList } = await import('../src/components/features/audit/AuditEventList.js')
-const { ApprovalsPage } = await import('../src/pages/ApprovalsPage.js')
+const { ApprovalGate } = await import('../src/components/features/channels/ApprovalGate.js')
 const { agentKeys } = await import('../src/facades/agents/keys.js')
 const { approvalKeys } = await import('../src/facades/approvals/keys.js')
 const { personalAssistantKeys } = await import('../src/facades/personal-assistant/keys.js')
 const { userKeys } = await import('../src/facades/users/keys.js')
-const { paginationKeys } = await import('../src/lib/query-keys.js')
 
 // The production Vite transform injects the JSX runtime. Node's lightweight
 // tsx loader uses the classic transform for imported TSX modules.
@@ -219,21 +218,9 @@ const pendingApproval = (agentId: string | null) => ({
   updatedAt: '2026-09-16T09:00:00.000Z',
 })
 
-const renderApprovals = (agentId: string | null): string => {
+const renderApprovalCard = (agentId: string | null): string => {
   const queryClient = directories()
-  queryClient.setQueryData(
-    paginationKeys.page(
-      [...approvalKeys.all, 'pending'],
-      JSON.stringify({ status: 'pending' }),
-      undefined,
-      'forward',
-      DEFAULT_PAGE_LIMIT,
-    ),
-    {
-      data: [pendingApproval(agentId)],
-      meta: { hasMore: false, nextCursor: null, prevCursor: null, total: 1 },
-    },
-  )
+  queryClient.setQueryData(approvalKeys.detail(pendingApproval(agentId).id), pendingApproval(agentId))
 
   return withLocalStorage(() => renderToStaticMarkup(
     createElement(
@@ -241,14 +228,31 @@ const renderApprovals = (agentId: string | null): string => {
       { client: queryClient },
       createElement(
         MemoryRouter,
-        { initialEntries: ['/approvals'] },
+        { initialEntries: ['/channels/c1'] },
         createElement(
           AuthSessionProvider,
           null,
           createElement(
             ApiClientProvider,
             { client: unusedApiClient },
-            createElement(AgentIdentityProvider, null, createElement(ApprovalsPage)),
+            createElement(
+              ToastProvider,
+              null,
+              createElement(
+              AgentIdentityProvider,
+              null,
+              createElement(ApprovalGate, {
+                metadata: {
+                  approvalGate: {
+                    action: 'tool.invoke',
+                    approvalId: pendingApproval(agentId).id,
+                    status: 'pending',
+                    toolName: 'mailbox_send',
+                  },
+                },
+              }),
+            ),
+            ),
           ),
         ),
       ),
@@ -256,14 +260,17 @@ const renderApprovals = (agentId: string | null): string => {
   ))
 }
 
-test('a pending approval names the agent that is asking', () => {
-  const markup = renderApprovals(SALES_AGENT)
+test('the approval card names the agent that is asking', () => {
+  const markup = renderApprovalCard(SALES_AGENT)
 
   assert.match(markup, reads('Sales Assistant', 'agent'))
   assert.doesNotMatch(markup, /Agent: a0000000/)
   assert.match(markup, new RegExp(`title="agent ${SALES_AGENT}"`))
 })
 
-test('a paired-agent request still says a program asked as a person', () => {
-  assert.match(renderApprovals(null), /Asked by a paired agent working as you/)
+test('a paired-agent request names no agent rather than an id', () => {
+  const markup = renderApprovalCard(null)
+
+  assert.match(markup, /Needs your approval/)
+  assert.doesNotMatch(markup, /· agent/)
 })

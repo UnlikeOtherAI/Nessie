@@ -29,6 +29,9 @@ export default defineConfig(({ command, mode }) => {
   const executorApiPublicUrl = resolveExecutorApiPublicUrl(env, apiPort, command === 'serve')
   const includeMemberManagementFixture = env.NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE === '1'
   const includeAppConnectScopeFixture = env.NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE === '1'
+  const includeAgentProposalCardFixture = env.NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE === '1'
+  const includeChannelAgentControlsFixture =
+    env.NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -39,7 +42,10 @@ export default defineConfig(({ command, mode }) => {
   plugins: [react(), tailwindcss()],
   // CI-only browser fixtures must be explicit preview inputs. Their flags keep
   // them out of ordinary production bundles.
-  ...(includeMemberManagementFixture || includeAppConnectScopeFixture ? {
+  ...(includeMemberManagementFixture
+    || includeAppConnectScopeFixture
+    || includeAgentProposalCardFixture
+    || includeChannelAgentControlsFixture ? {
     build: {
       rollupOptions: {
         input: {
@@ -49,6 +55,12 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeAppConnectScopeFixture ? {
             appConnectScope: resolve(__dirname, 'e2e/app-connect-scope/index.html'),
+          } : {}),
+          ...(includeAgentProposalCardFixture ? {
+            agentProposalCard: resolve(__dirname, 'e2e/agent-proposal-card/index.html'),
+          } : {}),
+          ...(includeChannelAgentControlsFixture ? {
+            channelAgentControls: resolve(__dirname, 'e2e/channel-agent-controls/index.html'),
           } : {}),
         },
       },

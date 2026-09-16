@@ -418,3 +418,44 @@ test('an agent names the message to scrub but never the text that replaces it', 
   // tries to supply the new wording is refused outright.
   assert.equal(parsed.success, false)
 })
+
+test('a chips block carries a list of words, not a list of anything else', () => {
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{ items: ['send_message', 'ticket_read'], label: 'Tools', type: 'chips' }],
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{ items: [{ label: 'send_message' }], type: 'chips' }],
+    }).success,
+    false,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({ ...baseSpec, blocks: [{ items: [], type: 'chips' }] }).success,
+    false,
+  )
+})
+
+test('a details block folds body blocks and nothing that asks a question', () => {
+  const fold = (blocks: unknown[]) =>
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      blocks: [{ blocks, summary: 'What it can reach', type: 'details' }],
+    }).success
+
+  assert.equal(fold([{ items: ['send_message'], type: 'chips' }]), true)
+  assert.equal(fold([{ markdown: 'Reads the sales pipeline.', type: 'text' }]), true)
+
+  // A field nobody has to open is a field somebody can submit unseen, so an
+  // input may never be folded away. Neither may a second fold.
+  assert.equal(fold([{ input: 'text', key: 'why', label: 'Why', type: 'input' }]), false)
+  assert.equal(
+    fold([{ blocks: [{ markdown: 'deeper', type: 'text' }], summary: 'More', type: 'details' }]),
+    false,
+  )
+  assert.equal(fold([]), false)
+})
