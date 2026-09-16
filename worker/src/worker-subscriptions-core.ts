@@ -1,3 +1,4 @@
+import { enqueueQueueJob } from '@nessie/db'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import {
   AttachmentThumbnailJobPayloadSchema,
@@ -76,7 +77,12 @@ import {
   SpreadsheetImportJobPayloadSchema,
   executeSpreadsheetImportJob,
 } from './control/spreadsheet-import.js'
-import { createNativeKnowledgeProvider, createSpreadsheetModelCache } from '@nessie/knowledge'
+import {
+  createNativeKnowledgeProvider,
+  createSpreadsheetModelCache,
+  knowledgeEmbeddingJobKey,
+  resolvePersistedKnowledgeOrigin,
+} from '@nessie/knowledge'
 import type { WorkerCoreSubscriptionDeps } from './worker-runtime-types.js'
 export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps): boolean => {
   const {
@@ -346,6 +352,33 @@ const spreadsheetCache = createSpreadsheetModelCache()
 const spreadsheetProvider = createNativeKnowledgeProvider(prisma, {
   readMarkdownAttachment: async (attachmentId, organizationId) =>
     (await fileService.openStream(attachmentId, organizationId))?.stream ?? null,
+  // The same indexing seam the api wires, so a version this process writes is
+  // embedded like every other one. Without it a compacted or imported
+  // spreadsheet would be chunked and then never searchable — the chunks land,
+  // the embeddings never do, and nothing says so.
+  //
+  // Enqueued inside the save transaction: the job becomes visible only when
+  // the version and its chunk rows commit. A version whose page has no team
+  // has no resolvable origin and is skipped rather than failing the save —
+  // exactly what the markdown backfill does with the same case.
+  onVersionChunksReplaced: async (tx, event) => {
+    const origin = await resolvePersistedKnowledgeOrigin(tx, {
+      organizationId: event.organizationId,
+      pageId: event.pageId,
+      systemComponent: 'spreadsheet-indexer',
+      versionId: event.versionId,
+    })
+    if (!origin) return
+    await enqueueQueueJob(tx, {
+      idempotencyKey: knowledgeEmbeddingJobKey(
+        event.pageId,
+        event.versionId,
+        modelClient?.embeddingModel ?? 'unresolved',
+      ),
+      payload: { ...event, origin },
+      topic: KNOWLEDGE_EMBED_TOPIC,
+    })
+  },
 })
 const spreadsheetDeps = {
   prisma,

@@ -1,20 +1,13 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   applySpreadsheetBatch,
   bootstrapSpreadsheet,
-  clearSpreadsheetFilter,
   createSpreadsheetPage,
-  createSpreadsheetSnapshot,
   findInSpreadsheet,
-  getSpreadsheetFilters,
   listSpreadsheetBatches,
-  publishSpreadsheetPresence,
-  publishSpreadsheetPresenceLeave,
   readSpreadsheetRange,
-  reapplySpreadsheetFilter,
   replaceInSpreadsheet,
   restructureSpreadsheet,
-  setSpreadsheetFilter,
   type KnowledgePageRecord,
 } from '@nessie/knowledge'
 import {
@@ -41,6 +34,7 @@ import {
   spreadsheetAttribution,
   type SpreadsheetRouteContext,
 } from './knowledge-spreadsheets-context.js'
+import { registerKnowledgeSpreadsheetFilterRoutes } from './knowledge-spreadsheets-filters.js'
 import { registerKnowledgeSpreadsheetIoRoutes } from './knowledge-spreadsheets-io.js'
 import { registerKnowledgeSpreadsheetLiveRoute } from './knowledge-spreadsheet-live.js'
 
@@ -94,14 +88,6 @@ const ReplaceBodySchema = z.object({
   wholeCell: z.boolean().optional(),
   regex: z.boolean().optional(),
   inFormulas: z.boolean().optional(),
-})
-
-const NamedVersionBodySchema = z.object({
-  changeComment: z.string().min(1).max(500),
-})
-
-const PresenceBodySchema = z.object({
-  frame: z.unknown(),
 })
 
 const RestructureBodySchema = z.object({
@@ -391,155 +377,7 @@ export const registerKnowledgeSpreadsheetRoutes = (
     }
   })
 
-  // ─── Filters ──────────────────────────────────────────────────────────────
-  const filterParams = (request: { params: unknown }) => {
-    const { pageId, sheet } = request.params as { pageId: string; sheet: string }
-    return { pageId, sheet: Number(sheet) }
-  }
-
-  app.get('/api/knowledge-base/pages/:pageId/spreadsheet/filters/:sheet', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!(await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'read'))) return reply
-    const { pageId, sheet } = filterParams(request)
-    if (!(await openPage(actorContext, pageId, 'read', reply))) return reply
-    try {
-      const filters = await getSpreadsheetFilters(service, {
-        organizationId: actorContext.tenant.organizationId,
-        pageId,
-      })
-      return createApiResponse({ sheet, filter: filters[String(sheet)] ?? null })
-    } catch (error) {
-      return sendSpreadsheetError(reply, error)
-    }
-  })
-
-  const filterWriter = (
-    run: (
-      input: {
-        organizationId: string
-        pageId: string
-        sheet: number
-        who: { actor: Awaited<ReturnType<typeof spreadsheetActorFor>>; attribution: ReturnType<typeof spreadsheetAttribution> }
-      },
-      body: unknown,
-    ) => Promise<unknown>,
-  ) =>
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-      if (!(await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit'))) return reply
-      const { pageId, sheet } = filterParams(request)
-      if (!(await openPage(actorContext, pageId, 'write', reply))) return reply
-      try {
-        return createApiResponse(
-          await run(
-            {
-              organizationId: actorContext.tenant.organizationId,
-              pageId,
-              sheet,
-              who: {
-                actor: await spreadsheetActorFor(deps, actorContext),
-                attribution: spreadsheetAttribution(actorContext),
-              },
-            },
-            request.body,
-          ),
-        )
-      } catch (error) {
-        return sendSpreadsheetError(reply, error)
-      }
-    }
-
-  app.put(
-    '/api/knowledge-base/pages/:pageId/spreadsheet/filters/:sheet',
-    filterWriter((input, body) => setSpreadsheetFilter(service, { ...input, model: body })),
-  )
-  app.delete(
-    '/api/knowledge-base/pages/:pageId/spreadsheet/filters/:sheet',
-    filterWriter((input) => clearSpreadsheetFilter(service, input)),
-  )
-  app.post(
-    '/api/knowledge-base/pages/:pageId/spreadsheet/filters/:sheet/reapply',
-    filterWriter((input) => reapplySpreadsheetFilter(service, input)),
-  )
-
-  // ─── Named versions ───────────────────────────────────────────────────────
-  app.post('/api/knowledge-base/pages/:pageId/spreadsheet/versions', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!(await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit'))) return reply
-    const body = parseInput(NamedVersionBodySchema, request.body, reply)
-    if (!body) return reply
-    const { pageId } = request.params as { pageId: string }
-    if (!(await openPage(actorContext, pageId, 'write', reply))) return reply
-    try {
-      const snapshot = await createSpreadsheetSnapshot(service, {
-        organizationId: actorContext.tenant.organizationId,
-        pageId,
-        actor: await spreadsheetActorFor(deps, actorContext),
-        attribution: spreadsheetAttribution(actorContext),
-        reason: 'named',
-        changeComment: `named: ${body.changeComment}`,
-      })
-      await emitAuditEvent(prisma, {
-        actorContext,
-        action: 'kb.spreadsheet.snapshot',
-        resourceType: 'knowledge_page',
-        resourceId: pageId,
-        outcome: 'success',
-        metadata: { versionId: snapshot.versionId, seq: snapshot.seq, reason: 'named' },
-        ...requestIds(request),
-      })
-      return reply.code(201).send(createApiResponse(snapshot))
-    } catch (error) {
-      return sendSpreadsheetError(reply, error)
-    }
-  })
-
-  // ─── Presence ─────────────────────────────────────────────────────────────
-  app.post('/api/knowledge-base/pages/:pageId/presence', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!(await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'read'))) return reply
-    const body = parseInput(PresenceBodySchema, request.body, reply)
-    if (!body) return reply
-    const { pageId } = request.params as { pageId: string }
-    // Read access is enough to say where you are; a draft needs write, and
-    // `publishSpreadsheetPresence` is what refuses one without it.
-    const opened = await openPage(actorContext, pageId, 'read', reply)
-    if (!opened) return reply
-    try {
-      const outcome = await publishSpreadsheetPresence(service, {
-        organizationId: actorContext.tenant.organizationId,
-        pageId,
-        actor: await spreadsheetActorFor(deps, actorContext),
-        frame: body.frame,
-        canWrite: opened.canWrite,
-        budget: service.presenceBudget,
-      })
-      return createApiResponse({ published: outcome.published })
-    } catch (error) {
-      return sendSpreadsheetError(reply, error)
-    }
-  })
-
-  app.delete('/api/knowledge-base/pages/:pageId/presence', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!(await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'read'))) return reply
-    const { pageId } = request.params as { pageId: string }
-    const { clientId } = request.query as { clientId?: string }
-    if (!clientId) return sendApiError(reply, 400, 'CLIENT_ID_REQUIRED', 'A clientId is required')
-    if (!(await openPage(actorContext, pageId, 'read', reply))) return reply
-    await publishSpreadsheetPresenceLeave(service, {
-      organizationId: actorContext.tenant.organizationId,
-      pageId,
-      clientId,
-    })
-    return createApiResponse({ left: true })
-  })
-
+  registerKnowledgeSpreadsheetFilterRoutes(app, deps, context, openPage)
   registerKnowledgeSpreadsheetIoRoutes(app, deps, context)
   registerKnowledgeSpreadsheetLiveRoute(app, deps, context)
 }
