@@ -17,23 +17,39 @@ import { isProjectAccessibleToUser, type ProjectViewer } from './project-structu
  * 2. Inside a project or a channel every member of it has equal rights. The
  *    creator is simply the first member; `ProjectMember.role` and
  *    `ChannelMember.role` grant nothing extra.
- * 3. Only an organisation owner or admin may change a project or channel they
- *    are not a member of. For a channel, the admin must be able to see it:
- *    any standard, non-system, non-group-DM channel (public or protected) is
- *    manageable by an organisation admin, who may also add themselves to a
- *    protected room. A direct message stays reachable only by its participants.
+ * 3. **Management is not participation.** An organisation owner or admin
+ *    changes any project, and any standard, non-system, non-group-DM channel,
+ *    whether or not they are a member of it — protected rooms included — and
+ *    may add themselves to one.
+ *
+ *    This reverses the Slack/Teams rule this file carried until 2026-09-16,
+ *    under which an administrator outside a closed channel could neither read
+ *    it, change it, nor let themselves in. It is a settled product decision,
+ *    and `docs/standards/team-model.md` rule 3 was rewritten in the same
+ *    change; the two must keep agreeing.
+ *
+ *    What it does not widen is participation: an admin who never joined gets no
+ *    composer, and nothing here writes them a `ChannelMember` row as a side
+ *    effect of a management action.
  *
  * Out of scope, and deliberately so: system channels (the Personal Assistant's
  * home, a global agent's home DM) are lifecycle-protected and refused for
- * everybody, and a direct message is reachable only by its participants, who
- * keep their own rule below.
+ * everybody, and a direct message — group or not — is reachable only by its
+ * participants, who keep their own rule below. No organisation role reaches
+ * into one.
  */
 
 /**
- * A project's members, or an organisation owner or admin. `canModifyProject`
- * keeps its membership-or-org-admin definition: public projects may be readable
- * by any organisation member (`resolveProjectAccess`), but only members and
- * org admins may change boards, fields, sources, iterations and watchers.
+ * A project's members, or an organisation owner or admin.
+ *
+ * `canModifyProject` keeps this definition deliberately, and is **not**
+ * `resolveProjectAccess`. Since projects gained a visibility, READING one is
+ * wider than changing it: any organisation member may read a `public` project.
+ * Routing writes through the read predicate would therefore hand every member
+ * of the organisation write access to every board, custom field, data source,
+ * iteration and watcher in it. The two were identical until 2026-09-16 only
+ * because read and modify coincided; they no longer do, and the comment saying
+ * they "can never drift apart" went with them.
  */
 export const canModifyProject = async (
   prisma: PrismaClient,

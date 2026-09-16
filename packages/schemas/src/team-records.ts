@@ -110,13 +110,20 @@ export const ChannelRecordSchema = z.object({
   // right now? Deliberately separate from `viewerCanManage`, because the two
   // authorities genuinely differ — adding a person is any member of the
   // channel, while `POST/DELETE /api/agents/:agentId/bindings` require an
-  // organisation OWNER or ADMIN who can see the channel (member or admin on a
-  // standard non-system non-DM channel), and never on a system channel. The
-  // client drew the agent "Add" control unconditionally while the server
-  // refused every non-owner, which is the control-that-403s Rule zero names.
+  // organisation OWNER or ADMIN on a standard, non-system, non-group-DM
+  // channel. The client drew the agent "Add" control unconditionally while the
+  // server refused every non-owner, which is the control-that-403s Rule zero
+  // names.
   //
-  // It mirrors the routes' pre-policy gate exactly: able to see the channel,
-  // not a system channel, organisation owner or admin. Those routes ALSO run
+  // Channel membership is deliberately NOT part of this answer. Management is
+  // not participation (`docs/standards/team-model.md` rule 3): an admin places
+  // an agent in a room they never joined, and doing so must not make them a
+  // member of it. Both producers of this field — `mapChannelRecord` and the
+  // batched `listChannelsForUser` — have to apply that same rule, because a
+  // client reads whichever one it happened to fetch.
+  //
+  // It mirrors the routes' pre-policy gate exactly: a standard non-system
+  // channel, and organisation owner or admin. Those routes ALSO run
   // `checkPolicy('agent','bind')`, which an organisation can retune per scope;
   // a tightened policy is a deliberate narrowing and surfaces as the refusal
   // it is, rather than by silently hiding a control from the people the

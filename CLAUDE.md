@@ -106,10 +106,19 @@ sentence changes only if the invariant itself did.
   the flag actually changes `admin/dist`, before trusting it.
 - **Channel agent-control coverage:** run
   `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
-  suite — it drives the real members popup over both answers to
+  suite — it drives the real members popup over each answer to
   `ChannelRecord.viewerCanManageAgents`, so it needs no database. CI runs it in
   the same lifecycle, after the proposal-card suite. It pins that placing an
-  agent is owner-only while adding a person is any member.
+  agent is owner-or-admin standing while adding a person is any member of the
+  channel, including the case where those pull apart: an admin outside the room
+  keeps the agent controls and loses the person Add.
+- **Visibility affordance coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:visibility-affordances`. Also a pure
+  fixture suite, in the same lifecycle after the agent-control one. It renders
+  the lock — derived from `visibility === 'protected'`, because the wire
+  carries no `locked` field — and all three composer states, including the one
+  a unit test cannot show: an organisation admin who may open a protected
+  room's settings, may not post in it, and is told why.
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the

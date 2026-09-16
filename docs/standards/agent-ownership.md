@@ -64,12 +64,21 @@ file is the rule**.
   `agent-edit-authority.ts`) replace `requireOwner` at `PUT /api/agents/:id` and
   both avatar routes, and are the one rule chat tools consume too, so routes and
   the Agent Designer cannot disagree. A **private** agent is its live owner's
-  alone (an org owner cannot see it, so cannot edit it); a **person-owned**
-  team agent takes its live owner plus org owners (without that override a
-  deactivated steward leaves an agent with no editor); a **team-owned** agent —
-  `ownerUserId` null — takes anyone entitled to it, plus org owners; a
+  alone (an org owner *or admin* cannot see it, so cannot edit it); a
+  **person-owned** team agent takes its live owner plus organisation owners
+  **and admins** (without that override a deactivated steward leaves an agent
+  with no editor); a **team-owned** agent — `ownerUserId` null — takes anyone
+  entitled to it, plus org owners and admins; a
   `systemManaged` agent takes nobody, refused **in the service**
   (`SYSTEM_AGENT_IMMUTABLE`) rather than only hidden by route invisibility.
+
+  **Admins joined the edit arms on 2026-09-16**, with the project and channel
+  visibility change: an organisation admin has owner-level management reach over
+  anything they can already see. The three narrower gates deliberately did NOT
+  move — a private agent, an ownership transfer and `todosEnabled` all stay
+  where they were — so `AgentEditAuthority` carries `isOrgOwner` and
+  `isOrgAdmin` side by side rather than collapsing into one flag, and the
+  client's `AgentEditViewer` carries both for the same reason.
   Owner-ness is re-derived from the live `OrganizationMember` row on every call,
   never the session claim or an enqueue-time snapshot. A null owner is a
   **deliberate state**, not missing history: "team-owned" means any member who
@@ -78,9 +87,9 @@ file is the rule**.
   improves the shared agent in place, binding changes who is exposed to it. One
   predicate over the whole PUT body would be wrong, because that body also
   carries `ownerUserId` and `todosEnabled`: ownership transitions belong to the
-  current owner or an org owner (so *claiming* a team-owned agent is
-  org-owner-only by construction) and `todosEnabled` keeps its own org-owner
-  gate — both firing only on an actual change, so a form echoing the stored
+  current owner or an org **owner** — not an admin, deliberately — (so
+  *claiming* a team-owned agent is org-owner-only by construction) and
+  `todosEnabled` keeps its own org-owner gate — both firing only on an actual change, so a form echoing the stored
   value back stays an ordinary edit. The UI says this separately from
   visibility: `Shared` means the agent may work in shared channels, while
   `Team-owned` means it has no individual steward. A shared agent remains
@@ -94,3 +103,38 @@ file is the rule**.
   both transfer and release. Details:
   `docs/plans/2026-08-29-people-and-their-agents.md`; decision:
   `docs/plans/2026-09-02-agent-designer-global-agent.md` → "Edit authority".
+
+- **Deleting an agent is a soft delete, and the revocation is the point.**
+  `DELETE /api/agents/:agentId` takes exactly the authority editing takes
+  (`resolveAgentEditAuthority`, so owner-or-admin for a person- or team-owned
+  agent, the live owner alone for a private one, and `SYSTEM_AGENT_IMMUTABLE`
+  for a `systemManaged` one). It stamps `Agent.deletedAt` and keeps the row,
+  because an agent carries audit history — runs, messages, approvals, tasks,
+  ledger entries — that a hard delete would take with it. A hard delete is not
+  merely undesirable but impossible: three foreign keys are `onDelete: Restrict`
+  (`ExecutorPrivateAssignment`, `ExecutorAgentOperationGrant`,
+  `ExecutorAvailabilityCandidate`) and `AgentBrowser` is `NoAction`.
+
+  Keeping the row is the easy half. **A row that still exists is a row that
+  still works**, so the same transaction revokes every live capability:
+  bindings, triggers, queued and in-flight runs, the auto-created
+  "<name> — Documents" space's `ownerAgentId`, the mailbox, and the five kinds
+  of grant (`SendAuthorizationGrant`, `ToolGrant`,
+  `ExecutorAgentOperationGrant`, `BrowserPersonalAccessGrant`,
+  `MailboxConnectionAgentAccess`). Two doors stay shut afterwards: run
+  admission refuses a soft-deleted agent (a job already in the queue can still
+  arrive), and `resolveMailboxByAddress` — the single inbound chokepoint —
+  drops mail to a deleted mailbox. The mailbox **address is held, never
+  released**: `AgentMailbox.agentId` is `@unique`, so re-binding it would let
+  mail sent to a person's old agent silently reach a new one.
+
+  `buildVisibleAgentWhere` filters `deletedAt: null`, which is what makes the
+  agent disappear from every read — including knowledge, whose predicate
+  composes it. `AgentRecordSchema` does not expose `deletedAt`; the delete is
+  signalled by the row's absence, and the realtime nudge reuses `agent.updated`
+  rather than introducing a kind older replicas would not know during a
+  blue-green swap. Child agents keep `parentAgentId` pointing at the deleted
+  parent, and core documents are left intact: both are audit trail, which the
+  soft delete exists to preserve. Contract:
+  `docs/plans/2026-09-16-project-and-channel-visibility.md` → "Agent delete
+  contract".
