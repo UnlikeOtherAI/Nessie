@@ -7,6 +7,7 @@ const now = new Date('2026-01-01T00:00:00Z')
 
 type PageFixtureOverrides = Partial<{
   id: string
+  kind: 'document' | 'file' | 'folder'
   spaceId: string
   title: string
   status: 'draft' | 'published' | 'archived'
@@ -23,7 +24,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
   title: overrides.title ?? 'Runbook',
   summary: null,
   metadata: null,
-  kind: 'document',
+  kind: overrides.kind ?? 'document',
   parentPageId: null,
   position: 0,
   status: overrides.status ?? 'published',
@@ -112,6 +113,10 @@ type FakePrismaOptions = {
   agents?: AgentFixture[]
   pendingApprovals?: ApprovalRow[]
   task?: { id: string } | null
+  // Extra pages `getPage` can answer for, keyed by id. `kb_file` reads the move
+  // target's `kind` before asking for the move, so a fixture that answered the
+  // subject page for every id could never exercise that check.
+  otherPages?: Array<ReturnType<typeof buildPageRow>>
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
@@ -189,7 +194,10 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
       },
     },
     knowledgePage: {
-      findFirst: async () => options.page ?? null,
+      findFirst: async (args?: { where?: { id?: string } }) => {
+        const other = options.otherPages?.find((candidate) => candidate.id === args?.where?.id)
+        return other ?? options.page ?? null
+      },
       findMany: async () => (options.page ? [options.page] : []),
       update: async (args: unknown) => {
         updatePageCalls.push(args)
@@ -351,6 +359,37 @@ test('kb_file preserves its authorship limit when a PA is delegated to a user', 
   )
   assert.equal(movePageCalls.length, 0)
   assert.equal(updatePageCalls.length, 0)
+})
+
+// `movePage` refuses a `file` parent by returning null, which the tool cannot
+// tell from "no such page". These two cases pin the reason the agent is told:
+// the target's `kind` is the whole test, and a folder is the ordinary target.
+test('kb_file names the reason when the move target is an uploaded file', async () => {
+  const page = buildPageRow({ authorType: 'agent', status: 'draft' })
+  const target = buildPageRow({ id: 'file-1', kind: 'file', title: 'contract.pdf' })
+  const space = buildSpaceRow()
+  const { prisma, movePageCalls } = buildFakePrisma({ otherPages: [target], page, space })
+  const context = makeContext(prisma)
+
+  await assert.rejects(
+    () => runKbFileTool(context, { pageId: 'page-1', parentPageId: 'file-1' }),
+    /uploaded file, not a folder/,
+  )
+  assert.equal(movePageCalls.length, 0, 'the move is refused before it is attempted')
+})
+
+test('kb_file files a page under a folder', async () => {
+  const page = buildPageRow({ authorType: 'agent', status: 'draft' })
+  const target = buildPageRow({ id: 'folder-1', kind: 'folder', title: 'Contracts' })
+  const space = buildSpaceRow()
+  const { prisma, movePageCalls } = buildFakePrisma({ otherPages: [target], page, space })
+  const context = makeContext(prisma)
+
+  const result = await runKbFileTool(context, { pageId: 'page-1', parentPageId: 'folder-1' })
+
+  assert.equal(result.toolName, 'kb_file')
+  assert.match(result.outputPreview, /updated location/)
+  assert.equal(movePageCalls.length, 1)
 })
 
 test('kb_draft_write denies an agent writing into a restricted space', async () => {
