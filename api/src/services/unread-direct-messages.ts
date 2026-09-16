@@ -63,8 +63,11 @@ export const listUnreadDirectMessages = async (
     input.userId,
     input.organizationId,
   )
+  // `listChannelsForUser` always fills `unreadCount`; the field is optional on
+  // the schema only because an admin's non-member management record omits it,
+  // and such a record is never a DM. Absent therefore means nothing unread.
   const unreadChannels = channels.filter(
-    (channel) => channel.type === 'dm' && channel.unreadCount > 0,
+    (channel) => channel.type === 'dm' && (channel.unreadCount ?? 0) > 0,
   )
   const latestMessageIdByThread = await findLatestUnreadMessageByThread(prisma, {
     threadIds: unreadChannels.map((channel) => channel.defaultThreadId),

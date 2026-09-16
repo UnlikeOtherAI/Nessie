@@ -286,6 +286,14 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         // Same decision, same reason: every system DM is a single-agent
         // surface, so both binding routes refuse one outright.
         viewerCanManageAgents: false,
+        // Always true, and not a placeholder: the guard above returns `null`
+        // unless this viewer has a live `ChannelMember` row on their own
+        // assistant's home, so a record only exists for a member. It has to be
+        // stated because the field is required and this record is hand-built —
+        // omitted, `PersonalAssistantStateResponseSchema.parse` throws and the
+        // whole route 500s where `tsc` cannot see it, and a `false` here would
+        // silently take the composer away from the assistant's own home.
+        viewerIsMember: true,
         createdAt: channel.createdAt.toISOString(),
         updatedAt: channel.updatedAt.toISOString(),
       },

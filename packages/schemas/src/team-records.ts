@@ -74,12 +74,24 @@ export const ChannelRecordSchema = z.object({
   teamId: TeamIdSchema,
   teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
-  unreadCount: z.number().int().nonnegative(),
-  // When the channel's default thread last received a message; null when it has
-  // none. Populated on every channel-record emission (list, single read, and
-  // post-mutation responses) so a cached list patched from a mutation response
-  // never loses a row's recency.
-  lastMessageAt: TimestampSchema.nullable(),
+  // How many messages in this room the viewer has not read, and when its
+  // default thread last received one (`null` when it has none).
+  //
+  // Both are **participation** metadata derived from message history, and both
+  // are therefore OPTIONAL rather than required: an organisation admin reading
+  // a room they are not a member of receives the full management record with
+  // these two fields ABSENT, because management is not participation
+  // (`docs/standards/team-model.md`) and they have not read a room they cannot
+  // open. Absent is the only honest answer — `0` and `null` would report "no
+  // unread, never used" about a room that is busy, which is worse than silence.
+  //
+  // Every producer that HAS the history still sets them on every emission
+  // (list, single read and post-mutation responses), so a cached list patched
+  // from a mutation response never loses a row's recency. A client treats
+  // `undefined` as "not applicable to me" and renders no badge and no
+  // timestamp, never as zero.
+  unreadCount: z.number().int().nonnegative().optional(),
+  lastMessageAt: TimestampSchema.nullable().optional(),
   // sp-channels: channel lifecycle fields
   topic: z.string().nullish(),
   description: z.string().nullish(),

@@ -368,13 +368,12 @@ export const mapChannelRecord = async (
       })) !== null
     : false
 
-  // Placing an agent is owner-only, so it is its own answer rather than a
-  // reading of `viewerCanManage` — which is any member of the channel and
-  // would draw the control for everyone the binding routes refuse.
+  // Placing an agent is owner-or-admin standing, so it is its own answer
+  // rather than a reading of `viewerCanManage` — which is any member of the
+  // channel and would draw the control for everyone the binding routes refuse.
   const viewerCanManageAgents = userId
     ? await canManageChannelAgents(prisma, {
         channel: {
-          id: channel.id,
           organizationId: channel.organizationId,
           systemChannelType: channel.systemChannelType ?? null,
           type: channel.type,

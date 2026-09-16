@@ -18,7 +18,9 @@ export type DashboardChannel = {
   visibility: 'public' | 'protected' | 'private'
   projectId: string
   teamName: string
-  unreadCount: number
+  // Optional: a record built for somebody outside the room omits it, because
+  // unread is participation metadata. Sorting reads it as zero.
+  unreadCount?: number
   systemChannelType?: string | null
   archivedAt?: string | null
   // Additive server field (see the dashboard spec §7.2). Absent on any client
@@ -64,10 +66,12 @@ export const projectChannelRows = <T extends DashboardChannel>(
     )
     .slice()
     .sort((a, b) => {
-      const aUnread = a.unreadCount > 0
-      const bUnread = b.unreadCount > 0
+      const aCount = a.unreadCount ?? 0
+      const bCount = b.unreadCount ?? 0
+      const aUnread = aCount > 0
+      const bUnread = bCount > 0
       if (aUnread !== bUnread) return aUnread ? -1 : 1
-      if (a.unreadCount !== b.unreadCount) return b.unreadCount - a.unreadCount
+      if (aCount !== bCount) return bCount - aCount
       const aAt = channelLastMessageMs(a) ?? Number.NEGATIVE_INFINITY
       const bAt = channelLastMessageMs(b) ?? Number.NEGATIVE_INFINITY
       if (aAt !== bAt) return bAt - aAt

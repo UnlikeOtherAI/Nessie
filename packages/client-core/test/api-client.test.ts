@@ -148,9 +148,13 @@ const channelRecord = {
   unreadCount: 0,
   updatedAt: '2026-09-12T12:00:00.000Z',
   viewerCanManage: true,
-  // Required alongside `viewerCanManage`: placing an agent is owner-only while
-  // adding a person is any member, so the two are separate server answers.
+  // Required alongside `viewerCanManage`: placing an agent is owner-or-admin
+  // standing while adding a person is any member, so the two are separate
+  // server answers.
   viewerCanManageAgents: false,
+  // Required too: whether the caller is in the room decides the composer, and
+  // a record that omits it fails `ChannelRecordSchema.parse`.
+  viewerIsMember: true,
   visibility: 'public' as const,
 }
 

@@ -14,13 +14,18 @@ import { isAdminRole } from '@nessie/schemas'
  *
  * It mirrors those routes' pre-policy gate, in their order:
  *
- * 1. The channel must be visible to the caller: a live `ChannelMember` row, or
- *    an organisation admin on a standard non-system non-DM channel in this
- *    organisation. Public channels the viewer has never joined are still
- *    refused by the route for agent management, so they are refused here.
- * 2. no `systemChannelType` — every system DM is a single-agent surface and
- *    the routes refuse all of them, not only the Personal Assistant's.
- * 3. `requireAdminActor` — the organisation owner or admin role.
+ * 1. `type === 'standard'` with no `systemChannelType` — every system DM is a
+ *    single-agent surface and the routes refuse all of them, not only the
+ *    Personal Assistant's, and a direct message (group or not) is somebody's
+ *    private conversation that no organisation role reaches into.
+ * 2. `requireAdminActor` — the organisation owner or admin role.
+ *
+ * Channel membership is deliberately NOT a third condition. Management is not
+ * participation (`docs/standards/team-model.md`): an organisation admin may
+ * place an agent in a standard room without joining it, and adding one must not
+ * quietly make them a member. An admin standing alone therefore decides this,
+ * and every standard non-system channel in their organisation is one they may
+ * already see — public by browse, protected by direct URL or admin tooling.
  *
  * The routes then run `checkPolicy('agent', 'bind')`, which is deliberately
  * NOT reproduced here. That check resolves rules an organisation may scope to
@@ -33,30 +38,22 @@ import { isAdminRole } from '@nessie/schemas'
  * rules allow.
  */
 export const canManageChannelAgents = async (
-  prisma: Pick<PrismaClient, 'channelMember' | 'organizationMember'>,
+  prisma: Pick<PrismaClient, 'organizationMember'>,
   input: {
-    channel: { id: string; organizationId: string; systemChannelType: string | null; type: string }
+    channel: { organizationId: string; systemChannelType: string | null; type: string }
     /** Known from the request's live roles; read from the row when omitted. */
     isOrganizationAdmin?: boolean
-    /** Already-loaded membership, when the caller has it. */
-    isChannelMember?: boolean
     userId: string
   },
 ): Promise<boolean> => {
   if (input.channel.systemChannelType) return false
   if (input.channel.type !== 'standard') return false
 
-  const isAdmin = input.isOrganizationAdmin
+  return input.isOrganizationAdmin
     ?? isAdminRole(
       (await prisma.organizationMember.findFirst({
         where: { organizationId: input.channel.organizationId, userId: input.userId },
         select: { role: true },
       }))?.role,
     )
-  if (!isAdmin) return false
-
-  if (input.isChannelMember !== undefined) return input.isChannelMember
-  return (await prisma.channelMember.count({
-    where: { channelId: input.channel.id, userId: input.userId },
-  })) > 0
 }

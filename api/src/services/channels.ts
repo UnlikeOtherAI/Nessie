@@ -201,10 +201,11 @@ export const listChannelsForUser = async (
         || isAdminRole(viewerTeamRoleByTeamId.get(channel.teamId))
     }
     if (isParticipant) return true
-    // Management is not participation: an admin may manage any standard
-    // non-system channel they can see. The list only contains public + member
-    // channels, so this arm covers public channels for admins.
-    return viewerIsOrgAdmin
+    // Management is not participation: an organisation admin may rename,
+    // archive and re-member any standard non-system room without joining it.
+    // Stated in full rather than leaning on this list's `where` clause, so it
+    // gives the same answer as `canModifyChannel` if the query ever widens.
+    return viewerIsOrgAdmin && channel.type === 'standard'
   }
 
   const principalUserIds = [...new Set(
@@ -274,15 +275,16 @@ export const listChannelsForUser = async (
     viewerIsMember: channel.members[0] !== undefined,
     viewerCanManage: viewerMayModify(channel),
     // The binding routes' pre-policy gate, in their order: a standard
-    // non-system channel, an organisation owner or admin who can see it, or a
-    // channel member. The list only contains channels the viewer can see, so
-    // membership is enough for non-admins; admins may also manage public
-    // channels they have not joined. Deliberately not `viewerCanManage`, which
-    // is any member of the channel.
+    // non-system channel, and an organisation owner or admin. Membership is
+    // deliberately absent — management is not participation, so an admin
+    // places an agent without joining, and a member who is not an admin may
+    // not place one at all. This must stay the same answer
+    // `canManageChannelAgents` gives in `mapChannelRecord`: two producers of
+    // one field that disagree draw a control the route then refuses.
     viewerCanManageAgents:
       channel.type === 'standard'
       && !channel.systemChannelType
-      && (viewerIsOrgAdmin || channel.members[0] !== undefined),
+      && viewerIsOrgAdmin,
     personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),

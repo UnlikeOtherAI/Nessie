@@ -196,6 +196,25 @@ full management record, but with message-history-derived fields omitted:
 metadata, and decision 2 says management is not participation. The record still
 carries `viewerIsMember: false` so the client suppresses the composer.
 
+**`lastMessageAt` and `unreadCount` are therefore `.optional()` on
+`ChannelRecordSchema`, and the admin non-member record omits them.** An earlier
+revision of this document said only that they were "omitted", which the schema
+made impossible: both were required, so the record could not be built. Writing
+`0` and `null` instead is not the fix — that reports "no unread, never used"
+about a room that may be busy, which is a false statement rather than an absent
+one. A client treats `undefined` as *not applicable to me* and renders neither
+badge nor timestamp; it must never coerce it to zero.
+
+Optional is also the only safe direction of travel for this schema. It is not
+`.strict()` and several `ChannelRecord`s are hand-built object literals passed
+straight to `.parse` — `loadPersonalAssistantState` in
+`api/src/lib/request-helpers.ts` is one — where `tsc` cannot see a missing
+field and the failure is a 500 in production, not a red build. The one field
+this change does add as **required**, `viewerIsMember`, was therefore added to
+every such construction site in the same commit, because the composer rides on
+it and a defaulted `false` would silently mute the Personal Assistant's own
+home.
+
 ### What is deliberately omitted from the limited shape
 
 No counts, no avatar, no boards/tasks/fields/sources/iterations, no channels, no
@@ -305,10 +324,19 @@ never 403.
 
 `canManageChannelAgents` (`packages/team-admin/src/channel-agent-authority.ts`)
 changes from "organisation owner + channel member" to "organisation owner or
-admin + able to see the channel (member, or admin on any standard non-system
-non-DM channel)". This requires plumbing an `isOrganizationAdmin` flag through
-`ChannelRecordViewer` and rewriting the contract comment in
-`packages/schemas/src/team-records.ts:97-113`.
+admin on a standard, non-system, non-DM channel". Channel membership drops out
+of the predicate entirely: once owner/admin standing is required, every standard
+non-system channel in the organisation is one they may already see, and decision
+1 says management must not make them a member. This requires plumbing an
+`isOrganizationAdmin` flag through `ChannelRecordViewer` and rewriting the
+contract comment in `packages/schemas/src/team-records.ts:97-113`.
+
+**Both producers of `viewerCanManageAgents` must apply that same rule.** The
+batched `listChannelsForUser` computes the field inline rather than calling the
+predicate, so "any member of this channel" there and "owner or admin" in
+`mapChannelRecord` is the two-producers-disagree defect the field's own
+docstring exists to prevent — and it draws the Add control for exactly the
+ordinary members the binding routes refuse.
 
 ## Admin surface changes
 

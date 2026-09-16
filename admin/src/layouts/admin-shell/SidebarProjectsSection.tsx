@@ -191,7 +191,7 @@ export const SidebarProjectsSection = ({
           sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id;
         const projectChannelsId = `sidebar-project-${project.id}-channels`;
         const projectUnreadCount = project.channels.reduce(
-          (total, channel) => total + channel.unreadCount,
+          (total, channel) => total + (channel.unreadCount ?? 0),
           0,
         ) + (attentionCountByProjectId.get(project.id) ?? 0);
 
@@ -347,7 +347,7 @@ export const SidebarProjectsSection = ({
                       key={channel.id}
                       className={[
                         'admin-sb-item sidebar-child group',
-                        channel.unreadCount > 0 ? 'unread' : '',
+                        (channel.unreadCount ?? 0) > 0 ? 'unread' : '',
                         channel.id === currentChannelId ? 'active' : '',
                       ].join(' ')}
                       onClick={() => onNavigateChannel(channel.id)}
