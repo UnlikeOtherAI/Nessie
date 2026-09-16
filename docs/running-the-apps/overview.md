@@ -17,6 +17,7 @@ checksums; iOS remains an App Store delivery.
 - [windows-desktop.md](windows-desktop.md) — the Windows desktop app, signed release, the Nessie Executor service and tray.
 - [linux-desktop.md](linux-desktop.md) — the Linux desktop app and the standalone `nessie-executor` daemon.
 - [chrome-cookie-import-macos.md](chrome-cookie-import-macos.md) — the prepared macOS Chrome selected-site import package and its release prerequisites.
+- [executor-menu-bar-macos.md](executor-menu-bar-macos.md) — the Nessie Executor menu bar app for macOS: installing the signed, notarized DMG, first-run pairing, where state lives, and building the installer.
 
 ## Default physical-device delivery
 
