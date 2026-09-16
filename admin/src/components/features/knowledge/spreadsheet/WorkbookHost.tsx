@@ -38,11 +38,52 @@ type WorkbookHostProps = {
   onSession?: (session: WorkbookSession | null) => void
 }
 
-// IronCalc builds `workbookState` in its *root* render body, so a re-render of
-// the root throws away in-cell editing state (decisions.md §"Spike C/D" item 7).
-// `redraw()` only re-renders the Workbook subtree and is safe; everything here
-// therefore keeps the root's props referentially stable and repaints through
-// the handle instead of through React.
+/**
+ * Repaint the grid after the model changed from outside the widget.
+ *
+ * `@ironcalc/workbook` 0.8.3 renders the grid to a canvas and publishes no
+ * repaint: `IronCalcHandle` has `setLanguage` and nothing else. The one thing
+ * that paints the canvas from the current model is a re-render of the widget's
+ * **`Workbook` subtree** — `Worksheet` rebuilds `WorksheetCanvas` and calls
+ * `renderSheet()` in a dependency-free effect — and `Workbook` drives that from
+ * a private `useState` counter it bumps after each of its own actions.
+ *
+ * Every keyboard action the widget handles bumps that counter, and exactly one
+ * of them changes nothing else that has to be kept: **Escape**. Its handler
+ * clears the cut outline and disarms the format painter
+ * (`WorkbookState.clearCutRange()` / `setCopyStyles(null)`, both drawing state
+ * — a paste still reads `type: "cut"` off the clipboard payload) and then
+ * bumps the counter. So a synthetic `keydown` is the repaint.
+ *
+ * **Why it is dispatched on `.ic-workbook-container` and not on the document.**
+ * The widget's key handler starts with `event.target !== root` → return, so
+ * targeting that element is what makes it run — and it is also what keeps the
+ * event away from the cell editor's own handlers, which sit on the `<textarea>`
+ * below it. React's synthetic `stopPropagation()` (the widget calls it for
+ * every unmodified key) calls `stopPropagation()` on the native event too, so
+ * the event dies at React's root container: nothing on `document`, `body` or
+ * `window` in the bubble phase ever sees it. Capture-phase listeners do, which
+ * is why `SpreadsheetPane`'s fullscreen Escape checks `event.isTrusted`.
+ *
+ * Measured against the `redraw()` patch this replaces (`spike-cd-render-touch.md`
+ * §"The repaint, from outside the package"): identical on the canvas bytes, the
+ * address box, the formula bar, the sheet tab bar, frozen panes (both the frozen
+ * band and the scrolled body), a batch landing mid-scroll, the scroll position
+ * afterwards, and an editor left open with its text while a peer's batch lands.
+ *
+ * `WorkbookState` is built in the widget's **root** render body, so a root
+ * re-render throws away in-cell editing state (decisions.md §"Spike C/D" item
+ * 7). This re-renders the subtree, not the root — which is also why everything
+ * here keeps the root's props referentially stable.
+ */
+const repaintGrid = (host: HTMLElement | null): void => {
+  const container = host?.querySelector('.ic-workbook-container')
+  if (!container) return
+  container.dispatchEvent(
+    new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape' }),
+  )
+}
+
 export const WorkbookHost = ({
   bootstrap,
   canEdit,
@@ -99,7 +140,7 @@ export const WorkbookHost = ({
       handle: handleRef.current,
       missingSeqs,
       model,
-      redraw: () => handleRef.current?.redraw(),
+      redraw: () => repaintGrid(hostRef.current),
     })
     return () => {
       bridge.detach()
@@ -109,14 +150,14 @@ export const WorkbookHost = ({
 
   // One mapping covers all eleven admin themes, so the only trigger is "the
   // document's theme attribute changed". The canvas re-reads the variables in
-  // `WorksheetCanvas`'s dependency-free effect, so a redraw is what paints it.
+  // `WorksheetCanvas`'s dependency-free effect, so a repaint is what paints it.
   useEffect(() => {
     const root = document.documentElement
     const apply = () => setTheme(spreadsheetThemeVariables(root))
     apply()
     const observer = new MutationObserver(() => {
       apply()
-      handleRef.current?.redraw()
+      repaintGrid(hostRef.current)
     })
     observer.observe(root, { attributeFilter: ['data-theme', 'class', 'style'] })
     return () => observer.disconnect()

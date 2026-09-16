@@ -174,6 +174,12 @@ export const SpreadsheetPane = ({
       // A dialog or popover over the grid owns Escape first; this only leaves
       // fullscreen when nothing else is open.
       if (event.key !== 'Escape' || openRef.current) return
+      // Only a real key press leaves fullscreen. `WorkbookHost` repaints the
+      // grid by dispatching a synthetic Escape at IronCalc's own container
+      // (see its `repaintGrid`), and a peer's batch landing must not throw the
+      // person out of fullscreen. Capture is the one phase that still sees
+      // that event, so the check belongs here.
+      if (!event.isTrusted) return
       event.preventDefault()
       setFullscreen(false)
     }
