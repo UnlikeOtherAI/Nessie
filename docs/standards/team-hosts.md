@@ -73,9 +73,57 @@ one module, `admin/src/lib/tenant-navigation.ts`, and must keep doing so —
 
 | Entry point | Browser | Native shell |
 |---|---|---|
-| `TeamSwitcher` (rail / menu switch) | team's address from `GET /api/hosts/address?teamId=` when it is a different host; otherwise in-app `/channels` | in-app `/channels`; the address is not even looked up |
-| `OrgPortal` (team picked on `<org>.<base>`) | team's address; if there is none, `signInOrigin/channels`; if neither is known, stays on the portal | `signInOrigin/channels` |
+| `TeamSwitcher` (rail / menu switch) | team's address from `GET /api/hosts/address?teamId=` when it is a different host; on the canonical origin with no address, in-app `/channels`; on a tenant host with no address, the canonical origin carrying the team | in-app `/channels` on the canonical origin; the address is not even looked up |
+| `OrgPortal` (team picked on `<org>.<base>`) | team's address; if there is none, the canonical origin carrying the team; if neither is known, stays on the portal | the canonical origin carrying the team |
 | `TenantReturnHandoff` (stored `?return=` after sign-in) | the stored tenant address | dropped: forgotten and not followed, so the person stays on the canonical origin |
+
+**No tenant host keeps a team that is not its own.** A team address serves the
+app, so staying there once looked like the cheap answer, and it was the defect:
+switching teams on `general.kilomayo.nessie.works` left that URL over another
+organisation's channels, a copied link sent a colleague to the wrong place, and
+the next load of the address switched the session back. The canonical origin is
+different — it serves every team — so there it stays and routes.
+
+**Not every team has an address to go to instead**, and that is the reason the
+paragraph above needs the handoff below rather than just "follow the address".
+
+### A team with no address leaves for the canonical origin, carrying the team
+
+Every lookup behind a tenant hostname — `/api/hosts/resolve`, the
+`tls-check` gate, `/api/hosts/address` — is a UOA `/domain/*` read, and those
+are scoped to this deployment's own UOA client domain (`UOA_DOMAIN`, in
+production `api.nessie.works`). A person's teams are not: `/org/me` lists every
+organisation they belong to, including ones founded on **another product's**
+client domain.
+
+So a team can be in the picker and have no address here at all. Measured
+against production, an organisation on another domain resolves `kind: null`,
+and `<team>.<that org>.nessie.works` does not complete a TLS handshake —
+`tls-check` refuses, so no certificate is ever issued for it. **A hostname
+built from UOA's labels alone is a dead link, not a shortcut**, which is why
+`admin/src/lib/tenant-team-handoff.ts` and `api/src/services/landing-teams.ts`
+both treat *the address lookup answering* as the test of whether an address
+exists, rather than the labels in the directory.
+
+Those switches go to the canonical origin, which serves every team, and carry
+the team in the URL:
+
+```text
+https://app.nessie.works/channels?switchOrg=<uoa org id>&switchTeam=<uoa team id>
+```
+
+`TeamHandoffGate` runs the ordinary silent switch with those ids, then reloads
+the stripped address. **The ids are a request, never a grant** — exactly like a
+hostname, and for the same reason: the switch behind them is
+`POST /api/auth/uoa/team`, which re-checks live membership and fails closed.
+Somebody hand-writing another tenant's ids gets their own session and a refused
+switch, so there is nothing to sign and nothing to forge. Both ids are shape-
+checked before they become a request, which keeps a truncated copy or a probe
+from reaching the switch at all.
+
+The reload after a successful switch is not decoration: a switch replaces the
+tenant context wholesale, and a fresh document is the only state guaranteed to
+hold no query cached under the previous team.
 
 **A native shell never loads a tenant hostname as its top-level document.**
 `isNativeShell()` is `isDesktopApp()` or `isReactNativeWebView()`. The desktop
@@ -106,6 +154,15 @@ that host reloads the portal instead of opening the team.
 (`admin/src/facades/team/invitations.ts`) and creating a team
 (`admin/src/facades/team/provisioning.ts`) still navigate in-app and do not
 follow the new team's address. Native shells are unaffected.
+
+**A team host renders nothing until the address and the session agree.**
+Firing the switch and rendering the app underneath it was the second half of
+the same defect: the routes below began fetching in the previous team's scope,
+and a switch that then failed — silently, because the rejection was swallowed —
+left the previous team's channels, projects and search on screen under a URL
+naming a different team. `TenantHostGate` now holds the router while the ids
+and the switch are in flight, and renders a refusal, branded and naming no
+team, when the switch is refused. It never falls through to the previous team.
 
 **A team host does not re-switch onto the team the session is already on.**
 `TenantHostGate` compares the host's `externalOrgId`/`externalTeamId` with the
@@ -373,11 +430,16 @@ active flag, link (`LandingTeamSchema`); no ids, no email. Rate limited by
 `landingTeamsIp` (docs/rate-limiting.md). The landing's CSP names
 `https://api.nessie.works` in `connect-src` and UOA's host in `img-src`.
 
-**Known gap:** a team with no resolvable address that is not the active one
-opens the app on the session's current team; the person switches from there.
-There is no cross-origin "switch into this team" handoff on the canonical
-origin, and this change does not invent one. Native shells are unaffected:
-the landing is a browser page and never runs inside them.
+**Known gap, and why it stays one:** a team with no resolvable address that is
+not the active one opens the app on the session's current team; the person
+switches from there. The app's own entry points close this with the
+`?switchOrg=/?switchTeam=` handoff above, and the landing deliberately does
+not use it. `LandingTeamSchema` carries only what the section draws — no ids —
+because the landing is a different origin, and a handoff link would write two
+UOA ids into that origin's URLs, its access logs and anything measuring it.
+Closing this properly means the landing asking the API for a link, not the API
+volunteering the ids. Native shells are unaffected: the landing is a browser
+page and never runs inside them.
 
 ## Local development
 

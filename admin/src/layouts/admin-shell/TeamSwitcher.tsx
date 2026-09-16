@@ -13,7 +13,7 @@ import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/e
 import { isReactNativeWebView } from '../../lib/native-shell'
 import { isNativeShell, resolveTeamSwitchDestination } from '../../lib/tenant-navigation'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
-import { fetchTeamHostUrl } from '../../facades/team/tenant-host'
+import { fetchTeamHostUrl, useTenantHost } from '../../facades/team/tenant-host'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTheme } from '../../providers/ThemeProvider'
@@ -57,6 +57,9 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
   const apiClient = useApiClient()
   const { data: providers = [] } = useAuthProviders()
   const { data: organization } = useCurrentOrganization()
+  // Which hostname this is. A tenant host serves the app, but only for its
+  // own team, so a switch to any other team has to leave it.
+  const { data: tenantHost } = useTenantHost()
   const avatarRevision = useTeamAvatarRevision()
   const { signInTheme } = useTheme()
   const navigate = useNavigate()
@@ -165,11 +168,13 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       // (see lib/tenant-navigation.ts), so it is not even asked.
       if (team.uoaTeam) {
         const destination = await resolveTeamSwitchDestination({
-          canonicalOrigin: null,
+          canonicalOrigin: tenantHost?.kind ? tenantHost.signInOrigin : null,
           currentHost: window.location.host,
+          currentHostIsTenant: Boolean(tenantHost?.kind),
           currentHostServesApp: true,
           fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
           inNativeShell: isNativeShell(),
+          targetTeam: { organizationId: team.organizationId, teamId: team.teamId },
         })
         if (destination.kind === 'document') {
           window.location.assign(destination.href)

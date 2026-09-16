@@ -1,4 +1,5 @@
 import { RouterProvider } from 'react-router-dom'
+import { TeamHandoffGate } from '../layouts/tenant/TeamHandoffGate'
 import { TenantHostGate } from '../layouts/tenant/TenantHostGate'
 import { TenantReturnHandoff } from '../layouts/tenant/TenantReturnHandoff'
 import { DesktopWindowFrame } from '../layouts/DesktopWindowFrame'
@@ -28,7 +29,9 @@ export const AppProvider = () => (
                   <DesktopWindowFrame>
                     <TenantReturnHandoff />
                     <TenantHostGate>
-                      <RouterProvider router={router} />
+                      <TeamHandoffGate>
+                        <RouterProvider router={router} />
+                      </TeamHandoffGate>
                     </TenantHostGate>
                   </DesktopWindowFrame>
                 </FocusModeProvider>

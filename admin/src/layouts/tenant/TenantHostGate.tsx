@@ -1,10 +1,15 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { useTenantHost, useTenantTeam } from '../../facades/team/tenant-host'
-import { isNativeShell, nativeShellRecoveryHref } from '../../lib/tenant-navigation'
+import {
+  useTenantHost,
+  useTenantTeam,
+  type TenantOrganisation,
+} from '../../facades/team/tenant-host'
+import { isNativeShell, nativeShellRecoveryHref, TEAM_LANDING_PATH } from '../../lib/tenant-navigation'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
+import { TenantBrandFrame } from './tenant-brand'
 import { tenantTeamSwitchNeeded } from './tenant-team-switch'
 
 /**
@@ -25,15 +30,28 @@ import { tenantTeamSwitchNeeded } from './tenant-team-switch'
  *   address used to serve their own people.
  * - **Anything else** renders the app untouched. That is every deployment with
  *   no tenant base domain configured, which is all of them until one opts in.
+ *
+ * **The app does not mount until the address and the session agree.** Firing
+ * the switch and rendering underneath it was the bug: the routes below started
+ * fetching with the previous team's scope, and a switch that then failed —
+ * silently, because the failure was swallowed — left the previous team's
+ * channels, projects and search on screen under a URL naming a different one.
+ * That is indistinguishable from the product ignoring the address, and it is
+ * what somebody sees after copying a team link to a colleague. So a team host
+ * that needs a switch renders nothing until it has one answer or the other,
+ * and says so when the answer is no.
  */
 export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { data, isLoading } = useTenantHost()
   const { me, sessionState, switchUoaTeam, token } = useAuthSession()
   const switched = useRef<string | null>(null)
+  const [switchState, setSwitchState] = useState<'idle' | 'switching' | 'failed'>('idle')
 
   // The ids only exist for a signed-in caller on a team host — the public
   // resolver above never carries them.
-  const { data: teamData } = useTenantTeam(Boolean(token) && data?.kind === 'team')
+  const { data: teamData, isLoading: teamLoading } = useTenantTeam(
+    Boolean(token) && data?.kind === 'team',
+  )
   const team = teamData?.team ?? null
 
   // A native shell's bridge is refused on a tenant host — the title bar stops
@@ -59,6 +77,8 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     const key = `${team.externalOrgId}:${team.externalTeamId}`
     // Once per team per page load: a failed switch must leave the person where
     // they are rather than retrying forever against a team they cannot open.
+    // It is claimed before the comparison below, so an in-app switch away from
+    // this host — which navigates off it — is never dragged back here.
     if (switched.current === key) return
     switched.current = key
 
@@ -66,10 +86,17 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     // team; switching again only races the page-load refresh into a 409.
     if (!tenantTeamSwitchNeeded(me, team)) return
 
+    setSwitchState('switching')
     void switchUoaTeam({
       organizationId: team.externalOrgId,
       teamId: team.externalTeamId,
-    }).catch(() => undefined)
+    }).then(
+      () => setSwitchState('idle'),
+      // Not a member, a session that needs re-authorising, a rotation
+      // conflict: whichever it was, this address cannot be opened on this
+      // session and saying so beats serving another team's screen under it.
+      () => setSwitchState('failed'),
+    )
   }, [me, recoveryHref, team, switchUoaTeam, token])
 
   // Render nothing at all while the hostname is still being resolved, but only
@@ -92,5 +119,48 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
   }
 
+  if (data?.kind === 'team' && token) {
+    if (switchState === 'failed') {
+      return <TeamHostUnavailable organisation={data.organisation} signInOrigin={data.signInOrigin} />
+    }
+    // The ids are still in flight, or the switch onto them is. Either way the
+    // team this address names is not yet the team the session is on.
+    if (switchState === 'switching' || (teamLoading && !teamData)) return null
+  }
+
   return <>{children}</>
 }
+
+/**
+ * This address exists, and this session cannot open it.
+ *
+ * Deliberately says nothing about the team: on a tenant hostname the team is
+ * never named to somebody who has not been let in (docs/standards/team-hosts.md,
+ * "The tenant's address is the tenant's brand"), and a refused switch is
+ * exactly that case. The way out is the product's own origin, which serves
+ * whatever team this person does have.
+ */
+const TeamHostUnavailable = ({
+  organisation,
+  signInOrigin,
+}: {
+  organisation: TenantOrganisation
+  signInOrigin: string | null
+}) => (
+  <TenantBrandFrame organisation={organisation}>
+    <p className="max-w-sm text-center text-sm text-[color:var(--tx3)]">
+      This address could not be opened with your current session.
+    </p>
+    {signInOrigin ? (
+      <a
+        className={[
+          'rounded-[var(--radius-md)] border border-[color:var(--bd)] px-4 py-2',
+          'text-sm hover:border-[color:var(--accent)]',
+        ].join(' ')}
+        href={new URL(TEAM_LANDING_PATH, signInOrigin).href}
+      >
+        Open Nessie
+      </a>
+    ) : null}
+  </TenantBrandFrame>
+)

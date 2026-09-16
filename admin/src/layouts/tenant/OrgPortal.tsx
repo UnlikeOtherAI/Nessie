@@ -62,13 +62,17 @@ export const OrgPortal = ({
       await switchUoaTeam({ organizationId: team.organizationId, teamId: team.teamId })
       // Not `/channels` on this host: TenantHostGate renders this portal for
       // the organisation's hostname whatever the path, so that reloads the
-      // portal. Go to the team's own address, or the canonical origin.
+      // portal. Go to the team's own address, or — for a team this deployment
+      // cannot address — the canonical origin carrying the team that was
+      // picked, so it does not open on whichever one the session held.
       const destination = await resolveTeamSwitchDestination({
         canonicalOrigin: signInOrigin,
         currentHost: window.location.host,
+        currentHostIsTenant: true,
         currentHostServesApp: false,
         fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
         inNativeShell: isNativeShell(),
+        targetTeam: { organizationId: team.organizationId, teamId: team.teamId },
       })
       if (destination.kind === 'document') {
         window.location.assign(destination.href)
