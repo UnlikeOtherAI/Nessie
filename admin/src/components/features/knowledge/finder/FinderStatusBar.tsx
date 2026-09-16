@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react'
 import { StorageUsageMeter } from '../StorageUsageMeter'
+import {
+  UploadQueueRows,
+  UploadQueueTray,
+  type FinderUploads,
+} from './UploadQueue'
 
 /**
  * The strip under the columns (browser-ui.md §2) — the one Finder itself uses
@@ -16,8 +21,16 @@ import { StorageUsageMeter } from '../StorageUsageMeter'
  */
 
 type FinderStatusBarProps = {
-  /** The upload queue docks here while it is running (Wave 2). */
+  /** The upload queue docks here while it is running. */
   children?: ReactNode
+  /**
+   * A transient sentence in place of the item count — a refused drop, a folder
+   * this browser could not read. It is the status bar's because it is about
+   * the column, not about a thing that is running: a toast for "drop files
+   * into a folder to upload them" would be a card over the folder the person
+   * is being told to use.
+   */
+  message?: string | null
   /** Rows in the active column. */
   itemCount: number
   /** Selected rows in the active column; 0 says nothing. */
@@ -46,16 +59,66 @@ const itemLine = (
 export const FinderStatusBar = ({
   children,
   itemCount,
+  message = null,
   more = false,
   selectedCount = 0,
   showStorage,
   truncated = false,
 }: FinderStatusBarProps) => (
   <div className="finder-status-bar text-xs" data-finder-status-bar>
-    <span className="min-w-0 truncate">
-      {itemLine(itemCount, selectedCount, more, truncated)}
+    <span
+      className={message ? 'min-w-0 truncate text-[color:var(--danger-text)]' : 'min-w-0 truncate'}
+      data-finder-status-message={message ? 'true' : undefined}
+    >
+      {message ?? itemLine(itemCount, selectedCount, more, truncated)}
     </span>
     {children ? <span className="min-w-0 flex-1">{children}</span> : null}
     {showStorage ? <StorageUsageMeter /> : null}
   </div>
 )
+
+
+/**
+ * Which strip the Finder actually shows.
+ *
+ * On `split` it is the status bar, with the upload tray docked into it. Below
+ * `split` there is no status bar — an item count is not worth 28px on a screen
+ * showing one column — but a running upload is, so the tray gets that row to
+ * itself for exactly as long as there is something in it.
+ */
+export const FinderStatusStrip = ({
+  single,
+  transferRows,
+  uploads,
+  ...bar
+}: FinderStatusBarProps & {
+  single: boolean
+  /** A live cross-space transfer's row, mounted beside the uploads (2D). */
+  transferRows?: ReactNode
+  uploads: FinderUploads
+}) => {
+  const tray = (
+    <UploadQueueTray
+      expanded={uploads.expanded}
+      onToggle={uploads.toggleExpanded}
+      queue={uploads.queue}
+    />
+  )
+  return (
+    <>
+      {/* The expanded rows are a band of their own: `.finder-status-bar` is a
+          fixed 28px row, and a list that grew inside it was drawn off the
+          bottom of the window. */}
+      <UploadQueueRows
+        expanded={uploads.expanded}
+        extraRows={transferRows}
+        queue={uploads.queue}
+      />
+      {single
+        ? (uploads.queue.entries.length > 0
+          ? <div className="finder-status-bar text-xs" data-finder-status-bar>{tray}</div>
+          : null)
+        : <FinderStatusBar {...bar}>{tray}</FinderStatusBar>}
+    </>
+  )
+}

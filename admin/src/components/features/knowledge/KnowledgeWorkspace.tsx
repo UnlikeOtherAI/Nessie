@@ -1,5 +1,4 @@
-import { useRef, useState } from 'react'
-import { useUploadFileNode } from '../../../facades/knowledge/file-hooks'
+import { useState } from 'react'
 import {
   useKnowledgePage,
   useKnowledgeVersions,
@@ -7,7 +6,6 @@ import {
 } from '../../../facades/knowledge/hooks'
 import { LOCAL_BACK_PRIORITY } from '../../../navigation/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
-import type { UploadProgress } from '../../../lib/upload-xhr'
 import { CreateSpaceDialog } from './CreateSpaceDialog'
 import { KnowledgeDocumentPane } from './KnowledgeDocumentPane'
 import { KnowledgePane } from './KnowledgePane'
@@ -119,14 +117,10 @@ export const KnowledgeWorkspace = ({
   const fullPage =
     fullPageQuery.data && fullPageQuery.data.id === fullBodyPageId ? fullPageQuery.data : undefined
 
-  // ─── Upload ───────────────────────────────────────────────────────────────
-  // One file at a time through the existing route. The queue, the folder drop
-  // and the placeholder rows are Wave 2's, and the doorway has to keep working
-  // until they land (AGENTS.md → Rule zero).
-  const [uploadInto, setUploadInto] = useState<string | null>(null)
-  const [, setUploadProgress] = useState<UploadProgress | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const fileNodeUpload = useUploadFileNode(selectedSpaceId, uploadInto)
+  // Uploading is the Finder's own (uploads-and-indexing.md §2): one queue, one
+  // file picker and one set of placeholder rows, all inside `DocumentsFinder`.
+  // The single-file doorway that stood here until Wave 2 landed is gone —
+  // two file inputs on one screen is two answers to one question.
   const [createSpaceOpen, setCreateSpaceOpen] = useState(false)
 
   const browser = (
@@ -135,27 +129,7 @@ export const KnowledgeWorkspace = ({
         canManageSpace={canManage}
         onCreateRootFolder={scope.kind === 'org' ? () => setCreateSpaceOpen(true) : undefined}
         onOpenSettings={openSpaceSettings}
-        onUploadFile={(parentPageId) => {
-          setUploadInto(parentPageId)
-          fileInputRef.current?.click()
-        }}
         scope={scope}
-      />
-      <input
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file && selectedSpaceId) {
-            setUploadProgress({ loaded: 0, pct: 0, total: file.size })
-            fileNodeUpload.mutate(
-              { file, onProgress: setUploadProgress },
-              { onSettled: () => setUploadProgress(null) },
-            )
-          }
-          event.target.value = ''
-        }}
-        ref={fileInputRef}
-        type="file"
       />
       {selectedSpace && canManage ? (
         <SpaceSettingsDialog

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { SetURLSearchParams } from 'react-router-dom'
 import { faColumns, faList, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
+import { getCookie, setCookie } from '../../../../lib/storage'
 
 /**
  * What the URL says the browser is showing: which view, and which folder.
@@ -162,4 +163,38 @@ export const finderBarTitle = ({
   if (virtualKind === 'latest') return 'Latest'
   if (virtualKind === 'shared-with-me') return 'Shared with me'
   return deepestFolderTitle ?? spaceName ?? 'Documents'
+}
+
+
+// ── Column width ────────────────────────────────────────────────────────────
+//
+// The other half of "what the browser is showing", and persisted the same way:
+// one width for every column, in a cookie, so a person who widened the columns
+// on Monday finds them wide on Tuesday. It lives here rather than in
+// `DocumentsFinder` because it is view state and nothing else, and it is read
+// back through the clamp so a hand-edited cookie cannot produce a 4px column.
+
+export const FINDER_COLUMN_WIDTH_COOKIE = 'knowledgeColumnWidth'
+export const MIN_COLUMN_WIDTH = 300
+export const MAX_COLUMN_WIDTH = 720
+export const DEFAULT_COLUMN_WIDTH = 320
+
+export const clampColumnWidth = (value: number): number =>
+  Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, value))
+
+const readStoredWidth = (): number => {
+  const stored = Number(getCookie(FINDER_COLUMN_WIDTH_COOKIE))
+  return Number.isFinite(stored) && stored > 0 ? clampColumnWidth(stored) : DEFAULT_COLUMN_WIDTH
+}
+
+/** The live width, and the resize handle's contract, for every column. */
+export const useFinderColumnWidth = () => {
+  const [width, setWidth] = useState(readStoredWidth)
+  // Committed on release, not on every pixel: a cookie write per mousemove is
+  // a cookie write per mousemove.
+  const onResize = useCallback((next: number, commit: boolean) => {
+    setWidth(next)
+    if (commit) setCookie(FINDER_COLUMN_WIDTH_COOKIE, String(next))
+  }, [])
+  return { columnWidth: width, resize: { max: MAX_COLUMN_WIDTH, min: MIN_COLUMN_WIDTH, onResize, width } }
 }

@@ -17,10 +17,10 @@ import { useKnowledge } from '../KnowledgeProvider'
 import { isAgentDraft } from '../page-status'
 import { FinderListHost } from './FinderListView'
 import { FinderRootColumn, type FinderRootRow } from './FinderRootColumn'
-import { FinderStatusBar } from './FinderStatusBar'
-import { FinderVirtualHost, type FinderVirtualRow } from './FinderVirtualColumn'
+import { FinderStatusStrip } from './FinderStatusBar'
+import type { FinderVirtualRow } from './FinderVirtualColumn'
+import { FinderVirtualPane } from './FinderVirtualPane'
 import { FinderFolderHost, type FinderFolderLevel } from './FinderFolderColumn'
-import { buildFinderToolbarActions } from './finder-toolbar-actions'
 import { emptyFinderSelection, finderSelectionReducer } from './finder-selection'
 import {
   agentDraftVisibleIds,
@@ -35,18 +35,20 @@ import {
   FINDER_VIEWS,
   FINDER_VIEW_COOKIE,
   migrateStoredFinderView,
+  useFinderColumnWidth,
   useFinderFolderParam,
 } from './finder-view'
+import { FinderUploadInput, UploadLeaveGuard, useFinderUploads } from './UploadQueue'
+import { useFinderMenus } from './useFinderMenus'
 import { useFinderMove } from './useFinderMove'
+import { useFinderToolbar } from './useFinderToolbar'
+import { useFinderTransfers } from './useFinderTransfers'
 
 /**
- * The Documents Finder: the viewport, its columns, the status bar, and the
- * toolbar that acts on whichever column is active.
- *
- * It composes and holds no row markup — that is each column's — and it is the
- * same component in all three places documents are browsed. What differs is
- * the scope: Knowledge starts at the root column, a project's Docs tab inside
- * the project's folder, an agent's tab inside the agent's.
+ * The Documents Finder: the viewport, its columns, the status bar and the
+ * toolbar that acts on whichever column is active. It holds no row markup, and
+ * it is the same component wherever documents are browsed; only the scope
+ * differs (the root column, a project's folder, an agent's).
  */
 
 export type FinderScope =
@@ -54,27 +56,13 @@ export type FinderScope =
   | { kind: 'project'; projectId: string }
   | { kind: 'agent'; spaceId: string; agentId: string }
 
-const COLUMN_WIDTH_COOKIE = 'knowledgeColumnWidth'
-const MIN_COLUMN_WIDTH = 300
-const MAX_COLUMN_WIDTH = 720
-const DEFAULT_COLUMN_WIDTH = 320
-
-const clampWidth = (value: number): number =>
-  Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, value))
-
-const readStoredWidth = (): number => {
-  const stored = Number(getCookie(COLUMN_WIDTH_COOKIE))
-  return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_COLUMN_WIDTH
-}
-
 type DocumentsFinderProps = {
   /** The ⚙ action; the dialog it opens belongs to the workspace. */
   canManageSpace: boolean
   /** The root's "New shared folder…" — a root folder needs a visibility choice. */
   onCreateRootFolder?: () => void
   onOpenSettings: () => void
-  /** Upload into the active column. The file input lives with the workspace. */
-  onUploadFile: (parentPageId: string | null) => void
+  // Uploading is the Finder's own (uploads-and-indexing.md §2).
   scope: FinderScope
 }
 
@@ -82,7 +70,6 @@ export const DocumentsFinder = ({
   canManageSpace,
   onCreateRootFolder,
   onOpenSettings,
-  onUploadFile,
   scope,
 }: DocumentsFinderProps) => {
   const knowledge = useKnowledge()
@@ -105,7 +92,7 @@ export const DocumentsFinder = ({
 
   // ── View, sort and the open folder, all in the URL ────────────────────────
   // Read once per mount: the fallback must not move under the hook that
-  // deletes the param when the fallback itself is selected.
+  // deletes the param when the fallback is selected.
   const [storedView] = useState(() => migrateStoredFinderView(getCookie(FINDER_VIEW_COOKIE)))
   const [view, selectView] = useTabParam('view', FINDER_VIEWS, storedView)
   const [storedSort] = useState(() => {
@@ -120,8 +107,7 @@ export const DocumentsFinder = ({
 
   const { browseTo, childrenOf, pagePath, pageById, rootPages, selectedSpaceId } = knowledge
 
-  // `?folder=` — the deepest open folder, read on a cold start and mirrored
-  // back on every browse.
+  // `?folder=` — the deepest open folder, read cold and mirrored on browse.
   useFinderFolderParam({
     browseTo,
     pageById,
@@ -184,8 +170,8 @@ export const DocumentsFinder = ({
   const deepestKey = virtualColumnKey ?? levels.at(-1)?.key ?? 'root'
   const [selection, dispatch] = useReducer(finderSelectionReducer, emptyFinderSelection(deepestKey))
 
-  // The active column is the one holding the selection; with nothing selected
-  // it is the deepest open one, which is where a new folder or file lands.
+  // The column holding the selection, else the deepest open one — where a new
+  // folder or file lands.
   const activeKey = selection.ids.length > 0 ? selection.columnKey : deepestKey
   const activeLevel = levels.find((level) => level.key === activeKey)
   const activeParentPageId = activeLevel?.parentPageId ?? null
@@ -195,9 +181,7 @@ export const DocumentsFinder = ({
     [activeLevel, rowsIn, virtualColumnKey],
   )
 
-  // A page the selection names may be gone — archived, moved, filtered out by
-  // Needs review — and a selection that outlives its row is a toolbar acting
-  // on nothing.
+  // A selection that outlives its row is a toolbar acting on nothing.
   useEffect(() => {
     if (virtualColumnKey || !activeLevel) return
     dispatch({
@@ -229,8 +213,8 @@ export const DocumentsFinder = ({
         knowledge.selectSpace(row.space.spaceId)
         return void navigate(`/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`)
       case 'project-unopened':
-        // The folder is provisioned on the way in: `GET /root` deliberately
-        // writes no space for a project nobody has opened yet.
+        // Provisioned on the way in: `GET /root` writes no space for a
+        // project nobody has opened yet.
         return void knowledge.openProjectDocuments(row.projectId).then((spaceId) => {
           if (spaceId) void navigate(`/knowledge-base/spaces/${encodeURIComponent(spaceId)}`)
         })
@@ -255,29 +239,31 @@ export const DocumentsFinder = ({
     [browseTo, knowledge, pagePath],
   )
 
+  // ── Uploads, menus, the transfer prompt ───────────────────────────────────
+  const uploads = useFinderUploads({ pages: knowledge.pages, spaceId: selectedSpaceId })
+  const menus = useFinderMenus()
+  const transfers = useFinderTransfers({ pageById, root: rootQuery.data })
+
   // ── Drag: in-space moves ──────────────────────────────────────────────────
   const drag = useFinderMove({
+    onForeignDrop: transfers.onForeignDrop,
     pageById,
     selectedIds: selection.ids,
     selectedSpaceId,
   })
 
   // ── The toolbar ───────────────────────────────────────────────────────────
-  const [creatingFolderIn, setCreatingFolderIn] = useState<string | null>(null)
   const spaceCanWrite = knowledge.selectedSpace?.canWrite ?? false
-  const actions = buildFinderToolbarActions({
+  const { actions, closeNewFolder, creatingFolderIn, openNewFolderIn } = useFinderToolbar({
+    activeKey,
+    activeParentPageId,
     agentDraftCount,
     canManageSpace,
-    canWrite: spaceCanWrite && !rootColumnActive,
     isRootColumn: rootColumnActive,
     isVirtualColumn: Boolean(virtualColumnKey),
     needsReviewOnly,
-    onCreateDocument: () => knowledge.openCreate(activeParentPageId),
-    onCreateFolder: () => {
-      if (rootColumnActive) return onCreateRootFolder?.()
-      selectView('columns')
-      setCreatingFolderIn(activeKey)
-    },
+    onCreateDocument: (parentPageId) => knowledge.openCreate(parentPageId),
+    onCreateRootFolder,
     onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
     onOpenSettings,
     onSelectSort: chooseSort,
@@ -286,43 +272,42 @@ export const DocumentsFinder = ({
       setCookie(FINDER_VIEW_COOKIE, next)
     },
     onToggleNeedsReview: setNeedsReviewOnly,
-    onUploadFile: () => onUploadFile(activeParentPageId),
+    onUploadFile: uploads.openPicker,
     ownerAgentId: knowledge.selectedSpace?.ownerAgentId,
     scopeAgentId: scope.kind === 'agent' ? scope.agentId : undefined,
     showViewAction: !single,
     sort,
+    spaceCanWrite,
     view,
   })
 
-  // ── Geometry ──────────────────────────────────────────────────────────────
-  const [columnWidth, setColumnWidth] = useState(readStoredWidth)
-  const resize = {
-    max: MAX_COLUMN_WIDTH,
-    min: MIN_COLUMN_WIDTH,
-    onResize: (width: number, commit: boolean) => {
-      setColumnWidth(width)
-      if (commit) setCookie(COLUMN_WIDTH_COOKIE, String(width))
-    },
-    width: columnWidth,
+  // A root row is the only place a *different* root folder can be dropped, so
+  // a cross-root transfer starts there (transfer.md §1). These two prop names
+  // are the contract with Wave 2A, which adds them to `FinderRootColumn`.
+  const rootDrop = {
+    dropHandlersForSpace: (spaceId: string) => drag.dropHandlersFor(spaceId, {
+      kind: 'folder',
+      parentPageId: null,
+      spaceId,
+    }),
+    dropTargetId: drag.dropTargetKey,
   }
+
+  // ── Geometry ──────────────────────────────────────────────────────────────
+  const { columnWidth, resize } = useFinderColumnWidth()
 
   const virtualList: FinderVirtualRow[] = virtualKind === 'latest'
     ? virtualRows(latestQuery.data)
-    : virtualKind === 'shared-with-me'
-      ? virtualRows(sharedQuery.data)
-      : []
+    : virtualKind === 'shared-with-me' ? virtualRows(sharedQuery.data) : []
   const virtualQuery = virtualKind === 'latest' ? latestQuery : sharedQuery
 
-  // In project scope the shared group does not exist, so an ad-hoc space filed
-  // under this project would be unreachable here. It rides above the page rows
-  // of column 0 instead — one click away, exactly as at the org root.
+  // No shared group in project scope: an ad-hoc space rides above column 0.
   const siblingSpaces = scope.kind === 'project'
     ? knowledge.spaces.filter((space) => space.id !== selectedSpaceId)
     : []
 
-  // In the section the root column is a screen of its own, so leaving a root
-  // folder is a route change rather than a selection change. In project and
-  // agent scope there is no root column to return to.
+  // The root column is a screen of its own, so leaving a root folder is a
+  // route change. Project and agent scope have none to return to.
   const backToRoot = orgScope
     ? () => {
         knowledge.selectVirtual(null)
@@ -339,17 +324,20 @@ export const DocumentsFinder = ({
       scrollKey="finder:root"
       title="Documents"
     >
-      <FinderRootColumn
-        activeRowId={selectedRootRowId}
-        columnActive={rootColumnActive}
-        onOpen={openRootRow}
-        query={{
-          isError: rootQuery.isError,
-          isLoading: rootQuery.isLoading,
-          refetch: rootQuery.refetch,
-        }}
-        root={rootQuery.data}
-      />
+      <div className="h-full" {...uploads.refuseProps}>
+        <FinderRootColumn
+          {...rootDrop}
+          activeRowId={selectedRootRowId}
+          columnActive={rootColumnActive}
+          onOpen={openRootRow}
+          query={{
+            isError: rootQuery.isError,
+            isLoading: rootQuery.isLoading,
+            refetch: rootQuery.refetch,
+          }}
+          root={rootQuery.data}
+        />
+      </div>
     </ColumnBrowserColumn>
   )
 
@@ -357,35 +345,29 @@ export const DocumentsFinder = ({
     ...(orgScope ? [rootColumn] : []),
     ...(virtualColumnKey
       ? [(
-        <ColumnBrowserColumn
+        <FinderVirtualPane
+          columnKey={virtualColumnKey}
+          dispatch={dispatch}
           key={virtualColumnKey}
+          kind={virtualKind ?? 'latest'}
           onBack={backToRoot}
+          onOpen={(row) => knowledge.openPageDeepLink({
+            pageId: row.id,
+            spaceId: row.home.spaceId,
+          })}
+          query={virtualQuery}
+          refuseProps={uploads.refuseProps}
           resize={resize}
-          showBack
-          title={virtualKind === 'latest' ? 'Latest' : 'Shared with me'}
-        >
-          <FinderVirtualHost
-            columnKey={virtualColumnKey}
-            dispatch={dispatch}
-            kind={virtualKind ?? 'latest'}
-            onOpen={(row) => knowledge.openPageDeepLink({
-              pageId: row.id,
-              spaceId: row.home.spaceId,
-            })}
-            query={virtualQuery}
-            rows={virtualList}
-            selection={selection}
-          />
-        </ColumnBrowserColumn>
+          rows={virtualList}
+          selection={selection}
+        />
       )]
       : levels.map((level, index) => (
         <ColumnBrowserColumn
           actions={single && !orgScope && index === 0 ? actions : undefined}
           key={level.key}
-          // Every column beyond the root is a real layer on `single`, and a
-          // pushed layer with no way out is a trap. A folder returns to its
-          // parent folder; a root folder's own listing returns to the root
-          // column, which in the section is the screen it was pushed over.
+          // A pushed layer with no way out is a trap: a folder returns to
+          // its parent, a root folder's listing to the root column.
           onBack={level.depth > 0
             ? () => browseTo(pagePath.slice(0, level.depth - 1))
             : backToRoot}
@@ -405,16 +387,19 @@ export const DocumentsFinder = ({
             onBack={level.depth > 0
               ? () => browseTo(pagePath.slice(0, level.depth - 1))
               : undefined}
-            onCancelFolder={() => setCreatingFolderIn(null)}
-            onCreateFolder={() => setCreatingFolderIn(level.key)}
+            onCancelFolder={() => closeNewFolder()}
+            onCreateFolder={() => openNewFolderIn(level.key)}
             onOpen={(page) => openPageIn(level, page)}
             onSubmitFolder={(name) => {
               void knowledge.createFolder(level.parentPageId, name)
-                .finally(() => setCreatingFolderIn(null))
+                .finally(() => closeNewFolder())
             }}
+            menus={menus}
+            onUploadRefused={uploads.notice}
             pageById={pageById}
             pathSelectionId={pagePath[level.depth]}
             rows={rowsIn(level.parentPageId)}
+            uploads={uploads.queue}
             selection={selection}
             siblingSpaces={index === 0 ? siblingSpaces : []}
             onOpenSiblingSpace={(spaceId) => knowledge.selectSpace(spaceId)}
@@ -424,23 +409,23 @@ export const DocumentsFinder = ({
       ))),
   ]
 
-  const statusBar = single ? null : (
-    <FinderStatusBar
+  const statusBar = (<FinderStatusStrip
       itemCount={virtualColumnKey ? virtualList.length : activeRows.length}
+      message={uploads.statusMessage}
       more={Boolean(virtualColumnKey && virtualQuery.hasNextPage)}
       selectedCount={selection.ids.length}
       showStorage={orgScope}
+      single={single}
+      transferRows={transfers.progressRows}
       truncated={rootQuery.data?.sharedTruncated ?? false}
+      uploads={uploads}
     />
   )
 
-  // List view is a split-layout affordance: on `single` a column *is* one
-  // folder full width, so a second way to say that would be a fork.
+  // List view is a split affordance: on `single` a column *is* one folder.
   const listView = view === 'list' && !single && !virtualColumnKey && levels.length > 0
 
-  // Finder's toolbar spans the window, not the first column. Below `split` the
-  // column *is* the screen and carries the actions itself, because a phone has
-  // no width for a bar above one full-width folder.
+  // The toolbar spans the window; below `split` the column carries it.
   const toolbar = single ? null : (
     <ScreenHeader
       actions={actions}
@@ -471,7 +456,7 @@ export const DocumentsFinder = ({
                 const at = pagePath.indexOf(pageId)
                 browseTo(at >= 0 ? pagePath.slice(0, at + 1) : [pageId])
               }}
-              onCreateFolder={() => setCreatingFolderIn(levels.at(-1)?.key ?? null)}
+              onCreateFolder={() => openNewFolderIn(levels.at(-1)?.key ?? null)}
               onOpen={(page) => openPageIn(levels.at(-1) as FinderFolderLevel, page)}
               onSelectSort={chooseSort}
               pageById={pageById}
@@ -494,6 +479,14 @@ export const DocumentsFinder = ({
         )}
       </div>
       {statusBar}
+      <FinderUploadInput
+        parentPageId={activeParentPageId}
+        spaceId={selectedSpaceId}
+        uploads={uploads}
+      />
+      <UploadLeaveGuard queue={uploads.queue} />
+      {menus.dialogs}
+      {transfers.prompt}
     </div>
   )
 }

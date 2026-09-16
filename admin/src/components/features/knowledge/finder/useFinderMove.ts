@@ -21,6 +21,12 @@ export const useFinderMove = ({
   selectedIds,
   selectedSpaceId,
 }: {
+  /**
+   * A drop whose source root differs from the target's. Passed straight
+   * through to `useFinderDrag`, which is where the branch is decided; this
+   * hook has nothing to say about a transfer beyond not handling it. The type
+   * is read off the hook so the two can never drift apart.
+   */
   onForeignDrop?: UseFinderDragInput['onForeignDrop']
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   selectedIds: readonly string[]
