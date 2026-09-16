@@ -162,22 +162,20 @@ pub fn executor_companion_status(
 ) -> Result<ExecutorCompanionAvailability, String> {
     assert_approved_companion_caller(&webview)?;
     let (availability, reason) = companion_availability(&app);
-    let executors = if availability.permits_local_control() {
-        paired_executors(&app, &state)
-    } else {
-        Vec::new()
-    };
+    let local_control = availability.permits_local_control();
+    let executors = if local_control { paired_executors(&app, &state) } else { Vec::new() };
     Ok(ExecutorCompanionAvailability {
         availability,
         reason,
         platform: crate::shell::desktop_platform(),
         executors,
         menu_bar: MenuBarCompanion {
-            // The control is offered only when there is a bundle behind it. A
-            // sandboxed App Store build ships no nested copy, and a Mac with no
-            // install has nothing else to open.
-            openable: resolve_menu_bar_app().is_some(),
-            supervising: runtime::menu_bar::menu_bar_daemon_live(),
+            // Reported the way the command behaves, not the way the disk looks: a
+            // build whose release provenance did not check out refuses to open
+            // anything, so it must not offer a control that would then refuse.
+            // A sandboxed App Store build ships no nested copy either way.
+            openable: local_control && resolve_menu_bar_app().is_some(),
+            supervising: local_control && runtime::menu_bar::menu_bar_daemon_live(),
         },
     })
 }

@@ -36,6 +36,7 @@ const response = (
   availability: ExecutorCompanionAvailability,
   reason: string,
   operationKeys: string[] = ['file.read'],
+  overrides: Partial<ExecutorCompanionStatusResponse> = {},
 ): ExecutorCompanionStatusResponse => ({
   availability,
   executors: [{
@@ -45,8 +46,12 @@ const response = (
     workspaceConfigured: true,
     workspaceLabel: 'Nessie work',
   }],
+  // The default is every non-Mac and a Mac with neither the nested helper nor an
+  // install, which is what the cases below are about.
+  menuBar: { openable: false, supervising: false },
   platform: 'linux',
   reason,
+  ...overrides,
 })
 
 const domGlobals = (extra: Record<string, unknown>) => ({
@@ -63,6 +68,8 @@ const domGlobals = (extra: Record<string, unknown>) => ({
 
 const renderPanel = async (input: {
   desktop: boolean
+  /** `null` is a Mac standing at Executors with nothing paired through Desktop. */
+  executorId?: string | null
   status?: ExecutorCompanionStatusResponse
   statusError?: string
 }): Promise<string> => {
@@ -90,7 +97,13 @@ const renderPanel = async (input: {
   const root = createRoot(container)
   await act(async () => {
     root.render(
-      h(ShellEnvironmentProvider, null, h(ExecutorDesktopCompanionPanel, { executorId: 'exec-1' })),
+      h(
+        ShellEnvironmentProvider,
+        null,
+        h(ExecutorDesktopCompanionPanel, {
+          executorId: input.executorId === null ? undefined : input.executorId ?? 'exec-1',
+        }),
+      ),
     )
   })
   const html = container.innerHTML
@@ -156,4 +169,84 @@ test('a native command error remains visible verbatim', async () => {
   assert.match(html, /Nessie Desktop companion/)
   assert.match(html, new RegExp(message.replace(/[.]/g, '\\.')))
   assert.doesNotMatch(html, /Nessie Desktop could not complete/)
+})
+
+/**
+ * Nessie Desktop ships the Nessie Executor menu bar app inside its own bundle, so
+ * a Mac needs no second download to become an executor. Rule zero applies to that
+ * copy as much as to anything else: if nothing on screen opens it, it is not
+ * shipped, it is merely present on disk.
+ */
+const macResponse = (
+  menuBar: { openable: boolean; supervising: boolean },
+  daemonStatus: 'running' | 'stopped' = 'stopped',
+): ExecutorCompanionStatusResponse => ({
+  ...response('available', 'Ready.', ['file.read'], { menuBar, platform: 'macos' }),
+  executors: [{
+    daemonStatus,
+    executorId: 'exec-1',
+    operationKeys: ['file.read'],
+    workspaceConfigured: true,
+    workspaceLabel: 'Nessie work',
+  }],
+})
+
+test('a Mac carrying the menu bar app has a way to open it', async () => {
+  const html = await renderPanel({
+    desktop: true,
+    status: macResponse({ openable: true, supervising: false }),
+  })
+  assert.match(html, /Open Nessie Executor/)
+  assert.match(html, /Nessie Desktop ships it, so there is nothing else to install/)
+  // Nothing is supervising yet, so Desktop's own daemon control stays.
+  assert.match(html, /Start daemon/)
+})
+
+test('the doorway is there before anything is paired through Desktop', async () => {
+  const html = await renderPanel({
+    desktop: true,
+    executorId: null,
+    status: macResponse({ openable: true, supervising: false }),
+  })
+  assert.match(html, /Nessie Executor on this Mac/)
+  assert.match(html, /Open Nessie Executor/)
+  // Desktop has no pairing of its own here, so it offers none of its controls.
+  assert.doesNotMatch(html, /Start daemon/)
+  assert.doesNotMatch(html, /Local workspace policy/)
+})
+
+test('a build with nothing to open offers nothing, on a Mac or anywhere else', async () => {
+  const html = await renderPanel({
+    desktop: true,
+    status: macResponse({ openable: false, supervising: false }),
+  })
+  assert.doesNotMatch(html, /Open Nessie Executor/)
+  assert.equal(await renderPanel({ desktop: true, executorId: null, status: macResponse({ openable: false, supervising: false }) }), '')
+})
+
+/**
+ * The failure this replaces: two supervisors offering the same start button, one
+ * of which loses the race for the daemon lease and reports a refusal the person
+ * had no way to predict. Desktop says who has the daemon instead.
+ */
+test('while the menu bar app has the daemon, Desktop says so instead of offering a start', async () => {
+  const html = await renderPanel({
+    desktop: true,
+    status: macResponse({ openable: true, supervising: true }),
+  })
+  assert.match(html, /is running this Mac’s executor/)
+  assert.match(html, /will not start a second daemon beside it/)
+  assert.doesNotMatch(html, /Start daemon/)
+  assert.doesNotMatch(html, /Stop daemon/)
+  // And the way across is still on screen: deferring is not the same as a dead end.
+  assert.match(html, /Open Nessie Executor/)
+})
+
+/** A daemon Desktop started itself stays Desktop's to stop. */
+test('Desktop keeps the stop button for a daemon it started itself', async () => {
+  const html = await renderPanel({
+    desktop: true,
+    status: macResponse({ openable: true, supervising: false }, 'running'),
+  })
+  assert.match(html, /Stop daemon/)
 })

@@ -5,12 +5,14 @@ import {
   configureExecutorWorkspaceWithCompanion,
   executorCompanionStatus,
   forgetExecutorWithCompanion,
+  openExecutorMenuBarApp,
   pairExecutorWithCompanion,
   startExecutorWithCompanion,
   stopExecutorWithCompanion,
   type ExecutorCompanionAvailability,
   type ExecutorCompanionStatus,
   type ExecutorCompanionStatusResponse,
+  type ExecutorMenuBarCompanion,
 } from '../../../lib/executor-companion'
 import { getExecutorApiOrigin } from '../../../lib/api-client'
 import { useShellEnvironment } from '../../../providers/ShellEnvironmentProvider'
@@ -36,7 +38,16 @@ const failureMessage = (cause: unknown): string => {
   return 'Nessie Desktop could not complete that executor action.'
 }
 
-type CompanionAction = 'forget' | 'pair' | 'policy' | 'start' | 'stop' | 'workspace'
+type CompanionAction = 'forget' | 'menuBar' | 'pair' | 'policy' | 'start' | 'stop' | 'workspace'
+
+/**
+ * Nessie Desktop ships the Nessie Executor menu bar app inside its own bundle,
+ * so a Mac needs no second download to run an executor. Once that app is
+ * supervising the daemon it owns this Mac: Desktop says so and offers the way
+ * across rather than a start button that would race it for the daemon lease.
+ */
+const MENU_BAR_SUPERVISING_COPY =
+  'The Nessie Executor menu bar app is running this Mac’s executor. Start and stop it from its menu bar icon — Nessie Desktop will not start a second daemon beside it.'
 
 /** Availability states that still put pairing and daemon controls on screen. */
 const offersControls = (availability: ExecutorCompanionAvailability): boolean =>
@@ -70,6 +81,38 @@ const AvailabilityCard = ({ status }: { status: ExecutorCompanionStatusResponse 
       .
     </p>
   </section>
+)
+
+/**
+ * The doorway to the menu bar app. It is offered whether or not this Mac has a
+ * Desktop pairing, because a person who wants the menu bar app is exactly the
+ * person who has not paired one here — and the app Desktop ships is the one they
+ * would otherwise go and download.
+ */
+const MenuBarSection = ({
+  busy,
+  menuBar,
+  onOpen,
+}: {
+  busy: CompanionAction | null
+  menuBar: ExecutorMenuBarCompanion
+  onOpen: () => void
+}) => (
+  <div className="grid gap-1">
+    <button
+      className="admin-button admin-button-secondary w-fit"
+      disabled={busy !== null}
+      onClick={onOpen}
+      type="button"
+    >
+      {busy === 'menuBar' ? 'Opening…' : 'Open Nessie Executor'}
+    </button>
+    <p className="text-xs text-[color:var(--tx3)]">
+      {menuBar.supervising
+        ? MENU_BAR_SUPERVISING_COPY
+        : 'The menu bar app is this Mac’s own executor surface: its settings, where it can reach, and which command-line tools it may run. Nessie Desktop ships it, so there is nothing else to install.'}
+    </p>
+  </div>
 )
 
 export const ExecutorDesktopCompanionPanel = ({
@@ -111,6 +154,18 @@ export const ExecutorDesktopCompanionPanel = ({
     }
   }, [activeExecutorId, desktopPlatform])
 
+  const openMenuBarApp = async () => {
+    setBusy('menuBar')
+    setError(null)
+    try {
+      await openExecutorMenuBarApp()
+    } catch (cause) {
+      setError(failureMessage(cause))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   if (desktopPlatform === null) return null
   if (!companion) {
     return error ? (
@@ -123,8 +178,25 @@ export const ExecutorDesktopCompanionPanel = ({
 
   const controls = offersControls(companion.availability)
   if (!controls) return <AvailabilityCard status={companion} />
+  const menuBarSection = companion.menuBar.openable ? (
+    <MenuBarSection busy={busy} menuBar={companion.menuBar} onOpen={() => void openMenuBarApp()} />
+  ) : null
   if (!activeExecutorId) {
-    return companion.availability === 'workspace_only' ? <AvailabilityCard status={companion} /> : null
+    const availabilityCard = companion.availability === 'workspace_only'
+      ? <AvailabilityCard status={companion} />
+      : null
+    if (!availabilityCard && !menuBarSection) return null
+    return (
+      <>
+        {availabilityCard}
+        {menuBarSection ? (
+          <section className="admin-card grid gap-3 border border-[color:var(--sep)] p-4">
+            <h2 className="text-sm font-semibold text-[color:var(--tx)]">Nessie Executor on this Mac</h2>
+            {menuBarSection}
+          </section>
+        ) : null}
+      </>
+    )
   }
 
   const run = async (
@@ -182,6 +254,8 @@ export const ExecutorDesktopCompanionPanel = ({
           </p>
         </div>
 
+        {menuBarSection}
+
         {created ? (
           <button
             className="admin-button admin-button-primary w-fit"
@@ -208,7 +282,9 @@ export const ExecutorDesktopCompanionPanel = ({
               <p className="text-xs text-[color:var(--tx3)]">Confirm this executor’s fingerprint in Nessie before starting its local daemon.</p>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              {status.daemonStatus === 'running' ? (
+              {companion.menuBar.supervising ? (
+                <span className="text-xs text-[color:var(--tx3)]">{MENU_BAR_SUPERVISING_COPY}</span>
+              ) : status.daemonStatus === 'running' ? (
                 <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop daemon'}</button>
               ) : status.daemonStatus === 'stopping' ? (
                 <span className="text-xs text-[color:var(--tx3)]">Waiting for the prior daemon to stop…</span>
