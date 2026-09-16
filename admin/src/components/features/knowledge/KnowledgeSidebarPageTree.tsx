@@ -1,4 +1,4 @@
-import { faChevronDown, faFile, faFileLines } from '@fortawesome/free-solid-svg-icons'
+import { faChevronDown, faFile, faFileLines, faTable, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { sidebarAriaCurrent } from '../../shared/row-a11y'
@@ -9,6 +9,11 @@ type KnowledgeSidebarPageTreeProps = {
   onSelect: (path: string[]) => void
   rootPages: KnowledgePageRecord[]
 }
+
+// The kind, not the filename: a spreadsheet page is never named `.xlsx`, and
+// `iconForFilename` deliberately keeps answering for file nodes only.
+const pageTreeIcon = (kind: KnowledgePageRecord['kind']): IconDefinition =>
+  kind === 'document' ? faFileLines : kind === 'spreadsheet' ? faTable : faFile
 
 const sorted = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
   [...pages].sort((left, right) => left.position - right.position || left.title.localeCompare(right.title))
@@ -46,7 +51,7 @@ export const KnowledgeSidebarPageTree = ({
               <FontAwesomeIcon
                 className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
                 fixedWidth
-                icon={page.kind === 'document' ? faFileLines : faFile}
+                icon={pageTreeIcon(page.kind)}
               />
               <span className="min-w-0 flex-1 truncate text-left">{page.title}</span>
             </button>

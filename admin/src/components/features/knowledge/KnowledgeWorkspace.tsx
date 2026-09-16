@@ -30,6 +30,15 @@ import { SpaceSettingsDialog } from './SpaceSettingsDialog'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { VersionHistory } from './VersionHistory'
 import { buildKnowledgeWorkspaceActions } from './knowledge-workspace-actions'
+import { SpreadsheetCreateDialog } from './spreadsheet/SpreadsheetCreateDialog'
+import {
+  SpreadsheetImportDialog,
+  type SpreadsheetImportWarningList,
+} from './spreadsheet/SpreadsheetImportDialog'
+import {
+  useCreateSpreadsheet,
+  useImportSpreadsheet,
+} from '../../../facades/knowledge/spreadsheet-hooks'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
@@ -185,10 +194,31 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const fullBodyPageId =
     editor?.mode === 'edit'
       ? editor.page.id
-      : historyPageId ?? (current && current.kind !== 'file' ? current.id : undefined)
+      : historyPageId
+        ?? (current && current.kind === 'document' ? current.id : undefined)
   const fullPageQuery = useKnowledgePage(fullBodyPageId)
   const fullPage =
     fullPageQuery.data && fullPageQuery.data.id === fullBodyPageId ? fullPageQuery.data : undefined
+
+  // ─── Spreadsheet doorways ─────────────────────────────────────────────────
+  // "New spreadsheet" sits beside "New page", and importing a workbook is the
+  // second item under "Upload file"; both land on the same page kind, so both
+  // open the page they created rather than returning to the listing.
+  const [creatingSpreadsheet, setCreatingSpreadsheet] = useState(false)
+  const [importingSpreadsheet, setImportingSpreadsheet] = useState(false)
+  const [importProgress, setImportProgress] = useState<UploadProgress | null>(null)
+  const [importWarnings, setImportWarnings] = useState<SpreadsheetImportWarningList>()
+  const [importedPageId, setImportedPageId] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const createSpreadsheet = useCreateSpreadsheet(selectedSpaceId)
+  const importSpreadsheet = useImportSpreadsheet(selectedSpaceId)
+
+  const closeImport = () => {
+    setImportingSpreadsheet(false)
+    setImportWarnings(undefined)
+    setImportedPageId(null)
+    setImportError(null)
+  }
 
   // ─── File-node upload wiring (a file dropped into the current folder) ──────
   const [fileNodeProgress, setFileNodeProgress] = useState<UploadProgress | null>(null)
@@ -210,6 +240,8 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       setCreatingFolder(true)
     },
     onCreatePage: () => openCreate(currentFolder?.id ?? null),
+    onCreateSpreadsheet: () => setCreatingSpreadsheet(true),
+    onImportSpreadsheet: () => setImportingSpreadsheet(true),
     onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
     onOpenSettings: openSpaceSettings,
     onSelectView: updateViewMode,
@@ -306,6 +338,57 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
             ref={fileInputRef}
             type="file"
           />
+          {creatingSpreadsheet && canWrite ? (
+            <SpreadsheetCreateDialog
+              onClose={() => setCreatingSpreadsheet(false)}
+              onSubmit={(title) => {
+                createSpreadsheet.mutate(
+                  { parentPageId: currentFolder?.id ?? null, title },
+                  {
+                    onSuccess: (created) => {
+                      setCreatingSpreadsheet(false)
+                      openPagePath([...path, created.id])
+                    },
+                  },
+                )
+              }}
+              open
+              pending={createSpreadsheet.isPending}
+            />
+          ) : null}
+          {importingSpreadsheet && canWrite ? (
+            <SpreadsheetImportDialog
+              error={importError}
+              onClose={closeImport}
+              onOpenImported={
+                importedPageId
+                  ? () => {
+                      const pageId = importedPageId
+                      closeImport()
+                      openPagePath([...path, pageId])
+                    }
+                  : undefined
+              }
+              onPick={(file) => {
+                setImportError(null)
+                setImportProgress({ loaded: 0, pct: 0, total: file.size })
+                importSpreadsheet.mutate(
+                  { file, onProgress: setImportProgress },
+                  {
+                    onError: (error) => setImportError((error as Error).message),
+                    onSettled: () => setImportProgress(null),
+                    onSuccess: (result) => {
+                      setImportWarnings(result.warnings)
+                      setImportedPageId(result.page.id)
+                    },
+                  },
+                )
+              }}
+              progressPct={importProgress?.pct ?? 0}
+              uploading={importSpreadsheet.isPending}
+              warnings={importWarnings}
+            />
+          ) : null}
           {selectedSpace && canManage ? (
             <SpaceSettingsDialog
               canManageAccess={canManageAccess}

@@ -22,7 +22,10 @@ export type KnowledgeVersionRecord = {
   policyChainTrace: string[]
 }
 
-export type KnowledgePageKind = 'document' | 'file'
+// A spreadsheet is a third kind of page, not a file node that happens to be
+// an xlsx: the workbook is the document, and its xlsx rendition is only what
+// an export or a version download serves.
+export type KnowledgePageKind = 'document' | 'file' | 'spreadsheet'
 
 // Never hand-copy the API response here. In particular, ownerAgentId must not
 // be allowed to disappear from the server contract while the UI still compiles.

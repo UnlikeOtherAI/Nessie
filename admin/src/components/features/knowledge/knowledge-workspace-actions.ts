@@ -1,4 +1,4 @@
-import { faFolderPlus, faGear } from '@fortawesome/free-solid-svg-icons'
+import { faFolderPlus, faGear, faTable } from '@fortawesome/free-solid-svg-icons'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import {
   knowledgeViewOptions,
@@ -13,6 +13,8 @@ type WorkspaceActionInput = {
   ownerAgentId?: string | null
   onCreateFolder: () => void
   onCreatePage: () => void
+  onCreateSpreadsheet: () => void
+  onImportSpreadsheet: () => void
   onOpenAgent: (agentId: string) => void
   onOpenSettings: () => void
   onSelectView: (mode: KnowledgeViewMode) => void
@@ -66,10 +68,27 @@ export const buildKnowledgeWorkspaceActions = (
       : []),
     ...(input.canWrite
       ? [
+          // "Upload file" is a menu rather than a button because importing a
+          // workbook is the same gesture with a different destination: the
+          // bytes become a spreadsheet document instead of a file node.
           {
             id: 'upload-file',
+            items: [
+              {
+                id: 'upload-file-node',
+                label: 'Upload file',
+                onSelect: input.onUploadFile,
+              },
+              {
+                icon: faTable,
+                id: 'import-spreadsheet',
+                label: 'Import spreadsheet…',
+                onSelect: input.onImportSpreadsheet,
+                title: 'An .xlsx, .csv or .tsv file becomes a spreadsheet document',
+              },
+            ],
+            kind: 'menu',
             label: 'Upload file',
-            onSelect: input.onUploadFile,
             priority: 40,
           },
           {
@@ -78,6 +97,13 @@ export const buildKnowledgeWorkspaceActions = (
             label: 'New folder',
             onSelect: input.onCreateFolder,
             priority: 30,
+          },
+          {
+            icon: faTable,
+            id: 'new-spreadsheet',
+            label: 'New spreadsheet',
+            onSelect: input.onCreateSpreadsheet,
+            priority: 90,
           },
           {
             id: 'new-page',

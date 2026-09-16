@@ -3,6 +3,7 @@ import {
   faFileLines,
   faPlus,
   faSpinner,
+  faTable,
   faUpload,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -17,6 +18,7 @@ import {
   useTaskPages,
   useUploadTaskFile,
 } from '../../../../facades/knowledge/task-docs-hooks'
+import { useCreateSpreadsheet } from '../../../../facades/knowledge/spreadsheet-hooks'
 
 // Compact "Documents" section shown inside the ticket dialog: the pages bound
 // to this task (notes + uploaded files), an inline "New note" affordance, and
@@ -35,7 +37,14 @@ export const TaskDocuments = ({
   const createPage = useCreateTaskPage(taskId)
   const uploadFile = useUploadTaskFile(taskId)
 
+  // The ticket's own "New spreadsheet", beside "New note" — the same doorway
+  // the space header carries, so a person never has to leave the ticket to make
+  // one. The space is whichever one this task's documents already live in.
+  const spaceId = pagesQuery.data?.[0]?.spaceId
+  const createSpreadsheet = useCreateSpreadsheet(spaceId)
+
   const [addingNote, setAddingNote] = useState(false)
+  const [addingKind, setAddingKind] = useState<'note' | 'spreadsheet'>('note')
   const [noteTitle, setNoteTitle] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -56,7 +65,9 @@ export const TaskDocuments = ({
       setAddingNote(false)
       return
     }
-    const created = await createPage.mutateAsync({ title: trimmed })
+    const created = addingKind === 'spreadsheet' && spaceId
+      ? await createSpreadsheet.mutateAsync({ taskId, title: trimmed })
+      : await createPage.mutateAsync({ title: trimmed })
     setNoteTitle('')
     setAddingNote(false)
     openPage(created.spaceId, created.id)
@@ -88,7 +99,24 @@ export const TaskDocuments = ({
           </button>
           <button
             className="admin-button admin-button-secondary admin-button-compact gap-1.5"
-            onClick={() => setAddingNote(true)}
+            data-testid="task-new-spreadsheet"
+            disabled={!spaceId}
+            onClick={() => {
+              setAddingKind('spreadsheet')
+              setAddingNote(true)
+            }}
+            title={spaceId ? undefined : 'Add a document first, so this ticket has a space'}
+            type="button"
+          >
+            <FontAwesomeIcon icon={faTable} />
+            New spreadsheet
+          </button>
+          <button
+            className="admin-button admin-button-secondary admin-button-compact gap-1.5"
+            onClick={() => {
+              setAddingKind('note')
+              setAddingNote(true)
+            }}
             type="button"
           >
             <FontAwesomeIcon icon={faPlus} />
@@ -107,7 +135,7 @@ export const TaskDocuments = ({
       {addingNote ? (
         <div className="flex gap-2">
           <Input
-            aria-label="Note title"
+            aria-label={addingKind === 'spreadsheet' ? 'Spreadsheet title' : 'Note title'}
             autoFocus
             className="flex-1"
             onChange={(event) => setNoteTitle(event.target.value)}
@@ -120,12 +148,12 @@ export const TaskDocuments = ({
                 setNoteTitle('')
               }
             }}
-            placeholder="Note title…"
+            placeholder={addingKind === 'spreadsheet' ? 'Spreadsheet title…' : 'Note title…'}
             value={noteTitle}
           />
           <button
             className="admin-button admin-button-primary admin-button-compact"
-            disabled={!noteTitle.trim() || createPage.isPending}
+            disabled={!noteTitle.trim() || createPage.isPending || createSpreadsheet.isPending}
             onClick={() => void submitNote()}
             type="button"
           >
@@ -157,7 +185,13 @@ export const TaskDocuments = ({
               <FontAwesomeIcon
                 className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
                 fixedWidth
-                icon={page.kind === 'file' ? iconForFilename(page.title) : faFileLines}
+                icon={
+                  page.kind === 'file'
+                    ? iconForFilename(page.title)
+                    : page.kind === 'spreadsheet'
+                      ? faTable
+                      : faFileLines
+                }
               />
               <span className="min-w-0 flex-1 truncate">{page.title}</span>
               <Pill size="sm" tone={taskDocumentStatusTone(page.status)}>
