@@ -90,6 +90,16 @@ type FolderParamInput = {
  * The mirror writes with `replace`: which folder is open is part of what the
  * screen currently shows, not a place Back should walk through
  * (docs/navigation/overview.md §1).
+ *
+ * **`?folder=` is a folder, and only a folder.** The browse path also carries
+ * the open page as its last entry, so mirroring `pagePath.at(-1)` wrote a
+ * document's id into the param — a link that means "browse *into* this
+ * document". Followed cold, on a phone, it seeded an empty column named after
+ * the document and `browseTo` cleared the open page on the way, so every
+ * `?pageId=` deep link landed on "Nothing here yet" instead of the page. The
+ * mirror therefore names the deepest entry that is actually a folder, and the
+ * seed refuses to re-browse a folder that is already open, because doing so
+ * closes whatever is open inside it.
  */
 export const useFinderFolderParam = ({
   browseTo,
@@ -104,6 +114,16 @@ export const useFinderFolderParam = ({
   const [seeded, setSeeded] = useState(false)
 
   useEffect(() => setSeeded(false), [selectedSpaceId])
+
+  // The deepest entry of the browse path that is a folder; `null` at a space's
+  // root. Never the open page, whatever its kind.
+  const openFolder = (() => {
+    for (let index = pagePath.length - 1; index >= 0; index -= 1) {
+      const id = pagePath[index]
+      if (id && pageById(id)?.kind === 'folder') return id
+    }
+    return null
+  })()
 
   useEffect(() => {
     if (seeded) return
@@ -127,12 +147,19 @@ export const useFinderFolderParam = ({
       path.unshift(current.id)
       current = current.parentPageId ? pageById(current.parentPageId) : undefined
     }
+    // Already standing in it — a deep link that opened a page inside this
+    // folder has the same prefix. `browseTo` closes the open page, so seeding
+    // here would undo the thing the link was for.
+    if (path.every((id, index) => pagePath[index] === id)) return
     browseTo(path)
-  }, [browseTo, folderParam, pageById, pagesLoading, seeded, selectedSpaceId])
+  }, [browseTo, folderParam, pageById, pagePath, pagesLoading, seeded, selectedSpaceId])
 
   useEffect(() => {
     if (!seeded) return
-    const open = pagePath.at(-1) ?? null
+    // Nothing is known about any id until the space's pages arrive, so the
+    // walk above would answer `null` and delete a param it is about to need.
+    if (pagesLoading) return
+    const open = openFolder
     if ((folderParam ?? null) === open) return
     setSearchParams(
       (current) => {
@@ -143,7 +170,7 @@ export const useFinderFolderParam = ({
       },
       { replace: true },
     )
-  }, [folderParam, pagePath, seeded, setSearchParams])
+  }, [folderParam, openFolder, pagesLoading, seeded, setSearchParams])
 }
 
 /**

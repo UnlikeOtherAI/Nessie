@@ -1,5 +1,5 @@
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
-import type { FinderMenuRootRow, FinderMenuTarget } from './finder-menu'
+import type { FinderMenuKind, FinderMenuRootRow, FinderMenuTarget } from './finder-menu'
 import type { GetInfoTarget } from './GetInfoDialog'
 import type { FinderRootRow } from './FinderRootColumn'
 import type { FinderVirtualRow } from './FinderVirtualColumn'
@@ -81,10 +81,20 @@ export const rootRowDescriptor = (row: FinderRootRow): FinderMenuRootRow => {
   }
 }
 
+/**
+ * The page kinds a menu is built for. It is a cast rather than a narrowing
+ * because `KnowledgePageRecord['kind']` and `FinderMenuKind` are the same
+ * union by construction — but it is `FinderMenuKind`, never a hand-written
+ * triple: the spelled-out `'folder' | 'document' | 'file'` that used to stand
+ * here silently turned a spreadsheet row into a file's menu, and no type
+ * error said so.
+ */
+const menuKind = (kind: KnowledgePageRecord['kind']): FinderMenuKind => kind
+
 const pageDescriptor = (page: KnowledgePageRecord) => ({
   id: page.id,
   indexing: page.indexing,
-  kind: page.kind as 'folder' | 'document' | 'file',
+  kind: menuKind(page.kind),
   status: page.status,
   // A task folder names its ticket, and the ticket id is the only thing a
   // listing carries about it.
@@ -115,7 +125,7 @@ export const finderMenuTargetFor = (
           access: active.row.access,
           id: active.row.id,
           indexing: active.row.indexing,
-          kind: active.row.kind as 'folder' | 'document' | 'file',
+          kind: menuKind(active.row.kind),
           status: 'published',
           title: active.row.title,
         },

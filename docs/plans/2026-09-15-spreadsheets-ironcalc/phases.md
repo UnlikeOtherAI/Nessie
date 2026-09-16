@@ -235,7 +235,9 @@ Acceptance: all green through Turbo; `api/src/realtime/*` ≤ 500 lines each;
 
 Owns: `admin/src/components/features/knowledge/spreadsheet/**` except
 `live/**`, `admin/src/facades/knowledge/spreadsheet-hooks.ts`,
-`admin/src/lib/query-keys.ts` (keys), `knowledge-workspace-actions.ts`, the
+`admin/src/lib/query-keys.ts` (keys), the Finder's `new-file-types.ts`
+registry and `finder/useFinderSpreadsheets.tsx` (which replaced
+`knowledge-workspace-actions.ts` when the Documents Finder landed), the
 kind-switch sites in `admin-ui.md`, `TaskDocuments.tsx`,
 `FileNodeViewer.tsx` ("Open as spreadsheet"), `admin/test/spreadsheet-*.test.ts`.
 

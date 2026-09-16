@@ -69,7 +69,22 @@ export type SpreadsheetReplaceResult = {
  * (src/lib/query-keys.ts). `staleTime: Infinity` because the live lane, not a
  * refetch, is what keeps a mounted workbook current.
  */
-export const useSpreadsheetBootstrap = (pageId?: string) => {
+export const useSpreadsheetBootstrap = (
+  pageId?: string,
+  options: {
+    /**
+     * Poll until the workbook is actually in the page.
+     *
+     * Import and "Open as spreadsheet" answer `202`: the page exists at once
+     * and the worker fills it a moment later. A doorway that opens the page on
+     * the `202` lands on an empty grid — and stays there, because the pane
+     * bootstrapped before the workbook arrived. `headSeq > 0` is the first
+     * batch on the journal, and for a staged page the only batch it can have
+     * is that import's own `restore`.
+     */
+    untilFilled?: boolean
+  } = {},
+) => {
   const apiClient = useApiClient()
 
   return useQuery<SpreadsheetBootstrap>({
@@ -78,9 +93,16 @@ export const useSpreadsheetBootstrap = (pageId?: string) => {
     queryFn: () =>
       apiClient.get(`${base}/pages/${pageId}/spreadsheet`, SpreadsheetBootstrapSchema),
     queryKey: knowledgeKeys.spreadsheet(pageId),
+    refetchInterval: options.untilFilled
+      ? (query) => ((query.state.data?.headSeq ?? 0) > 0 ? false : 800)
+      : false,
     staleTime: Number.POSITIVE_INFINITY,
   })
 }
+
+/** Whether a page the worker is filling has its workbook yet. */
+export const spreadsheetIsFilled = (bootstrap?: SpreadsheetBootstrap): boolean =>
+  (bootstrap?.headSeq ?? 0) > 0
 
 const invalidateSpace = (
   queryClient: ReturnType<typeof useQueryClient>,
@@ -90,17 +112,38 @@ const invalidateSpace = (
   void queryClient.invalidateQueries({ queryKey: knowledgeKeys.myDocs })
 }
 
+/**
+ * Create. `parentPageId` is **omitted** when there is no parent, never sent as
+ * `null`: the route's body schema declares it `.optional()`, and a zod
+ * `.optional()` field rejects an explicit `null` with a 400 naming the field.
+ * Every "New spreadsheet" at a space's root answered
+ * `VALIDATION_ERROR: Expected string, received null` — a browser run found it;
+ * no unit test could, because the schema lives on the other side of the wire.
+ */
 export const useCreateSpreadsheet = (spaceId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { parentPageId?: string | null; taskId?: string; title: string }) =>
-      apiClient.post<KnowledgePageRecord>(`${base}/spaces/${spaceId}/spreadsheets`, input),
+    mutationFn: ({
+      parentPageId,
+      ...input
+    }: { parentPageId?: string | null; taskId?: string; title: string }) =>
+      apiClient.post<KnowledgePageRecord>(`${base}/spaces/${spaceId}/spreadsheets`, {
+        ...input,
+        ...(parentPageId ? { parentPageId } : {}),
+      }),
     onSuccess: () => invalidateSpace(queryClient, spaceId),
   })
 }
 
+/**
+ * Import. `parentPageId` is a **query** parameter, not a body field: the
+ * request body is the multipart file. Omitting it lands the workbook at the
+ * space's root, which is why the Finder always passes the folder it was
+ * invoked in — an import that silently ignored the open folder was the whole
+ * reason this signature grew an argument.
+ */
 export const useImportSpreadsheet = (spaceId?: string) => {
   const { token } = useAuthSession()
   const queryClient = useQueryClient()
@@ -109,13 +152,20 @@ export const useImportSpreadsheet = (spaceId?: string) => {
     mutationFn: ({
       file,
       onProgress,
-    }: { file: File; onProgress?: (progress: UploadProgress) => void }) =>
-      uploadFileWithProgress<SpreadsheetImportResult>(
-        `${base}/spaces/${spaceId}/spreadsheets/import`,
+      parentPageId,
+    }: {
+      file: File
+      onProgress?: (progress: UploadProgress) => void
+      parentPageId?: string
+    }) => {
+      const query = parentPageId ? `?parentPageId=${encodeURIComponent(parentPageId)}` : ''
+      return uploadFileWithProgress<SpreadsheetImportResult>(
+        `${base}/spaces/${spaceId}/spreadsheets/import${query}`,
         file,
         token,
         onProgress,
-      ),
+      )
+    },
     onSuccess: () => invalidateSpace(queryClient, spaceId),
   })
 }

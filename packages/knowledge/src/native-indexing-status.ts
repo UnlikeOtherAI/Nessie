@@ -229,8 +229,10 @@ const spreadsheetState = (
   embedJobs: Map<string, string>,
 ): KnowledgeIndexingState => {
   // A page created but never compacted has no durable version yet — the first
-  // one is deferred to the first snapshot — so there is genuinely no text.
-  if (!version || version.bodyBytes === 0) return { state: 'not_indexed', reason: 'empty' }
+  // one is deferred to the first snapshot — so there is no text to find. That
+  // is not "no text found": nothing has been saved yet, and saying so keeps a
+  // new sheet as quiet as a draft document.
+  if (!version || version.bodyBytes === 0) return { state: 'not_indexed', reason: 'unsaved' }
   return stateFromChunks(
     version.versionId,
     chunks.get(version.versionId),
@@ -285,6 +287,19 @@ const fileState = (
 }
 
 /**
+ * A spreadsheet. Its searchable text is the projection written into the
+ * `body` of each durable version (`spreadsheet/snapshot.ts`), so it is judged
+ * on the same chunks as a document — but never on `status`: a spreadsheet is
+ * not published, it is saved.
+ *
+ * No version, and a version whose projection is empty, are the same answer on
+ * purpose: they are indistinguishable to a reader (a new workbook is created
+ * with no snapshot, and a blank one projects to nothing) and they are cured by
+ * the same act. `empty` would say "no text found", which reads as a verdict on
+ * a grid that may simply not have been saved yet.
+ */
+
+/**
  * The indexing state of every page in one listing, keyed by page id.
  *
  * The switch over `KnowledgePageKind` is exhaustive on purpose: a kind added
@@ -316,6 +331,8 @@ export const indexingStatesFor = async (
       // file has no draft state, and nothing publishes a spreadsheet. They part
       // company at the state function — see `spreadsheetState`.
       case 'file':
+      // A spreadsheet is judged on its latest saved version, like a file node
+      // — there is no `publishedVersionId` on this kind at all.
       case 'spreadsheet':
         considered.push(page)
         latestForPageIds.push(page.id)

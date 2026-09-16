@@ -25,6 +25,7 @@ export const SPREADSHEET_IMPORT_ACCEPT = '.xlsx,.csv,.tsv'
 export type SpreadsheetImportWarningList = SpreadsheetImportWarning[]
 
 export const SpreadsheetImportDialog = ({
+  importing = false,
   onClose,
   onOpenImported,
   onPick,
@@ -34,8 +35,15 @@ export const SpreadsheetImportDialog = ({
   warnings,
 }: {
   error?: string | null
+  /**
+   * The bytes are up and the worker is still reading them. The route answers
+   * `202`, so "Imported" is not the same moment as "there is a workbook in
+   * there" — and opening the page in between lands on an empty grid that never
+   * fills.
+   */
+  importing?: boolean
   onClose: () => void
-  /** Shown once the upload came back, so the reader can read the warnings first. */
+  /** Shown once the workbook has actually landed, never on the `202` alone. */
   onOpenImported?: () => void
   onPick: (file: File) => void
   progressPct: number
@@ -136,6 +144,14 @@ export const SpreadsheetImportDialog = ({
             <button className="admin-button admin-button-secondary" onClick={onClose} type="button">
               Close
             </button>
+            {importing ? (
+              <span
+                className="self-center text-xs text-[color:var(--tx3)]"
+                data-testid="spreadsheet-import-reading"
+              >
+                Still reading the file…
+              </span>
+            ) : null}
             {onOpenImported ? (
               <button
                 className="admin-button admin-button-primary"

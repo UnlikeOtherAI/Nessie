@@ -133,8 +133,8 @@ const [
   import('../src/components/features/knowledge/spreadsheet/spreadsheet-find'),
   import('../src/components/features/knowledge/spreadsheet/workbook-engine'),
   import('../src/components/features/knowledge/spreadsheet/SpreadsheetActionBar'),
-  import('../src/components/features/knowledge/knowledge-workspace-actions'),
-  import('../src/components/features/knowledge/FileNodeViewer'),
+  import('../src/components/features/knowledge/finder/finder-toolbar-actions'),
+  import('../src/components/shared/file-icons'),
   import('@ironcalc/wasm'),
 ])
 
@@ -144,8 +144,8 @@ const { HEADER_COLUMN_WIDTH, HEADER_ROW_HEIGHT, cellRect } = geometryModule
 const { buildMatcher, findInModel } = findModule
 const { buildWorkbook, encodeBase64 } = engineModule
 const { SpreadsheetActionBar } = actionBarModule
-const { buildKnowledgeWorkspaceActions } = workspaceActionsModule
-const { isSpreadsheetSourceFilename } = fileNodeModule
+const { buildFinderToolbarActions } = workspaceActionsModule
+const { isSpreadsheetSourceFilename, spreadsheetSourceFor } = fileNodeModule
 
 // The published 0.8.4 wasm, instantiated once for the whole file.
 const wasm = wasmModule as unknown as {
@@ -416,72 +416,69 @@ test('find walks the used range and honours the Sheets options', () => {
 
 // ── the doorways ─────────────────────────────────────────────────────────────
 
-test('the space header offers New spreadsheet beside New page, and an import', () => {
-  const actions = buildKnowledgeWorkspaceActions({
-    agentDraftCount: 0,
-    canManageSpace: true,
-    canWrite: true,
-    needsReviewOnly: false,
-    onCreateFolder: () => undefined,
-    onCreatePage: () => undefined,
-    onCreateSpreadsheet: () => undefined,
-    onImportSpreadsheet: () => undefined,
-    onOpenAgent: () => undefined,
-    onOpenSettings: () => undefined,
-    onSelectView: () => undefined,
-    onToggleNeedsReview: () => undefined,
-    onUploadFile: () => undefined,
-    selectedSpaceId: 'space-1',
-    viewMode: 'column',
-  })
+const toolbar = (canWrite: boolean, mounted = true) => buildFinderToolbarActions({
+  agentDraftCount: 0,
+  canManageSpace: true,
+  canWrite,
+  isRootColumn: false,
+  isVirtualColumn: false,
+  needsReviewOnly: false,
+  onCreateDocument: () => undefined,
+  onCreateFolder: () => undefined,
+  onCreateSpreadsheet: mounted ? () => undefined : undefined,
+  onImportSpreadsheet: mounted ? () => undefined : undefined,
+  onOpenAgent: () => undefined,
+  onOpenSettings: () => undefined,
+  onSelectSort: () => undefined,
+  onSelectView: () => undefined,
+  onToggleNeedsReview: () => undefined,
+  onUploadFile: () => undefined,
+  showViewAction: true,
+  sort: 'name' as const,
+  view: 'columns' as const,
+})
 
-  const ids = (actions ?? []).map((action) => action.id)
-  assert.ok(ids.includes('new-spreadsheet'), 'Rule zero: a person must be able to make one')
-  assert.ok(ids.includes('new-page'))
+const newMenuIds = (actions: ReturnType<typeof buildFinderToolbarActions>): string[] => {
+  const menu = actions.find((action) => action.id === 'new')
+  return menu && 'items' in menu
+    ? (menu.items as { id: string }[]).map((item) => item.id)
+    : []
+}
 
-  const create = (actions ?? []).find((action) => action.id === 'new-spreadsheet')
-  assert.equal(create?.label, 'New spreadsheet')
-  assert.equal(create?.priority, 90, 'beside New page (100), not buried under More')
-
-  const upload = (actions ?? []).find((action) => action.id === 'upload-file')
-  assert.ok(upload && 'items' in upload)
+test('the Finder’s New menu offers a spreadsheet beside a document', () => {
+  const ids = newMenuIds(toolbar(true))
+  assert.ok(
+    ids.includes('new-spreadsheet'),
+    'Rule zero: a person must be able to make one from the Finder’s own toolbar',
+  )
   assert.deepEqual(
-    (upload as { items: { id: string }[] }).items.map((item) => item.id),
-    ['upload-file-node', 'import-spreadsheet'],
+    ids,
+    ['new-folder', 'new-document', 'new-spreadsheet', 'new-spreadsheet-import', 'new-upload'],
   )
 })
 
 test('a read-only viewer is offered neither doorway', () => {
-  const actions = buildKnowledgeWorkspaceActions({
-    agentDraftCount: 0,
-    canManageSpace: false,
-    canWrite: false,
-    needsReviewOnly: false,
-    onCreateFolder: () => undefined,
-    onCreatePage: () => undefined,
-    onCreateSpreadsheet: () => undefined,
-    onImportSpreadsheet: () => undefined,
-    onOpenAgent: () => undefined,
-    onOpenSettings: () => undefined,
-    onSelectView: () => undefined,
-    onToggleNeedsReview: () => undefined,
-    onUploadFile: () => undefined,
-    selectedSpaceId: 'space-1',
-    viewMode: 'column',
-  })
-
-  const ids = (actions ?? []).map((action) => action.id)
+  const ids = newMenuIds(toolbar(false))
   assert.ok(!ids.includes('new-spreadsheet'))
-  assert.ok(!ids.includes('upload-file'))
+  assert.ok(!ids.includes('new-spreadsheet-import'))
+})
+
+test('a host that has not mounted the dialogs offers no spreadsheet row', () => {
+  // Absent, never greyed: a "coming soon" is a promise the build cannot keep.
+  const ids = newMenuIds(toolbar(true, false))
+  assert.deepEqual(ids, ['new-folder', 'new-document', 'new-upload'])
 })
 
 test('"Open as spreadsheet" is offered for the formats the engine can read', () => {
   assert.equal(isSpreadsheetSourceFilename('forecast.xlsx'), true)
   assert.equal(isSpreadsheetSourceFilename('export.CSV'), true)
   assert.equal(isSpreadsheetSourceFilename('export.tsv'), true)
-  // `.xls` is refused on purpose: it and a corrupt zip produce the same engine
-  // error, so offering the doorway would promise something that always fails.
+  // `.xls` is its own verdict rather than a plain no: it and a corrupt zip
+  // produce the same engine error, so the doorway is offered disabled with the
+  // reason instead of promising something that always fails.
   assert.equal(isSpreadsheetSourceFilename('legacy.xls'), false)
+  assert.equal(spreadsheetSourceFor('legacy.xls'), 'legacy-xls')
+  assert.equal(spreadsheetSourceFor('forecast.xlsx'), 'convertible')
   assert.equal(isSpreadsheetSourceFilename('notes.md'), false)
   assert.equal(isSpreadsheetSourceFilename('README'), false)
 })

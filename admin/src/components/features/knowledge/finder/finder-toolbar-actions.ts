@@ -49,6 +49,9 @@ export type FinderToolbarInput = {
   needsReviewOnly: boolean
   onCreateDocument: () => void
   onCreateFolder: () => void
+  /** Absent where the spreadsheet dialogs are not mounted; the rows are then absent. */
+  onCreateSpreadsheet?: () => void
+  onImportSpreadsheet?: () => void
   onOpenAgent: (agentId: string) => void
   onOpenSettings: () => void
   onSelectSort: (sort: FinderSort) => void
@@ -134,7 +137,16 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
             ...(writable
               ? newFileTypeItems({
                   openCreate: () => input.onCreateDocument(),
+                  openSpreadsheetCreate: input.onCreateSpreadsheet
+                    ? () => input.onCreateSpreadsheet?.()
+                    : undefined,
+                  openSpreadsheetImport: input.onImportSpreadsheet
+                    ? () => input.onImportSpreadsheet?.()
+                    : undefined,
                   openUploadPicker: () => input.onUploadFile(),
+                  // The active folder is already bound into each callback by
+                  // `useFinderToolbar`; the registry's own `parentPageId` is
+                  // only for call sites that pass it through.
                   parentPageId: null,
                   spaceId: '',
                 })

@@ -13,6 +13,7 @@ import {
   faLocationCrosshairs,
   faPenToSquare,
   faRotate,
+  faTable,
   faTrash,
   faUpRightFromSquare,
   faUserGroup,
@@ -23,7 +24,9 @@ import type {
   KnowledgeIndexingState,
   KnowledgePageShareAccess,
 } from '@nessie/schemas'
+import { LEGACY_XLS_REASON, spreadsheetSourceFor } from '../../../shared/file-icons'
 import type { ContextMenuItem } from '../../../overlays/ContextMenu'
+import { newFileTypeItems, type NewFileTypeContext } from './new-file-types'
 
 /**
  * What a right-click offers, as data (menus-and-dialogs.md §2).
@@ -46,7 +49,7 @@ import type { ContextMenuItem } from '../../../overlays/ContextMenu'
  *    control nobody can explain.
  */
 
-export type FinderMenuKind = 'folder' | 'document' | 'file'
+export type FinderMenuKind = 'folder' | 'document' | 'file' | 'spreadsheet'
 
 /** The facts a row contributes; everything else comes from the column. */
 export type FinderMenuPage = {
@@ -109,6 +112,12 @@ export type FinderMenuHandlers = {
   uploadVersion: () => void
   newFolderInside: () => void
   newDocumentInside: () => void
+  /**
+   * "Open as spreadsheet" on an uploaded `.xlsx`/`.csv`/`.tsv` file node: a
+   * new spreadsheet page beside it, the file itself untouched. Absent where
+   * the host has not mounted the conversion.
+   */
+  openAsSpreadsheet?: () => void
   uploadFiles?: () => void
   showInFolder: () => void
   removeShare: () => void
@@ -121,6 +130,13 @@ export type FinderMenuHandlers = {
   spaceSettings: () => void
   newFolder?: () => void
   newDocument: () => void
+  /**
+   * The background menu's own "New …" rows, from `new-file-types.ts`. The
+   * column supplies the folder they land in; the registry decides what the
+   * answers are, so a kind added there appears here and in the toolbar at
+   * once.
+   */
+  newFileTypeContext?: NewFileTypeContext
 }
 
 export type FinderMenuInput = {
@@ -200,13 +216,32 @@ const pageItems = (
   const mayOwn = !grantee && caps.canWrite
   const folder = page.kind === 'folder'
   const file = page.kind === 'file'
+  const sheet = page.kind === 'spreadsheet'
+  // A file node whose bytes could become a workbook — and the one extension
+  // that looks like it could and cannot.
+  const source = file ? spreadsheetSourceFor(page.title) : 'no'
 
   return tidy([
-    item('open', 'Open', on.open, { icon: folder ? faFolderOpen : faFileLines }),
+    item('open', 'Open', on.open, {
+      icon: folder ? faFolderOpen : sheet ? faTable : faFileLines,
+    }),
     ...(file ? [item('download', 'Download', on.download, {
       icon: faDownload,
       shortcut: 'Mod+Shift+S',
     })] : []),
+    // Building a workbook from an upload is additive — the file node stays,
+    // so a person who wanted the bytes can still download exactly what they
+    // uploaded — which is why it sits beside Download rather than replacing
+    // it.
+    ...(source !== 'no' && mayEdit && on.openAsSpreadsheet
+      ? [item('open-as-spreadsheet', 'Open as spreadsheet', on.openAsSpreadsheet, {
+        disabled: source === 'legacy-xls',
+        // `disabledReason` is what the panel puts on `title`, so a keyboard
+        // user hears why the row is grey instead of finding it merely dead.
+        disabledReason: source === 'legacy-xls' ? LEGACY_XLS_REASON : undefined,
+        icon: faTable,
+      })]
+      : []),
     // On a virtual row the second item is the way back to where the row
     // actually lives; in a folder column it is the way into the editor.
     ...(virtual
@@ -215,6 +250,8 @@ const pageItems = (
       })]
       : page.kind === 'document' && mayEdit
         ? [item('edit', 'Edit', on.openEditor, { icon: faPenToSquare })]
+        // A spreadsheet has no second "Edit": opening it *is* opening the
+        // editor, and a row offering both would promise two different screens.
         : []),
     SEPARATOR,
     item('get-info', 'Get Info', on.getInfo, { icon: faCircleInfo, shortcut: 'Mod+I' }),
@@ -369,6 +406,19 @@ const backgroundItems = (
   if (column === 'virtual') {
     return [item('refresh', 'Refresh', on.refresh, { icon: faArrowsRotate })]
   }
+  // "New document", "Upload files…" and every kind a later integrator adds
+  // come from `new-file-types.ts` — the same array the toolbar's New menu
+  // reads. Until the context is mounted the column keeps its own two rows, so
+  // a host that has not wired the registry still gets a working menu.
+  const newRows: ContextMenuItem[] = on.newFileTypeContext
+    ? newFileTypeItems(on.newFileTypeContext, 'in-folder').map((row) =>
+      item(row.id, row.label, row.onSelect, { icon: row.icon }))
+    : [
+      item('new-document', 'New document', on.newDocument, { icon: faFileLines }),
+      ...(on.uploadFiles
+        ? [item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp })]
+        : []),
+    ]
   return tidy([
     ...(caps.canWrite
       ? [
@@ -378,10 +428,7 @@ const backgroundItems = (
             shortcut: 'Mod+Shift+N',
           })]
           : []),
-        item('new-document', 'New document', on.newDocument, { icon: faFileLines }),
-        ...(on.uploadFiles
-          ? [item('upload-files', 'Upload files…', on.uploadFiles, { icon: faCloudArrowUp })]
-          : []),
+        ...newRows,
         SEPARATOR,
       ]
       : []),

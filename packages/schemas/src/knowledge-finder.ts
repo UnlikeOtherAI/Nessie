@@ -44,9 +44,13 @@ export const KnowledgeIndexingStateSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('indexed'), versionId: UuidSchema }),
   // Work is queued or running. `stage` names which job.
   z.object({ state: z.literal('pending'), stage: z.enum(['extract', 'embed']) }),
+  // `unsaved`: a spreadsheet nobody has saved a version of. Its searchable
+  // text is the projection written with each durable version, so there is
+  // genuinely nothing to index yet — which is a different sentence from
+  // "no text found" and from "draft", and reads as neither.
   z.object({
     state: z.literal('not_indexed'),
-    reason: z.enum(['draft', 'unsupported', 'too_large', 'empty']),
+    reason: z.enum(['draft', 'unsupported', 'too_large', 'empty', 'unsaved']),
   }),
   // The queue job exhausted its attempts. Retry is POST …/pages/:id/reindex.
   z.object({ state: z.literal('failed'), stage: z.enum(['extract', 'embed']) }),
@@ -262,6 +266,10 @@ export const KnowledgeItemInfoSchema = z.object({
     folders: z.number().int().nonnegative(),
     documents: z.number().int().nonnegative(),
     files: z.number().int().nonnegative(),
+    // Counted apart from documents: "3 documents" over a folder of workbooks
+    // names the wrong thing, and "Contains" is the one line that says what is
+    // actually in there.
+    spreadsheets: z.number().int().nonnegative(),
   }),
   // True when the walk hit its row cap: counts and sizes are lower bounds.
   truncated: z.boolean(),

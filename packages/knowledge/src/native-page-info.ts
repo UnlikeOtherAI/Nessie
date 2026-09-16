@@ -290,10 +290,11 @@ const accessSummaryFor = async (
 // panel's three numbers are "containers, things written, things uploaded". A
 // fourth number would have to cross the wire before any screen asked for one.
 const countsFor = (rows: readonly SubtreeRow[]): KnowledgeItemInfo['counts'] => {
-  const counts = { folders: 0, documents: 0, files: 0 }
+  const counts = { folders: 0, documents: 0, files: 0, spreadsheets: 0 }
   for (const row of rows) {
     if (row.kind === 'folder') counts.folders += 1
     else if (row.kind === 'file') counts.files += 1
+    else if (row.kind === 'spreadsheet') counts.spreadsheets += 1
     else counts.documents += 1
   }
   return counts
