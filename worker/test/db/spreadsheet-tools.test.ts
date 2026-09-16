@@ -377,3 +377,59 @@ runDatabaseTest('an agent is refused a restricted space, and is told why', async
   assert.equal(result.success, false)
   assert.match(result.output, /restricted knowledge space/)
 })
+
+runDatabaseTest('kb_file names a spreadsheet parent rather than answering "not found"', async (t) => {
+  const fixture = await seedSpreadsheetRun('sheet-kb-file')
+  t.after(fixture.cleanup)
+
+  const pageId = await create(fixture, 'Runway')
+  // `kb_draft_write` answers in prose rather than JSON, so the id comes out of
+  // the sentence the agent itself reads.
+  const drafted = await executeBuiltinTool('kb_draft_write', {
+    spaceId: fixture.spaceId,
+    title: 'Assumptions',
+    body: 'A note about the model.',
+  }, fixture.context)
+  assert.equal(drafted.success, true, drafted.output)
+  const draftPageId = /pageId=([0-9a-f-]{36})/.exec(drafted.output)?.[1]
+  assert.ok(draftPageId, `no pageId in: ${drafted.output}`)
+
+  // `movePage` refuses a spreadsheet parent by returning null, which reads as
+  // "no such page" — an agent told only "check that the target parent exists"
+  // retries the same id forever. Naming the kind is what ends the loop.
+  const refused = await executeBuiltinTool(
+    'kb_file',
+    { pageId: draftPageId, parentPageId: pageId },
+    fixture.context,
+  )
+  assert.equal(refused.success, false)
+  assert.match(refused.output, /that is a spreadsheet/)
+  assert.match(refused.output, /under a folder or a document/)
+
+  const unmoved = await fixture.prisma.knowledgePage.findUniqueOrThrow({
+    where: { id: draftPageId },
+    select: { parentPageId: true },
+  })
+  assert.equal(unmoved.parentPageId, null)
+
+  // A spreadsheet is a leaf, not a container — but it files *into* one exactly
+  // as any other page does.
+  const folder = await fixture.prisma.knowledgePage.create({
+    data: {
+      organizationId: fixture.organizationId,
+      projectId: fixture.projectId,
+      spaceId: fixture.spaceId,
+      teamId: fixture.teamId,
+      title: 'Models',
+      kind: 'folder',
+      status: 'published',
+      createdBy: fixture.agentId,
+    },
+  })
+  const filed = await executeBuiltinTool(
+    'kb_file',
+    { pageId: draftPageId, parentPageId: folder.id },
+    fixture.context,
+  )
+  assert.equal(filed.success, true, filed.output)
+})

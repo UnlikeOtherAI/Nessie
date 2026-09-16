@@ -3,7 +3,9 @@ import {
   canReadKnowledgePageVersion,
   canReadSpace,
   loadSpaceViewer,
+  mapSpace,
   mapVersion,
+  spaceInclude,
   versionInclude,
   viewerHoldsPageShare,
 } from '@nessie/knowledge'
@@ -45,10 +47,18 @@ export const canReadSpaceForDocumentLane = async (
   })
   if (!page) return false
 
-  const space = await prisma.knowledgeSpace.findFirst({
+  // Through the mapper, and never a raw row cast past the type: a
+  // `KnowledgeSpaceRecord` carries `memberUserIds`/`memberAgentIds` from the
+  // `members` relation, and `canReadSpace` reads them for every visibility but
+  // `organization` and `project`. A bare `findFirst` has neither, so the gate
+  // threw a TypeError on the first event for a page in a private space —
+  // inside an unawaited promise, which on Node 22 takes the replica with it.
+  const spaceRow = await prisma.knowledgeSpace.findFirst({
     where: { id: page.spaceId, organizationId: input.organizationId, deletedAt: null },
+    include: spaceInclude,
   })
-  if (!space) return false
+  if (!spaceRow) return false
+  const space = mapSpace(spaceRow)
 
   // **The live entitlement proof is not optional here.** `loadUserViewer`
   // never infers a viewer from persisted membership — without a proof it
@@ -73,7 +83,7 @@ export const canReadSpaceForDocumentLane = async (
     { actorType: 'user', actorId: input.userId },
     { liveEntitlements },
   )
-  if (!canReadSpace(space as never, viewer)) {
+  if (!canReadSpace(space, viewer)) {
     // `viewerHoldsPageShare` carries the preconditions — a person, a live
     // organization proof, and a page that is neither archived nor deleted — so
     // the owner archiving a shared page ends delivery without anybody revoking
