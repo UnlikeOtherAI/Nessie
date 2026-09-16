@@ -114,7 +114,15 @@ export const createPage = async (
   options: NativeKnowledgeProviderOptions,
   input: CreatePageInput,
 ): Promise<KnowledgePageRecord> => {
-  const projection = input.attachmentId
+  // A folder has no content, so it has no version: no body, no attachment, no
+  // chunks, and no draft state to publish out of. Refusing content here rather
+  // than dropping it keeps the caller honest — a folder that silently swallowed
+  // a body would lose it with no way to notice.
+  const isFolder = input.kind === 'folder'
+  if (isFolder && (input.attachmentId || input.body || input.bodyRef)) {
+    throw new KnowledgeConflictError('A folder page cannot carry content')
+  }
+  const projection = !isFolder && input.attachmentId
     ? await markdownProjectionForAttachment(
         prisma, options, input.organizationId, input.attachmentId,
       )
@@ -150,6 +158,10 @@ export const createPage = async (
         metadata: input.metadata as Prisma.InputJsonValue,
         documentRole: input.documentRole ?? 'knowledge',
         kind: input.kind ?? 'document',
+        // A folder is never a draft: there is nothing to publish, so `draft`
+        // would put every folder in the "unpublished" bucket of any status
+        // read for the rest of its life.
+        ...(isFolder ? { status: 'published' as const } : {}),
         spaceId: input.spaceId,
         parentPageId: input.parentPageId ?? null,
         position,
@@ -171,28 +183,30 @@ export const createPage = async (
       pageId: page.id,
       title: page.title,
     })
-    const version = await tx.knowledgePageVersion.create({
-      data: {
-        pageId: page.id,
-        versionNumber: 1,
-        body: projection?.body ?? input.body ?? null,
-        bodyRef: projection ? null : input.bodyRef ?? null,
-        attachmentId: input.attachmentId ?? null,
-        sourceContentHash: projection?.sourceContentHash ?? null,
-        authorType: input.authorType,
-        authorId: input.authorId,
-        changeComment: input.changeComment ?? null,
-        origin: input.origin ?? 'user_authored',
-        trust: input.trust ?? 'unverified_import',
-      },
-      include: versionInclude,
-    })
-    await persistVersionDisclosure(tx, {
-      disclosure: input,
-      organizationId: input.organizationId,
-      versionId: version.id,
-    })
-    await indexVersionChunks(tx, options, page, version)
+    if (!isFolder) {
+      const version = await tx.knowledgePageVersion.create({
+        data: {
+          pageId: page.id,
+          versionNumber: 1,
+          body: projection?.body ?? input.body ?? null,
+          bodyRef: projection ? null : input.bodyRef ?? null,
+          attachmentId: input.attachmentId ?? null,
+          sourceContentHash: projection?.sourceContentHash ?? null,
+          authorType: input.authorType,
+          authorId: input.authorId,
+          changeComment: input.changeComment ?? null,
+          origin: input.origin ?? 'user_authored',
+          trust: input.trust ?? 'unverified_import',
+        },
+        include: versionInclude,
+      })
+      await persistVersionDisclosure(tx, {
+        disclosure: input,
+        organizationId: input.organizationId,
+        versionId: version.id,
+      })
+      await indexVersionChunks(tx, options, page, version)
+    }
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     const created = await fetchPage(tx, input.organizationId, page.id)
     if (!created) throw new Error('Created page could not be loaded')
@@ -284,9 +298,15 @@ export const getMutablePage = async (
 export const indexVersionChunks = async (
   tx: Prisma.TransactionClient,
   options: NativeKnowledgeProviderOptions,
-  page: ChunkablePage,
+  // `kind` is read but not required by ChunkablePage: every caller passes a
+  // page row that carries it, and a caller that somehow does not is treated as
+  // a content page, which is what it was before folders existed.
+  page: ChunkablePage & { kind?: string },
   version: { body: string | null; id: string },
 ): Promise<void> => {
+  // A folder is never indexed: it has no version to chunk, and a chunk row for
+  // one would answer retrieval with a name and no content.
+  if (page.kind === 'folder') return
   // This written gate is shared by create/update/restore and publish. A
   // repeated publish of an already-indexed version must not rewrite chunks or
   // links that already reflect the version's body.

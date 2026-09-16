@@ -145,6 +145,11 @@ const movePage = async (
           spaceId: page.spaceId,
           deletedAt: null,
           status: { not: 'archived' },
+          // A document may still parent sub-pages — wikilinks and the open
+          // document's Sub-pages section depend on it — but a file node is a
+          // blob, and a page filed under one could never be reached. The
+          // Finder's Move to… dialog offers folders only.
+          kind: { in: ['folder', 'document'] },
         },
         select: { id: true },
       })
@@ -178,6 +183,12 @@ const publishPage = async (
   prisma.$transaction(async (tx) => {
     const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
+    // A folder has nothing to publish: it is created `published` because it has
+    // no draft state, and it owns no version to point at. Refusing loudly
+    // rather than returning null keeps a caller from reading "not found".
+    if (page.kind === 'folder') {
+      throw new KnowledgeConflictError('A folder page has nothing to publish')
+    }
     const latest = await tx.knowledgePageVersion.findFirst({
       where: { pageId: input.pageId },
       orderBy: { versionNumber: 'desc' },

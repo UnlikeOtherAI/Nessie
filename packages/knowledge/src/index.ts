@@ -163,6 +163,13 @@ export type {
   UpdateSpaceInput,
 } from './types.js'
 export { KnowledgePageRevisionConflictError } from './types.js'
+export {
+  classifyUpload,
+  DOCX_MIME,
+  EXTRACTABLE_TEXT_EXTENSIONS,
+  isExtractableUpload,
+} from './extractable.js'
+export type { ExtractKind } from './extractable.js'
 export { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
 export { canReadKnowledgePageVersion } from './version-disclosure-access.js'
 export { readableKnowledgePageVersionsWhere } from './version-disclosure-where.js'
