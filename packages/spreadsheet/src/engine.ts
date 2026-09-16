@@ -50,15 +50,27 @@ export interface SpreadsheetEngineModel {
   // writes
   setUserInput(sheet: number, row: number, column: number, value: string): void
   updateRangeStyle(sheet: number, range: SpreadsheetSelection, stylePath: string, value: string): void
+  /** A whole style object in one call — what sort needs to carry formatting. */
+  setCellStyle(sheet: number, row: number, column: number, style: SpreadsheetCellStyle): void
   rangeClear(kind: 'all' | 'contents' | 'formatting', sheet: number, range: SpreadsheetSelection): void
   insertRows(sheet: number, row: number, count: number): void
   deleteRows(sheet: number, row: number, count: number): void
   insertColumns(sheet: number, column: number, count: number): void
   deleteColumns(sheet: number, column: number, count: number): void
+  /** Cut-and-reinsert, not overwrite: the rows in between close the gap. */
+  moveRows(sheet: number, row: number, count: number, delta: number): void
+  moveColumns(sheet: number, column: number, count: number, delta: number): void
+  /** Hidden is NOT queryable as a boolean: neither binding has getRowsHidden.
+   *  A hidden row reports height 0 and a hidden column width 0, which is what
+   *  `isRowHidden`/`isColumnHidden` below read. Spike B, spike-b-xlsx.md. */
   setRowsHidden(sheet: number, start: number, end: number, hidden: boolean): void
   setColumnsHidden(sheet: number, start: number, end: number, hidden: boolean): void
   setRowsHeight(sheet: number, start: number, end: number, height: number): void
   setColumnsWidth(sheet: number, start: number, end: number, width: number): void
+  rowHeight(sheet: number, row: number): number
+  columnWidth(sheet: number, column: number): number
+  isRowHidden(sheet: number, row: number): boolean
+  isColumnHidden(sheet: number, column: number): boolean
   setFrozenRowsCount(sheet: number, count: number): void
   setFrozenColumnsCount(sheet: number, count: number): void
   frozenRowsCount(sheet: number): number
@@ -107,6 +119,9 @@ interface RawNodeModel {
     stylePath: string,
     value: string,
   ): void
+  setCellStyle(sheet: number, row: number, column: number, style: SpreadsheetCellStyle): void
+  getRowHeight(sheet: number, row: number): number
+  getColumnWidth(sheet: number, column: number): number
   rangeClearAll(sheet: number, r0: number, c0: number, r1: number, c1: number): void
   rangeClearContents(sheet: number, r0: number, c0: number, r1: number, c1: number): void
   rangeClearFormatting(sheet: number, r0: number, c0: number, r1: number, c1: number): void
@@ -114,6 +129,8 @@ interface RawNodeModel {
   deleteRows(sheet: number, row: number, count: number): void
   insertColumns(sheet: number, column: number, count: number): void
   deleteColumns(sheet: number, column: number, count: number): void
+  moveRows(sheet: number, row: number, count: number, delta: number): void
+  moveColumns(sheet: number, column: number, count: number, delta: number): void
   setRowsHidden(sheet: number, start: number, end: number, hidden: boolean): void
   setColumnsHidden(sheet: number, start: number, end: number, hidden: boolean): void
   setRowsHeight(sheet: number, start: number, end: number, height: number): void
@@ -141,7 +158,13 @@ interface RawWasmArea {
 interface RawWasmModel
   extends Omit<
     RawNodeModel,
-    'getSheetDimensions' | 'updateRangeStyle' | 'getCellStyle' | 'rangeClearAll' | 'rangeClearContents' | 'rangeClearFormatting'
+    | 'getSheetDimensions'
+    | 'updateRangeStyle'
+    | 'getCellStyle'
+    | 'setCellStyle'
+    | 'rangeClearAll'
+    | 'rangeClearContents'
+    | 'rangeClearFormatting'
   > {
   getRowsWithData(sheet: number, column: number): Int32Array
   getColumnsWithData(sheet: number, row: number): Int32Array
@@ -150,6 +173,12 @@ interface RawWasmModel
   rangeClearAll(range: RawWasmArea): void
   rangeClearContents(range: RawWasmArea): void
   rangeClearFormatting(range: RawWasmArea): void
+  // wasm has no setCellStyle; onPasteStyles writes at the selected cell instead.
+  onPasteStyles(styles: SpreadsheetCellStyle[][]): void
+  getSelectedView(): { sheet: number; row: number; column: number; range: [number, number, number, number] }
+  setSelectedSheet(sheet: number): void
+  setSelectedCell(row: number, column: number): void
+  setSelectedRange(r0: number, c0: number, r1: number, c1: number): void
 }
 
 const areaOf = (sheet: number, range: SpreadsheetSelection): RawWasmArea => ({
@@ -182,6 +211,7 @@ export function wrapNodeModel(raw: RawNodeModel): SpreadsheetEngineModel {
     setUserInput: (s, r, c, v) => raw.setUserInput(s, r, c, v),
     updateRangeStyle: (s, range, path, value) =>
       raw.updateRangeStyle(s, range.r0, range.c0, range.r1, range.c1, path, value),
+    setCellStyle: (s, r, c, style) => raw.setCellStyle(s, r, c, style),
     rangeClear: (kind, s, range) => {
       const call =
         kind === 'all' ? raw.rangeClearAll : kind === 'contents' ? raw.rangeClearContents : raw.rangeClearFormatting
@@ -191,10 +221,16 @@ export function wrapNodeModel(raw: RawNodeModel): SpreadsheetEngineModel {
     deleteRows: (s, row, count) => raw.deleteRows(s, row, count),
     insertColumns: (s, column, count) => raw.insertColumns(s, column, count),
     deleteColumns: (s, column, count) => raw.deleteColumns(s, column, count),
+    moveRows: (s, row, count, delta) => raw.moveRows(s, row, count, delta),
+    moveColumns: (s, column, count, delta) => raw.moveColumns(s, column, count, delta),
     setRowsHidden: (s, a, b, hidden) => raw.setRowsHidden(s, a, b, hidden),
     setColumnsHidden: (s, a, b, hidden) => raw.setColumnsHidden(s, a, b, hidden),
     setRowsHeight: (s, a, b, h) => raw.setRowsHeight(s, a, b, h),
     setColumnsWidth: (s, a, b, w) => raw.setColumnsWidth(s, a, b, w),
+    rowHeight: (s, row) => raw.getRowHeight(s, row),
+    columnWidth: (s, column) => raw.getColumnWidth(s, column),
+    isRowHidden: (s, row) => raw.getRowHeight(s, row) === 0,
+    isColumnHidden: (s, column) => raw.getColumnWidth(s, column) === 0,
     setFrozenRowsCount: (s, n) => raw.setFrozenRowsCount(s, n),
     setFrozenColumnsCount: (s, n) => raw.setFrozenColumnsCount(s, n),
     frozenRowsCount: (s) => raw.getFrozenRowsCount(s),
@@ -239,6 +275,16 @@ export function wrapWasmModel(raw: RawWasmModel, scanColumns = 200): Spreadsheet
         : (raw_ as SpreadsheetCellStyle)
     },
     updateRangeStyle: (s, range, path, value) => raw.updateRangeStyle(areaOf(s, range), path, value),
+    // No setCellStyle in the published wasm: paste a 1x1 style matrix at the
+    // selected cell and put the view back where the caller left it.
+    setCellStyle: (s, r, c, style) => {
+      const view = raw.getSelectedView()
+      raw.setSelectedSheet(s)
+      raw.setSelectedCell(r, c)
+      raw.onPasteStyles([[style]])
+      raw.setSelectedSheet(view.sheet)
+      raw.setSelectedCell(view.row, view.column)
+    },
     rangeClear: (kind, s, range) => {
       const area = areaOf(s, range)
       if (kind === 'all') raw.rangeClearAll(area)
