@@ -1,3 +1,4 @@
+import { DEFAULT_BOARD_NAME } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { useIterations } from '../../../facades/iterations/hooks'
@@ -96,7 +97,9 @@ export const ProjectWorkSection = ({ className, projectId }: ProjectWorkSectionP
     label: board.name,
     to: board.isDefault ? boardHref : `${boardHref}?board=${board.id}`,
   }))
-  const links: SectionLink[] = boardLinks.length > 0 ? boardLinks : [{ label: 'Board', to: boardHref }]
+  const links: SectionLink[] = boardLinks.length > 0
+    ? boardLinks
+    : [{ label: DEFAULT_BOARD_NAME, to: boardHref }]
 
   const exceptions = [
     { key: 'overdue', label: 'Overdue', tone: 'danger' as const, value: counts.overdue },

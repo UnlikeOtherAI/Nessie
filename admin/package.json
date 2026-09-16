@@ -18,6 +18,7 @@
     "test:e2e:disclosure": "node --import tsx e2e/disclosure/run.mjs",
     "test:e2e:ios-nav-bar": "node e2e/ios-nav-bar/run.mjs",
     "test:e2e:knowledge-markdown": "node e2e/knowledge-markdown/run.mjs",
+    "test:e2e:mailbox-onboarding": "node e2e/mailbox-onboarding/run.mjs",
     "test:e2e:member-management": "node e2e/member-management/run.mjs",
     "test:e2e:model-subscription-device-link": "node e2e/model-subscription-device-link/run.mjs",
     "test:e2e:model-subscription-deepseek": "node e2e/model-subscription-deepseek/run.mjs",
@@ -26,6 +27,7 @@
     "test:e2e:page-header": "node e2e/page-header/run.mjs",
     "test:e2e:project-team-channel": "node e2e/project-usability/project-team-channel.mjs",
     "test:e2e:project-usability": "node e2e/project-usability/run.mjs",
+    "test:e2e:tabbar-full": "node e2e/tabbar-full/run.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

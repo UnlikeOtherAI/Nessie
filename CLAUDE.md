@@ -52,6 +52,13 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
   CI runs it in Navigation Transitions through a fixed-port lifecycle harness,
   between the navigation and independent connected-mail suites.
+- **Mailbox onboarding browser coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:mailbox-onboarding`. CI runs it in
+  Navigation Transitions after the connected-mail suite, on the same admin
+  lifecycle. It walks the connect ladder — password, one mail server, the one
+  leg still missing, then every field — and asserts the posted payload as well
+  as the screen, because a form that posts an untyped port looks identical and
+  silently disables the server-side sweep.
 - **Member-management browser coverage:** run
   `pnpm --filter @nessie/admin test:e2e:member-management`. CI alone includes
   its fixture in the preview build; details and cache rules are in
@@ -75,6 +82,12 @@ sentence changes only if the invariant itself did.
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the
   project usability suite.
+- **Full-width tab bar geometry:** run
+  `pnpm --filter @nessie/admin test:e2e:tabbar-full` after touching
+  `.tabbar-shell*` or adding a `<TabBar fullWidth />` call site. It needs no
+  API or database, and its fixture must gain the new call site's container —
+  the rule it guards is in
+  [`docs/standards/design-system.md`](docs/standards/design-system.md).
 - **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
   another port to work around a conflict.
 - **Production promotion uses the exact-SHA gate:** Deploy resolves the current

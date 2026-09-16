@@ -8,7 +8,9 @@ import {
   SmtpError,
 } from '@nessie/agent-mail'
 
-import { mailboxConnectionTestFailure } from '../src/index.js'
+import type { MailboxLegFailure } from '@nessie/schemas'
+
+import { mailboxConnectionTestFailure, mailboxResolutionRefusal } from '../src/index.js'
 
 test('mailbox connection failures retain their structural diagnosis', () => {
   const refused = new ImapError('raw protocol refusal', 'auth')
@@ -23,4 +25,91 @@ test('mailbox connection failures retain their structural diagnosis', () => {
   assert.equal(mailboxConnectionTestFailure(unavailable), 'server_unavailable')
   assert.equal(mailboxConnectionTestFailure(reset), 'server_unavailable')
   assert.equal(mailboxConnectionTestFailure(new Error('unknown')), 'test_failed')
+})
+
+/**
+ * The refusal a person actually reads, and the per-leg detail the form routes
+ * on. A single "could not connect this mailbox" is true of every failure and so
+ * tells nobody what to fix; these pin that each distinguishable outcome stays
+ * distinguishable by the time it leaves the service.
+ */
+
+const endpoint = (host: string, port: number, security: 'tls' | 'starttls') =>
+  ({ host, port, security })
+
+const resolved = (host: string, port: number, security: 'tls' | 'starttls') =>
+  ({ endpoint: endpoint(host, port, security), ok: true }) as const
+
+const failed = (failure: MailboxLegFailure, tried: ReturnType<typeof endpoint>[]) =>
+  ({ failure, ok: false, tried }) as const
+
+test('a working inbox is never blamed for a sending failure', () => {
+  const refusal = mailboxResolutionRefusal({
+    imap: resolved('imap.example.com', 993, 'tls'),
+    smtp: failed('unreachable', [endpoint('smtp.example.com', 587, 'starttls')]),
+  })
+
+  assert.equal(refusal.refusal, 'server_unavailable')
+  assert.match(refusal.message, /connected to your incoming mail \(IMAP\) server/)
+  assert.match(refusal.message, /could not reach an outgoing mail \(SMTP\) server/)
+  assert.deepEqual(refusal.diagnosis, {
+    imap: { host: 'imap.example.com', ok: true, port: 993 },
+    smtp: { failure: 'unreachable', host: 'smtp.example.com', ok: false, port: 587 },
+  })
+})
+
+test('the mirror case names the other leg, not a generic failure', () => {
+  const refusal = mailboxResolutionRefusal({
+    imap: failed('unreachable', [endpoint('imap.example.com', 143, 'starttls')]),
+    smtp: resolved('smtp.example.com', 587, 'starttls'),
+  })
+
+  assert.match(refusal.message, /connected to your outgoing mail \(SMTP\) server/)
+  assert.match(refusal.message, /could not reach an incoming mail \(IMAP\) server/)
+})
+
+test('a rejected credential outranks an unreachable leg', () => {
+  // Otherwise the form would send somebody to fix a hostname when the password
+  // is what the server actually objected to.
+  const refusal = mailboxResolutionRefusal({
+    imap: failed('credential_rejected', [endpoint('imap.example.com', 993, 'tls')]),
+    smtp: failed('unreachable', []),
+  })
+
+  assert.equal(refusal.refusal, 'credential_rejected')
+  assert.equal(refusal.diagnosis?.imap.failure, 'credential_rejected')
+})
+
+test('an unverifiable server is named, and is not reported as unreachable', () => {
+  const refusal = mailboxResolutionRefusal({
+    imap: failed('insecure', [endpoint('mail.example.com', 993, 'tls')]),
+    smtp: failed('unreachable', []),
+  })
+
+  assert.equal(refusal.refusal, 'invalid_certificate')
+  assert.match(refusal.message, /mail\.example\.com/)
+})
+
+test('neither leg found asks for settings rather than naming a working one', () => {
+  const refusal = mailboxResolutionRefusal({
+    imap: failed('unreachable', []),
+    smtp: failed('unreachable', []),
+  })
+
+  assert.equal(refusal.refusal, 'server_unavailable')
+  assert.doesNotMatch(refusal.message, /connected to your/)
+  assert.equal(refusal.diagnosis?.imap.host, undefined)
+})
+
+test('a hostname we refused to dial is not reported as a network failure', () => {
+  // `no_candidate` means the name was rejected before any socket — sending
+  // somebody to debug connectivity would be sending them after a fault they do
+  // not have.
+  const refusal = mailboxResolutionRefusal({
+    imap: failed('no_candidate', []),
+    smtp: failed('no_candidate', []),
+  })
+
+  assert.equal(refusal.refusal, 'invalid_address')
+  assert.match(refusal.message, /public host name/)
 })

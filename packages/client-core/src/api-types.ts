@@ -1,8 +1,11 @@
 import type {
   AgentRecord,
   ChannelRecord,
+  MailboxConnectionDiagnosis,
   MailboxConnectionRecord,
   MailboxConnectionScope,
+  MailboxLegDiagnosis,
+  MailboxLegFailure,
   MailboxTransportSecurity,
   MeResponse,
 } from '@nessie/schemas'
@@ -447,4 +450,11 @@ export type MyBrowserLoginRecord = {
  * server's own contract, re-exported rather than restated so the two cannot
  * drift; there is no password field to strip because the shape has none.
  */
-export type { MailboxConnectionRecord, MailboxConnectionScope, MailboxTransportSecurity }
+export type {
+  MailboxConnectionDiagnosis,
+  MailboxConnectionRecord,
+  MailboxConnectionScope,
+  MailboxLegDiagnosis,
+  MailboxLegFailure,
+  MailboxTransportSecurity,
+}

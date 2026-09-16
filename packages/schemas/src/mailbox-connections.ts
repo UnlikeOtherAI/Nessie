@@ -49,22 +49,75 @@ export type MailboxConnectionRecord = z.infer<typeof MailboxConnectionRecordSche
 const hostname = z.string().min(1).max(253)
 const port = z.number().int().min(1).max(65_535)
 
+/**
+ * Connecting a mailbox, with everything the person has not told us left out.
+ *
+ * Every server field is optional, and that is the contract rather than
+ * leniency: the caller sends what it knows and the server resolves the rest by
+ * trying the standard endpoints with the credential in hand. A field that *is*
+ * present is an instruction and is used exactly as given — the resolution never
+ * second-guesses a stated setting, which is what makes the advanced form a real
+ * override rather than another suggestion.
+ *
+ * So one route serves every step of the form: address and password alone, plus
+ * a single `server` hostname, plus one leg's port after that leg failed, and
+ * finally every field spelled out.
+ */
 export const CreateMailboxConnectionBodySchema = z.object({
   scope: MailboxConnectionScopeSchema,
   teamId: z.string().uuid().nullish(),
   label: z.string().min(1).max(120),
   address: z.string().min(3).max(320),
-  username: z.string().min(1).max(320),
+  /** Defaults to the address, which is what almost every provider expects. */
+  username: z.string().min(1).max(320).optional(),
   /** Submitted once and sealed; never returned by any read. */
   password: z.string().min(1).max(1024),
-  imapHost: hostname,
-  imapPort: port,
-  imapSecurity: MailboxTransportSecuritySchema,
-  smtpHost: hostname,
-  smtpPort: port,
-  smtpSecurity: MailboxTransportSecuritySchema,
+  /** One hostname for both legs. A leg's own host wins over it. */
+  server: hostname.optional(),
+  imapHost: hostname.optional(),
+  imapPort: port.optional(),
+  imapSecurity: MailboxTransportSecuritySchema.optional(),
+  smtpHost: hostname.optional(),
+  smtpPort: port.optional(),
+  smtpSecurity: MailboxTransportSecuritySchema.optional(),
 })
 export type CreateMailboxConnectionBody = z.infer<typeof CreateMailboxConnectionBodySchema>
+
+/**
+ * Why one leg produced no endpoint. `insecure` means we reached a server and
+ * refused the session, which is a different thing from never finding one.
+ */
+export const MailboxLegFailureSchema = z.enum([
+  'credential_rejected',
+  'insecure',
+  'unreachable',
+  'no_candidate',
+])
+export type MailboxLegFailure = z.infer<typeof MailboxLegFailureSchema>
+
+/**
+ * One leg's outcome. `host` is the last candidate tried, so a message can name
+ * the server it could not reach; it is always either a hostname the person
+ * typed or one derived from their own address domain, never anything new.
+ */
+export const MailboxLegDiagnosisSchema = z.object({
+  ok: z.boolean(),
+  failure: MailboxLegFailureSchema.optional(),
+  host: z.string().max(253).optional(),
+  port: port.optional(),
+})
+export type MailboxLegDiagnosis = z.infer<typeof MailboxLegDiagnosisSchema>
+
+/**
+ * The `details` on a refused connect. It is what lets the form ask for exactly
+ * the settings that are still missing — one leg's port rather than ten fields —
+ * instead of sending everybody to the advanced screen on any failure.
+ */
+export const MailboxConnectionDiagnosisSchema = z.object({
+  imap: MailboxLegDiagnosisSchema,
+  smtp: MailboxLegDiagnosisSchema,
+})
+export type MailboxConnectionDiagnosis = z.infer<typeof MailboxConnectionDiagnosisSchema>
 
 export const SetMailboxAgentAccessBodySchema = z.object({
   agentId: z.string().uuid(),
