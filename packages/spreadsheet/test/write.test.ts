@@ -6,7 +6,16 @@ import { SpreadsheetBatchSummarySchema } from '@nessie/schemas'
 import { SpreadsheetEngineError, type SpreadsheetEngineModel } from '../src/engine.js'
 import { createNodeModel } from '../src/node.js'
 import { readRange } from '../src/read.js'
-import { clearRange, formatRange, manageTabs, restructure, runPaused, writeRange } from '../src/write.js'
+import {
+  clearRange,
+  flushDiffs,
+  formatRange,
+  isEmptyDiffs,
+  manageTabs,
+  restructure,
+  runPaused,
+  writeRange,
+} from '../src/write.js'
 
 function seeded(): SpreadsheetEngineModel {
   const model = createNodeModel('write')
@@ -44,9 +53,31 @@ describe('write', () => {
     const model = seeded()
     model.flushSendQueue()
     writeRange(model, { sheet: 0, anchor: { row: 9, column: 9 }, rows: [['x']] })
-    // A drained queue still returns one byte (the empty list), never zero.
     assert.ok(model.flushSendQueue().length > 1)
-    assert.equal(model.flushSendQueue().length, 1)
+  })
+
+  it('tells an empty flush apart from a real payload', () => {
+    const model = seeded()
+    // A drained queue flushes as ONE byte, the encoded empty list, never zero —
+    // so `length > 0` is not the test, and a caller using it would submit
+    // endless no-op batches.
+    const drained = model.flushSendQueue()
+    assert.deepEqual(Array.from(model.flushSendQueue()), [0])
+    assert.equal(drained.length > 0, true)
+    assert.equal(isEmptyDiffs(model.flushSendQueue()), true)
+    assert.equal(flushDiffs(model), null)
+
+    writeRange(model, { sheet: 0, anchor: { row: 9, column: 9 }, rows: [['x']] })
+    const real = flushDiffs(model)
+    assert.notEqual(real, null)
+    assert.equal(isEmptyDiffs(real as Uint8Array), false)
+    assert.equal(flushDiffs(model), null)
+
+    // A write that changes nothing still leaves a payload; only an untouched
+    // model flushes empty.
+    assert.equal(isEmptyDiffs(new Uint8Array()), true)
+    assert.equal(isEmptyDiffs(new Uint8Array([0])), true)
+    assert.equal(isEmptyDiffs(new Uint8Array([1, 1, 1, 0])), false)
   })
 
   it('refuses a block past maxCellsPerWrite', () => {

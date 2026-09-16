@@ -33,7 +33,9 @@ async function workbook(): Promise<SpreadsheetEngineModel> {
     for (let row = 2; row <= 5; row++) model.setUserInput(0, row, 4, `=C${row}*$A$1+Rates!$A$1`)
     // Column E: a RELATIVE cross-sheet reference, which shifts like any other.
     for (let row = 2; row <= 5; row++) model.setUserInput(0, row, 5, `=Rates!A${row}`)
-    model.updateRangeStyle(0, { r0: 4, c0: 1, r1: 4, c1: 1 }, 'font.b', 'true')
+    // `pear` is row 2 and sorts to row 5, so the style has to travel for the
+    // assertion below to mean anything.
+    model.updateRangeStyle(0, { r0: 2, c0: 1, r1: 2, c1: 1 }, 'font.b', 'true')
   })
   return model
 }
@@ -101,16 +103,16 @@ describe('sort', () => {
 
   it('carries styles with their rows', async () => {
     const model = await workbook()
-    assert.equal(model.cellStyle(0, 4, 1).font?.b, true) // cherry, before
+    assert.equal(model.cellStyle(0, 2, 1).font?.b, true, 'pear starts bold at row 2')
     sortRange(model, {
       sheet: 0,
-      range: { r0: 1, c0: 1, r1: 5, c1: 4 },
+      range: { r0: 1, c0: 1, r1: 5, c1: 5 },
       keys: [{ column: 1 }],
       hasHeader: true,
     })
-    assert.equal(model.cellContent(0, 4, 1), 'cherry')
-    assert.equal(model.cellStyle(0, 4, 1).font?.b, true)
-    assert.notEqual(model.cellStyle(0, 5, 1).font?.b, true) // pear did not inherit it
+    assert.equal(model.cellContent(0, 5, 1), 'pear')
+    assert.equal(model.cellStyle(0, 5, 1).font?.b, true, 'the bold followed pear to row 5')
+    assert.notEqual(model.cellStyle(0, 2, 1).font?.b, true, 'apple did not inherit row 2’s bold')
   })
 
   it('sorts numbers numerically, text after numbers and blanks last', async () => {

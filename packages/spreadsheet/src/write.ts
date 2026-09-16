@@ -38,6 +38,25 @@ export function runPaused<T>(model: SpreadsheetEngineModel, body: () => T): T {
   return result
 }
 
+/**
+ * A drained send queue flushes as ONE byte, `[0x00]` — the encoded empty list —
+ * never as a zero-length buffer. A caller that tests `diffs.length > 0` to
+ * decide whether it has something to submit will post an endless stream of
+ * no-op batches, each taking a sequence number, an audit row and a fan-out.
+ * Measured on both bindings.
+ */
+export const EMPTY_DIFFS_BYTE = 0
+
+export function isEmptyDiffs(diffs: Uint8Array): boolean {
+  return diffs.length <= 1 && (diffs.length === 0 || diffs[0] === EMPTY_DIFFS_BYTE)
+}
+
+/** Flush, and say "nothing happened" as `null` rather than as a one-byte buffer. */
+export function flushDiffs(model: SpreadsheetEngineModel): Uint8Array | null {
+  const diffs = model.flushSendQueue()
+  return isEmptyDiffs(diffs) ? null : diffs
+}
+
 export function summaryOf(
   structuralKind: SpreadsheetStructuralKind | null,
   sheetIndexes: number[],
