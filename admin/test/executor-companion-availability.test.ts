@@ -250,3 +250,18 @@ test('Desktop keeps the stop button for a daemon it started itself', async () =>
   })
   assert.match(html, /Stop daemon/)
 })
+
+/**
+ * The shell ships on its own schedule and the admin it loads is always the
+ * newest one, so a Nessie Desktop built before the menu bar app existed answers
+ * without that field. It must read as "no menu bar app here", not as a crash
+ * that takes the whole Executors panel down with it.
+ */
+test('a shell that predates the menu bar app still renders its own controls', async () => {
+  const older = response('available', 'Ready.')
+  delete (older as Partial<ExecutorCompanionStatusResponse>).menuBar
+  const html = await renderPanel({ desktop: true, status: older })
+  assert.match(html, /Nessie Desktop companion/)
+  assert.match(html, /Start daemon/)
+  assert.doesNotMatch(html, /Open Nessie Executor/)
+})

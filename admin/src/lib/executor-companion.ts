@@ -43,7 +43,13 @@ export type ExecutorMenuBarCompanion = {
 export type ExecutorCompanionStatusResponse = {
   availability: ExecutorCompanionAvailability
   executors: ExecutorCompanionStatus[]
-  menuBar: ExecutorMenuBarCompanion
+  /**
+   * Optional because the shell ships separately from this admin. A Nessie
+   * Desktop built before the menu bar app existed answers without this field,
+   * and the hosted admin it loads is always the newest one — so a required
+   * field here would be a crash on somebody else's release schedule.
+   */
+  menuBar?: ExecutorMenuBarCompanion
   platform: 'linux' | 'macos' | 'windows'
   /** Person-readable, names the remedy, and carries no local path or secret. */
   reason: string
@@ -107,3 +113,9 @@ export const forgetExecutorWithCompanion = (
  */
 export const openExecutorMenuBarApp = (): Promise<void> =>
   invokeCompanion('executor_companion_open_menu_bar_app')
+
+/** What a shell that predates the menu bar app is taken to have said. */
+export const NO_MENU_BAR_COMPANION: ExecutorMenuBarCompanion = {
+  openable: false,
+  supervising: false,
+}

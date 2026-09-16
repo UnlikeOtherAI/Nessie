@@ -285,6 +285,10 @@ mod tests {
         "../../../../../executor/menubar-macos/Sources/App/ExecutorController.swift"
     );
 
+    const EXECUTORS_PANEL_SOURCE: &str = include_str!(
+        "../../../../../admin/src/components/features/executors/ExecutorDesktopCompanionPanel.tsx"
+    );
+
     /// The copy the person installed themselves wins, because its path survives a
     /// Desktop upgrade and it keeps running after Desktop quits.
     #[test]
@@ -400,6 +404,21 @@ mod tests {
         assert!(MENU_BAR_SUPERVISING_REASON.contains("menu bar"));
         assert!(!MENU_BAR_SUPERVISING_REASON.contains('/'));
         assert!(!UNVERIFIED_INSTALL_REASON.contains('/'));
+    }
+
+    /// This sentence is said twice: here, as the refusal a person sees if they
+    /// somehow reach the command anyway, and in the Executors panel, which says
+    /// it before offering a start button at all. Two wordings of one rule is how
+    /// a person gets told two different things about the same Mac, so the
+    /// distinctive clause has to survive in both.
+    #[test]
+    fn the_panel_says_the_same_thing_the_refusal_does() {
+        const CLAUSE: &str = "will not start a second daemon beside it";
+        assert!(MENU_BAR_SUPERVISING_REASON.contains(CLAUSE));
+        assert!(
+            EXECUTORS_PANEL_SOURCE.contains(CLAUSE),
+            "the Executors panel must explain the deferral in the shell's own words",
+        );
     }
 
     /// A bundle identifier is a claim; a signature is evidence. This is the

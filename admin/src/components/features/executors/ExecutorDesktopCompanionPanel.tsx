@@ -5,6 +5,7 @@ import {
   configureExecutorWorkspaceWithCompanion,
   executorCompanionStatus,
   forgetExecutorWithCompanion,
+  NO_MENU_BAR_COMPANION,
   openExecutorMenuBarApp,
   pairExecutorWithCompanion,
   startExecutorWithCompanion,
@@ -178,8 +179,9 @@ export const ExecutorDesktopCompanionPanel = ({
 
   const controls = offersControls(companion.availability)
   if (!controls) return <AvailabilityCard status={companion} />
-  const menuBarSection = companion.menuBar.openable ? (
-    <MenuBarSection busy={busy} menuBar={companion.menuBar} onOpen={() => void openMenuBarApp()} />
+  const menuBar = companion.menuBar ?? NO_MENU_BAR_COMPANION
+  const menuBarSection = menuBar.openable ? (
+    <MenuBarSection busy={busy} menuBar={menuBar} onOpen={() => void openMenuBarApp()} />
   ) : null
   if (!activeExecutorId) {
     const availabilityCard = companion.availability === 'workspace_only'
@@ -282,7 +284,7 @@ export const ExecutorDesktopCompanionPanel = ({
               <p className="text-xs text-[color:var(--tx3)]">Confirm this executor’s fingerprint in Nessie before starting its local daemon.</p>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              {companion.menuBar.supervising ? (
+              {menuBar.supervising ? (
                 <span className="text-xs text-[color:var(--tx3)]">{MENU_BAR_SUPERVISING_COPY}</span>
               ) : status.daemonStatus === 'running' ? (
                 <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop daemon'}</button>
