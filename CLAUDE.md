@@ -78,15 +78,19 @@ sentence changes only if the invariant itself did.
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
   model dropdown, and the tool/app fold that arrives closed.
-- **Every CI browser fixture is an explicit Vite input.** Navigation
-  Transitions serves a *preview build* (`NAV_E2E_ADMIN_MODE: preview`), not
-  the dev server, so a new `admin/e2e/<name>/index.html` is not served at all
-  unless it is added to `admin/vite.config.ts` behind its own
-  `NESSIE_<NAME>_E2E_FIXTURE` flag **and** that flag is set on the job in
-  `.github/workflows/ci.yml`. The flag keeps it out of release bundles. This
-  passes locally either way — `startAdmin()` defaults to the dev server — so
-  verify a new suite with `NAV_E2E_ADMIN_MODE=preview` against a build made
-  with the flag before trusting it.
+- **A CI browser fixture takes three edits, not one.** Navigation Transitions
+  serves a *preview build* (`NAV_E2E_ADMIN_MODE: preview`), not the dev
+  server, so a new `admin/e2e/<name>/index.html` is not served at all unless
+  **(1)** it is a rollup input in `admin/vite.config.ts` behind its own
+  `NESSIE_<NAME>_E2E_FIXTURE` flag, which keeps it out of release bundles,
+  **(2)** that flag is set on the job in `.github/workflows/ci.yml`, and
+  **(3)** the flag is listed under `@nessie/admin#build`'s `env` in
+  `turbo.json`. Miss (3) and CI restores a cached bundle built without the
+  fixture, which fails exactly like missing (1) — the flag has to be in the
+  build's hash or it changes nothing. All of this passes locally either way,
+  because `startAdmin()` defaults to the dev server. Verify a new suite with
+  `NAV_E2E_ADMIN_MODE=preview` against a build made with the flag, and confirm
+  the flag actually changes `admin/dist`, before trusting it.
 - **Channel agent-control coverage:** run
   `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
   suite — it drives the real members popup over both answers to
