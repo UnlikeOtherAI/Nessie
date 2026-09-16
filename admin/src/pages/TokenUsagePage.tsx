@@ -1,8 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { UoaBillingCreditsPanel } from '../components/features/billing/UoaBillingCreditsPanel'
 import { UoaBillingRecurringAddonsPanel } from '../components/features/billing/UoaBillingRecurringAddonsPanel'
-import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
+import {
+  UoaBillingPlanSummary,
+  UoaBillingStatementPanel,
+} from '../components/features/billing/UoaBillingStatementPanel'
 import { Notice } from '../components/primitives/Notice'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import {
@@ -25,6 +28,10 @@ export const TokenUsagePage = () => {
   const queryClient = useQueryClient()
   const refreshedCheckoutSerial = useRef(0)
   const canReadStatement = billingCapability.data?.canReadStatement === true
+  // The prototype's two-view navigation ("Usage & billing" ↔ "Statement")
+  // mapped onto this one route: both views read the same real queries, this
+  // just changes which panels are on screen.
+  const [view, setView] = useState<'statement' | 'usage'>('usage')
   // UOA sends the person back here with the outcome; it is a consumed intent
   // (docs/navigation/overview.md §8), so the notice shows for this visit and a
   // refresh or Back lands on plain /tokens without re-announcing it.
@@ -67,7 +74,11 @@ export const TokenUsagePage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <ScreenHeader title="Credits & Billing" />
+      <ScreenHeader
+        flowOwnsBack={view === 'statement'}
+        onBack={view === 'statement' ? () => setView('usage') : undefined}
+        title={view === 'statement' ? 'Statement' : 'Credits & Billing'}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {checkoutNotice && (
@@ -82,9 +93,17 @@ export const TokenUsagePage = () => {
             </Notice>
           </div>
         )}
-        <UoaBillingCreditsPanel />
-        <UoaBillingRecurringAddonsPanel />
-        {canReadStatement && <UoaBillingStatementPanel />}
+        {view === 'usage' ? (
+          <>
+            <UoaBillingCreditsPanel
+              onViewStatement={canReadStatement ? () => setView('statement') : undefined}
+            />
+            {canReadStatement && <UoaBillingPlanSummary />}
+            <UoaBillingRecurringAddonsPanel />
+          </>
+        ) : (
+          canReadStatement && <UoaBillingStatementPanel />
+        )}
       </div>
     </section>
   )

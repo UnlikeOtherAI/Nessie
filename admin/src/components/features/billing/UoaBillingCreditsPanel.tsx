@@ -1,25 +1,20 @@
+import { useState } from 'react'
 import type {
   BillingCreditsManagerV1,
   BillingCreditsMemberV1,
   BillingCreditsV1,
 } from '@unlikeotherai/billing-statement-protocol'
 
-import {
-  useUoaBillingAutoTopUpDisable,
-  useUoaBillingAutoTopUpRecover,
-  useUoaBillingAutoTopUpSelect,
-  useUoaBillingAutoTopUpSetup,
-  useUoaBillingCredits,
-  useUoaBillingCreditTopUp,
-} from '../../../facades/billing/hooks'
+import { useUoaBillingCredits } from '../../../facades/billing/hooks'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { Card } from '../../shared/Card'
-import { KeyValueList } from '../../shared/KeyValueList'
 import { Section } from '../../shared/PageBody'
 import { QueryState } from '../../shared/QueryState'
 import { Row, RowList } from '../../shared/RowList'
 import { StatGrid, StatTile } from '../../shared/StatTile'
+import { UoaBillingAutoTopUpDialog } from './UoaBillingAutoTopUpDialog'
+import { UoaBillingBuyCreditsDialog } from './UoaBillingBuyCreditsDialog'
 
 const isManagerCredits = (
   credits: BillingCreditsV1,
@@ -90,32 +85,19 @@ const ServiceBreakdown = ({ credits }: { credits: BillingCreditsV1 }) =>
 
 const ManagerAutomaticTopUp = ({
   credits,
+  onOpen,
 }: {
   credits: BillingCreditsManagerV1
+  onOpen: () => void
 }) => {
   const automatic = credits.automatic_top_up
   return (
     <Section title="Automatic top-up">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="font-semibold text-[color:var(--tx)]">
-            {automatic.display_status}
-          </div>
-          <p className="mt-1 text-xs text-[color:var(--tx2)]">
-            {automatic.description}
-          </p>
-        </div>
-        <Pill tone="outline">{automatic.state}</Pill>
-      </div>
-      <KeyValueList
-        className="mt-3"
-        items={[
-          { label: 'Threshold', value: automatic.threshold?.display ?? 'Not set' },
-          { label: 'Monthly cap', value: automatic.monthly_cap?.display ?? 'Not set' },
-          { label: 'Charged this month', value: automatic.charged_this_month.display },
-          { label: 'Cap remaining', value: automatic.remaining_monthly_cap?.display ?? 'Not set' },
-        ]}
-        layout="grid"
+      <Row
+        onClick={onOpen}
+        subtitle={automatic.description}
+        title={automatic.display_status}
+        trailing={<Pill tone="outline">{automatic.state}</Pill>}
       />
     </Section>
   )
@@ -136,9 +118,15 @@ const MemberAutomaticTopUp = ({
   </Section>
 )
 
-const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) =>
+const AutomaticTopUp = ({
+  credits,
+  onOpenManager,
+}: {
+  credits: BillingCreditsV1
+  onOpenManager: () => void
+}) =>
   isManagerCredits(credits)
-    ? <ManagerAutomaticTopUp credits={credits} />
+    ? <ManagerAutomaticTopUp credits={credits} onOpen={onOpenManager} />
     : <MemberAutomaticTopUp credits={credits} />
 
 const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
@@ -169,138 +157,47 @@ const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
   </Section>
 )
 
-const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
-  const topUp = useUoaBillingCreditTopUp()
-  const setup = useUoaBillingAutoTopUpSetup()
-  const select = useUoaBillingAutoTopUpSelect()
-  const disable = useUoaBillingAutoTopUpDisable()
-  const recover = useUoaBillingAutoTopUpRecover()
-  if (!isManagerCredits(credits)) return null
+const BalanceActions = ({
+  credits,
+  onBuyCredits,
+  onViewStatement,
+}: {
+  credits: BillingCreditsV1
+  onBuyCredits: () => void
+  onViewStatement?: () => void
+}) => (
+  <div className="flex flex-none gap-2">
+    {onViewStatement && (
+      <button
+        className="admin-button admin-button-secondary"
+        onClick={onViewStatement}
+        type="button"
+      >
+        View statement
+      </button>
+    )}
+    {isManagerCredits(credits) && credits.capabilities.can_top_up && (
+      <button
+        className="admin-button admin-button-primary"
+        onClick={onBuyCredits}
+        type="button"
+      >
+        Buy credits
+      </button>
+    )}
+  </div>
+)
 
-  const pending = topUp.isPending
-    || setup.isPending
-    || select.isPending
-    || disable.isPending
-    || recover.isPending
-  const error = [topUp.error, setup.error, select.error, disable.error, recover.error]
-    .find((value): value is Error => value instanceof Error)
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <Section title={credits.funding_policy.title}>
-        <p className="text-xs text-[color:var(--tx2)]">
-          {credits.funding_policy.description}
-        </p>
-        <div className="mt-3 grid gap-2">
-          {credits.funding_policy.offers.map((offer) => (
-            <button
-              className="admin-button admin-button-primary"
-              disabled={!offer.action.enabled || pending}
-              key={offer.id}
-              onClick={() => {
-                topUp.mutate(offer.id, {
-                  onSuccess: (result) => {
-                    window.location.assign(result.redirect_url)
-                  },
-                })
-              }}
-              title={offer.action.disabled_reason ?? offer.action.description}
-              type="button"
-            >
-              <span>{offer.action.label}</span>
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Automatic top-up options">
-        <RowList label="Automatic top-up options">
-          {credits.automatic_top_up.options.map((option) => {
-            const optionId = option.setup_action.request.body.option_id
-            return (
-              <Row
-                key={optionId}
-                subtitle={option.description}
-                title={option.label}
-                trailing={option.selected ? <Pill tone="outline">Selected</Pill> : undefined}
-              >
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    className="admin-button admin-button-primary admin-button-compact"
-                    disabled={!option.setup_action.enabled || pending}
-                    onClick={() => {
-                      setup.mutate(optionId, {
-                        onSuccess: (result) => {
-                          window.location.assign(result.redirect_url)
-                        },
-                      })
-                    }}
-                    title={option.setup_action.disabled_reason
-                      ?? option.setup_action.description}
-                    type="button"
-                  >
-                    {option.setup_action.label}
-                  </button>
-                  <button
-                    className="admin-button admin-button-secondary admin-button-compact"
-                    disabled={!option.update_action.enabled || pending}
-                    onClick={() => {
-                      select.mutate(optionId)
-                    }}
-                    title={option.update_action.disabled_reason
-                      ?? option.update_action.description}
-                    type="button"
-                  >
-                    {option.update_action.label}
-                  </button>
-                </div>
-              </Row>
-            )
-          })}
-        </RowList>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {credits.automatic_top_up.disable_action && (
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              disabled={!credits.automatic_top_up.disable_action.enabled || pending}
-              onClick={() => {
-                disable.mutate()
-              }}
-              type="button"
-            >
-              {credits.automatic_top_up.disable_action.label}
-            </button>
-          )}
-          {credits.automatic_top_up.recover_action && (
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              disabled={!credits.automatic_top_up.recover_action.enabled || pending}
-              onClick={() => {
-                recover.mutate(undefined, {
-                  onSuccess: (result) => {
-                    window.location.assign(result.redirect_url)
-                  },
-                })
-              }}
-              type="button"
-            >
-              {credits.automatic_top_up.recover_action.label}
-            </button>
-          )}
-        </div>
-        {error && (
-          <div className="mt-3 text-xs text-[color:var(--danger-text)]">
-            {error.message}
-          </div>
-        )}
-      </Section>
-    </div>
-  )
-}
-
-export const UoaBillingCreditsPanel = () => {
+export const UoaBillingCreditsPanel = ({
+  onViewStatement,
+}: {
+  /** Omitted when the viewer's capability grant has no readable statement. */
+  onViewStatement?: () => void
+} = {}) => {
   const credits = useUoaBillingCredits()
   const data = credits.data
+  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
+  const [autoTopUpOpen, setAutoTopUpOpen] = useState(false)
 
   return (
     <section className="mb-8" data-testid="uoa-billing-credits">
@@ -325,11 +222,18 @@ export const UoaBillingCreditsPanel = () => {
                     {data.credit_balance.description}
                   </p>
                 </div>
-                <Pill tone="outline">
-                  {data.viewer.role === 'billing_manager'
-                    ? 'Full team detail'
-                    : 'Your usage + team totals'}
-                </Pill>
+                <div className="flex flex-wrap items-start gap-3">
+                  <Pill tone="outline">
+                    {data.viewer.role === 'billing_manager'
+                      ? 'Full team detail'
+                      : 'Your usage + team totals'}
+                  </Pill>
+                  <BalanceActions
+                    credits={data}
+                    onBuyCredits={() => setBuyCreditsOpen(true)}
+                    onViewStatement={onViewStatement}
+                  />
+                </div>
               </div>
 
               <div>
@@ -357,8 +261,22 @@ export const UoaBillingCreditsPanel = () => {
 
               <ServiceBreakdown credits={data} />
               <RecentActivity credits={data} />
-              <AutomaticTopUp credits={data} />
-              <FundingActions credits={data} />
+              <AutomaticTopUp credits={data} onOpenManager={() => setAutoTopUpOpen(true)} />
+
+              {isManagerCredits(data) && (
+                <>
+                  <UoaBillingBuyCreditsDialog
+                    credits={data}
+                    onClose={() => setBuyCreditsOpen(false)}
+                    open={buyCreditsOpen}
+                  />
+                  <UoaBillingAutoTopUpDialog
+                    credits={data}
+                    onClose={() => setAutoTopUpOpen(false)}
+                    open={autoTopUpOpen}
+                  />
+                </>
+              )}
             </div>
           )}
         </QueryState>
