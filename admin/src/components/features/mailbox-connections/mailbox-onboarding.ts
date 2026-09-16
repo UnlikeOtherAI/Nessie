@@ -2,7 +2,13 @@ import { faApple, faGoogle, faMicrosoft, faYahoo } from '@fortawesome/free-brand
 import { faEnvelope } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 
-import type { MailboxConnectionScope, MailboxDiscoveryResult } from '../../../lib/api-client'
+import { MailboxConnectionDiagnosisSchema } from '@nessie/schemas'
+
+import type {
+  MailboxConnectionDiagnosis,
+  MailboxConnectionScope,
+  MailboxDiscoveryResult,
+} from '../../../lib/api-client'
 
 /**
  * The discovery endpoint is deliberately described here instead of spread
@@ -14,6 +20,8 @@ export type MailboxOnboardingStep =
   | 'existing'
   | 'confirmation'
   | 'password'
+  | 'server'
+  | 'leg'
   | 'manual'
   | 'shared-credential'
 
@@ -56,18 +64,91 @@ export const commsOAuthProvider = (
     : null
 }
 
+/**
+ * Where an address goes next.
+ *
+ * `requiresManualSettings` used to end here, at the ten-field advanced form.
+ * It no longer does: not knowing a domain's settings is not the same as needing
+ * a person to type them, because the connect route now finds the endpoints
+ * itself once it has a credential to try them with. So an undiscoverable domain
+ * asks for a password like any other, and the form only escalates when that
+ * attempt comes back with something it cannot resolve on its own.
+ */
 export const nextMailboxOnboardingStep = (
   result: MailboxDiscoveryResult,
   scope: MailboxConnectionScope,
 ): MailboxOnboardingStep => {
   if (result.existingConnection) return 'existing'
-  if (result.ui.requiresManualSettings) return 'manual'
   if (result.ui.requiresProviderConfirmation) return 'confirmation'
   if (commsOAuthProvider(result, scope)) return 'start'
   if (scope === 'team' && result.authentication.strategy === 'oauth2') return 'shared-credential'
   if (result.ui.requiresAdvancedSettings) return 'shared-credential'
-  if (hasTrustedMailboxConfiguration(result)) return 'password'
-  return result.authentication.strategy === 'oauth2' ? 'shared-credential' : 'manual'
+  if (result.authentication.strategy === 'oauth2') return 'shared-credential'
+  return 'password'
+}
+
+/**
+ * The escalation ladder, driven by the server's per-leg diagnosis.
+ *
+ * Each rung asks for strictly more than the last and never more than it needs:
+ * a password, then one mail-server hostname, then the one leg that is still
+ * missing, and only then every field. The rule that keeps it a ladder is that a
+ * step never repeats itself — a screen that failed on the settings it just
+ * collected has nothing further to learn by asking for them again.
+ */
+export const nextStepAfterConnectFailure = (
+  current: MailboxOnboardingStep,
+  diagnosis: MailboxConnectionDiagnosis | null,
+): MailboxOnboardingStep => {
+  // Without a diagnosis there is nothing to reason from, and the person is
+  // better served by the screen that can express anything than by a guess.
+  if (!diagnosis) return current === 'manual' ? 'manual' : 'server'
+  // The credential is the problem, not the endpoints. Every other screen would
+  // be asking them to fix something that is not broken.
+  if (isCredentialRejection(diagnosis)) return current
+  const failing = failingLeg(diagnosis)
+  // One leg resolved: the password works and a single server is missing. That
+  // is the narrowest question left, and `leg` is the screen that asks only it.
+  if (failing && current !== 'leg') return 'leg'
+  if (current === 'password') return 'server'
+  return 'manual'
+}
+
+export const isCredentialRejection = (diagnosis: MailboxConnectionDiagnosis): boolean =>
+  diagnosis.imap.failure === 'credential_rejected'
+  || diagnosis.smtp.failure === 'credential_rejected'
+
+/** The one leg still missing, or null when both or neither resolved. */
+export const failingLeg = (
+  diagnosis: MailboxConnectionDiagnosis,
+): MailboxLeg | null => {
+  if (diagnosis.imap.ok === diagnosis.smtp.ok) return null
+  return diagnosis.imap.ok ? 'smtp' : 'imap'
+}
+
+export type MailboxLeg = 'imap' | 'smtp'
+
+export const MAILBOX_LEG_LABEL: Record<
+  MailboxLeg,
+  { direction: string; does: string; protocol: string }
+> = {
+  imap: { direction: 'Incoming', does: 'receives your mail', protocol: 'IMAP' },
+  smtp: { direction: 'Outgoing', does: 'sends your mail', protocol: 'SMTP' },
+}
+
+/**
+ * The refusal's `details`, when it is the per-leg shape. Parsed rather than
+ * cast: it arrives as `unknown` off an error envelope, and a shape this drives
+ * screens from is not one to assume.
+ */
+export const mailboxConnectionDiagnosis = (
+  cause: unknown,
+): MailboxConnectionDiagnosis | null => {
+  if (typeof cause !== 'object' || cause === null || !('details' in cause)) return null
+  const parsed = MailboxConnectionDiagnosisSchema.safeParse(
+    (cause as { details?: unknown }).details,
+  )
+  return parsed.success ? parsed.data : null
 }
 
 export const connectorMethodLabel = (type: string): string => {

@@ -179,6 +179,7 @@ export {
   listMailboxConnectionsForUser,
   loadManageableMailboxConnection,
   mailboxConnectionTestFailure,
+  mailboxResolutionRefusal,
   presentMailboxConnection,
   setMailboxAgentAccess,
   verifyMailboxConnection,

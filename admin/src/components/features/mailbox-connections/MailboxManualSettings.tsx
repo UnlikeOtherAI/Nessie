@@ -12,28 +12,28 @@ type MailboxManualSettingsProps = {
   address: string
   error: string | null
   imapHost: string
-  imapPort: number
-  imapSecurity: MailboxTransportSecurity
+  imapPort: string
+  imapSecurity: MailboxTransportSecurity | ''
   label: string
   onAddressChange: (value: string) => void
   onBack: () => void
   onConnect: (event: FormEvent<HTMLFormElement>) => void
   onImapHostChange: (value: string) => void
-  onImapPortChange: (value: number) => void
-  onImapSecurityChange: (value: MailboxTransportSecurity) => void
+  onImapPortChange: (value: string) => void
+  onImapSecurityChange: (value: MailboxTransportSecurity | '') => void
   onLabelChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onSmtpHostChange: (value: string) => void
-  onSmtpPortChange: (value: number) => void
-  onSmtpSecurityChange: (value: MailboxTransportSecurity) => void
+  onSmtpPortChange: (value: string) => void
+  onSmtpSecurityChange: (value: MailboxTransportSecurity | '') => void
   onTeamChange: (value: string) => void
   onUsernameChange: (value: string) => void
   password: string
   pending: boolean
   scope: MailboxConnectionScope
   smtpHost: string
-  smtpPort: number
-  smtpSecurity: MailboxTransportSecurity
+  smtpPort: string
+  smtpSecurity: MailboxTransportSecurity | ''
   teamId: string
   teams: TeamRecord[]
   username: string
@@ -43,10 +43,10 @@ type ServerSettingsProps = {
   direction: 'Incoming' | 'Outgoing'
   host: string
   onHostChange: (value: string) => void
-  onPortChange: (value: number) => void
-  onSecurityChange: (value: MailboxTransportSecurity) => void
-  port: number
-  security: MailboxTransportSecurity
+  onPortChange: (value: string) => void
+  onSecurityChange: (value: MailboxTransportSecurity | '') => void
+  port: string
+  security: MailboxTransportSecurity | ''
 }
 
 const ServerSettings = ({
@@ -65,7 +65,6 @@ const ServerSettings = ({
         className="admin-input"
         onChange={(event) => onHostChange(event.target.value)}
         placeholder={`${direction === 'Incoming' ? 'imap' : 'smtp'}.example.com`}
-        required
         value={host}
       />
     </label>
@@ -73,10 +72,9 @@ const ServerSettings = ({
       <span className="text-[color:var(--tx2)]">Port</span>
       <input
         className="admin-input"
-        min="1"
-        onChange={(event) => onPortChange(Number(event.target.value))}
-        required
-        type="number"
+        inputMode="numeric"
+        onChange={(event) => onPortChange(event.target.value)}
+        placeholder="Automatic"
         value={port}
       />
     </label>
@@ -84,9 +82,10 @@ const ServerSettings = ({
       <span className="text-[color:var(--tx2)]">Security</span>
       <select
         className="admin-input"
-        onChange={(event) => onSecurityChange(event.target.value as MailboxTransportSecurity)}
+        onChange={(event) => onSecurityChange(event.target.value as MailboxTransportSecurity | '')}
         value={security}
       >
+        <option value="">Automatic</option>
         <option value="tls">TLS</option>
         <option value="starttls">STARTTLS</option>
       </select>
@@ -196,6 +195,7 @@ export const MailboxManualSettings = ({
       Use the same username and password for incoming and outgoing mail
     </label>
     <p className="text-xs text-[color:var(--tx3)]">
+      Leave a port or security setting on Automatic and we will try the standard ones.
       Only encrypted TLS or STARTTLS connections are supported.
     </p>
     <FormError>{error}</FormError>
