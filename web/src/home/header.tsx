@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { pagesInGroup } from '../pages/registry'
 import { cookieCopy, navItems, signInUrl } from './content'
-import { Button, openCookieEvent } from './ui'
+import { openCookieEvent } from './ui'
 import { HangingWave } from './wave'
 
 /**
@@ -114,8 +114,13 @@ export function Header() {
           <button aria-label="Search" className="n-icon-btn" type="button">
             <FontAwesomeIcon icon={faMagnifyingGlass} />
           </button>
+          {/* One door, not two. "Sign in" and "Get started" sat an inch apart
+              here and went to the same URL, so the quiet link and the primary
+              button promised a returning customer and a newcomer two different
+              journeys and delivered one. The page's own calls to action are
+              the invitation; the top bar is for the person who already has an
+              account. */}
           <a className="n-signin" href={signInUrl}>Sign in</a>
-          <Button href={signInUrl}>Get started</Button>
           <button aria-label="Menu" className="n-icon-btn n-menu" onClick={() => setOpen(!open)} type="button">
             <FontAwesomeIcon icon={open ? faXmark : faBars} />
           </button>
