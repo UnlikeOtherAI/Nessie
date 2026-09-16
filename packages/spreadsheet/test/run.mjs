@@ -14,10 +14,16 @@
 // xlsx-fidelity.test.ts` with nothing to explain it. It reproduced on GitHub
 // Actions after `--test-concurrency=1` had made it rare locally.
 //
-// So the test runner's stdout is a real FILE here, never a pipe: a write to a
-// file does not fail the way a write to a pipe does. The file is streamed to
-// our own stdout when the run finishes, so CI still shows every TAP line, and
-// the child's exit code is ours.
+// So this runs the suite in ONE process whose stdout is a real FILE, never a
+// pipe: `--experimental-test-isolation=none` keeps every test file in the
+// runner itself (the admin package already runs this way), and a write to a
+// file does not fail the way a write to a pipe does. Running the runner alone
+// against a file is not enough — `node --test` spawns a child per file and
+// pipes its stdout back, and that pipe is the one the engine dies on, which is
+// exactly how the first attempt at this fix still failed in CI.
+//
+// The file is streamed to our own stdout when the run finishes, so CI still
+// shows every TAP line, and the child's exit code is ours.
 import { spawn } from 'node:child_process'
 import { createReadStream, closeSync, openSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -29,7 +35,14 @@ const tapFd = openSync(tapPath, 'w')
 
 const child = spawn(
   process.execPath,
-  ['--test', '--test-concurrency=1', '--import', 'tsx', 'test/**/*.test.ts'],
+  [
+    '--test',
+    '--experimental-test-isolation=none',
+    '--test-concurrency=1',
+    '--import',
+    'tsx',
+    'test/**/*.test.ts',
+  ],
   { stdio: ['ignore', tapFd, 'inherit'] },
 )
 
