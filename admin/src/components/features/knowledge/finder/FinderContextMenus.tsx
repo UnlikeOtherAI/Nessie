@@ -73,6 +73,21 @@ export type UseFinderMenusOptions = {
   onCreateRootFolder?: () => void
   /** Asks a virtual column's query again; it has no other way to be refreshed. */
   onRefresh?: () => void
+  /**
+   * The destination picker "Move to…" opens — 2D's `MoveToDialog`, injected
+   * rather than imported so the menu owns *when* it opens and the transfer
+   * wave owns what it does. Without it the item is absent, never inert.
+   */
+  renderMoveTo?: (request: FinderMoveToRequest) => ReactNode
+}
+
+/** What the menu knows about a move when it hands it to the picker. */
+export type FinderMoveToRequest = {
+  currentParentPageId: string | null
+  onClose: () => void
+  open: true
+  pages: KnowledgePageRecord[]
+  sourceSpaceId: string
 }
 
 type ActiveTarget =
@@ -98,15 +113,15 @@ type FinderDialogState =
       pageId?: string
     }
   | { kind: 'delete'; pages: KnowledgePageRecord[] }
+  | { kind: 'move'; pages: KnowledgePageRecord[] }
   | null
-
-const NOOP = (): void => undefined
 
 export const useFinderMenus = ({
   onCreateRootFolder,
   onNewFolderIn,
   onRefresh,
   onUploadFiles,
+  renderMoveTo,
   selectedIds,
 }: UseFinderMenusOptions): {
   rowProps: (row: FinderMenuRowRef) => FinderRowMenuProps
@@ -300,7 +315,9 @@ export const useFinderMenus = ({
         const target = infoTarget()
         if (target) setDialog({ kind: 'info', pageId: first?.id, spaceId: space?.id, target })
       },
-      moveTo: NOOP,
+      moveTo: () => {
+        if (targetPages.length > 0) setDialog({ kind: 'move', pages: targetPages })
+      },
       newDocument: () => knowledge.openCreate(parentPageId),
       newDocumentInside: () => knowledge.openCreate(first?.id ?? null),
       newFolder: () => onNewFolderIn(parentPageId),
@@ -386,13 +403,14 @@ export const useFinderMenus = ({
         accessMode: accessFor()?.mode ?? 'unknown',
         actorIsPerson: true,
         canManageAccess: space?.canManageAccess ?? false,
+        canMoveTo: Boolean(renderMoveTo),
         canShare: ownPersonal,
         canWrite: space?.canWrite ?? false,
       },
       handlers,
       target: menuTarget,
     })
-    : []), [accessFor, handlers, menuTarget, ownPersonal, space])
+    : []), [accessFor, handlers, menuTarget, ownPersonal, renderMoveTo, space])
 
   // ── rowProps / backgroundProps ──────────────────────────────────────────
   const renameProps = useCallback((pageId: string): FinderRowRename | undefined => {
@@ -523,6 +541,15 @@ export const useFinderMenus = ({
           projectName={dialog.projectName}
         />
       ) : null}
+      {dialog?.kind === 'move' && renderMoveTo
+        ? renderMoveTo({
+          currentParentPageId: dialog.pages[0]?.parentPageId ?? null,
+          onClose: () => setDialog(null),
+          open: true,
+          pages: dialog.pages,
+          sourceSpaceId: dialog.pages[0]?.spaceId ?? space?.id ?? '',
+        })
+        : null}
       {confirm ? (
         <ConfirmDialog
           body={confirm.body}

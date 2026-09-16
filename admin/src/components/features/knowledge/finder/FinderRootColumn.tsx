@@ -15,7 +15,7 @@ import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { ProjectAvatar } from '../../../primitives/ProjectAvatar'
 import { Pill } from '../../../primitives/Pill'
 import { QueryState } from '../../../shared/QueryState'
-import { RowList } from '../../../shared/RowList'
+import { RowList, type RowDragHandlers } from '../../../shared/RowList'
 import { Skeleton } from '../../../primitives/Skeleton'
 import { FinderRow } from './FinderRow'
 import type {
@@ -84,6 +84,19 @@ type FinderRootColumnProps = {
   focusedRowId?: string
   /** "New shared folder…" and Refresh, off the column's empty background. */
   backgroundProps?: FinderBackgroundMenuProps
+  /**
+   * A root folder is the far side of a cross-space move or copy, and the root
+   * column is one of only two places one appears (the other is a project tab's
+   * sibling-space rows). Without these a drag onto "My Documents" lands on
+   * nothing and the move-or-copy prompt is unreachable — Rule zero's defect
+   * for the whole transfer feature.
+   *
+   * `dropHandlersForSpace(spaceId)` is `useFinderDrag`'s
+   * `dropHandlersFor(spaceId, { kind: 'folder', parentPageId: null, spaceId })`;
+   * `dropTargetId` is its `dropTargetKey`.
+   */
+  dropHandlersForSpace?: (spaceId: string) => RowDragHandlers
+  dropTargetId?: string | null
   onOpen: (row: FinderRootRow) => void
   /** `useFinderMenus().rowProps`, spread on each row. */
   rowProps?: (row: FinderRootRow) => FinderRowMenuProps
@@ -99,6 +112,8 @@ export const FinderRootColumn = ({
   activeRowId,
   backgroundProps,
   columnActive,
+  dropHandlersForSpace,
+  dropTargetId,
   focusedRowId,
   onOpen,
   query,
@@ -140,9 +155,19 @@ export const FinderRootColumn = ({
   const renderRow = (row: FinderRootRow) => {
     const selected = activeRowId === row.id
     const to = destination(row)
+    // Only a real root folder can receive a transfer. Latest and Shared with
+    // me are listings the server computes and Dashboards is a link: a drop on
+    // any of them has no destination to write to.
+    const droppableSpaceId = row.kind === 'space' ? row.space.spaceId : null
     const shared = {
       chevron: true,
       columnActive,
+      ...(droppableSpaceId && dropHandlersForSpace
+        ? {
+          dragHandlers: dropHandlersForSpace(droppableSpaceId),
+          dropTarget: dropTargetId === droppableSpaceId,
+        }
+        : {}),
       id: row.id,
       ...(rowProps ? rowProps(row) : {}),
       onOpen: () => onOpen(row),

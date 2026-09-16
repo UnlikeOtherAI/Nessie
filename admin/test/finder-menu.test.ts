@@ -62,6 +62,7 @@ const handlers = (): FinderMenuHandlers => {
 const caps = (overrides: Partial<FinderMenuCapabilities> = {}): FinderMenuCapabilities => ({
   accessMode: 'personal',
   actorIsPerson: true,
+  canMoveTo: true,
   canManageAccess: true,
   canShare: true,
   canWrite: true,

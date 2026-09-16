@@ -432,9 +432,22 @@ export const updatePage = async (
     if (input.expectedRevision !== undefined && existing.revision !== input.expectedRevision) {
       throw new KnowledgePageRevisionConflictError(existing.revision)
     }
-    const createsVersion = input.body !== undefined || input.bodyRef !== undefined
+    // A folder has no content, so nothing done to one creates a version.
+    //
+    // Without this arm a rename wrote a version row and, through the
+    // `status: 'draft'` below, quietly unpublished the folder — and
+    // `publishPage` refuses a folder outright, so there was no way back: one
+    // rename turned a published folder into a permanent draft. `createPage`
+    // has refused content on a folder since folders became a kind; this is the
+    // same rule on the update path, which it was missing.
+    const contentChanged = input.body !== undefined || input.bodyRef !== undefined
       || input.basisScopes !== undefined || input.disclosureSources !== undefined
       || input.title !== undefined || input.summary !== undefined || input.labels !== undefined
+    if (existing.kind === 'folder'
+      && (input.body !== undefined || input.bodyRef !== undefined)) {
+      throw new KnowledgeConflictError('A folder page cannot carry content')
+    }
+    const createsVersion = existing.kind !== 'folder' && contentChanged
     if (createsVersion) {
       const previous = await tx.knowledgePageVersion.findFirst({
         where: { pageId }, orderBy: { versionNumber: 'desc' }, include: versionInclude,

@@ -91,6 +91,12 @@ export type FinderMenuCapabilities = {
   canShare: boolean
   /** Only a person publishes. An agent's draft goes through the approval. */
   actorIsPerson: boolean
+  /**
+   * A destination picker is mounted. Where one is not, "Move to…" is absent
+   * rather than inert: a menu item that does nothing is worse than one that
+   * is not there, and the picker is the item's only doorway.
+   */
+  canMoveTo: boolean
 }
 
 /** Everything a menu item can do. The hook binds each to the current target. */
@@ -250,9 +256,9 @@ const pageItems = (
       icon: faPenToSquare,
       shortcut: 'F2',
     })] : []),
-    ...(mayOwn ? [item('move-to', 'Move to…', on.moveTo, {
-      icon: faArrowRightArrowLeft,
-    })] : []),
+    ...(mayOwn && caps.canMoveTo
+      ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
+      : []),
     SEPARATOR,
     item('copy-link', 'Copy link', on.copyLink, { icon: faLink }),
     SEPARATOR,
@@ -283,7 +289,7 @@ const selectionItems = (
     ...(files.length > 0
       ? [item('download', 'Download', on.download, { icon: faDownload })]
       : []),
-    ...(caps.canWrite && owned
+    ...(caps.canWrite && caps.canMoveTo && owned
       ? [item('move-to', 'Move to…', on.moveTo, { icon: faArrowRightArrowLeft })]
       : []),
     SEPARATOR,
