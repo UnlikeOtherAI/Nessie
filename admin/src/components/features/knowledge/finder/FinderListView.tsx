@@ -5,7 +5,7 @@ import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { formatBytes } from '../../../../lib/upload-xhr'
 import { EmptyState } from '../../../shared/EmptyState'
 import { RowList } from '../../../shared/RowList'
-import { familyTone, iconForFamily } from '../../../shared/file-icons'
+import { familyLabel, familyTone, iconForFamily } from '../../../shared/file-icons'
 import { AgentDraftBadge } from '../AgentDraftBadge'
 import { isAgentDraft } from '../page-status'
 import { FinderRow } from './FinderRow'
@@ -222,6 +222,7 @@ export const FinderListView = ({
                   iconTone={familyTone[family]}
                   id={page.id}
                   indexing={page.indexing}
+                  indexingFamilyLabel={familyLabel[family]}
                   key={page.id}
                   kind={page.kind}
                   gridCells={(

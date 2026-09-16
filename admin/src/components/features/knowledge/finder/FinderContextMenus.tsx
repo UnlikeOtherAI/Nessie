@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { KnowledgeAccessSummary, KnowledgeIndexingState } from '@nessie/schemas'
@@ -9,6 +10,7 @@ import { useToasts } from '../../../../providers/ToastProvider'
 import { ConfirmDialog } from '../../../shared/ConfirmDialog'
 import { ContextMenu } from '../../../overlays/ContextMenu'
 import { useContextMenu } from '../../../overlays/useContextMenu'
+import { knowledgeKeys } from '../../../../facades/knowledge/keys'
 import { useKnowledge } from '../KnowledgeProvider'
 import { AccessReadoutDialog } from './AccessReadoutDialog'
 import { GetInfoDialog, type GetInfoTarget } from './GetInfoDialog'
@@ -42,7 +44,15 @@ import { deleteConfirmCopy, pageLink, spaceAccessSummary } from './finder-menu-c
  * opened on has just been deleted, and which dialog a label opens.
  */
 
+/**
+ * What a menu is being opened on. A bare `KnowledgePageRecord` is accepted as
+ * well as the tagged forms, because a folder column has nothing else to hand
+ * over and that is the overwhelming case; the tags exist for the two kinds of
+ * row that are not pages in the open folder — a root folder, and a virtual
+ * row standing in for a page that lives somewhere else.
+ */
 export type FinderMenuRowRef =
+  | KnowledgePageRecord
   | { kind: 'page'; page: KnowledgePageRecord }
   | { kind: 'virtual'; row: FinderVirtualRow }
   | { kind: 'root'; row: FinderRootRow }
@@ -51,6 +61,22 @@ export type FinderMenuColumnRef =
   | { kind: 'root' }
   | { kind: 'virtual' }
   | { kind: 'folder'; parentPageId: string | null }
+  /** A folder column, named the way `FinderFolderHost` already knows it. */
+  | { parentPageId: string | null; spaceId: string }
+
+const asRowRef = (
+  row: FinderMenuRowRef,
+): Exclude<FinderMenuRowRef, KnowledgePageRecord> => (
+  row.kind === 'page' || row.kind === 'virtual' || row.kind === 'root'
+    ? row
+    : { kind: 'page', page: row }
+)
+
+const asColumnRef = (
+  column: FinderMenuColumnRef,
+): Exclude<FinderMenuColumnRef, { parentPageId: string | null; spaceId: string }> => (
+  'kind' in column ? column : { kind: 'folder', parentPageId: column.parentPageId }
+)
 
 /** Spread straight onto a `FinderRow`. Both props are ones no column computes. */
 export type FinderRowMenuProps = {
@@ -62,13 +88,25 @@ export type FinderBackgroundMenuProps = {
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void
 }
 
+/** The whole hook, as a type a column can take as one prop. */
+export type FinderMenus = {
+  rowProps: (row: FinderMenuRowRef) => FinderRowMenuProps
+  backgroundProps: (column: FinderMenuColumnRef) => FinderBackgroundMenuProps
+  dialogs: ReactNode
+}
+
+/**
+ * Everything the host contributes. All of it is optional, and an item whose
+ * doorway is missing is **absent from the menu** rather than inert — so a host
+ * that mounts the hook bare still gets a correct menu, just a shorter one.
+ */
 export type UseFinderMenusOptions = {
   /** The rows selected in the active column; a menu on one of them acts on all. */
-  selectedIds: readonly string[]
+  selectedIds?: readonly string[]
   /** Starts the inline "new folder" row in a folder the browser owns. */
-  onNewFolderIn: (parentPageId: string | null) => void
+  onNewFolderIn?: (parentPageId: string | null) => void
   /** Opens the hidden file input for this folder; the input lives with the host. */
-  onUploadFiles: (parentPageId: string | null) => void
+  onUploadFiles?: (parentPageId: string | null) => void
   /** The root column's "New shared folder…" — a dialog, because visibility. */
   onCreateRootFolder?: () => void
   /** Asks a virtual column's query again; it has no other way to be refreshed. */
@@ -94,7 +132,10 @@ type ActiveTarget =
   | { kind: 'pages'; pages: KnowledgePageRecord[] }
   | { kind: 'virtual'; row: FinderVirtualRow }
   | { kind: 'root'; row: FinderRootRow }
-  | { kind: 'background'; column: FinderMenuColumnRef }
+  | {
+      kind: 'background'
+      column: Exclude<FinderMenuColumnRef, { parentPageId: string | null; spaceId: string }>
+    }
 
 type FinderDialogState =
   | {
@@ -128,13 +169,10 @@ export const useFinderMenus = ({
   onRefresh,
   onUploadFiles,
   renderMoveTo,
-  selectedIds,
-}: UseFinderMenusOptions): {
-  rowProps: (row: FinderMenuRowRef) => FinderRowMenuProps
-  backgroundProps: (column: FinderMenuColumnRef) => FinderBackgroundMenuProps
-  dialogs: ReactNode
-} => {
+  selectedIds = [],
+}: UseFinderMenusOptions = {}): FinderMenus => {
   const knowledge = useKnowledge()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const { pushToast } = useToasts()
@@ -329,19 +367,21 @@ export const useFinderMenus = ({
           })
         }
       },
-      moveTo: () => {
-        if (targetPages.length > 0) setDialog({ kind: 'move', pages: targetPages })
-      },
+      moveTo: renderMoveTo
+        ? () => {
+          if (targetPages.length > 0) setDialog({ kind: 'move', pages: targetPages })
+        }
+        : undefined,
       newDocument: () => knowledge.openCreate(parentPageId),
       newDocumentInside: () => knowledge.openCreate(first?.id ?? null),
-      newFolder: () => onNewFolderIn(parentPageId),
+      newFolder: onNewFolderIn ? () => onNewFolderIn(parentPageId) : undefined,
       newFolderInside: () => {
-        if (first) {
+        if (first && onNewFolderIn) {
           knowledge.browseTo([...knowledge.pagePath, first.id])
           onNewFolderIn(first.id)
         }
       },
-      newSharedFolder: () => onCreateRootFolder?.(),
+      newSharedFolder: onCreateRootFolder,
       open: () => {
         if (first) knowledge.openPagePath([...knowledge.pagePath, first.id])
         else if (virtualRow) {
@@ -369,7 +409,18 @@ export const useFinderMenus = ({
       publish: () => {
         if (first) knowledge.publishPage(first.id)
       },
-      refresh: () => onRefresh?.(),
+      refresh: () => {
+        // A virtual folder has no other way to be asked again, so Refresh is
+        // never absent: without a host handler it invalidates the two reads a
+        // column is drawn from itself.
+        if (onRefresh) return onRefresh()
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.root })
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.latest() })
+        void queryClient.invalidateQueries({ queryKey: knowledgeKeys.sharedWithMe })
+        if (space?.id) {
+          void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(space.id) })
+        }
+      },
       remove: () => {
         if (targetPages.length > 0) setDialog({ kind: 'delete', pages: targetPages })
       },
@@ -394,7 +445,7 @@ export const useFinderMenus = ({
         )
       },
       spaceSettings: () => knowledge.openSpaceSettings(),
-      uploadFiles: () => onUploadFiles(parentPageId),
+      uploadFiles: onUploadFiles ? () => onUploadFiles(parentPageId) : undefined,
       uploadVersion: () => {
         // The file-version dialog belongs to the document pane, where the
         // uploader and its progress already live; opening the file is the
@@ -408,7 +459,8 @@ export const useFinderMenus = ({
     }
   }, [
     active, knowledge, me?.user.id, navigate, onCreateRootFolder, onNewFolderIn, onRefresh,
-    onUploadFiles, openSharing, pushToast, reindex, removeShare, space, targetPages,
+    onUploadFiles, openSharing, pushToast, queryClient, reindex, removeShare, renderMoveTo,
+    space, targetPages,
   ])
 
   const items = useMemo(() => (menuTarget
@@ -417,14 +469,13 @@ export const useFinderMenus = ({
         accessMode: accessFor()?.mode ?? 'unknown',
         actorIsPerson: true,
         canManageAccess: space?.canManageAccess ?? false,
-        canMoveTo: Boolean(renderMoveTo),
         canShare: ownPersonal,
         canWrite: space?.canWrite ?? false,
       },
       handlers,
       target: menuTarget,
     })
-    : []), [accessFor, handlers, menuTarget, ownPersonal, renderMoveTo, space])
+    : []), [accessFor, handlers, menuTarget, ownPersonal, space])
 
   // ── rowProps / backgroundProps ──────────────────────────────────────────
   const renameProps = useCallback((pageId: string): FinderRowRename | undefined => {
@@ -445,7 +496,8 @@ export const useFinderMenus = ({
     }
   }, [knowledge, rename, renamingId, space])
 
-  const rowProps = useCallback((row: FinderMenuRowRef): FinderRowMenuProps => {
+  const rowProps = useCallback((input: FinderMenuRowRef): FinderRowMenuProps => {
+    const row = asRowRef(input)
     switch (row.kind) {
       case 'page':
         return {
@@ -475,7 +527,10 @@ export const useFinderMenus = ({
 
   const backgroundProps = useCallback(
     (column: FinderMenuColumnRef): FinderBackgroundMenuProps => ({
-      onContextMenu: (event) => openMenu({ column, kind: 'background' }, event),
+      onContextMenu: (event) => openMenu(
+        { column: asColumnRef(column), kind: 'background' },
+        event,
+      ),
     }),
     [openMenu],
   )
