@@ -342,17 +342,26 @@ export const seedBrowserPushSession = async (ownerToken) => {
 export const seedDashboardWorkspace = async (input) => {
   const runId = Date.now().toString(36)
   const title = `Quarterly revenue ${runId}`
+  // A dashboard lives in a project, and so does the source that feeds it: the
+  // project is the audience both are recorded against. The channel's own
+  // project is the one the reader is already standing in.
+  const projectId = input.projectId
+    ?? input.channel.projectId
+    ?? (await call('/api/channels', { token: input.token }))
+      .find((channel) => channel.id === input.channel.id)?.projectId
+  if (!projectId) throw new Error('seedDashboardWorkspace needs a project for the dashboard')
   const source = await call('/api/dashboard-sources/import', {
     body: {
       content: 'quarter,revenue\nQ1,12\nQ2,28\nQ3,19\n',
       format: 'csv',
       name: `Dashboard workspace CSV ${runId}`,
+      projectId,
     },
     method: 'POST',
     token: input.token,
   })
   const dashboard = await call('/api/dashboards', {
-    body: { home: 'personal', title },
+    body: { projectId, title },
     method: 'POST',
     token: input.token,
   })

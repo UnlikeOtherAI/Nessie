@@ -26,8 +26,17 @@ import type { DashboardWidgetKind } from '@nessie/schemas'
 import type { DashboardDetailRecord } from '../../../facades/dashboards/hooks'
 import { DashboardCanvas } from './DashboardCanvas'
 
-/** The width the inner canvas is laid out at before scaling. `lg` territory. */
+/**
+ * The width the inner canvas is laid out at before scaling, and therefore
+ * which breakpoint its grid reflows to (`DashboardGrid`: lg ≥ 1200, md ≥ 768,
+ * sm below). `PREVIEW` is `sm`-wide on purpose: a tile is a few hundred pixels
+ * across, and laying a dashboard out at `lg` inside one leaves its widgets a
+ * legible-to-nobody smudge in the top-left corner with dead space around it.
+ * At `sm` the widgets fill the frame, which is what makes a thumbnail read as
+ * the dashboard it opens.
+ */
 export const SCALED_CANVAS_WIDTH = 1120
+export const TILE_CANVAS_WIDTH = 640
 
 const widgetKindsOf = (dashboard: DashboardDetailRecord): Map<string, DashboardWidgetKind> =>
   new Map(dashboard.widgets.map((widget) => [widget.id, widget.kind as DashboardWidgetKind]))
@@ -35,12 +44,21 @@ const widgetKindsOf = (dashboard: DashboardDetailRecord): Map<string, DashboardW
 type ScaledDashboardProps = {
   /** Announced on the button that opens it: "Open <title>". */
   ariaLabel: string
+  /** The width the canvas is laid out at before scaling; see the constants above. */
+  canvasWidth?: number
   className?: string
   /** The `data-testid` the surface's own browser case looks for. */
   'data-testid'?: string
   dashboard: DashboardDetailRecord
-  /** Tallest the frame may grow, in CSS pixels. */
-  maxHeight: number
+  /**
+   * The frame takes its height from CSS rather than measuring its content —
+   * for a tile in a grid, whose row decides. A measured height would make the
+   * tile the tallest thing in its row and stretch every fixed doorway beside
+   * it to match.
+   */
+  fill?: boolean
+  /** Tallest the frame may grow, in CSS pixels. Ignored when `fill` is set. */
+  maxHeight?: number
   /** Ceiling on the scale, so a wide frame does not render a near-full-size copy. */
   maxScale?: number
   /** Shortest the frame may be, so an empty dashboard is still a target. */
@@ -50,9 +68,11 @@ type ScaledDashboardProps = {
 
 export const ScaledDashboard = ({
   ariaLabel,
+  canvasWidth = SCALED_CANVAS_WIDTH,
   className,
   'data-testid': testId = 'scaled-dashboard',
   dashboard,
+  fill = false,
   maxHeight,
   maxScale = 0.48,
   minHeight = 128,
@@ -64,8 +84,10 @@ export const ScaledDashboard = ({
   const [frameWidth, setFrameWidth] = useState(0)
   const widgetKinds = useMemo(() => widgetKindsOf(dashboard), [dashboard])
 
-  const scale = Math.min(maxScale, frameWidth / SCALED_CANVAS_WIDTH || maxScale)
-  const height = Math.min(maxHeight, Math.max(minHeight, Math.ceil(canvasHeight * scale)))
+  const scale = Math.min(maxScale, frameWidth / canvasWidth || maxScale)
+  const height = fill
+    ? undefined
+    : Math.min(maxHeight ?? Number.POSITIVE_INFINITY, Math.max(minHeight, Math.ceil(canvasHeight * scale)))
 
   const measure = useCallback(() => {
     if (frameRef.current) setFrameWidth(frameRef.current.clientWidth)
@@ -87,20 +109,25 @@ export const ScaledDashboard = ({
       className={['scaled-dashboard', className ?? ''].join(' ')}
       data-testid={testId}
       ref={frameRef}
-      style={{ height }}
+      {...(height === undefined ? {} : { style: { height } })}
     >
       {/* `inert` and `aria-hidden`: the real dashboard is one tap away and is
           where every control works. A scaled copy that took focus would put a
-          column of unreachable half-size buttons in the tab order. */}
+          column of unreachable half-size buttons in the tab order.
+
+          It is positioned out of flow because `transform: scale()` does not
+          change layout size: in flow, a frame sized by CSS would grow to the
+          canvas's full unscaled height and a tile would be a thousand pixels
+          tall. Out of flow, the frame's height is the frame's own. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none"
+        className="scaled-dashboard-canvas"
         inert
         ref={canvasRef}
         style={{
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
-          width: SCALED_CANVAS_WIDTH,
+          width: canvasWidth,
         }}
       >
         <DashboardCanvas

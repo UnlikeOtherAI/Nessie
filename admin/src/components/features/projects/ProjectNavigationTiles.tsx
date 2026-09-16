@@ -8,7 +8,7 @@ import { useProjectRecentPages } from '../../../facades/knowledge/recent-pages-h
 import { useCanModifyProject } from '../../../facades/projects/administration'
 import { useProjectMembers, useProjects } from '../../../facades/projects/hooks'
 import { useTasks } from '../../../facades/tasks/hooks'
-import { ScaledDashboard } from '../dashboards/ScaledDashboard'
+import { ScaledDashboard, TILE_CANVAS_WIDTH } from '../dashboards/ScaledDashboard'
 import { SkeletonBlock } from '../../primitives/Skeleton'
 import { ProjectMembersDialog } from '../../shared/ProjectMembersDialog'
 import {
@@ -85,17 +85,15 @@ export const ProjectNavigationTiles = ({ className, projectId }: ProjectNavigati
 }
 
 /**
- * The tallest a dashboard tile grows. The tile sits in a grid row beside the
- * fixed doorways, so it is a card, not a band: a dashboard taller than this is
- * clipped and opened rather than stretching its whole row.
- */
-const DASHBOARD_TILE_HEIGHT = 190
-
-/**
  * A dashboard as a tile: the live thing, scaled, with its name captioned
  * underneath. It is its own component because it reads the dashboard's widgets
  * — the grid's list read carries titles only — and a hook cannot be called
  * from inside a `map`.
+ *
+ * It takes its height from the grid row rather than measuring its own content,
+ * so a dashboard never stretches the fixed doorways beside it; `styles.css`
+ * gives the frame a floor so a row of nothing but dashboards still has a
+ * readable one.
  */
 const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
   const navigate = useNavigate()
@@ -106,15 +104,13 @@ const DashboardTile = ({ tile }: { tile: ProjectNavigationTile }) => {
       {dashboard ? (
         <ScaledDashboard
           ariaLabel={`Open ${tile.label}`}
+          canvasWidth={TILE_CANVAS_WIDTH}
           dashboard={dashboard}
-          maxHeight={DASHBOARD_TILE_HEIGHT}
-          minHeight={DASHBOARD_TILE_HEIGHT}
+          fill
           onOpen={() => { if (tile.to) void navigate(tile.to) }}
         />
       ) : (
-        <div style={{ height: DASHBOARD_TILE_HEIGHT }}>
-          <SkeletonBlock className="h-full w-full rounded-none" />
-        </div>
+        <SkeletonBlock className="scaled-dashboard rounded-none" />
       )}
       <span className="project-nav-tile-caption">
         <span className="project-nav-tile-title">{tile.label}</span>

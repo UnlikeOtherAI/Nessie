@@ -817,6 +817,13 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   background: var(--panel-soft);
 }
 
+.scaled-dashboard-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
 .scaled-dashboard-open {
   position: absolute;
   border: 0;
@@ -842,8 +849,13 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   overflow: hidden;
 }
 
+/* The frame takes the row's height rather than its own content's, so a
+   dashboard tile never stretches the fixed doorways beside it. The floor is
+   what a row of nothing but dashboards falls back to. */
 .project-nav-tile[data-dashboard='true'] .scaled-dashboard {
   width: 100%;
+  min-height: 9rem;
+  flex: 1 1 auto;
   border-radius: 0;
   background: transparent;
 }
@@ -851,6 +863,8 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
 /* The name sits under the dashboard, where a caption goes, so the tile reads
    top-to-bottom as picture-then-label like every other card reads
    art-then-label. */
+/* Opaque, not a tint: the dashboard above it is clipped by the frame, so a
+   translucent caption has half a widget showing through the title. */
 .project-nav-tile-caption {
   display: flex;
   width: 100%;
@@ -858,8 +872,8 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
   align-items: baseline;
   gap: 0.5rem;
   padding: 0.625rem 0.875rem 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--tile) 24%, transparent);
-  background: color-mix(in srgb, var(--tile) 12%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--tile) 28%, transparent);
+  background: color-mix(in srgb, var(--tile) 16%, var(--panel));
 }
 
 /* One column — a phone, or the grid inside a narrow panel. Five poster-shaped
@@ -867,7 +881,11 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
    fold, so the tile turns on its side: the art moves beside the words instead
    of above them, and the same five doorways fit in a glance. */
 @container project-nav (max-width: 30rem) {
-  .project-nav-tile {
+  /* A dashboard tile is exempt: turning it on its side would put a scaled
+     dashboard in an `auto` column, which measures the frame at zero and
+     collapses the card. It is a picture with a caption at every width — that
+     is its whole shape. */
+  .project-nav-tile:not([data-dashboard='true']) {
     display: grid;
     align-items: center;
     padding: 0.75rem 0.875rem;
@@ -876,7 +894,7 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
     row-gap: 0.125rem;
   }
 
-  .project-nav-tile-art {
+  .project-nav-tile:not([data-dashboard='true']) .project-nav-tile-art {
     width: 2.5rem;
     height: 2.5rem;
     grid-column: 1;
@@ -884,15 +902,21 @@ body.overlays-focus-mode > .admin-overlay-root [class~='text-[color:var(--accent
     font-size: 1rem;
   }
 
-  .project-nav-tile-title {
+  .project-nav-tile:not([data-dashboard='true']) .project-nav-tile-title {
     margin-top: 0;
     grid-column: 2;
     grid-row: 1;
   }
 
-  .project-nav-tile-blurb {
+  .project-nav-tile:not([data-dashboard='true']) .project-nav-tile-blurb {
     grid-column: 2;
     grid-row: 2;
+  }
+
+  /* One column, so the tile has the full width: a dashboard gets more of it
+     than it does in a four-across grid. */
+  .project-nav-tile[data-dashboard='true'] .scaled-dashboard {
+    min-height: 11rem;
   }
 }
 
