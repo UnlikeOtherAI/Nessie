@@ -1,4 +1,6 @@
 import {
+  faBook,
+  faEnvelope,
   faFile,
   faFileAudio,
   faFileCode,
@@ -11,6 +13,7 @@ import {
   faFileVideo,
   faFileWord,
   faFileZipper,
+  faFolder,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 
@@ -65,6 +68,29 @@ const EXTENSION_ICONS: Record<string, IconDefinition> = {
   sh: faFileCode,
   html: faFileCode,
   css: faFileCode,
+  // The Finder's additions: a file a person actually has on their desk should
+  // never fall through to the blank page glyph.
+  pages: faFileWord,
+  numbers: faFileExcel,
+  keynote: faFilePowerpoint,
+  epub: faBook,
+  eml: faEnvelope,
+  msg: faEnvelope,
+  avif: faFileImage,
+  bmp: faFileImage,
+  tiff: faFileImage,
+  tif: faFileImage,
+  ogg: faFileAudio,
+  aac: faFileAudio,
+  opus: faFileAudio,
+  avi: faFileVideo,
+  m4v: faFileVideo,
+  sql: faFileCode,
+  toml: faFileCode,
+  ini: faFileCode,
+  env: faFileCode,
+  ipynb: faFileCode,
+  log: faFileLines,
 }
 
 const fileExtension = (filename: string): string | undefined =>
@@ -140,3 +166,123 @@ export const previewKindForFilename = (filename: string): PreviewKind => {
   if (TEXT_EXT.has(ext)) return 'text'
   return null
 }
+
+// ── Families (docs/plans/2026-09-16-documents-finder-ui/browser-ui.md §5) ────
+//
+// A family is what a person calls the thing — "a Word document", "an image" —
+// and it is the unit both the tone and Sort by kind are written against.
+// Colour is a token *per family*, never per extension: forty extensions with
+// forty colours is not a palette, and the Kind column would have forty labels
+// that mean four things.
+
+export type FileFamily =
+  | 'folder'
+  | 'document'
+  | 'pdf'
+  | 'word'
+  | 'excel'
+  | 'powerpoint'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'archive'
+  | 'code'
+  | 'text'
+  | 'mail'
+  | 'book'
+  | 'unknown'
+
+const EXTENSION_FAMILIES: Record<string, FileFamily> = {
+  pdf: 'pdf',
+  doc: 'word', docx: 'word', rtf: 'text', pages: 'word', odt: 'word',
+  xls: 'excel', xlsx: 'excel', ods: 'excel', csv: 'excel', tsv: 'excel', numbers: 'excel',
+  ppt: 'powerpoint', pptx: 'powerpoint', key: 'powerpoint', keynote: 'powerpoint', odp: 'powerpoint',
+  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', svg: 'image',
+  heic: 'image', avif: 'image', bmp: 'image', tiff: 'image', tif: 'image', ico: 'image',
+  mp3: 'audio', wav: 'audio', m4a: 'audio', flac: 'audio', ogg: 'audio', aac: 'audio', opus: 'audio',
+  mp4: 'video', mov: 'video', webm: 'video', mkv: 'video', avi: 'video', m4v: 'video',
+  zip: 'archive', gz: 'archive', tar: 'archive', rar: 'archive', '7z': 'archive',
+  json: 'code', xml: 'code', yml: 'code', yaml: 'code', ts: 'code', js: 'code', tsx: 'code',
+  jsx: 'code', py: 'code', go: 'code', rs: 'code', sh: 'code', html: 'code', css: 'code',
+  sql: 'code', toml: 'code', ini: 'code', env: 'code', ipynb: 'code',
+  txt: 'text', log: 'text',
+  eml: 'mail', msg: 'mail',
+  epub: 'book',
+}
+
+/**
+ * The family a filename belongs to. Markdown is deliberately `document`: an
+ * uploaded `.md` opens as a real document in this admin, so a grey "text file"
+ * glyph would be a lie about what clicking it does.
+ */
+export const familyForFilename = (filename: string): FileFamily => {
+  if (isMarkdownFilename(filename)) return 'document'
+  const ext = fileExtension(filename)
+  if (!ext) {
+    return TEXT_FILENAMES.has(filename.toLowerCase().replace(/^\./, '')) ? 'text' : 'unknown'
+  }
+  return EXTENSION_FAMILIES[ext] ?? 'unknown'
+}
+
+/** The Kind column's word, and Get Info's. Exhaustive by construction. */
+export const familyLabel: Record<FileFamily, string> = {
+  folder: 'Folder',
+  document: 'Document',
+  pdf: 'PDF document',
+  word: 'Word document',
+  excel: 'Spreadsheet',
+  powerpoint: 'Presentation',
+  image: 'Image',
+  audio: 'Audio',
+  video: 'Video',
+  archive: 'Archive',
+  code: 'Code',
+  text: 'Text',
+  mail: 'Email',
+  book: 'Book',
+  unknown: 'File',
+}
+
+/**
+ * The CSS custom property a family's glyph is painted with — the *name*, so a
+ * call site writes `var(${familyTone[family]})` and no component ever carries
+ * a literal colour. Every one of these is an existing token, so a theme that
+ * redeclares them (contrast, focus mode) moves the Finder with it.
+ */
+export const familyTone: Record<FileFamily, string> = {
+  folder: '--accent',
+  document: '--accent',
+  pdf: '--danger',
+  word: '--info',
+  excel: '--success',
+  powerpoint: '--warning',
+  image: '--thinking',
+  audio: '--executing',
+  video: '--executing',
+  archive: '--tx3',
+  code: '--tx2',
+  text: '--tx2',
+  mail: '--info',
+  book: '--warning',
+  unknown: '--tx3',
+}
+
+const FAMILY_ICONS: Record<FileFamily, IconDefinition> = {
+  folder: faFolder,
+  document: faFileLines,
+  pdf: faFilePdf,
+  word: faFileWord,
+  excel: faFileExcel,
+  powerpoint: faFilePowerpoint,
+  image: faFileImage,
+  audio: faFileAudio,
+  video: faFileVideo,
+  archive: faFileZipper,
+  code: faFileCode,
+  text: faFileLines,
+  mail: faEnvelope,
+  book: faBook,
+  unknown: faFile,
+}
+
+export const iconForFamily = (family: FileFamily): IconDefinition => FAMILY_ICONS[family]

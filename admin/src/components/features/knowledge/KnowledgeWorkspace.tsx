@@ -1,69 +1,60 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRef, useState } from 'react'
 import { useUploadFileNode } from '../../../facades/knowledge/file-hooks'
 import {
   useKnowledgePage,
   useKnowledgeVersions,
   type KnowledgePageRecord,
 } from '../../../facades/knowledge/hooks'
-import { getCookie, setCookie } from '../../../lib/storage'
 import { LOCAL_BACK_PRIORITY } from '../../../navigation/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
-import { useTabParam } from '../../../navigation/useTabParam'
 import type { UploadProgress } from '../../../lib/upload-xhr'
-import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
-import { EmptyState } from '../../shared/EmptyState'
-import { QueryState } from '../../shared/QueryState'
+import { CreateSpaceDialog } from './CreateSpaceDialog'
 import { KnowledgeDocumentPane } from './KnowledgeDocumentPane'
-import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
-import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
 import { ProductDocumentsView } from './ProductDocumentsView'
-import { isAgentDraft } from './page-status'
-import {
-  isKnowledgeViewMode,
-  KNOWLEDGE_VIEW_MODES,
-  type KnowledgeViewMode,
-} from './KnowledgeViewToggle'
+import { QueryState } from '../../shared/QueryState'
+import { useKnowledge } from './KnowledgeProvider'
+import { DocumentsFinder, type FinderScope } from './finder/DocumentsFinder'
 import { PageEditor } from './PageEditor'
 import { SpaceSettingsDialog } from './SpaceSettingsDialog'
-import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { VersionHistory } from './VersionHistory'
-import { buildKnowledgeWorkspaceActions } from './knowledge-workspace-actions'
 
-const VIEW_MODE_COOKIE = 'knowledgeViewMode'
-
-// The workspace's four inner screens — a folder browsed beyond the space root,
-// an open document or file, its version history, the page editor — are nested
-// stages (docs/navigation/overview.md §6). Where a single-column stack hosts them each
-// is a real layer: it slides in, Back unwinds exactly one level (the deepest
-// priority owns the doorway) and the edge swipe drives the top one. Where no
-// stack hosts stages (a split layout's detail column, an isolated render) they
-// render inline and the workspace composes one pane at a time, exactly as the
-// desktop columns and the full-width editor did before.
+/**
+ * The Knowledge work surface: the Finder, the open document beside it, and the
+ * two full-width screens a document opens into (its version history, its
+ * editor).
+ *
+ * Those are nested stages (docs/navigation/overview.md §6). Where a
+ * single-column stack hosts them each is a real layer: it slides in, Back
+ * unwinds exactly one level and the edge swipe drives the top one. Where no
+ * stack hosts stages (a split layout, an isolated render) they render inline.
+ *
+ * `knowledge:folder` is **gone**: the Finder sits on `ColumnBrowserViewport`,
+ * whose columns are already `column:<k>` stages on `single`, so a folder is a
+ * layer without this file knowing anything about it.
+ */
 type KnowledgeWorkspaceProps = {
   canManageSpace?: boolean
+  /** Which browser this is: the section, a project's tab, an agent's. */
+  scope?: FinderScope
 }
 
-export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps = {}) => {
+export const KnowledgeWorkspace = ({
+  canManageSpace,
+  scope = { kind: 'org' },
+}: KnowledgeWorkspaceProps = {}) => {
   const {
     activeProductView,
-    scopeAgentId,
     selectedSpace,
     selectedSpaceId,
     pages,
-    rootPages,
     pagePath,
     openPageId,
     pageById,
-    childrenOf,
-    browseTo,
-    openPagePath,
+    createSpace,
+    createSpacePending,
     editor,
-    openCreate,
     closeEditor,
-    createFolder,
-    createFolderPending,
     savePage,
     savePending,
     popTo,
@@ -76,61 +67,10 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     closeSpaceSettings,
     updateSpace,
     updateSpacePending,
-    pagesLoading,
-    pagesLoadFailed,
-    refetchPages,
   } = useKnowledge()
-  const navigate = useNavigate()
   // The stack's presence — never a breakpoint — decides whether the stages are
   // layers over this route or panes composed in place.
   const stacked = useNestedStageHosted()
-  // The view mode is `?view=` like every other in-page strip
-  // (docs/navigation/overview.md §1, "Tab hosts") so a link to a space opens in the
-  // layout it was shared in. The cookie stays the *default* for a URL that
-  // names no view, and is rewritten on every change, so the preference still
-  // follows the reader across spaces and sessions. Read once per mount: the
-  // fallback must not move underneath the hook that deletes the param when the
-  // fallback itself is selected.
-  const [storedViewMode] = useState<KnowledgeViewMode>(() => {
-    const stored = getCookie(VIEW_MODE_COOKIE)
-    return isKnowledgeViewMode(stored) ? stored : 'column'
-  })
-  const [viewMode, selectViewMode] = useTabParam(
-    'view',
-    KNOWLEDGE_VIEW_MODES,
-    storedViewMode,
-  )
-  const [creatingFolder, setCreatingFolder] = useState(false)
-
-  // "Needs review" filters the current space's tree down to agent drafts (and
-  // their ancestor folders, so the tree stays navigable) — a client-side
-  // filter over the already-loaded pages list, no extra request.
-  const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
-  useEffect(() => setNeedsReviewOnly(false), [selectedSpaceId])
-
-  const agentDraftCount = useMemo(() => pages.filter(isAgentDraft).length, [pages])
-  const reviewVisibleIds = useMemo(() => {
-    if (!needsReviewOnly) return null
-    const byId = new Map(pages.map((page) => [page.id, page]))
-    const visible = new Set<string>()
-    for (const page of pages) {
-      if (!isAgentDraft(page)) continue
-      let current: KnowledgePageRecord | undefined = page
-      while (current) {
-        visible.add(current.id)
-        current = current.parentPageId ? byId.get(current.parentPageId) : undefined
-      }
-    }
-    return visible
-  }, [needsReviewOnly, pages])
-
-  const visibleRootPages = reviewVisibleIds
-    ? rootPages.filter((page) => reviewVisibleIds.has(page.id))
-    : rootPages
-  const visibleChildrenOf = (parentPageId: string) =>
-    reviewVisibleIds
-      ? childrenOf(parentPageId).filter((page) => reviewVisibleIds.has(page.id))
-      : childrenOf(parentPageId)
 
   const versionsQuery = useKnowledgeVersions(historyPageId)
   const pathPages = pagePath
@@ -150,7 +90,6 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     return ancestors
   })()
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
-  const currentFolder = openPageId ? null : pathPages.at(-1)
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
 
   const canWrite = selectedSpace?.canWrite ?? false
@@ -160,28 +99,18 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
 
   // Which stages are open. A stack shows them all at once, one layer each; an
-  // inline host shows only the deepest, which is what the early returns this
-  // replaced did — editor over history over document over the browser.
+  // inline host shows the editor or the history over the browser, and the open
+  // document *beside* it — a browser with a preview column is what a Finder is,
+  // and hiding the columns to read one file loses the place you are in.
   const editorOpen = Boolean(editor) && canWrite
   const historyOpen = Boolean(historyPage) && (stacked || !editorOpen)
   const documentOpen = Boolean(current) && (stacked || !(editorOpen || historyOpen))
-  // A document's ancestors are unwound by the document stage itself ("Back to
-  // parent page"), so the folder stage is the browse path with nothing open.
-  const folderOpen = stacked && !current && !activeProductView && pathPages.length > 0
-  const baseIsBrowser = stacked || !(editorOpen || historyOpen || documentOpen)
-  // What the route layer's browser shows: the listing a stage was pushed over
-  // — the space root under an open folder, the open document's ancestors under
-  // an open document — and the live path wherever it is the only browser.
-  const basePath = current
-    ? pathPages.slice(0, Math.max(depth, 0)).map((page) => page.id)
-    : folderOpen
-      ? []
-      : pagePath
+  const browserVisible = stacked || !(editorOpen || historyOpen)
 
-  // The space-pages list omits page bodies (they're large and the tree/column
-  // views never show them). Fetch the full body on demand for whichever page
-  // actually needs it — the editor is gated on this so it never opens, and
-  // therefore can never save, with an empty body.
+  // The space-pages list omits page bodies (they're large and the browser never
+  // shows them). Fetch the full body on demand for whichever page actually
+  // needs it — the editor is gated on this so it never opens, and therefore can
+  // never save, with an empty body.
   const fullBodyPageId =
     editor?.mode === 'edit'
       ? editor.page.id
@@ -190,134 +119,64 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const fullPage =
     fullPageQuery.data && fullPageQuery.data.id === fullBodyPageId ? fullPageQuery.data : undefined
 
-  // ─── File-node upload wiring (a file dropped into the current folder) ──────
-  const [fileNodeProgress, setFileNodeProgress] = useState<UploadProgress | null>(null)
+  // ─── Upload ───────────────────────────────────────────────────────────────
+  // One file at a time through the existing route. The queue, the folder drop
+  // and the placeholder rows are Wave 2's, and the doorway has to keep working
+  // until they land (AGENTS.md → Rule zero).
+  const [uploadInto, setUploadInto] = useState<string | null>(null)
+  const [, setUploadProgress] = useState<UploadProgress | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const fileNodeUpload = useUploadFileNode(selectedSpaceId, currentFolder?.id ?? null)
+  const fileNodeUpload = useUploadFileNode(selectedSpaceId, uploadInto)
+  const [createSpaceOpen, setCreateSpaceOpen] = useState(false)
 
-  const updateViewMode = (nextMode: KnowledgeViewMode) => {
-    selectViewMode(nextMode)
-    setCookie(VIEW_MODE_COOKIE, nextMode)
-  }
-  const workspaceActions = buildKnowledgeWorkspaceActions({
-    agentDraftCount,
-    canManageSpace: canManage,
-    canWrite,
-    needsReviewOnly,
-    ownerAgentId: selectedSpace?.ownerAgentId,
-    onCreateFolder: () => {
-      updateViewMode('column')
-      setCreatingFolder(true)
-    },
-    onCreatePage: () => openCreate(currentFolder?.id ?? null),
-    onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
-    onOpenSettings: openSpaceSettings,
-    onSelectView: updateViewMode,
-    onToggleNeedsReview: () => setNeedsReviewOnly((value) => !value),
-    onUploadFile: () => fileInputRef.current?.click(),
-    selectedSpaceId,
-    scopeAgentId,
-    viewMode,
-  })
-
-  const uploadFileNode = (file: File) => {
-    if (!selectedSpaceId) return
-    setFileNodeProgress({ loaded: 0, total: file.size, pct: 0 })
-    fileNodeUpload.mutate(
-      { file, onProgress: setFileNodeProgress },
-      { onSettled: () => setFileNodeProgress(null) },
-    )
-  }
-  const fileNodeDrop = useFileDrop(firstFileOnly(uploadFileNode), !selectedSpaceId || !canWrite)
-
-  // ─── Panes ────────────────────────────────────────────────────────────────
-  // The browser renders twice while a folder stage is open: the space's root
-  // listing stays in the route layer as the screen that folder was pushed
-  // over, and the stage carries the live path. `chrome` marks the interactive
-  // copy — exactly one of the two — so the actions, the upload input and the
-  // dialogs they open exist once.
-  const renderBrowser = (path: string[], chrome: boolean) => (
-    <div className="relative h-full w-full" {...(chrome ? fileNodeDrop.dropHandlers : {})}>
-      <KnowledgePane
-        actions={chrome ? workspaceActions : undefined}
-        title={selectedSpace?.name ?? 'Pages'}
-      >
-        <div className="h-full w-full">
-          {!selectedSpaceId ? (
-            <div className="p-5">
-              <EmptyState>Select a space</EmptyState>
-            </div>
-          ) : (
-            <QueryState
-              className="p-5"
-              emptyLabel={
-                creatingFolder && canWrite
-                  ? undefined
-                  : canWrite
-                    ? 'No pages yet — create one with “New page”, or drop a file to upload.'
-                    : 'No pages yet.'
-              }
-              errorLabel="Couldn’t load this space’s pages."
-              isEmpty={rootPages.length === 0}
-              loadingLabel="Loading pages…"
-              query={{ isError: pagesLoadFailed, isLoading: pagesLoading, refetch: refetchPages }}
-            >
-              {() => (
-                <KnowledgeFilesystemBrowser
-                  childrenOf={visibleChildrenOf}
-                  creatingFolder={chrome && canWrite && creatingFolder}
-                  createFolderPending={createFolderPending}
-                  mode={viewMode}
-                  onBrowsePath={browseTo}
-                  onCancelFolder={() => setCreatingFolder(false)}
-                  onOpenDocumentPath={openPagePath}
-                  onSubmitFolder={(name) => {
-                    void createFolder(currentFolder?.id ?? null, name).finally(() =>
-                      setCreatingFolder(false),
-                    )
-                  }}
-                  pageById={pageById}
-                  pagePath={path}
-                  pages={pages}
-                  rootPages={visibleRootPages}
-                  selectedSpaceId={selectedSpaceId}
-                  selectedSpaceName={selectedSpace?.name ?? 'Pages'}
-                />
-              )}
-            </QueryState>
-          )}
-        </div>
-      </KnowledgePane>
-      {chrome ? (
-        <>
-          <DropZoneOverlay
-            active={fileNodeDrop.isDragging}
-            label="Drop a file to upload"
-            progressPct={fileNodeProgress?.pct}
-            uploading={fileNodeUpload.isPending}
-          />
-          <input
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) uploadFileNode(file)
-              event.target.value = ''
-            }}
-            ref={fileInputRef}
-            type="file"
-          />
-          {selectedSpace && canManage ? (
-            <SpaceSettingsDialog
-              canManageAccess={canManageAccess}
-              onClose={closeSpaceSettings}
-              onSave={updateSpace}
-              open={spaceSettingsOpen}
-              pending={updateSpacePending}
-              space={selectedSpace}
-            />
-          ) : null}
-        </>
+  const browser = (
+    <div className="relative h-full w-full">
+      <DocumentsFinder
+        canManageSpace={canManage}
+        onCreateRootFolder={scope.kind === 'org' ? () => setCreateSpaceOpen(true) : undefined}
+        onOpenSettings={openSpaceSettings}
+        onUploadFile={(parentPageId) => {
+          setUploadInto(parentPageId)
+          fileInputRef.current?.click()
+        }}
+        scope={scope}
+      />
+      <input
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file && selectedSpaceId) {
+            setUploadProgress({ loaded: 0, pct: 0, total: file.size })
+            fileNodeUpload.mutate(
+              { file, onProgress: setUploadProgress },
+              { onSettled: () => setUploadProgress(null) },
+            )
+          }
+          event.target.value = ''
+        }}
+        ref={fileInputRef}
+        type="file"
+      />
+      {selectedSpace && canManage ? (
+        <SpaceSettingsDialog
+          canManageAccess={canManageAccess}
+          onClose={closeSpaceSettings}
+          onSave={updateSpace}
+          open={spaceSettingsOpen}
+          pending={updateSpacePending}
+          space={selectedSpace}
+        />
       ) : null}
+      {/* A top-level folder needs a visibility choice, which an inline name
+          field cannot carry — so the root's New folder is this dialog. */}
+      <CreateSpaceDialog
+        onClose={() => setCreateSpaceOpen(false)}
+        onCreate={async (name, memberAgentIds, visibility) => {
+          await createSpace(name, memberAgentIds, visibility)
+        }}
+        open={createSpaceOpen}
+        pending={createSpacePending}
+      />
     </div>
   )
 
@@ -332,11 +191,10 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       onBack={stacked ? undefined : () => popTo(depth)}
       page={current}
       selectedSpaceId={selectedSpaceId}
-      spaceName={selectedSpace?.name ?? 'Pages'}
+      spaceName={selectedSpace?.name ?? 'Documents'}
     />
   ) : null
 
-  // Full-width version history.
   const historyPane = historyPage ? (
     <KnowledgePane
       onBack={stacked ? undefined : closeHistory}
@@ -375,7 +233,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
               page={fullPage ?? null}
               pages={pages}
               pending={savePending}
-              spaceName={selectedSpace?.name ?? 'Pages'}
+              spaceName={selectedSpace?.name ?? 'Documents'}
             />
           )}
         </QueryState>
@@ -390,7 +248,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
           pages={pages}
           parentPageId={editor.parentPageId}
           pending={savePending}
-          spaceName={selectedSpace?.name ?? 'Pages'}
+          spaceName={selectedSpace?.name ?? 'Documents'}
         />
       )}
     </div>
@@ -400,22 +258,23 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     <>
       {activeProductView ? (
         // A product Documents view (e.g. DeepWater Research) owns the whole
-        // main area instead of a space's pages.
+        // main area instead of a folder's pages.
         <ProductDocumentsView view={activeProductView} />
-      ) : baseIsBrowser ? (
-        renderBrowser(basePath, !folderOpen)
+      ) : browserVisible ? (
+        <div className="flex h-full min-h-0 w-full">
+          <div className="min-w-0 flex-1">{browser}</div>
+          {/* On a split layout the open document is the browser's rightmost
+              region, the way Finder's preview column is — not a screen that
+              replaces the columns you found it in. */}
+          {!stacked && documentOpen ? (
+            <div className="h-full w-[46%] min-w-[360px] max-w-[720px] flex-shrink-0 border-l border-[color:var(--sep)]">
+              {documentPane}
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <NestedStage
-        active={folderOpen}
-        id="knowledge:folder"
-        label="Back to parent folder"
-        onBack={() => browseTo(pathPages.slice(0, -1).map((page) => page.id))}
-        priority={LOCAL_BACK_PRIORITY.knowledgeFolder}
-      >
-        {renderBrowser(pagePath, true)}
-      </NestedStage>
-      <NestedStage
-        active={documentOpen}
+        active={stacked && documentOpen}
         id="knowledge:document"
         label={depth > 0 ? 'Back to parent page' : 'Back to space'}
         onBack={() => popTo(depth)}

@@ -264,20 +264,28 @@ test('keeps the drawer control at phone section roots', () => {
 
 test('routes phone Knowledge selections and Projects rows to stack details', () => {
   const router = readSource('../src/router.tsx')
-  const knowledgeSidebar = readSource(
-    '../src/layouts/admin-shell/KnowledgeSidebarNav.tsx',
+  const rootColumn = readSource(
+    '../src/components/features/knowledge/finder/FinderRootColumn.tsx',
+  )
+  const finder = readSource(
+    '../src/components/features/knowledge/finder/DocumentsFinder.tsx',
   )
   const projectsSidebar = readSource(
     '../src/layouts/admin-shell/ProjectsSidebarNav.tsx',
   )
 
+  assert.match(router, /path: '\/knowledge-base\/latest'/)
+  assert.match(router, /path: '\/knowledge-base\/shared-with-me'/)
   assert.match(router, /path: '\/knowledge-base\/spaces\/:spaceId'/)
   assert.match(router, /path: '\/knowledge-base\/views\/:productView'/)
-  assert.match(knowledgeSidebar, /usePhoneLayout/)
-  assert.match(knowledgeSidebar, /shouldHighlightKnowledgeSidebarSelection/)
-  assert.match(knowledgeSidebar, /resolveKnowledgeSidebarSelectionPath/)
-  assert.match(knowledgeSidebar, /\{ id: spaceId, type: 'space' \}/)
-  assert.match(knowledgeSidebar, /\{ id: view, type: 'view' \}/)
+  // Every root row is a real route, not a selection inside the root page: a
+  // surface reached by leaving another screen has to be a route, or its state
+  // dies with the popped layer.
+  assert.match(finder, /navigate\('\/knowledge-base\/latest'\)/)
+  assert.match(finder, /navigate\('\/knowledge-base\/shared-with-me'\)/)
+  assert.match(finder, /navigate\(`\/knowledge-base\/spaces\/\$\{encodeURIComponent\(row\.space\.spaceId\)\}`\)/)
+  assert.match(finder, /navigate\(`\/knowledge-base\/views\/\$\{encodeURIComponent\(row\.view\)\}`\)/)
+  assert.match(rootColumn, /prewarmRowHandlers\(prewarm, to\)/)
   assert.match(projectsSidebar, /usePhoneLayout/)
   assert.match(projectsSidebar, /`\/projects\/\$\{project\.id\}\/board`/)
 })
