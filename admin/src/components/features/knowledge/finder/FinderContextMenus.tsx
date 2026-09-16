@@ -181,6 +181,14 @@ export const useFinderMenus = ({
   const reindex = useReindexPage()
   const removeShare = useRemovePageShare()
 
+  // Every write a menu starts is fire-and-forget from the person's point of
+  // view, so each one says so when it fails: a row that silently snapped back
+  // to its old name reads as a gesture that missed, not as a refusal.
+  const failed = useCallback((title: string) => (error: unknown) => pushToast({
+    body: error instanceof Error ? error.message : 'Please try again.',
+    title,
+  }), [pushToast])
+
   const [active, setActive] = useState<ActiveTarget | null>(null)
   const [dialog, setDialog] = useState<FinderDialogState>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -426,13 +434,17 @@ export const useFinderMenus = ({
       },
       removeShare: () => {
         if (virtualRow && me?.user.id) {
-          removeShare.mutate({ granteeUserId: me.user.id, pageId: virtualRow.id })
+          removeShare.mutate(
+            { granteeUserId: me.user.id, pageId: virtualRow.id },
+            { onError: failed('Couldn’t remove that') },
+          )
         }
       },
       rename: () => setRenamingId(first?.id ?? virtualRow?.id ?? null),
       retryIndexing: () => {
         const id = first?.id ?? virtualRow?.id
-        if (id) reindex.mutate(id)
+        if (!id) return
+        reindex.mutate(id, { onError: failed('Couldn’t start indexing') })
         pushToast({ body: '', title: 'Indexing again…' })
       },
       sharing: openSharing,
@@ -458,7 +470,7 @@ export const useFinderMenus = ({
       },
     }
   }, [
-    active, knowledge, me?.user.id, navigate, onCreateRootFolder, onNewFolderIn, onRefresh,
+    active, failed, knowledge, me?.user.id, navigate, onCreateRootFolder, onNewFolderIn, onRefresh,
     onUploadFiles, openSharing, pushToast, queryClient, reindex, removeShare, renderMoveTo,
     space, targetPages,
   ])
@@ -485,16 +497,21 @@ export const useFinderMenus = ({
       onCancel: () => setRenamingId(null),
       onSubmit: (next) => {
         setRenamingId(null)
-        rename.mutate({
-          pageId,
-          revision: page?.revision,
-          spaceId: page?.spaceId ?? space?.id ?? '',
-          title: next,
-        })
+        rename.mutate(
+          {
+            pageId,
+            revision: page?.revision,
+            spaceId: page?.spaceId ?? space?.id ?? '',
+            title: next,
+          },
+          // The facade puts the old name back; without this the row would
+          // simply revert and say nothing about why.
+          { onError: failed('Couldn’t rename that') },
+        )
       },
       pending: rename.isPending,
     }
-  }, [knowledge, rename, renamingId, space])
+  }, [failed, knowledge, rename, renamingId, space])
 
   const rowProps = useCallback((input: FinderMenuRowRef): FinderRowMenuProps => {
     const row = asRowRef(input)
@@ -558,7 +575,12 @@ export const useFinderMenus = ({
             )
           }}
           onClose={() => setDialog(null)}
-          onRetryIndexing={dialog.pageId ? () => reindex.mutate(dialog.pageId as string) : undefined}
+          onRetryIndexing={dialog.pageId
+            ? () => reindex.mutate(
+              dialog.pageId as string,
+              { onError: failed('Couldn’t start indexing') },
+            )
+            : undefined}
           onSharing={() => {
             setDialog(null)
             openSharing()
@@ -596,10 +618,10 @@ export const useFinderMenus = ({
           }}
           onRemoveShare={dialog.pageId && me?.user.id
             ? () => {
-              removeShare.mutate({
-                granteeUserId: me.user.id,
-                pageId: dialog.pageId as string,
-              })
+              removeShare.mutate(
+                { granteeUserId: me.user.id, pageId: dialog.pageId as string },
+                { onError: failed('Couldn’t remove that') },
+              )
               setDialog(null)
             }
             : undefined}
@@ -630,6 +652,7 @@ export const useFinderMenus = ({
             const pages = dialog?.kind === 'delete' ? dialog.pages : []
             setDialog(null)
             void Promise.all(pages.map((page) => knowledge.archivePage(page.id)))
+              .catch(failed('Couldn’t delete that'))
           }}
           open
           pending={knowledge.archivePending}
