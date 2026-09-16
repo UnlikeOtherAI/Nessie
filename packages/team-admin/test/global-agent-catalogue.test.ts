@@ -172,3 +172,22 @@ test('a face that cannot resolve the style says nothing about it', () => {
   assert.doesNotMatch(sidebar, /agent_avatar_generate/)
   assert.match(sidebar, /avatar — a portrait is generated automatically at creation/)
 })
+
+// The proposal card is described only where one can actually be posted. The
+// persona is shared by three faces and only the DM face holds `card_post`: the
+// Agent Designer page fills a form and the shared-channel face writes nothing,
+// so telling either of them to post a card would be the prompt breaking the
+// "never imply you did work you did not do" rule on its own.
+test('the standard proposal card is described for the chat face and nowhere else', () => {
+  const chat = block()
+  assert.match(chat, /Proposing an agent: one card, always the same card\./)
+  assert.match(chat, /A details block, which arrives closed/)
+  assert.match(chat, /Accept, which submits, then Edit and Discard/)
+  // The model is asked for on the card, not in prose, and as one exact pair.
+  assert.match(chat, /An input block, a select, for the model/)
+  assert.match(chat, /provider and model as one pair/)
+
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    assert.doesNotMatch(block({ writeSurface }), /Proposing an agent: one card/)
+  }
+})

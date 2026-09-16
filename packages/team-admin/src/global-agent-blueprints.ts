@@ -137,9 +137,38 @@ const AGENT_DESIGNER_PROMPT = [
   'assume. Once they have agreed, do the whole thing; do not re-ask at every',
   'step.',
   '',
-  'Name the tools by what they let the agent do, never as an inventory. If',
-  'something they want needs a capability nobody can grant from a conversation,',
-  'say what it is and where it is granted instead of quietly leaving it out.',
+  'An agent you build gets its tools when you create it, never afterwards. Work',
+  'out the smallest set that does the job and write it into the agent\'s tool',
+  'policy in the call that creates it — the connected apps included. The apps',
+  'this organisation has already connected are in your design catalogue under',
+  'Connectors, each with the key you grant; connector_list shows the same',
+  'installs with their setup state and tells you whether one still needs a',
+  'credential. An app that is there is an app the person has already approved,',
+  'so grant it and move on. If the app they named is not installed yet, install',
+  'it here with their own authority — search for it, probe the address they',
+  'pasted, install it, and collect any key through a masked card, never in chat.',
+  '',
+  'Who an app is installed for decides who the agent can use it for. An install',
+  'at a person\'s own scope serves that person\'s conversations with the agent',
+  'and nobody else\'s, so a team-visible agent on a team app needs the app',
+  'installed for the organisation or the team — an owner\'s action, and it will',
+  'be refused to anybody else. Never install at channel scope from here: the',
+  'channel you are standing in is your private conversation with this person,',
+  'not the room the agent will work in. When the only install is personal and',
+  'the agent is for the team, say plainly that colleagues will not reach it',
+  'until somebody installs it for the organisation.',
+  '',
+  'Approving your proposal is the approval. Once they have accepted a design,',
+  'the tools on it are granted, so never follow a creation with a step they must',
+  'go and do themselves for something you have already done, and never describe',
+  'how Nessie works inside — a settings screen, a policy, a tab — when nothing',
+  'is being asked of them. Name what the agent can do, in terms of the work.',
+  '',
+  'A few capabilities genuinely are not yours to give: the ones the catalogue',
+  'marks as owner-granted — mailbox and calendar access, deep research, the',
+  'cloud browser. For one of those, say what the capability is, that it needs an',
+  'owner\'s grant on that agent, and where — then carry on with everything else',
+  'rather than leaving it out silently. Everything else you grant yourself.',
   '',
   'When a cloud browser would help an agent do its actual work, explain that it',
   'uses a Browserbase account. That account\'s API key may be entered only in a',
@@ -192,6 +221,18 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     agent_trigger_create: true,
     agent_update: true,
     channel_create: true,
+    // Connecting the app an agent needs is part of building that agent. These
+    // act with the person's own connector rights, so a shared install is still
+    // refused to anyone whose role would be refused it on the Apps page.
+    // `connector_uninstall` is deliberately absent: designing an agent is never
+    // a reason to take an app away from everyone else using it.
+    connector_authorize: true,
+    connector_discover: true,
+    connector_install: true,
+    connector_library_search: true,
+    connector_list: true,
+    connector_set_secret: true,
+    connector_test: true,
     project_create: true,
     project_list: true,
     team_create: true,
@@ -218,6 +259,18 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     'agent_trigger_create',
     'agent_update',
     'channel_create',
+    // Connector management, so "give it access to Sales Portal" is something
+    // this conversation finishes rather than describes. The handlers resolve
+    // the acting member and re-check every scope against the database, so the
+    // person's own install rights are the whole boundary — the same ones the
+    // Apps page applies to them.
+    'connector_authorize',
+    'connector_discover',
+    'connector_install',
+    'connector_library_search',
+    'connector_list',
+    'connector_set_secret',
+    'connector_test',
     // The containers a channel needs, plus the read that resolves a project or
     // team NAME to its id. Both writes are organisation-owner actions and say
     // so to anybody else, exactly as their routes do.

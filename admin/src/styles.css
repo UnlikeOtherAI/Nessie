@@ -2997,6 +2997,75 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx);
 }
 
+.agent-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.agent-card-chips-label {
+  color: var(--tx3);
+  font-size: 11px;
+}
+
+.agent-card-chips ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-card-chips li {
+  padding: 2px 7px;
+  border: 1px solid var(--sep);
+  border-radius: 999px;
+  background: var(--overlay-weak);
+  color: var(--tx2);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+/* Closed by default: the marker is the whole affordance, so it has to read as
+   a control at 11px rather than as another line of body text. */
+.agent-card-details > summary {
+  width: fit-content;
+  color: var(--tx3);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.agent-card-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-card-details > summary::before {
+  display: inline-block;
+  margin-right: 5px;
+  content: "\25B8";
+  transition: transform 120ms ease;
+}
+
+.agent-card-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.agent-card-details > summary:hover {
+  color: var(--tx2);
+}
+
+.agent-card-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--sep);
+}
+
 .agent-card-link {
   width: fit-content;
   font-size: 12px;

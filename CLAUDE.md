@@ -71,6 +71,13 @@ sentence changes only if the invariant itself did.
   behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip; two assertions
   deliberately pin known gaps and say so in their own message.
+- **Agent proposal card coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:agent-proposal-card`. A pure fixture
+  suite — it drives the real card renderer over a stubbed presenter, so it
+  needs no database. CI runs it in the project-usability lifecycle, after the
+  app-connect-scope suite. It pins the Agent Designer's standard proposal
+  card: name and role, the three-line description, where the agent lives, the
+  model dropdown, and the tool/app fold that arrives closed.
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   CI runs it in that same managed Navigation Transitions lifecycle before the

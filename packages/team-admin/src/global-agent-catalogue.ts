@@ -213,6 +213,52 @@ const modelSection = (models: AgentModelOption[] | null): string[] => {
   ]
 }
 
+/**
+ * The proposal card, described once, in the only transport that can post one.
+ *
+ * It lives here rather than in the blueprint persona because the persona is
+ * shared by three faces and only this one holds `card_post`: the Agent Designer
+ * page fills a form, and the shared-channel face writes nothing at all. Telling
+ * either of those to post a card would be the prompt itself breaking the "never
+ * imply you did work you did not do" rule.
+ *
+ * Standardised on purpose. A person who has read one of these should be able to
+ * read the next at a glance, so the four things that are true of every agent —
+ * what it is called, what it will do, where it lives, and what it can reach —
+ * are always in the same place, and the agent's own additions go in the fold
+ * rather than rearranging the card.
+ */
+const proposalCardSection = (): string[] => [
+  'Proposing an agent: one card, always the same card.',
+  bullet('title — the agent\'s name. subtitle — its role, two or three words.'),
+  bullet(
+    'A text block of at most three lines saying what it will do. The work, '
+    + 'not the machinery.',
+  ),
+  bullet(
+    'A fields block for where it lives and who can see it — the team, project '
+    + 'and channel it will work in, or that it is private to them.',
+  ),
+  bullet(
+    'An input block, a select, for the model: a few from the catalogue above '
+    + 'with your recommendation as the default. Each option\'s value is the '
+    + 'provider and model as one pair, written exactly as the catalogue writes '
+    + 'it. Ask for the model here and never in prose.',
+  ),
+  bullet(
+    'A details block, which arrives closed, holding what they can check if '
+    + 'they want to: a chips block naming the tools, a chips block naming the '
+    + 'apps it will reach, and anything else this particular agent needs said. '
+    + 'That fold is where your own blocks go — do not invent a different card '
+    + 'because this one has no row for something.',
+  ),
+  bullet('Three actions: Accept, which submits, then Edit and Discard, which do not.'),
+  'Post it without wait, so they can press it or simply answer in chat. '
+  + 'Accept means build exactly what the card says, on the model they picked, '
+  + 'and then say where it landed. Edit means ask what they want different and '
+  + 'post a fresh card. Discard means build nothing.',
+]
+
 const WRITE_SURFACE_LINE: Record<
   GlobalAgentCatalogueFacts['writeSurface'],
   string
@@ -271,6 +317,7 @@ export const buildGlobalAgentCatalogueBlock = (
       : []),
     ...modelSection(facts.models),
     '',
+    ...(facts.writeSurface === 'agent_tools' ? [...proposalCardSection(), ''] : []),
     ...cloudBrowserSetupSection(facts.writeSurface),
     '',
     ...neverSection(),

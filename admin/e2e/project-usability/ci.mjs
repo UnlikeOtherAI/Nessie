@@ -44,6 +44,9 @@ const main = async () => {
     admin = await startAdmin()
     await runBrowserSuite(resolve(here, '../browser-cloud/run.mjs'), 'browser-cloud')
     await runBrowserSuite(resolve(here, '../app-connect-scope/run.mjs'), 'app-connect-scope')
+    // A pure-fixture suite: it drives the real card renderer over a stubbed
+    // presenter, so it needs the admin and nothing behind it.
+    await runBrowserSuite(resolve(here, '../agent-proposal-card/run.mjs'), 'agent-proposal-card')
     // This is a stateful, provider-boundary fixture: it proves the member
     // management screen never sends an email or touches UOA while running CI.
     await runBrowserSuite(resolve(here, '../member-management/run.mjs'), 'member-management')
