@@ -49,6 +49,10 @@ test('a limited row cannot carry a withheld field, even if the reader sent one',
     id: '00000000-0000-4000-8000-000000000001',
     members: [],
     name: 'Launch',
+    // Required on the limited arm: the lock marker is DERIVED from it on the
+    // client, so the wire carries no separate `locked` field for a reader to
+    // disagree with.
+    visibility: 'protected',
   }
   assert.equal(ProjectDirectoryEntrySchema.safeParse(limited).success, true)
   for (const field of ['memberCount', 'channelCount', 'boards', 'project', 'avatarEmoji']) {

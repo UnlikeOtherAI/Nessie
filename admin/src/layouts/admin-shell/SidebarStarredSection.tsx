@@ -8,6 +8,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { isReactNativeWebView } from '../../lib/native-shell';
 import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -112,7 +113,7 @@ export const SidebarStarredSection = ({
               type="button"
               {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
             >
-              <span className={channelHashClassName}>#</span>
+              <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
               <GroupDmSidebarLabel label={channel.label} />
               {renderUnreadCount(channel.unreadCount)}
               <span
@@ -182,7 +183,7 @@ export const SidebarStarredSection = ({
                   type="button"
                   {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                 >
-                  <span className={channelHashClassName}>#</span>
+                  <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
                   <GroupDmSidebarLabel label={channel.label} />
                   {renderUnreadCount(channel.unreadCount)}
                   <span

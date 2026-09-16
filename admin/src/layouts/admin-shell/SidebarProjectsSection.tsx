@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { getCookie, setCookie } from '../../lib/storage';
@@ -354,7 +355,7 @@ export const SidebarProjectsSection = ({
                       type="button"
                       {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                     >
-                      <span className={channelHashClassName}>#</span>
+                      <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
                       <GroupDmSidebarLabel label={channel.label} />
                       {renderUnreadCount(channel.unreadCount)}
                       <span

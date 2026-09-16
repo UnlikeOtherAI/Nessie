@@ -225,3 +225,32 @@ export const useCloneAgent = () => {
     },
   })
 }
+
+/**
+ * Deleting an agent.
+ *
+ * A soft delete on the server: the row stays for audit history while every live
+ * capability — bindings, triggers, runs, grants, its mailbox — is revoked in one
+ * transaction. From here it simply stops existing, because
+ * `buildVisibleAgentWhere` filters it out of every read.
+ *
+ * It exists because the members popup offered a one-tap duplicate and nothing
+ * could remove what it created; one such row had to be deleted out of the
+ * production database by hand.
+ */
+export const useDeleteAgent = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (agentId: string) => apiClient.delete<void>(`/api/agents/${agentId}`),
+    onSuccess: async () => {
+      // Channels too, not only agents: the delete removed every binding, so a
+      // cached channel record still lists the agent as a participant.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: agentKeys.all }),
+        queryClient.invalidateQueries({ queryKey: channelKeys.all }),
+      ])
+    },
+  })
+}

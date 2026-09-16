@@ -1,14 +1,21 @@
-import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
+import { faChevronRight, faTrash } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentRecord } from '../../../lib/api-client'
 import { prewarmRowHandlers } from '../../../navigation/prewarm'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { useCanDeleteAgent } from './agent-edit-authority'
 import { AgentOwnerCell } from './AgentOwnerCell'
 import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
 
 type AgentListRowProps = {
   agent: AgentRecord
+  /**
+   * Opens the confirmation. Absent on a list that does not offer deletion at
+   * all; present, it is still only drawn for an agent this viewer may edit, so
+   * the control and `DELETE /api/agents/:agentId` agree.
+   */
+  onDelete?: (agent: AgentRecord) => void
   onOpen: (agentId: string) => void
   /** From the table's own `usePrewarm()`; a row cannot call a hook itself. */
   prewarm: (to: string) => void
@@ -20,10 +27,17 @@ type AgentListRowProps = {
 // editing alongside the integrated Design Assistant.
 export const AgentListRow = ({
   agent,
+  onDelete,
   onOpen,
   prewarm,
   token,
-}: AgentListRowProps) => (
+}: AgentListRowProps) => {
+  // The same answer the route resolves: never a system-managed agent, and never
+  // somebody else's person-owned one unless this viewer administers the
+  // organisation.
+  const canDelete = useCanDeleteAgent(agent)
+
+  return (
   <tr
     className="cursor-pointer"
     onClick={() => onOpen(agent.id)}
@@ -62,6 +76,23 @@ export const AgentListRow = ({
         token={token}
       />
     </td>
+    <td className="w-9 py-2.5 pl-0 pr-1 text-right align-middle">
+      {onDelete && canDelete ? (
+        <button
+          aria-label={`Delete ${agent.name}`}
+          className="admin-msg-action-button"
+          title={`Delete ${agent.name}`}
+          onClick={(event) => {
+            // The row itself opens the agent; a delete must not do both.
+            event.stopPropagation()
+            onDelete(agent)
+          }}
+          type="button"
+        >
+          <FontAwesomeIcon className="h-3 w-3" icon={faTrash} />
+        </button>
+      ) : null}
+    </td>
     <td className="w-9 py-2.5 pl-0 pr-4 text-right align-middle">
       <FontAwesomeIcon
         className="h-3 w-3 text-[color:var(--tx3)]"
@@ -69,4 +100,5 @@ export const AgentListRow = ({
       />
     </td>
   </tr>
-)
+  )
+}

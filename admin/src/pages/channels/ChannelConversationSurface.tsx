@@ -13,6 +13,7 @@ import { CallBanner } from '../../components/shared/CallBanner'
 import { DropZoneOverlay } from '../../components/shared/DropZoneOverlay'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
 import { ChannelHeader } from '../../components/features/channels/ChannelHeader'
+import { channelRoomControls } from '../../components/features/channels/channel-room-controls'
 import {
   ChannelMessageFeed,
   type MessageHistoryStatus,
@@ -238,6 +239,9 @@ export const ChannelConversationSurface = ({
     submitEdit,
     updatePending,
   } = messageActions
+  // The same derivation the header uses, so the composer and the Join action
+  // can never disagree about whether this person is in the room.
+  const roomControls = channelRoomControls({ activeChannel, isPersonalAssistantConversation })
   const callerName = activeCall?.startedByDisplayName ?? null
   const [recordRoutineOpen, setRecordRoutineOpen] = useState(false)
   const [selectedRoutineAgentId, setSelectedRoutineAgentId] = useState('')
@@ -407,7 +411,26 @@ export const ChannelConversationSurface = ({
         </div>
       </div>
 
-      {visibleActiveTab === 'messages' ? (
+      {/*
+        The composer is membership, not management. An organisation admin
+        administering a room they never joined reads it, opens its settings and
+        its members popup, and cannot speak in it — decision 2 of the visibility
+        spec, and the reason `canPost` is its own answer rather than a reading
+        of `viewerCanManage`. A public room the viewer has not joined offers
+        Join in the header instead; a protected one offers neither.
+      */}
+      {visibleActiveTab === 'messages' && !roomControls.canPost ? (
+        <div
+          className="border-t border-[color:var(--bd)] px-4 py-3 text-xs text-[color:var(--tx3)]"
+          role="status"
+        >
+          {roomControls.postRefusal === 'join-to-post'
+            ? 'Join this channel to send messages.'
+            : 'You are not a member of this channel, so you cannot send messages in it.'}
+        </div>
+      ) : null}
+
+      {visibleActiveTab === 'messages' && roomControls.canPost ? (
         <ChannelComposer
           attachments={composer.attachments}
           inviteErrors={composer.inviteErrors}

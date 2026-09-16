@@ -28,11 +28,16 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
   const creatableTeams = teamsForProjectCreation(teams.data ?? [], isOrganizationAdmin)
   const [name, setName] = useState('')
   const [teamId, setTeamId] = useState('')
+  // `public` by default, and the same default the server applies when the field
+  // is absent — so a project made by the Agent Designer's `project_create` tool
+  // lands in the same place as one made here.
+  const [visibility, setVisibility] = useState<'protected' | 'public'>('public')
   const [formError, setFormError] = useState<string | null>(null)
 
   const handleClose = () => {
     setName('')
     setTeamId('')
+    setVisibility('public')
     setFormError(null)
     onClose()
   }
@@ -44,7 +49,7 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
 
     setFormError(null)
     try {
-      await createProject.mutateAsync({ name: trimmedName, teamId })
+      await createProject.mutateAsync({ name: trimmedName, teamId, visibility })
     } catch (error) {
       // The server is the authority on placement; its refusal belongs on the
       // form rather than in a rejected promise nobody sees.
@@ -95,6 +100,32 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
               You are not a member of any team yet, so there is nowhere to create a project.
             </div>
           ) : null}
+        </div>
+
+        <div className="grid gap-1.5">
+          <label
+            className={[
+              'text-xs font-semibold uppercase',
+              'tracking-[0.16em] text-[color:var(--tx3)]',
+            ].join(' ')}
+            htmlFor="project-visibility"
+          >
+            Visibility
+          </label>
+          <select
+            className="admin-input"
+            id="project-visibility"
+            onChange={(event) => setVisibility(event.target.value as typeof visibility)}
+            value={visibility}
+          >
+            <option value="public">Public</option>
+            <option value="protected">Protected</option>
+          </select>
+          <p className="text-xs text-[color:var(--tx3)]">
+            {visibility === 'public'
+              ? 'Anyone in the organisation can find this project and open it.'
+              : 'Shown with a lock. People outside it see only its name and who is in it, and are added by someone already here.'}
+          </p>
         </div>
 
         {formError ? (

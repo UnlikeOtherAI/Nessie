@@ -4,6 +4,7 @@ import type { ProjectDirectoryEntry } from '@nessie/schemas'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { PageBody } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
+import { ProjectLockMarker } from '../../components/shared/RoomVisibilityGlyph'
 import { ScreenHeader } from '../../components/shared/ScreenHeader'
 import { UserAvatar } from '../../components/shared/UserAvatar'
 import { useProjectDirectory } from '../../facades/projects/hooks'
@@ -59,17 +60,23 @@ const ProjectDirectoryRow = ({ entry }: { entry: ProjectDirectoryEntry }) => {
   return (
     <li className="grid gap-2 rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        {canOpen ? (
-          <Link className="text-sm font-semibold text-[color:var(--tx)] hover:underline" to={`/projects/${entry.id}`}>
-            {entry.name}
-          </Link>
-        ) : (
-          <span className="text-sm font-semibold text-[color:var(--tx)]">{entry.name}</span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {/* Derived from `visibility`, never a `locked` field on the wire. */}
+          <ProjectLockMarker visibility={entry.visibility} />
+          {canOpen ? (
+            <Link className="text-sm font-semibold text-[color:var(--tx)] hover:underline" to={`/projects/${entry.id}`}>
+              {entry.name}
+            </Link>
+          ) : (
+            <span className="text-sm font-semibold text-[color:var(--tx)]">{entry.name}</span>
+          )}
+        </span>
         <span className="text-xs text-[color:var(--tx3)]">
           {entry.access === 'full'
             ? (entry.viewerIsMember ? 'You are a member' : 'You can open this as an organisation admin')
-            : 'You are not a member'}
+            : entry.visibility === 'protected'
+              ? 'Protected — ask a member to add you'
+              : 'You are not a member'}
         </span>
       </div>
       {entry.description ? (

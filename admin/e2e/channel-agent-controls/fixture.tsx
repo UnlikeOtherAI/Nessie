@@ -10,13 +10,15 @@ import type { AgentRecord, UserRecord } from '../../src/lib/api-client'
 import '../../src/styles.css'
 
 /**
- * The channel members popup at both authorities.
+ * The channel members popup at each authority.
  *
- * Adding a PERSON is any member of the channel; adding an AGENT additionally
- * requires the organisation owner role. The popup drew the agent controls for
- * everybody, so an ordinary member saw an "Add" whose only outcome was a 403.
- * The fixture renders the real popup at each answer so the difference is
- * something a person can look at.
+ * Adding a PERSON is any member of the channel; adding an AGENT takes
+ * organisation owner or admin standing and NOT membership. The popup drew the
+ * agent controls for everybody, so an ordinary member saw an "Add" whose only
+ * outcome was a 403. The fixture renders the real popup at each answer so the
+ * difference is something a person can look at — including the case the two
+ * authorities pull apart: an admin outside the room, who may place an agent in
+ * it and may not speak in it.
  */
 
 const VIEWER = '11111111-1111-4111-8111-111111111111'
@@ -42,12 +44,15 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 
 const Fixture = () => {
   const [canManageAgents, setCanManageAgents] = useState(false)
+  // Whether this viewer is IN the channel, which is a different question from
+  // whether they may place an agent in it.
+  const [viewerIsMember, setViewerIsMember] = useState(true)
   // The popup is a modal overlay and covers anything rendered beside it, so
   // the authority is switched from the runner rather than by clicking a
   // control the overlay would intercept.
   useEffect(() => {
     ;(window as typeof window & { __channelAgentControlsFixture: unknown })
-      .__channelAgentControlsFixture = { setCanManageAgents }
+      .__channelAgentControlsFixture = { setCanManageAgents, setViewerIsMember }
   }, [])
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '16px' }}>
@@ -57,10 +62,10 @@ const Fixture = () => {
         boundAgents={[BOUND]}
         channelId="55555555-5555-4555-8555-555555555555"
         channelLabel="sales"
-        channelUsers={[user(VIEWER, 'Viewer')]}
+        channelUsers={viewerIsMember ? [user(VIEWER, 'Viewer')] : []}
         currentUserId={VIEWER}
         personalAssistantPresences={[]}
-        viewerCanManage
+        viewerCanManage={viewerIsMember}
         viewerCanManageAgents={canManageAgents}
         onClose={() => {}}
         onSelectAgent={() => {}}

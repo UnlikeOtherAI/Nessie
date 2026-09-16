@@ -8,6 +8,8 @@ type AgentsTableProps = {
   agents: AgentRecord[]
   emptyMessage: string
   isLoading: boolean
+  /** Omitted on a read-only tier (the system agents), where nothing deletes. */
+  onDelete?: (agent: AgentRecord) => void
   onOpen: (agentId: string) => void
   token: string | null
 }
@@ -46,6 +48,7 @@ export const AgentsTable = ({
   agents,
   emptyMessage,
   isLoading,
+  onDelete,
   onOpen,
   token,
 }: AgentsTableProps) => {
@@ -92,6 +95,7 @@ export const AgentsTable = ({
           <AgentListRow
             agent={agent}
             key={agent.id}
+            {...(onDelete ? { onDelete } : {})}
             onOpen={onOpen}
             prewarm={prewarm}
             token={token}

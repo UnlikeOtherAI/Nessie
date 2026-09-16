@@ -54,16 +54,24 @@ export const matchesRecipientQuery = (
  * A DM-homed system agent is addressable by everybody: opening your own home DM
  * is not placement, so it carries no owner gate on the server either. Ordinary
  * agents keep the gate this picker has always applied — `POST
- * /api/channels/conversations` refuses to bind one for a non-owner, and
- * offering an option that always fails would be worse than omitting it.
+ * /api/channels/conversations` refuses to bind one for a caller without
+ * organisation admin standing, and offering an option that always fails would
+ * be worse than omitting it.
+ *
+ * **Owner OR admin**, and the route says the same thing in the same commit
+ * (`requireOrgAdmin` there, `isAdmin` here). It used to be owner-only on both
+ * sides, which is how an organisation admin starting a direct message saw no
+ * shared agents at all — one of the three symptoms the visibility change was
+ * opened for. If these two ever disagree again the symptom is the worse
+ * direction: a picker offering a recipient the route then refuses with a 403.
  */
 export const selectAddressableAgents = (
   agents: AgentRecord[],
-  options: { isOwner: boolean },
+  options: { isAdmin: boolean },
 ): AgentRecord[] =>
   agents.filter((agent) =>
     (agent.dmAddressable === true)
-    || (options.isOwner && agent.systemManaged !== true))
+    || (options.isAdmin && agent.systemManaged !== true))
 
 export const buildRecipientOptions = (input: {
   agents: AgentRecord[]

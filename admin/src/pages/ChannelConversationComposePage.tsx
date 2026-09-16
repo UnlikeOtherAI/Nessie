@@ -22,7 +22,7 @@ import {
   type MentionInputHandle,
 } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
-import { useIsOwner } from '../facades/auth/hooks'
+import { useIsOrganizationAdmin } from '../facades/auth/hooks'
 import { RecipientBar } from '../components/shared/RecipientBar'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -43,7 +43,10 @@ export const ChannelConversationComposePage = () => {
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
   const { me, token } = useAuthSession()
-  const isOwner = useIsOwner()
+  // Owner OR admin: the same standing `POST /api/channels/conversations`
+  // requires when the body names agents. The two must agree, or the picker
+  // offers a recipient the route refuses.
+  const isAdmin = useIsOrganizationAdmin()
   const { data: allUsers = [] } = useUsers()
   // `scope: 'all'` is the arm that includes the read-only system tier. The
   // default list excludes every `systemManaged` agent, which is why no global
@@ -86,8 +89,8 @@ export const ChannelConversationComposePage = () => {
     [users],
   )
   const agents = useMemo(
-    () => selectAddressableAgents(allAgents, { isOwner }),
-    [allAgents, isOwner],
+    () => selectAddressableAgents(allAgents, { isAdmin }),
+    [allAgents, isAdmin],
   )
   const agentsById = useMemo(
     () => new Map(agents.map((agent) => [agent.id, agent])),

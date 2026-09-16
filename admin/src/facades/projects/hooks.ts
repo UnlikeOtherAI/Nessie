@@ -83,7 +83,7 @@ export const useCreateProject = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string; teamId: string }) =>
+    mutationFn: (input: { name: string; teamId: string; visibility?: 'protected' | 'public' }) =>
       apiClient.post<ProjectRecord>('/api/projects', input, undefined, ProjectRecordSchema),
     onSuccess: async () => {
       // The sidebar resolves a project's explicit channel target from the
