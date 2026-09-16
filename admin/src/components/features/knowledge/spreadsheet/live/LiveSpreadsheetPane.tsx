@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { KnowledgePageRecord } from '../../../../../facades/knowledge/hooks'
+import { useSpreadsheetBootstrap } from '../../../../../facades/knowledge/spreadsheet-hooks'
 import { SpreadsheetPane } from '../SpreadsheetPane'
 import type { WorkbookSession } from '../WorkbookHost'
 import type { PresenceFrame } from '../spreadsheet-model-bridge'
@@ -33,6 +34,11 @@ import './spreadsheet-live.css'
  */
 
 type LiveSpreadsheetPaneProps = {
+  /**
+   * What the *browser* believes, from the space the row was found in. It is
+   * the optimistic answer that holds until the bootstrap arrives, never the
+   * authority: see `mayWrite` below.
+   */
   canWrite: boolean
   onBack?: () => void
   page: KnowledgePageRecord
@@ -56,7 +62,15 @@ const useOverlayLayer = (host: HTMLElement | null): HTMLDivElement | null => {
 }
 
 export const LiveSpreadsheetPane = ({ canWrite, onBack, page }: LiveSpreadsheetPaneProps) => {
-  const live = useSpreadsheetLive({ canWrite, pageId: page.id })
+  // Whether this viewer may write *this page* — the server's own verdict, from
+  // the bootstrap it already fetched (same query key, so no second request).
+  // A space-membership check is the wrong question once a page can be shared
+  // person to person: an `edit` grantee writes a page inside somebody else's
+  // personal space, and a `view` grantee must not write one inside a space
+  // they can otherwise edit. The prop stands in only until the answer lands.
+  const bootstrap = useSpreadsheetBootstrap(page.id).data
+  const mayWrite = bootstrap ? bootstrap.viewer.canWrite : canWrite
+  const live = useSpreadsheetLive({ canWrite: mayWrite, pageId: page.id })
   const rootRef = useRef<HTMLDivElement>(null)
   const [session, setSession] = useState<WorkbookSession | null>(null)
   const [host, setHost] = useState<HTMLElement | null>(null)
@@ -101,7 +115,7 @@ export const LiveSpreadsheetPane = ({ canWrite, onBack, page }: LiveSpreadsheetP
 
   const touch = useTouchSelection({
     bounds: host,
-    canEdit: canWrite && !live.engineMigrating,
+    canEdit: mayWrite && !live.engineMigrating,
     container,
     model: session?.model ?? null,
     onChanged: onTouchChanged,
@@ -109,7 +123,7 @@ export const LiveSpreadsheetPane = ({ canWrite, onBack, page }: LiveSpreadsheetP
     sheet,
   })
 
-  useDraftObserver({ enabled: canWrite, host, onDraft: live.onDraft })
+  useDraftObserver({ enabled: mayWrite, host, onDraft: live.onDraft })
 
   // `touch-action: none` on the scroll element while a range is being dragged.
   // It is set on the element rather than in a class so it can be lifted the
@@ -140,7 +154,7 @@ export const LiveSpreadsheetPane = ({ canWrite, onBack, page }: LiveSpreadsheetP
       ) : null}
       <div className="relative min-h-0 flex-1">
       <SpreadsheetPane
-        canWrite={canWrite}
+        canWrite={mayWrite}
         engineMigrating={live.engineMigrating}
         liveStatus={live.liveStatus}
         onBack={onBack}

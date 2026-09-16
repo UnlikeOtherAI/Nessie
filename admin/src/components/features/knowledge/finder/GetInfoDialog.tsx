@@ -121,9 +121,9 @@ const searchLine = (info: KnowledgeItemInfo): string | null => {
     // A spreadsheet is searchable, just not yet: its text comes from the
     // projection written with each saved version, so an unsaved one has
     // nothing to index rather than being the wrong kind of thing to index.
-    if (info.kind === 'spreadsheet') {
-      return 'Not indexed — a spreadsheet is indexed when a version is saved'
-    }
+    // The words are `indexing-copy.ts`'s `unsaved`, because the row's glyph
+    // and this line must not describe one state two ways.
+    if (info.kind === 'spreadsheet') return 'Not indexed — nothing saved to search yet'
     return `Not indexed — ${familyLabel[familyOf(info)]}s aren’t searchable`
   }
   return 'Preparing search…'

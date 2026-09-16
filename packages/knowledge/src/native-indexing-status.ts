@@ -248,8 +248,13 @@ const fileState = (
  * A spreadsheet. Its searchable text is the projection written into the
  * `body` of each durable version (`spreadsheet/snapshot.ts`), so it is judged
  * on the same chunks as a document — but never on `status`: a spreadsheet is
- * not published, it is saved, and a fresh one simply has no version yet,
- * which is `empty` rather than `draft`.
+ * not published, it is saved.
+ *
+ * No version, and a version whose projection is empty, are the same answer on
+ * purpose: they are indistinguishable to a reader (a new workbook is created
+ * with no snapshot, and a blank one projects to nothing) and they are cured by
+ * the same act. `empty` would say "no text found", which reads as a verdict on
+ * a grid that may simply not have been saved yet.
  */
 const spreadsheetState = (
   version: VersionFacts | undefined,
@@ -257,8 +262,7 @@ const spreadsheetState = (
   embedJobs: Map<string, string>,
   pageId: string,
 ): KnowledgeIndexingState => {
-  if (!version) return { state: 'not_indexed', reason: 'unsaved' }
-  if (version.bodyBytes === 0) return { state: 'not_indexed', reason: 'empty' }
+  if (!version || version.bodyBytes === 0) return { state: 'not_indexed', reason: 'unsaved' }
   return stateFromChunks(
     version.versionId,
     chunks.get(version.versionId),
