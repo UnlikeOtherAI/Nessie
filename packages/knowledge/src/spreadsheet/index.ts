@@ -216,4 +216,3 @@ export {
   type SpreadsheetAction,
   type SpreadsheetReplaceResult,
 } from './writes.js'
-export { declaredUncompressedBytes } from './zip-size.js'

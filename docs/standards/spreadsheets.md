@@ -320,11 +320,15 @@ the answer in the plan's `decisions.md`.
 
 - **Server-built structural batches carry no intents** (see above). Every agent
   structural write is unrebasable by an open pane.
-- **`sheet_export` renders synchronously on the API with no size threshold.**
-  `saveToXlsx` blocks the event loop — about 4 s per million cells — and an
-  imported workbook may hold about 2 M. Nothing routes a large export to the
-  worker yet.
-- `packages/knowledge/src/spreadsheet/zip-size.ts` duplicates a zip
-  central-directory parse that belongs in
-  `packages/spreadsheet/src/xlsx-warnings.ts`; delete it when
-  `readCentralDirectory` exports `uncompressedSize`.
+- **`sheet_export` renders synchronously on the API, with no threshold, and
+  that is a measured decision rather than an oversight.** `exportXlsxBytes`
+  costs about 1.2 µs a cell on this hardware — 22 ms at 20 000 cells, 97 ms at
+  100 000, 465 ms at 400 000 — so the largest importable workbook (~2 M cells)
+  blocks one replica's event loop for roughly two to three seconds, not the
+  four seconds a million cells that the plan feared. Refusing above a cap would
+  stop a person downloading their own spreadsheet; an asynchronous export would
+  change the tool's contract and the download flow for a two-second stall
+  nobody has hit. Both were judged worse than the stall. What is genuinely open
+  is the adversarial case: nothing rate-limits an agent calling
+  `nessie_sheet_export` in a loop against a large sheet. Revisit with the
+  numbers above when there is a workbook big enough to make it matter.

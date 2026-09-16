@@ -4,6 +4,7 @@ import type { LedgerAttribution } from '@nessie/runtime'
 import { SPREADSHEET_LIMITS } from '@nessie/schemas'
 import { importCsv } from '@nessie/spreadsheet'
 import {
+  declaredUncompressedBytes,
   detectWorkbookFormat,
   scanXlsxWarnings,
   type XlsxImportWarning,
@@ -19,7 +20,6 @@ import {
 import { invalidRequest, tooLarge, unsupportedFeature } from './errors.js'
 import { lockSpreadsheetPage, loadHead } from './head.js'
 import { createSpreadsheetSnapshot } from './snapshot.js'
-import { declaredUncompressedBytes } from './zip-size.js'
 import type { SpreadsheetServiceDeps, SpreadsheetWriteActor } from './deps.js'
 import type { KnowledgePageRecord } from '../types.js'
 

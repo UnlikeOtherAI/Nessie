@@ -264,6 +264,8 @@ interface ZipEntry {
   method: number
   offset: number
   compressedSize: number
+  /** What the package *declares* it expands to. Never inflated to learn it. */
+  uncompressedSize: number
 }
 
 const EOCD_SIGNATURE = 0x06054b50
@@ -300,6 +302,7 @@ function readCentralDirectory(bytes: Uint8Array): ZipEntry[] {
       name: new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength)),
       method: view.getUint16(cursor + 10, true),
       compressedSize: view.getUint32(cursor + 20, true),
+      uncompressedSize: view.getUint32(cursor + 24, true),
       offset: view.getUint32(cursor + 42, true),
     })
     cursor += 46 + nameLength + extraLength + commentLength
@@ -320,6 +323,24 @@ function readEntry(bytes: Uint8Array, entry: ZipEntry): string {
 /** Every entry name in the package, without decompressing anything. */
 export function readXlsxPartNames(bytes: Uint8Array): string[] {
   return readCentralDirectory(bytes).map((e) => e.name)
+}
+
+/**
+ * How much the package declares it expands to, summed across its entries, or
+ * `null` when the bytes are not a readable 32-bit zip at all.
+ *
+ * This, and not the file size, is what an import cap has to be written
+ * against: sheet XML decompresses about 11:1, so a 3.27 MB workbook already
+ * needs ~864 MB resident and a 64 MiB one could need roughly 15 GB (spike B
+ * §"Contract changes" 5). The figure comes from the central directory, so
+ * nothing is inflated to learn it.
+ */
+export function declaredUncompressedBytes(bytes: Uint8Array): number | null {
+  try {
+    return readCentralDirectory(bytes).reduce((total, entry) => total + entry.uncompressedSize, 0)
+  } catch {
+    return null
+  }
 }
 
 /**

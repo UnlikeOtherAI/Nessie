@@ -22,6 +22,7 @@ import { UserModel } from '@ironcalc/nodejs'
 import {
   deriveXlsxWarnings,
   detectWorkbookFormat,
+  declaredUncompressedBytes,
   readXlsxPartNames,
   scanXlsxWarnings,
 } from '../src/xlsx-warnings.js'
@@ -143,6 +144,25 @@ describe('fromXlsx / saveToXlsx round trip', () => {
     assert.deepEqual(reloaded.getDefinedNameList(), source.getDefinedNameList())
     // No warnings: nothing IronCalc writes is something IronCalc drops.
     assert.deepEqual(scanXlsxWarnings(fs.readFileSync(file)), [])
+  })
+})
+
+describe('the declared expansion', () => {
+  it('reads the central directory, not the file size, and refuses a non-zip', () => {
+    // The number an import cap has to be written against. Sheet XML expands
+    // about 11:1, so the compressed size admits a file that takes the process
+    // down; this comes from the central directory and inflates nothing.
+    const declared = declaredUncompressedBytes(foreignBytes)
+    assert.ok(declared !== null)
+    assert.ok(
+      declared > foreignBytes.byteLength,
+      `expansion ${declared} should exceed the ${foreignBytes.byteLength}-byte package`,
+    )
+    // A CSV, an `.xls` and a truncated package all reach the same call, and
+    // all three have to answer "not a workbook" rather than throw: the import
+    // route turns `null` into a refusal a person can read.
+    assert.equal(declaredUncompressedBytes(Buffer.from('a,b,c\n1,2,3\n')), null)
+    assert.equal(declaredUncompressedBytes(foreignBytes.subarray(0, 64)), null)
   })
 })
 
