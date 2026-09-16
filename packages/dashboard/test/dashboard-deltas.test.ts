@@ -10,6 +10,7 @@ import {
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const userId = '00000000-0000-4000-8000-000000000002'
 const dashboardId = '00000000-0000-4000-8000-000000000003'
+const projectId = '00000000-0000-4000-8000-000000000004'
 const mutationId = '00000000-0000-4000-8000-000000000004'
 
 const createContext = () => {
@@ -26,14 +27,10 @@ const createContext = () => {
   const persistedVersions: { runId?: string | null }[] = []
   const dashboard = {
     archivedAt: null,
-    channelId: null,
     createdBy: userId,
-    home: 'personal',
     id: dashboardId,
     organizationId,
-    ownerUserId: userId,
-    projectId: null,
-    teamId: null,
+    projectId,
   }
   const prisma = {
     dashboard: {
@@ -88,7 +85,8 @@ const createContext = () => {
       canReadKnowledgePageVersion: async () => false,
       canReadMessage: async () => false,
       isChannelMember: async () => false,
-      isProjectMember: async () => false,
+      // The dashboard's audience is its project's members, and this actor is one.
+      isProjectMember: async () => true,
       isTeamMember: async () => false,
       subjectsForActor: async () => [],
     },

@@ -22,11 +22,8 @@ export type DashboardRecord = {
   id: string
   title: string
   description: string | null
-  home: 'organization' | 'project' | 'team' | 'channel' | 'personal'
-  projectId: string | null
-  teamId: string | null
-  channelId: string | null
-  ownerUserId: string | null
+  /** A dashboard lives in a project, and that project's members are its audience. */
+  projectId: string
   layout: DashboardLayout
   presentation: DashboardPresentation
   revision: number
@@ -82,14 +79,21 @@ export type DashboardSourceNote = {
   originalAttachmentId: string | null
 }
 
-export const useDashboards = (filter?: { home?: string; projectId?: string }) => {
+/**
+ * The dashboards of one project. `projectId` is not optional: every surface
+ * that shows dashboards is a project surface, and an unscoped read would be a
+ * list nothing renders.
+ */
+export const useDashboards = (projectId: string | undefined) => {
   const client = useApiClient()
-  const query = new URLSearchParams()
-  if (filter?.home) query.set('home', filter.home)
-  if (filter?.projectId) query.set('projectId', filter.projectId)
-  const suffix = query.toString() ? `?${query.toString()}` : ''
+  const suffix = `?projectId=${encodeURIComponent(projectId ?? '')}`
 
   return useQuery({
+    enabled: Boolean(projectId),
+    // Id-keyed, so it carries the previous project's answer while the next one
+    // loads rather than flashing empty (`docs/standards` → admin query
+    // conventions).
+    placeholderData: keepPreviousData,
     queryKey: dashboardKeys.list(suffix),
     queryFn: () => client.get<DashboardRecord[]>(`/api/dashboards${suffix}`),
   })
@@ -181,10 +185,8 @@ export const useCreateDashboard = () => {
   return useMutation({
     mutationFn: (input: {
       title: string
-      home: string
-      projectId?: string
-      teamId?: string
-      channelId?: string
+      description?: string
+      projectId: string
     }) => client.post<DashboardRecord>('/api/dashboards', input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
   })

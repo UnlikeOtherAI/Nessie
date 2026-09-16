@@ -27,14 +27,14 @@ test('tab roots are exactly the depth-0 roots; Search has no contextual list', (
     ['/channels', '/projects', '/knowledge-base', '/settings', '/search'].map(isPhoneTabRoot),
     [true, true, true, true, true],
   )
-  // /dashboards is a Knowledge detail, not a tab root.
-  assert.equal(isPhoneTabRoot('/dashboards'), false)
+  // A dashboard is a project's, not a tab root.
+  assert.equal(isPhoneTabRoot('/projects/p1/dashboards'), false)
   assert.equal(phoneTabRootHasContextualList('/channels'), true)
   assert.equal(phoneTabRootHasContextualList('/projects'), true)
   assert.equal(phoneTabRootHasContextualList('/knowledge-base'), true)
   assert.equal(phoneTabRootHasContextualList('/settings'), true)
   assert.equal(phoneTabRootHasContextualList('/search'), false)
-  assert.equal(phoneTabRootHasContextualList('/dashboards'), false)
+  assert.equal(phoneTabRootHasContextualList('/projects/p1/dashboards'), false)
 })
 
 test('Knowledge routes: root depth0, spaces and views depth1', () => {
@@ -62,29 +62,34 @@ test('Knowledge sidebar destinations are always route-backed', () => {
   )
 })
 
-test('Dashboards are Knowledge-section pages: root depth1, dashboard depth2', () => {
-  const root = getPhoneNavigationScreen('/dashboards')
-  assert.equal(root?.section, 'knowledge')
-  assert.equal(root?.depth, 1)
-  assert.deepEqual(getPhoneNavigationBackTarget('/dashboards'), {
-    label: 'Back to Knowledge',
-    pathname: '/knowledge-base',
-  })
-  const detail = getPhoneNavigationScreen('/dashboards/dash_a')
-  assert.equal(detail?.section, 'knowledge')
+test('Dashboards are Projects-section pages: the list is a project tab, a dashboard depth2', () => {
+  // They were Knowledge pages — /dashboards at depth 1 under /knowledge-base,
+  // a dashboard at depth 2 under that. A dashboard lives in a project now, so
+  // the whole chain is the project's.
+  const list = getPhoneNavigationScreen('/projects/p1/dashboards')
+  assert.equal(list?.section, 'projects')
+  assert.equal(list?.depth, 1)
+
+  const detail = getPhoneNavigationScreen('/projects/p1/dashboards/dash_a')
+  assert.equal(detail?.section, 'projects')
   assert.equal(detail?.depth, 2)
-  assert.deepEqual(getPhoneNavigationBackTarget('/dashboards/dash_a'), {
+  // On a cold link, Back names the project's own Dashboards list.
+  assert.deepEqual(getPhoneNavigationBackTarget('/projects/p1/dashboards/dash_a'), {
     label: 'Back to Dashboards',
-    pathname: '/dashboards',
+    pathname: '/projects/p1/dashboards',
   })
-  // The tab that owns every dashboard route is Knowledge.
-  assert.equal(getPhoneTabRootPath('/dashboards'), '/knowledge-base')
-  assert.equal(getPhoneTabRootPath('/dashboards/dash_a'), '/knowledge-base')
-  // Entering Dashboards from Knowledge animates forward; entering a dashboard
-  // animates forward from /dashboards and back down to it.
-  assert.equal(getPhoneNavigationDirection('/knowledge-base', '/dashboards'), 'forward')
-  assert.equal(getPhoneNavigationDirection('/dashboards', '/dashboards/dash_a'), 'forward')
-  assert.equal(getPhoneNavigationDirection('/dashboards/dash_a', '/dashboards'), 'back')
+
+  // The tab that owns every dashboard route is Projects.
+  assert.equal(getPhoneTabRootPath('/projects/p1/dashboards'), '/projects')
+  assert.equal(getPhoneTabRootPath('/projects/p1/dashboards/dash_a'), '/projects')
+  assert.equal(
+    getPhoneNavigationDirection('/projects/p1/dashboards', '/projects/p1/dashboards/dash_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/projects/p1/dashboards/dash_a', '/projects/p1/dashboards'),
+    'back',
+  )
 })
 
 test('the channel stack gives a reply thread its own screen depth', () => {
@@ -290,17 +295,19 @@ test('the provider-independent Back decision: pop a parent, replace otherwise', 
     { mode: 'pop', to: '/channels/chan_a' },
   )
   assert.deepEqual(
-    resolvePhoneNavigationBackAction('/dashboards/dash_a', '/dashboards'),
-    { mode: 'pop', to: '/dashboards' },
+    resolvePhoneNavigationBackAction('/projects/p1/dashboards/dash_a', '/projects/p1/dashboards'),
+    { mode: 'pop', to: '/projects/p1/dashboards' },
   )
   // A predecessor in another section is where the push came from: pop.
   assert.deepEqual(
     resolvePhoneNavigationBackAction('/channels/chan_a', '/projects'),
     { mode: 'pop', to: '/projects' },
   )
+  // A dashboard is `parent: 'origin'`: opened from the project's Overview, Back
+  // pops to the Overview rather than replacing to the Dashboards list.
   assert.deepEqual(
-    resolvePhoneNavigationBackAction('/dashboards/dash_a', '/knowledge-base'),
-    { mode: 'replace', to: '/dashboards' },
+    resolvePhoneNavigationBackAction('/projects/p1/dashboards/dash_a', '/projects/p1'),
+    { mode: 'pop', to: '/projects/p1' },
   )
   assert.deepEqual(
     resolvePhoneNavigationBackAction('/channels/chan_a', null),

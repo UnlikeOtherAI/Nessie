@@ -40,7 +40,7 @@ const ADOPTED_SURFACES: { file: string; key: string; label: string }[] = [
     label: 'the trigger editor',
   },
   {
-    file: 'pages/DashboardDetailPage.tsx',
+    file: 'pages/project/ProjectDashboardPage.tsx',
     key: "draftKey('dashboard-layout', dashboardId)",
     label: 'dashboard edit mode',
   },
@@ -125,7 +125,7 @@ test('the conditional writes send If-Match and offer the choice in place', () =>
   assert.match(workflows, /'if-match': String\(expectedVersion\)/)
 
   // Never a blocking dialog: both surfaces render keep-mine / take-theirs.
-  const dashboardPage = read('pages/DashboardDetailPage.tsx')
+  const dashboardPage = read('pages/project/ProjectDashboardPage.tsx')
   assert.match(dashboardPage, /Keep mine/)
   assert.match(dashboardPage, /Take theirs/)
   const designerHeader = read('components/features/workflow-designer/WorkflowDesignerHeader.tsx')

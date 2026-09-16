@@ -250,6 +250,28 @@ summary and points here; **this file is the rule**.
   two deliberate non-sections in that grid: they have no route of their own,
   and the page below no longer lists them, so the grid is where they live or
   they are nowhere.
+- **A live thing in a tile is the live thing, scaled — never a picture of
+  one.** A project's dashboards are tiles in its Overview grid, continuing the
+  coloured navigation cards rather than forming a band of their own: going to a
+  dashboard is navigation, so it belongs with the other places a person can go.
+  Each renders `components/features/dashboards/ScaledDashboard.tsx` — the same
+  `DashboardCanvas` the full page renders, through the same authenticated
+  client, CSS-scaled — which is also what a dashboard posted into a
+  conversation renders. There is no dashboard-shaped second implementation to
+  drift, and the tile enforces the viewer's ordinary entitlement because it is
+  the real thing.
+  Three mechanics make that work and are easy to get wrong:
+  `transform: scale()` does not change layout size, so the inner canvas is
+  positioned **out of flow** — in flow, a CSS-sized frame grows to the canvas's
+  full unscaled height and a tile becomes a thousand pixels tall. The canvas is
+  laid out at a **fixed width that picks its breakpoint** (`DashboardGrid`: lg
+  ≥ 1200, md ≥ 768, sm below) and then scaled, so a tile uses the `sm` width
+  and gets widgets that fill it, rather than the `lg` arrangement shrunk into a
+  smudge in one corner. And the frame takes its height from **the grid row**,
+  never from measuring its own content, or the tile becomes the tallest thing
+  in its row and stretches every fixed doorway beside it. The scaled copy is
+  `inert` and `aria-hidden` with one button over it: the real dashboard is one
+  tap away and is where every control works.
 - **A tile carries what is in it; the page below carries what a count cannot
   say.** Overview had Members on it three times — the header button, the tile,
   and a summary card — because a card was the only way a count reached the

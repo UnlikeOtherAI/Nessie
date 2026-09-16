@@ -1,5 +1,10 @@
 /**
- * `/dashboards/:dashboardId` — view and edit one dashboard.
+ * `/projects/:projectId/dashboards/:dashboardId` — one dashboard, full screen.
+ *
+ * Reached from the project's own Dashboards list and from the live tile on its
+ * Overview, so its Back returns to whichever of the two the reader actually
+ * came from (`parent: 'origin'` in the surface registry), and falls back to
+ * the project's Dashboards list on a cold deep link.
  *
  * View is the default and is chrome-free. Edit adds the grid affordances and
  * saves the layout explicitly, which also appends a version — so every
@@ -18,22 +23,22 @@ import { useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiClientError } from '@nessie/client-core'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
-import { Skeleton } from '../components/primitives/Skeleton'
-import { DashboardCanvas } from '../components/features/dashboards/DashboardCanvas'
-import { DashboardVersionsPanel } from '../components/features/dashboards/DashboardVersionsPanel'
-import { AddWidgetPanel } from '../components/features/dashboards/AddWidgetPanel'
+import { Skeleton } from '../../components/primitives/Skeleton'
+import { DashboardCanvas } from '../../components/features/dashboards/DashboardCanvas'
+import { DashboardVersionsPanel } from '../../components/features/dashboards/DashboardVersionsPanel'
+import { AddWidgetPanel } from '../../components/features/dashboards/AddWidgetPanel'
 import {
   useDashboard,
   useSaveLayout,
-} from '../facades/dashboards/hooks'
-import { QueryState } from '../components/shared/QueryState'
-import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
-import { dashboardKeys } from '../facades/dashboards/keys'
-import { draftKey, useDraft } from '../navigation/useDraft'
-import { NestedStage } from '../navigation/NestedStage'
+} from '../../facades/dashboards/hooks'
+import { QueryState } from '../../components/shared/QueryState'
+import { ScreenHeader } from '../../components/shared/ScreenHeader'
+import { LOCAL_BACK_PRIORITY } from '../../navigation/LocalBackContext'
+import { dashboardKeys } from '../../facades/dashboards/keys'
+import { draftKey, useDraft } from '../../navigation/useDraft'
+import { NestedStage } from '../../navigation/NestedStage'
 
-export const DashboardDetailPage = () => {
+export const ProjectDashboardPage = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>()
   const dashboardQuery = useDashboard(dashboardId)
   const { data: dashboard, isLoading } = dashboardQuery
@@ -286,4 +291,4 @@ export const DashboardDetailPage = () => {
   )
 }
 
-export default DashboardDetailPage
+export default ProjectDashboardPage

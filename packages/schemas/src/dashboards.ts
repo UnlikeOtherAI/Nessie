@@ -384,6 +384,13 @@ export type DashboardWidgetState = z.infer<typeof DashboardWidgetStateSchema>
 export const DashboardWidgetProjectionSchema = z.object({
   widgetId: z.string().uuid(),
   dashboardId: z.string().uuid(),
+  /**
+   * The project the dashboard lives in. A widget embedded in a message or a
+   * knowledge page links back to the dashboard, and a dashboard's address is
+   * its project's — so the projection carries the id rather than leaving the
+   * client to fetch a dashboard it may only be able to see one widget of.
+   */
+  projectId: z.string().uuid(),
   kind: z.enum(['stat', 'timeseries', 'bar', 'donut', 'gauge', 'scatter', 'table', 'status']),
   schemaVersion: z.number().int(),
   definition: WidgetDefinitionSchema.optional(),

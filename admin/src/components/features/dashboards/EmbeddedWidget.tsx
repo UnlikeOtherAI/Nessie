@@ -74,7 +74,7 @@ export const EmbeddedWidget = ({
             carries only the way back to the dashboard. */}
         <Link
           className="ml-auto text-[color:var(--lnk)] underline"
-          to={`/dashboards/${data.projection.dashboardId}`}
+          to={`/projects/${data.projection.projectId}/dashboards/${data.projection.dashboardId}`}
         >
           Open dashboard →
         </Link>
