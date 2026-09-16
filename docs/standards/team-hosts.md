@@ -85,6 +85,15 @@ top-level document loses the deep-link bridge: `ExternalAuthProvider` then
 toasts "The external sign-in could not be completed." while the UI stays on the
 old team. Tenant hostnames remain unsupported as a desktop top-level document;
 widening that allowlist is a separate security decision, not a fix for this.
+**A native shell that is already on a tenant hostname leaves it.** The entry
+points above are not the only way a document gets there — a link opened in the
+window or an older bundle can still land one — and on that host every IPC call
+is refused: on macOS the overlay title bar stops dragging the window, because
+`data-tauri-drag-region` works by invoking `start_dragging`. `TenantHostGate`
+therefore asks `nativeShellRecoveryHref` once the hostname resolves and
+`location.replace`s to the canonical origin: the same path from a team host,
+`/channels` from an organisation portal. It renders nothing and runs no team
+switch meanwhile; the canonical origin opens on the session's current team.
 A stored tenant return is dropped rather than converted into an in-app switch:
 the ids behind a return address are not known without another lookup, and the
 signed-in canonical origin is already a complete place to land.
