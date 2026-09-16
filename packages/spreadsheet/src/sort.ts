@@ -64,6 +64,12 @@ interface SortValue {
   text: string
 }
 
+function transpose<T>(matrix: T[][]): T[][] {
+  const height = matrix.length
+  const width = matrix[0]?.length ?? 0
+  return Array.from({ length: width }, (_, c) => Array.from({ length: height }, (_, r) => matrix[r]![c]!))
+}
+
 function rejected(message: string): SpreadsheetEngineError {
   return new SpreadsheetEngineError(SPREADSHEET_ERROR_CODES.batchRejected, message)
 }
@@ -88,6 +94,25 @@ function compare(a: SortValue, b: SortValue, collator: Intl.Collator): number {
   if (a.rank === CLASS_BLANK) return 0
   if (a.rank === CLASS_NUMBER) return a.number === b.number ? 0 : a.number < b.number ? -1 : 1
   return collator.compare(a.text, b.text)
+}
+
+/**
+ * Blanks sink to the bottom in both directions, the Excel and Sheets rule: a
+ * descending sort reverses the values, not the empties. So the blank test sits
+ * outside the direction flip rather than inside `compare`.
+ */
+function compareForDirection(
+  a: SortValue,
+  b: SortValue,
+  collator: Intl.Collator,
+  descending: boolean,
+): number {
+  if (a.rank === CLASS_BLANK || b.rank === CLASS_BLANK) {
+    if (a.rank === b.rank) return 0
+    return a.rank === CLASS_BLANK ? 1 : -1
+  }
+  const result = compare(a, b, collator)
+  return descending ? -result : result
 }
 
 /**
@@ -128,8 +153,13 @@ export function sortOrder(
   const decorated = lines.map((line, index) => ({ line, index }))
   decorated.sort((a, b) => {
     for (const key of input.keys) {
-      const result = compare(keyValue(a.line, key), keyValue(b.line, key), collator)
-      if (result !== 0) return (key.direction ?? 'asc') === 'desc' ? -result : result
+      const result = compareForDirection(
+        keyValue(a.line, key),
+        keyValue(b.line, key),
+        collator,
+        (key.direction ?? 'asc') === 'desc',
+      )
+      if (result !== 0) return result
     }
     return a.index - b.index // stable: equal keys keep their original order
   })
@@ -167,6 +197,7 @@ export function sortRange(model: SpreadsheetEngineModel, input: SortRangeInput):
   }
 
   let written = 0
+  const moved = order.some((source, destination) => source !== destination)
   runPaused(model, () => {
     for (let destination = 0; destination < count; destination++) {
       const source = order[destination]!
@@ -185,10 +216,19 @@ export function sortRange(model: SpreadsheetEngineModel, input: SortRangeInput):
             })
           : cell.content
         model.setUserInput(input.sheet, r, c, content)
-        model.setCellStyle(input.sheet, r, c, cell.style)
         written++
       }
     }
+    // Styles go in one paste of the whole reordered block: the engine has no
+    // per-cell style setter at runtime, only `onPasteStyles` over a matrix.
+    if (!moved) return
+    const styles = order.map((source) => block[source]!.map((cell) => cell.style))
+    model.setRangeStyles(
+      input.sheet,
+      byRows ? first : crossFirst,
+      byRows ? crossFirst : first,
+      byRows ? styles : transpose(styles),
+    )
   })
   return summaryOf('sort', [input.sheet], written, [rectangleOf(input.sheet, input.range)])
 }

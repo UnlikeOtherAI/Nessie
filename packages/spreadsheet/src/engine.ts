@@ -50,8 +50,13 @@ export interface SpreadsheetEngineModel {
   // writes
   setUserInput(sheet: number, row: number, column: number, value: string): void
   updateRangeStyle(sheet: number, range: SpreadsheetSelection, stylePath: string, value: string): void
-  /** A whole style object in one call — what sort needs to carry formatting. */
-  setCellStyle(sheet: number, row: number, column: number, style: SpreadsheetCellStyle): void
+  /** Whole style objects in one call — what sort needs to carry formatting.
+   *  `updateRangeStyle` only sets one path at a time, and neither binding has a
+   *  runtime `setCellStyle` (it is declared on the Node `Model`, not on
+   *  `UserModel`, the same trap `getAllCells` sets). `onPasteStyles` is what
+   *  both actually expose, so this writes a matrix anchored at (row, column).
+   *  It moves the model's selected view and puts it back. */
+  setRangeStyles(sheet: number, row: number, column: number, styles: SpreadsheetCellStyle[][]): void
   rangeClear(kind: 'all' | 'contents' | 'formatting', sheet: number, range: SpreadsheetSelection): void
   insertRows(sheet: number, row: number, count: number): void
   deleteRows(sheet: number, row: number, count: number): void
@@ -119,7 +124,11 @@ interface RawNodeModel {
     stylePath: string,
     value: string,
   ): void
-  setCellStyle(sheet: number, row: number, column: number, style: SpreadsheetCellStyle): void
+  onPasteStyles(styles: SpreadsheetCellStyle[][]): void
+  getSelectedView(): { sheet: number; row: number; column: number; range: [number, number, number, number] }
+  setSelectedSheet(sheet: number): void
+  setSelectedCell(row: number, column: number): void
+  setSelectedRange(r0: number, c0: number, r1: number, c1: number): void
   getRowHeight(sheet: number, row: number): number
   getColumnWidth(sheet: number, column: number): number
   rangeClearAll(sheet: number, r0: number, c0: number, r1: number, c1: number): void
@@ -161,7 +170,6 @@ interface RawWasmModel
     | 'getSheetDimensions'
     | 'updateRangeStyle'
     | 'getCellStyle'
-    | 'setCellStyle'
     | 'rangeClearAll'
     | 'rangeClearContents'
     | 'rangeClearFormatting'
@@ -173,12 +181,6 @@ interface RawWasmModel
   rangeClearAll(range: RawWasmArea): void
   rangeClearContents(range: RawWasmArea): void
   rangeClearFormatting(range: RawWasmArea): void
-  // wasm has no setCellStyle; onPasteStyles writes at the selected cell instead.
-  onPasteStyles(styles: SpreadsheetCellStyle[][]): void
-  getSelectedView(): { sheet: number; row: number; column: number; range: [number, number, number, number] }
-  setSelectedSheet(sheet: number): void
-  setSelectedCell(row: number, column: number): void
-  setSelectedRange(r0: number, c0: number, r1: number, c1: number): void
 }
 
 const areaOf = (sheet: number, range: SpreadsheetSelection): RawWasmArea => ({
@@ -211,7 +213,15 @@ export function wrapNodeModel(raw: RawNodeModel): SpreadsheetEngineModel {
     setUserInput: (s, r, c, v) => raw.setUserInput(s, r, c, v),
     updateRangeStyle: (s, range, path, value) =>
       raw.updateRangeStyle(s, range.r0, range.c0, range.r1, range.c1, path, value),
-    setCellStyle: (s, r, c, style) => raw.setCellStyle(s, r, c, style),
+    setRangeStyles: (s, r, c, styles) => {
+      if (styles.length === 0) return
+      const view = raw.getSelectedView()
+      raw.setSelectedSheet(s)
+      raw.setSelectedCell(r, c)
+      raw.onPasteStyles(styles)
+      raw.setSelectedSheet(view.sheet)
+      raw.setSelectedCell(view.row, view.column)
+    },
     rangeClear: (kind, s, range) => {
       const call =
         kind === 'all' ? raw.rangeClearAll : kind === 'contents' ? raw.rangeClearContents : raw.rangeClearFormatting
@@ -275,16 +285,6 @@ export function wrapWasmModel(raw: RawWasmModel, scanColumns = 200): Spreadsheet
         : (raw_ as SpreadsheetCellStyle)
     },
     updateRangeStyle: (s, range, path, value) => raw.updateRangeStyle(areaOf(s, range), path, value),
-    // No setCellStyle in the published wasm: paste a 1x1 style matrix at the
-    // selected cell and put the view back where the caller left it.
-    setCellStyle: (s, r, c, style) => {
-      const view = raw.getSelectedView()
-      raw.setSelectedSheet(s)
-      raw.setSelectedCell(r, c)
-      raw.onPasteStyles([[style]])
-      raw.setSelectedSheet(view.sheet)
-      raw.setSelectedCell(view.row, view.column)
-    },
     rangeClear: (kind, s, range) => {
       const area = areaOf(s, range)
       if (kind === 'all') raw.rangeClearAll(area)

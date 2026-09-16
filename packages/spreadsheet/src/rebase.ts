@@ -24,10 +24,39 @@ import {
 export { structuralEditsFromSummary }
 export type { SpreadsheetStructuralEdit }
 
+/**
+ * A move permutes indexes, and a rectangle is not closed under a permutation:
+ * rows 3–5 with row 4 moved to row 9 are no longer one block, so there is no
+ * single shifted rectangle to re-issue. Two cases still are exact — the range
+ * misses the moved window entirely, or it sits wholly inside the moved block —
+ * and anything else is refused. The client re-issues such an intent itself
+ * (its cell-level intents, which always shift, are the normal path).
+ */
+function shiftSelectionThroughMove(
+  range: SpreadsheetSelection,
+  edit: Extract<SpreadsheetStructuralEdit, { kind: 'moveRows' | 'moveColumns' }>,
+): SpreadsheetSelection | null {
+  const rows = edit.kind === 'moveRows'
+  const low = rows ? range.r0 : range.c0
+  const high = rows ? range.r1 : range.c1
+  const blockLow = edit.start
+  const blockHigh = edit.start + edit.count - 1
+  const windowLow = Math.min(blockLow, blockLow + edit.delta)
+  const windowHigh = Math.max(blockHigh, blockHigh + edit.delta)
+  if (edit.delta === 0 || high < windowLow || low > windowHigh) return range
+  if (low >= blockLow && high <= blockHigh) {
+    return rows
+      ? { ...range, r0: low + edit.delta, r1: high + edit.delta }
+      : { ...range, c0: low + edit.delta, c1: high + edit.delta }
+  }
+  return null
+}
+
 function shiftSelection(
   range: SpreadsheetSelection,
   edit: SpreadsheetStructuralEdit,
 ): SpreadsheetSelection | null {
+  if (edit.kind === 'moveRows' || edit.kind === 'moveColumns') return shiftSelectionThroughMove(range, edit)
   const r0 = shiftIndex(range.r0, edit, 'row')
   const r1 = shiftIndex(range.r1, edit, 'row')
   const c0 = shiftIndex(range.c0, edit, 'column')

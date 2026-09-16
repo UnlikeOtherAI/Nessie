@@ -23,5 +23,8 @@
     "@ironcalc/nodejs": "0.8.3",
     "@ironcalc/wasm": "0.8.4",
     "@nessie/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0"
   }
 }
