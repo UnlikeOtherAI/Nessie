@@ -173,22 +173,38 @@ mod tests {
         assert_eq!(derived_name("/weird/weird--name"), "weird-name");
     }
 
+    /// An absolute path on whichever platform the tests are running on.
+    ///
+    /// `/home/person/...` is NOT absolute on Windows — an absolute path there
+    /// carries a drive letter or a UNC prefix — so a fixture written with one
+    /// tests nothing on the platform this crate actually ships to. That is not
+    /// hypothetical: `duplicate_names_and_nesting_are_refused` passed on Windows
+    /// only because every path in it was rejected for being relative, so the
+    /// nesting rule it exists to prove was never reached.
+    fn absolute(tail: &str) -> String {
+        if cfg!(windows) {
+            format!("C:\\Users\\person\\{}", tail.replace('/', "\\"))
+        } else {
+            format!("/home/person/{tail}")
+        }
+    }
+
     #[test]
     fn adding_requires_an_absolute_path() {
         assert!(validate_adding("work", None, &[]).is_err());
         assert!(validate_adding("./work", None, &[]).is_err());
-        assert!(validate_adding("/home/person/work", None, &[]).is_ok());
-        // On Windows the same check accepts a drive-letter path; on this macOS
-        // host `std::path::is_absolute` does not, so the assertion is gated.
-        #[cfg(windows)]
-        assert!(validate_adding("C:\\Users\\person\\work", None, &[]).is_ok());
+        assert!(validate_adding(&absolute("work"), None, &[]).is_ok());
     }
 
     #[test]
     fn duplicate_names_and_nesting_are_refused() {
-        let existing = vec![folder("nessie", "/home/person/nessie")];
-        assert!(validate_adding("/home/person/nessie", None, &existing).is_err());
-        assert!(validate_adding("/home/person/nessie/src", None, &existing).is_err());
+        let root = absolute("nessie");
+        let existing = vec![folder("nessie", &root)];
+        assert!(validate_adding(&root, None, &existing).is_err());
+        assert!(validate_adding(&absolute("nessie/src"), None, &existing).is_err());
+        // A sibling is not nested, so it must still be accepted — otherwise the
+        // two assertions above would pass under a rule that refuses everything.
+        assert!(validate_adding(&absolute("ledger"), None, &existing).is_ok());
     }
 
     #[test]
