@@ -244,7 +244,7 @@ export type KnowledgeAccessSummary = z.infer<typeof KnowledgeAccessSummarySchema
 export const KnowledgeItemInfoSchema = z.object({
   id: UuidSchema, // page id, or space id for a root folder
   target: z.enum(['page', 'space']),
-  kind: z.enum(['folder', 'document', 'file', 'space']),
+  kind: z.enum(['folder', 'document', 'file', 'spreadsheet', 'space']),
   title: NonEmptyStringSchema,
   mime: z.string().nullable(), // files only
   // "Size": what a person means — current bytes of every file inside, plus
@@ -260,6 +260,10 @@ export const KnowledgeItemInfoSchema = z.object({
     folders: z.number().int().nonnegative(),
     documents: z.number().int().nonnegative(),
     files: z.number().int().nonnegative(),
+    // Counted apart from documents: "3 documents" over a folder of workbooks
+    // names the wrong thing, and "Contains" is the one line that says what is
+    // actually in there.
+    spreadsheets: z.number().int().nonnegative(),
   }),
   // True when the walk hit its row cap: counts and sizes are lower bounds.
   truncated: z.boolean(),

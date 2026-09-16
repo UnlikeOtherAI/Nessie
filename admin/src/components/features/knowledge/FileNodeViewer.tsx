@@ -12,6 +12,7 @@ import { CommentsSection } from './comments/CommentsSection'
 import {
   iconForFilename,
   isMarkdownFilename,
+  isSpreadsheetSourceFilename,
   isZipFilename,
   previewKindForFilename,
 } from '../../shared/file-icons'
@@ -20,15 +21,10 @@ import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
-// The file kinds a workbook can be built from. `.xls` is deliberately absent:
-// the engine cannot read it, and an `.xls` and a corrupt zip produce the same
-// error, so offering the doorway would promise something that always fails.
-const SPREADSHEET_SOURCE_EXT = new Set(['csv', 'tsv', 'xlsx'])
-
-export const isSpreadsheetSourceFilename = (filename: string): boolean => {
-  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
-  return ext ? SPREADSHEET_SOURCE_EXT.has(ext) : false
-}
+// Which filenames can become a workbook is `file-icons.ts`'s answer, because
+// the Finder's file-row menu asks the same question and two spellings of it
+// would let the header and the menu disagree about one file.
+export { isSpreadsheetSourceFilename }
 
 type FileNodeViewerProps = {
   canWrite: boolean

@@ -65,6 +65,9 @@ const bytes = (value: string): string => formatBytes(Number(value))
 const familyOf = (info: KnowledgeItemInfo): FileFamily => {
   if (info.kind === 'folder' || info.kind === 'space') return 'folder'
   if (info.kind === 'document') return 'document'
+  // Never `familyForFilename`: a spreadsheet page is titled "Q3 Forecast", not
+  // "Q3 Forecast.xlsx", so reading its name would file it under "File".
+  if (info.kind === 'spreadsheet') return 'spreadsheet'
   return familyForFilename(info.title)
 }
 
@@ -82,10 +85,13 @@ const kindLabel = (info: KnowledgeItemInfo): string => {
 
 const contains = (info: KnowledgeItemInfo): string | null => {
   if (info.kind !== 'folder' && info.kind !== 'space') return null
-  const { documents, files, folders } = info.counts
+  const { documents, files, folders, spreadsheets } = info.counts
   const parts = [
     folders > 0 ? `${folders} ${folders === 1 ? 'folder' : 'folders'}` : null,
     documents > 0 ? `${documents} ${documents === 1 ? 'document' : 'documents'}` : null,
+    spreadsheets > 0
+      ? `${spreadsheets} ${spreadsheets === 1 ? 'spreadsheet' : 'spreadsheets'}`
+      : null,
     files > 0 ? `${files} ${files === 1 ? 'file' : 'files'}` : null,
   ].filter(Boolean)
   const body = parts.length === 0 ? 'Nothing yet' : parts.join(', ')
@@ -109,9 +115,16 @@ const searchLine = (info: KnowledgeItemInfo): string | null => {
   if (pending > 0) return 'Indexing…'
   if (indexed > 0) return 'Searchable'
   if (notIndexed > 0) {
-    return info.kind === 'document'
-      ? 'Not indexed — draft documents are indexed when published'
-      : `Not indexed — ${familyLabel[familyOf(info)]}s aren’t searchable`
+    if (info.kind === 'document') {
+      return 'Not indexed — draft documents are indexed when published'
+    }
+    // A spreadsheet is searchable, just not yet: its text comes from the
+    // projection written with each saved version, so an unsaved one has
+    // nothing to index rather than being the wrong kind of thing to index.
+    if (info.kind === 'spreadsheet') {
+      return 'Not indexed — a spreadsheet is indexed when a version is saved'
+    }
+    return `Not indexed — ${familyLabel[familyOf(info)]}s aren’t searchable`
   }
   return 'Preparing search…'
 }
@@ -160,7 +173,8 @@ const InfoBody = ({
   const search = searchLine(info)
   const resolveActor = useActorNames()
   const sizeSuffix = info.kind === 'folder' || info.kind === 'space'
-    ? ` for ${info.counts.folders + info.counts.documents + info.counts.files} items`
+    ? ` for ${info.counts.folders + info.counts.documents + info.counts.files
+      + info.counts.spreadsheets} items`
     : ''
   const onDisk = info.storageBytes !== info.sizeBytes
     ? `${bytes(info.storageBytes)}${info.retainedVersions > 0

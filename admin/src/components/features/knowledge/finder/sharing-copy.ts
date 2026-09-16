@@ -15,7 +15,7 @@ type KnowledgeVisibility = KnowledgeRootSpace['visibility']
  * function here returns anything a person can press.
  */
 
-export type ShareSubjectKind = 'folder' | 'document' | 'file'
+export type ShareSubjectKind = 'folder' | 'document' | 'file' | 'spreadsheet'
 
 /** A headline the dialog sets in the emphatic weight, and the sentence under it. */
 export type AccessReadout = { headline: string; body: string }
@@ -34,7 +34,12 @@ export const shareIntroSentence = (kind: ShareSubjectKind): string => {
     ? 'this folder and everything inside it, including what is added later'
     : kind === 'file'
       ? 'this file'
-      : 'this document'
+      // A spreadsheet is edited live and in place, so "download" is the
+      // export rather than the thing itself — and a person given editing is
+      // typing in the same grid as everybody else, which is worth its own word.
+      : kind === 'spreadsheet'
+        ? 'this spreadsheet, and export it'
+        : 'this document'
   return `People you add can open, read and download ${subject}.`
     + ' Give someone editing to let them change it — they still can’t share,'
     + ' move, publish or delete it.'

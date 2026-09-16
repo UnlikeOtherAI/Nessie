@@ -53,9 +53,10 @@ export const FINDER_SORT_LABELS: Record<FinderSortKey, string> = {
 /**
  * Which family a row belongs to, for its glyph's tone and for Sort by kind.
  *
- * The switch is exhaustive over `KnowledgePageKind`: a kind added later (a
- * spreadsheet, say) fails to compile here until it names its family, rather
- * than silently rendering as a grey blank page with the Kind "File".
+ * The switch is exhaustive over `KnowledgePageKind`: a kind added later fails
+ * to compile here until it names its family, rather than silently rendering as
+ * a grey blank page with the Kind "File". That is how the spreadsheet kind got
+ * its own family instead of inheriting the document's.
  */
 export const familyForRow = (page: {
   kind: KnowledgePageRecord['kind']
@@ -68,6 +69,11 @@ export const familyForRow = (page: {
       return 'document'
     case 'file':
       return familyForFilename(page.title)
+    // Its own family, never `document` and never the `.xlsx` a file node gets:
+    // this row opens a live grid here, which is a different answer to "what
+    // happens when I open it" than either of those.
+    case 'spreadsheet':
+      return 'spreadsheet'
     default: {
       const exhaustive: never = page.kind
       return exhaustive

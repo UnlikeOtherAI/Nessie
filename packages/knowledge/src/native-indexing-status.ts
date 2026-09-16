@@ -245,6 +245,27 @@ const fileState = (
 }
 
 /**
+ * A spreadsheet. Its searchable text is the projection written into the
+ * `body` of each durable version (`spreadsheet/snapshot.ts`), so it is judged
+ * on the same chunks as a document — but never on `status`: a spreadsheet is
+ * not published, it is saved, and a fresh one simply has no version yet,
+ * which is `empty` rather than `draft`.
+ */
+const spreadsheetState = (
+  version: VersionFacts | undefined,
+  chunks: Map<string, ChunkFacts>,
+  embedJobs: Map<string, string>,
+  pageId: string,
+): KnowledgeIndexingState => {
+  if (!version || version.bodyBytes === 0) return { state: 'not_indexed', reason: 'empty' }
+  return stateFromChunks(
+    version.versionId,
+    chunks.get(version.versionId),
+    embedJobs.get(knowledgeEmbedJobKeyPrefix(pageId, version.versionId)),
+  )
+}
+
+/**
  * The indexing state of every page in one listing, keyed by page id.
  *
  * The switch over `KnowledgePageKind` is exhaustive on purpose: a kind added
@@ -273,6 +294,9 @@ export const indexingStatesFor = async (
         }
         continue
       case 'file':
+      // A spreadsheet is judged on its latest saved version, like a file node
+      // — there is no `publishedVersionId` on this kind at all.
+      case 'spreadsheet':
         considered.push(page)
         latestForPageIds.push(page.id)
         continue
@@ -328,7 +352,9 @@ export const indexingStatesFor = async (
       page.id,
       page.kind === 'document'
         ? documentState(page, version, chunks, embedJobs)
-        : fileState(page, version, attachments, chunks, extractJobs, embedJobs),
+        : page.kind === 'spreadsheet'
+          ? spreadsheetState(version, chunks, embedJobs, page.id)
+          : fileState(page, version, attachments, chunks, extractJobs, embedJobs),
     )
   }
   return states
