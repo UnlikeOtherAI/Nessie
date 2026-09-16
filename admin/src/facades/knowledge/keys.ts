@@ -36,6 +36,11 @@ export const knowledgeKeys = {
     ['knowledge-pages', spaceId ?? 'none', 'shared', rootPageId ?? 'none'] as const,
   sharedWithMe: ['knowledge-shared-with-me'] as const,
   spaceInfo: (spaceId?: string) => ['knowledge-spaces', spaceId ?? 'none', 'info'] as const,
+  // A queued cross-space transfer, addressed by its own job id. It is not a
+  // view of any one space or page — it spans two spaces and the rows it is
+  // moving change identity under it — so it gets its own entry rather than
+  // nesting under either end.
+  transfer: (transferId?: string) => ['knowledge-transfer', transferId ?? 'none'] as const,
   recentPages: (projectId: string | undefined, limit: number) =>
     ['knowledge-recent-pages', projectId ?? 'none', limit] as const,
   // A project-scoped list is a different corpus from the org-wide one, so it
