@@ -116,7 +116,17 @@ export const mailboxConnectionTestFailure = (
   return 'test_failed'
 }
 
-const testFailureMessage = (failure: MailboxConnectionTestFailure): string => {
+/**
+ * The only diagnostics we persist or show for a mailbox connection.
+ *
+ * Protocol error text is untrusted provider input: a remote server chooses it,
+ * so it can carry credentials, host details, or instructions aimed at whoever
+ * reads them — a person on the connector card, or a model that receives the
+ * tool failure. Keep the failure classification, never the provider's wording.
+ */
+export const mailboxConnectionFailureMessage = (
+  failure: MailboxConnectionTestFailure,
+): string => {
   switch (failure) {
     case 'credential_rejected':
       return 'The email address or password was not accepted.'
@@ -128,6 +138,19 @@ const testFailureMessage = (failure: MailboxConnectionTestFailure): string => {
       return 'The mailbox connection test could not be completed.'
   }
 }
+
+/**
+ * A row may predate the structural-diagnostics boundary, or be written by a
+ * path that has not been through it. A presenter is a security boundary too,
+ * so it derives the remedy from `status` instead of ever returning the stored
+ * text verbatim.
+ */
+const mailboxConnectionStatusMessage = (
+  status: MailboxConnectionRecord['status'],
+): string | null =>
+  status === 'needs_reauthorization'
+    ? mailboxConnectionFailureMessage('credential_rejected')
+    : null
 
 /**
  * The presenter. It cannot emit the credential — the password lives in a
@@ -152,7 +175,7 @@ export const presentMailboxConnection = (
   smtpPort: connection.smtpPort,
   smtpSecurity: connection.smtpSecurity,
   status: connection.status,
-  statusReason: connection.statusReason,
+  statusReason: mailboxConnectionStatusMessage(connection.status),
   teamId: connection.teamId,
   username: connection.username,
 })
@@ -480,7 +503,7 @@ export const verifyMailboxConnection = async (
     }
   } catch (error) {
     const failure = mailboxConnectionTestFailure(error)
-    const detail = testFailureMessage(failure)
+    const detail = mailboxConnectionFailureMessage(failure)
     if (failure === 'credential_rejected') {
       await prisma.mailboxConnection.update({
         data: { status: 'needs_reauthorization', statusReason: detail },

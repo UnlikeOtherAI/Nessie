@@ -122,7 +122,13 @@ Plan and as-built deltas:
   id for every Google/Microsoft account the person owns and every SMTP/IMAP
   mailbox they may administer. `email_account_connect` posts a doorway into the
   same address-first form used by Settings; it accepts no password, server, or
-  OAuth-code argument. `email_account_check` invokes the same provider resync or
+  OAuth-code argument. Connection status carries only fixed structural remedies: a provider's own
+error text is neither persisted nor presented, and never reaches a run's
+transcript, because a mail server chooses it. `presentMailboxConnection`
+derives the remedy from `status` rather than returning the stored string, so
+a legacy row cannot leak one either, and a migration sanitises the rows that
+were already written.
+`email_account_check` invokes the same provider resync or
   live two-leg mailbox test as the account card, and
   `email_account_disconnect` is structurally approval-gated before it invokes
   the same disconnect service. `email_account_agent_access` changes only the

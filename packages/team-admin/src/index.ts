@@ -178,6 +178,7 @@ export {
   isCredentialRejection,
   listMailboxConnectionsForUser,
   loadManageableMailboxConnection,
+  mailboxConnectionFailureMessage,
   mailboxConnectionTestFailure,
   mailboxResolutionRefusal,
   presentMailboxConnection,
