@@ -282,6 +282,69 @@ export const SpreadsheetAppliedBatchSchema = z.object({
 })
 export type SpreadsheetAppliedBatch = z.infer<typeof SpreadsheetAppliedBatchSchema>
 
+// -------------------------------------------------------------------- filter
+
+/**
+ * One filter per sheet, persisted in `spreadsheet_heads.filters` keyed by sheet
+ * index. IronCalc 0.8 has no autofilter of its own, so the criteria live here
+ * and the engine only ever sees the `setRowsHidden` calls they imply.
+ *
+ * `hiddenRows` is the rows *this filter* hid, and it is load-bearing rather
+ * than derived: hidden is not queryable as a boolean in either binding (a
+ * hidden row simply reports height 0), so without this list a re-application
+ * could not tell its own hide from a person's manual one and would unhide
+ * theirs. Column keys are absolute column indexes written as strings, because
+ * the model round-trips through JSON.
+ *
+ * docs/plans/2026-09-15-spreadsheets-ironcalc/storage-and-concurrency.md
+ */
+export const SpreadsheetFilterModelSchema = z.object({
+  /** The filtered block including its header row, which is `range.r0`. */
+  range: SpreadsheetSelectionSchema,
+  columns: z.record(
+    z.string().regex(/^[1-9][0-9]{0,4}$/),
+    z.discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('values'),
+        /** Whitelist of formatted values; a row not on it is hidden. */
+        values: z.array(z.string().max(SPREADSHEET_LIMITS.maxCellTextChars)).max(10_000),
+        blanks: z.boolean(),
+      }),
+      z.object({
+        kind: z.literal('condition'),
+        op: z.enum([
+          'eq',
+          'ne',
+          'gt',
+          'gte',
+          'lt',
+          'lte',
+          'contains',
+          'notContains',
+          'startsWith',
+          'endsWith',
+          'empty',
+          'notEmpty',
+          'between',
+        ]),
+        value: z.union([z.string().max(SPREADSHEET_LIMITS.maxCellTextChars), z.number()]).optional(),
+        value2: z.union([z.string().max(SPREADSHEET_LIMITS.maxCellTextChars), z.number()]).optional(),
+        caseSensitive: z.boolean().optional(),
+      }),
+    ]),
+  ),
+  sort: z
+    .object({
+      column: z.number().int().min(1).max(SPREADSHEET_MAX_COLUMNS),
+      direction: z.enum(['asc', 'desc']),
+    })
+    .optional(),
+  /** Rows this filter hid, so a re-application never unhides a manual hide. */
+  hiddenRows: z.array(z.number().int().min(1).max(SPREADSHEET_MAX_ROWS)).max(SPREADSHEET_MAX_ROWS),
+  appliedAtSeq: z.string(),
+})
+export type SpreadsheetFilterModel = z.infer<typeof SpreadsheetFilterModelSchema>
+
 // ------------------------------------------------------------------ presence
 
 export const SpreadsheetPresenceFrameSchema = z.object({

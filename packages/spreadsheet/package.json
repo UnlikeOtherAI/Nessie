@@ -16,12 +16,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src --max-warnings 0",
-    "test": "node --test --import tsx test/**/*.test.ts",
+    "test": "node --test --test-concurrency=1 --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@ironcalc/nodejs": "0.8.3",
     "@ironcalc/wasm": "0.8.4",
     "@nessie/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0"
   }
 }

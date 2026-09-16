@@ -90,3 +90,98 @@ merged-range case to refuse. Revisit if upstream adds them.
 A1 addressing note: `A1Schema` deliberately refuses a sheet-qualified
 reference (`Sheet1!B2`). Every tool and route takes the sheet separately, so a
 range can never disagree with the sheet it was addressed to.
+
+## Spike B — xlsx and CSV (agent branch `agent/spike-xlsx`, 2026-09-16)
+
+Full measurements in [spike-b-xlsx.md](spike-b-xlsx.md). The corrections it
+forces on this plan, all measured:
+
+- **`saveToXlsx` into a missing parent directory panics in Rust and aborts the
+  process** — uncatchable by `try`/`catch`. Every engine file call goes
+  through a temp-directory helper (`mkdtemp` 0700, `randomUUID()` name,
+  `finally` cleanup). It also refuses to overwrite, appends no extension, and
+  blocks the event loop (~4 s for 1 M cells), so large exports belong on the
+  worker.
+- **`fromXlsx` does not evaluate**: formulas read `#ERROR!` until `evaluate()`,
+  and an un-evaluated model exports those errors as cached values.
+- **`pasteCsvString` is TSV**, not CSV — Phase 1 parses CSV itself; the call
+  also needs `setSelectedCell` placed first, and treats the area as an anchor.
+- **Import caps are by uncompressed size and cell count, not file size**:
+  1 M cells is a 3.27 MB file but 864 MB RSS (~11:1 XML expansion).
+- **Format sniffing before the engine**: an `.xls` and a corrupt zip produce
+  the same engine error, so `detectWorkbookFormat` decides.
+- **Warnings need a marker scan**, not just the part list: autofilter,
+  validation, hyperlinks, protection and outlines live inside sheet XML.
+- **Hidden is not queryable as a boolean** — a hidden row or column reports
+  size 0; there is no `getRowsHidden`.
+- **Merged cells survive an xlsx round trip** even though no binding exposes
+  them: they are preserved in the file and invisible to the API. So an
+  imported workbook does not lose its merges on save — it simply cannot show
+  or edit them.
+- An imported autofilter is read into `Table` and never written back, so that
+  one is genuinely lost on round trip.
+
+## Spike C/D — render and touch (agent branch `agent/spike-render`, 2026-09-16)
+
+Full record in [spike-cd-render-touch.md](spike-cd-render-touch.md).
+
+- **Render passes** under React 19.2 in `StrictMode`: editing, undo/redo,
+  insert-row with the formula following, a peer's diffs applied paused and
+  landing correctly, and the method-shadowing bridge (52 own-property
+  wrappers, no fork) recording intents and draining diffs.
+- **The patch is 6 lines of code** (`patches/@ironcalc__workbook@0.8.3.patch`,
+  registered in the root `package.json`): it publishes the widget's private
+  redraw setter. Proved necessary — with the repaint suppressed the canvas was
+  byte-identical after a peer batch.
+- **Phone editing ships**, verified in real Mobile Safari on iOS 26.5, not
+  only Chromium: long-press-drag selected a range with handles and did not
+  scroll the page, and a plain drag still scrolled. The overlay is 182 lines.
+  The upstream `usePointer` change is optional, not a prerequisite.
+- **Bundle**: lazy chunk 667 kB (173 kB gzipped) + 72 kB CSS + 1.97 MB wasm
+  (675 kB gzipped), proven lazy on a production build.
+- `darkThemeVariables` **does not exist** in the published package (the plan
+  promised it); one token mapping covers all eleven admin themes. A four-rule
+  CSS override *is* needed, against `admin-ui.md`'s claim, because iOS answers
+  a long press with its own text selection.
+- `--palette-common-black` is a foreground token; mapping it to a surface
+  erased the toolbar, and only a screenshot caught it.
+- **An empty send queue flushes as one `0x00` byte**, so a naive flush loop
+  would burn a `seq` per microtask.
+- `workbookState` is built in the render body, so a root re-render discards
+  in-cell editing state; `redraw()` is safe because it re-renders the subtree.
+
+## Test isolation: the engine's panic can abort the runner
+
+`@nessie/spreadsheet`'s files must run one at a time
+(`--test-concurrency=1`). Run concurrently, the memory-heavy xlsx fixtures and
+the engine-pair suite together produced `fatal runtime error: failed to
+initiate panic, error 5, aborting` — a Rust panic while panicking, which kills
+the test process and fails the package for a reason no assertion explains.
+Serialised, the same 25 tests pass repeatedly with exit code 0.
+
+## The engine writes to stdout, and that write can abort the process
+
+Importing a foreign `.xlsx` and evaluating it prints one `Unexpected type
+(empty) in <Sheet>!<Cell>` line per affected cell — tens of thousands for a
+modest fixture — straight to fd 1 from a Rust thread we do not control. Twice
+during Phase 1 integration that ended as
+
+```text
+thread '<unnamed>' panicked at library/std/src/io/stdio.rs:1165:9
+fatal runtime error: failed to initiate panic, error 5, aborting
+```
+
+which kills the process with no failing assertion to explain it. It is the
+same hazard class as the missing-directory panic from Spike B: a Rust panic
+inside a napi call takes the whole replica, not just the request.
+
+Consequences:
+
+- `@nessie/spreadsheet` runs its files with `--test-concurrency=1`, and the
+  noisy fixture was cut from 500 to 50 formula rows. If the abort ever
+  reappears in CI, isolate the import tests in a child process with `stdio:
+  'ignore'` rather than chasing the volume.
+- **Imports belong on the worker**, never on an API request path: the chatter
+  is unbounded in the size of the imported file, and a failing stdout write
+  aborts the process that is doing it. Whatever collects worker logs must
+  drain fd 1 and never close it under a running import.
