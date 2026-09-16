@@ -141,6 +141,7 @@ Applied by the global hook:
 |---|---|---|---|
 | `authMeIp` | `GET /api/auth/me` | `NESSIE_RATE_LIMIT_AUTH_ME_IP_` | 600 / min |
 | `landingTeamsIp` | `GET /api/auth/landing-teams` | `NESSIE_RATE_LIMIT_LANDING_TEAMS_IP_` | 120 / min |
+| `hostsTeamIp` | `GET /api/hosts/team` | `NESSIE_RATE_LIMIT_HOSTS_TEAM_IP_` | 60 / min |
 | `threadMessageIp` | `POST /api/threads/:threadId/messages` | `NESSIE_RATE_LIMIT_THREAD_MESSAGE_IP_` | 60 / min |
 | `mailboxDiscoverIp` | `POST /api/mailbox-connections/discover` | `NESSIE_RATE_LIMIT_MAILBOX_DISCOVER_IP_` | 30 / min |
 | `agentWriteIp` | any `POST`/`PUT`/`PATCH`/`DELETE` under `/api/agents` | `NESSIE_RATE_LIMIT_AGENT_WRITE_IP_` | 60 / min |

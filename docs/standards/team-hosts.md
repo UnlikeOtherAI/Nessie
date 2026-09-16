@@ -314,6 +314,37 @@ internal structure. A team address never names its team to an anonymous
 visitor, which is why `/api/hosts/team` is authenticated while
 `/api/hosts/resolve` is public.
 
+**Authenticated is not the check — membership is.** Being signed in was
+standing in for having been let in, and those are not the same thing: with a
+signed-in caller alone as the gate, any account on the instance could walk
+`<guess>.<org>.<base>` and be told, per guess, whether that team exists and what
+its UOA ids are. That is the enumeration this route is authenticated to
+prevent, handed back through the side door. So `/api/hosts/team` checks the
+caller's membership in the team it resolved
+(`api/src/services/tenant-host-team-access.ts`) and a non-member gets
+`{ team: null }` — **the same answer, byte for byte, that a made-up hostname
+gets**, because a refusal a caller can tell apart from nonexistence is still an
+oracle. On the client that answer renders the branded "could not be opened"
+card, which names no team either.
+
+That check is a **disclosure** gate, not an authorization one, and the
+distinction decides what it may read. The ids it guards grant nothing — the
+switch behind them re-resolves membership live with UOA and fails closed — so
+it reads the same bounded session directory `/api/auth/me` does, rather than
+paying a live roster call on every cold load of a tenant host. The worst a
+minute-stale entry does is let somebody removed a minute ago confirm a team
+they were in; their switch is still refused. A *grant* may never be decided
+that way.
+
+It fails closed wherever it cannot answer: no UOA identity, no directory, an
+empty one. A cold cache falls back to the caller's own `TeamMember` rows, which
+is membership by construction.
+
+The route also carries its own rate-limit family, `hostsTeamIp`
+(docs/rate-limiting.md). The check refuses each guess; the limit bounds how
+many guesses an account gets to make, which the check alone does not — timing
+and upstream load are readable even from refusals.
+
 **The organisation's palette follows the address.** This is the deliberate
 exception to "the sign-in screen is instance state, not tenant state"
 (`docs/plans/2026-09-05-organisation-custom-theme.md` §4.3). That rule holds

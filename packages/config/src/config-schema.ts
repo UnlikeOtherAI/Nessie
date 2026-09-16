@@ -242,6 +242,13 @@ export const NessieConfigSchema = z.object({
       // view, and a signed-in answer can fan out to one UOA address read per
       // team, so it sits well below `/api/auth/me`.
       landingTeamsIp: RateLimitRuleSchema.default({ max: 120, windowMs: 60_000 }),
+      // `GET /api/hosts/team`: one read per cold load of a tenant host, so a
+      // person costs a handful a minute at most. It is deliberately tight
+      // because the route answers "is there a team at this address" — a
+      // question whose value to an attacker is entirely in being able to ask
+      // it thousands of times. The membership check refuses each guess; this
+      // bounds how many guesses a signed-in account gets to make.
+      hostsTeamIp: RateLimitRuleSchema.default({ max: 60, windowMs: 60_000 }),
       // Unauthenticated key-guessing surface: a bearer webhook key is the only
       // thing between a caller and a trigger fire, so this is the tightest of
       // the intake buckets.
