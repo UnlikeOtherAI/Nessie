@@ -31,7 +31,10 @@ turn and says why.
 - [phases.md](phases.md) — waves, exclusive path ownership, acceptance
   criteria, tests.
 - [decisions.md](decisions.md) — the Phase 0 spike record: measured engine
-  facts, the corrections they force on this plan, and the owner's calls.
+  facts, the corrections they force on this plan, and the owner's calls, plus
+  the Phase 2 and Phase 3b corrections measured while building.
+- [delivery-audit.md](delivery-audit.md) — every requirement, where it landed,
+  and the four things that did not.
 - [spike-b-xlsx.md](spike-b-xlsx.md) — xlsx and CSV fidelity measurements.
 - [spike-cd-render-touch.md](spike-cd-render-touch.md) — the admin render
   and phone-touch spikes.
