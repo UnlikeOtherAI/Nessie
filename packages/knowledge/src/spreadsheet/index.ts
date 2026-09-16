@@ -22,6 +22,62 @@ export const createSpreadsheetService = (
 })
 
 export {
+  describeSpreadsheet,
+  findScopeOf,
+  findSpreadsheetMatches,
+  parseAxisSpan,
+  readSpreadsheetGrid,
+  resolveRangeArgument,
+  resolveSheetIndexByName,
+  withSpreadsheetAtHead,
+  type FindInput,
+  type FindMatch,
+  type ReadGridInput,
+  type SpreadsheetDescription,
+  type SpreadsheetGridRead,
+  type SpreadsheetRef,
+  type SpreadsheetValueMode,
+} from './agent-reads.js'
+export {
+  formatSpreadsheetRange,
+  outcomeOf,
+  sendSpreadsheetAction,
+  writeSpreadsheetRange,
+  type SpreadsheetEditActor,
+  type SpreadsheetStyleInput,
+  type WriteRangeToolInput,
+} from './agent-edits.js'
+export {
+  manageSpreadsheetTabs,
+  structureSpreadsheet,
+  type StructureAction,
+  type StructureInput,
+  type TabsInput,
+} from './agent-structure.js'
+export {
+  runSpreadsheetFilterTool,
+  type FilterColumnInput,
+  type FilterToolInput,
+} from './agent-filters.js'
+export {
+  listSpreadsheetVersions,
+  restoreSpreadsheetVersionForTool,
+  saveSpreadsheetVersion,
+  type SpreadsheetVersionSummary,
+  type VersionActor,
+} from './agent-versions.js'
+export {
+  SHEET_READ_TOOL_IDS,
+  SHEET_TOOL_IDS,
+  createSpreadsheetForTool,
+  runSheetPageTool,
+  toSheetToolRefusal,
+  type CreateSheetToolInput,
+  type SheetToolContext,
+  type SheetToolId,
+} from './agent-tools.js'
+
+export {
   applySpreadsheetBatch,
   describeDestructiveOperation,
   type ApplySpreadsheetBatchInput,

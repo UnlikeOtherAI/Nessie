@@ -27,6 +27,7 @@ import { EXECUTOR_TOOL_DEFINITIONS } from './builtin-executor-tools.js'
 import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
+import { SHEET_TOOL_DEFINITIONS } from './builtin-sheet-tools.js'
 import { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 import { DEMONSTRATION_TOOL_DEFINITIONS } from './builtin-demonstration-tools.js'
 import {
@@ -522,6 +523,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...DASHBOARD_EMBED_TOOL_DEFINITIONS,
   ...KB_COMMENT_TOOL_DEFINITIONS,
   ...KB_TOOL_DEFINITIONS,
+  ...SHEET_TOOL_DEFINITIONS,
   ...CONNECTOR_TOOL_DEFINITIONS,
   ...EXECUTOR_TOOL_DEFINITIONS,
   ...BROWSER_TOOL_DEFINITIONS,

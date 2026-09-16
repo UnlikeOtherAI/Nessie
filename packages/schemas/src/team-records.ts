@@ -237,6 +237,28 @@ export type AgentAvatarBackgroundColor = z.infer<
 >
 
 /**
+ * The palette entry an agent falls back to when it has chosen no background,
+ * derived from its id so the same agent keeps the same colour on every surface
+ * without storing one.
+ *
+ * It lives here rather than beside the avatar component because the browser is
+ * no longer the only thing that draws an agent: when an agent edits a
+ * spreadsheet the worker publishes presence frames carrying its colour, and the
+ * person watching has to see the same colour the avatar uses. Two independent
+ * derivations of "which palette entry is this agent" would drift the moment
+ * either side changed its hash.
+ */
+export const fallbackAgentBackgroundColor = (
+  agentId?: string | null,
+): AgentAvatarBackgroundColor => {
+  const hash = [...(agentId ?? '')].reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    0,
+  )
+  return AGENT_AVATAR_BACKGROUND_COLORS[hash % AGENT_AVATAR_BACKGROUND_COLORS.length]!
+}
+
+/**
  * Whether the recorded steward is still an entitled member of the agent's
  * organization, re-derived on every read rather than implied by the stored
  * pointer. `unknown` is honest rather than optimistic: it means no local
