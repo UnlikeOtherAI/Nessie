@@ -369,6 +369,14 @@ the answer in the plan's `decisions.md`.
 
 - **Server-built structural batches carry no intents** (see above). Every agent
   structural write is unrebasable by an open pane.
+- **A spreadsheet cannot be copied by a transfer**, only moved
+  (`TRANSFER_COPY_SPREADSHEET`). A move keeps the page id, so the head, the
+  journal and the filters follow it; a copy writes a new page, and nothing in
+  `planTransferCopy` writes the `SpreadsheetHead` that makes one a workbook, so
+  the copy would be a row that says `spreadsheet` and throws on `loadHead`. The
+  implementation this is waiting for is the one the import pipeline already is
+  — the copied version's `.xlsx` staged and parsed by the worker — which needs
+  an asynchronous per-page state the transfer contract does not have yet.
 - **`sheet_export` renders synchronously on the API, with no threshold, and
   that is a measured decision rather than an oversight.** `exportXlsxBytes`
   costs about 1.2 µs a cell on this hardware — 22 ms at 20 000 cells, 97 ms at
