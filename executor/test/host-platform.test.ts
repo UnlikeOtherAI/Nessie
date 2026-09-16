@@ -6,6 +6,7 @@ import {
   SUPERVISOR_ENVIRONMENT_VARIABLE,
   defaultHostPlatformProbe,
   detectExecutorHost,
+  readMacosProductVersion,
   sandboxRemedyForHost,
   type HostPlatformProbe,
 } from '../src/host-platform.js'
@@ -153,4 +154,41 @@ test('the default probe reads this machine rather than a fixture', () => {
   // A path that cannot exist proves the probe answers from the filesystem.
   assert.equal(live.exists('/nessie-executor-absent-probe-path'), false)
   assert.equal(live.canReadWrite('/nessie-executor-absent-probe-path'), false)
+})
+
+test('macOS states its own version rather than having one derived from Darwin', () => {
+  // The host this was written on: Darwin 27, macOS 27. The old arithmetic
+  // (Darwin − 9) called it macOS 18, a release that does not exist.
+  assert.equal(
+    detectExecutorHost(probe({ kernelRelease: '27.0.0', macosProductVersion: '27.0' }))
+      .platform.osMajorVersion,
+    27,
+  )
+  assert.equal(
+    detectExecutorHost(probe({ kernelRelease: '24.6.0', macosProductVersion: '15.6' }))
+      .platform.osMajorVersion,
+    15,
+  )
+  // A host that cannot state its version keeps the old derivation rather than
+  // refusing to run.
+  assert.equal(detectExecutorHost(probe({ kernelRelease: '24.6.0' })).platform.osMajorVersion, 15)
+})
+
+test('the system version probe reads one key and tolerates anything else', () => {
+  const plist = [
+    '<plist version="1.0"><dict>',
+    '<key>ProductName</key><string>macOS</string>',
+    '<key>ProductVersion</key>',
+    '<string>27.0</string>',
+    '</dict></plist>',
+  ].join('\n')
+
+  assert.equal(readMacosProductVersion(() => plist), '27.0')
+  assert.equal(readMacosProductVersion(() => '<plist><dict></dict></plist>'), undefined)
+  assert.equal(
+    readMacosProductVersion(() => {
+      throw new Error('unreadable')
+    }),
+    undefined,
+  )
 })

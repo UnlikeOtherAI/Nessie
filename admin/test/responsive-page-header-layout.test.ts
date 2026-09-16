@@ -24,3 +24,35 @@ test('page header does not add an overflow trigger when all actions fit', () => 
     overflowIds: [],
   })
 })
+
+test('a pinned action never collapses into More, however narrow the header', () => {
+  // The board's assignee filter: it carries the state the board is read
+  // through, and More renders menu rows, which it has none of. `primary` is
+  // already exempt for the opposite reason — it is the screen's main verb.
+  const withPinned = [
+    { id: 'assignee', pinned: true, priority: 20, width: 180 },
+    { id: 'configure', priority: 60, width: 96 },
+    { id: 'new-task', primary: true, priority: 100, width: 82 },
+  ]
+
+  assert.deepEqual(partitionPageHeaderActions(withPinned, 120, 34), {
+    visibleIds: ['assignee', 'new-task'],
+    overflowIds: ['configure'],
+  })
+})
+
+test('a pinned action is not a reason to keep anything else', () => {
+  // It is exempt, not privileged: everything around it still overflows by
+  // priority, lowest first.
+  const actions = [
+    { id: 'assignee', pinned: true, priority: 20, width: 180 },
+    { id: 'filter', priority: 30, width: 90 },
+    { id: 'configure', priority: 60, width: 96 },
+  ]
+
+  // 180 + 96 + the 34 More trigger + two 8px gaps = 326.
+  assert.deepEqual(partitionPageHeaderActions(actions, 326, 34), {
+    visibleIds: ['assignee', 'configure'],
+    overflowIds: ['filter'],
+  })
+})

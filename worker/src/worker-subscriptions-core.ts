@@ -476,7 +476,7 @@ subscribe(
   DEMONSTRATION_GENERALIZE_TOPIC,
   async (job) => {
     const payload = DemonstrationGeneralizeJobPayloadSchema.parse(job.payload)
-    await generalizeDemonstration(prisma, payload, undefined, ledgerIdentity)
+    await generalizeDemonstration(prisma, payload, undefined, ledgerIdentity, realtimeTransport)
   },
   { signal: abortSignal },
 )

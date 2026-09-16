@@ -33,7 +33,7 @@ const initialState = (workspaceRoot: string) => ({
   executorId: '00000000-0000-4000-8000-000000000221',
   machinePrivateKey: 'private',
   machinePublicKey: 'public',
-  workspaceRoot,
+  workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
 test('Codex configuration stores only an owner-private source path and a pinned runtime', async () => {

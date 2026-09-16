@@ -9,7 +9,6 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/workflows',
   // `/apps/:slug` belongs to the same section as its list.
   '/apps',
-  '/approvals',
   '/audit',
   '/tokens',
   '/policy',

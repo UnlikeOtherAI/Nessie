@@ -125,6 +125,9 @@ export const suspendRunForApproval = async (
     content,
     metadata: {
       approvalGate: {
+        // `action` is what the card renders from and every approval carries
+        // one; the three run-gate-only fields stay optional beside it.
+        action: 'tool.invoke',
         approvalId: input.approvalId,
         checkpointId: input.checkpointId,
         runId: context.run.id,

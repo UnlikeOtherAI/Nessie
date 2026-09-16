@@ -33,10 +33,11 @@ KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
 short-lived envelope only after the linked job is processing and must emit
 monotonic `accepted → started → result_acknowledged` receipts. The current
 companion executes `sandbox.stop` plus bounded `file.list`, `file.read`,
-`file.write`, and `workspace.review`. Reads start at one canonical, explicitly
-paired workspace root; writes create a bounded daemon-owned COW tree keyed to
-the server-provenanced run ID, and subsequent file reads/lists for that run use
-that same draft tree. Review returns a bounded hash-backed change manifest from
+`file.write`, and `workspace.review`. Reads start in one namespace of explicitly
+paired, named workspace folders, the first path segment naming the folder; writes
+create a bounded daemon-owned COW tree per folder, keyed to the
+server-provenanced run ID, and subsequent file reads/lists for that run use that
+same draft tree for the folders that have one. Review returns a bounded hash-backed change manifest from
 the COW base, never a host-write command.
 
 The worker dispatch adapter is now enabled for a run only after a human has

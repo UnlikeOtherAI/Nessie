@@ -172,3 +172,36 @@ test('a face that cannot resolve the style says nothing about it', () => {
   assert.doesNotMatch(sidebar, /agent_avatar_generate/)
   assert.match(sidebar, /avatar — a portrait is generated automatically at creation/)
 })
+
+// The proposal card is described only where one can actually be posted. The
+// persona is shared by three faces and only the DM face holds `card_post`: the
+// Agent Designer page fills a form and the shared-channel face writes nothing,
+// so telling either of them to post a card would be the prompt breaking the
+// "never imply you did work you did not do" rule on its own.
+test('the standard proposal card is described for the chat face and nowhere else', () => {
+  const chat = block()
+  assert.match(chat, /Proposing an agent: one card, always the same card\./)
+  assert.match(chat, /A details block, which arrives closed/)
+  assert.match(chat, /Accept, which submits, then Edit and Discard/)
+  // The model is asked for on the card, not in prose, and as one exact pair.
+  assert.match(chat, /An input block, a select, for the model/)
+  assert.match(chat, /provider and model as one pair/)
+
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    assert.doesNotMatch(block({ writeSurface }), /Proposing an agent: one card/)
+  }
+})
+
+// The Designer once offered to make an agent "at home in the Sales project,
+// not just a channel". It cannot: `AgentBinding` is (agentId, channelId) and
+// every reach check in the API and the worker reads exactly that pair. The
+// generated block is where the Designer learns the placement model, so the
+// limit is stated there rather than left for the model to infer.
+test('the catalogue states that a binding is a channel and never a project', () => {
+  const rendered = block()
+  assert.match(rendered, /one channel at a time/)
+  assert.match(rendered, /no project-wide or team-wide binding/)
+  assert.match(rendered, /will\s+not have the agent in it/)
+  // A DM is not a placement anybody arranges, so it is never offered as one.
+  assert.match(rendered, /direct messages — not a binding anybody arranges/)
+})

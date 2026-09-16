@@ -189,6 +189,174 @@ jobs:
           path: release/
           if-no-files-found: error
 
+  # The executor menu bar app's installer lives in this workflow rather than in
+  # one of its own because it is a direct download like every other asset here:
+  # it wants the same tag immutability, the same "this tag is main's tip"
+  # preflight, the same release environment and the same publish step. What it
+  # deliberately does NOT share is the macOS job above's stance. That DMG is
+  # ad-hoc signed on purpose and asserts that Gatekeeper rejects it; this one is
+  # the opposite case in every respect, and a person installing it must never
+  # be asked to bypass anything.
+  macos-executor-menubar:
+    name: macOS Executor menu bar ${{ matrix.name }}
+    needs: [preflight, direct-distribution-credentials]
+    runs-on: ${{ matrix.runner }}
+    environment: direct-download-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple Silicon
+            runner: macos-15
+            asset: Nessie-Executor-macOS-Apple-Silicon.dmg
+            artifact: release-macos-executor-menubar-apple-silicon
+          - name: Intel
+            runner: macos-15-intel
+            asset: Nessie-Executor-macOS-Intel.dmg
+            artifact: release-macos-executor-menubar-intel
+    env:
+      # The two names the rest of the repository already uses for these two
+      # facts: executor/vm/scripts/build-signed-vm-helper.sh and
+      # desktop/scripts/require-signing-team.mjs.
+      NESSIE_EXECUTOR_SIGNING_IDENTITY: ${{ vars.MACOS_DEVELOPER_ID_SIGNING_IDENTITY }}
+      NESSIE_DESKTOP_SIGNING_TEAM_ID: ${{ vars.MACOS_DEVELOPER_ID_TEAM_ID }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+      MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+
+      # Before anything is built, and naming every variable that is absent. A
+      # release that cannot be notarized is a failed release, never a quietly
+      # unsigned download.
+      - name: Require the Developer ID and notary credentials
+        run: |
+          set -euo pipefail
+          required=(
+            NESSIE_EXECUTOR_SIGNING_IDENTITY
+            NESSIE_DESKTOP_SIGNING_TEAM_ID
+            MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64
+            MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD
+            APP_STORE_CONNECT_API_KEY_ID
+            APP_STORE_CONNECT_API_ISSUER_ID
+            APP_STORE_CONNECT_API_KEY_P8_BASE64
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'The Nessie Executor DMG is signed and notarized or it is not published.\n' >&2
+            printf 'Missing release configuration:' >&2
+            printf ' %s' "${missing[@]}" >&2
+            printf '\n' >&2
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        uses: ./.github/actions/install-dependencies
+        with:
+          deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
+
+      - name: Install the Developer ID certificate and the notary key
+        run: |
+          set -euo pipefail
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/nessie-developer-id.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          printf %s "$MACOS_DEVELOPER_ID_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          # The identity has to be the Developer ID one, on this runner, before a
+          # twenty-minute build discovers otherwise.
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep -F "$NESSIE_EXECUTOR_SIGNING_IDENTITY" > /dev/null
+
+          # notarytool reads the App Store Connect key from a file, so the
+          # base64 secret becomes one for the life of this job.
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf %s "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APP_STORE_CONNECT_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build the executor inputs
+        run: |
+          set -euo pipefail
+          pnpm prisma:generate
+          pnpm exec turbo run build --filter=@nessie/executor...
+
+      # --require-signed is the gate: without it a credential-less host may build
+      # the labelled development image, and a release must never be able to.
+      - name: Build the signed, notarized, stapled DMG
+        run: node executor/packaging/macos/build-dmg.mjs --require-signed
+
+      - name: Verify the published image independently of its build
+        run: |
+          set -euo pipefail
+          dmg="$(find dist -maxdepth 1 -type f -name 'NessieExecutor_*.dmg' -print -quit)"
+          test -n "$dmg"
+          case "$(basename "$dmg")" in
+            *UNSIGNED*|*DEVELOPMENT*)
+              echo "A development image reached the release job: $dmg" >&2
+              exit 1
+              ;;
+          esac
+
+          # Apple's own verdict, asked again here so a change inside the build
+          # script cannot be the only thing that says the image is installable.
+          codesign --verify --deep --strict --verbose=2 "$dmg"
+          codesign -dvv "$dmg" 2>&1 | tee dmg-signing.txt
+          grep -F 'Authority=Developer ID Application:' dmg-signing.txt
+          grep -F "TeamIdentifier=$NESSIE_DESKTOP_SIGNING_TEAM_ID" dmg-signing.txt
+          ! grep -F 'Signature=adhoc' dmg-signing.txt
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature -vv "$dmg"
+
+          # And the app inside it, on a machine that has never seen it: mounted
+          # read-only, assessed, and its stapled ticket validated offline.
+          mountpoint="$(mktemp -d)"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mountpoint"
+          app="$(find "$mountpoint" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dvv "$app" 2>&1 | grep -F 'Authority=Developer ID Application:'
+          xcrun stapler validate "$app"
+          spctl --assess --type exec -vv "$app"
+          test -f "$app/Contents/Resources/executor-runtime/manifest.json"
+          hdiutil detach "$mountpoint"
+
+          mkdir release
+          cp "$dmg" "release/${{ matrix.asset }}"
+
+      - name: Upload the executor menu bar download
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/
+          if-no-files-found: error
+
   windows:
     name: Windows
     needs: [preflight, direct-distribution-credentials]
@@ -331,7 +499,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [preflight, macos, windows, linux, android]
+    needs: [preflight, macos, macos-executor-menubar, windows, linux, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -349,6 +517,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-macos-intel
+          path: release-assets
+
+      - name: Download the executor menu bar candidates
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-executor-menubar-apple-silicon
+          path: release-assets
+
+      - name: Download the Intel executor menu bar candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-executor-menubar-intel
           path: release-assets
 
       - name: Download Linux candidates
@@ -381,6 +561,15 @@ jobs:
           cp "$setup" release-assets/Nessie-Windows-Setup.exe
           cp "$msi" release-assets/Nessie-Windows.msi
           cp "$setup_signature" release-assets/Nessie-Windows-Setup.exe.sig
+          # Last gate before anything is uploaded: the executor installers are
+          # present, and no asset carries the unsigned-development marker its own
+          # builder would have put in the file name.
+          test -f release-assets/Nessie-Executor-macOS-Apple-Silicon.dmg
+          test -f release-assets/Nessie-Executor-macOS-Intel.dmg
+          if ls release-assets | grep -E 'UNSIGNED|DO-NOT-INSTALL'; then
+            echo 'A development artifact reached the publish job.' >&2
+            exit 1
+          fi
           (
             cd release-assets
             sha256sum Nessie-* > SHA256SUMS
@@ -455,6 +644,7 @@ jobs:
           ## Direct downloads
 
           - **macOS:** Apple Silicon and Intel DMGs are ad-hoc signed, not notarized, and require a Gatekeeper bypass to open.
+          - **Nessie Executor for macOS:** \`Nessie-Executor-macOS-*.dmg\` is the menu bar app. It is Developer ID signed, notarized and stapled: open it, drag it to Applications, and it runs with no bypass of any kind.
           - **Windows:** NSIS and MSI installers are unsigned direct-download builds and may show a SmartScreen warning.
           - **Linux:** AppImage and Debian packages are included with SHA-256 checksums.
           - **Android:** a signed, installable APK is included. Direct APK installs can open a newer signed APK in Android's package installer; Play Store builds leave updates to Google Play.

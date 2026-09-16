@@ -22,6 +22,15 @@ Cross-links:
 
 ## 2) Core rules
 
+- **an approval is answered on a card in a conversation, and there is no list of
+  them.** `GET /api/approvals` still exists for agents and scripts; no screen
+  reads it. Every creator writes an `approvalGate` message
+  (`ApprovalGateMetadataSchema`), placed by
+  `packages/team-admin/src/approval-card.ts`: the originating thread, plus the
+  Personal Assistant conversation of any required approver who cannot see it.
+  Resolution stamps every copy, because the same approval can be waiting in a
+  room and in two owners' assistant conversations at once.
+
 - every approval request is scoped to one task or run,
 - approval requests carry the action description, requesting agent, and reason,
 - approvers are resolved from the policy chain (org owner, project admin, channel admin, or explicit approver role),

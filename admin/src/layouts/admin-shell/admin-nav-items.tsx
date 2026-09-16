@@ -345,16 +345,13 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
-    // Member-reachable: any member can act on Approvals they are entitled to and
-    // read their team's Credits & billing. The owner-only surfaces live in Ops.
+    // Member-reachable: any member can read their team's Credits & billing.
+    // The owner-only surfaces live in Ops. Approvals are deliberately absent:
+    // an approval is answered on its card, in the conversation it came from,
+    // and a list of them was a screen nobody opened.
     id: 'governance',
     heading: 'Governance',
     items: [
-      {
-        path: '/approvals',
-        label: 'Approvals',
-        icon: icon(<path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />),
-      },
       {
         path: '/tokens',
         label: 'Credits & billing',

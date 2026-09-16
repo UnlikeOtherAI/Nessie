@@ -96,9 +96,9 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
   await writeFile(join(outside, 'secret.txt'), 'outside folder')
 
   const commands = [
-    commandFor(0, 'file.read', { path: 'visible.txt' }),
-    commandFor(1, 'file.read', { path: '../secret.txt' }),
-    commandFor(2, 'file.write', { content: 'draft only', path: 'draft.txt' }),
+    commandFor(0, 'file.read', { path: 'workspace/visible.txt' }),
+    commandFor(1, 'file.read', { path: 'workspace/../secret.txt' }),
+    commandFor(2, 'file.write', { content: 'draft only', path: 'workspace/draft.txt' }),
     commandFor(3, 'workspace.review', {}),
   ]
   const results: Record<string, unknown>[] = []
@@ -217,7 +217,7 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
       challenge: CHALLENGE,
       enrollmentId: ENROLLMENT_ID,
       stateDir,
-      workspaceRoot: workspace,
+      workspaceFolders: [{ name: 'workspace', path: workspace }],
     })
     const paired = await loadExecutorState(stateDir)
     const claimed = await claimExecutor(stateDir, paired)
@@ -233,12 +233,12 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
     assert.deepEqual(results[0], {
       byteCount: 15,
       content: 'selected folder',
-      path: 'visible.txt',
+      path: 'workspace/visible.txt',
       success: true,
       truncated: false,
     })
     assert.deepEqual(results[1], { code: 'EXECUTOR_WORKSPACE_DENIED', success: false })
-    assert.deepEqual(results[2], { byteCount: 10, path: 'draft.txt', success: true })
+    assert.deepEqual(results[2], { byteCount: 10, path: 'workspace/draft.txt', success: true })
     assert.equal(results[3]?.success, true)
     assert.equal(results[3]?.changeCount, 1)
     await assert.rejects(readFile(join(workspace, 'draft.txt'), 'utf8'), { code: 'ENOENT' })

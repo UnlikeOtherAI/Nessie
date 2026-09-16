@@ -109,7 +109,14 @@ test('the project header is shared by both project doorways and opens the shared
   // spans several lines. What matters is that it is the shared header, driven
   // by the same actions and project.
   assert.match(projectView, /<ProjectPageHeader/)
-  assert.match(projectView, /actions=\{headerActions\}/)
+  // The board spends no header slot on Members — it is a row in that screen's
+  // own Configure menu — so it supplies its actions as a function and takes
+  // the doorway the header hands it. Every other project section still gets
+  // the header's own Members action.
+  assert.match(projectView, /actions=\{onBoard \? boardActions : \[\]\}/)
+  assert.match(projectView, /membersAction=\{!onBoard\}/)
+  assert.match(header, /typeof actions === 'function' \? actions\(openMembers\) : actions/)
+  assert.match(projectView, /label: `Members \(\$\{project\.memberCount\}\)`/)
   assert.match(projectView, /project=\{project\}/)
   assert.match(channelOverview, /<ProjectPageHeader project=\{project\}/)
 })

@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   isAdminRole,
+  isOwnerRole,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -50,7 +51,7 @@ export const listChannelsForUser = async (
    * (`isAdminActor(actorContext)`). Omitted only by callers with no request
    * role, which fall back to the `OrganizationMember` row.
    */
-  viewer: { isOrganizationAdmin?: boolean } = {},
+  viewer: { isOrganizationAdmin?: boolean; isOrganizationOwner?: boolean } = {},
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
@@ -172,7 +173,7 @@ export const listChannelsForUser = async (
     channels.filter((channel) => channel.type === 'dm').map((channel) => channel.teamId),
   )]
   const [viewerOrgMember, viewerTeamMembers] = await Promise.all([
-    viewer.isOrganizationAdmin !== undefined
+    viewer.isOrganizationAdmin !== undefined && viewer.isOrganizationOwner !== undefined
       ? Promise.resolve(null)
       : prisma.organizationMember.findFirst({
         where: { organizationId, userId },
@@ -186,6 +187,10 @@ export const listChannelsForUser = async (
       }),
   ])
   const viewerIsOrgAdmin = viewer.isOrganizationAdmin ?? isAdminRole(viewerOrgMember?.role)
+  // Owner, not owner-or-admin: `POST/DELETE /api/agents/:agentId/bindings`
+  // gate on `requireOwner`, so an admin who may rename this channel and add
+  // people to it still may not place an agent in it.
+  const viewerIsOrgOwner = viewer.isOrganizationOwner ?? isOwnerRole(viewerOrgMember?.role)
   const viewerTeamRoleByTeamId = new Map(
     viewerTeamMembers.map((teamMember) => [teamMember.teamId, teamMember.role]),
   )
@@ -269,6 +274,14 @@ export const listChannelsForUser = async (
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
     viewerCanManage: viewerMayModify(channel),
+    // The binding routes' pre-policy gate, in their order: not a system
+    // channel, an organisation owner, and a live ChannelMember row — which is
+    // already loaded above as `channel.members[0]`, so this costs no query.
+    // Deliberately not `viewerCanManage`, which is any member of the channel.
+    viewerCanManageAgents:
+      !channel.systemChannelType
+      && viewerIsOrgOwner
+      && channel.members[0] !== undefined,
     personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),

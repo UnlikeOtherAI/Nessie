@@ -317,12 +317,14 @@ New builtins (shared function in `@nessie/workspace-admin`, api service re-expor
 | `project_create` | mirrors `POST /api/projects` — **organisation owner** (`requireOwner`). Shared function `createProjectForUser` carries the single owner-membership row and the default board columns (`defaultColumnCreateData`, moved out of `api/src/services/board.ts`). Visible to non-owners and refuses in words naming who can do it. |
 | `team_create` | mirrors `POST /api/teams` — **organisation owner** (`requireOwner`), taking `{name, projectId}` and refusing a project outside the organisation with the route's own indistinguishable "not found". Shared function `createTeamForUser`. A project holds no channel until it has a team, so this is the middle link of project → team → channel. |
 
-Deliberately **not** given: `connector_*` mutations (the conversational-setup plan is
-retiring them; the Designer points at `/apps` and the `app_connect_request` flow in
-words), any policy-target/grant mutation for explicit-grant tools, agent delete (doesn't
-exist for anyone), DeepWater bundle management, and `spawn_subtask`/`delegate` (a design
-conversation needs neither; keeping them off keeps the catalogue-laden context from
-fanning out).
+Deliberately **not** given: any policy-target/grant mutation for explicit-grant tools,
+agent delete (doesn't exist for anyone), DeepWater bundle management, and
+`spawn_subtask`/`delegate` (a design conversation needs neither; keeping them off keeps
+the catalogue-laden context from fanning out).
+
+**Amended 2026-09-16:** the `connector_*` verbs came back, and an install's scope
+now decides who the agent serves. See
+[Designer grants and the proposal card](2026-09-16-agent-designer-grants-and-proposal-card.md).
 
 ### D5 — The capability catalogue is generated, never written
 
@@ -386,6 +388,12 @@ for the moments a structured answer is genuinely the only next step (a
 secret, a must-pick choice), always with an expiry. `select` options cap at
 20, so long lists (models) are offered as a shortlist with "or name
 another".
+
+**The proposal card was standardised on 2026-09-16** — one fixed arrangement, with
+the tools and apps behind a fold that is also the extension point. It is described
+in `buildGlobalAgentCatalogueBlock` under `writeSurface: 'agent_tools'` rather than
+in the shared persona; see
+[Designer grants and the proposal card](2026-09-16-agent-designer-grants-and-proposal-card.md).
 
 ### D7 — Not editable, by construction
 

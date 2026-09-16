@@ -59,7 +59,7 @@ test('snapshot requires and verifies the settled local root even when another re
       executorId: '00000000-0000-4000-8000-000000000005',
       machinePrivateKey: 'private',
       machinePublicKey: 'public',
-      workspaceRoot: selected,
+      workspaceFolders: [{ name: 'workspace', path: selected }],
     } satisfies ExecutorLocalState
     const adapter = createDeepTestSourceAdapter(state)
     await adapter.dispatch(frame('hello'))
@@ -99,7 +99,7 @@ test('a changed policy revision revokes an open snapshot and clears its bytes', 
       executorId: '00000000-0000-4000-8000-000000000005',
       machinePrivateKey: 'private',
       machinePublicKey: 'public',
-      workspaceRoot: root,
+      workspaceFolders: [{ name: 'workspace', path: root }],
     } satisfies ExecutorLocalState
     let current = state
     const adapter = createDeepTestSourceAdapter(state, async () => current)
@@ -135,7 +135,7 @@ test('a closed output breaks backpressure wait so adapter cleanup can finish', a
     executorId: '00000000-0000-4000-8000-000000000005',
     machinePrivateKey: 'private',
     machinePublicKey: 'public',
-    workspaceRoot: process.cwd(),
+    workspaceFolders: [{ name: 'workspace', path: process.cwd() }],
   } satisfies ExecutorLocalState
   const output = new Writable({
     highWaterMark: 1,

@@ -14,7 +14,6 @@ type TodoTemplateCardProps = {
   onArchive: (template: AgentTodoTemplateRecord) => void
   onEdit: (template: AgentTodoTemplateRecord) => void
   onRefuseOwnerAction: () => void
-  onResolveProposal?: (approval: ApprovalRequest, resolution: 'approved' | 'rejected') => void
   proposal?: ApprovalRequest
   template: AgentTodoTemplateRecord
   trigger?: AgentTriggerRecord
@@ -32,7 +31,6 @@ export const TodoTemplateCard = ({
   onArchive,
   onEdit,
   onRefuseOwnerAction,
-  onResolveProposal,
   proposal,
   template,
   trigger,
@@ -72,23 +70,12 @@ export const TodoTemplateCard = ({
               Archive
             </button>
           ) : null}
-          {proposal?.status === 'pending' && isOwner && onResolveProposal ? (
-            <>
-              <button
-                className="admin-button admin-button-primary"
-                onClick={() => onResolveProposal(proposal, 'approved')}
-                type="button"
-              >
-                Approve
-              </button>
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={() => onResolveProposal(proposal, 'rejected')}
-                type="button"
-              >
-                Reject
-              </button>
-            </>
+          {/* Deliberately status, not a decision. An approval is answered on
+              its card in the conversation the agent proposed it in, and the
+              same question offered in two places is two places to keep in
+              step — the reason the approvals page went away. */}
+          {proposal?.status === 'pending' ? (
+            <Pill size="sm" tone="warning">awaiting approval</Pill>
           ) : null}
         </div>
       </div>

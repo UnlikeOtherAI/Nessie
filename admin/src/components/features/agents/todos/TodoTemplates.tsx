@@ -7,7 +7,7 @@ import {
   useCreateAgentTodoTemplate,
   useUpdateAgentTodoTemplate,
 } from '../../../../facades/agent-todos/hooks'
-import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '../../../../facades/approvals/hooks'
+import { useApprovalRequests, type ApprovalRequest } from '../../../../facades/approvals/hooks'
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useToasts } from '../../../../providers/ToastProvider'
 import { SectionLabel } from '../../../primitives/SectionLabel'
@@ -31,7 +31,6 @@ export const TodoTemplates = ({ agent, query }: TodoTemplatesProps) => {
   const updateTemplate = useUpdateAgentTodoTemplate()
   const archiveTemplate = useArchiveAgentTodoTemplate()
   const approvals = useApprovalRequests()
-  const resolveApproval = useResolveApproval()
   const { data: channels = [] } = useChannels()
   const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const [editingTemplate, setEditingTemplate] = useState<AgentTodoTemplateRecord | null | undefined>()
@@ -145,10 +144,6 @@ export const TodoTemplates = ({ agent, query }: TodoTemplatesProps) => {
                 onArchive={archive}
                 onEdit={setEditingTemplate}
                 onRefuseOwnerAction={refuseOwnerAction}
-                onResolveProposal={(approval, resolution) => resolveApproval.mutate(
-                  { id: approval.id, resolution },
-                  { onError: (error) => pushToast({ body: error.message, title: 'Could not resolve proposal' }) },
-                )}
                 proposal={proposalFor(template.id)}
                 template={template}
                 trigger={triggers.find((trigger) => trigger.config.todoTemplateId === template.id)}
