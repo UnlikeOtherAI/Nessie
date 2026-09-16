@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { pagesInGroup } from '../pages/registry'
 import { useLandingTeams } from '../signed-in-teams/use-landing-teams'
 import { accountUrl, cookieCopy, navItems, signInUrl } from './content'
+import { readConsent, writeConsent, type Consent } from './cookie-consent'
 import { openCookieEvent } from './ui'
 import { HangingWave } from './wave'
 
@@ -135,27 +136,6 @@ export function Header() {
       <HangingWave color="var(--n-ink)" />
     </header>
   )
-}
-
-const storageKey = 'nessie-cookie-consent'
-
-type Consent = { analytics: boolean }
-
-function readConsent(): Consent | null {
-  try {
-    const raw = window.localStorage.getItem(storageKey)
-    return raw ? (JSON.parse(raw) as Consent) : null
-  } catch {
-    return null
-  }
-}
-
-function writeConsent(consent: Consent) {
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(consent))
-  } catch {
-    // Storage is blocked; the choice lasts for this page view only.
-  }
 }
 
 export function CookieBar() {
