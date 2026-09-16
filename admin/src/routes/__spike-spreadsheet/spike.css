@@ -1,0 +1,15 @@
+/* Throwaway spike chrome: enough box model for the widget to have a height. */
+html, body, #root { height: 100%; margin: 0; }
+.spike-shell { display: flex; flex-direction: column; height: 100%; background: var(--main); color: var(--tx); }
+.spike-bar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--sep); font-family: var(--font-family-body); font-size: 13px; }
+.spike-bar button { padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--sep); background: var(--main); color: var(--tx); cursor: pointer; }
+.spike-widget { position: relative; flex: 1; min-height: 0; }
+.spike-widget .ic-widget { height: 100%; }
+
+/* The four rules in ironcalc.css that hard-code a light colour instead of
+   reading the palette. Everything else follows `themeVariables`. Upstream PR
+   candidate: swap these literals for the palette variables they mean. */
+.ic-root .ic-editor-container { background: var(--palette-common-white); }
+.ic-root .ironcalc-cell-handle { border-color: var(--palette-common-white); }
+.ic-root .ic-sheet-tab:hover { background-color: var(--palette-grey-100); }
+.ic-root .ic-db-swatch-row + .ic-db-swatch-row { border-top-color: var(--palette-grey-300); }
