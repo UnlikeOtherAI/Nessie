@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   applySpreadsheetBatch,
+  canWriteSpace,
   bootstrapSpreadsheet,
   createSpreadsheetPage,
   findInSpreadsheet,
@@ -129,19 +130,17 @@ export const registerKnowledgeSpreadsheetRoutes = (
       return null
     }
     const viewer = await buildViewer(actorContext)
+    // Both halves of the rule: the space grant, and every retained version
+    // readable — a version's disclosure basis is what stops an agent's private
+    // material reaching somebody the conversation was never shared with.
     if (!(await accessPageSpace(actorContext, page, viewer, mode, reply))) return null
     if (mode === 'write') return { page, canWrite: true }
-    // A reader is told whether they may write, so the pane can show a
-    // read-only state rather than discovering it on the first edit.
-    const canWrite = await accessPageSpace(
-      actorContext,
-      page,
-      viewer,
-      'write',
-      // A refusal here is an answer to the *question*, not to the request.
-      { code: () => ({ send: () => undefined }) } as unknown as FastifyReply,
-    )
-    return { page, canWrite }
+    // A reader is told whether they may write, so the pane opens read-only
+    // rather than discovering it on the first edit. Asked of the space alone:
+    // the version half has already been answered above, and re-running it
+    // would put a second `listVersions` on the hottest read path.
+    const space = await access.provider.getSpace(actorContext.tenant.organizationId, page.spaceId)
+    return { page, canWrite: space !== null && canWriteSpace(space, viewer) }
   }
 
   // ─── Create ───────────────────────────────────────────────────────────────
