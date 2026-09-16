@@ -216,7 +216,8 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Theming and the design system.** All colour lives in
   `admin/src/styles.css` as tokens; one tab bar, one identity tile, one
-  composer, one dialog shell, and no nesting.
+  composer, one dialog shell, no nesting, and a page a person passes *through*
+  is painted in the menus' colour rather than the work surface's.
   Read [`docs/standards/design-system.md`](docs/standards/design-system.md)
   before writing code here.
 - **Calling the Personal Assistant (Gemini Live voice).** The API is a

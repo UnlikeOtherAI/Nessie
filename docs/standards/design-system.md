@@ -192,6 +192,36 @@ summary and points here; **this file is the rule**.
   form (e.g. a password field) still runs its section full-width but may cap the
   individual input with an inner `max-w-sm` — the cap is on the control, never
   the page.
+- **A navigational page takes the menus' colour, not the work surface's.** A
+  screen a person passes *through* — a project's Overview, reached from both
+  the Projects sidebar and the Channels rail — is chrome that happens to sit in
+  the content area, and it is painted as such: `.admin-nav-surface` in
+  `styles.css`, applied to the host's outer `<section>` so the page header is
+  painted with the body it titles rather than left as a white band above it.
+  Pages that are *worked in* — boards, the docs reader, settings, chat — keep
+  the white work surface, so the two kinds of screen are told apart before a
+  word is read.
+  The class is listed with the topbar and the sidebars in the
+  `:where([data-theme="nessie"])` chrome rule, since in the default theme the
+  navy palette exists only there; it carries that rule's two `:not()` guards so
+  focus mode still wins, and repeats them on its own declaration, which would
+  otherwise lose to it on specificity. The page is `--sb` lifted one step
+  toward `--tx`: exactly `--sb` and it merges into the sidebar beside it, and
+  on a theme whose menus are already white there would be no step at all.
+  Cards on it lift toward `--surface-inverse` — each theme's near-white —
+  because mixing toward `--tx` inverts the stack on the light themes.
+  Colour on such a page is a **tone**, named for what a destination is
+  (`work`, `people`, `knowledge`, `config`), never for the token it borrows:
+  one `--tile` declaration per tone in `styles.css`, everything else written
+  against it. Focus mode flattens every tone to `--tx3`, because a screen that
+  exists to be quiet cannot have the loudest thing on it be navigation.
+  The doorways themselves are **derived, never restated**: the Overview grid is
+  built from `navigation/project-sections.ts` in
+  `components/features/projects/project-navigation-tiles.ts`, so a section
+  added to the sidebar appears on the Overview without anybody remembering it
+  (AGENTS.md → "Rule zero"). Copy for a section is an exhaustive
+  `Record<ProjectTileSectionId, …>`, so a new section fails to compile rather
+  than rendering an unexplained coloured square.
 - **One sign-in surface, and it is the homepage's doorway.** The admin login
   (`/login`) and the public landing (`nessie.works`) are the same screen:
   `packages/sign-in-surface` owns the layout (`SignInSurface`), the showcase

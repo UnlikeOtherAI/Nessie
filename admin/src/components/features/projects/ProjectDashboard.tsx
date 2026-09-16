@@ -2,6 +2,7 @@ import { ProjectAgentsSection } from './ProjectAgentsSection'
 import { ProjectChannelsSection } from './ProjectChannelsSection'
 import { ProjectDocumentsSection } from './ProjectDocumentsSection'
 import { ProjectMembersSection } from './ProjectMembersSection'
+import { ProjectNavigationTiles } from './ProjectNavigationTiles'
 import { ProjectWorkSection } from './ProjectWorkSection'
 
 type ProjectDashboardProps = {
@@ -18,6 +19,15 @@ const cardClass = 'mb-4 break-inside-avoid'
  * The project dashboard: one component behind both entry points
  * (`/channels/projects/:id` and the Projects section's Overview tab). It renders
  * no header of its own — each host already has one.
+ *
+ * It opens with the navigation grid, because that is what Overview is for: a
+ * person arriving at a project wants to get somewhere, and a wall of read-only
+ * summaries answered a question they had not asked yet. The summaries follow
+ * underneath, so what is late and who is here is still one glance away. The
+ * page therefore takes the navigation's colour rather than the work surface's
+ * white. The surface class is on each host's outer section, not here, so the
+ * project header is painted with the body it titles rather than left as a
+ * white band above it — `.admin-nav-surface` in `styles.css` says why.
  *
  * It is a page, so it is **full-width** (`docs/standards/design-system.md`, "One
  * page edge"): one shared `--page-gutter` on each side, and no centred
@@ -38,6 +48,7 @@ const cardClass = 'mb-4 break-inside-avoid'
  */
 export const ProjectDashboard = ({ projectId }: ProjectDashboardProps) => (
   <div className="h-full overflow-y-auto px-[var(--page-gutter)] py-5">
+    <ProjectNavigationTiles className="mb-5" projectId={projectId} />
     <div className="columns-[22rem] gap-4">
       <ProjectWorkSection className={cardClass} projectId={projectId} />
       <ProjectChannelsSection className={cardClass} projectId={projectId} />
