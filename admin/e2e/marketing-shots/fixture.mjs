@@ -315,11 +315,11 @@ const seedTriggers = async (prisma, channels) => {
  * Written into the knowledge base rather than posted in a thread because the
  * claim is about work that is *waiting* for you, not work that scrolled past.
  */
-const seedKnowledge = async (prisma) => {
+const seedKnowledge = async (prisma, ownerUserId) => {
   // The shared space, never the oldest one: the oldest is the owner's private
   // "My Docs", and a page filed there is invisible to everyone else — which is
   // the opposite of the claim this picture is for.
-  const space = await prisma.knowledgeSpace.findFirst({
+  const existing = await prisma.knowledgeSpace.findFirst({
     orderBy: { createdAt: 'asc' },
     where: {
       deletedAt: null,
@@ -328,7 +328,20 @@ const seedKnowledge = async (prisma) => {
       visibility: 'project',
     },
   })
-  if (!space) return null
+  // On a genuinely fresh database there is none yet: the knowledge base
+  // creates its spaces the first time somebody opens it, which is *after* this
+  // seed runs. Waiting for the product to make one would make the fixture
+  // depend on the order the shots happen to be taken in, so it makes its own.
+  const space = existing ?? await prisma.knowledgeSpace.create({
+    data: {
+      createdBy: ownerUserId,
+      name: 'General',
+      organizationId: TENANT.organizationId,
+      projectId: TENANT.projectId,
+      teamId: TENANT.teamId,
+      visibility: 'project',
+    },
+  })
   // Plain prose, not Markdown: a knowledge *page*'s body is stored and shown
   // as written (the Markdown renderer belongs to uploaded `.md` files — see
   // `admin/e2e/knowledge-markdown`), so `#` and `-` would appear as typed.
@@ -490,7 +503,7 @@ export const seedMarketingOrganisation = async (databaseUrl, ownerUserId) => {
     await seedApprovals(prisma, ownerUserId, channels)
     await seedAudit(prisma, ownerUserId, channels)
     await seedTriggers(prisma, channels)
-    const knowledge = await seedKnowledge(prisma)
+    const knowledge = await seedKnowledge(prisma, ownerUserId)
 
     return {
       knowledge,
