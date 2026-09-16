@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { openApprovalCard } from '../approval-card.js'
 import {
   canWriteSpace,
   type KnowledgeAuthorType,
@@ -345,6 +346,28 @@ export const runKbPublishRequestTool = async (
       expiresAt: new Date(Date.now() + PENDING_APPROVAL_EXPIRY_MS),
     },
     select: { id: true },
+  })
+
+  // The card is the approval. Nothing else surfaces this request — the page it
+  // used to wait on is gone — so a publish nobody can see here is a publish
+  // that expires.
+  await openApprovalCard(context, {
+    agentId: context.agentId,
+    // No pinned approver and no required role: anyone who can read this
+    // conversation may answer, which is exactly what the in-channel card is.
+    approverUserIds: [],
+    content: `I would like to publish **${page.title}**. ${
+      input.reason?.trim() || DEFAULT_PUBLISH_REASON
+    }`,
+    gate: {
+      action: 'knowledge.page.publish',
+      approvalId: approval.id,
+      status: 'pending',
+    },
+    organizationId,
+    originChannelId: context.channel.id,
+    originSystemChannelType: context.channel.systemChannelType ?? null,
+    originThreadId: context.run.threadId,
   })
 
   return {

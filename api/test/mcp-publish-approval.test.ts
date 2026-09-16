@@ -422,3 +422,64 @@ runDatabaseTest('a policy refusal stops the request being opened at all', async 
     await cleanup(prisma, s)
   }
 })
+
+/**
+ * A paired credential has no channel, so the card that is now the only way to
+ * answer an approval has to be put somewhere. That somewhere is the assistant
+ * conversation of the person whose account the credential borrowed — and the
+ * durable alert is pointed at it, because before the approvals page went away
+ * an alert with no channel linked to that page instead.
+ */
+runDatabaseTest('a paired agent\'s request is answerable in the borrowed account\'s assistant', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const team = await prisma.team.create({
+      data: { name: `pub-team-${randomUUID()}`, projectId: s.projectId },
+    })
+    const assistant = await prisma.channel.create({
+      data: {
+        dmKey: `pa:${s.organizationId}:${s.userId}`,
+        label: 'Personal Assistant',
+        members: { create: [{ userId: s.userId }] },
+        organizationId: s.organizationId,
+        projectId: s.projectId,
+        systemChannelType: 'personal_assistant',
+        teamId: team.id,
+        type: 'dm',
+        visibility: 'private',
+      },
+    })
+    await prisma.thread.create({ data: { channelId: assistant.id, title: 'General' } })
+
+    const context = contextFor(prisma, s)
+    const created = await tool('nessie_doc_create').run(context, {
+      spaceId: s.spaceId,
+      title: 'Draft',
+    }) as { page: { id: string } }
+    const asked = await tool('nessie_doc_publish').run(context, {
+      pageId: created.page.id,
+    }) as { approvalId?: string }
+    assert.ok(asked.approvalId)
+
+    const card = await prisma.message.findFirstOrThrow({
+      select: { metadata: true, thread: { select: { channelId: true } } },
+      where: {
+        metadata: { equals: asked.approvalId, path: ['approvalGate', 'approvalId'] },
+      },
+    })
+    assert.equal(card.thread.channelId, assistant.id)
+    const gate = (card.metadata as Record<string, Record<string, unknown>>)['approvalGate']
+    assert.equal(gate?.['action'], 'knowledge.page.publish')
+    assert.equal(gate?.['status'], 'pending')
+
+    // The bell has somewhere to go, which is what the page used to be for.
+    const alert = await prisma.userAlert.findFirstOrThrow({
+      select: { channelId: true },
+      where: { approvalRequestId: asked.approvalId as string },
+    })
+    assert.equal(alert.channelId, assistant.id)
+  } finally {
+    await cleanup(prisma, s)
+  }
+})
