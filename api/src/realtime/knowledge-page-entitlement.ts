@@ -25,11 +25,15 @@ import { resolveDisclosureViewer, resolveLiveEntitlements } from '@nessie/runtim
  * the failure mode the paragraph below was written after. With it, the two
  * answers agree, and a revoked share stops delivery within one window rather
  * than at the next reconnect — a hard delete is how revocation is recorded, so
- * the very next walk finds nothing. A spreadsheet's live lane carries the workbook's changes,
- * and a version's disclosure basis is exactly the boundary that stops an
- * agent's private-conversation material reaching somebody the conversation was
- * never shared with. Asking only the space question here would have made the
- * lane the one door in the knowledge surface that skipped it.
+ * the very next walk finds nothing.
+ *
+ * The version half is not decoration either. A spreadsheet's live lane carries
+ * the workbook's changes, and a version's disclosure basis is exactly the
+ * boundary that stops an agent's private-conversation material reaching
+ * somebody the conversation was never shared with. Asking only the space
+ * question here would have made the lane the one door in the knowledge surface
+ * that skipped it — and a share never reaches past it: the basis check below
+ * runs for a grantee exactly as it does for a member.
  *
  * Lives beside the hub rather than in `delivery-entitlements.ts` because it
  * needs `@nessie/knowledge`, which that module (the shared entitlement
