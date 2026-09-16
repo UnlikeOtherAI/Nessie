@@ -110,6 +110,12 @@ export const SpreadsheetPane = ({
   const [filterColumn, setFilterColumn] = useState<number | null>(null)
   const [notice, setNotice] = useState<SpreadsheetVersionSavedNotice | null>(null)
   const [replaceResult, setReplaceResult] = useState<SpreadsheetReplaceResult>()
+  // Every write in this pane is fire-and-forget from the grid's point of view:
+  // nothing here is a form with a field to hang an error on, so a refusal that
+  // is not said out loud is a refusal nobody sees. One line, last error wins.
+  const [actionError, setActionError] = useState<string | null>(null)
+  const onActionError = (what: string) => (error: unknown) =>
+    setActionError(`${what} failed: ${error instanceof Error ? error.message : String(error)}`)
 
   const filterAnchor = useRef<HTMLButtonElement>(null)
   const findAnchor = useRef<HTMLButtonElement>(null)
@@ -264,13 +270,18 @@ export const SpreadsheetPane = ({
         <FilterChipsBar
           headerLabels={headerLabels}
           model={filterModel}
-          onClearAll={() => filterMutations.clear.mutate(sheet)}
+          onClearAll={() =>
+            filterMutations.clear.mutate(sheet, { onError: onActionError('Clear filters') })}
           onClearColumn={(column) => {
             const columns = { ...filterModel.columns }
             delete columns[column]
-            filterMutations.set.mutate({ model: { ...filterModel, columns }, sheet })
+            filterMutations.set.mutate(
+              { model: { ...filterModel, columns }, sheet },
+              { onError: onActionError('Clear filter') },
+            )
           }}
-          onReapply={() => filterMutations.reapply.mutate(sheet)}
+          onReapply={() =>
+            filterMutations.reapply.mutate(sheet, { onError: onActionError('Re-apply') })}
           pending={filterMutations.reapply.isPending || filterMutations.set.isPending}
         />
       ) : null}
@@ -288,12 +299,33 @@ export const SpreadsheetPane = ({
           Offline — your edits are queued and will be sent when the connection comes back.
         </Notice>
       ) : null}
+      {actionError ? (
+        <Notice
+          className="mx-3 mt-2 flex items-center gap-3"
+          data-testid="spreadsheet-action-error"
+          role="alert"
+          size="sm"
+          tone="danger"
+        >
+          <span className="min-w-0 flex-1">{actionError}</span>
+          <button
+            className="admin-button admin-button-secondary admin-button-compact"
+            onClick={() => setActionError(null)}
+            type="button"
+          >
+            Dismiss
+          </button>
+        </Notice>
+      ) : null}
       {notice ? (
         <SpreadsheetVersionSavedNoticeBar
           notice={notice}
           onDismiss={() => setNotice(null)}
           onRestore={(versionId) => {
-            restoreVersion.mutate({ pageId: page.id, versionId })
+            restoreVersion.mutate(
+              { pageId: page.id, versionId },
+              { onError: onActionError('Restore') },
+            )
             setNotice(null)
           }}
           pending={busy}
@@ -344,7 +376,10 @@ export const SpreadsheetPane = ({
           headerLabels={headerLabels}
           onClose={() => setOpen(null)}
           onSubmit={(request) => {
-            restructure.mutate({ ...request, action: 'sort' })
+            restructure.mutate(
+              { ...request, action: 'sort' },
+              { onError: onActionError('Sort') },
+            )
             setOpen(null)
           }}
           open
@@ -359,7 +394,7 @@ export const SpreadsheetPane = ({
         <SpreadsheetSaveVersionDialog
           onClose={() => setOpen(null)}
           onSubmit={(changeComment) => {
-            saveVersion.mutate({ changeComment })
+            saveVersion.mutate({ changeComment }, { onError: onActionError('Save version') })
             setOpen(null)
           }}
           open
@@ -406,7 +441,11 @@ export const SpreadsheetPane = ({
                   spreadsheetExportPath(page.id, 'xlsx', { versionId }),
                   `${page.title}.xlsx`,
                 )}
-              onRestore={(versionId) => restoreVersion.mutate({ pageId: page.id, versionId })}
+              onRestore={(versionId) =>
+                restoreVersion.mutate(
+                  { pageId: page.id, versionId },
+                  { onError: onActionError('Restore') },
+                )}
               pending={busy}
               versions={versionsQuery.data ?? []}
             />
@@ -422,16 +461,25 @@ export const SpreadsheetPane = ({
           criterion={filterModel.columns[filterColumn]}
           headerLabel={headerLabels?.[filterColumn]}
           onApply={(criterion: SpreadsheetFilterCriterion) => {
-            filterMutations.set.mutate({
-              model: { ...filterModel, columns: { ...filterModel.columns, [filterColumn]: criterion } },
-              sheet,
-            })
+            filterMutations.set.mutate(
+              {
+                model: {
+                  ...filterModel,
+                  columns: { ...filterModel.columns, [filterColumn]: criterion },
+                },
+                sheet,
+              },
+              { onError: onActionError('Filter') },
+            )
             setFilterColumn(null)
           }}
           onClear={() => {
             const columns = { ...filterModel.columns }
             delete columns[filterColumn]
-            filterMutations.set.mutate({ model: { ...filterModel, columns }, sheet })
+            filterMutations.set.mutate(
+              { model: { ...filterModel, columns }, sheet },
+              { onError: onActionError('Clear filter') },
+            )
             setFilterColumn(null)
           }}
           onClose={() => setFilterColumn(null)}
@@ -448,7 +496,7 @@ export const SpreadsheetPane = ({
           setReplaceResult(undefined)
           replace.mutate(
             { ...toReplaceInput(input), selection, sheet },
-            { onSuccess: setReplaceResult },
+            { onError: onActionError('Replace'), onSuccess: setReplaceResult },
           )
         }}
         onStep={(match: FindMatch) => {

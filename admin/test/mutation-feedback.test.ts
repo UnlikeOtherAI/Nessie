@@ -66,7 +66,6 @@ const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
   'components/features/integrations/DeepWaterResearchLauncher.tsx': REASON,
   'components/features/knowledge/AttachmentsDrawer.tsx': REASON,
   'components/features/knowledge/KnowledgeProvider.tsx': REASON,
-  'components/features/knowledge/KnowledgeWorkspace.tsx': REASON,
   'components/features/knowledge/comments/CommentsSection.tsx': REASON,
   'components/features/knowledge/comments/useAnnotationActions.ts': REASON,
   'components/features/knowledge/notes/PageNotesLayer.tsx': REASON,
