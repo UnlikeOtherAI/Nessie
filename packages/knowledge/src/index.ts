@@ -29,8 +29,25 @@ export {
   canReadSpace,
   canWriteSpace,
   loadSpaceViewer,
+  pageSharedWithUser,
   readableKnowledgeSpaceWhere,
+  sharedPageIdsSql,
 } from './access.js'
+export type { KnowledgePageShareAccessLevel } from './access.js'
+export {
+  countPageShares,
+  findPageShare,
+  listPageShares,
+  listSharesForGrantee,
+  mapPageShare,
+  pageAncestorPaths,
+  removePageShare,
+  setPageShareAccess,
+  sharedSubtreePageIds,
+  upsertPageShare,
+  viewerHoldsPageShare,
+} from './page-shares.js'
+export type { GranteeShareRow, KnowledgePageShareRow } from './page-shares.js'
 // Mapper + include shape re-exported so callers that need to list pages by a
 // filter the KnowledgeProvider interface doesn't expose (e.g. by taskId) can
 // query knowledgePage directly and still get the same KnowledgePageRecord shape.
