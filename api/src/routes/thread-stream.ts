@@ -13,7 +13,7 @@ import type { RouteDeps } from './types.js'
 // WS/user-SSE branches in notification-delivery.ts) rather than only once at
 // connect time.
 export const registerThreadStreamRoute = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { config, allowedCorsOrigins, prisma, realtimeHub, requireActorContext } = deps
+  const { config, allowedCorsOrigins, prisma, realtimeHub, requireActorContext, teamHostBaseDomain } = deps
 
   app.get('/api/threads/:threadId/stream', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -39,6 +39,7 @@ export const registerThreadStreamRoute = (app: FastifyInstance, deps: RouteDeps)
         origin: request.headers.origin,
         allowedOrigins: allowedCorsOrigins,
         mode: config.mode,
+        teamHostBaseDomain,
       }),
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',

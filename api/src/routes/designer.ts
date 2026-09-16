@@ -20,6 +20,7 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
     prisma,
     requireActorContext,
     sharedModelClient,
+    teamHostBaseDomain,
   } = deps
 
   app.post('/api/designer/chat', async (request, reply) => {
@@ -72,6 +73,7 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
         origin: request.headers.origin,
         allowedOrigins: allowedCorsOrigins,
         mode: config.mode,
+        teamHostBaseDomain,
       }),
     )
     return reply
