@@ -374,6 +374,11 @@ enum ChannelVisibility {
   private
 }
 
+enum ProjectVisibility {
+  public
+  protected
+}
+
 enum MessageRole {
   user
   assistant
@@ -1599,6 +1604,10 @@ model Project {
   // What the project is for, in a sentence. One of the three facts (with its
   // name and members) a person outside the project may read.
   description              String?
+  // Who outside the project may see it. `public` = every organisation member
+  // sees the full project; `protected` = non-members see only name, description
+  // and members. Existing projects were backfilled to `public`.
+  visibility               ProjectVisibility         @default(public) @map("visibility")
   // Soft delete. `DELETE /api/projects/:projectId` stamps this (and its
   // channels' `deletedAt`) instead of removing rows, so the data stays intact
   // for a future restore. Every project read filters `deletedAt: null`.
@@ -2928,6 +2937,10 @@ model Agent {
   teamId                         String?                         @map("team_id") @db.Uuid
   createdAt                      DateTime                        @default(now()) @map("created_at")
   updatedAt                      DateTime                        @updatedAt @map("updated_at")
+  // Soft delete. The row stays for audit history; the delete route revokes
+  // every live capability (bindings, triggers, runs, grants, mailbox) in one
+  // transaction. `buildVisibleAgentWhere` filters `deletedAt: null`.
+  deletedAt                      DateTime?                       @map("deleted_at")
   parentAgent                    Agent?                          @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
   childAgents                    Agent[]                         @relation("AgentHierarchy")
   avatarAttachment               Attachment?                     @relation("AgentAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
@@ -7499,6 +7512,9 @@ model AgentMailbox {
   createdByUserId String?                @map("created_by_user_id") @db.Uuid
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
+  // Soft delete. The address is held, not released for reuse, so mail sent to a
+  // person's old agent cannot silently reach a new one bound to the same address.
+  deletedAt       DateTime?              @map("deleted_at")
 
   organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   agent         Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
