@@ -37,4 +37,11 @@
  * toggle so the grid keeps the height; the formula bar and the sheet tabs stay.
  * The attribute is set by the pane, never by a media query here, so a person
  * who opened Format keeps it open while rotating. */
-.spreadsheet-widget-host[data-format-bar='hidden'] .ic-toolbar-container { display: none; }
+/* `--toolbar-height` is the library's own mechanism, not a workaround: the
+ * worksheet area is absolutely positioned at `top: var(--toolbar-height)`, and
+ * IronCalc collapses the toolbar for a read-only workbook by zeroing exactly
+ * this token. Hiding the wrapper alone left the grid pushed down by 40px --
+ * precisely the height the toggle exists to give back on a 390px phone -- and
+ * only a screenshot showed it, because the wrapper itself measured zero. */
+.spreadsheet-pane [data-format-bar='hidden'] .ic-widget { --toolbar-height: 0px; }
+.spreadsheet-pane [data-format-bar='hidden'] .ic-toolbar-wrapper { display: none; }

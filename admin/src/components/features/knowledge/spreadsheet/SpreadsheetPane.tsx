@@ -120,7 +120,11 @@ export const SpreadsheetPane = ({
   const filterAnchor = useRef<HTMLButtonElement>(null)
   const findAnchor = useRef<HTMLButtonElement>(null)
   const columnAnchor = useRef<HTMLButtonElement | null>(null)
-  const scrollContainer = useRef<HTMLElement | null>(null)
+  const gridBounds = useRef<HTMLDivElement>(null)
+  // State, not a ref: IronCalc's scroll element only exists after the widget
+  // mounts, and a ref assignment schedules no render, so the overlay would
+  // measure once against `null` and never look again.
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null)
 
   const filterQuery = useSpreadsheetFilter(page.id, sheet)
   const filterModel = filterQuery.data ?? null
@@ -185,11 +189,11 @@ export const SpreadsheetPane = ({
   // The scroll element the overlays measure against appears only once IronCalc
   // has mounted its worksheet, so it is looked up after the session arrives.
   useEffect(() => {
-    if (!session) {
-      scrollContainer.current = null
-      return
-    }
-    scrollContainer.current = document.querySelector<HTMLElement>('.ic-worksheet-sheet-container')
+    setScrollContainer(
+      session
+        ? gridBounds.current?.querySelector<HTMLElement>('.ic-worksheet-sheet-container') ?? null
+        : null,
+    )
   }, [session, revision])
 
   const headerLabels = useMemo(() => {
@@ -342,7 +346,11 @@ export const SpreadsheetPane = ({
           </Notice>
         </div>
       ) : bootstrap ? (
-        <div className="relative flex min-h-0 flex-1 flex-col" data-format-bar={formatBarVisible || !phone ? 'shown' : 'hidden'}>
+        <div
+          className="relative flex min-h-0 flex-1 flex-col"
+          data-format-bar={formatBarVisible || !phone ? 'shown' : 'hidden'}
+          ref={gridBounds}
+        >
           <WorkbookHost
             bootstrap={bootstrap}
             canEdit={canWrite && !engineMigrating}
@@ -353,7 +361,8 @@ export const SpreadsheetPane = ({
           {filterModel ? (
             <FilterHeaderButtons
               activeColumns={new Set(Object.keys(filterModel.columns).map(Number))}
-              containerRef={scrollContainer}
+              bounds={gridBounds.current}
+              container={scrollContainer}
               model={model}
               onOpen={(column, anchor) => {
                 columnAnchor.current = anchor

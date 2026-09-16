@@ -101,24 +101,26 @@ export const FilterChipsBar = ({
           </button>
         </span>
       ))}
-      <button
-        className="admin-button admin-button-secondary admin-button-compact ml-auto gap-1.5"
-        data-testid="spreadsheet-filter-reapply"
-        disabled={pending}
-        onClick={onReapply}
-        title="Re-evaluate the criteria against the current values"
-        type="button"
-      >
-        <FontAwesomeIcon icon={faRotate} />
-        Re-apply
-      </button>
-      <button
-        className="admin-button admin-button-secondary admin-button-compact"
-        onClick={onClearAll}
-        type="button"
-      >
-        Clear all
-      </button>
+      <div className="ml-auto flex shrink-0 gap-1.5">
+        <button
+          className="admin-button admin-button-secondary admin-button-compact gap-1.5"
+          data-testid="spreadsheet-filter-reapply"
+          disabled={pending}
+          onClick={onReapply}
+          title="Re-evaluate the criteria against the current values"
+          type="button"
+        >
+          <FontAwesomeIcon icon={faRotate} />
+          Re-apply
+        </button>
+        <button
+          className="admin-button admin-button-secondary admin-button-compact"
+          onClick={onClearAll}
+          type="button"
+        >
+          Clear all
+        </button>
+      </div>
     </div>
   )
 }
