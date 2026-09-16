@@ -209,25 +209,34 @@ export const runTransferTransaction = async (
       descendants,
       sharesEnded: moved.endedShares.length,
       targetScope,
-      auditEvents: rootIds.map((id, index) => ({
-        action: 'kb.page.moved' as AuditAction,
-        resourceId: id,
-        metadata: {
-          fromSpaceId: input.sourceSpace.id,
-          toSpaceId: targetScope.id,
-          parentPageId: input.parentPageId,
-          position: startPosition + index,
-          descendants,
-          // `kb.page.unshared` is not yet in the audit vocabulary (Wave 1B owns
-          // adding it with the sharing surface). Until it is, the shares a move
-          // ended are recorded here so the fact is never simply lost.
-          endedShares: moved.endedShares.map((share) => ({
+      auditEvents: [
+        ...rootIds.map((id, index) => ({
+          action: 'kb.page.moved' as AuditAction,
+          resourceId: id,
+          metadata: {
+            fromSpaceId: input.sourceSpace.id,
+            toSpaceId: targetScope.id,
+            parentPageId: input.parentPageId,
+            position: startPosition + index,
+            descendants,
+            sharesEnded: moved.endedShares.length,
+          },
+        })),
+        // A move out of a personal space ends every share on the subtree. That
+        // is a revocation, so it is told in the sharing surface's own words
+        // (`by: 'moved'` is the third voice beside 'sharer' and 'grantee'),
+        // against the page that actually lost the grant — not summarised in
+        // the mover's metadata, where no audit read for a grantee would find it.
+        ...moved.endedShares.map((share) => ({
+          action: 'kb.page.unshared' as AuditAction,
+          resourceId: share.pageId,
+          metadata: {
             granteeUserId: share.granteeUserId,
             spaceId: share.spaceId,
             by: 'moved',
-          })),
-        },
-      })),
+          },
+        })),
+      ],
     }
   }
 
