@@ -12,12 +12,19 @@
  * conversation and lives here because the project Overview shows its
  * dashboards the same way, as tiles in the navigation grid.
  *
- * The inner canvas is laid out at a fixed `canvasWidth` and then scaled to the
- * frame, rather than being rendered at the frame's real width. A dashboard's
- * grid reflows across breakpoints, so rendering it 300px wide would give the
- * single-column phone layout shrunk — not a small picture of the dashboard the
- * person will open. Laying it out wide and scaling it down keeps the
- * arrangement they are looking for.
+ * The inner canvas is laid out at a page width and then scaled, rather than
+ * being rendered at the frame's real width. A dashboard's grid reflows across
+ * breakpoints, so rendering it 300px wide would give the single-column phone
+ * layout shrunk — not a small picture of the dashboard the person will open.
+ * Laying it out at page width and scaling it down is what makes the small one
+ * a miniature of the big one.
+ *
+ * `fit` decides what "scaled down" means. Without it the canvas is scaled to
+ * the frame's width and whatever does not fit vertically is clipped, which is
+ * what a conversation card wants: a bounded strip off the top. With it the
+ * scale is whichever of the two axes runs out first, so the **whole**
+ * dashboard lands inside the rectangle and is centred in the slack — a card on
+ * the Overview shows all of it or it is not a picture of it.
  */
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -29,14 +36,10 @@ import { DashboardCanvas } from './DashboardCanvas'
 /**
  * The width the inner canvas is laid out at before scaling, and therefore
  * which breakpoint its grid reflows to (`DashboardGrid`: lg ≥ 1200, md ≥ 768,
- * sm below). `PREVIEW` is `sm`-wide on purpose: a tile is a few hundred pixels
- * across, and laying a dashboard out at `lg` inside one leaves its widgets a
- * legible-to-nobody smudge in the top-left corner with dead space around it.
- * At `sm` the widgets fill the frame, which is what makes a thumbnail read as
- * the dashboard it opens.
+ * sm below). This is page territory: the miniature has to be the arrangement
+ * the person gets when they open it, not a narrower one they have never seen.
  */
 export const SCALED_CANVAS_WIDTH = 1120
-export const TILE_CANVAS_WIDTH = 640
 
 const widgetKindsOf = (dashboard: DashboardDetailRecord): Map<string, DashboardWidgetKind> =>
   new Map(dashboard.widgets.map((widget) => [widget.id, widget.kind as DashboardWidgetKind]))
@@ -54,7 +57,8 @@ type ScaledDashboardProps = {
    * The frame takes its height from CSS rather than measuring its content —
    * for a tile in a grid, whose row decides. A measured height would make the
    * tile the tallest thing in its row and stretch every fixed doorway beside
-   * it to match.
+   * it to match. Implies `fit`: a frame whose height is given is a rectangle
+   * the dashboard is fitted into.
    */
   fill?: boolean
   /** Tallest the frame may grow, in CSS pixels. Ignored when `fill` is set. */
@@ -82,15 +86,35 @@ export const ScaledDashboard = ({
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const [canvasHeight, setCanvasHeight] = useState(0)
   const [frameWidth, setFrameWidth] = useState(0)
+  const [frameHeight, setFrameHeight] = useState(0)
   const widgetKinds = useMemo(() => widgetKindsOf(dashboard), [dashboard])
 
-  const scale = Math.min(maxScale, frameWidth / canvasWidth || maxScale)
+  const widthScale = frameWidth / canvasWidth || maxScale
+  // Whichever axis runs out first. Before the canvas has been measured its
+  // height is 0, which would divide to Infinity and briefly render the
+  // dashboard at full size, so the height only joins the decision once it is
+  // real.
+  const fitScale = fill && canvasHeight > 0 && frameHeight > 0
+    ? Math.min(widthScale, frameHeight / canvasHeight)
+    : widthScale
+  // `maxScale` keeps a wide conversation card from rendering a near-full-size
+  // copy. A fitted frame has no such risk — fitting *is* the constraint — and
+  // capping it there would leave a small dashboard adrift in its rectangle.
+  const scale = fill ? fitScale : Math.min(maxScale, fitScale)
   const height = fill
     ? undefined
     : Math.min(maxHeight ?? Number.POSITIVE_INFINITY, Math.max(minHeight, Math.ceil(canvasHeight * scale)))
 
+  // Centred in whatever slack the other axis has, so a wide dashboard in a
+  // tall frame is not pinned to the top-left corner of it.
+  const offsetX = fill ? Math.max(0, (frameWidth - canvasWidth * scale) / 2) : 0
+  const offsetY = fill ? Math.max(0, (frameHeight - canvasHeight * scale) / 2) : 0
+
   const measure = useCallback(() => {
-    if (frameRef.current) setFrameWidth(frameRef.current.clientWidth)
+    if (frameRef.current) {
+      setFrameWidth(frameRef.current.clientWidth)
+      setFrameHeight(frameRef.current.clientHeight)
+    }
     if (canvasRef.current) setCanvasHeight(canvasRef.current.scrollHeight)
   }, [])
 
@@ -125,6 +149,8 @@ export const ScaledDashboard = ({
         inert
         ref={canvasRef}
         style={{
+          left: offsetX,
+          top: offsetY,
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
           width: canvasWidth,
