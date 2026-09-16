@@ -65,9 +65,6 @@ const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ defaul
 const ExecutorsPage = lazy(() =>
   import('./pages/ExecutorsPage').then((m) => ({ default: m.ExecutorsPage })),
 )
-const ApprovalsPage = lazy(() =>
-  import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
-)
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
 const ChannelProjectOverviewPage = lazy(() =>
   import('./pages/channels/ChannelProjectOverviewPage').then((m) => ({
@@ -516,10 +513,6 @@ export const router = createBrowserRouter([
       {
         path: '/audit',
         element: lazyElement(AuditLogPage, 'list'),
-      },
-      {
-        path: '/approvals',
-        element: lazyElement(ApprovalsPage, 'list'),
       },
       {
         path: '/alerts',

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import type { PgRealtimeTransport } from '@nessie/runtime'
+import { openApprovalCard } from '../run/approval-card.js'
 import { loadConfig } from '@nessie/config'
 import { writeAuditEntry } from '@nessie/db'
 import {
@@ -174,6 +176,10 @@ export const generalizeDemonstration = async (
     model: { id: string; model: string | null; provider: string | null },
   ) => Promise<string>,
   ledgerIdentity?: LedgerIdentityService | null,
+  // Optional so the existing tests, which call this with four arguments and
+  // assert on rows, keep compiling: without a transport the proposal's card is
+  // still written, it simply is not announced live.
+  realtimeTransport?: PgRealtimeTransport,
 ): Promise<void> => {
   const demonstration = await prisma.demonstration.findFirst({
     include: {
@@ -246,7 +252,13 @@ export const generalizeDemonstration = async (
       const draft = normalizeDemonstrationDraft(demonstration, readJson(output ?? ''))
       const validationIssues = await validateWorkflowGraph(prisma, context, draft.graph)
       if (validationIssues.length > 0) throw new Error(validationIssues.join(' '))
-      const template = await prisma.$transaction(async (tx) => {
+      // The proposal travels out of the transaction rather than being written
+      // inside it: a card is a message other replicas are told about, and
+      // nothing is announced while the transaction is still deciding whether
+      // the proposal exists at all.
+      type ProposedWorkflow = { approvalId: string; approvers: string[]; name: string }
+      const committed = await prisma.$transaction(async (tx) => {
+        let proposed: ProposedWorkflow | null = null
         const changed = await tx.demonstration.updateMany({
           data: { generalizationError: null, status: 'generalized' },
           where: { id: demonstration.id, status: 'captured' },
@@ -299,18 +311,41 @@ export const generalizeDemonstration = async (
             select: { id: true },
           })
           // Owners answer this one, so owners are told. Thirty minutes is a
-          // short window to notice a badge in.
-          await createApprovalUserAlerts(tx, {
-            actorAgentId: demonstration.agentId,
+          // short window to notice a badge in — and there is no badge any more,
+          // so the card raised beside this alert is the whole surface.
+          proposed = {
             approvalId: approval.id,
-            channelId: demonstration.channelId,
-            organizationId: demonstration.organizationId,
-            requiredApproverRole: 'owner',
-          })
+            approvers: await createApprovalUserAlerts(tx, {
+              actorAgentId: demonstration.agentId,
+              approvalId: approval.id,
+              channelId: demonstration.channelId,
+              organizationId: demonstration.organizationId,
+              requiredApproverRole: 'owner',
+            }),
+            name: created.name,
+          }
         }
-        return created
+        return { proposed, template: created }
       })
+      const template = committed?.template ?? null
+      const proposed = committed?.proposed ?? null
       if (!template) return
+      if (proposed && realtimeTransport) {
+        await openApprovalCard({ prisma, realtimeTransport }, {
+          agentId: demonstration.agentId,
+          approverUserIds: proposed.approvers,
+          content: `I worked out a repeatable workflow from what we just did — **${proposed.name}**. `
+            + 'It needs an owner\'s approval before I can use it.',
+          gate: {
+            action: 'workflow.template.adopt',
+            approvalId: proposed.approvalId,
+            status: 'pending',
+          },
+          organizationId: demonstration.organizationId,
+          originChannelId: demonstration.channelId,
+          originThreadId: demonstration.threadId,
+        })
+      }
       await writeAuditEntry(prisma, {
         action: 'demonstration.generalized', actorId: demonstration.startedByUserId, actorType: 'user',
         channelId: demonstration.channelId, metadata: { workflowTemplateId: template.id },

@@ -151,7 +151,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     depth: 1,
     intent: { consume: ['uoa_billing'] },
     parentOf: toAdmin,
-    pattern: /^\/(?:audit|approvals|tokens|policy)$/,
+    pattern: /^\/(?:audit|tokens|policy)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

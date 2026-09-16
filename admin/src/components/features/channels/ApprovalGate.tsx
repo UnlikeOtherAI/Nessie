@@ -1,5 +1,6 @@
-import { z } from 'zod'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ApprovalGateMetadataSchema } from '@nessie/schemas'
 
 import {
   useApprovalRequest,
@@ -14,12 +15,8 @@ import { useToasts } from '../../../providers/ToastProvider'
 import { TabBar } from '../../primitives/TabBar'
 import { Dialog } from '../../shared/Dialog'
 import { MailboxSendApprovalPreview } from './MailboxSendApprovalPreview'
-
-const ApprovalGateSchema = z.object({
-  approvalId: z.string().min(1),
-  status: z.enum(['pending', 'approved', 'rejected', 'expired']),
-  toolName: z.string().min(1),
-})
+import type { ApprovalGateMetadata } from '@nessie/schemas'
+import { ActorName, useActorNames } from '../../shared/ActorName'
 
 type Resolution = 'approved' | 'rejected'
 
@@ -30,9 +27,22 @@ const resolutionCopy: Record<Resolution, { action: string; title: string }> = {
 
 const readApprovalGate = (
   metadata: Record<string, unknown> | undefined,
-): z.infer<typeof ApprovalGateSchema> | null => {
-  const parsed = ApprovalGateSchema.safeParse(metadata?.approvalGate)
+): ApprovalGateMetadata | null => {
+  const parsed = ApprovalGateMetadataSchema.safeParse(metadata?.approvalGate)
   return parsed.success ? parsed.data : null
+}
+
+/**
+ * What the card says when the server authored no headline.
+ *
+ * A tool gate always carries one; the three kinds an agent proposes do not,
+ * because until this card existed they had no surface to say anything on.
+ */
+const fallbackHeadline = (gate: ApprovalGateMetadata): string => {
+  if (gate.action === 'knowledge.page.publish') return 'A page is waiting to be published.'
+  if (gate.action === 'agent.todo_template.publish') return 'A to-do template is waiting for approval.'
+  if (gate.action === 'workflow.template.adopt') return 'A learned workflow is waiting for approval.'
+  return `The agent is waiting before it can run ${gate.toolName ?? gate.action}.`
 }
 
 const DURATIONS: { value: ApprovalDuration; label: string }[] = [
@@ -62,7 +72,7 @@ const readString = (
  * frozen draft before approval, because a truncated argument summary cannot
  * provide informed consent for blind copies or the body.
  */
-export const RunApprovalGate = ({
+export const ApprovalGate = ({
   metadata,
 }: {
   metadata: Record<string, unknown> | undefined
@@ -89,6 +99,8 @@ export const RunApprovalGate = ({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [duration, setDuration] = useState<ApprovalDuration>('30d')
   const [showDetails, setShowDetails] = useState(false)
+  const navigate = useNavigate()
+  const resolveActor = useActorNames({ people: false })
 
   if (!gate) return null
 
@@ -102,6 +114,18 @@ export const RunApprovalGate = ({
   const boundaryReason = readString(context, 'boundaryReason')
   const reason = approval.data?.reason
   const canApprove = !isMailSend || Boolean(mailDraft.data)
+  // Which agent is asking. The same resolution the audit trail uses, for the
+  // same reason: an id answers nothing about whether to say yes.
+  const asker = approval.data?.agentId
+    ? resolveActor('agent', approval.data.agentId)
+    : null
+  const pageId = readString(context, 'pageId')
+  const spaceId = readString(context, 'spaceId')
+  const openable = gate.action === 'knowledge.page.publish' && pageId && spaceId
+    ? { href: `/knowledge-base?spaceId=${spaceId}&pageId=${pageId}`, label: 'Open page' }
+    : gate.action === 'agent.todo_template.publish' && approval.data?.agentId
+      ? { href: `/agents/${approval.data.agentId}?tab=todos`, label: 'Open to-dos' }
+      : null
 
   const submit = () => {
     resolve.mutate(
@@ -124,13 +148,14 @@ export const RunApprovalGate = ({
   return (
     <section
       className="mt-2 max-w-2xl rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-soft)] p-3"
-      data-testid="run-approval-gate"
+      data-testid="approval-gate"
     >
       <p className="text-[11px] font-semibold uppercase text-[color:var(--tx3)]">
         Needs your approval
+        {asker ? <span className="ml-1 normal-case font-normal">· <ActorName actor={asker} /></span> : null}
       </p>
       <p className="mt-1 text-sm font-semibold text-[color:var(--tx)]">
-        {headline ?? reason ?? `The agent is waiting before it can run ${gate.toolName}.`}
+        {headline ?? reason ?? fallbackHeadline(gate)}
       </p>
       {audience ? (
         <p className="mt-1 text-sm font-semibold leading-5 text-[color:var(--tx2)]">
@@ -146,7 +171,7 @@ export const RunApprovalGate = ({
         <div className="mt-2">
           <button
             className="text-[11px] font-semibold text-[color:var(--tx3)]"
-            data-testid="run-approval-gate-details"
+            data-testid="approval-gate-details"
             onClick={() => setShowDetails((value) => !value)}
             type="button"
           >
@@ -157,6 +182,21 @@ export const RunApprovalGate = ({
               {details}
             </pre>
           ) : null}
+        </div>
+      ) : null}
+      {/* The doorway to the thing being decided. It used to sit on the
+          approvals list; it belongs with the question, because "should this be
+          published" is not answerable without being able to open it. */}
+      {openable ? (
+        <div className="mt-2">
+          <button
+            className="admin-button admin-button-secondary admin-button-compact"
+            data-testid="approval-gate-open-subject"
+            onClick={() => navigate(openable.href)}
+            type="button"
+          >
+            {openable.label}
+          </button>
         </div>
       ) : null}
       {active && isMailSend && mailDraft.data ? (
@@ -193,7 +233,7 @@ export const RunApprovalGate = ({
                 ? 'bg-[var(--accent)] text-[var(--on-accent)]'
                 : 'border border-[var(--danger-border)] bg-[var(--panel)] text-[var(--danger-text)]',
             ].join(' ')}
-            data-testid="run-approval-gate-open-confirm"
+            data-testid="approval-gate-open-confirm"
             disabled={resolve.isPending || (resolution === 'approved' && !canApprove)}
             onClick={() => setConfirmOpen(true)}
             type="button"
@@ -230,7 +270,7 @@ export const RunApprovalGate = ({
             </select>
             <button
               className="admin-button admin-button-secondary"
-              data-testid="run-approval-gate-always"
+              data-testid="approval-gate-always"
               disabled={!canApprove || grant.isPending || resolve.isPending}
               onClick={() => {
                 grant.mutate(

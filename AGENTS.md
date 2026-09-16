@@ -287,6 +287,13 @@ when one changes, the same turn updates it, not this section.
   grants preserve the requesting person's access and the research disclosure
   basis; see [global agents](docs/standards/global-agents.md) and the
   [sales workflow verification](docs/testing/sales-agent-collaboration.md).
+- **An approval is answered in the conversation it came from, and there is no
+  list of them.** Every path that opens a request writes a card into a thread;
+  a delegated run needs no special handling because a sub-agent run shares its
+  parent's thread, and an approver who cannot see that conversation gets the
+  card in their own Personal Assistant one. Read
+  [`docs/approval-gating-spec.md`](docs/approval-gating-spec.md) → "Core rules"
+  before adding an approval kind or a surface that lists them.
 - **Disclosure boundaries — what an agent read decides who may read its answer.**
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails
