@@ -14,11 +14,19 @@ export type StorageUsageScope = {
 // Thumbnails get their own signed events rather than being folded into the
 // original's delta: usage is the sum of every row, so a preview's bytes stay
 // individually auditable and its +/- pair nets to zero on delete.
+//
+// `move.out`/`move.in` are the same idea applied to a cross-space transfer:
+// the bytes did not move but their scope did, and usage per project/space is
+// the sum of the events, so a move writes one negative event in the old scope
+// and one positive event in the new. The pair sums to zero by construction, so
+// the organisation total is unchanged and a move runs no quota check.
 export type StorageStoreOperation =
   | 'store'
   | 'delete'
   | 'store.thumbnail'
   | 'delete.thumbnail'
+  | 'move.out'
+  | 'move.in'
 
 /**
  * Record a signed at-rest byte delta. FileService is the sole writer, making
