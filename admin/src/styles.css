@@ -2371,9 +2371,16 @@ html[data-desktop-platform='linux'] #root {
   max-width: 100%;
 }
 
+/* Fill the inline axis, and *only* the inline axis. `width: 100%` is the whole
+   job: in a row the default `flex-basis: auto` resolves to that declared width,
+   so the shell already spans its container without a `flex-grow`. Growing is
+   worse than redundant — a flex container's main axis is whichever way it runs,
+   and in the two mailbox asides (`flex-col`) that is vertical, so a grown shell
+   ate every pixel the conversation list was not already using: a 32px strip
+   rendered 363px tall in a 420px column, squeezing a one-conversation list into
+   a sliver. The block size belongs to the strip, never to the leftover space. */
 .tabbar-shell-full {
   width: 100%;
-  flex: 1 1 auto;
 }
 
 /* Below the width its labels need, the strip is a dropdown naming the current

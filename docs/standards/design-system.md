@@ -140,6 +140,16 @@ summary and points here; **this file is the rule**.
   Full-width strips therefore floor each item at `min-width: max-content`:
   without it a shortage is absorbed by crushing labels into each other and the
   strip never reports the overflow that would turn it into a dropdown.
+  **`fullWidth` means the inline axis and only the inline axis.**
+  `.tabbar-shell-full` is `width: 100%` and carries no `flex-grow`: a row needs
+  none, because the default `flex-basis: auto` already resolves to that width,
+  while a flex **column** reads grow along its own main axis — which is
+  vertical. Both mailbox asides are `flex-col`, and a grown shell there took
+  every pixel the conversation list was not already using: a 32px strip
+  rendered 363px tall in a 420px column and the list under it became a sliver.
+  `pnpm --filter @nessie/admin test:e2e:tabbar-full` measures the shell in
+  every container a call site puts it in; a new `fullWidth` call site adds its
+  container to that fixture.
 - **One identity picture, one shape, one source.** Every avatar in the admin is
   `components/primitives/IdentityTile.tsx`, wrapped by the resolving primitive
   for its kind; a call site says what it depicts and never assembles a tile. Its
