@@ -48,7 +48,11 @@ export type LatestPageRow = KnowledgeVirtualRow
 
 type LatestSqlRow = {
   id: string
-  kind: 'document' | 'file'
+  // Every kind the query can return. Typed `'document' | 'file'` it still
+  // *returned* `'spreadsheet'` — a raw query is not checked against this — and
+  // the row then failed `KnowledgeVirtualRowSchema.parse`, so one spreadsheet
+  // among the newest pages turned all of Latest into a 500.
+  kind: 'document' | 'file' | 'spreadsheet'
   title: string
   status: KnowledgePageStatus
   publishedVersionId: string | null
