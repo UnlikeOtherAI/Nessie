@@ -181,16 +181,32 @@ export const MailboxDiscoveryResolution = ({
     )
   }
 
-  if (screen !== 'password' || !hasTrustedMailboxConfiguration(result)) return null
+  if (screen !== 'password') return null
   const appPassword = result.authentication.strategy === 'app_password'
+  /**
+   * The password screen no longer requires a discovered configuration. When we
+   * have one it is sent and the connect is a single exact attempt; when we do
+   * not, this same screen asks for the password anyway and the server finds the
+   * endpoints with it. That is the whole point of starting here: a domain we
+   * have never seen is not a reason to open a ten-field form before anybody has
+   * even tried to log in.
+   */
+  const trusted = hasTrustedMailboxConfiguration(result)
   return (
     <form className="grid gap-5" onSubmit={onConnect}>
       <div className="grid gap-1">
         <h3 className="text-lg font-semibold text-[color:var(--tx)]">
-          {appPassword ? 'Use an app-specific password' : `Sign in to ${result.ui.providerName}`}
+          {appPassword
+            ? 'Use an app-specific password'
+            : trusted ? `Sign in to ${result.ui.providerName}` : 'Enter your password'}
         </h3>
         <p className="text-sm text-[color:var(--tx2)]">{address}</p>
         {appPassword ? <AppPasswordGuidance result={result} /> : null}
+        {!trusted && !appPassword ? (
+          <p className="text-sm text-[color:var(--tx2)]">
+            We will find your mail server settings when we connect.
+          </p>
+        ) : null}
       </div>
       <MailboxConnectionIdentityFields
         label={label}

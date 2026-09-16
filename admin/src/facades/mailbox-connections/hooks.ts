@@ -23,19 +23,28 @@ export const useMailboxConnections = () => {
   })
 }
 
+/**
+ * Every server field is optional, matching the route: the form sends what the
+ * person has actually told it and the server resolves the rest by trying the
+ * standard endpoints with the credential. Sending a field is an instruction, so
+ * the form must leave one out rather than fill it with a guess of its own —
+ * a placeholder port posted as a value is indistinguishable from a chosen one.
+ */
 export type ConnectMailboxInput = {
   scope: MailboxConnectionScope
   teamId?: string | null
   label: string
   address: string
-  username: string
+  username?: string
   password: string
-  imapHost: string
-  imapPort: number
-  imapSecurity: MailboxTransportSecurity
-  smtpHost: string
-  smtpPort: number
-  smtpSecurity: MailboxTransportSecurity
+  /** One hostname for both legs. A leg's own host wins over it. */
+  server?: string
+  imapHost?: string
+  imapPort?: number
+  imapSecurity?: MailboxTransportSecurity
+  smtpHost?: string
+  smtpPort?: number
+  smtpSecurity?: MailboxTransportSecurity
 }
 
 export const useConnectMailbox = () => {
@@ -44,6 +53,16 @@ export const useConnectMailbox = () => {
   return useMutation({
     mutationFn: (input: ConnectMailboxInput) =>
       apiClient.post<MailboxConnectionRecord>('/api/mailbox-connections', input),
+    /**
+     * The connect dialog is this mutation's failure surface, and the only
+     * caller. It reads the per-leg diagnosis off the refusal and turns it into
+     * the next question, so declaring the handler here keeps the app-wide
+     * "Something went wrong" toast floor from firing as well: that floor checks
+     * `useMutation`'s own `onError` and cannot see a per-call one, so without
+     * this a generic toast lands on top of the sentence that says which of the
+     * two servers we could not reach.
+     */
+    onError: () => undefined,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: mailboxConnectionKeys.list })
     },

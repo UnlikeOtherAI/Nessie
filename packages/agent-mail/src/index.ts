@@ -135,13 +135,29 @@ export {
 
 export {
   MAILBOX_PROBE_BUDGET_MS,
+  mailboxProbePortAllowed,
   probeMailboxCapability,
+  probeMailboxLeg,
   runImapCapabilityProbe,
   runSmtpCapabilityProbe,
   type MailboxCapabilityProbe,
   type MailboxProbeOptions,
   type MailboxProbeOutcome,
+  type MailboxProbeProtocol,
 } from './mailbox-probe.js'
+
+export {
+  MAILBOX_RESOLVE_BUDGET_MS,
+  resolveMailboxEndpoints,
+  type MailboxLegFailure,
+  type MailboxLegProtocol,
+  type MailboxLegRequest,
+  type MailboxLegResolution,
+  type MailboxResolution,
+  type MailboxResolveDeps,
+  type MailboxResolveOptions,
+  type MailboxResolveRequest,
+} from './mailbox-resolve.js'
 
 export {
   MAILBOX_ISPDB,

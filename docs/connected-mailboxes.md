@@ -45,23 +45,40 @@ Two scopes, and the difference matters:
 | Which runs reach it | Only ones acting **as you** — you asking directly, or a schedule you set up under your own account | Any run by an agent you gave access to |
 | Who can manage it | You. Not your org owner, not an admin | An owner or an admin |
 
-Start with the mailbox address. Nessie recognises the common secure sign-in
-routes and, for a reviewed IMAP/SMTP configuration, keeps server names, ports
-and transport choices out of the normal path. A personal Google or Microsoft
-account goes straight to its provider's sign-in page when that connector is
-available. A shared mailbox never uses that personal OAuth route. If a provider
-requires an app-specific password, Nessie says so before showing the one password
-field. Advanced settings are the recovery path when secure settings cannot be
-confirmed or you choose to override them.
+Start with the mailbox address. A personal Google or Microsoft account goes
+straight to its provider's sign-in page when that connector is available; a
+shared mailbox never uses that personal OAuth route. Everything else asks for
+one password, because that is the only thing Nessie cannot work out for itself.
+If a provider requires an app-specific password, Nessie says so before showing
+that field.
+
+Server names, ports and transport choices stay out of the way, including for a
+domain Nessie has never seen: given the password, it tries the standard mail
+endpoints for the address and uses whichever one answers. **You are only ever
+asked for what could not be worked out, one question at a time.**
+
+1. **Your password.** Enough on its own for most mailboxes, discovered or not.
+2. **One mail server** — `mail.company.com`, the name your provider gives you.
+   Nessie works out the ports and transports on it. You get this screen only if
+   nothing standard answered for your address.
+3. **The one server still missing.** If your inbox connected and sending did
+   not (or the reverse), Nessie says so and asks for that server alone. Your
+   password is already proven at this point, and the half that works is kept.
+4. **Advanced settings**, where every field is yours to set. Anything you leave
+   on *Automatic* is still worked out for you, so you can fill in only the part
+   you actually know.
+
+Each step keeps what you have already typed, and a wrong password never sends
+you down this ladder — it just says the password was not accepted.
 
 Discovery and connection are separate. The discovery request contains the
 address and scope, never a password, and runs the reviewed registry plus MX,
 mail/JMAP/Exchange-Online SRV, and HTTPS autoconfiguration probes within one
 short deadline. MX is only a provider clue. A same-domain or reviewed provider
-configuration can authorize the compact password screen; an external SRV
-target without corroboration, conflicting provider evidence, or an unknown
-domain cannot. JMAP may be recognised, but until its connector is installed the
-flow falls back to a trusted IMAP/SMTP configuration or Advanced settings.
+configuration is used as-is when connecting; an external SRV target without
+corroboration, conflicting provider evidence, or an unknown domain is not, and
+the endpoints are found at connect time instead. JMAP may be recognised, but
+until its connector is installed the flow falls back to IMAP/SMTP.
 
 Beyond the providers Nessie recognises by name, a reviewed snapshot of
 long-tail provider settings answers for roughly a hundred more mail domains —
@@ -76,10 +93,13 @@ snapshot, from SRV records, or from a domain's own autoconfiguration document �
 Nessie **talks to the mail server before offering you a password field**: a
 short unauthenticated exchange that carries no credential and only confirms the
 server is really there, speaks the protocol, and presents a certificate that
-checks out. A server that will not establish a verified TLS session sends you
-to Advanced settings instead of a password screen. A server that simply cannot
-be reached right now changes nothing: the settings stand, and connecting
-reports the problem if it persists. The providers Nessie recognises by name
+checks out. A server that will not establish a verified TLS session is not offered as a
+destination for your password. A server that simply cannot be reached right now
+changes nothing: the settings stand, and connecting reports the problem if it
+persists. The same rule covers the endpoints found at connect time — a host
+Nessie guessed from your address is checked this way *before* your password is
+sent to it, while a host you typed yourself is used directly, because you named
+it and the certificate is checked against that name on every connection. The providers Nessie recognises by name
 (Gmail, Outlook, iCloud, Fastmail, Yahoo, Zoho) skip this exchange, because
 their settings are reviewed constants rather than something just discovered.
 
