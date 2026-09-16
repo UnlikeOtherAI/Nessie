@@ -7,10 +7,18 @@ mod runtime;
 
 use runtime::{
     companion_availability, companion_root, daemon_status, executor_state_dir, forget_local_pairing,
-    has_deeptest_source_grant, has_executor_state, local_policy_summary, run_configure_workspace,
-    run_pair, start_daemon,
+    has_deeptest_source_grant, has_executor_state, local_policy_summary,
+    menu_bar_supervises_this_mac, run_configure_workspace, run_pair, start_daemon,
     stop_daemon,
 };
+use runtime::menu_bar::{
+    open_menu_bar_app, resolve_menu_bar_app, MENU_BAR_SUPERVISING_REASON,
+};
+/// Read by `lib.rs`'s configuration test: the path Desktop opens has to be the
+/// path the bundler wrote, and two constants in two file formats is exactly the
+/// pair that drifts.
+#[cfg(test)]
+pub(crate) use runtime::menu_bar::NESTED_MENU_BAR_APP_PATH;
 
 #[cfg(not(debug_assertions))]
 const PRODUCTION_API_BASE_URL: &str = "https://api.nessie.works";
@@ -24,6 +32,7 @@ const WORKSPACE_OPERATION_KEYS: [&str; 5] = [
 
 pub use runtime::{
     shutdown, ExecutorCompanionAvailability, ExecutorCompanionState, ExecutorCompanionStatus,
+    MenuBarCompanion,
 };
 
 /// Pairing, starting, stopping and reconfiguring all need a runtime this
@@ -163,7 +172,33 @@ pub fn executor_companion_status(
         reason,
         platform: crate::shell::desktop_platform(),
         executors,
+        menu_bar: MenuBarCompanion {
+            // The control is offered only when there is a bundle behind it. A
+            // sandboxed App Store build ships no nested copy, and a Mac with no
+            // install has nothing else to open.
+            openable: resolve_menu_bar_app().is_some(),
+            supervising: runtime::menu_bar::menu_bar_daemon_live(),
+        },
     })
+}
+
+/// Opens the Nessie Executor menu bar app, which is the surface that owns this
+/// Mac's executor once it is running. Desktop hands over rather than growing a
+/// second supervisor.
+///
+/// The bundle is chosen and verified in `runtime::menu_bar`: a standalone install
+/// must carry the pinned Developer ID signature or it is refused, and the nested
+/// copy is covered by this application's own signature, which the availability
+/// check has already verified. `require_local_control` is what makes that true —
+/// a build whose release provenance did not check out offers no executor controls
+/// at all, and this is one of them.
+#[tauri::command]
+pub fn executor_companion_open_menu_bar_app(
+    app: AppHandle, webview: WebviewWindow,
+) -> Result<(), String> {
+    assert_approved_companion_caller(&webview)?;
+    require_local_control(&app)?;
+    open_menu_bar_app()
 }
 
 fn paired_executors(
@@ -241,6 +276,11 @@ pub async fn executor_companion_start(
     assert_approved_companion_caller(&webview)?;
     require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
+    // Before the confirmation dialog, not after: asking a person to confirm an
+    // action that is then refused is worse than not offering it.
+    if menu_bar_supervises_this_mac(&state, &executor_id, &executor_state_dir(&app, &executor_id)?)? {
+        return Err(MENU_BAR_SUPERVISING_REASON.to_owned());
+    }
     if !confirm(
         app.clone(), "Start Nessie executor",
         "Start this locally paired executor. It can perform only operations that you have reviewed in Nessie and allowed in its local policy.".to_owned(),
@@ -262,6 +302,11 @@ pub async fn executor_companion_stop(
     assert_approved_companion_caller(&webview)?;
     require_local_control(&app)?;
     identifier(&executor_id, "executor id")?;
+    // A daemon this Desktop started stays Desktop's to stop, so this only refuses
+    // when the running daemon is not one of ours to end.
+    if menu_bar_supervises_this_mac(&state, &executor_id, &executor_state_dir(&app, &executor_id)?)? {
+        return Err(MENU_BAR_SUPERVISING_REASON.to_owned());
+    }
     if !confirm(
         app.clone(), "Stop Nessie executor",
         "Stopping this executor ends its daemon connection and asks every active browser or coding sandbox to tear down.".to_owned(),
