@@ -1,4 +1,12 @@
 import { SPREADSHEET_ERROR_CODES, type SpreadsheetAppliedBatch } from '@nessie/schemas'
+import { SpreadsheetEngineError } from '@nessie/spreadsheet'
+
+// Re-exported so a caller that already depends on this package can map an
+// engine refusal — a range over the write cap, a sheet that does not exist,
+// deleting a workbook's last sheet — without taking a direct dependency on
+// `@nessie/spreadsheet`. They are the caller's fault and belong in the same
+// mapping as the failures below.
+export { SpreadsheetEngineError }
 
 /**
  * The failure vocabulary the write door and the read paths share, carrying the

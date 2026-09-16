@@ -61,6 +61,7 @@ export {
 } from './engine.js'
 export { migrateSpreadsheetEngine, type EngineMigrateResult } from './engine-migrate.js'
 export {
+  SpreadsheetEngineError,
   SpreadsheetServiceError,
   batchRejected,
   catchUpExpired,

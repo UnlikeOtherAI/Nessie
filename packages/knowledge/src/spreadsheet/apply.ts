@@ -156,11 +156,25 @@ export const applySpreadsheetBatch = async (
   const result = await commitSpreadsheetBatch(deps, input, summary)
 
   if (!result.replayed && !result.noop && result.batch && deps.publish) {
-    await deps.publish('sheet.ops', {
-      pageId: input.pageId,
-      organizationId: input.organizationId,
-      data: result.batch,
-    })
+    // After the commit, and never fatal to it: the batch is durable by this
+    // point, and a client that missed the announcement sees a `seq` gap and
+    // repairs from the catch-up route. Failing the request here would tell
+    // the person their edit did not land when it did, and their retry would
+    // be answered by the idempotency key rather than by applying it twice —
+    // so the only thing a raise could buy is a misleading error.
+    await deps
+      .publish('sheet.ops', {
+        pageId: input.pageId,
+        organizationId: input.organizationId,
+        data: result.batch,
+      })
+      .catch((error: unknown) => {
+        console.error('[spreadsheet] batch publish failed', {
+          pageId: input.pageId,
+          seq: result.headSeq,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
   }
 
   if (!result.replayed && !result.noop && deps.enqueueCompaction) {
