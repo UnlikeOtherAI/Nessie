@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { UoaPendingTeamInvite } from '@nessie/schemas'
-import { useNavigate } from 'react-router-dom'
-
+import { useTeamSwitchNavigation } from './navigation'
 import { alertKeys } from '../alerts/keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -15,7 +14,7 @@ type AcceptTeamInvitationResponse = {
 /** One acceptance path shared by the switcher, bell, and full alerts page. */
 export const useAcceptTeamInvitation = () => {
   const apiClient = useApiClient()
-  const navigate = useNavigate()
+  const landInTeam = useTeamSwitchNavigation()
   const queryClient = useQueryClient()
   const { switchUoaTeam } = useAuthSession()
 
@@ -32,7 +31,9 @@ export const useAcceptTeamInvitation = () => {
         organizationId: accepted.organizationId,
         teamId: accepted.teamId,
       })
-      void navigate('/channels', { replace: true })
+      // Not a bare `/channels`: on a tenant host that would leave the accepted
+      // team under the previous team's URL (facades/team/navigation.ts).
+      await landInTeam(accepted.teamId)
       return accepted
     },
     onSuccess: () => {

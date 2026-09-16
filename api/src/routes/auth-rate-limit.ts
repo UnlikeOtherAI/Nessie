@@ -44,6 +44,7 @@ export const RATE_LIMIT_BUCKETS = {
   agentWriteIp: 'api.agent_write.ip',
   authMeIp: 'auth.me.ip',
   landingTeamsIp: 'auth.landing_teams.ip',
+  hostsTeamIp: 'api.hosts_team.ip',
   triggerWebhookIp: 'trigger.webhook.ip',
   commsWebhookIp: 'comms.webhook.ip',
   boardSourceWebhookIp: 'board_source.webhook.ip',
@@ -209,6 +210,8 @@ export const resolveGlobalRateLimitBucket = (input: {
   const method = input.method.toUpperCase()
   if (method === 'GET' && input.routePath === '/api/auth/me') return 'authMeIp'
   if (method === 'GET' && input.routePath === '/api/auth/landing-teams') return 'landingTeamsIp'
+  // The one route that answers whether a team exists at a given address.
+  if (method === 'GET' && input.routePath === '/api/hosts/team') return 'hostsTeamIp'
   if (method === 'POST') {
     const named = POST_ROUTE_BUCKETS.get(input.routePath)
     if (named) return named

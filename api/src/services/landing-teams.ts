@@ -87,20 +87,24 @@ const uoaLandingTeams = async (
   )
 
   const teams = await Promise.all(ordered.map(async (team): Promise<LandingTeam | null> => {
-    // The directory already carries both labels — UOA sends them so a product
-    // can build the address without a second lookup. Asking anyway was the
-    // bug: `resolveTeamAddress` reads `/domain/teams/:id/address`, which only
-    // sees organisations founded on this product's own domain and returns null
-    // for every other one, so each row silently collapsed onto the app-wide
-    // link and picking a team did nothing.
+    // The address has to come from `resolveTeamAddress`, not from the labels in
+    // the directory, even though UOA sends those so a product "can build the
+    // address without a second lookup".
     //
-    // The lookup stays as a fallback for a directory from an older UOA build
-    // that omits the slugs, and it is skipped entirely when they are present —
-    // which also removes one UOA request per team from this route.
+    // UOA sends them for every organisation this person belongs to. This
+    // deployment can only SERVE the ones on its own UOA client domain: the
+    // resolver behind the hostname, the TLS gate that mints its certificate
+    // and this lookup are all `/domain/*` reads scoped to `UOA_DOMAIN`. For an
+    // organisation founded on another product's domain the labels are real and
+    // the hostname is not — `<team>.<org>.<base>` fails the TLS handshake,
+    // because the gate refuses to have a certificate issued for it. A link
+    // built from the labels alone is therefore a dead link, which is worse
+    // than the app-wide one it replaced.
+    //
+    // So the lookup is the test as well as the answer: a team this deployment
+    // cannot address falls back to the app, exactly as it did before.
     const address = deps.teamHostBaseDomain
-      ? (team.teamSlug && team.orgSlug
-        ? { orgSlug: team.orgSlug, teamSlug: team.teamSlug }
-        : await deps.resolveTeamAddress(team.teamId))
+      ? await deps.resolveTeamAddress(team.teamId)
       : null
     const href = address
       ? `https://${address.teamSlug}.${address.orgSlug}.${deps.teamHostBaseDomain}${TEAM_LANDING_PATH}`

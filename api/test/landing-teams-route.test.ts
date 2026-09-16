@@ -338,21 +338,24 @@ test('signed in through UOA: the directory, active team first, each linking to i
 })
 
 /**
- * The bug this pins, and why the old test did not catch it.
+ * A link this deployment cannot serve is worse than the app-wide one.
  *
- * The directory already carries a team's two address labels — UOA sends them
- * so a product need not ask twice — but Nessie dropped them and asked anyway,
- * through `/domain/teams/:id/address`. That route only sees organisations
- * founded on this product's own domain, so for every other organisation it
- * answered null and the row silently collapsed onto the app-wide link. Both
- * cards then pointed at the same place and picking a team did nothing.
+ * UOA sends a team's two address labels in the directory "so a product can
+ * build the address without a second lookup", and Nessie briefly did exactly
+ * that. It sends them for every organisation the person belongs to; this
+ * deployment can only SERVE the ones on its own UOA client domain. The
+ * resolver behind a tenant hostname, the gate that has its certificate issued,
+ * and this address lookup are all `/domain/*` reads scoped to `UOA_DOMAIN`, so
+ * for an organisation founded on another product's domain the labels are real
+ * and the hostname is not: `<team>.<org>.nessie.works` does not complete a TLS
+ * handshake, measured against production.
  *
- * The case above passes either way, because its `resolveTeamAddress` stub
- * answers for the one team it is asked about. This one refuses every lookup —
- * exactly as `/domain/*` does for a cross-domain organisation — so it fails
- * unless the slugs on the entry are used.
+ * So the lookup refusing IS the signal that this deployment has no address for
+ * that team, and the row falls back to the app. The remaining gap is unchanged
+ * and stated in docs/standards/team-hosts.md: the app opens on the session's
+ * current team, and the person switches from there.
  */
-test('a team the /domain lookup cannot resolve still links to its own tenant host', async () => {
+test('a team the /domain lookup cannot resolve falls back to the app, not a dead host', async () => {
   clearUoaTeamDirectoryCache()
   rememberUoaTeamDirectory(USER_A, {
     entries: [
@@ -388,10 +391,10 @@ test('a team the /domain lookup cannot resolve still links to its own tenant hos
     assert.equal(response.statusCode, 200)
     assert.equal(
       response.json().data.teams[0]?.href,
-      'https://general.kilomayo.nessie.works/channels',
-      'the entry carries both labels, so the address must be built from them',
+      'https://app.nessie.works/channels',
+      'labels this deployment cannot serve must not become the link',
     )
-    assert.equal(lookups, 0, 'a directory that already has the labels must not ask UOA again')
+    assert.equal(lookups, 1, 'the lookup is the test of whether an address exists')
   } finally {
     clearUoaTeamDirectoryCache()
     await app.close()

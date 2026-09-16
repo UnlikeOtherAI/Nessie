@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { useTenantHost, useTenantTeam, type TenantOrganisation } from '../../facades/team/tenant-host'
-import { isNativeShell, nativeShellRecoveryHref } from '../../lib/tenant-navigation'
+import {
+  useTenantHost,
+  useTenantTeam,
+  type TenantOrganisation,
+} from '../../facades/team/tenant-host'
+import { isNativeShell, nativeShellRecoveryHref, TEAM_LANDING_PATH } from '../../lib/tenant-navigation'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
 import { TeamSwitchCurtain, useCurtainReveal } from './TeamSwitchCurtain'
-import { teamHostSettling, tenantTeamSwitchNeeded } from './tenant-team-switch'
+import { TenantBrandFrame } from './tenant-brand'
+import { tenantHostRender } from './tenant-host-render'
+import { tenantTeamSwitchNeeded } from './tenant-team-switch'
 
 /**
  * What the browser's hostname means, decided once, above the router.
@@ -26,20 +32,32 @@ import { teamHostSettling, tenantTeamSwitchNeeded } from './tenant-team-switch'
  *   address used to serve their own people.
  * - **Anything else** renders the app untouched. That is every deployment with
  *   no tenant base domain configured, which is all of them until one opts in.
+ *
+ * **The app does not mount until the address and the session agree.** Firing
+ * the switch and rendering underneath it was the bug: the routes below started
+ * fetching with the previous team's scope, and a switch that then failed —
+ * silently, because the failure was swallowed — left the previous team's
+ * channels, projects and search on screen under a URL naming a different one.
+ * That is indistinguishable from the product ignoring the address, and it is
+ * what somebody sees after copying a team link to a colleague.
+ *
+ * Which of those states draws what is `tenant-host-render.ts`, a pure function
+ * over the facts this component gathers. It lives outside this file because
+ * the fall-through above was a *missing* branch, and a missing branch is
+ * invisible in a chain of early returns and obvious in an enumeration.
  */
 export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { data, isLoading } = useTenantHost()
   const { me, sessionState, switchUoaTeam, token } = useAuthSession()
   const switched = useRef<string | null>(null)
+  const [switchState, setSwitchState] = useState<'idle' | 'switching' | 'failed'>('idle')
 
   // The ids only exist for a signed-in caller on a team host — the public
   // resolver above never carries them.
-  const teamQuery = useTenantTeam(Boolean(token) && data?.kind === 'team')
-  const team = teamQuery.data?.team ?? null
-  // A switch that is running, as distinct from one that is merely needed: the
-  // predicate below goes false the moment the request is sent, and without
-  // this the curtain would lift while the session was still moving.
-  const [switching, setSwitching] = useState(false)
+  const { data: teamData, isError: teamFailed } = useTenantTeam(
+    Boolean(token) && data?.kind === 'team',
+  )
+  const team = teamData?.team ?? null
 
   // A native shell's bridge is refused on a tenant host — the title bar stops
   // dragging the window — so it goes back to the canonical origin however it
@@ -64,6 +82,8 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     const key = `${team.externalOrgId}:${team.externalTeamId}`
     // Once per team per page load: a failed switch must leave the person where
     // they are rather than retrying forever against a team they cannot open.
+    // It is claimed before the comparison below, so an in-app switch away from
+    // this host — which navigates off it — is never dragged back here.
     if (switched.current === key) return
     switched.current = key
 
@@ -71,63 +91,65 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     // team; switching again only races the page-load refresh into a 409.
     if (!tenantTeamSwitchNeeded(me, team)) return
 
-    setSwitching(true)
+    setSwitchState('switching')
     void switchUoaTeam({
       organizationId: team.externalOrgId,
       teamId: team.externalTeamId,
-    })
-      .catch(() => undefined)
-      // Whether it worked or not. A failed switch leaves the person on the
-      // team they had — which is the existing behaviour — and the curtain must
-      // lift onto that rather than hang over a working app forever.
-      .finally(() => setSwitching(false))
+    }).then(
+      () => setSwitchState('idle'),
+      // Not a member, a session that needs re-authorising, a rotation
+      // conflict: whichever it was, this address cannot be opened on this
+      // session and saying so beats serving another team's screen under it.
+      () => setSwitchState('failed'),
+    )
   }, [me, recoveryHref, team, switchUoaTeam, token])
 
-  // Everything that has to finish before the app may be drawn on a team host:
-  // the address has to resolve to a team, the session has to be readable, and
-  // the session has to be on that team. Any one of them outstanding and the
-  // app would render against whichever team the session was on before — which
-  // is the previous organisation's workspace, shown and then swapped out.
-  //
-  // A signed-out visitor is not settling: they get the tenant's sign-in below.
-  const settling = teamHostSettling({
-    hasToken: Boolean(token),
-    hostKind: data?.kind,
-    me,
+  // Not the same question as `switchState`: the effect above runs after this
+  // render, so on the first paint the switch is needed and has not started.
+  // Holding on `switchState` alone would show a frame of the team the session
+  // came from.
+  const switchNeeded = team !== null && me !== null && tenantTeamSwitchNeeded(me, team)
+
+  const render = tenantHostRender({
+    hostKind: data?.kind ?? null,
+    // Only a hostname that could plausibly be a tenant's waits: otherwise
+    // every ordinary load would flash an empty frame waiting for a request it
+    // never made.
+    hostResolved: Boolean(data) || !isLoading,
+    recovering: Boolean(recoveryHref),
     sessionState,
-    switching,
-    team,
-    teamLoading: teamQuery.isLoading,
+    signedIn: Boolean(token),
+    switchNeeded,
+    switchState,
+    teamAnswered: Boolean(teamData),
+    teamFailed,
+    teamKnown: Boolean(team),
   })
 
-  // Render nothing at all while the hostname is still being resolved, but only
-  // when it could plausibly be a tenant host — otherwise every ordinary load
-  // would flash an empty frame waiting for a request it never made.
-  if (isLoading && !data) return null
-
-  // Leaving this host: nothing of the tenant is drawn on the way out.
-  if (recoveryHref) return null
-
-  if (data?.kind === 'organisation') {
+  if (render === 'recovering' || render === 'resolving') return null
+  if (render === 'portal' && data?.kind === 'organisation') {
     return <OrgPortal organisation={data.organisation} signInOrigin={data.signInOrigin} />
   }
-
-  // Only once the session has actually settled. 'loading' would flash the
-  // sign-in card at somebody who is signed in, and 'bootstrap' is the
-  // first-run flow, which owns the screen and must not be interrupted by a
-  // tenant's branding.
-  if (data?.kind === 'team' && sessionState === 'unauthenticated') {
-    return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
+  if (data?.kind === 'team') {
+    if (render === 'sign-in') {
+      return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
+    }
+    if (render === 'unavailable') {
+      return <TeamHostUnavailable organisation={data.organisation} signInOrigin={data.signInOrigin} />
+    }
+    // 'waiting' and 'app' share this subtree so the curtain can fade off the
+    // app it was covering rather than cutting to it.
+    return (
+      <TeamHostCurtain organisation={data.organisation} settling={render === 'waiting'}>
+        {children}
+      </TeamHostCurtain>
+    )
   }
 
-  return (
-    <TeamHostCurtain
-      organisation={data?.kind === 'team' ? data.organisation : null}
-      settling={settling}
-    >
-      {children}
-    </TeamHostCurtain>
-  )
+  // Off a team host there is no tenant to brand a wait with, and nothing that
+  // would render the wrong team underneath.
+  if (render === 'waiting') return null
+  return <>{children}</>
 }
 
 /**
@@ -135,15 +157,14 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
  * tenant's curtain off the top of it.
  *
  * Separate from the gate because the reveal is stateful and the gate above it
- * returns early in four different ways; a hook cannot live behind those.
+ * returns early in several different ways; a hook cannot live behind those.
  */
 const TeamHostCurtain = ({ children, organisation, settling }: {
   children: ReactNode
-  organisation: TenantOrganisation | null
+  organisation: TenantOrganisation
   settling: boolean
 }) => {
   const revealed = useCurtainReveal(!settling)
-  if (!organisation) return <>{children}</>
   return (
     <>
       {settling ? null : children}
@@ -151,3 +172,41 @@ const TeamHostCurtain = ({ children, organisation, settling }: {
     </>
   )
 }
+
+/**
+ * This address exists, and this session cannot open it.
+ *
+ * Deliberately says nothing about the team: on a tenant hostname the team is
+ * never named to somebody who has not been let in (docs/standards/team-hosts.md,
+ * "The tenant's address is the tenant's brand"), and a refused switch is
+ * exactly that case. The way out is the product's own origin, which serves
+ * whatever team this person does have.
+ */
+const TeamHostUnavailable = ({
+  organisation,
+  signInOrigin,
+}: {
+  organisation: TenantOrganisation
+  signInOrigin: string | null
+}) => (
+  <TenantBrandFrame organisation={organisation}>
+    <p className="max-w-sm text-center text-sm text-[color:var(--tx3)]">
+      This address could not be opened with your current session.
+    </p>
+    {/*
+      * Always a way out. With no canonical origin configured there is nowhere
+      * else to send anybody, so the action reloads this address — which is the
+      * one thing that can help when the cause was UOA being briefly
+      * unreachable, and the only alternative is a dead end.
+      */}
+    <a
+      className={[
+        'rounded-[var(--radius-md)] border border-[color:var(--bd)] px-4 py-2',
+        'text-sm hover:border-[color:var(--accent)]',
+      ].join(' ')}
+      href={signInOrigin ? new URL(TEAM_LANDING_PATH, signInOrigin).href : TEAM_LANDING_PATH}
+    >
+      {signInOrigin ? 'Open Nessie' : 'Try again'}
+    </a>
+  </TenantBrandFrame>
+)

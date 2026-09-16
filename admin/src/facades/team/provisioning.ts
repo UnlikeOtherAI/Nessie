@@ -1,6 +1,5 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-
+import { useTeamSwitchNavigation } from './navigation'
 import { teamProvisioningKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -84,7 +83,7 @@ export const useSlugAvailability = (input: {
 
 const useProvisionAndSwitch = (path: string) => {
   const apiClient = useApiClient()
-  const navigate = useNavigate()
+  const landInTeam = useTeamSwitchNavigation()
   const { switchUoaTeam } = useAuthSession()
 
   return useMutation({
@@ -96,7 +95,9 @@ const useProvisionAndSwitch = (path: string) => {
         organizationId: created.externalOrgId,
         teamId: created.externalTeamId,
       })
-      void navigate('/channels', { replace: true })
+      // The new team may have an address of its own, and on a tenant host the
+      // current one is certainly wrong (facades/team/navigation.ts).
+      await landInTeam(created.externalTeamId)
       return created
     },
   })
