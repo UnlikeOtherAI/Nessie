@@ -21,7 +21,7 @@ import { readBootstrapToken, startAdmin, startApi, stopProcess } from '../naviga
 import { assertRounded } from './alpha.mjs'
 import { FREEZE_CSS, captureElement, captureWindow } from './capture.mjs'
 import { seedMarketingOrganisation } from './fixture.mjs'
-import { shots } from './manifest.mjs'
+import { THEMES, shots } from './manifest.mjs'
 
 const OUT = resolve(REPO_ROOT, 'web', 'public', 'screenshots')
 const ADMIN_URL = 'http://127.0.0.1:5455'
@@ -29,6 +29,21 @@ const API_URL = 'http://127.0.0.1:5454'
 
 /** Only these are captured, when names are passed on the command line. */
 const only = new Set(process.argv.slice(2))
+
+/**
+ * Set the palette the way a person does — as their own saved preference,
+ * through the route the settings screen calls — rather than by pushing
+ * `data-theme` onto the document from outside. A theme that only exists
+ * because the screenshot script forced it is not a theme anyone will see.
+ */
+const chooseTheme = async (token, theme) => {
+  const response = await fetch(`${API_URL}/api/auth/me/preferences`, {
+    body: JSON.stringify({ theme }),
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    method: 'PATCH',
+  })
+  if (!response.ok) throw new Error(`could not select the ${theme} theme (HTTP ${response.status})`)
+}
 
 const signIn = async (api) => {
   const bootstrapToken = readBootstrapToken(api)
@@ -87,11 +102,20 @@ const run = async () => {
       const page = await context.newPage()
       page.setDefaultTimeout(30_000)
       const path = resolve(OUT, `${shot.name}.png`)
+      const theme = shot.theme ?? THEMES.blue
       try {
+        await chooseTheme(token, theme)
         await page.goto(`${ADMIN_URL}${shot.route()}`, { waitUntil: 'domcontentloaded' })
         // Waiting for the subject of the picture, never for a duration: a
         // timeout that is long enough today photographs a spinner tomorrow.
         await page.locator(shot.ready).first().waitFor({ state: 'visible' })
+        // A palette that did not arrive is the one failure a screenshot cannot
+        // show you afterwards — every shot would simply be the wrong colour and
+        // still look plausible. Assert on the attribute the stylesheet keys on.
+        const applied = await page.evaluate(() => document.documentElement.dataset.theme ?? null)
+        if (applied !== theme) {
+          throw new Error(`the page is rendering the "${applied}" palette, not "${theme}"`)
+        }
         if (shot.open) {
           // Not an exact match: a list card truncates its own title, so the
           // visible text is rarely the whole string the manifest names.

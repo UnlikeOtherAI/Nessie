@@ -19,9 +19,25 @@
 // `open` names a tab to click first, for a surface that is a tab rather than
 // a route. `inset` adds padding inside the rounded edge, for a section whose
 // own heading sits in the corner the radius cuts away.
+//
+// `theme` is the admin palette the shot is taken in. Everything defaults to
+// `nessie`, the product's own default — the blue one — so the website shows
+// people what they will actually see the first time they sign in. The three
+// hero shots deliberately differ: the desktop in the hero is a thing you can
+// recolour, and showing one screen in three palettes says that better than a
+// sentence would.
 import { IDS } from './fixture.mjs'
 
 const channel = (id) => `/channels/${id}`
+
+/**
+ * Admin palettes, by the name the product uses for them.
+ *
+ * `nessie` is the default and is blue. `nebula` carries the label "Classic" in
+ * the theme picker and is the warm palette Nessie shipped with — it has no
+ * `[data-theme]` block of its own because it *is* the base `:root` palette.
+ */
+export const THEMES = { blue: 'nessie', classic: 'nebula', sunstone: 'sandstone' }
 
 /** The desktop the hero's iMac screen shows: 16:10, matching the old assets. */
 export const HERO_VIEWPORT = { height: 900, width: 1440 }
@@ -37,6 +53,7 @@ export const shots = [
     name: 'hero-brief',
     ready: 'text=Waverley have asked for a renewal quote',
     route: () => channel(IDS.salesChannel),
+    theme: THEMES.blue,
     viewport: HERO_VIEWPORT,
   },
   {
@@ -45,6 +62,7 @@ export const shots = [
     name: 'hero-handoff',
     ready: 'text=Handing the revenue check',
     route: () => channel(IDS.opsChannel),
+    theme: THEMES.sunstone,
     viewport: HERO_VIEWPORT,
   },
   {
@@ -58,6 +76,7 @@ export const shots = [
     name: 'hero-team',
     ready: 'text=Klára Benešová',
     route: () => '/settings/members',
+    theme: THEMES.classic,
     viewport: HERO_VIEWPORT,
   },
 
