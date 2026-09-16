@@ -236,5 +236,86 @@ runDatabaseTest('dashboard tools create, present, and edit one live conversation
   assert.equal(delta.runId, fixture.runId)
   assert.equal(version.runId, fixture.runId)
   assert.equal(material.sourceReference, 'User-uploaded quarterly CSV')
-  assert.deepEqual(material.accessBasis, [{ scopeId: fixture.channelId, scopeType: 'channel' }])
+  // The basis is what the run actually consumed, and `contextFor` now seeds
+  // the project — a dashboard's audience is its project, so a source verified
+  // only for one channel could not feed one.
+  assert.deepEqual(material.accessBasis, [{ scopeId: fixture.projectId, scopeType: 'project' }])
+})
+
+/**
+ * The near miss the project arm must still refuse.
+ *
+ * Presenting accepts a source whose verified audience is the *room's own*
+ * project, because a dashboard's audience is its project and such a source is
+ * therefore no wider than the dashboard carrying it. A source proved for some
+ * other project is wider, and must not ride into this room on that rule.
+ */
+runDatabaseTest('a source verified for another project is still refused', async (t) => {
+  const prisma = new PrismaClient()
+  const fixture = await seed(prisma)
+  t.after(async () => {
+    await deleteThreadQueueJobs(prisma, fixture.threadId)
+    await prisma.organization.deleteMany({ where: { id: fixture.organizationId } })
+    await prisma.user.deleteMany({ where: { id: fixture.userId } })
+    await prisma.$disconnect()
+  })
+  const services = createDashboardToolServices({
+    credentials,
+    fileService: files(),
+    loadDataset: () => async () => null,
+    prisma,
+  })
+
+  // A second project in the same organisation: somewhere the acting person is
+  // a member, so only the basis — not membership — decides this.
+  const elsewhere = await prisma.project.create({
+    data: { name: 'Elsewhere', organizationId: fixture.organizationId },
+  })
+  await prisma.projectMember.create({ data: { projectId: elsewhere.id, userId: fixture.userId } })
+
+  const context = contextFor(prisma, fixture)
+  const created = await runDashboardTool('dashboard_create', context, {
+    projectId: fixture.projectId,
+    title: 'Quarterly revenue',
+  }, services)
+  assert.match(created.outputPreview, /Created dashboard/)
+  const dashboard = await prisma.dashboard.findFirstOrThrow({
+    where: { organizationId: fixture.organizationId },
+  })
+
+  await runDashboardTool('dashboard_source_import', context, {
+    content: 'quarter,revenue\nQ1,12\n',
+    format: 'csv',
+    name: 'Quarterly upload',
+    provenance: { submittedBy: 'conversation' },
+    sourceReference: 'User-uploaded quarterly CSV',
+  }, services)
+  const source = await prisma.dashboardDataSource.findFirstOrThrow({
+    where: { organizationId: fixture.organizationId, kind: 'static' },
+  })
+  context.toolCallId = randomUUID()
+  await runDashboardTool('dashboard_widget_add', context, {
+    dashboardId: dashboard.id,
+    definition: {
+      binding: { columns: [{ key: 'quarter', label: 'Quarter' }] },
+      kind: 'table',
+      presentation: { title: 'Quarterly revenue' },
+      schemaVersion: 1,
+      sourceId: source.id,
+    },
+  }, services)
+
+  // Re-stamp the material's basis as the other project. Everything else about
+  // the dashboard is unchanged, so only the scope under test can decide.
+  await prisma.dashboardSourceMaterial.updateMany({
+    data: { accessBasis: [{ scopeId: elsewhere.id, scopeType: 'project' }] },
+    where: { sourceId: source.id },
+  })
+
+  context.toolCallId = randomUUID()
+  const presented = await runDashboardTool(
+    'dashboard_present', context, { dashboardId: dashboard.id }, services,
+  )
+  assert.doesNotMatch(presented.outputPreview, /Presented/)
+  assert.match(presented.outputPreview, /not entitled to every source/)
 })

@@ -347,7 +347,27 @@ export const assertDashboardAudienceForChannel = async (
         && (scope as { scopeType?: unknown }).scopeType === 'user'
         && (scope as { scopeId?: unknown }).scopeId === context.actor.userId,
       )
-    if (!readableByOrganization && !readableByChannel && !readableByOwnerDm) {
+    // A dashboard's audience *is* its project — that is exactly what
+    // `homeCoversChannel` above decides on. So a source verified for the
+    // project this room belongs to is no wider than the dashboard carrying it,
+    // and presenting it here reaches nobody the dashboard does not already
+    // reach. Keyed on the *room's* project and never the dashboard's, so a
+    // source proved for one project cannot ride a grant into a channel in
+    // another.
+    //
+    // The three arms above — organization, this exact channel, the owner's own
+    // single-user DM — were the whole vocabulary while a dashboard had a
+    // `home`. Once the home became a project, every project-scoped source
+    // refused at presentation, which is every source an agent imports into a
+    // project dashboard.
+    const channelProjectId = channel?.projectId ?? null
+    const readableByProject = channelProjectId !== null
+      && basis.some((scope) =>
+        scope && typeof scope === 'object'
+        && (scope as { scopeType?: unknown }).scopeType === 'project'
+        && (scope as { scopeId?: unknown }).scopeId === channelProjectId,
+      )
+    if (!readableByOrganization && !readableByChannel && !readableByProject && !readableByOwnerDm) {
       throw new DashboardServiceError(
         409,
         'DASHBOARD_SOURCE_AUDIENCE_MISMATCH',
