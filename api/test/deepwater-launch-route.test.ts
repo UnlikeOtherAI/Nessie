@@ -275,6 +275,7 @@ test('research-launch persists and enqueues the exact full created durable run i
         // A system channel is never manageable: `canModifyChannel` refuses
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
+        viewerCanManageAgents: false,
         updatedAt: now.toISOString(),
         visibility: 'private',
       },

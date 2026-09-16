@@ -78,6 +78,15 @@ sentence changes only if the invariant itself did.
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
   model dropdown, and the tool/app fold that arrives closed.
+- **Every CI browser fixture is an explicit Vite input.** Navigation
+  Transitions serves a *preview build* (`NAV_E2E_ADMIN_MODE: preview`), not
+  the dev server, so a new `admin/e2e/<name>/index.html` is not served at all
+  unless it is added to `admin/vite.config.ts` behind its own
+  `NESSIE_<NAME>_E2E_FIXTURE` flag **and** that flag is set on the job in
+  `.github/workflows/ci.yml`. The flag keeps it out of release bundles. This
+  passes locally either way — `startAdmin()` defaults to the dev server — so
+  verify a new suite with `NAV_E2E_ADMIN_MODE=preview` against a build made
+  with the flag before trusting it.
 - **Channel agent-control coverage:** run
   `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
   suite — it drives the real members popup over both answers to

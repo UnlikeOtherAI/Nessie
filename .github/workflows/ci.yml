@@ -912,6 +912,8 @@ jobs:
       # for this browser evaluation; release bundles never include either one.
       NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE: '1'
       NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE: '1'
+      NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE: '1'
+      NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE: '1'
 
     steps:
       - name: Checkout
