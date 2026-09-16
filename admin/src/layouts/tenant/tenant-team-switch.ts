@@ -1,11 +1,9 @@
 import type { MeResponse } from '@nessie/schemas'
 
 import type { TenantTeam } from '../../facades/team/tenant-host'
-import type { TeamHandoffTarget } from '../../lib/tenant-team-handoff'
 
 /**
- * Whether the session still has to be moved onto a team something else has
- * named — a team hostname, or a canonical-origin handoff.
+ * Whether the session still has to be moved onto the team the hostname names.
  *
  * Arriving after the switch has already happened must not switch again: a
  * second `POST /api/auth/uoa/team` for the team the session is on races the
@@ -17,7 +15,10 @@ import type { TeamHandoffTarget } from '../../lib/tenant-team-handoff'
  * directory cannot be proven to be on the team, so it still switches and the
  * server decides.
  */
-const switchNeeded = (me: MeResponse | null, target: TeamHandoffTarget): boolean => {
+const switchNeeded = (
+  me: MeResponse | null,
+  target: { organizationId: string; teamId: string },
+): boolean => {
   if (me?.auth.providerType !== 'uoa') return true
   const current = me.uoaTeams?.find((entry) => entry.active)
   if (!current) return true
@@ -32,7 +33,4 @@ export const tenantTeamSwitchNeeded = (
   organizationId: team.externalOrgId,
   teamId: team.externalTeamId,
 })
-
-/** The same question for a `?switchTeam=` handoff on the canonical origin. */
-export const teamHandoffNeeded = switchNeeded
 

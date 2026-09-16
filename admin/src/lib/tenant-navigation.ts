@@ -1,6 +1,5 @@
 import { isDesktopApp } from './desktop'
 import { isReactNativeWebView } from './native-shell'
-import { withTeamHandoff, type TeamHandoffTarget } from './tenant-team-handoff'
 
 /**
  * Where the page goes after something moves the session between tenants: a
@@ -34,8 +33,12 @@ import { withTeamHandoff, type TeamHandoffTarget } from './tenant-team-handoff'
  *   the lookups behind one are scoped to this product's UOA client domain, so
  *   an organisation founded on another product's domain has none, and its
  *   hostname does not even complete a TLS handshake. Those switches leave for
- *   the canonical origin, carrying the target team
- *   (`lib/tenant-team-handoff.ts`) so it opens on the team that was picked.
+ *   the canonical origin, which serves every team. Every caller here has
+ *   already awaited the switch, so the session is on the target team before
+ *   the document moves and the canonical origin simply opens on it — there is
+ *   nothing to carry in the URL, and an id in a URL that triggers a session
+ *   change would be a forced-switch primitive for anybody who could get the
+ *   person to follow a link.
  */
 
 export const TEAM_LANDING_PATH = '/channels'
@@ -66,7 +69,6 @@ export const teamSwitchDestination = ({
   currentHostIsTenant,
   currentHostServesApp,
   inNativeShell,
-  targetTeam,
   teamUrl,
 }: {
   /** The product's own origin (`signInOrigin`), used only where this host cannot show the app. */
@@ -81,8 +83,6 @@ export const teamSwitchDestination = ({
   /** False on an organisation portal, which renders the portal for every path. */
   currentHostServesApp: boolean
   inNativeShell: boolean
-  /** The UOA ids of the team being switched to, for the canonical-origin handoff. */
-  targetTeam: TeamHandoffTarget | null
   /** The team's own address from `/api/hosts/address`, or null. */
   teamUrl: string | null
 }): TeamSwitchDestination => {
@@ -102,8 +102,7 @@ export const teamSwitchDestination = ({
 
   const canonical = parseHost(canonicalOrigin)
   if (canonical && canonical.host !== currentHost) {
-    const landing = new URL(TEAM_LANDING_PATH, canonical.origin).href
-    return { kind: 'document', href: withTeamHandoff(landing, targetTeam) ?? landing }
+    return { kind: 'document', href: new URL(TEAM_LANDING_PATH, canonical.origin).href }
   }
   // A tenant host with nowhere better to go. Staying is wrong, but a blank
   // screen is worse than a stale address bar, so the app still opens.
@@ -126,7 +125,6 @@ export const resolveTeamSwitchDestination = async ({
   currentHostServesApp: boolean
   fetchTeamUrl: () => Promise<string | null>
   inNativeShell: boolean
-  targetTeam: TeamHandoffTarget | null
 }): Promise<TeamSwitchDestination> =>
   teamSwitchDestination({
     ...facts,

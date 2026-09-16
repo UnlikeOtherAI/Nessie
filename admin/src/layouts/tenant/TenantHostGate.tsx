@@ -10,6 +10,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { OrgPortal } from './OrgPortal'
 import { TeamHostSignIn } from './TeamHostSignIn'
 import { TenantBrandFrame } from './tenant-brand'
+import { tenantHostRender } from './tenant-host-render'
 import { tenantTeamSwitchNeeded } from './tenant-team-switch'
 
 /**
@@ -37,9 +38,12 @@ import { tenantTeamSwitchNeeded } from './tenant-team-switch'
  * silently, because the failure was swallowed — left the previous team's
  * channels, projects and search on screen under a URL naming a different one.
  * That is indistinguishable from the product ignoring the address, and it is
- * what somebody sees after copying a team link to a colleague. So a team host
- * that needs a switch renders nothing until it has one answer or the other,
- * and says so when the answer is no.
+ * what somebody sees after copying a team link to a colleague.
+ *
+ * Which of those states draws what is `tenant-host-render.ts`, a pure function
+ * over the facts this component gathers. It lives outside this file because
+ * the fall-through above was a *missing* branch, and a missing branch is
+ * invisible in a chain of early returns and obvious in an enumeration.
  */
 export const TenantHostGate = ({ children }: { children: ReactNode }) => {
   const { data, isLoading } = useTenantHost()
@@ -49,7 +53,7 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
 
   // The ids only exist for a signed-in caller on a team host — the public
   // resolver above never carries them.
-  const { data: teamData, isLoading: teamLoading } = useTenantTeam(
+  const { data: teamData, isError: teamFailed } = useTenantTeam(
     Boolean(token) && data?.kind === 'team',
   )
   const team = teamData?.team ?? null
@@ -99,33 +103,32 @@ export const TenantHostGate = ({ children }: { children: ReactNode }) => {
     )
   }, [me, recoveryHref, team, switchUoaTeam, token])
 
-  // Render nothing at all while the hostname is still being resolved, but only
-  // when it could plausibly be a tenant host — otherwise every ordinary load
-  // would flash an empty frame waiting for a request it never made.
-  if (isLoading && !data) return null
+  const render = tenantHostRender({
+    hostKind: data?.kind ?? null,
+    // Only a hostname that could plausibly be a tenant's waits: otherwise
+    // every ordinary load would flash an empty frame waiting for a request it
+    // never made.
+    hostResolved: Boolean(data) || !isLoading,
+    recovering: Boolean(recoveryHref),
+    sessionState,
+    signedIn: Boolean(token),
+    switchState,
+    teamAnswered: Boolean(teamData),
+    teamFailed,
+    teamKnown: Boolean(team),
+  })
 
-  // Leaving this host: nothing of the tenant is drawn on the way out.
-  if (recoveryHref) return null
-
-  if (data?.kind === 'organisation') {
+  if (render === 'recovering' || render === 'resolving' || render === 'waiting') return null
+  if (render === 'portal' && data?.kind === 'organisation') {
     return <OrgPortal organisation={data.organisation} signInOrigin={data.signInOrigin} />
   }
-
-  // Only once the session has actually settled. 'loading' would flash the
-  // sign-in card at somebody who is signed in, and 'bootstrap' is the
-  // first-run flow, which owns the screen and must not be interrupted by a
-  // tenant's branding.
-  if (data?.kind === 'team' && sessionState === 'unauthenticated') {
-    return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
-  }
-
-  if (data?.kind === 'team' && token) {
-    if (switchState === 'failed') {
+  if (data?.kind === 'team') {
+    if (render === 'sign-in') {
+      return <TeamHostSignIn organisation={data.organisation} signInOrigin={data.signInOrigin} />
+    }
+    if (render === 'unavailable') {
       return <TeamHostUnavailable organisation={data.organisation} signInOrigin={data.signInOrigin} />
     }
-    // The ids are still in flight, or the switch onto them is. Either way the
-    // team this address names is not yet the team the session is on.
-    if (switchState === 'switching' || (teamLoading && !teamData)) return null
   }
 
   return <>{children}</>
@@ -151,16 +154,20 @@ const TeamHostUnavailable = ({
     <p className="max-w-sm text-center text-sm text-[color:var(--tx3)]">
       This address could not be opened with your current session.
     </p>
-    {signInOrigin ? (
-      <a
-        className={[
-          'rounded-[var(--radius-md)] border border-[color:var(--bd)] px-4 py-2',
-          'text-sm hover:border-[color:var(--accent)]',
-        ].join(' ')}
-        href={new URL(TEAM_LANDING_PATH, signInOrigin).href}
-      >
-        Open Nessie
-      </a>
-    ) : null}
+    {/*
+      * Always a way out. With no canonical origin configured there is nowhere
+      * else to send anybody, so the action reloads this address — which is the
+      * one thing that can help when the cause was UOA being briefly
+      * unreachable, and the only alternative is a dead end.
+      */}
+    <a
+      className={[
+        'rounded-[var(--radius-md)] border border-[color:var(--bd)] px-4 py-2',
+        'text-sm hover:border-[color:var(--accent)]',
+      ].join(' ')}
+      href={signInOrigin ? new URL(TEAM_LANDING_PATH, signInOrigin).href : TEAM_LANDING_PATH}
+    >
+      {signInOrigin ? 'Open Nessie' : 'Try again'}
+    </a>
   </TenantBrandFrame>
 )

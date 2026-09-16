@@ -16,9 +16,6 @@ const readSource = (relativePath: string): string =>
 const teamUrl = 'https://general.nessie-works.nessie.works'
 const canonicalOrigin = 'https://app.nessie.works'
 const portalHost = 'nessie-works.nessie.works'
-const target = { organizationId: 'org_abc', teamId: 'team_abc' }
-/** The canonical origin carrying the team that was picked. */
-const handoff = `${canonicalOrigin}/channels?switchOrg=org_abc&switchTeam=team_abc`
 
 test('a browser follows the switch to the team host', () => {
   assert.deepEqual(
@@ -28,7 +25,6 @@ test('a browser follows the switch to the team host', () => {
       currentHostIsTenant: false,
       currentHostServesApp: true,
       inNativeShell: false,
-      targetTeam: target,
       teamUrl,
     }),
     { kind: 'document', href: `${teamUrl}/channels` },
@@ -43,7 +39,6 @@ test('a native shell stays on its origin and navigates in-app', () => {
       currentHostIsTenant: false,
       currentHostServesApp: true,
       inNativeShell: true,
-      targetTeam: target,
       teamUrl,
     }),
     { kind: 'in-app', path: '/channels' },
@@ -63,7 +58,6 @@ test('the same host, no address, or a malformed address navigates in-app', () =>
         currentHostIsTenant: false,
         currentHostServesApp: true,
         inNativeShell: false,
-        targetTeam: target,
         teamUrl: url,
       }),
       { kind: 'in-app', path: '/channels' },
@@ -77,7 +71,6 @@ test('an organisation portal never navigates in-app, which would reload the port
     currentHost: portalHost,
     currentHostIsTenant: true,
     currentHostServesApp: false,
-    targetTeam: target,
   }
   // Browser with an address: the team host.
   assert.deepEqual(teamSwitchDestination({ ...portal, inNativeShell: false, teamUrl }), {
@@ -91,7 +84,7 @@ test('an organisation portal never navigates in-app, which would reload the port
   ]) {
     assert.deepEqual(teamSwitchDestination({ ...portal, ...facts }), {
       kind: 'document',
-      href: handoff,
+      href: `${canonicalOrigin}/channels`,
     })
   }
   // With no target to carry it is still the canonical origin, not a stay.
@@ -122,7 +115,6 @@ test('a native shell does not look up the team address', async () => {
     currentHost: 'app.nessie.works',
     currentHostIsTenant: false,
     currentHostServesApp: true,
-    targetTeam: target,
   }
 
   assert.deepEqual(await resolveTeamSwitchDestination({ ...facts, fetchTeamUrl, inNativeShell: true }), {
@@ -186,11 +178,31 @@ const assertUsesTeamSwitchDestination = (source: string) => {
   assert.equal(source.match(/window\.location\.assign\(/g)?.length, 1)
 }
 
-test('TeamSwitcher navigates through the shared policy', () => {
+test('every in-app switch lands through the one hook', () => {
+  const hook = readSource('../src/facades/team/navigation.ts')
+  assertUsesTeamSwitchDestination(hook)
+  assert.match(hook, /currentHostServesApp: true/)
+  assert.match(hook, /currentHostIsTenant: Boolean\(tenantHost\?\.kind\)/)
+
+  // Accepting an invitation and creating a team used to navigate in-app and
+  // stay on whatever tenant host they were on, which is the same defect the
+  // rail picker had. All three now land the same way.
+  for (const path of [
+    '../src/facades/team/invitations.ts',
+    '../src/facades/team/provisioning.ts',
+  ]) {
+    const source = readSource(path)
+    assert.match(source, /useTeamSwitchNavigation\(\)/, path)
+    assert.doesNotMatch(source, /navigate\('\/channels'/, path)
+  }
+
+  // The switcher keeps a router navigation for local sessions, which have no
+  // tenant address and cannot be on a tenant host. Both of its UOA arrivals —
+  // the ordinary switch and the one recovery that finds the switch already
+  // landed — go through the hook.
   const switcher = readSource('../src/layouts/admin-shell/TeamSwitcher.tsx')
-  assertUsesTeamSwitchDestination(switcher)
-  assert.match(switcher, /currentHostServesApp: true/)
-  assert.match(switcher, /currentHostIsTenant: Boolean\(tenantHost\?\.kind\)/)
+  assert.match(switcher, /useTeamSwitchNavigation\(\)/)
+  assert.equal(switcher.match(/await landInTeam\(team\.teamId\)/g)?.length, 2)
 })
 
 test('OrgPortal leaves the portal host through the shared policy', () => {
@@ -227,12 +239,12 @@ test('a team host never keeps a team that is not its own', () => {
     currentHostIsTenant: true,
     currentHostServesApp: true,
     inNativeShell: false,
-    targetTeam: target,
   }
-  // No address for the team being switched to: leave, carrying the team.
+  // No address for the team being switched to: leave for the canonical origin,
+  // which serves every team — including the ones with no address of their own.
   assert.deepEqual(
     teamSwitchDestination({ ...onTeamHost, teamUrl: null }),
-    { kind: 'document', href: handoff },
+    { kind: 'document', href: `${canonicalOrigin}/channels` },
   )
   // Another team's address: follow it, unchanged.
   assert.deepEqual(
@@ -259,31 +271,22 @@ test('the canonical origin stays put when a team has no address', () => {
       currentHostIsTenant: false,
       currentHostServesApp: true,
       inNativeShell: false,
-      targetTeam: target,
       teamUrl: null,
     }),
     { kind: 'in-app', path: '/channels' },
   )
 })
 
-test('the handoff is mounted above the router and holds it until it settles', () => {
-  const gate = readSource('../src/layouts/tenant/TeamHandoffGate.tsx')
-  assert.match(gate, /parseTeamHandoff\(window\.location\.href\)/)
-  assert.match(gate, /switchUoaTeam\(\{ organizationId: target\.organizationId/)
-  // Nothing of the previous team is drawn while the switch is in flight.
-  assert.match(gate, /if \(!settled\) return null/)
-  // Spent, then reloaded: a fresh document cannot hold the old team's cache.
-  assert.match(gate, /window\.location\.replace\(teamHandoffSpentHref/)
-
-  const app = readSource('../src/providers/AppProvider.tsx')
-  assert.match(app, /<TenantHostGate>\s*<TeamHandoffGate>\s*<RouterProvider/)
-})
-
-test('a team host does not render the app until the session is on its team', () => {
+/**
+ * WHEN the app may mount on a team address is enumerated in
+ * `tenant-host-render.test.ts`. This pins only that the gate still reports the
+ * switch's outcome into that decision instead of swallowing it, which is how
+ * the failure became invisible in the first place.
+ */
+test('a team host reports the outcome of its switch', () => {
   const gate = readSource('../src/layouts/tenant/TenantHostGate.tsx')
   assert.match(gate, /setSwitchState\('switching'\)/)
-  assert.match(gate, /if \(switchState === 'switching'/)
-  // A refused switch says so; it never falls through to the previous team.
-  assert.match(gate, /switchState === 'failed'/)
+  assert.match(gate, /setSwitchState\('failed'\)/)
+  assert.match(gate, /tenantHostRender\(\{[\s\S]*?switchState,/)
   assert.doesNotMatch(gate, /\.catch\(\(\) => undefined\)/)
 })

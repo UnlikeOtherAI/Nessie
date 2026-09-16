@@ -11,10 +11,8 @@ import { useAcceptTeamInvitation } from '../../facades/team/invitations'
 import { TeamAvatar } from '../../components/primitives/TeamAvatar'
 import { startExternalSignIn, startTeamSwitchReauthorization } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/native-shell'
-import { isNativeShell, resolveTeamSwitchDestination } from '../../lib/tenant-navigation'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
-import { fetchTeamHostUrl, useTenantHost } from '../../facades/team/tenant-host'
-import { useApiClient } from '../../providers/ApiClientProvider'
+import { useTeamSwitchNavigation } from '../../facades/team/navigation'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useTheme } from '../../providers/ThemeProvider'
 import { CreateTeamDialog } from './CreateTeamDialog'
@@ -54,12 +52,9 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
     switchUoaTeam,
     token,
   } = useAuthSession()
-  const apiClient = useApiClient()
   const { data: providers = [] } = useAuthProviders()
   const { data: organization } = useCurrentOrganization()
-  // Which hostname this is. A tenant host serves the app, but only for its
-  // own team, so a switch to any other team has to leave it.
-  const { data: tenantHost } = useTenantHost()
+  const landInTeam = useTeamSwitchNavigation()
   const avatarRevision = useTeamAvatarRevision()
   const { signInTheme } = useTheme()
   const navigate = useNavigate()
@@ -157,29 +152,16 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       }
       close()
 
-      // On a deployment that routes tenants by hostname, the address bar has to
-      // follow the switch — otherwise somebody lands in a different team while
-      // the URL still names the old one, and copying that link sends a
-      // colleague to the wrong place. `fetchTeamHostUrl` answers null when the
-      // deployment does not route by hostname, when UOA cannot be reached, or
-      // when the team has no address, so the ordinary same-origin navigation
-      // below stays the behaviour everywhere else. A native shell never
-      // follows: its bridge is granted to the canonical origin only
-      // (see lib/tenant-navigation.ts), so it is not even asked.
+      // On a deployment that routes tenants by hostname the address bar has to
+      // follow the switch, otherwise somebody lands in a different team while
+      // the URL still names the old one and copying that link sends a
+      // colleague to the wrong place. A local session has no tenant address to
+      // follow and cannot be on a tenant host, so it simply routes — the only
+      // `navigate` left in this file, and the reason the test below counts
+      // `landInTeam` rather than forbidding `navigate`.
       if (team.uoaTeam) {
-        const destination = await resolveTeamSwitchDestination({
-          canonicalOrigin: tenantHost?.kind ? tenantHost.signInOrigin : null,
-          currentHost: window.location.host,
-          currentHostIsTenant: Boolean(tenantHost?.kind),
-          currentHostServesApp: true,
-          fetchTeamUrl: () => fetchTeamHostUrl(apiClient, team.teamId),
-          inNativeShell: isNativeShell(),
-          targetTeam: { organizationId: team.organizationId, teamId: team.teamId },
-        })
-        if (destination.kind === 'document') {
-          window.location.assign(destination.href)
-          return
-        }
+        await landInTeam(team.teamId)
+        return
       }
 
       void navigate('/channels', { replace: true })
@@ -191,8 +173,14 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
         targetTeam: team,
       })
       if (recovery.outcome === 'switched') {
+        // The switch had in fact landed. It is the same arrival as the happy
+        // path, so it follows the same address policy rather than routing.
         close()
-        void navigate('/channels', { replace: true })
+        if (team.uoaTeam) {
+          await landInTeam(team.teamId)
+        } else {
+          void navigate('/channels', { replace: true })
+        }
       } else if (recovery.outcome === 'reauthorize') {
         // Target proof is missing/non-renewable: re-enter SSO hinted at the
         // exact target. The current session is untouched; the always-mounted
