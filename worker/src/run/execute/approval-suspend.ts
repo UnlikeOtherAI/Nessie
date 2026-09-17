@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { STRUCTURALLY_APPROVAL_GATED_TOOL_IDS } from '@nessie/runtime'
-import { parseAgentId, type RunExecuteJobPayload } from '@nessie/schemas'
+import { APPROVAL_ACTIONS, parseAgentId, type RunExecuteJobPayload } from '@nessie/schemas'
 import type { InvocationRecord } from '@nessie/runtime'
 
 import {
@@ -127,7 +127,7 @@ export const suspendRunForApproval = async (
       approvalGate: {
         // `action` is what the card renders from and every approval carries
         // one; the three run-gate-only fields stay optional beside it.
-        action: 'tool.invoke',
+        action: APPROVAL_ACTIONS.toolInvoke,
         approvalId: input.approvalId,
         checkpointId: input.checkpointId,
         runId: context.run.id,
@@ -155,7 +155,7 @@ export const suspendRunForApproval = async (
   })
   await deps.realtimeTransport.publishWs(buildScopes(context), {
     data: {
-      action: 'tool.invoke',
+      action: APPROVAL_ACTIONS.toolInvoke,
       agentId: parseAgentId(context.agent.id),
       approvalId: input.approvalId,
       reason: input.notice,

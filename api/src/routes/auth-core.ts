@@ -380,6 +380,16 @@ export const registerAuthCoreRoutes = (
   registerAuthLogoutRoute(app, {
     authSecret,
     getAuthorizationToken,
+    // DELETE /api/auth/session is body-less, so no preflight stands between a
+    // cross-site page and a forced logout across every device sharing the
+    // session. The guard reads this policy; leaving it unset makes the route
+    // refuse EVERY request that carries an Origin at all — fail-closed, but
+    // that is a broken logout, not a safe one.
+    originPolicy: {
+      allowedOrigins: deps.allowedCorsOrigins,
+      mode: config.mode,
+      teamHostBaseDomain: deps.teamHostBaseDomain,
+    },
     invalidateSessionRevocationCache: deps.invalidateSessionRevocationCache,
     prisma,
     publishSessionRevocation: (sessionId) => deps.realtimeHub.publishSessionRevocation(sessionId),

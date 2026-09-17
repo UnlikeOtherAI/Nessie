@@ -98,6 +98,37 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
 
 type ApprovalRow = { id: string; context: Record<string, unknown> | null }
 
+// The shared approval creator maps the rows it reads and returns, so the
+// fake owes it whole ApprovalRequest-shaped rows, not the two-field stubs
+// the old inline find-then-create was content with.
+const buildApprovalRow = (row: { id: string } & Record<string, unknown>) => ({
+  agentAccessCredentialId: null,
+  agentId: 'agent-1',
+  channelId: 'channel-1',
+  context: null,
+  continuationToken: 'token-1',
+  createdAt: now,
+  expiresAt: new Date(now.getTime() + 86_400_000),
+  organizationId: 'org-1',
+  projectId: 'project-1',
+  requesterId: 'agent-1',
+  resolution: null,
+  resolutionNote: null,
+  resolvedAt: null,
+  resolverId: null,
+  requiredApproverRole: null,
+  runId: 'run-1',
+  status: 'pending',
+  taskId: null,
+  teamId: 'team-1',
+  toolCallId: null,
+  toolName: null,
+  updatedAt: now,
+  action: 'knowledge.page.publish',
+  reason: 'reason',
+  ...row,
+})
+
 type AgentFixture = {
   id: string
   organizationId: string
@@ -263,11 +294,17 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
       findFirst: async () => ({ id: 'thread-1' }),
     },
     approvalRequest: {
-      findMany: async () => options.pendingApprovals ?? [],
+      findMany: async () => (options.pendingApprovals ?? []).map(buildApprovalRow),
       create: async ({ data }: { data: Record<string, unknown> }) => {
         approvalCreateCalls.push(data)
-        return { id: 'approval-new' }
+        return buildApprovalRow({ id: 'approval-new', ...data })
       },
+    },
+    // The creator emits `approval.created` through the audit chain after the
+    // commit; the chain reads the tip and appends.
+    auditLog: {
+      findFirst: async () => null,
+      create: async () => ({}),
     },
     knowledgePageLink: {
       deleteMany: async () => ({ count: 0 }),

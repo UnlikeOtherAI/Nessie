@@ -1,4 +1,5 @@
 import { canReadSpace, canWriteSpace } from '@nessie/knowledge'
+import { APPROVAL_ACTIONS } from '@nessie/schemas'
 import { z } from 'zod'
 
 import {
@@ -382,7 +383,7 @@ export const documentTools = (): McpToolDefinition[] => [
       let opened: Awaited<ReturnType<typeof createApprovalRequestOnce>>
       try {
         opened = await createApprovalRequestOnce(context.prisma, {
-          action: 'knowledge.page.publish',
+          action: APPROVAL_ACTIONS.knowledgePagePublish,
           actorContext: context.actorContext,
           context: {
             pageId: existing.id,
@@ -391,8 +392,9 @@ export const documentTools = (): McpToolDefinition[] => [
             versionId,
           },
           lockKey: `mcp-doc-publish:${credentialId}:${pageId}:${versionId}`,
-          matches: (rowContext) =>
-            rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId,
+          matches: (pending) =>
+            pending.context?.['pageId'] === pageId
+            && pending.context?.['versionId'] === versionId,
           reason:
             (input.reason as string | undefined)?.trim()
             || 'Requested by a paired agent through the MCP endpoint.',
@@ -427,7 +429,7 @@ export const documentTools = (): McpToolDefinition[] => [
           agentId: null,
           content: `A paired agent working as you asked to publish **${existing.title}**.`,
           gate: {
-            action: 'knowledge.page.publish',
+            action: APPROVAL_ACTIONS.knowledgePagePublish,
             approvalId: approval.id,
             status: 'pending',
           },

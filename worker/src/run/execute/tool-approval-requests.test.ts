@@ -36,17 +36,62 @@ const runContext = (): RunContext => ({
   task: { id: TASK_ID },
 }) as unknown as RunContext
 
-test('mailbox-send metadata contains only counts and structural pointers', async () => {
-  let created: Record<string, unknown> | null = null
+// The shared approval creator runs its check-and-create inside a transaction
+// (advisory lock via `$executeRaw`, pending read, insert), maps the full row
+// it gets back, and then rings the bell and writes the audit chain — so the
+// fake owes it all of that, not the bare `create` the old inline door needed.
+const fakePrisma = (onCreate: (data: Record<string, unknown>) => void): PrismaClient => {
   const prisma = {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
+    $executeRaw: async () => 1,
     approvalRequest: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
-        created = data
-        return { id: 'approval-1' }
+        onCreate(data)
+        return {
+          agentAccessCredentialId: null,
+          agentId: AGENT_ID,
+          channelId: CHANNEL_ID,
+          continuationToken: 'token-1',
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 3_600_000),
+          organizationId: ORGANIZATION_ID,
+          projectId: PROJECT_ID,
+          requesterId: AGENT_ID,
+          resolution: null,
+          resolutionNote: null,
+          resolvedAt: null,
+          resolverId: null,
+          requiredApproverRole: null,
+          runId: RUN_ID,
+          status: 'pending',
+          taskId: TASK_ID,
+          teamId: TEAM_ID,
+          toolCallId: 'call-1',
+          toolName: 'mailbox_send',
+          updatedAt: new Date(),
+          ...data,
+          id: 'approval-1',
+        }
       },
       findFirst: async () => null,
+      findMany: async () => [],
     },
-  } as unknown as PrismaClient
+    auditLog: {
+      create: async () => ({}),
+      findFirst: async () => null,
+    },
+    userAlert: {
+      createMany: async () => ({ count: 1 }),
+    },
+  }
+  return prisma as unknown as PrismaClient
+}
+
+test('mailbox-send metadata contains only counts and structural pointers', async () => {
+  let created: Record<string, unknown> | null = null
+  const prisma = fakePrisma((data) => {
+    created = data
+  })
 
   await createToolApprovalRequest(prisma, {
     actorContext: actorContext(),
@@ -81,15 +126,9 @@ test('mailbox-send metadata contains only counts and structural pointers', async
 
 test('Gmail send approval hashes the reviewed draft without exposing it in context', async () => {
   let created: Record<string, unknown> | null = null
-  const prisma = {
-    approvalRequest: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        created = data
-        return { id: 'approval-1' }
-      },
-      findFirst: async () => null,
-    },
-  } as unknown as PrismaClient
+  const prisma = fakePrisma((data) => {
+    created = data
+  })
   const reviewed = {
     bcc: ['hidden@example.test'], body: 'The exact private body', cc: ['copy@example.test'],
     subject: 'The exact private subject', to: ['recipient@example.test'],

@@ -147,15 +147,21 @@ const buildFakePrisma = (options: {
   return { prisma, auditLogs }
 }
 
-test('runApprovalEffect is a no-op for an unrelated action', async () => {
+test('runApprovalEffect refuses an unrecognised action loudly instead of faking success', async () => {
   const { prisma, auditLogs } = buildFakePrisma()
-  const result = await runApprovalEffect(
-    prisma as never,
-    { id: 'approval-1', action: 'thread.pin', context: {} },
-    actorContext,
+  // The failure this pins: a misspelled action used to land in `default:
+  // return {}`, so the human approved and NOTHING happened, successfully,
+  // with no error. An unrecognised action must throw — the resolve route's
+  // catch records the failure on the approval's note — and only an action
+  // declared in EFFECT_FREE_APPROVAL_ACTIONS may quietly do nothing.
+  await assert.rejects(
+    () => runApprovalEffect(
+      prisma as never,
+      { id: 'approval-1', action: 'knowledge.page.publsh', context: {} },
+      actorContext,
+    ),
+    /not recognised/,
   )
-
-  assert.deepEqual(result, {})
   assert.equal(auditLogs.length, 0)
 })
 

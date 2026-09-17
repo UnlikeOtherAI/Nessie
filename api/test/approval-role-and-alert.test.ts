@@ -218,8 +218,8 @@ runDatabaseTest('an agent that asks twice does not ring twice', async () => {
       actorContext: contextFor(s, ['owner']),
       context: { pageId, versionId },
       lockKey: `test:${pageId}:${versionId}`,
-      matches: (rowContext: Record<string, unknown> | null) =>
-        rowContext?.['pageId'] === pageId && rowContext?.['versionId'] === versionId,
+      matches: (pending: { context: Record<string, unknown> | null }) =>
+        pending.context?.['pageId'] === pageId && pending.context?.['versionId'] === versionId,
       reason: 'Please publish',
       requester: {
         agentAccessCredentialId: s.credentialId,

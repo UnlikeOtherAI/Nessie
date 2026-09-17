@@ -1,7 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  APPROVAL_ACTIONS,
+  EFFECT_FREE_APPROVAL_ACTIONS,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 import { activateAgentTodoTemplate } from '@nessie/team-admin'
 import { emitAuditEvent } from './audit.js'
 import { resumeRunFromApproval } from './approval-resume.js'
@@ -147,16 +151,26 @@ const runWorkflowTemplateAdoptEffect = async (
 }
 
 // Runs the side effect an approved ApprovalRequest triggers, dispatched on
-// its `action`. Unknown actions (approvals that gate something other than a
-// concrete follow-up mutation) are a deliberate no-op — approving them is the
-// entire effect.
+// its `action`. The vocabulary is closed (`APPROVAL_ACTIONS` in
+// `@nessie/schemas`): an action in `EFFECT_FREE_APPROVAL_ACTIONS` is
+// deliberately a no-op — approving it IS the entire effect — and anything
+// else the switch does not know is unrecognised, not effect-free.
+//
+// Unrecognised is loud, and loud here means *thrown*, not just logged: the
+// atomic claim in `resolveApprovalRequest` has already committed when this
+// runs, so throwing cannot un-approve the request — the caller's catch
+// records the failure on the approval's resolution note, which is exactly
+// where a human looks when the thing they approved did not happen. The old
+// `default: return {}` made a misspelled action indistinguishable from a
+// deliberate no-op: request filed, human approves, nothing happens,
+// successfully, with no error — the worst failure mode an approval gate has.
 export const runApprovalEffect = async (
   prisma: PrismaClient,
   approval: ApprovalForEffect,
   actorContext: AuthorizedActionContext,
 ): Promise<ApprovalEffectResult> => {
   switch (approval.action) {
-    case 'tool.invoke': {
+    case APPROVAL_ACTIONS.toolInvoke: {
       const result = await resumeRunFromApproval(prisma, approval.id)
       switch (result.kind) {
         case 'resumed':
@@ -171,13 +185,26 @@ export const runApprovalEffect = async (
           return { note: 'resume state is invalid — run not resumed' }
       }
     }
-    case 'knowledge.page.publish':
+    case APPROVAL_ACTIONS.knowledgePagePublish:
       return runKnowledgePagePublishEffect(prisma, approval, actorContext)
-    case 'agent.todo_template.publish':
+    case APPROVAL_ACTIONS.agentTodoTemplatePublish:
       return runAgentTodoTemplatePublishEffect(prisma, approval, actorContext)
-    case 'workflow.template.adopt':
+    case APPROVAL_ACTIONS.workflowTemplateAdopt:
       return runWorkflowTemplateAdoptEffect(prisma, approval, actorContext)
-    default:
-      return {}
+    default: {
+      if ((EFFECT_FREE_APPROVAL_ACTIONS as readonly string[]).includes(approval.action)) {
+        return {}
+      }
+      console.error(
+        '[approval-effects] unrecognised approval action — approving it ran no effect:',
+        approval.action,
+        approval.id,
+      )
+      throw new Error(
+        `Approval action '${approval.action}' is not recognised: it is neither an action `
+        + 'with an effect nor a declared effect-free one. If it is deliberately effect-free, '
+        + 'add it to EFFECT_FREE_APPROVAL_ACTIONS; otherwise this is a misspelled action.',
+      )
+    }
   }
 }
