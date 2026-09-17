@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ExecutorCreateResponse } from '@nessie/schemas'
+import { executorPairingOriginLabel, type ExecutorCreateResponse } from '@nessie/schemas'
 import {
   changeExecutorWorkspaceWithCompanion,
   configureExecutorWorkspaceWithCompanion,
@@ -201,6 +201,21 @@ export const ExecutorDesktopCompanionPanel = ({
     )
   }
 
+  // The Nessie this invitation pairs against, resolved once so the button and
+  // the sentence above it can never disagree about which host is being trusted.
+  // A build with no configured public origin and an invitation carrying none is
+  // a pairing nobody can complete: that refusal is shown where the button would
+  // be, rather than thrown out of a render that would take the page with it.
+  let pairingOrigin = ''
+  let pairingOriginProblem: string | null = null
+  if (created) {
+    try {
+      pairingOrigin = getExecutorApiOrigin(created.invitation.apiBaseUrl)
+    } catch (cause) {
+      pairingOriginProblem = failureMessage(cause)
+    }
+  }
+
   const run = async (
     actionName: CompanionAction,
     action: () => Promise<ExecutorCompanionStatus>,
@@ -258,20 +273,39 @@ export const ExecutorDesktopCompanionPanel = ({
 
         {menuBarSection}
 
-        {created ? (
-          <button
-            className="admin-button admin-button-primary w-fit"
-            disabled={busy !== null}
-            onClick={() => void run('pair', () => pairExecutorWithCompanion({
-              apiBaseUrl: getExecutorApiOrigin(created.invitation.apiBaseUrl),
-              challenge: created.invitation.challenge,
-              enrollmentId: created.invitation.enrollmentId,
-              executorId: created.executor.id,
-            }))}
-            type="button"
-          >
-            {busy === 'pair' ? 'Pairing…' : 'Choose workspace and pair this computer'}
-          </button>
+        {created && pairingOriginProblem ? (
+          <p className="text-xs text-[color:var(--danger-text)]">{pairingOriginProblem}</p>
+        ) : null}
+
+        {created && !pairingOriginProblem ? (
+          <div className="grid gap-2">
+            {/* Pairing hands this computer's machine key to a server, so the
+                server is named here rather than assumed. The origin travels
+                with the invitation — a Nessie somebody hosts themselves mints
+                its own — and the desktop shell shows it again in the native
+                confirmation before any key is created. */}
+            <p className="text-xs text-[color:var(--tx3)]">
+              Pairing with{' '}
+              <span className="font-semibold text-[color:var(--tx)]">
+                {executorPairingOriginLabel(pairingOrigin)}
+              </span>
+              {' · '}
+              <code className="rounded bg-[color:var(--overlay-weak)] px-1 py-0.5 text-[color:var(--tx2)]">{pairingOrigin}</code>
+            </p>
+            <button
+              className="admin-button admin-button-primary w-fit"
+              disabled={busy !== null}
+              onClick={() => void run('pair', () => pairExecutorWithCompanion({
+                apiBaseUrl: pairingOrigin,
+                challenge: created.invitation.challenge,
+                enrollmentId: created.invitation.enrollmentId,
+                executorId: created.executor.id,
+              }))}
+              type="button"
+            >
+              {busy === 'pair' ? 'Pairing…' : 'Choose workspace and pair this computer'}
+            </button>
+          </div>
         ) : null}
 
         {status ? (
@@ -281,7 +315,12 @@ export const ExecutorDesktopCompanionPanel = ({
               {' · '}Folder: <span className="font-semibold text-[color:var(--tx)]">{status.workspaceLabel}</span>
             </p>
             {status.daemonStatus === 'awaiting_confirmation' ? (
-              <p className="text-xs text-[color:var(--tx3)]">Confirm this executor’s fingerprint in Nessie before starting its local daemon.</p>
+              <p className="text-xs text-[color:var(--tx3)]">
+                Confirm this executor’s fingerprint
+                {created ? ` at ${pairingOrigin}` : ''} before starting its local daemon. The
+                fingerprint says a key belongs to this machine; the host says which Nessie that
+                machine now talks to.
+              </p>
             ) : null}
             <div className="flex flex-wrap gap-2">
               {menuBar.supervising ? (

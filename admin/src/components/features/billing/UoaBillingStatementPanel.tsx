@@ -16,10 +16,7 @@ import {
 } from '../../../facades/billing/hooks'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Pill } from '../../primitives/Pill'
-import { SectionLabel } from '../../primitives/SectionLabel'
-import { Card } from '../../shared/Card'
 import { QueryState } from '../../shared/QueryState'
-import { StatGrid, StatTile } from '../../shared/StatTile'
 import { UoaBillingCancellationDialog } from './UoaBillingCancellationDialog'
 import { UoaBillingStatementDetails } from './UoaBillingStatementDetails'
 
@@ -34,8 +31,78 @@ const actionButtonClass = (
   action: BillingStatementAction,
 ): string =>
   action.id === 'upgrade'
-    ? 'admin-button admin-button-primary'
-    : 'admin-button admin-button-secondary'
+    ? 'admin-button admin-button-primary admin-button-compact'
+    : 'admin-button admin-button-secondary admin-button-compact'
+
+/**
+ * The prototype's "Your plan" box, on the usage view. Reads the same
+ * `useUoaBillingStatement()` query `UoaBillingStatementPanel` uses (same
+ * cache key, so switching between the usage and statement views never
+ * double-fetches) — "Compare plans" and "Upgrade plan" both run the real
+ * `upgrade` hosted action; there is no separate in-app plan-comparison
+ * screen to route "Compare plans" to.
+ */
+export const UoaBillingPlanSummary = () => {
+  const statement = useUoaBillingStatement()
+  const hostedAction = useUoaBillingHostedAction()
+  const data = statement.data
+  const upgrade = data?.actions.find((action) => action.id === 'upgrade')
+
+  if (statement.isLoading || statement.isError || !data) return null
+
+  const runUpgrade = () => {
+    if (!upgrade?.enabled) return
+    hostedAction.mutate('upgrade', {
+      onSuccess: (result) => {
+        window.location.assign(result.redirect_url)
+      },
+    })
+  }
+
+  return (
+    <section data-testid="uoa-billing-plan-summary">
+      <h2 className="mb-3.5 text-[17px] font-semibold text-[color:var(--tx)]">Your plan</h2>
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[color:var(--overlay-weak)] px-6 py-5">
+        <div>
+          <div className="text-xl font-semibold tracking-tight text-[color:var(--tx)]">
+            {data.plan.display_name}
+          </div>
+          <div className="mt-1 text-[color:var(--tx2)]">
+            {data.plan.monthly_subscription.display}/mo · {data.plan.markup_display} markup ·
+            credits and subscriptions billed separately
+          </div>
+        </div>
+        {upgrade && (
+          <div className="flex flex-none items-center gap-3">
+            <button
+              className="text-sm text-[color:var(--tx2)] hover:text-[color:var(--tx)]"
+              disabled={!upgrade.enabled || hostedAction.isPending}
+              onClick={runUpgrade}
+              title={upgrade.disabled_reason ?? undefined}
+              type="button"
+            >
+              Compare plans
+            </button>
+            <button
+              className="admin-button admin-button-primary"
+              disabled={!upgrade.enabled || hostedAction.isPending}
+              onClick={runUpgrade}
+              title={upgrade.disabled_reason ?? undefined}
+              type="button"
+            >
+              {upgrade.label}
+            </button>
+          </div>
+        )}
+      </div>
+      {hostedAction.error instanceof Error && (
+        <div className="mt-3 text-xs text-[color:var(--danger-text)]">
+          {hostedAction.error.message}
+        </div>
+      )}
+    </section>
+  )
+}
 
 export const UoaBillingStatementPanel = () => {
   const statement = useUoaBillingStatement()
@@ -88,22 +155,17 @@ export const UoaBillingStatementPanel = () => {
     hostedAction.isPending
     || previewAction.isPending
     || confirmationPending
+  const primaryTotal = data && data.totals.length === 1 ? data.totals[0] : null
 
   return (
-    <section className="mb-8" data-testid="uoa-billing-statement">
-      <SectionLabel>Customer statement</SectionLabel>
-      <Card className="mt-2" variant="section">
+    <section data-testid="uoa-billing-statement" className="grid gap-8">
+      <div>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[color:var(--tx)]">
-              UnlikeOtherAI billing
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
-              SSO supplies this complete statement, including plan terms,
-              usage rating, service attribution, line items, and actions.
-              Nessie does not calculate commercial billing.
-            </p>
-          </div>
+          <p className="max-w-2xl text-[color:var(--tx2)]">
+            UnlikeOtherAI billing (SSO) supplies this complete statement — plan terms, usage
+            rating, service attribution, line items, and actions. Nessie does not calculate
+            commercial billing.
+          </p>
           {data && (
             <Pill tone="outline">
               {data.period.key} · {data.period.state}
@@ -119,66 +181,76 @@ export const UoaBillingStatementPanel = () => {
         >
           {() => data && (
             <>
-              <StatGrid className="mt-5 sm:grid-cols-2 xl:grid-cols-4">
-                <StatTile
-                  detail={data.plan.markup_display}
-                  label="Plan"
-                  value={data.plan.display_name}
-                />
-                <StatTile
-                  detail={`${data.plan.assignment.scope} assignment`}
-                  label="Monthly"
-                  value={data.plan.monthly_subscription.display}
-                />
-                <StatTile
-                  detail={
-                    data.subscription?.cancel_at_period_end
-                      ? 'Cancellation is scheduled'
-                      : data.subscription
-                        ? 'Subscription managed by SSO'
-                        : 'No direct subscription'
-                  }
-                  label="Subscription"
-                  value={data.subscription?.display_status ?? 'Not subscribed'}
-                />
-                <StatTile
-                  detail="Subscription, usage, add-ons, and credits"
-                  label="Total due"
-                  value={
-                    data.totals.length === 1
-                      ? data.totals[0]?.total_due.display ?? 'Unavailable'
-                      : `${data.totals.length} currency totals`
-                  }
-                />
-              </StatGrid>
+              <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <div className="text-[color:var(--tx2)]">Total due</div>
+                  <div className="mt-1 text-[36px] font-semibold tracking-tight text-[color:var(--tx)]">
+                    {primaryTotal?.total_due.display
+                      ?? (data.totals.length > 0 ? `${data.totals.length} currency totals` : 'Unavailable')}
+                  </div>
+                </div>
+                {primaryTotal && (
+                  <div className="text-right text-sm text-[color:var(--tx2)]">
+                    Monthly {primaryTotal.monthly.display} · Usage {primaryTotal.usage.display} ·
+                    Add-ons {primaryTotal.add_ons.display} · Credits {primaryTotal.credits.display}
+                  </div>
+                )}
+              </div>
 
-              {data.totals.length > 0 && (
+              {data.totals.length > 1 && (
                 <ul className="mt-4 grid gap-2 sm:grid-cols-2">
                   {data.totals.map((total) => (
-                    <li
-                      className="rounded-md bg-[color:var(--overlay-weak)] p-3 text-xs text-[color:var(--tx2)]"
-                      key={total.currency}
-                    >
-                      <div className="font-semibold text-[color:var(--tx)]">
+                    <li className="text-sm text-[color:var(--tx2)]" key={total.currency}>
+                      <span className="font-medium text-[color:var(--tx)]">
                         {total.total_due.display} due
-                      </div>
-                      <div className="mt-1">
-                        Monthly {total.monthly.display} · Usage{' '}
-                        {total.usage.display} · Add-ons {total.add_ons.display} ·
-                        Credits {total.credits.display}
-                      </div>
+                      </span>{' '}
+                      — Monthly {total.monthly.display} · Usage {total.usage.display} · Add-ons{' '}
+                      {total.add_ons.display} · Credits {total.credits.display}
                     </li>
                   ))}
                 </ul>
               )}
 
+              <div className="mt-5 grid gap-6 border-t border-[color:var(--sep)] pt-5 sm:grid-cols-3">
+                <div>
+                  <div className="text-sm text-[color:var(--tx2)]">Plan</div>
+                  <div className="mt-0.5 font-medium text-[color:var(--tx)]">{data.plan.display_name}</div>
+                  <div className="mt-0.5 text-sm text-[color:var(--tx2)]">{data.plan.markup_display} markup</div>
+                </div>
+                <div>
+                  <div className="text-sm text-[color:var(--tx2)]">Monthly</div>
+                  <div className="mt-0.5 font-medium text-[color:var(--tx)]">{data.plan.monthly_subscription.display}</div>
+                  <div className="mt-0.5 text-sm text-[color:var(--tx2)]">{data.plan.assignment.scope} assignment</div>
+                </div>
+                <div>
+                  <div className="text-sm text-[color:var(--tx2)]">Subscription</div>
+                  <div className="mt-0.5 font-medium text-[color:var(--tx)]">{data.subscription?.display_status ?? 'Not subscribed'}</div>
+                  <div className="mt-0.5 text-sm text-[color:var(--tx2)]">
+                    {data.subscription?.cancel_at_period_end
+                      ? 'Cancellation is scheduled'
+                      : data.subscription
+                        ? 'Subscription managed by SSO'
+                        : 'No direct subscription'}
+                  </div>
+                </div>
+              </div>
+
               <UoaBillingStatementDetails statement={data} />
 
-              <div className="mt-6">
-                <SectionLabel>Subscription actions</SectionLabel>
-                <ul className="mt-2 divide-y divide-[color:var(--sep)]">
+              <div className="mt-8">
+                <h2 className="mb-1 text-[17px] font-semibold text-[color:var(--tx)]">Actions</h2>
+                <ul className="divide-y divide-[color:var(--sep)]">
                   {data.actions.map((action) => (
-                    <li className="flex flex-wrap items-center gap-3 py-2.5" key={action.id}>
+                    <li className="flex flex-wrap items-center justify-between gap-3 py-3.5" key={action.id}>
+                      <div className="min-w-0">
+                        <div className="font-medium text-[color:var(--tx)]">{action.label}</div>
+                        <div className="mt-0.5 text-sm text-[color:var(--tx2)]">
+                          {action.description}
+                          {!action.enabled && action.disabled_reason && (
+                            <span className="text-[color:var(--tx3)]"> — {action.disabled_reason}</span>
+                          )}
+                        </div>
+                      </div>
                       <button
                         className={actionButtonClass(action)}
                         data-testid={`uoa-billing-action-${action.id}`}
@@ -190,14 +262,6 @@ export const UoaBillingStatementPanel = () => {
                       >
                         {action.label}
                       </button>
-                      <div className="min-w-0 flex-1 text-xs text-[color:var(--tx2)]">
-                        {action.description}
-                        {!action.enabled && action.disabled_reason && (
-                          <div className="mt-0.5 text-[color:var(--tx3)]">
-                            {action.disabled_reason}
-                          </div>
-                        )}
-                      </div>
                     </li>
                   ))}
                 </ul>
@@ -211,7 +275,7 @@ export const UoaBillingStatementPanel = () => {
             {actionError}
           </div>
         )}
-      </Card>
+      </div>
 
       {(preview || confirmation) && (
         <UoaBillingCancellationDialog

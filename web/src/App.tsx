@@ -4,6 +4,7 @@ import { FinalCta, Footer, Love, Promos, StatsBand, Stories } from './home/closi
 import { CookieBar, Header } from './home/header'
 import { Hero } from './home/hero'
 import { Pricing } from './home/pricing'
+import { Departments } from './home/sales'
 import { Wave } from './home/wave'
 import { SignedInTeams } from './signed-in-teams/SignedInTeams'
 
@@ -20,6 +21,7 @@ export function App() {
         <SignedInTeams />
         <Hero />
         <Assistant />
+        <Departments />
         <AiBand />
         <Wave bottom={light} top="var(--n-ink)" />
         <WhatsNew />

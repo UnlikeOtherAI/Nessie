@@ -88,6 +88,40 @@ export type RealtimeNotificationPayload =
        */
       scopes: []
     }
+  | {
+      /**
+       * The per-document live lane: a spreadsheet's op batches and presence
+       * frames, addressed by `pageId` rather than by a ws scope. Nothing on it
+       * is durable — a client that missed an event repairs over REST — so it
+       * carries no `eventId` and writes no row.
+       *
+       * Inert to a previous-build replica by exactly the construction `sse-ref`
+       * and `auth` use, and for the same reason: during a blue-green swap a
+       * replica running the build before this one is LISTENing on the same
+       * channel and hands whatever arrives to a fan-out that reads `kind`
+       * (not `'sse'`, so it falls through), then `eventId` (absent, so it
+       * builds no replay event and never dereferences `message`), then
+       * `scopes.filter` for every WebSocket connection — in an *unawaited*
+       * promise, where a TypeError is an unhandled rejection that ends the
+       * process on Node 22. Every payload the lane carries therefore lives
+       * under `document`, a key that build never reads, and `scopes` is
+       * present and empty so the filter it does reach matches nobody.
+       *
+       * **Do not flatten `document.*` to the top level** until no deployed
+       * replica predates it (Phase 5 records the earliest safe date).
+       */
+      kind: 'document'
+      document: {
+        pageId: string
+        organizationId: string
+        /** A `DocumentSseEventName`; validated by `DocumentSseEventSchema` at publish time. */
+        event: string
+        data: unknown
+        ts: string
+      }
+      /** Always empty — the compatibility shim described above. */
+      scopes: []
+    }
 
 /**
  * What actually travels over NOTIFY. A `*-ref` variant carries the row id in
@@ -169,6 +203,65 @@ export const buildWsRefEnvelope = (input: {
   ref: { eventId: input.eventId, scopes: input.scopes },
   scopes: [],
 })
+
+/**
+ * The one place a `document` envelope is built, so the compatibility shim
+ * (`scopes: []`, everything under `document`) cannot be present at one call
+ * site and forgotten at another.
+ */
+export const buildDocumentEnvelope = (input: {
+  pageId: string
+  organizationId: string
+  event: string
+  data: unknown
+  ts?: string
+}): Extract<RealtimeNotificationPayload, { kind: 'document' }> => ({
+  kind: 'document',
+  document: {
+    pageId: input.pageId,
+    organizationId: input.organizationId,
+    event: input.event,
+    data: input.data,
+    ts: input.ts ?? new Date().toISOString(),
+  },
+  scopes: [],
+})
+
+/**
+ * A `sheet.ops` event carries the batch's diffs inline **only when the whole
+ * envelope fits under the NOTIFY cap**; otherwise `diffs` is null and the
+ * client fetches that `seq` from the catch-up route. A 2 000-cell paste is
+ * ~15 KB of diffs and takes the second path; a single-cell edit is ~50 bytes
+ * and rides inline.
+ *
+ * One function decides, so the cap check cannot be forgotten: `notifyEnvelope`
+ * would otherwise drop the whole event in silence (it has no ref form to fall
+ * back to) and the client would sit on a `seq` gap until its 250 ms repair
+ * timer fired.
+ */
+export const buildSheetOpsEvent = <T extends { diffs: string | null }>(
+  input: { pageId: string; organizationId: string; batch: T },
+): { envelope: Extract<RealtimeNotificationPayload, { kind: 'document' }>; inlined: boolean } => {
+  const withDiffs = buildDocumentEnvelope({
+    pageId: input.pageId,
+    organizationId: input.organizationId,
+    event: 'sheet.ops',
+    data: input.batch,
+  })
+  if (Buffer.byteLength(JSON.stringify(withDiffs), 'utf8') <= NOTIFY_PAYLOAD_LIMIT_BYTES) {
+    return { envelope: withDiffs, inlined: true }
+  }
+  return {
+    envelope: buildDocumentEnvelope({
+      pageId: input.pageId,
+      organizationId: input.organizationId,
+      event: 'sheet.ops',
+      data: { ...input.batch, diffs: null },
+      ts: withDiffs.document.ts,
+    }),
+    inlined: false,
+  }
+}
 
 export type RealtimeReplayEvent = {
   id: bigint

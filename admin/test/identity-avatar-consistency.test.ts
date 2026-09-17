@@ -72,8 +72,14 @@ test('nothing outside IdentityTile draws an identity picture', () => {
 test('the identity palette has exactly one source', () => {
   // Prose may name it; only one module may import it. Two readers is how the
   // sidebar's flat purple and the channel's palette colour drifted apart.
+  //
+  // Both names, because the palette moved into `@nessie/schemas` so the agent
+  // tools could colour a presence frame with it: the admin now reaches it
+  // through `fallbackAgentBackgroundColor`, and an assertion that still named
+  // only the array would have passed with nobody importing anything.
   const importers = walk(SRC).filter((path) =>
-    /import\s[^\n]*AGENT_AVATAR_BACKGROUND_COLORS/.test(readFileSync(path, 'utf8')),
+    /import\s[^\n]*(AGENT_AVATAR_BACKGROUND_COLORS|fallbackAgentBackgroundColor)/
+      .test(readFileSync(path, 'utf8')),
   )
   assert.deepEqual(
     importers.map((path) => path.slice(SRC.length + 1).replaceAll('\\', '/')),

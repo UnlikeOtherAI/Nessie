@@ -159,7 +159,25 @@ test('the daemon rejects an insecure API origin', () => {
       'pair', '--api', 'http://api.example.test', '--enrollment', 'x',
       '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
     ]),
-    /HTTPS URL/,
+    /must be HTTPS/,
+  )
+})
+
+test('a preset and a self-hosted origin both pair, a look-alike does not', () => {
+  const origin = (value: string): string => parseCommand([
+    'pair', '--api', value, '--enrollment', 'x',
+    '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
+    '--workspace', '/private/tmp/nessie-workspace',
+  ]).apiBaseUrl!
+
+  assert.equal(origin('nessie'), 'https://api.nessie.works')
+  assert.equal(origin('deeptest'), 'https://api.deeptest.live')
+  // Nessie is open source; somebody's own server is an ordinary case.
+  assert.equal(origin('https://nessie.example.com'), 'https://nessie.example.com')
+  // A path is how one host is dressed up as another; it never reaches a key.
+  assert.throws(
+    () => origin('https://evil.example.com/api.nessie.works'),
+    /origin only/,
   )
 })
 
@@ -181,7 +199,7 @@ test('only the desktop development process may use the exact local API origin', 
         '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
         '--workspace', '/private/tmp/nessie-workspace',
       ]),
-      /HTTPS URL/,
+      /must be HTTPS/,
     )
   } finally {
     if (previous === undefined) delete process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API

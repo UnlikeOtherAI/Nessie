@@ -78,14 +78,45 @@ final class StatusItemIconTests: XCTestCase {
         var interiorFilled: Double
     }
 
+    /// Rasterised at a fixed scale rather than through
+    /// `cgImage(forProposedRect:nil, …)`, which renders at the MAIN SCREEN's
+    /// backing scale — that made every measurement below depend on which
+    /// display the suite happened to run on, and it failed deterministically on
+    /// a Mac whose scale differed from the one it was written on.
+    private func rasterise(
+        _ icon: MenuIcon, file: StaticString = #filePath, line: UInt = #line
+    ) throws -> NSBitmapImageRep {
+        let side = Int(StatusItemIcon.size.width) * 4
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ), file: file, line: line)
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap), file: file, line: line)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        StatusItemIcon.image(for: icon)
+            .draw(in: NSRect(x: 0, y: 0, width: CGFloat(side), height: CGFloat(side)))
+        NSGraphicsContext.restoreGraphicsState()
+        return bitmap
+    }
+
     private func coverage(
         of icon: MenuIcon, file: StaticString = #filePath, line: UInt = #line
     ) throws -> Coverage {
-        let image = StatusItemIcon.image(for: icon)
-        let cgImage = try XCTUnwrap(
-            image.cgImage(forProposedRect: nil, context: nil, hints: nil), file: file, line: line
-        )
-        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        let bitmap = try rasterise(icon, file: file, line: line)
+        var strongest = 0.0
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                strongest = max(strongest, Double(bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0))
+            }
+        }
+        // The ink threshold is a share of this icon's OWN strongest ink, not a
+        // fixed alpha. A tinted copy of the same letter has every pixel scaled
+        // by the same factor, so a fixed threshold silently drops its faintest
+        // antialiased edges and reports the quieter icon as a smaller letter —
+        // which is exactly the shape difference these assertions exist to catch.
+        let inkThreshold = strongest * 0.05
         var inked = 0
         var alphaTotal = 0.0
         var spanPixels = 0
@@ -95,7 +126,7 @@ final class StatusItemIconTests: XCTestCase {
             var last: Int?
             for x in 0..<bitmap.pixelsWide {
                 let alpha = Double(bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0)
-                if alpha > 0.05 {
+                if alpha > inkThreshold {
                     inked += 1
                     alphaTotal += alpha
                     if first == nil { first = x }
@@ -105,7 +136,9 @@ final class StatusItemIconTests: XCTestCase {
             guard let first, let last, last > first else { continue }
             for x in first...last {
                 spanPixels += 1
-                if Double(bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 { filledPixels += 1 }
+                if Double(bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > inkThreshold {
+                    filledPixels += 1
+                }
             }
         }
         let area = Double(bitmap.pixelsWide * bitmap.pixelsHigh)

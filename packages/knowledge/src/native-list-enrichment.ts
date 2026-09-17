@@ -85,8 +85,14 @@ export const pageRowFactsFor = async (
     facts.set(page.id, {
       // A file's bytes and type are its attachment's; a document's are its
       // body's, and a document has no mime of its own.
+      //
+      // A spreadsheet has both: the `.xlsx` rendition on the version, and the
+      // text projection in `body`. Its size is the rendition's — that is what a
+      // reader downloads, and it is what `sizesFor` already counts for Get
+      // Info, so a row and the panel above it agree. Its mime stays null: the
+      // rendition is a rendition, and a spreadsheet is not a file node.
       mime: page.kind === 'file' ? attachment?.mime ?? null : null,
-      sizeBytes: page.kind === 'file'
+      sizeBytes: page.kind === 'file' || page.kind === 'spreadsheet'
         ? attachment?.sizeBytes.toString() ?? null
         : String(version?.bodyBytes ?? 0),
       shareCount: shareCountByPage.get(page.id) ?? 0,

@@ -97,6 +97,7 @@ import {
 import { runSpawnSubtaskTool } from './subtask-tools.js'
 import { summarizeToolInput, wrapTool } from './tool-util.js'
 import { dispatchKbTool } from './kb-tool-dispatch.js'
+import { dispatchSheetTool } from './sheet-tool-dispatch.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 import { dispatchSandboxedBuiltinTool } from './sandboxed-tool-dispatch.js'
 
@@ -152,6 +153,8 @@ const executeBuiltinToolUncorrected = async (
   if (browserResult) return browserResult
   const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
   if (knowledgeBaseResult) return knowledgeBaseResult
+  const spreadsheetResult = dispatchSheetTool(toolName, args, context, inputSummary)
+  if (spreadsheetResult) return spreadsheetResult
   const mailResult = await dispatchMailTool(toolName, args, context, inputSummary)
   if (mailResult) return mailResult
   const sandboxedResult = await dispatchSandboxedBuiltinTool(toolName, args, context, inputSummary)

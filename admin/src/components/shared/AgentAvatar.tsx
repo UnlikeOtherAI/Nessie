@@ -1,4 +1,4 @@
-import { AGENT_AVATAR_BACKGROUND_COLORS } from '@nessie/schemas'
+import { fallbackAgentBackgroundColor } from '@nessie/schemas'
 
 import { useAuthedObjectUrl } from '../../lib/uploads'
 import { useAgentIdentity } from '../../providers/AgentIdentityProvider'
@@ -34,18 +34,6 @@ export const agentAvatarPx = (size: NonNullable<AgentAvatarProps['size']>): numb
   typeof size === 'number' ? size : NAMED_SIZES[size]
 
 /**
- * The palette entry an agent falls back to, derived from its id so the same
- * agent keeps the same colour on every surface without storing one.
- */
-const fallbackBackgroundColor = (agentId?: string | null): string => {
-  const hash = [...(agentId ?? '')].reduce(
-    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
-    0,
-  )
-  return AGENT_AVATAR_BACKGROUND_COLORS[hash % AGENT_AVATAR_BACKGROUND_COLORS.length]!
-}
-
-/**
  * An agent's picture, on every surface.
  *
  * The call site hands in whatever it holds — a full `AgentRecord`, a partial
@@ -76,7 +64,7 @@ export const AgentAvatar = ({
 
   return (
     <IdentityTile
-      background={identity?.avatarBackgroundColor ?? fallbackBackgroundColor(resolvedId)}
+      background={identity?.avatarBackgroundColor ?? fallbackAgentBackgroundColor(resolvedId)}
       className={className}
       fallback={{ kind: 'glyph', glyph: getAgentGlyph(identity) }}
       imageUrl={attachmentId ? objectUrl : null}

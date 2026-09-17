@@ -81,6 +81,12 @@ importers:
       '@fortawesome/react-fontawesome':
         specifier: ^3.3.0
         version: 3.3.0(@fortawesome/fontawesome-svg-core@7.3.1)(react@19.2.4)
+      '@ironcalc/wasm':
+        specifier: 0.8.4
+        version: 0.8.4
+      '@ironcalc/workbook':
+        specifier: 0.8.3
+        version: 0.8.3(i18next@26.4.2(typescript@5.9.3))(lucide-react@1.46.0(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(react@19.2.4)
       '@nessie/client-core':
         specifier: workspace:*
         version: link:../packages/client-core
@@ -93,6 +99,9 @@ importers:
       '@nessie/sign-in-surface':
         specifier: workspace:*
         version: link:../packages/sign-in-surface
+      '@nessie/spreadsheet':
+        specifier: workspace:*
+        version: link:../packages/spreadsheet
       '@tailwindcss/vite':
         specifier: ^4.2.2
         version: 4.2.2(vite@7.3.2(@types/node@22.20.1)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -126,9 +135,15 @@ importers:
       emoji-picker-react:
         specifier: 4.19.1
         version: 4.19.1(react@19.2.4)
+      i18next:
+        specifier: ^26.3.1
+        version: 26.4.2(typescript@5.9.3)
       jmespath:
         specifier: ^0.16.0
         version: 0.16.0
+      lucide-react:
+        specifier: ^1.17.0
+        version: 1.46.0(react@19.2.4)
       react:
         specifier: ^19.2.0
         version: 19.2.4
@@ -138,6 +153,9 @@ importers:
       react-grid-layout:
         specifier: ^2.2.4
         version: 2.2.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react-i18next:
+        specifier: ^16.5.8
+        version: 16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.2.17)(react@19.2.4)
@@ -160,6 +178,9 @@ importers:
       '@nessie/mock-llm':
         specifier: workspace:*
         version: link:../packages/mock-llm
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../packages/runtime
       '@types/jmespath':
         specifier: ^0.15.2
         version: 0.15.2
@@ -175,6 +196,9 @@ importers:
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
+      pg:
+        specifier: ^8.16.3
+        version: 8.20.0
       vite:
         specifier: ^7.1.10
         version: 7.3.2(@types/node@22.20.1)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0)
@@ -748,6 +772,9 @@ importers:
       '@chonkiejs/core':
         specifier: 0.0.11
         version: 0.0.11
+      '@ironcalc/nodejs':
+        specifier: 0.8.3
+        version: 0.8.3
       '@nessie/db':
         specifier: workspace:*
         version: link:../db
@@ -760,6 +787,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas
+      '@nessie/spreadsheet':
+        specifier: workspace:*
+        version: link:../spreadsheet
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -964,6 +994,22 @@ importers:
         specifier: ^19.2.0
         version: 19.2.4
 
+  packages/spreadsheet:
+    dependencies:
+      '@ironcalc/nodejs':
+        specifier: 0.8.3
+        version: 0.8.3
+      '@ironcalc/wasm':
+        specifier: 0.8.4
+        version: 0.8.4
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+    devDependencies:
+      exceljs:
+        specifier: 4.4.0
+        version: 4.4.0
+
   packages/team-admin:
     dependencies:
       '@nessie/agent-mail':
@@ -1152,6 +1198,9 @@ importers:
       '@nessie/mock-llm':
         specifier: workspace:*
         version: link:../packages/mock-llm
+      '@nessie/spreadsheet':
+        specifier: workspace:*
+        version: link:../packages/spreadsheet
       '@types/pdf-parse':
         specifier: ^1.1.5
         version: 1.1.5
@@ -2641,6 +2690,87 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [win32]
+
+  '@ironcalc/nodejs-android-arm-eabi@0.8.3':
+    resolution: {integrity: sha512-PJde6hdwTH5v1cIHBwNTwLJsb/oVspKKPZz7rhww5nfBKp1+TZl74M2pxeYKDaR4jceor1gaPZdXGVYQ2u8RjA==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [android]
+
+  '@ironcalc/nodejs-android-arm64@0.8.3':
+    resolution: {integrity: sha512-2DSHFlq9CsSdxZHfWBLIzNHBeb/DQozd/iQLjgzRCpBhj2osZgWlXrug2etoCEsNWj4coRLVm3VyDyEXSqKQRg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+
+  '@ironcalc/nodejs-darwin-arm64@0.8.3':
+    resolution: {integrity: sha512-GWX9UMrmr+v3ednfb/paKL2GYoIfJdF5KO+S0qnwUF027FJQAphGC8ELHuCIRdwikBZp1kAAb4QpJ8zzHF/prQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@ironcalc/nodejs-darwin-universal@0.8.3':
+    resolution: {integrity: sha512-NqF06O4PCS18jvjpV3RaFKVV17X40trUmnCnUukR9lRg7VZYSKvkxYa33DgiPhW1CP09zSeRifmHwH924K+mow==}
+    engines: {node: '>= 10'}
+    os: [darwin]
+
+  '@ironcalc/nodejs-darwin-x64@0.8.3':
+    resolution: {integrity: sha512-kFsCBoPneqWp8sOP9BC3ZYNmYpEED/SAFBa595nV1J59rMvqjdxnWNNG5lN5/a9q1+7sVjn6NCQYfPX9cvZ0Ew==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@ironcalc/nodejs-linux-arm-gnueabihf@0.8.3':
+    resolution: {integrity: sha512-3EzTwxDOUynB3GhTbH1m+dAsxNtLBII+8/GdxR7nEEwmR//7hAkaM9GU5yyzT8lIE2a40QawsZNnjq3LkM++xQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+
+  '@ironcalc/nodejs-linux-arm64-gnu@0.8.3':
+    resolution: {integrity: sha512-uLpZrPJKtL4Agi2SfEkBnYQFfir2QP+exgVQi0LOze0pQOd+CmcgeUPAZWDAfntMxfxBJ+tF5BgQYNIE5DHYSA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@ironcalc/nodejs-linux-riscv64-gnu@0.8.3':
+    resolution: {integrity: sha512-Ht/GflZXaKn08dddz7ry74C9ZYIM2QMuTdAmoVSEB34gLdV+QtkaBcL5ot2ZmM1sIT9SK7y6QKTrvb1z0J1VuQ==}
+    engines: {node: '>= 10'}
+    cpu: [riscv64]
+    os: [linux]
+
+  '@ironcalc/nodejs-linux-x64-gnu@0.8.3':
+    resolution: {integrity: sha512-n44IrdxUGuGru4HwNuieWN7fmsPOGTjlhcGwe2p+8rE4hrccCiB7Njh92hDnatCVjGHjsLV9tkXA2RWvGne1qg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+
+  '@ironcalc/nodejs-win32-arm64-msvc@0.8.3':
+    resolution: {integrity: sha512-bWMARXOcjqlwQVDkqcJeqtTAXqm19IshTkNJif1xv38VK+uj0crzBmi0XXiP00oGx5f7XAb1Qmc8GK8TLjocAw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@ironcalc/nodejs-win32-x64-msvc@0.8.3':
+    resolution: {integrity: sha512-cqgECHsriftU5ru/hLS5WLtNbrEr9iQWXnLf8SdrPWMdX8hX9X3a+llcuu5PPueOYUjL+xpQWtBoEXAe1T5maQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@ironcalc/nodejs@0.8.3':
+    resolution: {integrity: sha512-gCnA/GHHp9+/VLX9QpUiCpgKkG/7F/RZhAslxDssERSZBfbZIoHe/fgibMbDIBuaZ21DEbejZ0tRkENYVN27TQ==}
+    engines: {node: '>= 10'}
+
+  '@ironcalc/wasm@0.8.4':
+    resolution: {integrity: sha512-kdOr3nzb170Wrd2S371QEuCRC3q1EoBdu9CCOU06E3L2dr3cswOuSJmlJM4KHumqFaWEpWb2kiBfOz/szgZ/3Q==}
+
+  '@ironcalc/workbook@0.8.3':
+    resolution: {integrity: sha512-9+X3stq0L6pSL0DVemXD0Bdv4ynFib9A1qrliJ4cn2aTCktxihmjOv+wvxB95OJ9concaMe1MvIkudvA9EJt9w==}
+    peerDependencies:
+      i18next: ^26.3.1
+      lucide-react: ^1.17.0
+      react: ^18 || ^19
+      react-dom: ^18 || ^19
+      react-i18next: ^16.5.8
 
   '@isaacs/ttlcache@1.4.1':
     resolution: {integrity: sha512-RQgQ4uQ+pLbqXfOmieB91ejmLwvSgv9nLx6sT6sD83s7umBypgg+OIBOBbEUiJXrfpnp9j0mRhYYdzp9uqq3lA==}
@@ -5451,6 +5581,9 @@ packages:
     resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
+  html-parse-stringify@3.1.0:
+    resolution: {integrity: sha512-E0oAXcELOtsXe+BmpJ2EZyedbldPpriV5vICzEuo6xjC/D1lDukOI7KrpfQGF2Qc4wWEy0nk3bFORS2K5ZAhFQ==}
+
   html-to-text@10.0.1:
     resolution: {integrity: sha512-GiVhRI1BatGARSCmlXWNCjDT0cWrwBWoeduLoV0WSKAgaV/wa+hUWy5LiQLUs4UwiUrE52ZCMfBGiKD87TDPrg==}
     engines: {node: '>=20.19.0'}
@@ -5468,6 +5601,14 @@ packages:
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
+
+  i18next@26.4.2:
+    resolution: {integrity: sha512-RX+R0VLg13IbvRuJSxnqykUFS9vQZTl8wYpWPCIUDWVrSGjsQywB5Y+pjzrkboxGAuYfJZVH1InFTdgBdxq6ug==}
+    peerDependencies:
+      typescript: ^5 || ^6 || ^7
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -5940,6 +6081,11 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide-react@1.46.0:
+    resolution: {integrity: sha512-Bv+FZXgZPrxc/NCl1e7JJVQFLdiCxYgxNVhqoV7X0p6I8ADJo8DxBnK1auH0fZz4AmqOJ3jgneL4f1i8LJQRAA==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
@@ -6731,6 +6877,12 @@ packages:
   rc9@2.1.2:
     resolution: {integrity: sha512-btXCnMmRIBINM2LDZoEmOogIZU7Qe7zn4BpomSKZ/ykbLObuBdvG+mFq11DL6fjH1DRwHhrlgtYWG96bJiC7Cg==}
 
+  react-colorful@5.8.1:
+    resolution: {integrity: sha512-oz68bhsnFWnpDf1ZR8daiQbYpXUnM2h2J6hl9Zg2rTpM/DU6vCqe1E+CpqmqLnJucMZetHZeifSAfJ+geN9lcA==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
   react-devtools-core@6.1.5:
     resolution: {integrity: sha512-ePrwPfxAnB+7hgnEr8vpKxL9cmnp7F322t8oqcPshbIQQhDKgFDW4tjhF2wjVbdXF9O/nyuy3sQWd9JGpiLPvA==}
 
@@ -6759,6 +6911,22 @@ packages:
     peerDependencies:
       react: '>= 16.3.0'
       react-dom: '>= 16.3.0'
+
+  react-i18next@16.6.6:
+    resolution: {integrity: sha512-ZgL2HUoW34UKUkOV7uSQFE1CDnRPD+tCR3ywSuWH7u2iapnz86U8Bi3Vrs620qNDzCf1F47NxglCEkchCTDOHw==}
+    peerDependencies:
+      i18next: '>= 25.10.9'
+      react: '>= 16.8.0'
+      react-dom: '*'
+      react-native: '*'
+      typescript: ^5 || ^6
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
+      typescript:
+        optional: true
 
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
@@ -7746,6 +7914,10 @@ packages:
 
   vlq@1.0.1:
     resolution: {integrity: sha512-gQpnTgkubC6hQgdIcRdYGDSDc+SaujOdyesZQMv6JlfQee/9Mp0Qhnys6WxDWvQnL5WZdT7o2Ul187aSt0Rq+w==}
+
+  void-elements@3.1.0:
+    resolution: {integrity: sha512-Dhxzh5HZuiHQhbvTW9AMetFfBHDMYpo23Uo9btPXgdYP+3T5S+p+jgNy7spra+veYhBP2dCSgxR/i2Y02h5/6w==}
+    engines: {node: '>=0.10.0'}
 
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
@@ -9896,6 +10068,65 @@ snapshots:
 
   '@img/sharp-win32-x64@0.35.3':
     optional: true
+
+  '@ironcalc/nodejs-android-arm-eabi@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-android-arm64@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-darwin-arm64@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-darwin-universal@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-darwin-x64@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-linux-arm-gnueabihf@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-linux-arm64-gnu@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-linux-riscv64-gnu@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-linux-x64-gnu@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-win32-arm64-msvc@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs-win32-x64-msvc@0.8.3':
+    optional: true
+
+  '@ironcalc/nodejs@0.8.3':
+    optionalDependencies:
+      '@ironcalc/nodejs-android-arm-eabi': 0.8.3
+      '@ironcalc/nodejs-android-arm64': 0.8.3
+      '@ironcalc/nodejs-darwin-arm64': 0.8.3
+      '@ironcalc/nodejs-darwin-universal': 0.8.3
+      '@ironcalc/nodejs-darwin-x64': 0.8.3
+      '@ironcalc/nodejs-linux-arm-gnueabihf': 0.8.3
+      '@ironcalc/nodejs-linux-arm64-gnu': 0.8.3
+      '@ironcalc/nodejs-linux-riscv64-gnu': 0.8.3
+      '@ironcalc/nodejs-linux-x64-gnu': 0.8.3
+      '@ironcalc/nodejs-win32-arm64-msvc': 0.8.3
+      '@ironcalc/nodejs-win32-x64-msvc': 0.8.3
+
+  '@ironcalc/wasm@0.8.4': {}
+
+  '@ironcalc/workbook@0.8.3(i18next@26.4.2(typescript@5.9.3))(lucide-react@1.46.0(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(react@19.2.4)':
+    dependencies:
+      '@ironcalc/wasm': 0.8.4
+      i18next: 26.4.2(typescript@5.9.3)
+      lucide-react: 1.46.0(react@19.2.4)
+      react: 19.2.4
+      react-colorful: 5.8.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react-dom: 19.2.4(react@19.2.4)
+      react-i18next: 16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
 
   '@isaacs/ttlcache@1.4.1': {}
 
@@ -13011,6 +13242,10 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
+  html-parse-stringify@3.1.0:
+    dependencies:
+      void-elements: 3.1.0
+
   html-to-text@10.0.1:
     dependencies:
       '@selderee/plugin-htmlparser2': 0.12.0(selderee@0.12.0)
@@ -13042,6 +13277,10 @@ snapshots:
       debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
+
+  i18next@26.4.2(typescript@5.9.3):
+    optionalDependencies:
+      typescript: 5.9.3
 
   iconv-lite@0.6.3:
     dependencies:
@@ -13484,6 +13723,10 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide-react@1.46.0(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   luxon@3.7.2: {}
 
@@ -14654,6 +14897,11 @@ snapshots:
       defu: 6.1.7
       destr: 2.0.5
 
+  react-colorful@5.8.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+
   react-devtools-core@6.1.5:
     dependencies:
       shell-quote: 1.8.4
@@ -14691,6 +14939,17 @@ snapshots:
       react-draggable: 4.7.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react-resizable: 3.2.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       resize-observer-polyfill: 1.5.1
+
+  react-i18next@16.6.6(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3):
+    dependencies:
+      '@babel/runtime': 7.29.7
+      html-parse-stringify: 3.1.0
+      i18next: 26.4.2(typescript@5.9.3)
+      react: 19.2.4
+      use-sync-external-store: 1.6.0(react@19.2.4)
+    optionalDependencies:
+      react-dom: 19.2.4(react@19.2.4)
+      typescript: 5.9.3
 
   react-is@16.13.1: {}
 
@@ -15808,6 +16067,8 @@ snapshots:
       - yaml
 
   vlq@1.0.1: {}
+
+  void-elements@3.1.0: {}
 
   w3c-keyname@2.2.8: {}
 

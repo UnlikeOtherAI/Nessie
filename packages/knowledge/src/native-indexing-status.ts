@@ -198,6 +198,48 @@ const stateFromChunks = (
   return { state: 'pending', stage: 'embed' }
 }
 
+/**
+ * A spreadsheet is indexed like neither sibling, which is why it is collected
+ * with `file`'s latest-version lookup and answered by its own function.
+ *
+ * `createSpreadsheetSnapshot` writes the workbook's text projection into the
+ * version's `body`, and `addFileVersion` → `indexVersionChunks` writes the
+ * chunks and enqueues the embed inside that same transaction. Neither of the
+ * two steps the other arms wait on ever happens here:
+ *
+ * - `fileState` asks `isExtractableUpload` and then waits for a
+ *   `knowledge.extract` job. The attachment on the version is the `.xlsx`
+ *   rendition, which is not an extractable upload, so that arm would report
+ *   every spreadsheet in the building as "Not indexed — unsupported" — and the
+ *   text it would have been judging is not in the attachment anyway.
+ * - `documentState` gates on `status === 'published'`, because a document is
+ *   chunked on publish. Nothing publishes a spreadsheet: it stays `draft` and
+ *   is searchable regardless, so that arm would report "Not indexed — draft"
+ *   about a page whose chunks are embedded.
+ *
+ * What is left is the part both share: the chunks of the newest saved version.
+ * Search is honestly stale between versions (docs/standards/spreadsheets.md →
+ * "Versions, compaction and the sweeps"); this state answers for the version
+ * that exists, which is exactly what is searchable.
+ */
+const spreadsheetState = (
+  page: IndexingStatusPage,
+  version: VersionFacts | undefined,
+  chunks: Map<string, ChunkFacts>,
+  embedJobs: Map<string, string>,
+): KnowledgeIndexingState => {
+  // A page created but never compacted has no durable version yet — the first
+  // one is deferred to the first snapshot — so there is no text to find. That
+  // is not "no text found": nothing has been saved yet, and saying so keeps a
+  // new sheet as quiet as a draft document.
+  if (!version || version.bodyBytes === 0) return { state: 'not_indexed', reason: 'unsaved' }
+  return stateFromChunks(
+    version.versionId,
+    chunks.get(version.versionId),
+    embedJobs.get(knowledgeEmbedJobKeyPrefix(page.id, version.versionId)),
+  )
+}
+
 const documentState = (
   page: IndexingStatusPage,
   version: VersionFacts | undefined,
@@ -245,6 +287,19 @@ const fileState = (
 }
 
 /**
+ * A spreadsheet. Its searchable text is the projection written into the
+ * `body` of each durable version (`spreadsheet/snapshot.ts`), so it is judged
+ * on the same chunks as a document — but never on `status`: a spreadsheet is
+ * not published, it is saved.
+ *
+ * No version, and a version whose projection is empty, are the same answer on
+ * purpose: they are indistinguishable to a reader (a new workbook is created
+ * with no snapshot, and a blank one projects to nothing) and they are cured by
+ * the same act. `empty` would say "no text found", which reads as a verdict on
+ * a grid that may simply not have been saved yet.
+ */
+
+/**
  * The indexing state of every page in one listing, keyed by page id.
  *
  * The switch over `KnowledgePageKind` is exhaustive on purpose: a kind added
@@ -272,7 +327,13 @@ export const indexingStatesFor = async (
           publishedVersionIds.push(page.publishedVersionId)
         }
         continue
+      // Both are judged on their newest version rather than a published one: a
+      // file has no draft state, and nothing publishes a spreadsheet. They part
+      // company at the state function — see `spreadsheetState`.
       case 'file':
+      // A spreadsheet is judged on its latest saved version, like a file node
+      // — there is no `publishedVersionId` on this kind at all.
+      case 'spreadsheet':
         considered.push(page)
         latestForPageIds.push(page.id)
         continue
@@ -324,12 +385,16 @@ export const indexingStatesFor = async (
 
   for (const page of considered) {
     const version = versions.get(page.id)
-    states.set(
-      page.id,
-      page.kind === 'document'
-        ? documentState(page, version, chunks, embedJobs)
-        : fileState(page, version, attachments, chunks, extractJobs, embedJobs),
-    )
+    if (page.kind === 'document') {
+      states.set(page.id, documentState(page, version, chunks, embedJobs))
+    } else if (page.kind === 'spreadsheet') {
+      states.set(page.id, spreadsheetState(page, version, chunks, embedJobs))
+    } else {
+      states.set(
+        page.id,
+        fileState(page, version, attachments, chunks, extractJobs, embedJobs),
+      )
+    }
   }
   return states
 }

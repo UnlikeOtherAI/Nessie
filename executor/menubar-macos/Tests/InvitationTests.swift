@@ -11,7 +11,7 @@ final class InvitationTests: XCTestCase {
         let command = "nessie-executor pair --api https://api.nessie.works --state-dir "
             + "\"$HOME/.nessie-executor\" --workspace \"/absolute/read-only/workspace\" "
             + "--enrollment \(enrollment) --challenge \(challenge)"
-        let invitation = try InvitationParser.parse(command, isDevelopmentBuild: false).get()
+        let invitation = try InvitationParser.parse(command, defaultApiBaseUrl: "https://api.nessie.works").get()
         XCTAssertEqual(invitation.enrollmentId, enrollment)
         XCTAssertEqual(invitation.challenge, challenge)
         XCTAssertEqual(invitation.apiBaseUrl, "https://api.nessie.works")
@@ -20,31 +20,53 @@ final class InvitationTests: XCTestCase {
     func testReadsAnInvitationLinkWithTheSameTwoValues() throws {
         let invitation = try InvitationParser.parse(
             "https://app.nessie.works/agents/executors?enrollmentId=\(enrollment)&challenge=\(challenge)%3D",
-            isDevelopmentBuild: false
+            defaultApiBaseUrl: "https://api.nessie.works"
         ).get()
         XCTAssertEqual(invitation.enrollmentId, enrollment)
         // Percent-encoded base64 padding survives: a challenge that lost its `=`
         // would be rejected by the API with nothing to explain it.
         XCTAssertEqual(invitation.challenge, "\(challenge)=")
-        XCTAssertEqual(invitation.apiBaseUrl, ApprovedAPIOrigin.production)
+        XCTAssertEqual(invitation.apiBaseUrl, "https://api.nessie.works")
     }
 
-    func testAnInvitationWithNoApiFallsBackToThisBuildsOrigin() throws {
+    func testAnInvitationWithNoApiFallsBackToTheChosenNessie() throws {
         let text = "pair --enrollment \(enrollment) --challenge \(challenge)"
         XCTAssertEqual(
-            try InvitationParser.parse(text, isDevelopmentBuild: true).get().apiBaseUrl,
-            ApprovedAPIOrigin.localDevelopment
+            try InvitationParser.parse(text, defaultApiBaseUrl: "https://nessie.example.com").get().apiBaseUrl,
+            "https://nessie.example.com"
         )
         XCTAssertEqual(
-            try InvitationParser.parse(text, isDevelopmentBuild: false).get().apiBaseUrl,
-            ApprovedAPIOrigin.production
+            try InvitationParser.parse(text, defaultApiBaseUrl: ApprovedAPIOrigin.localDevelopment)
+                .get().apiBaseUrl,
+            ApprovedAPIOrigin.localDevelopment
         )
+    }
+
+    /// An invitation that names its own Nessie is pairing with that one, and the
+    /// panel reads it out of the paste while a person is still looking at it —
+    /// the host is on screen before the button is pressed, not after.
+    func testTheOriginInAPasteIsReadableOnItsOwn() {
+        XCTAssertEqual(
+            InvitationParser.apiBaseUrl(
+                in: "nessie-executor pair --api https://nessie.example.com --enrollment \(enrollment)"
+            ),
+            "https://nessie.example.com"
+        )
+        XCTAssertEqual(
+            InvitationParser.apiBaseUrl(
+                in: "https://app.nessie.works/agents/executors?api=https%3A%2F%2Fapi.deeptest.live"
+                    + "&enrollmentId=\(enrollment)"
+            ),
+            "https://api.deeptest.live"
+        )
+        XCTAssertNil(InvitationParser.apiBaseUrl(in: "pair --enrollment \(enrollment)"))
+        XCTAssertNil(InvitationParser.apiBaseUrl(in: "   "))
     }
 
     func testAcceptsTheEqualsFormAndQuotedValues() throws {
         let invitation = try InvitationParser.parse(
             "pair --enrollment=\(enrollment) --challenge=\"\(challenge)\"",
-            isDevelopmentBuild: false
+            defaultApiBaseUrl: "https://api.nessie.works"
         ).get()
         XCTAssertEqual(invitation.enrollmentId, enrollment)
         XCTAssertEqual(invitation.challenge, challenge)
@@ -63,14 +85,14 @@ final class InvitationTests: XCTestCase {
             "pair --enrollment --challenge \(challenge)",
         ] {
             XCTAssertNil(
-                try? InvitationParser.parse(text, isDevelopmentBuild: false).get(),
+                try? InvitationParser.parse(text, defaultApiBaseUrl: "https://api.nessie.works").get(),
                 "text \(text.debugDescription) must be refused"
             )
         }
     }
 
     func testTheEmptyPasteNamesWhereToGetAnInvitation() {
-        guard case let .failure(refusal) = InvitationParser.parse("  ", isDevelopmentBuild: false) else {
+        guard case let .failure(refusal) = InvitationParser.parse("  ", defaultApiBaseUrl: "https://api.nessie.works") else {
             return XCTFail("an empty paste must be refused")
         }
         XCTAssertEqual(refusal.message, "Paste the invitation from Agents → Executors in Nessie.")

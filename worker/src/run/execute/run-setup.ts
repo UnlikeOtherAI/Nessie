@@ -48,6 +48,7 @@ import {
 import {
   hasDocumentsPromptTools,
   hasKbWriteTools,
+  hasSpreadsheetPromptTools,
   resolveAgentDocumentsHome,
 } from './agent-documents.js'
 
@@ -467,6 +468,7 @@ export const prepareRunExecution = async (
         ? {
           ...documentsHome,
           hasDocumentTools: hasDocumentsPromptTools(resolvedToolIds),
+          hasSpreadsheetTools: hasSpreadsheetPromptTools(resolvedToolIds),
         }
         : undefined,
     }),

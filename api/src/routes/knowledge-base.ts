@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   KnowledgePageRevisionConflictError,
   buildNativeSourceRef,
+  restoreSpreadsheetVersion,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
 } from '@nessie/knowledge'
@@ -41,10 +42,24 @@ import {
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
 import { listSharedRootSubtree, readSharedRootPageId } from './knowledge-shares.js'
+import {
+  createSpreadsheetRouteContext,
+  sendSpreadsheetError,
+  spreadsheetActorFor,
+  type SpreadsheetRouteContext,
+} from './knowledge-spreadsheets-context.js'
 
 export const registerKnowledgeBaseRoutes = (
   app: FastifyInstance,
   deps: KnowledgeRouteDeps,
+  /**
+   * The one spreadsheet service this process owns, for the kind-aware restore
+   * branch below. Passed in rather than built here so this module and the
+   * spreadsheet routes share a single model cache; omitted, this module builds
+   * its own, which is correct but wasteful — the cache is never an authority,
+   * it is fast-forwarded from the journal under the page lock before every use.
+   */
+  spreadsheetContext?: SpreadsheetRouteContext,
 ): void => {
   const { prisma, requireActorContext } = deps
   const {
@@ -58,6 +73,16 @@ export const registerKnowledgeBaseRoutes = (
     requirePageOwnerWrite,
     buildDisclosureViewer,
   } = createKnowledgeAccess(deps)
+
+  // Lazy and memoised: the restore branch is the only spreadsheet work this
+  // module does, and building the service eagerly here would give this module
+  // a second model cache beside the one the spreadsheet routes own.
+  let ownSpreadsheetContext: SpreadsheetRouteContext | null = null
+  const spreadsheets = (routeDeps: KnowledgeRouteDeps): SpreadsheetRouteContext => {
+    if (spreadsheetContext) return spreadsheetContext
+    ownSpreadsheetContext ??= createSpreadsheetRouteContext(routeDeps)
+    return ownSpreadsheetContext
+  }
 
   app.get('/api/knowledge-base/spaces', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -674,6 +699,44 @@ export const registerKnowledgeBaseRoutes = (
     if (!restoreTarget || !(await canReadVersion(viewer, restoreTarget))) {
       return sendApiError(reply, 404, 'KNOWLEDGE_VERSION_NOT_FOUND', 'Version not found')
     }
+    // A spreadsheet's state is its workbook, not a version row's body: the
+    // generic restore would append a version pointing at the old xlsx and
+    // leave the live head exactly where it was. The spreadsheet path rebuilds
+    // the head from the version, takes its own "before: restore" version first
+    // so the restore is reversible, and appends a `restore` batch that tells
+    // every open pane to re-bootstrap.
+    if (existingPage.kind === 'spreadsheet') {
+      try {
+        const restored = await restoreSpreadsheetVersion(spreadsheets(deps).service, {
+          organizationId: actorContext.tenant.organizationId,
+          pageId,
+          versionId,
+          actor: await spreadsheetActorFor(deps, actorContext),
+          attribution: attributionFromActorContext(actorContext),
+        })
+        await emitAuditEvent(prisma, {
+          actorContext,
+          action: 'kb.spreadsheet.restored',
+          resourceType: 'knowledge_page',
+          resourceId: pageId,
+          outcome: 'success',
+          metadata: {
+            restoredVersionId: versionId,
+            seq: restored.seq,
+            previousVersionId: restored.previousVersionId,
+          },
+          ...requestIds(request),
+        })
+        const reloaded = await provider.getPage(actorContext.tenant.organizationId, pageId)
+        if (!reloaded) {
+          return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+        }
+        return createApiResponse(attachPageEnvelope(reloaded, decision))
+      } catch (error) {
+        return sendSpreadsheetError(reply, error)
+      }
+    }
+
     let page: KnowledgePageRecord | null
     try {
       page = await provider.restoreVersion({

@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { McpScopeError } from './scopes.js'
 import { boardTools } from './tools/boards.js'
 import { documentTools } from './tools/documents.js'
+import { spreadsheetTools } from './tools/spreadsheets.js'
 import type { McpToolContext, McpToolDefinition } from './tool-context.js'
 
 /**
@@ -17,6 +18,7 @@ import type { McpToolContext, McpToolDefinition } from './tool-context.js'
 export const nessieMcpTools = (): McpToolDefinition[] => [
   ...boardTools(),
   ...documentTools(),
+  ...spreadsheetTools(),
 ]
 
 /**

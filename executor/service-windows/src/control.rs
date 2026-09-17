@@ -52,23 +52,37 @@ impl Control {
         let Ok(mut supervisor) = supervisor.lock() else {
             return Response::error("The Nessie Executor service is not available.");
         };
-        let outcome = match command {
-            Command::Status => Ok(()),
-            Command::Start { executor_id } => supervisor.start(&executor_id).map(|_| ()),
-            Command::Stop { executor_id } => supervisor.stop(&executor_id).map(|_| ()),
-            Command::Configure { executor_id, operation_keys } => {
-                supervisor.configure(&executor_id, &operation_keys).map(|_| ())
-            }
+        match command {
+            Command::Status => match supervisor.statuses() {
+                executors => Response::Ok { executors },
+            },
+            Command::Start { executor_id } => match supervisor.start(&executor_id) {
+                Ok(_) => Response::Ok { executors: supervisor.statuses() },
+                Err(reason) => Response::error(reason),
+            },
+            Command::Stop { executor_id } => match supervisor.stop(&executor_id) {
+                Ok(_) => Response::Ok { executors: supervisor.statuses() },
+                Err(reason) => Response::error(reason),
+            },
+            Command::Configure { executor_id, operation_keys } => match supervisor.configure(&executor_id, &operation_keys) {
+                Ok(_) => Response::Ok { executors: supervisor.statuses() },
+                Err(reason) => Response::error(reason),
+            },
+            Command::ConfigureInput { executor_id, configuration_input } => match supervisor.configure_input(&executor_id, configuration_input) {
+                Ok(_) => Response::Ok { executors: supervisor.statuses() },
+                Err(reason) => Response::error(reason),
+            },
+            Command::Describe { executor_id } => match supervisor.describe(&executor_id) {
+                Ok(description) => Response::DescribeOk { description },
+                Err(reason) => Response::error(reason),
+            },
             Command::Pair(pair) => {
                 let helper: PathBuf = supervisor.runtime().native_helper.clone();
-                supervisor
-                    .pair(&pair, client_sid, move |path| secure_directory(&helper, path))
-                    .map(|_| ())
+                match supervisor.pair(&pair, client_sid, move |path| secure_directory(&helper, path)) {
+                    Ok((executor_id, fingerprint)) => Response::PairOk { executor_id, fingerprint },
+                    Err(reason) => Response::error(reason),
+                }
             }
-        };
-        match outcome {
-            Ok(()) => Response::Ok { executors: supervisor.statuses() },
-            Err(reason) => Response::error(reason),
         }
     }
 }

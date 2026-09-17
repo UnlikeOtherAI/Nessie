@@ -360,3 +360,61 @@ dbTest('the status of another tenant\'s transfer is indistinguishable from none'
     await teardownTransferWorld(seeded)
   }
 })
+
+dbTest('a spreadsheet moves but is refused a copy, with nothing written', async () => {
+  const seeded = await seedTransferWorld()
+  const app = buildTransferApp(seeded)
+  try {
+    // Only the row matters here: what makes a page a workbook is its
+    // `SpreadsheetHead`, and the point of the refusal is that
+    // `planTransferCopy` does not write one.
+    const workbook = await seeded.prisma.knowledgePage.create({
+      data: {
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        spaceId: seeded.personalSpaceId,
+        title: 'Runway',
+        kind: 'spreadsheet',
+        createdBy: seeded.ownerId,
+      },
+      select: { id: true },
+    })
+
+    const copied = await transferAs(app, 'owner', {
+      operation: 'copy',
+      pageIds: [workbook.id],
+      target: { spaceId: seeded.projectSpaceId, parentPageId: null },
+      acknowledged: true,
+    })
+    assert.equal(copied.statusCode, 400)
+    assert.deepEqual(errorOf(copied), {
+      code: 'TRANSFER_COPY_SPREADSHEET',
+      message: '“Runway” is a spreadsheet and can be moved, but not copied yet.',
+    })
+    // Nothing behind: no second page, and therefore no page claiming to be a
+    // workbook with no head under it.
+    assert.equal(
+      await seeded.prisma.knowledgePage.count({
+        where: { organizationId: seeded.organizationId, kind: 'spreadsheet' },
+      }),
+      1,
+    )
+
+    // A move keeps the page id, so the head, the journal and the filters follow
+    // it — that arm stays open.
+    const moved = await transferAs(app, 'owner', {
+      operation: 'move',
+      pageIds: [workbook.id],
+      target: { spaceId: seeded.projectSpaceId, parentPageId: null },
+      acknowledged: true,
+    })
+    assert.equal(moved.statusCode, 200, moved.body)
+    const row = await seeded.prisma.knowledgePage.findUniqueOrThrow({
+      where: { id: workbook.id },
+    })
+    assert.equal(row.spaceId, seeded.projectSpaceId)
+  } finally {
+    await app.close()
+    await teardownTransferWorld(seeded)
+  }
+})

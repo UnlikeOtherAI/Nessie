@@ -658,6 +658,55 @@ hybrid search described in §3 (TypeScript RRF fusion via `@nessie/retrieval`,
 not PL/pgSQL `match_*` functions). Body-ref and file-backed versions still
 need a streaming ingestion/extraction path (redesign plan Phase 5).
 
+## 9e) Spreadsheet pages (implemented)
+
+A third page kind beside `document` and `file`. Its canonical state is an
+IronCalc workbook, not rows: `spreadsheet_heads.hot_snapshot` plus every
+`spreadsheet_op_batches` row after `hot_snapshot_seq` rebuilds it identically
+on any replica. `applySpreadsheetBatch` (`packages/knowledge/src/spreadsheet/`)
+is the one write door — browsers, worker builtins and the MCP server all
+arrive there — and it holds a per-page advisory lock, assigns `seq`, and is
+idempotent on `(pageId, actorId, clientOpId)`.
+
+Two things a reader of this file needs to know, because they differ from every
+other kind here:
+
+- **A spreadsheet's durable versions are xlsx renditions**, written through
+  `FileService` and indexed by the same `indexVersionChunks` seam as every
+  other version — the `body` is a text projection of the workbook. There is no
+  retention policy on them: with no approval gate on agent writes, versions are
+  the only thing that makes an edit reversible, so one is taken automatically
+  before every destructive operation and at an agent run's first write.
+- **The API process never parses a workbook.** `fromXlsx` on a foreign file
+  can abort the process from inside Rust, so imports are staged by the route
+  (format sniff, caps, loss list, page, upload) and parsed by the worker
+  (`spreadsheet.import`); the route answers `202` and the page is reachable at
+  once.
+
+- **Search of a spreadsheet is as fresh as its last version, and no fresher.**
+  The text projection is written when a version is, so retrieval can trail the
+  live workbook by up to 200 batches or five idle minutes — the two compaction
+  triggers `worker/src/control/spreadsheet-sweeps.ts` bounds. The pane's find
+  and the agents' `sheet_find` read the live model instead, so a person never
+  sees the stale projection.
+
+The live lane is `GET /api/knowledge-base/pages/:pageId/live`, a hijacked SSE
+route on the new `document` realtime kind. Nothing durable rides it: ops are
+recoverable by `seq` from the catch-up route, and presence is not recoverable
+and need not be.
+
+People edit in the admin pane with the real IronCalc grid, including on a
+phone; agents edit the same workbook through the twelve `sheet_*` builtins and
+their `nessie_sheet_*` MCP mirror, with no approval gate and versioning as the
+safety net. Sort, filter and find/replace are Nessie's own layer over the
+engine, not IronCalc features; IronCalc 0.8 has no merged cells, data
+validation or cell comments, and an imported workbook's merges survive a round
+trip while remaining invisible to the API.
+
+The invariants, the measurements behind them and the honest feature gaps:
+[`docs/standards/spreadsheets.md`](standards/spreadsheets.md). Full design:
+`docs/plans/2026-09-15-spreadsheets-ironcalc/`.
+
 ## 9d) Retrieval tools + Librarian agent (implemented, read path)
 
 Agents get read-only, ACL-checked knowledge-base access via three builtin

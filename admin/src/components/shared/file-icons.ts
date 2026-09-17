@@ -14,6 +14,7 @@ import {
   faFileWord,
   faFileZipper,
   faFolder,
+  faTable,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 
@@ -107,6 +108,34 @@ export const isMarkdownFilename = (filename: string): boolean => {
 
 export const isZipFilename = (filename: string): boolean => fileExtension(filename) === 'zip'
 
+/**
+ * Whether a file node's bytes can become a live spreadsheet, and — where they
+ * cannot — whether that is worth saying out loud.
+ *
+ * `.xls` is its own answer rather than a plain "no": the engine cannot read
+ * OLE2, and an `.xls` and a corrupt zip fail identically, so a doorway that
+ * simply refused would look like a bug in the file. It is offered disabled
+ * with the reason instead, which is the design system's cure for a control
+ * nobody can explain (menus-and-dialogs.md §2).
+ */
+export type SpreadsheetSourceVerdict = 'convertible' | 'legacy-xls' | 'no'
+
+const SPREADSHEET_SOURCE_EXT = new Set(['csv', 'tsv', 'xlsx'])
+
+export const spreadsheetSourceFor = (filename: string): SpreadsheetSourceVerdict => {
+  const ext = fileExtension(filename)
+  if (!ext) return 'no'
+  if (SPREADSHEET_SOURCE_EXT.has(ext)) return 'convertible'
+  return ext === 'xls' ? 'legacy-xls' : 'no'
+}
+
+/** The reason the disabled "Open as spreadsheet" carries on an `.xls`. */
+export const LEGACY_XLS_REASON =
+  'Old .xls files can’t be opened here — save it as .xlsx and upload that'
+
+export const isSpreadsheetSourceFilename = (filename: string): boolean =>
+  spreadsheetSourceFor(filename) === 'convertible'
+
 export const iconForFilename = (filename: string): IconDefinition => {
   const ext = fileExtension(filename)
   return (ext && EXTENSION_ICONS[ext]) || faFile
@@ -178,6 +207,14 @@ export const previewKindForFilename = (filename: string): PreviewKind => {
 export type FileFamily =
   | 'folder'
   | 'document'
+  /**
+   * A live spreadsheet page — the grid is the document and it opens here.
+   * Deliberately its own family beside `excel`: an uploaded `.xlsx` is a file
+   * you download, this is a workbook you edit, and one word for both would
+   * make the Kind column say the same thing about two rows that do different
+   * things when you open them.
+   */
+  | 'spreadsheet'
   | 'pdf'
   | 'word'
   | 'excel'
@@ -228,9 +265,10 @@ export const familyForFilename = (filename: string): FileFamily => {
 export const familyLabel: Record<FileFamily, string> = {
   folder: 'Folder',
   document: 'Document',
+  spreadsheet: 'Spreadsheet',
   pdf: 'PDF document',
   word: 'Word document',
-  excel: 'Spreadsheet',
+  excel: 'Spreadsheet file',
   powerpoint: 'Presentation',
   image: 'Image',
   audio: 'Audio',
@@ -252,6 +290,7 @@ export const familyLabel: Record<FileFamily, string> = {
 export const familyTone: Record<FileFamily, string> = {
   folder: '--accent',
   document: '--accent',
+  spreadsheet: '--success',
   pdf: '--danger',
   word: '--info',
   excel: '--success',
@@ -270,6 +309,8 @@ export const familyTone: Record<FileFamily, string> = {
 const FAMILY_ICONS: Record<FileFamily, IconDefinition> = {
   folder: faFolder,
   document: faFileLines,
+  // A grid, not a file card: the page is the rows and columns themselves.
+  spreadsheet: faTable,
   pdf: faFilePdf,
   word: faFileWord,
   excel: faFileExcel,

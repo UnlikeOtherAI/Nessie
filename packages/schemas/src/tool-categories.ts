@@ -38,6 +38,11 @@ export const TOOL_CATEGORIES = [
     label: 'Files & attachments',
   },
   {
+    description: 'Reading and editing spreadsheets: cells, formulas, sheets, sorting and filters.',
+    id: 'spreadsheets',
+    label: 'Spreadsheets',
+  },
+  {
     description: 'Searching and fetching from the public web, and deep research.',
     id: 'web',
     label: 'Web & research',

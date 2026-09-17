@@ -6,10 +6,11 @@
     <title>Nessie Executor</title>
     <!--
       The tray's status window. It is deliberately not the admin bundle and not
-      a copy of any part of it: it renders one list of executor ids and states
-      and offers the same actions the menu does, all through this application's
-      own commands. Nothing here fetches, stores, or knows a credential, and the
-      colours are the tray's own tokens rather than an import of the admin theme.
+      a copy of any part of it: it renders the JSON `nessie-executor describe`
+      prints and offers the same actions the menu does, all through this
+      application's own commands. Nothing here fetches, stores, or knows a
+      credential, and the colours are the tray's own tokens rather than an
+      import of the admin theme.
     -->
     <style>
       :root {
@@ -67,6 +68,16 @@
       .row .state { color: var(--tx2); flex: 1; }
       .empty { color: var(--tx2); padding: 12px 4px; }
       .problem { color: var(--error); padding: 12px 4px; }
+      .hint { color: var(--tx2); font-size: 12px; }
+      .note {
+        color: var(--tx2);
+        font-size: 12px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        margin-top: 8px;
+      }
       footer { border-top: 1px solid var(--line); padding: 8px 12px; display: flex; gap: 6px; }
       button {
         font: inherit;
@@ -80,42 +91,127 @@
       button:hover:not(:disabled) { border-color: var(--accent); }
       button:disabled { opacity: 0.45; cursor: default; }
       button.primary { background: var(--accent); border-color: var(--accent); }
-      form { display: none; gap: 6px; flex-direction: column; padding: 8px 12px; border-top: 1px solid var(--line); }
-      form[data-open="true"] { display: flex; }
-      textarea {
-        font: 12px/1.4 "Cascadia Mono", Consolas, monospace;
+      button.active { background: var(--line); border-color: var(--accent); }
+      select, input[type="text"], textarea {
+        font: inherit;
         color: var(--tx);
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 6px;
         padding: 6px;
+      }
+      textarea {
+        font: 12px/1.4 "Cascadia Mono", Consolas, monospace;
         resize: none;
         height: 56px;
       }
-      .hint { color: var(--tx2); font-size: 12px; }
-      select { font: inherit; color: var(--tx); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+      label { display: block; margin-bottom: 4px; }
+      .form-field { margin-bottom: 8px; }
+      .panel { display: none; }
+      .panel[data-open="true"] { display: block; }
+      .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+      .tab-content { display: none; }
+      .tab-content[data-open="true"] { display: block; }
+      .list-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .list-item:last-child { border-bottom: none; }
+      .list-item .name { font-family: "Cascadia Mono", Consolas, monospace; }
+      .list-item .path { color: var(--tx2); font-size: 12px; flex: 1; }
+      .mono { font-family: "Cascadia Mono", Consolas, monospace; }
+      .spacer { flex: 1; }
+      .fingerprint { color: var(--attention); font-family: "Cascadia Mono", Consolas, monospace; }
     </style>
   </head>
   <body>
     <header>
       <span class="dot" id="dot"></span>
       <h1 id="headline">Checking the Nessie Executor service…</h1>
+      <button id="back" style="display:none">Back</button>
       <button id="hide" title="Close this window">Close</button>
     </header>
-    <main id="list"></main>
-    <form id="pair-form">
-      <label class="hint" for="backend">Nessie backend</label>
-      <select id="backend">
-      </select>
-      <label class="hint" for="invitation">
-        Paste the pairing command or link from the selected backend's Agents → Executors page.
-      </label>
-      <textarea id="invitation" spellcheck="false"></textarea>
-      <div style="display: flex; gap: 6px">
-        <button type="submit" class="primary">Choose workspace and pair</button>
-        <button type="button" id="pair-cancel">Cancel</button>
+
+    <main id="main">
+      <!-- List / pair view -->
+      <div class="panel" id="list-panel" data-open="true">
+        <div id="executors-list"></div>
+        <form id="pair-form">
+          <div class="form-field">
+            <label class="hint" for="backend">Nessie backend</label>
+            <select id="backend"></select>
+          </div>
+          <div class="form-field" id="custom-url-field" style="display:none">
+            <label class="hint" for="custom-url">Self-hosted Nessie origin</label>
+            <input type="text" id="custom-url" placeholder="https://nessie.example.com" />
+          </div>
+          <div class="form-field">
+            <label class="hint" for="invitation">
+              Paste the pairing command or link from the selected backend's Agents → Executors page.
+            </label>
+            <textarea id="invitation" spellcheck="false"></textarea>
+          </div>
+          <div class="form-field">
+            <button type="button" id="choose-workspace">Choose workspace folder…</button>
+            <span class="hint" id="chosen-workspace">No folder chosen</span>
+          </div>
+          <div style="display: flex; gap: 6px">
+            <button type="submit" class="primary">Pair this computer</button>
+            <button type="button" id="pair-cancel">Cancel</button>
+          </div>
+        </form>
       </div>
-    </form>
+
+      <!-- Executor detail view -->
+      <div class="panel" id="detail-panel">
+        <div class="hint" id="detail-executor"></div>
+        <div class="tabs">
+          <button class="tab-button active" data-tab="settings">Settings</button>
+          <button class="tab-button" data-tab="reach">Where it can reach</button>
+          <button class="tab-button" data-tab="tools">Tools it can run</button>
+        </div>
+
+        <div class="tab-content" id="tab-settings" data-open="true">
+          <div id="settings-paired">
+            <div class="form-field"><span class="hint">Executor</span><div class="mono" id="setting-executor-id"></div></div>
+            <div class="form-field"><span class="hint">Nessie API</span><div id="setting-api-origin"></div></div>
+            <div class="form-field" id="fingerprint-banner" style="display:none">
+              <span class="hint">Confirm fingerprint</span>
+              <div class="fingerprint" id="setting-fingerprint"></div>
+              <span class="hint">in Nessie before starting the executor.</span>
+            </div>
+            <div class="note" id="setting-revision"></div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-reach">
+          <div class="hint">Folders it may read</div>
+          <div id="reach-folders"></div>
+          <button id="add-folder">Add a folder…</button>
+          <div class="hint" style="margin-top:10px">Browser origins</div>
+          <div id="reach-origins"></div>
+          <div class="note" id="reach-notes"></div>
+        </div>
+
+        <div class="tab-content" id="tab-tools">
+          <div class="hint">Permitted commands</div>
+          <div id="tools-commands"></div>
+          <div class="form-field" style="margin-top:10px">
+            <label class="hint" for="new-command">Add a command</label>
+            <div style="display:flex; gap:6px">
+              <input type="text" id="new-command" placeholder="git *" style="flex:1" />
+              <button id="add-command">Add</button>
+            </div>
+          </div>
+          <div class="note" id="tools-note"></div>
+          <div class="note" id="tools-grammar"></div>
+        </div>
+      </div>
+    </main>
+
     <footer>
       <button id="pair">Pair a new executor…</button>
       <button id="open-nessie">Open Nessie</button>
@@ -124,15 +220,29 @@
 
     <script>
       const invoke = window.__TAURI__.core.invoke
-      const list = document.getElementById('list')
+      const event = window.__TAURI__.event
       const dot = document.getElementById('dot')
       const headline = document.getElementById('headline')
-      const form = document.getElementById('pair-form')
+      const listPanel = document.getElementById('list-panel')
+      const detailPanel = document.getElementById('detail-panel')
+      const executorsList = document.getElementById('executors-list')
+      const pairForm = document.getElementById('pair-form')
+      const backendSelect = document.getElementById('backend')
+      const customUrlField = document.getElementById('custom-url-field')
+      const customUrlInput = document.getElementById('custom-url')
+      const invitationInput = document.getElementById('invitation')
+      const chosenWorkspaceLabel = document.getElementById('chosen-workspace')
+      const chooseWorkspaceButton = document.getElementById('choose-workspace')
       let busy = false
+      let currentView = null
+      let currentExecutorId = null
+      let currentTab = 'settings'
+      let chosenWorkspace = null
+      let pendingFingerprint = null
 
       const trayState = (view) => {
         if (view.kind !== 'reachable') return 'error'
-        if (view.executors.some((e) => e.daemonStatus === 'stopping' || e.daemonStatus === 'awaiting_confirmation')) {
+        if (view.executors.some((e) => e.daemonStatus === 'stopping' || e.daemonStatus === 'awaitingConfirmation')) {
           return 'attention'
         }
         return view.executors.some((e) => e.daemonStatus === 'running') ? 'running' : 'idle'
@@ -145,24 +255,26 @@
         return `Nessie Executor — ${running} of ${view.executors.length} running`
       }
 
-      const render = (view) => {
-        dot.dataset.state = trayState(view)
-        headline.textContent = headlineFor(view)
-        list.replaceChildren()
+      const renderList = (view) => {
+        executorsList.replaceChildren()
         if (view.kind !== 'reachable') {
+          pairForm.style.display = 'none'
           const problem = document.createElement('p')
           problem.className = 'problem'
           problem.textContent = view.reason
-          list.append(problem)
+          executorsList.append(problem)
           return
         }
         if (view.executors.length === 0) {
           const empty = document.createElement('p')
           empty.className = 'empty'
           empty.textContent = 'No executor is paired on this computer yet.'
-          list.append(empty)
+          executorsList.append(empty)
+          pairForm.style.display = 'flex'
+          pairForm.style.flexDirection = 'column'
           return
         }
+        pairForm.style.display = 'none'
         for (const executor of view.executors) {
           const row = document.createElement('div')
           row.className = 'row'
@@ -180,8 +292,21 @@
           stop.textContent = 'Stop'
           stop.disabled = busy || executor.daemonStatus !== 'running'
           stop.onclick = () => act('executor_stop', { executorId: executor.executorId })
-          row.append(id, state, start, stop)
-          list.append(row)
+          const settings = document.createElement('button')
+          settings.textContent = 'Settings…'
+          settings.disabled = busy
+          settings.onclick = () => showDetail(executor.executorId, 'settings')
+          row.append(id, state, start, stop, settings)
+          executorsList.append(row)
+        }
+      }
+
+      const render = (view) => {
+        currentView = view
+        dot.dataset.state = trayState(view)
+        headline.textContent = headlineFor(view)
+        if (detailPanel.dataset.open !== 'true') {
+          renderList(view)
         }
       }
 
@@ -189,61 +314,248 @@
         render(await invoke('executor_view'))
       }
 
-      // Every action confirms in a native dialog inside the command, so the
-      // only thing left here is to keep the buttons from being pressed twice
-      // and to show whatever the service refused with.
       const act = async (command, args) => {
         if (busy) return
         busy = true
         let refused = false
         try {
-          render(await invoke(command, args))
+          const result = await invoke(command, args)
+          if (command === 'executor_start' || command === 'executor_stop') {
+            render(result)
+          } else if (command === 'executor_pair') {
+            pendingFingerprint = result.fingerprint
+            render(result.view)
+            showList()
+          } else if (['executor_describe','executor_add_folder','executor_remove_folder','executor_add_command','executor_remove_command'].includes(command)) {
+            renderDetail(result)
+          }
         } catch (reason) {
           refused = true
           headline.textContent = String(reason)
           dot.dataset.state = 'attention'
         } finally {
           busy = false
-          // Keep the service's refusal visible. Refreshing immediately would
-          // replace its recovery instruction with a generic idle headline.
-          if (!refused) await refresh()
+          if (!refused && command !== 'executor_pair') await refresh()
         }
       }
 
+      const showList = () => {
+        detailPanel.dataset.open = 'false'
+        listPanel.dataset.open = 'true'
+        document.getElementById('back').style.display = 'none'
+        if (currentView) renderList(currentView)
+      }
+
+      const showDetail = async (executorId, tab) => {
+        currentExecutorId = executorId
+        currentTab = tab || 'settings'
+        listPanel.dataset.open = 'false'
+        detailPanel.dataset.open = 'true'
+        document.getElementById('back').style.display = 'inline-block'
+        updateTabs()
+        await act('executor_describe', { executorId })
+      }
+
+      const updateTabs = () => {
+        for (const button of document.querySelectorAll('.tab-button')) {
+          button.classList.toggle('active', button.dataset.tab === currentTab)
+        }
+        for (const content of document.querySelectorAll('.tab-content')) {
+          content.dataset.open = (content.id === `tab-${currentTab}`).toString()
+        }
+      }
+
+      const renderDetail = (description) => {
+        document.getElementById('detail-executor').textContent = `Executor ${description.shortExecutorId}`
+        document.getElementById('setting-executor-id').textContent = description.executorId
+        document.getElementById('setting-api-origin').textContent = description.apiBaseUrl
+        const revision = document.getElementById('setting-revision')
+        revision.textContent = `Local policy is at revision ${description.policy.revision}. Saving a change writes revision ${description.policy.revision + 1} and submits it when the daemon next connects. It takes effect only after a person reviews it in Nessie.`
+        const fingerprintBanner = document.getElementById('fingerprint-banner')
+        if (pendingFingerprint && description.executorId === currentExecutorId) {
+          document.getElementById('setting-fingerprint').textContent = pendingFingerprint
+          fingerprintBanner.style.display = 'block'
+        } else {
+          fingerprintBanner.style.display = 'none'
+        }
+
+        const foldersContainer = document.getElementById('reach-folders')
+        foldersContainer.replaceChildren()
+        if (description.reach.folders.length === 0) {
+          const empty = document.createElement('div')
+          empty.className = 'empty'
+          empty.textContent = 'No folders are configured.'
+          foldersContainer.append(empty)
+        }
+        for (const folder of description.reach.folders) {
+          const item = document.createElement('div')
+          item.className = 'list-item'
+          const name = document.createElement('span')
+          name.className = 'name'
+          name.textContent = folder.name
+          const path = document.createElement('span')
+          path.className = 'path'
+          path.textContent = folder.path
+          const remove = document.createElement('button')
+          remove.textContent = 'Remove'
+          remove.disabled = busy
+          remove.onclick = () => act('executor_remove_folder', { executorId: description.executorId, name: folder.name })
+          item.append(name, path, remove)
+          foldersContainer.append(item)
+        }
+
+        const originsContainer = document.getElementById('reach-origins')
+        originsContainer.replaceChildren()
+        if (description.reach.allowedOrigins.length === 0) {
+          const empty = document.createElement('div')
+          empty.className = 'empty'
+          empty.textContent = description.sandbox.browserConfigured
+            ? 'No origin is allowed, so the guest browser can open nothing.'
+            : 'No guest browser is configured, so there is nothing to reach and browser operations cannot be enabled.'
+          originsContainer.append(empty)
+        }
+        for (const origin of description.reach.allowedOrigins) {
+          const div = document.createElement('div')
+          div.className = 'mono'
+          div.textContent = origin
+          originsContainer.append(div)
+        }
+        const reachNotes = document.getElementById('reach-notes')
+        reachNotes.textContent = `${description.guestSessionNote} ${description.sandbox.promotionHelperConfigured ? 'A promotion helper is configured: reviewed changes can be written back to these folders.' : 'No promotion helper is configured. Writes land in daemon-owned copy-on-write scratch and nothing is written back to these folders.'}`
+
+        const commandsContainer = document.getElementById('tools-commands')
+        commandsContainer.replaceChildren()
+        if (description.policy.permittedPrograms.length === 0) {
+          const empty = document.createElement('div')
+          empty.className = 'empty'
+          empty.textContent = 'No command is permitted, so nothing may start.'
+          commandsContainer.append(empty)
+        }
+        for (const program of description.policy.permittedPrograms) {
+          const item = document.createElement('div')
+          item.className = 'list-item'
+          const name = document.createElement('span')
+          name.className = 'mono'
+          name.textContent = program
+          const remove = document.createElement('button')
+          remove.textContent = 'Remove'
+          remove.disabled = busy
+          remove.onclick = () => act('executor_remove_command', { executorId: description.executorId, command: program })
+          item.append(name, document.createElement('div'), remove)
+          commandsContainer.append(item)
+        }
+        document.getElementById('tools-note').textContent = description.commandRunEnabled
+          ? 'command.run is enabled for this executor, so the list must always name at least one command.'
+          : 'command.run is not enabled for this executor. These commands take effect when somebody enables it in Nessie.'
+        document.getElementById('tools-grammar').textContent = 'A permitted command is a program the guest resolves through its fixed PATH, optionally followed by arguments and a trailing "*" — for example "git *" or "npm run *". Paths, shells and a leading "*" are refused, at most 64 entries.'
+      }
+
+      // Tab switching
+      for (const button of document.querySelectorAll('.tab-button')) {
+        button.onclick = () => {
+          currentTab = button.dataset.tab
+          updateTabs()
+        }
+      }
+
+      // Pair form
       const openPairForm = () => {
-        form.dataset.open = 'true'
-        document.getElementById('invitation').focus()
+        chosenWorkspace = null
+        chosenWorkspaceLabel.textContent = 'No folder chosen'
+        invitationInput.value = ''
+        customUrlInput.value = ''
+        showList()
+        pairForm.style.display = 'flex'
+        pairForm.style.flexDirection = 'column'
+        invitationInput.focus()
+      }
+
+      backendSelect.onchange = () => {
+        customUrlField.style.display = backendSelect.value === 'custom' ? 'block' : 'none'
       }
 
       document.getElementById('pair').onclick = openPairForm
       document.getElementById('pair-cancel').onclick = () => {
-        form.dataset.open = 'false'
+        pairForm.style.display = 'none'
       }
-      form.onsubmit = async (event) => {
+
+      chooseWorkspaceButton.onclick = async () => {
+        const selected = await invoke('executor_choose_folder')
+        if (selected) {
+          chosenWorkspace = selected
+          chosenWorkspaceLabel.textContent = selected
+        }
+      }
+
+      pairForm.onsubmit = async (event) => {
         event.preventDefault()
-        const invitation = document.getElementById('invitation').value
-        const selectedApiBaseUrl = document.getElementById('backend').value
-        await act('executor_pair', { invitation, selectedApiBaseUrl })
-        document.getElementById('invitation').value = ''
-        form.dataset.open = 'false'
+        if (!chosenWorkspace) {
+          headline.textContent = 'Choose the folder this executor may read before pairing.'
+          dot.dataset.state = 'attention'
+          return
+        }
+        const backend = backendSelect.value
+        const customApiBaseUrl = backend === 'custom' ? customUrlInput.value.trim() : null
+        await act('executor_pair', { invitation: invitationInput.value, backend, customApiBaseUrl })
       }
-      document.getElementById('open-nessie').onclick = () =>
-        invoke('executor_open_nessie', { apiBaseUrl: document.getElementById('backend').value })
+
+      document.getElementById('open-nessie').onclick = () => {
+        const backend = backendSelect.value
+        let apiBaseUrl = backend
+        if (backend === 'custom') apiBaseUrl = customUrlInput.value.trim()
+        invoke('executor_open_nessie', { apiBaseUrl }).catch((reason) => {
+          headline.textContent = String(reason)
+          dot.dataset.state = 'attention'
+        })
+      }
+
       document.getElementById('open-logs').onclick = () =>
         invoke('executor_open_logs').catch((reason) => {
           headline.textContent = String(reason)
+          dot.dataset.state = 'attention'
         })
       document.getElementById('hide').onclick = () => invoke('executor_hide_status')
+      document.getElementById('back').onclick = showList
 
-      window.__TAURI__.event.listen('tray://pair', openPairForm)
+      document.getElementById('add-folder').onclick = async () => {
+        const selected = await invoke('executor_choose_folder')
+        if (selected && currentExecutorId) {
+          await act('executor_add_folder', { executorId: currentExecutorId, path: selected })
+        }
+      }
+
+      document.getElementById('add-command').onclick = async () => {
+        const input = document.getElementById('new-command')
+        if (!input.value.trim() || !currentExecutorId) return
+        await act('executor_add_command', { executorId: currentExecutorId, command: input.value })
+        input.value = ''
+      }
+
+      // Menu events
+      event.listen('tray://pair', openPairForm)
+      event.listen('tray://section/settings', () => {
+        const first = currentView?.kind === 'reachable' ? currentView.executors[0] : null
+        if (first) showDetail(first.executorId, 'settings')
+        else openPairForm()
+      })
+      event.listen('tray://section/reach', () => {
+        const first = currentView?.kind === 'reachable' ? currentView.executors[0] : null
+        if (first) showDetail(first.executorId, 'reach')
+      })
+      event.listen('tray://section/tools', () => {
+        const first = currentView?.kind === 'reachable' ? currentView.executors[0] : null
+        if (first) showDetail(first.executorId, 'tools')
+      })
+
       const loadBackends = async () => {
-        const backend = document.getElementById('backend')
+        backendSelect.replaceChildren()
         for (const [value, label] of await invoke('executor_pairing_backends')) {
           const option = document.createElement('option')
           option.value = value
           option.textContent = label
-          backend.append(option)
+          backendSelect.append(option)
         }
+        backendSelect.onchange()
       }
       loadBackends().then(refresh)
       setInterval(refresh, 3000)

@@ -7,9 +7,11 @@ import {
   type ThreadStreamEvent,
   type WsEventMessage,
 } from '@nessie/runtime'
-import type { SseEvent, WsScope } from '@nessie/schemas'
+import type { DocumentSseEventName, SseEvent, WsScope } from '@nessie/schemas'
 import { createConnectionHydration } from './connection-hydration.js'
 import { createRealtimeDeliveryEntitlements } from './delivery-entitlements.js'
+import { canReadSpaceForDocumentLane } from './knowledge-page-entitlement.js'
+import type { DocumentSseConnection } from './document-lane.js'
 import {
   createWsNotificationDelivery,
   endSseConnectionForShutdown,
@@ -63,12 +65,20 @@ export const createRealtimeHub = async (input: {
   const transport = new PgRealtimeTransport(pool, input.databaseUrl)
   const {
     deliverNotification,
+    documentConnections,
     threadSseConnections,
     userSseConnections,
     wsConnections,
   } = createWsNotificationDelivery({
     ...input,
-    entitlements: createRealtimeDeliveryEntitlements(input.prisma),
+    entitlements: {
+      ...createRealtimeDeliveryEntitlements(input.prisma),
+      // Lives here rather than in `delivery-entitlements.ts` because it needs
+      // `@nessie/knowledge` — the space viewer, `canReadSpace`, and the
+      // every-version-readable rule the page routes already enforce. The lane
+      // memoises it for 5 s per connection.
+      canAccessKnowledgePage: (page) => canReadSpaceForDocumentLane(input.prisma, page),
+    },
   })
 
   const { hydrateThreadConnection, hydrateUserConnection, resyncRegisteredConnections } =
@@ -158,10 +168,48 @@ export const createRealtimeHub = async (input: {
         ? addThreadSseConnection(input, response, lastEventId)
         : addUserSseConnection(input, response, lastEventId)
     },
+    addDocumentConnection: (
+      request: {
+        pageId: string
+        spaceId: string
+        organizationId: string
+        userId: string
+        clientId: string
+      },
+      response: ServerResponse,
+    ): DocumentSseConnection => {
+      // No hydration and no pending buffer: the lane is ephemeral by
+      // construction, and the client bootstraps over REST after the stream is
+      // open (the bootstrap carries `headSeq`, so anything delivered below it
+      // is discarded and a gap is filled from the catch-up route).
+      const connection: DocumentSseConnection = {
+        kind: 'document',
+        pageId: request.pageId,
+        spaceId: request.spaceId,
+        organizationId: request.organizationId,
+        userId: request.userId,
+        clientId: request.clientId,
+        response,
+        saturated: false,
+      }
+      documentConnections.add(connection)
+      return connection
+    },
+    removeDocumentConnection: (connection: DocumentSseConnection): void => {
+      documentConnections.delete(connection)
+    },
+    publishDocumentEphemeral: (
+      pageId: string,
+      organizationId: string,
+      event: DocumentSseEventName,
+      data: unknown,
+    ): Promise<{ inlined: boolean }> =>
+      transport.publishDocumentEphemeral(pageId, organizationId, event, data),
     close: async (): Promise<void> => {
       threadSseConnections.clear()
       userSseConnections.clear()
       wsConnections.clear()
+      documentConnections.clear()
       await transport.close()
       await pool.end()
     },
@@ -185,6 +233,11 @@ export const createRealtimeHub = async (input: {
         endSseConnectionForShutdown(connection.response)
       }
       userSseConnections.clear()
+
+      for (const connection of documentConnections) {
+        endSseConnectionForShutdown(connection.response)
+      }
+      documentConnections.clear()
 
       for (const connection of wsConnections) {
         try {

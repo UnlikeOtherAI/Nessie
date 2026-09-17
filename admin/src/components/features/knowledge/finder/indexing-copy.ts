@@ -131,6 +131,10 @@ const REASONS: Record<NotIndexedReason, (familyLabel?: string) => IndexingCopy> 
   // nothing will until somebody publishes.
   draft: () => quiet('Not indexed — draft documents are indexed when published'),
   unsupported: (familyLabel) => notIndexed(unsupportedSentence(familyLabel)),
+  // A spreadsheet nobody has saved a version of. Quiet, like a draft, for the
+  // same reason: nothing is running and nothing will until somebody saves.
+  // Never "no text found" — the grid may be full of it.
+  unsaved: () => quiet('Not indexed — nothing saved to search yet'),
   too_large: () => notIndexed(`Not indexed — larger than ${MAX_INDEXABLE_LABEL}`),
   empty: () => notIndexed('Not indexed — no text found'),
 }

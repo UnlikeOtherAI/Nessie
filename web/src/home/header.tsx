@@ -6,7 +6,7 @@ import { pagesInGroup } from '../pages/registry'
 import { useLandingTeams } from '../signed-in-teams/use-landing-teams'
 import { accountUrl, cookieCopy, navItems, signInUrl } from './content'
 import { readConsent, writeConsent, type Consent } from './cookie-consent'
-import { openCookieEvent } from './ui'
+import { Button, openCookieEvent } from './ui'
 import { HangingWave } from './wave'
 
 /**
@@ -37,12 +37,25 @@ const NavTarget = ({ children, className, href, onClick }: {
  * keyboard focus, and closes on Escape or a click outside.
  */
 const NavMenu = ({ item, onNavigate }: {
-  item: { href: string; label: string; menu: 'resources' | 'why' }
+  item: {
+    href: string
+    items?: { href: string; label: string; summary: string }[]
+    label: string
+    menu: 'resources' | 'team' | 'why'
+  }
   onNavigate: () => void
 }) => {
   const [open, setOpen] = useState(false)
   const holder = useRef<HTMLDivElement>(null)
-  const entries = pagesInGroup(item.menu)
+  // A menu is either a group of pages from the registry or a hand-written list
+  // of places on this page. Both render the same; only where they come from
+  // differs, because a homepage section is not a page and never will be.
+  const entries = item.items
+    ?? pagesInGroup(item.menu as 'resources' | 'why').map((page) => ({
+      href: page.path,
+      label: page.navLabel ?? page.title,
+      summary: page.summary,
+    }))
 
   useEffect(() => {
     if (!open) return undefined
@@ -76,15 +89,15 @@ const NavMenu = ({ item, onNavigate }: {
         <FontAwesomeIcon className={open ? 'n-nav-chevron n-nav-chevron-up' : 'n-nav-chevron'} icon={faChevronDown} />
       </button>
       <div className={open ? 'n-nav-panel n-nav-panel-open' : 'n-nav-panel'}>
-        {entries.map((page) => (
+        {entries.map((entry) => (
           <NavTarget
             className="n-nav-panel-item"
-            href={page.path}
-            key={page.path}
+            href={entry.href}
+            key={entry.href}
             onClick={() => { setOpen(false); onNavigate() }}
           >
-            <strong>{page.navLabel ?? page.title}</strong>
-            <span>{page.summary}</span>
+            <strong>{entry.label}</strong>
+            <span>{entry.summary}</span>
           </NavTarget>
         ))}
       </div>
@@ -125,7 +138,10 @@ export function Header() {
               mind. */}
           {settled
             ? (signedIn
-              ? <a className="n-signin" href={accountUrl}>Your account</a>
+              // Primary, because for somebody already signed in this is the
+              // thing they came back for — the quiet link is for the visitor
+              // who has to sign in before anything else can happen.
+              ? <Button href={accountUrl}>Your account</Button>
               : <a className="n-signin" href={signInUrl}>Sign in</a>)
             : null}
           <button aria-label="Menu" className="n-icon-btn n-menu" onClick={() => setOpen(!open)} type="button">
