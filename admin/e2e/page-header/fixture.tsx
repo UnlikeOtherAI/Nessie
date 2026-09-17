@@ -1,4 +1,5 @@
-import { faCircleDot, faCircleInfo, faGear, faMagnifyingGlass, faPaperclip, faPhone, faPlus, faStar, faTableCellsLarge } from '@fortawesome/free-solid-svg-icons'
+import { faChevronDown, faCircleDot, faCircleInfo, faGear, faMagnifyingGlass, faPaperclip, faPhone, faPlus, faStar, faTableCellsLarge, faUsers } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -9,6 +10,27 @@ import {
 import '../../src/styles.css'
 
 const projectActions: PageHeaderAction[] = [
+  // A `custom` action: a control the screen draws itself into the action row.
+  // The board's assignee filter is the real one, and it shipped 44px tall
+  // inside a shorter bar because nothing here exercised this kind — so it
+  // stands in the fixture as the geometry the suite measures.
+  {
+    id: 'assignee',
+    kind: 'custom',
+    label: 'Filter board by assignee',
+    pinned: true,
+    priority: 90,
+    render: () => (
+      <button
+        className="admin-input admin-page-custom-action flex w-full items-center gap-2 text-left"
+        type="button"
+      >
+        <FontAwesomeIcon className="w-4 text-[color:var(--tx3)]" icon={faUsers} />
+        <span className="truncate">All assignees</span>
+        <FontAwesomeIcon className="shrink-0 text-[10px] text-[color:var(--tx3)]" icon={faChevronDown} />
+      </button>
+    ),
+  },
   {
     id: 'configure',
     items: [

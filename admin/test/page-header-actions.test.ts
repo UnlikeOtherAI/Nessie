@@ -211,5 +211,35 @@ test('the header geometry is tokenised and split by pointer', () => {
   const coarse = styles.match(/@media \(pointer: coarse\) \{\s*:root \{([^}]*)\}/)
   assert.ok(coarse, 'a (pointer: coarse) block re-declares the header tokens')
   assert.match(coarse[1] ?? '', /--page-header-action-height: 44px/)
-  assert.match(coarse[1] ?? '', /--page-header-height: 50px/)
+  // The bar is DERIVED from the action height plus a gutter, so a pointer only
+  // ever restates the action height. A literal bar height here would let an
+  // action come within a hair of the rule under it again.
+  assert.doesNotMatch(
+    coarse[1] ?? '',
+    /--page-header-height:/,
+    'the coarse block does not restate the bar height; it derives',
+  )
+  assert.match(styles, /--page-header-action-gutter: 6px/)
+  assert.match(
+    styles,
+    /--page-header-height: calc\(\s*var\(--page-header-action-height\) \+ 2 \* var\(--page-header-action-gutter\)/,
+  )
+
+  // A `custom` action draws its own markup, so it takes the action height from
+  // the same token rather than whatever box its own classes imply.
+  assert.match(styles, /\.admin-page-custom-action \{[^}]*height: var\(--page-header-action-height\)/)
+  // Scoped to the TRIGGER, which is the part that stands in the header's action
+  // row. The rows and the search field inside the popover are a list a finger
+  // picks from, so they keep their own 44px targets — an assertion over the
+  // whole file would forbid exactly the heights that ought to stay.
+  const filter = source('../src/components/features/projects/kanban/BoardAssigneeFilter.tsx')
+  const triggerStart = filter.indexOf('aria-label="Filter board by assignee"')
+  assert.ok(triggerStart > -1, 'the filter trigger is findable')
+  const trigger = filter.slice(triggerStart, filter.indexOf('onClick', triggerStart))
+  assert.match(trigger, /admin-page-custom-action/)
+  assert.doesNotMatch(
+    trigger,
+    /min-h-11|h-11|w-11/,
+    'the trigger takes its height from the token, never a hard-coded 44px box',
+  )
 })
