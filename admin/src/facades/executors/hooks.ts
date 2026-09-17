@@ -37,10 +37,18 @@ export const useExecutorAccess = (executorId?: string) => {
   return useQuery({
     placeholderData: keepPreviousData,
     queryKey: executorKeys.access(executorId),
-    // The extended schema is the local-MCP stub in ./local-mcp.ts: it adds
-    // only optional fields, so an API that predates them still parses.
-    queryFn: async () => ExecutorAccessViewWithLocalMcpSchema.parse(
-      await apiClient.get(`/api/executors/${executorId}/access`),
+    // Parsed by the client, not here. A hand-rolled `.parse()` throws a bare
+    // ZodError, and this screen has to tell two failures apart: a server that
+    // could not be reached, and a server whose payload this build cannot read.
+    // Only the second names "your Nessie is older than the API", and only the
+    // client's own parse path reports it — as an ApiClientError carrying
+    // `INVALID_RESPONSE`. The distinction is not hypothetical: an embedded
+    // desktop shell is frozen at its build, so one additive server field
+    // hid this executor's whole access surface behind a screen that said
+    // "unknown" instead of saying the app was stale.
+    queryFn: async () => apiClient.get(
+      `/api/executors/${executorId}/access`,
+      ExecutorAccessViewWithLocalMcpSchema,
     ),
     enabled: Boolean(executorId),
   })

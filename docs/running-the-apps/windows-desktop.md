@@ -24,6 +24,25 @@ with its production API origin pinned and verified, and then prepares the exact
 Node runtime, native helper, licence, and integrity manifest before Tauri builds
 the installer.
 
+> **This build is for verification, not for daily use.** Embedding freezes the
+> admin at the moment you built it, and an embedded shell has no way to learn it
+> is stale: it serves its own `index.html` from `tauri.localhost`, so
+> `admin/src/lib/build-freshness.ts` can never see a different asset signature,
+> and the direct updater is a CI-only Cargo feature this command does not
+> enable. The API keeps deploying. The first time the control plane projects a
+> field the frozen bundle's strict schemas do not know, whole screens stop
+> working, and the only remedy is reinstalling.
+>
+> That is not hypothetical: an embedded build left installed as a daily driver
+> lost the entire executor access-management surface — every operation grant and
+> assignment form — the day the API began sending `workspaceFolders` on
+> descriptor revisions.
+>
+> **For daily use install the CI release instead.** It loads the hosted admin
+> from `https://app.nessie.works` (`desktop_webview_url()` forces that for any
+> release build that was not explicitly embedded) and, with the direct updater,
+> keeps itself current.
+
 `packages/billing-statement-protocol/` is a byte-for-byte vendored UOA
 contract. Git preserves its upstream LF bytes on every platform (including
 Windows), without applying `core.autocrlf`, so its generated-artifact and

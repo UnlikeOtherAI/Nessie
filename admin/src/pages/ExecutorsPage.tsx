@@ -405,7 +405,7 @@ export const ExecutorsPage = () => {
               )}
             </QueryState>
           </aside>
-          {selected ? <ExecutorDetailPanels access={accessQuery.data} agents={agentsQuery.data ?? []} executor={selected} onPrepared={openReview} reviews={reviewsQuery.data ?? []} users={usersQuery.data ?? []} /> : <section className="admin-card flex items-center justify-center p-6 text-sm text-[color:var(--tx3)]">Select an executor to inspect its boundary and effective access.</section>}
+          {selected ? <ExecutorDetailPanels accessQuery={accessQuery} agents={agentsQuery.data ?? []} executor={selected} onPrepared={openReview} reviews={reviewsQuery.data ?? []} users={usersQuery.data ?? []} /> : <section className="admin-card flex items-center justify-center p-6 text-sm text-[color:var(--tx3)]">Select an executor to inspect its boundary and effective access.</section>}
         </div>
 
         {selected?.status === 'pending_pairing' ? (

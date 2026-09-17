@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { UseQueryResult } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import type {
   ExecutorProfile,
   ExecutorRecordResponse,
@@ -21,13 +23,21 @@ import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar } from '../../primitives/TabBar'
 import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
+import { QueryState } from '../../shared/QueryState'
 
 const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'attention'] as const
 
 type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
 
+/**
+ * The access view is a *query*, not a value, because every control on this
+ * screen is drawn from it and the screen has to say so when it is missing.
+ * Handed the bare data, the panel rendered a failed fetch as fact — "private=
+ * unknown, project=none" with every management form quietly absent — which is
+ * indistinguishable from an executor a person genuinely cannot administer.
+ */
 type ExecutorDetailPanelsProps = {
-  access: ExecutorAccessViewWithLocalMcp | undefined
+  accessQuery: UseQueryResult<ExecutorAccessViewWithLocalMcp>
   agents: AgentRecord[]
   executor: ExecutorRecordResponse
   onPrepared: (prepared: PreparedExecutorAccessChangeResponse) => void
@@ -92,14 +102,27 @@ const sessionSummary = (
   }
 }
 
+/**
+ * What the person is told when the access view cannot be read. `INVALID_RESPONSE`
+ * is the client refusing a payload it does not understand, which on a desktop
+ * shell means the app is older than the API it is talking to — a remedy Retry
+ * cannot reach, so the sentence has to name it.
+ */
+export const accessErrorLabel = (error: unknown): string =>
+  error instanceof ApiClientError && error.code === 'INVALID_RESPONSE'
+    ? 'This Nessie is older than the server it is talking to, so it cannot read this '
+      + 'executor’s access. Update or reinstall Nessie Desktop.'
+    : 'This executor’s access could not be loaded.'
+
 export const ExecutorDetailPanels = ({
-  access,
+  accessQuery,
   agents,
   executor,
   onPrepared,
   reviews,
   users,
 }: ExecutorDetailPanelsProps) => {
+  const access = accessQuery.data
   const [tab, setTab] = useTabParam('tab', EXECUTOR_TAB_VALUES, 'overview')
   const [principalKind, setPrincipalKind] = useState<'user' | 'agent'>('user')
   const [principalId, setPrincipalId] = useState('')
@@ -142,6 +165,17 @@ export const ExecutorDetailPanels = ({
         />
       </div>
       <FormError className="mt-3">{error}</FormError>
+      {/* The header and the tabs stay outside: which executor this is, and
+          which section you are on, are still true when the access view fails,
+          and blanking them would lose the place you had navigated to. */}
+      <QueryState
+        className="py-6"
+        errorLabel={accessErrorLabel(accessQuery.error)}
+        loadingLabel="Loading access…"
+        query={accessQuery}
+      >
+        {() => (
+          <>
       {tab === 'overview' ? (
         <div className="mt-4 grid gap-3 text-sm text-[color:var(--tx2)]">
           <p><span className="font-medium text-[color:var(--tx)]">Profiles:</span> {executor.profiles.join(', ') || 'None approved yet'}</p>
@@ -385,6 +419,9 @@ export const ExecutorDetailPanels = ({
           ) : null}
         </div>
       ) : null}
+          </>
+        )}
+      </QueryState>
     </section>
   )
 }
