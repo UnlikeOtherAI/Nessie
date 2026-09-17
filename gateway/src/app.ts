@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto'
+
 import Fastify from 'fastify'
 import type {
   GatewayConfig,
@@ -89,8 +91,15 @@ const parseRequestBody = (body: unknown): ValidationResult => {
   return { ok: true, request: { targets, payload } }
 }
 
-const unauthorized = (authorization: string | undefined, apiKey: string): boolean =>
-  authorization !== `Bearer ${apiKey}`
+// Constant-time, like every other credential comparison in the estate
+// (api/src/auth/session.ts): `!==` bails on the first differing byte, which
+// is a timing oracle for the key. The length pre-check exists because
+// timingSafeEqual throws on unequal lengths; length itself is not secret.
+const unauthorized = (authorization: string | undefined, apiKey: string): boolean => {
+  const presented = Buffer.from(authorization ?? '')
+  const expected = Buffer.from(`Bearer ${apiKey}`)
+  return presented.length !== expected.length || !timingSafeEqual(presented, expected)
+}
 
 const providerMissingResult = (token: string, provider: 'APNs' | 'FCM'): GatewayTargetResult => ({
   token,

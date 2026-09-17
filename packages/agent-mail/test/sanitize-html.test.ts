@@ -78,20 +78,23 @@ test('buildSnippet collapses whitespace and truncates with an ellipsis', () => {
   assert.match(long, /…$/)
 })
 
-// A tag whose quotes do not balance used to match no tag pattern at all and was
-// copied to the output verbatim. Combined with `'` surviving escapeAttr, the
-// dangling quote opened an attribute in the browser that swallowed the markup
-// after it, so a sender could land a working `onclick` on the rendered element.
+// A tag whose quotes do not balance is a parser-differential attack: the
+// sender hopes the sanitizer reads the bytes one way and the browser another.
+// The parser reads them exactly once — the dangling quote is ordinary
+// attribute syntax — so the smuggled markup is swallowed as attributes of the
+// one real tag and refused by the allowlist, never re-serialized as markup.
 test('an unbalanced quote cannot smuggle an event handler past the allowlist', () => {
   for (const payload of [
     `<p x='><a href="https://e.com" title="'onclick='alert(1)'z">click</a>`,
     `<div a='><img alt="'onmouseover='alert(1)'x">`,
   ]) {
     const { html } = sanitizeEmailHtml(payload)
-    // The dangling tag is escaped rather than emitted as markup, so its stray
-    // quote is inert text and cannot open an attribute.
+    // The dangling markup never survives as a literal tag.
     assert.equal(/<p x='|<div a='/.test(html), false)
-    assert.match(html, /&lt;(p|div)/)
+    // The smuggled elements and their handlers are gone entirely.
+    assert.equal(html.includes('<a'), false)
+    assert.equal(html.includes('<img'), false)
+    assert.equal(html.includes('alert'), false)
     // No surviving attribute value carries a raw quote of either kind, so no
     // value can be closed early to start a new attribute after it.
     for (const [, value] of html.matchAll(/="([^"]*)"/g)) {
@@ -103,11 +106,86 @@ test('an unbalanced quote cannot smuggle an event handler past the allowlist', (
 })
 
 test('a bare angle bracket in body text is escaped, never passed through', () => {
-  assert.equal(sanitizeEmailHtml('<p>2 < 3 and 5 > 4</p>').html, '<p>2 &lt; 3 and 5 > 4</p>')
+  // The serializer escapes both brackets in text, so re-parsing the stored
+  // markup can never turn sentence text back into a tag.
+  assert.equal(sanitizeEmailHtml('<p>2 < 3 and 5 > 4</p>').html, '<p>2 &lt; 3 and 5 &gt; 4</p>')
 })
 
-test('a single quote in an ordinary attribute value is entity-encoded', () => {
-  const { html } = sanitizeEmailHtml(`<img alt="it's here" src="cid:x">`)
-  assert.match(html, /alt="it&#39;s here"/)
-  assert.equal(html.includes("it's"), false)
+// Values are emitted double-quoted with `"` entity-encoded, so nothing inside
+// a value can close it early and start a new attribute; a raw `'` inside a
+// double-quoted value is inert.
+test('a quote inside an attribute value cannot close the attribute early', () => {
+  const { html } = sanitizeEmailHtml(`<img alt='say "hi" now' src="cid:x">`)
+  assert.match(html, /alt="say &quot;hi&quot; now"/)
+  assert.match(html, /src="cid:x"/)
+  const single = sanitizeEmailHtml(`<img alt="it's here" src="cid:x">`).html
+  assert.match(single, /alt="it's here"/)
+  assert.match(single, /src="cid:x"/)
+})
+
+// ── Parser-strength cases ────────────────────────────────────────────────────
+// The classes a regex/tag-balancing sanitizer is historically weak against.
+// Each payload is written so that a byte-pattern reading and a browser's
+// tree reading diverge; the parser takes the browser's side, once.
+
+test('mutation XSS: foreign-content nesting cannot resurrect a dropped element', () => {
+  for (const payload of [
+    '<svg><style><img src=x onerror=alert(1)></style></svg><p>ok</p>',
+    '<math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></table></mtext></math><p>ok</p>',
+    '<svg><a href="javascript:alert(1)"><text>click</text></a></svg><p>ok</p>',
+  ]) {
+    const { html } = sanitizeEmailHtml(payload)
+    assert.equal(html, '<p>ok</p>')
+  }
+})
+
+test('comment-embedded markup cannot smuggle an attribute or element', () => {
+  // In a spec-compliant browser `<!--` inside a tag is a bogus comment ending
+  // at the first `>`, which would make onerror a live attribute. The stored
+  // form must contain no such attribute however it is re-parsed.
+  const inTag = sanitizeEmailHtml('<img src="cid:x" <!-- --> onerror="alert(1)">').html
+  // The tag is closed before the handler text (which is escaped, inert body
+  // text), so no re-parse can read it as an attribute.
+  assert.equal(/<img[^>]*onerror/i.test(inTag), false)
+  const bogus = sanitizeEmailHtml('<!--><img src=x onerror=alert(1)>--><p>ok</p>').html
+  assert.equal(bogus.includes('onerror'), false)
+  assert.match(bogus, /<p>ok<\/p>/)
+})
+
+test('malformed attribute quoting cannot hide a scheme or a handler', () => {
+  // No space between attributes: a pattern reader sees one value where the
+  // parser sees two attributes.
+  const stuck = sanitizeEmailHtml('<a href="javascript:alert(1)"title="x>y">click</a>').html
+  assert.equal(stuck.includes('href'), false)
+  // An unclosed tag at end of input is dropped with everything it carried.
+  assert.equal(sanitizeEmailHtml('<img src="cid:x" onerror=alert(1)').html.includes('onerror'), false)
+})
+
+test('entity- and whitespace-encoded schemes are decoded before the scheme check', () => {
+  assert.equal(sanitizeEmailHtml('<a href="java&#115;cript:alert(1)">x</a>').html, '<a>x</a>')
+  assert.equal(sanitizeEmailHtml('<a href="jav\tascript:alert(1)">x</a>').html, '<a>x</a>')
+})
+
+test('schemeless URLs are dropped — the allowlist is scheme-prefixed or nothing', () => {
+  // A relative URL resolves against the admin origin at render time, which is
+  // neither a safe target nor something the sender may point a reader at.
+  assert.equal(sanitizeEmailHtml('<a href="/internal/path">x</a>').html.includes('href'), false)
+  assert.equal(sanitizeEmailHtml('<img src="/api/health">').html.includes('src'), false)
+  assert.equal(sanitizeEmailHtml('<a href="//evil.example/x">x</a>').html.includes('href'), false)
+})
+
+test('a sender-supplied data-blocked-src is stripped, not trusted', () => {
+  // Only the sanitizer may park a URL there — otherwise "load images" would
+  // fetch a URL that never passed the remote-content decision.
+  const result = sanitizeEmailHtml('<img data-blocked-src="https://t.example/p.gif">')
+  assert.equal(result.blockedRemoteContent, false)
+  assert.equal(result.html.includes('blocked-src'), false)
+})
+
+test('metadata elements are removed with their content', () => {
+  const result = sanitizeEmailHtml(
+    '<head><title>Sub</title></head><template><img src="https://t.example/x.png"></template><p>body</p>',
+  )
+  assert.equal(result.html, '<p>body</p>')
+  assert.equal(result.blockedRemoteContent, false)
 })

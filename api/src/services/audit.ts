@@ -105,7 +105,7 @@ export type AuditLogQuery = {
   channelId?: string
   cursor?: string
   direction?: PaginationDirection
-  from?: string
+  from?: Date
   limit?: number
   organizationId: string
   outcome?: string
@@ -113,7 +113,7 @@ export type AuditLogQuery = {
   resourceId?: string
   resourceType?: string
   teamId?: string
-  to?: string
+  to?: Date
 }
 
 export const listAuditLogs = async (
@@ -135,8 +135,10 @@ export const listAuditLogs = async (
   if (query.outcome) where['outcome'] = query.outcome
 
   const dateFilter: Record<string, Date> = {}
-  if (query.from) dateFilter['gte'] = new Date(query.from)
-  if (query.to) dateFilter['lte'] = new Date(query.to)
+  // `from`/`to` arrive already parsed by the route's query schema — an
+  // unparseable value is a 400 there, never an Invalid Date here.
+  if (query.from) dateFilter['gte'] = query.from
+  if (query.to) dateFilter['lte'] = query.to
   if (Object.keys(dateFilter).length > 0) where['createdAt'] = dateFilter
 
   // The total is counted against the same filters but before the cursor is
@@ -234,18 +236,20 @@ export const getAuditLogSummary = async (
   prisma: PrismaClient,
   organizationId: string,
   groupBy: 'action' | 'actorId' | 'resourceType' | 'outcome',
-  from?: string,
-  to?: string,
+  from?: Date,
+  to?: Date,
 ) => {
   const dateFilter: string[] = []
   const params: unknown[] = [organizationId]
 
   if (from) {
-    params.push(new Date(from))
+    // Parsed `Date` instances bind exactly as the strings they replace did —
+    // the parameterised positions and the SQL text are unchanged.
+    params.push(from)
     dateFilter.push(`AND "created_at" >= $${params.length}`)
   }
   if (to) {
-    params.push(new Date(to))
+    params.push(to)
     dateFilter.push(`AND "created_at" <= $${params.length}`)
   }
 
