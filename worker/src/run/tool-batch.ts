@@ -59,7 +59,9 @@ export type ExecuteToolFn = (
 export type PreparedToolExecution =
   | {
       kind: 'execute'
-      execute: (signal: AbortSignal) => Promise<ExecutedToolResult>
+      // Optional: executors that finish synchronously ignore it; any executor
+      // that dials out must wire it to its request (see ExecuteToolFn).
+      execute: (signal?: AbortSignal) => Promise<ExecutedToolResult>
     }
   | {
       approval: ToolApprovalSuspension
@@ -168,7 +170,7 @@ export const executeToolBatch = async (input: {
     runnable.push({ index, toolCall })
   }
 
-  const prepared: Array<RunnableToolCall & { execute: () => Promise<ExecutedToolResult> }> = []
+  const prepared: Array<RunnableToolCall & { execute: (signal?: AbortSignal) => Promise<ExecutedToolResult> }> = []
   for (const call of runnable) {
     let preparation: PreparedToolExecution
     try {
