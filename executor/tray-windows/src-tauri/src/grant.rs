@@ -131,6 +131,11 @@ mod imp {
     pub fn grant_workspace(path: &Path) -> Result<(), String> {
         grant_service_account(path)?;
         crate::pipe_client::call(&serde_json::json!({ "command": "enrollControlClient" }))?;
+        // The accept loop has already created its next listener by the time
+        // enrollment writes the marker. This elevated request consumes that
+        // stale-DACL instance, so the following ordinary tray request reaches
+        // a listener built with the newly admitted account.
+        crate::pipe_client::call(&serde_json::json!({ "command": "status" }))?;
         Ok(())
     }
 

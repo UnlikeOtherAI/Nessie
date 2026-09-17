@@ -200,10 +200,16 @@ impl PipeSecurity {
     pub fn new(recorded_sids: &[String], service_sid: &str) -> Result<Self, String> {
         let administrators = well_known_administrators()
             .ok_or_else(|| "Windows would not report the Administrators group.".to_owned())?;
-        let recorded: Vec<OwnedSid> =
-            recorded_sids.iter().filter_map(|value| sid_from_string(value)).collect();
         let service = sid_from_string(service_sid)
             .ok_or_else(|| "Windows would not report the Nessie Executor account.".to_owned())?;
+        // The service is added below with its server rights. A malformed or
+        // stale marker naming it must not add a second limited `SET_ACCESS`
+        // entry and take `FILE_CREATE_PIPE_INSTANCE` back away.
+        let recorded: Vec<OwnedSid> = recorded_sids
+            .iter()
+            .filter(|value| value.as_str() != service_sid)
+            .filter_map(|value| sid_from_string(value))
+            .collect();
         let mut entries = vec![allow(administrators.pointer(), TRUSTEE_IS_GROUP, CLIENT_ACCESS)];
         entries.extend(recorded.iter().map(|sid| allow(sid.pointer(), TRUSTEE_IS_USER, CLIENT_ACCESS)));
         entries.push(allow(service.pointer(), TRUSTEE_IS_USER, SERVER_ACCESS));

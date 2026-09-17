@@ -67,12 +67,12 @@ pub struct PairCommand {
 /// both are needed, because the first alone leaves the fields in snake case and
 /// every request would parse as malformed.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "command")]
+#[serde(deny_unknown_fields, rename_all = "camelCase", rename_all_fields = "camelCase", tag = "command")]
 enum Request {
     Configure { executor_id: String, operation_keys: Vec<String> },
     ConfigureInput { executor_id: String, configuration_input: serde_json::Value },
     Describe { executor_id: String },
-    EnrollControlClient,
+    EnrollControlClient {},
     Pair {
         api_base_url: String,
         challenge: String,
@@ -231,7 +231,7 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
         Request::Describe { executor_id } => Ok(Command::Describe {
             executor_id: identifier(executor_id, "executor id")?,
         }),
-        Request::EnrollControlClient => Ok(Command::EnrollControlClient),
+        Request::EnrollControlClient {} => Ok(Command::EnrollControlClient),
         Request::Pair {
             api_base_url,
             challenge: value,
@@ -300,6 +300,10 @@ mod tests {
         assert_eq!(
             parse_request(r#"{"command":"enrollControlClient"}"#).unwrap(),
             Command::EnrollControlClient,
+        );
+        assert_eq!(
+            parse_request(r#"{"command":"enrollControlClient","sid":"S-1-5-21-9"}"#),
+            Err("The control request is malformed.".to_owned()),
         );
         assert_eq!(
             parse_request(&format!(r#"{{"command":"start","executorId":"{EXECUTOR}"}}"#)).unwrap(),

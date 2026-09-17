@@ -130,6 +130,9 @@ fn enroll_control_client(
     control: &Control,
     client: Option<crate::security::ConnectedClient>,
 ) -> Response {
+    if control.supervisor().is_none() {
+        return control.handle(Command::Status, None);
+    }
     let Some(client) = client.filter(|identity| identity.is_administrator) else {
         return Response::error("An administrator must approve control access for this account.");
     };
@@ -200,8 +203,15 @@ pub fn serve(root: PathBuf, control: Arc<Control>, shutdown: Arc<AtomicBool>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{wide, CLIENT_ACCESS, PIPE_BUFFER_BYTES};
-    use crate::security::{current_user_sid_string, PipeSecurity};
+    use super::{admitted_sids, enroll_control_client, wide, CLIENT_ACCESS, PIPE_BUFFER_BYTES};
+    use crate::{
+        control::Control,
+        manifest::VerifiedRuntime,
+        security::{current_user_sid_string, ConnectedClient, PipeSecurity},
+        protocol::Response,
+        supervisor::Supervisor,
+    };
+    use std::fs;
     use windows_sys::Win32::{
         Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
         Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING, PIPE_ACCESS_DUPLEX},
@@ -215,6 +225,17 @@ mod tests {
                 2, PIPE_BUFFER_BYTES, PIPE_BUFFER_BYTES, 0, &security.attributes(),
             )
         }
+    }
+
+    fn control(root: &std::path::Path) -> Control {
+        Control::new(Supervisor::new(
+            root.to_path_buf(),
+            VerifiedRuntime {
+                native_helper: root.join("nessie-executor-native.exe"),
+                node_executable: root.join("node.exe"),
+                root: root.to_path_buf(),
+            },
+        ))
     }
 
     #[test]
@@ -237,5 +258,55 @@ mod tests {
             CloseHandle(second);
             CloseHandle(first);
         }
+    }
+
+    #[test]
+    fn a_service_sid_marker_never_overwrites_its_server_access() {
+        let directory = tempfile::tempdir().expect("temporary state root");
+        let sid = current_user_sid_string().expect("the test process has a SID");
+        fs::create_dir_all(directory.path().join("control-clients")).expect("marker root");
+        fs::write(directory.path().join("control-clients").join(&sid), b"").expect("marker");
+        assert!(admitted_sids(directory.path()).contains(&sid));
+        let mut security = PipeSecurity::new(&admitted_sids(directory.path()), &sid)
+            .expect("the duplicated marker is filtered from the server ACE");
+        let name = format!(r"\\.\pipe\NessieExecutor-duplicate-test-{}", std::process::id());
+        let first = instance(&name, &mut security);
+        assert_ne!(first, INVALID_HANDLE_VALUE);
+        let mut second_security = PipeSecurity::new(&admitted_sids(directory.path()), &sid).unwrap();
+        let second = instance(&name, &mut second_security);
+        assert_ne!(second, INVALID_HANDLE_VALUE, "the service keeps create-instance access");
+        unsafe { CloseHandle(second); CloseHandle(first); }
+    }
+
+    #[test]
+    fn enrollment_uses_only_the_authenticated_administrator_sid() {
+        let directory = tempfile::tempdir().expect("temporary state root");
+        let control = control(directory.path());
+        let own = "S-1-5-21-1004336348-1177238915-682003330-1001";
+        let response = enroll_control_client(
+            directory.path(), &control,
+            Some(ConnectedClient { is_administrator: true, sid: own.to_owned() }),
+        );
+        assert_eq!(response, Response::Ok { executors: Vec::new() });
+        assert!(directory.path().join("control-clients").join(own).is_file());
+        assert!(!directory.path().join("control-clients").join("S-1-5-21-9").exists());
+    }
+
+    #[test]
+    fn enrollment_refuses_untrusted_clients_and_a_refusing_service_without_writing() {
+        let directory = tempfile::tempdir().expect("temporary state root");
+        let control = control(directory.path());
+        let client = ConnectedClient { is_administrator: false, sid: "S-1-5-21-1".to_owned() };
+        assert_eq!(
+            enroll_control_client(directory.path(), &control, Some(client)),
+            Response::error("An administrator must approve control access for this account."),
+        );
+        assert!(!directory.path().join("control-clients").exists());
+        let refused = Control::Refused("Executor controls require a signed, intact Nessie release.".to_owned());
+        assert_eq!(
+            enroll_control_client(directory.path(), &refused, None),
+            Response::error("Executor controls require a signed, intact Nessie release."),
+        );
+        assert!(!directory.path().join("control-clients").exists());
     }
 }
