@@ -1110,6 +1110,11 @@ export const ExecutorDescriptorReviewResponseSchema = z.object({
   // third reading of a two-state fact.
   commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
   localPolicyDigest: Sha256DigestSchema,
+  // Projected for the same reason as the programs and the folders: naming a
+  // local MCP server changes the digest, so it is a revision somebody
+  // approves, and a reviewer should read which servers they are approving.
+  // Names only — how each one starts stays on the host.
+  mcpServers: ExecutorMcpServerNamesSchema.optional(),
   operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(100),
   profiles: z.array(ExecutorProfileSchema).min(1).max(10),
   reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
@@ -1155,6 +1160,15 @@ export const ExecutorAccessViewResponseSchema = z.object({
     projectRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullable(),
   }).strict(),
   descriptorRevisions: z.array(ExecutorDescriptorReviewResponseSchema).max(20).optional(),
+  /**
+   * The daemon's last observation of its named MCP servers, and for Kelpie the
+   * browsers it found. Absent means this executor has never reported — a
+   * daemon too old, or one that has never connected. An empty array means it
+   * reports and names no server. The two must never render alike.
+   */
+  localMcp: ExecutorLocalMcpReportSchema.optional(),
+  /** When that observation was taken, so a reader can tell fresh from stale. */
+  localMcpObservedAt: TimestampSchema.optional(),
   operationGrants: z.array(z.object({
     agentId: AgentIdSchema,
     operationKey: ImplementedExecutorOperationKeySchema,
