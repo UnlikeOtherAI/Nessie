@@ -1,5 +1,34 @@
 # Local Windows executor verification
 
+## Standalone Windows service verification — 2026-09-17
+
+A debug standalone MSI built from the pre-fix `main` source installed
+successfully and registered `NessieExecutor` as an automatic service running as
+`NT SERVICE\NessieExecutor`; its tray also remained running without opening a
+window. The service did **not** supervise an executor: Windows Installer had
+created `%ProgramData%\Nessie Executor` as SYSTEM with inherited permissions,
+and the service log reported
+`EXECUTOR_STATE_SECURITY_IO_FAILURE` when its service-account process tried to
+replace that boundary. This is live failure evidence, not release evidence.
+
+The corrected implementation moves the initial owner-only DACL setup into an
+elevated, packaged native-helper custom action before the service starts. The
+tray's elevated workspace grant now asks the service over the local
+administrator-only pipe to record the caller SID from the authenticated token;
+it does not write the protected service tree. Native tests exercise the exact
+pipe access mask, repeated listener creation, caller-derived enrollment, and
+the refusal path. Recovery tests use real child processes to prove
+connect, daemon start, crash observation, backoff, Stop and service shutdown.
+The real tray HTML was rendered headlessly with a `starting` executor: the
+attention state appeared, Start was disabled, Stop was enabled and dispatched
+the expected executor id.
+
+These corrected paths still require a fresh MSI install on Windows. A live
+pairing to `https://api.nessie.works` also requires the normal authenticated
+Executors surface and human fingerprint confirmation; neither is established
+by the native tests above and neither was claimed during this source-level
+verification.
+
 Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 
 ## Available local stack
