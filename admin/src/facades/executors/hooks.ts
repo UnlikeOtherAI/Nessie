@@ -2,7 +2,6 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import {
   ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeResponseSchema,
-  ExecutorAccessViewResponseSchema,
   ExecutorAvailabilityResponseSchema,
   ExecutorCreateResponseSchema,
   ExecutorRecordResponseSchema,
@@ -20,6 +19,7 @@ import {
 
 import { threadKeys } from '../threads/keys'
 import { executorKeys } from './keys'
+import { ExecutorAccessViewWithLocalMcpSchema } from './local-mcp'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useExecutors = () => {
@@ -37,7 +37,9 @@ export const useExecutorAccess = (executorId?: string) => {
   return useQuery({
     placeholderData: keepPreviousData,
     queryKey: executorKeys.access(executorId),
-    queryFn: async () => ExecutorAccessViewResponseSchema.parse(
+    // The extended schema is the local-MCP stub in ./local-mcp.ts: it adds
+    // only optional fields, so an API that predates them still parses.
+    queryFn: async () => ExecutorAccessViewWithLocalMcpSchema.parse(
       await apiClient.get(`/api/executors/${executorId}/access`),
     ),
     enabled: Boolean(executorId),

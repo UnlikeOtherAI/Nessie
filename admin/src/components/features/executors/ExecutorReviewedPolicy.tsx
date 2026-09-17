@@ -1,9 +1,7 @@
-import type { ExecutorAccessViewResponse } from '@nessie/schemas'
-
+import type { ExecutorDescriptorRevisionView } from '../../../facades/executors/local-mcp'
+import { ExecutorMcpServers } from './ExecutorMcpServers'
 import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
 import { ExecutorReachableFolders } from './ExecutorReachableFolders'
-
-type DescriptorRevision = NonNullable<ExecutorAccessViewResponse['descriptorRevisions']>[number]
 
 /**
  * What a prepared `descriptor_review` change actually activates.
@@ -20,7 +18,7 @@ type DescriptorRevision = NonNullable<ExecutorAccessViewResponse['descriptorRevi
  */
 export type ExecutorReviewedPolicyProps = {
   change: Record<string, unknown>
-  descriptorRevisions?: readonly DescriptorRevision[]
+  descriptorRevisions?: readonly ExecutorDescriptorRevisionView[]
 }
 
 /**
@@ -55,6 +53,10 @@ export const ExecutorReviewedPolicy = ({
       <ExecutorReachableFolders
         operationKeys={revision.operationKeys}
         workspaceFolders={revision.workspaceFolders}
+      />
+      <ExecutorMcpServers
+        mcpServers={revision.mcpServers}
+        operationKeys={revision.operationKeys}
       />
       <ExecutorPermittedPrograms
         commandAllowlist={revision.commandAllowlist}
