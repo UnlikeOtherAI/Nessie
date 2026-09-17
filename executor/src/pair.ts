@@ -400,7 +400,7 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [])
+  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [], (state.mcpServers ?? []).length)
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -450,7 +450,7 @@ export const configureExecutorCodexSandbox = async (
     'workspace.review',
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
-  ])], Boolean(state.browserSandbox), true, host, state.descriptor.commandAllowlist ?? [])
+  ])], Boolean(state.browserSandbox), true, host, state.descriptor.commandAllowlist ?? [], (state.mcpServers ?? []).length)
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,
