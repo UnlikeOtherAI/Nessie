@@ -220,10 +220,14 @@ export const BoardAssigneeFilter = ({
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label="Filter board by assignee"
+        // `admin-page-custom-action` is what keeps this on the header's line:
+        // it stands in the action row, so it takes the action height from the
+        // same token rather than `admin-input`'s own 44px padding box. The
+        // compact form is a square at that height, as a compact action is.
         className={
           compact
-            ? 'admin-input flex h-11 w-11 items-center justify-center p-0'
-            : 'admin-input flex min-h-11 w-full items-center gap-2 text-left'
+            ? 'admin-input admin-page-custom-action flex w-[var(--page-header-action-height)] items-center justify-center p-0'
+            : 'admin-input admin-page-custom-action flex w-full items-center gap-2 text-left'
         }
         onClick={() => {
           if (open) close()

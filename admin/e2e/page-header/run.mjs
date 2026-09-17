@@ -38,8 +38,26 @@ const pinGeometry = async (page, { actionHeight, barHeight, label, toggleHeight 
     Math.abs(toggleBox.height - toggleHeight) < 1,
     `${label}: a toggle is ${toggleHeight}px high (was ${toggleBox.height}px)`,
   )
+  // A `custom` action draws its own control, so nothing makes it match the
+  // action box — it has to be measured. The board's assignee filter hung over
+  // the bar's rule at both ends because it carried `.admin-input`'s 44px
+  // padding box inside a shorter bar, and no case here looked at it.
+  const custom = page.locator('[data-page-header-action="assignee"] button').first()
+  const customBox = await custom.boundingBox()
+  assert.ok(customBox, `${label}: a custom action renders`)
+  assert.ok(
+    Math.abs(customBox.height - actionHeight) < 1,
+    `${label}: a custom action matches the action height ${actionHeight}px (was ${customBox.height}px)`,
+  )
+  // The gutter the bar promises above and below the action row, which is the
+  // whole reason the bar is derived from the action height rather than set.
+  const gutter = (barBox.height - actionBox.height) / 2
+  assert.ok(
+    Math.abs(gutter - 6) < 1,
+    `${label}: the action row keeps a 6px gutter (was ${gutter}px)`,
+  )
   console.log(
-    `${label}: bar=${barBox.height}px action=${actionBox.height}px toggle=${toggleBox.height}px font=${fontSize}`,
+    `${label}: bar=${barBox.height}px action=${actionBox.height}px custom=${customBox.height}px gutter=${gutter}px toggle=${toggleBox.height}px font=${fontSize}`,
   )
 }
 
@@ -65,7 +83,7 @@ try {
   if (errors.length > 0) throw new Error(`Page header fixture errors: ${errors.join(' | ')}`)
 
   await mkdir(outDir, { recursive: true })
-  await pinGeometry(page, { actionHeight: 31, barHeight: 35, label: 'fine pointer', toggleHeight: 22 })
+  await pinGeometry(page, { actionHeight: 31, barHeight: 43, label: 'fine pointer', toggleHeight: 22 })
   for (const theme of ['sandstone', 'nebula', 'daylight', 'midnight', 'ocean', 'graphite']) {
     const board = page.locator(`[data-theme-board="${theme}"]`)
     await board.screenshot({ path: resolve(outDir, `${theme}.png`) })
@@ -126,7 +144,7 @@ try {
   await touchPage.goto(`${ADMIN_URL}/e2e/page-header/index.html`)
   await touchPage.getByRole('button', { name: 'New task' }).first().waitFor()
   await touchPage.waitForTimeout(600)
-  await pinGeometry(touchPage, { actionHeight: 44, barHeight: 50, label: 'coarse pointer', toggleHeight: 32 })
+  await pinGeometry(touchPage, { actionHeight: 44, barHeight: 56, label: 'coarse pointer', toggleHeight: 32 })
   const touchSandstone = touchPage.locator('[data-theme-board="sandstone"]')
   await touchSandstone.locator('header').first().screenshot({ path: resolve(outDir, 'coarse-pointer.png') })
   await touchContext.close()

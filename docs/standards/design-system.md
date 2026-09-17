@@ -118,18 +118,29 @@ summary and points here; **this file is the rule**.
   beats the `opacity-50` utility marking a disabled action and repaints the
   one cue that it cannot be pressed, exactly as the pointer arrives.
   **The bar's geometry is a set of tokens, and the pointer decides which
-  values they hold.** `--page-header-height`, `--page-header-gap`,
-  `--page-header-action-height`, `--page-header-action-font-size` and
-  `--page-header-toggle-height` live on `:root` in `styles.css`, and
-  `ResponsivePageHeader` — plus the pane and drawer headers that mirror it —
-  consumes them and nothing else, so rescaling the bar is a one-line edit.
-  Under a fine pointer the bar is compact (35px bar, 31px actions, 22px
-  toggles): a cursor needs no 44px target and the density is the point.
-  Under a coarse pointer a `(pointer: coarse)` media query restores the touch
-  geometry (50px bar, 44px actions, 32px toggles), because a 31px tap target
-  on a phone is a usability defect — every header action keeps a 44px target
-  wherever a finger is what arrives, and compact icon actions are 44px
-  squares there. The action font-size is set by the `.admin-page-action`
+  values they hold.** `--page-header-action-height`,
+  `--page-header-action-gutter`, `--page-header-gap`,
+  `--page-header-action-font-size` and `--page-header-toggle-height` live on
+  `:root` in `styles.css`, and `ResponsivePageHeader` — plus the pane and
+  drawer headers that mirror it — consumes them and nothing else, so rescaling
+  the bar is a one-line edit. **`--page-header-height` is derived, never set:**
+  it is the action height plus twice the gutter, so an action can never come
+  within a hair of the rule beneath it. A pointer therefore restates the
+  action height only. Under a fine pointer the bar is compact (31px actions,
+  6px gutter → 43px bar, 22px toggles): a cursor needs no 44px target and the
+  density is the point. Under a coarse pointer a `(pointer: coarse)` media
+  query restores the touch geometry (44px actions → 56px bar, 32px toggles),
+  because a 31px tap target on a phone is a usability defect — every header
+  action keeps a 44px target wherever a finger is what arrives, and compact
+  icon actions are 44px squares there.
+  **A `custom` action is sized by the same tokens.** The point of `custom` is
+  that the screen owns the markup, so nothing makes it match the action box —
+  it must wear `.admin-page-custom-action`, which takes the action height and
+  font-size from the tokens and zeroes the block padding. The board's assignee
+  filter shipped as a bare `.admin-input`, whose own `padding: 10px 12px` made
+  it 44px tall inside a shorter bar, and it hung over the bar's rule at both
+  ends; the `page-header` fixture now carries a `custom` action so the suite
+  measures this kind rather than assuming it. The action font-size is set by the `.admin-page-action`
   rule, never a `text-*` utility: the unlayered `button { font: inherit }`
   reset beats Tailwind's layered utilities, so a size class on a header
   button is silently ignored.

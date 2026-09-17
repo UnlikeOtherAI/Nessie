@@ -94,9 +94,15 @@
      on a utility because the unlayered `button { font: inherit }` reset beats
      Tailwind's layered utilities, so a `text-*` class on a header button
      silently does nothing; `.admin-page-action` sets it where it wins. */
-  --page-header-height: 35px;
-  --page-header-gap: 8px;
   --page-header-action-height: 31px;
+  /* Breathing room above and below the action row. The bar is derived from it
+     rather than given its own number, so an action can never come within a
+     hair of the rule under it — which is what a hand-set bar height allowed. */
+  --page-header-action-gutter: 6px;
+  --page-header-height: calc(
+    var(--page-header-action-height) + 2 * var(--page-header-action-gutter)
+  );
+  --page-header-gap: 8px;
   --page-header-action-font-size: 0.75rem;
   --page-header-toggle-height: 22px;
   --duration-fast: 120ms;
@@ -132,9 +138,10 @@
    even at desktop widths. */
 @media (pointer: coarse) {
   :root {
-    --page-header-height: 50px;
-    --page-header-gap: 12px;
+    /* Only the action height is restated — the bar derives from it, so the
+       gutter above and below is the same under a finger as under a cursor. */
     --page-header-action-height: 44px;
+    --page-header-gap: 12px;
     --page-header-toggle-height: 32px;
   }
 }
@@ -3554,6 +3561,20 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx);
   outline: none;
   padding: 10px 12px;
+}
+
+/* A control a screen draws itself into the header's action row — a `custom`
+   PageHeaderAction, like the board's assignee filter. It cannot inherit
+   `.admin-page-action`'s box, because the point of `custom` is that the screen
+   owns the markup, but it stands beside the real actions and has to match them
+   or it breaks the line: the filter shipped as an `.admin-input`, whose own
+   `padding: 10px 12px` made it 44px tall inside a shorter bar and hung over the
+   rule at both ends. Sized from the same tokens as every other action, and
+   declared after `.admin-input` so it wins the block padding. */
+.admin-page-custom-action {
+  height: var(--page-header-action-height);
+  padding-block: 0;
+  font-size: var(--page-header-action-font-size);
 }
 
 /* Dense variant for controls inside a table row. It must come after
