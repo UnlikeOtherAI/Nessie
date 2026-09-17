@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -48,30 +48,45 @@ const secureRuntimeFixture = async (stateDir: string, runtimeBundlePath: string)
   await chmod(runtimeBundlePath, 0o700)
 }
 
+const packagedWindowsVmArtifacts = (): { builderPath: string; helperPath: string; kernelPath: string } | undefined => {
+  if (process.platform !== 'win32' || process.env.NESSIE_EXECUTOR_PACKAGED_CLI !== '1') return undefined
+  const resources = join(dirname(process.execPath), 'resources')
+  return {
+    builderPath: join(resources, 'guest', 'build-initrd.exe'),
+    helperPath: join(resources, 'nessie-hyperv-bridge.exe'),
+    kernelPath: join(resources, 'guest', 'bzImage'),
+  }
+}
+
 test('Codex configuration stores only an owner-private source path and a pinned runtime', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
-  const builderPath = join(stateDir, 'build-initrd')
-  const helperPath = join(stateDir, 'vm-helper')
-  const kernelPath = join(stateDir, 'kernel')
+  const installedArtifacts = packagedWindowsVmArtifacts()
+  const builderPath = installedArtifacts?.builderPath ?? join(stateDir, 'build-initrd')
+  const helperPath = installedArtifacts?.helperPath ?? join(stateDir, 'vm-helper')
+  const kernelPath = installedArtifacts?.kernelPath ?? join(stateDir, 'kernel')
   const authProfilePath = join(stateDir, 'codex-auth.json')
   try {
     await secureRuntimeFixture(stateDir, runtimeBundlePath)
     const codexRuntime = 'codex-runtime'
     const tmuxRuntime = 'tmux-runtime'
     await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
+      ...(installedArtifacts ? [] : [
+        writeFile(builderPath, 'builder'),
+        writeFile(helperPath, 'helper'),
+        writeFile(kernelPath, 'kernel'),
+      ]),
       writeFile(authProfilePath, '{"auth_mode":"chatgpt"}'),
       writeFile(join(runtimeBundlePath, 'bin', 'codex'), codexRuntime),
       writeFile(join(runtimeBundlePath, 'bin', 'tmux'), tmuxRuntime),
     ])
     await Promise.all([
-      chmod(builderPath, 0o700),
-      chmod(helperPath, 0o700),
-      chmod(kernelPath, 0o600),
+      ...(installedArtifacts ? [] : [
+        chmod(builderPath, 0o700),
+        chmod(helperPath, 0o700),
+        chmod(kernelPath, 0o600),
+      ]),
       chmod(authProfilePath, 0o600),
       chmod(join(runtimeBundlePath, 'bin', 'codex'), 0o700),
       chmod(join(runtimeBundlePath, 'bin', 'tmux'), 0o700),
@@ -139,22 +154,27 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
-  const builderPath = join(stateDir, 'build-initrd')
-  const helperPath = join(stateDir, 'vm-helper')
-  const kernelPath = join(stateDir, 'kernel')
+  const installedArtifacts = packagedWindowsVmArtifacts()
+  const builderPath = installedArtifacts?.builderPath ?? join(stateDir, 'build-initrd')
+  const helperPath = installedArtifacts?.helperPath ?? join(stateDir, 'vm-helper')
+  const kernelPath = installedArtifacts?.kernelPath ?? join(stateDir, 'kernel')
   try {
     await secureRuntimeFixture(stateDir, runtimeBundlePath)
     const browserRuntime = 'browser-runtime'
     await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
+      ...(installedArtifacts ? [] : [
+        writeFile(builderPath, 'builder'),
+        writeFile(helperPath, 'helper'),
+        writeFile(kernelPath, 'kernel'),
+      ]),
       writeFile(join(runtimeBundlePath, 'bin', 'browser'), browserRuntime),
     ])
     await Promise.all([
-      chmod(builderPath, 0o700),
-      chmod(helperPath, 0o700),
-      chmod(kernelPath, 0o600),
+      ...(installedArtifacts ? [] : [
+        chmod(builderPath, 0o700),
+        chmod(helperPath, 0o700),
+        chmod(kernelPath, 0o600),
+      ]),
       chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700),
     ])
     await writeFile(join(runtimeBundlePath, 'nessie-guest-runtime.json'), JSON.stringify({
