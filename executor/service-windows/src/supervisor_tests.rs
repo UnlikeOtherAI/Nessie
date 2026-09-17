@@ -24,13 +24,18 @@ fn paired_supervisor(root: &Path) -> Supervisor {
 #[cfg(windows)]
 fn scripted_supervisor(root: &Path) -> Supervisor {
     let mut supervisor = paired_supervisor(root);
-    let script = root.join("fake-node.cmd");
+    let node = std::process::Command::new("node")
+        .args(["-p", "process.execPath"])
+        .output()
+        .expect("Node is required for Windows executor lifecycle tests");
+    assert!(node.status.success(), "Node is required for Windows executor lifecycle tests");
+    let script = root.join("nessie-executor.cjs");
     fs::write(
         &script,
-        "@echo off\r\nif \"%2\"==\"connect\" (echo connected>\"%~dp0connect.marker\" & exit /b 0)\r\nif \"%2\"==\"serve\" (echo serving>\"%~dp0serve.marker\" & :loop & if exist \"%~dp0crash.marker\" exit /b 0 & timeout /t 1 >nul & goto loop)\r\n",
+        "const fs=require('fs');const a=process.argv.slice(2);const d=a[a.indexOf('--state-dir')+1];if(a[0]==='connect'){fs.writeFileSync(d+'/connect.marker','');process.exit(fs.existsSync(d+'/fail.connect')?1:0)}fs.writeFileSync(d+'/serve.marker','');setInterval(()=>{if(fs.existsSync(d+'/crash.marker'))process.exit(0)},5);process.stdin.on('end',()=>process.exit(0));",
     )
     .expect("script");
-    supervisor.runtime.node_executable = script;
+    supervisor.runtime.node_executable = std::path::PathBuf::from(String::from_utf8(node.stdout).expect("Node path").trim());
     supervisor
 }
 
@@ -148,7 +153,7 @@ fn until(mut condition: impl FnMut() -> bool) {
 #[test]
 fn recovery_observes_connect_serve_crash_backoff_stop_and_shutdown() {
     let directory = tempfile::tempdir().expect("temporary state");
-    let state = directory.path().to_path_buf();
+    let state = directory.path().join("executors").join(EXECUTOR_ID);
     let mut supervisor = scripted_supervisor(directory.path());
     supervisor.start(EXECUTOR_ID).expect("queue start");
     supervisor.recover_due();
