@@ -46,7 +46,10 @@ ordinary account completed three status exchanges. The installed tray then ran
 headlessly for ten seconds, responded without a main window, and its exit left
 the service at the same process id. Two more ordinary status exchanges passed;
 the tray relaunched successfully, and its per-user Run entry named the installed
-executable. The executor list remained empty because no pairing was created.
+executable. The service ran in Windows Session 0 while the relaunched tray ran
+in interactive Session 1, directly proving that supervision did not depend on
+the tray process or its login session. Reboot and logoff recovery were not
+performed. The executor list remained empty because no pairing was created.
 
 The focused native and renderer checks above are not a whole-repository pass.
 The local Turbo executor suite was attempted after building its workspace
