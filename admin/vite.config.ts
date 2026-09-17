@@ -32,6 +32,7 @@ export default defineConfig(({ command, mode }) => {
   const includeAgentProposalCardFixture = env.NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE === '1'
   const includeChannelAgentControlsFixture =
     env.NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE === '1'
+  const includeExecutorLocalMcpFixture = env.NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
 
@@ -48,7 +49,8 @@ export default defineConfig(({ command, mode }) => {
     || includeAppConnectScopeFixture
     || includeAgentProposalCardFixture
     || includeChannelAgentControlsFixture
-    || includeVisibilityAffordancesFixture ? {
+    || includeVisibilityAffordancesFixture
+    || includeExecutorLocalMcpFixture ? {
     build: {
       rollupOptions: {
         input: {
@@ -67,6 +69,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeVisibilityAffordancesFixture ? {
             visibilityAffordances: resolve(__dirname, 'e2e/visibility-affordances/index.html'),
+          } : {}),
+          ...(includeExecutorLocalMcpFixture ? {
+            executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),
           } : {}),
         },
       },

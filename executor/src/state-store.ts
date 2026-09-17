@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 import {
   canonicalExecutorJson,
+  ExecutorMcpServerNamesSchema,
   EXECUTOR_WORKSPACE_FOLDER_MAXIMUM,
   ExecutorEnrollmentRequestSchema,
   ExecutorIdSchema,
@@ -15,6 +16,11 @@ import {
   type ExecutorEnrollmentRequest,
 } from '@nessie/schemas'
 
+import {
+  assertExecutorLocalMcpServers,
+  executorLocalMcpServerNames,
+  type ExecutorLocalMcpServer,
+} from './mcp-servers.js'
 import { assertOwnerOnlyStatePath, ensureOwnerOnlyStateDirectory } from './state-security.js'
 import {
   assertExecutorWorkspaceFolders,
@@ -64,6 +70,12 @@ export type ExecutorLocalState = {
     profiles: string[]
     revision: number
     /**
+     * The local MCP server names this revision fronts. Absent means the
+     * policy fronts none, which refuses both MCP operations — the fail-closed
+     * reading an empty array could not express.
+     */
+    mcpServers?: string[]
+    /**
      * The folder names this revision exposes. Absent means the descriptor was
      * signed before folders had names and describes exactly one folder; see the
      * field's comment in `@nessie/schemas`, which explains why synthesizing a
@@ -80,6 +92,12 @@ export type ExecutorLocalState = {
   browserSandbox?: ExecutorBrowserSandboxConfig
   /** Local-only Codex VM configuration; it is never supplied by Nessie. */
   codexSandbox?: ExecutorCodexSandboxConfig
+  /**
+   * How this host starts each MCP server the policy names. The launch specs
+   * are local for the same reason the folder paths are: only the names reach
+   * Nessie, through the descriptor. Absent when the policy names none.
+   */
+  mcpServers?: ExecutorLocalMcpServer[]
   /**
    * The canonical read-only host directories this executor is paired against,
    * each under a short name that is the first segment of every workspace path.
@@ -219,6 +237,52 @@ const validCodexSandbox = (value: unknown): value is ExecutorCodexSandboxConfig 
   && typeof (value as ExecutorCodexSandboxConfig).kernelPath === 'string'
   && typeof (value as ExecutorCodexSandboxConfig).vmHelperPath === 'string'
 )
+
+/**
+ * The named-server set from the state file, checked against the same rules
+ * the write path enforces: a file that fails them is malformed, never
+ * repaired, because a launch spec that drifted from what a person reviewed
+ * must not quietly become a different one.
+ */
+const parseLocalMcpServers = (value: unknown): ExecutorLocalMcpServer[] | null => {
+  if (!Array.isArray(value)) return null
+  const servers: ExecutorLocalMcpServer[] = []
+  for (const entry of value) {
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || Array.isArray(entry)
+    ) return null
+    const candidate = entry as Record<string, unknown>
+    const keys = Object.keys(candidate)
+    if (
+      !keys.includes('name')
+      || !keys.includes('command')
+      || keys.some((key) => !['name', 'command', 'cwd', 'env'].includes(key))
+      || typeof candidate.name !== 'string'
+      || !Array.isArray(candidate.command)
+      || candidate.command.some((part) => typeof part !== 'string')
+      || (candidate.cwd !== undefined && typeof candidate.cwd !== 'string')
+      || (candidate.env !== undefined && (
+        !candidate.env
+        || typeof candidate.env !== 'object'
+        || Array.isArray(candidate.env)
+        || Object.values(candidate.env).some((envValue) => typeof envValue !== 'string')
+      ))
+    ) return null
+    servers.push({
+      name: candidate.name,
+      command: [...candidate.command] as string[],
+      ...(candidate.cwd === undefined ? {} : { cwd: candidate.cwd as string }),
+      ...(candidate.env === undefined ? {} : { env: { ...(candidate.env as Record<string, string>) } }),
+    })
+  }
+  try {
+    return [...assertExecutorLocalMcpServers(servers)]
+  } catch {
+    return null
+  }
+}
 
 /**
  * Owner-only proof is host-shaped — POSIX mode bits, a Windows DACL — and lives
@@ -510,12 +574,14 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
   await assertOwnerOnly(path, 'file')
   const parsed = JSON.parse(await readFile(path, 'utf8')) as Partial<ExecutorLocalState>
   const workspaceFolders = migratedWorkspaceFolders(parsed as LegacySingleRootShape)
+  const mcpServers = parsed.mcpServers === undefined ? undefined : parseLocalMcpServers(parsed.mcpServers)
   if (
     typeof parsed.apiBaseUrl !== 'string'
     || typeof parsed.executorId !== 'string'
     || typeof parsed.machinePrivateKey !== 'string'
     || typeof parsed.machinePublicKey !== 'string'
     || workspaceFolders === null
+    || mcpServers === null
     || (parsed.nativeHelperPath !== undefined && typeof parsed.nativeHelperPath !== 'string')
     || (parsed.browserSandbox !== undefined && !validBrowserSandbox(parsed.browserSandbox))
     || (parsed.codexSandbox !== undefined && !validCodexSandbox(parsed.codexSandbox))
@@ -523,11 +589,28 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
   ) {
     throw new Error('Executor state is malformed.')
   }
+  const descriptor = parsed.descriptor as ExecutorLocalState['descriptor']
+  // The descriptor's names and the local launch specs are written together and
+  // read together: one without the other, or a pair that disagrees, is a
+  // hand-edited file, and the fail-closed answer is to refuse the pairing
+  // rather than guess which half the person meant.
+  const descriptorMcpServers = descriptor.mcpServers
+  if (
+    (descriptorMcpServers === undefined) !== (mcpServers === undefined)
+    || (descriptorMcpServers !== undefined && (
+      !ExecutorMcpServerNamesSchema.safeParse(descriptorMcpServers).success
+      || canonicalExecutorJson(descriptorMcpServers)
+        !== canonicalExecutorJson(executorLocalMcpServerNames(mcpServers ?? []))
+    ))
+  ) {
+    throw new Error('Executor state is malformed.')
+  }
   // The single legacy root becomes one named folder here and nowhere else, and
   // `workspaceRoot` is dropped so no later save can write both spellings.
   const rest = { ...(parsed as ExecutorLocalState) } as ExecutorLocalState & { workspaceRoot?: string }
   delete rest.workspaceRoot
-  return { ...rest, workspaceFolders }
+  if (mcpServers === undefined) delete rest.mcpServers
+  return { ...rest, ...(mcpServers === undefined ? {} : { mcpServers }), workspaceFolders }
 }
 
 const STATE_DIRECTORY_NAME = /^[A-Za-z0-9-]{1,128}$/

@@ -15,10 +15,20 @@ import {
   ExecutorSandboxBackendSchema,
   ExecutorSupervisorSchema,
 } from './executor-platform.js'
+import {
+  ExecutorLocalMcpReportSchema,
+  ExecutorMcpServerNamesSchema,
+} from './executor-mcp.js'
 import { CHAT_MESSAGE_MAX_CHARS } from './messaging.js'
 import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
+/**
+ * How many operations one descriptor may advertise. It was 16 while the
+ * catalog held 15; the two MCP proxy operations took it past that, so the cap
+ * moved to leave the same headroom rather than to fit exactly.
+ */
+export const EXECUTOR_DESCRIPTOR_OPERATION_MAXIMUM = 24
 const Base64UrlSchema = z.string().regex(/^[A-Za-z0-9_-]+$/)
 const ExecutorDaemonSignatureSchema = Base64UrlSchema.min(64).max(256)
 // The daemon challenge is a compact signed token: two base64url segments with
@@ -125,6 +135,12 @@ export const ExecutorOperationKeySchema = z.enum([
   'coding.prompt',
   'coding.interrupt',
   'coding.close',
+  // Two proxy operations onto an MCP server installed on the executor's own
+  // host. They are a transport, not a capability: what they can do is whatever
+  // the named server's own tools do, which is why the policy names servers
+  // rather than granting a blanket "run local MCP".
+  'mcp.tools',
+  'mcp.call',
 ])
 export type ExecutorOperationKey = z.infer<typeof ExecutorOperationKeySchema>
 
@@ -153,6 +169,8 @@ export const IMPLEMENTED_EXECUTOR_OPERATION_KEYS = [
   'workspace.review',
   'workspace.promote',
   'sandbox.stop',
+  'mcp.tools',
+  'mcp.call',
 ] as const satisfies readonly ExecutorOperationKey[]
 export type ImplementedExecutorOperationKey =
   (typeof IMPLEMENTED_EXECUTOR_OPERATION_KEYS)[number]
@@ -574,7 +592,7 @@ export const ExecutorCapabilityDescriptorSchema = z
     platform: ExecutorPlatformSchema,
     supervisor: ExecutorSupervisorSchema,
     sandboxBackend: ExecutorSandboxBackendSchema,
-    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
+    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(EXECUTOR_DESCRIPTOR_OPERATION_MAXIMUM),
     // Present exactly when the policy names permitted programs, so a reviewer
     // approving `command.run` reads the list they are approving rather than a
     // digest. Absent from a daemon paired before the allowlist existed; that
@@ -586,6 +604,10 @@ export const ExecutorCapabilityDescriptorSchema = z
     // reading somebody's home directory layout. Absent means the single
     // unnamed folder every pre-naming pairing has.
     workspaceFolders: ExecutorWorkspaceFolderNamesSchema.optional(),
+    // The named local MCP servers this executor fronts, so adding one is a
+    // revision a person reviews. Only the names travel; how the daemon starts
+    // each server stays on the host. Absent means this executor fronts none.
+    mcpServers: ExecutorMcpServerNamesSchema.optional(),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
       .object({
@@ -633,6 +655,17 @@ export type ExecutorDaemonClaimRequest = z.infer<typeof ExecutorDaemonClaimReque
 export const ExecutorDaemonHeartbeatRequestSchema = z.object({
   connectionEpoch: z.string().regex(/^\d+$/),
   executorId: ExecutorIdSchema,
+  /**
+   * What the daemon last observed about each MCP server its policy names —
+   * whether it is installed, which version, and for Kelpie which browsers
+   * answered on the network. It rides the heartbeat because it changes without
+   * a policy change: installing Kelpie must not cost a reviewed revision.
+   *
+   * Absent means a daemon too old to report. An empty array means a daemon
+   * that reports and names no server. The signed payload includes this field
+   * exactly when it is present, so an older daemon's signature still verifies.
+   */
+  localMcp: ExecutorLocalMcpReportSchema.optional(),
   observedAt: TimestampSchema,
   signature: ExecutorDaemonSignatureSchema,
 }).strict()
@@ -701,7 +734,7 @@ export type ExecutorCandidateHandle = z.infer<typeof ExecutorCandidateHandleSche
 export const ExecutorAvailabilityRequestSchema = z
   .object({
     agentId: AgentIdSchema,
-    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
+    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(EXECUTOR_DESCRIPTOR_OPERATION_MAXIMUM),
     projectId: ProjectIdSchema.optional(),
     runId: RunIdSchema.optional(),
   })
@@ -713,7 +746,7 @@ export type ExecutorAvailabilityRequest = z.infer<
 export const ExecutorAvailabilityCandidateSchema = z
   .object({
     handle: ExecutorCandidateHandleSchema,
-    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(16),
+    operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(EXECUTOR_DESCRIPTOR_OPERATION_MAXIMUM),
     readiness: z.literal('ready'),
     scopeKind: ExecutorScopeKindSchema,
     expiresAt: TimestampSchema,
@@ -819,14 +852,29 @@ export const ExecutorRunLaunchRequestSchema = z.object({
       'sandbox.stop',
     ]
     const commandRequested = value.includes('command.run')
+    // The MCP proxy needs no sandbox and promotes nothing, so its bundle is
+    // just the two operations. It stays exclusive of the others for the same
+    // reason they are exclusive of each other: one run, one kind of reach.
+    const mcpBundle: ImplementedExecutorOperationKey[] = ['mcp.tools', 'mcp.call']
+    const mcpRequested = value.includes('mcp.tools') || value.includes('mcp.call')
     if (
-      (browserRequested && (codingRequested || commandRequested || connectedBrowserRequested))
-      || (connectedBrowserRequested && (codingRequested || commandRequested))
-      || (codingRequested && commandRequested)
+      (browserRequested && (codingRequested || commandRequested || connectedBrowserRequested || mcpRequested))
+      || (connectedBrowserRequested && (codingRequested || commandRequested || mcpRequested))
+      || (codingRequested && (commandRequested || mcpRequested))
+      || (commandRequested && mcpRequested)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Isolated browser, connected browser, coding, and command operations cannot share one executor run.',
+        message: 'Isolated browser, connected browser, coding, command, and local MCP operations cannot share one executor run.',
+      })
+    }
+    if (mcpRequested && (
+      value.length !== mcpBundle.length
+      || mcpBundle.some((operationKey) => !value.includes(operationKey))
+    )) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Local MCP runs are exactly mcp.tools and mcp.call.',
       })
     }
     if (codingRequested && (
@@ -1062,6 +1110,11 @@ export const ExecutorDescriptorReviewResponseSchema = z.object({
   // third reading of a two-state fact.
   commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
   localPolicyDigest: Sha256DigestSchema,
+  // Projected for the same reason as the programs and the folders: naming a
+  // local MCP server changes the digest, so it is a revision somebody
+  // approves, and a reviewer should read which servers they are approving.
+  // Names only — how each one starts stays on the host.
+  mcpServers: ExecutorMcpServerNamesSchema.optional(),
   operationKeys: z.array(ImplementedExecutorOperationKeySchema).min(1).max(100),
   profiles: z.array(ExecutorProfileSchema).min(1).max(10),
   reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
@@ -1107,6 +1160,15 @@ export const ExecutorAccessViewResponseSchema = z.object({
     projectRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullable(),
   }).strict(),
   descriptorRevisions: z.array(ExecutorDescriptorReviewResponseSchema).max(20).optional(),
+  /**
+   * The daemon's last observation of its named MCP servers, and for Kelpie the
+   * browsers it found. Absent means this executor has never reported — a
+   * daemon too old, or one that has never connected. An empty array means it
+   * reports and names no server. The two must never render alike.
+   */
+  localMcp: ExecutorLocalMcpReportSchema.optional(),
+  /** When that observation was taken, so a reader can tell fresh from stale. */
+  localMcpObservedAt: TimestampSchema.optional(),
   operationGrants: z.array(z.object({
     agentId: AgentIdSchema,
     operationKey: ImplementedExecutorOperationKeySchema,

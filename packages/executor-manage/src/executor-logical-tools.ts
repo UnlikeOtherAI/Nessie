@@ -28,6 +28,8 @@ const logicalToolDetails = {
   'workspace.review': { label: 'Review sandbox changes', description: 'Produce a bounded, read-only manifest of copy-on-write workspace changes.' },
   'workspace.promote': { label: 'Promote workspace changes', description: 'Promote a reviewed workspace change back to its approved host root.' },
   'sandbox.stop': { label: 'Stop executor sandbox', description: 'Stop an executor sandbox or session.' },
+  'mcp.tools': { label: 'List local MCP tools', description: 'List the tools a policy-named MCP server installed on the executor host offers.' },
+  'mcp.call': { label: 'Call local MCP tool', description: 'Call one tool on a policy-named MCP server installed on the executor host.' },
 } satisfies Record<ImplementedExecutorOperationKey, Omit<ExecutorLogicalTool, 'key'>>
 
 const logicalTools: readonly ExecutorLogicalTool[] = IMPLEMENTED_EXECUTOR_OPERATION_KEYS.map((key) => ({

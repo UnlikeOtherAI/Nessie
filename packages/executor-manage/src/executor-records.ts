@@ -2,10 +2,10 @@ import { createHash, randomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
-  ExecutorCapabilityDescriptorSchema,
   ExecutorScopeSchema, IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
 } from '@nessie/schemas'
-import { ExecutorPlatformFactsSchema } from '@nessie/schemas'
+import { ExecutorPlatformFactsSchema, type ExecutorLocalMcpReport } from '@nessie/schemas'
+import { descriptorRevisionViews, localMcpFor } from './executor-view-projections.js'
 import type {
   AuthorizedActionContext,
   ExecutorPlatformFacts,
@@ -82,11 +82,24 @@ export type ExecutorAccessView = {
      */
     commandAllowlist?: string[]
     localPolicyDigest: string
+    /**
+     * The local MCP servers this proposal fronts, by name. Absent under the
+     * same rule as the programs: naming none fronts none, and the two are not
+     * the same fact as a list of none.
+     */
+    mcpServers?: string[]
     operationKeys: string[]
     profiles: ExecutorProfile[]
     reviewStatus: 'pending_review' | 'active' | 'disabled'
     revision: number
   }>
+  /**
+   * The daemon's last observation of its named MCP servers. Absent means this
+   * executor has never reported; an empty array means it reports and names no
+   * server.
+   */
+  localMcp?: ExecutorLocalMcpReport
+  localMcpObservedAt?: string
   operationGrants?: Array<{
     agentId: string
     operationKey: string
@@ -414,7 +427,16 @@ export const getExecutorAccessView = async (
       effectiveAccess: found.access,
     }
   }
-  const [privateAssignments, operationGrants, descriptorRevisions, sessions] = await Promise.all([
+  const [
+    privateAssignments,
+    operationGrants,
+    descriptorRevisions,
+    sessions,
+    // Read straight off the row: the projected record deliberately does not
+    // carry the heartbeat report, because most readers of an executor have no
+    // business with what is installed on somebody's machine.
+    localMcpRow,
+  ] = await Promise.all([
     found.executor.scope.kind === 'private'
       ? prisma.executorPrivateAssignment.findMany({
           where: { executorId: found.executor.id },
@@ -465,6 +487,10 @@ export const getExecutorAccessView = async (
         updatedAt: true,
       },
     }),
+    prisma.executor.findUnique({
+      where: { id: found.executor.id },
+      select: { localMcp: true, localMcpObservedAt: true },
+    }),
   ])
   return {
     canManage: true,
@@ -487,29 +513,10 @@ export const getExecutorAccessView = async (
           )),
         }
       : {}),
-    descriptorRevisions: descriptorRevisions.flatMap((revision) => {
-      const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(revision.descriptor)
-      return descriptor.success
-        ? [{
-            // Carried only when the descriptor carried it: a descriptor signed
-            // before the allowlist existed names no program, and an absent key
-            // is the only projection that says so.
-            ...(descriptor.data.commandAllowlist
-              ? { commandAllowlist: descriptor.data.commandAllowlist }
-              : {}),
-            localPolicyDigest: revision.localPolicyDigest,
-            operationKeys: descriptor.data.operationKeys,
-            profiles: descriptor.data.profiles,
-            reviewStatus: revision.reviewStatus,
-            revision: revision.revision,
-            // Same rule as the allowlist: an absent key is how a descriptor
-            // signed before folders had names says it named none.
-            ...(descriptor.data.workspaceFolders
-              ? { workspaceFolders: descriptor.data.workspaceFolders }
-              : {}),
-          }]
-        : []
-    }),
+    descriptorRevisions: descriptorRevisionViews(descriptorRevisions),
+    // Echoed exactly as stored. An absent key says this executor has never
+    // reported; a stored empty array says it reports and names no server.
+    ...localMcpFor(localMcpRow?.localMcp, localMcpRow?.localMcpObservedAt ?? null),
     operationGrants: operationGrants.map((grant) => ({
       agentId: grant.agentId,
       operationKey: grant.operationKey,

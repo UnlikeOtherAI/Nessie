@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type {
-  ExecutorAccessViewResponse,
   ExecutorProfile,
   ExecutorRecordResponse,
   ExecutorWorkspaceReviewRecordResponse,
@@ -11,6 +10,9 @@ import type {
 import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
 import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
+import type { ExecutorAccessViewWithLocalMcp } from '../../../facades/executors/local-mcp'
+import { ExecutorLocalMcpPanel } from './ExecutorLocalMcpPanel'
+import { ExecutorMcpServers } from './ExecutorMcpServers'
 import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
 import { ExecutorReachableFolders } from './ExecutorReachableFolders'
 import { useTabParam } from '../../../navigation/useTabParam'
@@ -25,7 +27,7 @@ const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'at
 type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
 
 type ExecutorDetailPanelsProps = {
-  access: ExecutorAccessViewResponse | undefined
+  access: ExecutorAccessViewWithLocalMcp | undefined
   agents: AgentRecord[]
   executor: ExecutorRecordResponse
   onPrepared: (prepared: PreparedExecutorAccessChangeResponse) => void
@@ -163,6 +165,10 @@ export const ExecutorDetailPanels = ({
                     operationKeys={revision.operationKeys}
                     workspaceFolders={revision.workspaceFolders}
                   />
+                  <ExecutorMcpServers
+                    mcpServers={revision.mcpServers}
+                    operationKeys={revision.operationKeys}
+                  />
                   <ExecutorPermittedPrograms
                     commandAllowlist={revision.commandAllowlist}
                     operationKeys={revision.operationKeys}
@@ -199,6 +205,12 @@ export const ExecutorDetailPanels = ({
                 </div>
               ))}
             </div>
+          ) : null}
+          {access ? (
+            <ExecutorLocalMcpPanel
+              descriptorRevisions={access.descriptorRevisions}
+              localMcp={access.localMcp}
+            />
           ) : null}
           {reviews.length > 0 ? (
             <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">

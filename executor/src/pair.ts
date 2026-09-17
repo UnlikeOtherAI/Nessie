@@ -29,6 +29,11 @@ import { compileExecutorEgressPolicy } from './egress-policy.js'
 import { verifyPrivateCodexAuthProfile, verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
 import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
 import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
+import {
+  assertExecutorLocalMcpServers,
+  executorLocalMcpServerNames,
+  type ExecutorLocalMcpServer,
+} from './mcp-servers.js'
 import { verifyNativeHelperPath } from './native-helper.js'
 import {
   clearExecutorPreparedPairing,
@@ -101,6 +106,7 @@ const CONNECTED_BROWSER_OPERATION_KEYS = [
 ] as const
 export const CODING_OPERATION_KEYS = ['coding.launch', 'coding.observe'] as const
 export const COMMAND_OPERATION_KEY = 'command.run' as const
+export const MCP_OPERATION_KEYS = ['mcp.tools', 'mcp.call'] as const
 
 type GuestVmArtifactInput = {
   guestInitrdBuilderPath: string
@@ -175,6 +181,7 @@ const configuredOperationKeys = (
   codexConfigured: boolean,
   host: ExecutorHost,
   commandAllowlist: readonly string[],
+  mcpServerCount: number,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -224,12 +231,23 @@ const configuredOperationKeys = (
   if (requested.has(COMMAND_OPERATION_KEY) && commandAllowlist.length === 0) {
     throw new Error('Name at least one permitted program before enabling command.run.')
   }
+  const requestedMcpOperations = MCP_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
+  if (requestedMcpOperations.length > 0 && requestedMcpOperations.length !== MCP_OPERATION_KEYS.length) {
+    throw new Error('mcp.tools and mcp.call must be enabled together.')
+  }
+  // Same misconfiguration rule as command.run: with no named server, every
+  // MCP operation would be refused at dispatch while the executor advertised
+  // the capability.
+  if (requestedMcpOperations.length > 0 && mcpServerCount === 0) {
+    throw new Error('Name at least one local MCP server before enabling mcp.tools and mcp.call.')
+  }
   const operationKeys = [
     ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(COMMAND_OPERATION_KEY) ? [COMMAND_OPERATION_KEY] : []),
     ...BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
+    ...MCP_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
   ]
   // The same refusal the descriptor build makes, raised here so a person
   // proposing a policy hears it now instead of at the next connect.
@@ -290,7 +308,11 @@ export const configureExecutorLocalPolicy = async (
   host: ExecutorHost = detectExecutorHost(),
   workspaceFolders: readonly ExecutorWorkspaceFolder[] = state.workspaceFolders,
   commandAllowlist: readonly string[] = state.descriptor.commandAllowlist ?? [],
+  // An omitted list keeps the named servers; an empty one removes them all,
+  // which the operation check below then refuses while mcp.* stays enabled.
+  mcpServers: readonly ExecutorLocalMcpServer[] = state.mcpServers ?? [],
 ): Promise<ExecutorLocalState> => {
+  const namedMcpServers = [...assertExecutorLocalMcpServers(mcpServers)]
   const canonicalWorkspaceFolders = sameWorkspaceFolders(workspaceFolders, state.workspaceFolders)
     ? state.workspaceFolders
     : await configureExecutorWorkspaceFolders(workspaceFolders)
@@ -304,6 +326,7 @@ export const configureExecutorLocalPolicy = async (
     Boolean(state.codexSandbox),
     host,
     permittedPrograms,
+    namedMcpServers.length,
   )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
@@ -319,6 +342,9 @@ export const configureExecutorLocalPolicy = async (
     descriptor: {
       ...(permittedPrograms.length > 0 ? { commandAllowlist: permittedPrograms } : {}),
       limits: state.descriptor.limits,
+      ...(namedMcpServers.length > 0
+        ? { mcpServers: executorLocalMcpServerNames(namedMcpServers) }
+        : {}),
       operationKeys,
       profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
@@ -329,9 +355,13 @@ export const configureExecutorLocalPolicy = async (
       // of an already-approved revision changing under them.
       workspaceFolders: executorWorkspaceFolderNames(canonicalWorkspaceFolders),
     },
+    ...(namedMcpServers.length > 0 ? { mcpServers: namedMcpServers } : {}),
     workspaceFolders: [...canonicalWorkspaceFolders],
     ...(helper ? { nativeHelperPath: helper } : {}),
   }
+  // A cleared set must leave no key behind on the spread state, the same
+  // reason the descriptor is rebuilt field by field above.
+  if (namedMcpServers.length === 0) delete next.mcpServers
   await saveExecutorState(stateDir, next, state)
   return next
 }
@@ -370,7 +400,7 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [])
+  ])], true, Boolean(state.codexSandbox), host, state.descriptor.commandAllowlist ?? [], state.mcpServers?.length ?? 0)
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
@@ -420,7 +450,8 @@ export const configureExecutorCodexSandbox = async (
     'workspace.review',
     'sandbox.stop',
     ...CODING_OPERATION_KEYS,
-  ])], Boolean(state.browserSandbox), true, host, state.descriptor.commandAllowlist ?? [])
+  ])], Boolean(state.browserSandbox), true, host,
+  state.descriptor.commandAllowlist ?? [], state.mcpServers?.length ?? 0)
   const next: ExecutorLocalState = {
     ...state,
     codexSandbox,

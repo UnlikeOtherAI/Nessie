@@ -182,6 +182,34 @@ export const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null
         return { additionalProperties: false, properties: {}, type: 'object' }
       case 'sandbox.stop':
         return { additionalProperties: false, properties: {}, type: 'object' }
+      // The catalog arrives as tool *output*, not as schemas in the prompt.
+      // That is the whole point of the pair: a server with 145 tools costs
+      // two small schemas here, and the model pays for a tool's arguments
+      // only in the turn it decides to use it.
+      case 'mcp.tools':
+        return {
+          additionalProperties: false,
+          properties: {
+            cursor: { maxLength: 1_024, type: 'string' },
+            server: { maxLength: 40, minLength: 1, type: 'string' },
+          },
+          required: ['server'],
+          type: 'object',
+        }
+      case 'mcp.call':
+        return {
+          additionalProperties: false,
+          properties: {
+            // Unconstrained on purpose: the grammar belongs to the named
+            // server, and mirroring it here would drift the first time that
+            // server ships a field. Call mcp.tools for a tool's real schema.
+            arguments: { type: 'object' },
+            server: { maxLength: 40, minLength: 1, type: 'string' },
+            tool: { maxLength: 128, minLength: 1, type: 'string' },
+          },
+          required: ['server', 'tool'],
+          type: 'object',
+        }
       default:
         // A descriptor alone cannot enable an operation. Add its hardened
         // companion backend and exact model schema before it is reachable.

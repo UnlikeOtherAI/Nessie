@@ -17,6 +17,7 @@ import {
   ExecutorWorkspacePromoteArgumentsSchema,
   RunIdSchema,
   type ExecutorCommandEnvelope,
+  type ExecutorLocalMcpReport,
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
@@ -38,6 +39,9 @@ import {
   createExecutorCommandRecoveryStore,
   recoverOrPollExecutorCommand,
 } from './command-recovery.js'
+import { executeExecutorMcpCommand } from './mcp-dispatch.js'
+import { createExecutorMcpSessionManager, type ExecutorMcpSessionManager } from './mcp-session-manager.js'
+import { createLocalMcpReporter } from './local-mcp-report.js'
 import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
 import { acquireExecutorDaemonLease } from './daemon-lease.js'
@@ -78,19 +82,26 @@ export const claimExecutor = async (
 
 export const heartbeatExecutor = async (
   state: ExecutorLocalState,
+  localMcp?: ExecutorLocalMcpReport,
 ): Promise<void> => {
   if (!state.connectionEpoch) {
     throw new Error('Executor has not claimed a live daemon connection.')
   }
   const observedAt = new Date().toISOString()
-  const signature = signExecutorDaemonPayload(state.machinePrivateKey, 'heartbeat', {
+  // The field joins the signed payload exactly when it is present. Canonical
+  // JSON distinguishes an absent key from a present one, so a daemon that
+  // reports nothing still signs — and verifies — the payload it always did.
+  const signed = {
     connectionEpoch: state.connectionEpoch,
     executorId: state.executorId,
+    ...(localMcp === undefined ? {} : { localMcp }),
     observedAt,
-  })
+  }
+  const signature = signExecutorDaemonPayload(state.machinePrivateKey, 'heartbeat', signed)
   await executorApi.heartbeat(state.apiBaseUrl, {
     connectionEpoch: state.connectionEpoch,
     executorId: state.executorId,
+    ...(localMcp === undefined ? {} : { localMcp }),
     observedAt,
     signature,
   })
@@ -156,6 +167,7 @@ export const executeExecutorCommand = async (
     connectedBrowserSessions?: ExecutorConnectedBrowserSessionManager
     commandSessions?: ExecutorCommandSessionManager
     codingSessions?: ExecutorCodingSessionManager
+    mcpSessions?: ExecutorMcpSessionManager
   } = {},
 ): Promise<Record<string, unknown>> => {
   if (!ImplementedExecutorOperationKeySchema.safeParse(command.operationKey).success) {
@@ -354,6 +366,9 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
+  if (command.operationKey === 'mcp.tools' || command.operationKey === 'mcp.call') {
+    return executeExecutorMcpCommand(command.operationKey, command.payload.args, dependencies.mcpSessions)
+  }
   // Other declared-only operations remain unavailable.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
@@ -364,6 +379,7 @@ const pollAndExecuteCommand = async (
   browserSessions: ExecutorBrowserSessionManager,
   commandSessions: ExecutorCommandSessionManager,
   codingSessions: ExecutorCodingSessionManager,
+  mcpSessions: ExecutorMcpSessionManager,
 ): Promise<void> => {
   const connectionEpoch = state.connectionEpoch
   if (!connectionEpoch) return
@@ -371,6 +387,7 @@ const pollAndExecuteCommand = async (
     execute: (command) => executeExecutorCommand(stateDir, state, command, {
       browserSessions,
       codingSessions,
+      mcpSessions,
       commandSessions,
     }),
     store: createExecutorCommandRecoveryStore(stateDir),
@@ -442,6 +459,13 @@ export const serveExecutor = async (
     const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
     const commandSessions = createExecutorCommandSessionManager(stateDir, live)
     const codingSessions = createExecutorCodingSessionManager(stateDir, live)
+    const namedMcpServers = live.mcpServers ?? []
+    const mcpSessions = createExecutorMcpSessionManager(namedMcpServers, live.descriptor.limits)
+    const localMcp = createLocalMcpReporter(namedMcpServers, mcpSessions)
+    // One sweep up front so the first heartbeat carries something better than
+    // silence; a failure here is not fatal, it just leaves the report absent
+    // until the interval comes round.
+    void localMcp.refresh().catch(() => undefined)
     let shuttingDown = false
     const commandPoll = createNonOverlappingExecutorTask(() => pollAndExecuteCommand(
       stateDir,
@@ -449,6 +473,7 @@ export const serveExecutor = async (
       browserSessions,
       commandSessions,
       codingSessions,
+      mcpSessions,
     ).catch(async (error) => {
       // A lost or fenced control plane may mean that a human revoked an
       // operation. Preserve fail-closed egress by ending any live browser
@@ -463,7 +488,7 @@ export const serveExecutor = async (
     }))
     const heartbeat = createNonOverlappingExecutorTask(async () => {
       try {
-        await heartbeatExecutor(live)
+        await heartbeatExecutor(live, localMcp.current())
       } catch (error) {
         await browserSessions.stopAll()
         await commandSessions.stopAll()
@@ -494,6 +519,7 @@ export const serveExecutor = async (
       await waitForExecutorDaemonShutdown(options.parentLiveness)
     } finally {
       shuttingDown = true
+      localMcp.stop()
       clearInterval(interval)
       clearInterval(commandInterval)
       executorApi.cancelPending()
@@ -505,6 +531,7 @@ export const serveExecutor = async (
         browserSessions.stopAll(),
         commandSessions.stopAll(),
         codingSessions.stopAll(),
+        mcpSessions.stopAll(),
       ])
     }
   } finally {

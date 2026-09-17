@@ -3,7 +3,7 @@ import { createHash, createPrivateKey, sign } from 'node:crypto'
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
-  EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
+  EXECUTOR_NO_SANDBOX_OPERATION_KEYS,
   EXECUTOR_WORKSPACE_ONLY_PROFILES,
   ExecutorCapabilityDescriptorSchema,
   ImplementedExecutorOperationKeySchema,
@@ -21,6 +21,12 @@ type LocalDescriptorConfig = {
   profiles: string[]
   revision: number
   /**
+   * The local MCP server names this policy fronts. The names are part of the
+   * digest, so adding a server is a revision a person reviews — the launch
+   * specs (argv, cwd, env) stay local and never reach Nessie.
+   */
+  mcpServers?: string[]
+  /**
    * The workspace folder names this policy exposes; absent for a descriptor
    * signed before folders had names, which describes exactly one folder. The
    * names are part of the digest, so adding a folder is a revision a person
@@ -29,8 +35,8 @@ type LocalDescriptorConfig = {
   workspaceFolders?: string[]
 }
 
-const isWorkspaceOnlyOperation = (operationKey: string): boolean =>
-  (EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS as readonly string[]).includes(operationKey)
+const runsWithoutSandbox = (operationKey: string): boolean =>
+  (EXECUTOR_NO_SANDBOX_OPERATION_KEYS as readonly string[]).includes(operationKey)
 
 const isWorkspaceOnlyProfile = (profile: string): boolean =>
   (EXECUTOR_WORKSPACE_ONLY_PROFILES as readonly string[]).includes(profile)
@@ -49,13 +55,13 @@ export const assertHostSupportsOperations = (
 ): void => {
   if (host.sandboxBackend !== 'none') return
   const unsupported = [
-    ...operationKeys.filter((operationKey) => !isWorkspaceOnlyOperation(operationKey)),
+    ...operationKeys.filter((operationKey) => !runsWithoutSandbox(operationKey)),
     ...profiles.filter((profile) => !isWorkspaceOnlyProfile(profile)),
   ]
   if (unsupported.length === 0) return
   throw new Error(
     `This computer has no sandbox backend, so it can offer only ${
-      EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS.join(', ')
+      EXECUTOR_NO_SANDBOX_OPERATION_KEYS.join(', ')
     }. Refused: ${unsupported.join(', ')}. ${sandboxRemedyForHost(host)}`,
   )
 }
@@ -74,6 +80,7 @@ export const buildSignedDescriptor = (
     // empty array would advertise a rule where the policy has none, and the
     // schema refuses it rather than letting the two readings blur.
     ...(config.commandAllowlist?.length ? { commandAllowlist: config.commandAllowlist } : {}),
+    ...(config.mcpServers?.length ? { mcpServers: config.mcpServers } : {}),
     ...(config.workspaceFolders?.length ? { workspaceFolders: config.workspaceFolders } : {}),
     limits: config.limits,
     localPolicyDigest: policyDigest(config),

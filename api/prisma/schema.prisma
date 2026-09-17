@@ -4883,6 +4883,16 @@ model Executor {
   label                  String
   profiles               ExecutorProfile[]               @default([])
   platformFacts          Json                            @default("{}") @map("platform_facts")
+  /// What the daemon last observed about each MCP server its policy names,
+  /// and — for Kelpie — the browsers it found on that network. A last-observed
+  /// snapshot, never a current truth: the daemon may be offline and instances
+  /// come and go, so each status carries its own observedAt.
+  ///
+  /// SQL NULL means this executor has never reported, which is a different
+  /// fact from an empty array: that is a daemon that reports and names no
+  /// server. Nothing may collapse the two.
+  localMcp               Json?                           @map("local_mcp")
+  localMcpObservedAt     DateTime?                       @map("local_mcp_observed_at")
   machinePublicKey       String?                         @map("machine_public_key")
   machineKeyFingerprint  String?                         @unique @map("machine_key_fingerprint")
   status                 ExecutorStatus                  @default(pending_pairing)
