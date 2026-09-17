@@ -64,13 +64,12 @@ passed, three before and three after the grant.
 
 The installed package's Node and native helper passed the focused browser
 configuration/session tests (9), guest runtime snapshot/session tests (3),
-installed-resource provenance tests (2), and the state save/load and protected
-pairing-root assertions (2). One read-only workspace symlink test explicitly
-skipped because the unelevated Windows test process could not create a file
-symlink; the directory-junction fail-closed test passed. The broader
-`index.test.ts` harness leaves `process.exitCode` set after exercising CLI usage,
-so its two selected state assertions passed while the file-level harness still
-returned exit 1; this is not counted as a green file suite.
+installed-resource provenance tests (2), and the dedicated state/security suite
+(9 passed, 1 skipped). The skipped read-only workspace case requires a file
+symlink that the unelevated Windows test process could not create; the
+directory-junction fail-closed case passed. Splitting these checks from the CLI
+parser harness also removed that harness's unrelated `process.exitCode` side
+effect from the state suite.
 
 Windows guest execution remains blocked beyond the verified utility and
 transport scope. The production Hyper-V backend still resolves its guest disk
