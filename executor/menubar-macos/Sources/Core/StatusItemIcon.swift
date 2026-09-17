@@ -2,28 +2,32 @@ import AppKit
 
 /// The mark in the menu bar.
 ///
-/// It is Nessie's own `N` (`assets/logo/nessie-icon-*.svg`), not a system glyph:
-/// the first version of this app drew `circle.dashed` and an
+/// It is the executor's own plus (`assets/logo/nessie-executor-mark.svg`) — the
+/// same mark the Windows tray shows beside the clock, so one machine's executor
+/// looks like the same product on either operating system. It is not a system
+/// glyph: the first version of this app drew `circle.dashed` and an
 /// `exclamationmark.triangle`, and among fifteen other status items that read as
 /// a loading spinner belonging to nobody — a person told us they could not find
 /// the icon at all. Three rules came out of that, and all three are asserted
 /// below:
 ///
-/// 1. **Always the same letter, always filled.** Every state draws the same `N`
-///    and every state fills it. The second version stroked it instead, and
-///    `markPath` is a composite of two stems plus the diagonal, so stroking
-///    outlined *every* subpath — including the interior edges where the stems
-///    meet the diagonal. At 18pt the letter dissolved into hairline loops that
-///    read as two hollow lozenges. A stroked composite path can never be the
-///    union outline; only a fill is.
+/// 1. **Always the same mark, always filled.** Every state draws the same plus
+///    and every state fills it. An earlier version stroked it instead, and
+///    `markPath` is a composite of two crossing bars, so stroking outlined
+///    *every* subpath — including the interior edges where the bars meet. At
+///    18pt the mark dissolved into hairline loops. A stroked composite path can
+///    never be the union outline; only a fill is.
 /// 2. **State is said by tint and by a badge, not by a different picture.**
-///    Stopped is the same letter at a lower tint. Attention is the letter plus a
+///    Stopped is the same mark at a lower tint. Attention is the mark plus a
 ///    dot, and it is the one state that moves: the mark steps aside by about a
 ///    sixth so the badge gets a corner of its own, because a dot laid over the
-///    letterform reads as part of the letter rather than as a badge.
+///    mark reads as part of it rather than as a badge.
 /// 3. **Always a template image.** A template is masked and tinted by the system,
 ///    which is the only way an icon is legible on a light menu bar, a dark one,
 ///    a tinted desktop behind a translucent bar, and in Reduce Transparency.
+///    It is also why the menu bar gets the plus's silhouette rather than its
+///    four brand colours: the system draws a template in one tint, and a
+///    coloured status item is the unreadable-on-a-tinted-bar defect above.
 public enum StatusItemIcon {
     /// The menu bar's usable height is 22pt; 18pt is Apple's guidance for the
     /// drawn mark, which leaves the item its own breathing room.
@@ -55,8 +59,8 @@ public enum StatusItemIcon {
         case .stopped:
             // The same silhouette at a lower tint. This was a stroked composite
             // path, which outlines every subpath — including the interior edges
-            // where the stems meet the diagonal — so at 18pt the N dissolved
-            // into hairline loops nobody could read as a letter.
+            // where the two bars cross — so at 18pt the mark dissolved into
+            // hairline loops nobody could read as one shape.
             NSColor.black.withAlphaComponent(0.35).set()
             markPath(in: rect).fill()
         case .needsAttention:
@@ -72,6 +76,9 @@ public enum StatusItemIcon {
             )
             NSColor.black.set()
             markPath(in: markBox).fill()
+            // The badge is cleared out of the mark first, then drawn, so the
+            // ring around it is transparent rather than a second tint — the one
+            // way a dot reads as a badge on a bar that may be any colour.
             let badge = NSRect(x: rect.maxX - diameter, y: rect.minY, width: diameter, height: diameter)
             NSGraphicsContext.current?.compositingOperation = .clear
             NSBezierPath(ovalIn: badge.insetBy(dx: -diameter * 0.28, dy: -diameter * 0.28)).fill()
@@ -81,11 +88,19 @@ public enum StatusItemIcon {
         }
     }
 
-    /// Nessie's `N`, as the two rounded stems and the diagonal that the brand
-    /// mark is built from. The proportions are read off
-    /// `assets/logo/nessie-icon-dark.svg`; the arcs there become the round caps
-    /// of the stems, which is what they draw at any size a menu bar uses.
-    private static let markBounds = NSRect(x: 152.6, y: 123.8, width: 948.7, height: 995.0)
+    /// The executor plus, as the two crossing bars it is built from. The numbers
+    /// are the mark's own, read off `assets/logo/nessie-executor-mark.svg` in the
+    /// 1254-unit space the brand artwork is drawn in, so the menu bar and the
+    /// Windows tray scale one geometry instead of two drawings that drift.
+    ///
+    /// The colour split the SVG carries is deliberately not reproduced: a
+    /// template image is one tint by definition (rule 3), and the silhouette is
+    /// the whole of what a menu bar can show.
+    private static let markBounds = NSRect(x: 35, y: 35, width: 1184, height: 1184)
+
+    /// Half the bar's width, which is also its cap radius: the arms end in
+    /// semicircles, so the rounded rect's radius is exactly half its short side.
+    private static let barHalfWidth: CGFloat = 155
 
     private static func markPath(in rect: NSRect) -> NSBezierPath {
         let inset = rect.insetBy(dx: 1.5, dy: 1.0)
@@ -104,7 +119,11 @@ public enum StatusItemIcon {
                 y: origin.y + (markBounds.maxY - y) * scale
             )
         }
-        func stem(left: CGFloat, right: CGFloat, top: CGFloat, bottom: CGFloat) -> NSBezierPath {
+        /// One arm of the plus. The radius is half the *short* side, so the
+        /// horizontal bar rounds on its height and the vertical one on its
+        /// width; taking `width / 2` for both would round the long bar into a
+        /// lozenge the width of the whole mark.
+        func bar(left: CGFloat, right: CGFloat, top: CGFloat, bottom: CGFloat) -> NSBezierPath {
             let topLeft = point(left, top)
             let bottomRight = point(right, bottom)
             let box = NSRect(
@@ -113,21 +132,21 @@ public enum StatusItemIcon {
                 width: bottomRight.x - topLeft.x,
                 height: topLeft.y - bottomRight.y
             )
-            return NSBezierPath(roundedRect: box, xRadius: box.width / 2, yRadius: box.width / 2)
+            let radius = min(box.width, box.height) / 2
+            return NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
         }
 
+        let centre: CGFloat = 627
+        let near = centre - barHalfWidth
+        let far = centre + barHalfWidth
+
+        // Two stadiums crossing at the centre. They overlap, and a non-zero
+        // winding fill of both is their union — which is the whole reason this
+        // is one filled composite path rather than two stroked outlines.
         let path = NSBezierPath()
         path.windingRule = .nonZero
-        path.append(stem(left: 152.6, right: 478.5, top: 194.6, bottom: 1118.8))
-        path.append(stem(left: 734.5, right: 1101.3, top: 123.8, bottom: 1117.5))
-
-        let diagonal = NSBezierPath()
-        diagonal.move(to: point(478.5, 194.0))
-        diagonal.line(to: point(734.5, 484.9))
-        diagonal.line(to: point(734.5, 938.3))
-        diagonal.line(to: point(478.5, 656.9))
-        diagonal.close()
-        path.append(diagonal)
+        path.append(bar(left: near, right: far, top: markBounds.minY, bottom: markBounds.maxY))
+        path.append(bar(left: markBounds.minX, right: markBounds.maxX, top: near, bottom: far))
         return path
     }
 }

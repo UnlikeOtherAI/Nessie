@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="35 35 1184 1184">
+  <defs><clipPath id="nessie-executor-plus"><path d="M472 190A155 155 0 0 1 782 190L782 1064A155 155 0 0 1 472 1064ZM190 472L1064 472A155 155 0 0 1 1064 782L190 782A155 155 0 0 1 190 472Z"/></clipPath></defs>
+  <g clip-path="url(#nessie-executor-plus)">
+    <path fill="#FDC501" d="M0 0H1254L627 627Z"/>
+    <path fill="#FC2D8A" d="M0 1254H1254L627 627Z"/>
+    <path fill="#3AEFB1" d="M0 0V1254L627 627Z"/>
+    <path fill="#04BC8F" d="M0 497L504.67 749.33L0 1254Z"/>
+    <path fill="#01A8FC" d="M1254 0V1254L627 627Z"/>
+    <path fill="#0066FC" d="M1254 497L749.33 749.33L1254 1254Z"/>
+  </g>
+</svg>
