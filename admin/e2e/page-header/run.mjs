@@ -47,6 +47,23 @@ try {
   await sandstone.locator('header').nth(2).screenshot({ path: resolve(outDir, 'hover-disabled.png') })
   await sandstone.getByRole('button', { name: 'Configure' }).click()
   await page.waitForTimeout(200)
+  // The Configure menu pins the new row kinds: a `detail` sub-line under the
+  // Sync row, separators between groups, and a non-interactive footnote.
+  const syncRow = page.getByRole('menuitem', { name: /Sync/ })
+  await syncRow.waitFor()
+  const syncBox = await syncRow.boundingBox()
+  if (!syncBox || syncBox.height < 44) {
+    throw new Error(`the sync row keeps its 44px target (was ${syncBox?.height}px)`)
+  }
+  // A separator is aria-hidden by design, so count the DOM role rather than
+  // the accessibility tree.
+  if ((await page.locator('[role="separator"]').count()) !== 2) {
+    throw new Error('the menu draws its two separators')
+  }
+  if ((await page.getByRole('menuitem', { name: /500 most recently/ }).count()) !== 0) {
+    throw new Error('the footnote is not a menuitem')
+  }
+  await page.getByText('Showing the 500 most recently updated cards.').waitFor()
   await page.locator('body').screenshot({ path: resolve(outDir, 'menu-open.png') })
   console.log(`Page header visuals written to ${outDir}`)
   await context.close()

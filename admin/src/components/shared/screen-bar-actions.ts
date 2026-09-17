@@ -1,7 +1,9 @@
 import { openExternalUrl } from '../../lib/open-external-url'
 import type {
   PageHeaderAction,
+  PageHeaderMenuButtonItem,
   PageHeaderMenuItem,
+  PageHeaderMenuLinkItem,
 } from './ResponsivePageHeader'
 import type { ScreenBarAction, ScreenBarMenuItem } from '../../navigation/screen-bar'
 
@@ -21,7 +23,16 @@ import type { ScreenBarAction, ScreenBarMenuItem } from '../../navigation/screen
 // `selected` and `checked` travel because a live call, an open search and a
 // recording routine are states the bar has to show, not just fire.
 
-const toMenuItem = (item: PageHeaderMenuItem): ScreenBarMenuItem => ({
+// Separators and notes carry no press, so the native bar must never publish
+// them as rows of its own — a sheet full of hairlines and footnotes that
+// answer a tap with nothing is the phone version of the same defect.
+const isInteractiveMenuItem = (
+  item: PageHeaderMenuItem,
+): item is PageHeaderMenuButtonItem | PageHeaderMenuLinkItem => !('kind' in item)
+
+const toMenuItem = (
+  item: PageHeaderMenuButtonItem | PageHeaderMenuLinkItem,
+): ScreenBarMenuItem => ({
   checked: item.checked ?? false,
   disabled: item.disabled ?? false,
   id: item.id,
@@ -46,7 +57,9 @@ const performFor = (action: PageHeaderAction): ((itemId?: string) => void) => {
   if (action.kind === 'menu') {
     return (itemId?: string) => {
       const item = action.items.find((candidate) => candidate.id === itemId)
-      if (!item || item.disabled) return
+      // A dropped row's id can still arrive from a stale native snapshot;
+      // answer with a no-op rather than a press that fires nothing.
+      if (!item || !isInteractiveMenuItem(item) || item.disabled) return
       if ('href' in item) {
         void openExternalUrl(item.href).then((dispatch) => {
           if (dispatch === 'browser') window.open(item.href, item.target ?? '_self')
@@ -91,7 +104,7 @@ export const toScreenBarActions = (
     disabled: action.disabled ?? false,
     icon: action.barIcon ?? null,
     id: action.id,
-    items: action.kind === 'menu' ? action.items.map(toMenuItem) : null,
+    items: action.kind === 'menu' ? action.items.filter(isInteractiveMenuItem).map(toMenuItem) : null,
     kind: action.kind ?? 'button',
     label: action.label,
     perform: performFor(action),
