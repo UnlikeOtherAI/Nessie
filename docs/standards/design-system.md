@@ -166,6 +166,10 @@ summary and points here; **this file is the rule**.
   Full-width strips therefore floor each item at `min-width: max-content`:
   without it a shortage is absorbed by crushing labels into each other and the
   strip never reports the overflow that would turn it into a dropdown.
+  A deliberately always-visible, known-to-fit mobile strip may provide a
+  shorter `compactLabel`; `TabBar` keeps the full `label` as the accessible
+  name, so visual economy never makes the control ambiguous to a screen
+  reader. This is still `collapse="never"`, not a second mobile tab system.
   **`fullWidth` means the inline axis and only the inline axis.**
   `.tabbar-shell-full` is `width: 100%` and carries no `flex-grow`: a row needs
   none, because the default `flex-basis: auto` already resolves to that width,

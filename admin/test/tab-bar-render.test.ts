@@ -48,6 +48,19 @@ test('counts render beside the label, as the design shows them', () => {
   assert.match(html, /Prospects<span class="tabbar-count">\(7\)<\/span>/)
 })
 
+test('a compact visual label keeps the full accessible name', () => {
+  const html = render({
+    items: [
+      { compactLabel: 'Pending', label: 'Pending invitations', value: 'contacted' },
+      { compactLabel: 'Inactive', label: 'Deactivated users', value: 'prospects' },
+    ],
+  })
+
+  assert.match(html, /aria-label="Pending invitations"/)
+  assert.match(html, /class="tabbar-label-full">Pending invitations/)
+  assert.match(html, /class="tabbar-label-compact">Pending/)
+})
+
 test('only the selected item is in the tab order — arrow keys reach the rest', () => {
   const html = render()
   assert.equal((html.match(/tabindex="0"/g) ?? []).length, 1)

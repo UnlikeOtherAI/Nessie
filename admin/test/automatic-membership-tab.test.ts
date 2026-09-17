@@ -112,6 +112,14 @@ test('the tab label is the agreed wording', () => {
   assert.match(rulesPanel, /Automatic team access after sign-in/)
 })
 
+test('the member status choices stay as adjacent taps on narrow screens', () => {
+  assert.match(rosterPanel, /collapse="never"/)
+  assert.match(rosterPanel, /fullWidth/)
+  assert.match(rosterPanel, /touchTarget/)
+  assert.match(rosterPanel, /compactLabel: 'Pending'/)
+  assert.doesNotMatch(rosterPanel, /<DataTable/)
+})
+
 test('narrowing and pausing say plainly that nobody is removed', () => {
   assert.match(rulesPanel, /Nobody is removed|nobody has been removed/)
   assert.match(domainRow, /nobody has been removed/)
