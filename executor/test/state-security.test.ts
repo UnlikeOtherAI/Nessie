@@ -97,7 +97,7 @@ test('Windows secures and verifies the directory through the helper, reading no 
   })
 })
 
-test('a Windows lease file is proved by the directory whose DACL it inherits', async () => {
+test('a Windows file is proved through its own DACL, so an explicit broad file ACL cannot hide behind its parent', async () => {
   await withDirectory(async (directory) => {
     const calls: HelperCall[] = []
     const deps = { helper: recordingHelper(calls), platform: 'win32' as NodeJS.Platform }
@@ -107,7 +107,7 @@ test('a Windows lease file is proved by the directory whose DACL it inherits', a
     await writeFile(lease, '4242\n', { mode: 0o666 })
 
     await assertOwnerOnlyStatePath(lease, 'file', deps)
-    assert.deepEqual(calls, [{ command: 'verify-owner-only', path: stateDir }])
+    assert.deepEqual(calls, [{ command: 'verify-owner-only-file', path: lease }])
   })
 })
 

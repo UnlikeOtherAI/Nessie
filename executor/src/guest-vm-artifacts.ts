@@ -4,6 +4,9 @@ import { chmod, lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 
+import { readPinnedScriptDigests, verifyPinnedResource } from './hyperv/scripts.js'
+import { packagedRuntimeDirectory } from './runtime-integrity.js'
+import { assertOwnerOnlyStatePath, ensureOwnerOnlyStateDirectory } from './state-security.js'
 import { ensureExecutorRuntimeDirectory } from './state-store.js'
 import type { GuestWorkspaceLease } from './guest-workspace-lease.js'
 import { WorkspacePathError } from './workspace-paths.js'
@@ -20,6 +23,7 @@ export type GuestVmProcessRunner = (input: {
 }) => Promise<void>
 
 const ownerId = (): number | undefined => process.getuid?.()
+const isWindows = (): boolean => process.platform === 'win32'
 
 /**
  * The administrator-installed prefixes. A packaged guest artifact — the kernel,
@@ -34,6 +38,16 @@ const PACKAGED_ARTIFACT_PREFIXES = ['/usr/lib/', '/usr/share/']
 
 const isPackagedArtifactPath = (canonical: string): boolean =>
   PACKAGED_ARTIFACT_PREFIXES.some((prefix) => canonical.startsWith(prefix))
+
+const verifyWindowsPackagedArtifact = async (canonical: string): Promise<string> => {
+  const resourcesDirectory = join(packagedRuntimeDirectory(), 'resources')
+  const verified = await verifyPinnedResource({
+    path: canonical,
+    resourcesDirectory,
+    digests: await readPinnedScriptDigests(resourcesDirectory),
+  })
+  return verified
+}
 
 const verifyOwnerPrivateFile = async (
   value: string,
@@ -55,6 +69,22 @@ const verifyOwnerPrivateFile = async (
   }
   const canonical = await realpath(declared)
   const info = await lstat(canonical)
+  if (isWindows()) {
+    if (info.isSymbolicLink() || !info.isFile()) {
+      throw new WorkspacePathError(`The executor ${options.label} must be an ordinary file.`)
+    }
+    if (options.maxBytes !== undefined && info.size > options.maxBytes) {
+      throw new WorkspacePathError(`The executor ${options.label} must be owner-private and non-symbolic.`)
+    }
+    if ((options.requireNonEmpty && info.size === 0) || (options.singleLink && info.nlink !== 1)) {
+      throw new WorkspacePathError(`The executor ${options.label} must be owner-private and non-symbolic.`)
+    }
+    if (options.allowPackagedRoot) return verifyWindowsPackagedArtifact(canonical)
+    await assertOwnerOnlyStatePath(canonical, 'file').catch(() => {
+      throw new WorkspacePathError(`The executor ${options.label} must be owner-private and non-symbolic.`)
+    })
+    return canonical
+  }
   // Two admissible provenances, never a blend: this account's own private file,
   // or an administrator-installed root-owned one under a packaged prefix. Both
   // forbid group and world *write*; the packaged one is deliberately readable,
@@ -120,18 +150,19 @@ export const secureGuestVmSessionDirectory = async (
 ): Promise<string> => {
   const runtime = await ensureExecutorRuntimeDirectory(stateDir)
   const parent = join(runtime, 'guest-vms')
-  await mkdir(parent, { mode: 0o700, recursive: true })
+  if (isWindows()) await ensureOwnerOnlyStateDirectory(parent)
+  else await mkdir(parent, { mode: 0o700, recursive: true })
   const info = await lstat(parent)
   if (
     info.isSymbolicLink()
     || !info.isDirectory()
-    || (ownerId() !== undefined && info.uid !== ownerId())
-    || (info.mode & 0o077) !== 0
+    || (!isWindows() && ((ownerId() !== undefined && info.uid !== ownerId()) || (info.mode & 0o077) !== 0))
   ) {
     throw new WorkspacePathError('The executor VM runtime directory is unavailable.')
   }
   const directory = await mkdtemp(join(parent, `${basename(lease.leaseId)}-`))
-  await chmod(directory, 0o700)
+  if (isWindows()) await assertOwnerOnlyStatePath(directory, 'directory')
+  else await chmod(directory, 0o700)
   return directory
 }
 

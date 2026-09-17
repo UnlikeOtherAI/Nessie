@@ -3,6 +3,7 @@ import { constants } from 'node:fs'
 import { chmod, lstat, mkdir, open, readdir, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 
+import { assertOwnerOnlyStatePath, ensureOwnerOnlyStateDirectory } from './state-security.js'
 import { WorkspacePathError } from './workspace-paths.js'
 
 const MANIFEST_FILE = 'nessie-guest-runtime.json'
@@ -29,6 +30,7 @@ export type VerifiedGuestRuntimeBundle = {
 }
 
 const ownerId = (): number | undefined => process.getuid?.()
+const isWindows = (): boolean => process.platform === 'win32'
 
 const invalid = (message: string): never => {
   throw new WorkspacePathError(`The guest runtime bundle ${message}.`)
@@ -52,12 +54,12 @@ const readOwnerPrivateFile = async (path: string, maxBytes?: number): Promise<Bu
     if (
       !info.isFile()
       || info.nlink !== 1
-      || (ownerId() !== undefined && info.uid !== ownerId())
-      || (info.mode & 0o077) !== 0
+      || (!isWindows() && ((ownerId() !== undefined && info.uid !== ownerId()) || (info.mode & 0o077) !== 0))
       || (maxBytes !== undefined && info.size > maxBytes)
     ) {
       invalid('file must be owner-private and non-symbolic')
     }
+    if (isWindows()) await assertOwnerOnlyStatePath(path, 'file').catch(() => invalid('file must be owner-private and non-symbolic'))
     return await file.readFile()
   } finally {
     await file.close()
@@ -86,13 +88,16 @@ const copyRuntimeFile = async (
     if (
       !info.isFile()
       || info.nlink !== 1
-      || (ownerId() !== undefined && info.uid !== ownerId())
-      || (info.mode & 0o077) !== 0
-      || (definition.executable && (info.mode & constants.S_IXUSR) === 0)
-      || (!definition.executable && (info.mode & constants.S_IXUSR) !== 0)
+      || (!isWindows() && (
+        (ownerId() !== undefined && info.uid !== ownerId())
+        || (info.mode & 0o077) !== 0
+        || (definition.executable && (info.mode & constants.S_IXUSR) === 0)
+        || (!definition.executable && (info.mode & constants.S_IXUSR) !== 0)
+      ))
     ) {
       invalid('file integrity check failed')
     }
+    if (isWindows()) await assertOwnerOnlyStatePath(source, 'file').catch(() => invalid('file integrity check failed'))
     destinationFile = await open(
       destination,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
@@ -125,13 +130,16 @@ const fileDigest = async (path: string, definition: GuestRuntimeManifestFile): P
     if (
       !info.isFile()
       || info.nlink !== 1
-      || (ownerId() !== undefined && info.uid !== ownerId())
-      || (info.mode & 0o077) !== 0
-      || (definition.executable && (info.mode & constants.S_IXUSR) === 0)
-      || (!definition.executable && (info.mode & constants.S_IXUSR) !== 0)
+      || (!isWindows() && (
+        (ownerId() !== undefined && info.uid !== ownerId())
+        || (info.mode & 0o077) !== 0
+        || (definition.executable && (info.mode & constants.S_IXUSR) === 0)
+        || (!definition.executable && (info.mode & constants.S_IXUSR) !== 0)
+      ))
     ) {
       invalid('file integrity check failed')
     }
+    if (isWindows()) await assertOwnerOnlyStatePath(path, 'file').catch(() => invalid('file integrity check failed'))
     const hash = createHash('sha256')
     const buffer = Buffer.allocUnsafe(COPY_BUFFER_SIZE)
     let position = 0
@@ -152,11 +160,11 @@ const assertOwnerPrivateDirectory = async (path: string): Promise<void> => {
   if (
     info.isSymbolicLink()
     || !info.isDirectory()
-    || (ownerId() !== undefined && info.uid !== ownerId())
-    || (info.mode & 0o077) !== 0
+    || (!isWindows() && ((ownerId() !== undefined && info.uid !== ownerId()) || (info.mode & 0o077) !== 0))
   ) {
     invalid('directory must be owner-private and non-symbolic')
   }
+  if (isWindows()) await assertOwnerOnlyStatePath(path, 'directory').catch(() => invalid('directory must be owner-private and non-symbolic'))
 }
 
 const parseManifest = (value: unknown): {
@@ -234,7 +242,8 @@ const createSnapshotDirectory = async (root: string, relativePath: string): Prom
   for (const piece of dirname(relativePath).split('/')) {
     if (piece === '.') continue
     current = resolve(current, piece)
-    await mkdir(current, { mode: 0o700, recursive: true })
+    if (isWindows()) await ensureOwnerOnlyStateDirectory(current)
+    else await mkdir(current, { mode: 0o700, recursive: true })
     await assertOwnerPrivateDirectory(current)
   }
 }
@@ -254,6 +263,7 @@ const writeSnapshotManifest = async (path: string, contents: Buffer): Promise<vo
 }
 
 const lockSnapshotDirectories = async (root: string, directory = root): Promise<void> => {
+  if (isWindows()) return
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.isDirectory()) await lockSnapshotDirectories(root, resolve(directory, entry.name))
   }
@@ -261,6 +271,7 @@ const lockSnapshotDirectories = async (root: string, directory = root): Promise<
 }
 
 const unlockSnapshotDirectories = async (directory: string): Promise<void> => {
+  if (isWindows()) return
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.isDirectory()) await unlockSnapshotDirectories(resolve(directory, entry.name))
   }
@@ -278,7 +289,7 @@ export const verifyGuestRuntimeBundle = async (rawRoot: string): Promise<Verifie
   await assertOwnerPrivateDirectory(root)
   const manifestPath = resolve(root, MANIFEST_FILE)
   const manifestInfo = await lstat(manifestPath).catch(() => invalid('manifest is missing'))
-  if (!manifestInfo.isFile() || manifestInfo.isSymbolicLink() || (manifestInfo.mode & 0o077) !== 0) {
+  if (!manifestInfo.isFile() || manifestInfo.isSymbolicLink() || (!isWindows() && (manifestInfo.mode & 0o077) !== 0)) {
     invalid('manifest must be owner-private and non-symbolic')
   }
   const manifestBytes = await readOwnerPrivateFile(manifestPath, MAX_MANIFEST_BYTES)
@@ -303,10 +314,12 @@ export const verifyGuestRuntimeBundle = async (rawRoot: string): Promise<Verifie
       !info.isFile()
       || info.isSymbolicLink()
       || info.nlink !== 1
-      || (ownerId() !== undefined && info.uid !== ownerId())
-      || (info.mode & 0o077) !== 0
-      || (file.executable && (info.mode & constants.S_IXUSR) === 0)
-      || (!file.executable && (info.mode & constants.S_IXUSR) !== 0)
+      || (!isWindows() && (
+        (ownerId() !== undefined && info.uid !== ownerId())
+        || (info.mode & 0o077) !== 0
+        || (file.executable && (info.mode & constants.S_IXUSR) === 0)
+        || (!file.executable && (info.mode & constants.S_IXUSR) !== 0)
+      ))
       || await fileDigest(absolute, file) !== file.sha256
     ) {
       invalid('file integrity check failed')
@@ -332,7 +345,8 @@ export const materializeGuestRuntimeBundle = async (
   const destination = resolve(rawDestination)
   if (destination === bundle.root) invalid('snapshot path must differ from its source')
   await assertOwnerPrivateDirectory(dirname(destination))
-  await mkdir(destination, { mode: 0o700 })
+  if (isWindows()) await ensureOwnerOnlyStateDirectory(destination)
+  else await mkdir(destination, { mode: 0o700 })
   try {
     const manifestPath = resolve(bundle.root, MANIFEST_FILE)
     const manifestBytes = await readOwnerPrivateFile(manifestPath, MAX_MANIFEST_BYTES)

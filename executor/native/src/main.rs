@@ -99,6 +99,14 @@ fn run(command: &Command) -> Result<(), NativeError> {
             });
             Ok(())
         }
+        Command::VerifyOwnerOnlyFile(path) => {
+            state_security::verify_owner_only_file(path)?;
+            respond_state_security(&StateSecurityResponse {
+                code: None,
+                status: StateSecurityStatus::Verified,
+            });
+            Ok(())
+        }
     }
 }
 
@@ -115,7 +123,8 @@ fn reject(command: Option<&Command>, error: &NativeError) {
         }),
         Some(Command::SecureDirectory(_))
         | Some(Command::SecureServiceDirectory(_))
-        | Some(Command::VerifyOwnerOnly(_)) => {
+        | Some(Command::VerifyOwnerOnly(_))
+        | Some(Command::VerifyOwnerOnlyFile(_)) => {
             respond_state_security(&StateSecurityResponse {
                 code: Some(error.code.to_owned()),
                 status: StateSecurityStatus::Rejected,

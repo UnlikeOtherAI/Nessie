@@ -243,8 +243,11 @@ It installs `C:\Program Files\Nessie Executor\` — the packaged runtime
 `resources\` — `nessie-hyperv-bridge.exe`, the four pinned PowerShell scripts
 that create, start, stop and remove a session's virtual machine, the guest
 kernel and initrd builder under `guest\`, and a `manifest.json` recording one
-SHA-256 per file. The guest's FAT32 boot disk is written by the executor itself,
-so nothing else is installed for it. Then it:
+SHA-256 per file. The service verifies a selected VM artifact against that
+installed manifest before it uses it; these package-owned files remain readable
+under Program Files while service state and copied credentials remain protected
+by their owner-only DACL. The guest's FAT32 boot disk is written by the executor
+itself, so nothing else is installed for it. Then it:
 
 - registers the **NessieExecutor** service ("Nessie Executor") to start
   automatically as the virtual account `NT SERVICE\NessieExecutor`: no
