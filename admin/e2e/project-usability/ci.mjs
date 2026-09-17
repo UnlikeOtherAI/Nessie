@@ -49,6 +49,7 @@ const main = async () => {
     // it.
     await runBrowserSuite(resolve(here, '../agent-proposal-card/run.mjs'), 'agent-proposal-card')
     await runBrowserSuite(resolve(here, '../channel-agent-controls/run.mjs'), 'channel-agent-controls')
+    await runBrowserSuite(resolve(here, '../executor-local-mcp/run.mjs'), 'executor-local-mcp')
     await runBrowserSuite(
       resolve(here, '../visibility-affordances/run.mjs'),
       'visibility-affordances',

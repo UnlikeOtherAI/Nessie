@@ -49,7 +49,10 @@ const cases = [
       'not installed',
       'Kelpie is not installed on this machine. Install it there and the next heartbeat reports it.',
     ],
-    mustNot: ['no browser announced itself', 'paired'],
+    // The pairing affordance by its own words. A bare 'paired' also matches
+    // the panel's standing "paired executors run only the reviewed local
+    // policy" boundary note, which has nothing to do with a Kelpie device.
+    mustNot: ['no browser announced itself', 'pair on the device'],
   },
   {
     scenario: 'launch-failed',
@@ -105,7 +108,10 @@ const cases = [
       'never reported',
       'The active reviewed policy names this server; the daemon has never reported its status.',
     ],
-    mustNot: ['not in the last report', 'available'],
+    // The availability pills by their own words. A bare 'available' also
+    // matches the executor's scope line ("available only to entitled
+    // organization work"), which says nothing about an MCP server.
+    mustNot: ['not in the last report', 'Kelpie 0.1.11', 'tools listed'],
   },
   {
     scenario: 'named-unreported',
@@ -138,10 +144,12 @@ try {
   await mkdir(screenshots, { recursive: true })
   for (const testCase of cases) {
     await page.goto(`${ADMIN_URL}/e2e/executor-local-mcp/index.html?scenario=${testCase.scenario}`)
-    // The section heading is the fixture's readiness marker in every detail
-    // scenario; the review scenarios render their own heading.
+    // Readiness is the heading of the section under test, rather than the
+    // executor's label: the label renders for every scenario whether or not
+    // this panel mounted, so it would go green on a page that failed to
+    // render the thing being asserted.
     await page.getByText(
-      testCase.scenario.startsWith('policy-') ? 'Review prepared executor change' : 'Studio Mac',
+      testCase.scenario.startsWith('policy-') ? 'Review prepared executor change' : 'Local MCP servers',
       { exact: true },
     ).waitFor()
     const text = await page.locator('body').innerText()

@@ -85,7 +85,7 @@ const unavailableCopy = (status: ExecutorLocalMcpStatus): string => {
     case 'handshake_failed':
       return `${name} started, but did not answer the MCP handshake.`
     case 'unsupported_platform':
-      return `${name} cannot run on this machine's platform.`
+      return `${name} cannot run on this machine’s platform.`
     case 'not_probed':
       return `The daemon has not probed ${name} yet; a later heartbeat should say.`
     default:
