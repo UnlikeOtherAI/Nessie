@@ -23,7 +23,7 @@ The real tray HTML was rendered headlessly with a `starting` executor: the
 attention state appeared, Start was disabled, Stop was enabled and dispatched
 the expected executor id.
 
-A corrected debug MSI was then installed over that baseline. The
+A corrected `0.0.2` debug MSI was then installed over that baseline. The
 `NessieExecutor` service remained `Running` and `Auto` under
 `NT SERVICE\NessieExecutor`; the installer action completed, the service's
 owner-only verification passed, and an ordinary user could no longer read the
@@ -35,6 +35,18 @@ answer but read through the server disconnect and reported `the service closed
 the connection`. The corrected one-line reader and its regression test must be
 included in the next debug package and installed before this path is called
 complete.
+
+The final debug package, `0.0.3` (SHA-256
+`a0eb0b6559fa66625c4814bde499657c9eaae4e67c704e8c33e4e28095073e63`),
+included that reader fix. Its hash verified and the MSI installed successfully.
+The service ran automatically as `NT SERVICE\NessieExecutor`; the installed
+tray's elevated workspace grant exited zero with no error output, granted the
+service read access while preserving the fixture owner and other ACLs, and the
+ordinary account completed three status exchanges. The installed tray then ran
+headlessly for ten seconds, responded without a main window, and its exit left
+the service at the same process id. Two more ordinary status exchanges passed;
+the tray relaunched successfully, and its per-user Run entry named the installed
+executable. The executor list remained empty because no pairing was created.
 
 A live pairing to `https://api.nessie.works` still requires the normal
 authenticated Executors surface and human fingerprint confirmation. It has not
