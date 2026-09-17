@@ -25,6 +25,7 @@ import {
   formatTimestamp,
   formatTriggerTarget,
   getDeliveryStatusColor,
+  getRollingStatusLabel,
   getScheduleSummary,
   getTriggerEventNames,
   getTriggerHealthMessage,
@@ -254,6 +255,9 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
           { label: 'Last fired', value: formatTimestamp(trigger.lastFiredAt) },
           ...(eventNames.length > 0
             ? [{ label: 'Events', value: eventNames.join(', ') }]
+            : []),
+          ...(getRollingStatusLabel(trigger)
+            ? [{ label: 'Quiet runs', value: getRollingStatusLabel(trigger) }]
             : []),
         ]}
       />

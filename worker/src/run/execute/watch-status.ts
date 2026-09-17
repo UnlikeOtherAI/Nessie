@@ -4,13 +4,22 @@ import { createAgentMessage, replaceAgentMessageContent } from './agent-message.
 import type { RunContext } from './types.js'
 
 /**
- * One rolling status message for a recurring watch.
+ * One rolling status message for a recurring watch — opt-in, never default.
  *
  * A sweep that finds nothing should not add a message. Posting "nothing
  * changed" every fifteen minutes buries the findings the channel exists for —
  * ninety-six messages a day, none of them news. Instead the watch keeps a
  * single status line and edits it in place: the model's own words, plus a
  * count of how many times it has run and when it last did.
+ *
+ * But that behaviour is only right for a true monitoring sweep. A trigger
+ * whose job is to publish content — a daily joke, a digest, a briefing —
+ * produces a new artefact every run, and each one must be its own message.
+ * Making rolling the default silently overwrote those artefacts forever in
+ * quiet channels: nothing ever reset the roll, so one stale message carried a
+ * counter while the channel looked empty. Rolling is therefore opt-in, set
+ * per trigger by the operator who knows whether the run is a watch or a
+ * publication.
  *
  * The roll resets the moment anything else is said. Any newer visible message
  * in the thread — a person, another agent, or this watch's own finding —
@@ -33,13 +42,17 @@ export type WatchStatusMetadata = {
 
 export const WATCH_STATUS_METADATA_KEY = 'watchStatus'
 
-/** Recurring watches roll by default; an operator can switch it off per trigger. */
+/**
+ * Rolling status is opt-in. A recurring trigger posts each run as its own
+ * message unless the operator explicitly enabled rolling on that trigger.
+ * Defaulting to "roll" turned content triggers into silent overwriters in
+ * quiet channels; defaulting to "post" only makes monitoring sweeps noisier,
+ * which is the lesser failure and one the operator can fix with one toggle.
+ */
 export const isRollingStatusEnabled = (config: unknown): boolean =>
-  !(
-    typeof config === 'object'
-    && config !== null
-    && (config as Record<string, unknown>)['rollingStatus'] === false
-  )
+  typeof config === 'object'
+  && config !== null
+  && (config as Record<string, unknown>)['rollingStatus'] === true
 
 type FoldInput = {
   agentId: string

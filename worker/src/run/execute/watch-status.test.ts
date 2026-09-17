@@ -47,11 +47,21 @@ test('a classifier failure posts rather than hides', async () => {
   assert.equal(await classifyWatchDisposition(boom, 'x'), 'post')
 })
 
-test('rolling is on unless a trigger explicitly opts out', () => {
-  assert.equal(isRollingStatusEnabled(null), true)
-  assert.equal(isRollingStatusEnabled({}), true)
-  assert.equal(isRollingStatusEnabled({ rollingStatus: true }), true)
+test('rolling is off unless a trigger explicitly opts in', () => {
+  assert.equal(isRollingStatusEnabled(null), false)
+  assert.equal(isRollingStatusEnabled({}), false)
   assert.equal(isRollingStatusEnabled({ rollingStatus: false }), false)
+  assert.equal(isRollingStatusEnabled({ rollingStatus: true }), true)
+})
+
+test('a daily cron trigger without explicit rollingStatus does not roll', () => {
+  // This is the "Morning Joke" failure: a scheduled cron trigger in a quiet
+  // channel had no rollingStatus config, so the opt-out default folded every
+  // run into one stale message. With the opt-in rule, absence means post.
+  assert.equal(
+    isRollingStatusEnabled({ cron: '0 8 * * 1-5', timezone: 'Europe/London' }),
+    false,
+  )
 })
 
 test('status metadata round-trips, and junk reads as absent', () => {
