@@ -28,6 +28,11 @@ export type ExecutorDescription = {
      * descriptor predates named folders and stands for the single folder below.
      */
     workspaceFolders: string[]
+    /**
+     * The local MCP servers the last proposed revision names. Empty means this
+     * executor fronts none and refuses `mcp.tools` and `mcp.call` outright.
+     */
+    mcpServers: string[]
   }
   reach: {
     /** HTTPS origins the guest browser may open; empty until one is configured. */
@@ -43,6 +48,12 @@ export type ExecutorDescription = {
      * more than one folder is configured; see `guestSessionFolder`.
      */
     guestSessions: 'available' | 'refused_multiple_folders'
+    /**
+     * How each named MCP server starts on this machine. The argv appears here
+     * for the same reason folder paths do — this answer never leaves the host,
+     * and the person reading it is the person who approved the program.
+     */
+    mcpServers: Array<{ command: string[]; cwd?: string; name: string }>
   }
   sandbox: {
     browserConfigured: boolean
@@ -61,6 +72,7 @@ export const describeExecutor = (state: ExecutorLocalState): ExecutorDescription
     profiles: [...state.descriptor.profiles],
     revision: state.descriptor.revision,
     workspaceFolders: [...(state.descriptor.workspaceFolders ?? [])],
+    mcpServers: [...(state.descriptor.mcpServers ?? [])],
   },
   reach: {
     allowedOrigins: [...(state.browserSandbox?.allowedOrigins ?? [])],
@@ -68,6 +80,13 @@ export const describeExecutor = (state: ExecutorLocalState): ExecutorDescription
       .sort((left, right) => left.name.localeCompare(right.name))
       .map((folder) => ({ name: folder.name, path: folder.path })),
     guestSessions: state.workspaceFolders.length === 1 ? 'available' : 'refused_multiple_folders',
+    mcpServers: [...(state.mcpServers ?? [])]
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((server) => ({
+        command: [...server.command],
+        name: server.name,
+        ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
+      })),
   },
   sandbox: {
     browserConfigured: Boolean(state.browserSandbox),

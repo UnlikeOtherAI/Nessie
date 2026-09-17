@@ -42,6 +42,14 @@ const MCP_RESULT_MAX_BYTES = 65_536
 export type ExecutorMcpFailure = {
   code: string
   message: string
+  /**
+   * Why the server could not be reached, when the failure was a start
+   * failure. It rides the failure because `probe` reports this category to
+   * Nessie and a caller that only sees the message cannot recover it —
+   * "not installed" and "installed but it died" send a person to opposite
+   * actions, so collapsing them defeats the report.
+   */
+  reason?: ExecutorMcpUnavailableReason
   success: false
 }
 
@@ -87,7 +95,15 @@ const failure = (code: string, message: string): ExecutorMcpFailure => ({ code, 
 
 const denied = (error: ExecutorMcpServerError): ExecutorMcpFailure => failure('EXECUTOR_MCP_DENIED', error.message)
 
-const unavailable = (message: string): ExecutorMcpFailure => failure('EXECUTOR_MCP_UNAVAILABLE', message)
+const unavailable = (
+  message: string,
+  reason?: ExecutorMcpUnavailableReason,
+): ExecutorMcpFailure => ({
+  code: 'EXECUTOR_MCP_UNAVAILABLE',
+  message,
+  ...(reason === undefined ? {} : { reason }),
+  success: false,
+})
 
 /**
  * What the failure tells Nessie. The server's *name* and a reason category
@@ -225,7 +241,11 @@ export const createExecutorMcpSessionManager = (
       const reason = classifyStartFailure(spawnError, exited)
       log(`local MCP server "${spec.name}" failed to start (${reason})`, error)
       noteStartFailure(spec.name)
-      await client.close().catch(() => undefined)
+      // The transport is closed as well as the client. A connect that never
+      // completed leaves the client with no transport to close, so closing
+      // only the client leaks the pipe — which keeps the daemon's event loop
+      // alive forever after a server that will not start.
+      await Promise.allSettled([client.close(), transport.close()])
       return reason
     }
     startFailures.delete(spec.name)
@@ -252,7 +272,7 @@ export const createExecutorMcpSessionManager = (
     if (!session || session.dead) {
       const started = await startSession(spec)
       if (typeof started === 'string') {
-        return unavailable(startFailureMessage(server, started))
+        return unavailable(startFailureMessage(server, started), started)
       }
       session = started
     }
@@ -402,7 +422,9 @@ export const createExecutorMcpSessionManager = (
       const outcome = await withSession(server, async (session) => loadCatalog(session, server))
       if ('code' in outcome) {
         if (outcome.code === 'EXECUTOR_MCP_DENIED') return { available: false, reason: 'not_probed' as const }
-        return { available: false, reason: 'handshake_failed' as const }
+        // A start failure already decided why; only a server that started and
+        // then refused tools/list is a handshake failure.
+        return { available: false, reason: outcome.reason ?? 'handshake_failed' }
       }
       return {
         available: true,

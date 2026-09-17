@@ -25,6 +25,8 @@ import {
   workspaceFoldersFromInput,
   type ExecutorWorkspaceFolder,
 } from './workspace-folder-arguments.js'
+import { parseExecutorMcpServerArguments } from './mcp-server-arguments.js'
+import type { ExecutorLocalMcpServer } from './mcp-servers.js'
 import {
   loadExecutorDeepTestSourceGrant,
   loadExecutorDeepTestExecutionGrant,
@@ -51,6 +53,8 @@ type ParsedCommand =
     /** Absent keeps the permitted programs; `[]` clears them. */
     commandAllowlist?: string[]
     kind: 'configure'
+    /** Absent keeps the named MCP servers; `[]` removes them all. */
+    mcpServers?: ExecutorLocalMcpServer[]
     nativeHelperPath?: string
     operationKeys?: string[]
     stateDir: string
@@ -104,11 +108,13 @@ const usage = (): never => {
     + '--pair-input-stdin --state-dir <owner-only-path>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
     + '--operations <file.list,file.read,file.write,command.run,browser.open,browser.observe,'
-    + 'browser.act,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop> '
+    + 'browser.act,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop,'
+    + 'mcp.tools,mcp.call> '
     + '[--native-helper </absolute/owner-only/nessie-executor-native>] '
     + '[--workspace <absolute-read-only-root>'
     + '|--folder <name>=<absolute-read-only-root> [--folder ...]] '
-    + '[--tools <program,program,...>|--clear-tools]\n'
+    + '[--tools <program,program,...>|--clear-tools] '
+    + '[--mcp-server <name>=<command and arguments> [--mcp-server ...]|--clear-mcp-servers]\n'
     + '       nessie-executor configure --configuration-input-stdin '
     + '--state-dir <owner-only-path>\n'
     + '       nessie-executor configure-browser --state-dir <owner-only-path> '
@@ -203,6 +209,7 @@ const readPairingInput = async (): Promise<{
 
 const readConfigurationInput = async (): Promise<{
   commandAllowlist?: string[]
+  mcpServers?: ExecutorLocalMcpServer[]
   operationKeys: string[]
   workspaceFolders: ExecutorWorkspaceFolder[]
 }> => {
@@ -221,6 +228,7 @@ const readConfigurationInput = async (): Promise<{
     throw new Error('Local policy input on standard input is malformed.')
   }
   const allowlist = (parsed as { commandAllowlist?: unknown }).commandAllowlist
+  const servers = (parsed as { mcpServers?: unknown }).mcpServers
   if (
     !parsed
     || typeof parsed !== 'object'
@@ -232,11 +240,24 @@ const readConfigurationInput = async (): Promise<{
     || (allowlist !== undefined && (
       !Array.isArray(allowlist) || !allowlist.every((program) => typeof program === 'string')
     ))
+    // Same reading as the allowlist: absent keeps the named servers, `[]`
+    // removes them all. The shape is checked only far enough to hand it to
+    // `assertExecutorLocalMcpServers`, which owns every real rule.
+    || (servers !== undefined && (
+      !Array.isArray(servers) || !servers.every((server) => (
+        Boolean(server)
+        && typeof server === 'object'
+        && !Array.isArray(server)
+        && typeof (server as { name?: unknown }).name === 'string'
+        && Array.isArray((server as { command?: unknown }).command)
+      ))
+    ))
   ) {
     throw new Error('Local policy input on standard input is malformed.')
   }
   return {
     ...(allowlist === undefined ? {} : { commandAllowlist: allowlist as string[] }),
+    ...(servers === undefined ? {} : { mcpServers: servers as ExecutorLocalMcpServer[] }),
     operationKeys: (parsed as { operationKeys: string[] }).operationKeys,
     workspaceFolders: workspaceFoldersFromInput(parsed, 'Local policy input on standard input'),
   }
@@ -287,6 +308,8 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       || args.includes('--native-helper')
       || args.includes('--tools')
       || args.includes('--clear-tools')
+      || args.includes('--mcp-server')
+      || args.includes('--clear-mcp-servers')
     )) return usage()
     // Naming programs and clearing them are opposite instructions; a call that
     // carries both says nothing this command may act on.
@@ -311,6 +334,12 @@ export const parseCommand = (args: string[]): ParsedCommand => {
         ? (() => {
           const folders = parseExecutorWorkspaceFolderArguments(args, false)
           return folders ? { workspaceFolders: folders } : {}
+        })()
+        : {}),
+      ...(!configurationInputFromStandardInput
+        ? (() => {
+          const servers = parseExecutorMcpServerArguments(args)
+          return servers ? { mcpServers: servers } : {}
         })()
         : {}),
     }
@@ -478,6 +507,7 @@ export const run = async (args: string[]): Promise<void> => {
       ? await readConfigurationInput()
       : {
         commandAllowlist: command.commandAllowlist,
+        mcpServers: command.mcpServers,
         operationKeys: command.operationKeys!,
         workspaceFolders: command.workspaceFolders,
       }
@@ -489,6 +519,7 @@ export const run = async (args: string[]): Promise<void> => {
       undefined,
       input.workspaceFolders,
       input.commandAllowlist,
+      input.mcpServers,
     )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `
