@@ -13,6 +13,7 @@
 //! itself lives behind `cfg(windows)` in [`imp`].
 
 use crate::state::ExecutorStatus;
+use std::io::{BufRead, BufReader, Read};
 
 /// Bounded so a service answering nonsense cannot exhaust this process.
 const MAX_ANSWER_BYTES: u64 = 1_048_576;
@@ -35,10 +36,27 @@ pub enum ServiceResponse {
     Error(String),
 }
 
+/// Reads one complete line from a pipe response. A named-pipe server may close
+/// immediately after writing: Windows reports that as `ERROR_BROKEN_PIPE`, not
+/// end-of-file, so reading until EOF turns a valid answer into a false refusal.
+/// The protocol is one newline-framed JSON answer, and a missing terminator is
+/// incomplete even when its bytes happen to parse as JSON.
+fn read_one_response(reader: impl Read) -> Result<ServiceResponse, String> {
+    let mut answer = String::new();
+    let mut bounded = BufReader::new(reader.take(MAX_ANSWER_BYTES));
+    bounded
+        .read_line(&mut answer)
+        .map_err(|_| "the service closed the connection".to_owned())?;
+    if !answer.ends_with('\n') {
+        return Err("the service closed the connection".to_owned());
+    }
+    decode(&answer)
+}
+
 #[cfg(windows)]
 mod imp {
     use std::{
-        io::{Read, Write},
+        io::Write,
         mem::ManuallyDrop,
         os::windows::{ffi::OsStrExt, io::FromRawHandle},
     };
@@ -53,7 +71,7 @@ mod imp {
     };
     use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
 
-    use super::{decode, MAX_ANSWER_BYTES, NOT_ADMITTED, SERVICE_NOT_RUNNING};
+    use super::{read_one_response, NOT_ADMITTED, SERVICE_NOT_RUNNING};
 
     const PIPE_NAME: &str = r"\\.\pipe\NessieExecutor";
 
@@ -106,14 +124,14 @@ mod imp {
         let mut line = serde_json::to_string(request)
             .map_err(|_| "the control request could not be prepared".to_owned())?;
         line.push('\n');
-        let mut answer = String::new();
-        let exchange = (&*file)
-            .write_all(line.as_bytes())
-            .and_then(|()| (&*file).flush())
-            .and_then(|()| (&*file).take(MAX_ANSWER_BYTES).read_to_string(&mut answer));
+        let wrote = (&*file).write_all(line.as_bytes()).and_then(|()| (&*file).flush());
+        let response = if wrote.is_ok() {
+            read_one_response(&*file)
+        } else {
+            Err("the service closed the connection".to_owned())
+        };
         unsafe { CloseHandle(handle) };
-        exchange.map_err(|_| "the service closed the connection".to_owned())?;
-        decode(&answer)
+        response
     }
 }
 
@@ -173,7 +191,7 @@ fn decode(answer: &str) -> Result<ServiceResponse, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, ServiceResponse};
+    use super::{decode, read_one_response, ServiceResponse};
 
     #[test]
     fn an_ok_answer_carries_the_executor_list_verbatim() {
@@ -226,5 +244,74 @@ mod tests {
         for answer in ["", "not json", "{}", r#"{"status":"maybe"}"#, r#"{"status":"ok","executors":3}"#] {
             assert!(decode(answer).is_err(), "answer {answer:?} must be a failure");
         }
+    }
+
+    #[test]
+    fn a_complete_line_is_enough_without_waiting_for_eof() {
+        let response = read_one_response(&b"{\"status\":\"ok\",\"executors\":[]}\nignored"[..])
+            .expect("the first framed response is complete");
+        assert_eq!(response, ServiceResponse::Status(Vec::new()));
+    }
+
+    #[test]
+    fn an_unterminated_or_oversized_response_is_refused() {
+        assert!(read_one_response(&b"{\"status\":\"ok\",\"executors\":[]}"[..]).is_err());
+        let oversized = format!("{}\n", "x".repeat(super::MAX_ANSWER_BYTES as usize));
+        assert!(read_one_response(oversized.as_bytes()).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_named_pipe_disconnect_after_a_complete_response_is_not_a_client_failure() {
+        use std::{
+            io::Write,
+            os::windows::{ffi::OsStrExt, io::FromRawHandle},
+        };
+        use windows_sys::Win32::{
+            Foundation::{GetLastError, ERROR_PIPE_CONNECTED, GENERIC_READ, INVALID_HANDLE_VALUE},
+            Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING, PIPE_ACCESS_DUPLEX},
+            System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT},
+        };
+
+        fn wide(value: &str) -> Vec<u16> {
+            std::ffi::OsStr::new(value).encode_wide().chain(std::iter::once(0)).collect()
+        }
+
+        let name = format!(r"\\.\pipe\NessieExecutor-reader-test-{}", std::process::id());
+        let server = unsafe {
+            CreateNamedPipeW(
+                wide(&name).as_ptr(), PIPE_ACCESS_DUPLEX,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                1, 1_024, 1_024, 0, std::ptr::null(),
+            )
+        };
+        assert_ne!(server, INVALID_HANDLE_VALUE, "the test pipe must be creatable");
+        let server = server as usize;
+        let server_thread = std::thread::spawn(move || {
+            let server = server as windows_sys::Win32::Foundation::HANDLE;
+            let connected = unsafe { ConnectNamedPipe(server, std::ptr::null_mut()) } != 0
+                || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
+            assert!(connected, "the client must connect to the test pipe");
+            let mut file = unsafe { std::fs::File::from_raw_handle(server as *mut _) };
+            file.write_all(b"{\"status\":\"ok\",\"executors\":[]}\n")
+                .expect("the server writes its complete response");
+            file.flush().expect("the server flushes its complete response");
+            // Dropping the server immediately is the production close shape
+            // that previously made `read_to_string` report a false failure.
+        });
+        let client = unsafe {
+            CreateFileW(
+                wide(&name).as_ptr(), GENERIC_READ, 0, std::ptr::null(), OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL, std::ptr::null_mut(),
+            )
+        };
+        assert_ne!(client, INVALID_HANDLE_VALUE, "the test client must connect");
+        let client_file = unsafe { std::fs::File::from_raw_handle(client as *mut _) };
+        assert_eq!(
+            read_one_response(&client_file).expect("the line is valid before disconnect"),
+            ServiceResponse::Status(Vec::new()),
+        );
+        drop(client_file);
+        server_thread.join().expect("the server must finish");
     }
 }
