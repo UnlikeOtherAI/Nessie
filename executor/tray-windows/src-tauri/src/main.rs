@@ -1,5 +1,5 @@
 // A tray application must never flash a console window at login.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 //! `nessie-executor-tray.exe` — the Nessie Executor's control surface beside the
 //! Windows clock.
