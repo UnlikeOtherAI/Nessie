@@ -65,7 +65,7 @@ creates the suffixed field and reports it.
 **Phase 6 — the admin.** The three-file dialog; `ProjectToolConnections`
 parameterised by scope and reused in `SourcesSettingsSection` (project keys)
 and the new organisation tab; the source rows' remedies wired (T12) including
-*Replace key*; `SourceStatusStrip` expiry pill; the alert row and deep link
+*Replace key*; the board Configure sync row's expiry remedy; the alert row and deep link
 for the new kind. Copy per §10.
 *Accept:* `admin` tests for the generic form rendering each field kind, for
 the entitlement-greyed scope options, for the result view with refusals; the

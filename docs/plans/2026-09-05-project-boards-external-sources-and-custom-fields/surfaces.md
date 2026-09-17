@@ -11,7 +11,7 @@ Part of [the project boards design](overview.md).
 | Boards | `/projects/:id/board?board=<boardId>` — `BoardSwitcher` (`TabBar`, `role="tablist"`) in `ProjectPageHeader`'s `tabs` slot | header overflow **New board…**, **Board settings…**; Overview → Work section lists every board (`Board · Dev board · Jira board`) instead of one link |
 | Columns | `/projects/:id/settings?section=boards&board=<id>` (`BoardsSettingsSection`) | column header menu **Edit columns** (administrators) |
 | Custom fields | `/projects/:id/settings?section=fields` (`FieldsSettingsSection`) | `TaskDialog` Fields section → **Manage fields…** (administrators); card chips |
-| Sources | `/projects/:id/settings?section=sources[&source=<id>]` (`SourcesSettingsSection`, `SourceMappingPanel`) | board empty state **Connect a source**; header overflow **Connect a source…**; `SourceStatusStrip` pills under the board header; the bell (`board_source_health`) → the source with its remedy; `/apps/:slug` **Use as a project board source**; Overview → Work section line *"Jira needs reconnecting →"* |
+| Sources | `/projects/:id/settings?section=sources[&source=<id>]` (`SourcesSettingsSection`, `SourceMappingPanel`) | board empty state **Connect a source**; header overflow **Connect a source…**; the board header's **Configure** menu, whose first row on a remote board is the source's Sync row — freshness sentence as its sub-line, and when the health state names a remedy the press is the doorway to it; the bell (`board_source_health`) → the source with its remedy; `/apps/:slug` **Use as a project board source**; Overview → Work section line *"Jira needs reconnecting →"* |
 | Connections | `/settings/connections` → *Project tools* group | Sources section **Connect** (creates or reuses the caller's connection) |
 
 ### 6.2 The Board tab with N boards
@@ -28,11 +28,16 @@ host/param table in `docs/navigation/page-types-and-motion.md` §1 and
 | host | param | values |
 | a project board (`ProjectBoardTab`) | `board` | one per board of the project (default: the project's default board) |
 
-Under the header, when the project has sources: `SourceStatusStrip` — one
-`Pill` per source, `Jira PROJ · synced 2 min ago` in the neutral tone, or the
-health state's label in `warning`/`danger` with the remedy verb, linking to the
-source's settings page. It answers "is what I am looking at current?", which is
-the decision a person makes before dragging.
+In the board header's **Configure** menu, when the project has sources: one
+leading row per source — **Sync** (or **Sync \<name\>** when there are
+several) with the source's sentence as a muted sub-line:
+`Jira PROJ · synced 2 min ago`, or the health state's remedy verb in its
+place. The press syncs, or navigates to the source's settings page when a
+remedy is named; somebody who cannot administer the project reads the same
+sentence as a non-interactive footnote row instead. It answers "is what I am
+looking at current?", which is the decision a person makes before dragging.
+(It was a `SourceStatusStrip` pill row on the board itself until the menu
+gained row details; the board now gives its vertical space to the columns.)
 
 Beside the strip: `BoardAssigneeFilter`, narrowing the board to one person —
 *All assignees*, *My issues*, *Unassigned*, every assignable colleague, and a
@@ -148,7 +153,8 @@ has. A surface type would have been a third statement of the same fact.
 
 - The switcher scrolls its own track inside the header (`TabBar` never calls
   `scrollIntoView`); `KanbanBoard`'s existing column paging handles narrow
-  viewports; the `SourceStatusStrip` wraps.
+  viewports; the Configure menu holds the source rows on every viewport, so
+  nothing wraps.
 - Settings sections stack; the mapping tables become one row per state with
   the picker below the name (`RowList` already does this).
 - Source connect on `single` is a full-page redirect through the same

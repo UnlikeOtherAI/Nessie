@@ -3,8 +3,8 @@
 **Date:** 2026-09-06 · **Status:** built (§10 records the as-built deltas)
 **Owning surface:** Project → **Settings → Boards → <board> → Watchers**
 (`/projects/:projectId/settings?section=boards&board=<id>`)
-**Doorways:** the board header's Configure menu; the `SourceStatusStrip`'s
-read-only pill; a watcher's own card in chat links back to the board.
+**Doorways:** the board header's Configure menu (whose sync row's sub-line
+carries `read-only`); a watcher's own card in chat links back to the board.
 **Builds on:** [2026-09-05 project boards](2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
 and [2026-09-05 API-key connectors](2026-09-05-api-key-board-source-connectors/overview.md).
 
@@ -45,7 +45,7 @@ Established by reading code, not assumed.
 refused."* It is a property of a **source**, reachable only at
 `?section=sources&source=<id>`. A board that mixes a Linear source with native
 tasks has no single answer to "is this board read-only", and nothing on the
-board says which it is beyond the source pills in `SourceStatusStrip`.
+board says which it is beyond the source rows in the board's Configure menu.
 
 **T2 — the apply path already separates a real change from our own echo.**
 `applyInboundItem` (`packages/team-admin/src/board-source-apply.ts` 142)
@@ -200,10 +200,12 @@ a `RecipientBar` with the chips a person already knows from New message, and
 one line of copy naming the consequence: *"They hear about every ticket that
 moves or changes on this board."* Empty is the default and reads as such.
 
-**The read-only pill** — `SourceStatusStrip` already renders one pill per
-source; it gains the word `read-only` where `writeMode === 'read_only'`, linking
-to the control in T1. That is the whole of the owner's "switch to make a remote
-board read-only", plus the discoverability it was missing.
+**The read-only word** — the board's Configure menu renders one row per
+source; its sub-line gains the word `read-only` where
+`writeMode === 'read_only'`, and the row's remedy press leads to the control
+in T1. That is the whole of the owner's "switch to make a remote board
+read-only", plus the discoverability it was missing. (This began as a
+`SourceStatusStrip` pill; the strip retired into the menu.)
 
 **The card in chat** — a PA-DM message rendering `KanbanCardContent` inside the
 existing card shell, with a link back to `/projects/:id/board?board=<id>` and,

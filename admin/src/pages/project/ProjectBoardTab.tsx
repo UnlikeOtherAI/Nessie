@@ -6,11 +6,8 @@ import type { BoardColumnView } from '../../components/features/projects/kanban/
 import type { BoardRecord, BoardTaskRecord } from '../../facades/boards/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useCanModifyProject } from '../../facades/projects/administration'
 import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
-import { useProjectSources } from '../../facades/board-sources/hooks'
-import { SourceStatusStrip } from '../../components/features/projects/kanban/SourceStatusStrip'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { useBoardChrome } from './useBoardChrome'
 
@@ -27,8 +24,6 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   const chrome = useBoardChrome(projectId, board?.id)
   const { setAssignee, showArchived, tasks, tasksQuery, view, visibleTasks } = chrome
   const { data: projects = [] } = useProjects()
-  const { data: sources = [] } = useProjectSources(projectId, board?.id)
-  const canAdminister = useCanModifyProject(projectId)
   const moveTask = useMoveTask()
   useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
 
@@ -66,7 +61,10 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4">
+    // No bottom padding: the column tracks run to the window's bottom edge,
+    // so the board reads as tracks running off the screen rather than panels
+    // floating above a dead band. Top and sides keep their gutter.
+    <div className="flex h-full min-h-0 flex-col gap-3 px-4 pt-4">
       {isScrum && activeIteration ? (
         <div className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
           <span className="font-semibold uppercase tracking-[0.16em]">
@@ -76,22 +74,6 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
           <span>
             · {activeIteration.pointsDone}/{activeIteration.pointsTotal} pts
           </span>
-        </div>
-      ) : null}
-      {/* Health, not a control: it renders nothing until a connected source
-          has something to say, and its remedy is one press from the board.
-          The controls that used to share this row are in the header. */}
-      <SourceStatusStrip
-        canAdminister={canAdminister}
-        projectId={projectId}
-        sources={sources}
-      />
-      {tasksQuery.data?.truncated ? (
-        <div className="text-xs text-[color:var(--tx3)]">
-          {/* The cap is on the board read, so it bounds what any filter can
-              possibly match — say so before somebody reads an empty column as
-              "nobody is working on this". */}
-          Showing the 500 most recently updated cards.
         </div>
       ) : null}
       <div className="min-h-0 flex-1">

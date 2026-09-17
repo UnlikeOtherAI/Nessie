@@ -278,7 +278,7 @@ export const ColumnBrowserColumn = ({
           titleTone="section"
         />
       ) : (
-        <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
+        <div className="flex h-[var(--page-header-height)] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-[var(--page-gutter)]">
           {leading}
           {showBack && onBack
             ? stacked
