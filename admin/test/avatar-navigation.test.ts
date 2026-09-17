@@ -68,10 +68,9 @@ test('team pictures prefer the team relay and accept the UOA public fallback', (
   const avatar = readFileSync(`${sourceRoot}/components/primitives/TeamAvatar.tsx`, 'utf8')
   const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamMenu.tsx`, 'utf8')
   const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/TeamSwitcher.tsx`, 'utf8')
-  assert.match(
-    avatar,
-    /relayedUrl \?\? \(imageUrl \? avatarImageUrlWithRevision\(imageUrl, revision\) : null\)/,
-  )
+  // The public UOA URL is passed through unchanged; see team-avatar-shell.test.ts
+  // for why a cache-buster on this lane breaks the image outright.
+  assert.match(avatar, /relayedUrl \?\? imageUrl \?\? null/)
   assert.match(menu, /imageUrl=\{team\.avatarImageUrl\}/)
   assert.ok(
     switcher.match(/imageUrl=\{active\?\.avatarImageUrl\}/g)?.length === 2,

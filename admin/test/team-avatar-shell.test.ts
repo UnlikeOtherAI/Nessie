@@ -3,36 +3,27 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { avatarImageUrlWithRevision } from '../src/components/primitives/TeamAvatar.js'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('the cache-busted directory URL keeps its existing query string intact', () => {
-  // UOA's directory URL already ends in `?size=128`; a naive
-  // `${imageUrl}?v=${revision}` would produce `?size=128?v=1` and bury the
-  // size parameter.
-  const busted = avatarImageUrlWithRevision(
-    'https://authentication.example/teams/uoa-team/avatar?size=128',
-    3,
+test('the public UOA directory URL is never given a cache-buster', () => {
+  // UOA parses this route's query with `.strict()` and allows only `style` and
+  // `size` (UnlikeOtherAuthenticator API/src/routes/avatar/public-team.ts:32,
+  // API/src/routes/avatar/shared.ts:14-17). A `v=` buster therefore does not
+  // bust the cache — it makes the request throw, and IdentityTile's onError
+  // drops the tile to initials. Trading a stale picture for no picture is
+  // worse than the defect, so this lane is left to max-age revalidation and
+  // the active team is routed through the relay instead.
+  const source = readSource('../src/components/primitives/TeamAvatar.tsx')
+  assert.ok(
+    source.includes('const url = relayedUrl ?? imageUrl ?? null'),
+    'the public directory URL must be passed through unchanged',
   )
-  assert.equal(busted, 'https://authentication.example/teams/uoa-team/avatar?size=128&v=3')
-  assert.equal(busted.split('?').length - 1, 1, 'exactly one query-string opener')
-  const params = new URL(busted).searchParams
-  assert.equal(params.get('size'), '128')
-  assert.equal(params.get('v'), '3')
-})
-
-test('a directory URL without a query string gets one', () => {
-  assert.equal(
-    avatarImageUrlWithRevision('https://authentication.example/teams/t/avatar', 2),
-    'https://authentication.example/teams/t/avatar?v=2',
+  assert.ok(
+    !/v=\$\{revision\}`\s*$/m.test(source.split('const path =')[0] ?? ''),
+    'no cache-buster helper may be applied to the public directory URL',
   )
-})
-
-test('revision zero leaves the directory URL untouched', () => {
-  const url = 'https://authentication.example/teams/t/avatar?size=128'
-  assert.equal(avatarImageUrlWithRevision(url, 0), url)
 })
 
 test('the shell switcher renders the active team through the current-team relay', () => {
