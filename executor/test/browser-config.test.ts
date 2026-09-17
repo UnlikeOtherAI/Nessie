@@ -11,6 +11,7 @@ import {
   configureExecutorLocalPolicy,
 } from '../src/pair.js'
 import type { ExecutorHost } from '../src/host-platform.js'
+import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
 
 // The configure paths now ask the host what sandbox it can start, so these
@@ -36,6 +37,17 @@ const initialState = (workspaceRoot: string) => ({
   workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
+const secureRuntimeFixture = async (stateDir: string, runtimeBundlePath: string): Promise<void> => {
+  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+    await ensureOwnerOnlyStateDirectory(stateDir)
+    await ensureOwnerOnlyStateDirectory(runtimeBundlePath)
+    await ensureOwnerOnlyStateDirectory(join(runtimeBundlePath, 'bin'))
+    return
+  }
+  await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
+  await chmod(runtimeBundlePath, 0o700)
+}
+
 test('Codex configuration stores only an owner-private source path and a pinned runtime', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-workspace-'))
@@ -45,8 +57,7 @@ test('Codex configuration stores only an owner-private source path and a pinned 
   const kernelPath = join(stateDir, 'kernel')
   const authProfilePath = join(stateDir, 'codex-auth.json')
   try {
-    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
-    await chmod(runtimeBundlePath, 0o700)
+    await secureRuntimeFixture(stateDir, runtimeBundlePath)
     const codexRuntime = 'codex-runtime'
     const tmuxRuntime = 'tmux-runtime'
     await Promise.all([
@@ -132,8 +143,7 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
   const helperPath = join(stateDir, 'vm-helper')
   const kernelPath = join(stateDir, 'kernel')
   try {
-    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
-    await chmod(runtimeBundlePath, 0o700)
+    await secureRuntimeFixture(stateDir, runtimeBundlePath)
     const browserRuntime = 'browser-runtime'
     await Promise.all([
       writeFile(builderPath, 'builder'),

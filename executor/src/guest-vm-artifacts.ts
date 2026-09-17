@@ -161,7 +161,7 @@ export const secureGuestVmSessionDirectory = async (
     throw new WorkspacePathError('The executor VM runtime directory is unavailable.')
   }
   const directory = await mkdtemp(join(parent, `${basename(lease.leaseId)}-`))
-  if (isWindows()) await assertOwnerOnlyStatePath(directory, 'directory')
+  if (isWindows()) await ensureOwnerOnlyStateDirectory(directory)
   else await chmod(directory, 0o700)
   return directory
 }
