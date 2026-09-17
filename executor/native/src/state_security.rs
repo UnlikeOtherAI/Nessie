@@ -415,6 +415,21 @@ mod tests {
         secure_directory(secured.to_str().expect("a UTF-8 test path")).expect("securing succeeds");
         let file = secured.join("private.json");
         std::fs::write(&file, b"{}").expect("the inherited file must be writable");
+        // An elevated Windows test process can create a file owned by the
+        // Administrators group instead of its token user. Production rightly
+        // refuses that distinction, so stamp this fixture to its actual token
+        // account before proving the inherited DACL branch.
+        let account = std::process::Command::new("whoami")
+            .output()
+            .expect("whoami must be available on Windows");
+        assert!(account.status.success(), "whoami must identify the token user");
+        let account = String::from_utf8(account.stdout).expect("whoami output is UTF-8");
+        let set_owner = std::process::Command::new("icacls")
+            .arg(&file)
+            .args(["/setowner", account.trim()])
+            .output()
+            .expect("icacls must be available on Windows");
+        assert!(set_owner.status.success(), "icacls must stamp the token user as owner");
         verify_owner_only_file(file.to_str().expect("a UTF-8 test path"))
             .expect("the inherited file DACL remains private");
         // The parent remains protected and valid: only this file overrides its
