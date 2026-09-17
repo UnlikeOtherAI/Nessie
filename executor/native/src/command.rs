@@ -9,6 +9,9 @@ pub enum Command {
     /// Create the executor's private state directory if absent and give it an
     /// owner-only, non-inherited DACL.
     SecureDirectory(String),
+    /// Establish the standalone service root before the service starts. Its
+    /// owner is the virtual service account, not Windows Installer's SYSTEM.
+    SecureServiceDirectory(String),
     /// Prove that a directory's owner and DACL still admit nobody else.
     VerifyOwnerOnly(String),
     WorkspaceApply,
@@ -50,6 +53,9 @@ pub fn parse_command(arguments: &[String]) -> Result<Command, NativeError> {
         [command] if command == "workspace-apply" => Ok(Command::WorkspaceApply),
         [command, path] if command == "secure-directory" => {
             Ok(Command::SecureDirectory(state_path(path)?))
+        }
+        [command, path] if command == "secure-service-directory" => {
+            Ok(Command::SecureServiceDirectory(state_path(path)?))
         }
         [command, path] if command == "verify-owner-only" => {
             Ok(Command::VerifyOwnerOnly(state_path(path)?))
@@ -99,6 +105,10 @@ mod tests {
             Ok(Command::SecureDirectory(r"\\?\C:\Nessie\executors\one".to_owned())),
         );
         assert_eq!(parse(&["secure-directory", "C:/Nessie/executors/one"]).is_ok(), true);
+        assert_eq!(
+            parse(&["secure-service-directory", r"C:\ProgramData\Nessie Executor"]),
+            Ok(Command::SecureServiceDirectory(r"C:\ProgramData\Nessie Executor".to_owned())),
+        );
     }
 
     #[test]

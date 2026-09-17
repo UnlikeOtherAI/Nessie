@@ -45,8 +45,9 @@ mod imp {
 
     use windows_sys::Win32::Foundation::{
         CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY,
-        GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE,
+        HANDLE, INVALID_HANDLE_VALUE,
     };
+    use nessie_windows_common::CONTROL_PIPE_CLIENT_ACCESS;
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING,
     };
@@ -73,7 +74,7 @@ mod imp {
             let handle = unsafe {
                 CreateFileW(
                     name.as_ptr(),
-                    GENERIC_READ | GENERIC_WRITE,
+                    CONTROL_PIPE_CLIENT_ACCESS,
                     0,
                     std::ptr::null(),
                     OPEN_EXISTING,
