@@ -10,7 +10,7 @@ interface SettingsPanelProps {
 }
 
 /**
- * Shared frame for every admin settings sub-page: a fixed 50px header
+ * Shared frame for every admin settings sub-page: the shared page header
  * (eyebrow + title, optional right-aligned actions) over a scrollable body.
  * Mirrors the layout of the governance pages (Audit, Approvals, …) so the
  * admin area reads as one coherent surface.

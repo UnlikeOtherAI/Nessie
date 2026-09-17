@@ -171,10 +171,14 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
       ? 'admin-page-action-selected'
       : 'admin-page-action-secondary'
   return [
-    // The header has room for a 44px target. The overflow controller measures
-    // these controls, so narrow headers still offer every action through More.
-    'admin-page-action inline-flex h-11 items-center justify-center text-xs transition-colors',
-    action.compact ? 'w-11 px-0' : 'gap-1.5 px-2.5',
+    // The header has room for the action height the pointer asks for — compact
+    // under a cursor, a 44px target under a finger (the tokens in styles.css).
+    // The overflow controller measures these controls, so narrow headers still
+    // offer every action through More. The font-size lives on
+    // `.admin-page-action` in the stylesheet: the unlayered button reset beats
+    // a `text-*` utility here.
+    'admin-page-action inline-flex h-[var(--page-header-action-height)] items-center justify-center transition-colors',
+    action.compact ? 'w-[var(--page-header-action-height)] px-0' : 'gap-1.5 px-2.5',
     role,
     action.tone === 'danger' ? 'page-header-action-danger' : '',
     open ? 'admin-page-action-open' : '',
@@ -186,7 +190,7 @@ const actionClassName = (action: PageHeaderAction, open: boolean): string => {
 // scale but drops the button box, so it reads as a labelled switch rather than
 // one more control competing with the page's real actions.
 const toggleClassName = (action: PageHeaderToggleAction): string => [
-  'admin-page-toggle inline-flex h-8 items-center gap-2 px-1 text-xs font-medium',
+  'admin-page-toggle inline-flex h-[var(--page-header-toggle-height)] items-center gap-2 px-1 text-xs font-medium',
   'whitespace-nowrap text-[color:var(--tx2)]',
   action.disabled ? 'cursor-not-allowed opacity-50' : '',
 ].join(' ')
@@ -316,10 +320,10 @@ export const ResponsivePageHeader = ({
       className="relative flex flex-shrink-0 flex-col border-b border-[color:var(--sep)]"
       ref={headerRef}
     >
-      <div className="flex h-[50px] flex-shrink-0 items-center gap-3 px-[var(--page-gutter)]">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="flex h-[var(--page-header-height)] flex-shrink-0 items-center gap-[var(--page-header-gap)] px-[var(--page-gutter)]">
+        <div className="flex min-w-0 flex-1 items-center gap-[var(--page-header-gap)]">
           {leading || onBack ? (
-            <div className="flex flex-shrink-0 items-center gap-3">
+            <div className="flex flex-shrink-0 items-center gap-[var(--page-header-gap)]">
               {leading}
               {onBack ? (
                 <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
@@ -422,10 +426,10 @@ export const ResponsivePageHeader = ({
         ref={measurementRef}
       >
         {/* Mirrors the visible leading lane (leading + Back with the same
-            gap-3 rhythm) so the reserve below is the measured intrinsic
+            gap rhythm) so the reserve below is the measured intrinsic
             width of what actually rendered — including the case where a
             conditional doorway rendered nothing at all. */}
-        <div className="flex items-center gap-3" ref={leadingMeasureRef}>
+        <div className="flex items-center gap-[var(--page-header-gap)]" ref={leadingMeasureRef}>
           {leading}
           {onBack ? (
             <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />

@@ -85,6 +85,20 @@
      lines up with the body under it on every screen. Tune the page gutter
      here, in one place, never per page. */
   --page-gutter: 1rem;
+  /* The page header's whole geometry, in one place (ResponsivePageHeader and
+     the pane/drawer headers that mirror it). Rescaling the bar is an edit to
+     these tokens and nothing else. The values are the compact fine-pointer
+     geometry — 30% under the touch geometry — because a cursor needs no
+     44px target; a coarse pointer restores the touch geometry in the media
+     query just after this block. The action font-size lives here rather than
+     on a utility because the unlayered `button { font: inherit }` reset beats
+     Tailwind's layered utilities, so a `text-*` class on a header button
+     silently does nothing; `.admin-page-action` sets it where it wins. */
+  --page-header-height: 35px;
+  --page-header-gap: 8px;
+  --page-header-action-height: 31px;
+  --page-header-action-font-size: 0.75rem;
+  --page-header-toggle-height: 22px;
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --easing-standard: ease;
@@ -110,6 +124,19 @@
   --layer-modal: 70;
   --layer-modal-popover: 75;
   --layer-blocking: 80;
+}
+
+/* A finger is not a cursor: on touch hardware the header keeps the geometry
+   that gives every action its 44px target. This follows the pointer, not the
+   viewport width, so a touch laptop or a tablet in landscape gets the targets
+   even at desktop widths. */
+@media (pointer: coarse) {
+  :root {
+    --page-header-height: 50px;
+    --page-header-gap: 12px;
+    --page-header-action-height: 44px;
+    --page-header-toggle-height: 32px;
+  }
 }
 
 /* Where every overlay renders (components/overlays/OverlayPortal.tsx,
@@ -3694,9 +3721,14 @@ button.reaction-pill-active:focus-visible {
      - selected, and a menu that is open — a control that is currently on.
        Tinted, never filled, so it does not outrank the primary.
      - secondary — everything else. */
+/* The font-size lives here, not on a utility: the unlayered `button { font:
+   inherit }` reset beats Tailwind's layered `text-*` utilities, so a size
+   class on the element was silently ignored and every header button rendered
+   at body size. */
 .admin-page-action {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
+  font-size: var(--page-header-action-font-size);
   font-weight: var(--font-weight-semibold);
 }
 
