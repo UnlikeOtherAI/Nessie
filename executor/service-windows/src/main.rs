@@ -31,6 +31,7 @@ mod provenance;
 mod security;
 mod service;
 mod supervisor;
+mod supervisor_commands;
 
 const USAGE: &str = "nessie-executor-service runs as the Nessie Executor Windows service. \
                      Its only other mode is --join-hyperv-administrators, which the installer \

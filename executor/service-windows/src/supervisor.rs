@@ -13,7 +13,6 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
@@ -25,10 +24,9 @@ use crate::{
     lease::unowned_daemon_is_stopping,
     manifest::VerifiedRuntime,
     paths::{
-        executor_state_dir, executors_root, has_executor_state, paired_executors, pending_root,
-        PAIRED_BY_FILE,
+        executor_state_dir, has_executor_state, paired_executors,
     },
-    protocol::{ExecutorStatus, PairCommand},
+    protocol::ExecutorStatus,
 };
 
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -36,7 +34,7 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the packaged CLI is given for a one-shot command (`pair`,
 /// `connect`, `configure`). Long enough for a slow network round trip, short
 /// enough that a wedged child never holds the control pipe open.
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// A booting service must accept SCM and tray controls even while Nessie is
 /// unreachable. Connecting is therefore attempted by the recovery sweep and
@@ -45,7 +43,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const RETRY_INITIAL: Duration = Duration::from_secs(5);
 const RETRY_MAX: Duration = Duration::from_secs(300);
 
-struct ManagedDaemon {
+pub(crate) struct ManagedDaemon {
     child: Child,
     /// Closing this pipe tells `serve` to stop all guest sessions before it
     /// releases the durable daemon lease. It has to be droppable while the child
@@ -53,18 +51,18 @@ struct ManagedDaemon {
     parent_liveness: Option<ChildStdin>,
 }
 
-struct PendingConnection {
+pub(crate) struct PendingConnection {
     child: Child,
     started_at: Instant,
 }
 
 pub struct Supervisor {
-    children: BTreeMap<String, ManagedDaemon>,
-    connections: BTreeMap<String, PendingConnection>,
-    desired: BTreeSet<String>,
+    pub(crate) children: BTreeMap<String, ManagedDaemon>,
+    pub(crate) connections: BTreeMap<String, PendingConnection>,
+    pub(crate) desired: BTreeSet<String>,
     retry_after: BTreeMap<String, Instant>,
     retry_delay: BTreeMap<String, Duration>,
-    root: PathBuf,
+    pub(crate) root: PathBuf,
     runtime: VerifiedRuntime,
 }
 
@@ -120,7 +118,7 @@ pub fn describe_arguments(state_dir: &Path) -> Vec<String> {
     ]
 }
 
-fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, String> {
+pub(crate) fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, String> {
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
@@ -137,7 +135,7 @@ fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, Str
 /// before the executor is allowed to do anything, so it is taken from the
 /// CLI's own output rather than recomputed here from a machine key this
 /// service never sees.
-fn parse_fingerprint(output: &str) -> Option<String> {
+pub(crate) fn parse_fingerprint(output: &str) -> Option<String> {
     let prefix = "Confirm fingerprint ";
     output.lines().find_map(|line| {
         line.find(prefix).and_then(|index| {
@@ -161,7 +159,7 @@ impl Supervisor {
 
     /// The packaged Node running the packaged bundle. Nothing else is ever
     /// executed, and the two supervisor facts are set on every invocation.
-    fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut command = Command::new(&self.runtime.node_executable);
         command.arg(self.runtime.bundle());
         command.env("NESSIE_EXECUTOR_PACKAGED_CLI", "1");
@@ -172,7 +170,7 @@ impl Supervisor {
 
     /// Runs one packaged command to completion. Its output is never captured or
     /// reported: a refusal names what was refused, never what a child printed.
-    fn run_to_completion(&self, arguments: Vec<String>, refusal: &str) -> Result<(), String> {
+    pub(crate) fn run_to_completion(&self, arguments: Vec<String>, refusal: &str) -> Result<(), String> {
         let mut child = self
             .command()
             .args(arguments)
@@ -193,7 +191,7 @@ impl Supervisor {
     /// Runs a one-shot command that reads its payload from stdin. Used for
     /// `configure --configuration-input-stdin` so the whole policy travels on a
     /// pipe, never in a process list.
-    fn run_to_completion_with_input(
+    pub(crate) fn run_to_completion_with_input(
         &self,
         arguments: Vec<String>,
         input: serde_json::Value,
@@ -227,7 +225,7 @@ impl Supervisor {
 
     /// Runs a one-shot command and returns its stdout. Used for `describe`,
     /// whose credential-free JSON is handed straight back to the tray.
-    fn run_to_completion_with_output(
+    pub(crate) fn run_to_completion_with_output(
         &self,
         arguments: Vec<String>,
         refusal: &str,
@@ -263,7 +261,7 @@ impl Supervisor {
         }
     }
 
-    fn state_dir(&self, executor_id: &str) -> Result<PathBuf, String> {
+    pub(crate) fn state_dir(&self, executor_id: &str) -> Result<PathBuf, String> {
         executor_state_dir(&self.root, executor_id)
     }
 
@@ -449,164 +447,6 @@ impl Supervisor {
             .to_owned())
     }
 
-    pub fn configure(
-        &mut self,
-        executor_id: &str,
-        operation_keys: &[String],
-    ) -> Result<String, String> {
-        let state_dir = self.state_dir(executor_id)?;
-        if !has_executor_state(&state_dir) {
-            return Err("This executor has not been paired on this computer.".to_owned());
-        }
-        let was_started = self.desired.contains(executor_id) || self.connections.contains_key(executor_id);
-        if was_started {
-            self.stop(executor_id)?;
-        }
-        self.run_to_completion(
-            configure_arguments(&state_dir, operation_keys),
-            "The local executor policy was rejected. No command output was retained.",
-        )?;
-        if was_started {
-            self.start(executor_id)
-        } else {
-            Ok("stopped".to_owned())
-        }
-    }
-
-    /// Runs `nessie-executor describe --state-dir` and returns the credential-free
-    /// JSON the CLI prints. The tray uses this to render folders, origins, and
-    /// permitted commands without ever opening `executor-state.json` itself.
-    pub fn describe(&mut self, executor_id: &str) -> Result<serde_json::Value, String> {
-        let state_dir = self.state_dir(executor_id)?;
-        if !has_executor_state(&state_dir) {
-            return Err("This executor has not been paired on this computer.".to_owned());
-        }
-        let output = self.run_to_completion_with_output(
-            describe_arguments(&state_dir),
-            "This executor's local state could not be read.",
-        )?;
-        serde_json::from_str(&output)
-            .map_err(|_| "the service answered in a shape this tray does not understand".to_owned())
-    }
-
-    /// Runs `nessie-executor configure --configuration-input-stdin`, stopping
-    /// and restarting the daemon the same way the older `--operations` path
-    /// does. The whole policy payload travels on stdin, so nothing sensitive
-    /// sits in a command line.
-    pub fn configure_input(
-        &mut self,
-        executor_id: &str,
-        configuration_input: serde_json::Value,
-    ) -> Result<String, String> {
-        let state_dir = self.state_dir(executor_id)?;
-        if !has_executor_state(&state_dir) {
-            return Err("This executor has not been paired on this computer.".to_owned());
-        }
-        let was_started = self.desired.contains(executor_id) || self.connections.contains_key(executor_id);
-        if was_started {
-            self.stop(executor_id)?;
-        }
-        self.run_to_completion_with_input(
-            configure_input_arguments(&state_dir),
-            configuration_input,
-            "The local executor policy was rejected. No command output was retained.",
-        )?;
-        if was_started {
-            self.start(executor_id)
-        } else {
-            Ok("stopped".to_owned())
-        }
-    }
-
-    /// Pairs into a staging directory named by the enrollment id, because only
-    /// the API can name the executor id and it does so in its reply. The
-    /// directory moves to its executor id once the state file names one, which
-    /// is what keeps `executors\<executorId>` the whole on-disk vocabulary.
-    pub fn pair(
-        &mut self,
-        command: &PairCommand,
-        paired_by: Option<&str>,
-        secure_directory: impl Fn(&Path) -> Result<(), String>,
-    ) -> Result<(String, String), String> {
-        let staging = pending_root(&self.root).join(&command.enrollment_id);
-        let _ = fs::remove_dir_all(&staging);
-        secure_directory(&staging)?;
-        let output = self.run_pair(command, &staging);
-        if output.is_err() {
-            let _ = fs::remove_dir_all(&staging);
-            return output.map(|_| (String::new(), String::new()));
-        }
-        let output = output.unwrap();
-        let fingerprint = parse_fingerprint(&output)
-            .ok_or_else(|| "Nessie executor pairing succeeded but returned no fingerprint.".to_owned())?;
-        let executor_id = self.promote(&staging, paired_by)?;
-        Ok((executor_id, fingerprint))
-    }
-
-    fn run_pair(&self, command: &PairCommand, staging: &Path) -> Result<String, String> {
-        let mut spawned = self
-            .command()
-            .args(pair_arguments(&command.api_base_url, &command.enrollment_id, staging))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
-        let mut standard_input = spawned
-            .stdin
-            .take()
-            .ok_or_else(|| "Nessie Executor could not provide the pairing challenge securely.".to_owned())?;
-        let input = serde_json::to_vec(&serde_json::json!({
-            "challenge": command.challenge,
-            "workspaceRoot": command.workspace_root,
-        }))
-        .map_err(|_| "Nessie Executor could not prepare the local pairing input.".to_owned())?;
-        standard_input
-            .write_all(&input)
-            .map_err(|_| "Nessie Executor could not provide the pairing challenge securely.".to_owned())?;
-        drop(standard_input);
-        let outcome = wait_bounded(&mut spawned, COMMAND_TIMEOUT)?;
-        let mut stdout = String::new();
-        if let Some(mut pipe) = spawned.stdout.take() {
-            let _ = pipe.read_to_string(&mut stdout);
-        }
-        match outcome {
-            Some(0) => Ok(stdout),
-            _ => {
-                let _ = spawned.kill();
-                Err("Nessie executor pairing was rejected. No pairing output was retained.".to_owned())
-            }
-        }
-    }
-
-    /// Reads the executor id the API assigned and moves the staged state under
-    /// it. An id already in use is refused rather than overwritten: that state
-    /// directory holds another pairing's machine key.
-    fn promote(&self, staging: &Path, paired_by: Option<&str>) -> Result<String, String> {
-        let state: serde_json::Value = serde_json::from_slice(
-            &fs::read(staging.join(crate::paths::EXECUTOR_STATE_FILE))
-                .map_err(|_| "Nessie executor pairing left no usable state.".to_owned())?,
-        )
-        .map_err(|_| "Nessie executor pairing left no usable state.".to_owned())?;
-        let executor_id = state
-            .get("executorId")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "Nessie executor pairing left no usable state.".to_owned())?
-            .to_owned();
-        let destination = executor_state_dir(&self.root, &executor_id)?;
-        if destination.exists() {
-            return Err("This executor is already paired on this computer.".to_owned());
-        }
-        fs::create_dir_all(executors_root(&self.root))
-            .map_err(|_| "Nessie Executor could not store the new executor's state.".to_owned())?;
-        fs::rename(staging, &destination)
-            .map_err(|_| "Nessie Executor could not store the new executor's state.".to_owned())?;
-        if let Some(sid) = paired_by {
-            fs::write(destination.join(PAIRED_BY_FILE), format!("{sid}\n"))
-                .map_err(|_| "Nessie Executor could not record the pairing account.".to_owned())?;
-        }
-        Ok(executor_id)
-    }
-
     /// Asks every daemon to stop, without waiting. The service reports
     /// `STOP_PENDING` while [`Self::still_running`] answers above zero.
     pub fn request_shutdown(&mut self) {
@@ -629,129 +469,6 @@ impl Supervisor {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{configure_arguments, configure_input_arguments, describe_arguments, parse_fingerprint, pair_arguments, serve_arguments};
-    use crate::{manifest::VerifiedRuntime, paths::EXECUTOR_STATE_FILE, supervisor::Supervisor};
-    use std::{fs, path::Path};
+#[path = "supervisor_tests.rs"]
+mod supervisor_tests;
 
-    const EXECUTOR_ID: &str = "00000000-0000-4000-8000-000000000001";
-
-    fn paired_supervisor(root: &Path) -> Supervisor {
-        let state = root.join("executors").join(EXECUTOR_ID);
-        fs::create_dir_all(&state).expect("state directory");
-        fs::write(state.join(EXECUTOR_STATE_FILE), b"{}").expect("paired state");
-        Supervisor::new(
-            root.to_path_buf(),
-            VerifiedRuntime {
-                native_helper: root.join("native-helper"),
-                node_executable: root.join("missing-node"),
-                root: root.to_path_buf(),
-            },
-        )
-    }
-
-    #[cfg(windows)]
-    fn scripted_supervisor(root: &Path, serve: &str) -> Supervisor {
-        let mut supervisor = paired_supervisor(root);
-        let script = root.join("fake-node.cmd");
-        fs::write(
-            &script,
-            format!("@echo off\r\nif \"%2\"==\"connect\" exit /b 0\r\nif \"%2\"==\"serve\" {serve}\r\n"),
-        )
-        .expect("script");
-        supervisor.runtime.node_executable = script;
-        supervisor
-    }
-
-    #[test]
-    fn pairing_arguments_keep_sensitive_input_off_the_process_list() {
-        let arguments = pair_arguments(
-            "https://api.nessie.works",
-            "00000000-0000-4000-8000-000000000001",
-            Path::new("/service/state"),
-        );
-        assert!(arguments.contains(&"--pair-input-stdin".to_owned()));
-        assert!(!arguments.iter().any(|argument| argument.contains("challenge-value")));
-        assert!(!arguments.iter().any(|argument| argument.contains("workspace")));
-    }
-
-    #[test]
-    fn the_daemon_is_started_with_the_liveness_pipe_that_stops_it() {
-        // Closing this pipe is the whole Windows stop path; a `serve` without
-        // the flag would have to be terminated instead.
-        assert_eq!(
-            serve_arguments(Path::new("/service/state")),
-            vec!["serve", "--parent-liveness-stdin", "--state-dir", "/service/state"],
-        );
-    }
-
-    #[test]
-    fn a_policy_is_passed_as_the_canonical_comma_separated_list() {
-        assert_eq!(
-            configure_arguments(
-                Path::new("/service/state"),
-                &["file.read".to_owned(), "sandbox.stop".to_owned()],
-            ),
-            vec!["configure", "--state-dir", "/service/state", "--operations", "file.read,sandbox.stop"],
-        );
-    }
-
-    #[test]
-    fn configuration_input_uses_stdin_and_keeps_the_payload_off_argv() {
-        assert_eq!(
-            configure_input_arguments(Path::new("/service/state")),
-            vec!["configure", "--configuration-input-stdin", "--state-dir", "/service/state"],
-        );
-    }
-
-    #[test]
-    fn describe_asks_for_the_credential_free_projection() {
-        assert_eq!(
-            describe_arguments(Path::new("/service/state")),
-            vec!["describe", "--state-dir", "/service/state"],
-        );
-    }
-
-    #[test]
-    fn fingerprint_is_read_from_the_cli_success_line() {
-        assert_eq!(
-            parse_fingerprint("Pairing request submitted. Confirm fingerprint abc123 in Nessie, then run connect.\n"),
-            Some("abc123".to_owned()),
-        );
-        assert_eq!(parse_fingerprint(""), None);
-        assert_eq!(parse_fingerprint("no fingerprint here"), None);
-    }
-
-    #[test]
-    fn a_requested_start_is_visible_while_recovery_retries_and_stop_cancels_it() {
-        let directory = tempfile::tempdir().expect("temporary state");
-        let mut supervisor = paired_supervisor(directory.path());
-        assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
-        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
-        // The packaged command cannot spawn in this portable test, which is a
-        // deterministic stand-in for a boot-time remote outage. It remains
-        // desired until a person explicitly stops it.
-        assert_eq!(supervisor.recover_due().len(), 1);
-        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
-        assert_eq!(supervisor.stop(EXECUTOR_ID), Ok("stopped".to_owned()));
-        assert!(supervisor.recover_due().is_empty());
-        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("stopped".to_owned()));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn a_real_connect_child_is_polled_then_a_crash_is_backed_off_without_status_consuming_it() {
-        let directory = tempfile::tempdir().expect("temporary state");
-        let mut supervisor = scripted_supervisor(directory.path(), "exit /b 0");
-        supervisor.start(EXECUTOR_ID).expect("queue start");
-        supervisor.recover_due(); // spawn connect without holding a network wait
-        std::thread::sleep(std::time::Duration::from_millis(25));
-        supervisor.recover_due(); // connect success, spawn serve
-        std::thread::sleep(std::time::Duration::from_millis(25));
-        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
-        supervisor.recover_due(); // owns the crash observation and schedules backoff
-        assert!(supervisor.recover_due().is_empty(), "crash must not relaunch immediately");
-        supervisor.stop(EXECUTOR_ID).expect("stop cancels retries");
-        assert!(supervisor.recover_due().is_empty());
-    }
-}
