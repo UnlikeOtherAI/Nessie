@@ -242,7 +242,7 @@
 
       const trayState = (view) => {
         if (view.kind !== 'reachable') return 'error'
-        if (view.executors.some((e) => e.daemonStatus === 'stopping' || e.daemonStatus === 'awaitingConfirmation')) {
+        if (view.executors.some((e) => ['starting', 'stopping', 'awaiting_confirmation'].includes(e.daemonStatus))) {
           return 'attention'
         }
         return view.executors.some((e) => e.daemonStatus === 'running') ? 'running' : 'idle'
@@ -286,11 +286,11 @@
           state.textContent = executor.daemonStatus
           const start = document.createElement('button')
           start.textContent = 'Start'
-          start.disabled = busy || executor.daemonStatus === 'running'
+          start.disabled = busy || ['running', 'starting'].includes(executor.daemonStatus)
           start.onclick = () => act('executor_start', { executorId: executor.executorId })
           const stop = document.createElement('button')
           stop.textContent = 'Stop'
-          stop.disabled = busy || executor.daemonStatus !== 'running'
+          stop.disabled = busy || !['running', 'starting'].includes(executor.daemonStatus)
           stop.onclick = () => act('executor_stop', { executorId: executor.executorId })
           const settings = document.createElement('button')
           settings.textContent = 'Settings…'
