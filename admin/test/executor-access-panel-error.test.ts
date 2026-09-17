@@ -42,9 +42,31 @@ const domGlobals = {
   requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
   window: dom.window,
 }
-for (const [key, value] of Object.entries(domGlobals)) {
-  Object.defineProperty(globalThis, key, { configurable: true, value, writable: true })
+
+/**
+ * The admin suite runs `--experimental-test-isolation=none`, so every file
+ * shares one process and one `globalThis`. Installing this DOM permanently
+ * would hand our `localStorage` and `window` to whichever file runs next —
+ * which is not a hypothetical: doing exactly that broke three unrelated
+ * auth-session tests that persist a logout marker. So the DOM is installed
+ * for the duration of a render and put back afterwards.
+ */
+const withDom = async <T>(body: () => Promise<T>): Promise<T> => {
+  const previous = new Map<string, PropertyDescriptor | undefined>()
+  for (const [key, value] of Object.entries(domGlobals)) {
+    previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
+    Object.defineProperty(globalThis, key, { configurable: true, value, writable: true })
+  }
+  try {
+    return await body()
+  } finally {
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else delete (globalThis as Record<string, unknown>)[key]
+    }
+  }
 }
+
 after(() => { dom.window.close() })
 
 const React = await import('react')
@@ -74,7 +96,8 @@ const accessView = {
   sessions: [],
 } as unknown as ExecutorAccessViewWithLocalMcp
 
-const render = async (accessQuery: unknown): Promise<HTMLElement> => {
+/** The rendered markup, with the DOM taken back down before we assert on it. */
+const render = (accessQuery: unknown): Promise<string> => withDom(async () => {
   const container = dom.window.document.createElement('div')
   dom.window.document.body.append(container)
   const root = createRoot(container)
@@ -103,7 +126,18 @@ const render = async (accessQuery: unknown): Promise<HTMLElement> => {
     ))
   })
   await act(async () => { await Promise.resolve() })
-  return container as unknown as HTMLElement
+  const text = container.textContent ?? ''
+  const buttons = [...container.querySelectorAll('button')].map((button) => button.textContent)
+  const selects = container.querySelectorAll('select').length
+  await act(async () => { root.unmount() })
+  container.remove()
+  return JSON.stringify({ buttons, selects, text })
+})
+
+const rendered = async (accessQuery: unknown) => JSON.parse(await render(accessQuery)) as {
+  buttons: Array<string | null>
+  selects: number
+  text: string
 }
 
 const erroredQuery = (error: unknown) => ({
@@ -115,8 +149,7 @@ const erroredQuery = (error: unknown) => ({
 })
 
 test('a payload this build cannot read is said out loud, not rendered as a lack of standing', async () => {
-  const container = await render(erroredQuery(new ApiClientError('bad', 'INVALID_RESPONSE', 200)))
-  const text = container.textContent ?? ''
+  const { text } = await rendered(erroredQuery(new ApiClientError('bad', 'INVALID_RESPONSE', 200)))
 
   assert.match(text, /older than the server/, 'the sentence must name the stale app')
   assert.match(text, /Update or reinstall/, 'and the remedy Retry cannot reach')
@@ -129,26 +162,21 @@ test('a payload this build cannot read is said out loud, not rendered as a lack 
 })
 
 test('an ordinary failure keeps the ordinary sentence and the Retry', async () => {
-  const container = await render(erroredQuery(new Error('network down')))
-  const text = container.textContent ?? ''
+  const { buttons, text } = await rendered(erroredQuery(new Error('network down')))
   assert.match(text, /could not be loaded/)
   assert.doesNotMatch(text, /older than the server/)
-  assert.ok(
-    [...container.querySelectorAll('button')].some((button) => button.textContent === 'Retry'),
-    'a failed fetch offers the one recovery it has',
-  )
+  assert.ok(buttons.includes('Retry'), 'a failed fetch offers the one recovery it has')
 })
 
 test('when the access view reads, the grant controls are on screen', async () => {
-  const container = await render({
+  const { selects, text } = await rendered({
     data: accessView,
     error: null,
     isError: false,
     isLoading: false,
     refetch: () => {},
   })
-  const text = container.textContent ?? ''
   assert.match(text, /Prepare paired agent-operation grant/)
   assert.doesNotMatch(text, /could not be loaded/)
-  assert.ok(container.querySelectorAll('select').length >= 3, 'agent, operation and state pickers')
+  assert.ok(selects >= 3, 'agent, operation and state pickers')
 })
