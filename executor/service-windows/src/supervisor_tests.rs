@@ -27,7 +27,7 @@ fn scripted_supervisor(root: &Path) -> Supervisor {
     let script = root.join("fake-node.cmd");
     fs::write(
         &script,
-        "@echo off\r\nif \"%2\"==\"connect\" (echo connected>\"%4\\connect.marker\" & exit /b 0)\r\nif \"%2\"==\"serve\" (echo serving>\"%5\\serve.marker\" & :loop & if exist \"%5\\crash.marker\" exit /b 0 & timeout /t 1 >nul & goto loop)\r\n",
+        "@echo off\r\nif \"%2\"==\"connect\" (echo connected>\"%~dp0connect.marker\" & exit /b 0)\r\nif \"%2\"==\"serve\" (echo serving>\"%~dp0serve.marker\" & :loop & if exist \"%~dp0crash.marker\" exit /b 0 & timeout /t 1 >nul & goto loop)\r\n",
     )
     .expect("script");
     supervisor.runtime.node_executable = script;
@@ -148,7 +148,7 @@ fn until(mut condition: impl FnMut() -> bool) {
 #[test]
 fn recovery_observes_connect_serve_crash_backoff_stop_and_shutdown() {
     let directory = tempfile::tempdir().expect("temporary state");
-    let state = directory.path().join("executors").join(EXECUTOR_ID);
+    let state = directory.path().to_path_buf();
     let mut supervisor = scripted_supervisor(directory.path());
     supervisor.start(EXECUTOR_ID).expect("queue start");
     supervisor.recover_due();
