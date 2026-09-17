@@ -80,30 +80,35 @@ export const TokenUsagePage = () => {
         title={view === 'statement' ? 'Statement' : 'Credits & Billing'}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {checkoutNotice && (
-          <div className="mb-4" data-testid="uoa-billing-checkout-return">
-            <Notice padding="lg" role="status" tone="info">
-              <div className="font-semibold text-[color:var(--tx)]">
-                {checkoutNotice.title}
-              </div>
-              <p className="mt-1 text-sm">
-                {checkoutNotice.message}
-              </p>
-            </Notice>
-          </div>
-        )}
-        {view === 'usage' ? (
-          <>
-            <UoaBillingCreditsPanel
-              onViewStatement={canReadStatement ? () => setView('statement') : undefined}
-            />
-            {canReadStatement && <UoaBillingPlanSummary />}
-            <UoaBillingRecurringAddonsPanel />
-          </>
-        ) : (
-          canReadStatement && <UoaBillingStatementPanel />
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto px-10 py-9">
+        {/* The prototype reads as a single dense column, not the admin's
+            usual edge-to-edge body — this page caps its own content width
+            rather than using the shared full-width `PageBody`. */}
+        <div className="mx-auto grid w-full max-w-[1040px] gap-8">
+          {checkoutNotice && (
+            <div data-testid="uoa-billing-checkout-return">
+              <Notice padding="lg" role="status" tone="info">
+                <div className="font-semibold text-[color:var(--tx)]">
+                  {checkoutNotice.title}
+                </div>
+                <p className="mt-1 text-sm">
+                  {checkoutNotice.message}
+                </p>
+              </Notice>
+            </div>
+          )}
+          {view === 'usage' ? (
+            <>
+              <UoaBillingCreditsPanel
+                onViewStatement={canReadStatement ? () => setView('statement') : undefined}
+              />
+              {canReadStatement && <UoaBillingPlanSummary />}
+              <UoaBillingRecurringAddonsPanel />
+            </>
+          ) : (
+            canReadStatement && <UoaBillingStatementPanel />
+          )}
+        </div>
       </div>
     </section>
   )

@@ -7,12 +7,8 @@ import type {
 
 import { useUoaBillingCredits } from '../../../facades/billing/hooks'
 import { Pill } from '../../primitives/Pill'
-import { SectionLabel } from '../../primitives/SectionLabel'
-import { Card } from '../../shared/Card'
-import { Section } from '../../shared/PageBody'
 import { QueryState } from '../../shared/QueryState'
-import { Row, RowList } from '../../shared/RowList'
-import { StatGrid, StatTile } from '../../shared/StatTile'
+import { Row } from '../../shared/RowList'
 import { UoaBillingAutoTopUpDialog } from './UoaBillingAutoTopUpDialog'
 import { UoaBillingBuyCreditsDialog } from './UoaBillingBuyCreditsDialog'
 
@@ -21,22 +17,30 @@ const isManagerCredits = (
 ): credits is BillingCreditsManagerV1 =>
   credits.viewer.role === 'billing_manager'
 
+// A flat divider-only list — deliberately not `RowList`, which draws its own
+// bordered box outside a Card. The prototype has no boxes here, only thin
+// row dividers.
+const FlatList = ({ children }: { children: React.ReactNode }) => (
+  <ul className="divide-y divide-[color:var(--sep)]">{children}</ul>
+)
+
 const ManagerServiceBreakdown = ({
   credits,
 }: {
   credits: BillingCreditsManagerV1
 }) => (
-  <Section title="Credits used by service">
+  <div>
+    <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">Credits used by service</h2>
     {credits.credit_summary.consumed_breakdown.length === 0 ? (
-      <p className="text-sm text-[color:var(--tx2)]">No credits used in this period.</p>
+      <p className="mt-3 text-sm text-[color:var(--tx2)]">No credits used in this period.</p>
     ) : (
-      <RowList label="Credits used by service">
+      <FlatList>
         {credits.credit_summary.consumed_breakdown.map((item) => (
           <Row
             key={item.service.id}
             subtitle={`${item.users.length} attributed user${item.users.length === 1 ? '' : 's'} · ${item.unattributed_credits_consumed.display} unattributed`}
             title={item.service.name}
-            trailing={<span className="font-semibold text-[color:var(--tx)]">{item.credits_consumed.display}</span>}
+            trailing={<span className="text-[color:var(--tx)]">{item.credits_consumed.display}</span>}
           >
             {item.users.length > 0 && (
               <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx2)]">
@@ -50,9 +54,9 @@ const ManagerServiceBreakdown = ({
             )}
           </Row>
         ))}
-      </RowList>
+      </FlatList>
     )}
-  </Section>
+  </div>
 )
 
 const MemberServiceBreakdown = ({
@@ -60,22 +64,23 @@ const MemberServiceBreakdown = ({
 }: {
   credits: BillingCreditsMemberV1
 }) => (
-  <Section title="Credits used by service">
+  <div>
+    <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">Credits used by service</h2>
     {credits.credit_summary.consumed_breakdown.length === 0 ? (
-      <p className="text-sm text-[color:var(--tx2)]">No credits used in this period.</p>
+      <p className="mt-3 text-sm text-[color:var(--tx2)]">No credits used in this period.</p>
     ) : (
-      <RowList label="Credits used by service">
+      <FlatList>
         {credits.credit_summary.consumed_breakdown.map((item) => (
           <Row
             key={item.service.id}
             subtitle={`${item.viewer_credits_consumed.display} yours · ${item.other_team_members_credits_consumed.display} other members · ${item.unattributed_credits_consumed.display} unattributed`}
             title={item.service.name}
-            trailing={<span className="font-semibold text-[color:var(--tx)]">{item.credits_consumed.display}</span>}
+            trailing={<span className="text-[color:var(--tx)]">{item.credits_consumed.display}</span>}
           />
         ))}
-      </RowList>
+      </FlatList>
     )}
-  </Section>
+  </div>
 )
 
 const ServiceBreakdown = ({ credits }: { credits: BillingCreditsV1 }) =>
@@ -83,58 +88,13 @@ const ServiceBreakdown = ({ credits }: { credits: BillingCreditsV1 }) =>
     ? <ManagerServiceBreakdown credits={credits} />
     : <MemberServiceBreakdown credits={credits} />
 
-const ManagerAutomaticTopUp = ({
-  credits,
-  onOpen,
-}: {
-  credits: BillingCreditsManagerV1
-  onOpen: () => void
-}) => {
-  const automatic = credits.automatic_top_up
-  return (
-    <Section title="Automatic top-up">
-      <Row
-        onClick={onOpen}
-        subtitle={automatic.description}
-        title={automatic.display_status}
-        trailing={<Pill tone="outline">{automatic.state}</Pill>}
-      />
-    </Section>
-  )
-}
-
-const MemberAutomaticTopUp = ({
-  credits,
-}: {
-  credits: BillingCreditsMemberV1
-}) => (
-  <Section title="Automatic top-up">
-    <div className="text-sm font-semibold text-[color:var(--tx)]">
-      Payment method status: {credits.automatic_top_up.payment_method.status}
-    </div>
-    <p className="mt-1 text-xs text-[color:var(--tx2)]">
-      Detailed automatic top-up settings are managed by billing managers.
-    </p>
-  </Section>
-)
-
-const AutomaticTopUp = ({
-  credits,
-  onOpenManager,
-}: {
-  credits: BillingCreditsV1
-  onOpenManager: () => void
-}) =>
-  isManagerCredits(credits)
-    ? <ManagerAutomaticTopUp credits={credits} onOpen={onOpenManager} />
-    : <MemberAutomaticTopUp credits={credits} />
-
 const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
-  <Section title="Recent credit activity">
+  <div>
+    <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">Recent credit activity</h2>
     {credits.recent_entries.length === 0 ? (
-      <p className="text-sm text-[color:var(--tx2)]">No recent credit activity.</p>
+      <p className="mt-3 text-sm text-[color:var(--tx2)]">No recent credit activity.</p>
     ) : (
-      <RowList label="Recent credit activity">
+      <FlatList>
         {credits.recent_entries.map((entry) => (
           <Row
             key={entry.id}
@@ -142,20 +102,57 @@ const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
             title={entry.label}
             trailing={
               <div className="text-right text-sm">
-                <div className="font-semibold text-[color:var(--tx)]">
+                <div className="text-[color:var(--tx)]">
                   {entry.direction === 'credit' ? '+' : '−'}{entry.credits.display}
                 </div>
-                <div className="mt-1 text-xs text-[color:var(--tx2)]">
+                <div className="mt-0.5 text-xs text-[color:var(--tx2)]">
                   {entry.credit_balance_after.display} remaining
                 </div>
               </div>
             }
           />
         ))}
-      </RowList>
+      </FlatList>
     )}
-  </Section>
+  </div>
 )
+
+const AutoTopUpRow = ({
+  credits,
+  onOpen,
+}: {
+  credits: BillingCreditsV1
+  onOpen: () => void
+}) => {
+  if (!isManagerCredits(credits)) {
+    return (
+      <div className="mt-5 border-y border-[color:var(--sep)] py-4">
+        <div className="font-medium text-[color:var(--tx)]">Automatic top-up</div>
+        <div className="mt-0.5 text-sm text-[color:var(--tx2)]">
+          Payment method status: {credits.automatic_top_up.payment_method.status}
+        </div>
+        <p className="mt-1 text-xs text-[color:var(--tx2)]">
+          Detailed automatic top-up settings are managed by billing managers.
+        </p>
+      </div>
+    )
+  }
+
+  const automatic = credits.automatic_top_up
+  return (
+    <button
+      className="mt-5 flex w-full items-center justify-between gap-4 border-y border-[color:var(--sep)] py-4 text-left"
+      onClick={onOpen}
+      type="button"
+    >
+      <div className="min-w-0">
+        <div className="font-medium text-[color:var(--tx)]">{automatic.display_status}</div>
+        <div className="mt-0.5 text-sm text-[color:var(--tx2)]">{automatic.description}</div>
+      </div>
+      <span className="flex-none text-[color:var(--tx3)]">›</span>
+    </button>
+  )
+}
 
 const BalanceActions = ({
   credits,
@@ -166,7 +163,7 @@ const BalanceActions = ({
   onBuyCredits: () => void
   onViewStatement?: () => void
 }) => (
-  <div className="flex flex-none gap-2">
+  <div className="flex flex-none gap-2.5">
     {onViewStatement && (
       <button
         className="admin-button admin-button-secondary"
@@ -200,87 +197,75 @@ export const UoaBillingCreditsPanel = ({
   const [autoTopUpOpen, setAutoTopUpOpen] = useState(false)
 
   return (
-    <section className="mb-8" data-testid="uoa-billing-credits">
-      <SectionLabel>Team credits</SectionLabel>
-      <Card className="mt-2" variant="section">
-        <QueryState
-          errorLabel="Credits are unavailable."
-          loadingLabel="Loading team credits…"
-          query={credits}
-        >
-          {() => data && (
-            <div className="grid gap-5">
+    <section data-testid="uoa-billing-credits">
+      <QueryState
+        errorLabel="Credits are unavailable."
+        loadingLabel="Loading team credits…"
+        query={credits}
+      >
+        {() => data && (
+          <div className="grid gap-8">
+            <div>
+              <div className="mb-3.5 flex items-center gap-2.5">
+                <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">Credits balance</h2>
+                <Pill size="sm" tone="outline">
+                  {data.viewer.role === 'billing_manager'
+                    ? 'Full team detail'
+                    : 'Your usage + team totals'}
+                </Pill>
+              </div>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="text-3xl font-semibold text-[color:var(--tx)]" data-testid="remaining-credits">
+                  <div
+                    className="text-[28px] font-semibold tracking-tight text-[color:var(--tx)]"
+                    data-testid="remaining-credits"
+                  >
                     {data.credit_balance.display}
                   </div>
-                  <h2 className="mt-1 text-sm font-semibold text-[color:var(--tx)]">
+                  <div className="mt-1 text-sm font-medium text-[color:var(--tx)]">
                     {data.credit_balance.label}
-                  </h2>
-                  <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
+                  </div>
+                  <p className="mt-1 max-w-2xl text-[color:var(--tx2)]">
                     {data.credit_balance.description}
                   </p>
+                  <p className="mt-2 text-sm text-[color:var(--tx3)]">
+                    {data.credit_summary.credits_added.display} added ·{' '}
+                    {data.credit_summary.credits_consumed.display} used ·{' '}
+                    {data.credit_summary.pending_credits.display} pending
+                  </p>
                 </div>
-                <div className="flex flex-wrap items-start gap-3">
-                  <Pill tone="outline">
-                    {data.viewer.role === 'billing_manager'
-                      ? 'Full team detail'
-                      : 'Your usage + team totals'}
-                  </Pill>
-                  <BalanceActions
-                    credits={data}
-                    onBuyCredits={() => setBuyCreditsOpen(true)}
-                    onViewStatement={onViewStatement}
-                  />
-                </div>
+                <BalanceActions
+                  credits={data}
+                  onBuyCredits={() => setBuyCreditsOpen(true)}
+                  onViewStatement={onViewStatement}
+                />
               </div>
-
-              <div>
-                <StatGrid className="sm:grid-cols-3">
-                  <StatTile
-                    detail={data.pending_credits.description}
-                    label={data.pending_credits.label}
-                    value={data.credit_summary.pending_credits.display}
-                  />
-                  <StatTile
-                    detail="Credits added during the current period"
-                    label="Added"
-                    value={data.credit_summary.credits_added.display}
-                  />
-                  <StatTile
-                    detail="Credits used across connected services this period"
-                    label="Used"
-                    value={data.credit_summary.credits_consumed.display}
-                  />
-                </StatGrid>
-                <p className="mt-3 text-xs text-[color:var(--tx3)]">
-                  {data.conversion.description}
-                </p>
-              </div>
-
-              <ServiceBreakdown credits={data} />
-              <RecentActivity credits={data} />
-              <AutomaticTopUp credits={data} onOpenManager={() => setAutoTopUpOpen(true)} />
-
-              {isManagerCredits(data) && (
-                <>
-                  <UoaBillingBuyCreditsDialog
-                    credits={data}
-                    onClose={() => setBuyCreditsOpen(false)}
-                    open={buyCreditsOpen}
-                  />
-                  <UoaBillingAutoTopUpDialog
-                    credits={data}
-                    onClose={() => setAutoTopUpOpen(false)}
-                    open={autoTopUpOpen}
-                  />
-                </>
-              )}
+              <AutoTopUpRow credits={data} onOpen={() => setAutoTopUpOpen(true)} />
+              <p className="mt-3 text-xs text-[color:var(--tx3)]">
+                {data.conversion.description}
+              </p>
             </div>
-          )}
-        </QueryState>
-      </Card>
+
+            <ServiceBreakdown credits={data} />
+            <RecentActivity credits={data} />
+
+            {isManagerCredits(data) && (
+              <>
+                <UoaBillingBuyCreditsDialog
+                  credits={data}
+                  onClose={() => setBuyCreditsOpen(false)}
+                  open={buyCreditsOpen}
+                />
+                <UoaBillingAutoTopUpDialog
+                  credits={data}
+                  onClose={() => setAutoTopUpOpen(false)}
+                  open={autoTopUpOpen}
+                />
+              </>
+            )}
+          </div>
+        )}
+      </QueryState>
     </section>
   )
 }

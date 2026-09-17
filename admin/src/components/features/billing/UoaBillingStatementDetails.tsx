@@ -9,7 +9,14 @@ import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
-import { Row, RowList } from '../../shared/RowList'
+import { Row } from '../../shared/RowList'
+
+// A flat divider-only list — deliberately not `RowList`, which draws its own
+// bordered box outside a Card. The prototype has no boxes here, only thin
+// row dividers.
+const FlatList = ({ children }: { children: React.ReactNode }) => (
+  <ul className="divide-y divide-[color:var(--sep)]">{children}</ul>
+)
 
 const EmptyLine = ({ children }: { children: string }) => (
   <p className="text-sm text-[color:var(--tx2)]">{children}</p>
@@ -154,7 +161,7 @@ const ProductsTab = ({ statement }: { statement: BillingStatementV2 }) => {
     return <EmptyLine>No connected service activity in this period.</EmptyLine>
   }
   return (
-    <RowList label="Products">
+    <FlatList>
       {services.map((service) => (
         <ProductRow
           isOpen={open === service.billing_product}
@@ -163,7 +170,7 @@ const ProductsTab = ({ statement }: { statement: BillingStatementV2 }) => {
           service={service}
         />
       ))}
-    </RowList>
+    </FlatList>
   )
 }
 
@@ -247,7 +254,7 @@ const PeopleTab = ({ statement }: { statement: BillingStatementV2 }) => {
     return <EmptyLine>No per-user metered usage in this period.</EmptyLine>
   }
   return (
-    <RowList label="People">
+    <FlatList>
       {users.map((user) => (
         <PersonRow
           isOpen={open === user.user_id}
@@ -257,7 +264,7 @@ const PeopleTab = ({ statement }: { statement: BillingStatementV2 }) => {
           user={user}
         />
       ))}
-    </RowList>
+    </FlatList>
   )
 }
 
@@ -408,7 +415,7 @@ const ProvidersTab = ({ statement }: { statement: BillingStatementV2 }) => {
         Grouped by Nessie&apos;s own billing/caller/origin product attribution — the protocol
         does not track usage at the individual AI-provider level (e.g. a specific model vendor).
       </p>
-      <RowList label="Providers">
+      <FlatList>
         {groups.map((group) => (
           <ProviderRow
             group={group}
@@ -418,7 +425,7 @@ const ProvidersTab = ({ statement }: { statement: BillingStatementV2 }) => {
             serviceName={serviceNames.get(group.billedBy) ?? group.billedBy}
           />
         ))}
-      </RowList>
+      </FlatList>
     </>
   )
 }
@@ -436,33 +443,33 @@ export const UoaBillingStatementDetails = ({
 
   return (
     <>
-      <div className="mt-6">
-        <SectionLabel>Statement line items</SectionLabel>
+      <div className="mt-8">
+        <h2 className="mb-1 text-[17px] font-semibold text-[color:var(--tx)]">Statement line items</h2>
         <div className="mt-2">
           {statement.commercial_lines.length === 0 ? (
             <EmptyLine>No subscription, usage, add-on, credit, or adjustment lines.</EmptyLine>
           ) : (
-            <RowList label="Statement line items">
+            <FlatList>
               {statement.commercial_lines.map((line) => (
                 <Row
                   key={line.id}
                   subtitle={line.detail}
                   title={line.label}
                   trailing={
-                    <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">
+                    <span className="font-mono text-[color:var(--tx)]">
                       {line.amount.display}
                     </span>
                   }
                 />
               ))}
-            </RowList>
+            </FlatList>
           )}
         </div>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <SectionLabel>Usage</SectionLabel>
+          <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">Usage</h2>
           <TabBar
             ariaLabel="Usage breakdown"
             idPrefix="uoa-billing-usage"
