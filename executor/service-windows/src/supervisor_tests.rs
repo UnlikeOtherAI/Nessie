@@ -210,21 +210,22 @@ fn recovery_retries_an_offline_connect_then_recovers_and_shutdown_cancels_a_pend
     });
     assert_eq!(supervisor.status(EXECUTOR_ID), Ok("running".to_owned()));
 
-    supervisor.stop(EXECUTOR_ID).expect("stop live daemon");
-    fs::remove_file(state.join("connect.marker")).expect("reset marker");
-    fs::remove_file(state.join("serve.marker")).expect("reset marker");
-    fs::write(state.join("connect-block.marker"), b"").expect("block connect");
-    supervisor
+    supervisor.request_shutdown();
+    let blocked = tempfile::tempdir().expect("blocked state");
+    let blocked_state = blocked.path().join("executors").join(EXECUTOR_ID);
+    let mut blocked_supervisor = scripted_supervisor(blocked.path());
+    fs::write(blocked_state.join("connect-block.marker"), b"").expect("block connect");
+    blocked_supervisor
         .start(EXECUTOR_ID)
         .expect("queue blocked connect");
-    supervisor.recover_due();
-    until(|| state.join("connect.marker").exists());
-    supervisor.request_shutdown();
-    fs::remove_file(state.join("connect-block.marker")).expect("unblock connect");
+    blocked_supervisor.recover_due();
+    until(|| blocked_state.join("connect.marker").exists());
+    blocked_supervisor.request_shutdown();
+    fs::remove_file(blocked_state.join("connect-block.marker")).expect("unblock connect");
     std::thread::sleep(std::time::Duration::from_millis(50));
-    assert!(supervisor.desired.is_empty() && supervisor.connections.is_empty());
+    assert!(blocked_supervisor.desired.is_empty() && blocked_supervisor.connections.is_empty());
     assert!(
-        !state.join("serve.marker").exists(),
+        !blocked_state.join("serve.marker").exists(),
         "shutdown must not launch serve"
     );
 }
