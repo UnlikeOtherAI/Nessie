@@ -304,8 +304,9 @@ keeps their work, so somebody with administrative rights has to grant
 `NT SERVICE\NessieExecutor` **Read** on the workspace root. Draft changes are
 written only to the service's private COW state. The elevated step
 merges that one entry into the directory's existing permissions — it never
-replaces them — then asks the service over its administrator-only control pipe
-to record the SID from the elevated connection's token. The tray never writes
+replaces them — then uses the locally ACL-gated control pipe's enrollment
+command, which requires an administrator token, to record the SID from the
+elevated connection. The tray never writes
 the private service root. That recorded SID is what admits the person's
 ordinary, unelevated tray to the control pipe afterwards, so nothing prompts
 again.

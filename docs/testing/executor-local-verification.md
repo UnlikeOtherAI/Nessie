@@ -13,8 +13,8 @@ replace that boundary. This is live failure evidence, not release evidence.
 
 The corrected implementation moves the initial owner-only DACL setup into an
 elevated, packaged native-helper custom action before the service starts. The
-tray's elevated workspace grant now asks the service over the local
-administrator-only pipe to record the caller SID from the authenticated token;
+tray's elevated workspace grant now asks the service over the locally
+ACL-gated pipe to record the caller SID from an authenticated administrator token;
 it does not write the protected service tree. Native tests exercise the exact
 pipe access mask, repeated listener creation, caller-derived enrollment, and
 the refusal path. Recovery tests use real child processes to prove
@@ -25,8 +25,9 @@ the expected executor id.
 
 A corrected debug MSI was then installed over that baseline. The
 `NessieExecutor` service remained `Running` and `Auto` under
-`NT SERVICE\NessieExecutor`; the state root became owner-only (an ordinary user
-could no longer read its ACL or log), an elevated workspace grant recorded the
+`NT SERVICE\NessieExecutor`; the installer action completed, the service's
+owner-only verification passed, and an ordinary user could no longer read the
+state ACL or log. An elevated workspace grant recorded the
 user, and the same ordinary user completed three consecutive exact-rights
 `status` pipe exchanges without stopping the service. That live run exposed one
 remaining client-framing defect: the tray received a valid newline-delimited
