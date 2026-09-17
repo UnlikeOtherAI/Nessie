@@ -21,6 +21,12 @@ type LocalDescriptorConfig = {
   profiles: string[]
   revision: number
   /**
+   * The local MCP server names this policy fronts. The names are part of the
+   * digest, so adding a server is a revision a person reviews — the launch
+   * specs (argv, cwd, env) stay local and never reach Nessie.
+   */
+  mcpServers?: string[]
+  /**
    * The workspace folder names this policy exposes; absent for a descriptor
    * signed before folders had names, which describes exactly one folder. The
    * names are part of the digest, so adding a folder is a revision a person
@@ -74,6 +80,7 @@ export const buildSignedDescriptor = (
     // empty array would advertise a rule where the policy has none, and the
     // schema refuses it rather than letting the two readings blur.
     ...(config.commandAllowlist?.length ? { commandAllowlist: config.commandAllowlist } : {}),
+    ...(config.mcpServers?.length ? { mcpServers: config.mcpServers } : {}),
     ...(config.workspaceFolders?.length ? { workspaceFolders: config.workspaceFolders } : {}),
     limits: config.limits,
     localPolicyDigest: policyDigest(config),
