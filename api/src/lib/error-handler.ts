@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { Prisma } from '@prisma/client'
 import { ZodError } from 'zod'
 
 import { sendApiError } from './api.js'
@@ -41,6 +42,37 @@ export const registerApiErrorHandler = (app: FastifyInstance): void => {
         error.flatten(),
       )
       return
+    }
+
+    // Path and query params reach Prisma unvalidated in most route files
+    // (`request.params as { … }` casts), so a caller-typed id lands on a
+    // `@db.Uuid` column raw and Postgres rejects the cast: Prisma rethrows
+    // that as P2023. That is a client typo, not a server fault — the same
+    // trap `gmail-drafts.ts` used to guard per-route — so it answers 400.
+    //
+    // P2025 ("record not found": `update`/`delete`/`*OrThrow` on a missing
+    // row) is the same class from the caller's side: the record they named
+    // does not exist, which is what 404 means. Mapping it here could mask a
+    // genuine server bug — an update aimed at a row the server itself should
+    // have guaranteed would also read as 404. That is accepted deliberately:
+    // routes whose missing row would be an internal inconsistency keep their
+    // own domain mappers, which run first and never reach this backstop, and
+    // a 404 for a stale caller-held id is correct far more often than a
+    // server-computed id goes missing.
+    //
+    // Neither branch echoes `error.message`: Prisma interpolates the rejected
+    // value and the model name into it — the same leak the 500 branch below
+    // refuses. Fixed wording only, and no log line: a malformed id is a
+    // client event, not an operator one.
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2023') {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'A request parameter was malformed')
+        return
+      }
+      if (error.code === 'P2025') {
+        sendApiError(reply, 404, 'NOT_FOUND', 'The requested record does not exist')
+        return
+      }
     }
 
     if (isClientFastifyError(error)) {

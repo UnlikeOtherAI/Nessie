@@ -60,8 +60,10 @@ export const EmailMessageBody = ({ message }: { message: RenderableMailMessage }
       )}
       <div
         className="email-body text-sm text-[color:var(--tx2)]"
-        // Sanitized at ingest by the one parser, with scripts, handlers and
-        // unsafe URL schemes removed; this renders the stored safe form.
+        // Sanitized at ingest by the parser-based allowlist in
+        // @nessie/agent-mail (sanitize-html/htmlparser2), with scripts,
+        // handlers and unsafe URL schemes removed; this renders the stored
+        // safe form.
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>

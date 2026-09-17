@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { sendApiError } from '../lib/api.js'
 import { clearRefreshCookie, readRefreshCookie } from '../lib/refresh-cookie.js'
+import { isOriginAllowed } from '../lib/server-origin-policy.js'
 import { hashRefreshToken } from '../services/refresh-token-crypto.js'
 import {
   consumeRefreshToken,
@@ -37,6 +38,25 @@ export const registerAuthRefreshRoute = (
   } = deps
 
   app.post('/api/auth/refresh', { config: { public: true } }, async (request, reply) => {
+    // CSRF posture for this cookie-bearing route: the refresh cookie is
+    // SameSite=None in production (admin and API are sibling subdomains —
+    // deliberate), so a cross-site browser request DOES present it. A present
+    // Origin must therefore name an origin this deployment serves. An absent
+    // Origin is not a browser — the CLI, the desktop app and curl send none —
+    // and is allowed through; only a present, unallowed Origin is refused.
+    const origin = deps.parseHeaderValue(request.headers.origin)
+    if (
+      origin
+      && !isOriginAllowed({
+        allowedOrigins: deps.allowedCorsOrigins,
+        mode: config.mode,
+        origin,
+        teamHostBaseDomain: deps.teamHostBaseDomain,
+      })
+    ) {
+      sendApiError(reply, 403, 'ORIGIN_FORBIDDEN', 'A permitted browser origin is required')
+      return reply
+    }
     const rawToken = readRefreshCookie(request)
     if (!rawToken) {
       sendApiError(reply, 401, 'NO_REFRESH_TOKEN', 'No refresh token')

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { registerAuditLogRoutes } from '../../src/routes/audit-log.js'
-import { IDS, foreignOwner, makeApp, seedTenants } from './harness.js'
+import { IDS, foreignOwner, localOwner, makeApp, seedTenants } from './harness.js'
 import { TenantStore } from './tenant-store.js'
 
 const seedAudit = (store: TenantStore) => {
@@ -68,5 +68,56 @@ test('GET /api/audit-log/verify only walks the caller\'s own chain', async () =>
   const body = res.json() as { data: { valid: boolean; checkedCount: number } }
   assert.equal(body.data.valid, true)
   assert.equal(body.data.checkedCount, 0)
+  await app.close()
+})
+
+// A mistyped date filter used to reach node-postgres as an Invalid Date and
+// answer 500 on the compliance surface; both endpoints now reject it as the
+// caller's error.
+test('GET /api/audit-log?from=banana answers 400, not 500', async () => {
+  const store = new TenantStore()
+  seedAudit(store)
+  const app = makeApp(registerAuditLogRoutes, store, foreignOwner())
+
+  const res = await app.inject({ method: 'GET', url: '/api/audit-log?from=banana' })
+  assert.equal(res.statusCode, 400)
+  assert.equal((res.json() as { error: { code: string } }).error.code, 'VALIDATION_ERROR')
+  await app.close()
+})
+
+test('GET /api/audit-log/summary?to=banana answers 400, not 500', async () => {
+  const store = new TenantStore()
+  seedAudit(store)
+  const app = makeApp(registerAuditLogRoutes, store, foreignOwner())
+
+  const res = await app.inject({ method: 'GET', url: '/api/audit-log/summary?to=banana' })
+  assert.equal(res.statusCode, 400)
+  assert.equal((res.json() as { error: { code: string } }).error.code, 'VALIDATION_ERROR')
+  await app.close()
+})
+
+test('GET /api/audit-log/summary?groupBy= outside the whitelist answers 400', async () => {
+  const store = new TenantStore()
+  seedAudit(store)
+  const app = makeApp(registerAuditLogRoutes, store, foreignOwner())
+
+  const res = await app.inject({ method: 'GET', url: '/api/audit-log/summary?groupBy=metadata' })
+  assert.equal(res.statusCode, 400)
+  assert.equal((res.json() as { error: { code: string } }).error.code, 'VALIDATION_ERROR')
+  await app.close()
+})
+
+// The positive control for the coercion: everything `new Date` accepted before
+// must still parse, and a valid filter still reaches the query.
+test('GET /api/audit-log with a valid date filter still answers 200', async () => {
+  const store = new TenantStore()
+  seedAudit(store)
+  const app = makeApp(registerAuditLogRoutes, store, localOwner())
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/audit-log?from=2026-06-01&to=2026-08-01T00:00:00.000Z',
+  })
+  assert.equal(res.statusCode, 200)
   await app.close()
 })

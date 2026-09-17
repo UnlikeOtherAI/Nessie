@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 
 import { verifyAuditChain } from '@nessie/db'
-import { createApiResponse, sendApiError } from '../lib/api.js'
+import { AuditLogQuerySchema, AuditLogSummaryQuerySchema } from '@nessie/schemas'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   getAuditLogEntry,
   getAuditLogSummary,
@@ -17,22 +18,23 @@ export const registerAuditLogRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const query = request.query as Record<string, string | undefined>
+    const query = parseInput(AuditLogQuerySchema, request.query ?? {}, reply, 'query')
+    if (!query) return reply
     const result = await listAuditLogs(prisma, {
       organizationId: actorContext.tenant.organizationId,
-      action: query['action'],
-      actorId: query['actorId'],
-      resourceType: query['resourceType'],
-      resourceId: query['resourceId'],
-      projectId: query['projectId'],
-      teamId: query['teamId'],
-      channelId: query['channelId'],
-      outcome: query['outcome'],
-      from: query['from'],
-      to: query['to'],
-      cursor: query['cursor'],
-      direction: query['direction'] === 'backward' ? 'backward' : 'forward',
-      limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
+      action: query.action,
+      actorId: query.actorId,
+      resourceType: query.resourceType,
+      resourceId: query.resourceId,
+      projectId: query.projectId,
+      teamId: query.teamId,
+      channelId: query.channelId,
+      outcome: query.outcome,
+      from: query.from,
+      to: query.to,
+      cursor: query.cursor,
+      direction: query.direction === 'backward' ? 'backward' : 'forward',
+      limit: query.limit ? parseInt(query.limit, 10) : undefined,
     })
 
     return { data: result.data, meta: result.meta }
@@ -43,15 +45,15 @@ export const registerAuditLogRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const query = request.query as Record<string, string | undefined>
-    const groupBy = (query['groupBy'] ?? 'action') as 'action' | 'actorId' | 'resourceType' | 'outcome'
+    const query = parseInput(AuditLogSummaryQuerySchema, request.query ?? {}, reply, 'query')
+    if (!query) return reply
 
     const result = await getAuditLogSummary(
       prisma,
       actorContext.tenant.organizationId,
-      groupBy,
-      query['from'],
-      query['to'],
+      query.groupBy ?? 'action',
+      query.from,
+      query.to,
     )
 
     return createApiResponse(result)
