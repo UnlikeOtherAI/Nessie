@@ -65,6 +65,14 @@ const channelActions: PageHeaderAction[] = [
 ]
 
 const secretsActions: PageHeaderAction[] = [
+  {
+    checked: true,
+    id: 'show-archived',
+    kind: 'toggle',
+    label: 'Show archived',
+    onChange: () => undefined,
+    priority: 10,
+  },
   { id: 'new-secret', label: 'New secret', onSelect: () => undefined, primary: true, priority: 100 },
 ]
 
@@ -90,7 +98,12 @@ const Board = ({ theme }: { theme: string }) => (
       <ResponsivePageHeader actions={projectActions} eyebrow="Project" title="Nessie" />
       <ResponsivePageHeader actions={channelActions} title="# general" />
       <ResponsivePageHeader actions={knowledgeActions} title="Knowledge" />
-      <ResponsivePageHeader actions={secretsActions} eyebrow="Organization" title="Secrets" />
+      <ResponsivePageHeader
+        actions={secretsActions}
+        below={<p className="text-xs text-[color:var(--tx2)]">Environment secrets shared with every agent in this organization.</p>}
+        eyebrow="Organization"
+        title="Secrets"
+      />
       <ResponsivePageHeader actions={profileActions} eyebrow="User" title="Profile" />
     </div>
   </div>
