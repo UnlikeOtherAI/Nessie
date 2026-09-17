@@ -85,7 +85,16 @@ const renderPanels = (accessView: ExecutorAccessViewResponse): string =>
           ApiClientProvider,
           { client: apiClient },
           createElement(ExecutorDetailPanels, {
-            access: accessView,
+            // The panel takes the query, not the view, so it can say when the
+            // access view could not be read instead of rendering the failure
+            // as a finding. These cases are all the settled, successful state.
+            accessQuery: {
+              data: accessView,
+              error: null,
+              isError: false,
+              isLoading: false,
+              refetch: () => undefined,
+            } as never,
             agents: [],
             executor,
             onPrepared: () => undefined,
