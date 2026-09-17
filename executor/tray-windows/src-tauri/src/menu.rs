@@ -83,7 +83,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, view: &ServiceView) -> tauri::Resul
                         app,
                         format!("{STOP_PREFIX}{}", executor.executor_id),
                         "Stop",
-                        executor.daemon_status == "running",
+                        matches!(executor.daemon_status.as_str(), "running" | "starting"),
                         None::<&str>,
                     )?,
                 ],

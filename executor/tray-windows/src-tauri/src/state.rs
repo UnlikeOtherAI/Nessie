@@ -37,7 +37,7 @@ pub enum TrayState {
     Idle,
     /// At least one daemon is running.
     Running,
-    /// Something is mid-flight: awaiting a fingerprint confirmation in Nessie,
+    /// Something is mid-flight: connecting, awaiting fingerprint confirmation,
     /// or a daemon still tearing its guests down.
     Attention,
     /// The service could not be reached or could not supervise.
@@ -65,7 +65,10 @@ pub fn tray_state(view: &ServiceView) -> TrayState {
         return TrayState::Error;
     };
     if executors.iter().any(|executor| {
-        executor.daemon_status == "stopping" || executor.daemon_status == "awaiting_confirmation"
+        matches!(
+            executor.daemon_status.as_str(),
+            "starting" | "stopping" | "awaiting_confirmation"
+        )
     }) {
         return TrayState::Attention;
     }
@@ -141,6 +144,7 @@ mod tests {
             tray_state(&reachable(&["awaiting_confirmation", "running"])),
             TrayState::Attention,
         );
+        assert_eq!(tray_state(&reachable(&["starting", "running"])), TrayState::Attention);
     }
 
     /// The state that must never be mistaken for any other, and the one a

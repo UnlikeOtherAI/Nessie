@@ -53,8 +53,14 @@ struct ManagedDaemon {
     parent_liveness: Option<ChildStdin>,
 }
 
+struct PendingConnection {
+    child: Child,
+    started_at: Instant,
+}
+
 pub struct Supervisor {
     children: BTreeMap<String, ManagedDaemon>,
+    connections: BTreeMap<String, PendingConnection>,
     desired: BTreeSet<String>,
     retry_after: BTreeMap<String, Instant>,
     retry_delay: BTreeMap<String, Duration>,
@@ -144,7 +150,7 @@ fn parse_fingerprint(output: &str) -> Option<String> {
 impl Supervisor {
     pub fn new(root: PathBuf, runtime: VerifiedRuntime) -> Self {
         Self {
-            children: BTreeMap::new(), desired: BTreeSet::new(), retry_after: BTreeMap::new(),
+            children: BTreeMap::new(), connections: BTreeMap::new(), desired: BTreeSet::new(), retry_after: BTreeMap::new(),
             retry_delay: BTreeMap::new(), root, runtime,
         }
     }
@@ -253,7 +259,6 @@ impl Supervisor {
         if running {
             "running"
         } else {
-            self.children.remove(executor_id);
             "stopped"
         }
     }
@@ -268,8 +273,11 @@ impl Supervisor {
         if local == "stopped" && unowned_daemon_is_stopping(&state_dir) {
             return Ok("stopping".to_owned());
         }
-        if local == "stopped" && self.desired.contains(executor_id) {
+        if local == "stopped" && (self.desired.contains(executor_id) || self.connections.contains_key(executor_id)) {
             return Ok("starting".to_owned());
+        }
+        if local == "stopped" {
+            self.children.remove(executor_id);
         }
         Ok(local.to_owned())
     }
@@ -311,18 +319,17 @@ impl Supervisor {
         let connection_arguments = vec![
             "connect".to_owned(), "--state-dir".to_owned(), state_dir.display().to_string(),
         ];
-        let mut connection = self.command();
-        connection.args(connection_arguments);
-        let mut connection = connection
+        let mut command = self.command();
+        command.args(connection_arguments);
+        let child = command
             .spawn()
             .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
-        match wait_bounded(&mut connection, CONNECT_TIMEOUT)? {
-            Some(0) => {}
-            Some(_) | None => {
-                let _ = connection.kill();
-                return Err("Confirm this executor's fingerprint in Nessie before starting its daemon.".to_owned());
-            }
-        }
+        self.connections.insert(executor_id.to_owned(), PendingConnection { child, started_at: Instant::now() });
+        Ok("starting".to_owned())
+    }
+
+    fn start_daemon(&mut self, executor_id: &str) -> Result<String, String> {
+        let state_dir = self.state_dir(executor_id)?;
         let mut command = self.command();
         command.args(serve_arguments(&state_dir));
         command.stdin(Stdio::piped());
@@ -344,10 +351,43 @@ impl Supervisor {
     /// scheduling, so no network operation happens during SCM startup.
     pub fn recover_due(&mut self) -> Vec<(String, String)> {
         let now = Instant::now();
+        let pending: Vec<String> = self.connections.keys().cloned().collect();
+        let mut outcomes = Vec::new();
+        for executor_id in pending {
+            let outcome = self.connections.get_mut(&executor_id).and_then(|connection| {
+                match connection.child.try_wait() {
+                    Ok(Some(status)) => Some(status.code().unwrap_or(1) == 0),
+                    Ok(None) if now.duration_since(connection.started_at) >= CONNECT_TIMEOUT => {
+                        let _ = connection.child.kill();
+                        Some(false)
+                    }
+                    Ok(None) | Err(_) => None,
+                }
+            });
+            let Some(connected) = outcome else { continue; };
+            self.connections.remove(&executor_id);
+            if connected {
+                match self.start_daemon(&executor_id) {
+                    Ok(_) => {
+                        self.retry_after.remove(&executor_id);
+                        self.retry_delay.remove(&executor_id);
+                        outcomes.push((executor_id, "started".to_owned()));
+                    }
+                    Err(reason) => {
+                        self.schedule_retry(&executor_id, Instant::now());
+                        outcomes.push((executor_id, reason));
+                    }
+                }
+            } else {
+                self.schedule_retry(&executor_id, Instant::now());
+                outcomes.push((executor_id, "could not connect; retry scheduled".to_owned()));
+            }
+        }
         let desired: Vec<String> = self.desired.iter().cloned().collect();
         for executor_id in &desired {
             let had_daemon = self.children.contains_key(executor_id);
             if had_daemon && self.child_status(executor_id) == "stopped" {
+                self.children.remove(executor_id);
                 self.schedule_retry(executor_id, now);
             }
         }
@@ -355,23 +395,23 @@ impl Supervisor {
             .iter()
             .filter(|executor_id| {
                 self.child_status(executor_id) == "stopped"
+                    && !self.connections.contains_key(*executor_id)
                     && self.retry_after.get(*executor_id).map_or(true, |when| *when <= now)
             })
             .cloned()
             .collect();
-        due.into_iter()
+        outcomes.extend(due.into_iter()
             .filter_map(|executor_id| match self.start_due(&executor_id) {
                 Ok(_) => {
-                    self.retry_after.remove(&executor_id);
-                    self.retry_delay.remove(&executor_id);
-                    Some((executor_id, "started".to_owned()))
+                    Some((executor_id, "connecting".to_owned()))
                 }
                 Err(reason) => {
                     self.schedule_retry(&executor_id, now);
                     Some((executor_id, reason))
                 }
             })
-            .collect()
+            .collect::<Vec<_>>());
+        outcomes
     }
 
     fn schedule_retry(&mut self, executor_id: &str, now: Instant) {
@@ -385,6 +425,9 @@ impl Supervisor {
         self.desired.remove(executor_id);
         self.retry_after.remove(executor_id);
         self.retry_delay.remove(executor_id);
+        if let Some(mut connection) = self.connections.remove(executor_id) {
+            let _ = connection.child.kill();
+        }
         let Some(mut daemon) = self.children.remove(executor_id) else {
             return Ok("stopped".to_owned());
         };
@@ -568,6 +611,10 @@ impl Supervisor {
     /// Asks every daemon to stop, without waiting. The service reports
     /// `STOP_PENDING` while [`Self::still_running`] answers above zero.
     pub fn request_shutdown(&mut self) {
+        for connection in self.connections.values_mut() {
+            let _ = connection.child.kill();
+        }
+        self.connections.clear();
         for daemon in self.children.values_mut() {
             daemon.parent_liveness.take();
         }
