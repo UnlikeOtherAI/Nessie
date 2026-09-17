@@ -1,6 +1,10 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { ExecutorPlatformFactsSchema, type ExecutorSignedDescriptor } from '@nessie/schemas'
+import {
+  ExecutorPlatformFactsSchema,
+  type ExecutorLocalMcpReport,
+  type ExecutorSignedDescriptor,
+} from '@nessie/schemas'
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
@@ -194,6 +198,7 @@ export const reportExecutorHeartbeat = async (
   input: {
     connectionEpoch: string
     executorId: string
+    localMcp?: ExecutorLocalMcpReport
     observedAt: string
     signature: string
   },
@@ -218,6 +223,10 @@ export const reportExecutorHeartbeat = async (
       {
         connectionEpoch: input.connectionEpoch,
         executorId: executor.id,
+        // The field joins the signed payload exactly when the daemon sent it.
+        // Canonical JSON distinguishes an absent key from a present one, so a
+        // daemon too old to report still verifies the payload it always sent.
+        ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }),
         observedAt: input.observedAt,
       },
       input.signature,
@@ -230,6 +239,12 @@ export const reportExecutorHeartbeat = async (
         lastSeenAt: !executor.lastSeenAt || observedAt > executor.lastSeenAt
           ? observedAt
           : executor.lastSeenAt,
+        // Absent leaves the stored report alone: a daemon that stops reporting
+        // has not told us its servers vanished, and overwriting the last
+        // observation with nothing would destroy the only thing we know.
+        ...(input.localMcp === undefined
+          ? {}
+          : { localMcp: input.localMcp, localMcpObservedAt: observedAt }),
         status: executor.status === 'offline' ? 'online' : executor.status,
         statusDetail: executor.status === 'offline'
           ? 'Authenticated executor daemon connected.'

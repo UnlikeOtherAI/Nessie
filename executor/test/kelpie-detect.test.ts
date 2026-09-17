@@ -100,9 +100,16 @@ test('falls back to the observation time when an instance states no last-seen', 
 })
 
 test('reads a whole describe document, with the CLI version', () => {
+  // The real grammar `kelpie describe --json` emits: instances live under
+  // `discovery`, beside the mDNS state and the scan budget.
   const description = kelpieDescriptionFromJson(JSON.stringify({
     cli: { path: '/opt/homebrew/bin/kelpie', version: '0.1.11' },
-    devices: [fullEntry, { ...fullEntry, id: 'kelpie-mac-1', platform: 'macos' }],
+    discovery: {
+      deviceCount: 2,
+      devices: [fullEntry, { ...fullEntry, id: 'kelpie-mac-1', platform: 'macos' }],
+      mdns: 'ok',
+      scanTimeoutMs: 3_000,
+    },
     schemaVersion: 1,
   }), OBSERVED)
   assert.equal(description?.cliVersion, '0.1.11')
@@ -113,10 +120,24 @@ test('an installed Kelpie that found nothing reports an empty list, not absence'
   // The two are different facts downstream: an empty list says "nothing is on
   // this network", absence says "this Kelpie could not tell me".
   const description = kelpieDescriptionFromJson(
-    JSON.stringify({ devices: [], schemaVersion: 1 }),
+    JSON.stringify({ discovery: { deviceCount: 0, devices: [], mdns: 'ok' }, schemaVersion: 1 }),
     OBSERVED,
   )
   assert.deepEqual(description?.devices, [])
+})
+
+test('a Kelpie that could not browse mDNS reports absence, never an empty network', () => {
+  // It has not found nothing; it has not looked. Reporting [] here would tell
+  // a person there are no browsers on their network, which is the one thing
+  // this Kelpie cannot know.
+  const description = kelpieDescriptionFromJson(
+    JSON.stringify({
+      discovery: { deviceCount: 0, devices: [], mdns: 'unavailable' },
+      schemaVersion: 1,
+    }),
+    OBSERVED,
+  )
+  assert.equal(description, undefined)
 })
 
 test('a document that is not a describe document yields absence', () => {
@@ -128,7 +149,7 @@ test('a document that is not a describe document yields absence', () => {
 test('a network of more Kelpies than the wire carries truncates here', () => {
   const many = Array.from({ length: 50 }, (_, index) => ({ ...fullEntry, id: `kelpie-${index}` }))
   const description = kelpieDescriptionFromJson(
-    JSON.stringify({ devices: many, schemaVersion: 1 }),
+    JSON.stringify({ discovery: { devices: many, mdns: 'ok' }, schemaVersion: 1 }),
     OBSERVED,
   )
   assert.equal(description?.devices.length, 32)
@@ -141,7 +162,10 @@ test('describe runs the program the policy named, never a kelpie of its own', as
     {
       run: async (program) => {
         seen.push(program)
-        return { ok: true, stdout: JSON.stringify({ devices: [], schemaVersion: 1 }) }
+        return {
+          ok: true,
+          stdout: JSON.stringify({ discovery: { devices: [], mdns: 'ok' }, schemaVersion: 1 }),
+        }
       },
     },
   )

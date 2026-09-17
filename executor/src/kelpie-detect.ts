@@ -45,7 +45,7 @@ const runKelpieDescribe = async (
 ): Promise<RunResult> => new Promise((resolve) => {
   execFile(
     program,
-    ['describe', '--json', '--timeout', String(KELPIE_DISCOVERY_TIMEOUT_MS)],
+    ['describe', '--json', '--scan-timeout', String(KELPIE_DISCOVERY_TIMEOUT_MS)],
     {
       ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
       ...(spec.env === undefined ? {} : { env: { ...process.env, ...spec.env } }),
@@ -142,7 +142,15 @@ export const kelpieDescriptionFromJson = (
   }
   const document = asRecord(parsed)
   if (!document) return undefined
-  const entries = Array.isArray(document.devices) ? document.devices : undefined
+  const discovery = asRecord(document.discovery)
+  // A Kelpie that could not browse mDNS at all has not found nothing — it has
+  // not looked. Reporting its empty list as an inventory would say "there are
+  // no browsers on this network", which is the one thing it cannot know.
+  if (discovery?.mdns !== undefined && discovery.mdns !== 'ok') return undefined
+  const entries = Array.isArray(discovery?.devices)
+    ? discovery.devices
+    // Tolerated for a Kelpie that states its instances at the top level.
+    : Array.isArray(document.devices) ? document.devices : undefined
   if (!entries) return undefined
   const devices: KelpieDevice[] = []
   for (const entry of entries) {
