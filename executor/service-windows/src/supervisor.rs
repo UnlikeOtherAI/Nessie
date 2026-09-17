@@ -650,6 +650,19 @@ mod tests {
         )
     }
 
+    #[cfg(windows)]
+    fn scripted_supervisor(root: &Path, serve: &str) -> Supervisor {
+        let mut supervisor = paired_supervisor(root);
+        let script = root.join("fake-node.cmd");
+        fs::write(
+            &script,
+            format!("@echo off\r\nif \"%2\"==\"connect\" exit /b 0\r\nif \"%2\"==\"serve\" {serve}\r\n"),
+        )
+        .expect("script");
+        supervisor.runtime.node_executable = script;
+        supervisor
+    }
+
     #[test]
     fn pairing_arguments_keep_sensitive_input_off_the_process_list() {
         let arguments = pair_arguments(
@@ -723,5 +736,22 @@ mod tests {
         assert_eq!(supervisor.stop(EXECUTOR_ID), Ok("stopped".to_owned()));
         assert!(supervisor.recover_due().is_empty());
         assert_eq!(supervisor.status(EXECUTOR_ID), Ok("stopped".to_owned()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_real_connect_child_is_polled_then_a_crash_is_backed_off_without_status_consuming_it() {
+        let directory = tempfile::tempdir().expect("temporary state");
+        let mut supervisor = scripted_supervisor(directory.path(), "exit /b 0");
+        supervisor.start(EXECUTOR_ID).expect("queue start");
+        supervisor.recover_due(); // spawn connect without holding a network wait
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        supervisor.recover_due(); // connect success, spawn serve
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
+        supervisor.recover_due(); // owns the crash observation and schedules backoff
+        assert!(supervisor.recover_due().is_empty(), "crash must not relaunch immediately");
+        supervisor.stop(EXECUTOR_ID).expect("stop cancels retries");
+        assert!(supervisor.recover_due().is_empty());
     }
 }
