@@ -25,11 +25,29 @@ import { serializeMailboxResult } from './mailbox-overflow.js'
  * reading an attachment.
  */
 
-const googleFetch = async (
+/**
+ * Provider fetches carry their own timeout: safeFetch sets none, so a Google
+ * endpoint that accepts the connection and then stalls would outlive the
+ * loop's per-tool timeout, leaving the socket orphaned against the worker's
+ * pool while the loop reports a timeout and possibly retries a mutating call
+ * that later completes. Same precedent as the web fetch in content-tools.
+ * `timeoutMs` is a parameter only so a test can shrink it; production callers
+ * never pass it. The signal is MERGED into the caller's init, never a
+ * replacement for it.
+ */
+const GOOGLE_PROVIDER_TIMEOUT_MS = 15_000
+
+// Exported for the fetch-timeout test; the tool handlers in this module are
+// the only production callers.
+export const googleFetch = async (
   url: string,
   init?: { method?: string; headers?: Record<string, string>; body?: string },
+  timeoutMs: number = GOOGLE_PROVIDER_TIMEOUT_MS,
 ) => {
-  const response = await safeFetch(url, init ?? {})
+  const response = await safeFetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(timeoutMs),
+  })
   return {
     body: response.body,
     headers: response.headers,
