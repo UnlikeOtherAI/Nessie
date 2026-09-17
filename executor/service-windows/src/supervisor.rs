@@ -23,9 +23,7 @@ use std::{
 use crate::{
     lease::unowned_daemon_is_stopping,
     manifest::VerifiedRuntime,
-    paths::{
-        executor_state_dir, has_executor_state, paired_executors,
-    },
+    paths::{executor_state_dir, has_executor_state, paired_executors},
     protocol::ExecutorStatus,
 };
 
@@ -122,7 +120,9 @@ pub(crate) fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Optio
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
-            Err(_) => return Err("Nessie Executor could not inspect its packaged command.".to_owned()),
+            Err(_) => {
+                return Err("Nessie Executor could not inspect its packaged command.".to_owned())
+            }
             Ok(Some(status)) => return Ok(Some(status.code().unwrap_or(1))),
             Ok(None) if Instant::now() >= deadline => return Ok(None),
             Ok(None) => sleep(Duration::from_millis(50)),
@@ -148,8 +148,13 @@ pub(crate) fn parse_fingerprint(output: &str) -> Option<String> {
 impl Supervisor {
     pub fn new(root: PathBuf, runtime: VerifiedRuntime) -> Self {
         Self {
-            children: BTreeMap::new(), connections: BTreeMap::new(), desired: BTreeSet::new(), retry_after: BTreeMap::new(),
-            retry_delay: BTreeMap::new(), root, runtime,
+            children: BTreeMap::new(),
+            connections: BTreeMap::new(),
+            desired: BTreeSet::new(),
+            retry_after: BTreeMap::new(),
+            retry_delay: BTreeMap::new(),
+            root,
+            runtime,
         }
     }
 
@@ -164,13 +169,20 @@ impl Supervisor {
         command.arg(self.runtime.bundle());
         command.env("NESSIE_EXECUTOR_PACKAGED_CLI", "1");
         command.env("NESSIE_EXECUTOR_SUPERVISOR", "service");
-        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         command
     }
 
     /// Runs one packaged command to completion. Its output is never captured or
     /// reported: a refusal names what was refused, never what a child printed.
-    pub(crate) fn run_to_completion(&self, arguments: Vec<String>, refusal: &str) -> Result<(), String> {
+    pub(crate) fn run_to_completion(
+        &self,
+        arguments: Vec<String>,
+        refusal: &str,
+    ) -> Result<(), String> {
         let mut child = self
             .command()
             .args(arguments)
@@ -203,15 +215,14 @@ impl Supervisor {
             .stdin(Stdio::piped())
             .spawn()
             .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
-        let mut standard_input = child
-            .stdin
-            .take()
-            .ok_or_else(|| "Nessie Executor could not provide the configuration input securely.".to_owned())?;
+        let mut standard_input = child.stdin.take().ok_or_else(|| {
+            "Nessie Executor could not provide the configuration input securely.".to_owned()
+        })?;
         let bytes = serde_json::to_vec(&input)
             .map_err(|_| "Nessie Executor could not prepare the configuration input.".to_owned())?;
-        standard_input
-            .write_all(&bytes)
-            .map_err(|_| "Nessie Executor could not provide the configuration input securely.".to_owned())?;
+        standard_input.write_all(&bytes).map_err(|_| {
+            "Nessie Executor could not provide the configuration input securely.".to_owned()
+        })?;
         drop(standard_input);
         match wait_bounded(&mut child, COMMAND_TIMEOUT)? {
             Some(0) => Ok(()),
@@ -252,8 +263,12 @@ impl Supervisor {
     }
 
     fn child_status(&mut self, executor_id: &str) -> &'static str {
-        let running =
-            matches!(self.children.get_mut(executor_id).map(|daemon| daemon.child.try_wait()), Some(Ok(None)));
+        let running = matches!(
+            self.children
+                .get_mut(executor_id)
+                .map(|daemon| daemon.child.try_wait()),
+            Some(Ok(None))
+        );
         if running {
             "running"
         } else {
@@ -271,7 +286,9 @@ impl Supervisor {
         if local == "stopped" && unowned_daemon_is_stopping(&state_dir) {
             return Ok("stopping".to_owned());
         }
-        if local == "stopped" && (self.desired.contains(executor_id) || self.connections.contains_key(executor_id)) {
+        if local == "stopped"
+            && (self.desired.contains(executor_id) || self.connections.contains_key(executor_id))
+        {
             return Ok("starting".to_owned());
         }
         if local == "stopped" {
@@ -286,7 +303,11 @@ impl Supervisor {
             .into_iter()
             .filter_map(|executor_id| {
                 let daemon_status = self.status(&executor_id).ok()?;
-                Some(ExecutorStatus { daemon_status, executor_id, workspace_configured: true })
+                Some(ExecutorStatus {
+                    daemon_status,
+                    executor_id,
+                    workspace_configured: true,
+                })
             })
             .collect()
     }
@@ -302,7 +323,8 @@ impl Supervisor {
             return Ok("running".to_owned());
         }
         self.desired.insert(executor_id.to_owned());
-        self.retry_after.insert(executor_id.to_owned(), Instant::now());
+        self.retry_after
+            .insert(executor_id.to_owned(), Instant::now());
         Ok("starting".to_owned())
     }
 
@@ -315,14 +337,22 @@ impl Supervisor {
             );
         }
         let connection_arguments = vec![
-            "connect".to_owned(), "--state-dir".to_owned(), state_dir.display().to_string(),
+            "connect".to_owned(),
+            "--state-dir".to_owned(),
+            state_dir.display().to_string(),
         ];
         let mut command = self.command();
         command.args(connection_arguments);
         let child = command
             .spawn()
             .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
-        self.connections.insert(executor_id.to_owned(), PendingConnection { child, started_at: Instant::now() });
+        self.connections.insert(
+            executor_id.to_owned(),
+            PendingConnection {
+                child,
+                started_at: Instant::now(),
+            },
+        );
         Ok("starting".to_owned())
     }
 
@@ -340,7 +370,10 @@ impl Supervisor {
             .ok_or_else(|| "Nessie Executor could not supervise the executor daemon.".to_owned())?;
         self.children.insert(
             executor_id.to_owned(),
-            ManagedDaemon { child, parent_liveness: Some(parent_liveness) },
+            ManagedDaemon {
+                child,
+                parent_liveness: Some(parent_liveness),
+            },
         );
         Ok("running".to_owned())
     }
@@ -352,17 +385,20 @@ impl Supervisor {
         let pending: Vec<String> = self.connections.keys().cloned().collect();
         let mut outcomes = Vec::new();
         for executor_id in pending {
-            let outcome = self.connections.get_mut(&executor_id).and_then(|connection| {
-                match connection.child.try_wait() {
+            let outcome = self
+                .connections
+                .get_mut(&executor_id)
+                .and_then(|connection| match connection.child.try_wait() {
                     Ok(Some(status)) => Some(status.code().unwrap_or(1) == 0),
                     Ok(None) if now.duration_since(connection.started_at) >= CONNECT_TIMEOUT => {
                         let _ = connection.child.kill();
                         Some(false)
                     }
                     Ok(None) | Err(_) => None,
-                }
-            });
-            let Some(connected) = outcome else { continue; };
+                });
+            let Some(connected) = outcome else {
+                continue;
+            };
             self.connections.remove(&executor_id);
             if connected {
                 match self.start_daemon(&executor_id) {
@@ -393,29 +429,36 @@ impl Supervisor {
             .filter(|executor_id| {
                 self.child_status(executor_id) == "stopped"
                     && !self.connections.contains_key(*executor_id)
-                    && self.retry_after.get(*executor_id).map_or(true, |when| *when <= now)
+                    && self
+                        .retry_after
+                        .get(*executor_id)
+                        .map_or(true, |when| *when <= now)
             })
             .cloned()
             .collect();
-        outcomes.extend(due.into_iter()
-            .filter_map(|executor_id| match self.start_due(&executor_id) {
-                Ok(_) => {
-                    Some((executor_id, "connecting".to_owned()))
-                }
-                Err(reason) => {
-                    self.schedule_retry(&executor_id, now);
-                    Some((executor_id, reason))
-                }
-            })
-            .collect::<Vec<_>>());
+        outcomes.extend(
+            due.into_iter()
+                .filter_map(|executor_id| match self.start_due(&executor_id) {
+                    Ok(_) => Some((executor_id, "connecting".to_owned())),
+                    Err(reason) => {
+                        self.schedule_retry(&executor_id, now);
+                        Some((executor_id, reason))
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
         outcomes
     }
 
     fn schedule_retry(&mut self, executor_id: &str, now: Instant) {
-        let delay = self.retry_delay.entry(executor_id.to_owned()).or_insert(RETRY_INITIAL);
+        let delay = self
+            .retry_delay
+            .entry(executor_id.to_owned())
+            .or_insert(RETRY_INITIAL);
         let current = *delay;
         *delay = current.saturating_mul(2).min(RETRY_MAX);
-        self.retry_after.insert(executor_id.to_owned(), now + current);
+        self.retry_after
+            .insert(executor_id.to_owned(), now + current);
     }
 
     pub fn stop(&mut self, executor_id: &str) -> Result<String, String> {
@@ -443,8 +486,10 @@ impl Supervisor {
             return Ok("stopped".to_owned());
         }
         self.children.insert(executor_id.to_owned(), daemon);
-        Err("The executor is still stopping. Nessie Executor will not force-kill a sandbox daemon."
-            .to_owned())
+        Err(
+            "The executor is still stopping. Nessie Executor will not force-kill a sandbox daemon."
+                .to_owned(),
+        )
     }
 
     /// Asks every daemon to stop, without waiting. The service reports
@@ -463,7 +508,8 @@ impl Supervisor {
     }
 
     pub fn still_running(&mut self) -> usize {
-        self.children.retain(|_, daemon| matches!(daemon.child.try_wait(), Ok(None)));
+        self.children
+            .retain(|_, daemon| matches!(daemon.child.try_wait(), Ok(None)));
         self.children.len()
     }
 }
@@ -471,4 +517,3 @@ impl Supervisor {
 #[cfg(test)]
 #[path = "supervisor_tests.rs"]
 mod supervisor_tests;
-
