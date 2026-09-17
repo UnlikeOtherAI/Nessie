@@ -370,7 +370,6 @@ impl Supervisor {
                 match self.start_daemon(&executor_id) {
                     Ok(_) => {
                         self.retry_after.remove(&executor_id);
-                        self.retry_delay.remove(&executor_id);
                         outcomes.push((executor_id, "started".to_owned()));
                     }
                     Err(reason) => {
@@ -459,15 +458,15 @@ impl Supervisor {
         if !has_executor_state(&state_dir) {
             return Err("This executor has not been paired on this computer.".to_owned());
         }
-        let was_running = self.status(executor_id)? == "running";
-        if was_running {
+        let was_started = self.desired.contains(executor_id) || self.connections.contains_key(executor_id);
+        if was_started {
             self.stop(executor_id)?;
         }
         self.run_to_completion(
             configure_arguments(&state_dir, operation_keys),
             "The local executor policy was rejected. No command output was retained.",
         )?;
-        if was_running {
+        if was_started {
             self.start(executor_id)
         } else {
             Ok("stopped".to_owned())
@@ -503,8 +502,8 @@ impl Supervisor {
         if !has_executor_state(&state_dir) {
             return Err("This executor has not been paired on this computer.".to_owned());
         }
-        let was_running = self.status(executor_id)? == "running";
-        if was_running {
+        let was_started = self.desired.contains(executor_id) || self.connections.contains_key(executor_id);
+        if was_started {
             self.stop(executor_id)?;
         }
         self.run_to_completion_with_input(
@@ -512,7 +511,7 @@ impl Supervisor {
             configuration_input,
             "The local executor policy was rejected. No command output was retained.",
         )?;
-        if was_running {
+        if was_started {
             self.start(executor_id)
         } else {
             Ok("stopped".to_owned())
@@ -615,6 +614,9 @@ impl Supervisor {
             let _ = connection.child.kill();
         }
         self.connections.clear();
+        self.desired.clear();
+        self.retry_after.clear();
+        self.retry_delay.clear();
         for daemon in self.children.values_mut() {
             daemon.parent_liveness.take();
         }
