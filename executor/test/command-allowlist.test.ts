@@ -296,6 +296,10 @@ test('describe answers what this executor may reach and run, without its key', (
     allowedOrigins: ['https://app.example.test'],
     folders: [{ name: 'workspace', path: '/private/workspace' }],
     guestSessions: 'available',
+    // This state names no local MCP server, so it fronts none. The empty
+    // array is the whole answer: `describe` is what the menu bar app renders,
+    // and a missing key would leave it unable to say so.
+    mcpServers: [],
   })
   assert.equal(described.sandbox.browserConfigured, true)
   assert.deepEqual(describeExecutor(stateWith()).policy.permittedPrograms, [])

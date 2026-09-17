@@ -337,6 +337,15 @@ when one changes, the same turn updates it, not this section.
   make imports and large exports worker work.
   Read [`docs/standards/spreadsheets.md`](docs/standards/spreadsheets.md)
   before writing code here.
+- **Executor-fronted local MCP servers.** `mcp.tools` and `mcp.call` are a
+  transport onto servers the reviewed policy names, never a capability of their
+  own; only a server's name travels, so its launch spec stays on the host and
+  out of every message; availability rides the heartbeat rather than the signed
+  descriptor, because installing the software must cost no revision; and absent
+  never means empty, at any layer — a policy that names nothing permits nothing,
+  and a Kelpie that could not look has not found nothing.
+  Read [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md)
+  before writing code here.
 - **A capability that can stop working owns the way a person finds out.**
   Classify the failure into a state that names its remedy, persist the reason,
   and alert exactly once per transition; recovery is explicit, never
