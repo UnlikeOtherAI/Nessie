@@ -198,3 +198,109 @@ test('a provider 404 is a model-availability failure, not an unexpected error', 
     },
   )
 })
+
+test('a provider 400 is a terminal request rejection, not an unexpected error', () => {
+  // Production, 2026-09-09 onwards. A ChatGPT Codex personal subscription
+  // answered every run with HTTP 400; without its own branch the failure fell
+  // through to `unknown`, whose "unexpected error" reply sent the owner to
+  // worker logs that contained no explanation.
+  const error = new ProviderInvocationError(
+    'codex-subscription chat request failed with HTTP 400: Invalid model: gpt-5-codex',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-400',
+      latencyMs: 1,
+      model: 'gpt-5-codex',
+      operationType: 'chat',
+      provider: 'codex-subscription',
+      requestId: 'request-400',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 400 },
+  )
+
+  assert.equal(classifyError(error), 'provider_rejected')
+  const genericMessage = userMessageForFailureReason(classifyError(error))
+  assert.match(genericMessage, /model configuration/)
+
+  const contextualMessage = userMessageForFailureReason(classifyError(error), {
+    model: 'gpt-5-codex',
+    provider: 'subscription/openai_codex',
+  })
+  assert.match(contextualMessage, /subscription\/openai_codex/)
+  assert.match(contextualMessage, /gpt-5-codex/)
+  assert.match(contextualMessage, /model configuration/)
+
+  const recovery = resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 })
+  assert.equal(recovery.action, 'surface_error')
+  assert.match(recovery.userMessage, /model configuration/)
+})
+
+test('a 400 that explains context length still classifies as context_overflow', () => {
+  const error = new ProviderInvocationError(
+    'openai chat request failed with HTTP 400: maximum context length exceeded',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-400-context',
+      latencyMs: 1,
+      model: 'gpt-4',
+      operationType: 'chat',
+      provider: 'openai',
+      requestId: 'request-400-context',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 400 },
+  )
+
+  assert.equal(classifyError(error), 'context_overflow')
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 0, total: 6 }),
+    { action: 'compact_and_retry' },
+  )
+})
+
+test('a 400 that explains a content-policy refusal still classifies as content_filter', () => {
+  const error = new ProviderInvocationError(
+    'openai chat request failed with HTTP 400: blocked by content policy',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-400-content',
+      latencyMs: 1,
+      model: 'gpt-4',
+      operationType: 'chat',
+      provider: 'openai',
+      requestId: 'request-400-content',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 400 },
+  )
+
+  assert.equal(classifyError(error), 'content_filter')
+  assert.match(
+    userMessageForFailureReason(classifyError(error)),
+    /rephrasing/,
+  )
+})
+
+test('a 400 with no explanatory message classifies as provider_rejected', () => {
+  const error = new ProviderInvocationError(
+    'openai chat request failed with HTTP 400: invalid parameter',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-400-plain',
+      latencyMs: 1,
+      model: 'gpt-4',
+      operationType: 'chat',
+      provider: 'openai',
+      requestId: 'request-400-plain',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 400 },
+  )
+
+  assert.equal(classifyError(error), 'provider_rejected')
+})

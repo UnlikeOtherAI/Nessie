@@ -8,6 +8,7 @@ import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTa
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import { classifyError, userMessageForFailureReason } from '../error-classification.js'
 import { isInteractiveRun } from './continuation.js'
+import { noteSubscriptionFailure } from './subscription-health.js'
 
 /** Control-flow marker: this run has nobody waiting, so it posts nothing. */
 class SkipTerminalMessage extends Error {}
@@ -35,6 +36,11 @@ export const handleRunExecutionFailure = async (
     input.error instanceof Error ? input.error.message : 'Run execution failed unexpectedly'
   const failureReason = classifyError(input.error)
 
+  // A run that failed on its owner's personal subscription should degrade the
+  // subscription's visible health, so a repeatedly broken provider/model choice
+  // is visible on Settings → Connections instead of only in the worker log.
+  await noteSubscriptionFailure(deps, context, { error: input.error, messageText })
+
   // Every run failure is logged, not only the unattended ones.
   //
   // The interactive path posts "the assistant service encountered an
@@ -60,7 +66,10 @@ export const handleRunExecutionFailure = async (
   const fallbackMessageId = `run-error:${context.run.id}`
   let terminalMessageId = fallbackMessageId
   let terminalContent =
-    input.terminalMessage ?? userMessageForFailureReason(failureReason)
+    input.terminalMessage ?? userMessageForFailureReason(failureReason, {
+      model: context.agent.model ?? undefined,
+      provider: context.agent.provider ?? undefined,
+    })
   let terminalCreatedAt = new Date().toISOString()
   let replyPushMessage: {
     content: string

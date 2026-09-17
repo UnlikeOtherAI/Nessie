@@ -113,6 +113,7 @@ export type SubscriptionFailureKind =
   | 'entitlement'
   | 'policy'
   | 'transient'
+  | 'rejected'
   | 'unknown'
 
 export const SUBSCRIPTION_ERROR_CODES = {

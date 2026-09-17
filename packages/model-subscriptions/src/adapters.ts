@@ -49,6 +49,11 @@ export const classifyOpenAiShapedFailure = (input: {
   body?: unknown
 }): SubscriptionFailureKind => {
   if (input.status === 401) return 'auth'
+  // A 400 is a terminal request rejection: the provider understood the request
+  // and refused it (wrong model, unsupported parameter, account policy). It is
+  // not a transient blip and it is not an auth problem, so it needs its own
+  // health bucket rather than falling through to `unknown`.
+  if (input.status === 400 || input.status === 404) return 'rejected'
   if (input.status === 429) return 'quota'
   if (input.status === 402) return 'quota'
   if (input.status === 403) {

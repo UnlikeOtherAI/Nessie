@@ -59,6 +59,18 @@ export const AgentActivityResponseSchema = z.object({
 })
 export type AgentActivityResponse = z.infer<typeof AgentActivityResponseSchema>
 
+export const AgentRunFailureRecordSchema = z.object({
+  runId: RunIdSchema,
+  failedAt: TimestampSchema,
+  message: z.string(),
+})
+export type AgentRunFailureRecord = z.infer<typeof AgentRunFailureRecordSchema>
+
+export const AgentRunFailuresResponseSchema = z.object({
+  failures: z.array(AgentRunFailureRecordSchema),
+})
+export type AgentRunFailuresResponse = z.infer<typeof AgentRunFailuresResponseSchema>
+
 export const AgentMessageSchema = z.object({
   messageId: NonEmptyStringSchema,
   role: MessageRoleSchema,
