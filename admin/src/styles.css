@@ -2692,6 +2692,20 @@ html[data-desktop-platform='linux'] #root {
   outline-offset: 1px;
 }
 
+.tabbar-label-compact {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .tabbar-label-full {
+    display: none;
+  }
+
+  .tabbar-label-compact {
+    display: inline;
+  }
+}
+
 /* Equal-width segments (`flex-basis: 0`) that still refuse to shrink below
    their own label. Without the floor a full-width strip absorbs any shortage
    by crushing its items into each other instead of overflowing, and the strip

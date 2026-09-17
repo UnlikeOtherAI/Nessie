@@ -68,6 +68,8 @@ const SITES: ReadonlyArray<{
   { className: 'grid gap-4', name: 'create-team-dialog', width: 420 },
   // admin/src/layouts/admin-shell/user-menu/PresenceControl.tsx
   { className: 'px-2 py-1.5', name: 'presence-control', width: 260 },
+  // admin/src/components/features/settings/MembersRosterPanel.tsx
+  { className: 'w-full', name: 'members-roster', width: 342 },
 ]
 
 const Fixture = () => (

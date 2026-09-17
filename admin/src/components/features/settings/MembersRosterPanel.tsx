@@ -5,10 +5,10 @@ import type { TeamInvitationRecord, TeamMemberRecord } from '@nessie/schemas'
 import { UserAvatar } from '../../shared/UserAvatar'
 import { memberDisplayName } from '../../../lib/member-display-name'
 import { TabBar } from '../../primitives/TabBar'
-import { DataTable, type DataTableColumn } from '../../shared/DataTable'
 import { EmptyState } from '../../shared/EmptyState'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { QueryState } from '../../shared/QueryState'
+import { Row } from '../../shared/RowList'
 import {
   useMemberInvitations,
   useMemberRoster,
@@ -34,12 +34,14 @@ type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 const ROSTER_TAB_VALUES: readonly RosterTab[] = ['active', 'pending', 'deactivated', 'automatic']
 
 const ROSTER_TABS = [
-  { label: 'Active users', value: 'active' },
-  { label: 'Pending invitations', value: 'pending' },
-  { label: 'Deactivated users', value: 'deactivated' },
+  { compactLabel: 'Active', label: 'Active users', value: 'active' },
+  { compactLabel: 'Pending', label: 'Pending invitations', value: 'pending' },
+  { compactLabel: 'Inactive', label: 'Deactivated users', value: 'deactivated' },
 ] as const
 
-const AUTOMATIC_TAB = { label: 'Automatic logins', value: 'automatic' } as const
+const AUTOMATIC_TAB = {
+  label: 'Automatic logins', value: 'automatic', compactLabel: 'Access',
+} as const
 
 const dateLabel = (value: string | undefined) => {
   if (!value) return '—'
@@ -47,72 +49,22 @@ const dateLabel = (value: string | undefined) => {
   return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleDateString()
 }
 
-const memberColumns = (
-  scope: MemberRosterScope,
-  token: string | null,
-): DataTableColumn<TeamMemberRecord>[] => [
-  {
-    header: 'User',
-    key: 'user',
-    render: (member: TeamMemberRecord) => (
-      <div className="flex min-w-0 items-center gap-3">
-        <UserAvatar
-          displayName={memberDisplayName(member.displayName, member.email) ?? 'Member'}
-          size={32}
-          token={token}
-          avatarUrl={member.avatarImageUrl}
-          uoaSub={scope === 'team' ? member.uoaSub : undefined}
-          userId={member.userId}
-        />
-        <span className="min-w-0">
-          <span className="block truncate font-medium">
-            {memberDisplayName(member.displayName, member.email) ?? 'Unnamed member'}
-          </span>
-          {member.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{member.email}</span> : null}
-        </span>
-      </div>
-    ),
-  },
-  {
-    header: 'Role',
-    key: 'role',
-    render: (member: TeamMemberRecord) => member[scope === 'organization' ? 'orgRole' : 'teamRole'] ?? '—',
-    secondary: true,
-  },
-]
+const disclosure = <span aria-hidden="true" className="text-xl leading-none text-[color:var(--tx3)]">›</span>
 
-const invitationColumns = (scope: MemberRosterScope): DataTableColumn<TeamInvitationRecord>[] => [
-  {
-    header: 'Invitee',
-    key: 'invitee',
-    render: (invite: TeamInvitationRecord) => (
-      <span className="min-w-0">
-        <span className="block truncate font-medium">
-          {memberDisplayName(invite.name, invite.email) ?? 'Invitation'}
-        </span>
-        {/* The label above is either the inviter's name or the address
-            humanised, never the address itself, so the address is always worth
-            showing underneath — an invitee is identified by where the mail
-            went. */}
-        {invite.email ? <span className="block truncate text-xs text-[color:var(--tx3)]">{invite.email}</span> : null}
-      </span>
-    ),
-  },
-  ...(scope === 'organization'
-    ? [{
-        header: 'Workspace',
-        key: 'team',
-        render: (invite: TeamInvitationRecord) => invite.team?.name ?? '—',
-        secondary: true,
-      }]
-    : []),
-  {
-    header: 'Expires',
-    key: 'expires',
-    render: (invite: TeamInvitationRecord) => dateLabel(invite.expiresAt),
-    secondary: true,
-  },
-]
+const memberSubtitle = (member: TeamMemberRecord, scope: MemberRosterScope) => {
+  const role = member[scope === 'organization' ? 'orgRole' : 'teamRole']
+  return [member.email, role].filter(Boolean).join(' · ')
+}
+
+const invitationSubtitle = (invite: TeamInvitationRecord, scope: MemberRosterScope) => [
+  invite.email,
+  scope === 'organization' ? invite.team?.name : undefined,
+  invite.expiresAt ? `Expires ${dateLabel(invite.expiresAt)}` : undefined,
+].filter(Boolean).join(' · ')
+
+const rosterTitle = (tab: Exclude<RosterTab, 'automatic'>) => tab === 'active'
+  ? 'Active users'
+  : tab === 'pending' ? 'Pending invitations' : 'Deactivated users'
 
 /** The single Members page used at organization and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
@@ -166,6 +118,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const members = roster.items
   const invitationsRows = invitations.items
   const tabPanelId = `members-${scope}-tabpanel-${tab}`
+  const visibleTab = tab === 'automatic' ? null : tab
   return (
     <SettingsPanel
       actions={canInvite ? [{
@@ -178,12 +131,15 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
       eyebrow={scope === 'organization' ? 'Organization' : 'Team'}
       title="Members"
     >
-      <div className="space-y-5">
+      <div className="mx-auto grid w-full max-w-[1040px] gap-8 py-4">
         <TabBar
           ariaLabel="Member status"
+          collapse="never"
+          fullWidth
           idPrefix={`members-${scope}`}
           items={tabs}
           onChange={setTab}
+          touchTarget
           value={tab}
         />
         <section aria-labelledby={`members-${scope}-tab-${tab}`} id={tabPanelId} role="tabpanel">
@@ -194,33 +150,83 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             />
           ) : (
             <>
+          <div className="mb-3.5 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-[17px] font-semibold text-[color:var(--tx)]">
+                {visibleTab ? rosterTitle(visibleTab) : null}
+              </h2>
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">
+                {tab === 'active'
+                  ? 'People who currently have access.'
+                  : tab === 'pending'
+                    ? 'Invitations waiting to be accepted.'
+                    : 'People whose organization access is paused.'}
+              </p>
+            </div>
+            {current?.total !== undefined ? (
+              <span className="shrink-0 text-sm tabular-nums text-[color:var(--tx3)]">
+                {current.total} total
+              </span>
+            ) : null}
+          </div>
           <QueryState
             errorLabel="Members could not be loaded."
             loadingLabel="Loading members…"
             query={(current ?? roster).query}
           >
             {() => tab === 'pending' ? (
-              <DataTable
-                columns={invitationColumns(scope)}
-                empty={<EmptyState title="No pending invitations">No invitations are awaiting a response.</EmptyState>}
-                expandable={false}
-                label="Pending invitations"
-                onRowClick={setSelectedInvitation}
-                rowActionLabel={(invite) => `Open invitation for ${invite.name ?? invite.email ?? 'member'}`}
-                rowKey={(invite) => invite.inviteId}
-                rows={invitationsRows}
-              />
+              invitationsRows.length === 0 ? (
+                <EmptyState title="No pending invitations">No invitations are awaiting a response.</EmptyState>
+              ) : (
+                <ul aria-label="Pending invitations" className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
+                  {invitationsRows.map((invite) => {
+                    const name = memberDisplayName(invite.name, invite.email) ?? 'Invitation'
+                    return (
+                      <Row
+                        ariaLabel={`Open invitation for ${invite.name ?? invite.email ?? 'member'}`}
+                        key={invite.inviteId}
+                        onClick={() => setSelectedInvitation(invite)}
+                        subtitle={invitationSubtitle(invite, scope)}
+                        title={<span className="font-medium">{name}</span>}
+                        trailing={disclosure}
+                      />
+                    )
+                  })}
+                </ul>
+              )
             ) : (
-              <DataTable
-                columns={memberColumns(scope, token)}
-                empty={<EmptyState title={tab === 'active' ? 'No active users' : 'No deactivated users'}>{tab === 'active' ? 'Invite someone to add the first member.' : 'No members are deactivated.'}</EmptyState>}
-                expandable={false}
-                label={tab === 'active' ? 'Active users' : 'Deactivated users'}
-                onRowClick={setSelectedMember}
-                rowActionLabel={(member) => `Open ${memberDisplayName(member.displayName, member.email) ?? 'member'}`}
-                rowKey={(member) => member.uoaSub}
-                rows={members}
-              />
+              members.length === 0 ? (
+                <EmptyState title={tab === 'active' ? 'No active users' : 'No deactivated users'}>
+                  {tab === 'active' ? 'Invite someone to add the first member.' : 'No members are deactivated.'}
+                </EmptyState>
+              ) : (
+                <ul aria-label={tab === 'active' ? 'Active users' : 'Deactivated users'}
+                  className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
+                  {members.map((member) => {
+                    const name = memberDisplayName(member.displayName, member.email) ?? 'Unnamed member'
+                    return (
+                      <Row
+                        ariaLabel={`Open ${name}`}
+                        key={member.uoaSub}
+                        leading={(
+                          <UserAvatar
+                            avatarUrl={member.avatarImageUrl}
+                            displayName={name}
+                            size={40}
+                            token={token}
+                            uoaSub={scope === 'team' ? member.uoaSub : undefined}
+                            userId={member.userId}
+                          />
+                        )}
+                        onClick={() => setSelectedMember(member)}
+                        subtitle={memberSubtitle(member, scope)}
+                        title={<span className="font-medium">{name}</span>}
+                        trailing={disclosure}
+                      />
+                    )
+                  })}
+                </ul>
+              )
             )}
           </QueryState>
           {current ? (

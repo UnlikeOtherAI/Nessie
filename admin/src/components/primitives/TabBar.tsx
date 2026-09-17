@@ -16,6 +16,12 @@ import type { PopoverLayer } from '../overlays/Popover'
 import { decideTabBarCollapse } from './tab-bar-fit'
 
 export type TabBarItem<T extends string> = {
+  /**
+   * Short visual label used below the small-screen breakpoint. The button's
+   * accessible name remains `label`, so shortening a crowded strip never
+   * shortens what assistive technology announces.
+   */
+  compactLabel?: string
   /** Rendered as a dimmed `(n)` after the label — the distribution at a glance. */
   count?: number
   /** A radio-style choice that is currently unavailable. */
@@ -317,6 +323,7 @@ export const TabBar = <T extends string>({
             const isSelected = item.value === value
             return (
               <button
+                aria-label={item.compactLabel ? item.label : undefined}
                 aria-checked={isTabs ? undefined : isSelected}
                 aria-controls={
                   isTabs && idPrefix ? `${idPrefix}-tabpanel-${item.value}` : undefined
@@ -343,7 +350,12 @@ export const TabBar = <T extends string>({
                 type="button"
               >
                 {item.icon}
-                {item.label}
+                {item.compactLabel ? (
+                  <>
+                    <span aria-hidden="true" className="tabbar-label-full">{item.label}</span>
+                    <span aria-hidden="true" className="tabbar-label-compact">{item.compactLabel}</span>
+                  </>
+                ) : item.label}
                 {item.count === undefined ? null : (
                   <span className="tabbar-count">({item.count})</span>
                 )}
