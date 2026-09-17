@@ -32,9 +32,9 @@ user, and the same ordinary user completed three consecutive exact-rights
 `status` pipe exchanges without stopping the service. That live run exposed one
 remaining client-framing defect: the tray received a valid newline-delimited
 answer but read through the server disconnect and reported `the service closed
-the connection`. The corrected one-line reader and its regression test must be
-included in the next debug package and installed before this path is called
-complete.
+the connection`. The subsequent fix changed the tray to read one bounded,
+newline-framed response and added a real server-write-and-disconnect regression
+test.
 
 The final debug package, `0.0.3` (SHA-256
 `a0eb0b6559fa66625c4814bde499657c9eaae4e67c704e8c33e4e28095073e63`),
@@ -47,6 +47,15 @@ headlessly for ten seconds, responded without a main window, and its exit left
 the service at the same process id. Two more ordinary status exchanges passed;
 the tray relaunched successfully, and its per-user Run entry named the installed
 executable. The executor list remained empty because no pairing was created.
+
+The focused native and renderer checks above are not a whole-repository pass.
+The local Turbo executor suite was attempted after building its workspace
+dependencies, but Windows owner/private-artifact cases failed and the run then
+stopped producing output; it was interrupted rather than reported green. The
+repository's older pairing renderer harness also failed before its pairing
+assertion because it did not choose the workspace that the current form
+requires. The dedicated starting-state renderer used for this verification is
+separate and passed.
 
 A live pairing to `https://api.nessie.works` still requires the normal
 authenticated Executors surface and human fingerprint confirmation. It has not
