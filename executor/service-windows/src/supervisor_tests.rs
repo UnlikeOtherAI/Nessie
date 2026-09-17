@@ -22,14 +22,12 @@ fn paired_supervisor(root: &Path) -> Supervisor {
 }
 
 #[cfg(windows)]
-fn scripted_supervisor(root: &Path, serve: &str) -> Supervisor {
+fn scripted_supervisor(root: &Path) -> Supervisor {
     let mut supervisor = paired_supervisor(root);
     let script = root.join("fake-node.cmd");
     fs::write(
         &script,
-        format!(
-            "@echo off\r\nif \"%2\"==\"connect\" exit /b 0\r\nif \"%2\"==\"serve\" {serve}\r\n"
-        ),
+        "@echo off\r\nif \"%2\"==\"connect\" (echo connected>\"%4\\connect.marker\" & exit /b 0)\r\nif \"%2\"==\"serve\" (echo serving>\"%5\\serve.marker\" & :loop & if exist \"%5\\crash.marker\" exit /b 0 & timeout /t 1 >nul & goto loop)\r\n",
     )
     .expect("script");
     supervisor.runtime.node_executable = script;
@@ -120,9 +118,9 @@ fn fingerprint_is_read_from_the_cli_success_line() {
 #[test]
 fn a_requested_start_is_visible_while_recovery_retries_and_stop_cancels_it() {
     let directory = tempfile::tempdir().expect("temporary state");
-        let mut supervisor = paired_supervisor(directory.path());
-        assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
-        assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
+    let mut supervisor = paired_supervisor(directory.path());
+    assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
+    assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
     assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
     // The packaged command cannot spawn in this portable test, which is a
     // deterministic stand-in for a boot-time remote outage. It remains
@@ -135,21 +133,47 @@ fn a_requested_start_is_visible_while_recovery_retries_and_stop_cancels_it() {
 }
 
 #[cfg(windows)]
+fn until(mut condition: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !condition() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fixture phase did not arrive"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+#[cfg(windows)]
 #[test]
-fn a_real_connect_child_is_polled_then_a_crash_is_backed_off_without_status_consuming_it() {
+fn recovery_observes_connect_serve_crash_backoff_stop_and_shutdown() {
     let directory = tempfile::tempdir().expect("temporary state");
-    let mut supervisor = scripted_supervisor(directory.path(), "exit /b 0");
+    let state = directory.path().join("executors").join(EXECUTOR_ID);
+    let mut supervisor = scripted_supervisor(directory.path());
     supervisor.start(EXECUTOR_ID).expect("queue start");
-    supervisor.recover_due(); // spawn connect without holding a network wait
-    std::thread::sleep(std::time::Duration::from_millis(25));
-    supervisor.recover_due(); // connect success, spawn serve
-    std::thread::sleep(std::time::Duration::from_millis(25));
-    assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
-    supervisor.recover_due(); // owns the crash observation and schedules backoff
+    supervisor.recover_due();
+    until(|| {
+        supervisor.recover_due();
+        state.join("connect.marker").exists()
+    });
+    until(|| {
+        supervisor.recover_due();
+        state.join("serve.marker").exists()
+    });
+    assert_eq!(supervisor.status(EXECUTOR_ID), Ok("running".to_owned()));
+    fs::write(state.join("crash.marker"), b"").expect("request crash");
+    until(|| {
+        supervisor.recover_due();
+        supervisor.retry_after.contains_key(EXECUTOR_ID)
+    });
+    let delay = supervisor.retry_delay[EXECUTOR_ID];
+    assert!(delay >= std::time::Duration::from_secs(10));
     assert!(
         supervisor.recover_due().is_empty(),
         "crash must not relaunch immediately"
     );
     supervisor.stop(EXECUTOR_ID).expect("stop cancels retries");
     assert!(supervisor.recover_due().is_empty());
+    supervisor.request_shutdown();
+    assert!(supervisor.desired.is_empty() && supervisor.connections.is_empty());
 }
