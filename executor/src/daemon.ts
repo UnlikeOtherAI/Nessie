@@ -13,8 +13,6 @@ import {
   ExecutorCommandRunArgumentsSchema,
   ExecutorCodingLaunchArgumentsSchema,
   ExecutorCodingObserveArgumentsSchema,
-  ExecutorMcpCallArgumentsSchema,
-  ExecutorMcpToolsArgumentsSchema,
   ImplementedExecutorOperationKeySchema,
   ExecutorWorkspacePromoteArgumentsSchema,
   RunIdSchema,
@@ -41,6 +39,7 @@ import {
   createExecutorCommandRecoveryStore,
   recoverOrPollExecutorCommand,
 } from './command-recovery.js'
+import { executeExecutorMcpCommand } from './mcp-dispatch.js'
 import { createExecutorMcpSessionManager, type ExecutorMcpSessionManager } from './mcp-session-manager.js'
 import { createLocalMcpReporter } from './local-mcp-report.js'
 import { applyNativePromotion } from './native-helper.js'
@@ -367,28 +366,8 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
-  if (command.operationKey === 'mcp.tools') {
-    if (!dependencies.mcpSessions) {
-      return { code: 'EXECUTOR_MCP_UNAVAILABLE', success: false }
-    }
-    const args = ExecutorMcpToolsArgumentsSchema.safeParse(command.payload.args)
-    if (!args.success) {
-      return { code: 'EXECUTOR_COMMAND_ARGUMENTS_INVALID', success: false }
-    }
-    return dependencies.mcpSessions.listTools(args.data.server, args.data.cursor)
-  }
-  if (command.operationKey === 'mcp.call') {
-    if (!dependencies.mcpSessions) {
-      return { code: 'EXECUTOR_MCP_UNAVAILABLE', success: false }
-    }
-    const args = ExecutorMcpCallArgumentsSchema.safeParse(command.payload.args)
-    if (!args.success) {
-      return { code: 'EXECUTOR_COMMAND_ARGUMENTS_INVALID', success: false }
-    }
-    // `arguments` is passed through untouched: the tool's own grammar belongs
-    // to the server, and validating it here would guarantee drift the first
-    // time that server ships a new field.
-    return dependencies.mcpSessions.callTool(args.data.server, args.data.tool, args.data.arguments)
+  if (command.operationKey === 'mcp.tools' || command.operationKey === 'mcp.call') {
+    return executeExecutorMcpCommand(command.operationKey, command.payload.args, dependencies.mcpSessions)
   }
   // Other declared-only operations remain unavailable.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }

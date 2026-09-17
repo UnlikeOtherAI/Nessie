@@ -2,14 +2,10 @@ import { createHash, randomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
-  ExecutorCapabilityDescriptorSchema,
   ExecutorScopeSchema, IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
 } from '@nessie/schemas'
-import {
-  ExecutorLocalMcpReportSchema,
-  ExecutorPlatformFactsSchema,
-  type ExecutorLocalMcpReport,
-} from '@nessie/schemas'
+import { ExecutorPlatformFactsSchema } from '@nessie/schemas'
+import { descriptorRevisionViews, localMcpFor } from './executor-view-projections.js'
 import type {
   AuthorizedActionContext,
   ExecutorPlatformFacts,
@@ -130,29 +126,6 @@ export type CreateExecutorInput = {
 const platformFactsFor = (stored: unknown): { platformFacts?: ExecutorPlatformFacts } => {
   const parsed = ExecutorPlatformFactsSchema.safeParse(stored)
   return parsed.success ? { platformFacts: parsed.data } : {}
-}
-
-/**
- * The stored heartbeat report, echoed only when it parses.
- *
- * SQL NULL means this executor has never reported, which is a different fact
- * from a stored empty array — a daemon that reports and names no server — and
- * the absent key is the only projection that says the first one. A report this
- * release cannot parse is dropped whole rather than half-rendered: it can only
- * come from a daemon speaking a grammar we do not know, and a partial reading
- * of it would be a guess.
- */
-const localMcpFor = (
-  stored: unknown,
-  observedAt: Date | null,
-): { localMcp?: ExecutorLocalMcpReport; localMcpObservedAt?: string } => {
-  if (stored === null || stored === undefined) return {}
-  const parsed = ExecutorLocalMcpReportSchema.safeParse(stored)
-  if (!parsed.success) return {}
-  return {
-    localMcp: parsed.data,
-    ...(observedAt === null ? {} : { localMcpObservedAt: observedAt.toISOString() }),
-  }
 }
 
 const recordFromRow = (row: ExecutorRow): ExecutorRecord => ({
@@ -527,38 +500,9 @@ export const getExecutorAccessView = async (
           )),
         }
       : {}),
-    descriptorRevisions: descriptorRevisions.flatMap((revision) => {
-      const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(revision.descriptor)
-      return descriptor.success
-        ? [{
-            // Carried only when the descriptor carried it: a descriptor signed
-            // before the allowlist existed names no program, and an absent key
-            // is the only projection that says so.
-            ...(descriptor.data.commandAllowlist
-              ? { commandAllowlist: descriptor.data.commandAllowlist }
-              : {}),
-            localPolicyDigest: revision.localPolicyDigest,
-            operationKeys: descriptor.data.operationKeys,
-            profiles: descriptor.data.profiles,
-            reviewStatus: revision.reviewStatus,
-            revision: revision.revision,
-            // Same rule as the allowlist: an absent key is how a descriptor
-            // signed before folders had names says it named none.
-            ...(descriptor.data.workspaceFolders
-              ? { workspaceFolders: descriptor.data.workspaceFolders }
-              : {}),
-            // Same rule again: an absent key is how a descriptor that named no
-            // local MCP server says so, and naming none permits none.
-            ...(descriptor.data.mcpServers
-              ? { mcpServers: descriptor.data.mcpServers }
-              : {}),
-          }]
-        : []
-    }),
+    descriptorRevisions: descriptorRevisionViews(descriptorRevisions),
     // Echoed exactly as stored. An absent key says this executor has never
-    // reported; a stored empty array says it reports and names no server. A
-    // report that does not parse is dropped rather than half-rendered — it can
-    // only come from a daemon speaking a grammar this release does not know.
+    // reported; a stored empty array says it reports and names no server.
     ...localMcpFor(localMcpRow?.localMcp, localMcpRow?.localMcpObservedAt ?? null),
     operationGrants: operationGrants.map((grant) => ({
       agentId: grant.agentId,
