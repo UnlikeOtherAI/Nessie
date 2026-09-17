@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 
 import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
@@ -80,7 +80,7 @@ test('guest runtime bundles pin every browser and coding artifact without host f
     assert.equal(verified.entrypoints.tmux, 'bin/tmux')
     const snapshot = await materializeGuestRuntimeBundle(verified, join(snapshotParent, 'runtime'))
     assert.equal(await readFile(join(snapshot.root, 'bin', 'codex'), 'utf8'), 'managed-codex')
-    await assert.rejects(writeFile(join(snapshot.root, 'bin', 'codex'), 'replaced'), /EACCES/)
+    await assert.rejects(writeFile(join(snapshot.root, 'bin', 'codex'), 'replaced'), /EACCES|EPERM/)
     await writeFile(codexPath, 'tampered')
     assert.equal(await readFile(join(snapshot.root, 'bin', 'codex'), 'utf8'), 'managed-codex')
     await assert.rejects(verifyGuestRuntimeBundle(bundle), /integrity check failed/)
@@ -104,23 +104,21 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-session-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-session-state-'))
   const runId = '00000000-0000-4000-8000-000000000121'
-  const builderPath = join(stateDir, 'builder')
-  const helperPath = join(stateDir, 'helper')
-  const kernelPath = join(stateDir, 'kernel')
+  const packagedWindows = process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1'
+  const resources = join(dirname(process.execPath), 'resources')
+  const builderPath = packagedWindows ? join(resources, 'guest', 'build-initrd.exe') : join(stateDir, 'builder')
+  const helperPath = packagedWindows ? join(resources, 'nessie-hyperv-bridge.exe') : join(stateDir, 'helper')
+  const kernelPath = packagedWindows ? join(resources, 'guest', 'bzImage') : join(stateDir, 'kernel')
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
   const codexAuthProfilePath = join(stateDir, 'codex-auth.json')
   try {
     await writeFile(join(root, 'base.txt'), 'host source')
     await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
+      ...(packagedWindows ? [] : [writeFile(builderPath, 'builder'), writeFile(helperPath, 'helper'), writeFile(kernelPath, 'kernel')]),
       writeFile(codexAuthProfilePath, '{"auth_mode":"chatgpt"}'),
     ])
     await Promise.all([
-      chmod(builderPath, 0o700),
-      chmod(helperPath, 0o700),
-      chmod(kernelPath, 0o600),
+      ...(packagedWindows ? [] : [chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)]),
       chmod(codexAuthProfilePath, 0o600),
     ])
     await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })

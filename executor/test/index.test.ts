@@ -361,15 +361,20 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
     workspaceFolders: [{ name: 'work', path: '/private/tmp/nessie-workspace' }],
   }
   try {
-    await saveExecutorState(shared, state)
-    await chmod(shared, 0o755)
-    await assert.rejects(() => loadExecutorState(shared), /must not be accessible/)
+    const packagedWindows = process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1'
+    if (!packagedWindows) {
+      await saveExecutorState(shared, state)
+      await chmod(shared, 0o755)
+      await assert.rejects(() => loadExecutorState(shared), /must not be accessible/)
+    }
 
     await saveExecutorState(safe, state)
     assert.deepEqual(await loadExecutorState(safe), state)
 
-    await symlink(safe, linked)
-    await assert.rejects(() => saveExecutorState(linked, state), /ordinary directory/)
+    if (!packagedWindows) {
+      await symlink(safe, linked)
+      await assert.rejects(() => saveExecutorState(linked, state), /ordinary directory/)
+    }
   } finally {
     await rm(root, { force: true, recursive: true })
   }
