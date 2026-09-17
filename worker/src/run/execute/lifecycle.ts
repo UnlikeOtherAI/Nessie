@@ -536,6 +536,8 @@ export const loadRunContext = async (
       createdAt: run.createdAt,
       replyPlacement: run.replyPlacement,
       trigger: run.trigger,
+      modelSubscriptionId: run.modelSubscriptionId,
+      modelSubscriptionEpoch: run.modelSubscriptionEpoch,
     },
     task,
   }

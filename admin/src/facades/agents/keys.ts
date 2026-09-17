@@ -19,6 +19,7 @@ export const agentKeys = {
   documents: (agentId?: string) => ['agents', agentId, 'documents'] as const,
   messages: (agentId: string) => ['agents', agentId, 'messages'] as const,
   models: ['agents', 'models'] as const,
+  runFailures: (agentId?: string) => ['agents', agentId, 'run-failures'] as const,
   runTools: (agentId?: string, runId?: string) =>
     ['agents', agentId, 'runs', runId, 'tools'] as const,
   status: (agentId?: string) => ['agents', agentId, 'status'] as const,

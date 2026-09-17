@@ -13,6 +13,7 @@ import type {
   AgentChild,
   AgentConversationRecord,
   AgentDocumentsResponse,
+  AgentRunFailuresResponse,
   AgentStatusResponse,
   ApiResponse,
   ToolCallEntry,
@@ -132,6 +133,17 @@ export const useAgentActivity = (agentId?: string) => {
     placeholderData: keepPreviousData,
     queryKey: agentKeys.activity(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/activity`),
+    enabled: Boolean(agentId),
+  })
+}
+
+export const useAgentRunFailures = (agentId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentRunFailuresResponse>({
+    placeholderData: keepPreviousData,
+    queryKey: agentKeys.runFailures(agentId),
+    queryFn: () => apiClient.get(`/api/agents/${agentId}/run-failures`),
     enabled: Boolean(agentId),
   })
 }

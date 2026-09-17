@@ -11,6 +11,7 @@ import { persistInvocationLedgerEvents } from '../inference.js'
 import { createAgentMessage } from './agent-message.js'
 import { commitSuccessfulRun } from './completion-commit.js'
 import { applyRunReplyBookkeeping } from './lifecycle.js'
+import { noteSubscriptionSuccess } from './subscription-health.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext, RunPlanContext } from './types.js'
 import { foldWatchStatus } from './watch-status.js'
 
@@ -36,6 +37,10 @@ export const completeRunExecution = async (
     runId: context.run.id,
     invocations: input.invocations,
   })
+
+  // A successful run on a personal subscription clears any transient health
+  // problem and records that the credential was actually used.
+  await noteSubscriptionSuccess(deps, context)
 
   const completedAt = new Date()
   await commitSuccessfulRun(

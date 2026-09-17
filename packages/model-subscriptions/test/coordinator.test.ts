@@ -7,6 +7,7 @@ import {
   linkSubscription,
   loadSpendableSubscription,
   recordSubscriptionFailure,
+  recordSubscriptionSuccess,
   resolveSubscriptionCredential,
   subscriptionSecretName,
   sweepSubscriptionVaultTombstones,
@@ -233,4 +234,37 @@ test('disconnect tombstones the vault secret and the sweep deletes it', async ()
   // partial failure converges rather than erroring forever.
   const again = await sweepSubscriptionVaultTombstones({ prisma, secretStore: store })
   assert.equal(again.deleted, 0)
+})
+
+test('a terminal provider rejection degrades subscription health to error', async () => {
+  const { prisma, state } = makeFake({
+    membership: { deactivatedAt: null },
+    subscription: ACTIVE_SUBSCRIPTION,
+  })
+  const result = await recordSubscriptionFailure(
+    { prisma, secretStore: null },
+    { detail: 'Invalid model', epoch: 3, kind: 'rejected', subscriptionId: ACTIVE_SUBSCRIPTION.id },
+  )
+  assert.equal(result.transitioned, true)
+  assert.equal((state.subscription as Row).status, 'error')
+  assert.equal((state.subscription as Row).healthReason, 'provider_rejected')
+  assert.equal((state.subscription as Row).healthDetail, 'Invalid model')
+})
+
+test('a success records lastUsedAt and clears prior poor health', async () => {
+  const { prisma, state } = makeFake({
+    membership: { deactivatedAt: null },
+    subscription: {
+      ...ACTIVE_SUBSCRIPTION,
+      healthDetail: 'out of quota',
+      healthReason: 'quota_exhausted',
+    },
+  })
+  await recordSubscriptionSuccess(
+    { prisma, secretStore: null },
+    { epoch: 3, subscriptionId: ACTIVE_SUBSCRIPTION.id },
+  )
+  assert.equal((state.subscription as Row).healthReason, 'ok')
+  assert.equal((state.subscription as Row).healthDetail, null)
+  assert.ok((state.subscription as Row).lastUsedAt instanceof Date)
 })
