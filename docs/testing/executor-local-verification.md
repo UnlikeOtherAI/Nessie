@@ -23,11 +23,22 @@ The real tray HTML was rendered headlessly with a `starting` executor: the
 attention state appeared, Start was disabled, Stop was enabled and dispatched
 the expected executor id.
 
-These corrected paths still require a fresh MSI install on Windows. A live
-pairing to `https://api.nessie.works` also requires the normal authenticated
-Executors surface and human fingerprint confirmation; neither is established
-by the native tests above and neither was claimed during this source-level
-verification.
+A corrected debug MSI was then installed over that baseline. The
+`NessieExecutor` service remained `Running` and `Auto` under
+`NT SERVICE\NessieExecutor`; the state root became owner-only (an ordinary user
+could no longer read its ACL or log), an elevated workspace grant recorded the
+user, and the same ordinary user completed three consecutive exact-rights
+`status` pipe exchanges without stopping the service. That live run exposed one
+remaining client-framing defect: the tray received a valid newline-delimited
+answer but read through the server disconnect and reported `the service closed
+the connection`. The corrected one-line reader and its regression test must be
+included in the next debug package and installed before this path is called
+complete.
+
+A live pairing to `https://api.nessie.works` still requires the normal
+authenticated Executors surface and human fingerprint confirmation. It has not
+yet been performed and is not implied by the native, installer, pipe, or
+renderer evidence above.
 
 Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
 
