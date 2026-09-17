@@ -150,7 +150,22 @@ mod imp {
             0,
             Duration::default(),
         );
+        let recovery_shutdown = Arc::clone(&shutdown);
+        let recovery_control = Arc::clone(&control);
+        let recovery_root = root.clone();
+        let recovery = std::thread::spawn(move || {
+            while !recovery_shutdown.load(Ordering::SeqCst) {
+                if let Some(Ok(mut supervisor)) = recovery_control.supervisor().map(std::sync::Mutex::lock) {
+                    for (executor_id, outcome) in supervisor.recover_due() {
+                        log_line(&recovery_root, &format!("executor {executor_id} recovery: {outcome}"));
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        });
         pipe::serve(root.clone(), Arc::clone(&control), Arc::clone(&shutdown));
+        shutdown.store(true, Ordering::SeqCst);
+        let _ = recovery.join();
         stop_supervising(&root, &handle, &control);
         report(&handle, ServiceState::Stopped, ServiceControlAccept::empty(), 0, Duration::default());
         Ok(())
@@ -170,12 +185,13 @@ mod imp {
             secure_directory(&runtime.native_helper, &directory)?;
         }
         let control = Control::new(Supervisor::new(root.to_path_buf(), runtime));
-        // Every paired executor comes back at boot; one that refuses is named in
-        // the log and does not stop the others.
+        // Every paired executor comes back at boot, but enrolling with Nessie
+        // happens in the recovery thread after SCM and the control pipe are
+        // running. A temporary outage must not make the service unavailable.
         if let Some(Ok(mut supervisor)) = control.supervisor().map(std::sync::Mutex::lock) {
             for executor_id in paired_executors(root) {
                 if let Err(reason) = supervisor.start(&executor_id) {
-                    log_line(root, &format!("executor {executor_id} did not start: {reason}"));
+                    log_line(root, &format!("executor {executor_id} was not queued for recovery: {reason}"));
                 }
             }
         }

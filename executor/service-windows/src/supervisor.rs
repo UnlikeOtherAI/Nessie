@@ -12,7 +12,7 @@
 //! still tearing down is waited for and then refused, never killed.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -38,6 +38,13 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// enough that a wedged child never holds the control pipe open.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// A booting service must accept SCM and tray controls even while Nessie is
+/// unreachable. Connecting is therefore attempted by the recovery sweep and
+/// is bounded more tightly than a user-requested configuration command.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const RETRY_INITIAL: Duration = Duration::from_secs(5);
+const RETRY_MAX: Duration = Duration::from_secs(300);
+
 struct ManagedDaemon {
     child: Child,
     /// Closing this pipe tells `serve` to stop all guest sessions before it
@@ -48,6 +55,9 @@ struct ManagedDaemon {
 
 pub struct Supervisor {
     children: BTreeMap<String, ManagedDaemon>,
+    desired: BTreeSet<String>,
+    retry_after: BTreeMap<String, Instant>,
+    retry_delay: BTreeMap<String, Duration>,
     root: PathBuf,
     runtime: VerifiedRuntime,
 }
@@ -133,7 +143,10 @@ fn parse_fingerprint(output: &str) -> Option<String> {
 
 impl Supervisor {
     pub fn new(root: PathBuf, runtime: VerifiedRuntime) -> Self {
-        Self { children: BTreeMap::new(), root, runtime }
+        Self {
+            children: BTreeMap::new(), desired: BTreeSet::new(), retry_after: BTreeMap::new(),
+            retry_delay: BTreeMap::new(), root, runtime,
+        }
     }
 
     pub fn runtime(&self) -> &VerifiedRuntime {
@@ -255,6 +268,9 @@ impl Supervisor {
         if local == "stopped" && unowned_daemon_is_stopping(&state_dir) {
             return Ok("stopping".to_owned());
         }
+        if local == "stopped" && self.desired.contains(executor_id) {
+            return Ok("starting".to_owned());
+        }
         Ok(local.to_owned())
     }
 
@@ -269,6 +285,8 @@ impl Supervisor {
             .collect()
     }
 
+    /// Requests that an executor run. The recovery sweep performs the network
+    /// connection; this makes Start answer promptly even when Nessie is down.
     pub fn start(&mut self, executor_id: &str) -> Result<String, String> {
         let state_dir = self.state_dir(executor_id)?;
         if !has_executor_state(&state_dir) {
@@ -277,16 +295,34 @@ impl Supervisor {
         if self.child_status(executor_id) == "running" {
             return Ok("running".to_owned());
         }
+        self.desired.insert(executor_id.to_owned());
+        self.retry_after.insert(executor_id.to_owned(), Instant::now());
+        Ok("starting".to_owned())
+    }
+
+    fn start_due(&mut self, executor_id: &str) -> Result<String, String> {
+        let state_dir = self.state_dir(executor_id)?;
         if unowned_daemon_is_stopping(&state_dir) {
             return Err(
                 "The prior daemon is still tearing down. Wait for it to finish before starting again."
                     .to_owned(),
             );
         }
-        self.run_to_completion(
-            vec!["connect".to_owned(), "--state-dir".to_owned(), state_dir.display().to_string()],
-            "Confirm this executor's fingerprint in Nessie before starting its daemon.",
-        )?;
+        let connection_arguments = vec![
+            "connect".to_owned(), "--state-dir".to_owned(), state_dir.display().to_string(),
+        ];
+        let mut connection = self.command();
+        connection.args(connection_arguments);
+        let mut connection = connection
+            .spawn()
+            .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
+        match wait_bounded(&mut connection, CONNECT_TIMEOUT)? {
+            Some(0) => {}
+            Some(_) | None => {
+                let _ = connection.kill();
+                return Err("Confirm this executor's fingerprint in Nessie before starting its daemon.".to_owned());
+            }
+        }
         let mut command = self.command();
         command.args(serve_arguments(&state_dir));
         command.stdin(Stdio::piped());
@@ -304,7 +340,51 @@ impl Supervisor {
         Ok("running".to_owned())
     }
 
+    /// Starts desired executors whose retry delay has elapsed. The caller owns
+    /// scheduling, so no network operation happens during SCM startup.
+    pub fn recover_due(&mut self) -> Vec<(String, String)> {
+        let now = Instant::now();
+        let desired: Vec<String> = self.desired.iter().cloned().collect();
+        for executor_id in &desired {
+            let had_daemon = self.children.contains_key(executor_id);
+            if had_daemon && self.child_status(executor_id) == "stopped" {
+                self.schedule_retry(executor_id, now);
+            }
+        }
+        let due: Vec<String> = desired
+            .iter()
+            .filter(|executor_id| {
+                self.child_status(executor_id) == "stopped"
+                    && self.retry_after.get(*executor_id).map_or(true, |when| *when <= now)
+            })
+            .cloned()
+            .collect();
+        due.into_iter()
+            .filter_map(|executor_id| match self.start_due(&executor_id) {
+                Ok(_) => {
+                    self.retry_after.remove(&executor_id);
+                    self.retry_delay.remove(&executor_id);
+                    Some((executor_id, "started".to_owned()))
+                }
+                Err(reason) => {
+                    self.schedule_retry(&executor_id, now);
+                    Some((executor_id, reason))
+                }
+            })
+            .collect()
+    }
+
+    fn schedule_retry(&mut self, executor_id: &str, now: Instant) {
+        let delay = self.retry_delay.entry(executor_id.to_owned()).or_insert(RETRY_INITIAL);
+        let current = *delay;
+        *delay = current.saturating_mul(2).min(RETRY_MAX);
+        self.retry_after.insert(executor_id.to_owned(), now + current);
+    }
+
     pub fn stop(&mut self, executor_id: &str) -> Result<String, String> {
+        self.desired.remove(executor_id);
+        self.retry_after.remove(executor_id);
+        self.retry_delay.remove(executor_id);
         let Some(mut daemon) = self.children.remove(executor_id) else {
             return Ok("stopped".to_owned());
         };
@@ -502,7 +582,24 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::{configure_arguments, configure_input_arguments, describe_arguments, parse_fingerprint, pair_arguments, serve_arguments};
-    use std::path::Path;
+    use crate::{manifest::VerifiedRuntime, paths::EXECUTOR_STATE_FILE, supervisor::Supervisor};
+    use std::{fs, path::Path};
+
+    const EXECUTOR_ID: &str = "00000000-0000-4000-8000-000000000001";
+
+    fn paired_supervisor(root: &Path) -> Supervisor {
+        let state = root.join("executors").join(EXECUTOR_ID);
+        fs::create_dir_all(&state).expect("state directory");
+        fs::write(state.join(EXECUTOR_STATE_FILE), b"{}").expect("paired state");
+        Supervisor::new(
+            root.to_path_buf(),
+            VerifiedRuntime {
+                native_helper: root.join("native-helper"),
+                node_executable: root.join("missing-node"),
+                root: root.to_path_buf(),
+            },
+        )
+    }
 
     #[test]
     fn pairing_arguments_keep_sensitive_input_off_the_process_list() {
@@ -561,5 +658,21 @@ mod tests {
         );
         assert_eq!(parse_fingerprint(""), None);
         assert_eq!(parse_fingerprint("no fingerprint here"), None);
+    }
+
+    #[test]
+    fn a_requested_start_is_visible_while_recovery_retries_and_stop_cancels_it() {
+        let directory = tempfile::tempdir().expect("temporary state");
+        let mut supervisor = paired_supervisor(directory.path());
+        assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
+        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
+        // The packaged command cannot spawn in this portable test, which is a
+        // deterministic stand-in for a boot-time remote outage. It remains
+        // desired until a person explicitly stops it.
+        assert_eq!(supervisor.recover_due().len(), 1);
+        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
+        assert_eq!(supervisor.stop(EXECUTOR_ID), Ok("stopped".to_owned()));
+        assert!(supervisor.recover_due().is_empty());
+        assert_eq!(supervisor.status(EXECUTOR_ID), Ok("stopped".to_owned()));
     }
 }

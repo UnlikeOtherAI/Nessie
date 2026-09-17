@@ -277,8 +277,14 @@ finds its pairings where it left them; delete the folder by hand to forget them.
 produces an invitation. In the tray: **Pair a new executor…** → paste the
 pairing command or link, and select the Nessie backend that produced it → choose the workspace in the native picker → confirm →
 approve one Windows administrator prompt → confirm the fingerprint in Nessie.
-The icon turns green. After a reboot the executor is online before anybody logs
-in.
+The icon turns green. After a reboot the service starts before anybody logs in.
+If the selected Nessie backend is temporarily unavailable during boot, the
+service keeps its signed runtime and local pairing state intact, answers the
+tray immediately with **starting**, and retries the enrollment and daemon start
+with bounded backoff until it reconnects. A person choosing **Stop** cancels
+those retries for the current service run; **Start** requests them again. A
+reboot deliberately returns every paired executor to its configured
+always-on state.
 
 The tray offers `https://api.nessie.works` and the two explicit
 local-development choices,
