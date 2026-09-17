@@ -1,0 +1,15 @@
+[
+  { "migration": "20260410153000_harden_control_plane_primitives", "reason": "Sets tool_registry_entries.scope_key NOT NULL; pre-swap replicas inserting rows without it violate the constraint." },
+  { "migration": "20260414173000_remove_agent_categories", "reason": "Drops the agent_categories tables the previous release still queries." },
+  { "migration": "20260530130000_human_work_distribution", "reason": "Sets tasks.organization_id NOT NULL; pre-swap replicas inserting tasks fail the constraint." },
+  { "migration": "20260530160000_budget_modes", "reason": "Drops organization_budgets.enforced, which the previous release's generated client still selects (P2022)." },
+  { "migration": "20260530180000_budgets_scoped", "reason": "Drops the organization_budgets table the previous release still queries." },
+  { "migration": "20260530210000_remove_dead_inference_subsystems", "reason": "Drops the inference_eval/tool_mediator tables the previous release still queries." },
+  { "migration": "20260613100000_channel_project_slugs", "reason": "Sets channels.project_id NOT NULL; pre-swap replicas inserting channels fail the constraint." },
+  { "migration": "20260720234500_retire_deepwater_local_cost_mirror", "reason": "Drops product_integration_runs.cost_amount/cost_currency, which the previous release's client still selects (P2022)." },
+  { "migration": "20260812170000_drop_executor_session_workspace_grant_digest", "reason": "Drops executor_sessions.workspace_grant_digest, which the previous release's client still selects (P2022)." },
+  { "migration": "20260903120000_conversational_setup_always_on", "reason": "Drops organizations.conversational_setup_enabled; tenant resolution selects it on nearly every request, so pre-swap replicas fail org-wide (P2022)." },
+  { "migration": "20260906100000_project_boards", "reason": "Drops board_columns.project_id, tasks.column_id/position and projects.board_style, and sets board_columns.board_id NOT NULL; pre-swap replicas fail on the boards and tasks surfaces (P2022)." },
+  { "migration": "20260912090000_versioned_at_rest_key_metadata", "reason": "Retypes three key_version columns from integer to text; old clients decode them as integers while this release writes opaque labels, so the generations must never serve together." },
+  { "migration": "20260916120000_dashboards_live_in_projects", "reason": "Drops dashboards.home/team_id/channel_id/owner_user_id and sets project_id NOT NULL; pre-swap replicas fail on the dashboards surface (P2022)." }
+]

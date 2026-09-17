@@ -17,6 +17,20 @@ const redeployScript = readFileSync(
   'utf8',
 )
 
+/**
+ * The drain list this migration used to be hardcoded into.
+ *
+ * `redeploy.sh` once named this one migration in a constant, so this test
+ * pinned that constant. The gate is now manifest-driven — every migration that
+ * cannot apply over a live previous generation is listed here, and the deploy
+ * drains while any of them is pending — so the property to hold is membership,
+ * not the constant.
+ */
+const incompatibleManifest = readFileSync(
+  new URL('../prisma/deploy-incompatible-migrations.json', import.meta.url),
+  'utf8',
+)
+
 const credentialTables = [
   'board_source_connection_credentials',
   'comms_connection_credentials',
@@ -74,7 +88,7 @@ test('executes the upgrade over legacy integer metadata and normalizes every sto
 
 test('stages the incompatible metadata migration without old and new credential readers', () => {
   const preflight = redeployScript.indexOf('ensure-encryption-key-ring.sh infrastructure/compose/.env')
-  const gate = redeployScript.indexOf("AT_REST_KEY_METADATA_MIGRATION='20260912090000_versioned_at_rest_key_metadata'")
+  const gate = redeployScript.indexOf('INCOMPATIBLE_MIGRATIONS_MANIFEST=')
   const migration = redeployScript.indexOf('==> Applying database migrations')
   assert.ok(preflight >= 0 && preflight < gate, 'preflight must succeed before any stop')
   assert.ok(gate >= 0 && gate < migration, 'the drain must run before migrations')
@@ -85,4 +99,14 @@ test('stages the incompatible metadata migration without old and new credential 
   assert.match(redeployScript, /API or worker containers remained running; refusing incompatible migration/u)
   assert.match(redeployScript, /legacy_service_containers worker/u)
   assert.match(redeployScript, /to_regclass\('_prisma_migrations'\)/u)
+
+  // Membership is what makes the gate fire for THIS migration. Retyping three
+  // key_version columns from integer to text is the reason the drain exists:
+  // old clients decode them as integers while this release writes opaque
+  // labels, so the two generations must never serve together.
+  assert.match(
+    incompatibleManifest,
+    /"20260912090000_versioned_at_rest_key_metadata"/u,
+    'the metadata migration must stay on the drain list',
+  )
 })
