@@ -26,8 +26,11 @@ const asRoot = process.getuid?.() === 0
  */
 const stage = async (): Promise<string> => realpath(await mkdtemp(join(tmpdir(), 'nessie-artifacts-')))
 
-test('an owner-private artifact is accepted, and a shared one is not', async () => {
-  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') return
+test('an owner-private artifact is accepted, and a shared one is not', async (context) => {
+  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+    context.skip('Windows packaged artifacts use the installed manifest provenance test below')
+    return
+  }
   const root = await stage()
   try {
     const artifact = join(root, 'build-initrd')
