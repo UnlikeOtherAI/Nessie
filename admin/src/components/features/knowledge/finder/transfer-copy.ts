@@ -45,10 +45,7 @@ export const destinationsFromRoot = (root: KnowledgeRoot | undefined): TransferD
   })
   return [
     of(root.myDocuments, 'personal'),
-    ...root.projects
-      .map((project) => project.space)
-      .filter((space): space is KnowledgeRootSpace => Boolean(space))
-      .map((space) => of(space, 'project')),
+    ...root.projects.map((project) => of(project.space, 'project')),
     ...root.shared.map((space) => of(space, 'shared')),
   ]
 }

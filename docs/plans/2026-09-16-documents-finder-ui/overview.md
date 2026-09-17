@@ -201,9 +201,11 @@ Explicitly, so nothing lingers.
 - **`KnowledgePane`** stays as the chrome of the document, history and editor
   panes. The browser's own header is `ColumnBrowserColumn screen` for column
   0 on the root route and `ScreenHeader` actions elsewhere.
-- **Header actions.** `View: Column`, `Needs review (n)`, `Open agent`,
-  `Upload file`, `New folder`, `New page` and ⚙ are all re-homed in
-  [browser-ui.md](browser-ui.md) §6; none vanishes.
+- **Header actions.** `View: Column`, `Needs review (n)`, `Upload file`,
+  `New folder`, `New page` and ⚙ are all re-homed in
+  [browser-ui.md](browser-ui.md) §6; none vanishes. `Open agent` re-homed
+  once more, out of the global toolbar into the agent documents column's own
+  header as **Open** (§6).
 - **`useFileDrop`'s `firstFileOnly`** loses its last knowledge caller; it stays
   for the attachment and version uploaders.
 - **Three mount sites afterwards.** `/knowledge-base*` — the full Finder with
@@ -231,8 +233,6 @@ Explicitly, so nothing lingers.
 - **A Trash.** See decision 13.
 - **Quick Look (Space to preview).** The document pane is the preview; a
   second preview surface would be a fork.
-- **Column-specific widths.** One shared width, as today
-  (`knowledgeColumnWidth`).
 - **Tags, colour labels, comments in Get Info.** Labels exist on pages and
   stay editable in the editor; the Finder does not add a second editor.
 - **Spreadsheets, entirely.** The owner's instruction is to leave them

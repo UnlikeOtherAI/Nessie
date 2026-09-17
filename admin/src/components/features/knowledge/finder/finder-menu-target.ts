@@ -62,7 +62,10 @@ export const rootRowDescriptor = (row: FinderRootRow): FinderMenuRootRow => {
     case 'space':
       if (row.role === 'personal') return { role: 'personal' }
       if (row.role === 'project') return { projectId: row.space.projectId, role: 'project' }
-      if (row.space.ownerAgentId) {
+      if (row.role === 'agent') {
+        // The Agents section is built from spaces with an owner agent, so the
+        // id is always here; a missing one is a data error, not a shared row.
+        if (!row.space.ownerAgentId) return { role: 'link' }
         return {
           agentId: row.space.ownerAgentId,
           canManageAccess: row.space.canManageAccess,
@@ -74,8 +77,6 @@ export const rootRowDescriptor = (row: FinderRootRow): FinderMenuRootRow => {
         canWrite: row.space.canWrite,
         role: 'shared',
       }
-    case 'project-unopened':
-      return { projectId: row.projectId, role: 'project' }
     default:
       return { role: 'link' }
   }

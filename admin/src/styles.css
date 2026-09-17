@@ -4716,6 +4716,12 @@ button.reaction-pill-active:focus-visible {
   border-top: 1px solid var(--sep);
 }
 
+/* The one group that *is* headed — Agents. Its label is an <li> for the same
+   reason the separator is, and it lines up with the rows' px-2 inset. */
+.finder-section-label {
+  padding: 2px 8px 4px;
+}
+
 /* The column's empty body under a drag — the same target a folder row is. */
 .finder-drop-body[data-drop-target='true'] {
   background: var(--accent-soft);

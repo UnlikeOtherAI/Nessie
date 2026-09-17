@@ -47,6 +47,14 @@ type ColumnBrowserViewportProps = {
    * itself; a stage is a full-width layer and has no column width.
    */
   columnWidth?: number
+  /**
+   * Per-column pixel widths, one entry per column, for a caller whose
+   * columns are *independently* resizable. Takes precedence over
+   * `columnWidth`; with it the track's offset is the sum of the widths
+   * before `startIndex`, not a multiple of one shared width — get that wrong
+   * and the columns drift out of alignment as soon as two of them differ.
+   */
+  columnWidths?: number[]
   // Prefixes the stage ids this viewport pushes. A page that mounts two
   // column browsers passes different scopes so their layers stay distinct in
   // the one stack; a page with a single browser needs nothing.
@@ -54,6 +62,14 @@ type ColumnBrowserViewportProps = {
 }
 
 const noop = (): void => undefined
+
+/**
+ * The track's pixel offset with per-column widths: the sum of the widths of
+ * the columns before `startIndex`. Pure and exported for its unit test —
+ * this is the arithmetic that drifts when it assumes one shared width.
+ */
+export const columnTrackOffsetPx = (widths: readonly number[], startIndex: number): number =>
+  widths.slice(0, Math.max(0, startIndex)).reduce((sum, width) => sum + width, 0)
 
 // A column browser on the single layout is not a track: column 0 *is* the
 // page, and every column beyond it is a nested stage — a real layer in the
@@ -75,6 +91,7 @@ export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
   columnWidth,
+  columnWidths,
   stageScope,
 }: ColumnBrowserViewportProps) => {
   // Column ownership follows the shell's geometry-aware classification, so
@@ -159,10 +176,12 @@ export const ColumnBrowserViewport = ({
   )
   // Pixel-based columns shift by an exact pixel offset; percentage-based ones
   // shift by a fraction of the viewport, as every other page already did.
-  const translateX = columnWidth
-    ? -(startIndex * columnWidth)
+  const pixelWidths = columnWidths
+    ?? (columnWidth !== undefined ? normalizedColumns.map(() => columnWidth) : undefined)
+  const translateX = pixelWidths
+    ? -columnTrackOffsetPx(pixelWidths, startIndex)
     : -(startIndex * columnWidthPercent)
-  const translateUnit = columnWidth ? 'px' : '%'
+  const translateUnit = pixelWidths ? 'px' : '%'
 
   return (
     <div className="h-full w-full overflow-clip">
@@ -188,8 +207,8 @@ export const ColumnBrowserViewport = ({
               className="h-full w-full flex-shrink-0"
               key={index}
               style={{
-                width: columnWidth
-                  ? `${columnWidth}px`
+                width: pixelWidths
+                  ? `${pixelWidths[index] ?? columnWidth ?? 0}px`
                   : `${columnWidthPercent * slots}%`,
               }}
             >

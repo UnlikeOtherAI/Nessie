@@ -66,11 +66,16 @@ today. `PROJECT_INTENT` inherits the two new state names automatically.
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- The browser is `ColumnBrowserViewport` with `columnWidth` (the persisted
-  `knowledgeColumnWidth`, default 320, 300–720) and every column a
-  `ColumnBrowserColumn` with `resize`. On `split` the viewport composes the
-  track; on `single` every column beyond 0 is a `column:<k>` stage
-  (docs/navigation §6) — no Finder-specific stage code.
+- The browser is `ColumnBrowserViewport` with `columnWidths` — one persisted
+  width **per column slot** (`root`, `virtual`, `depth:0`, `depth:1`, …,
+  keyed by position, never by page or space id; default 320, clamped
+  300–720, one JSON object in localStorage at
+  `nessie.admin.knowledgeColumnWidths`, migrated from the retired
+  `knowledgeColumnWidth` cookie) — and every column a `ColumnBrowserColumn`
+  with `resize`, including the root column in list view. On `split` the
+  viewport composes the track, its `translateX` the **sum** of the widths
+  before the first visible column; on `single` every column beyond 0 is a
+  `column:<k>` stage (docs/navigation §6) — no Finder-specific stage code.
 - **Column 0** on `/knowledge-base*` is the root column and is the route's
   own screen: `ColumnBrowserColumn screen` renders the `ScreenHeader`
   (`h1` "Documents") and the toolbar actions. On `/projects/:id/docs` and the
@@ -78,10 +83,12 @@ today. `PROJECT_INTENT` inherits the two new state names automatically.
   (the project tab host and the agent page own their `h1`); the toolbar
   renders in that column's own header row via `actions`.
 - **The document pane** — `KnowledgeDocumentPane` inside the
-  `knowledge:document` stage — is the rightmost region on `split` when a
-  document is open, exactly as today; it takes the remaining width after the
-  columns (`flex-1 min-w-[360px]`), and the track scrolls the columns left to
-  make room the way Finder's preview column does.
+  `knowledge:document` stage — takes the **whole work surface** on `split`
+  when a document is open, with a Back button, the way the editor and the
+  version history already did; the 46% preview column was too small to read
+  in. The browser stays mounted underneath (covered, never unmounted), so
+  Back lands on the same folder, the same column scroll and the same
+  selection.
 - **The status bar** (`FinderStatusBar`, new) is a 28px strip under the
   track: `text-xs text-[color:var(--tx3)]`, left "{n} items{, m selected}"
   for the active column (virtual columns: "{n} items" of the loaded page,
@@ -103,6 +110,15 @@ Rows are `FinderRow` (§4) with `variant="root"`: no size, no date, no
 indexing glyph, always a chevron. The overview's root model fixes the order;
 this fixes the pixels.
 
+The groups: **one continuous first group** — Latest, Shared with me, My
+Documents, then one row per project the person can reach, with no hairline
+between "Shared with me" and "My Documents" — then a hairline, the **Agents**
+section (a labelled group; every agent Documents home, headed by a
+`SectionLabel` rendered as an `<li>` inside the `<ul>`, because a `<div>`
+between `<li>` rows is invalid and browsers reparent it), a hairline, the
+shared folders, a hairline, and any product views. A group with nothing in it
+omits itself and its separator.
+
 | Row | Leading (20px, `fixedWidth`) | Title | Subtitle | Trailing |
 |---|---|---|---|---|
 | Latest | `faClockRotateLeft` in `--accent` | "Latest" | — | chevron |
@@ -110,14 +126,20 @@ this fixes the pixels.
 | My Documents | `faHouse` in `--accent` | "My Documents" | — | chevron |
 | a project | `ProjectAvatar` 20px (one identity tile, never a folder glyph) | project name | — | chevron |
 | a shared folder | `faLayerGroup` in `--accent`; `writeRestricted` adds a `faLock` 10px badge bottom-right in `--tx3` | space name | project name (`text-xs --tx3`) | chevron |
-| an agent home | `AgentAvatar` 20px | space name (`<Agent> — Documents`) | "Agent documents" | chevron |
+| an agent home | `AgentAvatar` 20px | the agent's name (the space's ` — Documents` suffix is stripped for display) | — | chevron |
 | Dashboards | `faChartColumn` in `--tx2` | "Dashboards" | — | chevron |
 | a product view | product `iconGlyph` or `faBook` in `--tx2` | surface label | product name | chevron |
 
-Separators: `<div role="separator" className="my-1.5 border-t border-[color:var(--sep)]" />`.
+Separators: `<li role="separator" className="finder-separator" />` — a list
+item, for the same invalid-`<div>`-in-`<ul>` reason the section label is one.
 The list is `role="listbox"` with `aria-label="Documents"`; rows are
 `role="option"` with `aria-selected`. The selected root row uses the same
 pill as any selected row (§4).
+
+Every project row is a real folder: `GET /root` lists the same projects
+`GET /api/projects` does and each one's Documents space already exists (§7 of
+data-and-api.md), so there is no "unopened project" placeholder row and no
+provisioning on the way in.
 
 Loading: five `Skeleton variant="list"` rows for 300ms minimum then the
 list; a failed `GET /root` renders `QueryState`'s error line "Couldn't load
@@ -276,8 +298,16 @@ and the project tab need no separate rules. Order is priority, high first.
 | `sort` | menu | "Sort: {Name}" | `faArrowDownWideShort` | 80 | | always, disabled (`aria-disabled`) in virtual columns with `title="Latest and Shared with me are ordered by time"` |
 | `view` | menu | "View: {Columns}" | `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
 | `needs-review` | toggle | "Needs review ({n})" | | 60 | | `agentDraftCount > 0 || needsReviewOnly` for the active space (unchanged behaviour) |
-| `open-agent` | button | "Open agent" | | 50 | | the active space has `ownerAgentId` and it is not the scoping agent |
 | `sharing-settings` | button, compact | "Sharing & settings" | `faGear` | 10 | | active space `canManageAccess || canWrite`, and the space is neither personal nor a project Documents space (those have nothing to set — the read-out covers them) |
+
+`open-agent` is **not** a toolbar action any more. When the column being
+shown is an agent's documents folder (its space has `ownerAgentId`), that
+column's own header carries a plain button labelled **Open**
+(`buildAgentOpenAction`) which navigates to `/agents/<ownerAgentId>` — the
+doorway belongs to the column, not the global bar. It is absent where the
+column would offer to open the agent whose own page you are already on, and
+the column's title shows the agent's name without the ` — Documents`
+suffix (`agentDocumentsSpaceDisplayName`).
 
 One primary: New file. New page used to be primary; "file" is the owner's
 word and the menu holds the three kinds. *Rejected:* keeping New folder
@@ -331,10 +361,12 @@ Selection model (`finder-selection.ts`, pure, unit-tested):
 
 - One active column; a `Set<pageId>` of selected ids in it; an anchor id for
   Shift ranges; selections in other columns are the path (one folder each).
-- Click selects one. Cmd/Ctrl-click toggles. Shift-click selects the range
-  from the anchor in the current sort order. Cmd/Ctrl-A selects the column.
-  Escape clears the selection (and closes an open menu first, through the
-  overlay's own Escape).
+- A plain click selects **and opens** — one tap, for every kind of row; the
+  second click of a double-click does not open again. A click carrying
+  Cmd/Ctrl/Shift only extends the selection, never opens: Cmd/Ctrl-click
+  toggles, Shift-click selects the range from the anchor in the current sort
+  order. Cmd/Ctrl-A selects the column. Escape clears the selection (and
+  closes an open menu first, through the overlay's own Escape).
 - Opening a folder (click, →, Enter) makes its column active and selects
   nothing in it; the parent column keeps that folder as its one selected
   (grey) row.
@@ -357,9 +389,9 @@ Keys, with the row focused (`role="option"`, roving tabindex):
 | a–z, 0–9 | type-ahead: select the first row whose name starts with the buffer (buffer resets after 700ms) |
 | Tab | leaves the column to the next column's tabbable row (then the pane, then the status bar) |
 
-Rename (`RenameRow` inside `FinderRow`): F2, the menu's Rename, or a
-click-pause-click on an already-selected row's name (Finder's gesture; 500ms
-window, cancelled by a double-click which opens). The name cell becomes an
+Rename (`RenameRow` inside `FinderRow`): F2 or the menu's Rename. (Finder's
+click-pause-click is deliberately absent: a single click opens now, so there
+is no paused second click to catch.) The name cell becomes an
 `Input size="compact"` with the whole title selected for folders and
 documents, and the stem selected (extension excluded) for files. Enter
 commits, Escape reverts, blur commits, an empty or unchanged value reverts

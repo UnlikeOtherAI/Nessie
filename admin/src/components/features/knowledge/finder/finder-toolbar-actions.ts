@@ -6,6 +6,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type {
   PageHeaderAction,
+  PageHeaderButtonAction,
   PageHeaderMenuItem,
 } from '../../../shared/ResponsivePageHeader'
 import {
@@ -20,13 +21,16 @@ import { finderViewOptions, type FinderView } from './finder-view'
 import { newFileTypeItems } from './new-file-types'
 
 /**
- * Every header action the Finder has (browser-ui.md §6), in one place.
+ * Every header action the Finder's toolbar has (browser-ui.md §6), in one
+ * place.
  *
  * It replaces `knowledge-workspace-actions.ts`, and it re-homes rather than
- * drops: `View`, `Needs review (n)`, `Open agent`, `Upload file`, `New
- * folder`, `New page` and the ⚙ all still exist. Upload moved inside New
- * file's menu (the owner's word is "file", and "Document or Upload" is one
- * decision, not two buttons), and New page became New file → Document.
+ * drops: `View`, `Needs review (n)`, `Upload file`, `New folder`, `New page`
+ * and the ⚙ all still exist. Upload moved inside New file's menu (the
+ * owner's word is "file", and "Document or Upload" is one decision, not two
+ * buttons), and New page became New file → Document. `Open agent` left the
+ * toolbar for the agent column's own header (`buildAgentOpenAction` below):
+ * a global bar is the wrong home for a doorway that belongs to one column.
  *
  * `ResponsivePageHeader` measures these and moves the lowest priorities into
  * More, so a narrow project tab needs no rules of its own.
@@ -34,6 +38,33 @@ import { newFileTypeItems } from './new-file-types'
  * **One primary: New file.** Creating the thing the screen lists is always
  * the primary, and two filled buttons name no decision.
  */
+
+/**
+ * The `Open` button an agent's documents column carries in its own header.
+ * Absent where the space is nobody's agent home, and absent where the column
+ * would offer to open the agent whose own page you are already on — the old
+ * toolbar action's `scopeAgentId` check, kept for the same reason.
+ */
+export const buildAgentOpenAction = ({
+  onOpenAgent,
+  ownerAgentId,
+  scopeAgentId,
+}: {
+  onOpenAgent: (agentId: string) => void
+  /** The active space's `ownerAgentId`; anything else means no doorway. */
+  ownerAgentId?: string | null
+  /** The agent whose own page this is, so it does not offer to open itself. */
+  scopeAgentId?: string
+}): PageHeaderButtonAction | null =>
+  ownerAgentId && ownerAgentId !== scopeAgentId
+    ? {
+        id: 'open-agent',
+        label: 'Open',
+        onSelect: () => onOpenAgent(ownerAgentId),
+        priority: 0,
+        title: 'Open the agent these documents belong to',
+      }
+    : null
 
 export type FinderToolbarInput = {
   /** Drafts awaiting review in the active space; 0 hides the filter. */
@@ -52,15 +83,11 @@ export type FinderToolbarInput = {
   /** Absent where the spreadsheet dialogs are not mounted; the rows are then absent. */
   onCreateSpreadsheet?: () => void
   onImportSpreadsheet?: () => void
-  onOpenAgent: (agentId: string) => void
   onOpenSettings: () => void
   onSelectSort: (sort: FinderSort) => void
   onSelectView: (view: FinderView) => void
   onToggleNeedsReview: (checked: boolean) => void
   onUploadFile: () => void
-  ownerAgentId?: string | null
-  /** The agent whose own page this is, so it does not offer to open itself. */
-  scopeAgentId?: string
   /** Omitted on `single`, where a column *is* a list. */
   showViewAction: boolean
   sort: FinderSort
@@ -107,7 +134,6 @@ const sortMenuItems = (
 export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeaderAction[] => {
   const writable = input.canWrite && !input.isVirtualColumn
   const selectedView = finderViewOptions.find((option) => option.value === input.view)
-  const ownerAgentId = input.ownerAgentId
 
   return [
     // One New. Folder, document and upload are four words apart, not two
@@ -195,14 +221,6 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
           label: `Needs review (${input.agentDraftCount})`,
           onChange: input.onToggleNeedsReview,
           priority: 60,
-        } satisfies PageHeaderAction]
-      : []),
-    ...(ownerAgentId && ownerAgentId !== input.scopeAgentId
-      ? [{
-          id: 'open-agent',
-          label: 'Open agent',
-          onSelect: () => input.onOpenAgent(ownerAgentId),
-          priority: 50,
         } satisfies PageHeaderAction]
       : []),
     ...(input.canManageSpace

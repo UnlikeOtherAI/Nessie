@@ -75,11 +75,13 @@ export type FinderRowProps = {
   /** Right-aligned detail beside the status glyphs, in columns view. */
   meta?: ReactNode
   onContextMenu?: (event: MouseEvent<HTMLElement>) => void
-  onDoubleClick?: (event: MouseEvent<HTMLElement>) => void
   /** The column's key table (`useFinderKeyboard`), already bound to this row. */
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   onOpen?: () => void
-  /** The click that selects. Opening is the double-click, Enter or a chevron. */
+  /**
+   * The click that selects. Opening is that same click unless it carries a
+   * selection modifier — see `finderClickOpens`.
+   */
   onSelect?: (event: MouseEvent<HTMLElement>) => void
   /** `prewarmRowHandlers(prewarm, to)` for a row that navigates. */
   prewarm?: RowProps['prewarm']
@@ -104,6 +106,22 @@ export type FinderRowProps = {
   upload?: FinderRowUpload
   variant: FinderRowVariant
 }
+
+/**
+ * Whether a click on a row opens it. Every row opens on the click that
+ * selects it — one tap, not two; the old double-click gate existed only so a
+ * selection could be extended without opening five documents on the way, and
+ * the modifier click below is what preserves that. The second click of a
+ * double-click (`detail` 2) must not open again: the first one already did,
+ * and opening the same document twice is a navigation nobody made.
+ */
+export const finderClickOpens = (event: {
+  ctrlKey: boolean
+  detail: number
+  metaKey: boolean
+  shiftKey: boolean
+}): boolean =>
+  !event.metaKey && !event.ctrlKey && !event.shiftKey && event.detail <= 1
 
 const glyph = (icon: IconDefinition, tone: string, title?: string) => (
   <FontAwesomeIcon
@@ -186,7 +204,6 @@ export const FinderRow = ({
   locked = false,
   meta,
   onContextMenu,
-  onDoubleClick,
   onKeyDown,
   onOpen,
   onSelect,
@@ -257,17 +274,12 @@ export const FinderRow = ({
       onClick={(event) => {
         if (disabled) return
         if (onSelect) onSelect(event)
-        // A root row and a folder open on the single click that selects them,
-        // which is this browser's whole gesture; an item waits for Enter or a
-        // double-click so a selection can be extended without opening five
-        // documents on the way.
-        if (onOpen && (variant === 'root' || kind === 'folder')) onOpen()
+        // One tap opens: the click that selects is the click that opens, for
+        // every kind of row. What the click must not do is open while a
+        // selection is being extended, or open twice on a double-click.
+        if (onOpen && finderClickOpens(event)) onOpen()
       }}
       onContextMenu={onContextMenu}
-      onDoubleClick={(event) => {
-        onDoubleClick?.(event)
-        if (!disabled && onOpen) onOpen()
-      }}
       onKeyDown={onKeyDown}
       prewarm={prewarm}
       role="option"

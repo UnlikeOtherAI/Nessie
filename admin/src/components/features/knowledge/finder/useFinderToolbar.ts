@@ -24,14 +24,11 @@ export type FinderToolbarInput = {
   onCreateRootFolder?: () => void
   onCreateSpreadsheet?: (parentPageId: string | null) => void
   onImportSpreadsheet?: (parentPageId: string | null) => void
-  onOpenAgent: (agentId: string) => void
   onOpenSettings: () => void
   onSelectSort: (sort: FinderSort) => void
   onSelectView: (view: FinderView) => void
   onToggleNeedsReview: (only: boolean) => void
   onUploadFile: () => void
-  ownerAgentId?: string | null
-  scopeAgentId?: string
   showViewAction: boolean
   sort: FinderSort
   spaceCanWrite: boolean
@@ -62,14 +59,11 @@ export const useFinderToolbar = (input: FinderToolbarInput) => {
       input.onSelectView('columns')
       setCreatingFolderIn(input.activeKey)
     },
-    onOpenAgent: input.onOpenAgent,
     onOpenSettings: input.onOpenSettings,
     onSelectSort: input.onSelectSort,
     onSelectView: input.onSelectView,
     onToggleNeedsReview: input.onToggleNeedsReview,
     onUploadFile: input.onUploadFile,
-    ownerAgentId: input.ownerAgentId,
-    scopeAgentId: input.scopeAgentId,
     showViewAction: input.showViewAction,
     sort: input.sort,
     view: input.view,

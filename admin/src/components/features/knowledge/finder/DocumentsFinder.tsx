@@ -36,9 +36,12 @@ import {
   FINDER_VIEWS,
   FINDER_VIEW_COOKIE,
   migrateStoredFinderView,
-  useFinderColumnWidth,
+  type FinderColumnSlot,
   useFinderFolderParam,
+  useFinderColumnWidths,
 } from './finder-view'
+import { buildAgentOpenAction } from './finder-toolbar-actions'
+import { agentDocumentsSpaceDisplayName } from './agent-space-name'
 import { FinderUploadInput, UploadLeaveGuard, useFinderUploads } from './UploadQueue'
 import { useFinderMenus } from './FinderContextMenus'
 import { MoveToDialog } from './MoveToDialog'
@@ -173,12 +176,17 @@ export const DocumentsFinder = ({
 
   const levels: FinderFolderLevel[] = useMemo(() => {
     if (!selectedSpaceId || virtualKind) return []
+    // An agent's Documents home is named `${agent} — Documents`; in the
+    // column's own header the suffix is furniture (agent-space-name.ts).
+    const spaceName = knowledge.selectedSpace?.name ?? 'Documents'
     return [
       {
         depth: 0,
         key: `space:${selectedSpaceId}`,
         parentPageId: null,
-        title: knowledge.selectedSpace?.name ?? 'Documents',
+        title: knowledge.selectedSpace?.ownerAgentId
+          ? agentDocumentsSpaceDisplayName(spaceName)
+          : spaceName,
       },
       ...pathPages.map((folder, index) => ({
         depth: index + 1,
@@ -187,7 +195,7 @@ export const DocumentsFinder = ({
         title: folder.title,
       })),
     ]
-  }, [knowledge.selectedSpace?.name, pathPages, selectedSpaceId, virtualKind])
+  }, [knowledge.selectedSpace?.name, knowledge.selectedSpace?.ownerAgentId, pathPages, selectedSpaceId, virtualKind])
 
   const virtualColumnKey = virtualKind ? `virtual:${virtualKind}` : null
   const deepestKey = virtualColumnKey ?? levels.at(-1)?.key ?? 'root'
@@ -235,12 +243,6 @@ export const DocumentsFinder = ({
       case 'space':
         knowledge.selectSpace(row.space.spaceId)
         return void navigate(`/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`)
-      case 'project-unopened':
-        // Provisioned on the way in: `GET /root` writes no space for a
-        // project nobody has opened yet.
-        return void knowledge.openProjectDocuments(row.projectId).then((spaceId) => {
-          if (spaceId) void navigate(`/knowledge-base/spaces/${encodeURIComponent(spaceId)}`)
-        })
       case 'product-view':
         knowledge.selectProductView(row.view)
         return void navigate(`/knowledge-base/views/${encodeURIComponent(row.view)}`)
@@ -298,7 +300,6 @@ export const DocumentsFinder = ({
     onCreateRootFolder,
     onCreateSpreadsheet: spaceCanWrite ? spreadsheets.openCreate : undefined,
     onImportSpreadsheet: spaceCanWrite ? spreadsheets.openImport : undefined,
-    onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
     onOpenSettings,
     onSelectSort: chooseSort,
     onSelectView: (next) => {
@@ -307,12 +308,19 @@ export const DocumentsFinder = ({
     },
     onToggleNeedsReview: setNeedsReviewOnly,
     onUploadFile: uploads.openPicker,
-    ownerAgentId: knowledge.selectedSpace?.ownerAgentId,
-    scopeAgentId: scope.kind === 'agent' ? scope.agentId : undefined,
     showViewAction: !single,
     sort,
     spaceCanWrite,
     view,
+  })
+
+  // The agent doorway is the documents column's own header button now, not a
+  // toolbar action: "Open" belongs on the column that *is* the agent's
+  // documents folder (finder-toolbar-actions.ts).
+  const agentOpenAction = buildAgentOpenAction({
+    onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
+    ownerAgentId: knowledge.selectedSpace?.ownerAgentId,
+    scopeAgentId: scope.kind === 'agent' ? scope.agentId : undefined,
   })
 
   // A root row is the only place a *different* root folder can be dropped, so
@@ -353,7 +361,10 @@ export const DocumentsFinder = ({
   })
 
   // ── Geometry ──────────────────────────────────────────────────────────────
-  const { columnWidth, resize } = useFinderColumnWidth()
+  // Every column is independently resizable, keyed by its *slot* (root, the
+  // virtual listing, depth:0, depth:1, …) rather than by the folder in it —
+  // "the second column is too narrow" is about the position, not the page.
+  const { resizeFor, widthFor } = useFinderColumnWidths()
 
   const virtualList: FinderVirtualRow[] = virtualKind === 'latest'
     ? virtualRows(latestQuery.data)
@@ -378,7 +389,7 @@ export const DocumentsFinder = ({
     <ColumnBrowserColumn
       actions={single ? actions : undefined}
       key="root"
-      resize={resize}
+      resize={resizeFor('root')}
       screen
       scrollKey="finder:root"
       title="Documents"
@@ -416,21 +427,30 @@ export const DocumentsFinder = ({
           })}
           query={virtualQuery}
           refuseProps={uploads.refuseProps}
-          resize={resize}
+          resize={resizeFor('virtual')}
           rows={virtualList}
           selection={selection}
         />
       )]
       : levels.map((level, index) => (
         <ColumnBrowserColumn
-          actions={single && !orgScope && index === 0 ? actions : undefined}
+          actions={(() => {
+            // Column 0 outside org scope carries the whole toolbar on
+            // `single`; the agent documents column additionally carries its
+            // `Open` doorway on every layout. One list, never two doorways.
+            const columnActions = [
+              ...(single && !orgScope && index === 0 ? actions : []),
+              ...(index === 0 && agentOpenAction ? [agentOpenAction] : []),
+            ]
+            return columnActions.length > 0 ? columnActions : undefined
+          })()}
           key={level.key}
           // A pushed layer with no way out is a trap: a folder returns to
           // its parent, a root folder's listing to the root column.
           onBack={level.depth > 0
             ? () => browseTo(pagePath.slice(0, level.depth - 1))
             : backToRoot}
-          resize={resize}
+          resize={resizeFor(`depth:${index}`)}
           scrollKey={`finder:${level.key}`}
           showBack={level.depth > 0 || Boolean(backToRoot)}
           title={level.title}
@@ -467,6 +487,14 @@ export const DocumentsFinder = ({
           />
         </ColumnBrowserColumn>
       ))),
+  ]
+
+  // The viewport's per-column widths, in the same order as `columns` above.
+  const columnSlots: FinderColumnSlot[] = [
+    ...(orgScope ? ['root' as const] : []),
+    ...(virtualColumnKey
+      ? ['virtual' as const]
+      : levels.map((_, index) => `depth:${index}` as const)),
   ]
 
   const statusBar = (<FinderStatusStrip
@@ -520,7 +548,7 @@ export const DocumentsFinder = ({
         ) : listView ? (
           <>
             {orgScope ? (
-              <div className="h-full flex-shrink-0" style={{ width: columnWidth }}>
+              <div className="h-full flex-shrink-0" style={{ width: widthFor('root') }}>
                 {rootColumn}
               </div>
             ) : null}
@@ -547,8 +575,8 @@ export const DocumentsFinder = ({
           <div className="min-w-0 flex-1">
             <ColumnBrowserViewport
               activeColumn={columns.length - 1}
-              columnWidth={columnWidth}
               columns={columns}
+              columnWidths={columnSlots.map(widthFor)}
               stageScope="knowledge"
             />
           </div>

@@ -2,17 +2,26 @@ import type { PrismaClient } from '@prisma/client'
 import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
 
 import { canWriteSpace, type SpaceViewer } from './access.js'
-import { ensureMyDocsSpace } from './provisioning.js'
+import { ensureMyDocsSpace, ensureProjectDocumentsSpace } from './provisioning.js'
 import type { KnowledgeProvider, KnowledgeSpaceRecord } from './types.js'
 
 /**
  * The Finder's root column in one read: My Documents, one row per project the
- * viewer belongs to, the readable folders that are neither, and the badge count
+ * viewer can reach, the readable folders that are neither, and the badge count
  * for "Shared with me".
  *
  * Assembling this on the client would be three round trips (`GET /spaces`,
  * `POST /my-docs`, `GET /projects`) and would put a paged list under a tree that
  * must not page.
+ *
+ * The project set is the caller's accessible-project read — the same
+ * entitlement `GET /api/projects` is scoped by — so a project an organisation
+ * owner/admin reaches without a membership is a row here too; listing it in
+ * one surface and not the other is the drift that hid an owner's own project.
+ * Every listed project's Documents space is provisioned by the read itself
+ * (idempotent and advisory-locked, in bounded batches): a project row that
+ * opens onto nothing is a doorway to a client-side provisioning hack, which is
+ * what the nullable `space` and the `project-unopened` row used to be.
  *
  * Contract: docs/plans/2026-09-16-documents-finder-ui/data-and-api.md §7.
  */
@@ -20,7 +29,33 @@ import type { KnowledgeProvider, KnowledgeSpaceRecord } from './types.js'
 /** More than this many readable shared folders and the status bar says so. */
 export const ROOT_SHARED_SPACE_CAP = 200
 
+/**
+ * Project provisioning fans out one advisory-locked transaction per project;
+ * an unbounded Promise.all would hand the pool a transaction per project at
+ * once, so the ensures run in batches of this many.
+ */
+const ROOT_PROVISION_BATCH = 8
+
+const mapInBatches = async <TItem, TResult>(
+  items: TItem[],
+  batchSize: number,
+  map: (item: TItem) => Promise<TResult>,
+): Promise<TResult[]> => {
+  const results: TResult[] = []
+  for (let index = 0; index < items.length; index += batchSize) {
+    results.push(...await Promise.all(items.slice(index, index + batchSize).map(map)))
+  }
+  return results
+}
+
 export type BuildKnowledgeRootInput = {
+  /**
+   * The projects the caller may reach: `'all'` for an organisation
+   * owner/admin (no project filter at all), otherwise their membership ids —
+   * `listAccessibleProjectIds`'s answer, resolved by the route because the
+   * entitlement needs the actor context the route holds.
+   */
+  accessibleProjectIds: string[] | 'all'
   organizationId: string
   // Where My Documents is filed when it has to be provisioned. Same source the
   // existing POST /my-docs uses: the caller's active project.
@@ -75,20 +110,19 @@ export const buildKnowledgeRoot = async (
   const myDocsSpace = await provider.getSpace(input.organizationId, myDocs.spaceId)
   if (!myDocsSpace) throw new Error('My Documents space could not be loaded after provisioning')
 
-  const projectIds = Array.from(viewer.projectIds)
-  const [projects, projectSpaces, sharedPage, sharedWithMeCount] = await Promise.all([
-    projectIds.length === 0 ? [] : prisma.project.findMany({
-      where: { id: { in: projectIds }, organizationId: input.organizationId, deletedAt: null },
-      select: { id: true, name: true },
-    }),
-    projectIds.length === 0 ? [] : prisma.knowledgeSpace.findMany({
+  const accessible = input.accessibleProjectIds
+  const [projects, sharedPage, sharedWithMeCount] = await Promise.all([
+    accessible !== 'all' && accessible.length === 0 ? [] : prisma.project.findMany({
       where: {
         organizationId: input.organizationId,
-        projectId: { in: projectIds },
+        // The same filters listProjectsForUser carries: a channel-root anchor
+        // project is not a Documents folder a person opens, and a deleted
+        // project is gone for everybody.
+        channelRoot: false,
         deletedAt: null,
-        metadata: { path: ['projectDocuments'], equals: true },
+        ...(accessible === 'all' ? {} : { id: { in: accessible } }),
       },
-      select: { id: true },
+      select: { id: true, name: true },
     }),
     // Personal spaces are excluded by the same flag GET /spaces uses; the
     // viewer's own is already above, and nobody else's is readable at space
@@ -103,14 +137,36 @@ export const buildKnowledgeRoot = async (
     }),
   ])
 
-  const projectSpaceIds = new Set(projectSpaces.map((space) => space.id))
+  // Every listed project gets its Documents folder here rather than on first
+  // open: ensureProjectDocumentsSpace is idempotent and advisory-locked, so a
+  // repeat read finds the row and two concurrent reads cannot double-create.
+  const ensured = await mapInBatches(
+    projects,
+    ROOT_PROVISION_BATCH,
+    async (project) => ({
+      projectId: project.id,
+      spaceId: (await ensureProjectDocumentsSpace(prisma, {
+        actorId: input.userId,
+        organizationId: input.organizationId,
+        projectId: project.id,
+      })).spaceId,
+    }),
+  )
+  const projectSpaceIdByProjectId = new Map(
+    ensured.map((entry) => [entry.projectId, entry.spaceId]),
+  )
+
   const readableById = new Map(sharedPage.data.map((space) => [space.id, space]))
   const projectNames = new Map(projects.map((project) => [project.id, project.name]))
   // A project's Documents space may exist without being in the capped page, so
   // load the ones that belong to a project row directly.
-  const missingProjectSpaceIds = Array.from(projectSpaceIds).filter((id) => !readableById.has(id))
-  const loadedProjectSpaces = await Promise.all(
-    missingProjectSpaceIds.map((id) => provider.getSpace(input.organizationId, id)),
+  const missingProjectSpaceIds = Array.from(projectSpaceIdByProjectId.values()).filter(
+    (id) => !readableById.has(id),
+  )
+  const loadedProjectSpaces = await mapInBatches(
+    missingProjectSpaceIds,
+    ROOT_PROVISION_BATCH,
+    (id) => provider.getSpace(input.organizationId, id),
   )
   for (const space of loadedProjectSpaces) {
     if (space) readableById.set(space.id, space)
@@ -118,19 +174,23 @@ export const buildKnowledgeRoot = async (
 
   const projectRows = projects
     .map((project) => {
-      const space = Array.from(readableById.values()).find(
-        (candidate) => candidate.projectId === project.id && projectSpaceIds.has(candidate.id),
-      ) ?? null
+      const spaceId = projectSpaceIdByProjectId.get(project.id)
+      const space = spaceId ? readableById.get(spaceId) : undefined
+      if (!space) {
+        throw new Error(`Project Documents space could not be loaded after provisioning: ${project.id}`)
+      }
       return {
         projectId: project.id,
         projectName: project.name,
-        space: space ? toRootSpace(space, project.name) : null,
+        space: toRootSpace(space, project.name),
       }
     })
     .sort((left, right) => left.projectName.localeCompare(right.projectName))
 
   // The third group by definition: readable, not personal, not a project's
-  // Documents folder. Ad-hoc spaces and agent homes both land here.
+  // Documents folder. Ad-hoc spaces and agent homes both land here; the
+  // column splits the agent homes (ownerAgentId !== null) into their own
+  // labelled section.
   const shared = sharedPage.data
     .filter((space) => space.id !== myDocsSpace.id)
     .filter((space) => !isFlagged(space.metadata, 'personal'))

@@ -11,7 +11,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { AgentDocumentsTab } from '../src/components/features/agents/AgentDocumentsTab.js'
-import { buildFinderToolbarActions } from '../src/components/features/knowledge/finder/finder-toolbar-actions.js'
+import { buildAgentOpenAction } from '../src/components/features/knowledge/finder/finder-toolbar-actions.js'
 import { ResponsivePageHeader } from '../src/components/shared/ResponsivePageHeader.js'
 import { agentKeys } from '../src/facades/agents/keys.js'
 import type { AgentRecord } from '../src/lib/api-client.js'
@@ -49,7 +49,7 @@ test('agent documents show the honest empty state and no-secrets warning', () =>
   assert.match(documents, /Read-only/)
 })
 
-test('an agent-owned space renders a working Open agent doorway from the shared contract', () => {
+test('an agent-owned space renders a working Open doorway in its column header', () => {
   const ownerAgentId = '00000000-0000-4000-8000-000000000005'
   const space = KnowledgeSpaceResponseSchema.parse({
     id: '00000000-0000-4000-8000-000000000006',
@@ -75,37 +75,42 @@ test('an agent-owned space renders a working Open agent doorway from the shared 
     updatedAt: '2026-08-31T12:00:00.000Z',
   })
   let openedAgentId: string | null = null
-  const noop = () => undefined
-  const actions = buildFinderToolbarActions({
-    agentDraftCount: 0,
-    canManageSpace: true,
-    canWrite: space.canWrite,
-    isRootColumn: false,
-    isVirtualColumn: false,
-    needsReviewOnly: false,
-    onCreateDocument: noop,
-    onCreateFolder: noop,
+  const doorway = buildAgentOpenAction({
     onOpenAgent: (agentId: string) => { openedAgentId = agentId },
-    onOpenSettings: noop,
-    onSelectSort: noop,
-    onSelectView: noop,
-    onToggleNeedsReview: noop,
-    onUploadFile: noop,
     ownerAgentId: space.ownerAgentId,
-    showViewAction: true,
-    sort: 'name',
-    view: 'columns',
   })
+  assert.ok(doorway)
+  // The column header says exactly "Open" — "Open agent" was the global
+  // toolbar's wording, and the doorway lives in the column now.
+  assert.equal(doorway.label, 'Open')
 
   const markup = renderToStaticMarkup(
-    createElement(ResponsivePageHeader, { actions, title: space.name }),
+    createElement(ResponsivePageHeader, { actions: [doorway], title: space.name }),
   )
-  assert.match(markup, />Open agent</)
+  assert.match(markup, />Open</)
 
-  const doorway = actions?.find((action) => action.id === 'open-agent')
-  assert.ok(doorway && doorway.kind !== 'menu')
   doorway.onSelect()
   assert.equal(openedAgentId, ownerAgentId)
+})
+
+test('the Open doorway is absent where the column would offer to open the agent you are on', () => {
+  const ownerAgentId = '00000000-0000-4000-8000-000000000005'
+  const noop = () => undefined
+
+  // The scoping agent's own Documents tab: opening it would be a doorway to
+  // the page you are already standing on.
+  assert.equal(
+    buildAgentOpenAction({ onOpenAgent: noop, ownerAgentId, scopeAgentId: ownerAgentId }),
+    null,
+  )
+  // Browsing the same agent's folder from anywhere else keeps the doorway.
+  assert.ok(buildAgentOpenAction({ onOpenAgent: noop, ownerAgentId }))
+  assert.ok(
+    buildAgentOpenAction({ onOpenAgent: noop, ownerAgentId, scopeAgentId: 'another-agent' }),
+  )
+  // An ordinary space has no agent to open.
+  assert.equal(buildAgentOpenAction({ onOpenAgent: noop, ownerAgentId: null }), null)
+  assert.equal(buildAgentOpenAction({ onOpenAgent: noop, ownerAgentId: undefined }), null)
 })
 
 test('the agent Documents tab renders the honest unreadable state', () => {

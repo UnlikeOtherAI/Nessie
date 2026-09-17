@@ -315,13 +315,17 @@ export const KnowledgeRootSchema = z.object({
   // Always present for a user actor, provisioned by the same ensureMyDocsSpace
   // call POST /my-docs makes.
   myDocuments: KnowledgeRootSpaceSchema,
-  // Every project the viewer belongs to, alphabetical. `space` is null until
-  // somebody opens the folder for the first time — a read must not write N
-  // rows for projects nobody has opened.
+  // Every project the viewer can reach, alphabetical: their memberships, or
+  // every live non-channel-root project for an organisation owner/admin — the
+  // same set GET /api/projects lists, because a project visible there but
+  // folderless here is exactly the drift that hid an owner's own project.
+  // `space` is always present: the read provisions the project's Documents
+  // folder through the idempotent, advisory-locked ensure rather than showing
+  // a row that opens onto nothing.
   projects: z.array(z.object({
     projectId: UuidSchema,
     projectName: NonEmptyStringSchema,
-    space: KnowledgeRootSpaceSchema.nullable(),
+    space: KnowledgeRootSpaceSchema,
   })),
   // Readable spaces that are neither personal nor projectDocuments.
   shared: z.array(KnowledgeRootSpaceSchema),
