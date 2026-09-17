@@ -14,7 +14,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     thread::sleep,
     time::{Duration, Instant},
@@ -67,54 +67,11 @@ pub struct Supervisor {
 /// The argv for one packaged CLI invocation. Split out so what reaches a process
 /// list is asserted rather than trusted: a challenge and a workspace path travel
 /// on standard input, never here.
-pub fn pair_arguments(api_base_url: &str, enrollment_id: &str, state_dir: &Path) -> Vec<String> {
-    vec![
-        "pair".to_owned(),
-        "--api".to_owned(),
-        api_base_url.to_owned(),
-        "--enrollment".to_owned(),
-        enrollment_id.to_owned(),
-        "--pair-input-stdin".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
-
-pub fn serve_arguments(state_dir: &Path) -> Vec<String> {
-    vec![
-        "serve".to_owned(),
-        "--parent-liveness-stdin".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
-
-pub fn configure_arguments(state_dir: &Path, operation_keys: &[String]) -> Vec<String> {
-    vec![
-        "configure".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-        "--operations".to_owned(),
-        operation_keys.join(","),
-    ]
-}
-
-pub fn configure_input_arguments(state_dir: &Path) -> Vec<String> {
-    vec![
-        "configure".to_owned(),
-        "--configuration-input-stdin".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
-
-pub fn describe_arguments(state_dir: &Path) -> Vec<String> {
-    vec![
-        "describe".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
+#[allow(unused_imports)] // Re-exported for the focused supervisor argv tests.
+pub(crate) use crate::supervisor_commands::{
+    configure_arguments, configure_input_arguments, describe_arguments, pair_arguments,
+    serve_arguments,
+};
 
 pub(crate) fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, String> {
     let deadline = Instant::now() + timeout;

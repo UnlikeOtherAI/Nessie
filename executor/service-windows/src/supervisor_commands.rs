@@ -10,11 +10,59 @@ use std::{
 use crate::{
     paths::{executor_state_dir, executors_root, has_executor_state, pending_root, PAIRED_BY_FILE},
     protocol::PairCommand,
-    supervisor::{
-        configure_arguments, configure_input_arguments, describe_arguments, pair_arguments,
-        parse_fingerprint, wait_bounded, Supervisor, COMMAND_TIMEOUT,
-    },
+    supervisor::{parse_fingerprint, wait_bounded, Supervisor, COMMAND_TIMEOUT},
 };
+
+/// The argv builders keep policy, pairing challenges, and workspace paths out
+/// of process lists wherever the packaged CLI supports standard input.
+pub(crate) fn pair_arguments(
+    api_base_url: &str,
+    enrollment_id: &str,
+    state_dir: &Path,
+) -> Vec<String> {
+    vec![
+        "pair".to_owned(),
+        "--api".to_owned(),
+        api_base_url.to_owned(),
+        "--enrollment".to_owned(),
+        enrollment_id.to_owned(),
+        "--pair-input-stdin".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+    ]
+}
+pub(crate) fn serve_arguments(state_dir: &Path) -> Vec<String> {
+    vec![
+        "serve".to_owned(),
+        "--parent-liveness-stdin".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+    ]
+}
+pub(crate) fn configure_arguments(state_dir: &Path, operation_keys: &[String]) -> Vec<String> {
+    vec![
+        "configure".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+        "--operations".to_owned(),
+        operation_keys.join(","),
+    ]
+}
+pub(crate) fn configure_input_arguments(state_dir: &Path) -> Vec<String> {
+    vec![
+        "configure".to_owned(),
+        "--configuration-input-stdin".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+    ]
+}
+pub(crate) fn describe_arguments(state_dir: &Path) -> Vec<String> {
+    vec![
+        "describe".to_owned(),
+        "--state-dir".to_owned(),
+        state_dir.display().to_string(),
+    ]
+}
 
 impl Supervisor {
     /// Applies the small operation-key policy. A pending connection is stopped
