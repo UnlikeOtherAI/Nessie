@@ -1,7 +1,13 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { randomUUID } from 'node:crypto'
-import { buildPage, decodeKeysetCursor, resolvePageLimit, type PaginationDirection } from '@nessie/schemas'
+import {
+  APPROVAL_ACTIONS,
+  buildPage,
+  decodeKeysetCursor,
+  resolvePageLimit,
+  type PaginationDirection,
+} from '@nessie/schemas'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { mapApprovalRequest } from '@nessie/team-admin'
 import { runApprovalEffect } from './approval-effects.js'
 import {
   drainTerminalizedRun,
@@ -10,254 +16,24 @@ import {
   terminalizeWaitingApprovalRunInTransaction,
   type TerminalizedApprovalRun,
 } from './approval-resume.js'
-import { createApprovalUserAlerts } from '@nessie/runtime'
 
 import { emitAuditEvent } from './audit.js'
 
-const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
-
-/**
- * A week, for a request a paired agent opened.
- *
- * The thirty minutes above is calibrated to a suspended run: an agent is
- * sitting in a channel waiting, and a stale request there is worse than a
- * refused one. A paired agent is not waiting — it made its request over HTTP
- * and moved on, and the person who must answer may not be at a keyboard at
- * all. Same reasoning, and the same week, as `kb_publish_request`.
- */
-const CREDENTIAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
-
-/**
- * Who is asking. An approval always has exactly one asker, and the two kinds
- * are not interchangeable: an in-house agent has an `Agent` row and runs inside
- * a channel, while a paired MCP credential is a program on somebody's machine
- * with no agent record and no run to suspend.
- */
-export type ApprovalRequester =
-  | { agentId: string }
-  | { agentAccessCredentialId: string; requiredApproverUserId: string }
-
-export type CreateApprovalInput = {
-  actorContext: AuthorizedActionContext
-  requester: ApprovalRequester
-  action: string
-  reason: string
-  context?: Record<string, unknown>
-  taskId?: string
-  runId?: string
-  requiredApproverRole?: string
-}
-
-/**
- * The row, shaped once.
- *
- * Both doors — the plain create and the deduplicating one — build an approval
- * the same way, and a second spelling of this is how the two would drift on
- * the field that matters most, `requesterId`.
- */
-const approvalRequestData = (input: CreateApprovalInput): Prisma.ApprovalRequestUncheckedCreateInput => {
-  // Bound once, so the narrowing survives every use below.
-  const credentialRequest =
-    'agentAccessCredentialId' in input.requester ? input.requester : null
-
-  return {
-    organizationId: input.actorContext.tenant.organizationId,
-    projectId: input.actorContext.tenant.projectId ?? null,
-    teamId: input.actorContext.tenant.teamId ?? null,
-    channelId: input.actorContext.actionContext.channelId ?? null,
-    taskId: input.taskId ?? null,
-    runId: input.runId ?? null,
-    agentId: 'agentId' in input.requester ? input.requester.agentId : null,
-    agentAccessCredentialId: credentialRequest?.agentAccessCredentialId ?? null,
-    // The person who lent their account is the only person who may answer for
-    // it — the same pinning a send-as-you gate uses, and for the same reason:
-    // a colleague must not be able to authorise something done in your name.
-    requiredApproverUserId: credentialRequest?.requiredApproverUserId ?? null,
-    // Never the human the credential acts as. `resolveApprovalRequest` refuses a
-    // requester who tries to answer their own request, so naming the approver
-    // here would make the one person allowed to decide the one person who
-    // cannot. The credential is the honest answer anyway: it asked, not them.
-    requesterId: credentialRequest
-      ? credentialRequest.agentAccessCredentialId
-      : input.actorContext.actor.actorId,
-    action: input.action,
-    reason: input.reason,
-    context: (input.context as Prisma.InputJsonValue) ?? undefined,
-    requiredApproverRole: input.requiredApproverRole ?? null,
-    continuationToken: randomUUID(),
-    expiresAt: new Date(
-      Date.now() + (credentialRequest ? CREDENTIAL_EXPIRY_MS : DEFAULT_EXPIRY_MS),
-    ),
-  }
-}
-
-/**
- * Tell the people who can answer an approval that one is waiting.
- *
- * The audience rule and the disclosure reasoning live with the writer, in
- * `@nessie/runtime` `user-alerts.ts`, because the worker opens approvals too
- * and one decision must ring one bell however it was raised.
- *
- * Deliberately no realtime event. `approval.needed` carries the approval's
- * free-text `reason` and rides a channel-wide scope — the exact field a pinned
- * approval restricts to one person — and a credential-opened request has no
- * channel to ride anyway. The bell and its badge already poll on
- * `ATTENTION_REFRESH_MS`, so the durable row is the notification; putting the
- * reason on the wire to save that interval would be a bad trade.
- *
- * Never throws: an approval that exists and did not ring is recoverable, and
- * one rolled back because the bell failed is not.
- */
-const raiseApprovalAlert = async (
-  prisma: PrismaClient,
-  approval: {
-    agentId?: string | null
-    channelId: string | null
-    id: string
-    organizationId: string
-    requiredApproverRole?: string | null
-    requiredApproverUserId?: string | null
-  },
-): Promise<void> => {
-  try {
-    await createApprovalUserAlerts(prisma, {
-      actorAgentId: approval.agentId ?? null,
-      approvalId: approval.id,
-      channelId: approval.channelId,
-      organizationId: approval.organizationId,
-      requiredApproverRole: approval.requiredApproverRole ?? null,
-      requiredApproverUserId: approval.requiredApproverUserId ?? null,
-    })
-  } catch (error) {
-    console.error('[approvals] could not raise alert for', approval.id, error)
-  }
-}
-
-export const createApprovalRequest = async (
-  prisma: PrismaClient,
-  input: CreateApprovalInput,
-) => {
-  const approval = await prisma.approvalRequest.create({ data: approvalRequestData(input) })
-
-  await raiseApprovalAlert(prisma, approval)
-
-  await emitAuditEvent(prisma, {
-    actorContext: input.actorContext,
-    action: 'approval.created',
-    resourceType: 'approval',
-    resourceId: approval.id,
-    outcome: 'success',
-    metadata: { action: input.action, ...input.requester },
-  })
-
-  return mapApproval(approval)
-}
-
-/**
- * Open an approval, or hand back the one already open for the same thing.
- *
- * A paired agent that polls calls its tool again, and find-then-create is not
- * atomic: two calls — the same agent retrying, or two replicas — both see no
- * pending row and both create one, so a person gets the same decision twice.
- * There is no unique index to lean on, because what makes two requests "the
- * same" lives inside the approval's JSON `context`.
- *
- * So the check and the create happen under one `pg_advisory_xact_lock` on the
- * caller's own key — the instrument the settings cascade and the cloud-browser
- * admission already use for this shape of problem. The audit event is emitted
- * after the transaction commits, so a slow audit write never holds the lock.
- */
-/**
- * How many decisions one asker may leave waiting.
- *
- * Deduplication alone is not a limit. It keys on the exact thing being decided
- * — for a publish request, the draft *version* — so an agent that edits and
- * asks again is asking about something genuinely new every time, and twenty-five
- * edit-and-ask cycles left twenty-five requests standing, each for seven days.
- * Nothing was granted, but the Approvals page is the surface the whole gate
- * depends on, and burying it is its own kind of failure.
- *
- * Ten, the same ceiling `kb_publish_request`'s sibling
- * (`worker/src/run/pa-tools/todos.ts`) already sets on agent proposals.
- */
-export const PENDING_APPROVALS_PER_REQUESTER = 10
-
-export class TooManyPendingApprovalsError extends Error {
-  constructor() {
-    super(
-      `There are already ${PENDING_APPROVALS_PER_REQUESTER} requests from this agent `
-      + 'waiting for a person. Ask them to work through those before sending more.',
-    )
-    this.name = 'TooManyPendingApprovalsError'
-  }
-}
-
-export const createApprovalRequestOnce = async (
-  prisma: PrismaClient,
-  input: CreateApprovalInput & {
-    /** Distinct per thing-being-decided, e.g. credential + page + version. */
-    lockKey: string
-    /** True when an existing pending approval is for the same thing. */
-    matches: (context: Record<string, unknown> | null) => boolean
-  },
-): Promise<{ approval: ReturnType<typeof mapApproval>; created: boolean }> => {
-  const requester = input.requester
-  const created = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(hashtextextended(${input.lockKey}, 0))`
-
-    const pending = await tx.approvalRequest.findMany({
-      where: {
-        action: input.action,
-        organizationId: input.actorContext.tenant.organizationId,
-        status: 'pending',
-        ...('agentAccessCredentialId' in requester
-          ? { agentAccessCredentialId: requester.agentAccessCredentialId }
-          : { agentId: requester.agentId }),
-      },
-    })
-    const existing = pending.find((row) =>
-      input.matches(row.context as Record<string, unknown> | null))
-    if (existing) return { approval: mapApproval(existing), created: false }
-
-    // Counted inside the lock, so two concurrent asks cannot both pass the
-    // ceiling. An asker at the limit is refused rather than queued: the point
-    // is that a person is behind on decisions, and adding to the pile is the
-    // opposite of what helps.
-    if (pending.length >= PENDING_APPROVALS_PER_REQUESTER) {
-      throw new TooManyPendingApprovalsError()
-    }
-
-    return {
-      approval: mapApproval(await tx.approvalRequest.create({
-        data: approvalRequestData(input),
-      })),
-      created: true,
-    }
-  })
-
-  if (created.created) {
-    await raiseApprovalAlert(prisma, {
-      agentId: created.approval.agentId,
-      channelId: created.approval.channelId,
-      id: created.approval.id,
-      organizationId: created.approval.organizationId,
-      requiredApproverRole: created.approval.requiredApproverRole,
-      // Off the stored row, not the input: what was written is what decides.
-      requiredApproverUserId:
-        'agentAccessCredentialId' in requester ? requester.requiredApproverUserId : null,
-    })
-    await emitAuditEvent(prisma, {
-      actorContext: input.actorContext,
-      action: 'approval.created',
-      resourceType: 'approval',
-      resourceId: created.approval.id,
-      outcome: 'success',
-      metadata: { action: input.action, ...requester },
-    })
-  }
-  return created
-}
+// The approval creator — the advisory-locked, deduplicating, ceiling-checked
+// open — lives in `@nessie/team-admin` so the worker's own doors (the PA
+// tools, the run's tool gate, demonstration generalisation) open requests
+// through the same implementation instead of four drifted copies; it is
+// re-exported here so routes, MCP tools and tests keep one import site, the
+// same pattern `policy.ts` uses for `checkPolicy`.
+export {
+  APPROVAL_EXPIRY_EXTERNAL_ACCOUNT_MS,
+  APPROVAL_EXPIRY_SUSPENDED_RUN_MS,
+  APPROVAL_EXPIRY_UNATTENDED_MS,
+  createApprovalRequestOnce,
+  PENDING_APPROVALS_PER_REQUESTER,
+  TooManyPendingApprovalsError,
+} from '@nessie/team-admin'
+export type { ApprovalRequester, CreateApprovalInput } from '@nessie/team-admin'
 
 /**
  * Which approvals an actor may see. An approval carries a free-text `reason`,
@@ -347,7 +123,7 @@ export const listApprovalRequests = async (
   })
 
   return {
-    data: page.data.map(mapApproval),
+    data: page.data.map(mapApprovalRequest),
     meta: page.meta,
   }
 }
@@ -364,7 +140,7 @@ export const getApprovalRequest = async (
       AND: [approvalVisibilityWhere(actorContext)],
     },
   })
-  return approval ? mapApproval(approval) : null
+  return approval ? mapApprovalRequest(approval) : null
 }
 
 export const resolveApprovalRequest = async (
@@ -387,12 +163,12 @@ export const resolveApprovalRequest = async (
 
   if (!approval) return null
   if (approval.status !== 'pending') {
-    return { error: 'ALREADY_RESOLVED' as const, approval: mapApproval(approval) }
+    return { error: 'ALREADY_RESOLVED' as const, approval: mapApprovalRequest(approval) }
   }
 
   // Requester cannot approve their own request
   if (approval.requesterId === actorContext.actor.actorId) {
-    return { error: 'SELF_APPROVAL' as const, approval: mapApproval(approval) }
+    return { error: 'SELF_APPROVAL' as const, approval: mapApprovalRequest(approval) }
   }
 
   // An exact required approver outranks every other visibility rule. Approval
@@ -402,7 +178,7 @@ export const resolveApprovalRequest = async (
     approval.requiredApproverUserId
     && approval.requiredApproverUserId !== actorContext.actor.actorId
   ) {
-    return { error: 'APPROVER_REQUIRED' as const, approval: mapApproval(approval) }
+    return { error: 'APPROVER_REQUIRED' as const, approval: mapApprovalRequest(approval) }
   }
 
   // When the approval is routed to a role, only an actor holding that role may
@@ -441,7 +217,7 @@ export const resolveApprovalRequest = async (
       !membership
       || !actorContext.actor.roles?.includes(approval.requiredApproverRole)
     ) {
-      return { error: 'ROLE_REQUIRED' as const, approval: mapApproval(approval) }
+      return { error: 'ROLE_REQUIRED' as const, approval: mapApprovalRequest(approval) }
     }
   }
 
@@ -453,12 +229,12 @@ export const resolveApprovalRequest = async (
       where: { id: approvalId, status: 'pending' },
       data: { status: 'expired' },
     })
-    if (expired.count === 1 && approval.action === 'tool.invoke') {
+    if (expired.count === 1 && approval.action === APPROVAL_ACTIONS.toolInvoke) {
       await terminalizeExpiredToolApproval(prisma, approval.id)
     }
     return {
       error: 'EXPIRED' as const,
-      approval: mapApproval({ ...approval, status: 'expired' }),
+      approval: mapApprovalRequest({ ...approval, status: 'expired' }),
     }
   }
 
@@ -471,7 +247,7 @@ export const resolveApprovalRequest = async (
     id: approvalId,
     status: 'pending',
   }
-  if (approval.action === 'tool.invoke') {
+  if (approval.action === APPROVAL_ACTIONS.toolInvoke) {
     resolutionWhere.run = { is: { status: 'waiting_approval' } }
   }
   // A second approver racing the same request sees `count === 0` and is told
@@ -491,12 +267,12 @@ export const resolveApprovalRequest = async (
     const current = await prisma.approvalRequest.findFirst({
       where: { id: approvalId, organizationId: actorContext.tenant.organizationId },
     })
-    if (current?.status === 'pending' && approval.action === 'tool.invoke') {
-      return { error: 'RUN_NOT_WAITING' as const, approval: mapApproval(current) }
+    if (current?.status === 'pending' && approval.action === APPROVAL_ACTIONS.toolInvoke) {
+      return { error: 'RUN_NOT_WAITING' as const, approval: mapApprovalRequest(current) }
     }
     return {
       error: 'ALREADY_RESOLVED' as const,
-      approval: current ? mapApproval(current) : mapApproval(approval),
+      approval: current ? mapApprovalRequest(current) : mapApprovalRequest(approval),
     }
   }
 
@@ -535,7 +311,7 @@ export const resolveApprovalRequest = async (
         data: { resolutionNote },
       })
     }
-  } else if (updated.action === 'tool.invoke') {
+  } else if (updated.action === APPROVAL_ACTIONS.toolInvoke) {
     try {
       const terminalized = await terminalizeRejectedToolApproval(prisma, updated.id)
       const effectNote = terminalized ? 'run rejected' : 'run no longer waiting'
@@ -568,7 +344,7 @@ export const resolveApprovalRequest = async (
     metadata: { resolution, agentId: approval.agentId, action: approval.action },
   })
 
-  return { approval: mapApproval(updated) }
+  return { approval: mapApprovalRequest(updated) }
 }
 
 export const getPendingApprovalCount = async (
@@ -622,7 +398,7 @@ export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
         if (expiredClaim.count !== 1) return null
       }
 
-      if (approval.action === 'tool.invoke') {
+      if (approval.action === APPROVAL_ACTIONS.toolInvoke) {
         return terminalizeWaitingApprovalRunInTransaction(tx, approval.id, 'expired')
       }
       // Existing deferred-effect approvals have no suspended run to close.
@@ -648,55 +424,3 @@ export const sweepExpiredApprovals = async (prisma: PrismaClient) => {
   return expired.length
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-const mapApproval = (approval: {
-  id: string
-  organizationId: string
-  projectId: string | null
-  teamId: string | null
-  channelId: string | null
-  taskId: string | null
-  runId: string | null
-  agentId: string | null
-  agentAccessCredentialId: string | null
-  requesterId: string
-  action: string
-  reason: string
-  context: unknown
-  status: string
-  resolverId: string | null
-  resolvedAt: Date | null
-  resolution: string | null
-  resolutionNote: string | null
-  requiredApproverRole: string | null
-  toolName: string | null
-  continuationToken: string
-  expiresAt: Date
-  createdAt: Date
-  updatedAt: Date
-}) => ({
-  id: approval.id,
-  organizationId: approval.organizationId,
-  projectId: approval.projectId,
-  teamId: approval.teamId,
-  channelId: approval.channelId,
-  taskId: approval.taskId,
-  runId: approval.runId,
-  agentId: approval.agentId,
-  agentAccessCredentialId: approval.agentAccessCredentialId,
-  requesterId: approval.requesterId,
-  action: approval.action,
-  reason: approval.reason,
-  context: approval.context as Record<string, unknown> | null,
-  status: approval.status,
-  resolverId: approval.resolverId,
-  resolvedAt: approval.resolvedAt?.toISOString() ?? null,
-  resolution: approval.resolution,
-  resolutionNote: approval.resolutionNote,
-  requiredApproverRole: approval.requiredApproverRole,
-  toolName: approval.toolName,
-  expiresAt: approval.expiresAt.toISOString(),
-  createdAt: approval.createdAt.toISOString(),
-  updatedAt: approval.updatedAt.toISOString(),
-})

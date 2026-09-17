@@ -144,7 +144,7 @@ const approvalRequestData = (input: CreateApprovalInput): Prisma.ApprovalRequest
       : input.actorContext.actionContext.channelId ?? null,
     taskId: input.taskId ?? null,
     runId: input.runId ?? null,
-    agentId: credentialRequest ? null : input.requester.agentId,
+    agentId: 'agentId' in input.requester ? input.requester.agentId : null,
     agentAccessCredentialId: credentialRequest?.agentAccessCredentialId ?? null,
     // The person who lent their account is the only person who may answer for
     // it — the same pinning a send-as-you gate uses, and for the same reason:
@@ -158,9 +158,9 @@ const approvalRequestData = (input: CreateApprovalInput): Prisma.ApprovalRequest
     // one person allowed to decide the one person who cannot. For an agent
     // the asker is the agent itself — not the actor context's actor, which a
     // delegated run stamps with the human it acts for.
-    requesterId: credentialRequest
-      ? credentialRequest.agentAccessCredentialId
-      : input.requester.agentId,
+    requesterId: 'agentId' in input.requester
+      ? input.requester.agentId
+      : input.requester.agentAccessCredentialId,
     action: input.action,
     reason: input.reason,
     context: (input.context as Prisma.InputJsonValue) ?? undefined,
