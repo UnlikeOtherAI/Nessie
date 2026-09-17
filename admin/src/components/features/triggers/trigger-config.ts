@@ -16,6 +16,8 @@ export type TriggerFormState = {
   intervalMinutes: string
   name: string
   nextRunAt: string
+  /** When true, quiet recurring runs fold into one rolling status message. */
+  rollingStatus: boolean
   scheduleMode: ScheduleMode
   /** Optional end of a recurring schedule; empty means "runs until paused". */
   until: string
@@ -134,6 +136,7 @@ export const getDefaultCreateState = (
     triggerType: 'manual',
     scheduleMode: 'once',
     nextRunAt: '',
+    rollingStatus: false,
     cron: '',
     timezone: getLocalTimezone(),
     intervalMinutes: '60',
@@ -168,6 +171,7 @@ export const getEditState = (
     triggerType: trigger.type,
     scheduleMode: hasCron ? 'cron' : 'once',
     nextRunAt: toDatetimeLocalValue(trigger.nextRunAt),
+    rollingStatus: config.rollingStatus === true,
     cron: typeof config.cron === 'string' ? config.cron : '',
     timezone: typeof config.timezone === 'string' ? config.timezone : getLocalTimezone(),
     intervalMinutes:
@@ -242,6 +246,7 @@ export const buildSubmitPayload = (
             config: {
               cron: form.cron.trim(),
               timezone: form.timezone.trim() || getLocalTimezone(),
+              rollingStatus: form.rollingStatus,
             },
           },
         }
@@ -275,6 +280,7 @@ export const buildSubmitPayload = (
           config: {
             cron: form.cron.trim(),
             timezone: form.timezone.trim() || getLocalTimezone(),
+            rollingStatus: form.rollingStatus,
           },
         },
       }
@@ -310,6 +316,7 @@ export const buildSubmitPayload = (
         enabled: form.enabled,
         config: {
           interval_minutes: intervalMinutes,
+          rollingStatus: form.rollingStatus,
           ...(toIsoString(form.until) ? { until: toIsoString(form.until) } : {}),
         },
         nextRunAt,

@@ -230,6 +230,18 @@ export const getTriggerEventNames = (trigger: AgentTriggerRecord): string[] =>
     : []
 
 /**
+ * Whether a recurring trigger folds quiet runs into a rolling status message.
+ * Only meaningful for interval/scheduled triggers; other types always render
+ * as "—" because every run is already its own message.
+ */
+export const getRollingStatusLabel = (trigger: AgentTriggerRecord): string | null => {
+  if (trigger.type !== 'interval' && trigger.type !== 'scheduled') return null
+  return trigger.config?.rollingStatus === true
+    ? 'Roll quiet runs into one status message'
+    : 'Post each run as a new message'
+}
+
+/**
  * What a person should read when a schedule has stopped, and what they can do.
  *
  * The reason is a stable server code rather than a sentence, so the copy lives

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { fieldLabelClass, type TriggerFormState } from './trigger-config'
+import { Switch } from '../../primitives/Switch'
 
 type IntervalTriggerFieldsProps = {
   form: TriggerFormState
@@ -70,6 +71,26 @@ export const IntervalTriggerFields = ({
           Optional. Leave empty to run until you pause it. Past this time the
           trigger stops firing and shows as paused; extend it to resume.
         </p>
+      </div>
+
+      <div className="flex items-start gap-3 md:col-span-2">
+        <Switch
+          checked={form.rollingStatus}
+          label="Roll quiet runs into one status message"
+          onChange={(next) =>
+            setForm((current) => ({ ...current, rollingStatus: next }))
+          }
+        />
+        <div className="grid gap-0.5">
+          <span className="text-sm text-[color:var(--tx)]">
+            Roll quiet runs into one status message
+          </span>
+          <span className="text-xs leading-4 text-[color:var(--tx3)]">
+            When a run reports nothing new, edit the previous message instead of
+            posting a new one. Use this for monitoring sweeps, not for triggers
+            that publish fresh content each run.
+          </span>
+        </div>
       </div>
     </div>
   </section>
