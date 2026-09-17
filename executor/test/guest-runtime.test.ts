@@ -148,7 +148,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     let resolveClosed: (() => void) | undefined
     const session = await startGuestVmSession({
       codexAuthProfilePath,
-      egressPolicy: { allowedOrigins: ['https://app.example.test'] },
+      ...(packagedWindows ? {} : { egressPolicy: { allowedOrigins: ['https://app.example.test'] } }),
       guestInitrdBuilderPath: builderPath,
       guestRuntimeBundlePath: runtimeBundlePath,
       kernelPath,
@@ -207,11 +207,19 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     assert.match(calls[1].argv[runtimeDigestIndex + 1]!, /^sha256:[a-f0-9]{64}$/)
     assert.equal(calls[1].argv.includes(calls[1].input), false)
     const gatewayIndex = calls[1].argv.indexOf('--egress-gateway')
-    assert.equal(gatewayIndex >= 0, true)
-    assert.match(calls[1].argv[gatewayIndex + 1]!, /egress\.sock$/)
+    if (packagedWindows) {
+      assert.equal(gatewayIndex, -1)
+    } else {
+      assert.equal(gatewayIndex >= 0, true)
+      assert.match(calls[1].argv[gatewayIndex + 1]!, /egress\.sock$/)
+    }
     assert.deepEqual(await session.inspectRuntime(), { browser: true, claude: false, codex: false, tmux: false })
-    await session.openBrowser('https://app.example.test/guide')
-    await assert.rejects(session.openBrowser('https://blocked.example.test/'), /not allowed by local policy/)
+    if (packagedWindows) {
+      await assert.rejects(session.openBrowser('https://app.example.test/guide'), /no browser egress/u)
+    } else {
+      await session.openBrowser('https://app.example.test/guide')
+      await assert.rejects(session.openBrowser('https://blocked.example.test/'), /not allowed by local policy/)
+    }
     assert.deepEqual(await session.observeBrowser(), {
       accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
       targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],

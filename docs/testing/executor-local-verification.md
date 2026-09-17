@@ -36,7 +36,7 @@ the connection`. The subsequent fix changed the tray to read one bounded,
 newline-framed response and added a real server-write-and-disconnect regression
 test.
 
-The final debug package, `0.0.3` (SHA-256
+The next corrected debug package, `0.0.3` (SHA-256
 `a0eb0b6559fa66625c4814bde499657c9eaae4e67c704e8c33e4e28095073e63`),
 included that reader fix. Its hash verified and the MSI installed successfully.
 The service ran automatically as `NT SERVICE\NessieExecutor`; the installed
@@ -51,10 +51,38 @@ in interactive Session 1, directly proving that supervision did not depend on
 the tray process or its login session. Reboot and logoff recovery were not
 performed. The executor list remained empty because no pairing was created.
 
+A final debug package, `0.0.4` (SHA-256
+`53942cef6ffd358193949c9c839a633ab87b20523e0564dce0ff6a5ccd985d1d`),
+added packaged Windows artifact provenance and the GUI subsystem flag to the
+same tested service/tray implementation. Its hash verified and the MSI installed
+successfully. The automatic service ran as `NT SERVICE\NessieExecutor` in
+Session 0, while the installed GUI-subsystem tray ran responsively in Session 1
+without a console or main window. The official elevated workspace grant exited
+zero with empty stderr, preserved the fixture owner's ACLs, and granted the
+service only Read and Synchronize. Six ordinary exact-rights status exchanges
+passed, three before and three after the grant.
+
+The installed package's Node and native helper passed the focused browser
+configuration/session tests (9), guest runtime snapshot/session tests (3),
+installed-resource provenance tests (2), and the state save/load and protected
+pairing-root assertions (2). One read-only workspace symlink test explicitly
+skipped because the unelevated Windows test process could not create a file
+symlink; the directory-junction fail-closed test passed. The broader
+`index.test.ts` harness leaves `process.exitCode` set after exercising CLI usage,
+so its two selected state assertions passed while the file-level harness still
+returned exit 1; this is not counted as a green file suite.
+
+Windows guest execution remains blocked beyond the verified utility and
+transport scope. The production Hyper-V backend still resolves its guest disk
+builder through Linux-only `mkfs.ext4` locations, and its guest gateway path
+uses POSIX socket-directory checks. No sandbox/browser/coding guest action was
+claimed or performed.
+
 The focused native and renderer checks above are not a whole-repository pass.
 The local Turbo executor suite was attempted after building its workspace
-dependencies, but Windows owner/private-artifact cases failed and the run then
-stopped producing output; it was interrupted rather than reported green. The
+dependencies. Its earlier Windows owner/private-artifact failures led to the
+packaged-resource and DACL fixes above, but that full run later stopped producing
+output and was interrupted rather than reported green. The
 repository's older pairing renderer harness also failed before its pairing
 assertion because it did not choose the workspace that the current form
 requires. The dedicated starting-state renderer used for this verification is

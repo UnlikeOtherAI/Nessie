@@ -381,10 +381,11 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
     await saveExecutorState(safe, state)
     assert.deepEqual(await loadExecutorState(safe), state)
 
-    if (!packagedWindows) {
-      await symlink(safe, linked)
-      await assert.rejects(() => saveExecutorState(linked, state), /ordinary directory/)
-    }
+    await symlink(safe, linked, packagedWindows ? 'junction' : undefined)
+    await assert.rejects(
+      () => saveExecutorState(linked, state),
+      /ordinary directory/u,
+    )
   } finally {
     await rm(root, { force: true, recursive: true })
   }
@@ -426,14 +427,22 @@ test('native-host state-root dispatch accepts only protected matching pairing di
   }
 })
 
-test('the read-only workspace backend keeps every path inside the paired root', async () => {
+test('the read-only workspace backend keeps every path inside the paired root', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-workspace-'))
   const outside = await mkdtemp(join(tmpdir(), 'nessie-executor-outside-'))
   try {
     await mkdir(join(root, 'nested'))
     await writeFile(join(root, 'nested', 'notes.txt'), 'hello executor')
     await writeFile(join(outside, 'secret.txt'), 'not readable')
-    await symlink(join(outside, 'secret.txt'), join(root, 'outside-link'))
+    try {
+      await symlink(join(outside, 'secret.txt'), join(root, 'outside-link'))
+    } catch (error) {
+      if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') {
+        t.skip('Windows symlink creation requires a privilege unavailable to this test process.')
+        return
+      }
+      throw error
+    }
 
     const view = hostView({ name: 'work', path: root })
     assert.deepEqual(
@@ -560,12 +569,21 @@ test('sandbox workspace paths exclude the native promotion journal', async () =>
   }
 })
 
-test('copy-on-write sandbox setup fails closed on symbolic links in the paired root', async () => {
+test('copy-on-write sandbox setup fails closed on symbolic links in the paired root', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-state-'))
   const outside = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-outside-'))
   try {
-    await symlink(outside, join(root, 'outside-link'))
+    try {
+      await symlink(outside, join(root, 'outside-link'), process.platform === 'win32' ? 'junction' : undefined)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES')) {
+        t.skip('Windows link creation requires a privilege unavailable to this test process.')
+        return
+      }
+      throw error
+    }
     await assert.rejects(
       writeSandboxFile(stateDir, [{ name: 'work', path: root }], '00000000-0000-4000-8000-000000000102', {
         content: 'must not write',
