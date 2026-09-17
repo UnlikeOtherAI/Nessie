@@ -72,7 +72,7 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
         if ('href' in item) {
           return (
             <a
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
+              className="admin-page-menu-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
               href={item.href}
               key={item.id}
               rel={item.rel}
@@ -101,7 +101,10 @@ export const PageHeaderMenu = ({ action, onSelect }: PageHeaderMenuProps) => {
           <button
             aria-checked={checked}
             className={[
-              'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs',
+              // The size lives on `.admin-page-menu-row` in styles.css, not a
+              // `text-*` utility: the unlayered `button { font: inherit }` reset
+              // beats Tailwind's layered utilities on a button.
+              'admin-page-menu-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left',
               'text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
               checked ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' : '',
               item.disabled ? 'cursor-not-allowed opacity-50' : '',

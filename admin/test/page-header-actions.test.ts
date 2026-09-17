@@ -197,6 +197,13 @@ test('the header geometry is tokenised and split by pointer', () => {
   // `button { font: inherit }` reset — a `text-*` utility on the element is
   // silently ignored.
   assert.match(styles, /\.admin-page-action \{[^}]*font-size: var\(--page-header-action-font-size\)/)
+  // A menu row is a button too, so its size cannot live on a utility either —
+  // rows that rendered at body size were larger than the trigger that opened
+  // them. Same token: the header is one scale.
+  assert.match(styles, /\.admin-page-menu-row \{[^}]*font-size: var\(--page-header-action-font-size\)/)
+  const menuSource = source('../src/components/shared/PageHeaderMenu.tsx')
+  assert.match(menuSource, /admin-page-menu-row/)
+  assert.doesNotMatch(menuSource, /text-xs/, 'a menu row never sizes itself with a utility')
   assert.doesNotMatch(header, /admin-page-action inline-flex[^']*text-xs/)
 
   // The compact geometry is the fine-pointer case; a coarse pointer restores

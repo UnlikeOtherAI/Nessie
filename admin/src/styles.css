@@ -3732,6 +3732,15 @@ button.reaction-pill-active:focus-visible {
   font-weight: var(--font-weight-semibold);
 }
 
+/* A menu row is a `<button>` too, so its `text-xs` met the same unlayered
+   `button { font: inherit }` reset and every row in an open header menu
+   rendered at body size — larger than the trigger that opened it, and larger
+   still beside the compact bar. The size comes from here, where it wins, and
+   from the same token as the action labels: the header is one scale. */
+.admin-page-menu-row {
+  font-size: var(--page-header-action-font-size);
+}
+
 .admin-page-action-secondary {
   border-color: var(--sep);
   background: var(--overlay-weak);
