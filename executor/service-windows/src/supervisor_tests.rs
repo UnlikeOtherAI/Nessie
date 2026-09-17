@@ -28,14 +28,18 @@ fn scripted_supervisor(root: &Path) -> Supervisor {
         .args(["-p", "process.execPath"])
         .output()
         .expect("Node is required for Windows executor lifecycle tests");
-    assert!(node.status.success(), "Node is required for Windows executor lifecycle tests");
+    assert!(
+        node.status.success(),
+        "Node is required for Windows executor lifecycle tests"
+    );
     let script = root.join("nessie-executor.cjs");
     fs::write(
         &script,
-        "const fs=require('fs');const a=process.argv.slice(2);const d=a[a.indexOf('--state-dir')+1];if(a[0]==='connect'){fs.writeFileSync(d+'/connect.marker','');process.exit(fs.existsSync(d+'/fail.connect')?1:0)}fs.writeFileSync(d+'/serve.marker','');setInterval(()=>{if(fs.existsSync(d+'/crash.marker'))process.exit(0)},5);process.stdin.on('end',()=>process.exit(0));",
+        "const fs=require('fs');const a=process.argv.slice(2);const d=a[a.indexOf('--state-dir')+1];if(a[0]==='connect'){fs.writeFileSync(d+'/connect.marker','');const go=()=>{if(fs.existsSync(d+'/connect-block.marker'))return setTimeout(go,5);process.exit(fs.existsSync(d+'/offline.marker')?1:0)};go()}else{fs.writeFileSync(d+'/serve.marker','');setInterval(()=>{if(fs.existsSync(d+'/crash.marker'))process.exit(0)},5);process.stdin.on('end',()=>process.exit(0));}",
     )
     .expect("script");
-    supervisor.runtime.node_executable = std::path::PathBuf::from(String::from_utf8(node.stdout).expect("Node path").trim());
+    supervisor.runtime.node_executable =
+        std::path::PathBuf::from(String::from_utf8(node.stdout).expect("Node path").trim());
     supervisor
 }
 
@@ -181,4 +185,47 @@ fn recovery_observes_connect_serve_crash_backoff_stop_and_shutdown() {
     assert!(supervisor.recover_due().is_empty());
     supervisor.request_shutdown();
     assert!(supervisor.desired.is_empty() && supervisor.connections.is_empty());
+}
+
+#[cfg(windows)]
+#[test]
+fn recovery_retries_an_offline_connect_then_recovers_and_shutdown_cancels_a_pending_connect() {
+    let directory = tempfile::tempdir().expect("temporary state");
+    let state = directory.path().join("executors").join(EXECUTOR_ID);
+    let mut supervisor = scripted_supervisor(directory.path());
+    fs::write(state.join("offline.marker"), b"").expect("offline fixture");
+    supervisor.start(EXECUTOR_ID).expect("queue start");
+    supervisor.recover_due();
+    until(|| {
+        supervisor.recover_due();
+        supervisor.retry_after.contains_key(EXECUTOR_ID)
+    });
+    fs::remove_file(state.join("offline.marker")).expect("restore network");
+    supervisor
+        .retry_after
+        .insert(EXECUTOR_ID.to_owned(), std::time::Instant::now());
+    until(|| {
+        supervisor.recover_due();
+        state.join("serve.marker").exists()
+    });
+    assert_eq!(supervisor.status(EXECUTOR_ID), Ok("running".to_owned()));
+
+    supervisor.request_shutdown();
+    let blocked = tempfile::tempdir().expect("blocked state");
+    let blocked_state = blocked.path().join("executors").join(EXECUTOR_ID);
+    let mut blocked_supervisor = scripted_supervisor(blocked.path());
+    fs::write(blocked_state.join("connect-block.marker"), b"").expect("block connect");
+    blocked_supervisor
+        .start(EXECUTOR_ID)
+        .expect("queue blocked connect");
+    blocked_supervisor.recover_due();
+    until(|| blocked_state.join("connect.marker").exists());
+    blocked_supervisor.request_shutdown();
+    fs::remove_file(blocked_state.join("connect-block.marker")).expect("unblock connect");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert!(blocked_supervisor.desired.is_empty() && blocked_supervisor.connections.is_empty());
+    assert!(
+        !blocked_state.join("serve.marker").exists(),
+        "shutdown must not launch serve"
+    );
 }
