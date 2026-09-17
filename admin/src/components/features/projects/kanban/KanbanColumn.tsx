@@ -57,7 +57,10 @@ export const KanbanColumn = ({
         className={[
           'flex min-h-[120px] flex-1 flex-col overflow-y-auto overscroll-y-contain',
           dense ? 'gap-1' : 'gap-2',
-          'rounded-lg p-2 transition-colors',
+          // Only the top corners round: the track runs to the window's
+          // bottom edge, and a rounded bottom would read as a panel floating
+          // above a dead band rather than a track leaving the screen.
+          'rounded-t-lg p-2 transition-colors',
           isOver ? 'bg-[color:var(--overlay)]' : 'bg-[color:var(--sb)]',
         ].join(' ')}
         data-kanban-dropzone={droppable ? columnId : undefined}

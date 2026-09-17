@@ -29,6 +29,9 @@ type PageHeaderMenuItemBase = {
    * says "3 of 3" and implies the rows beside it are the alternatives.
    */
   checkbox?: boolean
+  // The little line underneath the label — a sync row's freshness sentence.
+  // The row stays one press; the detail is read, not pressed.
+  detail?: string
   disabled?: boolean
   icon?: IconDefinition
   id: string
@@ -46,7 +49,27 @@ export type PageHeaderMenuLinkItem = PageHeaderMenuItemBase & {
   target?: string
 }
 
-export type PageHeaderMenuItem = PageHeaderMenuButtonItem | PageHeaderMenuLinkItem
+// A hairline rule between groups of rows. `aria-hidden`: the grouping it
+// marks is visible, and a screen reader already hears the groups' edges.
+export type PageHeaderMenuSeparatorItem = {
+  id: string
+  kind: 'separator'
+}
+
+// A small muted line of text — the board's "Showing the 500 most recently
+// updated cards." footnote. It answers a question and offers no press, so it
+// is not a `menuitem` and takes no focus.
+export type PageHeaderMenuNoteItem = {
+  id: string
+  kind: 'note'
+  label: string
+}
+
+export type PageHeaderMenuItem =
+  | PageHeaderMenuButtonItem
+  | PageHeaderMenuLinkItem
+  | PageHeaderMenuNoteItem
+  | PageHeaderMenuSeparatorItem
 
 type PageHeaderActionBase = {
   /**

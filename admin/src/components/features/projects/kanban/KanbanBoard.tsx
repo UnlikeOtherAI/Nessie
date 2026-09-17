@@ -364,7 +364,7 @@ export const KanbanBoard = ({
           ) : null}
           <div
             ref={viewportRef}
-            className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             data-kanban-board-viewport
             data-kanban-dragging={isDraggingCard ? 'true' : undefined}
             onScroll={handleScroll}

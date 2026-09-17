@@ -71,9 +71,14 @@ test('Configure carries the view, the archived toggle and Members', () => {
 test('the board tab draws no toolbar of its own any more', () => {
   assert.doesNotMatch(boardTab, /<TabBar/, 'the view strip moved into Configure')
   assert.doesNotMatch(boardTab, /<BoardAssigneeFilter/, 'the filter moved into the header')
-  // The source health strip stays: it is a status the board answers with, not
-  // a control competing with the header.
-  assert.match(boardTab, /<SourceStatusStrip/)
+  // The source health strip moved too: freshness and the Sync press are the
+  // first rows of Configure now, so the board itself is all board and the
+  // remedy stays one press from it (docs/standards/capability-health-alerts.md).
+  assert.doesNotMatch(boardTab, /SourceStatusStrip/)
+  assert.match(view, /useProjectSources\(onBoard \? projectId : undefined, board\?\.id\)/)
+  assert.match(view, /sourceStatusDetail\(source\)/)
+  // A source whose health names a remedy navigates to it rather than syncing.
+  assert.match(view, /settings\?section=sources&source=\$\{source\.id\}/)
 })
 
 test('one piece of state behind the header and the board', () => {

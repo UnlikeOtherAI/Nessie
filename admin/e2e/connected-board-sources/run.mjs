@@ -33,6 +33,22 @@ const assertTouchTarget = async (locator, label) => {
   return box
 }
 
+// The sync row is the first row of the board's Configure menu. On a narrow
+// header Configure can collapse into More, whose popover draws the menu's
+// rows directly — either way the row is one press away.
+const openConfigure = async (page) => {
+  const configure = page.getByRole('button', { name: 'Configure' })
+  const more = page.getByRole('button', { name: 'More page actions' })
+  // The overflow controller measures before it partitions, so wait for
+  // whichever doorway the header settled on.
+  await configure.or(more).first().waitFor()
+  if (await configure.count() > 0) {
+    await configure.click()
+    return
+  }
+  await more.click()
+}
+
 const waitForMappingRequest = async (fixtures) => {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     if (fixtures.calls.some((call) => call.pathname.endsWith('/mappings') && call.method === 'PUT')) return
@@ -88,24 +104,27 @@ const exerciseDesktop = async (browser, fixtures) => {
     assert.equal(agentLink.agentId, ids.agent, 'saving a person mapping preserves an agent link')
 
     await page.goto(`${adminUrl}/projects/${ids.project}/board?board=${ids.board}`)
-    const sourceLink = page.locator(`a[href="${sourceSettingsPath}"]`)
-    await sourceLink.waitFor()
-    await assertTouchTarget(sourceLink, 'source health doorway')
-    const sync = page.getByRole('button', { name: `Sync ${sourceName} from Linear now` })
-    await assertTouchTarget(sync, 'sync source')
-    await sync.click()
+    await openConfigure(page)
+    const syncRow = page.getByRole('menuitem', { name: /Sync/ })
+    await syncRow.waitFor()
+    await assertTouchTarget(syncRow, 'sync source row')
+    // The freshness sentence the board's status strip used to carry now rides
+    // under the row's label.
+    assert.match(await syncRow.textContent(), new RegExp(`Linear ${sourceName} · synced`), 'the row names the source and its freshness')
+    await syncRow.click()
     await page.waitForTimeout(50)
     assert.ok(fixtures.calls.some((call) => call.pathname.endsWith('/sync') && call.method === 'POST'), 'sync uses the source action endpoint')
 
     await page.goto(`${adminUrl}/projects/${ids.project}/board?board=${ids.localBoard}`)
     await page.getByText('To do', { exact: true }).waitFor()
+    await openConfigure(page)
     await page.waitForTimeout(50)
-    assert.equal(await page.getByRole('button', { name: `Sync ${sourceName} from Linear now` }).count(), 0, 'a local-only board does not inherit another board’s source strip')
+    assert.equal(await page.getByRole('menuitem', { name: /Sync/ }).count(), 0, 'a local-only board shows no sync row')
     assert.ok(
       fixtures.calls.some(
         (call) => call.pathname === `/api/projects/${ids.project}/sources` && call.search === `?boardId=${ids.localBoard}`,
       ),
-      'the strip asks the server for the selected board’s sources',
+      'the menu asks the server for the selected board’s sources',
     )
     assert.deepEqual(errors, [], `desktop page errors: ${errors.join('; ')}`)
   } finally {
@@ -129,12 +148,13 @@ const exercisePhone = async (browser, fixtures) => {
     await assertTouchTarget(page.getByLabel('Nessie identity for Alex Linear'), 'phone person selector')
     await screenshot(page, 'phone-source-settings')
     await page.goto(`${adminUrl}/projects/${ids.project}/board?board=${ids.board}`)
-    const sourceLink = page.locator(`a[href="${sourceSettingsPath}"]`)
-    await sourceLink.waitFor()
-    const sourceBox = await sourceLink.boundingBox()
-    assert.ok(sourceBox && sourceBox.x >= 0 && sourceBox.x + sourceBox.width <= 390, 'phone source strip stays within the viewport')
-    await assertTouchTarget(sourceLink, 'phone source health doorway')
-    await screenshot(page, 'phone-source-strip')
+    await openConfigure(page)
+    const syncRow = page.getByRole('menuitem', { name: /Sync/ })
+    await syncRow.waitFor()
+    const syncBox = await syncRow.boundingBox()
+    assert.ok(syncBox && syncBox.x >= 0 && syncBox.x + syncBox.width <= 390, 'phone sync row stays within the viewport')
+    await assertTouchTarget(syncRow, 'phone sync source row')
+    await screenshot(page, 'phone-configure-sync')
     assert.deepEqual(errors, [], `phone page errors: ${errors.join('; ')}`)
   } finally {
     await close()
@@ -170,16 +190,22 @@ const exerciseWatcherSave = async (browser, fixtures) => {
 
 const main = async () => {
   const fixtures = createConnectedBoardSourceFixtures()
-  const browser = await launchBrowser()
-  try {
-    await exerciseDesktop(browser, fixtures)
-    await exercisePhone(browser, fixtures)
-    await exerciseWatcherSave(browser, fixtures)
-    assert.deepEqual(fixtures.unhandled, [], `unhandled fixture requests: ${JSON.stringify(fixtures.unhandled)}`)
-    console.log('Connected board source UI evaluation passed.')
-  } finally {
-    await browser.close()
+  // One browser per exercise: a failure in one leaves no aborted page for the
+  // next to inherit, and a constrained Chromium (single-process) survives
+  // only its first context.
+  const withBrowser = async (exercise) => {
+    const browser = await launchBrowser()
+    try {
+      await exercise(browser, fixtures)
+    } finally {
+      await browser.close()
+    }
   }
+  await withBrowser(exerciseDesktop)
+  await withBrowser(exercisePhone)
+  await withBrowser(exerciseWatcherSave)
+  assert.deepEqual(fixtures.unhandled, [], `unhandled fixture requests: ${JSON.stringify(fixtures.unhandled)}`)
+  console.log('Connected board source UI evaluation passed.')
 }
 
 await main()

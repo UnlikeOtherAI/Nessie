@@ -4,6 +4,8 @@ import { isAbsolute } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { toScreenBarActions } from '../src/components/shared/screen-bar-actions'
+
 const source = (path: string): string =>
   readFileSync(isAbsolute(path) ? path : fileURLToPath(new URL(path, import.meta.url)), 'utf8')
     .replaceAll('\r\n', '\n')
@@ -111,4 +113,58 @@ test('a header that offers a creation names a primary action', () => {
     }
   }
   assert.deepEqual(offenders, [])
+})
+
+test('separators and notes are not menu items and never reach the native bar', () => {
+  // A separator is a hairline and a note is a footnote: neither carries an
+  // `onSelect`, and the native phone bar must not publish them as pressable
+  // rows. The sync row's `detail` rides its row's label rather than becoming
+  // a row of its own.
+  const [action] = toScreenBarActions([
+    {
+      id: 'configure',
+      items: [
+        {
+          detail: 'Linear KiloMayo · synced 5 min ago · every 5 min',
+          id: 'sync',
+          label: 'Sync',
+          onSelect: () => undefined,
+        },
+        { id: 'after-sync', kind: 'separator' },
+        { id: 'cards', label: 'Cards', onSelect: () => undefined },
+        {
+          id: 'footnote',
+          kind: 'note',
+          label: 'Showing the 500 most recently updated cards.',
+        },
+      ],
+      kind: 'menu',
+      label: 'Configure',
+      priority: 60,
+    },
+  ])
+  assert.deepEqual(
+    action?.items?.map((item) => item.id),
+    ['sync', 'cards'],
+    'only interactive rows are published to the bar',
+  )
+  // A stale native snapshot can still name a dropped row's id; that press is
+  // a no-op, never a crash and never another row's action.
+  assert.doesNotThrow(() => action?.perform('after-sync'))
+  assert.doesNotThrow(() => action?.perform('footnote'))
+})
+
+test('non-interactive rows render without the menuitem role or a press', () => {
+  const menu = source('../src/components/shared/PageHeaderMenu.tsx')
+  // The keyboard walk and the screen reader stop on `[role^="menuitem"]`;
+  // a separator is `role="separator"` and a note carries no role at all, so
+  // neither can be focused or announced as a choice.
+  assert.match(menu, /item\.kind === 'separator'/)
+  assert.match(menu, /role="separator"/)
+  assert.match(menu, /item\.kind === 'note'/)
+  const noteBranch = menu.slice(
+    menu.indexOf("item.kind === 'note'"),
+    menu.indexOf('const icon'),
+  )
+  assert.doesNotMatch(noteBranch, /menuitem|onSelect|onClick/, 'a note offers no press')
 })

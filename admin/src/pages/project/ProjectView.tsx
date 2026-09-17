@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
   faBoxArchive,
+  faGear,
   faList,
+  faPlus,
   faTableCellsLarge,
   faUsers,
 } from '@fortawesome/free-solid-svg-icons'
@@ -10,10 +12,19 @@ import { ApiClientError } from '@nessie/client-core'
 import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
 import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
 import { TaskDialog } from '../../components/features/projects/kanban/TaskDialog'
-import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
+import type {
+  PageHeaderAction,
+  PageHeaderMenuItem,
+} from '../../components/shared/ResponsivePageHeader'
 import { type BoardTaskRecord, useProjectBoards } from '../../facades/boards/hooks'
 import { BoardSwitcher } from '../../components/features/projects/kanban/BoardSwitcher'
 import { BoardAssigneeFilter } from '../../components/features/projects/kanban/BoardAssigneeFilter'
+import {
+  isSourceSyncing,
+  useProjectSources,
+  useSourceAction,
+} from '../../facades/board-sources/hooks'
+import { SOURCE_HEALTH, sourceStatusDetail } from '../../facades/board-sources/health'
 import { useBoardChrome } from './useBoardChrome'
 import { usePhoneLayout } from '../../navigation/mobile-shell'
 import { useTabParam } from '../../navigation/useTabParam'
@@ -25,6 +36,7 @@ import { useCanModifyProject } from '../../facades/projects/administration'
 import { usePresentedTask } from '../../facades/tasks/hooks'
 import { Notice } from '../../components/primitives/Notice'
 import { QueryState } from '../../components/shared/QueryState'
+import { useToasts } from '../../providers/ToastProvider'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectDocsTab } from './ProjectDocsTab'
@@ -102,10 +114,25 @@ export const ProjectView = () => {
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
+  // Which section of the project is on screen, computed above the hooks that
+  // depend on it. A project's sections are chosen in the Projects sidebar,
+  // which draws them as the project's subpages (`navigation/project-sections.ts`).
+  // The header carries no section dropdown: two doorways to the same seven
+  // routes only made the reader guess which one moved them.
+  const tab = projectSectionIdFromPathname(location.pathname)
+  // A board is on screen: the only section whose header is the board's own.
+  const onBoard = tab === 'board'
   // Read here as well as in `ProjectBoardTab` — one URL and one query cache
   // behind both, so the header's controls and the board they steer cannot
   // disagree. Above the `projectId` guard with every other hook.
   const chrome = useBoardChrome(projectId, board?.id)
+  // The Configure menu's sync rows read the same source list the board used
+  // to draw its status strip from — one query key, one fetch, one cache
+  // entry, so the menu and the board can never disagree about freshness.
+  // Only the board section asks: no other tab has a sync row to answer for.
+  const { data: boardSources = [] } = useProjectSources(onBoard ? projectId : undefined, board?.id)
+  const sourceAction = useSourceAction(projectId ?? '')
+  const { pushToast } = useToasts()
 
   // A card message says only which ticket it refers to. Its live record is the
   // authority for the board, so an old message cannot return somebody to the
@@ -127,13 +154,6 @@ export const ProjectView = () => {
   // every hook so the hook order never depends on it (rules-of-hooks). The
   // queries above already no-op on an undefined id.
   if (!projectId) return null
-  // A project's sections are chosen in the Projects sidebar, which draws them
-  // as the project's subpages (`navigation/project-sections.ts`). The header
-  // carries no section dropdown: two doorways to the same seven routes only
-  // made the reader guess which one moved them.
-  const tab = projectSectionIdFromPathname(location.pathname)
-  // A board is on screen: the only section whose header is the board's own.
-  const onBoard = tab === 'board'
 
   const openTask = (task: BoardTaskRecord) => {
     const params = new URLSearchParams(location.search)
@@ -158,6 +178,56 @@ export const ProjectView = () => {
     void taskQuery.refetch()
   }
   const boardsFailedWithContent = Boolean(boardsQuery.isError && hasCurrentBoards && boardsQuery.data)
+
+  // The sync block is the menu's first rows on a remote board: "is what I am
+  // looking at current?" is the question a person answers immediately before
+  // dragging a card, so the answer and its remedy stay one press from the
+  // board (docs/standards/capability-health-alerts.md). The row's detail
+  // carries the freshness sentence the retired status strip used to paint on
+  // the board itself.
+  const syncItems: PageHeaderMenuItem[] = boardSources.flatMap((source): PageHeaderMenuItem[] => {
+    const detail = sourceStatusDetail(source)
+    // No press may promise an action the server would refuse: somebody who
+    // cannot administer the project still reads the freshness, as a
+    // footnote rather than a button.
+    if (!canAdminister) {
+      return [{ id: `source-${source.id}`, kind: 'note', label: detail }]
+    }
+    const remedy = SOURCE_HEALTH[source.healthState].remedy
+    const syncing = isSourceSyncing(source) || sourceAction.isPending
+    return [{
+      detail,
+      disabled: syncing,
+      id: `source-${source.id}`,
+      label: syncing
+        ? 'Syncing…'
+        : boardSources.length === 1 ? 'Sync' : `Sync ${source.name}`,
+      onSelect: () => {
+        // A source whose health names a remedy cannot be fixed by syncing:
+        // the row is the doorway to the remedy instead.
+        if (remedy) {
+          void navigate(`/projects/${projectId}/settings?section=sources&source=${source.id}`)
+          return
+        }
+        sourceAction.mutate(
+          { id: source.id, action: 'sync' },
+          {
+            // A press that changed nothing has to say so: the freshness line
+            // reads the same either way, so silence here is indistinguishable
+            // from a sync that has not started.
+            onError: (cause) =>
+              pushToast({
+                body:
+                  cause instanceof Error
+                    ? cause.message
+                    : 'The sync could not be started.',
+                title: `Could not sync ${source.name}`,
+              }),
+          },
+        )
+      },
+    }]
+  })
 
   // The board's whole chrome is one row: the assignee filter, everything the
   // board can be configured to show, and New task. What used to be a second
@@ -187,6 +257,10 @@ export const ProjectView = () => {
     {
       id: 'board-configure',
       items: [
+        ...syncItems,
+        ...(syncItems.length > 0
+          ? [{ id: 'sync-separator', kind: 'separator' } as const]
+          : []),
         {
           checked: chrome.view === 'cards',
           icon: faTableCellsLarge,
@@ -202,6 +276,7 @@ export const ProjectView = () => {
           onSelect: () => chrome.setView('lines'),
           title: 'One line per card: title and priority only',
         },
+        { id: 'view-separator', kind: 'separator' } as const,
         {
           checkbox: true,
           checked: chrome.showArchived,
@@ -226,6 +301,7 @@ export const ProjectView = () => {
         ...(canAdminister
           ? [
               {
+                icon: faGear,
                 id: 'edit-columns',
                 label: 'Board settings…',
                 onSelect: () =>
@@ -235,12 +311,25 @@ export const ProjectView = () => {
                       : `/projects/${projectId}/boards`,
                   ),
               },
+              { id: 'board-admin-separator', kind: 'separator' } as const,
               {
+                icon: faPlus,
                 id: 'new-board',
                 label: 'New board…',
                 onSelect: () => void navigate(`/projects/${projectId}/boards?create=board`),
               },
             ]
+          : []),
+        // The cap is on the board read, so it bounds what any filter can
+        // possibly match — a footnote here says so before somebody reads an
+        // empty column as "nobody is working on this", without costing the
+        // board a row of its own.
+        ...(chrome.tasksQuery.data?.truncated
+          ? [{
+              id: 'board-truncated',
+              kind: 'note',
+              label: 'Showing the 500 most recently updated cards.',
+            } as const]
           : []),
       ],
       kind: 'menu',

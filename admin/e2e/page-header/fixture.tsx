@@ -1,4 +1,4 @@
-import { faCircleDot, faCircleInfo, faGear, faMagnifyingGlass, faPaperclip, faPhone, faStar } from '@fortawesome/free-solid-svg-icons'
+import { faCircleDot, faCircleInfo, faGear, faMagnifyingGlass, faPaperclip, faPhone, faPlus, faStar, faTableCellsLarge } from '@fortawesome/free-solid-svg-icons'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -12,8 +12,22 @@ const projectActions: PageHeaderAction[] = [
   {
     id: 'configure',
     items: [
-      { id: 'board-settings', label: 'Board settings…', onSelect: () => undefined },
-      { id: 'new-board', label: 'New board…', onSelect: () => undefined },
+      {
+        detail: 'Linear KiloMayo · synced 5 min ago · read-only · every 5 min',
+        id: 'sync',
+        label: 'Sync',
+        onSelect: () => undefined,
+      },
+      { id: 'after-sync', kind: 'separator' },
+      { icon: faTableCellsLarge, id: 'view-cards', label: 'Cards', onSelect: () => undefined },
+      { icon: faGear, id: 'board-settings', label: 'Board settings…', onSelect: () => undefined },
+      { id: 'before-new-board', kind: 'separator' },
+      { icon: faPlus, id: 'new-board', label: 'New board…', onSelect: () => undefined },
+      {
+        id: 'truncated',
+        kind: 'note',
+        label: 'Showing the 500 most recently updated cards.',
+      },
     ],
     kind: 'menu',
     label: 'Configure',

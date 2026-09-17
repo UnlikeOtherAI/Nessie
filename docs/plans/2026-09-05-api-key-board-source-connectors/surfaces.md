@@ -20,8 +20,8 @@ no nested frames. Step state is transient (never a URL param).
 | Personal keys | `/settings/connections` → *Project tools* (`ProjectToolConnections`, existing) — rows gain method, expiry, **Replace key** | dialog step 1 "Just me"; bell alert deep link |
 | Project keys | `SourcesSettingsSection` → a *Keys for this project* row list above the sources, same row component | dialog step 1 "This project"; a source row's *as Engineering Jira (project key)* text links to it |
 | Organisation keys | `/settings/organization?tab=project-tools` — third tab beside Profile and Agents, `OrganizationAdministrationGate`, same row component with `scope="organization"` | dialog step 1 "Whole organisation" (owners); bell alert deep link; a source row's *as Acme Jira (organisation key)* text |
-| Expiry warning | the connection's row (above) | bell (`board_source_credential_expiring`); `SourceStatusStrip` pill *key expires in 5 days* on the board |
-| `credential_expired` | source row remedy **Replace key** | bell (`board_source_health`, existing); `SourceStatusStrip` |
+| Expiry warning | the connection's row (above) | bell (`board_source_credential_expiring`); the board Configure menu's sync row, whose remedy sub-line reads *key expires in 5 days* |
+| `credential_expired` | source row remedy **Replace key** | bell (`board_source_health`, existing); the board Configure menu's sync row |
 
 ### 10.2 Step 1 — where from, and how
 
@@ -151,4 +151,3 @@ prefilled from `credentialParams` and the label (the email is not stored in
 plaintext, so it is *not* prefilled; the help says *the same address as
 before, or a new one*), `secret` fields empty, `date` empty. Submit is
 `PUT /api/board-sources/connections/:id/api-key { values }`.
-
