@@ -24,10 +24,25 @@ pub fn secure_directory(path: &str) -> Result<(), NativeError> {
     imp::secure_directory(path)
 }
 
+/// Establish the standalone service state root with the service virtual
+/// account as owner. Windows Installer executes this as SYSTEM before the
+/// service starts, so using the current token here would permanently lock the
+/// actual service out of its own state.
+pub fn secure_service_directory(path: &str) -> Result<(), NativeError> {
+    imp::secure_service_directory(path)
+}
+
 /// Prove that a directory is still owned by the current user and that every ACE
 /// on it admits only that user or SYSTEM, with nothing inherited.
 pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
     imp::verify_owner_only(path)
+}
+
+/// Prove a private file is owned by the current account and its own DACL grants
+/// access only to that account and SYSTEM. Files normally inherit the safe ACEs
+/// from their protected parent, so inherited ACE flags are valid here.
+pub fn verify_owner_only_file(path: &str) -> Result<(), NativeError> {
+    imp::verify_owner_only_file(path)
 }
 
 #[cfg(not(windows))]
@@ -38,7 +53,15 @@ mod imp {
         Err(NativeError::new(UNSUPPORTED))
     }
 
+    pub fn secure_service_directory(_path: &str) -> Result<(), NativeError> {
+        Err(NativeError::new(UNSUPPORTED))
+    }
+
     pub fn verify_owner_only(_path: &str) -> Result<(), NativeError> {
+        Err(NativeError::new(UNSUPPORTED))
+    }
+
+    pub fn verify_owner_only_file(_path: &str) -> Result<(), NativeError> {
         Err(NativeError::new(UNSUPPORTED))
     }
 }
@@ -49,7 +72,7 @@ mod imp {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::{
-        CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE, HLOCAL, INVALID_HANDLE_VALUE,
+        CloseHandle, GetLastError, LocalFree, ERROR_NOT_ALL_ASSIGNED, ERROR_SUCCESS, HANDLE, HLOCAL, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Security::Authorization::{
         GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
@@ -58,7 +81,9 @@ mod imp {
     };
     use windows_sys::Win32::Security::{
         CopySid, CreateWellKnownSid, EqualSid, GetAce, GetLengthSid, GetSecurityDescriptorControl,
-        GetTokenInformation, IsValidSid, TokenUser, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL,
+        AdjustTokenPrivileges, GetTokenInformation, IsValidSid, LookupAccountNameW, LookupPrivilegeValueW,
+        LUID_AND_ATTRIBUTES, SID_NAME_USE, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TokenUser,
+        WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL,
         DACL_SECURITY_INFORMATION, INHERITED_ACE, OWNER_SECURITY_INFORMATION,
         PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE,
         SE_DACL_PROTECTED, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
@@ -142,6 +167,58 @@ mod imp {
         Ok(OwnedSid(bytes))
     }
 
+    fn service_sid() -> Result<OwnedSid, NativeError> {
+        let account: Vec<u16> = OsStr::new(r"NT SERVICE\NessieExecutor")
+            .encode_wide().chain(std::iter::once(0)).collect();
+        let mut sid_bytes = 0_u32;
+        let mut domain_chars = 0_u32;
+        let mut use_type: SID_NAME_USE = 0;
+        unsafe {
+            LookupAccountNameW(
+                std::ptr::null(), account.as_ptr(), std::ptr::null_mut(), &mut sid_bytes,
+                std::ptr::null_mut(), &mut domain_chars, &mut use_type,
+            );
+        }
+        if sid_bytes == 0 { return Err(NativeError::new(IO_FAILURE)); }
+        let mut sid = vec![0_u8; sid_bytes as usize];
+        let mut domain = vec![0_u16; domain_chars.max(1) as usize];
+        if unsafe {
+            LookupAccountNameW(
+                std::ptr::null(), account.as_ptr(), sid.as_mut_ptr() as PSID, &mut sid_bytes,
+                domain.as_mut_ptr(), &mut domain_chars, &mut use_type,
+            )
+        } == 0 {
+            return Err(NativeError::new(IO_FAILURE));
+        }
+        sid.truncate(sid_bytes as usize);
+        copy_sid(sid.as_mut_ptr() as PSID)
+    }
+
+    /// Windows Installer runs this helper as SYSTEM, but `SeRestorePrivilege`
+    /// is not guaranteed enabled in its token. Naming a different owner needs
+    /// that privilege; without it a fresh MSI can still leave SYSTEM as owner.
+    fn enable_restore_privilege() -> Result<(), NativeError> {
+        let mut token: HANDLE = INVALID_HANDLE_VALUE;
+        if unsafe {
+            OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES, &mut token)
+        } == 0 {
+            return Err(NativeError::new(IO_FAILURE));
+        }
+        let name: Vec<u16> = OsStr::new("SeRestorePrivilege")
+            .encode_wide().chain(std::iter::once(0)).collect();
+        let mut luid = unsafe { std::mem::zeroed() };
+        let found = unsafe { LookupPrivilegeValueW(std::ptr::null(), name.as_ptr(), &mut luid) } != 0;
+        let privileges = TOKEN_PRIVILEGES {
+            PrivilegeCount: 1,
+            Privileges: [LUID_AND_ATTRIBUTES { Luid: luid, Attributes: 2 }],
+        };
+        let adjusted = found && unsafe {
+            AdjustTokenPrivileges(token, 0, &privileges, 0, std::ptr::null_mut(), std::ptr::null_mut())
+        } != 0 && unsafe { GetLastError() } != ERROR_NOT_ALL_ASSIGNED;
+        unsafe { CloseHandle(token) };
+        if adjusted { Ok(()) } else { Err(NativeError::new(IO_FAILURE)) }
+    }
+
     fn full_control(sid: PSID, trustee_type: i32) -> EXPLICIT_ACCESS_W {
         EXPLICIT_ACCESS_W {
             grfAccessPermissions: FILE_ALL_ACCESS,
@@ -157,12 +234,14 @@ mod imp {
         }
     }
 
-    pub fn secure_directory(path: &str) -> Result<(), NativeError> {
+    fn secure_directory_for_owner(
+        path: &str, owner: OwnedSid, requires_restore_privilege: bool,
+    ) -> Result<(), NativeError> {
         std::fs::create_dir_all(path).map_err(|_| NativeError::new(IO_FAILURE))?;
-        let user = current_user_sid()?;
+        if requires_restore_privilege { enable_restore_privilege()?; }
         let system = local_system_sid()?;
         let entries = [
-            full_control(user.pointer(), TRUSTEE_IS_USER),
+            full_control(owner.pointer(), TRUSTEE_IS_USER),
             full_control(system.pointer(), TRUSTEE_IS_WELL_KNOWN_GROUP),
         ];
         let mut acl: *mut ACL = std::ptr::null_mut();
@@ -182,7 +261,7 @@ mod imp {
                 OWNER_SECURITY_INFORMATION
                     | DACL_SECURITY_INFORMATION
                     | PROTECTED_DACL_SECURITY_INFORMATION,
-                user.pointer(),
+                owner.pointer(),
                 std::ptr::null_mut(),
                 acl,
                 std::ptr::null(),
@@ -194,12 +273,20 @@ mod imp {
         }
         // Establishing and proving are the same command's job: a DACL that did
         // not take is indistinguishable from one never asked for.
-        verify_owner_only(path)
+        verify_owner_only_for(path, &owner, false)
+    }
+
+    pub fn secure_directory(path: &str) -> Result<(), NativeError> {
+        secure_directory_for_owner(path, current_user_sid()?, false)
+    }
+
+    pub fn secure_service_directory(path: &str) -> Result<(), NativeError> {
+        secure_directory_for_owner(path, service_sid()?, true)
     }
 
     /// Every ACE of a protected DACL, read once. A NULL DACL is world-writable
     /// and an empty one is not: absence of the pointer is the failure.
-    fn admits_only(acl: *const ACL, user: &OwnedSid, system: &OwnedSid) -> bool {
+    fn admits_only(acl: *const ACL, user: &OwnedSid, system: &OwnedSid, allow_inherited: bool) -> bool {
         if acl.is_null() {
             return false;
         }
@@ -211,7 +298,9 @@ mod imp {
             }
             let entry = ace.cast::<ACCESS_ALLOWED_ACE>();
             let header = unsafe { (*entry).Header };
-            if header.AceType != ACCESS_ALLOWED || u32::from(header.AceFlags) & INHERITED_ACE != 0 {
+            if header.AceType != ACCESS_ALLOWED
+                || (!allow_inherited && u32::from(header.AceFlags) & INHERITED_ACE != 0)
+            {
                 return false;
             }
             let sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
@@ -227,8 +316,7 @@ mod imp {
         true
     }
 
-    pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
-        let user = current_user_sid()?;
+    fn verify_owner_only_for(path: &str, user: &OwnedSid, allow_inherited: bool) -> Result<(), NativeError> {
         let system = local_system_sid()?;
         let mut owner: PSID = std::ptr::null_mut();
         let mut dacl: *mut ACL = std::ptr::null_mut();
@@ -257,8 +345,8 @@ mod imp {
             && unsafe { EqualSid(owner, user.pointer()) } != 0;
         let verdict = described
             && owned
-            && control & SE_DACL_PROTECTED != 0
-            && admits_only(dacl, &user, &system);
+            && (allow_inherited || control & SE_DACL_PROTECTED != 0)
+            && admits_only(dacl, user, &system, allow_inherited);
         unsafe { LocalFree(descriptor as HLOCAL) };
         if verdict {
             Ok(())
@@ -266,11 +354,19 @@ mod imp {
             Err(NativeError::new(REJECTED))
         }
     }
+
+    pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
+        verify_owner_only_for(path, &current_user_sid()?, false)
+    }
+
+    pub fn verify_owner_only_file(path: &str) -> Result<(), NativeError> {
+        verify_owner_only_for(path, &current_user_sid()?, true)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{secure_directory, verify_owner_only, IO_FAILURE, REJECTED, UNSUPPORTED};
+    use super::{secure_directory, verify_owner_only, verify_owner_only_file, IO_FAILURE, REJECTED, UNSUPPORTED};
 
     /// The codes are part of the contract the supervisor reads, and none of
     /// them may carry a path or a reason a person should not see.
@@ -305,6 +401,49 @@ mod tests {
         verify_owner_only(secured.to_str().expect("a UTF-8 test path")).expect("it verifies");
         assert_eq!(
             verify_owner_only(untouched.to_str().expect("a UTF-8 test path")).unwrap_err().code,
+            REJECTED,
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_in_a_secured_directory_accepts_its_inherited_private_aces() {
+        let root = std::env::temp_dir().join(format!("nessie-state-file-{}", std::process::id()));
+        let secured = root.join("secured");
+        std::fs::create_dir_all(&root).expect("the test root must be creatable");
+        secure_directory(secured.to_str().expect("a UTF-8 test path")).expect("securing succeeds");
+        let file = secured.join("private.json");
+        std::fs::write(&file, b"{}").expect("the inherited file must be writable");
+        // An elevated Windows test process can create a file owned by the
+        // Administrators group instead of its token user. Production rightly
+        // refuses that distinction, so stamp this fixture to its actual token
+        // account before proving the inherited DACL branch.
+        let account = std::process::Command::new("whoami")
+            .output()
+            .expect("whoami must be available on Windows");
+        assert!(account.status.success(), "whoami must identify the token user");
+        let account = String::from_utf8(account.stdout).expect("whoami output is UTF-8");
+        let set_owner = std::process::Command::new("icacls")
+            .arg(&file)
+            .args(["/setowner", account.trim()])
+            .output()
+            .expect("icacls must be available on Windows");
+        assert!(set_owner.status.success(), "icacls must stamp the token user as owner");
+        verify_owner_only_file(file.to_str().expect("a UTF-8 test path"))
+            .expect("the inherited file DACL remains private");
+        // The parent remains protected and valid: only this file overrides its
+        // inherited DACL. A parent-only check would incorrectly accept it.
+        let broad = secured.join("broad.json");
+        std::fs::write(&broad, b"{}").expect("the ordinary file must be writable");
+        let grant = std::process::Command::new("icacls")
+            .arg(&broad)
+            .args(["/grant", "*S-1-1-0:R"])
+            .output()
+            .expect("icacls must be available on Windows");
+        assert!(grant.status.success(), "icacls must apply the explicit broad ACE");
+        assert_eq!(
+            verify_owner_only_file(broad.to_str().expect("a UTF-8 test path")).unwrap_err().code,
             REJECTED,
         );
         std::fs::remove_dir_all(&root).ok();

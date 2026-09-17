@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { promisify } from 'node:util'
 
 import {
   configureExecutorBrowserSandbox,
@@ -11,7 +13,10 @@ import {
   configureExecutorLocalPolicy,
 } from '../src/pair.js'
 import type { ExecutorHost } from '../src/host-platform.js'
+import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
+
+const exec = promisify(execFile)
 
 // The configure paths now ask the host what sandbox it can start, so these
 // policy tests pin a host with one instead of depending on the machine that
@@ -36,31 +41,64 @@ const initialState = (workspaceRoot: string) => ({
   workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
+const secureRuntimeFixture = async (stateDir: string, runtimeBundlePath: string): Promise<void> => {
+  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+    await ensureOwnerOnlyStateDirectory(stateDir)
+    await ensureOwnerOnlyStateDirectory(runtimeBundlePath)
+    await ensureOwnerOnlyStateDirectory(join(runtimeBundlePath, 'bin'))
+    return
+  }
+  await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
+  await chmod(runtimeBundlePath, 0o700)
+}
+
+const vmArtifactFixture = (stateDir: string): {
+  builderPath: string
+  helperPath: string
+  kernelPath: string
+  writes: Array<Promise<void>>
+} => {
+  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+    const resources = join(dirname(process.execPath), 'resources')
+    return {
+      builderPath: join(resources, 'guest', 'build-initrd.exe'),
+      helperPath: join(resources, 'nessie-hyperv-bridge.exe'),
+      kernelPath: join(resources, 'guest', 'bzImage'),
+      writes: [],
+    }
+  }
+  const builderPath = join(stateDir, 'build-initrd')
+  const helperPath = join(stateDir, 'vm-helper')
+  const kernelPath = join(stateDir, 'kernel')
+  return {
+    builderPath,
+    helperPath,
+    kernelPath,
+    writes: [
+      writeFile(builderPath, 'builder').then(() => chmod(builderPath, 0o700)),
+      writeFile(helperPath, 'helper').then(() => chmod(helperPath, 0o700)),
+      writeFile(kernelPath, 'kernel').then(() => chmod(kernelPath, 0o600)),
+    ],
+  }
+}
+
 test('Codex configuration stores only an owner-private source path and a pinned runtime', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
-  const builderPath = join(stateDir, 'build-initrd')
-  const helperPath = join(stateDir, 'vm-helper')
-  const kernelPath = join(stateDir, 'kernel')
+  const { builderPath, helperPath, kernelPath, writes: artifactWrites } = vmArtifactFixture(stateDir)
   const authProfilePath = join(stateDir, 'codex-auth.json')
   try {
-    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
-    await chmod(runtimeBundlePath, 0o700)
+    await secureRuntimeFixture(stateDir, runtimeBundlePath)
     const codexRuntime = 'codex-runtime'
     const tmuxRuntime = 'tmux-runtime'
     await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
+      ...artifactWrites,
       writeFile(authProfilePath, '{"auth_mode":"chatgpt"}'),
       writeFile(join(runtimeBundlePath, 'bin', 'codex'), codexRuntime),
       writeFile(join(runtimeBundlePath, 'bin', 'tmux'), tmuxRuntime),
     ])
     await Promise.all([
-      chmod(builderPath, 0o700),
-      chmod(helperPath, 0o700),
-      chmod(kernelPath, 0o600),
       chmod(authProfilePath, 0o600),
       chmod(join(runtimeBundlePath, 'bin', 'codex'), 0o700),
       chmod(join(runtimeBundlePath, 'bin', 'tmux'), 0o700),
@@ -107,7 +145,11 @@ test('Codex configuration stores only an owner-private source path and a pinned 
     })
     assert.deepEqual(await loadExecutorState(stateDir), configured)
 
-    await chmod(authProfilePath, 0o644)
+    if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+      await exec('icacls', [authProfilePath, '/grant', '*S-1-1-0:R'])
+    } else {
+      await chmod(authProfilePath, 0o644)
+    }
     await assert.rejects(
       configureExecutorCodexSandbox(stateDir, configured, {
         codexAuthProfilePath: authProfilePath,
@@ -128,23 +170,15 @@ test('browser configuration verifies owner-controlled guest artifacts before ena
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
-  const builderPath = join(stateDir, 'build-initrd')
-  const helperPath = join(stateDir, 'vm-helper')
-  const kernelPath = join(stateDir, 'kernel')
+  const { builderPath, helperPath, kernelPath, writes: artifactWrites } = vmArtifactFixture(stateDir)
   try {
-    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
-    await chmod(runtimeBundlePath, 0o700)
+    await secureRuntimeFixture(stateDir, runtimeBundlePath)
     const browserRuntime = 'browser-runtime'
     await Promise.all([
-      writeFile(builderPath, 'builder'),
-      writeFile(helperPath, 'helper'),
-      writeFile(kernelPath, 'kernel'),
+      ...artifactWrites,
       writeFile(join(runtimeBundlePath, 'bin', 'browser'), browserRuntime),
     ])
     await Promise.all([
-      chmod(builderPath, 0o700),
-      chmod(helperPath, 0o700),
-      chmod(kernelPath, 0o600),
       chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700),
     ])
     await writeFile(join(runtimeBundlePath, 'nessie-guest-runtime.json'), JSON.stringify({

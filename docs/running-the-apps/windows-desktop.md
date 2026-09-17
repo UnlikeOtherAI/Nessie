@@ -243,8 +243,11 @@ It installs `C:\Program Files\Nessie Executor\` — the packaged runtime
 `resources\` — `nessie-hyperv-bridge.exe`, the four pinned PowerShell scripts
 that create, start, stop and remove a session's virtual machine, the guest
 kernel and initrd builder under `guest\`, and a `manifest.json` recording one
-SHA-256 per file. The guest's FAT32 boot disk is written by the executor itself,
-so nothing else is installed for it. Then it:
+SHA-256 per file. The service verifies a selected VM artifact against that
+installed manifest before it uses it; these package-owned files remain readable
+under Program Files while service state and copied credentials remain protected
+by their owner-only DACL. The guest's FAT32 boot disk is written by the executor
+itself, so nothing else is installed for it. Then it:
 
 - registers the **NessieExecutor** service ("Nessie Executor") to start
   automatically as the virtual account `NT SERVICE\NessieExecutor`: no
@@ -261,9 +264,11 @@ so nothing else is installed for it. Then it:
   Linux guest is addressed by Microsoft's VSOCK template GUID with the guest's
   vsock port in its first field, and `0x0000c000` is 49152, the guest's control
   port;
-- creates `%ProgramData%\Nessie Executor\executors\`, which the service secures
-  with an owner-only DACL (the service account plus SYSTEM) the first time it
-  starts, through the same packaged native helper the CLI uses;
+- creates `%ProgramData%\Nessie Executor\executors\` and, before the first
+  service start, runs the packaged native helper as Windows Installer to give
+  the state root and its `executors` and `pending` child roots an owner-only,
+  non-inherited DACL (the service account plus SYSTEM). The service re-verifies
+  that boundary at every start;
 - adds a `Run` entry for the installing user so the tray starts at their next
   logon.
 
@@ -277,8 +282,14 @@ finds its pairings where it left them; delete the folder by hand to forget them.
 produces an invitation. In the tray: **Pair a new executor…** → paste the
 pairing command or link, and select the Nessie backend that produced it → choose the workspace in the native picker → confirm →
 approve one Windows administrator prompt → confirm the fingerprint in Nessie.
-The icon turns green. After a reboot the executor is online before anybody logs
-in.
+The icon turns green. After a reboot the service starts before anybody logs in.
+If the selected Nessie backend is temporarily unavailable during boot, the
+service keeps its signed runtime and local pairing state intact, answers the
+tray immediately with **starting**, and retries the enrollment and daemon start
+with bounded backoff until it reconnects. A person choosing **Stop** cancels
+those retries for the current service run; **Start** requests them again. A
+reboot deliberately returns every paired executor to its configured
+always-on state.
 
 The tray offers `https://api.nessie.works` and the two explicit
 local-development choices,
@@ -296,9 +307,12 @@ keeps their work, so somebody with administrative rights has to grant
 `NT SERVICE\NessieExecutor` **Read** on the workspace root. Draft changes are
 written only to the service's private COW state. The elevated step
 merges that one entry into the directory's existing permissions — it never
-replaces them — and records the pairing account's SID under the service root.
-That recorded SID is what admits the person's ordinary, unelevated tray to the
-control pipe afterwards, so nothing prompts again.
+replaces them — then uses the locally ACL-gated control pipe's enrollment
+command, which requires an administrator token, to record the SID from the
+elevated connection. The tray never writes
+the private service root. That recorded SID is what admits the person's
+ordinary, unelevated tray to the control pipe afterwards, so nothing prompts
+again.
 
 **The tray.** Grey means nothing is running, green means a daemon is up, amber
 means something is in flight (awaiting a fingerprint confirmation, or a daemon

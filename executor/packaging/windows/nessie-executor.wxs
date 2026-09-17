@@ -49,9 +49,8 @@
     </StandardDirectory>
 
     <!-- Pairing material and machine keys belong to the service, not to a
-         person's profile. The service secures this tree with an owner-only DACL
-         through the packaged native helper the first time it starts; the
-         installer only makes sure the directories exist. -->
+         person's profile. The installer establishes the service-owned DACL
+         before the first service start; the running service re-verifies it. -->
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="STATEFOLDER" Name="Nessie Executor">
         <Directory Id="EXECUTORSFOLDER" Name="executors" />
@@ -222,7 +221,34 @@
       Impersonate="no"
       Return="ignore" />
 
+    <CustomAction
+      Id="SecureServiceStateRoot"
+      FileRef="NativeHelper"
+      ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="check" />
+
+    <CustomAction
+      Id="SecureServiceExecutorsRoot"
+      FileRef="NativeHelper"
+      ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor\executors&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="check" />
+
+    <CustomAction
+      Id="SecureServicePendingRoot"
+      FileRef="NativeHelper"
+      ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor\pending&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="check" />
+
     <InstallExecuteSequence>
+      <Custom Action="SecureServiceStateRoot" After="InstallServices" Condition="NOT Installed" />
+      <Custom Action="SecureServiceExecutorsRoot" After="SecureServiceStateRoot" Condition="NOT Installed" />
+      <Custom Action="SecureServicePendingRoot" After="SecureServiceExecutorsRoot" Condition="NOT Installed" />
       <Custom Action="JoinHypervAdministrators" After="StartServices" Condition="NOT Installed" />
     </InstallExecuteSequence>
 

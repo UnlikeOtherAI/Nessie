@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { WorkspacePathError } from '../workspace-paths.js'
 
@@ -62,6 +62,34 @@ export const readPinnedScriptDigests = async (
     }
   }
   return digests
+}
+
+/**
+ * Proves an installed resource is the exact byte sequence declared by the
+ * package manifest. This is the Windows provenance for immutable files under
+ * Program Files: they are package-owned and readable by the service, rather
+ * than owner-private state files.
+ */
+export const verifyPinnedResource = async (input: {
+  path: string
+  resourcesDirectory: string
+  digests: PinnedScriptDigests
+}): Promise<string> => {
+  const resourcesRoot = resolve(input.resourcesDirectory)
+  const candidate = resolve(input.path)
+  const resourcePath = relative(resourcesRoot, candidate).split(sep).join('/')
+  if (isAbsolute(resourcePath) || resourcePath === '' || resourcePath === '..' || resourcePath.startsWith('../')) {
+    throw new WorkspacePathError('The executor VM artifact is not a packaged resource.')
+  }
+  const expected = input.digests[resourcePath]
+  if (expected === undefined) {
+    throw new WorkspacePathError('The executor VM artifact is not pinned by the installed package.')
+  }
+  const bytes = await readFile(candidate).catch(() => undefined)
+  if (bytes === undefined || createHash('sha256').update(bytes).digest('hex') !== expected) {
+    throw new WorkspacePathError('The executor VM artifact does not match the installed package.')
+  }
+  return candidate
 }
 
 export type PinnedScriptStore = {

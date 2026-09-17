@@ -312,9 +312,14 @@ pub async fn remove_command<R: Runtime>(
     .await
 }
 
-pub fn open_nessie<R: Runtime>(app: &AppHandle<R>, api_base_url: &str) -> Result<(), String> {
+fn executors_url_for_backend(backend: &str) -> Result<&'static str, String> {
+    let origin = pairing_origin::resolve(backend, None, cfg!(debug_assertions))?;
+    executors_url_for_api(&origin.origin)
+}
+
+pub fn open_nessie<R: Runtime>(app: &AppHandle<R>, backend: &str) -> Result<(), String> {
     app.opener()
-        .open_url(executors_url_for_api(api_base_url)?, None::<&str>)
+        .open_url(executors_url_for_backend(backend)?, None::<&str>)
         .map_err(|_| "Nessie Executor could not open your browser.".to_owned())
 }
 
@@ -415,6 +420,19 @@ pub async fn executor_remove_command(app: AppHandle, executor_id: String, comman
 #[tauri::command]
 pub fn executor_open_nessie(app: AppHandle, api_base_url: String) -> Result<(), String> {
     open_nessie(&app, &api_base_url)
+}
+
+#[cfg(test)]
+mod open_nessie_tests {
+    use super::executors_url_for_backend;
+
+    #[test]
+    fn the_status_window_nessie_preset_resolves_before_opening() {
+        assert_eq!(
+            executors_url_for_backend("nessie"),
+            Ok("https://app.nessie.works/agents/executors"),
+        );
+    }
 }
 
 #[tauri::command]

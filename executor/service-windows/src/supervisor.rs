@@ -12,10 +12,9 @@
 //! still tearing down is waited for and then refused, never killed.
 
 use std::{
-    collections::BTreeMap,
-    fs,
+    collections::{BTreeMap, BTreeSet},
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     thread::sleep,
     time::{Duration, Instant},
@@ -24,11 +23,8 @@ use std::{
 use crate::{
     lease::unowned_daemon_is_stopping,
     manifest::VerifiedRuntime,
-    paths::{
-        executor_state_dir, executors_root, has_executor_state, paired_executors, pending_root,
-        PAIRED_BY_FILE,
-    },
-    protocol::{ExecutorStatus, PairCommand},
+    paths::{executor_state_dir, has_executor_state, paired_executors},
+    protocol::ExecutorStatus,
 };
 
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -36,9 +32,16 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the packaged CLI is given for a one-shot command (`pair`,
 /// `connect`, `configure`). Long enough for a slow network round trip, short
 /// enough that a wedged child never holds the control pipe open.
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
-struct ManagedDaemon {
+/// A booting service must accept SCM and tray controls even while Nessie is
+/// unreachable. Connecting is therefore attempted by the recovery sweep and
+/// is bounded more tightly than a user-requested configuration command.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const RETRY_INITIAL: Duration = Duration::from_secs(5);
+const RETRY_MAX: Duration = Duration::from_secs(300);
+
+pub(crate) struct ManagedDaemon {
     child: Child,
     /// Closing this pipe tells `serve` to stop all guest sessions before it
     /// releases the durable daemon lease. It has to be droppable while the child
@@ -46,69 +49,37 @@ struct ManagedDaemon {
     parent_liveness: Option<ChildStdin>,
 }
 
+pub(crate) struct PendingConnection {
+    child: Child,
+    started_at: Instant,
+}
+
 pub struct Supervisor {
-    children: BTreeMap<String, ManagedDaemon>,
-    root: PathBuf,
+    pub(crate) children: BTreeMap<String, ManagedDaemon>,
+    pub(crate) connections: BTreeMap<String, PendingConnection>,
+    pub(crate) desired: BTreeSet<String>,
+    retry_after: BTreeMap<String, Instant>,
+    retry_delay: BTreeMap<String, Duration>,
+    pub(crate) root: PathBuf,
     runtime: VerifiedRuntime,
 }
 
 /// The argv for one packaged CLI invocation. Split out so what reaches a process
 /// list is asserted rather than trusted: a challenge and a workspace path travel
 /// on standard input, never here.
-pub fn pair_arguments(api_base_url: &str, enrollment_id: &str, state_dir: &Path) -> Vec<String> {
-    vec![
-        "pair".to_owned(),
-        "--api".to_owned(),
-        api_base_url.to_owned(),
-        "--enrollment".to_owned(),
-        enrollment_id.to_owned(),
-        "--pair-input-stdin".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
+#[allow(unused_imports)] // Re-exported for the focused supervisor argv tests.
+pub(crate) use crate::supervisor_commands::{
+    configure_arguments, configure_input_arguments, describe_arguments, pair_arguments,
+    serve_arguments,
+};
 
-pub fn serve_arguments(state_dir: &Path) -> Vec<String> {
-    vec![
-        "serve".to_owned(),
-        "--parent-liveness-stdin".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
-
-pub fn configure_arguments(state_dir: &Path, operation_keys: &[String]) -> Vec<String> {
-    vec![
-        "configure".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-        "--operations".to_owned(),
-        operation_keys.join(","),
-    ]
-}
-
-pub fn configure_input_arguments(state_dir: &Path) -> Vec<String> {
-    vec![
-        "configure".to_owned(),
-        "--configuration-input-stdin".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
-
-pub fn describe_arguments(state_dir: &Path) -> Vec<String> {
-    vec![
-        "describe".to_owned(),
-        "--state-dir".to_owned(),
-        state_dir.display().to_string(),
-    ]
-}
-
-fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, String> {
+pub(crate) fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, String> {
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
-            Err(_) => return Err("Nessie Executor could not inspect its packaged command.".to_owned()),
+            Err(_) => {
+                return Err("Nessie Executor could not inspect its packaged command.".to_owned())
+            }
             Ok(Some(status)) => return Ok(Some(status.code().unwrap_or(1))),
             Ok(None) if Instant::now() >= deadline => return Ok(None),
             Ok(None) => sleep(Duration::from_millis(50)),
@@ -121,7 +92,7 @@ fn wait_bounded(child: &mut Child, timeout: Duration) -> Result<Option<i32>, Str
 /// before the executor is allowed to do anything, so it is taken from the
 /// CLI's own output rather than recomputed here from a machine key this
 /// service never sees.
-fn parse_fingerprint(output: &str) -> Option<String> {
+pub(crate) fn parse_fingerprint(output: &str) -> Option<String> {
     let prefix = "Confirm fingerprint ";
     output.lines().find_map(|line| {
         line.find(prefix).and_then(|index| {
@@ -133,7 +104,15 @@ fn parse_fingerprint(output: &str) -> Option<String> {
 
 impl Supervisor {
     pub fn new(root: PathBuf, runtime: VerifiedRuntime) -> Self {
-        Self { children: BTreeMap::new(), root, runtime }
+        Self {
+            children: BTreeMap::new(),
+            connections: BTreeMap::new(),
+            desired: BTreeSet::new(),
+            retry_after: BTreeMap::new(),
+            retry_delay: BTreeMap::new(),
+            root,
+            runtime,
+        }
     }
 
     pub fn runtime(&self) -> &VerifiedRuntime {
@@ -142,18 +121,25 @@ impl Supervisor {
 
     /// The packaged Node running the packaged bundle. Nothing else is ever
     /// executed, and the two supervisor facts are set on every invocation.
-    fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut command = Command::new(&self.runtime.node_executable);
         command.arg(self.runtime.bundle());
         command.env("NESSIE_EXECUTOR_PACKAGED_CLI", "1");
         command.env("NESSIE_EXECUTOR_SUPERVISOR", "service");
-        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         command
     }
 
     /// Runs one packaged command to completion. Its output is never captured or
     /// reported: a refusal names what was refused, never what a child printed.
-    fn run_to_completion(&self, arguments: Vec<String>, refusal: &str) -> Result<(), String> {
+    pub(crate) fn run_to_completion(
+        &self,
+        arguments: Vec<String>,
+        refusal: &str,
+    ) -> Result<(), String> {
         let mut child = self
             .command()
             .args(arguments)
@@ -174,7 +160,7 @@ impl Supervisor {
     /// Runs a one-shot command that reads its payload from stdin. Used for
     /// `configure --configuration-input-stdin` so the whole policy travels on a
     /// pipe, never in a process list.
-    fn run_to_completion_with_input(
+    pub(crate) fn run_to_completion_with_input(
         &self,
         arguments: Vec<String>,
         input: serde_json::Value,
@@ -186,15 +172,14 @@ impl Supervisor {
             .stdin(Stdio::piped())
             .spawn()
             .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
-        let mut standard_input = child
-            .stdin
-            .take()
-            .ok_or_else(|| "Nessie Executor could not provide the configuration input securely.".to_owned())?;
+        let mut standard_input = child.stdin.take().ok_or_else(|| {
+            "Nessie Executor could not provide the configuration input securely.".to_owned()
+        })?;
         let bytes = serde_json::to_vec(&input)
             .map_err(|_| "Nessie Executor could not prepare the configuration input.".to_owned())?;
-        standard_input
-            .write_all(&bytes)
-            .map_err(|_| "Nessie Executor could not provide the configuration input securely.".to_owned())?;
+        standard_input.write_all(&bytes).map_err(|_| {
+            "Nessie Executor could not provide the configuration input securely.".to_owned()
+        })?;
         drop(standard_input);
         match wait_bounded(&mut child, COMMAND_TIMEOUT)? {
             Some(0) => Ok(()),
@@ -208,7 +193,7 @@ impl Supervisor {
 
     /// Runs a one-shot command and returns its stdout. Used for `describe`,
     /// whose credential-free JSON is handed straight back to the tray.
-    fn run_to_completion_with_output(
+    pub(crate) fn run_to_completion_with_output(
         &self,
         arguments: Vec<String>,
         refusal: &str,
@@ -235,17 +220,20 @@ impl Supervisor {
     }
 
     fn child_status(&mut self, executor_id: &str) -> &'static str {
-        let running =
-            matches!(self.children.get_mut(executor_id).map(|daemon| daemon.child.try_wait()), Some(Ok(None)));
+        let running = matches!(
+            self.children
+                .get_mut(executor_id)
+                .map(|daemon| daemon.child.try_wait()),
+            Some(Ok(None))
+        );
         if running {
             "running"
         } else {
-            self.children.remove(executor_id);
             "stopped"
         }
     }
 
-    fn state_dir(&self, executor_id: &str) -> Result<PathBuf, String> {
+    pub(crate) fn state_dir(&self, executor_id: &str) -> Result<PathBuf, String> {
         executor_state_dir(&self.root, executor_id)
     }
 
@@ -254,6 +242,14 @@ impl Supervisor {
         let local = self.child_status(executor_id);
         if local == "stopped" && unowned_daemon_is_stopping(&state_dir) {
             return Ok("stopping".to_owned());
+        }
+        if local == "stopped"
+            && (self.desired.contains(executor_id) || self.connections.contains_key(executor_id))
+        {
+            return Ok("starting".to_owned());
+        }
+        if local == "stopped" {
+            self.children.remove(executor_id);
         }
         Ok(local.to_owned())
     }
@@ -264,11 +260,17 @@ impl Supervisor {
             .into_iter()
             .filter_map(|executor_id| {
                 let daemon_status = self.status(&executor_id).ok()?;
-                Some(ExecutorStatus { daemon_status, executor_id, workspace_configured: true })
+                Some(ExecutorStatus {
+                    daemon_status,
+                    executor_id,
+                    workspace_configured: true,
+                })
             })
             .collect()
     }
 
+    /// Requests that an executor run. The recovery sweep performs the network
+    /// connection; this makes Start answer promptly even when Nessie is down.
     pub fn start(&mut self, executor_id: &str) -> Result<String, String> {
         let state_dir = self.state_dir(executor_id)?;
         if !has_executor_state(&state_dir) {
@@ -277,16 +279,45 @@ impl Supervisor {
         if self.child_status(executor_id) == "running" {
             return Ok("running".to_owned());
         }
+        if self.desired.contains(executor_id) || self.connections.contains_key(executor_id) {
+            return Ok("starting".to_owned());
+        }
+        self.desired.insert(executor_id.to_owned());
+        self.retry_after
+            .insert(executor_id.to_owned(), Instant::now());
+        Ok("starting".to_owned())
+    }
+
+    fn start_due(&mut self, executor_id: &str) -> Result<String, String> {
+        let state_dir = self.state_dir(executor_id)?;
         if unowned_daemon_is_stopping(&state_dir) {
             return Err(
                 "The prior daemon is still tearing down. Wait for it to finish before starting again."
                     .to_owned(),
             );
         }
-        self.run_to_completion(
-            vec!["connect".to_owned(), "--state-dir".to_owned(), state_dir.display().to_string()],
-            "Confirm this executor's fingerprint in Nessie before starting its daemon.",
-        )?;
+        let connection_arguments = vec![
+            "connect".to_owned(),
+            "--state-dir".to_owned(),
+            state_dir.display().to_string(),
+        ];
+        let mut command = self.command();
+        command.args(connection_arguments);
+        let child = command
+            .spawn()
+            .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
+        self.connections.insert(
+            executor_id.to_owned(),
+            PendingConnection {
+                child,
+                started_at: Instant::now(),
+            },
+        );
+        Ok("starting".to_owned())
+    }
+
+    fn start_daemon(&mut self, executor_id: &str) -> Result<String, String> {
+        let state_dir = self.state_dir(executor_id)?;
         let mut command = self.command();
         command.args(serve_arguments(&state_dir));
         command.stdin(Stdio::piped());
@@ -299,12 +330,104 @@ impl Supervisor {
             .ok_or_else(|| "Nessie Executor could not supervise the executor daemon.".to_owned())?;
         self.children.insert(
             executor_id.to_owned(),
-            ManagedDaemon { child, parent_liveness: Some(parent_liveness) },
+            ManagedDaemon {
+                child,
+                parent_liveness: Some(parent_liveness),
+            },
         );
         Ok("running".to_owned())
     }
 
+    /// Starts desired executors whose retry delay has elapsed. The caller owns
+    /// scheduling, so no network operation happens during SCM startup.
+    pub fn recover_due(&mut self) -> Vec<(String, String)> {
+        let now = Instant::now();
+        let pending: Vec<String> = self.connections.keys().cloned().collect();
+        let mut outcomes = Vec::new();
+        for executor_id in pending {
+            let outcome = self
+                .connections
+                .get_mut(&executor_id)
+                .and_then(|connection| match connection.child.try_wait() {
+                    Ok(Some(status)) => Some(status.code().unwrap_or(1) == 0),
+                    Ok(None) if now.duration_since(connection.started_at) >= CONNECT_TIMEOUT => {
+                        let _ = connection.child.kill();
+                        Some(false)
+                    }
+                    Ok(None) | Err(_) => None,
+                });
+            let Some(connected) = outcome else {
+                continue;
+            };
+            self.connections.remove(&executor_id);
+            if connected {
+                match self.start_daemon(&executor_id) {
+                    Ok(_) => {
+                        self.retry_after.remove(&executor_id);
+                        outcomes.push((executor_id, "started".to_owned()));
+                    }
+                    Err(reason) => {
+                        self.schedule_retry(&executor_id, Instant::now());
+                        outcomes.push((executor_id, reason));
+                    }
+                }
+            } else {
+                self.schedule_retry(&executor_id, Instant::now());
+                outcomes.push((executor_id, "could not connect; retry scheduled".to_owned()));
+            }
+        }
+        let desired: Vec<String> = self.desired.iter().cloned().collect();
+        for executor_id in &desired {
+            let had_daemon = self.children.contains_key(executor_id);
+            if had_daemon && self.child_status(executor_id) == "stopped" {
+                self.children.remove(executor_id);
+                self.schedule_retry(executor_id, now);
+            }
+        }
+        let due: Vec<String> = desired
+            .iter()
+            .filter(|executor_id| {
+                self.child_status(executor_id) == "stopped"
+                    && !self.connections.contains_key(*executor_id)
+                    && self
+                        .retry_after
+                        .get(*executor_id)
+                        .map_or(true, |when| *when <= now)
+            })
+            .cloned()
+            .collect();
+        outcomes.extend(
+            due.into_iter()
+                .filter_map(|executor_id| match self.start_due(&executor_id) {
+                    Ok(_) => Some((executor_id, "connecting".to_owned())),
+                    Err(reason) => {
+                        self.schedule_retry(&executor_id, now);
+                        Some((executor_id, reason))
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
+        outcomes
+    }
+
+    fn schedule_retry(&mut self, executor_id: &str, now: Instant) {
+        let delay = self
+            .retry_delay
+            .entry(executor_id.to_owned())
+            .or_insert(RETRY_INITIAL);
+        let current = *delay;
+        *delay = current.saturating_mul(2).min(RETRY_MAX);
+        self.retry_after
+            .insert(executor_id.to_owned(), now + current);
+    }
+
     pub fn stop(&mut self, executor_id: &str) -> Result<String, String> {
+        self.desired.remove(executor_id);
+        self.retry_after.remove(executor_id);
+        self.retry_delay.remove(executor_id);
+        if let Some(mut connection) = self.connections.remove(executor_id) {
+            let _ = connection.child.kill();
+        }
         let Some(mut daemon) = self.children.remove(executor_id) else {
             return Ok("stopped".to_owned());
         };
@@ -323,243 +446,34 @@ impl Supervisor {
             return Ok("stopped".to_owned());
         }
         self.children.insert(executor_id.to_owned(), daemon);
-        Err("The executor is still stopping. Nessie Executor will not force-kill a sandbox daemon."
-            .to_owned())
-    }
-
-    pub fn configure(
-        &mut self,
-        executor_id: &str,
-        operation_keys: &[String],
-    ) -> Result<String, String> {
-        let state_dir = self.state_dir(executor_id)?;
-        if !has_executor_state(&state_dir) {
-            return Err("This executor has not been paired on this computer.".to_owned());
-        }
-        let was_running = self.status(executor_id)? == "running";
-        if was_running {
-            self.stop(executor_id)?;
-        }
-        self.run_to_completion(
-            configure_arguments(&state_dir, operation_keys),
-            "The local executor policy was rejected. No command output was retained.",
-        )?;
-        if was_running {
-            self.start(executor_id)
-        } else {
-            Ok("stopped".to_owned())
-        }
-    }
-
-    /// Runs `nessie-executor describe --state-dir` and returns the credential-free
-    /// JSON the CLI prints. The tray uses this to render folders, origins, and
-    /// permitted commands without ever opening `executor-state.json` itself.
-    pub fn describe(&mut self, executor_id: &str) -> Result<serde_json::Value, String> {
-        let state_dir = self.state_dir(executor_id)?;
-        if !has_executor_state(&state_dir) {
-            return Err("This executor has not been paired on this computer.".to_owned());
-        }
-        let output = self.run_to_completion_with_output(
-            describe_arguments(&state_dir),
-            "This executor's local state could not be read.",
-        )?;
-        serde_json::from_str(&output)
-            .map_err(|_| "the service answered in a shape this tray does not understand".to_owned())
-    }
-
-    /// Runs `nessie-executor configure --configuration-input-stdin`, stopping
-    /// and restarting the daemon the same way the older `--operations` path
-    /// does. The whole policy payload travels on stdin, so nothing sensitive
-    /// sits in a command line.
-    pub fn configure_input(
-        &mut self,
-        executor_id: &str,
-        configuration_input: serde_json::Value,
-    ) -> Result<String, String> {
-        let state_dir = self.state_dir(executor_id)?;
-        if !has_executor_state(&state_dir) {
-            return Err("This executor has not been paired on this computer.".to_owned());
-        }
-        let was_running = self.status(executor_id)? == "running";
-        if was_running {
-            self.stop(executor_id)?;
-        }
-        self.run_to_completion_with_input(
-            configure_input_arguments(&state_dir),
-            configuration_input,
-            "The local executor policy was rejected. No command output was retained.",
-        )?;
-        if was_running {
-            self.start(executor_id)
-        } else {
-            Ok("stopped".to_owned())
-        }
-    }
-
-    /// Pairs into a staging directory named by the enrollment id, because only
-    /// the API can name the executor id and it does so in its reply. The
-    /// directory moves to its executor id once the state file names one, which
-    /// is what keeps `executors\<executorId>` the whole on-disk vocabulary.
-    pub fn pair(
-        &mut self,
-        command: &PairCommand,
-        paired_by: Option<&str>,
-        secure_directory: impl Fn(&Path) -> Result<(), String>,
-    ) -> Result<(String, String), String> {
-        let staging = pending_root(&self.root).join(&command.enrollment_id);
-        let _ = fs::remove_dir_all(&staging);
-        secure_directory(&staging)?;
-        let output = self.run_pair(command, &staging);
-        if output.is_err() {
-            let _ = fs::remove_dir_all(&staging);
-            return output.map(|_| (String::new(), String::new()));
-        }
-        let output = output.unwrap();
-        let fingerprint = parse_fingerprint(&output)
-            .ok_or_else(|| "Nessie executor pairing succeeded but returned no fingerprint.".to_owned())?;
-        let executor_id = self.promote(&staging, paired_by)?;
-        Ok((executor_id, fingerprint))
-    }
-
-    fn run_pair(&self, command: &PairCommand, staging: &Path) -> Result<String, String> {
-        let mut spawned = self
-            .command()
-            .args(pair_arguments(&command.api_base_url, &command.enrollment_id, staging))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(|_| "Nessie Executor could not start its packaged command.".to_owned())?;
-        let mut standard_input = spawned
-            .stdin
-            .take()
-            .ok_or_else(|| "Nessie Executor could not provide the pairing challenge securely.".to_owned())?;
-        let input = serde_json::to_vec(&serde_json::json!({
-            "challenge": command.challenge,
-            "workspaceRoot": command.workspace_root,
-        }))
-        .map_err(|_| "Nessie Executor could not prepare the local pairing input.".to_owned())?;
-        standard_input
-            .write_all(&input)
-            .map_err(|_| "Nessie Executor could not provide the pairing challenge securely.".to_owned())?;
-        drop(standard_input);
-        let outcome = wait_bounded(&mut spawned, COMMAND_TIMEOUT)?;
-        let mut stdout = String::new();
-        if let Some(mut pipe) = spawned.stdout.take() {
-            let _ = pipe.read_to_string(&mut stdout);
-        }
-        match outcome {
-            Some(0) => Ok(stdout),
-            _ => {
-                let _ = spawned.kill();
-                Err("Nessie executor pairing was rejected. No pairing output was retained.".to_owned())
-            }
-        }
-    }
-
-    /// Reads the executor id the API assigned and moves the staged state under
-    /// it. An id already in use is refused rather than overwritten: that state
-    /// directory holds another pairing's machine key.
-    fn promote(&self, staging: &Path, paired_by: Option<&str>) -> Result<String, String> {
-        let state: serde_json::Value = serde_json::from_slice(
-            &fs::read(staging.join(crate::paths::EXECUTOR_STATE_FILE))
-                .map_err(|_| "Nessie executor pairing left no usable state.".to_owned())?,
+        Err(
+            "The executor is still stopping. Nessie Executor will not force-kill a sandbox daemon."
+                .to_owned(),
         )
-        .map_err(|_| "Nessie executor pairing left no usable state.".to_owned())?;
-        let executor_id = state
-            .get("executorId")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "Nessie executor pairing left no usable state.".to_owned())?
-            .to_owned();
-        let destination = executor_state_dir(&self.root, &executor_id)?;
-        if destination.exists() {
-            return Err("This executor is already paired on this computer.".to_owned());
-        }
-        fs::create_dir_all(executors_root(&self.root))
-            .map_err(|_| "Nessie Executor could not store the new executor's state.".to_owned())?;
-        fs::rename(staging, &destination)
-            .map_err(|_| "Nessie Executor could not store the new executor's state.".to_owned())?;
-        if let Some(sid) = paired_by {
-            fs::write(destination.join(PAIRED_BY_FILE), format!("{sid}\n"))
-                .map_err(|_| "Nessie Executor could not record the pairing account.".to_owned())?;
-        }
-        Ok(executor_id)
     }
 
     /// Asks every daemon to stop, without waiting. The service reports
     /// `STOP_PENDING` while [`Self::still_running`] answers above zero.
     pub fn request_shutdown(&mut self) {
+        for connection in self.connections.values_mut() {
+            let _ = connection.child.kill();
+        }
+        self.connections.clear();
+        self.desired.clear();
+        self.retry_after.clear();
+        self.retry_delay.clear();
         for daemon in self.children.values_mut() {
             daemon.parent_liveness.take();
         }
     }
 
     pub fn still_running(&mut self) -> usize {
-        self.children.retain(|_, daemon| matches!(daemon.child.try_wait(), Ok(None)));
+        self.children
+            .retain(|_, daemon| matches!(daemon.child.try_wait(), Ok(None)));
         self.children.len()
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{configure_arguments, configure_input_arguments, describe_arguments, parse_fingerprint, pair_arguments, serve_arguments};
-    use std::path::Path;
-
-    #[test]
-    fn pairing_arguments_keep_sensitive_input_off_the_process_list() {
-        let arguments = pair_arguments(
-            "https://api.nessie.works",
-            "00000000-0000-4000-8000-000000000001",
-            Path::new("/service/state"),
-        );
-        assert!(arguments.contains(&"--pair-input-stdin".to_owned()));
-        assert!(!arguments.iter().any(|argument| argument.contains("challenge-value")));
-        assert!(!arguments.iter().any(|argument| argument.contains("workspace")));
-    }
-
-    #[test]
-    fn the_daemon_is_started_with_the_liveness_pipe_that_stops_it() {
-        // Closing this pipe is the whole Windows stop path; a `serve` without
-        // the flag would have to be terminated instead.
-        assert_eq!(
-            serve_arguments(Path::new("/service/state")),
-            vec!["serve", "--parent-liveness-stdin", "--state-dir", "/service/state"],
-        );
-    }
-
-    #[test]
-    fn a_policy_is_passed_as_the_canonical_comma_separated_list() {
-        assert_eq!(
-            configure_arguments(
-                Path::new("/service/state"),
-                &["file.read".to_owned(), "sandbox.stop".to_owned()],
-            ),
-            vec!["configure", "--state-dir", "/service/state", "--operations", "file.read,sandbox.stop"],
-        );
-    }
-
-    #[test]
-    fn configuration_input_uses_stdin_and_keeps_the_payload_off_argv() {
-        assert_eq!(
-            configure_input_arguments(Path::new("/service/state")),
-            vec!["configure", "--configuration-input-stdin", "--state-dir", "/service/state"],
-        );
-    }
-
-    #[test]
-    fn describe_asks_for_the_credential_free_projection() {
-        assert_eq!(
-            describe_arguments(Path::new("/service/state")),
-            vec!["describe", "--state-dir", "/service/state"],
-        );
-    }
-
-    #[test]
-    fn fingerprint_is_read_from_the_cli_success_line() {
-        assert_eq!(
-            parse_fingerprint("Pairing request submitted. Confirm fingerprint abc123 in Nessie, then run connect.\n"),
-            Some("abc123".to_owned()),
-        );
-        assert_eq!(parse_fingerprint(""), None);
-        assert_eq!(parse_fingerprint("no fingerprint here"), None);
-    }
-}
+#[path = "supervisor_tests.rs"]
+mod supervisor_tests;

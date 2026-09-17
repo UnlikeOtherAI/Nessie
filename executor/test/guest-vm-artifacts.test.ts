@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { chmod, chown, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 
 import { verifyPrivateGuestVmFile } from '../src/guest-vm-artifacts.js'
+import { readPinnedScriptDigests, verifyPinnedResource } from '../src/hyperv/scripts.js'
 
 /**
  * The Linux trust root is not this account's ownership but dpkg's: apt
@@ -25,7 +26,11 @@ const asRoot = process.getuid?.() === 0
  */
 const stage = async (): Promise<string> => realpath(await mkdtemp(join(tmpdir(), 'nessie-artifacts-')))
 
-test('an owner-private artifact is accepted, and a shared one is not', async () => {
+test('an owner-private artifact is accepted, and a shared one is not', async (context) => {
+  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+    context.skip('Windows packaged artifacts use the installed manifest provenance test below')
+    return
+  }
   const root = await stage()
   try {
     const artifact = join(root, 'build-initrd')
@@ -101,5 +106,52 @@ test('a root-owned packaged artifact under /usr/lib is a trust root, a root-owne
   } finally {
     await rm(packaged, { force: true, recursive: true })
     await rm(elsewhere, { force: true, recursive: true })
+  }
+})
+
+test('a manifest-pinned resource accepts only the installed bytes and never escapes its resource root', async () => {
+  const root = await stage()
+  try {
+    const resources = join(root, 'resources')
+    const guest = join(resources, 'guest')
+    await mkdir(guest, { recursive: true })
+    const artifact = join(guest, 'build-initrd.exe')
+    await writeFile(artifact, 'trusted artifact')
+    const digest = '29dcd450ef0324ad1a5a65092c7c36a05d064b549c08d32b5583675e78cea936'
+    await writeFile(join(resources, 'manifest.json'), JSON.stringify({
+      files: [{ path: 'guest\\build-initrd.exe', sha256: digest }],
+    }))
+    const digests = await readPinnedScriptDigests(resources)
+    assert.equal(await verifyPinnedResource({ path: artifact, resourcesDirectory: resources, digests }), artifact)
+
+    await writeFile(artifact, 'altered artifact')
+    await assert.rejects(
+      verifyPinnedResource({ path: artifact, resourcesDirectory: resources, digests }),
+      /does not match/,
+    )
+    await assert.rejects(
+      verifyPinnedResource({ path: join(root, 'outside.exe'), resourcesDirectory: resources, digests }),
+      /not a packaged resource/,
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test('an installed Windows package validates its real VM artifact and rejects an untrusted copy', async (context) => {
+  if (process.platform !== 'win32' || process.env.NESSIE_EXECUTOR_PACKAGED_CLI !== '1') {
+    context.skip('requires the installed Windows executor runtime')
+    return
+  }
+  const installedArtifact = join(dirname(process.execPath), 'resources', 'guest', 'build-initrd.exe')
+  assert.equal(await verifyPrivateGuestVmFile(installedArtifact, true), installedArtifact)
+
+  const root = await stage()
+  try {
+    const copy = join(root, 'build-initrd.exe')
+    await writeFile(copy, 'untrusted copy')
+    await assert.rejects(verifyPrivateGuestVmFile(copy, true), /not.*package|not pinned/i)
+  } finally {
+    await rm(root, { force: true, recursive: true })
   }
 })
