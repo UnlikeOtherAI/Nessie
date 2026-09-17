@@ -196,11 +196,8 @@ when one changes, the same turn updates it, not this section.
 
 - All standards, specs, and design decisions live in `docs/`.
 - When a document is finished, move it to `docs/done/`.
-- Legacy code lives in `src/` — the old single-user server, being removed; do
-  not rely on it for new work and do not import from it. (It still registers
-  `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch; the new `api/`
-  server does not.) New code goes into `api/`, `admin/`, `web/`, `worker/`,
-  `packages/`; reusable concepts are re-implemented in `packages/`.
+- New code goes into `api/`, `admin/`, `web/`, `worker/`, `packages/`;
+  reusable concepts are re-implemented in `packages/`.
 - Follow the architecture guardrails and anti-pattern list in `docs/architecture.md` before creating files, reorganizing code, or reusing logic.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.

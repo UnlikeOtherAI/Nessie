@@ -4,9 +4,28 @@ import test from 'node:test'
 import {
   NATIVE_CREATION_ACTION_SIZE,
   NATIVE_CREATION_OPTIONS,
+  NATIVE_CREATION_OPTION_COLORS,
   nativeCreationMenuMetrics,
   shouldDismissNativeCreationMenu,
 } from './native-creation-menu'
+
+test('every creation row paints the web create menu hue pair, not the theme accent', () => {
+  // Mirrored from `.create-menu-icon-<kind>` in admin/src/styles.css: the badge
+  // is the hue washed over the sheet at the web's own percentage, the glyph a
+  // darker shade of that hue. Message stays on the theme accent and is never
+  // a row, so it has no pair here.
+  assert.deepEqual(NATIVE_CREATION_OPTION_COLORS, {
+    project: { glyph: '#a96400', wash: '#d98600', washOpacity: 0.19 },
+    channel: { glyph: '#258143', wash: '#3ba55c', washOpacity: 0.19 },
+    agent: { glyph: '#5b3ed6', wash: '#7a5af8', washOpacity: 0.18 },
+  })
+  for (const option of NATIVE_CREATION_OPTIONS) {
+    assert.ok(
+      NATIVE_CREATION_OPTION_COLORS[option.action],
+      `${option.action} has a colour pair`,
+    )
+  }
+})
 
 test('the phone sheet offers Agent last, directly above the Message button', () => {
   assert.deepEqual(

@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from 'fastify'
 import {
   canReadSpace,
   listPageShares,
@@ -139,6 +139,7 @@ export const readSharedRootPageId = (query: unknown): string | null => {
  */
 const writeSharedAlert = async (
   prisma: PrismaClient,
+  log: FastifyBaseLogger,
   input: {
     actorUserId: string
     granteeUserId: string
@@ -165,8 +166,16 @@ const writeSharedAlert = async (
       update: {},
       select: { id: true },
     })
-  } catch {
-    // Swallowed on purpose; see above.
+  } catch (error) {
+    // Swallowed on purpose; see above. But a *persistent* failure — a renamed
+    // enum value, a dropped index, an FK change — would otherwise drop every
+    // share notification indefinitely with no trace until a user report, so
+    // the swallow logs at warn: the grant still succeeds, and the failure
+    // leaves a searchable record naming the page and the recipient.
+    log.warn(
+      { err: error, knowledgePageId: input.pageId, granteeUserId: input.granteeUserId },
+      'knowledge share notification was not written',
+    )
   }
 }
 
@@ -352,7 +361,7 @@ export const registerKnowledgeShareRoutes = (
       })
     }
     if (result.created) {
-      await writeSharedAlert(prisma, {
+      await writeSharedAlert(prisma, request.log, {
         actorUserId: actorContext.actor.actorId,
         granteeUserId: body.granteeUserId,
         organizationId,

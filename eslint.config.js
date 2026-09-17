@@ -621,4 +621,82 @@ export default [
       ],
     },
   },
+  {
+    // File-length ratchet (AGENTS.md → "Code Quality": "Code files: 500 lines
+    // max. Exceeding the cap is an architectural signal — split along cohesive
+    // responsibility seams via a real refactor"). The standard was stated for
+    // months with nothing holding it: 63 non-test source files sat over 500
+    // raw lines when this block landed, and 19 of them are over the cap as
+    // this rule measures it (code lines only, per the options below). Same
+    // shape as the egress and horizontal-scaling ratchets above: this rule is
+    // not the refactor and it does not split anything — it is the ratchet
+    // that keeps the tree green today and stops a twentieth file from
+    // crossing the cap tomorrow.
+    //
+    // skipBlankLines + skipComments: the cap measures code, as AGENTS.md
+    // means it — a generously commented module is not padding, and blank
+    // lines are not bulk.
+    //
+    // Test files are OUT of scope, deliberately. The cap is an architectural
+    // signal about responsibility seams in shipped code; a test file's length
+    // tracks its case table, and the longest files in the repo are tests.
+    // Excluding them mirrors the horizontal-scaling block's test ignores.
+    //
+    // Allowlist admission: none. The entries below are a snapshot of every
+    // non-test .ts/.tsx file over the cap on 2026-09-16, generated — not
+    // hand-picked — and the list only shrinks: a file leaves it in the change
+    // that splits it under the cap, and no change adds to it. Regenerate the
+    // snapshot from the repo root with:
+    //   pnpm exec eslint admin/src admin/test admin/e2e api/src worker/src \
+    //     web/src cli/src gateway/src gateway/test executor/src executor/test \
+    //     packages/*/src --format json \
+    //     | node -e 'const s=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(s.flatMap(f=>f.messages.some(m=>m.ruleId==="max-lines")?[f.filePath]:[]).sort().join("\n"))'
+    // (with this block's allowlist temporarily emptied, or the offenders are
+    // invisible to the run). mobile/ lints against its own standalone
+    // eslint.config.js and is outside this ratchet until that changes.
+    files: ['**/*.ts', '**/*.tsx'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      '**/test/**',
+      '**/tests/**',
+      '**/test-*.ts',
+      '**/__fixtures__/**',
+      '**/fixtures/**',
+      // --- snapshot regenerated 2026-09-17; shrinking, no admissions ---
+      // (count beside each entry is the code-line total that earned it)
+      //
+      // "No admissions" governs CHANGES, not rebases. Two entries here
+      // (SpreadsheetPane.tsx, worker-subscriptions-core.ts) were already over
+      // the cap on main when this ratchet landed: debt the ratchet inherited,
+      // not debt it permitted. A file this branch itself pushed over the cap
+      // would have to be split instead of listed.
+      'admin/src/components/features/knowledge/spreadsheet/SpreadsheetPane.tsx', // 514
+      'admin/src/components/features/mailbox-connections/MailboxConnectionForm.tsx', // 541
+      'api/src/routes/agents.ts', // 878
+      'api/src/routes/dashboards.ts', // 592
+      'api/src/routes/knowledge-base-files.ts', // 571
+      'api/src/routes/knowledge-base.ts', // 674
+      'api/src/services/execution-environments.ts', // 526
+      'cli/src/local.ts', // 770
+      'executor/src/index.ts', // 515
+      'executor/src/state-store.ts', // 588
+      'packages/schemas/src/executor.ts', // 939
+      'packages/schemas/src/realtime-ws.ts', // 648
+      'packages/team-admin/src/agent-conversations.ts', // 627
+      'web/src/home/desktop3d.tsx', // 586
+      'web/src/pages/api.tsx', // 503
+      'web/src/pages/executors.tsx', // 852
+      'worker/src/control/workflows.ts', // 1015
+      'worker/src/run/execute/run-job.ts', // 508
+      'worker/src/run/pa-tools/agent-conversations.ts', // 564
+      'worker/src/run/workflows.ts', // 580
+      'worker/src/worker-subscriptions-core.ts', // 600
+    ],
+    rules: {
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
 ]

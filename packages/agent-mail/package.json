@@ -21,10 +21,12 @@
     "@aws-sdk/client-sns": "^3.1124.0",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
-    "mailparser": "^3.9.20"
+    "mailparser": "^3.9.20",
+    "sanitize-html": "^2.17.7"
   },
   "devDependencies": {
     "@types/mailparser": "^3.4.6",
-    "@types/node": "^20.19.24"
+    "@types/node": "^20.19.24",
+    "@types/sanitize-html": "^2.16.1"
   }
 }

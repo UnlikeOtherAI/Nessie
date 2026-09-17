@@ -117,7 +117,22 @@ summary and points here; **this file is the rule**.
   guarded with `:not(:disabled)`: the rules are unlayered, so a bare `:hover`
   beats the `opacity-50` utility marking a disabled action and repaints the
   one cue that it cannot be pressed, exactly as the pointer arrives.
-  Every header action has a 44px target; compact icon actions are 44px squares.
+  **The bar's geometry is a set of tokens, and the pointer decides which
+  values they hold.** `--page-header-height`, `--page-header-gap`,
+  `--page-header-action-height`, `--page-header-action-font-size` and
+  `--page-header-toggle-height` live on `:root` in `styles.css`, and
+  `ResponsivePageHeader` — plus the pane and drawer headers that mirror it —
+  consumes them and nothing else, so rescaling the bar is a one-line edit.
+  Under a fine pointer the bar is compact (35px bar, 31px actions, 22px
+  toggles): a cursor needs no 44px target and the density is the point.
+  Under a coarse pointer a `(pointer: coarse)` media query restores the touch
+  geometry (50px bar, 44px actions, 32px toggles), because a 31px tap target
+  on a phone is a usability defect — every header action keeps a 44px target
+  wherever a finger is what arrives, and compact icon actions are 44px
+  squares there. The action font-size is set by the `.admin-page-action`
+  rule, never a `text-*` utility: the unlayered `button { font: inherit }`
+  reset beats Tailwind's layered utilities, so a size class on a header
+  button is silently ignored.
   `admin/test/page-header-actions.test.ts` holds all of this, and
   `pnpm --filter @nessie/admin test:e2e:page-header` screenshots every theme's
   header into `e2e/screenshots/page-header/`.

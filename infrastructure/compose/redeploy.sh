@@ -122,19 +122,53 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 
-# This migration changes the Prisma-visible type of three progress columns from
-# integer to text. The prior API/worker clients decode those fields as integers,
-# while this release writes opaque labels, so they must never serve together.
-# Drain only for this one pending migration; every ordinary migration keeps the
+# Migrations run below, BEFORE the container swap, while the previous build's
+# API and worker replicas still serve. A migration that drops or retypes what
+# the old generated clients still read (DROP COLUMN, DROP TABLE, SET NOT NULL,
+# a type change) breaks them for the whole build+swap window — P2022 on every
+# query of the table — so those migrations must never apply over a live old
+# generation. They are listed in api/prisma/deploy-incompatible-migrations.json
+# (lint-migrations.mjs fails any migration carrying such a clause that is not
+# listed), and while ANY of them is pending this gate drains every old API and
+# worker replica before Prisma runs. Every ordinary migration keeps the
 # health-gated blue-green path below.
-AT_REST_KEY_METADATA_MIGRATION='20260912090000_versioned_at_rest_key_metadata'
-key_metadata_pending="$(
-  $COMPOSE exec -T nessie-postgres psql -U nessie -d nessie -tAc \
-    "SELECT CASE WHEN to_regclass('_prisma_migrations') IS NULL THEN false ELSE NOT EXISTS (SELECT 1 FROM _prisma_migrations WHERE migration_name = '$AT_REST_KEY_METADATA_MIGRATION' AND finished_at IS NOT NULL AND rolled_back_at IS NULL) END;" \
-    2>/dev/null | tr -d '[:space:]'
+INCOMPATIBLE_MIGRATIONS_MANIFEST='api/prisma/deploy-incompatible-migrations.json'
+if [ ! -f "$INCOMPATIBLE_MIGRATIONS_MANIFEST" ]; then
+  # The manifest is the only record of which migrations are unsafe over a live
+  # old generation; guessing here is exactly the gap this gate exists to close.
+  echo "Missing $INCOMPATIBLE_MIGRATIONS_MANIFEST — refusing to deploy without the drain list" >&2
+  exit 1
+fi
+
+# The host is only guaranteed bash + docker, so no jq/node: the manifest keeps
+# one entry per line and the name pattern is anchored in the grep itself, which
+# makes every extracted value [0-9a-z_] by construction — safe to interpolate
+# into the SQL below without further quoting. grep -o prints each match on its
+# own line, so even a reformatted multi-entry line cannot smuggle a name past.
+# The `|| true` keeps an EMPTY manifest from aborting the deploy: grep exits 1
+# on no match, and under `set -euo pipefail` that would kill the assignment.
+incompatible_migrations="$(
+  grep -oE '"migration"[[:space:]]*:[[:space:]]*"[0-9]+_[A-Za-z0-9_]+"' "$INCOMPATIBLE_MIGRATIONS_MANIFEST" \
+    | sed -E 's/^.*"([0-9]+_[A-Za-z0-9_]+)"$/\1/' || true
 )"
-if [ "$key_metadata_pending" = "t" ]; then
-  echo "==> Draining every API and worker replica before incompatible key-version metadata migration"
+
+incompatible_pending="f"
+if [ -n "$incompatible_migrations" ]; then
+  # Same pending semantics as the original single-migration gate, widened to a
+  # list: a migration is pending unless _prisma_migrations records it finished
+  # and not rolled back, and a database too fresh to have the table at all has
+  # nothing old serving, so it reports false.
+  pending_values="$(printf '%s\n' $incompatible_migrations | sed "s/.*/('&'),/" | tr -d '\n')"
+  pending_values="${pending_values%,}"
+  incompatible_pending="$(
+    $COMPOSE exec -T nessie-postgres psql -U nessie -d nessie -tAc \
+      "SELECT CASE WHEN to_regclass('_prisma_migrations') IS NULL THEN false ELSE EXISTS (SELECT 1 FROM (VALUES $pending_values) AS manifest(name) WHERE NOT EXISTS (SELECT 1 FROM _prisma_migrations WHERE migration_name = manifest.name AND finished_at IS NOT NULL AND rolled_back_at IS NULL)) END;" \
+      2>/dev/null | tr -d '[:space:]'
+  )"
+fi
+
+if [ "$incompatible_pending" = "t" ]; then
+  echo "==> Draining every API and worker replica before pending deploy-incompatible migration(s)"
   $COMPOSE stop nessie-api nessie-worker
   for legacy in api worker; do
     legacy_ids="$(running_service_containers "$legacy")"

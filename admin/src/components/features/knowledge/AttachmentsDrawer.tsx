@@ -63,7 +63,7 @@ export const AttachmentsDrawer = ({
           'bg-[color:var(--main)] shadow-[-12px_0_40px_var(--scrim)]',
         ].join(' ')}
       >
-        <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
+        <div className="flex h-[var(--page-header-height)] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
           <h3 className="flex-1 text-sm font-semibold text-[color:var(--tx)]">
             Attachments {attachments.length ? `(${attachments.length})` : ''}
           </h3>
