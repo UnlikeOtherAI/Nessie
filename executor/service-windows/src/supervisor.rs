@@ -67,6 +67,7 @@ pub struct Supervisor {
 /// The argv for one packaged CLI invocation. Split out so what reaches a process
 /// list is asserted rather than trusted: a challenge and a workspace path travel
 /// on standard input, never here.
+#[allow(unused_imports)] // Re-exported for the focused supervisor argv tests.
 pub(crate) use crate::supervisor_commands::{
     configure_arguments, configure_input_arguments, describe_arguments, pair_arguments,
     serve_arguments,
