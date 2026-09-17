@@ -99,3 +99,18 @@ export const EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS = [
 ] as const
 
 export const EXECUTOR_WORKSPACE_ONLY_PROFILES = ['workspace_sandbox'] as const
+
+/**
+ * Every operation a host with no sandbox backend may still advertise: the
+ * copy-on-write workspace bundle, plus the two MCP proxy operations.
+ *
+ * The MCP pair belongs here because it never boots a guest — it speaks to a
+ * server the host owner installed and the policy named. Gating it on a sandbox
+ * backend would refuse the whole point of it on exactly the machine that has
+ * the software: a Mac with no VM backend and Kelpie installed.
+ */
+export const EXECUTOR_NO_SANDBOX_OPERATION_KEYS = [
+  ...EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
+  'mcp.tools',
+  'mcp.call',
+] as const

@@ -3,7 +3,7 @@ import { createHash, createPrivateKey, sign } from 'node:crypto'
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
-  EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS,
+  EXECUTOR_NO_SANDBOX_OPERATION_KEYS,
   EXECUTOR_WORKSPACE_ONLY_PROFILES,
   ExecutorCapabilityDescriptorSchema,
   ImplementedExecutorOperationKeySchema,
@@ -29,8 +29,8 @@ type LocalDescriptorConfig = {
   workspaceFolders?: string[]
 }
 
-const isWorkspaceOnlyOperation = (operationKey: string): boolean =>
-  (EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS as readonly string[]).includes(operationKey)
+const runsWithoutSandbox = (operationKey: string): boolean =>
+  (EXECUTOR_NO_SANDBOX_OPERATION_KEYS as readonly string[]).includes(operationKey)
 
 const isWorkspaceOnlyProfile = (profile: string): boolean =>
   (EXECUTOR_WORKSPACE_ONLY_PROFILES as readonly string[]).includes(profile)
@@ -49,13 +49,13 @@ export const assertHostSupportsOperations = (
 ): void => {
   if (host.sandboxBackend !== 'none') return
   const unsupported = [
-    ...operationKeys.filter((operationKey) => !isWorkspaceOnlyOperation(operationKey)),
+    ...operationKeys.filter((operationKey) => !runsWithoutSandbox(operationKey)),
     ...profiles.filter((profile) => !isWorkspaceOnlyProfile(profile)),
   ]
   if (unsupported.length === 0) return
   throw new Error(
     `This computer has no sandbox backend, so it can offer only ${
-      EXECUTOR_WORKSPACE_ONLY_OPERATION_KEYS.join(', ')
+      EXECUTOR_NO_SANDBOX_OPERATION_KEYS.join(', ')
     }. Refused: ${unsupported.join(', ')}. ${sandboxRemedyForHost(host)}`,
   )
 }
