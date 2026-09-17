@@ -4,7 +4,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   ExecutorScopeSchema, IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
 } from '@nessie/schemas'
-import { ExecutorPlatformFactsSchema } from '@nessie/schemas'
+import { ExecutorPlatformFactsSchema, type ExecutorLocalMcpReport } from '@nessie/schemas'
 import { descriptorRevisionViews, localMcpFor } from './executor-view-projections.js'
 import type {
   AuthorizedActionContext,
@@ -82,11 +82,24 @@ export type ExecutorAccessView = {
      */
     commandAllowlist?: string[]
     localPolicyDigest: string
+    /**
+     * The local MCP servers this proposal fronts, by name. Absent under the
+     * same rule as the programs: naming none fronts none, and the two are not
+     * the same fact as a list of none.
+     */
+    mcpServers?: string[]
     operationKeys: string[]
     profiles: ExecutorProfile[]
     reviewStatus: 'pending_review' | 'active' | 'disabled'
     revision: number
   }>
+  /**
+   * The daemon's last observation of its named MCP servers. Absent means this
+   * executor has never reported; an empty array means it reports and names no
+   * server.
+   */
+  localMcp?: ExecutorLocalMcpReport
+  localMcpObservedAt?: string
   operationGrants?: Array<{
     agentId: string
     operationKey: string

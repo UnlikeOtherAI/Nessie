@@ -12,6 +12,7 @@ import {
   parseAgentId,
   parseUserId,
   type AuthorizedActionContext,
+  type ExecutorLocalMcpReport,
 } from '@nessie/schemas'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -140,6 +141,54 @@ export const runExecutorListTool = async (
   }
 }
 
+/**
+ * What the daemon last observed about its named MCP servers, in the few lines
+ * a Personal Assistant answer can carry.
+ *
+ * Three states must survive the summary because they lead to different
+ * actions: never reported at all, reported-and-named-nothing, and named but
+ * unavailable with the reason why. The instance list is Kelpie's, and it is
+ * stated as last-observed with its own age — a caller that reads it as live
+ * will send somebody to a browser that has moved or gone.
+ */
+export const formatLocalMcp = (
+  localMcp: ExecutorLocalMcpReport | undefined,
+  observedAt: string | undefined,
+): string => {
+  if (localMcp === undefined) {
+    return formatSection('Local MCP servers', ['- this executor has never reported its local MCP status'])
+  }
+  if (localMcp.length === 0) {
+    return formatSection('Local MCP servers', ['- reported, and names no local MCP server'])
+  }
+  const age = observedAt ? ` (observed ${observedAt})` : ''
+  return formatSection(`Local MCP servers${age}`, localMcp.flatMap((status) => {
+    const head = status.available
+      ? `- ${status.server}=available${
+        status.serverVersion ? ` version=${status.serverVersion}` : ''
+      }${status.toolCount === undefined ? '' : ` tools=${status.toolCount}`}`
+      : `- ${status.server}=unavailable reason=${status.reason ?? 'unstated'}`
+    if (status.kelpieDevices === undefined) return [head]
+    if (status.kelpieDevices.length === 0) {
+      return [head, '  instances: none announced on that network']
+    }
+    return [
+      head,
+      // Bounded: a Personal Assistant answer is read, not scrolled, and the
+      // wire contract already allows up to 32.
+      ...status.kelpieDevices.slice(0, 8).map((device) => (
+        `  - ${device.name}${device.model ? ` (${device.model})` : ''} ${device.platform}`
+        + `${device.version ? ` v${device.version}` : ''} at ${device.address}:${device.port}`
+        + ` ${device.paired ? 'paired' : 'NOT paired — a person must pair on the device'}`
+        + ` last seen ${device.lastSeenAt}`
+      )),
+      ...(status.kelpieDevices.length > 8
+        ? [`  - …and ${status.kelpieDevices.length - 8} more`]
+        : []),
+    ]
+  }))
+}
+
 export const runExecutorInspectTool = async (
   context: BuiltinToolRuntimeContext,
   input: { executorId: unknown },
@@ -160,6 +209,9 @@ export const runExecutorInspectTool = async (
           // A person asked to approve a revision here reads this line and
           // nothing else, so "named none" has to be said rather than omitted.
           + `programs=${revision.commandAllowlist?.join(', ') ?? 'none named'} `
+          // Same reading as the programs: a revision that names no MCP server
+          // fronts none, and saying so beats omitting the word.
+          + `mcpServers=${revision.mcpServers?.join(', ') ?? 'none named'} `
           + `digest=${revision.localPolicyDigest}`
         )),
       )
@@ -168,7 +220,10 @@ export const runExecutorInspectTool = async (
     inputSummary: `executorId=${executorId}`,
     outputPreview:
       `${formatExecutor(found.executor)}\n  access=your entitlement only\n  manage=${access?.canManage === true}`
-      + (descriptorRevisions ? `\n${descriptorRevisions}` : ''),
+      + (descriptorRevisions ? `\n${descriptorRevisions}` : '')
+      + (access?.canManage === true
+        ? `\n${formatLocalMcp(access.localMcp, access.localMcpObservedAt)}`
+        : ''),
     toolName: 'executor_inspect',
   }
 }
