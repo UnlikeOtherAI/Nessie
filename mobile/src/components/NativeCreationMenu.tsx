@@ -6,6 +6,7 @@ import { withOpacity } from '../lib/ipad-native-chrome'
 import {
   NATIVE_CREATION_ACTION_SIZE,
   NATIVE_CREATION_OPTIONS,
+  NATIVE_CREATION_OPTION_COLORS,
   nativeCreationMenuMetrics,
   shouldDismissNativeCreationMenu,
   type NativeCreationLane,
@@ -185,28 +186,36 @@ export const NativeCreationMenu = ({
             ]}
           >
             <Animated.View style={[styles.createOptions, optionsAnimation]}>
-              {NATIVE_CREATION_OPTIONS.map((option) => (
-                <Pressable
-                  accessibilityLabel={option.accessibilityLabel}
-                  accessibilityRole="button"
-                  key={option.action}
-                  onPress={() => select(option.action)}
-                  style={({ pressed }) => [
-                    styles.createRow,
-                    pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
-                  ]}
-                >
-                  <View style={[styles.createIcon, { backgroundColor: withOpacity(accentColor, 0.12) }]}>
-                    <MaterialIcons color={accentColor} name={option.icon} size={18} />
-                  </View>
-                  <View style={styles.createCopy}>
-                    <Text style={[styles.createTitle, { color: sheetText }]}>{option.title}</Text>
-                    <Text style={[styles.createDescription, { color: sheetMutedText }]}>
-                      {option.description}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
+              {NATIVE_CREATION_OPTIONS.map((option) => {
+                const colors = NATIVE_CREATION_OPTION_COLORS[option.action]
+                return (
+                  <Pressable
+                    accessibilityLabel={option.accessibilityLabel}
+                    accessibilityRole="button"
+                    key={option.action}
+                    onPress={() => select(option.action)}
+                    style={({ pressed }) => [
+                      styles.createRow,
+                      pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.createIcon,
+                        { backgroundColor: withOpacity(colors.wash, colors.washOpacity) },
+                      ]}
+                    >
+                      <MaterialIcons color={colors.glyph} name={option.icon} size={18} />
+                    </View>
+                    <View style={styles.createCopy}>
+                      <Text style={[styles.createTitle, { color: sheetText }]}>{option.title}</Text>
+                      <Text style={[styles.createDescription, { color: sheetMutedText }]}>
+                        {option.description}
+                      </Text>
+                    </View>
+                  </Pressable>
+                )
+              })}
             </Animated.View>
             <View style={styles.messageActionSlot} />
           </Animated.View>

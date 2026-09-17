@@ -5,7 +5,7 @@ import type { NativeCreationAction } from './native-shell-layout'
 
 export type NativeCreationOption = {
   accessibilityLabel: string
-  action: NativeCreationAction
+  action: Exclude<NativeCreationAction, 'message'>
   description: string
   icon: ComponentProps<typeof MaterialIcons>['name']
   title: string
@@ -38,6 +38,26 @@ export const NATIVE_CREATION_OPTIONS: NativeCreationOption[] = [
     title: 'Agent',
   },
 ]
+
+export type NativeCreationOptionColors = {
+  glyph: string
+  wash: string
+  washOpacity: number
+}
+
+// Each row's badge washes a hue over the sheet surface and paints its glyph a
+// darker shade of that hue — the same pairs and wash percentages as the web
+// create menu's `.create-menu-icon-<kind>` rules in admin/src/styles.css.
+// Message has no entry: it is the morphing compose button and keeps the theme
+// accent.
+export const NATIVE_CREATION_OPTION_COLORS: Record<
+  NativeCreationOption['action'],
+  NativeCreationOptionColors
+> = {
+  project: { glyph: '#a96400', wash: '#d98600', washOpacity: 0.19 },
+  channel: { glyph: '#258143', wash: '#3ba55c', washOpacity: 0.19 },
+  agent: { glyph: '#5b3ed6', wash: '#7a5af8', washOpacity: 0.18 },
+}
 
 export const shouldDismissNativeCreationMenu = ({
   creationOpen,
