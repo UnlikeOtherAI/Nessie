@@ -1,20 +1,24 @@
-import { randomUUID } from 'node:crypto'
-
 import { STRUCTURALLY_APPROVAL_GATED_TOOL_IDS } from '@nessie/runtime'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { APPROVAL_ACTIONS, type AuthorizedActionContext } from '@nessie/schemas'
+import {
+  APPROVAL_EXPIRY_EXTERNAL_ACCOUNT_MS,
+  APPROVAL_EXPIRY_SUSPENDED_RUN_MS,
+  createApprovalRequestOnce,
+} from '@nessie/team-admin'
 
 import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
 import { createAgentMessage } from './agent-message.js'
 import type { RunContext } from './types.js'
 
-const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
-const MAILBOX_APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000
-
+// Thirty minutes when the run is simply parked; a day when the tool acts as
+// the person on an external account, because the only person who may answer
+// is the account's owner and they may not be watching right now. Both values
+// are the shared ladder's, named there.
 const approvalExpiryFor = (toolName: string): number =>
   STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(toolName)
-    ? MAILBOX_APPROVAL_EXPIRY_MS
-    : DEFAULT_APPROVAL_EXPIRY_MS
+    ? APPROVAL_EXPIRY_EXTERNAL_ACCOUNT_MS
+    : APPROVAL_EXPIRY_SUSPENDED_RUN_MS
 
 const mailboxSendAudience = (args: Record<string, unknown>): string => {
   const recipientCount = ['to', 'cc', 'bcc'].reduce(
@@ -110,12 +114,6 @@ export const createToolApprovalRequest = async (
   prisma: PrismaClient,
   input: CreateToolApprovalRequestInput,
 ): Promise<{ id: string }> => {
-  const existing = await prisma.approvalRequest.findFirst({
-    where: { runId: input.context.run.id, toolCallId: input.toolCallId },
-    select: { id: true },
-  })
-  if (existing) return existing
-
   const approvalContext = input.toolName === 'mailbox_send'
     ? {
         audience: mailboxSendAudience(input.args),
@@ -168,41 +166,52 @@ export const createToolApprovalRequest = async (
     )
   }
 
-  const data = {
-    action: 'tool.invoke',
-    agentId: input.context.agent.id,
-    argsHash: hashJsonValue(input.args),
-    channelId: input.context.channel.id,
-    context: approvalContext as Prisma.InputJsonValue,
-    continuationToken: randomUUID(),
-    expiresAt: new Date(Date.now() + approvalExpiryFor(input.toolName)),
-    organizationId: input.context.channel.organizationId,
-    projectId: input.context.channel.projectId,
-    reason: input.toolName === 'mailbox_send'
-      ? 'Approval is required before sending from a connected mailbox.'
-      : input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
-    requesterId: input.context.agent.id,
-    requiredApproverUserId:
-      STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
-        ? input.requiredApproverUserId
-          ?? input.actorContext.actionContext.effectiveUserId
-          ?? null
-        : null,
-    resumeState: {
-      actorContext: input.actorContext,
-      args: input.args,
-      interactive: input.interactive,
-      messageId: input.messageId,
-    } as Prisma.InputJsonValue,
-    runId: input.context.run.id,
-    taskId: input.context.task.id,
-    teamId: input.context.channel.teamId,
-    toolCallId: input.toolCallId,
-    toolName: input.toolName,
-  }
   try {
-    return await prisma.approvalRequest.create({ data, select: { id: true } })
+    // The shared creator takes the advisory lock, dedupes on the tool call
+    // and counts the requester's pending pile inside that lock — the three
+    // things this door used to do without one another's company (a bare
+    // create plus a P2002 catch). The lock keys on the requester alone so
+    // the ceiling is counted against the agent's whole pile, not one tool
+    // call's slice of it.
+    const { approval } = await createApprovalRequestOnce(prisma, {
+      action: APPROVAL_ACTIONS.toolInvoke,
+      actorContext: input.actorContext,
+      argsHash: hashJsonValue(input.args),
+      channelId: input.context.channel.id,
+      context: approvalContext,
+      expiresInMs: approvalExpiryFor(input.toolName),
+      lockKey: `tool-invoke:${input.context.channel.organizationId}:${input.context.agent.id}`,
+      matches: (pending) => pending.toolCallId === input.toolCallId,
+      projectId: input.context.channel.projectId,
+      teamId: input.context.channel.teamId,
+      reason: input.toolName === 'mailbox_send'
+        ? 'Approval is required before sending from a connected mailbox.'
+        : input.reason ?? `Tool ${input.toolName} requires approval before it can run.`,
+      requiredApproverUserId:
+        STRUCTURALLY_APPROVAL_GATED_TOOL_IDS.has(input.toolName)
+          ? input.requiredApproverUserId
+            ?? input.actorContext.actionContext.effectiveUserId
+            ?? null
+          : null,
+      requester: { agentId: input.context.agent.id },
+      resumeState: {
+        actorContext: input.actorContext,
+        args: input.args,
+        interactive: input.interactive,
+        messageId: input.messageId,
+      } as Prisma.InputJsonValue,
+      runId: input.context.run.id,
+      taskId: input.context.task.id,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+    })
+    return { id: approval.id }
   } catch (error) {
+    // The one duplicate the creator cannot hand back is an already-*resolved*
+    // row: its match set is pending-only, while the unique index on
+    // (runId, toolCallId) spans every status. A redelivered run whose
+    // approval was already answered lands here — return that row, exactly as
+    // the pre-shared implementation did.
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
       throw error
     }

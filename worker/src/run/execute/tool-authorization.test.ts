@@ -97,9 +97,36 @@ const fakePrisma = (): FakePrisma => {
       rules = next
     },
   }
+  const approvalRequest = {
+    create: async ({ data }: { data: Record<string, unknown> }) => {
+      const approval = {
+        agentAccessCredentialId: null,
+        continuationToken: 'token-1',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        resolution: null,
+        resolutionNote: null,
+        resolvedAt: null,
+        resolverId: null,
+        status: 'pending',
+        updatedAt: new Date(),
+        ...data,
+        id: `approval-${state.approvalRequests.length + 1}`,
+      }
+      state.approvalRequests.push(approval)
+      return approval
+    },
+    findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+      state.approvalRequests.find((approval) =>
+        Object.entries(where).every(([key, value]) => approval[key] === value),
+      ) ?? null,
+    findMany: async () => [],
+    updateMany: async () => ({ count: 1 }),
+  }
   const prisma = {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({
       $executeRaw: async () => 1,
+      approvalRequest,
       auditLog: {
         create: async ({ data }: { data: Record<string, unknown> }) => {
           state.auditLog.createCalls += 1
@@ -110,18 +137,8 @@ const fakePrisma = (): FakePrisma => {
       },
     }),
     agent: { update: async () => ({}) },
-    approvalRequest: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        const approval = { ...data, id: `approval-${state.approvalRequests.length + 1}` }
-        state.approvalRequests.push(approval)
-        return { id: approval.id }
-      },
-      findFirst: async ({ where }: { where: Record<string, unknown> }) =>
-        state.approvalRequests.find((approval) =>
-          Object.entries(where).every(([key, value]) => approval[key] === value),
-        ) ?? null,
-      updateMany: async () => ({ count: 1 }),
-    },
+    approvalRequest,
+    userAlert: { createMany: async () => ({ count: 1 }) },
     policyRule: {
       findMany: async (query: { where: { scopeId: { in: string[] } } }) => {
         state.ruleLog.push(...query.where.scopeId.in)

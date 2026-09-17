@@ -1,9 +1,13 @@
-import { randomUUID } from 'node:crypto'
 import { openApprovalCard } from '../approval-card.js'
 import {
   canWriteSpace,
   type KnowledgeAuthorType,
 } from '@nessie/knowledge'
+import { APPROVAL_ACTIONS } from '@nessie/schemas'
+import {
+  APPROVAL_EXPIRY_UNATTENDED_MS,
+  createApprovalRequestOnce,
+} from '@nessie/team-admin'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
@@ -20,7 +24,6 @@ const MAX_LABELS = 16
 // blatant script/iframe/event-handler content in a draft body before a human
 // ever reviews it.
 const UNSAFE_BODY_PATTERN = /<script\b|<iframe\b|\bon\w+\s*=/i
-const PENDING_APPROVAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
 
 const assertSafeBody = (body: string): void => {
   if (body.length > MAX_BODY_CHARS) {
@@ -329,47 +332,40 @@ export const runKbPublishRequestTool = async (
 
   const versionId = page.latestVersion.id
 
-  // Dedupe: never open a second pending approval for the same draft version.
-  const pendingForAgent = await context.prisma.approvalRequest.findMany({
-    where: {
-      organizationId,
-      agentId: context.agentId,
-      action: 'knowledge.page.publish',
-      status: 'pending',
-    },
-    select: { id: true, context: true },
+  // One request per draft version, however the ask arrives: the dedupe check,
+  // the per-requester ceiling and the create happen under one advisory lock
+  // inside the shared creator. The lock keys on the requester rather than the
+  // version so the ceiling is counted against the agent's whole pending pile,
+  // not one version's slice of it — two different versions may race, and both
+  // must see the same count.
+  const opened = await createApprovalRequestOnce(context.prisma, {
+    action: APPROVAL_ACTIONS.knowledgePagePublish,
+    actorContext: context.actorContext,
+    channelId: context.channel.id,
+    context: { pageId: page.id, versionId, spaceId: page.spaceId, title: page.title },
+    // A person may take days to review a draft and nobody is suspended on the
+    // answer — the same week a paired credential's request gets.
+    expiresInMs: APPROVAL_EXPIRY_UNATTENDED_MS,
+    lockKey: `kb-publish:${organizationId}:${context.agentId}`,
+    matches: (pending) =>
+      pending.context?.['pageId'] === page.id && pending.context?.['versionId'] === versionId,
+    // Scoped to the page being decided, not to whatever the session claim
+    // happens to carry.
+    projectId: page.projectId,
+    teamId: page.teamId ?? null,
+    reason: input.reason?.trim() || DEFAULT_PUBLISH_REASON,
+    requester: { agentId: context.agentId },
+    runId: context.run.id,
   })
-  const existing = pendingForAgent.find((row) => {
-    const rowContext = row.context as Record<string, unknown> | null
-    return rowContext?.['pageId'] === page.id && rowContext?.['versionId'] === versionId
-  })
-  if (existing) {
+  const approval = opened.approval
+
+  if (!opened.created) {
     return {
       inputSummary: `pageId=${page.id}`,
-      outputPreview: `Publication already requested — approval ${existing.id} pending human review.`,
+      outputPreview: `Publication already requested — approval ${approval.id} pending human review.`,
       toolName: 'kb_publish_request',
     }
   }
-
-  const approval = await context.prisma.approvalRequest.create({
-    data: {
-      organizationId,
-      projectId: page.projectId,
-      teamId: page.teamId ?? null,
-      channelId: context.channel.id,
-      taskId: null,
-      runId: context.run.id,
-      agentId: context.agentId,
-      requesterId: context.agentId,
-      action: 'knowledge.page.publish',
-      reason: input.reason?.trim() || DEFAULT_PUBLISH_REASON,
-      context: { pageId: page.id, versionId, spaceId: page.spaceId, title: page.title },
-      status: 'pending',
-      continuationToken: randomUUID(),
-      expiresAt: new Date(Date.now() + PENDING_APPROVAL_EXPIRY_MS),
-    },
-    select: { id: true },
-  })
 
   // The card is the approval. Nothing else surfaces this request — the page it
   // used to wait on is gone — so a publish nobody can see here is a publish
@@ -383,7 +379,7 @@ export const runKbPublishRequestTool = async (
       input.reason?.trim() || DEFAULT_PUBLISH_REASON
     }`,
     gate: {
-      action: 'knowledge.page.publish',
+      action: APPROVAL_ACTIONS.knowledgePagePublish,
       approvalId: approval.id,
       status: 'pending',
     },

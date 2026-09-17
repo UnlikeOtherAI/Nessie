@@ -11,7 +11,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import type { RunExecuteJobPayload } from '@nessie/schemas'
+import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
@@ -410,7 +410,7 @@ export const prepareRunExecution = async (
   const approvalInstruction = payload.actorContext.approval?.approvalId
     ? await deps.prisma.approvalRequest.findFirst({
       where: {
-        action: 'tool.invoke',
+        action: APPROVAL_ACTIONS.toolInvoke,
         id: payload.actorContext.approval.approvalId,
         organizationId: context.channel.organizationId,
         status: 'approved',

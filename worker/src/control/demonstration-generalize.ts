@@ -1,21 +1,20 @@
-import { randomUUID } from 'node:crypto'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 import { openApprovalCard } from '../run/approval-card.js'
 import { loadConfig } from '@nessie/config'
 import { writeAuditEntry } from '@nessie/db'
 import {
   attributionFromActorContext,
-  createApprovalUserAlerts,
   type LedgerIdentityService,
   WORKFLOW_TOOL_IDS,
 } from '@nessie/runtime'
 import {
-  acquireAgentTodoAgentLock,
+  createApprovalRequestOnce,
   validateWorkflowGraph,
   workflowGeneralizationVocabulary,
 } from '@nessie/team-admin'
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient, type WorkflowTemplate } from '@prisma/client'
 import {
+  APPROVAL_ACTIONS,
   parseChannelId,
   parseOrganizationId,
   parseThreadId,
@@ -34,6 +33,13 @@ const generalizationAttempts = (): number => {
   const configured = Number(process.env['NESSIE_DEMONSTRATION_GENERALIZE_ATTEMPTS'])
   return Number.isInteger(configured) && configured > 0 ? configured : 3
 }
+
+/**
+ * Thrown inside the approval creator's locked transaction when another
+ * replica claimed the demonstration first; caught at the door and treated as
+ * "already handled", exactly as the old in-transaction null return was.
+ */
+class DemonstrationAlreadyGeneralizedError extends Error {}
 
 const ModelDraftSchema = z.object({
   description: z.string().max(1_000).optional(),
@@ -257,78 +263,81 @@ export const generalizeDemonstration = async (
       // nothing is announced while the transaction is still deciding whether
       // the proposal exists at all.
       type ProposedWorkflow = { approvalId: string; approvers: string[]; name: string }
-      const committed = await prisma.$transaction(async (tx) => {
-        let proposed: ProposedWorkflow | null = null
+      const templateData = (agentAuthored: boolean): Prisma.WorkflowTemplateUncheckedCreateInput => ({
+        ...(agentAuthored ? {} : { adoptedAt: new Date() }),
+        bindingSchema: {},
+        createdByActorId: agentAuthored
+          ? demonstration.agentId
+          : demonstration.startedByUserId,
+        createdByActorType: agentAuthored ? 'agent' : 'user',
+        demonstrationId: demonstration.id,
+        description: draft.description,
+        graphJson: draft.graph as unknown as Prisma.InputJsonValue,
+        name: draft.name,
+        organizationId: demonstration.organizationId,
+        source: 'demonstration',
+        variableSchema: draft.variableSchema as Prisma.InputJsonValue,
+      })
+      const claimGeneralization = async (
+        tx: Prisma.TransactionClient,
+      ): Promise<boolean> => {
         const changed = await tx.demonstration.updateMany({
           data: { generalizationError: null, status: 'generalized' },
           where: { id: demonstration.id, status: 'captured' },
         })
-        if (changed.count === 0) return null
-        const created = await tx.workflowTemplate.create({
-          data: {
-            ...(payload.agentProposed ? {} : { adoptedAt: new Date() }),
-            bindingSchema: {},
-            createdByActorId: payload.agentProposed
-              ? demonstration.agentId
-              : demonstration.startedByUserId,
-            createdByActorType: payload.agentProposed ? 'agent' : 'user',
-            demonstrationId: demonstration.id,
-            description: draft.description,
-            graphJson: draft.graph as unknown as Prisma.InputJsonValue,
-            name: draft.name,
-            organizationId: demonstration.organizationId,
-            source: 'demonstration',
-            variableSchema: draft.variableSchema as Prisma.InputJsonValue,
-          },
-        })
-        if (payload.agentProposed) {
-          await acquireAgentTodoAgentLock(tx, demonstration.agentId)
-          const pending = await tx.approvalRequest.count({
-            where: {
-              action: 'workflow.template.adopt',
-              agentId: demonstration.agentId,
-              organizationId: demonstration.organizationId,
-              status: 'pending',
+        return changed.count === 1
+      }
+      // The demonstration claim, the learned template and (for an agent
+      // proposal) its approval are one atomic unit: a crash between them must
+      // not leave a demonstration marked generalized with nothing to show for
+      // it. The proposal path runs inside the shared approval creator's
+      // locked transaction; the adopt-straight-away path keeps its own.
+      let template: WorkflowTemplate | null = null
+      let proposed: ProposedWorkflow | null = null
+      if (payload.agentProposed) {
+        // Equivalent proposals have no stable dedupe key — each learned
+        // template is new — so `matches` never fires and the per-requester
+        // ceiling, counted under the requester-scoped lock, is the control.
+        try {
+          const opened = await createApprovalRequestOnce(prisma, {
+            action: APPROVAL_ACTIONS.workflowTemplateAdopt,
+            actorContext: context,
+            channelId: demonstration.channelId,
+            lockKey: `workflow-template-adopt:${demonstration.organizationId}:${demonstration.agentId}`,
+            matches: () => false,
+            prepare: async (tx) => {
+              if (!(await claimGeneralization(tx))) {
+                throw new DemonstrationAlreadyGeneralizedError()
+              }
+              const created = await tx.workflowTemplate.create({ data: templateData(true) })
+              template = created
+              return { context: { workflowTemplateId: created.id } }
             },
+            reason: `Agent-proposed learned workflow: ${draft.name}`,
+            requiredApproverRole: 'owner',
+            requester: { agentId: demonstration.agentId },
           })
-          if (pending >= 10) {
-            throw new Error('This agent already has 10 learned workflow proposals awaiting review.')
-          }
-          const approval = await tx.approvalRequest.create({
-            data: {
-              action: 'workflow.template.adopt',
-              agentId: demonstration.agentId,
-              channelId: demonstration.channelId,
-              context: { workflowTemplateId: created.id },
-              continuationToken: randomUUID(),
-              expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-              organizationId: demonstration.organizationId,
-              reason: `Agent-proposed learned workflow: ${created.name}`,
-              requesterId: demonstration.agentId,
-              requiredApproverRole: 'owner',
-              status: 'pending',
-            },
-            select: { id: true },
-          })
-          // Owners answer this one, so owners are told. Thirty minutes is a
-          // short window to notice a badge in — and there is no badge any more,
-          // so the card raised beside this alert is the whole surface.
+          // Owners answer this one, so the creator told owners. Thirty
+          // minutes — the suspended-run default — is a short window to notice
+          // a badge in, and there is no badge any more, so the card raised
+          // beside that alert is the whole surface.
           proposed = {
-            approvalId: approval.id,
-            approvers: await createApprovalUserAlerts(tx, {
-              actorAgentId: demonstration.agentId,
-              approvalId: approval.id,
-              channelId: demonstration.channelId,
-              organizationId: demonstration.organizationId,
-              requiredApproverRole: 'owner',
-            }),
-            name: created.name,
+            approvalId: opened.approval.id,
+            approvers: opened.approvers,
+            name: draft.name,
           }
+        } catch (error) {
+          // Another replica claimed the demonstration first; the old
+          // in-transaction null return said the same thing.
+          if (error instanceof DemonstrationAlreadyGeneralizedError) return
+          throw error
         }
-        return { proposed, template: created }
-      })
-      const template = committed?.template ?? null
-      const proposed = committed?.proposed ?? null
+      } else {
+        template = await prisma.$transaction(async (tx) => {
+          if (!(await claimGeneralization(tx))) return null
+          return tx.workflowTemplate.create({ data: templateData(false) })
+        })
+      }
       if (!template) return
       if (proposed && realtimeTransport) {
         await openApprovalCard({ prisma, realtimeTransport }, {
@@ -337,7 +346,7 @@ export const generalizeDemonstration = async (
           content: `I worked out a repeatable workflow from what we just did — **${proposed.name}**. `
             + 'It needs an owner\'s approval before I can use it.',
           gate: {
-            action: 'workflow.template.adopt',
+            action: APPROVAL_ACTIONS.workflowTemplateAdopt,
             approvalId: proposed.approvalId,
             status: 'pending',
           },
