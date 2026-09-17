@@ -27,9 +27,10 @@ export const CreateChannelDialog = (
   const projectTeamIsMissing = projectId !== undefined && scope !== 'standalone' && !teamId
 
   const [name, setName] = useState('')
-  const [visibility, setVisibility] = useState<
-    'private' | 'protected' | 'public'
-  >('public')
+  // `private` is not a choice a person makes. It is the stored value for direct
+  // messages and system surfaces, which this dialog never creates; somebody who
+  // wants "not everyone" means `protected`, which has a member list and a lock.
+  const [visibility, setVisibility] = useState<'protected' | 'public'>('public')
   const [formError, setFormError] = useState<string | null>(null)
 
   const handleClose = () => {
@@ -134,8 +135,12 @@ export const CreateChannelDialog = (
           >
             <option value="public">Public</option>
             <option value="protected">Protected</option>
-            <option value="private">Private</option>
           </select>
+          <p className="text-xs text-[color:var(--tx3)]">
+            {visibility === 'public'
+              ? 'Anyone in the organisation can find this channel, read it and join.'
+              : 'Shown with a lock. People outside it see only its name and who is in it, and are added by someone already here.'}
+          </p>
         </div>
 
         {projectTeamIsMissing ? (

@@ -243,27 +243,77 @@ dbTest('any project member renames it, manages its members and deletes it', asyn
 
 // ─── Rule 3 ─────────────────────────────────────────────────────────────────
 
-dbTest('a member outside the project can neither see nor change it', async () => {
+/**
+ * Reading a project and changing it are now different entitlements, and this is
+ * the test that holds them apart.
+ *
+ * A project is created `public`, so every organisation member may READ it —
+ * the deliberate widening in the visibility spec. `canModifyProject` was NOT
+ * widened with it: it is still membership, or an organisation owner/admin. If
+ * the two are ever collapsed back together, the write assertions below fail
+ * while the read ones still pass, which is exactly the signal wanted.
+ */
+dbTest('a member outside a public project may read it and may not change it', async () => {
   await withApp(async (app, prisma) => {
     const projectId = await createProjectWithPeer(app, prisma)
 
-    const responses = await Promise.all([
-      call(app, outsiderUserId, 'GET', `/api/projects/${projectId}`),
+    const read = await call(app, outsiderUserId, 'GET', `/api/projects/${projectId}`)
+    assert.equal(read.statusCode, 200, read.body)
+    const entry = (read.json() as { data: { access: string; visibility: string } }).data
+    // `full`, not `limited`: public means browsable without joining, so there
+    // is nothing to withhold from somebody who may already list it.
+    assert.equal(entry.access, 'full')
+    assert.equal(entry.visibility, 'public')
+
+    const writes = await Promise.all([
       call(app, outsiderUserId, 'PATCH', `/api/projects/${projectId}`, { name: 'Hijacked' }),
       call(app, outsiderUserId, 'POST', `/api/projects/${projectId}/members`, { userId: outsiderUserId }),
       call(app, outsiderUserId, 'DELETE', `/api/projects/${projectId}/members/${peerUserId}`),
       call(app, outsiderUserId, 'DELETE', `/api/projects/${projectId}`),
     ])
-    assert.deepEqual(responses.map((response) => response.statusCode), [404, 404, 404, 404, 404])
+    assert.deepEqual(writes.map((response) => response.statusCode), [404, 404, 404, 404])
 
     const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } })
     assert.equal(project.name, `Rights ${suite}`)
     assert.equal(await isProjectMember(prisma, projectId, outsiderUserId), false)
     assert.equal(await isProjectMember(prisma, projectId, peerUserId), true)
+  })
+})
 
+// The other half: closing the project takes it away from the same outsider
+// entirely — not a 403, and not a listing they cannot open.
+dbTest('a member outside a PROTECTED project can neither see nor change it', async () => {
+  await withApp(async (app, prisma) => {
+    const projectId = await createProjectWithPeer(app, prisma)
+    await prisma.project.update({ where: { id: projectId }, data: { visibility: 'protected' } })
+
+    // Opening it by direct URL gives the simplified overview — protected is
+    // discoverable, not invisible (decision 4) — while every write is refused
+    // with the same 404 a missing project gives.
+    const read = await call(app, outsiderUserId, 'GET', `/api/projects/${projectId}`)
+    assert.equal(read.statusCode, 200, read.body)
+    const overview = (read.json() as { data: Record<string, unknown> }).data
+    assert.equal(overview.access, 'limited')
+    assert.equal(overview.visibility, 'protected')
+    assert.equal('project' in overview, false, 'the limited overview carries no record')
+
+    const responses = await Promise.all([
+      call(app, outsiderUserId, 'PATCH', `/api/projects/${projectId}`, { name: 'Hijacked' }),
+      call(app, outsiderUserId, 'POST', `/api/projects/${projectId}/members`, { userId: outsiderUserId }),
+      call(app, outsiderUserId, 'DELETE', `/api/projects/${projectId}/members/${peerUserId}`),
+      call(app, outsiderUserId, 'DELETE', `/api/projects/${projectId}`),
+    ])
+    assert.deepEqual(responses.map((response) => response.statusCode), [404, 404, 404, 404])
+
+    // It stays out of both browse listings, which is the other half of the rule.
     const listed = await call(app, outsiderUserId, 'GET', '/api/projects')
     const ids = (listed.json() as { data: Array<{ id: string }> }).data.map((row) => row.id)
     assert.equal(ids.includes(projectId), false)
+
+    const directory = await call(app, outsiderUserId, 'GET', '/api/projects/directory')
+    const directoryIds = (directory.json() as { data: Array<{ id: string }> }).data
+      .map((row) => row.id)
+    assert.equal(directoryIds.includes(projectId), false)
   })
 })
 
@@ -434,8 +484,16 @@ dbTest('an outsider lists a project with only its name, description and members'
     const entry = (directory.json() as { data: Array<Record<string, unknown>> }).data
       .find((row) => row.id === projectId)
     assert.ok(entry, 'an outsider can find the project')
-    assert.deepEqual(Object.keys(entry).sort(), ['access', 'description', 'id', 'members', 'name'])
+    // The whole key set, deliberately: a field added to the record without a
+    // decision must fail here rather than reach an outsider. `visibility` is on
+    // the list because the lock marker is derived from it client-side — the
+    // wire carries no separate `locked` field.
+    assert.deepEqual(
+      Object.keys(entry).sort(),
+      ['access', 'description', 'id', 'members', 'name', 'visibility'],
+    )
     assert.equal(entry.access, 'limited')
+    assert.equal(entry.visibility, 'public')
     assert.equal(entry.description, 'Where the launch gets planned')
     for (const field of WITHHELD_PROJECT_FIELDS) {
       assert.equal(field in entry, false, `limited view carries no ${field}`)
@@ -449,8 +507,12 @@ dbTest('an outsider lists a project with only its name, description and members'
       assert.deepEqual(Object.keys(member).sort(), ['avatarAttachmentId', 'avatarUrl', 'displayName', 'userId'])
     }
 
-    // The full record is still refused to the outsider.
-    assert.equal((await call(app, outsiderUserId, 'GET', `/api/projects/${projectId}`)).statusCode, 404)
+    // The single read gives the same outsider the `limited` arm rather than a
+    // 404, because this project is public: they may know it exists and who is
+    // in it. Closing it is what takes it away — covered above.
+    const single = await call(app, outsiderUserId, 'GET', `/api/projects/${projectId}`)
+    assert.equal(single.statusCode, 200, single.body)
+    assert.equal((single.json() as { data: { access: string } }).data.access, 'full')
   })
 })
 

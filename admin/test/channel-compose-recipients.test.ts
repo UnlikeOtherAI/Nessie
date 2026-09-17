@@ -48,14 +48,21 @@ const options = (agents: AgentRecord[], query: string, users: UserRecord[] = [])
 test('a member can address a global agent and the Personal Assistant', () => {
   const selected = selectAddressableAgents(
     [ordinary, designer, personalAssistant],
-    { isOwner: false },
+    { isAdmin: false },
   )
   assert.deepEqual(selected.map((entry) => entry.id), ['designer', 'pa'])
 })
 
-test('ordinary agents keep the owner gate they have always had', () => {
-  const asOwner = selectAddressableAgents([ordinary, designer], { isOwner: true })
-  assert.deepEqual(asOwner.map((entry) => entry.id), ['ordinary', 'designer'])
+test('ordinary agents take organisation admin standing, matching the route', () => {
+  // Owner-or-admin, not owner-only: `POST /api/channels/conversations` takes
+  // `requireOrgAdmin` when the body names agents, and an admin seeing no shared
+  // agents at all was one of the three symptoms the visibility change fixed.
+  const asAdmin = selectAddressableAgents([ordinary, designer], { isAdmin: true })
+  assert.deepEqual(asAdmin.map((entry) => entry.id), ['ordinary', 'designer'])
+
+  // And an ordinary member still gets only what resolves to a home DM.
+  const asMember = selectAddressableAgents([ordinary, designer], { isAdmin: false })
+  assert.deepEqual(asMember.map((entry) => entry.id), ['designer'])
 })
 
 test('a system agent with no per-person home is not offered', () => {
@@ -63,13 +70,13 @@ test('a system agent with no per-person home is not offered', () => {
   // the picker must not offer an option the route would refuse.
   const homeless = agent({ id: 'homeless', name: 'Homeless', systemManaged: true })
   assert.deepEqual(
-    selectAddressableAgents([homeless], { isOwner: true }).map((entry) => entry.id),
+    selectAddressableAgents([homeless], { isAdmin: true }).map((entry) => entry.id),
     [],
   )
 })
 
 test('the Agent Designer is found by what a person types', () => {
-  const agents = selectAddressableAgents([designer, personalAssistant], { isOwner: false })
+  const agents = selectAddressableAgents([designer, personalAssistant], { isAdmin: false })
   for (const query of ['agent', 'des', 'Designer', 'DESIGN']) {
     const labels = options(agents, query).map((entry) => entry.label)
     assert.ok(
@@ -90,7 +97,7 @@ test('an empty query lists everyone addressable', () => {
     id: 'user-1',
   } as UserRecord
   const listed = options(
-    selectAddressableAgents([designer], { isOwner: false }),
+    selectAddressableAgents([designer], { isAdmin: false }),
     '',
     [user],
   )

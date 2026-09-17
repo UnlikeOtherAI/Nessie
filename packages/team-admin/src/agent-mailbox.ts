@@ -394,9 +394,16 @@ export const retireAgentMailbox = async (
   })
 
 /**
- * Resolve the mailbox an inbound envelope recipient names. Retired and
- * suspended mailboxes resolve to null: mail to a retired address is dropped
- * rather than delivered to whoever holds the agent now.
+ * Resolve the mailbox an inbound envelope recipient names. Retired, suspended
+ * and soft-deleted mailboxes resolve to null: mail to a retired address is
+ * dropped rather than delivered to whoever holds the agent now.
+ *
+ * `deletedAt` is the agent-delete arm. Deleting an agent soft-deletes its
+ * mailbox and HOLDS the address rather than releasing it, so nothing new can
+ * ever be bound to it — but the row itself survives, so this is the one place
+ * that stops mail addressed to somebody's deleted agent from waking it. It is a
+ * single chokepoint on purpose: every inbound envelope recipient is routed
+ * through this function, so the refusal cannot be forgotten at a call site.
  */
 export const resolveMailboxByAddress = async (
   prisma: PrismaClient,
@@ -410,7 +417,12 @@ export const resolveMailboxByAddress = async (
   sendPolicy: string
 } | null> =>
   prisma.agentMailbox.findFirst({
-    where: { address: address.toLowerCase(), retiredAt: null, status: 'active' },
+    where: {
+      address: address.toLowerCase(),
+      deletedAt: null,
+      retiredAt: null,
+      status: 'active',
+    },
     select: {
       address: true,
       agentId: true,

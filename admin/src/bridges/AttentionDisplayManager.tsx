@@ -22,10 +22,10 @@ type BadgingNavigator = Navigator & {
 // reads one section language rather than a per-message one. A section the
 // admin does not count is simply absent, and the shell reads it as 0.
 export const attentionBadgeCounts = (
-  channels: { unreadCount: number }[],
+  channels: { unreadCount?: number }[],
   attention: { assignedWork: { total: number }; knowledge: { total: number } } | undefined,
 ): { badges: Partial<Record<SurfaceSection, number>>; total: number } => {
-  const channelCount = channels.reduce((total, channel) => total + channel.unreadCount, 0)
+  const channelCount = channels.reduce((total, channel) => total + (channel.unreadCount ?? 0), 0)
   const assignedWork = attention?.assignedWork.total ?? 0
   const knowledge = attention?.knowledge.total ?? 0
   return {

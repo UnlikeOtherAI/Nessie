@@ -32,9 +32,13 @@ const agent = (overrides: Partial<AgentRecord>): AgentRecord => ({
   ...overrides,
 } as AgentRecord)
 
-const member = { isOrgOwner: false, userId: otherMember }
-const owner = { isOrgOwner: false, userId: steward }
-const orgOwner = { isOrgOwner: true, userId: otherMember }
+// Editing takes owner-or-admin; ownership transfer and the to-do toggle are
+// still owner-only on the server, so the viewer carries both flags and these
+// cases exercise an admin who is NOT an owner as its own actor.
+const member = { isOrgAdmin: false, isOrgOwner: false, userId: otherMember }
+const owner = { isOrgAdmin: false, isOrgOwner: false, userId: steward }
+const orgAdmin = { isOrgAdmin: true, isOrgOwner: false, userId: otherMember }
+const orgOwner = { isOrgAdmin: true, isOrgOwner: true, userId: otherMember }
 
 test('a private agent is editable by its owner alone — org owners included', () => {
   const priv = agent({ ownerUserId: steward, visibility: 'private' })
@@ -42,19 +46,26 @@ test('a private agent is editable by its owner alone — org owners included', (
   assert.equal(canEditAgentRecord(priv, owner), true)
   assert.equal(canEditAgentRecord(priv, member), false)
   assert.equal(canEditAgentRecord(priv, orgOwner), false)
+  // An admin is no more able to reach a private agent than an owner is.
+  assert.equal(canEditAgentRecord(priv, orgAdmin), false)
   // Its owner is encoded in the owner-only home DM, so transfer is refused.
   assert.equal(canChangeAgentOwner(priv, owner), false)
 })
 
-test('a person-owned team agent admits its steward and org owners', () => {
+test('a person-owned team agent admits its steward, org admins and org owners', () => {
   const owned = agent({ ownerUserId: steward })
   assert.equal(agentOwnershipState(owned), 'person_owned')
   assert.equal(canEditAgentRecord(owned, owner), true)
   assert.equal(canEditAgentRecord(owned, orgOwner), true)
+  // The widening: an admin edits and deletes anything they can see.
+  assert.equal(canEditAgentRecord(owned, orgAdmin), true)
   assert.equal(canEditAgentRecord(owned, member), false)
-  // Release is the owner's or an org owner's act, never a mere editor's.
+  // Release stays the owner's or an ORG OWNER's act — not an admin's, and
+  // never a mere editor's. The server keeps `changesOwnership` on
+  // `isOrgOwner`, so this pair must not be collapsed into the one above.
   assert.equal(canChangeAgentOwner(owned, owner), true)
   assert.equal(canChangeAgentOwner(owned, orgOwner), true)
+  assert.equal(canChangeAgentOwner(owned, orgAdmin), false)
   assert.equal(canChangeAgentOwner(owned, member), false)
 })
 

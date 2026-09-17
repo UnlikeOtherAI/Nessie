@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { getCookie, setCookie } from '../../lib/storage';
@@ -191,7 +192,7 @@ export const SidebarProjectsSection = ({
           sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id;
         const projectChannelsId = `sidebar-project-${project.id}-channels`;
         const projectUnreadCount = project.channels.reduce(
-          (total, channel) => total + channel.unreadCount,
+          (total, channel) => total + (channel.unreadCount ?? 0),
           0,
         ) + (attentionCountByProjectId.get(project.id) ?? 0);
 
@@ -347,14 +348,14 @@ export const SidebarProjectsSection = ({
                       key={channel.id}
                       className={[
                         'admin-sb-item sidebar-child group',
-                        channel.unreadCount > 0 ? 'unread' : '',
+                        (channel.unreadCount ?? 0) > 0 ? 'unread' : '',
                         channel.id === currentChannelId ? 'active' : '',
                       ].join(' ')}
                       onClick={() => onNavigateChannel(channel.id)}
                       type="button"
                       {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                     >
-                      <span className={channelHashClassName}>#</span>
+                      <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
                       <GroupDmSidebarLabel label={channel.label} />
                       {renderUnreadCount(channel.unreadCount)}
                       <span

@@ -20,5 +20,12 @@ const unreadCountClassName =
   'sidebar-unread-count flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
   'bg-[color:var(--accent)] text-[10px] font-bold text-[color:var(--on-accent)]';
 
-export const renderUnreadCount = (count: number) =>
-  count > 0 ? <span className={unreadCountClassName}>{count}</span> : null;
+/**
+ * `undefined` is not zero, and both draw nothing. A `ChannelRecord` built for
+ * somebody who is not in the room — an organisation admin's management view —
+ * omits `unreadCount` entirely, because unread is participation metadata and
+ * they have read nothing. Rendering no badge is the honest answer; the count
+ * must never be coerced into a displayed `0`.
+ */
+export const renderUnreadCount = (count: number | undefined) =>
+  count !== undefined && count > 0 ? <span className={unreadCountClassName}>{count}</span> : null;

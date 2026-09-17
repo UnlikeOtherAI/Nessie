@@ -1,16 +1,17 @@
 import type { PrismaClient } from '@prisma/client'
 import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
-import { canModifyChannel, loadTeamProjectScope } from '@nessie/team-admin'
+import { canModifyChannel, isGroupDm, loadTeamProjectScope } from '@nessie/team-admin'
 
 import { emitAuditEvent } from './audit.js'
 
 /**
  * Changing who is in a channel is a disclosure decision, so it takes the same
  * gate renaming and archiving take: `canModifyChannel` — any member of the
- * channel, or an organisation owner or admin on a public channel. Every member of a channel has
- * equal rights in it (`docs/standards/team-model.md`), so a member may hand a
- * colleague the channel's history exactly as they may rename it; somebody
- * outside the channel may do neither unless they administer the organisation.
+ * channel, or an organisation owner or admin on a standard non-system non-DM
+ * channel. Every member of a channel has equal rights in it
+ * (`docs/standards/team-model.md`), so a member may hand a colleague the
+ * channel's history exactly as they may rename it; somebody outside the channel
+ * may do neither unless they administer the organisation.
  *
  * The decision lives here rather than in the route because the same rule has to
  * hold for every caller of these two writes, and because the audit row that
@@ -46,6 +47,7 @@ const loadChannelForMemberChange = async (
       systemChannelType: true,
       type: true,
       visibility: true,
+      dmKey: true,
       members: {
         where: { userId: actorContext.actor.actorId },
         select: { id: true },
@@ -55,9 +57,16 @@ const loadChannelForMemberChange = async (
   })
   if (!channel) return null
   const actorIsMember = channel.members.length > 0
+  const isStandardNonDm =
+    channel.type === 'standard'
+    && channel.systemChannelType === null
+    && !isGroupDm(channel)
   return {
     actorIsMember,
-    actorCanSee: actorIsMember || channel.visibility === 'public',
+    actorCanSee:
+      actorIsMember
+      || channel.visibility === 'public'
+      || (isStandardNonDm && isAdminActor(actorContext)),
     systemChannelType: channel.systemChannelType,
     type: channel.type,
   }

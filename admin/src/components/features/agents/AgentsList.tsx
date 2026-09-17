@@ -2,6 +2,7 @@ import { faPlus } from '@fortawesome/free-solid-svg-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAgents } from '../../../facades/agents/hooks'
+import { useDeleteAgent } from '../../../facades/agents/mutations'
 import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -9,6 +10,7 @@ import { useTabParam } from '../../../navigation/useTabParam'
 import { TabBar } from '../../primitives/TabBar'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { ScreenHeader } from '../../shared/ScreenHeader'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { AgentsTable } from './AgentsTable'
 import {
   AGENT_SCOPES,
@@ -42,6 +44,13 @@ export const AgentsList = () => {
   )
   const [pageByScope, setPageByScope] = useState(initialState.pageByScope)
   const [pageSize, setPageSize] = useState(initialState.pageSize)
+  // Agents → Admin is the owning surface for deleting an agent (Rule zero: it
+  // is where a person already stands when the question arises). The row draws
+  // the control only for an agent they may edit; this owns the confirmation and
+  // the failure message.
+  const [pendingDelete, setPendingDelete] = useState<AgentRecord | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deleteAgent = useDeleteAgent()
 
   useEffect(() => {
     saveAgentsListState({ activeScope, pageByScope, pageSize })
@@ -121,10 +130,55 @@ export const AgentsList = () => {
           agents={pageAgents}
           emptyMessage={AGENT_SCOPE_META[activeScope].empty}
           isLoading={isPending}
+          onDelete={(agent) => {
+            setDeleteError(null)
+            setPendingDelete(agent)
+          }}
           onOpen={(agentId) => void navigate(`/agents/${agentId}`)}
           token={token}
         />
       </div>
+
+      <ConfirmDialog
+        body={
+          <div className="grid gap-2">
+            <p>
+              {pendingDelete
+                ? `${pendingDelete.name} will stop working: it is removed from every `
+                  + 'channel it was placed in, its triggers are deleted, and any run '
+                  + 'it has in flight is cancelled. Its past work stays in the record.'
+                : ''}
+            </p>
+            {deleteError ? (
+              <p className="text-[color:var(--danger-text)]" role="alert">{deleteError}</p>
+            ) : null}
+          </div>
+        }
+        confirmLabel="Delete agent"
+        destructive
+        onCancel={() => {
+          setPendingDelete(null)
+          setDeleteError(null)
+        }}
+        onConfirm={() => {
+          if (!pendingDelete) return
+          void (async () => {
+            try {
+              await deleteAgent.mutateAsync(pendingDelete.id)
+              setPendingDelete(null)
+            } catch (error) {
+              // The server is the authority; its refusal belongs on the dialog
+              // rather than in a rejected promise nobody sees.
+              setDeleteError(
+                error instanceof Error ? error.message : 'Unable to delete this agent.',
+              )
+            }
+          })()
+        }}
+        open={pendingDelete !== null}
+        pending={deleteAgent.isPending}
+        title={pendingDelete ? `Delete ${pendingDelete.name}?` : 'Delete agent?'}
+      />
 
       {/* Always visible: an empty or single-page scope keeps its size control,
           and the table above it does not grow and shrink as pages change. */}

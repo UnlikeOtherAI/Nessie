@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { isAdminRole } from '@nessie/schemas'
 import type { AuthorizedActionContext, UoaSessionIdentity } from '@nessie/schemas'
 
 import { isAgentAccessibleToActor } from './agent-access.js'
@@ -45,6 +46,7 @@ export type AgentEditAuthority = {
   canEdit: boolean
   isLiveOwner: boolean
   isOrgOwner: boolean
+  isOrgAdmin: boolean
   ownership: AgentOwnershipState
   refusal?: { code: AgentEditAuthorityErrorCode; message: string }
 }
@@ -65,17 +67,17 @@ export const resolveAgentEditAuthority = async (
   const deny = (
     code: AgentEditAuthorityErrorCode,
     message: string,
-    parts: Pick<AgentEditAuthority, 'isLiveOwner' | 'isOrgOwner'>,
+    parts: Pick<AgentEditAuthority, 'isLiveOwner' | 'isOrgOwner' | 'isOrgAdmin'>,
   ): AgentEditAuthority => ({ canEdit: false, ownership, refusal: { code, message }, ...parts })
   if (ownership === 'system') return deny(
     AGENT_EDIT_AUTHORITY_ERROR_CODES.SYSTEM_IMMUTABLE,
     'This agent is managed by Nessie itself and cannot be edited.',
-    { isLiveOwner: false, isOrgOwner: false },
+    { isLiveOwner: false, isOrgOwner: false, isOrgAdmin: false },
   )
   if (agent.organizationId !== actor.organizationId) return deny(
     AGENT_EDIT_AUTHORITY_ERROR_CODES.NOT_ENTITLED,
     'This agent belongs to another team.',
-    { isLiveOwner: false, isOrgOwner: false },
+    { isLiveOwner: false, isOrgOwner: false, isOrgAdmin: false },
   )
   const entitlements = verifiedEntitlements ?? await resolveLiveEntitlements(prisma, {
     organizationId: actor.organizationId,
@@ -89,7 +91,7 @@ export const resolveAgentEditAuthority = async (
   ) return deny(
     AGENT_EDIT_AUTHORITY_ERROR_CODES.MEMBERSHIP_INACTIVE,
     'Your access to this team is not active, so you cannot edit agents in it.',
-    { isLiveOwner: false, isOrgOwner: false },
+    { isLiveOwner: false, isOrgOwner: false, isOrgAdmin: false },
   )
   const membership = entitlements.kind === 'local'
     ? await prisma.organizationMember.findUnique({
@@ -100,22 +102,25 @@ export const resolveAgentEditAuthority = async (
   if (entitlements.kind === 'local' && (!membership || membership.deactivatedAt)) return deny(
     AGENT_EDIT_AUTHORITY_ERROR_CODES.MEMBERSHIP_INACTIVE,
     'Your access to this team is not active, so you cannot edit agents in it.',
-    { isLiveOwner: false, isOrgOwner: false },
+    { isLiveOwner: false, isOrgOwner: false, isOrgAdmin: false },
   )
   const isOrgOwner = entitlements.kind === 'uoa'
     ? entitlements.organizationRole === 'owner'
     : membership?.role === 'owner'
+  const isOrgAdmin = entitlements.kind === 'uoa'
+    ? isAdminRole(entitlements.organizationRole)
+    : isAdminRole(membership?.role)
   const isLiveOwner = agent.ownerUserId === actor.userId
-  const parts = { isLiveOwner, isOrgOwner }
+  const parts = { isLiveOwner, isOrgOwner, isOrgAdmin }
   if (ownership === 'private') return isLiveOwner
     ? { canEdit: true, ownership, ...parts }
     : deny(AGENT_EDIT_AUTHORITY_ERROR_CODES.PRIVATE_OWNER_ONLY,
       'This is a private agent. Only the person who owns it can edit it.', parts)
-  if (ownership === 'person_owned') return isLiveOwner || isOrgOwner
+  if (ownership === 'person_owned') return isLiveOwner || isOrgAdmin
     ? { canEdit: true, ownership, ...parts }
     : deny(AGENT_EDIT_AUTHORITY_ERROR_CODES.OWNER_ONLY,
       'This agent is owned by another person; ask them or an organisation owner to change it.', parts)
-  if (isOrgOwner) return { canEdit: true, ownership, ...parts }
+  if (isOrgAdmin) return { canEdit: true, ownership, ...parts }
   const entitled = await isAgentAccessibleToActor(prisma as PrismaClient, {
     actionContext: { requestId: `agent-edit-authority:${agent.id}`, ...(actor.uoaIdentity ? { uoaIdentity: actor.uoaIdentity } : {}) },
     actor: { actorId: actor.userId, actorType: 'user', roles: ['member'] },

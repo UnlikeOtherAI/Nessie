@@ -44,10 +44,15 @@ const main = async () => {
     admin = await startAdmin()
     await runBrowserSuite(resolve(here, '../browser-cloud/run.mjs'), 'browser-cloud')
     await runBrowserSuite(resolve(here, '../app-connect-scope/run.mjs'), 'app-connect-scope')
-    // Two pure-fixture suites: each drives a real admin component over stubbed
-    // data, so they need the admin and nothing behind it.
+    // Three pure-fixture suites: each drives a real admin component or
+    // derivation over stubbed data, so they need the admin and nothing behind
+    // it.
     await runBrowserSuite(resolve(here, '../agent-proposal-card/run.mjs'), 'agent-proposal-card')
     await runBrowserSuite(resolve(here, '../channel-agent-controls/run.mjs'), 'channel-agent-controls')
+    await runBrowserSuite(
+      resolve(here, '../visibility-affordances/run.mjs'),
+      'visibility-affordances',
+    )
     // This is a stateful, provider-boundary fixture: it proves the member
     // management screen never sends an email or touches UOA while running CI.
     await runBrowserSuite(resolve(here, '../member-management/run.mjs'), 'member-management')

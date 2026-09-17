@@ -32,6 +32,10 @@ test('findOrCreateDmChannel creates a one-member self DM', async () => {
   let upsertArgs: ChannelUpsertArgs | null = null
 
   const prisma = {
+    // `mapChannelRecord` also answers `viewerIsMember` — the field the composer
+    // rides on — with a `channelMember.count`. A DM's participants are written
+    // by the upsert under test, so the viewer is in it.
+    channelMember: { count: async () => 1 },
     organizationMember: {
       count: async ({ where }: { where: { userId: { in: string[] } } }) =>
         where.userId.in.includes(userId) ? 1 : 0,
@@ -161,6 +165,8 @@ test('findOrCreateDmChannel migrates a legacy one-member self DM key', async () 
     },
     channelMember: {
       findUnique: async () => null,
+      // `mapChannelRecord` answers `viewerIsMember` with a count.
+      count: async () => 0,
     },
     channel: {
       findUnique: async () => channelRecord(legacyChannelId, legacyDmKey),
@@ -205,6 +211,10 @@ test('findOrCreateAgentDmChannel creates a one-user agent DM', async () => {
   const bindingRows: Array<{ agentId: string; channelId: string }> = []
 
   const prisma = {
+    // `mapChannelRecord` also answers `viewerIsMember` — the field the composer
+    // rides on — with a `channelMember.count`. A DM's participants are written
+    // by the upsert under test, so the viewer is in it.
+    channelMember: { count: async () => 1 },
     organizationMember: {
       count: async () => 1,
       // See the note above: `viewerCanManageAgents` reads the viewer's
@@ -329,6 +339,10 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
   } | null = null
 
   const prisma = {
+    // `mapChannelRecord` also answers `viewerIsMember` — the field the composer
+    // rides on — with a `channelMember.count`. A DM's participants are written
+    // by the upsert under test, so the viewer is in it.
+    channelMember: { count: async () => 1 },
     // See the note above: `viewerCanManageAgents` reads the viewer's
     // organisation role, and a missing delegate is a TypeError, not a false.
     organizationMember: {

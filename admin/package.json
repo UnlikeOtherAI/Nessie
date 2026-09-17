@@ -15,6 +15,7 @@
     "test:e2e:app-connect-scope": "node e2e/app-connect-scope/run.mjs",
     "test:e2e:agent-proposal-card": "node e2e/agent-proposal-card/run.mjs",
     "test:e2e:channel-agent-controls": "node e2e/channel-agent-controls/run.mjs",
+    "test:e2e:visibility-affordances": "node e2e/visibility-affordances/run.mjs",
     "test:e2e:connected-board-sources": "node e2e/connected-board-sources/run.mjs",
     "test:e2e:agent-conversations": "node --import tsx e2e/agent-conversations/run.mjs",
     "test:e2e:disclosure": "node --import tsx e2e/disclosure/run.mjs",

@@ -74,12 +74,24 @@ export const ChannelRecordSchema = z.object({
   teamId: TeamIdSchema,
   teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
-  unreadCount: z.number().int().nonnegative(),
-  // When the channel's default thread last received a message; null when it has
-  // none. Populated on every channel-record emission (list, single read, and
-  // post-mutation responses) so a cached list patched from a mutation response
-  // never loses a row's recency.
-  lastMessageAt: TimestampSchema.nullable(),
+  // How many messages in this room the viewer has not read, and when its
+  // default thread last received one (`null` when it has none).
+  //
+  // Both are **participation** metadata derived from message history, and both
+  // are therefore OPTIONAL rather than required: an organisation admin reading
+  // a room they are not a member of receives the full management record with
+  // these two fields ABSENT, because management is not participation
+  // (`docs/standards/team-model.md`) and they have not read a room they cannot
+  // open. Absent is the only honest answer — `0` and `null` would report "no
+  // unread, never used" about a room that is busy, which is worse than silence.
+  //
+  // Every producer that HAS the history still sets them on every emission
+  // (list, single read and post-mutation responses), so a cached list patched
+  // from a mutation response never loses a row's recency. A client treats
+  // `undefined` as "not applicable to me" and renders no badge and no
+  // timestamp, never as zero.
+  unreadCount: z.number().int().nonnegative().optional(),
+  lastMessageAt: TimestampSchema.nullable().optional(),
   // sp-channels: channel lifecycle fields
   topic: z.string().nullish(),
   description: z.string().nullish(),
@@ -97,20 +109,31 @@ export const ChannelRecordSchema = z.object({
   // Server-computed: may the viewer add or remove an AGENT in this channel
   // right now? Deliberately separate from `viewerCanManage`, because the two
   // authorities genuinely differ — adding a person is any member of the
-  // channel, while `POST/DELETE /api/agents/:agentId/bindings` require the
-  // organisation OWNER role on top of channel membership, and never on a
-  // system channel. The client drew the agent "Add" control unconditionally
-  // while the server refused every non-owner, which is the control-that-403s
-  // Rule zero names.
+  // channel, while `POST/DELETE /api/agents/:agentId/bindings` require an
+  // organisation OWNER or ADMIN on a standard, non-system, non-group-DM
+  // channel. The client drew the agent "Add" control unconditionally while the
+  // server refused every non-owner, which is the control-that-403s Rule zero
+  // names.
   //
-  // It mirrors the routes' pre-policy gate exactly: channel member, not a
-  // system channel, organisation owner. Those routes ALSO run
+  // Channel membership is deliberately NOT part of this answer. Management is
+  // not participation (`docs/standards/team-model.md` rule 3): an admin places
+  // an agent in a room they never joined, and doing so must not make them a
+  // member of it. Both producers of this field — `mapChannelRecord` and the
+  // batched `listChannelsForUser` — have to apply that same rule, because a
+  // client reads whichever one it happened to fetch.
+  //
+  // It mirrors the routes' pre-policy gate exactly: a standard non-system
+  // channel, and organisation owner or admin. Those routes ALSO run
   // `checkPolicy('agent','bind')`, which an organisation can retune per scope;
   // a tightened policy is a deliberate narrowing and surfaces as the refusal
   // it is, rather than by silently hiding a control from the people the
   // default rules allow. Required, not optional, for the same reason as
   // `viewerCanManage`.
   viewerCanManageAgents: z.boolean(),
+  // Viewer-relative: is the caller an explicit member of this channel?
+  // Required so the client can suppress the composer for non-members (public
+  // unjoined channels, protected channels, and admin management views).
+  viewerIsMember: z.boolean(),
   // The list read fills this viewer-relative projection. Other ChannelRecord
   // producers omit it and clients refresh their channel-list entry after a
   // mutation rather than treating a generic record as an authority.
@@ -134,6 +157,9 @@ export const ProjectRecordSchema = z.object({
   // Optional on the wire so an older API build that omits it still parses.
   description: z.string().nullable().optional(),
   organizationId: OrganizationIdSchema,
+  // Optional on the wire so an older API build that omits it still parses.
+  // Present for projects read through routes that know the viewer.
+  visibility: z.enum(['public', 'protected']).optional(),
   memberCount: z.number().int().nonnegative(),
   teamCount: z.number().int().nonnegative().optional(),
   channelCount: z.number().int().nonnegative().optional(),
@@ -171,6 +197,7 @@ export const ProjectDirectoryEntrySchema = z.discriminatedUnion('access', [
     id: ProjectIdSchema,
     name: NonEmptyStringSchema,
     description: z.string().nullable(),
+    visibility: z.enum(['public', 'protected']),
     members: z.array(ProjectDirectoryMemberSchema),
   }).strict(),
   z.object({
@@ -178,12 +205,39 @@ export const ProjectDirectoryEntrySchema = z.discriminatedUnion('access', [
     id: ProjectIdSchema,
     name: NonEmptyStringSchema,
     description: z.string().nullable(),
+    visibility: z.enum(['public', 'protected']),
     members: z.array(ProjectDirectoryMemberSchema),
     project: ProjectRecordSchema,
     viewerIsMember: z.boolean(),
   }).strict(),
 ])
 export type ProjectDirectoryEntry = z.infer<typeof ProjectDirectoryEntrySchema>
+
+/**
+ * One row of a channel directory or single-channel read for a non-member.
+ * Matches the project-directory pattern: a non-member of a protected standard
+ * channel sees name, description, visibility and members and nothing else.
+ * A member (or an admin who can manage the channel) receives the full
+ * ChannelRecord instead.
+ */
+export const ChannelDirectoryEntrySchema = z.discriminatedUnion('access', [
+  z.object({
+    access: z.literal('limited'),
+    id: ChannelIdSchema,
+    label: NonEmptyStringSchema,
+    description: z.string().nullable(),
+    visibility: z.enum(['public', 'protected']),
+    members: z.array(ProjectDirectoryMemberSchema),
+    projectName: NonEmptyStringSchema,
+    teamName: NonEmptyStringSchema,
+  }).strict(),
+  z.object({
+    access: z.literal('full'),
+    channel: ChannelRecordSchema,
+    viewerIsMember: z.boolean(),
+  }).strict(),
+])
+export type ChannelDirectoryEntry = z.infer<typeof ChannelDirectoryEntrySchema>
 
 export const TeamCallProviderSchema = z.enum([
   'google_meet',

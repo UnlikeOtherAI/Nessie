@@ -2,19 +2,21 @@ import type { FastifyInstance } from 'fastify'
 import {
   createProjectForUser,
   deleteProject,
-  listProjectDirectory,
-  listProjectsForUser,
   mapProjectRecord,
   projectCountsInclude,
   ProjectValidationError,
 } from '@nessie/team-admin'
 
-import { ProjectMemberRecordSchema, ProjectRecordSchema, UpdateProjectBodySchema } from '../contracts/team.js'
-import { isAdminActor, ProjectDirectoryEntrySchema } from '@nessie/schemas'
-import { z } from 'zod'
+import {
+  CreateProjectBodySchema,
+  ProjectMemberRecordSchema,
+  ProjectRecordSchema,
+  UpdateProjectBodySchema,
+} from '../contracts/team.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { canAccessAttachment } from '../services/attachments.js'
+import { registerProjectReadRoutes } from './project-reads.js'
 import type { RouteDeps } from './types.js'
 
 const toProjectRecord = mapProjectRecord
@@ -61,63 +63,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     isProjectAccessibleToActor,
   } = deps
 
-  app.get('/api/projects', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
+  registerProjectReadRoutes(app, deps)
 
-    // Anybody but an organisation owner or admin only sees the projects they
-    // are a member of. The shared reader is the one the `project_list` tool
-    // asks too.
-    const projects = await listProjectsForUser(prisma, {
-      isOrganizationAdmin: isAdminActor(actorContext),
-      organizationId: actorContext.tenant.organizationId,
-      userId: actorContext.actor.actorId,
-    })
-
-    return createApiResponse(ProjectRecordSchema.array().parse(projects))
-  })
-
-  // Every live project in the organisation, shaped by role: outsiders see a
-  // project's name, description and members only, so they know it exists and
-  // whom to ask; members and organisation owners/admins get the full record.
-  // Registered before `/:projectId` so the literal segment is not read as an id.
-  app.get('/api/projects/directory', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const entries = await listProjectDirectory(prisma, {
-      isOrganizationAdmin: isAdminActor(actorContext),
-      organizationId: actorContext.tenant.organizationId,
-      userId: actorContext.actor.actorId,
-    })
-    return createApiResponse(ProjectDirectoryEntrySchema.array().parse(entries))
-  })
-
-  app.get('/api/projects/:projectId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const { projectId } = request.params as { projectId: string }
-    if (!(await isProjectAccessibleToActor(actorContext, projectId))) {
-      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
-      return reply
-    }
-    const project = await prisma.project.findFirst({
-      where: {
-        channelRoot: false,
-        deletedAt: null,
-        id: projectId,
-        organizationId: actorContext.tenant.organizationId,
-      },
-      include: projectCountsInclude,
-    })
-    if (!project) {
-      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
-      return reply
-    }
-
-    return createApiResponse(ProjectRecordSchema.parse(toProjectRecord(project)))
-  })
 
   app.get('/api/projects/:projectId/members', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -162,7 +109,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    const body = z.object({ name: z.string().min(1), teamId: z.string().uuid() }).safeParse(request.body)
+    const body = CreateProjectBodySchema.safeParse(request.body)
     if (!body.success) {
       sendApiError(reply, 400, 'PROJECT_TEAM_REQUIRED', 'A project name and an existing team are required')
       return reply
@@ -177,6 +124,9 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         organizationId: actorContext.tenant.organizationId,
         teamId: body.data.teamId,
         userId: actorContext.actor.actorId,
+        // Defaulting is `createProjectForUser`'s, not the route's, so the
+        // Agent Designer's `project_create` tool lands on the same `public`.
+        ...(body.data.visibility === undefined ? {} : { visibility: body.data.visibility }),
       })
     } catch (error) {
       if (error instanceof ProjectValidationError) {
@@ -278,6 +228,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description || null } : {}),
+        ...(body.visibility !== undefined ? { visibility: body.visibility } : {}),
         ...avatarIdentity,
       },
       include: projectCountsInclude,

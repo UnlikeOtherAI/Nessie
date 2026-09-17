@@ -8,6 +8,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { isReactNativeWebView } from '../../lib/native-shell';
 import { channelHashClassName, projectSelectionClassName, renderUnreadCount } from './SidebarRow';
+import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -107,12 +108,12 @@ export const SidebarStarredSection = ({
             <button
               aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
               key={`starred-ch-${channel.id}`}
-              className={`admin-sb-item group ${channel.unreadCount > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
+              className={`admin-sb-item group ${(channel.unreadCount ?? 0) > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
               onClick={() => onNavigateChannel(channel.id)}
               type="button"
               {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
             >
-              <span className={channelHashClassName}>#</span>
+              <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
               <GroupDmSidebarLabel label={channel.label} />
               {renderUnreadCount(channel.unreadCount)}
               <span
@@ -130,7 +131,7 @@ export const SidebarStarredSection = ({
         if (item.type === 'project') {
           const { channels: starredProjectChannels, project } = item;
           const unreadCount = starredProjectChannels.reduce(
-            (total: number, channel: ChannelRecord) => total + channel.unreadCount,
+            (total: number, channel: ChannelRecord) => total + (channel.unreadCount ?? 0),
             0,
           );
           return (
@@ -175,14 +176,14 @@ export const SidebarStarredSection = ({
                   key={`starred-prj-${project.id}-ch-${channel.id}`}
                   className={[
                     'admin-sb-item sidebar-child group',
-                    channel.unreadCount > 0 ? 'unread' : '',
+                    (channel.unreadCount ?? 0) > 0 ? 'unread' : '',
                     channel.id === currentChannelId ? 'active' : '',
                   ].join(' ')}
                   onClick={() => onNavigateChannel(channel.id)}
                   type="button"
                   {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
                 >
-                  <span className={channelHashClassName}>#</span>
+                  <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
                   <GroupDmSidebarLabel label={channel.label} />
                   {renderUnreadCount(channel.unreadCount)}
                   <span

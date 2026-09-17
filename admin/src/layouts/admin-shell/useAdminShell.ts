@@ -202,7 +202,9 @@ export const useAdminShell = () => {
   }, [favoriteKeys, preferenceKeys, setFavorite, togglePreferenceStar]);
 
   const unreadCountByChannelId = useMemo(
-    () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
+    // A record without `unreadCount` was built for somebody outside the room,
+    // so there is nothing unread for them and the map reads zero.
+    () => new Map(channels.map((channel) => [channel.id, channel.unreadCount ?? 0])),
     [channels],
   );
 

@@ -1,6 +1,7 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { ChannelGlyph } from '../../components/shared/RoomVisibilityGlyph';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
@@ -58,14 +59,14 @@ export const SidebarChannelsSection = ({
             key={channel.id}
             className={[
               'admin-sb-item group',
-              channel.unreadCount > 0 ? 'unread' : '',
+              (channel.unreadCount ?? 0) > 0 ? 'unread' : '',
               channel.id === currentChannelId ? 'active' : '',
             ].join(' ')}
             onClick={() => onNavigateChannel(channel.id)}
             type="button"
             {...prewarmRowHandlers(prewarm, `/channels/${channel.id}`)}
           >
-            <span className={channelHashClassName}>#</span>
+            <ChannelGlyph className={channelHashClassName} visibility={channel.visibility} />
             <GroupDmSidebarLabel label={channel.label} />
             {renderUnreadCount(channel.unreadCount)}
             <span

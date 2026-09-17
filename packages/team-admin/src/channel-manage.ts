@@ -34,6 +34,12 @@ export const updateChannel = async (
     label?: string
     topic?: string | null
     description?: string | null
+    /**
+     * `public` or `protected` only. A DM or system surface keeps the stored
+     * `private` the database CHECK constraints require, and the guard below
+     * refuses to move one — a room's KIND is not an editable setting.
+     */
+    visibility?: 'public' | 'protected'
   },
 ): Promise<ChannelRecord | null> => {
   const manage = await canModifyChannel(prisma, input)
@@ -63,6 +69,18 @@ export const updateChannel = async (
   }
   if (input.description !== undefined) {
     data.description = input.description
+  }
+  if (input.visibility !== undefined) {
+    // Only a standard room has a visibility a person chooses. `canModifyChannel`
+    // already refuses system channels outright and admits a DM only to its
+    // participants, so without this a participant could flip their own direct
+    // message to `public` — which the `channels_personal_assistant_surface_chk`
+    // CHECK constraint would reject as a raw 500, and which is not a thing a
+    // person should be able to ask for in the first place.
+    if (manage.channel.type !== 'standard') {
+      return null
+    }
+    data.visibility = input.visibility
   }
 
   try {

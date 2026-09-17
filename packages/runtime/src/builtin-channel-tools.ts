@@ -124,8 +124,8 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Join Channel',
     personalAssistantOnly: true,
     description:
-      'Join a public channel in the current organization. Private and ' +
-      'protected channels require an explicit invite and cannot be joined.',
+      'Join a public channel in the current organization. Protected channels ' +
+      'require an explicit invite and cannot be joined.',
     parameters: {
       type: 'object',
       properties: {
@@ -161,12 +161,14 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         visibility: {
           type: 'string',
-          enum: ['public', 'protected', 'private'],
+          enum: ['public', 'protected'],
           description:
-            'public: any member can find and join. protected/private: invite '
-            + 'only, and the person you are acting for is its sole member. '
-            + 'Always set this from what the person actually asked for — who '
-            + 'else should see the channel is not something to assume.',
+            'public: any member can find, read and join. protected: it is '
+            + 'listed with a lock and outsiders see only its name and members, '
+            + 'so getting in is by invitation and the person you are acting '
+            + 'for is its sole member. Always set this from what the person '
+            + 'actually asked for — who else should see the channel is not '
+            + 'something to assume.',
         },
         teamId: {
           type: 'string',

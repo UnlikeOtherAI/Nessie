@@ -314,12 +314,34 @@ runDatabaseTest('the project list is scoped by entitlement and by organisation',
   assert.ok(ownerIds.has(memberProject.id))
   assert.ok(!ownerIds.has(seeded.otherProjectId), 'never another organisation')
 
+  // A project is created `public`, and a public project is listed for every
+  // member of the organisation — the deliberate widening in
+  // `docs/plans/2026-09-16-project-and-channel-visibility.md`. Membership is
+  // what a PROTECTED project takes, so both halves are pinned: the owner's
+  // project is listed while public, and gone the moment it is closed.
+  const listedWhilePublic = await listProjectsForUser(prisma, {
+    isOrganizationAdmin: false,
+    organizationId: seeded.organizationId,
+    userId: seeded.memberId,
+  })
+  const publicIds = new Set(listedWhilePublic.map((project) => project.id))
+  assert.ok(publicIds.has(memberProject.id), 'their own project')
+  assert.ok(publicIds.has(ownerProject.id), 'somebody else\'s public project')
+  assert.ok(!publicIds.has(seeded.otherProjectId), 'never another organisation')
+
+  await prisma.project.update({
+    where: { id: ownerProject.id },
+    data: { visibility: 'protected' },
+  })
   const asMember = await listProjectsForUser(prisma, {
     isOrganizationAdmin: false,
     organizationId: seeded.organizationId,
     userId: seeded.memberId,
   })
-  assert.deepEqual(asMember.map((project) => project.id), [memberProject.id])
+  const memberIds = new Set(asMember.map((project) => project.id))
+  assert.ok(memberIds.has(memberProject.id))
+  assert.ok(!memberIds.has(ownerProject.id), 'a protected project they are not in')
+  assert.ok(!memberIds.has(seeded.otherProjectId), 'never another organisation')
 
   // Teams narrow to the projects handed in, and never leave the organisation.
   const team = await createTeamForUser(prisma, {

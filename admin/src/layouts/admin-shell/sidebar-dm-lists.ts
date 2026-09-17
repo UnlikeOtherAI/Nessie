@@ -73,7 +73,9 @@ export const isListedPersonDm = (
   { currentChannelId, now = Date.now() }: PersonDmVisibility = {},
 ): boolean => {
   if (channel.id === currentChannelId) return true
-  if (channel.unreadCount > 0) return true
+  // Absent means the record was built for somebody who is not in the room
+  // (an admin's management view), so there is nothing unread for them.
+  if ((channel.unreadCount ?? 0) > 0) return true
 
   const lastMessageAt = channel.lastMessageAt ? Date.parse(channel.lastMessageAt) : Number.NaN
   // A DM nobody has said anything in has no age to be inside the window, which

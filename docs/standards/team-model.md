@@ -173,16 +173,37 @@ service and assistant tool asks —
    `ProjectMember.role` and `ChannelMember.role` still exist and are still
    written (`owner` for the creator) but **grant nothing**; do not gate a new
    decision on them. Dropping the columns is a separate migration.
-3. **Only an organisation owner or admin may view and change a project or a
-   channel they are not a member of** — and for a channel, only one they can
-   already see. An organisation owner or admin outside a **private or
-   protected** channel can neither read it, change it, nor add themselves to it
-   (the Slack/Teams rule); `canModifyChannel` refuses and the member routes
-   answer `channel_not_found`. A **public** channel they may manage without
-   joining. A team role is not an arm: a team owner/admin outside a channel
-   cannot change it. A plain member outside a project cannot see it; outside a
-   channel they keep exactly the read access they had (a public channel stays
-   readable and joinable) and change nothing.
+3. **Management is not participation.** An organisation owner or admin manages
+   any **standard, non-system, non-group-DM** channel and any project in their
+   organisation — protected ones they never joined included — and **may add
+   themselves to one**. `canModifyChannel` admits them; so do the member
+   routes, `canManageChannelAgents` and the agent-binding routes, none of which
+   ask for membership any more.
+
+   This **reverses the Slack/Teams rule** this document carried until
+   2026-09-16, under which an administrator outside a closed channel could
+   neither read it, change it, nor let themselves in. The reversal is a settled
+   product decision, not a drift: an admin is expected to have owner-level
+   management reach over anything they can see, and the previous rule made the
+   one control they most needed — placing an agent in a room — unreachable
+   without first joining, which management must never silently do.
+
+   What the reversal does **not** widen is participation. An admin who is not a
+   member gets **no composer** (`ChannelRoomControls.canPost` is membership and
+   nothing else), and their channel record omits `lastMessageAt` and
+   `unreadCount`, which are derived from message history they have not read.
+   They administer the room without being able to speak in it, and no
+   management action writes them a `ChannelMember` row as a side effect.
+
+   Two things stay closed to every role. A **direct message**, group or not, is
+   reachable only by its participants. A **system channel** is
+   lifecycle-protected and refused for everybody. A **team** role is still not
+   an arm: a team owner/admin outside a channel changes nothing.
+
+   A plain organisation member outside a project or channel reads what its
+   visibility allows — a **public** one in full, a **protected** one as name,
+   description and members only — and changes nothing. See "What a person
+   outside a project may see" below.
 
 **A message belongs to its author.** Only the author deletes a message (a soft
 delete, `softDeleteMessage`); a fellow channel member, an organisation owner or
@@ -198,11 +219,22 @@ takes effect on the next request. Only callers with no request role — the
 worker's assistant tools, `resolveActingMember` — still read the
 `OrganizationMember` row, which remains the migration gap described below.
 
-`canModifyProject` is `isProjectAccessibleToUser`: under rule 2 the people who
-may change a project are exactly the people who may open it, so project read
-entitlement widened to organisation admins (it was owner-only) and a refusal to
-change a project is the same `404 PROJECT_NOT_FOUND` the read gives
-(`requireProjectModifier`). `canModifyChannel` returns the channel row with the
+**Reading a project is now wider than changing it, and the two predicates are
+deliberately separate.** `canModifyProject` keeps its definition — a project
+member, or an organisation owner or admin — and still answers `404
+PROJECT_NOT_FOUND` on refusal (`requireProjectModifier`), because somebody who
+cannot change a project must not learn from the status code whether they could
+have. Every write route keeps taking it unchanged: boards, columns, custom
+fields, sources, iterations and watchers.
+
+Reading is `resolveProjectAccess` (`@nessie/team-admin`), which answers
+`'full'` for a member, an org owner/admin, **or any organisation member looking
+at a `public` project**; `'limited'` for an organisation member opening a
+`protected` project they are not in; and `'none'` otherwise. The two must not be
+collapsed back together: widening the read to public projects would, through a
+shared predicate, hand every organisation member write access to every board and
+field in the organisation. They were identical until 2026-09-16 precisely
+because read and modify coincided, and they no longer do. `canModifyChannel` returns the channel row with the
 answer; a refusal is a 404 to somebody who cannot see the channel and a 403 to
 somebody who can. The same predicate drives `ChannelRecord.viewerCanManage`,
 renaming another person's agent conversation in the room, and removing another
@@ -270,22 +302,52 @@ of a project either: any member may remove any member, themselves included.
 
 ### What a person outside a project may see
 
+A project carries a `visibility` a person chooses when creating it —
+`public` or `protected`. `private` is not among them: it exists in
+`ChannelVisibility` for direct messages and system surfaces, and is never
+user-selectable, never offered in a create form, and never returned by a read
+that shapes a room for a non-member.
+
 Any active organisation member may read `GET /api/projects/directory`
 (`listProjectDirectory`), reachable from the Projects sidebar as "Browse all
-projects". It lists every live project, shaped by role:
+projects". It lists live projects, shaped by role:
 
-- For a project they are not in, **only its name, description and members**
-  (id, display name, avatar sources) — `access: 'limited'`. No counts, avatar,
-  boards, tasks, fields, sources, iterations, channels, settings or watchers.
-  The row is built field by field and parsed through a `.strict()` schema, so a
-  field added to the project read cannot reach an outsider by default.
+- A **protected** project the viewer is not in is **absent** for them. It is
+  discoverable by direct URL (and, when the search endpoint ships, by search)
+  rather than listed — "not in the browse listing" is the rule, not
+  "invisible".
+- For a project they are not in, **only its name, description, visibility and
+  members** (id, display name, avatar sources) — `access: 'limited'`. No
+  counts, avatar, boards, tasks, fields, sources, iterations, channels,
+  settings or watchers. The row is built field by field and parsed through a
+  `.strict()` schema, so a field added to the project read cannot reach an
+  outsider by default.
 - A member of the project, or an organisation owner or admin, gets
   `access: 'full'` with the ordinary project record.
 
-The directory is read-only: it carries no modify controls, and the full project
+`GET /api/projects/:projectId` is the doorway a protected project is opened
+through, and answers the same discriminated union: `full` for a member, an
+org owner/admin, or anyone looking at a public project; `limited` for an
+organisation member opening a protected project they are not in; `404` for
+everybody else.
+
+**The lock is derived, never transmitted.** There is no `locked` field on the
+wire. A client draws a lock exactly when `visibility === 'protected'`, through
+one shared marker (`RoomVisibilityGlyph`), so the five surfaces that show it
+cannot disagree.
+
+**Every existing project was backfilled to `public`** by
+`20260916130000_project_and_channel_visibility`, and every existing *standard*
+channel stored `private` was moved to `protected` by the same migration. DM and
+system channels keep `private`, which six migrations' CHECK constraints and two
+PL/pgSQL triggers require. The project backfill is a deliberate disclosure
+expansion: on deploy day every organisation member gained the full record of
+every existing project.
+
+The directory is read-only: it carries no modify controls, and the project write
 routes still answer an outsider `404 PROJECT_NOT_FOUND`. `Project.description`
 is written by the project's members through `PATCH /api/projects/:projectId`
-(Edit project).
+(Edit project), which also accepts `visibility`.
 
 **Team roles reach no channel.** A team owner or admin outside a channel has no
 arm into it; the only place a team role still counts is among the participants

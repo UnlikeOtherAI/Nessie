@@ -19,6 +19,9 @@ const spaceId = '00000000-0000-4000-8000-000000000006'
 const privateVisibleAgentWhere = (viewerId: string) => ({
   organizationId,
   systemManaged: false,
+  // A soft-deleted agent is invisible to everybody, including its owner: the
+  // row survives for audit history and nothing else.
+  deletedAt: null,
   AND: [
     {
       OR: [

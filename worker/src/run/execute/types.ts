@@ -60,6 +60,13 @@ export type ExecutionDependencies = {
 export type RunContext = {
   agent: {
     agentKind: 'personal_assistant' | 'shared'
+    /**
+     * `Agent.deletedAt`. Optional so a fixture that predates the soft delete
+     * still compiles; absent and `null` both mean live. Run admission refuses a
+     * non-null value — a deleted agent's row still exists, so nothing else
+     * would stop an already-queued job from waking it.
+     */
+    deletedAt?: Date | null
     visibility?: 'private' | 'team'
     ownerUserId?: string | null
     effort: AgentEffort

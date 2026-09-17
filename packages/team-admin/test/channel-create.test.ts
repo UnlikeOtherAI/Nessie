@@ -86,6 +86,10 @@ const createStandalonePrisma = (slugTaken = false) => {
       // The creator is written as the channel owner (asserted below), so the
       // membership the manage predicate reads back is that owner row.
       findUnique: async () => ({ role: 'owner' }),
+      // `mapChannelRecord` also answers `viewerIsMember` for the composer, and
+      // counts rather than re-reading the row above. The creator is in the
+      // channel they just made, so this is one.
+      count: async () => 1,
     },
     organizationMember: {
       findFirst: async () => ({ role: 'member' }),

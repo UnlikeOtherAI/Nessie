@@ -229,6 +229,9 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
         viewerCanManageAgents: false,
+        // Required, and this stub stands in for the assistant's own home, whose
+        // loader only returns a record for a member.
+        viewerIsMember: true,
         updatedAt: now.toISOString(),
         visibility: 'private',
       },

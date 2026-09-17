@@ -56,6 +56,7 @@ export const buildVisibleAgentWhere = (
 ): Prisma.AgentWhereInput => ({
   organizationId: input.organizationId,
   systemManaged: false,
+  deletedAt: null,
   AND: [
     {
       OR: [

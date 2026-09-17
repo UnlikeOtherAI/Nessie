@@ -380,11 +380,26 @@ runDatabaseTest('project_list is scoped to the caller and their organisation', a
     'projectId',
   )
 
+  // A project is created `public`, and a public project is readable by every
+  // member of the organisation — the deliberate disclosure widening in
+  // `docs/plans/2026-09-16-project-and-channel-visibility.md`. Membership is
+  // what a PROTECTED project takes, so both halves are pinned here: the same
+  // project is listed while public and gone once it is protected.
   const memberContext = buildContext(prisma, team, team.memberId)
+  const asMemberWhilePublic = await runProjectListTool(memberContext, {})
+  assert.ok(
+    asMemberWhilePublic.outputPreview.includes(ownerProject),
+    'a public project is listed for every member of the organisation',
+  )
+
+  await prisma.project.update({
+    where: { id: ownerProject },
+    data: { visibility: 'protected' },
+  })
   const asMember = await runProjectListTool(memberContext, {})
   assert.ok(
     !asMember.outputPreview.includes(ownerProject),
-    'a member never sees a project they do not belong to',
+    'a member never sees a PROTECTED project they do not belong to',
   )
 
   const asOwner = await runProjectListTool(ownerContext, {})

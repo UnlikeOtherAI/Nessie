@@ -391,6 +391,10 @@ export const loadRunContext = async (
       agent: {
         select: {
           agentKind: true,
+          // A soft-deleted agent must not start work. Selected here so run
+          // admission can refuse one without a second query — see the guard in
+          // `run-job.ts`, which cancels the run quietly rather than failing it.
+          deletedAt: true,
           effort: true,
           executionMode: true,
           id: true,

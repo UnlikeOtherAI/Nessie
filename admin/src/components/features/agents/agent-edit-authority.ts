@@ -1,5 +1,5 @@
 import type { AgentRecord } from '../../../lib/api-client'
-import { isOwnerSession } from '../../../facades/auth/hooks'
+import { isOrganizationAdminSession, isOwnerSession } from '../../../facades/auth/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 
 /**
@@ -24,7 +24,16 @@ export const agentOwnershipState = (agent: AgentRecord): AgentOwnershipState => 
 }
 
 export type AgentEditViewer = {
+  /**
+   * Owner, and only owner. Still narrower than `isOrgAdmin` and not a duplicate
+   * of it: the server keeps ownership transfer and the to-do toggle
+   * owner-only (`agent-edit-authority.ts`, `changesOwnership` / `changesTodos`)
+   * while ordinary editing moved to owner-or-admin. Both flags are carried so
+   * each control can ask the question the route actually asks.
+   */
   isOrgOwner: boolean
+  /** Owner **or** admin — what editing and deleting an agent now take. */
+  isOrgAdmin: boolean
   userId: string | null
 }
 
@@ -42,7 +51,7 @@ export const canEditAgentRecord = (
     case 'private':
       return Boolean(viewer.userId) && agent.ownerUserId === viewer.userId
     case 'person_owned':
-      return viewer.isOrgOwner || (Boolean(viewer.userId) && agent.ownerUserId === viewer.userId)
+      return viewer.isOrgAdmin || (Boolean(viewer.userId) && agent.ownerUserId === viewer.userId)
     // Team-owned: any entitled member. Seeing it here is the entitlement.
     case 'team_owned':
       return true
@@ -68,8 +77,22 @@ export const canChangeAgentOwner = (
 
 export const useAgentEditViewer = (): AgentEditViewer => {
   const { me } = useAuthSession()
-  return { isOrgOwner: isOwnerSession(me), userId: me?.user.id ?? null }
+  return {
+    isOrgAdmin: isOrganizationAdminSession(me),
+    isOrgOwner: isOwnerSession(me),
+    userId: me?.user.id ?? null,
+  }
 }
+
+/**
+ * Deleting an agent takes exactly the authority editing it takes — the route
+ * resolves both through the same `resolveAgentEditAuthority` — with one extra
+ * condition the delete adds: a system-managed agent is never deletable, which
+ * `agentOwnershipState` already reports as `'system'` and `canEditAgentRecord`
+ * already refuses.
+ */
+export const useCanDeleteAgent = (agent: AgentRecord | null | undefined): boolean =>
+  useCanEditAgent(agent)
 
 export const useCanEditAgent = (agent: AgentRecord | null | undefined): boolean => {
   const viewer = useAgentEditViewer()

@@ -68,7 +68,10 @@ const ChannelCreateInputSchema = z.object({
   label: z.string().min(1, 'label is required.'),
   projectId: z.string().uuid(),
   teamId: z.string().uuid(),
-  visibility: z.enum(['public', 'protected', 'private']).optional(),
+  // `private` is not offered to a model. It is the stored value for DMs and
+  // system surfaces, not a choice: a person who wants "not everyone" means
+  // `protected`, which has a member list somebody can ask to join.
+  visibility: z.enum(['public', 'protected']).optional(),
 })
 
 /**
@@ -85,7 +88,7 @@ const ChannelCreateInputSchema = z.object({
  */
 const resolveNewChannelVisibility = (
   context: BuiltinToolRuntimeContext,
-  requested: 'public' | 'protected' | 'private' | undefined,
+  requested: 'public' | 'protected' | undefined,
 ): 'public' | 'protected' | 'private' => {
   if (requested) return requested
   return context.channel.systemChannelType === 'system_agent' ? 'private' : 'public'

@@ -154,6 +154,9 @@ const createHarness = (options: HarnessOptions = {}) => {
         // every viewer on one, so the record carries the decision, not a guess.
         viewerCanManage: false,
         viewerCanManageAgents: false,
+        // Required, and this stub stands in for the assistant's own home, whose
+        // loader only returns a record for a member.
+        viewerIsMember: true,
         updatedAt: '2026-07-19T10:00:00.000Z',
         visibility: 'private',
       },
