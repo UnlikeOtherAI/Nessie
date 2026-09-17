@@ -12,6 +12,15 @@ export const teamAvatarPath = (teamId?: string | null): string | null => {
   return teamId ? `/api/teams/${encodeURIComponent(teamId)}/avatar` : TEAM_AVATAR_PATH
 }
 
+// The relay lane carries its cache-buster as `?v=N`; the public UOA directory
+// URL needs the same treatment or the browser serves the pre-upload picture
+// indefinitely. That URL already carries a query string (`?size=128`), so the
+// buster must append with `&` — a second `?` would bury the size parameter.
+export const avatarImageUrlWithRevision = (imageUrl: string, revision: number): string => {
+  if (revision <= 0) return imageUrl
+  return `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}v=${revision}`
+}
+
 type TeamAvatarProps = {
   // Falls back to these initials while loading, on failure, and for a team
   // with no UnlikeOtherAI counterpart (the relay answers 404).
@@ -55,7 +64,7 @@ export const TeamAvatar = ({
   // Prefer the membership-scoped relay when it exists so an avatar changed in
   // Nessie can be cache-busted immediately. The public UOA URL fills the gap
   // for authorized teams that do not have a local Team row yet.
-  const url = relayedUrl ?? imageUrl ?? null
+  const url = relayedUrl ?? (imageUrl ? avatarImageUrlWithRevision(imageUrl, revision) : null)
 
   return (
     <IdentityTile
