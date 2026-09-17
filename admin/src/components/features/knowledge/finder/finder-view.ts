@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import type { SetURLSearchParams } from 'react-router-dom'
 import { faColumns, faList, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
-import { getCookie, setCookie } from '../../../../lib/storage'
+import { getCookie, getStoredJson, setStoredJson } from '../../../../lib/storage'
+import type { ColumnResizeConfig } from '../../../shared/column-browser/ColumnBrowserColumn'
 
 /**
  * What the URL says the browser is showing: which view, and which folder.
@@ -193,15 +194,20 @@ export const finderBarTitle = ({
 }
 
 
-// ── Column width ────────────────────────────────────────────────────────────
+// ── Column widths ───────────────────────────────────────────────────────────
 //
-// The other half of "what the browser is showing", and persisted the same way:
-// one width for every column, in a cookie, so a person who widened the columns
-// on Monday finds them wide on Tuesday. It lives here rather than in
-// `DocumentsFinder` because it is view state and nothing else, and it is read
-// back through the clamp so a hand-edited cookie cannot produce a 4px column.
+// The other half of "what the browser is showing". Every separator is
+// resizable and each column's width is its own, keyed by the column's *slot*
+// — root, the virtual listing, depth:0, depth:1, … — never by page or space
+// id: "the second column is too narrow" is about the position, and a map that
+// grew a key per folder anybody ever opened would be a leak. The set is one
+// JSON object in localStorage; the retired single-width cookie is read once
+// as the starting width for people who already sized their columns, then the
+// store owns it. Every value comes back through the clamp, so a hand-edited
+// store cannot produce a 4px column.
 
 export const FINDER_COLUMN_WIDTH_COOKIE = 'knowledgeColumnWidth'
+export const FINDER_COLUMN_WIDTHS_KEY = 'nessie.admin.knowledgeColumnWidths'
 export const MIN_COLUMN_WIDTH = 300
 export const MAX_COLUMN_WIDTH = 720
 export const DEFAULT_COLUMN_WIDTH = 320
@@ -209,19 +215,88 @@ export const DEFAULT_COLUMN_WIDTH = 320
 export const clampColumnWidth = (value: number): number =>
   Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, value))
 
-const readStoredWidth = (): number => {
+/** The slots a width can be stored under: a position, never a folder's id. */
+export type FinderColumnSlot = 'root' | 'virtual' | `depth:${number}`
+
+export type FinderColumnWidths = Partial<Record<FinderColumnSlot, number>>
+
+const FINDER_COLUMN_SLOT = /^(?:root|virtual|depth:\d+)$/
+
+/** The parsed store, with junk keys and out-of-range values already dropped. */
+export const parseFinderColumnWidths = (parsed: unknown): FinderColumnWidths => {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  const widths: FinderColumnWidths = {}
+  for (const [slot, value] of Object.entries(parsed)) {
+    if (!FINDER_COLUMN_SLOT.test(slot)) continue
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
+    widths[slot as FinderColumnSlot] = clampColumnWidth(value)
+  }
+  return widths
+}
+
+/** The stored map, tolerating a blocked store and a hand-edited one. */
+export const readFinderColumnWidths = (): FinderColumnWidths =>
+  parseFinderColumnWidths(getStoredJson(FINDER_COLUMN_WIDTHS_KEY))
+
+/** One slot's width merged into the map, for the commit write. */
+export const withFinderColumnWidth = (
+  widths: FinderColumnWidths,
+  slot: FinderColumnSlot,
+  width: number,
+): FinderColumnWidths => ({ ...widths, [slot]: clampColumnWidth(width) })
+
+/**
+ * What a slot renders at: its live (not yet committed) drag width, else its
+ * stored width, else the legacy cookie's single width — the migration's
+ * starting point — which itself defaults to `DEFAULT_COLUMN_WIDTH`.
+ */
+export const resolveFinderColumnWidth = (
+  stored: FinderColumnWidths,
+  live: FinderColumnWidths,
+  legacyWidth: number,
+  slot: FinderColumnSlot,
+): number => live[slot] ?? stored[slot] ?? legacyWidth
+
+/** The retired single-width cookie, kept only as the migration's starting point. */
+const readLegacyColumnWidth = (): number => {
   const stored = Number(getCookie(FINDER_COLUMN_WIDTH_COOKIE))
   return Number.isFinite(stored) && stored > 0 ? clampColumnWidth(stored) : DEFAULT_COLUMN_WIDTH
 }
 
-/** The live width, and the resize handle's contract, for every column. */
-export const useFinderColumnWidth = () => {
-  const [width, setWidth] = useState(readStoredWidth)
-  // Committed on release, not on every pixel: a cookie write per mousemove is
-  // a cookie write per mousemove.
-  const onResize = useCallback((next: number, commit: boolean) => {
-    setWidth(next)
-    if (commit) setCookie(FINDER_COLUMN_WIDTH_COOKIE, String(next))
-  }, [])
-  return { columnWidth: width, resize: { max: MAX_COLUMN_WIDTH, min: MIN_COLUMN_WIDTH, onResize, width } }
+/** Per-slot widths, and each column's resize-handle contract. */
+export const useFinderColumnWidths = () => {
+  // The persisted half is read once; from the first drag the live map wins,
+  // and a commit re-reads the store before writing so two tabs cannot
+  // clobber each other's other slots.
+  const [stored] = useState(readFinderColumnWidths)
+  const [legacyWidth] = useState(readLegacyColumnWidth)
+  const [live, setLive] = useState<FinderColumnWidths>({})
+
+  const widthFor = useCallback(
+    (slot: FinderColumnSlot): number =>
+      resolveFinderColumnWidth(stored, live, legacyWidth, slot),
+    [legacyWidth, live, stored],
+  )
+
+  const resizeFor = useCallback(
+    (slot: FinderColumnSlot): ColumnResizeConfig => ({
+      max: MAX_COLUMN_WIDTH,
+      min: MIN_COLUMN_WIDTH,
+      // Committed on release, not on every pixel: a localStorage write per
+      // mousemove is a localStorage write per mousemove.
+      onResize: (next, commit) => {
+        setLive((current) => ({ ...current, [slot]: next }))
+        if (commit) {
+          setStoredJson(
+            FINDER_COLUMN_WIDTHS_KEY,
+            withFinderColumnWidth(readFinderColumnWidths(), slot, next),
+          )
+        }
+      },
+      width: widthFor(slot),
+    }),
+    [widthFor],
+  )
+
+  return { resizeFor, widthFor }
 }

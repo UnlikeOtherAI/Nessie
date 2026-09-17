@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
 import { finderRootGroups } from '../src/components/features/knowledge/finder/FinderRootColumn'
+import { agentDocumentsSpaceDisplayName } from '../src/components/features/knowledge/finder/agent-space-name'
 import { buildFinderToolbarActions } from '../src/components/features/knowledge/finder/finder-toolbar-actions'
 import {
   migrateStoredFinderView,
@@ -43,39 +44,68 @@ const root = (overrides: Partial<KnowledgeRoot> = {}): KnowledgeRoot => ({
   ...overrides,
 })
 
-test('the root is three groups: the virtual folders, mine, and the shared ones', () => {
+test('the first group is continuous: virtual folders, My Documents and projects, no hairline', () => {
   const groups = finderRootGroups(root({
     projects: [{ projectId: 'p1', projectName: 'Apollo', space: space({ name: 'Apollo', spaceId: 's-apollo' }) }],
     shared: [space({ name: 'Marketing', spaceId: 's-mkt' })],
   }))
 
-  assert.deepEqual(groups.map((group) => group.map((row) => row.kind)), [
-    ['latest', 'shared-with-me'],
-    ['space', 'space'],
+  assert.deepEqual(groups.map((group) => group.rows.map((row) => row.kind)), [
+    ['latest', 'shared-with-me', 'space', 'space'],
+    [],
     ['space'],
   ])
-  // My Documents is always the first row of the second group, before any
-  // project: it is the only folder every person has.
-  assert.equal(groups[1]?.[0]?.id, 'me')
+  // My Documents always follows the two virtual rows, before any project: it
+  // is the only folder every person has.
+  assert.equal(groups[0]?.rows[2]?.id, 'me')
+  assert.equal(groups[0]?.label, undefined)
 })
 
-test('a project whose folder has never been opened is still a row', () => {
+test('every project row is its Documents folder — the read provisions, so none opens onto nothing', () => {
   const groups = finderRootGroups(root({
-    projects: [{ projectId: 'p1', projectName: 'Apollo', space: null }],
+    projects: [{ projectId: 'p1', projectName: 'Apollo', space: space({ name: 'Project Documents', spaceId: 's-apollo' }) }],
   }))
-  const row = groups[1]?.[1]
-  assert.equal(row?.kind, 'project-unopened')
-  // `GET /root` writes no space for a project nobody has opened, and a
-  // project a person belongs to that has no row is Rule zero's defect.
-  assert.equal(row?.kind === 'project-unopened' ? row.projectName : null, 'Apollo')
+  const row = groups[0]?.rows[3]
+  assert.equal(row?.kind, 'space')
+  assert.equal(row?.id, 's-apollo')
+  // The `project-unopened` row kind is gone with the nullable space: a row
+  // whose first click had to create its folder was a doorway to a write.
+  const source = readSource('../src/components/features/knowledge/finder/FinderRootColumn.tsx')
+  assert.doesNotMatch(source, /project-unopened/)
+})
+
+test('agent homes are their own labelled section between mine and the shared folders', () => {
+  const groups = finderRootGroups(root({
+    shared: [
+      space({ name: 'Marketing', spaceId: 's-mkt' }),
+      space({ name: 'Ada — Documents', ownerAgentId: 'a-ada', spaceId: 's-ada' }),
+    ],
+  }))
+
+  assert.deepEqual(groups.map((group) => group.label ?? null), [null, 'Agents', null])
+  assert.deepEqual(groups[1]?.rows.map((row) => row.id), ['s-ada'])
+  assert.deepEqual(groups[2]?.rows.map((row) => row.id), ['s-mkt'])
+  const agentRow = groups[1]?.rows[0]
+  assert.equal(agentRow?.kind === 'space' ? agentRow.role : null, 'agent')
+})
+
+test('an agent home displays as the agent’s name, without the space’s suffix', () => {
+  // `ensureAgentDocsSpace` names the space `${agentName} — Documents`; under
+  // a label that already says Agents the suffix is furniture. Display-only —
+  // the space keeps its name.
+  assert.equal(agentDocumentsSpaceDisplayName('Ada — Documents'), 'Ada')
+  // Only a trailing suffix strips: a name that carries the phrase mid-string
+  // is kept whole, as is a space somebody renamed by hand.
+  assert.equal(agentDocumentsSpaceDisplayName('Ada — Documents — Drafts'), 'Ada — Documents — Drafts')
+  assert.equal(agentDocumentsSpaceDisplayName('Research'), 'Research')
 })
 
 test('an empty group is omitted, and takes its separator with it', () => {
   const groups = finderRootGroups(root())
-  assert.deepEqual(groups.map((group) => group.length), [2, 1, 0])
+  assert.deepEqual(groups.map((group) => group.rows.length), [3, 0, 0])
   // The column renders only the non-empty ones, so a hairline never floats
   // over nothing.
-  assert.deepEqual(groups.filter((group) => group.length > 0).length, 2)
+  assert.deepEqual(groups.filter((group) => group.rows.length > 0).length, 1)
 })
 
 test('Dashboards is not a row here — it has its own home now', () => {
@@ -100,21 +130,22 @@ test('every header action the old sidebar and header carried has a home', () => 
     needsReviewOnly: false,
     onCreateDocument: () => undefined,
     onCreateFolder: () => undefined,
-    onOpenAgent: () => undefined,
     onOpenSettings: () => undefined,
     onSelectSort: () => undefined,
     onSelectView: () => undefined,
     onToggleNeedsReview: () => undefined,
     onUploadFile: () => undefined,
-    ownerAgentId: 'agent-1',
     showViewAction: true,
     sort: 'name',
     view: 'columns',
   })
 
   const ids = actions.map((action) => action.id)
+  // `open-agent` is deliberately absent: the agent doorway moved out of the
+  // global toolbar into the agent documents column's own header
+  // (buildAgentOpenAction) — one doorway, on the column it belongs to.
   assert.deepEqual(ids, [
-    'new', 'sort', 'view', 'needs-review', 'open-agent', 'sharing-settings',
+    'new', 'sort', 'view', 'needs-review', 'sharing-settings',
   ])
 
   // Folder, document and upload are one question with three answers, so they
@@ -137,7 +168,6 @@ test('exactly one action is primary, and it is the creation', () => {
     needsReviewOnly: false,
     onCreateDocument: () => undefined,
     onCreateFolder: () => undefined,
-    onOpenAgent: () => undefined,
     onOpenSettings: () => undefined,
     onSelectSort: () => undefined,
     onSelectView: () => undefined,
@@ -160,7 +190,6 @@ test('the root column offers a whole root folder, not a folder inside one', () =
     needsReviewOnly: false,
     onCreateDocument: () => undefined,
     onCreateFolder: () => undefined,
-    onOpenAgent: () => undefined,
     onOpenSettings: () => undefined,
     onSelectSort: () => undefined,
     onSelectView: () => undefined,
@@ -192,7 +221,6 @@ test('Sort is disabled, with a reason, in a virtual folder', () => {
     needsReviewOnly: false,
     onCreateDocument: () => undefined,
     onCreateFolder: () => undefined,
-    onOpenAgent: () => undefined,
     onOpenSettings: () => undefined,
     onSelectSort: () => undefined,
     onSelectView: () => undefined,
@@ -219,7 +247,6 @@ test('the View action is absent on a phone, not disabled', () => {
     needsReviewOnly: false,
     onCreateDocument: () => undefined,
     onCreateFolder: () => undefined,
-    onOpenAgent: () => undefined,
     onOpenSettings: () => undefined,
     onSelectSort: () => undefined,
     onSelectView: () => undefined,

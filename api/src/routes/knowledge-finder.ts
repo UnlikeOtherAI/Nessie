@@ -66,7 +66,13 @@ export const registerKnowledgeFinderRoutes = (
   app: FastifyInstance,
   deps: KnowledgeRouteDeps,
 ): void => {
-  const { prisma, requireActorContext, fileService, isProjectAccessibleToActor } = deps
+  const {
+    prisma,
+    requireActorContext,
+    fileService,
+    isProjectAccessibleToActor,
+    listAccessibleProjectIds,
+  } = deps
   const {
     provider,
     buildViewer,
@@ -97,6 +103,10 @@ export const registerKnowledgeFinderRoutes = (
     if (!projectId) return reply
     const viewer = await buildViewer(actorContext)
     const { root, myDocumentsCreated } = await buildKnowledgeRoot(prisma, {
+      // The same reader GET /api/projects is scoped by, so a project an
+      // organisation owner/admin reaches without a membership has a folder
+      // here too — the two surfaces must agree.
+      accessibleProjectIds: await listAccessibleProjectIds(actorContext),
       organizationId: actorContext.tenant.organizationId,
       projectId,
       userId: actorContext.actor.actorId,

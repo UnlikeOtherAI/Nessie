@@ -93,11 +93,12 @@ test('inner knowledge surfaces keep titles/actions but suppress their own Back i
   }
 })
 
-test('an inline host composes the editor over the browser and the document beside it', () => {
-  // The editor and the history are full-width screens, so inline they replace
-  // the browser. The open document does not: a file browser with a preview
-  // column is what a Finder *is*, and hiding the columns to read one file
-  // loses the place you are standing in.
+test('an inline host composes the editor, the history and the document over the browser', () => {
+  // All three are full-surface screens inline: the 46% preview column beside
+  // the browser was too small to read a document in, so an open document now
+  // covers the browser the way the editor and the history always did. The
+  // browser stays mounted underneath — covered, never unmounted — because
+  // Back must land on the same folder, scroll position and selection.
   assert.match(team, /const historyOpen = Boolean\(historyPage\) && \(stacked \|\| !editorOpen\)/)
   assert.match(
     team,
@@ -107,7 +108,11 @@ test('an inline host composes the editor over the browser and the document besid
     team,
     /const browserVisible = stacked \|\| !\(editorOpen \|\| historyOpen\)/,
   )
-  assert.match(team, /\{!stacked && documentOpen \? \(/)
+  assert.match(team, /const browserCovered = !stacked && documentOpen/)
+  assert.match(team, /browserCovered \? ' invisible' : ''/)
+  assert.match(team, /\{browserCovered \? \(/)
+  // The old preview column is gone, not restyled.
+  assert.doesNotMatch(team, /w-\[46%\]/)
 })
 
 test('the agent detail page owns no Back of its own', () => {

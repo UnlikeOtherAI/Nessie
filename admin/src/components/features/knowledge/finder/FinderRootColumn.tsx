@@ -13,10 +13,12 @@ import { prewarmRowHandlers, usePrewarm } from '../../../../navigation/prewarm'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { ProjectAvatar } from '../../../primitives/ProjectAvatar'
 import { Pill } from '../../../primitives/Pill'
+import { SectionLabel } from '../../../primitives/SectionLabel'
 import { QueryState } from '../../../shared/QueryState'
 import { RowList, type RowDragHandlers } from '../../../shared/RowList'
 import { Skeleton } from '../../../primitives/Skeleton'
 import { FinderRow } from './FinderRow'
+import { agentDocumentsSpaceDisplayName } from './agent-space-name'
 import type {
   FinderBackgroundMenuProps,
   FinderRowMenuProps,
@@ -26,8 +28,9 @@ import type {
  * The root column (browser-ui.md §3): the first column of the browser, and
  * what replaced the navy `KnowledgeSidebarNav`.
  *
- * Latest, Shared with me, a hairline, My Documents and one row per project, a
- * hairline, the shared folders, a hairline, Dashboards and any product views.
+ * Latest, Shared with me, My Documents and one row per project as one
+ * continuous group, a hairline, the labelled Agents section, a hairline, the
+ * shared folders, a hairline, and any product views.
  * A group with nothing in it omits itself *and* its separator — an empty
  * group with a rule over it is a heading for nothing.
  */
@@ -35,8 +38,7 @@ import type {
 export type FinderRootRow =
   | { kind: 'latest'; id: 'virtual:latest' }
   | { kind: 'shared-with-me'; id: 'virtual:shared'; count: number }
-  | { kind: 'space'; id: string; space: KnowledgeRootSpace; role: 'personal' | 'project' | 'shared' }
-  | { kind: 'project-unopened'; id: string; projectId: string; projectName: string }
+  | { kind: 'space'; id: string; space: KnowledgeRootSpace; role: 'personal' | 'project' | 'agent' | 'shared' }
   | {
       kind: 'product-view'
       id: string
@@ -45,35 +47,50 @@ export type FinderRootRow =
       product: string
       /** The manifest's glyph is a character (an emoji), not an icon name. */
       glyph?: string
-    }
+  }
+
+export type FinderRootGroup = {
+  /**
+   * A named section (today only Agents) draws its label as the group's first
+   * `<li>`; the rest are headed by their hairline alone, because a group of
+   * two rows with a title over it is mostly title.
+   */
+  label?: string
+  rows: FinderRootRow[]
+}
 
 /** The order the overview's root model fixes, as data the column just draws. */
-export const finderRootGroups = (root: KnowledgeRoot | undefined): FinderRootRow[][] => {
+export const finderRootGroups = (root: KnowledgeRoot | undefined): FinderRootGroup[] => {
   if (!root) return []
-  const virtual: FinderRootRow[] = [
+  // One continuous first group: the hairline that used to split "Shared with
+  // me" from "My Documents" separated a person from their own folders, which
+  // read as two sections where there is one.
+  const mine: FinderRootRow[] = [
     { id: 'virtual:latest', kind: 'latest' },
     { count: root.sharedWithMeCount, id: 'virtual:shared', kind: 'shared-with-me' },
-  ]
-  const mine: FinderRootRow[] = [
     { id: root.myDocuments.spaceId, kind: 'space', role: 'personal', space: root.myDocuments },
-    ...root.projects.map((project): FinderRootRow =>
-      project.space
-        ? { id: project.space.spaceId, kind: 'space', role: 'project', space: project.space }
-        : {
-            id: `project:${project.projectId}`,
-            kind: 'project-unopened',
-            projectId: project.projectId,
-            projectName: project.projectName,
-          },
-    ),
+    ...root.projects.map((project): FinderRootRow => ({
+      id: project.space.spaceId,
+      kind: 'space',
+      role: 'project',
+      space: project.space,
+    })),
   ]
-  const shared: FinderRootRow[] = root.shared.map((space) => ({
-    id: space.spaceId,
-    kind: 'space',
-    role: 'shared',
-    space,
-  }))
-  return [virtual, mine, shared]
+  // Agent document homes are their own labelled section, never mixed into the
+  // shared folders: an agent is not a folder somebody shared with you, and the
+  // mixed group answered "whose workspace is this?" with a shrug.
+  const agents: FinderRootRow[] = root.shared
+    .filter((space) => space.ownerAgentId !== null)
+    .map((space) => ({ id: space.spaceId, kind: 'space', role: 'agent', space }))
+  const shared: FinderRootRow[] = root.shared
+    .filter((space) => space.ownerAgentId === null)
+    .map((space) => ({
+      id: space.spaceId,
+      kind: 'space',
+      role: 'shared',
+      space,
+    }))
+  return [{ rows: mine }, { label: 'Agents', rows: agents }, { rows: shared }]
 }
 
 type FinderRootColumnProps = {
@@ -138,8 +155,8 @@ export const FinderRootColumn = ({
       view: section.view,
     })),
   ]
-  const rendered = [...groups, links].filter((group) => group.length > 0)
-  const firstId = rendered[0]?.[0]?.id
+  const rendered = [...groups, { rows: links }].filter((group) => group.rows.length > 0)
+  const firstId = rendered[0]?.rows[0]?.id
 
   // Where a row goes, so the fetch starts on the press rather than on the
   // landing: an unwarmed row is a screen that arrives empty after the slide.
@@ -234,32 +251,35 @@ export const FinderRootColumn = ({
             />
           )
         }
+        if (row.role === 'agent') {
+          return (
+            <FinderRow
+              {...shared}
+              key={row.id}
+              kind="space"
+              leading={space.ownerAgentId
+                ? <AgentAvatar agentId={space.ownerAgentId} size={20} token={token} />
+                : undefined}
+              locked={space.writeRestricted}
+              // The " — Documents" suffix the space is named with is furniture
+              // under a label that already says Agents.
+              title={agentDocumentsSpaceDisplayName(space.name)}
+            />
+          )
+        }
         return (
           <FinderRow
             {...shared}
-            icon={space.ownerAgentId ? undefined : faLayerGroup}
+            icon={faLayerGroup}
             iconTone="--accent"
             key={row.id}
             kind="space"
-            leading={space.ownerAgentId
-              ? <AgentAvatar agentId={space.ownerAgentId} size={20} token={token} />
-              : undefined}
             locked={space.writeRestricted}
-            subtitle={space.ownerAgentId ? 'Agent documents' : space.projectName ?? undefined}
+            subtitle={space.projectName ?? undefined}
             title={space.name}
           />
         )
       }
-      case 'project-unopened':
-        return (
-          <FinderRow
-            {...shared}
-            key={row.id}
-            kind="space"
-            leading={<ProjectAvatar size={20} token={token} />}
-            title={row.projectName}
-          />
-        )
       case 'product-view':
         return (
           <FinderRow
@@ -298,7 +318,18 @@ export const FinderRootColumn = ({
               {rendered.map((group, index) => (
                 <Fragment key={index}>
                   {index > 0 ? <Separator /> : null}
-                  {group.map(renderRow)}
+                  {group.label
+                    ? (
+                      // A list item, for the same reason the Separator is one:
+                      // a <div> between <li> rows is invalid inside a <ul> and
+                      // browsers reparent it, which moves the label. Not
+                      // aria-hidden: "Agents" is a real name, not decoration.
+                      <li className="finder-section-label" role="presentation">
+                        <SectionLabel as="span" size="2xs">{group.label}</SectionLabel>
+                      </li>
+                    )
+                    : null}
+                  {group.rows.map(renderRow)}
                 </Fragment>
               ))}
             </RowList>

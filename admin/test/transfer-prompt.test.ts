@@ -240,7 +240,7 @@ test('the root payload becomes one flat list of destinations', () => {
     myDocuments: space('s-mine', 'My Documents'),
     projects: [
       { projectId: 'p1', projectName: 'P', space: space('s-p', 'P') },
-      { projectId: 'p2', projectName: 'Q', space: null },
+      { projectId: 'p2', projectName: 'Q', space: space('s-q', 'Q') },
     ],
     shared: [space('s-mkt', 'Marketing')],
     sharedTruncated: false,
@@ -248,10 +248,11 @@ test('the root payload becomes one flat list of destinations', () => {
   })
   assert.deepEqual(
     found.map((entry) => [entry.spaceId, entry.role]),
-    [['s-mine', 'personal'], ['s-p', 'project'], ['s-mkt', 'shared']],
+    [['s-mine', 'personal'], ['s-p', 'project'], ['s-q', 'project'], ['s-mkt', 'shared']],
   )
-  // A project nobody has opened has no space to move into yet.
-  assert.equal(found.some((entry) => entry.spaceId === 'p2'), false)
+  // Every project carries its Documents space — the root read provisions it —
+  // so every project is a destination.
+  assert.equal(found.some((entry) => entry.spaceId === 's-q'), true)
 })
 
 // ── The prompt on screen ────────────────────────────────────────────────────

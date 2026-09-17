@@ -38,6 +38,28 @@ export const clearStoredToken = (): void => {
   localStorage.removeItem(TOKEN_MODE_KEY)
 }
 
+/**
+ * One JSON value under one localStorage key. Every read and write is wrapped:
+ * localStorage throws (or silently stores nothing) in a private window, and a
+ * page that cannot persist a preference must still render.
+ */
+export const getStoredJson = (key: string): unknown => {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as unknown) : null
+  } catch {
+    return null
+  }
+}
+
+export const setStoredJson = (key: string, value: unknown): void => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // A full or blocked store loses the preference, never the page.
+  }
+}
+
 export const getCookie = (name: string): string | null => {
   const match = document.cookie.match(
     new RegExp(`(?:^|; )${COOKIE_PREFIX}${name}=([^;]*)`)

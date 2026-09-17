@@ -5,17 +5,19 @@ import test from 'node:test'
 import Fastify from 'fastify'
 import { PrismaClient } from '@prisma/client'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
-import type { AuthorizedActionContext, KnowledgeRoot } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext, type KnowledgeRoot } from '@nessie/schemas'
+import { listAccessibleProjectIds } from '@nessie/team-admin'
 
 import { registerKnowledgeFinderRoutes } from '../src/routes/knowledge-finder.js'
 import { seedDefaultPolicies } from '../src/services/policy-seed.js'
 
 /**
  * The root column in one read. What it must get right: My Documents is
- * provisioned rather than missing, a project folder is listed before its space
- * exists (a read must not write N spaces nobody has opened), the third group is
- * the read-time "neither personal nor a project's Documents" rule, and none of
- * it describes a folder the caller cannot read.
+ * provisioned rather than missing, every project the caller can reach has its
+ * Documents folder provisioned by the read itself (a project visible in
+ * `GET /api/projects` but folderless here is the drift that hid an owner's own
+ * project), the third group is the read-time "neither personal nor a project's
+ * Documents" rule, and none of it describes a folder the caller cannot read.
  *
  * Contract: docs/plans/2026-09-16-documents-finder-ui/data-and-api.md §7.
  */
@@ -48,6 +50,11 @@ dbTest('the documents root names exactly the folders a person can open', async (
   await prisma.projectMember.create({
     data: { projectId: project.id, userId: alice.id, role: 'owner' },
   })
+  // A second live project nobody belongs to: an organisation owner/admin must
+  // still see its folder, because `GET /api/projects` shows them the project.
+  const unjoined = await prisma.project.create({
+    data: { name: `Unjoined-${suffix.slice(0, 6)}`, organizationId: organization.id },
+  })
   await seedDefaultPolicies(prisma, organization.id, alice.id)
   const teamSpace = await prisma.knowledgeSpace.create({
     data: {
@@ -72,6 +79,10 @@ dbTest('the documents root names exactly the folders a person can open', async (
   const actors = new Map([
     ['alice', contextFor(alice.id)],
     ['carol', contextFor(carol.id)],
+    ['owner', {
+      ...contextFor(alice.id),
+      actor: { actorId: alice.id, actorType: 'user', roles: ['owner'] },
+    } as AuthorizedActionContext],
     ['agent', contextFor(randomUUID(), 'agent')],
   ])
   registerKnowledgeFinderRoutes(app, {
@@ -79,6 +90,14 @@ dbTest('the documents root names exactly the folders a person can open', async (
     knowledgeProvider: provider,
     fileService: { usageForScope: async () => 0n },
     isProjectAccessibleToActor: async () => true,
+    // The real reader, not a stub: the point of the route is that the root and
+    // GET /api/projects are scoped by the same entitlement.
+    listAccessibleProjectIds: async (actorContext: AuthorizedActionContext) =>
+      listAccessibleProjectIds(prisma, {
+        isOrganizationAdmin: isAdminActor(actorContext),
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      }),
     requireActorContext: (request: { headers: Record<string, unknown> }) => {
       const actor = request.headers['x-kb-root-actor']
       return typeof actor === 'string' ? actors.get(actor) : undefined
@@ -100,8 +119,10 @@ dbTest('the documents root names exactly the folders a person can open', async (
   assert.equal(first.myDocuments.canWrite, true)
   assert.equal(first.projects.length, 1)
   assert.equal(first.projects[0]?.projectId, project.id)
-  // Nobody has opened the project folder yet, so no space was written for it.
-  assert.equal(first.projects[0]?.space, null)
+  // The read itself provisions the project's Documents folder — a row that
+  // opens onto nothing was a doorway to a client-side write.
+  const projectSpaceId = first.projects[0]?.space.spaceId
+  assert.ok(projectSpaceId)
   assert.ok(first.shared.some((space) => space.spaceId === teamSpace.id))
   assert.equal(first.shared.some((space) => space.spaceId === first.myDocuments.spaceId), false)
   assert.equal(first.sharedTruncated, false)
@@ -111,6 +132,7 @@ dbTest('the documents root names exactly the folders a person can open', async (
   // A repeat read is idempotent: the same personal space, not a second one.
   const again = await rootAs('alice')
   assert.equal(again.myDocuments.spaceId, first.myDocuments.spaceId)
+  assert.equal(again.projects[0]?.space.spaceId, projectSpaceId)
 
   const provisioned = await app.inject({
     method: 'POST',
@@ -119,6 +141,8 @@ dbTest('the documents root names exactly the folders a person can open', async (
   })
   assert.equal(provisioned.statusCode, 200, provisioned.body)
   const documentsSpaceId = (provisioned.json() as { data: { id: string } }).data.id
+  // The explicit provisioning door finds the space the read already made.
+  assert.equal(documentsSpaceId, projectSpaceId)
 
   const afterOpen = await rootAs('alice')
   assert.equal(afterOpen.projects[0]?.space?.spaceId, documentsSpaceId)
@@ -155,6 +179,16 @@ dbTest('the documents root names exactly the folders a person can open', async (
   assert.deepEqual(carolRoot.projects, [])
   assert.equal(carolRoot.shared.some((space) => space.spaceId === teamSpace.id), false)
   assert.notEqual(carolRoot.myDocuments.spaceId, first.myDocuments.spaceId)
+
+  // An organisation owner reaches every live project — the same set
+  // `GET /api/projects` lists — so the project nobody joined has a folder
+  // here too, provisioned by this very read.
+  const ownerRoot = await rootAs('owner')
+  assert.deepEqual(
+    ownerRoot.projects.map((entry) => entry.projectId).sort(),
+    [project.id, unjoined.id].sort(),
+  )
+  assert.ok(ownerRoot.projects.every((entry) => entry.space.spaceId))
 
   // Past the cap the root says so rather than silently showing a partial tree:
   // the status bar is what tells a person there are more folders than this.

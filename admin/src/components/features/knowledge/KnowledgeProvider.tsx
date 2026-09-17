@@ -19,7 +19,6 @@ import {
   type SavePageInput,
   type UpdateSpaceInput,
 } from '../../../facades/knowledge/hooks'
-import { useEnsureProjectDocuments } from '../../../facades/knowledge/finder-hooks'
 import { useKnowledgeMutations } from './useKnowledgeMutations'
 import {
   useKnowledgeNavigation,
@@ -73,12 +72,6 @@ type KnowledgeContextValue = {
   selectSpace: (spaceId: string) => void
   /** Open Latest or Shared with me; `null` leaves the one that is open. */
   selectVirtual: (kind: KnowledgeVirtualKind | null) => void
-  /**
-   * Provision a project's Documents folder and open it. `GET /root` leaves
-   * `space: null` for a project nobody has opened, so the row's first click is
-   * what creates it. Resolves with the space id, or undefined on a refusal.
-   */
-  openProjectDocuments: (projectId: string) => Promise<string | undefined>
   // A product-contributed Documents view (e.g. DeepWater's "Research") pinned in
   // the Knowledge sidebar. When set the team renders that product view
   // instead of a space's pages; selecting any space clears it.
@@ -205,7 +198,6 @@ export const KnowledgeProvider = ({
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
-  const ensureProjectDocuments = useEnsureProjectDocuments()
 
   useEffect(() => {
     if (spaceId) {
@@ -227,15 +219,6 @@ export const KnowledgeProvider = ({
     spaceId,
     spaces,
   ])
-
-  const openProjectDocuments = useCallback(
-    async (targetProjectId: string): Promise<string | undefined> => {
-      const space = await ensureProjectDocuments.mutateAsync(targetProjectId)
-      setSelectedSpaceId(space.id)
-      return space.id
-    },
-    [ensureProjectDocuments, setSelectedSpaceId],
-  )
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()
@@ -341,7 +324,6 @@ export const KnowledgeProvider = ({
     selectedSpace,
     selectSpace: navigation.selectSpace,
     selectVirtual: navigation.selectVirtual,
-    openProjectDocuments,
     activeProductView,
     selectProductView: navigation.selectProductView,
     createSpace: mutations.createSpace,
@@ -392,7 +374,6 @@ export const KnowledgeProvider = ({
     mutations,
     myDocsSpaceQuery.data,
     navigation,
-    openProjectDocuments,
     pageById,
     pages,
     pagesQuery.isError,

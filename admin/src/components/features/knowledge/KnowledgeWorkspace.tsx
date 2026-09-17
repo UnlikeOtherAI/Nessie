@@ -22,10 +22,15 @@ import { VersionHistory } from './VersionHistory'
  * two full-width screens a document opens into (its version history, its
  * editor).
  *
- * Those are nested stages (docs/navigation/overview.md §6). Where a
+ * All three are nested stages (docs/navigation/overview.md §6). Where a
  * single-column stack hosts them each is a real layer: it slides in, Back
  * unwinds exactly one level and the edge swipe drives the top one. Where no
- * stack hosts stages (a split layout, an isolated render) they render inline.
+ * stack hosts stages (a split layout, an isolated render) they render inline —
+ * and inline, an open document takes the whole work surface with a Back
+ * button, the way the editor and the history already did. The 46% preview
+ * column beside the browser was too small to read a document in; the browser
+ * stays mounted underneath (covered, not unmounted) so Back lands on the same
+ * folder, the same column scroll and the same selection it left.
  *
  * `knowledge:folder` is **gone**: the Finder sits on `ColumnBrowserViewport`,
  * whose columns are already `column:<k>` stages on `single`, so a folder is a
@@ -97,13 +102,14 @@ export const KnowledgeWorkspace = ({
   const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
 
   // Which stages are open. A stack shows them all at once, one layer each; an
-  // inline host shows the editor or the history over the browser, and the open
-  // document *beside* it — a browser with a preview column is what a Finder is,
-  // and hiding the columns to read one file loses the place you are in.
+  // inline host shows the document, the editor or the history *over* the
+  // browser — a covered browser keeps its folder, scroll and selection, which
+  // is the whole point of the document's Back button.
   const editorOpen = Boolean(editor) && canWrite
   const historyOpen = Boolean(historyPage) && (stacked || !editorOpen)
   const documentOpen = Boolean(current) && (stacked || !(editorOpen || historyOpen))
   const browserVisible = stacked || !(editorOpen || historyOpen)
+  const browserCovered = !stacked && documentOpen
 
   // The space-pages list omits page bodies (they're large and the browser never
   // shows them). Fetch the full body on demand for whichever page actually
@@ -235,15 +241,17 @@ export const KnowledgeWorkspace = ({
         // main area instead of a folder's pages.
         <ProductDocumentsView view={activeProductView} />
       ) : browserVisible ? (
-        <div className="flex h-full min-h-0 w-full">
-          <div className="min-w-0 flex-1">{browser}</div>
-          {/* On a split layout the open document is the browser's rightmost
-              region, the way Finder's preview column is — not a screen that
-              replaces the columns you found it in. */}
-          {!stacked && documentOpen ? (
-            <div className="h-full w-[46%] min-w-[360px] max-w-[720px] flex-shrink-0 border-l border-[color:var(--sep)]">
-              {documentPane}
-            </div>
+        <div className="relative h-full min-h-0 w-full">
+          {/* `invisible`, not unmounted and not `display: none`: the covered
+              browser keeps its layout and its column scroll positions, so
+              the document's Back returns to the exact browser it left. */}
+          <div className={`flex h-full min-h-0 w-full${browserCovered ? ' invisible' : ''}`}>
+            <div className="min-w-0 flex-1">{browser}</div>
+          </div>
+          {browserCovered ? (
+            // On a split layout the open document is a full-surface screen
+            // over the browser, the way the editor and the history are.
+            <div className="absolute inset-0">{documentPane}</div>
           ) : null}
         </div>
       ) : null}

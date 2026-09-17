@@ -17,7 +17,7 @@ import type {
 } from '@nessie/schemas'
 import { knowledgeKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import type { KnowledgePageRecord, KnowledgeSpaceRecord } from './hooks'
+import type { KnowledgePageRecord } from './hooks'
 
 /**
  * The Documents Finder's reads and writes
@@ -58,29 +58,6 @@ export const useKnowledgeRoot = (enabled = true) => {
     queryFn: () => apiClient.get(`${BASE}/root`),
     queryKey: knowledgeKeys.root,
     staleTime: 30_000,
-  })
-}
-
-/**
- * Opening a project's folder for the first time. `GET /root` deliberately
- * leaves `space: null` for a project nobody has opened — a read that writes N
- * rows for N projects is a read that gets slower every time somebody joins a
- * project — so the folder is provisioned on the way in.
- */
-export const useEnsureProjectDocuments = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (projectId: string) =>
-      apiClient.post<KnowledgeSpaceRecord>(
-        `${BASE}/projects/${encodeURIComponent(projectId)}/documents`,
-        {},
-      ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.root })
-      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.spaces })
-    },
   })
 }
 

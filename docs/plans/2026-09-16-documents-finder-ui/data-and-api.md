@@ -632,12 +632,16 @@ export const KnowledgeRootSchema = z.object({
   // Always present for a user actor: provisioned by the same
   // ensureMyDocsSpace call POST /my-docs makes, emitting kb.space.created once.
   myDocuments: KnowledgeRootSpaceSchema,
-  // Every project the viewer belongs to (viewer.projectIds), alphabetical.
-  // `space` is null until somebody opens the folder for the first time.
+  // Every project the viewer can reach, alphabetical — the same set
+  // GET /api/projects lists (memberships, or every live non-channel-root
+  // project for an organisation owner/admin, via listAccessibleProjectIds).
+  // `space` is always present: the read provisions each listed project's
+  // Documents folder through ensureProjectDocumentsSpace (idempotent,
+  // advisory-locked, in batches of 8).
   projects: z.array(z.object({
     projectId: UuidSchema,
     projectName: NonEmptyStringSchema,
-    space: KnowledgeRootSpaceSchema.nullable(),
+    space: KnowledgeRootSpaceSchema,
   })),
   // Readable spaces that are neither personal nor projectDocuments, alphabetical, capped.
   shared: z.array(KnowledgeRootSpaceSchema),
@@ -647,25 +651,39 @@ export const KnowledgeRootSchema = z.object({
 // 200 → KnowledgeRoot. Agents (actorType 'agent') get 403 ACTOR_TYPE_NOT_ALLOWED: the root is a person's view.
 ```
 
-One route, four reads: `ensureMyDocsSpace`; `project` rows for
-`viewer.projectIds` with their `projectDocuments` space by a single
-`IN` query; `provider.listSpaces` with the readable predicate,
-`limit: 201`, filtered in memory by the two flags; a `count` on
-`knowledge_page_shares` for the badge. *Rejected:* assembling the root from
-`GET /spaces` (paged, personal excluded), `POST /my-docs` and `GET /projects`
-on the client — three round trips and a paged list under a tree that must
-not page.
+One route, a handful of reads: `ensureMyDocsSpace`; `project` rows for the
+caller's accessible projects (`channelRoot: false`, `deletedAt: null` — the
+same filters `listProjectsForUser` carries) with each project's
+`projectDocuments` space ensured in bounded batches and loaded by id;
+`provider.listSpaces` with the readable predicate, `limit: 201`, filtered in
+memory by the two flags; a `count` on `knowledge_page_shares` for the badge.
+*Rejected:* assembling the root from `GET /spaces` (paged, personal excluded),
+`POST /my-docs` and `GET /projects` on the client — three round trips and a
+paged list under a tree that must not page.
 
-**Opening a project folder that has no space yet** —
+**Project folders exist from the first read that can list them.** The root
+read's ensure is the single provisioning writer for older projects: the same
+idempotent, advisory-locked call the explicit door below makes, so a repeat
+read finds the row and two concurrent reads cannot double-create. Provisioning
+inside `createProjectForUser` was tried and reverted: `deleteProject` refuses
+a project that holds any knowledge space, so a project born with its folder
+was born undeletable — the empty auto-created space is not the "people's
+documents" that guard exists to protect, and teaching the destructive route
+to tell the difference is a product decision of its own. *Rejected:* the
+earlier lazy model — `space: null` until first open, a `project-unopened`
+row, and a client that provisioned on the way in — because a row whose first
+click performs a write is a doorway to a hack, and "a read must not write N
+rows" optimised for a cost the advisory-locked ensure does not have.
+
+**Explicit provisioning door** —
 `POST /api/knowledge-base/projects/:projectId/documents` (in
 `knowledge-finder.ts`): `canViewerReachProject` required (404
 `PROJECT_NOT_FOUND` otherwise, matching `recent-pages`); calls
 `ensureProjectDocumentsSpace` and emits `kb.space.created` when `created`;
-returns the `KnowledgeSpaceResponse` envelope. The admin calls it when a
-project row with `space: null` is opened and then navigates to
-`/knowledge-base/spaces/:spaceId`. *Rejected:* provisioning every project's
-space inside `GET /root` — a read that writes N rows for projects nobody has
-opened.
+returns the `KnowledgeSpaceResponse` envelope. Nothing in the admin calls it
+any more — the root read made the on-the-way-in call unnecessary — but it
+stays as the explicit door for a caller that needs the space id before
+opening anything.
 
 ## 8. Rename — reuse, not new
 
