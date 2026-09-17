@@ -14,6 +14,8 @@ pub enum Command {
     SecureServiceDirectory(String),
     /// Prove that a directory's owner and DACL still admit nobody else.
     VerifyOwnerOnly(String),
+    /// Prove an individual private file has not overridden its directory DACL.
+    VerifyOwnerOnlyFile(String),
     WorkspaceApply,
     WorkspacePreflight,
 }
@@ -60,6 +62,9 @@ pub fn parse_command(arguments: &[String]) -> Result<Command, NativeError> {
         [command, path] if command == "verify-owner-only" => {
             Ok(Command::VerifyOwnerOnly(state_path(path)?))
         }
+        [command, path] if command == "verify-owner-only-file" => {
+            Ok(Command::VerifyOwnerOnlyFile(state_path(path)?))
+        }
         _ => Err(NativeError::new("EXECUTOR_NATIVE_USAGE")),
     }
 }
@@ -98,6 +103,12 @@ mod tests {
             parse(&["verify-owner-only", "/home/person/.local/state/nessie-executor/one"]),
             Ok(Command::VerifyOwnerOnly(
                 "/home/person/.local/state/nessie-executor/one".to_owned(),
+            )),
+        );
+        assert_eq!(
+            parse(&["verify-owner-only-file", r"C:\Users\person\AppData\Local\Nessie\executors\one\state.json"]),
+            Ok(Command::VerifyOwnerOnlyFile(
+                r"C:\Users\person\AppData\Local\Nessie\executors\one\state.json".to_owned(),
             )),
         );
         assert_eq!(

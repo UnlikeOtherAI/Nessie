@@ -27,7 +27,7 @@ export type StateSecurityPlatform = NodeJS.Platform
 export type StateEntryKind = 'directory' | 'file'
 
 /** What the helper was asked to do and what it answered. */
-export type StateSecurityCommand = 'secure-directory' | 'verify-owner-only'
+export type StateSecurityCommand = 'secure-directory' | 'verify-owner-only' | 'verify-owner-only-file'
 
 export type StateSecurityHelper = (command: StateSecurityCommand, path: string) => Promise<void>
 
@@ -119,9 +119,9 @@ const assertWindowsShape = async (path: string, expectedKind: StateEntryKind): P
 /**
  * Proves a state path is readable only by its owner.
  *
- * On Windows a file inside a secured directory inherits that directory's DACL,
- * and a file has no separate owner-only proof worth making: the *directory* is
- * the boundary, so a file check verifies the directory that contains it.
+ * Windows checks both the file shape and its own DACL. A caller-selected file
+ * may have explicitly overridden its parent directory's inherited DACL, so its
+ * parent alone is not a sufficient privacy proof.
  */
 export const assertOwnerOnlyStatePath = async (
   path: string,
@@ -133,7 +133,7 @@ export const assertOwnerOnlyStatePath = async (
     return
   }
   await assertWindowsShape(path, expectedKind)
-  await runHelper(deps, 'verify-owner-only', expectedKind === 'directory' ? path : dirname(path))
+  await runHelper(deps, expectedKind === 'directory' ? 'verify-owner-only' : 'verify-owner-only-file', path)
 }
 
 /**

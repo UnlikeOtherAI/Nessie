@@ -11,6 +11,7 @@ import {
   removeGuestRuntimeBundleSnapshot,
   verifyGuestRuntimeBundle,
 } from '../src/guest-runtime-bundle.js'
+import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import { startGuestVmSession } from '../src/guest-vm-session.js'
 import { stopSandboxWorkspace } from '../src/sandbox-workspace.js'
 
@@ -48,8 +49,14 @@ test('guest runtime bundles pin every browser and coding artifact without host f
   const tmuxPath = join(bundle, 'bin', 'tmux')
   const codexPath = join(bundle, 'bin', 'codex')
   try {
-    await mkdir(join(bundle, 'bin'), { mode: 0o700 })
-    await chmod(join(bundle, 'bin'), 0o700)
+    if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+      await ensureOwnerOnlyStateDirectory(bundle)
+      await ensureOwnerOnlyStateDirectory(snapshotParent)
+      await ensureOwnerOnlyStateDirectory(join(bundle, 'bin'))
+    } else {
+      await mkdir(join(bundle, 'bin'), { mode: 0o700 })
+      await chmod(join(bundle, 'bin'), 0o700)
+    }
     await Promise.all([
       writeFile(browserPath, 'browser-runtime'),
       writeFile(tmuxPath, 'managed-tmux'),

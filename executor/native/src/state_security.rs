@@ -38,6 +38,13 @@ pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
     imp::verify_owner_only(path)
 }
 
+/// Prove a private file is owned by the current account and its own DACL grants
+/// access only to that account and SYSTEM. Files normally inherit the safe ACEs
+/// from their protected parent, so inherited ACE flags are valid here.
+pub fn verify_owner_only_file(path: &str) -> Result<(), NativeError> {
+    imp::verify_owner_only_file(path)
+}
+
 #[cfg(not(windows))]
 mod imp {
     use super::{NativeError, UNSUPPORTED};
@@ -51,6 +58,10 @@ mod imp {
     }
 
     pub fn verify_owner_only(_path: &str) -> Result<(), NativeError> {
+        Err(NativeError::new(UNSUPPORTED))
+    }
+
+    pub fn verify_owner_only_file(_path: &str) -> Result<(), NativeError> {
         Err(NativeError::new(UNSUPPORTED))
     }
 }
@@ -262,7 +273,7 @@ mod imp {
         }
         // Establishing and proving are the same command's job: a DACL that did
         // not take is indistinguishable from one never asked for.
-        verify_owner_only_for(path, &owner)
+        verify_owner_only_for(path, &owner, false)
     }
 
     pub fn secure_directory(path: &str) -> Result<(), NativeError> {
@@ -275,7 +286,7 @@ mod imp {
 
     /// Every ACE of a protected DACL, read once. A NULL DACL is world-writable
     /// and an empty one is not: absence of the pointer is the failure.
-    fn admits_only(acl: *const ACL, user: &OwnedSid, system: &OwnedSid) -> bool {
+    fn admits_only(acl: *const ACL, user: &OwnedSid, system: &OwnedSid, allow_inherited: bool) -> bool {
         if acl.is_null() {
             return false;
         }
@@ -287,7 +298,9 @@ mod imp {
             }
             let entry = ace.cast::<ACCESS_ALLOWED_ACE>();
             let header = unsafe { (*entry).Header };
-            if header.AceType != ACCESS_ALLOWED || u32::from(header.AceFlags) & INHERITED_ACE != 0 {
+            if header.AceType != ACCESS_ALLOWED
+                || (!allow_inherited && u32::from(header.AceFlags) & INHERITED_ACE != 0)
+            {
                 return false;
             }
             let sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
@@ -303,7 +316,7 @@ mod imp {
         true
     }
 
-    fn verify_owner_only_for(path: &str, user: &OwnedSid) -> Result<(), NativeError> {
+    fn verify_owner_only_for(path: &str, user: &OwnedSid, allow_inherited: bool) -> Result<(), NativeError> {
         let system = local_system_sid()?;
         let mut owner: PSID = std::ptr::null_mut();
         let mut dacl: *mut ACL = std::ptr::null_mut();
@@ -332,8 +345,8 @@ mod imp {
             && unsafe { EqualSid(owner, user.pointer()) } != 0;
         let verdict = described
             && owned
-            && control & SE_DACL_PROTECTED != 0
-            && admits_only(dacl, user, &system);
+            && (allow_inherited || control & SE_DACL_PROTECTED != 0)
+            && admits_only(dacl, user, &system, allow_inherited);
         unsafe { LocalFree(descriptor as HLOCAL) };
         if verdict {
             Ok(())
@@ -343,13 +356,17 @@ mod imp {
     }
 
     pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
-        verify_owner_only_for(path, &current_user_sid()?)
+        verify_owner_only_for(path, &current_user_sid()?, false)
+    }
+
+    pub fn verify_owner_only_file(path: &str) -> Result<(), NativeError> {
+        verify_owner_only_for(path, &current_user_sid()?, true)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{secure_directory, verify_owner_only, IO_FAILURE, REJECTED, UNSUPPORTED};
+    use super::{secure_directory, verify_owner_only, verify_owner_only_file, IO_FAILURE, REJECTED, UNSUPPORTED};
 
     /// The codes are part of the contract the supervisor reads, and none of
     /// them may carry a path or a reason a person should not see.
@@ -384,6 +401,34 @@ mod tests {
         verify_owner_only(secured.to_str().expect("a UTF-8 test path")).expect("it verifies");
         assert_eq!(
             verify_owner_only(untouched.to_str().expect("a UTF-8 test path")).unwrap_err().code,
+            REJECTED,
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_in_a_secured_directory_accepts_its_inherited_private_aces() {
+        let root = std::env::temp_dir().join(format!("nessie-state-file-{}", std::process::id()));
+        let secured = root.join("secured");
+        std::fs::create_dir_all(&root).expect("the test root must be creatable");
+        secure_directory(secured.to_str().expect("a UTF-8 test path")).expect("securing succeeds");
+        let file = secured.join("private.json");
+        std::fs::write(&file, b"{}").expect("the inherited file must be writable");
+        verify_owner_only_file(file.to_str().expect("a UTF-8 test path"))
+            .expect("the inherited file DACL remains private");
+        // The parent remains protected and valid: only this file overrides its
+        // inherited DACL. A parent-only check would incorrectly accept it.
+        let broad = secured.join("broad.json");
+        std::fs::write(&broad, b"{}").expect("the ordinary file must be writable");
+        let grant = std::process::Command::new("icacls")
+            .arg(&broad)
+            .args(["/grant", "*S-1-1-0:R"])
+            .output()
+            .expect("icacls must be available on Windows");
+        assert!(grant.status.success(), "icacls must apply the explicit broad ACE");
+        assert_eq!(
+            verify_owner_only_file(broad.to_str().expect("a UTF-8 test path")).unwrap_err().code,
             REJECTED,
         );
         std::fs::remove_dir_all(&root).ok();
