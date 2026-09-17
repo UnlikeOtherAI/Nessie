@@ -112,3 +112,41 @@ test('a header that offers a creation names a primary action', () => {
   }
   assert.deepEqual(offenders, [])
 })
+
+// The bar's geometry is a set of tokens consumed by the one header component,
+// so rescaling it is a one-line edit — and the pointer, not a breakpoint,
+// decides which values the tokens hold. A hard-coded height back in the
+// component, or a compact bar shipped to a coarse pointer, is the regression
+// this pins.
+test('the header geometry is tokenised and split by pointer', () => {
+  const header = source('../src/components/shared/ResponsivePageHeader.tsx')
+  const styles = source('../src/styles.css')
+
+  // The component consumes the tokens and states no geometry of its own.
+  for (const token of [
+    '--page-header-height',
+    '--page-header-gap',
+    '--page-header-action-height',
+    '--page-header-toggle-height',
+  ]) {
+    assert.match(header, new RegExp(`var\\(${token}\\)`), `header consumes ${token}`)
+    assert.match(styles, new RegExp(`:root \\{[\\s\\S]*${token}:`), `styles declare ${token}`)
+  }
+  assert.doesNotMatch(header, /h-\[50px\]|\bh-11\b|\bw-11\b|\bh-8\b/)
+
+  // A compact action is a square at whatever the action height is.
+  assert.match(header, /w-\[var\(--page-header-action-height\)\]/)
+
+  // The font-size lives on the unlayered rule, where it beats the
+  // `button { font: inherit }` reset — a `text-*` utility on the element is
+  // silently ignored.
+  assert.match(styles, /\.admin-page-action \{[^}]*font-size: var\(--page-header-action-font-size\)/)
+  assert.doesNotMatch(header, /admin-page-action inline-flex[^']*text-xs/)
+
+  // The compact geometry is the fine-pointer case; a coarse pointer restores
+  // the touch geometry, so a finger still gets its 44px target.
+  const coarse = styles.match(/@media \(pointer: coarse\) \{\s*:root \{([^}]*)\}/)
+  assert.ok(coarse, 'a (pointer: coarse) block re-declares the header tokens')
+  assert.match(coarse[1] ?? '', /--page-header-action-height: 44px/)
+  assert.match(coarse[1] ?? '', /--page-header-height: 50px/)
+})
