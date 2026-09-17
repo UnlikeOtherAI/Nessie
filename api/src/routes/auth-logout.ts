@@ -2,10 +2,13 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 
 import { verifySessionTokenForLogout } from '../auth/session.js'
+import { sendApiError } from '../lib/api.js'
 import { readRefreshCookie } from '../lib/refresh-cookie.js'
+import { isOriginAllowed } from '../lib/server-origin-policy.js'
 import { clearPushSurfacePresenceForUser } from '../services/push-surface-presence.js'
 import { revokeRefreshTokenByRaw } from '../services/refresh-token.js'
 import { revokeUserSession } from '../services/refresh-session-management.js'
+import type { AppConfig } from '../lib/server-context.js'
 
 type LogoutDeps = {
   authSecret: string
@@ -16,6 +19,19 @@ type LogoutDeps = {
    * the composition root always supplies it.
    */
   invalidateSessionRevocationCache?: (sessionId: string) => void
+  /**
+   * Origin allow-list inputs for the CSRF check at the top of the handler —
+   * the same policy the refresh route applies. Optional only so the narrow
+   * test harnesses that register this route in isolation keep working; the
+   * composition root must always supply it. When it is absent a request that
+   * PRESENTS an Origin is refused outright: a deployment that cannot vet a
+   * browser origin must not honour a credentialed browser request.
+   */
+  originPolicy?: {
+    allowedOrigins: Set<string>
+    mode: AppConfig['mode']
+    teamHostBaseDomain: string | undefined
+  }
   prisma: PrismaClient
   /** Announce the revocation to the other replicas. Optional for the same reason. */
   publishSessionRevocation?: (sessionId: string) => Promise<void>
@@ -93,6 +109,27 @@ export const registerAuthLogoutRoute = (
   operations: LogoutOperations = defaultOperations,
 ): void => {
   app.delete('/api/auth/session', { config: { public: true } }, async (request, reply) => {
+    // CSRF posture for this cookie-bearing route: the refresh cookie is
+    // SameSite=None in production (admin and API are sibling subdomains —
+    // deliberate), so a cross-site browser request DOES present it, and this
+    // body-less DELETE needs no preflight — a cross-site page can force a
+    // logout across devices. A present Origin must therefore name an origin
+    // this deployment serves. An absent Origin is not a browser — the CLI,
+    // the desktop app and curl send none — and is allowed through; only a
+    // present, unallowed Origin is refused. The header is read directly
+    // rather than through deps.parseHeaderValue so the narrow test harnesses
+    // keep working; IncomingHttpHeaders types origin as a single string.
+    const origin = request.headers.origin
+    if (
+      origin
+      && !(
+        deps.originPolicy
+        && isOriginAllowed({ ...deps.originPolicy, origin })
+      )
+    ) {
+      sendApiError(reply, 403, 'ORIGIN_FORBIDDEN', 'A permitted browser origin is required')
+      return reply
+    }
     const bearer = deps.getAuthorizationToken(request)
     const verification = bearer
       ? verifySessionTokenForLogout(bearer, deps.authSecret)

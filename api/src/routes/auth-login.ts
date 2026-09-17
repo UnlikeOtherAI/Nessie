@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client'
 import type { SessionTokenClaims } from '../auth/session.js'
 import { LoginRequestSchema } from '../contracts/auth.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { isOriginAllowed } from '../lib/server-origin-policy.js'
 import {
   buildMeResponse,
   createActorContextFromClaims,
@@ -53,6 +54,28 @@ export const registerAuthLoginRoute = (
   } = deps
 
   app.post('/api/auth/session', { config: { public: true } }, async (request, reply) => {
+    // CSRF posture for this cookie-bearing route: the refresh cookie it sets
+    // is SameSite=None in production (admin and API are sibling subdomains —
+    // deliberate), so a cross-site browser request DOES present it. A present
+    // Origin must therefore name an origin this deployment serves. An absent
+    // Origin is not a browser — the CLI, the desktop app and curl send none —
+    // and is allowed through; only a present, unallowed Origin is refused.
+    // The header is read directly rather than through deps.parseHeaderValue
+    // so the narrow test harnesses that register this route with partial
+    // deps keep working; IncomingHttpHeaders types origin as a single string.
+    const origin = request.headers.origin
+    if (
+      origin
+      && !isOriginAllowed({
+        allowedOrigins: deps.allowedCorsOrigins,
+        mode: config.mode,
+        origin,
+        teamHostBaseDomain: deps.teamHostBaseDomain,
+      })
+    ) {
+      sendApiError(reply, 403, 'ORIGIN_FORBIDDEN', 'A permitted browser origin is required')
+      return reply
+    }
     const body = parseInput(LoginRequestSchema, request.body, reply)
     if (!body) return reply
     // expectedTeam is a strict AUTHENTICATED discriminant for

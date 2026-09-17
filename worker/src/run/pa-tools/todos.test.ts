@@ -447,7 +447,13 @@ dbTest('todo_template_propose refuses the eleventh pending proposal', async () =
         name: 'Number eleven',
         steps: [{ instructions: 'Must not write.', title: 'Refuse' }],
       }),
-      /10 to-do template proposals/,
+      /already 10 requests/,
+    )
+    // The refusal happens before the draft is prepared, so nothing is left
+    // behind for the declined proposal.
+    assert.equal(
+      await prisma.agentTodoTemplate.count({ where: { agentId: fixture.agentId } }),
+      0,
     )
   })
 })

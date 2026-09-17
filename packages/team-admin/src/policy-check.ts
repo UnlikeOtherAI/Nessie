@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { APPROVAL_ACTIONS } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
   PolicyAction,
@@ -261,7 +262,7 @@ export const verifyToolApprovalProof = async (
   if (!input.approvalId || !input.proof) return null
   const approval = await prisma.approvalRequest.findFirst({
     where: {
-      action: 'tool.invoke',
+      action: APPROVAL_ACTIONS.toolInvoke,
       argsHash: input.argsHash,
       continuationToken: input.proof,
       id: input.approvalId,
@@ -287,7 +288,7 @@ export const consumeToolApprovalProof = async (
 ): Promise<boolean> => {
   const consumed = await prisma.approvalRequest.updateMany({
     where: {
-      action: 'tool.invoke',
+      action: APPROVAL_ACTIONS.toolInvoke,
       argsHash: input.argsHash,
       continuationToken: input.proof,
       id: input.approvalId,

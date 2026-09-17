@@ -45,12 +45,23 @@ export type ExecuteToolFn = (
   toolName: string,
   args: Record<string, unknown>,
   toolCallId: string,
+  /**
+   * Aborted the moment the batch's per-call timeout fires. Optional because
+   * executors that finish synchronously can ignore it, but any executor that
+   * dials out must wire it to its request: the timeout arm only wins the
+   * race, and without the abort the in-flight request lives on — the loop
+   * reports a timeout while the socket stays held against the worker's pool,
+   * and a mutating call the loop may retry can still complete underneath it.
+   */
+  signal?: AbortSignal,
 ) => Promise<ExecutedToolResult>
 
 export type PreparedToolExecution =
   | {
       kind: 'execute'
-      execute: () => Promise<ExecutedToolResult>
+      // Optional: executors that finish synchronously ignore it; any executor
+      // that dials out must wire it to its request (see ExecuteToolFn).
+      execute: (signal?: AbortSignal) => Promise<ExecutedToolResult>
     }
   | {
       approval: ToolApprovalSuspension
@@ -75,11 +86,21 @@ const withTimeout = async <T>(
   timeoutMs: number,
   label: string,
   timeoutError?: () => Error | null,
+  onTimeout?: () => void,
 ): Promise<T> => {
   let timer: ReturnType<typeof setTimeout>
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(timeoutError?.() ?? new Error(`${label} timed out after ${timeoutMs}ms`)),
+      () => {
+        // Settle the race with the timeout verdict FIRST: an executor that
+        // fails synchronously on abort would otherwise win the race with its
+        // own abort error, and the loop would record "aborted" rather than
+        // the timeout it actually enforced.
+        reject(timeoutError?.() ?? new Error(`${label} timed out after ${timeoutMs}ms`))
+        // Then tell the losing promise, so its in-flight request is torn
+        // down instead of living on against the worker's socket pool.
+        onTimeout?.()
+      },
       timeoutMs,
     )
   })
@@ -149,7 +170,7 @@ export const executeToolBatch = async (input: {
     runnable.push({ index, toolCall })
   }
 
-  const prepared: Array<RunnableToolCall & { execute: () => Promise<ExecutedToolResult> }> = []
+  const prepared: Array<RunnableToolCall & { execute: (signal?: AbortSignal) => Promise<ExecutedToolResult> }> = []
   for (const call of runnable) {
     let preparation: PreparedToolExecution
     try {
@@ -157,10 +178,11 @@ export const executeToolBatch = async (input: {
         ? await input.prepareTool(call.toolCall.toolName, call.toolCall.arguments, call.toolCall.toolCallId)
         : {
           kind: 'execute',
-          execute: () => input.executeTool(
+          execute: (signal) => input.executeTool(
             call.toolCall.toolName,
             call.toolCall.arguments,
             call.toolCall.toolCallId,
+            signal,
           ),
         }
     } catch (error) {
@@ -193,12 +215,19 @@ export const executeToolBatch = async (input: {
   const settled = await Promise.allSettled(prepared.map(async ({ execute, toolCall }) => {
     await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
     const startedAt = new Date()
+    // One controller per call: the timeout arm aborts it, so a stalled
+    // execution is cancelled rather than merely out-raced. A bare
+    // `Promise.race` rejection leaves the losing promise running — orphaned
+    // sockets accumulate against the worker's pool through a provider
+    // brownout, and a retried mutating call can complete twice.
+    const controller = new AbortController()
     try {
       const result = await withTimeout(
-        execute(),
+        execute(controller.signal),
         input.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
         toolCall.toolName,
         () => input.toolTimeoutError?.(toolCall.toolName) ?? null,
+        () => controller.abort(),
       )
       const durationMs = Date.now() - startedAt.getTime()
       toolMs += durationMs

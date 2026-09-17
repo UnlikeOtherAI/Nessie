@@ -3,6 +3,62 @@ import { z } from 'zod'
 import { TimestampSchema } from './schema-primitives.js'
 
 /**
+ * What an approval is asking for, as a closed vocabulary.
+ *
+ * `action` used to be free text: the four effectful actions existed only as
+ * bare string literals scattered across the worker and the API, and the
+ * effect dispatcher (`api/src/services/approval-effects.ts`) switched on the
+ * same strings, ending in a silent `default: return {}`. Nothing linked a
+ * literal to the switch, so a typo produced the worst failure an approval
+ * gate has: request filed, human approves, nothing happens — successfully,
+ * with no error, and no way to tell a deliberately effect-free approval from
+ * a misspelled one. Construction sites now draw from this object, and the
+ * dispatch distinguishes the two sets below.
+ */
+export const APPROVAL_ACTIONS = {
+  /** An agent-proposed to-do template wants activating. */
+  agentTodoTemplatePublish: 'agent.todo_template.publish',
+  /** An agent-authored knowledge draft wants publishing. */
+  knowledgePagePublish: 'knowledge.page.publish',
+  /** A run is suspended on a tool call a human must approve before it runs. */
+  toolInvoke: 'tool.invoke',
+  /** A learned (demonstration-generalised) workflow wants adopting. */
+  workflowTemplateAdopt: 'workflow.template.adopt',
+} as const
+export type ApprovalAction = (typeof APPROVAL_ACTIONS)[keyof typeof APPROVAL_ACTIONS]
+
+/** The same vocabulary as a zod schema, for the card metadata below. */
+export const APPROVAL_ACTION_VALUES = Object.values(APPROVAL_ACTIONS) as [
+  ApprovalAction,
+  ...ApprovalAction[],
+]
+export const ApprovalActionSchema = z.enum(APPROVAL_ACTION_VALUES)
+
+/**
+ * The subset whose approval *does* something once a human says yes — the
+ * cases of the effect switch in `approval-effects.ts`.
+ *
+ * Every member of `APPROVAL_ACTIONS` belongs to exactly one of this set and
+ * `EFFECT_FREE_APPROVAL_ACTIONS`; adding an action means choosing which, and
+ * the schemas test for this file pins the partition so the two cannot drift.
+ */
+export const APPROVAL_EFFECT_ACTIONS: readonly ApprovalAction[] = [
+  APPROVAL_ACTIONS.agentTodoTemplatePublish,
+  APPROVAL_ACTIONS.knowledgePagePublish,
+  APPROVAL_ACTIONS.toolInvoke,
+  APPROVAL_ACTIONS.workflowTemplateAdopt,
+]
+
+/**
+ * The subset whose approval is deliberately the whole effect: a human saying
+ * yes IS the outcome and there is no follow-up mutation to dispatch. Empty
+ * today — an action lands here when a gate is added that needs only the
+ * decision. Membership is what excuses an action from the effect switch;
+ * anything in neither set is unrecognised and fails loudly there.
+ */
+export const EFFECT_FREE_APPROVAL_ACTIONS: readonly ApprovalAction[] = []
+
+/**
  * An approval-gate request as the client sees it. Lives here — not
  * `api/src/contracts/approvals.ts` — because the admin (which renders the
  * approvals surface) has no import path into `api/src`; the API contract
@@ -26,6 +82,10 @@ export const ApprovalRequestRecordSchema = z.object({
   agentId: z.string().uuid().nullable(),
   agentAccessCredentialId: z.string().uuid().nullable(),
   requesterId: z.string().uuid(),
+  // A persisted row outlives the vocabulary above: an approval written before
+  // an action was retired must still render, so the read model stays lenient
+  // while the write side (`CreateApprovalInput`, the gate metadata below) is
+  // closed.
   action: z.string(),
   reason: z.string(),
   context: z.record(z.string(), z.unknown()).nullable(),
@@ -65,7 +125,7 @@ export type ResolveApprovalBody = z.infer<typeof ResolveApprovalBodySchema>
  * `action` is always present and is what the card renders from.
  */
 export const ApprovalGateMetadataSchema = z.object({
-  action: z.string().min(1),
+  action: ApprovalActionSchema,
   approvalId: z.string().min(1),
   checkpointId: z.string().min(1).optional(),
   runId: z.string().min(1).optional(),

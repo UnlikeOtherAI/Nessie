@@ -1,8 +1,6 @@
-import { randomUUID } from 'node:crypto'
 import { openApprovalCard } from '../approval-card.js'
 import {
   AGENT_TODO_APPROVAL_EXPIRY_MS,
-  AGENT_TODO_PENDING_PROPOSAL_LIMIT,
   AGENT_TODO_MAX_STEPS,
   AGENT_TODO_STEP_NOTE_MAX,
   AgentTodoStepStatusSchema,
@@ -10,11 +8,11 @@ import {
   AgentTodoTemplateProposalInputSchema,
   AgentTodoTemplateStepInputSchema,
   AgentTodoTemplateStepKeySchema,
+  APPROVAL_ACTIONS,
 } from '@nessie/schemas'
-import { createApprovalUserAlerts } from '@nessie/runtime'
 import {
-  acquireAgentTodoAgentLock,
   createAgentTodoTemplate,
+  createApprovalRequestOnce,
   startAgentTodoForRun,
   updateAgentTodoStep,
   publishAgentTodoUpdated,
@@ -89,72 +87,54 @@ export const runTodoTemplateProposeTool = async (
     throw new Error(PROPOSAL_RESTRICTED_MESSAGE)
   }
   const organizationId = String(context.channel.organizationId)
-  const { approval, approvers } = await context.prisma.$transaction(async (tx) => {
-    // Equivalent proposals have no stable dedupe id, so lock and count the
-    // pending set itself rather than trusting the model to stop at ten.
-    await acquireAgentTodoAgentLock(tx, context.agentId)
-    const pending = await tx.approvalRequest.count({
-      where: {
-        action: 'agent.todo_template.publish',
+  const { approval, approvers } = await createApprovalRequestOnce(context.prisma, {
+    action: APPROVAL_ACTIONS.agentTodoTemplatePublish,
+    actorContext: context.actorContext,
+    channelId: context.channel.id,
+    expiresInMs: AGENT_TODO_APPROVAL_EXPIRY_MS,
+    // Equivalent proposals have no stable dedupe key — an agent naming the
+    // same template twice is two genuinely new drafts — so `matches` never
+    // fires and the per-requester ceiling, counted under the same lock, is
+    // the control that stops the pile-up. That is why the lock keys on the
+    // requester alone.
+    lockKey: `todo-template-propose:${organizationId}:${context.agentId}`,
+    matches: () => false,
+    // The draft template is created inside the approval's locked transaction:
+    // a refused or deduplicated ask must not leave a draft behind, and the
+    // approval's context names the template it approves.
+    prepare: async (tx) => {
+      const template = await createAgentTodoTemplate(tx, {
         agentId: context.agentId,
+        authorType: 'agent',
+        createdByUserId: null,
+        description: args.description,
+        name: args.name,
         organizationId,
-        status: 'pending',
-      },
-    })
-    if (pending >= AGENT_TODO_PENDING_PROPOSAL_LIMIT) {
-      throw new Error('This agent already has 10 to-do template proposals awaiting review.')
-    }
-    const template = await createAgentTodoTemplate(tx, {
-      agentId: context.agentId,
-      authorType: 'agent',
-      createdByUserId: null,
-      description: args.description,
-      name: args.name,
-      organizationId,
-      proposedByRunId: context.run.id,
-      status: 'draft',
-      steps: args.steps,
-    })
+        proposedByRunId: context.run.id,
+        status: 'draft',
+        steps: args.steps,
+      })
+      return { context: { templateId: template.id, version: template.version } }
+    },
+    reason: `Agent-proposed to-do template: ${args.name}`,
     // Approval visibility can include a member. The required role is what
     // mirrors the owner-only direct template-authoring route.
-    const approval = await tx.approvalRequest.create({
-      data: {
-        action: 'agent.todo_template.publish',
-        agentId: context.agentId,
-        channelId: context.channel.id,
-        context: { templateId: template.id, version: template.version },
-        continuationToken: randomUUID(),
-        expiresAt: new Date(Date.now() + AGENT_TODO_APPROVAL_EXPIRY_MS),
-        organizationId,
-        reason: `Agent-proposed to-do template: ${template.name}`,
-        requesterId: context.agentId,
-        requiredApproverRole: 'owner',
-        runId: context.run.id,
-        status: 'pending',
-      },
-      select: { id: true },
-    })
-    // Owners are the ones who can answer this, so owners are the ones told.
-    // Without it the proposal sat behind the Approvals badge until somebody
-    // happened to look, and expired if nobody did.
-    const approvers = await createApprovalUserAlerts(tx, {
-      actorAgentId: context.agentId,
-      approvalId: approval.id,
-      channelId: context.channel.id,
-      organizationId,
-      requiredApproverRole: 'owner',
-    })
-    return { approval, approvers }
+    requiredApproverRole: 'owner',
+    requester: { agentId: context.agentId },
+    runId: context.run.id,
   })
-  // The badge that comment describes is gone with the page behind it, so the
-  // card is now the whole surface: in this room for an owner who is in it, and
-  // in the assistant conversation of every owner who is not.
+  // The creator already rang the owners (they answer this, so they are told —
+  // without the bell a proposal sat behind the Approvals badge until somebody
+  // happened to look, and expired if nobody did). The badge is gone with the
+  // page behind it, so the card is now the whole surface: in this room for an
+  // owner who is in it, and in the assistant conversation of every owner who
+  // is not.
   await openApprovalCard(context, {
     agentId: context.agentId,
     approverUserIds: approvers,
     content: `I have drafted a to-do template, **${args.name}**, and it needs an owner's approval before it can be used.`,
     gate: {
-      action: 'agent.todo_template.publish',
+      action: APPROVAL_ACTIONS.agentTodoTemplatePublish,
       approvalId: approval.id,
       status: 'pending',
     },
