@@ -261,9 +261,11 @@ so nothing else is installed for it. Then it:
   Linux guest is addressed by Microsoft's VSOCK template GUID with the guest's
   vsock port in its first field, and `0x0000c000` is 49152, the guest's control
   port;
-- creates `%ProgramData%\Nessie Executor\executors\`, which the service secures
-  with an owner-only DACL (the service account plus SYSTEM) the first time it
-  starts, through the same packaged native helper the CLI uses;
+- creates `%ProgramData%\Nessie Executor\executors\` and, before the first
+  service start, runs the packaged native helper as Windows Installer to give
+  the state root and its `executors` and `pending` child roots an owner-only,
+  non-inherited DACL (the service account plus SYSTEM). The service re-verifies
+  that boundary at every start;
 - adds a `Run` entry for the installing user so the tray starts at their next
   logon.
 
@@ -296,9 +298,11 @@ keeps their work, so somebody with administrative rights has to grant
 `NT SERVICE\NessieExecutor` **Read** on the workspace root. Draft changes are
 written only to the service's private COW state. The elevated step
 merges that one entry into the directory's existing permissions — it never
-replaces them — and records the pairing account's SID under the service root.
-That recorded SID is what admits the person's ordinary, unelevated tray to the
-control pipe afterwards, so nothing prompts again.
+replaces them — then asks the service over its administrator-only control pipe
+to record the SID from the elevated connection's token. The tray never writes
+the private service root. That recorded SID is what admits the person's
+ordinary, unelevated tray to the control pipe afterwards, so nothing prompts
+again.
 
 **The tray.** Grey means nothing is running, green means a daemon is up, amber
 means something is in flight (awaiting a fingerprint confirmation, or a daemon

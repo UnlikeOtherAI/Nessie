@@ -37,6 +37,11 @@ pub const CONTROL_CLIENTS_DIRECTORY: &str = "control-clients";
 /// the tray's **Open logs folder** opens.
 pub const LOGS_DIRECTORY: &str = "logs";
 
+/// The only file rights a tray control client receives on the named pipe. This
+/// deliberately excludes `FILE_APPEND_DATA`, which Windows treats as the
+/// right to create another named-pipe instance.
+pub const CONTROL_PIPE_CLIENT_ACCESS: u32 = 0x0012_018B;
+
 /// A SID in its string form, checked before it is ever handed to Win32 or used
 /// as a file name: `S-1-` followed by dash-separated decimal parts.
 pub fn is_sid_string(value: &str) -> bool {
@@ -53,7 +58,7 @@ pub fn is_sid_string(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_sid_string, CONTROL_CLIENTS_DIRECTORY, LOGS_DIRECTORY, SERVICE_ACCOUNT,
+        is_sid_string, CONTROL_CLIENTS_DIRECTORY, CONTROL_PIPE_CLIENT_ACCESS, LOGS_DIRECTORY, SERVICE_ACCOUNT,
         SERVICE_DIRECTORY_NAME, SERVICE_NAME,
     };
 
@@ -95,5 +100,10 @@ mod tests {
         ] {
             assert!(!is_sid_string(value), "SID {value:?} must be refused");
         }
+    }
+
+    #[test]
+    fn control_clients_cannot_create_a_second_pipe_instance() {
+        assert_eq!(CONTROL_PIPE_CLIENT_ACCESS & 0x0000_0004, 0);
     }
 }

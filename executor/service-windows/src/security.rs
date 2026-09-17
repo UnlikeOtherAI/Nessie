@@ -20,28 +20,29 @@ use windows_sys::Win32::Security::Authorization::{
     TRUSTEE_IS_GROUP, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::{
-    CopySid, CreateWellKnownSid, GetLengthSid, GetTokenInformation, InitializeSecurityDescriptor,
+    CheckTokenMembership, CopySid, CreateWellKnownSid, GetLengthSid, GetTokenInformation, InitializeSecurityDescriptor,
     IsValidSid, RevertToSelf, SetSecurityDescriptorDacl, TokenUser, WinBuiltinAdministratorsSid,
     ACL, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR,
     SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER,
-};
-use windows_sys::Win32::Storage::FileSystem::{
-    FILE_GENERIC_READ, FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA, SYNCHRONIZE,
 };
 use windows_sys::Win32::System::Pipes::ImpersonateNamedPipeClient;
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, GetCurrentThread, OpenProcessToken, OpenThreadToken,
 };
 
-use nessie_windows_common::{is_sid_string, sid_to_string};
+use nessie_windows_common::{is_sid_string, sid_to_string, CONTROL_PIPE_CLIENT_ACCESS};
 
 /// What an admitted client may do: read the answer, write the request, and wait
 /// on the handle. Deliberately **not** `FILE_GENERIC_WRITE`, whose
 /// `FILE_APPEND_DATA` bit means `FILE_CREATE_PIPE_INSTANCE` on a pipe — that
 /// would let an admitted account stand up a rival instance of this pipe and
 /// answer for the service.
-pub(crate) const CLIENT_ACCESS: u32 =
-    FILE_GENERIC_READ | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | SYNCHRONIZE;
+pub(crate) const CLIENT_ACCESS: u32 = CONTROL_PIPE_CLIENT_ACCESS;
+
+// This ACE is for the service process only. `CreateNamedPipeW` asks for a
+// server handle, including `FILE_CREATE_PIPE_INSTANCE`; mirroring client
+// rights here would prevent the second instance from being created.
+const SERVER_ACCESS: u32 = windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
 
 /// A SID copied out of the buffer that produced it, so the buffer's life stops
 /// mattering to every later use.
@@ -115,27 +116,40 @@ pub fn current_user_sid_string() -> Result<String, String> {
         .ok_or_else(|| "Windows would not report this account.".to_owned())
 }
 
-/// The account on the other end of an accepted connection, read by
-/// impersonating it for exactly as long as the read takes. Recorded at pairing
-/// so this person's later, unelevated control calls are admitted.
-pub fn connected_client_sid_string(pipe: HANDLE) -> Option<String> {
+/// The authenticated identity on the other end of a control connection. The
+/// DACL is the first gate; the administrator bit is deliberately read from the
+/// impersonated token as the second gate for the one command that expands pipe
+/// access.
+pub struct ConnectedClient {
+    pub is_administrator: bool,
+    pub sid: String,
+}
+
+pub fn connected_client_identity(pipe: HANDLE) -> Option<ConnectedClient> {
     if unsafe { ImpersonateNamedPipeClient(pipe) } == 0 {
         return None;
     }
     let mut token: HANDLE = INVALID_HANDLE_VALUE;
     let opened =
         unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut token) } != 0;
-    let sid = if opened {
-        let read = token_user_sid(token);
+    let identity = if opened {
+        let sid = token_user_sid(token);
+        let administrators = well_known_administrators();
+        let mut member = 0_i32;
+        let is_administrator = administrators
+            .as_ref()
+            .is_some_and(|group| unsafe { CheckTokenMembership(token, group.pointer(), &mut member) } != 0)
+            && member != 0;
         unsafe { CloseHandle(token) };
-        read
+        sid.and_then(|sid| sid_to_string(sid.pointer()))
+            .map(|sid| ConnectedClient { sid, is_administrator })
     } else {
         None
     };
     // Impersonation is never left in place: everything after this — spawning the
     // daemon, writing state — must happen as the service account.
     unsafe { RevertToSelf() };
-    sid.and_then(|sid| sid_to_string(sid.pointer()))
+    identity
 }
 
 fn well_known_administrators() -> Option<OwnedSid> {
@@ -156,9 +170,9 @@ fn well_known_administrators() -> Option<OwnedSid> {
     Some(OwnedSid(bytes))
 }
 
-fn allow(sid: PSID, trustee_type: i32) -> EXPLICIT_ACCESS_W {
+fn allow(sid: PSID, trustee_type: i32, access: u32) -> EXPLICIT_ACCESS_W {
     EXPLICIT_ACCESS_W {
-        grfAccessPermissions: CLIENT_ACCESS,
+        grfAccessPermissions: access,
         grfAccessMode: SET_ACCESS,
         grfInheritance: NO_INHERITANCE,
         Trustee: TRUSTEE_W {
@@ -183,13 +197,16 @@ impl PipeSecurity {
     /// Administrators plus every recorded account. An empty recorded list is not
     /// an error and not a widening: until an elevated grant records the first
     /// account, only an administrator can reach the pipe.
-    pub fn new(recorded_sids: &[String]) -> Result<Self, String> {
+    pub fn new(recorded_sids: &[String], service_sid: &str) -> Result<Self, String> {
         let administrators = well_known_administrators()
             .ok_or_else(|| "Windows would not report the Administrators group.".to_owned())?;
         let recorded: Vec<OwnedSid> =
             recorded_sids.iter().filter_map(|value| sid_from_string(value)).collect();
-        let mut entries = vec![allow(administrators.pointer(), TRUSTEE_IS_GROUP)];
-        entries.extend(recorded.iter().map(|sid| allow(sid.pointer(), TRUSTEE_IS_USER)));
+        let service = sid_from_string(service_sid)
+            .ok_or_else(|| "Windows would not report the Nessie Executor account.".to_owned())?;
+        let mut entries = vec![allow(administrators.pointer(), TRUSTEE_IS_GROUP, CLIENT_ACCESS)];
+        entries.extend(recorded.iter().map(|sid| allow(sid.pointer(), TRUSTEE_IS_USER, CLIENT_ACCESS)));
+        entries.push(allow(service.pointer(), TRUSTEE_IS_USER, SERVER_ACCESS));
         let mut acl: *mut ACL = std::ptr::null_mut();
         let built = unsafe {
             SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), std::ptr::null(), &mut acl)

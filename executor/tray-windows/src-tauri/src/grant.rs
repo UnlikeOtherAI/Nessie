@@ -7,10 +7,10 @@
 //! the dialog: the tray is granting a service account read access to one directory
 //! the person just chose.
 //!
-//! The same elevated run records the person's own SID under the service root.
-//! The control pipe admits Administrators and recorded accounts, so this is what
-//! lets the person's ordinary, unelevated tray start, stop and configure
-//! executors afterwards without ever prompting again.
+//! The same elevated run asks the service to record the authenticated client's
+//! SID under its private root. The control pipe admits Administrators and
+//! recorded accounts, so this lets the person's ordinary, unelevated tray
+//! start, stop and configure executors afterwards without prompting again.
 //!
 //! Both halves are Win32 through and through — an ACL, a token, a `runas`
 //! relaunch — so they live behind `cfg(windows)` in [`imp`]; what the rest of
@@ -25,29 +25,23 @@ pub const GRANT_SWITCH: &str = "--grant-workspace";
 mod imp {
     use std::{os::windows::ffi::OsStrExt, path::Path};
 
-    use windows_sys::Win32::Foundation::{
-        CloseHandle, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree, ERROR_SUCCESS,
-    };
+    use windows_sys::Win32::Foundation::{CloseHandle, HLOCAL, LocalFree, ERROR_SUCCESS};
     use windows_sys::Win32::Security::Authorization::{
         GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
         NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_NAME, TRUSTEE_IS_USER,
         TRUSTEE_W,
     };
     use windows_sys::Win32::Security::{
-        GetTokenInformation, TokenUser, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
-        SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
+        ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
     };
     use windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_READ;
-    use windows_sys::Win32::System::Threading::{
-        GetCurrentProcess, OpenProcessToken, WaitForSingleObject, INFINITE,
-    };
+    use windows_sys::Win32::System::Threading::{WaitForSingleObject, INFINITE};
     use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-    use nessie_windows_common::{sid_to_string, CONTROL_CLIENTS_DIRECTORY, SERVICE_ACCOUNT};
+    use nessie_windows_common::SERVICE_ACCOUNT;
 
     use super::GRANT_SWITCH;
-    use crate::service_identity::service_root;
 
     /// The service copies the selected root into a private COW workspace. It
     /// never promotes from this standalone surface, so Windows grants only the
@@ -61,34 +55,6 @@ mod imp {
 
     fn wide_path(path: &Path) -> Vec<u16> {
         path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
-    }
-
-    /// The account running this process, in its string form.
-    fn current_user_sid_string() -> Result<String, String> {
-        let mut token: HANDLE = INVALID_HANDLE_VALUE;
-        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
-            return Err("Windows would not report this account.".to_owned());
-        }
-        let mut needed = 0_u32;
-        unsafe { GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut needed) };
-        let mut buffer = vec![0_u8; needed.max(1) as usize];
-        let read = unsafe {
-            GetTokenInformation(
-                token,
-                TokenUser,
-                buffer.as_mut_ptr().cast(),
-                buffer.len() as u32,
-                &mut needed,
-            )
-        };
-        let text = if read == 0 {
-            None
-        } else {
-            // The buffer owns the SID, so it is still alive for this call.
-            sid_to_string(unsafe { (*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid })
-        };
-        unsafe { CloseHandle(token) };
-        text.ok_or_else(|| "Windows would not report this account.".to_owned())
     }
 
     /// Adds the service account to the workspace's existing DACL, inherited by
@@ -157,20 +123,14 @@ mod imp {
         }
     }
 
-    /// The elevated half: grant the workspace, then record this account so the
-    /// person's ordinary tray is admitted to the control pipe. The `status`
-    /// call at the end is not a health check — the service builds each pipe
-    /// instance's DACL as it creates it, so serving one connection is what
-    /// makes it create the next one with the account just recorded.
+    /// The elevated half: grant the workspace, then have the service record
+    /// the authenticated pipe client's SID. The service state root is
+    /// intentionally unavailable even to an elevated administrator, so a
+    /// direct marker write would weaken it or fail; the pipe verifies the
+    /// elevated administrator token before it accepts this request.
     pub fn grant_workspace(path: &Path) -> Result<(), String> {
         grant_service_account(path)?;
-        let sid = current_user_sid_string()?;
-        let directory = service_root()?.join(CONTROL_CLIENTS_DIRECTORY);
-        std::fs::create_dir_all(&directory)
-            .map_err(|_| "Nessie Executor could not record this account.".to_owned())?;
-        std::fs::write(directory.join(&sid), b"")
-            .map_err(|_| "Nessie Executor could not record this account.".to_owned())?;
-        crate::pipe_client::call(&serde_json::json!({ "command": "status" }))?;
+        crate::pipe_client::call(&serde_json::json!({ "command": "enrollControlClient" }))?;
         Ok(())
     }
 

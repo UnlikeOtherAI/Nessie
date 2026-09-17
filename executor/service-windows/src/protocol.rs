@@ -43,6 +43,7 @@ pub enum Command {
     Configure { executor_id: String, operation_keys: Vec<String> },
     ConfigureInput { executor_id: String, configuration_input: serde_json::Value },
     Describe { executor_id: String },
+    EnrollControlClient,
     Pair(PairCommand),
     Start { executor_id: String },
     Status,
@@ -71,6 +72,7 @@ enum Request {
     Configure { executor_id: String, operation_keys: Vec<String> },
     ConfigureInput { executor_id: String, configuration_input: serde_json::Value },
     Describe { executor_id: String },
+    EnrollControlClient,
     Pair {
         api_base_url: String,
         challenge: String,
@@ -229,6 +231,7 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
         Request::Describe { executor_id } => Ok(Command::Describe {
             executor_id: identifier(executor_id, "executor id")?,
         }),
+        Request::EnrollControlClient => Ok(Command::EnrollControlClient),
         Request::Pair {
             api_base_url,
             challenge: value,
@@ -292,8 +295,12 @@ mod tests {
     }
 
     #[test]
-    fn the_seven_companion_commands_are_the_whole_protocol() {
+    fn the_eight_companion_commands_are_the_whole_protocol() {
         assert_eq!(parse_request(r#"{"command":"status"}"#).unwrap(), Command::Status);
+        assert_eq!(
+            parse_request(r#"{"command":"enrollControlClient"}"#).unwrap(),
+            Command::EnrollControlClient,
+        );
         assert_eq!(
             parse_request(&format!(r#"{{"command":"start","executorId":"{EXECUTOR}"}}"#)).unwrap(),
             Command::Start { executor_id: EXECUTOR.to_owned() },

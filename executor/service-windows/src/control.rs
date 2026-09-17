@@ -53,6 +53,9 @@ impl Control {
             return Response::error("The Nessie Executor service is not available.");
         };
         match command {
+            // The pipe owns this command because it alone has the
+            // impersonated Windows token needed to authenticate the SID.
+            Command::EnrollControlClient => Response::error("The control request is malformed."),
             Command::Status => match supervisor.statuses() {
                 executors => Response::Ok { executors },
             },

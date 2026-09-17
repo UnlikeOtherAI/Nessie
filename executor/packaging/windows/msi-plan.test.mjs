@@ -216,6 +216,14 @@ test('the state root is created and never removed', () => {
   assert.ok(authoring.includes('<CreateFolder />'))
   // RemoveFolder would take a paired executor's machine key with it.
   assert.ok(!authoring.includes('<RemoveFolder'))
+  assert.ok(authoring.includes('Id="SecureServiceStateRoot"'))
+  assert.ok(authoring.includes('ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor&quot;"'))
+  assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?Impersonate="no"[\s\S]*?Return="check"/.test(authoring))
+  assert.ok(authoring.includes('Action="SecureServiceStateRoot" After="InstallServices"'))
+  for (const id of ['SecureServiceExecutorsRoot', 'SecureServicePendingRoot']) {
+    assert.ok(authoring.includes(`Id="${id}"`), `${id} must repair an existing child root`)
+    assert.ok(new RegExp(`Action="${id}" After=`).test(authoring), `${id} must run before StartServices`)
+  }
 })
 
 test('the authoring declares one WiX package and both preprocessor variables', () => {
