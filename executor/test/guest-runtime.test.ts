@@ -112,6 +112,11 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
   const codexAuthProfilePath = join(stateDir, 'codex-auth.json')
   try {
+    if (packagedWindows) {
+      await ensureOwnerOnlyStateDirectory(stateDir)
+      await ensureOwnerOnlyStateDirectory(runtimeBundlePath)
+      await ensureOwnerOnlyStateDirectory(join(runtimeBundlePath, 'bin'))
+    }
     await writeFile(join(root, 'base.txt'), 'host source')
     await Promise.all([
       ...(packagedWindows ? [] : [writeFile(builderPath, 'builder'), writeFile(helperPath, 'helper'), writeFile(kernelPath, 'kernel')]),
@@ -121,8 +126,10 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
       ...(packagedWindows ? [] : [chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)]),
       chmod(codexAuthProfilePath, 0o600),
     ])
-    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
-    await chmod(runtimeBundlePath, 0o700)
+    if (!packagedWindows) {
+      await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
+      await chmod(runtimeBundlePath, 0o700)
+    }
     const browserRuntime = 'browser-runtime'
     await writeFile(join(runtimeBundlePath, 'bin', 'browser'), browserRuntime)
     await chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700)

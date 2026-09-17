@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,6 +10,7 @@ import { executeExecutorCommand } from '../src/daemon.js'
 import { parseCommand } from '../src/index.js'
 import type { ExecutorHost } from '../src/host-platform.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
+import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import {
   deriveExecutorWorkspaceFolderName,
   type ExecutorWorkspaceFolder,
@@ -362,8 +364,16 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
   }
   try {
     const packagedWindows = process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1'
-    if (!packagedWindows) {
-      await saveExecutorState(shared, state)
+    await saveExecutorState(shared, state)
+    if (packagedWindows) {
+      const grant = await new Promise<{ code: number | null }>((resolvePromise, reject) => {
+        const child = spawn('icacls', [shared, '/grant', '*S-1-1-0:R'], { windowsHide: true })
+        child.once('error', reject)
+        child.once('exit', (code) => resolvePromise({ code }))
+      })
+      assert.equal(grant.code, 0)
+      await assert.rejects(() => loadExecutorState(shared), /owner-only/)
+    } else {
       await chmod(shared, 0o755)
       await assert.rejects(() => loadExecutorState(shared), /must not be accessible/)
     }
@@ -383,6 +393,9 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
 test('native-host state-root dispatch accepts only protected matching pairing directories', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-pairings-'))
   const firstId = '00000000-0000-4000-8000-000000000031'
+  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+    await ensureOwnerOnlyStateDirectory(root)
+  }
   const secondId = '00000000-0000-4000-8000-000000000032'
   const stateFor = (executorId: string) => ({
     apiBaseUrl: 'https://api.example.test',
