@@ -20,8 +20,24 @@ use runtime::menu_bar::{
 #[cfg(test)]
 pub(crate) use runtime::menu_bar::NESTED_MENU_BAR_APP_PATH;
 
-#[cfg(not(debug_assertions))]
-const PRODUCTION_API_BASE_URL: &str = "https://api.nessie.works";
+/// The Nessie this computer may pair with, restating
+/// `packages/schemas/src/executor-pairing-origins.ts` rather than widening it —
+/// the same list the CLI reads for `--api nessie|deeptest|https://…`, and the
+/// same one the Mac menu bar app restates in Swift. `pairs_with_the_nessie_a_person_chose`
+/// holds these strings against that file so three spellings of two hostnames
+/// cannot drift apart quietly.
+///
+/// It was one pinned origin, because pairing hands a machine key to a server and
+/// an app that took any URL was a way to point somebody's machine at a server
+/// nobody reviewed. Nessie is open source and people run their own, so the check
+/// stays and the choice becomes explicit: two named services, or a person's own
+/// HTTPS origin, shown to them by host wherever trust is given.
+const PAIRING_PRESETS: [(&str, &str); 2] = [
+    ("nessie", "https://api.nessie.works"),
+    ("deeptest", "https://api.deeptest.live"),
+];
+/// The local API a development build may pair with, and only a development build.
+const LOCAL_DEVELOPMENT_API_BASE_URL: &str = "http://127.0.0.1:5454";
 const WORKSPACE_OPERATION_KEYS: [&str; 5] = [
     "file.list",
     "file.read",
@@ -57,21 +73,65 @@ fn identifier(value: &str, field: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(debug_assertions)]
-fn approved_api_base_url(value: &str) -> Result<&'static str, String> {
-    if value == "http://127.0.0.1:5454" {
-        Ok("http://127.0.0.1:5454")
-    } else {
-        Err("A development Nessie Desktop build may pair only with its local API origin.".to_owned())
-    }
+/// A release never gains the local development origin: the split is a
+/// compile-time fact, not a setting, and a release that could be talked into
+/// plain HTTP would not be a release.
+fn approved_api_base_url(value: &str) -> Result<String, String> {
+    approve_pairing_origin(value, cfg!(debug_assertions))
 }
 
-#[cfg(not(debug_assertions))]
-fn approved_api_base_url(value: &str) -> Result<&'static str, String> {
-    if value == PRODUCTION_API_BASE_URL {
-        Ok(PRODUCTION_API_BASE_URL)
+/// May this computer pair with this value, and what exactly would it be pairing
+/// with? A preset id resolves to its pinned origin; anything else must be an
+/// HTTPS origin carrying no credentials, path, query or fragment — a URL with a
+/// path is either a mistake or an attempt to make one host read as another in a
+/// label, and neither should reach a machine key.
+fn approve_pairing_origin(value: &str, allow_local_development: bool) -> Result<String, String> {
+    let trimmed = value.trim();
+    if let Some((_, origin)) = PAIRING_PRESETS.iter().find(|(id, _)| *id == trimmed) {
+        return Ok((*origin).to_owned());
+    }
+    let parsed = tauri::Url::parse(trimmed).map_err(|_| {
+        "Enter an HTTPS address for the Nessie you are pairing with, such as https://nessie.example.com."
+            .to_owned()
+    })?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("A pairing address carries no username or password.".to_owned());
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() || !matches!(parsed.path(), "" | "/") {
+        return Err("A pairing address is an origin only — no path, query or fragment.".to_owned());
+    }
+    if parsed.host_str().is_none_or(str::is_empty) {
+        return Err(
+            "Enter an HTTPS address for the Nessie you are pairing with, such as https://nessie.example.com."
+                .to_owned(),
+        );
+    }
+    let origin = parsed.origin().ascii_serialization();
+    if parsed.scheme() == "https" {
+        return Ok(origin);
+    }
+    if allow_local_development && origin == LOCAL_DEVELOPMENT_API_BASE_URL {
+        return Ok(origin);
+    }
+    Err(if parsed.scheme() == "http" {
+        "A pairing address must be HTTPS. Plain HTTP would expose the pairing challenge on the network."
+            .to_owned()
     } else {
-        Err("This Nessie Desktop release may pair only with its approved API origin.".to_owned())
+        "A pairing address must be HTTPS.".to_owned()
+    })
+}
+
+/// How the confirmation dialog names the host. A preset is named for its
+/// service; anything else is the bare host, because "custom" alone would hide
+/// the one fact a person is being asked to confirm.
+fn pairing_origin_label(origin: &str) -> String {
+    match PAIRING_PRESETS.iter().find(|(_, preset)| *preset == origin) {
+        Some(("nessie", _)) => "Nessie".to_owned(),
+        Some(("deeptest", _)) => "DeepTest".to_owned(),
+        _ => tauri::Url::parse(origin)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_owned))
+            .unwrap_or_else(|| origin.to_owned()),
     }
 }
 
@@ -245,16 +305,24 @@ pub async fn executor_companion_pair(
         return Err("The pairing challenge is malformed.".to_owned());
     }
     let workspace = choose_workspace(app.clone()).await?;
+    // The host is in the dialog because that is where trust is given: a person
+    // confirming this is agreeing that a machine key may be handed to *this*
+    // server, and naming it is the only way that is a decision rather than an
+    // assumption.
     if !confirm(
         app.clone(),
         "Pair Nessie executor",
-        "Nessie Desktop will create a private machine key and pair this device with Nessie. The selected folder stays under the reviewed local policy. File contents and bounded tool output are sent to Nessie and the configured model provider only when an allowed operation runs.".to_owned(),
+        format!(
+            "Nessie Desktop will create a private machine key and pair this device with {} ({}). The selected folder stays under the reviewed local policy. File contents and bounded tool output are sent to that Nessie and the configured model provider only when an allowed operation runs.",
+            pairing_origin_label(&api_base_url),
+            api_base_url,
+        ),
         "Pair executor",
     ).await? {
         return Err("Executor pairing was cancelled.".to_owned());
     }
     let state_dir = executor_state_dir(&app, &executor_id)?;
-    let api = api_base_url.to_owned();
+    let api = api_base_url.clone();
     tauri::async_runtime::spawn_blocking({
         let app = app.clone();
         let pair_state_dir = state_dir.clone();
@@ -453,8 +521,9 @@ pub async fn executor_companion_forget(
 #[cfg(test)]
 mod tests {
     use super::{
-        approved_api_base_url, has_local_pairing_material, identifier, runtime::pair_arguments,
-        workspace_operation_keys,
+        approve_pairing_origin, approved_api_base_url, has_local_pairing_material, identifier,
+        pairing_origin_label, runtime::pair_arguments, workspace_operation_keys,
+        LOCAL_DEVELOPMENT_API_BASE_URL, PAIRING_PRESETS,
     };
     use std::{fs, path::Path};
 
@@ -496,15 +565,80 @@ mod tests {
         assert!(!arguments.iter().any(|argument| argument == "/private/workspace"));
     }
 
+    /// The presets are the ones `packages/schemas` names, read rather than
+    /// copied: three restatements of two hostnames is exactly the shape that
+    /// lets one of them quietly accept a host the others refuse.
     #[test]
-    fn pairs_only_with_the_approved_api_for_this_build() {
-        #[cfg(debug_assertions)]
-        {
-            assert_eq!(approved_api_base_url("http://127.0.0.1:5454").unwrap(), "http://127.0.0.1:5454");
-            assert!(approved_api_base_url("https://api.nessie.works").is_err());
+    fn pairs_with_the_nessie_a_person_chose() {
+        let contract = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../packages/schemas/src/executor-pairing-origins.ts"),
+        )
+        .expect("the pairing-origin contract");
+        for (id, origin) in PAIRING_PRESETS {
+            assert!(contract.contains(&format!("id: '{id}'")), "{id} is not a preset in the contract");
+            assert!(
+                contract.contains(&format!("apiBaseUrl: '{origin}'")),
+                "{origin} is not the origin the contract pins",
+            );
+            assert_eq!(approve_pairing_origin(id, false).unwrap(), origin);
+            assert_eq!(approve_pairing_origin(origin, false).unwrap(), origin);
         }
-        #[cfg(not(debug_assertions))]
-        assert_eq!(approved_api_base_url("https://api.nessie.works").unwrap(), "https://api.nessie.works");
-        assert!(approved_api_base_url("https://example.test").is_err());
+        assert!(contract.contains(&format!(
+            "EXECUTOR_LOCAL_DEVELOPMENT_ORIGIN = '{LOCAL_DEVELOPMENT_API_BASE_URL}'"
+        )));
+        // Somebody's own Nessie, named by its host rather than "custom".
+        assert_eq!(
+            approve_pairing_origin("https://nessie.example.com/", false).unwrap(),
+            "https://nessie.example.com",
+        );
+        assert_eq!(pairing_origin_label("https://api.nessie.works"), "Nessie");
+        assert_eq!(pairing_origin_label("https://api.deeptest.live"), "DeepTest");
+        assert_eq!(pairing_origin_label("https://nessie.example.com"), "nessie.example.com");
+    }
+
+    #[test]
+    fn refuses_what_a_pairing_address_may_never_be() {
+        for allow_local_development in [true, false] {
+            for value in [
+                // Plain HTTP would put the pairing challenge on the network.
+                "http://nessie.example.com",
+                // A path is how one host is dressed up as another in a label.
+                "https://evil.example.com/api.nessie.works",
+                "https://nessie.example.com?next=x",
+                "https://nessie.example.com#fragment",
+                "https://user:pass@nessie.example.com",
+                "ftp://nessie.example.com",
+                "mailto:someone@nessie.example.com",
+                "not a url",
+                "api.nessie.works",
+                "",
+            ] {
+                assert!(
+                    approve_pairing_origin(value, allow_local_development).is_err(),
+                    "{value:?} must be refused",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_local_api_is_reachable_only_by_a_development_build() {
+        assert_eq!(
+            approve_pairing_origin(LOCAL_DEVELOPMENT_API_BASE_URL, true).unwrap(),
+            LOCAL_DEVELOPMENT_API_BASE_URL,
+        );
+        assert!(approve_pairing_origin(LOCAL_DEVELOPMENT_API_BASE_URL, false).is_err());
+        // The hatch is that one origin, not "any http on loopback".
+        for near in ["http://127.0.0.1:9999", "http://localhost:5454", "http://127.0.0.1"] {
+            assert!(approve_pairing_origin(near, true).is_err(), "{near} is not the local origin");
+        }
+        // And this build's own answer follows its configuration, so a release
+        // cannot be talked into the development origin.
+        assert_eq!(
+            approved_api_base_url(LOCAL_DEVELOPMENT_API_BASE_URL).is_ok(),
+            cfg!(debug_assertions),
+        );
+        assert_eq!(approved_api_base_url("nessie").unwrap(), "https://api.nessie.works");
     }
 }

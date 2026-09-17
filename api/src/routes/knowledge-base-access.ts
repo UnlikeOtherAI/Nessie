@@ -430,6 +430,12 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     accessSpace,
     accessSpaceForPageCreate,
     accessPageSpace,
+    // Exposed because a surface that has already settled *whether* a caller may
+    // proceed sometimes still has to answer *how far*: the spreadsheet
+    // bootstrap tells the pane whether to open writable, and a share is the
+    // second way that can be true. Never a substitute for `accessPageSpace` —
+    // it answers only the share half and enforces nothing.
+    pageShareAllows,
     canReadVersion,
     canReadPageVersionsWithViewer,
     requirePageOwnerWrite,

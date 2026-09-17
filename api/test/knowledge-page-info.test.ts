@@ -149,7 +149,9 @@ dbTest('Get Info adds up everything inside, and refuses a stranger', async (t) =
   // On disk keeps the superseded version too.
   assert.equal(folderInfo.storageBytes, String(DOCUMENT_BODY.length + 1234 + 400))
   assert.equal(folderInfo.retainedVersions, 1)
-  assert.deepEqual(folderInfo.counts, { folders: 0, documents: 1, files: 1 })
+  // Spreadsheets are counted in their own right — Get Info says "1 document,
+  // 1 file" of a folder holding neither a folder nor a workbook.
+  assert.deepEqual(folderInfo.counts, { folders: 0, documents: 1, files: 1, spreadsheets: 0 })
   assert.equal(folderInfo.truncated, false)
   assert.equal(folderInfo.home.spaceId, space.id)
   assert.equal(folderInfo.home.rootKind, 'shared')
@@ -162,7 +164,7 @@ dbTest('Get Info adds up everything inside, and refuses a stranger', async (t) =
   const fileInfo = (fileResponse.json() as { data: KnowledgeItemInfo }).data
   assert.equal(fileInfo.sizeBytes, '1234')
   assert.equal(fileInfo.mime, 'application/pdf')
-  assert.deepEqual(fileInfo.counts, { folders: 0, documents: 0, files: 0 })
+  assert.deepEqual(fileInfo.counts, { folders: 0, documents: 0, files: 0, spreadsheets: 0 })
 
   const spaceResponse = await infoAs('alice', `/api/knowledge-base/spaces/${space.id}/info`)
   assert.equal(spaceResponse.statusCode, 200, spaceResponse.body)
@@ -171,7 +173,7 @@ dbTest('Get Info adds up everything inside, and refuses a stranger', async (t) =
   assert.equal(spaceInfo.kind, 'space')
   // For a space the ledger is the authority on what the quota charges.
   assert.equal(spaceInfo.storageBytes, SPACE_LEDGER_BYTES.toString())
-  assert.deepEqual(spaceInfo.counts, { folders: 1, documents: 1, files: 1 })
+  assert.deepEqual(spaceInfo.counts, { folders: 1, documents: 1, files: 1, spreadsheets: 0 })
 
   // Carol is in the organisation but not in the project: the space is not hers
   // to read, and Get Info must not describe it to her.

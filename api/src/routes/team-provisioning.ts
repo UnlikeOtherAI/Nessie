@@ -25,6 +25,8 @@ import {
   withUoaRosterSubjectAssertion,
   type UoaRosterDeps,
 } from '../services/uoa-org-roster.js'
+import { actorHoldsUoaTeam } from '../services/tenant-host-team-access.js'
+import type { UoaDirectoryRefreshDeps } from '../services/uoa-directory-refresh.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -286,6 +288,12 @@ export const registerTeamProvisioningRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
   rosterDeps: UoaRosterDeps = {},
+  /**
+   * The UOA directory freshness read behind the `/api/hosts/team` membership
+   * check. Production passes nothing; only a test pins the upstream it would
+   * otherwise reach, exactly as `buildMeResponse` takes it.
+   */
+  directoryDeps: UoaDirectoryRefreshDeps = {},
 ): void => {
   const {
     prisma,
@@ -527,16 +535,28 @@ export const registerTeamProvisioningRoutes = (
   })
 
   /**
-   * The ids behind a team hostname, for a caller who is signed in.
+   * The ids behind a team hostname, **for a member of that team**.
    *
    * Split from the public resolver deliberately: knowing that
    * `design.acme.nessie.works` maps to a particular team is not something an
    * anonymous visitor needs, and keeping it on an authenticated route means the
    * public one cannot grow into leaking it.
    *
-   * Resolving is still not authorization. These ids only let the client run the
-   * ordinary team switch, which re-checks live membership and fails closed for
-   * a team this person is not in.
+   * Being signed in used to be the whole check, and being signed in is not the
+   * same as having been let in. Any account on the instance could walk
+   * `<guess>.<org>.<base>` and learn, per guess, whether that team exists and
+   * what its UOA ids are — which is the enumeration
+   * docs/standards/team-hosts.md says this route is authenticated to prevent,
+   * handed back through the side door. A non-member now gets exactly the answer
+   * a made-up hostname gets: `{ team: null }`, so a refusal cannot be told
+   * apart from a team that does not exist.
+   *
+   * Resolving is still not authorization, and the membership check here does
+   * not make it one. These ids only let the client run the ordinary team
+   * switch, which re-resolves membership live with UOA and fails closed. This
+   * is a disclosure gate (`services/tenant-host-team-access.ts`), which is why
+   * it may read the bounded session directory rather than paying a live roster
+   * call on every cold load of a tenant host.
    */
   app.get('/api/hosts/team', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -554,7 +574,15 @@ export const registerTeamProvisioningRoutes = (
         { orgSlug: parsed.orgSlug, teamSlug: parsed.teamSlug },
         rosterDeps,
       )
-      return createApiResponse({ team })
+      if (!team) return createApiResponse({ team: null })
+
+      const mayLearn = await actorHoldsUoaTeam(prisma, {
+        identity: actorContext.actionContext.uoaIdentity,
+        organizationId: actorContext.tenant.organizationId,
+        team,
+        userId: actorContext.actor.actorId,
+      }, directoryDeps)
+      return createApiResponse({ team: mayLearn ? team : null })
     } catch (error) {
       if (error instanceof UoaRosterUnavailableError) {
         return createApiResponse({ team: null })

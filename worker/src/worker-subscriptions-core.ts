@@ -1,3 +1,4 @@
+import { enqueueQueueJob, withSweepLock } from '@nessie/db'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import {
   AttachmentThumbnailJobPayloadSchema,
@@ -70,6 +71,32 @@ import { executeExecutorCommandJob } from './control/executor-commands.js'
 import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
 import { handleCallRingDispatch, handleCallRingCancel } from './control/call-ring-dispatch.js'
 import { handleCallRingTimeout } from './control/call-lifecycle.js'
+import {
+  SPREADSHEET_COMPACT_TOPIC,
+  SpreadsheetCompactJobPayloadSchema,
+  executeSpreadsheetCompactJob,
+} from './control/spreadsheet-compact.js'
+import {
+  SPREADSHEET_IMPORT_TOPIC,
+  SpreadsheetImportJobPayloadSchema,
+  executeSpreadsheetImportJob,
+} from './control/spreadsheet-import.js'
+import {
+  SPREADSHEET_ENGINE_MIGRATE_TOPIC,
+  SPREADSHEET_SWEEP_INTERVAL_MS,
+  SPREADSHEET_SWEEP_LOCK,
+  SpreadsheetEngineMigrateJobPayloadSchema,
+  executeSpreadsheetEngineMigrateJob,
+  pruneSpreadsheetOpBatches,
+  sweepIdleSpreadsheets,
+  sweepStaleSpreadsheetEngines,
+} from './control/spreadsheet-sweeps.js'
+import {
+  createNativeKnowledgeProvider,
+  createSpreadsheetModelCache,
+  knowledgeEmbeddingJobKey,
+  resolvePersistedKnowledgeOrigin,
+} from '@nessie/knowledge'
 import type { WorkerCoreSubscriptionDeps } from './worker-runtime-types.js'
 export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps): boolean => {
   const {
@@ -337,6 +364,115 @@ subscribe(
   { signal: abortSignal },
 )
 
+// One model cache for this process, shared by both spreadsheet jobs: closure
+// state of this registration, never module scope. A busy page compacted twice
+// in a minute is loaded once.
+const spreadsheetCache = createSpreadsheetModelCache()
+const spreadsheetProvider = createNativeKnowledgeProvider(prisma, {
+  readMarkdownAttachment: async (attachmentId, organizationId) =>
+    (await fileService.openStream(attachmentId, organizationId))?.stream ?? null,
+  // The same indexing seam the api wires, so a version this process writes is
+  // embedded like every other one. Without it a compacted or imported
+  // spreadsheet would be chunked and then never searchable — the chunks land,
+  // the embeddings never do, and nothing says so.
+  //
+  // Enqueued inside the save transaction: the job becomes visible only when
+  // the version and its chunk rows commit. A version whose page has no team
+  // has no resolvable origin and is skipped rather than failing the save —
+  // exactly what the markdown backfill does with the same case.
+  onVersionChunksReplaced: async (tx, event) => {
+    const origin = await resolvePersistedKnowledgeOrigin(tx, {
+      organizationId: event.organizationId,
+      pageId: event.pageId,
+      systemComponent: 'spreadsheet-indexer',
+      versionId: event.versionId,
+    })
+    if (!origin) return
+    await enqueueQueueJob(tx, {
+      idempotencyKey: knowledgeEmbeddingJobKey(
+        event.pageId,
+        event.versionId,
+        modelClient?.embeddingModel ?? 'unresolved',
+      ),
+      payload: { ...event, origin },
+      topic: KNOWLEDGE_EMBED_TOPIC,
+    })
+  },
+})
+const spreadsheetDeps = {
+  prisma,
+  fileService,
+  cache: spreadsheetCache,
+  realtime: realtimeTransport,
+  createPage: spreadsheetProvider.createPage,
+  addFileVersion: spreadsheetProvider.addFileVersion,
+}
+
+subscribe(
+  SPREADSHEET_IMPORT_TOPIC,
+  async (job) => {
+    await executeSpreadsheetImportJob(
+      spreadsheetDeps,
+      SpreadsheetImportJobPayloadSchema.parse(job.payload),
+    )
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  SPREADSHEET_COMPACT_TOPIC,
+  async (job) => {
+    await executeSpreadsheetCompactJob(
+      spreadsheetDeps,
+      SpreadsheetCompactJobPayloadSchema.parse(job.payload),
+    )
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  SPREADSHEET_ENGINE_MIGRATE_TOPIC,
+  async (job) => {
+    await executeSpreadsheetEngineMigrateJob(
+      spreadsheetDeps,
+      SpreadsheetEngineMigrateJobPayloadSchema.parse(job.payload),
+    )
+  },
+  { signal: abortSignal },
+)
+
+// The spreadsheet sweeps live here rather than in `worker-sweeps.ts` because
+// this is where the spreadsheet deps are: the model cache, the file service
+// and the knowledge provider are closure state of *this* registration, and a
+// second copy of them in the sweep module would be a second cache.
+//
+// One indivisible bounded pass per tick, so the primitive is `withSweepLock`
+// (horizontal-scaling invariant 2). The three sweeps are awaited in sequence
+// and each one catches its own failure, so a database error in the prune does
+// not stop the engine migration behind it.
+let spreadsheetSweepInFlight = false
+const spreadsheetSweepInterval = setInterval(() => {
+  if (spreadsheetSweepInFlight || abortSignal.aborted) return
+  spreadsheetSweepInFlight = true
+  void withSweepLock(pool, SPREADSHEET_SWEEP_LOCK, async () => {
+    for (const [label, run] of [
+      ['idle-compact', () => sweepIdleSpreadsheets(prisma)],
+      ['prune', () => pruneSpreadsheetOpBatches(prisma)],
+      ['engine-migrate', () => sweepStaleSpreadsheetEngines(prisma)],
+    ] as const) {
+      try {
+        await run()
+      } catch (error) {
+        console.error(`[worker.spreadsheet-sweeps] ${label} failed`, error)
+      }
+    }
+  })
+    .catch((error: unknown) => {
+      console.error('[worker.spreadsheet-sweeps] failed', error)
+    })
+    .finally(() => {
+      spreadsheetSweepInFlight = false
+    })
+}, SPREADSHEET_SWEEP_INTERVAL_MS)
+abortSignal.addEventListener('abort', () => clearInterval(spreadsheetSweepInterval), { once: true })
 subscribe(
   KNOWLEDGE_EMBED_TOPIC,
   async (job) => {

@@ -29,7 +29,9 @@ export type KnowledgeVersionRecord = {
 
 // Re-exported from the shared contract rather than hand-written: this type was
 // one of three independent spellings of the page kind, and the API's own
-// contract was missing it entirely.
+// contract was missing it entirely. A spreadsheet is one of its kinds, not a
+// file node that happens to be an xlsx: the workbook is the document, and the
+// xlsx rendition is only what an export or a version download serves.
 export type { KnowledgePageKind } from '@nessie/schemas'
 
 // Never hand-copy the API response here. In particular, ownerAgentId must not

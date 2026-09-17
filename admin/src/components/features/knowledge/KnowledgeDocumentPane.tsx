@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useUploadFileVersion, useUploadPageAttachment } from '../../../facades/knowledge/file-hooks'
+import { useConvertToSpreadsheet } from '../../../facades/knowledge/spreadsheet-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import type { UploadProgress } from '../../../lib/upload-xhr'
@@ -9,6 +10,16 @@ import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { useKnowledge } from './KnowledgeProvider'
 import { PagePreview } from './PagePreview'
+
+// The whole IronCalc surface — the widget JS, its 72 kB stylesheet and the
+// 1.9 MB wasm — sits behind this one dynamic import. Nothing is fetched while a
+// person browses `/knowledge-base`; the chunk arrives the first time a
+// spreadsheet page opens, and is cached from then on.
+// `LiveSpreadsheetPane` is `SpreadsheetPane` with the live lane wired into its
+// seams — the ordering rules, presence and the touch overlay (Phase 3b). It is
+// the chunk's entry point rather than a second import, so the boundary this
+// comment is about is still exactly one dynamic import.
+const SpreadsheetPane = lazy(() => import('./spreadsheet/live/LiveSpreadsheetPane'))
 
 type KnowledgeDocumentPaneProps = {
   // The on-demand full-body fetch, handed on so the preview can render the
@@ -59,6 +70,7 @@ export const KnowledgeDocumentPane = ({
   const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
 
+  const convertToSpreadsheet = useConvertToSpreadsheet(selectedSpaceId)
   const pageAttachmentUpload = useUploadPageAttachment(page.id)
   const fileVersionUpload = useUploadFileVersion(page.id, selectedSpaceId)
 
@@ -74,10 +86,27 @@ export const KnowledgeDocumentPane = ({
 
   return (
     <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
-      {page.kind === 'file' ? (
+      {page.kind === 'spreadsheet' ? (
+        <Suspense
+          fallback={
+            <div
+              className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]"
+              data-testid="spreadsheet-chunk-loading"
+            >
+              Opening {page.title}…
+            </div>
+          }
+        >
+          <SpreadsheetPane canWrite={canWrite} onBack={onBack} page={page} />
+        </Suspense>
+      ) : page.kind === 'file' ? (
         <FileNodeViewer
           canWrite={canWrite}
           onBack={onBack}
+          onOpenAsSpreadsheet={() =>
+            convertToSpreadsheet.mutate(page.id, {
+              onSuccess: (result) => openPagePath([result.page.id]),
+            })}
           onOpenHistory={() => openHistory(page.id)}
           onSaveMarkdown={async (markdown, baseVersionId) => {
             await fileVersionUpload.mutateAsync({

@@ -52,6 +52,16 @@ export type UseFinderMenusOptions = {
   /** Asks a virtual column's query again; it has no other way to be refreshed. */
   onRefresh?: () => void
   /**
+   * Opens "New spreadsheet" for a folder. Absent where the host has not
+   * mounted the spreadsheet dialogs, and the registry then offers no
+   * spreadsheet row — never an inert one.
+   */
+  onCreateSpreadsheet?: (parentPageId: string | null) => void
+  /** Opens "Import spreadsheet…" for a folder; absent under the same rule. */
+  onImportSpreadsheet?: (parentPageId: string | null) => void
+  /** Builds a spreadsheet page from an uploaded `.xlsx`/`.csv`/`.tsv` file node. */
+  onConvertToSpreadsheet?: (page: KnowledgePageRecord) => void
+  /**
    * The destination picker "Move to…" opens — 2D's `MoveToDialog`, injected
    * rather than imported so the menu owns *when* it opens and the transfer
    * wave owns what it does. Without it the item is absent, never inert.
@@ -81,7 +91,7 @@ export type FinderDialogState =
       pageId: string
       spaceId?: string
       title: string
-      subjectKind: 'folder' | 'document' | 'file'
+      subjectKind: 'folder' | 'document' | 'file' | 'spreadsheet'
     }
   | {
       kind: 'readout'

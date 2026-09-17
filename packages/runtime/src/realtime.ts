@@ -2,13 +2,17 @@ import type { ClientConfig, Notification, Pool } from 'pg'
 import { Client } from 'pg'
 import { withSweepLock } from '@nessie/db'
 import {
+  DocumentSseEventSchema,
   SseEventSchema,
   WsEventSchema,
+  type DocumentSseEventName,
   type SseEvent,
   type WsScope,
 } from '@nessie/schemas'
 
 import {
+  buildDocumentEnvelope,
+  buildSheetOpsEvent,
   mapRealtimeEventRow,
   mapThreadStreamEvent,
   notifyRealtime,
@@ -24,6 +28,8 @@ import {
 import { publishThreadStreamEvent, publishWsEvent } from './realtime-durable-publish.js'
 
 export {
+  buildDocumentEnvelope,
+  buildSheetOpsEvent,
   buildSseRefEnvelope,
   buildWsRefEnvelope,
   resolveRealtimeNotification,
@@ -557,6 +563,43 @@ export class PgRealtimeTransport {
     }
 
     return message
+  }
+
+  /**
+   * Publish on the per-document live lane: no row, no lock, nothing durable.
+   *
+   * `sheet.ops` goes through `buildSheetOpsEvent`, which drops the batch's
+   * diffs to `null` when the whole envelope would breach the NOTIFY cap so the
+   * event still arrives and the client fetches that `seq` from the catch-up
+   * route. Every other event on this lane is schema-bounded well under the cap.
+   *
+   * `scopes: []` is a deploy-compatibility field, not payload data — see
+   * `RealtimeNotificationPayload`'s `document` arm.
+   */
+  async publishDocumentEphemeral(
+    pageId: string,
+    organizationId: string,
+    event: DocumentSseEventName,
+    data: unknown,
+  ): Promise<{ inlined: boolean }> {
+    // Refused here rather than at each caller: the bytes cannot be decoded
+    // downstream, and an unparseable frame would reach every open pane.
+    const parsed = DocumentSseEventSchema.parse({ event, data })
+    if (parsed.event === 'sheet.ops') {
+      const { envelope, inlined } = buildSheetOpsEvent({
+        pageId,
+        organizationId,
+        batch: parsed.data,
+      })
+      await notifyRealtime(this.pool, this.channel, envelope)
+      return { inlined }
+    }
+    await notifyRealtime(
+      this.pool,
+      this.channel,
+      buildDocumentEnvelope({ pageId, organizationId, event: parsed.event, data: parsed.data }),
+    )
+    return { inlined: true }
   }
 
   /**

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { faDownload, faPaperclip } from '@fortawesome/free-solid-svg-icons'
+import { faDownload, faPaperclip, faTable } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
@@ -12,6 +12,7 @@ import { CommentsSection } from './comments/CommentsSection'
 import {
   iconForFilename,
   isMarkdownFilename,
+  isSpreadsheetSourceFilename,
   isZipFilename,
   previewKindForFilename,
 } from '../../shared/file-icons'
@@ -20,6 +21,11 @@ import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
+// Which filenames can become a workbook is `file-icons.ts`'s answer, because
+// the Finder's file-row menu asks the same question and two spellings of it
+// would let the header and the menu disagree about one file.
+export { isSpreadsheetSourceFilename }
+
 type FileNodeViewerProps = {
   canWrite: boolean
   page: KnowledgePageRecord
@@ -27,6 +33,12 @@ type FileNodeViewerProps = {
   // registry and passes no onBack; wider layouts keep the pane's own Back.
   onBack?: () => void
   onOpenHistory: () => void
+  /**
+   * Builds a spreadsheet document from this file, beside it. The original file
+   * node is kept — converting is additive, so a person who wanted the file can
+   * still download the bytes they uploaded.
+   */
+  onOpenAsSpreadsheet?: () => void
   onSaveMarkdown?: (markdown: string, baseVersionId: string) => Promise<void>
   onUploadVersion: () => void
   onToggleAttachments: () => void
@@ -36,6 +48,7 @@ export const FileNodeViewer = ({
   canWrite,
   page,
   onBack,
+  onOpenAsSpreadsheet,
   onOpenHistory,
   onSaveMarkdown,
   onUploadVersion,
@@ -91,6 +104,16 @@ export const FileNodeViewer = ({
       onSelect: onOpenHistory,
       priority: 50,
     },
+    ...(canWrite && onOpenAsSpreadsheet && isSpreadsheetSourceFilename(page.title)
+      ? [{
+          icon: faTable,
+          id: 'convert-to-spreadsheet',
+          label: 'Open as spreadsheet',
+          onSelect: onOpenAsSpreadsheet,
+          priority: 80,
+          title: 'Build an editable spreadsheet document from this file',
+        } satisfies PageHeaderAction]
+      : []),
     ...(canWrite
       ? [{
           id: 'upload-version',

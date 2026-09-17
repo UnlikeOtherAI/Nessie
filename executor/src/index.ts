@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { dirname } from 'node:path'
+
+import { approveExecutorPairingOrigin } from '@nessie/schemas'
+
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
 import { describeExecutor } from './describe.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
@@ -93,11 +96,11 @@ type ParsedCommand =
 
 const usage = (): never => {
   throw new Error(
-    'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
+    'Usage: nessie-executor pair --api <nessie|deeptest|https://your-nessie.example> --enrollment <uuid> '
     + '(--challenge <token>|--challenge-stdin) --state-dir <owner-only-path> '
     + '(--workspace <absolute-read-only-root>'
     + '|--folder <name>=<absolute-read-only-root> [--folder ...])\n'
-    + '       nessie-executor pair --api <https://api.example> --enrollment <uuid> '
+    + '       nessie-executor pair --api <nessie|deeptest|https://your-nessie.example> --enrollment <uuid> '
     + '--pair-input-stdin --state-dir <owner-only-path>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
     + '--operations <file.list,file.read,file.write,command.run,browser.open,browser.observe,'
@@ -239,21 +242,20 @@ const readConfigurationInput = async (): Promise<{
   }
 }
 
+/**
+ * Which Nessie this executor is being paired with. `nessie` and `deeptest`
+ * resolve to their pinned origins so the common cases cannot be typo-squatted;
+ * anything else is somebody's own server, which Nessie being open source makes
+ * an ordinary case rather than an exception. The rule itself lives in
+ * `@nessie/schemas` so the CLI, the Mac app and the Windows tray cannot drift
+ * into three readings of it.
+ */
 const secureApiUrl = (value: string): string => {
-  let parsed: URL
-  try {
-    parsed = new URL(value)
-  } catch {
-    throw new Error('--api must be an HTTPS URL.')
-  }
-  const localDesktopDevelopmentApi = process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API === '1'
-    && parsed.protocol === 'http:'
-    && parsed.hostname === '127.0.0.1'
-    && parsed.port === '5454'
-  if (parsed.protocol !== 'https:' && !localDesktopDevelopmentApi) {
-    throw new Error('--api must be an HTTPS URL.')
-  }
-  return parsed.toString().replace(/\/$/, '')
+  const verdict = approveExecutorPairingOrigin(value, {
+    allowLocalDevelopment: process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API === '1',
+  })
+  if (!verdict.ok) throw new Error(verdict.reason)
+  return verdict.origin
 }
 
 export const parseCommand = (args: string[]): ParsedCommand => {

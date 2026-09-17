@@ -213,6 +213,12 @@ export const evaluateTransferRefusals = async (
     sourceProjectId: string
     targetSpace: TransferSpaceScope
     parentPageId: string | null
+    /**
+     * Which operation is being judged. Defaults to `move`, because a move is
+     * the arm with no operation-specific refusals: every rule below holds for
+     * both, except the one that is about producing a *new* page.
+     */
+    operation?: 'move' | 'copy'
   },
 ): Promise<TransferRefusal | null> => {
   const pageIds = input.nodes.map((node) => node.id)
@@ -266,6 +272,33 @@ export const evaluateTransferRefusals = async (
         message:
           `“${bound.title}” belongs to a ticket in ${project?.name ?? 'its project'}`
           + ` and can't leave that project.`,
+      }
+    }
+  }
+
+  // A copy of a spreadsheet would be a page that says `spreadsheet` and cannot
+  // be opened. `planTransferCopy` writes the page, its current version and its
+  // attachment, and nothing writes the `SpreadsheetHead` that makes a page a
+  // workbook (`spreadsheet/create.ts`: "a page with no head is not a
+  // spreadsheet, just an unopenable row") — so every spreadsheet route throws
+  // on `loadHead` for the copy.
+  //
+  // A **move** is unaffected and stays allowed: it keeps the page id, so the
+  // head, the journal and the filters follow it.
+  //
+  // Refusing is deliberate rather than provisional. The copy carries only the
+  // current version, whose attachment is the `.xlsx` rendition, so the honest
+  // implementation is the one the import pipeline already is: stage the
+  // rendition and let the worker parse it into a new workbook. That is an
+  // asynchronous per-page state the transfer contract does not have yet, and
+  // half of it — a page written now, a workbook maybe later — is worse than a
+  // sentence saying no.
+  if (input.operation === 'copy') {
+    const workbook = input.nodes.find((node) => node.kind === 'spreadsheet')
+    if (workbook) {
+      return {
+        code: 'TRANSFER_COPY_SPREADSHEET',
+        message: `“${workbook.title}” is a spreadsheet and can be moved, but not copied yet.`,
       }
     }
   }

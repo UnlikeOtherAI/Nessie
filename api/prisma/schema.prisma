@@ -586,6 +586,7 @@ enum KnowledgePageStatus {
 enum KnowledgePageKind {
   document
   file
+  spreadsheet
   folder
 }
 
@@ -1040,14 +1041,14 @@ enum ProductIntegrationRunStatus {
 }
 
 model User {
-  id                                  String                          @id @default(uuid()) @db.Uuid
-  email                               String                          @unique
+  id                                    String                                 @id @default(uuid()) @db.Uuid
+  email                                 String                                 @unique
   // Stable UnlikeOtherAI subject (`sub`) — THE principal key for UOA SSO
   // resolution. Nullable: local/password accounts and generic OIDC principals
   // never carry one, and a UOA row whose backfill was ambiguous stays NULL
   // until the next login adopts it (or fails closed on a conflict). Email
   // remains unique but is no longer an identity join key on the UOA path.
-  uoaSub                              String?                         @unique @map("uoa_sub")
+  uoaSub                                String?                                @unique @map("uoa_sub")
   // NON-AUTHORITATIVE MIRROR of the identity provider's profile. UOA owns the
   // profile of every SSO principal; these columns exist only so a name and a
   // picture can be rendered without a round trip per row, and they are re-synced
@@ -1056,89 +1057,89 @@ model User {
   // value: a row the provider has not named carries its email address until it
   // does. Dropping the columns for UOA deployments is Phase 3's later step (see
   // docs/plans/2026-08-14-uoa-sso-gap-analysis.md).
-  displayName                         String                          @map("display_name")
-  passwordHash                        String?                         @map("password_hash")
+  displayName                           String                                 @map("display_name")
+  passwordHash                          String?                                @map("password_hash")
   // Provider-supplied avatar (e.g. the Google OIDC `picture` claim) — part of the
   // same mirror. `avatarAttachmentId` is a locally uploaded picture, reachable
   // only in deployments with no UOA (a UOA session's `PATCH /api/auth/me/avatar`
   // is refused and its picture lives in UOA). Client precedence: UOA relay >
   // local attachment > this > initials.
-  avatarUrl                           String?                         @map("avatar_url")
-  avatarAttachmentId                  String?                         @map("avatar_attachment_id") @db.Uuid
-  pronouns                            String?
+  avatarUrl                             String?                                @map("avatar_url")
+  avatarAttachmentId                    String?                                @map("avatar_attachment_id") @db.Uuid
+  pronouns                              String?
   // Platform-level super-admin flag. Sits ABOVE the per-organization `owner`
   // role: org owners administer their own tenant, but only a super-admin may
   // manage platform-global resources such as the push credentials that drive
   // the central push gateway. Defaults to false; granted out-of-band.
-  superAdmin                          Boolean                         @default(false) @map("super_admin")
+  superAdmin                            Boolean                                @default(false) @map("super_admin")
   // Access-token generation. Minted into the session JWT as `tv` and compared on
   // every request, so bumping it revokes every outstanding access token at once.
   // Revoking the refresh family alone is not enough: an access token stays valid
   // for its whole TTL, leaving a window after logout or a forced sign-out.
   // Unrelated to `UoaProductLink.uoaTokenVersion`, which is UOA's own epoch.
-  tokenVersion                        Int                             @default(0) @map("token_version")
-  preferences                         Json?
-  createdAt                           DateTime                        @default(now()) @map("created_at")
-  updatedAt                           DateTime                        @updatedAt @map("updated_at")
-  organizationMembers                 OrganizationMember[]
-  projectMembers                      ProjectMember[]
-  teamMembers                         TeamMember[]
-  channelMembers                      ChannelMember[]
-  pushSurfacePresences                UserPushSurfacePresence[]
-  knowledgeSpaceMembers               KnowledgeSpaceMember[]
-  callsStarted                        Call[]                          @relation("CallStarter")
-  callParticipants                    CallParticipant[]               @relation("CallParticipation")
-  callInvites                         CallInvite[]
-  messages                            Message[]
-  reactions                           MessageReaction[]
-  threadReadStates                    ThreadReadState[]
-  startedThreads                      Thread[]                            @relation("ThreadStartedBy")
-  messageConversationReadStates       MessageConversationReadState[]
-  userAlerts                          UserAlert[]
-  disclosureGrants                    DisclosureGrant[]
-  scopeDisclosureGrants               ScopeDisclosureGrant[]
-  messageDisclosureSources            MessageDisclosureSource[]
-  checkpointDisclosureSources         RunCheckpointDisclosureSource[]
-  thoughtDisclosureSources            ThoughtDisclosureSource[]
+  tokenVersion                          Int                                    @default(0) @map("token_version")
+  preferences                           Json?
+  createdAt                             DateTime                               @default(now()) @map("created_at")
+  updatedAt                             DateTime                               @updatedAt @map("updated_at")
+  organizationMembers                   OrganizationMember[]
+  projectMembers                        ProjectMember[]
+  teamMembers                           TeamMember[]
+  channelMembers                        ChannelMember[]
+  pushSurfacePresences                  UserPushSurfacePresence[]
+  knowledgeSpaceMembers                 KnowledgeSpaceMember[]
+  callsStarted                          Call[]                                 @relation("CallStarter")
+  callParticipants                      CallParticipant[]                      @relation("CallParticipation")
+  callInvites                           CallInvite[]
+  messages                              Message[]
+  reactions                             MessageReaction[]
+  threadReadStates                      ThreadReadState[]
+  startedThreads                        Thread[]                               @relation("ThreadStartedBy")
+  messageConversationReadStates         MessageConversationReadState[]
+  userAlerts                            UserAlert[]
+  disclosureGrants                      DisclosureGrant[]
+  scopeDisclosureGrants                 ScopeDisclosureGrant[]
+  messageDisclosureSources              MessageDisclosureSource[]
+  checkpointDisclosureSources           RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources              ThoughtDisclosureSource[]
   knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
   // Pages somebody else shared with this person. There is deliberately no
   // back-relation for shares this person granted: the sharer is always the
   // page's owner, reachable through the page, and a second relation would
   // invite a query that reads a grant list without reading the page's space.
-  knowledgePageSharesReceived         KnowledgePageShare[]            @relation("KnowledgePageSharesReceived")
-  userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
-  messageThreadFollows                MessageThreadFollow[]
-  favorites                           Favorite[]
-  assignedTasks                       Task[]                          @relation("TaskAssignee")
-  ownedTasks                          Task[]                          @relation("TaskOwner")
-  createdTasks                        Task[]                          @relation("TaskCreatedBy")
-  mcpCatalogOwned                     McpCatalogEntry[]               @relation("McpCatalogOwner")
-  mcpCatalogReviewed                  McpCatalogEntry[]               @relation("McpCatalogReviewer")
-  statuses                            UserStatus[]
-  feedback                            Feedback[]
-  refreshTokens                       RefreshToken[]
-  authSessions                        AuthSession[]
-  agentAccessCredentials              AgentAccessCredential[]         @relation("AgentAccessCredentialUser")
-  agentAuthorizationApprovals         AgentAuthorizationRequest[]     @relation("AgentAuthorizationApprover")
-  uoaSessionCredentials               UoaSessionCredential[]
-  uoaTeamSwitchIntents                UoaTeamSwitchIntent[]
-  productAccountLinks                 ProductAccountLink[]
-  productTeamEnablements              ProductTeamEnablement[]
-  productIntegrationRuns              ProductIntegrationRun[]
-  cancelledRuns                       Run[]                           @relation("RunCancelledBy")
-  pairedExecutors                     Executor[]                      @relation("ExecutorPairingOwner")
-  executorPrivateAssignments          ExecutorPrivateAssignment[]     @relation("ExecutorPrivateAssignmentUser")
-  reviewedExecutorCapabilityRevisions ExecutorCapabilityRevision[]    @relation("ExecutorCapabilityReviewer")
-  executorOperationGrantUpdates       ExecutorAgentOperationGrant[]   @relation("ExecutorAgentOperationGrantUpdater")
-  executorSessionControlLeases        ExecutorSession[]               @relation("ExecutorSessionControlLease")
-  executorContinuations               ExecutorContinuation[]          @relation("ExecutorContinuationActor")
-  executorAvailabilityCandidates      ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
-  createdAgentTodoTemplates           AgentTodoTemplate[]             @relation("AgentTodoTemplateCreatedBy")
-  createdAgentTodos                   AgentTodo[]                     @relation("AgentTodoCreatedBy")
-  createdTaskChecklists               TaskChecklist[]                 @relation("TaskChecklistCreatedBy")
-  startedDemonstrations               Demonstration[]                 @relation("DemonstrationStartedBy")
-  agentAppConnectionRequests          AgentAppConnectionRequest[]
-  avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
+  knowledgePageSharesReceived           KnowledgePageShare[]                   @relation("KnowledgePageSharesReceived")
+  userAlertActivity                     UserAlert[]                            @relation("UserAlertActor")
+  messageThreadFollows                  MessageThreadFollow[]
+  favorites                             Favorite[]
+  assignedTasks                         Task[]                                 @relation("TaskAssignee")
+  ownedTasks                            Task[]                                 @relation("TaskOwner")
+  createdTasks                          Task[]                                 @relation("TaskCreatedBy")
+  mcpCatalogOwned                       McpCatalogEntry[]                      @relation("McpCatalogOwner")
+  mcpCatalogReviewed                    McpCatalogEntry[]                      @relation("McpCatalogReviewer")
+  statuses                              UserStatus[]
+  feedback                              Feedback[]
+  refreshTokens                         RefreshToken[]
+  authSessions                          AuthSession[]
+  agentAccessCredentials                AgentAccessCredential[]                @relation("AgentAccessCredentialUser")
+  agentAuthorizationApprovals           AgentAuthorizationRequest[]            @relation("AgentAuthorizationApprover")
+  uoaSessionCredentials                 UoaSessionCredential[]
+  uoaTeamSwitchIntents                  UoaTeamSwitchIntent[]
+  productAccountLinks                   ProductAccountLink[]
+  productTeamEnablements                ProductTeamEnablement[]
+  productIntegrationRuns                ProductIntegrationRun[]
+  cancelledRuns                         Run[]                                  @relation("RunCancelledBy")
+  pairedExecutors                       Executor[]                             @relation("ExecutorPairingOwner")
+  executorPrivateAssignments            ExecutorPrivateAssignment[]            @relation("ExecutorPrivateAssignmentUser")
+  reviewedExecutorCapabilityRevisions   ExecutorCapabilityRevision[]           @relation("ExecutorCapabilityReviewer")
+  executorOperationGrantUpdates         ExecutorAgentOperationGrant[]          @relation("ExecutorAgentOperationGrantUpdater")
+  executorSessionControlLeases          ExecutorSession[]                      @relation("ExecutorSessionControlLease")
+  executorContinuations                 ExecutorContinuation[]                 @relation("ExecutorContinuationActor")
+  executorAvailabilityCandidates        ExecutorAvailabilityCandidate[]        @relation("ExecutorAvailabilityCandidateActor")
+  createdAgentTodoTemplates             AgentTodoTemplate[]                    @relation("AgentTodoTemplateCreatedBy")
+  createdAgentTodos                     AgentTodo[]                            @relation("AgentTodoCreatedBy")
+  createdTaskChecklists                 TaskChecklist[]                        @relation("TaskChecklistCreatedBy")
+  startedDemonstrations                 Demonstration[]                        @relation("DemonstrationStartedBy")
+  agentAppConnectionRequests            AgentAppConnectionRequest[]
+  avatarAttachment                      Attachment?                            @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   resolvedAgentCards AgentCard[] @relation("AgentCardResolvedBy")
 
@@ -1272,27 +1273,27 @@ model UoaTeamSwitchIntent {
 }
 
 model Organization {
-  id                         String                      @id @default(uuid()) @db.Uuid
+  id                                    String                                 @id @default(uuid()) @db.Uuid
   // For a UOA-provisioned organization, `name` is a NON-authoritative mirror of
   // UOA's `orgName` (same doctrine as the user profile mirror): synced wherever
   // the team directory carries it, placeholder
   // `Organisation ${externalOrgId.slice(0, 8)}` at first provisioning.
-  name                       String
+  name                                  String
   // Stable UnlikeOtherAI organisation id this Organization mirrors 1:1.
   // Null = a local-mode organization (bootstrap / no-SSO installs, and the
   // generic-OIDC shared organization).
-  externalOrgId              String?                     @unique @map("external_org_id")
-  logoAttachmentId           String?                     @map("logo_attachment_id") @db.Uuid
+  externalOrgId                         String?                                @unique @map("external_org_id")
+  logoAttachmentId                      String?                                @map("logo_attachment_id") @db.Uuid
   // Instance-level login branding. The unauthenticated sign-in screen belongs
   // to the instance, not to any one tenant, so which organisation's logo it
   // carries is an instance-operator decision (`nessie set-instance-brand`),
   // never an org admin's. At most one organisation carries it; unset on every
   // organisation means the sign-in screen shows Nessie's own mark.
-  instanceBrand              Boolean                     @default(false) @map("instance_brand")
+  instanceBrand                         Boolean                                @default(false) @map("instance_brand")
   // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.
-  stripImageMetadata         Boolean                     @default(true) @map("strip_image_metadata")
+  stripImageMetadata                    Boolean                                @default(true) @map("strip_image_metadata")
   // The organisation's own colour scheme: the four authored seeds
   // (appearance, accent, surface, sidebar) validated by
   // `OrganizationThemeSchema`, never the forty-eight derived tokens — those are
@@ -1301,42 +1302,42 @@ model Organization {
   // Sandstone. Colours only: the schema is `.strict()`, so type, radii and
   // spacing cannot arrive here.
   // docs/plans/2026-09-05-organisation-custom-theme.md
-  theme                      Json?                       @map("theme")
+  theme                                 Json?                                  @map("theme")
   // Narrow, product-specific early-access gate for conversational agent setup.
   // It is organization configuration, not UOA-owned identity or hierarchy.
-  createdAt                  DateTime                    @default(now()) @map("created_at")
-  updatedAt                  DateTime                    @updatedAt @map("updated_at")
-  logoAttachment             Attachment?                 @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
-  members                    OrganizationMember[]
-  projects                   Project[]
-  channels                   Channel[]
-  thoughts                   Thought[]
-  knowledgeSpaces            KnowledgeSpace[]
-  knowledgePages             KnowledgePage[]
-  knowledgePageShares        KnowledgePageShare[]
-  knowledgePageVersionBasisScopes KnowledgePageVersionBasisScope[]
+  createdAt                             DateTime                               @default(now()) @map("created_at")
+  updatedAt                             DateTime                               @updatedAt @map("updated_at")
+  logoAttachment                        Attachment?                            @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
+  members                               OrganizationMember[]
+  projects                              Project[]
+  channels                              Channel[]
+  thoughts                              Thought[]
+  knowledgeSpaces                       KnowledgeSpace[]
+  knowledgePages                        KnowledgePage[]
+  knowledgePageShares                   KnowledgePageShare[]
+  knowledgePageVersionBasisScopes       KnowledgePageVersionBasisScope[]
   knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
-  knowledgePageChunks        KnowledgePageChunk[]
-  dashboards                 Dashboard[]
-  dashboardDataSources       DashboardDataSource[]
-  tasks                      Task[]
-  taskChecklists             TaskChecklist[]
-  budgets                    Budget[]
-  plans                      Plan[]
-  approvalRequests           ApprovalRequest[]
-  resourceLocks              ResourceLock[]
-  userStatuses               UserStatus[]
-  userAlerts                 UserAlert[]
-  feedback                   Feedback[]
-  favorites                  Favorite[]
-  productAccountLinks        ProductAccountLink[]
-  productTeamEnablements     ProductTeamEnablement[]
-  productIntegrationRuns     ProductIntegrationRun[]
-  productWebhookSecrets      ProductWebhookSecret[]
-  secrets                    Secret[]
-  agentAppConnectionRequests AgentAppConnectionRequest[]
-  agentHandoffRequests       AgentHandoffRequest[]
-  automaticMembershipDomains AutomaticMembershipDomain[]
+  knowledgePageChunks                   KnowledgePageChunk[]
+  dashboards                            Dashboard[]
+  dashboardDataSources                  DashboardDataSource[]
+  tasks                                 Task[]
+  taskChecklists                        TaskChecklist[]
+  budgets                               Budget[]
+  plans                                 Plan[]
+  approvalRequests                      ApprovalRequest[]
+  resourceLocks                         ResourceLock[]
+  userStatuses                          UserStatus[]
+  userAlerts                            UserAlert[]
+  feedback                              Feedback[]
+  favorites                             Favorite[]
+  productAccountLinks                   ProductAccountLink[]
+  productTeamEnablements                ProductTeamEnablement[]
+  productIntegrationRuns                ProductIntegrationRun[]
+  productWebhookSecrets                 ProductWebhookSecret[]
+  secrets                               Secret[]
+  agentAppConnectionRequests            AgentAppConnectionRequest[]
+  agentHandoffRequests                  AgentHandoffRequest[]
+  automaticMembershipDomains            AutomaticMembershipDomain[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -2115,50 +2116,50 @@ model TeamMember {
 }
 
 model Channel {
-  id                          String                          @id @default(uuid()) @db.Uuid
-  label                       String
-  slug                        String?
-  type                        ChannelType                     @default(standard)
-  systemChannelType           ChannelSystemType?              @map("system_channel_type")
-  organizationId              String                          @map("organization_id") @db.Uuid
-  projectId                   String                          @map("project_id") @db.Uuid
-  teamId                      String                          @map("team_id") @db.Uuid
-  visibility                  ChannelVisibility               @default(public)
-  dmKey                       String?                         @unique @map("dm_key")
+  id                                    String                                 @id @default(uuid()) @db.Uuid
+  label                                 String
+  slug                                  String?
+  type                                  ChannelType                            @default(standard)
+  systemChannelType                     ChannelSystemType?                     @map("system_channel_type")
+  organizationId                        String                                 @map("organization_id") @db.Uuid
+  projectId                             String                                 @map("project_id") @db.Uuid
+  teamId                                String                                 @map("team_id") @db.Uuid
+  visibility                            ChannelVisibility                      @default(public)
+  dmKey                                 String?                                @unique @map("dm_key")
   // sp-channels: channel lifecycle metadata + soft-archive
-  topic                  String?
-  description            String?
-  archivedAt             DateTime?                 @map("archived_at")
+  topic                                 String?
+  description                           String?
+  archivedAt                            DateTime?                              @map("archived_at")
   // Soft delete. `DELETE /api/channels/:channelId` stamps this together with
   // `archivedAt`, so every archived-channel filter already hides the row and
   // its name is released; reads by id filter `deletedAt: null` too. The rows
   // stay intact for a future restore; nothing unsets it yet.
-  deletedAt              DateTime?                 @map("deleted_at")
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  organization           Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  team                   Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  members                ChannelMember[]
-  workflowInstallations  WorkflowInstallation[]     @relation("WorkflowInstallationChannel")
-  workflowRunOrigins     WorkflowRun[]             @relation("WorkflowRunOriginChannel")
-  calls                  Call[]
-  agentBindings          AgentBinding[]
-  scopeDisclosureGrants  ScopeDisclosureGrant[]
-  triggerTargets         AgentTrigger[]            @relation("TriggerTargetChannel")
-  threads                Thread[]
-  plans                  Plan[]
-  approvalRequests       ApprovalRequest[]
-  statusRules            UserStatusRule[]
-  userAlerts             UserAlert[]
-  productIntegrationRuns ProductIntegrationRun[]
-  pushSurfacePresences   UserPushSurfacePresence[]
-  demonstrations         Demonstration[]
-  agentMailbox           AgentMailbox?
-  agentHandoffRequests   AgentHandoffRequest[]
-  disclosureSources      MessageDisclosureSource[]
-  checkpointDisclosureSources RunCheckpointDisclosureSource[]
-  thoughtDisclosureSources    ThoughtDisclosureSource[]
+  deletedAt                             DateTime?                              @map("deleted_at")
+  createdAt                             DateTime                               @default(now()) @map("created_at")
+  updatedAt                             DateTime                               @updatedAt @map("updated_at")
+  organization                          Organization                           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                               Project                                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team                                  Team                                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members                               ChannelMember[]
+  workflowInstallations                 WorkflowInstallation[]                 @relation("WorkflowInstallationChannel")
+  workflowRunOrigins                    WorkflowRun[]                          @relation("WorkflowRunOriginChannel")
+  calls                                 Call[]
+  agentBindings                         AgentBinding[]
+  scopeDisclosureGrants                 ScopeDisclosureGrant[]
+  triggerTargets                        AgentTrigger[]                         @relation("TriggerTargetChannel")
+  threads                               Thread[]
+  plans                                 Plan[]
+  approvalRequests                      ApprovalRequest[]
+  statusRules                           UserStatusRule[]
+  userAlerts                            UserAlert[]
+  productIntegrationRuns                ProductIntegrationRun[]
+  pushSurfacePresences                  UserPushSurfacePresence[]
+  demonstrations                        Demonstration[]
+  agentMailbox                          AgentMailbox?
+  agentHandoffRequests                  AgentHandoffRequest[]
+  disclosureSources                     MessageDisclosureSource[]
+  checkpointDisclosureSources           RunCheckpointDisclosureSource[]
+  thoughtDisclosureSources              ThoughtDisclosureSource[]
   knowledgePageVersionDisclosureSources KnowledgePageVersionDisclosureSource[]
 
   agentCards AgentCard[]
@@ -2372,13 +2373,13 @@ model UserAlert {
 }
 
 model ThreadStreamEvent {
-  id        BigInt   @id @default(autoincrement())
-  threadId  String   @map("thread_id") @db.Uuid
-  eventName String   @map("event_name")
-  data      Json     @db.JsonB
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  idempotencyKey String? @unique(map: "thread_stream_events_idempotency_key_key") @map("idempotency_key")
-  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id             BigInt   @id @default(autoincrement())
+  threadId       String   @map("thread_id") @db.Uuid
+  eventName      String   @map("event_name")
+  data           Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  idempotencyKey String?  @unique(map: "thread_stream_events_idempotency_key_key") @map("idempotency_key")
+  thread         Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, id], map: "idx_thread_stream_events_replay")
   // The retention sweep deletes on `created_at` alone. This table is a row per
@@ -2642,17 +2643,17 @@ model Message {
 /// holds no transcript copy: all recall text is loaded from Message again after
 /// the candidate and disclosure checks succeed.
 model MessageEmbedding {
-  id             String       @id @default(uuid()) @db.Uuid
-  messageId      String       @unique @map("message_id") @db.Uuid
-  contentHash    String       @map("content_hash")
+  id             String                 @id @default(uuid()) @db.Uuid
+  messageId      String                 @unique @map("message_id") @db.Uuid
+  contentHash    String                 @map("content_hash")
   embedding      Unsupported("vector")?
-  embeddingModel String?      @map("embedding_model")
+  embeddingModel String?                @map("embedding_model")
   dims           Int?
-  status         String       @default("pending")
-  lastError      String?      @map("last_error")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  message        Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  status         String                 @default("pending")
+  lastError      String?                @map("last_error")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  message        Message                @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([embeddingModel, dims])
   @@index([status])
@@ -2996,13 +2997,13 @@ model Agent {
   agentBrowsers               AgentBrowser[]
   browserCookieImports        BrowserCookieImport[]
   browserPersonalAccessGrants BrowserPersonalAccessGrant[]
-  sendAuthorizationGrants  SendAuthorizationGrant[]
-  mailboxAccess            MailboxConnectionAgentAccess[]
-  boardSourceIdentityLinks BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
-  conversationThreads      Thread[]                       @relation("AgentConversationThreads")
+  sendAuthorizationGrants     SendAuthorizationGrant[]
+  mailboxAccess               MailboxConnectionAgentAccess[]
+  boardSourceIdentityLinks    BoardSourceIdentityLink[]      @relation("BoardSourceIdentityLinkAgent")
+  conversationThreads         Thread[]                       @relation("AgentConversationThreads")
   // "which agents does this person steward" — the first non-channel-derived
   // agent read, and the tree's level-3 query.
-  boardWatchers            BoardWatcher[]                 @relation("BoardWatcherAgent")
+  boardWatchers               BoardWatcher[]                 @relation("BoardWatcherAgent")
 
   @@unique([organizationId, id])
   @@unique([organizationId, systemSlug])
@@ -3969,11 +3970,11 @@ model AgentMailboxMessage {
   correlationId       String?              @map("correlation_id")
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
-  peerDelegationDepth Int?               @map("peer_delegation_depth")
+  peerDelegationDepth Int?                 @map("peer_delegation_depth")
   /// Immutable UOA login proof captured by the peer-delegation tool. This is
   /// run provenance, not a local identity or credential record: Ledger still
   /// verifies its subject and epoch against the originating person's live link.
-  uoaIdentity       Json?                @map("uoa_identity")
+  uoaIdentity         Json?                @map("uoa_identity")
   /// Provenance carried by a durable peer brief. Existing mailbox producers
   /// leave this empty; peer delivery stamps it on the prompt and target run.
   basis               Json                 @default("[]")
@@ -4147,7 +4148,7 @@ model WorkflowRun {
   stateEntries                  WorkflowStateEntry[]           @relation("WorkflowRunStateEntries")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   executionUsageEntries         ExecutionUsageLedger[]
-  failureAlerts                 UserAlert[]                   @relation("WorkflowRunFailureAlert")
+  failureAlerts                 UserAlert[]                    @relation("WorkflowRunFailureAlert")
   organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([installationId, createdAt(sort: Desc)])
@@ -5798,6 +5799,8 @@ model KnowledgePage {
   personalCoreOverlayFor PersonalAgentCoreOverlay? @relation("PersonalAgentCoreOverlayPage")
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   shares                 KnowledgePageShare[]
+  spreadsheetHead        SpreadsheetHead?
+  spreadsheetOpBatches   SpreadsheetOpBatch[]
 
   @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
@@ -5815,6 +5818,73 @@ model KnowledgePage {
   @@map("knowledge_pages")
 }
 
+/// Per spreadsheet page: the live head and the hot snapshot. The canonical
+/// state is the IronCalc workbook itself — `hotSnapshot` plus every journal
+/// batch after `hotSnapshotSeq` rebuilds it on any replica.
+model SpreadsheetHead {
+  pageId               String    @id @map("page_id") @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  headSeq              BigInt    @default(0) @map("head_seq")
+  /// Exact `@ironcalc/nodejs` version `hotSnapshot` and every batch are
+  /// encoded with. A mismatch refuses writes until the page is migrated from
+  /// its xlsx version, because the bitcode format is version-coupled.
+  engineVersion        String    @map("engine_version")
+  /// `UserModel.toBytes()` at `hotSnapshotSeq`: the fast load path. Never an
+  /// identity — serialisation is not byte-stable (see decisions.md).
+  hotSnapshot          Bytes     @map("hot_snapshot")
+  hotSnapshotSeq       BigInt    @default(0) @map("hot_snapshot_seq")
+  /// Latest durable version (xlsx attachment + text projection).
+  snapshotVersionId    String?   @map("snapshot_version_id") @db.Uuid
+  snapshotSeq          BigInt    @default(0) @map("snapshot_seq")
+  batchesSinceSnapshot Int       @default(0) @map("batches_since_snapshot")
+  /// Sheet names by index at head, for tool ergonomics and audit text.
+  sheetNames           String[]  @map("sheet_names")
+  /// Per-sheet filter models keyed by sheet index, maintained by the write door.
+  filters              Json      @default("{}")
+  lastOpAt             DateTime? @map("last_op_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  page KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, lastOpAt], map: "spreadsheet_heads_org_last_op_idx")
+  @@map("spreadsheet_heads")
+}
+
+/// The journal, and the total order. `diffs` is the exact `flushSendQueue()`
+/// payload; `summary` is caller-supplied metadata because the bytes cannot be
+/// decoded outside the engine, and is advisory only — never an input to an
+/// authorization decision.
+model SpreadsheetOpBatch {
+  id                String              @id @default(uuid()) @db.Uuid
+  pageId            String              @map("page_id") @db.Uuid
+  organizationId    String              @map("organization_id") @db.Uuid
+  seq               BigInt
+  baseSeq           BigInt              @map("base_seq")
+  clientOpId        String              @map("client_op_id")
+  actorType         KnowledgeAuthorType @map("actor_type")
+  actorId           String              @map("actor_id")
+  agentId           String?             @map("agent_id") @db.Uuid
+  runId             String?             @map("run_id") @db.Uuid
+  agentCredentialId String?             @map("agent_credential_id") @db.Uuid
+  engineVersion     String              @map("engine_version")
+  diffs             Bytes
+  /// One of SPREADSHEET_STRUCTURAL_KINDS, else null for a plain cell batch.
+  structuralKind    String?             @map("structural_kind")
+  /// Sheet indexes touched, at this batch's baseSeq numbering.
+  sheetIndexes      Int[]               @map("sheet_indexes")
+  cellCount         Int                 @map("cell_count")
+  summary           Json
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  page KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, seq], map: "spreadsheet_op_batches_page_seq_key")
+  @@unique([pageId, actorId, clientOpId], map: "spreadsheet_op_batches_page_actor_client_key")
+  @@index([pageId, createdAt], map: "spreadsheet_op_batches_page_created_idx")
+  @@map("spreadsheet_op_batches")
+}
+
 /// One person granted access to one page at one level. For a folder the grant
 /// covers every descendant at read (and write) time through a recursive
 /// ancestor walk, never by copying rows — a move inside the owner's space must
@@ -5824,9 +5894,9 @@ model KnowledgePage {
 /// Revocation is a hard delete: the audit trail (`kb.page.unshared`) is the
 /// history, and a tombstone row would have to be excluded from every read.
 model KnowledgePageShare {
-  id             String @id @default(uuid()) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-  pageId         String @map("page_id") @db.Uuid
+  id              String                   @id @default(uuid()) @db.Uuid
+  organizationId  String                   @map("organization_id") @db.Uuid
+  pageId          String                   @map("page_id") @db.Uuid
   // Denormalised from the page for the grantee's listing and for the
   // per-space invariant checks. A page never changes space through movePage,
   // and a transfer out of the personal space ends every share on the subtree,
@@ -5867,8 +5937,8 @@ model KnowledgePageVersion {
   origin            KnowledgeDocumentOrigin @default(user_authored)
   createdAt         DateTime                @default(now()) @map("created_at")
 
-  page                  KnowledgePage                         @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
-  publishedForPage      KnowledgePage?                        @relation("KnowledgePagePublishedVersion")
+  page                  KnowledgePage                          @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedForPage      KnowledgePage?                         @relation("KnowledgePagePublishedVersion")
   chunks                KnowledgePageChunk[]
   evidence              KnowledgeDocumentEvidence[]
   coreDocumentSnapshots RunCoreDocumentSnapshot[]
@@ -5961,12 +6031,12 @@ model RunCoreDocumentSnapshot {
 // A marker makes a blank legacy configuration a durable cutover too. Without
 // it, a concurrent request could mistake no mappings for an unfinished import.
 model AgentCoreDocumentMigration {
-  id             String       @id @default(uuid()) @db.Uuid
-  agentId        String       @unique @map("agent_id") @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  documentCount  Int          @map("document_count")
-  sourceHash     String       @map("source_hash")
-  migratedAt     DateTime     @default(now()) @map("migrated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  agentId        String   @unique @map("agent_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  documentCount  Int      @map("document_count")
+  sourceHash     String   @map("source_hash")
+  migratedAt     DateTime @default(now()) @map("migrated_at")
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
@@ -5975,15 +6045,15 @@ model AgentCoreDocumentMigration {
 }
 
 model KnowledgePageVersionBasisScope {
-  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  versionId      String               @map("version_id") @db.Uuid
-  organizationId String               @map("organization_id") @db.Uuid
-  scopeType      String               @map("scope_type")
-  scopeId        String               @map("scope_id") @db.Uuid
-  createdAt      DateTime             @default(now()) @map("created_at")
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId      String   @map("version_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  scopeType      String   @map("scope_type")
+  scopeId        String   @map("scope_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
 
   version      KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([versionId, scopeType, scopeId], map: "knowledge_page_version_basis_scopes_version_scope_key")
   @@index([organizationId], map: "knowledge_page_version_basis_scopes_org_idx")
@@ -5991,17 +6061,17 @@ model KnowledgePageVersionBasisScope {
 }
 
 model KnowledgePageVersionDisclosureSource {
-  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  versionId          String               @map("version_id") @db.Uuid
-  organizationId     String               @map("organization_id") @db.Uuid
-  sourceChannelId    String               @map("source_channel_id") @db.Uuid
-  sourceAuthorUserId String?              @map("source_author_user_id") @db.Uuid
-  createdAt          DateTime             @default(now()) @map("created_at")
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId          String   @map("version_id") @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  sourceChannelId    String   @map("source_channel_id") @db.Uuid
+  sourceAuthorUserId String?  @map("source_author_user_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
 
-  version      KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version       KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sourceChannel Channel              @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
-  sourceAuthor User?                 @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
+  sourceAuthor  User?                @relation(fields: [sourceAuthorUserId], references: [id], onDelete: SetNull)
 
   // PostgreSQL's ordinary unique constraints treat NULL as distinct. The
   // migration installs the structural `NULLS NOT DISTINCT` index instead.
@@ -6511,20 +6581,20 @@ enum DevicePlatform {
 }
 
 model DeviceToken {
-  id                  String               @id @default(uuid()) @db.Uuid
-  organizationId      String               @map("organization_id") @db.Uuid
-  userId              String               @map("user_id") @db.Uuid
-  platform            DevicePlatform
-  token               String
-  appVersion          String?              @map("app_version")
-  apnsEnvironment     PushApnsEnvironment? @map("apns_environment")
-    registrationVersion BigInt               @default(0) @map("registration_version")
-    ownershipProofHash String?               @map("ownership_proof_hash")
-    deviceRecoveryKeyHash String?            @map("device_recovery_key_hash")
-    inactiveAt          DateTime?            @map("inactive_at")
-  lastSeenAt          DateTime             @default(now()) @map("last_seen_at")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                    String               @id @default(uuid()) @db.Uuid
+  organizationId        String               @map("organization_id") @db.Uuid
+  userId                String               @map("user_id") @db.Uuid
+  platform              DevicePlatform
+  token                 String
+  appVersion            String?              @map("app_version")
+  apnsEnvironment       PushApnsEnvironment? @map("apns_environment")
+  registrationVersion   BigInt               @default(0) @map("registration_version")
+  ownershipProofHash    String?              @map("ownership_proof_hash")
+  deviceRecoveryKeyHash String?              @map("device_recovery_key_hash")
+  inactiveAt            DateTime?            @map("inactive_at")
+  lastSeenAt            DateTime             @default(now()) @map("last_seen_at")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  organization          Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([token])
   @@index([organizationId])

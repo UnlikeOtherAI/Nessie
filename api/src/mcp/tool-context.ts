@@ -1,6 +1,11 @@
 import type { AgentAccessScope, PrismaClient } from '@prisma/client'
 import type { ZodTypeAny } from 'zod'
-import type { KnowledgePageRecord, KnowledgeProvider, SpaceViewer } from '@nessie/knowledge'
+import type {
+  KnowledgePageRecord,
+  KnowledgeProvider,
+  SpaceViewer,
+  SpreadsheetServiceDeps,
+} from '@nessie/knowledge'
 import type { DisclosureViewer } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { EncryptionKeyRingInput } from '@nessie/runtime'
@@ -57,6 +62,17 @@ export type McpToolContext = {
   knowledge: KnowledgeAccess | null
   prisma: PrismaClient
   scopes: AgentAccessScope[]
+  /**
+   * The process's one spreadsheet service — the same instance the HTTP routes
+   * and the live lane hold.
+   *
+   * Shared rather than built per request because the model cache and the
+   * presence budget are its closure state: a second instance would give this
+   * endpoint its own cache of every workbook a paired agent touched, paid for
+   * again on the next call. Null on a deployment with no spreadsheet service,
+   * which makes the tools say so plainly.
+   */
+  spreadsheet: SpreadsheetServiceDeps | null
 }
 
 /** The parts of a task record these tools read. */

@@ -18,6 +18,8 @@ import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+import { UoaBillingAutoTopUpDialog } from '../src/components/features/billing/UoaBillingAutoTopUpDialog.js'
+import { UoaBillingBuyCreditsDialog } from '../src/components/features/billing/UoaBillingBuyCreditsDialog.js'
 import { UoaBillingCreditsPanel } from '../src/components/features/billing/UoaBillingCreditsPanel.js'
 import {
   billingCapabilityKey,
@@ -108,6 +110,17 @@ const unusedApiClient: ApiClient = {
   },
 }
 
+const withProviders = (element: React.ReactElement): string => {
+  const queryClient = new QueryClient()
+  return renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ApiClientProvider, { client: unusedApiClient }, element),
+    ),
+  )
+}
+
 const renderCredits = (
   credits: BillingCreditsManagerV1 | BillingCreditsMemberV1,
 ): string => {
@@ -137,23 +150,19 @@ const renderCredits = (
   )
 }
 
-test('manager view leads with remaining credits and exposes UOA actions', () => {
+test('manager view leads with remaining credits and exposes UOA entry points', () => {
   const markup = renderCredits(manager)
 
   assert.match(markup, /Remaining credits/)
   assert.match(markup, /pending/i)
   assert.match(markup, /Credits used by service/)
-  assert.match(markup, /Automatic top-up options/)
   assert.match(markup, /Full team detail/)
-  assert.ok(markup.includes(
-    manager.funding_policy.offers[0]?.action.label ?? '',
-  ))
-  const firstOffer = manager.funding_policy.offers[0]
-  if (firstOffer) {
-    assert.ok(!markup.includes(
-      `${firstOffer.action.label}</span><span>${firstOffer.credits_received.display}`,
-    ))
-  }
+  // Buy credits and the automatic top-up summary are triggers now, not
+  // always-open sections — their contents live in the two dialogs below.
+  assert.match(markup, />Buy credits</)
+  assert.match(markup, new RegExp(manager.automatic_top_up.display_status))
+  assert.doesNotMatch(markup, /Automatic top-up options/)
+  assert.ok(!markup.includes(manager.funding_policy.offers[0]?.action.label ?? ''))
 })
 
 test('member view preserves team transparency without names or money actions', () => {
@@ -171,10 +180,74 @@ test('member view preserves team transparency without names or money actions', (
     new RegExp(`Payment method status: ${member.automatic_top_up.payment_method.status}`),
   )
   assert.match(markup, /managed by billing managers/)
+  assert.doesNotMatch(markup, />Buy credits</)
   assert.doesNotMatch(markup, /Automatic top-up options/)
   assert.doesNotMatch(markup, /Threshold:/)
   assert.doesNotMatch(markup, /Monthly cap:/)
   assert.doesNotMatch(markup, /Charged this month:/)
   assert.doesNotMatch(markup, new RegExp(manager.funding_policy.title))
   if (otherUser) assert.doesNotMatch(markup, new RegExp(otherUser.display_name))
+})
+
+test('the buy-credits dialog, opened, lists the real funding offers', () => {
+  const markup = withProviders(
+    createElement(UoaBillingBuyCreditsDialog, {
+      credits: manager,
+      onClose: () => undefined,
+      open: true,
+    }),
+  )
+
+  assert.match(markup, /role="dialog"/)
+  assert.match(markup, new RegExp(manager.funding_policy.title))
+  const firstOffer = manager.funding_policy.offers[0]
+  assert.ok(firstOffer)
+  assert.ok(markup.includes(firstOffer.name))
+  assert.ok(markup.includes(firstOffer.payment_amount.display))
+  assert.ok(markup.includes(firstOffer.credits_received.display))
+})
+
+test('a closed buy-credits dialog renders nothing', () => {
+  assert.equal(
+    withProviders(
+      createElement(UoaBillingBuyCreditsDialog, {
+        credits: manager,
+        onClose: () => undefined,
+        open: false,
+      }),
+    ),
+    '',
+  )
+})
+
+test('the automatic top-up dialog, opened, exposes the real options and actions', () => {
+  const markup = withProviders(
+    createElement(UoaBillingAutoTopUpDialog, {
+      credits: manager,
+      onClose: () => undefined,
+      open: true,
+    }),
+  )
+  const automatic = manager.automatic_top_up
+
+  assert.match(markup, /role="dialog"/)
+  assert.match(markup, /Automatic top-up options/)
+  assert.ok(markup.includes(automatic.threshold?.display ?? ''))
+  assert.ok(markup.includes(automatic.monthly_cap?.display ?? ''))
+  assert.ok(markup.includes(automatic.charged_this_month.display))
+  assert.ok(markup.includes(automatic.options[0]?.label ?? ''))
+  if (automatic.disable_action) assert.ok(markup.includes(automatic.disable_action.label))
+})
+
+test('a closed automatic top-up dialog renders nothing', () => {
+  assert.equal(
+    withProviders(
+      createElement(UoaBillingAutoTopUpDialog, {
+        credits: manager,
+        onClose: () => undefined,
+        open: false,
+      }),
+    ),
+    '',
+  )
 })

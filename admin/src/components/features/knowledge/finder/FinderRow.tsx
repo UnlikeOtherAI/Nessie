@@ -90,7 +90,7 @@ export type FinderRowProps = {
    * column spreads one bag rather than threading two unrelated props.
    */
   rename?: FinderRowRename
-  kind?: 'folder' | 'document' | 'file' | 'space' | 'virtual' | 'link'
+  kind?: 'folder' | 'document' | 'file' | 'spreadsheet' | 'space' | 'virtual' | 'link'
   selected?: boolean
   /** How many people the page is shared with; 0 or absent shows nothing. */
   shareCount?: number

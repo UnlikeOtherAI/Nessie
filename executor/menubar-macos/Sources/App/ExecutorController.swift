@@ -83,7 +83,23 @@ final class ExecutorController: ObservableObject {
         return ExecutorProcessRunner(runtime: runtime, isDevelopmentBuild: isDevelopmentBuild)
     }
 
-    var apiOrigin: String { ApprovedAPIOrigin.default(isDevelopmentBuild: isDevelopmentBuild) }
+    /// Where the pairing panel's choice starts. A person changes it there; this
+    /// is never what authorizes an origin — `ApprovedAPIOrigin.approve` is.
+    var defaultAPIOrigin: String { ApprovedAPIOrigin.default(isDevelopmentBuild: isDevelopmentBuild) }
+
+    /// The Nessie a paste is actually pairing with: the origin the invitation
+    /// names, and otherwise the one the person chose. The panel shows the answer
+    /// beside the button, and `pair` resolves it exactly the same way, so what
+    /// is on screen is what is sent.
+    func approvedOrigin(
+        invitationText: String,
+        chosenOrigin: String
+    ) -> Result<String, ExecutorRefusal> {
+        ApprovedAPIOrigin.approve(
+            InvitationParser.apiBaseUrl(in: invitationText) ?? chosenOrigin,
+            isDevelopmentBuild: isDevelopmentBuild
+        )
+    }
 
     // MARK: - Reading
 
@@ -194,8 +210,8 @@ final class ExecutorController: ObservableObject {
         }
     }
 
-    func pair(invitationText: String, workspaceRoot: String) {
-        switch InvitationParser.parse(invitationText, isDevelopmentBuild: isDevelopmentBuild) {
+    func pair(invitationText: String, chosenOrigin: String, workspaceRoot: String) {
+        switch InvitationParser.parse(invitationText, defaultApiBaseUrl: chosenOrigin) {
         case let .failure(refusal):
             self.fail(refusal.message)
         case let .success(invitation):
@@ -278,12 +294,14 @@ final class ExecutorController: ObservableObject {
         }
     }
 
+    /// "Open Nessie" has to open the Nessie this Mac is paired with. A Mac
+    /// paired with DeepTest or with somebody's own server that was sent to
+    /// nessie.works would be a remedy pointing at a stranger's console.
     var nessieExecutorsURL: URL {
-        // Force-unwrapped against a literal this file owns: both spellings are
-        // valid URLs, and a nil here would be a typo caught by the first launch.
-        URL(string: isDevelopmentBuild
-            ? "http://localhost:5455/agents/executors"
-            : "https://app.nessie.works/agents/executors")!
+        ApprovedAPIOrigin.consoleURL(
+            forAPIOrigin: model.description?.apiBaseUrl ?? defaultAPIOrigin,
+            isDevelopmentBuild: isDevelopmentBuild
+        )
     }
 
     /// Offers the settings this Mac already has as a *newer* revision, until

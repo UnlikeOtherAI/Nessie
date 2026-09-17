@@ -1,36 +1,142 @@
 import Foundation
 
-/// Which Nessie this build of the app is allowed to pair with.
+/// Which Nessie this Mac may pair with.
 ///
-/// The rule is `approved_api_base_url` in
-/// `desktop/src-tauri/src/executor_companion.rs`, restated here rather than
-/// widened: a development build reaches only its local API, and a release reaches
-/// only the production origin. An app that accepted an arbitrary origin would be
-/// a way to point somebody's machine key at a server nobody reviewed.
+/// The rule is `executorPairingOrigins` in `packages/schemas` — the same list
+/// the CLI's `--api nessie|deeptest|https://your-nessie.example` reads —
+/// restated here rather than widened, the way this file has always restated a
+/// rule instead of inventing a second one. `ApprovedAPIOriginTests` pins these
+/// strings against that file so the two cannot drift apart quietly.
+///
+/// It used to be one pinned origin, because pairing hands a machine key to a
+/// server and an app that accepted any URL was a way to point somebody's
+/// machine at a server nobody reviewed. Nessie is open source and people run
+/// their own, so the check does not go away — the choice becomes explicit. Two
+/// hosted services are named, so the common cases cannot be typo-squatted, and
+/// anything else is a person's own server, shown to them by host at every point
+/// where trust is given.
 public enum ApprovedAPIOrigin {
-    public static let production = "https://api.nessie.works"
-    public static let localDevelopment = "http://127.0.0.1:5454"
-
-    /// The origin a build defaults to when an invitation does not name one. The
-    /// CLI validates the value again and refuses anything else, so this is a
-    /// convenience, never an authorization.
-    public static func `default`(isDevelopmentBuild: Bool) -> String {
-        isDevelopmentBuild ? localDevelopment : production
+    /// A named Nessie, chosen by its name rather than typed.
+    public struct Preset: Equatable, Identifiable, Sendable {
+        public let id: String
+        public let label: String
+        public let detail: String
+        public let apiBaseUrl: String
     }
 
+    public static let presets: [Preset] = [
+        Preset(
+            id: "nessie",
+            label: "Nessie",
+            detail: "The hosted Nessie at nessie.works.",
+            apiBaseUrl: "https://api.nessie.works"
+        ),
+        Preset(
+            id: "deeptest",
+            label: "DeepTest",
+            detail: "The hosted DeepTest at deeptest.live.",
+            apiBaseUrl: "https://api.deeptest.live"
+        ),
+    ]
+
+    /// The local API a development build may pair with, and only a development
+    /// build. A release that could be talked into plain HTTP would not be one.
+    public static let localDevelopment = "http://127.0.0.1:5454"
+
+    public static func preset(_ id: String) -> Preset? {
+        presets.first { $0.id == id }
+    }
+
+    /// The origin a build starts the choice on. The CLI validates whatever is
+    /// finally sent again, so this is a convenience, never an authorization.
+    public static func `default`(isDevelopmentBuild: Bool) -> String {
+        isDevelopmentBuild ? localDevelopment : presets[0].apiBaseUrl
+    }
+
+    /// May this Mac pair with this value, and what exactly would it be pairing
+    /// with? A preset id resolves to its pinned origin; anything else must be an
+    /// HTTPS origin carrying no credentials, path, query or fragment — a URL
+    /// with a path is either a mistake or an attempt to make one host read as
+    /// another in a label, and neither should reach a machine key.
     public static func approve(
         _ value: String,
         isDevelopmentBuild: Bool
     ) -> Result<String, ExecutorRefusal> {
-        let approved = `default`(isDevelopmentBuild: isDevelopmentBuild)
-        guard value == approved else {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let preset = preset(trimmed) { return .success(preset.apiBaseUrl) }
+
+        guard let components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased(),
+              !host.isEmpty
+        else {
             return .failure(ExecutorRefusal(
-                isDevelopmentBuild
-                    ? "A development Nessie Executor build may pair only with its local API origin."
-                    : "This Nessie Executor release may pair only with its approved API origin."
+                "Enter an HTTPS address for the Nessie you are pairing with, such as "
+                    + "https://nessie.example.com."
             ))
         }
-        return .success(approved)
+        if components.user != nil || components.password != nil {
+            return .failure(ExecutorRefusal("A pairing address carries no username or password."))
+        }
+        let carriesMoreThanAnOrigin = components.query != nil
+            || components.fragment != nil
+            || !(components.path.isEmpty || components.path == "/")
+        if carriesMoreThanAnOrigin {
+            return .failure(ExecutorRefusal(
+                "A pairing address is an origin only — no path, query or fragment."
+            ))
+        }
+        let origin = origin(scheme: scheme, host: host, port: components.port)
+        if scheme == "https" { return .success(origin) }
+        if isDevelopmentBuild, origin == localDevelopment { return .success(origin) }
+        return .failure(ExecutorRefusal(
+            scheme == "http"
+                ? "A pairing address must be HTTPS. Plain HTTP would expose the pairing challenge "
+                    + "on the network."
+                : "A pairing address must be HTTPS."
+        ))
+    }
+
+    /// How a surface names an origin to the person confirming it. A preset is
+    /// named for its service; anything else is the bare host, because "Custom"
+    /// alone would hide the one fact that matters.
+    public static func label(for origin: String) -> String {
+        if let preset = presets.first(where: { $0.apiBaseUrl == origin }) { return preset.label }
+        if origin == localDevelopment { return "local development API" }
+        guard let host = URLComponents(string: origin)?.host, !host.isEmpty else { return origin }
+        return host
+    }
+
+    /// Where a person goes to confirm a fingerprint or review a proposal, for
+    /// the Nessie this Mac is actually paired with. A hosted Nessie serves its
+    /// admin beside its API, so the one rule is `api.` → `app.`; anything else
+    /// is a self-hosted origin nobody here can second-guess, and it is offered
+    /// as itself.
+    public static func consoleURL(forAPIOrigin apiOrigin: String, isDevelopmentBuild: Bool) -> URL {
+        if isDevelopmentBuild, apiOrigin == localDevelopment {
+            // Force-unwrapped against a literal this file owns.
+            return URL(string: "http://localhost:5455/agents/executors")!
+        }
+        guard var components = URLComponents(string: apiOrigin), let host = components.host else {
+            return hostedNessieConsole
+        }
+        if host.hasPrefix("api.") {
+            components.host = "app." + host.dropFirst("api.".count)
+        }
+        components.path = "/agents/executors"
+        return components.url ?? hostedNessieConsole
+    }
+
+    /// Only ever reached by an origin this app already refused to pair with, so
+    /// it points at the Nessie the first preset names. Force-unwrapped against a
+    /// literal this file owns.
+    private static let hostedNessieConsole = URL(string: "https://app.nessie.works/agents/executors")!
+
+    private static func origin(scheme: String, host: String, port: Int?) -> String {
+        guard let port, !(scheme == "https" && port == 443), !(scheme == "http" && port == 80) else {
+            return "\(scheme)://\(host)"
+        }
+        return "\(scheme)://\(host):\(port)"
     }
 }
 

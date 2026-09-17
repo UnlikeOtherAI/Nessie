@@ -172,6 +172,15 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:agent-conversations
 
+      # Two Chromium contexts on one spreadsheet: a batch from one pane landing
+      # live in the other, the presence overlay, and a structural batch forcing
+      # the intent replay. Its own `ci.mjs` starts and stops the API and admin
+      # rather than adopting them, so the suite reports on this commit and
+      # leaves the fixed ports free for whatever runs next.
+      - name: Run spreadsheets browser suite
+        if: steps.scope.outputs.code == '1'
+        run: node admin/e2e/spreadsheets/ci.mjs
+
       - name: Upload transition frames
         if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
@@ -234,6 +243,14 @@ jobs:
         with:
           name: agent-conversations-screenshots
           path: e2e/screenshots/agent-conversations
+          if-no-files-found: warn
+
+      - name: Upload spreadsheets screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spreadsheets-screenshots
+          path: e2e/screenshots/spreadsheets
           if-no-files-found: warn
 
       - name: Report skip

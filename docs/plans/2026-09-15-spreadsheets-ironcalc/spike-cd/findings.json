@@ -1,0 +1,233 @@
+[
+  {
+    "name": "lazy.beforeOpen",
+    "value": 0
+  },
+  {
+    "name": "lazy.afterOpen",
+    "value": [
+      "wasm_bg.wasm?import&url",
+      "ironcalc.css",
+      "@ironcalc_workbook.js?v=7bc386ea",
+      "wasm_bg.wasm",
+      "wasm_bg.wasm"
+    ]
+  },
+  {
+    "name": "render.formula.B4",
+    "value": "200"
+  },
+  {
+    "name": "render.edit.B2",
+    "value": "220"
+  },
+  {
+    "name": "render.edit.recalculated.B4",
+    "value": "300"
+  },
+  {
+    "name": "bridge.flushes",
+    "value": [
+      {
+        "diffBytes": 27,
+        "methods": [
+          "setUserInput"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "bridge.wrappedMethods",
+    "value": 52
+  },
+  {
+    "name": "bridge.ownProperties",
+    "value": true
+  },
+  {
+    "name": "bridge.presenceFrames",
+    "value": 16
+  },
+  {
+    "name": "render.undo.B2",
+    "value": "120"
+  },
+  {
+    "name": "render.redo.B2",
+    "value": "220"
+  },
+  {
+    "name": "render.insertRow.A3",
+    "value": "North"
+  },
+  {
+    "name": "render.insertRow.total",
+    "value": "300"
+  },
+  {
+    "name": "collab.applyExternalDiffs",
+    "value": {
+      "after": "999",
+      "before": "220",
+      "byteLengths": [
+        475,
+        475
+      ],
+      "bytesEqual": false,
+      "diffBytes": 27,
+      "echoedBytes": [
+        0
+      ],
+      "emptyFlushBytes": 1,
+      "firstDiff": 45,
+      "firstDiffWindow": [
+        [
+          101,
+          116,
+          49,
+          4,
+          4,
+          4,
+          153,
+          5,
+          8,
+          80,
+          4,
+          9,
+          1,
+          102,
+          36,
+          68
+        ],
+        [
+          101,
+          116,
+          49,
+          4,
+          4,
+          4,
+          137,
+          1,
+          8,
+          80,
+          4,
+          9,
+          1,
+          154,
+          84,
+          36
+        ]
+      ]
+    }
+  },
+  {
+    "name": "engine.byteStability",
+    "value": {
+      "bytesEqualAfterDiff": false,
+      "bytesEqualAfterFork": false,
+      "firstDiff": 45,
+      "lengths": [
+        449,
+        449
+      ],
+      "roundTripSettles": false,
+      "selfEqual": true,
+      "twoForksEqual": false,
+      "window": [
+        "83,104,101,101,116,49,4,4,4,62,3,8,80,4,9,1,149,66,69,68",
+        "83,104,101,101,116,49,4,4,4,52,3,8,80,4,9,1,105,69,36,68"
+      ],
+      "valuesEqual": true
+    }
+  },
+  {
+    "name": "collab.redrawIsRequired",
+    "value": {
+      "staleWithoutRedraw": true,
+      "repaintedByRedraw": true
+    }
+  },
+  {
+    "name": "theme.light",
+    "value": {
+      "grid": "rgb(216, 222, 232)",
+      "outline": "rgb(37, 99, 235)",
+      "surface": "rgb(255, 255, 255)"
+    }
+  },
+  {
+    "name": "theme.dark",
+    "value": {
+      "grid": "rgb(31, 41, 55)",
+      "outline": "rgb(37, 99, 235)",
+      "surface": "rgb(17, 24, 39)"
+    }
+  },
+  {
+    "name": "render.pageErrors",
+    "value": []
+  },
+  {
+    "name": "touch.tapSelects",
+    "value": [
+      2,
+      1,
+      2,
+      1
+    ]
+  },
+  {
+    "name": "touch.editorFocused",
+    "value": "textarea"
+  },
+  {
+    "name": "touch.enterCommits",
+    "value": "Nord"
+  },
+  {
+    "name": "touch.dragScrolls",
+    "value": {
+      "after": 343,
+      "before": 0
+    }
+  },
+  {
+    "name": "touch.plainDragSelectsRange",
+    "value": [
+      2,
+      2,
+      2,
+      2
+    ]
+  },
+  {
+    "name": "touch.longPressRange",
+    "value": {
+      "entered": true,
+      "handles": 2,
+      "prevented": true,
+      "range": [
+        2,
+        2,
+        5,
+        4
+      ],
+      "released": false,
+      "touchAction": "none"
+    }
+  },
+  {
+    "name": "touch.realLongPressDrag",
+    "value": {
+      "entered": true,
+      "range": [
+        3,
+        2,
+        7,
+        4
+      ],
+      "scrollBefore": 0,
+      "scrollDuring": 0
+    }
+  }
+]
