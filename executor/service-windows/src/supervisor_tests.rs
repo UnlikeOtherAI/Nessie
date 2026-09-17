@@ -120,8 +120,9 @@ fn fingerprint_is_read_from_the_cli_success_line() {
 #[test]
 fn a_requested_start_is_visible_while_recovery_retries_and_stop_cancels_it() {
     let directory = tempfile::tempdir().expect("temporary state");
-    let mut supervisor = paired_supervisor(directory.path());
-    assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
+        let mut supervisor = paired_supervisor(directory.path());
+        assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
+        assert_eq!(supervisor.start(EXECUTOR_ID), Ok("starting".to_owned()));
     assert_eq!(supervisor.status(EXECUTOR_ID), Ok("starting".to_owned()));
     // The packaged command cannot spawn in this portable test, which is a
     // deterministic stand-in for a boot-time remote outage. It remains

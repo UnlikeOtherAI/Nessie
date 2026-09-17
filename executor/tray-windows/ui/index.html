@@ -286,7 +286,7 @@
           state.textContent = executor.daemonStatus
           const start = document.createElement('button')
           start.textContent = 'Start'
-          start.disabled = busy || executor.daemonStatus === 'running'
+          start.disabled = busy || ['running', 'starting'].includes(executor.daemonStatus)
           start.onclick = () => act('executor_start', { executorId: executor.executorId })
           const stop = document.createElement('button')
           stop.textContent = 'Stop'

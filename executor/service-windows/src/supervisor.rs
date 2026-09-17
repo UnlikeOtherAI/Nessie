@@ -322,6 +322,9 @@ impl Supervisor {
         if self.child_status(executor_id) == "running" {
             return Ok("running".to_owned());
         }
+        if self.desired.contains(executor_id) || self.connections.contains_key(executor_id) {
+            return Ok("starting".to_owned());
+        }
         self.desired.insert(executor_id.to_owned());
         self.retry_after
             .insert(executor_id.to_owned(), Instant::now());

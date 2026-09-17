@@ -76,7 +76,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, view: &ServiceView) -> tauri::Resul
                         app,
                         format!("{START_PREFIX}{}", executor.executor_id),
                         "Start",
-                        executor.daemon_status != "running",
+                        executor.daemon_status == "stopped",
                         None::<&str>,
                     )?,
                     &MenuItem::with_id(
