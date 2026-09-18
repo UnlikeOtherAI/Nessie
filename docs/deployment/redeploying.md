@@ -205,10 +205,14 @@ Both edges set baseline security headers:
   `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, HSTS, and a
   `Permissions-Policy` denying `camera`/`microphone`/`display-capture` (calls
   open in the selected provider, not inside the admin).
-  `Content-Security-Policy-Report-Only` ships a baseline policy that reports
-  without blocking; promote it to an enforcing `Content-Security-Policy` once
-  the report stream is clean, and update its `connect-src` if the admin gains a
-  new outbound origin.
+  The `Content-Security-Policy` is **enforcing** (not report-only): this origin
+  holds session tokens and renders attacker-supplied email HTML. Update its
+  `connect-src` if the admin gains a new outbound origin. `script-src` is
+  `'self' 'wasm-unsafe-eval'` — the narrow token is what lets the IronCalc
+  spreadsheet grid compile its WebAssembly, and dropping it back to `'self'`
+  alone breaks every workbook on web and in both desktop shells
+  ([docs/standards/spreadsheets.md](../standards/spreadsheets.md)). It does not
+  permit `eval()` on JavaScript, and `'unsafe-eval'` must never replace it.
 - **Public web** (`infrastructure/docker/web-nginx.conf`) — the holding page
   uses the same baseline document headers and an enforcing CSP because it only
   serves static local assets.
