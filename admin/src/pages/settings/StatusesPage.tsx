@@ -1,300 +1,123 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { useRedirect } from '../../navigation/redirect'
-import { useAgents } from '../../facades/agents/hooks'
-import { useChannels } from '../../facades/channels/hooks'
-import { useProjects } from '../../facades/projects/hooks'
-import {
-  useActivateStatus,
-  useClearActiveStatus,
-  useCreateStatus,
-  useCreateStatusRule,
-  useCreateStatusSchedule,
-  useDeleteStatus,
-  useDeleteStatusRule,
-  useDeleteStatusSchedule,
-  useStatuses,
-  useUpdateStatus,
-} from '../../facades/statuses/hooks'
-import { usePhoneLayout } from '../../navigation/mobile-shell'
+import { useEffect, useMemo, useState } from 'react'
+import { faPlus } from '@fortawesome/free-solid-svg-icons'
+import { useNavigate } from 'react-router-dom'
+import { useClearActiveStatus, useStatuses } from '../../facades/statuses/hooks'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
-import { toFormErrors } from '../../facades/forms/form-errors'
-import { Card } from '../../components/shared/Card'
-import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
-import { EmptyState } from '../../components/shared/EmptyState'
-import { FormActions, FormError } from '../../components/shared/FormActions'
-import { FormField } from '../../components/shared/FormField'
-import { Input } from '../../components/shared/FormControls'
-import { QueryState } from '../../components/shared/QueryState'
+import { FormError } from '../../components/shared/FormActions'
+import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
-import { SectionLabel } from '../../components/primitives/SectionLabel'
-import { Switch } from '../../components/primitives/Switch'
-import { Textarea } from '../../components/shared/FormControls'
-import { StatusList } from './statuses/StatusList'
-import { StatusEmojiPicker } from './statuses/StatusEmojiPicker'
-import { StatusRuleForm } from './statuses/StatusRuleForm'
-import { StatusScheduleForm } from './statuses/StatusScheduleForm'
+import { createListPageStore } from '../../components/shared/list-page-state'
+import { CreateStatusDialog } from './statuses/CreateStatusDialog'
+import { StatusesTable } from './statuses/StatusesTable'
 
+const statusesListStore = createListPageStore()
+
+/**
+ * Statuses — the list.
+ *
+ * It was a two-column card layout: an add form and a rail of status cards on
+ * the left, the selected status's editor on the right, both in one component.
+ * It is now the admin's ordinary list shape — one header, one table, one pager
+ * — and a status is its own screen at `/settings/statuses/:statusId`, which is
+ * the route it already had.
+ */
 export const StatusesPage = () => {
-  const { statusId } = useParams()
   const navigate = useNavigate()
-  const phoneLayout = usePhoneLayout()
-  const redirect = useRedirect()
   const statuses = useStatuses()
   // Memoised so the empty-array fallback is not a fresh literal every render.
   const statusRows = useMemo(() => statuses.data ?? [], [statuses.data])
-  const { data: channels = [] } = useChannels()
-  const { data: projects = [] } = useProjects()
-  const { data: agents = [] } = useAgents()
-
-  const createStatus = useCreateStatus()
-  const updateStatus = useUpdateStatus()
-  const deleteStatus = useDeleteStatus()
-  const activateStatus = useActivateStatus()
   const clearActiveStatus = useClearActiveStatus()
-  const createSchedule = useCreateStatusSchedule()
-  const deleteSchedule = useDeleteStatusSchedule()
-  const createRule = useCreateStatusRule()
-  const deleteRule = useDeleteStatusRule()
+  const [createOpen, setCreateOpen] = useState(false)
+  // A clear that silently failed would leave a person believing their status
+  // was down when everyone can still see it, which is the one outcome this
+  // screen must never produce.
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const selectedStatus = useMemo(
-    () => statusRows.find((status) => status.id === statusId) ?? null,
-    [statusId, statusRows],
-  )
+  const [initialState] = useState(statusesListStore.load)
+  const [pageSize, setPageSize] = useState(initialState.pageSize)
+  const [requestedPage, setRequestedPage] = useState(initialState.page)
 
-  const [newLabel, setNewLabel] = useState('')
-  const [newEmoji, setNewEmoji] = useState('')
-  const [createError, setCreateError] = useState<string | undefined>(undefined)
-  const [label, setLabel] = useState('')
-  const [emoji, setEmoji] = useState('')
-  const [agentEnabled, setAgentEnabled] = useState(false)
-  const [agentInstructions, setAgentInstructions] = useState('')
-  const [saveError, setSaveError] = useState<string | undefined>(undefined)
+  const totalPages = Math.max(1, Math.ceil(statusRows.length / pageSize))
+  const page = Math.min(requestedPage, totalPages - 1)
+  const pageStatuses = statusRows.slice(page * pageSize, page * pageSize + pageSize)
+  const rangeStart = statusRows.length === 0 ? 0 : page * pageSize + 1
+  const rangeEnd = Math.min((page + 1) * pageSize, statusRows.length)
 
   useEffect(() => {
-    // A phone screen starts on the list: `/settings/statuses/:id` is a real
-    // pushed screen in the navigation stack (surface registry, depth 2), so
-    // auto-selecting the first status here would slide a detail in on arrival
-    // and then re-slide it on every Back — the reader could never leave.
-    // Wider layouts keep the convenience because the list stays beside it.
-    if (!phoneLayout && !statusId && statusRows[0]) {
-      redirect(`/settings/statuses/${statusRows[0].id}`)
-    }
-  }, [phoneLayout, redirect, statusId, statusRows])
+    statusesListStore.save({ page, pageSize })
+  }, [page, pageSize])
 
-  const [confirmingDelete, setConfirmingDelete] = useState(false)
-
-  // Seed the editor once per selected status (key on id only). Keying on every
-  // field would let a background ['statuses'] refetch — e.g. after toggling
-  // active — overwrite the user's in-progress edits.
-  useEffect(() => {
-    setLabel(selectedStatus?.label ?? '')
-    setEmoji(selectedStatus?.emoji ?? '')
-    setAgentEnabled(selectedStatus?.agentEnabled ?? false)
-    setAgentInstructions(selectedStatus?.agentInstructions ?? '')
-    setSaveError(undefined)
-    // The four fields are read at this render, never depended on — see above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStatus?.id])
-
-  const createStatusSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!newLabel.trim()) return
-    setCreateError(undefined)
-    try {
-      const created = await createStatus.mutateAsync({
-        emoji: newEmoji.trim() || null,
-        label: newLabel.trim(),
-      })
-      setNewLabel('')
-      setNewEmoji('')
-      navigate(`/settings/statuses/${created.id}`)
-    } catch (error) {
-      const { fieldErrors, formError } = toFormErrors(error)
-      setCreateError(fieldErrors.label ?? formError ?? 'Failed to create status.')
-    }
-  }
-
-  const saveStatusSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!selectedStatus || !label.trim()) return
-    setSaveError(undefined)
-    try {
-      await updateStatus.mutateAsync({
-        agentEnabled,
-        agentInstructions: agentInstructions.trim() || null,
-        emoji: emoji.trim() || null,
-        label: label.trim(),
-        statusId: selectedStatus.id,
-      })
-    } catch (error) {
-      const { fieldErrors, formError } = toFormErrors(error)
-      setSaveError(fieldErrors.label ?? formError ?? 'Failed to save status.')
-    }
-  }
-
-  const deleteSelectedStatus = async () => {
-    if (!selectedStatus) return
-    setConfirmingDelete(false)
-    await deleteStatus.mutateAsync(selectedStatus.id)
-    navigate('/settings/statuses', { replace: true })
-  }
+  const actions: PageHeaderAction[] = [
+    {
+      disabled: clearActiveStatus.isPending,
+      id: 'clear-active',
+      label: 'Clear active',
+      onSelect: () => {
+        setActionError(null)
+        clearActiveStatus.mutate(undefined, {
+          onError: (error) =>
+            setActionError(
+              error instanceof Error
+                ? error.message
+                : 'Your active status could not be cleared. It is still showing.',
+            ),
+        })
+      },
+      priority: 40,
+    },
+    {
+      icon: faPlus,
+      id: 'new-status',
+      label: 'New status',
+      onSelect: () => setCreateOpen(true),
+      primary: true,
+      priority: 100,
+    },
+  ]
 
   return (
     <SettingsPanel
+      actions={actions}
       eyebrow="User"
+      // Always visible: an empty or single-page list keeps its size control,
+      // and the table above it does not grow and shrink as pages change.
+      footer={
+        <PaginationFooter
+          canNext={page < totalPages - 1}
+          canPrevious={page > 0}
+          label={
+            statusRows.length === 0
+              ? 'No statuses'
+              : `${rangeStart}–${rangeEnd} of ${statusRows.length}`
+          }
+          onPageChange={setRequestedPage}
+          onPageSizeChange={(next) => {
+            setPageSize(next)
+            setRequestedPage(0)
+          }}
+          page={page}
+          pageCount={totalPages}
+          pageSize={pageSize}
+        />
+      }
+      subtitle={
+        <p className="max-w-3xl text-sm text-[color:var(--tx3)]">
+          What you are doing, shown beside your name. Each one can carry a schedule that turns
+          it on by itself, and contact rules that decide who still reaches you.
+        </p>
+      }
       title="Statuses"
-      actions={[
-        {
-          id: 'clear-active',
-          label: 'Clear active',
-          onSelect: () => clearActiveStatus.mutate(),
-          priority: 100,
-        } satisfies PageHeaderAction,
-      ]}
     >
-      <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <Card as="section">
-          <SectionLabel>Statuses</SectionLabel>
-          <form className="mt-4 grid gap-3" onSubmit={createStatusSubmit}>
-            <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
-              <FormField label="Icon">
-                <StatusEmojiPicker label="New status icon" onChange={setNewEmoji} value={newEmoji} />
-              </FormField>
-              <FormField label="Label">
-                <Input
-                  onChange={(event) => setNewLabel(event.target.value)}
-                  placeholder="New status"
-                  value={newLabel}
-                />
-              </FormField>
-            </div>
-            <FormError>{createError}</FormError>
-            <FormActions>
-              <button className="admin-button admin-button-primary" type="submit">
-                Add status
-              </button>
-            </FormActions>
-          </form>
-          <div className="mt-4">
-            <QueryState
-              errorLabel="Could not load statuses."
-              loadingLabel="Loading statuses…"
-              query={statuses}
-            >
-              {() => (
-                statusRows.length > 0 ? (
-                  <StatusList activeId={selectedStatus?.id} statuses={statusRows} />
-                ) : (
-                  <EmptyState>No statuses yet.</EmptyState>
-                )
-              )}
-            </QueryState>
-          </div>
-        </Card>
+      <FormError className="mb-3">{actionError}</FormError>
 
-        {selectedStatus ? (
-          <section className="grid gap-4">
-            <Card as="section">
-              <form className="grid gap-4" onSubmit={saveStatusSubmit}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <SectionLabel>Status detail</SectionLabel>
-                  <div className="mt-2 text-sm text-[color:var(--tx3)]">
-                    {selectedStatus.activeNow ? 'Currently visible' : 'Not currently visible'}
-                  </div>
-                </div>
-                <button
-                  className="admin-button admin-button-secondary"
-                  onClick={() => activateStatus.mutate(selectedStatus.id)}
-                  type="button"
-                >
-                  Set active
-                </button>
-              </div>
-              <div className="grid gap-3 md:grid-cols-[90px_minmax(0,1fr)]">
-                <FormField label="Icon">
-                  <StatusEmojiPicker label="Status icon" onChange={setEmoji} value={emoji} />
-                </FormField>
-                <FormField label="Label">
-                  <Input
-                    onChange={(event) => setLabel(event.target.value)}
-                    placeholder="Status label"
-                    value={label}
-                  />
-                </FormField>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="font-semibold text-[color:var(--tx)]">Enable response agent</div>
-                  <div className="text-sm text-[color:var(--tx3)]">
-                    Use these instructions when someone contacts you during this status.
-                  </div>
-                </div>
-                <Switch
-                  checked={agentEnabled}
-                  label="Enable response agent"
-                  onChange={setAgentEnabled}
-                />
-              </div>
-              <FormField label="Agent instructions">
-                <Textarea
-                  className="min-h-28"
-                  onChange={(event) => setAgentInstructions(event.target.value)}
-                  placeholder="Agent instructions"
-                  value={agentInstructions}
-                />
-              </FormField>
-              <FormError>{saveError}</FormError>
-              <FormActions
-                destructive={
-                  <button
-                    className="admin-button admin-button-secondary admin-button-danger"
-                    disabled={deleteStatus.isPending}
-                    onClick={() => setConfirmingDelete(true)}
-                    type="button"
-                  >
-                    Delete
-                  </button>
-                }
-              >
-                <button className="admin-button admin-button-primary" type="submit">
-                  Save status
-                </button>
-              </FormActions>
-              </form>
-            </Card>
-
-            <StatusScheduleForm
-              createSchedule={createSchedule}
-              deleteSchedule={deleteSchedule}
-              selectedStatus={selectedStatus}
-            />
-
-            <StatusRuleForm
-              agents={agents}
-              channels={channels}
-              createRule={createRule}
-              deleteRule={deleteRule}
-              projects={projects}
-              selectedStatus={selectedStatus}
-            />
-          </section>
-        ) : (
-          <EmptyState>Create or select a status to edit schedules and contact rules.</EmptyState>
-        )}
-      </div>
-
-      <ConfirmDialog
-        body="This also removes its schedules and contact rules."
-        confirmLabel="Delete"
-        destructive
-        onCancel={() => setConfirmingDelete(false)}
-        onConfirm={() => void deleteSelectedStatus()}
-        open={confirmingDelete}
-        pending={deleteStatus.isPending}
-        title={selectedStatus ? `Delete "${selectedStatus.label}"?` : 'Delete this status?'}
+      <StatusesTable
+        emptyMessage="No statuses yet. Add one to say what you are doing."
+        isLoading={statuses.isPending}
+        onOpen={(statusId) => void navigate(`/settings/statuses/${statusId}`)}
+        statuses={pageStatuses}
       />
+
+      <CreateStatusDialog onClose={() => setCreateOpen(false)} open={createOpen} />
     </SettingsPanel>
   )
 }

@@ -75,6 +75,14 @@ export const ProjectBoardsPage = lazy(() =>
 export const BoardSettingsPage = lazy(() =>
   import('./pages/project/BoardSettingsPage').then((m) => ({ default: m.BoardSettingsPage })),
 )
+export const PairedAgentDetailPage = lazy(() =>
+  import('./pages/settings/PairedAgentDetailPage').then((m) => ({ default: m.PairedAgentDetailPage })),
+)
+export const OrganizationPairedAgentDetailPage = lazy(() =>
+  import('./pages/settings/PairedAgentDetailPage').then(
+    (m) => ({ default: m.OrganizationPairedAgentDetailPage }),
+  ),
+)
 export const PairedAgentsPage = lazy(() =>
   import('./pages/settings/PairedAgentsPage').then((m) => ({ default: m.PairedAgentsPage })),
 )
@@ -82,6 +90,9 @@ export const OrganizationPairedAgentsPage = lazy(() =>
   import('./pages/settings/OrganizationPairedAgentsPage').then(
     (m) => ({ default: m.OrganizationPairedAgentsPage }),
   ),
+)
+export const ConnectionDetailPage = lazy(() =>
+  import('./pages/settings/ConnectionDetailPage').then((m) => ({ default: m.ConnectionDetailPage })),
 )
 export const ConnectionsPage = lazy(() =>
   import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
@@ -117,10 +128,16 @@ export const TeamSettingsPage = lazy(() =>
 export const UserSettingsPage = lazy(() =>
   import('./pages/settings/UserSettingsPage').then((m) => ({ default: m.UserSettingsPage })),
 )
+export const StatusDetailPage = lazy(() =>
+  import('./pages/settings/StatusDetailPage').then((m) => ({ default: m.StatusDetailPage })),
+)
 export const StatusesPage = lazy(() =>
   import('./pages/settings/StatusesPage').then((m) => ({ default: m.StatusesPage })),
 )
 export const ToolsPage = lazy(() => import('./pages/ToolsPage').then((m) => ({ default: m.ToolsPage })))
+export const ToolDetailPage = lazy(() =>
+  import('./pages/ToolDetailPage').then((m) => ({ default: m.ToolDetailPage })),
+)
 export const TokenUsagePage = lazy(() =>
   import('./pages/TokenUsagePage').then((m) => ({ default: m.TokenUsagePage })),
 )

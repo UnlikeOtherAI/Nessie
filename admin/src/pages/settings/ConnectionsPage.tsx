@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   useCommsConnections,
@@ -11,14 +11,20 @@ import {
 import {
   MailboxConnectionsPanel,
 } from '../../components/features/mailbox-connections/MailboxConnectionsPanel'
-import { EmptyState } from '../../components/shared/EmptyState'
+import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import { QueryState } from '../../components/shared/QueryState'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
-import { ConnectionCard } from './connections/ConnectionCard'
+import { createListPageStore } from '../../components/shared/list-page-state'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
+import { TabBar } from '../../components/primitives/TabBar'
+import { useTabParam } from '../../navigation/useTabParam'
+import { ConnectionsTable } from './connections/ConnectionsTable'
 import { GoogleWorkspaceConnectDialog } from './connections/GoogleWorkspaceConnectDialog'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
 import { ProjectToolConnections } from './connections/ProjectToolConnections'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
+
+const accountsListStore = createListPageStore()
 
 const callbackErrorCopy: Record<string, string> = {
   access_denied: 'Connection was not completed.',
@@ -36,35 +42,60 @@ const callbackMessage = (connected: string | null, error: string | null): string
   return error ? callbackErrorCopy[error] ?? 'Connection was not completed. Try again.' : null
 }
 
-const SlackConnectButton = ({
-  onConnect,
-  pending,
-}: {
-  onConnect: () => void
-  pending: boolean
-}) => (
-  <button
-    className="admin-button admin-button-secondary admin-button-compact"
-    disabled={pending}
-    onClick={onConnect}
-    type="button"
-  >
-    Connect Slack
-  </button>
-)
-
 /**
+ * Connected accounts — one screen, five lanes.
+ *
+ * It was five stacked sections separated by hairlines, so the model provider a
+ * person came to change sat four scroll-lengths below a Slack panel they were
+ * not looking for. The sections are tabs in the one header now, in the order
+ * they are actually used: the mailboxes first, the inference provider second.
+ *
  * Slack remains its own communications lane. Email is one user-facing surface:
  * Google/Microsoft use native sync while generic IMAP mail stays live and is
  * never imported, so one email doorway must not promise either behaviour for
  * every provider.
  */
+const CONNECTION_TABS = ['email', 'inference', 'slack', 'calendar', 'tools'] as const
+type ConnectionTab = (typeof CONNECTION_TABS)[number]
+
+const TAB_META: Record<ConnectionTab, { description: string; label: string }> = {
+  calendar: {
+    description:
+      'Connect Calendar or Meet without granting Gmail access. Choose each permission before '
+      + 'Google asks you to sign in.',
+    label: 'Calendar & Meet',
+  },
+  email: {
+    description:
+      'Gmail and Microsoft sign in securely through their native APIs. Other providers connect '
+      + 'live with secure IMAP and SMTP settings; native labels and folders can be limited after '
+      + 'connecting.',
+    label: 'Email',
+  },
+  inference: {
+    description:
+      'Which model provider answers for you, and the subscription it bills against.',
+    label: 'AI inference provider',
+  },
+  slack: {
+    description: 'Connect Slack separately from your email accounts.',
+    label: 'Slack',
+  },
+  tools: {
+    description: 'Accounts a project’s tools sign in with, shared by the work in that project.',
+    label: 'Project tools',
+  },
+}
+
 export const ConnectionsPage = () => {
+  const navigate = useNavigate()
   const connections = useCommsConnections()
   const start = useStartCommsConnection()
   const [searchParams, setSearchParams] = useSearchParams()
   const [callbackNotice, setCallbackNotice] = useState<string | null>(null)
   const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false)
+  const [tab, setTab] = useTabParam('tab', CONNECTION_TABS, 'email')
+
   const connected = searchParams.get('connected')
   const callbackError = searchParams.get('error')
   const rows = connections.data?.connections ?? []
@@ -93,115 +124,154 @@ export const ConnectionsPage = () => {
     }
   }
 
-  return (
-    <SettingsPanel eyebrow="User" title="Connected accounts">
-      <div className="flex flex-col gap-6">
-        <p className="text-sm text-[color:var(--tx2)]">
-          Connect Slack or email accounts for your Chief of Staff. Native Gmail and
-          Microsoft accounts keep a private sync you can limit; other mailboxes stay live
-          with their provider.
-        </p>
+  // Only the two account lanes are lists, so only they page.
+  const accountRows = tab === 'slack' ? slackConnections : emailConnections
+  const paged = tab === 'slack' || tab === 'email'
 
+  const [initialState] = useState(accountsListStore.load)
+  const [pageSize, setPageSize] = useState(initialState.pageSize)
+  const [requestedPage, setRequestedPage] = useState(initialState.page)
+
+  const totalPages = Math.max(1, Math.ceil(accountRows.length / pageSize))
+  const page = Math.min(requestedPage, totalPages - 1)
+  const pageRows = accountRows.slice(page * pageSize, page * pageSize + pageSize)
+  const rangeStart = accountRows.length === 0 ? 0 : page * pageSize + 1
+  const rangeEnd = Math.min((page + 1) * pageSize, accountRows.length)
+
+  useEffect(() => {
+    accountsListStore.save({ page, pageSize })
+  }, [page, pageSize])
+
+  // Each lane brings its own way in, so the header's action is the one that
+  // belongs to what is on screen rather than a row of five connect buttons.
+  const actions: PageHeaderAction[] = tab === 'slack'
+    ? [{
+      disabled: start.isPending,
+      id: 'connect-slack',
+      label: 'Connect Slack',
+      onSelect: () => void connectSlack(),
+      primary: true,
+      priority: 100,
+    }]
+    : tab === 'calendar'
+      ? [{
+        id: 'connect-google-workspace',
+        label: 'Connect Calendar or Meet',
+        onSelect: () => setGoogleWorkspaceOpen(true),
+        primary: true,
+        priority: 100,
+      }]
+      : tab === 'email'
+        ? [{
+          id: 'connect-mailbox',
+          kind: 'custom',
+          label: 'Connect mailbox',
+          pinned: true,
+          priority: 100,
+          render: () => <MailboxConnectionForm scope="user" />,
+        }]
+        : []
+
+  const openConnection = (connectionId: string) =>
+    void navigate(`/settings/connections/${connectionId}`)
+
+  return (
+    <SettingsPanel
+      actions={actions}
+      eyebrow="User"
+      footer={paged ? (
+        <PaginationFooter
+          canNext={page < totalPages - 1}
+          canPrevious={page > 0}
+          label={
+            accountRows.length === 0
+              ? 'No accounts'
+              : `${rangeStart}–${rangeEnd} of ${accountRows.length}`
+          }
+          onPageChange={setRequestedPage}
+          onPageSizeChange={(next) => {
+            setPageSize(next)
+            setRequestedPage(0)
+          }}
+          page={page}
+          pageCount={totalPages}
+          pageSize={pageSize}
+        />
+      ) : null}
+      subtitle={
+        <p className="max-w-3xl text-sm text-[color:var(--tx3)]">{TAB_META[tab].description}</p>
+      }
+      tabs={
+        <TabBar
+          ariaLabel="Connected account sections"
+          items={CONNECTION_TABS.map((value) => ({ label: TAB_META[value].label, value }))}
+          onChange={(next) => {
+            setTab(next)
+            setRequestedPage(0)
+          }}
+          value={tab}
+        />
+      }
+      title="Connected accounts"
+    >
+      <div className="flex flex-col gap-4">
         {callbackNotice ? (
           <p aria-live="polite" className="text-sm text-[color:var(--tx2)]">{callbackNotice}</p>
         ) : null}
 
-        <section className="grid gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold text-[color:var(--tx)]">Slack</h2>
-              <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                Connect Slack separately from your email accounts.
-              </p>
-            </div>
-            <SlackConnectButton onConnect={() => void connectSlack()} pending={start.isPending} />
-          </div>
+        {tab === 'email' ? (
+          <>
+            <QueryState
+              errorLabel="Could not load synced email accounts."
+              loadingLabel="Loading synced email accounts…"
+              query={connections}
+            >
+              {() => (
+                <ConnectionsTable
+                  connections={pageRows}
+                  emptyMessage="No email account connected yet."
+                  isLoading={false}
+                  onOpen={openConnection}
+                />
+              )}
+            </QueryState>
+            {emailConnections.length > 0 ? <SendAuthorizationSection /> : null}
+            <MailboxConnectionsPanel embedded scope="user" showConnectAction={false} />
+          </>
+        ) : null}
+
+        {tab === 'inference' ? <ModelSubscriptionSection /> : null}
+
+        {tab === 'slack' ? (
           <QueryState
             errorLabel="Could not load your Slack connections."
             loadingLabel="Loading Slack connections…"
             query={connections}
           >
-            {() => slackConnections.length === 0 ? (
-              <EmptyState title="No Slack account connected">
-                Connect Slack to let your Chief of Staff work across your messages.
-              </EmptyState>
-            ) : (
-              <div className="grid gap-4">
-                {slackConnections.map((connection) => (
-                  <ConnectionCard connection={connection} key={connection.id} />
-                ))}
-              </div>
-            )}
-          </QueryState>
-        </section>
-
-        <div className="h-px bg-[color:var(--bd1)]" />
-
-        <section className="grid gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold text-[color:var(--tx)]">Email</h2>
-              <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                Gmail and Microsoft sign in securely through their native APIs. Other
-                providers connect live with secure IMAP and SMTP settings; native labels and
-                folders can be limited after connecting.
-              </p>
-            </div>
-            <MailboxConnectionForm scope="user" />
-          </div>
-
-          <QueryState
-            errorLabel="Could not load synced email accounts."
-            loadingLabel="Loading synced email accounts…"
-            query={connections}
-          >
             {() => (
-              <>
-                {emailConnections.length > 0 ? (
-                  <div className="grid gap-4">
-                    {emailConnections.map((connection) => (
-                      <ConnectionCard connection={connection} key={connection.id} />
-                    ))}
-                  </div>
-                ) : null}
-                {emailConnections.length > 0 ? <SendAuthorizationSection /> : null}
-              </>
+              <ConnectionsTable
+                connections={pageRows}
+                emptyMessage="No Slack account connected. Connect Slack to let your Chief of Staff work across your messages."
+                isLoading={false}
+                onOpen={openConnection}
+              />
             )}
           </QueryState>
-          <MailboxConnectionsPanel embedded scope="user" showConnectAction={false} />
-        </section>
+        ) : null}
 
-        <div className="h-px bg-[color:var(--bd1)]" />
+        {tab === 'calendar' ? (
+          <p className="max-w-3xl text-sm text-[color:var(--tx2)]">
+            Calendar and Meet are granted per permission. Connecting one does not give Nessie
+            access to your mail.
+          </p>
+        ) : null}
 
-        <section className="grid gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold text-[color:var(--tx)]">Google Calendar and Meet</h2>
-              <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                Connect Calendar or Meet without granting Gmail access. Choose each permission
-                before Google asks you to sign in.
-              </p>
-            </div>
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              onClick={() => setGoogleWorkspaceOpen(true)}
-              type="button"
-            >
-              Connect Calendar or Meet
-            </button>
-          </div>
-        </section>
+        {tab === 'tools' ? <ProjectToolConnections /> : null}
 
         <GoogleWorkspaceConnectDialog
           onClose={() => setGoogleWorkspaceOpen(false)}
           open={googleWorkspaceOpen}
         />
-
-        <div className="h-px bg-[color:var(--bd1)]" />
-        <ProjectToolConnections />
-
-        <div className="h-px bg-[color:var(--bd1)]" />
-        <ModelSubscriptionSection />
       </div>
     </SettingsPanel>
   )

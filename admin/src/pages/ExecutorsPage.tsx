@@ -11,10 +11,7 @@ import {
   ExecutorPromotionDialog,
 } from '../components/features/executors/ExecutorReviewDialogs'
 import { ExecutorsTable } from '../components/features/executors/ExecutorsTable'
-import {
-  loadExecutorsListState,
-  saveExecutorsListState,
-} from '../components/features/executors/executors-list-state'
+import { createListPageStore } from '../components/shared/list-page-state'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAgents } from '../facades/agents/hooks'
@@ -45,6 +42,8 @@ const parseConfirmationToken = parseHashParam('confirmationToken')
  * confirmed, your reviewed drafts — is a modal, and everything that belongs to
  * one machine is its own screen at `/agents/executors/:executorId`.
  */
+const executorsListStore = createListPageStore()
+
 export const ExecutorsPage = () => {
   const { me } = useAuthSession()
   const navigate = useNavigate()
@@ -69,7 +68,7 @@ export const ExecutorsPage = () => {
   const myReviewsQuery = useMyExecutorWorkspaceReviews()
   const draftCount = myReviewsQuery.data?.length ?? 0
 
-  const [initialState] = useState(loadExecutorsListState)
+  const [initialState] = useState(executorsListStore.load)
   const [pageSize, setPageSize] = useState(initialState.pageSize)
   const [requestedPage, setRequestedPage] = useState(initialState.page)
 
@@ -87,7 +86,7 @@ export const ExecutorsPage = () => {
   const rangeEnd = Math.min((page + 1) * pageSize, executors.length)
 
   useEffect(() => {
-    saveExecutorsListState({ page, pageSize })
+    executorsListStore.save({ page, pageSize })
   }, [page, pageSize])
 
   const scroll = useScrollMemory('executors:list')

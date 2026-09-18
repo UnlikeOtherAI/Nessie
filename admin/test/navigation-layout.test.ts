@@ -56,8 +56,10 @@ test('on split, a root shares the stack floor with its details and in-parent nes
     assert.deepEqual(surfaceScreen(nested, 'split'), surfaceScreen('/channels/c1', 'split'), nested)
     assert.equal(surfaceScreen(nested, 'single')?.depth >= 2, true, nested)
   }
-  assert.deepEqual(surfaceScreen('/settings/statuses/s1', 'split'), surfaceScreen('/settings/statuses', 'split'))
-  // A nested screen with its own page still pushes inside the column.
+  // A nested screen with its own page still pushes inside the column. A status
+  // joined them when it became its own route component: it used to be drawn by
+  // the list page in a second column, which is what `splitInline` is for.
+  assert.equal(surfaceScreen('/settings/statuses/s1', 'split')?.depth, 2)
   assert.equal(surfaceScreen('/agents/a1', 'split')?.depth, 2)
   assert.equal(surfaceScreen('/apps/slack', 'split')?.depth, 2)
 })

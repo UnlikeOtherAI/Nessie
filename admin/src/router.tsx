@@ -26,6 +26,7 @@ import {
   ChannelConversationComposePage,
   ChannelProjectOverviewPage,
   ConnectedMailPage,
+  ConnectionDetailPage,
   ConnectionsPage,
   ExecutorDetailPage,
   ExecutorsPage,
@@ -33,9 +34,11 @@ import {
   KnowledgeBasePage,
   OperationalTelemetryPage,
   OpsHealthPage,
+  OrganizationPairedAgentDetailPage,
   OrganizationPairedAgentsPage,
   OrganizationSecretsPage,
   OrganizationSettingsPage,
+  PairedAgentDetailPage,
   PairedAgentsPage,
   PolicyPage,
   ProjectBoardsPage,
@@ -47,12 +50,14 @@ import {
   SearchPage,
   SecretsPage,
   SettingsMembersPage,
+  StatusDetailPage,
   StatusesPage,
   TeamMembersPage,
   TeamSecretsPage,
   TeamSettingsPage,
   ThreadsPage,
   TokenUsagePage,
+  ToolDetailPage,
   ToolsPage,
   TriggerDetailPage,
   TriggersPage,
@@ -352,6 +357,10 @@ export const router = createBrowserRouter([
         element: lazyElement(ToolsPage, 'list'),
       },
       {
+        path: '/agents/tools/:toolId',
+        element: lazyElement(ToolDetailPage, 'detail'),
+      },
+      {
         path: '/agents/executors',
         element: lazyElement(ExecutorsPage, 'list'),
       },
@@ -418,6 +427,10 @@ export const router = createBrowserRouter([
         element: lazyElement(OrganizationPairedAgentsPage, 'list'),
       },
       {
+        path: '/settings/organization/paired-agents/:credentialId',
+        element: lazyElement(OrganizationPairedAgentDetailPage, 'detail'),
+      },
+      {
         path: '/settings/organization/secrets',
         element: lazyElement(OrganizationSecretsPage, 'list'),
       },
@@ -427,15 +440,23 @@ export const router = createBrowserRouter([
       },
       {
         path: '/settings/statuses/:statusId',
-        element: lazyElement(StatusesPage, 'list'),
+        element: lazyElement(StatusDetailPage, 'detail'),
       },
       {
         path: '/settings/connections',
         element: lazyElement(ConnectionsPage, 'list'),
       },
       {
+        path: '/settings/connections/:connectionId',
+        element: lazyElement(ConnectionDetailPage, 'detail'),
+      },
+      {
         path: '/settings/paired-agents',
         element: lazyElement(PairedAgentsPage, 'list'),
+      },
+      {
+        path: '/settings/paired-agents/:credentialId',
+        element: lazyElement(PairedAgentDetailPage, 'detail'),
       },
       {
         // The old path. An agent that printed a verification URI before this

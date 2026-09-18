@@ -10,6 +10,12 @@ import type { McpToolRegistryRecord } from '../../../facades/tool-grants/hooks'
  */
 
 type ToolDetailDrawerProps = {
+  /**
+   * Withheld on the tool's own screen, where `ScreenHeader` already carries the
+   * name, the badges and the description — the card repeated all three one
+   * heading below the screen's own.
+   */
+  heading?: boolean
   tool: McpToolRegistryRecord
 }
 
@@ -40,19 +46,23 @@ const JsonSection = ({
   </details>
 )
 
-export const ToolDetailSection = ({ tool }: ToolDetailDrawerProps) => (
+export const ToolDetailSection = ({ heading = true, tool }: ToolDetailDrawerProps) => (
   <div className="grid gap-4">
     <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="min-w-0 flex-1 text-lg font-semibold text-[var(--tx)]">
-          {tool.label}
-        </h2>
-        <ToolBadge label={tool.source} source={tool.source} />
-        <ToolTransportPill transport={tool.transport} />
-        <ToolPermissionPill status={tool.status} />
-      </div>
-      <div className="mt-2 text-sm text-[color:var(--tx2)]">{tool.description}</div>
-      <dl className="mt-3 grid grid-cols-2 gap-y-1 text-xs">
+      {heading ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="min-w-0 flex-1 text-lg font-semibold text-[var(--tx)]">
+              {tool.label}
+            </h2>
+            <ToolBadge label={tool.source} source={tool.source} />
+            <ToolTransportPill transport={tool.transport} />
+            <ToolPermissionPill status={tool.status} />
+          </div>
+          <div className="mt-2 text-sm text-[color:var(--tx2)]">{tool.description}</div>
+        </>
+      ) : null}
+      <dl className={`${heading ? 'mt-3 ' : ''}grid grid-cols-2 gap-y-1 text-xs`}>
         <dt className="text-[color:var(--tx3)]">Tool ID</dt>
         <dd className="text-[var(--tx)]">{tool.toolId}</dd>
         <dt className="text-[color:var(--tx3)]">Scope key</dt>
