@@ -27,6 +27,7 @@ import { agentKeys } from '../facades/agents/keys'
 import { appKeys } from '../facades/apps/keys'
 import { channelKeys } from '../facades/channels/keys'
 import { dashboardKeys } from '../facades/dashboards/keys'
+import { executorKeys } from '../facades/executors/keys'
 import { knowledgeKeys } from '../facades/knowledge/keys'
 import { projectKeys } from '../facades/projects/keys'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -34,6 +35,7 @@ import { fetchAgentStatus } from '../facades/agents/queries'
 import { fetchApp } from '../facades/apps/hooks'
 import { fetchProjectBoards } from '../facades/boards/hooks'
 import { fetchDashboard } from '../facades/dashboards/hooks'
+import { fetchExecutorAccess } from '../facades/executors/hooks'
 import {
   fetchKnowledgeSpace,
   fetchKnowledgeSpacePages,
@@ -125,6 +127,15 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     run: (projectId, context) => {
       prefetch(context, projectKeys.boards(projectId), () =>
         fetchProjectBoards(context.apiClient, projectId))
+    },
+  },
+  {
+    // Ahead of the bare `/agents/:id` row below, which would otherwise read
+    // "executors" as an agent id.
+    pattern: /^\/agents\/executors\/([^/]+)$/,
+    run: (executorId, context) => {
+      prefetch(context, executorKeys.access(executorId), () =>
+        fetchExecutorAccess(context.apiClient, executorId))
     },
   },
   {

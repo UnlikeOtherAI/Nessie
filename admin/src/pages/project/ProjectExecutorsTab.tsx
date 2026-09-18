@@ -45,7 +45,7 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
                   <Link
                     className="admin-card grid gap-1 p-4 transition-colors hover:bg-[color:var(--overlay-weak)]"
                     key={executor.id}
-                    to={`/agents/executors?executorId=${executor.id}`}
+                    to={`/agents/executors/${executor.id}`}
                   >
                     <span className="text-sm font-semibold text-[color:var(--tx)]">{executor.label}</span>
                     <span className="text-xs text-[color:var(--tx3)]">

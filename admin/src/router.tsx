@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
+import { Suspense, type ComponentType, type ReactElement } from 'react'
 import { createBrowserRouter, useLocation } from 'react-router-dom'
 import { resolveRootLandingPath } from './facades/billing/checkout-return'
 import { consumeDesktopPendingPath } from './lib/desktop'
@@ -13,14 +13,62 @@ import { ChannelsPage } from './pages/ChannelsPage'
 import { ExternalAuthCompletionPage } from './pages/ExternalAuthCompletionPage'
 import { LoginRoute } from './pages/LoginRoute'
 import { NotFoundPage } from './pages/NotFoundPage'
+import {
+  AgentDesignerPage,
+  AgentDetailPage,
+  AgentMailboxPage,
+  AgentsPage,
+  AlertsPage,
+  AppDetailPage,
+  AppsPage,
+  AuditLogPage,
+  BoardSettingsPage,
+  ChannelConversationComposePage,
+  ChannelProjectOverviewPage,
+  ConnectedMailPage,
+  ConnectionsPage,
+  ExecutorDetailPage,
+  ExecutorsPage,
+  FeedbackPage,
+  KnowledgeBasePage,
+  OperationalTelemetryPage,
+  OpsHealthPage,
+  OrganizationPairedAgentsPage,
+  OrganizationSecretsPage,
+  OrganizationSettingsPage,
+  PairedAgentsPage,
+  PolicyPage,
+  ProjectBoardsPage,
+  ProjectDashboardPage,
+  ProjectDirectoryPage,
+  ProjectView,
+  ProjectsIndexPage,
+  PushCredentialsPage,
+  SearchPage,
+  SecretsPage,
+  SettingsMembersPage,
+  StatusesPage,
+  TeamMembersPage,
+  TeamSecretsPage,
+  TeamSettingsPage,
+  ThreadsPage,
+  TokenUsagePage,
+  ToolsPage,
+  TriggerDetailPage,
+  TriggersPage,
+  UnreadMessagesPage,
+  UserSettingsPage,
+  WorkflowDesignerPage,
+  WorkflowsPage,
+} from './router-lazy-pages'
 
-// Every route below is imported eagerly except the seven names above: the
-// shell/layout roots, the auth gate (`LoginRoute`, `BootstrapPage`,
+// Every route below is imported eagerly except the seven eager names above:
+// the shell/layout roots, the auth gate (`LoginRoute`, `BootstrapPage`,
 // `ExternalAuthCompletionPage`), the catch-all, and `ChannelsPage` — the
 // first screen almost every session lands on. Everything else is behind
-// `React.lazy`, so the entry chunk stops shipping the workflow designer, the
-// agent designer, every settings tab and every governance page before a
-// reader ever opens a channel
+// `React.lazy` in `router-lazy-pages.ts`, so the entry chunk stops shipping
+// the workflow designer, the agent designer, every settings tab and every
+// governance page before a reader ever opens a channel
 // (docs/plans/2026-09-05-admin-architecture-review/audit/05-pages-routing.md
 // F1, audit/09-boundary-errors-tests.md F5). `lazyElement` is the one
 // Suspense boundary: it lives here, not in `RootLayout`/`AdminShellLayout`,
@@ -44,128 +92,6 @@ const lazyElement = (Component: ComponentType, variant: SkeletonVariant): ReactE
   </Suspense>
 )
 
-const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })))
-const ProjectDirectoryPage = lazy(() =>
-  import('./pages/project/ProjectDirectoryPage').then((m) => ({ default: m.ProjectDirectoryPage })),
-)
-const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
-const AgentDesignerPage = lazy(() =>
-  import('./pages/AgentDesignerPage').then((m) => ({ default: m.AgentDesignerPage })),
-)
-const AgentMailboxPage = lazy(() =>
-  import('./pages/AgentMailboxPage').then((m) => ({ default: m.AgentMailboxPage })),
-)
-const ConnectedMailPage = lazy(() =>
-  import('./pages/ConnectedMailPage').then((m) => ({ default: m.ConnectedMailPage })),
-)
-const AgentDetailPage = lazy(() =>
-  import('./pages/AgentDetailPage').then((m) => ({ default: m.AgentDetailPage })),
-)
-const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
-const ExecutorsPage = lazy(() =>
-  import('./pages/ExecutorsPage').then((m) => ({ default: m.ExecutorsPage })),
-)
-const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
-const ChannelProjectOverviewPage = lazy(() =>
-  import('./pages/channels/ChannelProjectOverviewPage').then((m) => ({
-    default: m.ChannelProjectOverviewPage,
-  })),
-)
-const ChannelConversationComposePage = lazy(() =>
-  import('./pages/ChannelConversationComposePage').then((m) => ({
-    default: m.ChannelConversationComposePage,
-  })),
-)
-const ThreadsPage = lazy(() => import('./pages/ThreadsPage').then((m) => ({ default: m.ThreadsPage })))
-const UnreadMessagesPage = lazy(() =>
-  import('./pages/UnreadMessagesPage').then((m) => ({ default: m.UnreadMessagesPage })),
-)
-const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((m) => ({ default: m.FeedbackPage })))
-const KnowledgeBasePage = lazy(() =>
-  import('./pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })),
-)
-const ProjectDashboardPage = lazy(() =>
-  import('./pages/project/ProjectDashboardPage').then((m) => ({ default: m.ProjectDashboardPage })),
-)
-const AppDetailPage = lazy(() =>
-  import('./pages/AppDetailPage').then((m) => ({ default: m.AppDetailPage })),
-)
-const AppsPage = lazy(() => import('./pages/AppsPage').then((m) => ({ default: m.AppsPage })))
-const OperationalTelemetryPage = lazy(() =>
-  import('./pages/OperationalTelemetryPage').then((m) => ({ default: m.OperationalTelemetryPage })),
-)
-const OpsHealthPage = lazy(() =>
-  import('./pages/OpsHealthPage').then((m) => ({ default: m.OpsHealthPage })),
-)
-const PolicyPage = lazy(() => import('./pages/PolicyPage').then((m) => ({ default: m.PolicyPage })))
-const ProjectsIndexPage = lazy(() =>
-  import('./pages/ProjectsIndexPage').then((m) => ({ default: m.ProjectsIndexPage })),
-)
-const ProjectView = lazy(() =>
-  import('./pages/project/ProjectView').then((m) => ({ default: m.ProjectView })),
-)
-const ProjectBoardsPage = lazy(() =>
-  import('./pages/project/ProjectBoardsPage').then((m) => ({ default: m.ProjectBoardsPage })),
-)
-const BoardSettingsPage = lazy(() =>
-  import('./pages/project/BoardSettingsPage').then((m) => ({ default: m.BoardSettingsPage })),
-)
-const PairedAgentsPage = lazy(() =>
-  import('./pages/settings/PairedAgentsPage').then((m) => ({ default: m.PairedAgentsPage })),
-)
-const OrganizationPairedAgentsPage = lazy(() =>
-  import('./pages/settings/OrganizationPairedAgentsPage').then(
-    (m) => ({ default: m.OrganizationPairedAgentsPage }),
-  ),
-)
-const ConnectionsPage = lazy(() =>
-  import('./pages/settings/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
-)
-const OrganizationSettingsPage = lazy(() =>
-  import('./pages/settings/OrganizationSettingsPage').then((m) => ({
-    default: m.OrganizationSettingsPage,
-  })),
-)
-const PushCredentialsPage = lazy(() =>
-  import('./pages/settings/PushCredentialsPage').then((m) => ({ default: m.PushCredentialsPage })),
-)
-const OrganizationSecretsPage = lazy(() =>
-  import('./pages/settings/OrganizationSecretsPage').then((m) => ({
-    default: m.OrganizationSecretsPage,
-  })),
-)
-const SecretsPage = lazy(() =>
-  import('./pages/settings/SecretsPage').then((m) => ({ default: m.SecretsPage })),
-)
-const TeamSecretsPage = lazy(() =>
-  import('./pages/settings/TeamSecretsPage').then((m) => ({ default: m.TeamSecretsPage })),
-)
-const SettingsMembersPage = lazy(() =>
-  import('./pages/settings/SettingsMembersPage').then((m) => ({ default: m.SettingsMembersPage })),
-)
-const TeamMembersPage = lazy(() =>
-  import('./pages/settings/TeamMembersPage').then((m) => ({ default: m.TeamMembersPage })),
-)
-const TeamSettingsPage = lazy(() =>
-  import('./pages/settings/TeamSettingsPage').then((m) => ({ default: m.TeamSettingsPage })),
-)
-const UserSettingsPage = lazy(() =>
-  import('./pages/settings/UserSettingsPage').then((m) => ({ default: m.UserSettingsPage })),
-)
-const StatusesPage = lazy(() =>
-  import('./pages/settings/StatusesPage').then((m) => ({ default: m.StatusesPage })),
-)
-const ToolsPage = lazy(() => import('./pages/ToolsPage').then((m) => ({ default: m.ToolsPage })))
-const TokenUsagePage = lazy(() =>
-  import('./pages/TokenUsagePage').then((m) => ({ default: m.TokenUsagePage })),
-)
-const TriggersPage = lazy(() => import('./pages/TriggersPage').then((m) => ({ default: m.TriggersPage })))
-const WorkflowDesignerPage = lazy(() =>
-  import('./pages/WorkflowDesignerPage').then((m) => ({ default: m.WorkflowDesignerPage })),
-)
-const WorkflowsPage = lazy(() =>
-  import('./pages/WorkflowsPage').then((m) => ({ default: m.WorkflowsPage })),
-)
 
 const RootRouteRedirect = () => {
   const { search } = useLocation()
@@ -414,6 +340,10 @@ export const router = createBrowserRouter([
         element: lazyElement(TriggersPage, 'list'),
       },
       {
+        path: '/agents/triggers/:triggerId',
+        element: lazyElement(TriggerDetailPage, 'detail'),
+      },
+      {
         path: '/agents/workflows',
         element: lazyElement(WorkflowsPage, 'list'),
       },
@@ -424,6 +354,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents/executors',
         element: lazyElement(ExecutorsPage, 'list'),
+      },
+      {
+        path: '/agents/executors/:executorId',
+        element: lazyElement(ExecutorDetailPage, 'detail'),
       },
       {
         path: '/agents/:agentId/mailbox',

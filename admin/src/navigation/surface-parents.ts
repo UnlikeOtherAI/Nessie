@@ -6,6 +6,14 @@ export const toKnowledge = (): SurfaceParent => ({ label: 'Back to Knowledge', p
 export const toAdmin = (): SurfaceParent => ({ label: 'Back to Admin', pathname: '/settings' })
 export const toApps = (): SurfaceParent => ({ label: 'Apps', pathname: '/apps' })
 export const toAgents = (): SurfaceParent => ({ label: 'Back to Agents', pathname: '/agents' })
+export const toExecutors = (): SurfaceParent => ({
+  label: 'Back to Executors',
+  pathname: '/agents/executors',
+})
+export const toTriggers = (): SurfaceParent => ({
+  label: 'Back to Triggers',
+  pathname: '/agents/triggers',
+})
 export const toWorkflows = (): SurfaceParent => ({
   label: 'Back to Workflows',
   pathname: '/agents/workflows',

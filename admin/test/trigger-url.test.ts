@@ -6,9 +6,9 @@ import { triggerUrl } from '../src/facades/alerts/trigger-url.js'
 
 const triggerId = '55555555-5555-4555-8555-555555555555'
 
-test('trigger links use the shared durable selection query', () => {
-  assert.equal(triggerUrl(triggerId), `/agents/triggers?trigger=${triggerId}`)
-  assert.equal(triggerUrl('a/b'), '/agents/triggers?trigger=a%2Fb')
+test('trigger links address the trigger screen itself', () => {
+  assert.equal(triggerUrl(triggerId), `/agents/triggers/${triggerId}`)
+  assert.equal(triggerUrl('a/b'), '/agents/triggers/a%2Fb')
 })
 
 test('a trigger-health bell alert opens the exact trigger recovery controls', () => {

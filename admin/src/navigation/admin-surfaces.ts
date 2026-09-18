@@ -3,7 +3,9 @@ import {
   toAdmin,
   toAgents,
   toApps,
+  toExecutors,
   toStatuses,
+  toTriggers,
   toWorkflows,
 } from './surface-parents'
 
@@ -88,12 +90,36 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
       consume: ['create', 'scopeProjectId'],
       hash: ['confirmationToken'],
       state: [
-        'executorId', 'accessChange', 'promotion', 'tab',
-        'status', 'search', 'source', 'instance', 'deepWaterInstance', 'trigger',
+        'accessChange', 'promotion', 'tab',
+        'status', 'search', 'type', 'source', 'instance', 'deepWaterInstance',
       ],
     },
     parentOf: toAdmin,
     pattern: /^\/agents\/(?:workflows|triggers|tools|executors)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // One paired machine, pushed from the Executors table. Its tab and any
+    // prepared change it is showing are state, not history.
+    depth: 2,
+    identityOf: (match) => `executor:${match[1]}`,
+    intent: { state: ['tab'] },
+    keyScope: () => 'executor',
+    parentOf: toExecutors,
+    pattern: /^\/agents\/executors\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // One trigger, pushed from the Triggers table.
+    depth: 2,
+    identityOf: (match) => `trigger:${match[1]}`,
+    keyScope: () => 'trigger',
+    parentOf: toTriggers,
+    pattern: /^\/agents\/triggers\/([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

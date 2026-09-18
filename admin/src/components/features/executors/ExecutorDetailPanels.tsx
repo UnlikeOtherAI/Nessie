@@ -19,15 +19,16 @@ import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
 import { ExecutorReachableFolders } from './ExecutorReachableFolders'
 import { useTabParam } from '../../../navigation/useTabParam'
 import { FormError } from '../../shared/FormActions'
-import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar } from '../../primitives/TabBar'
 import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
 import { QueryState } from '../../shared/QueryState'
 
-const EXECUTOR_TAB_VALUES = ['overview', 'access', 'operations', 'sessions', 'attention'] as const
+export const EXECUTOR_TAB_VALUES = [
+  'overview', 'access', 'operations', 'sessions', 'attention',
+] as const
 
-type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
+export type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
 
 /**
  * The access view is a *query*, not a value, because every control on this
@@ -47,20 +48,13 @@ type ExecutorDetailPanelsProps = {
 
 const operationKeys = IMPLEMENTED_EXECUTOR_OPERATION_KEYS
 
-const EXECUTOR_TABS: ReadonlyArray<{ label: string; value: ExecutorTab }> = [
+export const EXECUTOR_TABS: ReadonlyArray<{ label: string; value: ExecutorTab }> = [
   { label: 'Overview', value: 'overview' },
   { label: 'Access', value: 'access' },
   { label: 'Operations', value: 'operations' },
   { label: 'Sessions', value: 'sessions' },
   { label: 'Attention', value: 'attention' },
 ]
-
-const scopeSummary = (executor: ExecutorRecordResponse): string =>
-  executor.scope.kind === 'private'
-    ? 'Private — only exact assigned people and agents can use it.'
-    : executor.scope.kind === 'project'
-      ? `Project — eligible only for runs in project ${executor.scope.projectId}.`
-      : 'Organization — available only to entitled organization work.'
 
 const sessionSummary = (
   profile: ExecutorProfile,
@@ -147,15 +141,8 @@ export const ExecutorDetailPanels = ({
   const canManage = access?.canManage === true
 
   return (
-    <section className="admin-card min-h-0 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--sep)] pb-3">
-        <div>
-          <h2 className="text-base font-semibold text-[color:var(--tx)]">{executor.label}</h2>
-          <p className="mt-0.5 text-xs text-[color:var(--tx3)]">{scopeSummary(executor)}</p>
-        </div>
-        <Pill tone="outline" uppercase={false}>{executor.status}</Pill>
-      </div>
-      <div className="mt-3 flex">
+    <div className="min-h-0">
+      <div className="flex">
         <TabBar
           ariaLabel="Executor sections"
           items={EXECUTOR_TABS}
@@ -165,9 +152,10 @@ export const ExecutorDetailPanels = ({
         />
       </div>
       <FormError className="mt-3">{error}</FormError>
-      {/* The header and the tabs stay outside: which executor this is, and
-          which section you are on, are still true when the access view fails,
-          and blanking them would lose the place you had navigated to. */}
+      {/* The tabs stay outside the query state: which section you are on is
+          still true when the access view fails, and blanking it would lose the
+          place you had navigated to. The screen's own header names the
+          executor and its status. */}
       <QueryState
         className="py-6"
         errorLabel={accessErrorLabel(accessQuery.error)}
@@ -422,6 +410,6 @@ export const ExecutorDetailPanels = ({
           </>
         )}
       </QueryState>
-    </section>
+    </div>
   )
 }

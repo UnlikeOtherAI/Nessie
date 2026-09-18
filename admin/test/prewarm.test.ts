@@ -201,6 +201,7 @@ test('navigating rows prewarm before the click', () => {
     'admin/src/layouts/admin-shell/SidebarStarredSection.tsx',
     'admin/src/components/features/knowledge/finder/FinderRootColumn.tsx',
     'admin/src/components/features/agents/AgentListRow.tsx',
+    'admin/src/components/features/executors/ExecutorListRow.tsx',
     'admin/src/components/features/apps/AppCard.tsx',
     'admin/src/pages/project/ProjectDashboardsTab.tsx',
     'admin/src/pages/project/ProjectBoardsPage.tsx',
@@ -220,5 +221,5 @@ test('navigating rows prewarm before the click', () => {
 })
 
 test('the registry is a small closed set, not a growing switch', () => {
-  assert.equal(PREWARM_REGISTRY.length, 7)
+  assert.equal(PREWARM_REGISTRY.length, 8)
 })

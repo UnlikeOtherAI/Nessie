@@ -17,6 +17,7 @@ import {
   type ExecutorScope,
 } from '@nessie/schemas'
 
+import type { ApiClient } from '../../lib/api-client'
 import { threadKeys } from '../threads/keys'
 import { executorKeys } from './keys'
 import { ExecutorAccessViewWithLocalMcpSchema } from './local-mcp'
@@ -32,6 +33,14 @@ export const useExecutors = () => {
   })
 }
 
+/**
+ * The executor detail screen's first read, as a function so the row that
+ * navigates there can prewarm it under the same key (navigation/prewarm.ts)
+ * without spelling a second fetcher.
+ */
+export const fetchExecutorAccess = (apiClient: ApiClient, executorId: string) =>
+  apiClient.get(`/api/executors/${executorId}/access`, ExecutorAccessViewWithLocalMcpSchema)
+
 export const useExecutorAccess = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
@@ -46,10 +55,7 @@ export const useExecutorAccess = (executorId?: string) => {
     // desktop shell is frozen at its build, so one additive server field
     // hid this executor's whole access surface behind a screen that said
     // "unknown" instead of saying the app was stale.
-    queryFn: async () => apiClient.get(
-      `/api/executors/${executorId}/access`,
-      ExecutorAccessViewWithLocalMcpSchema,
-    ),
+    queryFn: async () => fetchExecutorAccess(apiClient, executorId as string),
     enabled: Boolean(executorId),
   })
 }

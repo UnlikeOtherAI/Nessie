@@ -3,11 +3,15 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-// Step 6 adopter (docs/navigation/overview.md §6): the dashboard side panels and the
-// executor pairing panel join the navigation stack as nested stages. Both
-// pages are verified by source pins — the exact ids, priorities, labels and
-// close paths a component-level render cannot see any more cheaply than
-// reading the file.
+// Step 6 adopter (docs/navigation/overview.md §6): the dashboard side panels
+// join the navigation stack as nested stages. The page is verified by source
+// pins — the exact ids, priorities, labels and close paths a component-level
+// render cannot see any more cheaply than reading the file.
+//
+// Executors was the other adopter and no longer is: pairing moved into the
+// shared `Dialog`, which composes `useOverlay` and so registers Back, Escape,
+// the focus trap and focus restore itself. A stage there would now be a second
+// owner of the same doorway.
 //
 // An interactive jsdom render of either page (following the pattern in
 // e.g. admin/test/apps-connect-scope.test.ts and
@@ -22,10 +26,6 @@ import { fileURLToPath } from 'node:url'
 //   `Unknown file extension ".css"` before any component renders. Stubbing
 //   that would mean adding a custom ESM loader hook to the test run — new
 //   test infrastructure, not exercising this adoption.
-// - ExecutorsPage renders behind `useAuthSession()` (AuthSessionProvider,
-//   which self-fetches session state) plus a dozen executor/agent/project/
-//   user queries, so a real interactive mount would mean reconstructing that
-//   whole provider rather than exercising the adoption itself.
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -71,39 +71,8 @@ test('ProjectDashboardPage wraps its side panels in NestedStage with the shared 
   assert.doesNotMatch(source, /\busePhoneLayout\(/)
 })
 
-test('ExecutorsPage wraps ExecutorCreatePanel in NestedStage with the shared id and priority', () => {
-  const source = readSource('../src/pages/ExecutorsPage.tsx')
-
-  assert.match(source, /^import \{ NestedStage \} from '\.\.\/navigation\/NestedStage'$/m)
-  assert.match(
-    source,
-    /^import \{ LOCAL_BACK_PRIORITY \} from '\.\.\/navigation\/LocalBackContext'$/m,
-  )
-
-  assert.match(source, /<NestedStage[\s\S]{0,200}id="executors:create"/)
-  assert.match(
-    source,
-    /id="executors:create"[\s\S]{0,200}priority=\{LOCAL_BACK_PRIORITY\.executorsCreate\}/,
-  )
-  assert.match(source, /id="executors:create"[\s\S]{0,200}label="Back to executors"/)
-  assert.match(source, /active=\{showCreate && Boolean\(me\)\}/)
-  assert.match(source, /onBack=\{\(\) => setShowCreate\(false\)\}/)
-  assert.doesNotMatch(source, /showCreate && me \? [\s\S]{0,40}<NestedStage/)
-
-  // The "Pair executor / Close pairing" header toggle is untouched by the
-  // adoption — it still flips the same boolean the stage's `active` reads.
-  // Step 9 moved it into `ScreenHeader`'s measured actions lane, so it is a
-  // PageHeaderAction's `onSelect` rather than a raw button's `onClick`.
-  assert.match(source, /onSelect: \(\) => setShowCreate\(\(open\) => !open\)/)
-  assert.match(source, /showCreate \? 'Close pairing' : 'Pair executor'/)
-
-  assert.doesNotMatch(source, /\buseLocalBack\(/)
-  assert.doesNotMatch(source, /\busePhoneLayout\(/)
-})
-
-test('LOCAL_BACK_PRIORITY carries the three new stage priorities', () => {
+test('LOCAL_BACK_PRIORITY carries the dashboard stage priorities', () => {
   const source = readSource('../src/navigation/LocalBackContext.tsx')
-  assert.match(source, /executorsCreate: 30,/)
   assert.match(source, /dashboardPanel: 30,/)
   assert.match(source, /dashboardVersions: 31,/)
 })

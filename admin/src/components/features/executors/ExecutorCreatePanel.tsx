@@ -6,13 +6,14 @@ import {
 } from '@nessie/schemas'
 import type { AgentRecord, ProjectRecord, UserRecord } from '../../../lib/api-client'
 import { useCreateExecutor } from '../../../facades/executors/hooks'
-import { FormError } from '../../shared/FormActions'
+import { FormActions, FormError } from '../../shared/FormActions'
 import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 
 type ExecutorCreatePanelProps = {
   agents: AgentRecord[]
   currentUserId: string
   fixedProjectId?: string
+  onCancel: () => void
   onCreated: (created: ExecutorCreateResponse) => void
   organizationId: string
   projects: ProjectRecord[]
@@ -22,10 +23,13 @@ type ExecutorCreatePanelProps = {
 type ScopeKind = 'private' | 'project' | 'organization'
 type UserRole = 'none' | 'use' | 'admin'
 
+// The pairing form. It is the body of `ExecutorPairDialog`, so it carries no
+// card, heading or description of its own — the dialog owns all three.
 export const ExecutorCreatePanel = ({
   agents,
   currentUserId,
   fixedProjectId,
+  onCancel,
   onCreated,
   organizationId,
   projects,
@@ -86,14 +90,7 @@ export const ExecutorCreatePanel = ({
   }
 
   return (
-    <form className="admin-card grid gap-4 p-4" onSubmit={submit}>
-      <div>
-        <h2 className="text-sm font-semibold text-[color:var(--tx)]">Pair an executor</h2>
-        <p className="mt-1 text-xs text-[color:var(--tx3)]">
-          Scope cannot be changed after pairing. A private executor can be shared with any exact
-          combination of people and agents, but only its assigned people can administer that list.
-        </p>
-      </div>
+    <form className="grid gap-4" onSubmit={submit}>
       <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
         Name
         <input className="admin-input" maxLength={120} onChange={(event) => setLabel(event.target.value)} value={label} />
@@ -166,9 +163,14 @@ export const ExecutorCreatePanel = ({
         </div>
       ) : null}
       <FormError>{error}</FormError>
-      <button className="admin-button admin-button-primary justify-self-start" disabled={createExecutor.isPending} type="submit">
-        {createExecutor.isPending ? 'Creating…' : 'Create pairing'}
-      </button>
+      <FormActions>
+        <button className="admin-button admin-button-secondary" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="admin-button admin-button-primary" disabled={createExecutor.isPending} type="submit">
+          {createExecutor.isPending ? 'Creating…' : 'Create pairing'}
+        </button>
+      </FormActions>
     </form>
   )
 }

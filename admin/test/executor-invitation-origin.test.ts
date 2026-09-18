@@ -19,7 +19,7 @@ test('executor invitations use the direct API origin Vite config supplies', () =
 
 test('terminal and desktop companion pairing share the executor API-origin contract', () => {
   for (const path of [
-    '../src/pages/ExecutorsPage.tsx',
+    '../src/components/features/executors/ExecutorPairDialog.tsx',
     '../src/components/features/executors/ExecutorDesktopCompanionPanel.tsx',
   ]) {
     const source = readSource(path)
@@ -37,7 +37,7 @@ test('terminal and desktop companion pairing share the executor API-origin contr
  */
 test('both pairing surfaces name the host rather than assuming it', () => {
   for (const path of [
-    '../src/pages/ExecutorsPage.tsx',
+    '../src/components/features/executors/ExecutorPairDialog.tsx',
     '../src/components/features/executors/ExecutorDesktopCompanionPanel.tsx',
   ]) {
     const source = readSource(path)
