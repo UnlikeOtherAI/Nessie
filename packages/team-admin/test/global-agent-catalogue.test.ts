@@ -318,5 +318,20 @@ test('the block states that an executor grant is whole-suite, never a pick', () 
   const rendered = block({ executors: [executor()] })
   assert.match(rendered, /whole-suite and never a per-operation pick/)
   assert.match(rendered, /minus workspace\.promote/)
-  assert.match(rendered, /never grant an executor to yourself or to any agent/)
+  assert.match(rendered, /executor_agent_grant_prepare prepares ONE change/)
+  assert.match(rendered, /not itself, and not another agent/)
+})
+
+test('a face that holds no tools states the rule without naming one', () => {
+  // The sidebar can call nothing at all, so naming the grant tool there is the
+  // same defect as telling it to post a proposal card.
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    const rendered = block({ executors: [executor()], writeSurface })
+    assert.match(rendered, /whole-suite and never a per-operation pick/)
+    assert.match(rendered, /confirmation happens on the Executors page, not here/)
+    // The restricted section may still name the tool with its reason — that is
+    // the catalogue doing its job. What must not appear is an instruction to
+    // call it.
+    assert.doesNotMatch(rendered, /executor_agent_grant_prepare prepares ONE change/)
+  }
 })

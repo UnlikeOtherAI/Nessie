@@ -1,6 +1,13 @@
 import { formatExecutorLocalMcp, type GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 
 /**
+ * How this face changes an agent, which decides whether a tool may be named.
+ * Declared here rather than imported from the catalogue module, which imports
+ * this one.
+ */
+export type GlobalAgentCatalogueWriteSurface = 'agent_tools' | 'designer_form' | 'read_only'
+
+/**
  * The executor half of the Agent Designer's generated design catalogue.
  *
  * It is here rather than in `global-agent-catalogue.ts` because that file is
@@ -28,14 +35,26 @@ const indent = (text: string): string[] =>
  * It is not a preference about how to word a request: the prepared change
  * literally carries no operation key, so a per-operation pick is not something
  * this agent can express. Saying so stops it promising one.
+ *
+ * The tool is named only by the face that holds it. Naming
+ * `executor_agent_grant_prepare` inside the page sidebar — which can call no
+ * tool at all — is the same defect as telling it to post a proposal card.
  */
-const WHOLE_SUITE_RULE = [
+const wholeSuiteRule = (
+  writeSurface: GlobalAgentCatalogueWriteSurface,
+): string[] => [
   'Giving an agent an executor is whole-suite and never a per-operation pick. '
-  + 'executor_agent_grant_prepare prepares ONE change covering every operation '
-  + 'that executor\'s active reviewed policy offers, minus workspace.promote, '
-  + 'which only a person can issue. There is no way for you to grant a subset, '
-  + 'and you can never grant an executor to yourself or to any agent without '
-  + 'the person confirming it in Executors with fresh verification.',
+  + (writeSurface === 'agent_tools'
+    ? 'executor_agent_grant_prepare prepares ONE change covering every '
+      + "operation that executor's active reviewed policy offers"
+    : "One change covers every operation that executor's active reviewed "
+      + 'policy offers')
+  + ', minus workspace.promote, which only a person can issue. There is no way '
+  + 'to grant a subset, and no agent is ever granted an executor without the '
+  + 'person confirming it in Executors with fresh verification — '
+  + (writeSurface === 'agent_tools'
+    ? 'not itself, and not another agent.'
+    : 'that confirmation happens on the Executors page, not here.'),
 ]
 
 const executorLines = (executor: GlobalAgentExecutorFacts): string[] => [
@@ -73,6 +92,7 @@ const executorLines = (executor: GlobalAgentExecutorFacts): string[] => [
 
 export const executorSection = (
   executors: GlobalAgentExecutorFacts[] | null,
+  writeSurface: GlobalAgentCatalogueWriteSurface,
 ): string[] => {
   if (executors === null) {
     return [
@@ -94,6 +114,6 @@ export const executorSection = (
     + 'agent can be given work on. This is your entitlement, not the '
     + 'deployment\'s: somebody else may be able to see more.',
     ...executors.flatMap(executorLines),
-    ...WHOLE_SUITE_RULE,
+    ...wholeSuiteRule(writeSurface),
   ]
 }

@@ -320,6 +320,14 @@ test('the executors this person can reach travel into the sidebar prompt', async
   assert.match(systemPromptSent, /Executors you can reach \(1\)/)
   assert.match(systemPromptSent, new RegExp(`executorId=${EXECUTOR_ID}`))
   assert.match(systemPromptSent, /whole-suite and never a per-operation pick/)
+  // This face calls no tool, so the rule is stated without telling it to use
+  // one. The restricted section still NAMES the tool with its reason, which is
+  // the catalogue doing its job, so the assertion is on the rule's own words.
+  assert.match(systemPromptSent, /confirmation happens on the Executors page, not here/)
+  assert.doesNotMatch(
+    systemPromptSent,
+    /executor_agent_grant_prepare prepares ONE change/,
+  )
 })
 
 test('an executor read that fails says so rather than claiming there are none', async () => {

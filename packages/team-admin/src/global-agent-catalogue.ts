@@ -8,7 +8,10 @@ import {
 import { buildBrowserbaseSetupPrompt } from '@nessie/runtime'
 import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 
-import { executorSection } from './global-agent-executor-catalogue.js'
+import {
+  executorSection,
+  type GlobalAgentCatalogueWriteSurface,
+} from './global-agent-executor-catalogue.js'
 
 import type {
   AgentToolCatalog,
@@ -70,7 +73,7 @@ export type GlobalAgentCatalogueFacts = {
    * "never imply you did work you did not do" rule being broken by the prompt
    * itself.
    */
-  writeSurface: 'agent_tools' | 'designer_form' | 'read_only'
+  writeSurface: GlobalAgentCatalogueWriteSurface
 }
 
 const MODEL_SHORTLIST = 20
@@ -338,7 +341,7 @@ export const buildGlobalAgentCatalogueBlock = (
       : []),
     ...modelSection(facts.models),
     '',
-    ...executorSection(facts.executors),
+    ...executorSection(facts.executors, facts.writeSurface),
     '',
     ...(facts.writeSurface === 'agent_tools' ? [...proposalCardSection(), ''] : []),
     ...cloudBrowserSetupSection(facts.writeSurface),
