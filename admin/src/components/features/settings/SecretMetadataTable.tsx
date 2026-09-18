@@ -17,16 +17,16 @@ export type SecretPageScope = 'personal' | 'team' | 'organization'
 
 export type SecretsTab = 'active' | 'revoked'
 
-type SecretRow = SecretWithPrecedence<SecretRecord>
+export type SecretRow = SecretWithPrecedence<SecretRecord>
 
 type SecretMetadataTableProps = {
   isLoading: boolean
   onRevoke: (reference: string) => void
   /** The page's own level, which decides whether a Scope column earns its place. */
   pageScope: SecretPageScope
-  precedenceContext: SecretPrecedenceContext
   revokingReference: string | null
-  secrets: SecretRecord[]
+  /** One page of rows, already resolved and paged by `SecretsPanel`. */
+  rows: SecretRow[]
   tab: SecretsTab
 }
 
@@ -84,6 +84,26 @@ export const belongsToSecretsPage = (
   if (secret.scopeType === 'project') return secret.scopeId === context.projectId
   return secret.scopeId === context.userId
 }
+
+/**
+ * Every row one page shows, in the order it shows them — resolved once, above
+ * the tab split, because the panel needs the whole set twice over: for the
+ * per-tab counts on the strip and for the slice a page of rows is taken from.
+ *
+ * Precedence is resolved over every secret the viewer can see and only then
+ * filtered; resolving the filtered set would let a page's own narrowing invent
+ * a winner that does not apply in reality.
+ */
+export const resolveSecretRows = (
+  secrets: SecretRecord[],
+  pageScope: SecretPageScope,
+  context: SecretPrecedenceContext,
+): SecretRow[] => computeSecretPrecedence(secrets, context)
+  .filter((secret) => belongsToSecretsPage(secret, pageScope, context))
+
+/** The tab a row belongs under: Active holds live secrets, Revoked the rest. */
+export const secretMatchesTab = (secret: SecretRow, tab: SecretsTab): boolean =>
+  tab === 'active' ? secret.status === 'active' : secret.status !== 'active'
 
 type CopySecretMetadataButtonProps = {
   label: string
@@ -199,18 +219,11 @@ export const SecretMetadataTable = ({
   isLoading,
   onRevoke,
   pageScope,
-  precedenceContext,
   revokingReference,
-  secrets,
+  rows,
   tab,
 }: SecretMetadataTableProps) => {
   const [pendingRevoke, setPendingRevoke] = useState<SecretRow | null>(null)
-  // Precedence is resolved over every secret the viewer can see, then filtered:
-  // resolving the filtered set would let a page's own narrowing invent a winner
-  // that does not apply in reality.
-  const rows = computeSecretPrecedence(secrets, precedenceContext)
-    .filter((secret) => belongsToSecretsPage(secret, pageScope, precedenceContext))
-    .filter((secret) => (tab === 'active' ? secret.status === 'active' : secret.status !== 'active'))
 
   const active = tab === 'active'
   const columns: (DataTableColumn<SecretRow> | null)[] = [

@@ -13,9 +13,14 @@ import {
 } from '../src/components/features/settings/CreateSecretDialog.js'
 import {
   belongsToSecretsPage,
+  resolveSecretRows,
+  secretMatchesTab,
   SecretMetadataTable,
+  type SecretPageScope,
+  type SecretsTab,
 } from '../src/components/features/settings/SecretMetadataTable.js'
 import { ExpandableTable } from '../src/components/shared/ExpandableTable.js'
+import { secretsPageWindow } from '../src/pages/settings/SecretsPanel.js'
 import type { ProjectRecord } from '../src/lib/api-client.js'
 import type { CreateSecretInput, SecretRecord } from '../src/facades/secrets/hooks.js'
 
@@ -58,19 +63,35 @@ const project: ProjectRecord = {
 
 const precedenceContext = { userId: 'user-1', teamId: 'team-1', projectId: 'project-1' }
 
-const renderTable = (props: Partial<Parameters<typeof SecretMetadataTable>[0]> = {}): string =>
-  renderToStaticMarkup(
-    createElement(SecretMetadataTable, {
-      isLoading: false,
-      onRevoke: () => undefined,
-      pageScope: 'personal',
-      precedenceContext,
-      revokingReference: null,
-      secrets: [secret],
-      tab: 'active',
-      ...props,
-    }),
-  )
+// The page resolves precedence and pages the rows; the table is handed the
+// page it should draw. These cases still speak in whole secret sets, so the
+// helper does what `SecretsPanel` does before rendering.
+type TableCase = {
+  isLoading?: boolean
+  pageScope?: SecretPageScope
+  revokingReference?: string | null
+  secrets?: SecretRecord[]
+  tab?: SecretsTab
+}
+
+const tableElement = ({
+  isLoading = false,
+  pageScope = 'personal',
+  revokingReference = null,
+  secrets = [secret],
+  tab = 'active',
+}: TableCase = {}) =>
+  createElement(SecretMetadataTable, {
+    isLoading,
+    onRevoke: () => undefined,
+    pageScope,
+    revokingReference,
+    rows: resolveSecretRows(secrets, pageScope, precedenceContext)
+      .filter((row) => secretMatchesTab(row, tab)),
+    tab,
+  })
+
+const renderTable = (props: TableCase = {}): string => renderToStaticMarkup(tableElement(props))
 
 test('secret metadata is a semantic table with clear copy controls', () => {
   const html = renderTable()
@@ -171,6 +192,60 @@ test('a page shows its own level and every level above it, never a sibling below
   assert.equal(belongsToSecretsPage(otherTeam, 'personal', precedenceContext), false)
 })
 
+test('the tab split belongs to the page, so the strip can count both tabs at once', () => {
+  const revoked: SecretRecord = { ...secret, reference: 'secret_dead', status: 'revoked' }
+  const expired: SecretRecord = { ...secret, reference: 'secret_old', status: 'expired' }
+  const rows = resolveSecretRows([secret, revoked, expired], 'personal', precedenceContext)
+
+  assert.deepEqual(
+    rows.filter((row) => secretMatchesTab(row, 'active')).map((row) => row.reference),
+    ['secret_123'],
+  )
+  // Revoked and expired are different facts and one tab holds both, which is
+  // what the count beside "Revoked" has to say.
+  assert.deepEqual(
+    rows.filter((row) => secretMatchesTab(row, 'revoked')).map((row) => row.reference),
+    ['secret_dead', 'secret_old'],
+  )
+})
+
+test('a page of secrets names its range and never runs off the end of the list', () => {
+  assert.deepEqual(secretsPageWindow(40, 0, 25), {
+    end: 25,
+    label: '1–25 of 40',
+    page: 0,
+    pageCount: 2,
+    start: 0,
+  })
+  assert.deepEqual(secretsPageWindow(40, 1, 25), {
+    end: 40,
+    label: '26–40 of 40',
+    page: 1,
+    pageCount: 2,
+    start: 25,
+  })
+
+  // An empty tab still draws its footer, so it still needs a page and a count.
+  assert.deepEqual(secretsPageWindow(0, 0, 25), {
+    end: 0,
+    label: 'No secrets',
+    page: 0,
+    pageCount: 1,
+    start: 0,
+  })
+
+  // Revoking the last row on page two moves it to the other tab. The stored
+  // page is now past the end; reading it clamps rather than drawing an empty
+  // table under a live Previous button.
+  assert.deepEqual(secretsPageWindow(25, 1, 25), {
+    end: 25,
+    label: '1–25 of 25',
+    page: 0,
+    pageCount: 1,
+    start: 0,
+  })
+})
+
 test('the narrower secret is Effective and the one it beats says who beat it', () => {
   const html = renderTable({ secrets: [organizationSecret, secret] })
 
@@ -257,15 +332,6 @@ const installDom = () => {
   }
 }
 
-const tableProps = {
-  isLoading: false,
-  onRevoke: () => undefined,
-  pageScope: 'personal' as const,
-  precedenceContext,
-  revokingReference: null,
-  secrets: [secret],
-  tab: 'active' as const,
-}
 
 test('copying a secret reference announces useful feedback', async () => {
   const restoreDom = installDom()
@@ -281,7 +347,7 @@ test('copying a secret reference announces useful feedback', async () => {
 
   try {
     await act(async () => {
-      root.render(h(SecretMetadataTable, tableProps))
+      root.render(tableElement())
     })
     const copyReference = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Copy secret reference"]',
@@ -310,7 +376,7 @@ test('an Admin table stays in its own surface', async () => {
 
   try {
     await act(async () => {
-      root.render(h(SecretMetadataTable, tableProps))
+      root.render(tableElement())
     })
     assert.equal(container.querySelector('button[aria-label="Expand Secrets table"]'), null)
     assert.equal(dom.window.document.querySelector('[role="dialog"]'), null)
