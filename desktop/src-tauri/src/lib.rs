@@ -91,6 +91,7 @@ pub fn run() {
             executor_companion::executor_companion_status,
             executor_companion::executor_companion_stop,
             shell::desktop_set_badge,
+            shell::desktop_set_chrome,
             document_window::desktop_open_document_window,
             #[cfg(feature = "direct-updater")]
             direct_updater::desktop_direct_update_check,

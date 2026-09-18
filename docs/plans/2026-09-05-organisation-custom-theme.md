@@ -495,6 +495,15 @@ meaning:
 
 The inline script in `admin/index.html` becomes:
 
+> **Since superseded on two points.** The fallback is `nessie`, not `sandstone`
+> — the default moved with the Nessie theme. And the script is no longer
+> *inline*: `script-src 'self'` on the served admin
+> (`infrastructure/docker/admin-nginx.conf`) refused it in production for two
+> weeks while dev ran it, so every reload painted the bare `:root` palette and
+> repainted once React mounted. It lives in `admin/public/boot-theme.js`, loaded
+> by a blocking `<script src>`, and `admin/test/entry-document-csp.test.ts`
+> keeps the entry document free of inline script. The logic below is unchanged.
+
 ```
 choice = choice key; applied = applied key; css = css key
 if choice === 'system'                    → data-theme = matchMedia dark ? 'nebula' : 'daylight'

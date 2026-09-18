@@ -3,6 +3,7 @@ import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { DashboardRealtimeProvider } from '../components/features/dashboards/DashboardRealtimeProvider';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
+import { isDesktopApp } from '../lib/desktop';
 import { isReactNativeWebView } from '../lib/native-shell';
 import {
   useMobileLayout,
@@ -142,6 +143,9 @@ const AuthenticatedAdminShellLayout = () => {
   const shellRoutes = useShellRoutes(AdminShellLayout);
   const phoneLayout = navigationLayout === 'single';
   const nativeShell = isReactNativeWebView();
+  // The Tauri window takes the same chrome palette: it paints the empty frame a
+  // reload leaves behind, and macOS draws its titlebar furniture in it.
+  const desktopApp = isDesktopApp();
   const nativeIPadApp = useNativeIPadApp();
   const nativeAndroidApp = useNativeAndroidApp();
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
@@ -399,7 +403,7 @@ const AuthenticatedAdminShellLayout = () => {
             <ShellStateProvider value={shellState}>
                 <SkipToContentLink />
                 <div className={frameClassName} data-navigation={navigationLayout}>
-                  {nativeShell ? <NativeChromeThemeBridge /> : null}
+                  {nativeShell || desktopApp ? <NativeChromeThemeBridge /> : null}
                   {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                   {hideTopBar ? null : (
                     <TopBar
