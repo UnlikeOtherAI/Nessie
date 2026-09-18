@@ -6,6 +6,9 @@ import { lazy } from 'react'
 // table. The reason they are lazy — and the one Suspense boundary that renders
 // them — stay in `router.tsx`.
 
+export const DocumentWindowPage = lazy(() =>
+  import('./pages/DocumentWindowPage').then((m) => ({ default: m.DocumentWindowPage })),
+)
 export const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })))
 export const ProjectDirectoryPage = lazy(() =>
   import('./pages/project/ProjectDirectoryPage').then((m) => ({ default: m.ProjectDirectoryPage })),

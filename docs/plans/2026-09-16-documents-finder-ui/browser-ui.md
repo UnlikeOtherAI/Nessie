@@ -367,6 +367,27 @@ Selection model (`finder-selection.ts`, pure, unit-tested):
   toggles, Shift-click selects the range from the anchor in the current sort
   order. Cmd/Ctrl-A selects the column. Escape clears the selection (and
   closes an open menu first, through the overlay's own Escape).
+- **On the desktop shell a document takes two taps, and opens a window.** The
+  first tap selects and nothing else; the second one (`detail` 2, and only
+  `detail` 2 — a third click must not open a second window) opens the document
+  in an OS window of its own, on `/documents/<spaceId>/<pageId>`. The modifier
+  rule outranks the gesture: a Cmd-double-click through a selection extends it
+  and opens nothing.
+
+  It applies to the rows that open a *document* — `document`, `file`,
+  `spreadsheet`. A folder, a space and the root's rows move the browser rather
+  than open anything, so they keep their one tap on every platform, which is
+  what macOS Finder's own columns view does. It is also desktop-only: a
+  browser tab and the mobile WebView have no window to make, and keep one-tap
+  open into the pane.
+
+  The gesture is one click handler reading `detail`, never a `dblclick`
+  listener beside it — that listener fires *after* the click handler has
+  already seen `detail` 2, so the same double-tap would open twice. The rule
+  is `finderRowOpenGesture` / `finderClickOpens` in `FinderRow.tsx`; where the
+  open then *goes* is `useOpenDocument`, and every refusal from the shell
+  falls back to opening the document in place, because a double-tap that does
+  nothing is worse than one that opens the old way.
 - Opening a folder (click, →, Enter) makes its column active and selects
   nothing in it; the parent column keeps that folder as its one selected
   (grey) row.
@@ -379,7 +400,7 @@ Keys, with the row focused (`role="option"`, roving tabindex):
 | Home / End | first / last row |
 | → | on a folder: open it and focus its first row; on an item: nothing |
 | ← | focus the parent column's selected row (the folder you came from); at column 0 nothing |
-| Enter | open: folder → its column; document/file → the document pane; root row → navigate |
+| Enter | open: folder → its column; document/file → the document pane, or its own window on the desktop shell; root row → navigate |
 | Space | nothing (Quick Look is out of scope; do not reassign it) |
 | F2 | rename the focused row (if `canWrite`) |
 | Delete / Backspace | Delete… for the selection (confirm; [menus-and-dialogs.md](menus-and-dialogs.md) §8) |
@@ -390,8 +411,10 @@ Keys, with the row focused (`role="option"`, roving tabindex):
 | Tab | leaves the column to the next column's tabbable row (then the pane, then the status bar) |
 
 Rename (`RenameRow` inside `FinderRow`): F2 or the menu's Rename. (Finder's
-click-pause-click is deliberately absent: a single click opens now, so there
-is no paused second click to catch.) The name cell becomes an
+click-pause-click is deliberately absent everywhere, including on the desktop
+shell where a document does take two taps: a paused second click and the
+second tap of a double-tap are the same gesture told apart by a timer, and a
+rename that starts because somebody paused is a rename nobody asked for.) The name cell becomes an
 `Input size="compact"` with the whole title selected for folders and
 documents, and the stem selected (extension excluded) for files. Enter
 commits, Escape reverts, blur commits, an empty or unchanged value reverts

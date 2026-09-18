@@ -60,6 +60,16 @@ sentence changes only if the invariant itself did.
   leg still missing, then every field — and asserts the posted payload as well
   as the screen, because a form that posts an untyped port looks identical and
   silently disables the server-side sweep.
+- **Document-window browser coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:document-window`. Not in
+  CI — it owns its servers through the navigation lifecycle, so give it ports
+  of its own (`NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT`) beside a running dev
+  pair. It pins the open gesture, which a settled screenshot cannot show: the
+  web opens a document on the tap that selects it, the desktop shell takes two
+  and the first one must open *nothing*. It also walks
+  `/documents/<spaceId>/<pageId>` — the address the shell points a new window
+  at — and asserts the admin shell is absent from it. The shell is simulated by
+  publishing `__nessieDesktopPlatform`, the way the real init script does.
 - **Member-management browser coverage:** run
   `pnpm --filter @nessie/admin test:e2e:member-management`. CI alone includes
   its fixture in the preview build; details and cache rules are in

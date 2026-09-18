@@ -28,6 +28,7 @@ import {
   ConnectedMailPage,
   ConnectionDetailPage,
   ConnectionsPage,
+  DocumentWindowPage,
   ExecutorDetailPage,
   ExecutorsPage,
   FeedbackPage,
@@ -187,6 +188,14 @@ export const router = createBrowserRouter([
   {
     path: '/settings/appearance',
     element: <RedirectRoute to="/settings/account?tab=appearance" />,
+  },
+  {
+    // A document in a window of its own: the desktop shell's double-tap
+    // (lib/document-window.ts) points a new window here, and the route is
+    // deliberately *outside* `AdminShellLayout` — a window holding one
+    // document has no sidebar, no rail and no tab bar to render.
+    path: '/documents/:spaceId/:pageId',
+    element: lazyElement(DocumentWindowPage, 'detail'),
   },
   {
     element: <AdminShellLayout />,

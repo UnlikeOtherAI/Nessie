@@ -3,6 +3,7 @@ use tauri::utils::config::WebviewUrl;
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
 
+mod document_window;
 mod executor_companion;
 mod shell;
 #[cfg(feature = "direct-updater")]
@@ -90,6 +91,7 @@ pub fn run() {
             executor_companion::executor_companion_status,
             executor_companion::executor_companion_stop,
             shell::desktop_set_badge,
+            document_window::desktop_open_document_window,
             #[cfg(feature = "direct-updater")]
             direct_updater::desktop_direct_update_check,
             #[cfg(feature = "direct-updater")]
@@ -251,6 +253,34 @@ mod tests {
                     "missing native window permission: {action}"
                 );
             }
+        }
+    }
+
+    /// A document window draws the same frame the main window does, and on
+    /// Windows and Linux that frame *is* the only way to move or close it. A
+    /// capability scoped to `main` alone would leave every document window
+    /// with a title bar whose buttons do nothing, so the grant and the label
+    /// the shell builds are asserted together rather than trusted to match.
+    #[test]
+    fn document_windows_are_inside_the_capability_that_grants_that_frame() {
+        let label = super::document_window::document_window_label("page1")
+            .expect("an ordinary page id must produce a label");
+        for capabilities in [
+            DEFAULT_DESKTOP_CAPABILITIES,
+            DEVELOPMENT_DESKTOP_CAPABILITIES,
+        ] {
+            let windows: serde_json::Value = serde_json::from_str(capabilities).unwrap();
+            let globs = windows["windows"].as_array().unwrap();
+            assert!(globs.iter().any(|glob| glob == "main"));
+            let document_glob = globs
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .find(|glob| glob.ends_with('*'))
+                .expect("the capability must grant a document-window glob");
+            assert!(
+                label.starts_with(document_glob.trim_end_matches('*')),
+                "the shell builds `{label}`, which `{document_glob}` does not cover",
+            );
         }
     }
 

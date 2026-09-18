@@ -7,6 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeIndexingState } from '@nessie/schemas'
+import { isDesktopApp } from '../../../../lib/desktop'
 import { MiddleTruncate } from '../../../shared/MiddleTruncate'
 import { Row, type RowDragHandlers, type RowProps } from '../../../shared/RowList'
 import { RenameRow, type FinderRowRename } from './RenameRow'
@@ -79,6 +80,12 @@ export type FinderRowProps = {
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   onOpen?: () => void
   /**
+   * Which tap opens this row. Left unset it is derived from the row's kind and
+   * the shell it is rendering in (`finderRowOpenGesture`); a fixture passes it
+   * explicitly to show the desktop gesture in a browser.
+   */
+  openGesture?: FinderOpenGesture
+  /**
    * The click that selects. Opening is that same click unless it carries a
    * selection modifier — see `finderClickOpens`.
    */
@@ -108,20 +115,48 @@ export type FinderRowProps = {
 }
 
 /**
- * Whether a click on a row opens it. Every row opens on the click that
- * selects it — one tap, not two; the old double-click gate existed only so a
- * selection could be extended without opening five documents on the way, and
- * the modifier click below is what preserves that. The second click of a
- * double-click (`detail` 2) must not open again: the first one already did,
- * and opening the same document twice is a navigation nobody made.
+ * Which tap opens a row.
+ *
+ * `single` everywhere a document opens into the pane beside the browser: the
+ * click that selects is the click that opens, and the old double-click gate
+ * existed only so a selection could be extended without opening five documents
+ * on the way — the modifier click below is what preserves that.
+ *
+ * `double` on the desktop shell, and only for the rows that open a *document*.
+ * There the open is a window of its own, so the first tap has to be allowed to
+ * mean "this one" without a window arriving. Folders, spaces and the root's
+ * rows stay on one tap on every platform: they move the browser rather than
+ * open anything, which is what macOS Finder's own columns view does too.
  */
-export const finderClickOpens = (event: {
-  ctrlKey: boolean
-  detail: number
-  metaKey: boolean
-  shiftKey: boolean
-}): boolean =>
-  !event.metaKey && !event.ctrlKey && !event.shiftKey && event.detail <= 1
+export type FinderOpenGesture = 'single' | 'double'
+
+const DOCUMENT_KINDS: readonly FinderRowProps['kind'][] = ['document', 'file', 'spreadsheet']
+
+export const finderRowOpenGesture = (
+  kind: FinderRowProps['kind'],
+  desktop: boolean,
+): FinderOpenGesture => (desktop && DOCUMENT_KINDS.includes(kind) ? 'double' : 'single')
+
+/**
+ * Whether a click on a row opens it, for the gesture that row is on.
+ *
+ * On `single`, the second click of a double-click (`detail` 2) must not open
+ * again: the first one already did, and opening the same document twice is a
+ * navigation nobody made. On `double` it is the *only* click that opens, and a
+ * third click must not open a second window either.
+ */
+export const finderClickOpens = (
+  event: {
+    ctrlKey: boolean
+    detail: number
+    metaKey: boolean
+    shiftKey: boolean
+  },
+  gesture: FinderOpenGesture = 'single',
+): boolean => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey) return false
+  return gesture === 'double' ? event.detail === 2 : event.detail <= 1
+}
 
 const glyph = (icon: IconDefinition, tone: string, title?: string) => (
   <FontAwesomeIcon
@@ -207,6 +242,7 @@ export const FinderRow = ({
   onKeyDown,
   onOpen,
   onSelect,
+  openGesture,
   prewarm,
   rename,
   selected = false,
@@ -220,6 +256,7 @@ export const FinderRow = ({
   variant,
 }: FinderRowProps) => {
   const transferring = Boolean(transfer)
+  const opensOn = openGesture ?? finderRowOpenGesture(kind, isDesktopApp())
 
   // A row being renamed is a field, not a control: it must not stay clickable,
   // draggable or selectable underneath the editor, and the editor keeps the
@@ -274,10 +311,10 @@ export const FinderRow = ({
       onClick={(event) => {
         if (disabled) return
         if (onSelect) onSelect(event)
-        // One tap opens: the click that selects is the click that opens, for
-        // every kind of row. What the click must not do is open while a
-        // selection is being extended, or open twice on a double-click.
-        if (onOpen && finderClickOpens(event)) onOpen()
+        // Every click selects; which click *opens* is the row's gesture. What
+        // a click must never do is open while a selection is being extended,
+        // or open the same thing twice within one double-click.
+        if (onOpen && finderClickOpens(event, opensOn)) onOpen()
       }}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
