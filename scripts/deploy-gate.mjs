@@ -1,7 +1,19 @@
 // Resolve the only SHA that production may build and promote. The workflow calls
 // this while holding deploy-production, before any job receives package or SSH
-// credentials. A successful CI event is only a wake-up: the current main tip
-// must itself be the exact SHA of a successful trusted CI push run.
+// credentials. A successful CI event is only a wake-up: what gets promoted is
+// the newest commit on main that is itself the exact SHA of a successful
+// trusted CI push run.
+//
+// It used to be the tip or nothing, and that stalled production outright.
+// Under merge traffic the tip moves again before its own CI finishes, so the
+// gate never found a green tip and every deploy skipped while reporting
+// success: on 2026-09-18 production sat on 628068308 from 07:58 while six
+// later deploys went green having built and shipped nothing, and merged
+// CI-verified commits waited hours. Walking back to the newest verified
+// ancestor keeps the safety property exactly — the promoted SHA is still
+// reachable from main and still has its own green trusted CI push run — and
+// gives up only the pretence that production always runs the very tip. It
+// never runs a commit main does not contain, and never one CI has not passed.
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 
@@ -24,9 +36,16 @@ const trustedSuccessfulMainRun = (run, repository, sha) => (
  * Decide from already-read GitHub metadata so the policy is unit-testable.
  * A workflow_run payload never picks its own SHA: an older CI completion can
  * arrive after a newer one, and GitHub concurrency would otherwise discard the
- * newer pending deploy. Only a verified current main tip is eligible.
+ * newer pending deploy. The candidates are main's own commits, newest first,
+ * and the first one carrying a successful trusted CI push run wins.
+ *
+ * `stalled` separates the two ways a run promotes nothing. A wake-up that was
+ * never eligible to deploy — a failed CI, another branch, a foreign repository
+ * — is ordinary and stays quiet. Getting past those checks and still finding
+ * nothing verified anywhere on main is the silent-stall signature, and the
+ * workflow fails the run on it rather than reporting another green no-op.
  */
-export function decideDeployGate({ eventName, repository, ref, workflowRun, mainSha, workflowRuns }) {
+export function decideDeployGate({ eventName, repository, ref, workflowRun, mainSha, mainCommits, workflowRuns }) {
   if (!repository || !mainSha) return { eligible: false, reason: 'missing repository or main SHA' }
 
   if (eventName === 'workflow_dispatch') {
@@ -41,11 +60,31 @@ export function decideDeployGate({ eventName, repository, ref, workflowRun, main
     return { eligible: false, reason: `unsupported event ${eventName}` }
   }
 
-  if (!workflowRuns.some((run) => trustedSuccessfulMainRun(run, repository, mainSha))) {
-    return { eligible: false, reason: 'current main tip has no successful trusted CI push run' }
+  // Newest first, and every entry is reachable from the tip by construction —
+  // the caller reads them from main's own commit list. An empty or missing
+  // list degrades to the tip alone, which is the old tip-or-nothing behaviour
+  // rather than a wider promotion.
+  const candidates = mainCommits?.length ? mainCommits : [mainSha]
+  const behind = candidates.findIndex(
+    (sha) => workflowRuns.some((run) => trustedSuccessfulMainRun(run, repository, sha)),
+  )
+
+  if (behind === -1) {
+    return {
+      eligible: false,
+      stalled: true,
+      reason: 'no commit on main has a successful trusted CI push run',
+    }
   }
 
-  return { eligible: true, reason: 'current main tip passed trusted CI', sha: mainSha }
+  return {
+    behind,
+    eligible: true,
+    reason: behind === 0
+      ? 'current main tip passed trusted CI'
+      : `main tip has no successful trusted CI push run yet — promoting the newest verified ancestor, ${behind} commit(s) behind the tip`,
+    sha: candidates[behind],
+  }
 }
 
 const githubRequest = async (path) => {
@@ -78,12 +117,18 @@ const main = async () => {
   }
 
   const event = JSON.parse(await readFile(eventPath, 'utf8'))
-  const [branch, runs] = await Promise.all([
+  // The commit page bounds how far back a promotion may reach: one page of
+  // main's history against one page of completed CI runs. A verified commit
+  // older than either page is not promoted — production waits for the next
+  // green CI rather than reaching into the distant past.
+  const [branch, commits, runs] = await Promise.all([
     githubRequest(`/repos/${repository}/branches/${DEPLOY_BRANCH}`),
+    githubRequest(`/repos/${repository}/commits?sha=${DEPLOY_BRANCH}&per_page=100`),
     githubRequest(`/repos/${repository}/actions/workflows/ci.yml/runs?branch=${DEPLOY_BRANCH}&event=push&status=completed&per_page=100`),
   ])
   const decision = decideDeployGate({
     eventName,
+    mainCommits: (Array.isArray(commits) ? commits : []).map((commit) => commit.sha),
     mainSha: branch.commit?.sha,
     ref,
     repository,
@@ -94,7 +139,11 @@ const main = async () => {
   console.error(`deploy gate: ${decision.reason}`)
   writeOutput('eligible', String(decision.eligible))
   writeOutput('reason', decision.reason)
-  if (decision.eligible) writeOutput('sha', decision.sha)
+  writeOutput('stalled', String(decision.stalled === true))
+  if (decision.eligible) {
+    writeOutput('behind', String(decision.behind))
+    writeOutput('sha', decision.sha)
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

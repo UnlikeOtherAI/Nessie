@@ -1,7 +1,25 @@
 name: Deploy
 
-# Production is woken by completed main CI, then promotes the exact current
-# main SHA that has passed that CI. See docs/deployment.md.
+# The run's own title says whether it can deploy anything, because a run that
+# promotes nothing used to be indistinguishable from one that shipped: every
+# `workflow_run` completion starts a Deploy, including the failed CI runs that
+# the gate then declines, and all of them read "Deploy — success" in the list.
+# This is evaluated from the triggering event, so it cannot name the promoted
+# SHA (the gate resolves that later, under the concurrency slot); the gate's
+# job summary carries that.
+run-name: >-
+  ${{
+    github.event_name == 'workflow_dispatch' && 'Deploy — manual dispatch'
+    || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main')
+      && format('Deploy — woken by green CI on {0}', github.event.workflow_run.head_sha)
+      || format('No deploy — CI {0} on {1}', github.event.workflow_run.conclusion, github.event.workflow_run.head_branch)
+  }}
+
+# Production is woken by completed main CI, then promotes the newest commit on
+# main that has passed that CI — the tip when its own CI is green, otherwise
+# the newest verified ancestor. See docs/deployment.md.
 on:
   workflow_run:
     workflows: [CI]
@@ -46,8 +64,11 @@ jobs:
       actions: read
       contents: read
     outputs:
+      behind: ${{ steps.resolve.outputs.behind }}
       eligible: ${{ steps.resolve.outputs.eligible }}
+      reason: ${{ steps.resolve.outputs.reason }}
       sha: ${{ steps.resolve.outputs.sha }}
+      stalled: ${{ steps.resolve.outputs.stalled }}
     steps:
       # This checkout carries no deploy credentials. The gate script comes from
       # the trusted main branch rather than an event-provided revision.
@@ -65,6 +86,42 @@ jobs:
           DEPLOY_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/deploy-gate.mjs >> "$GITHUB_OUTPUT"
+
+      # What this run did, in the place somebody looks first. The decision was
+      # previously visible only as a line on stderr inside the gate step, which
+      # is why production being frozen for hours read as a column of green.
+      - name: Record the promotion decision
+        if: always() && steps.resolve.outcome == 'success'
+        env:
+          BEHIND: ${{ steps.resolve.outputs.behind }}
+          ELIGIBLE: ${{ steps.resolve.outputs.eligible }}
+          REASON: ${{ steps.resolve.outputs.reason }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          if [ "$ELIGIBLE" = "true" ]; then
+            printf '### Promoting `%s`\n\n%s\n' "$SHA" "$REASON" >> "$GITHUB_STEP_SUMMARY"
+            if [ "${BEHIND:-0}" != "0" ]; then
+              echo "::notice title=Promoting behind the tip::$REASON"
+            fi
+          else
+            printf '### Promoted nothing — no image was built and nothing was deployed\n\n%s\n' \
+              "$REASON" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Deploy promoted nothing::$REASON"
+          fi
+
+      # A wake-up that was never eligible (failed CI, another branch, a foreign
+      # repository) is ordinary and ends green above. Getting past those checks
+      # and still finding nothing verified anywhere on main is the stall that
+      # froze production on 2026-09-18, and it must never again be reported as
+      # a successful deploy.
+      - name: Fail when nothing on main could be promoted
+        if: steps.resolve.outputs.stalled == 'true'
+        env:
+          REASON: ${{ steps.resolve.outputs.reason }}
+        run: |
+          echo "::error title=Deploy stalled::$REASON"
+          printf '### Deploy stalled\n\n%s\n' "$REASON" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
   # Images are built HERE, on GitHub runners, never on the production host.
   # Building on the box drove its 8-core CPU to load ~340 with 0% idle for the
@@ -132,7 +189,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   deploy:
-    name: Deploy to Hetzner
+    # Named for what it ships, so the promoted SHA is readable from the checks
+    # list without opening the run.
+    name: Deploy ${{ needs.gate.outputs.sha }} to Hetzner
     needs: [gate, build]
     runs-on: ubuntu-latest
     # Now that the host only pulls and swaps, a deploy is minutes. Without a

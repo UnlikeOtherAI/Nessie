@@ -149,9 +149,12 @@ sentence changes only if the invariant itself did.
   `predev` names the holder and the variable to set. Within a worktree the pair
   stays put once the servers are up; the full rule is in
   [`AGENTS.md`](AGENTS.md) → "Ports".
-- **Production promotion uses the exact-SHA gate:** Deploy resolves the current
-  `main` tip only after successful trusted main CI, including manual dispatch.
-  Read [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md)
+- **Production promotion uses the exact-SHA gate:** Deploy promotes the newest
+  `main` commit with its own successful trusted main CI run — the tip when its
+  CI is green, otherwise the newest verified ancestor — including on manual
+  dispatch. A run that promotes nothing says so in its title and summary, and a
+  stall fails the run. Read
+  [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md)
   before changing deployment automation.
 - **Worktrees are mandatory** and the main checkout stays on `main`. **`main` is
   protected — every change lands through a pull request and only a green one can

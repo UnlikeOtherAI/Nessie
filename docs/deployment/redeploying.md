@@ -6,24 +6,48 @@ Chapter of [deployment.md](../deployment.md). Images build on GitHub and the hos
 
 **Automatic (default):** a completed `CI` run for `main` wakes
 `.github/workflows/deploy.yml`. Before the build job receives package-write
-permission or the deploy job receives SSH secrets, its read-only gate resolves
-the current `main` tip and requires a successful `push` CI run for that exact
-SHA from this repository. It then checks out, builds, tags, syncs and promotes
-only that SHA. A failed, cancelled, forked, wrong-branch or stale CI event
-cannot promote an image.
+permission or the deploy job receives SSH secrets, its read-only gate picks the
+**newest commit on `main` that has a successful `push` CI run for that exact
+SHA from this repository** — the tip when the tip's own CI is green, otherwise
+the newest verified ancestor under it. It then checks out, builds, tags, syncs
+and promotes only that SHA. A failed, cancelled, forked, wrong-branch or stale
+CI event cannot promote an image, and a commit that is not on `main` is never a
+candidate however green its CI.
+
+The candidate list is one page of `main`'s history against one page of
+completed CI runs (100 each), so a verified commit older than either page is
+not reached back for; production waits for the next green CI instead.
 
 The `deploy-production` lock stays serialized with `cancel-in-progress: false`.
 GitHub retains the newest *event* while a run is pending, which may be a
 delayed CI completion for an older commit. Failed, cancelled, untrusted and
 non-`main` events use per-run ignored groups, so they cannot evict an eligible
 pending deploy. Resolving eligibility after the shared lock is acquired prevents
-the remaining queue inversion: an older successful event deploys the newer
-current tip only after that tip's CI succeeds; if the current tip is still
-unverified, the run stops and waits for its own CI completion. Production never
-falls back to an older verified commit.
+the remaining queue inversion: an older successful event still promotes the
+newest verified commit at the moment the lock is held, not the one its own
+payload names.
 
-**Manual:** use **Run workflow** for `Deploy` from `main`. It uses the same
-current-tip CI gate and does not promote the UI-selected revision or bypass a
+**Why it walks back from the tip.** Requiring the tip *itself* to be verified
+stalls production outright under merge traffic: the tip moves again before its
+own CI finishes, so no deploy ever finds a green tip. On 2026-09-18 production
+sat on `628068308` from 07:58 while six later Deploy runs reported success
+having built and shipped nothing, and merged, CI-green commits waited hours.
+Walking back keeps every safety property — the promoted SHA is on `main` and
+has its own green trusted CI push run — and gives up only the pretence that
+production always runs the very tip. A tip whose CI **failed** does not block
+the last good commit from shipping.
+
+**A run that promotes nothing is visible.** The run title says which case it is
+before you open it (`Deploy — woken by green CI on <sha>`, `Deploy — manual
+dispatch`, or `No deploy — CI failure on main`), the gate writes the decision
+and the promoted SHA to the run summary, and the deploy job is named for the
+SHA it ships. An ineligible wake-up — a failed CI, another branch, a foreign
+repository — is ordinary and ends green. Getting past those checks and still
+finding nothing verified anywhere on `main` is a **stall**, and the gate fails
+the run on it: that state must never again be reported as a successful deploy.
+
+**Manual:** use **Run workflow** for `Deploy` from `main`. It uses the same CI
+gate and does not promote the UI-selected revision or bypass a
 failed/cancelled CI run. Routine production promotion must not use direct host
 commands.
 
