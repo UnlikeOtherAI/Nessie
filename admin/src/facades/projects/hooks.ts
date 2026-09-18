@@ -10,6 +10,16 @@ import { teamKeys } from '../team/keys'
 import { projectKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
+/**
+ * How every team-directory mutation refreshes the team list. `exact` is
+ * load-bearing: the avatar-revision counter nests under `teamKeys.all` (the
+ * key-family invariant requires it), and a prefix invalidation refetches that
+ * always-active query — whose constant queryFn resets the cache-buster to 0,
+ * repainting the pre-upload avatar. The team list's own key IS `teamKeys.all`,
+ * so `exact: true` still refetches the list itself.
+ */
+export const TEAM_DIRECTORY_INVALIDATION = { queryKey: teamKeys.all, exact: true } as const
+
 export const useProjects = (enabled = true) => {
   const apiClient = useApiClient()
 
@@ -73,7 +83,7 @@ export const useRenameTeam = () => {
         { name, ...(slug === undefined ? {} : { slug }) },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
+      void queryClient.invalidateQueries(TEAM_DIRECTORY_INVALIDATION)
     },
   })
 }
@@ -92,7 +102,7 @@ export const useCreateProject = () => {
       // the team id the route requires.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: projectKeys.all }),
-        queryClient.invalidateQueries({ queryKey: teamKeys.all }),
+        queryClient.invalidateQueries(TEAM_DIRECTORY_INVALIDATION),
       ])
     },
   })
@@ -106,7 +116,7 @@ export const useCreateTeam = () => {
     mutationFn: (input: { name: string; projectId: string }) =>
       apiClient.post<TeamRecord>('/api/teams', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
+      void queryClient.invalidateQueries(TEAM_DIRECTORY_INVALIDATION)
     },
   })
 }
@@ -128,7 +138,7 @@ export const useUpdateTeamCallProvider = () => {
           team.id === updated.id ? { ...team, callProvider: updated.callProvider } : team,
         ),
       )
-      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
+      void queryClient.invalidateQueries(TEAM_DIRECTORY_INVALIDATION)
     },
   })
 }

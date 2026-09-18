@@ -312,12 +312,17 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
           type="button"
         >
           <span className="relative">
+            {/*
+              No teamId: the active team's picture comes from the current-team
+              relay (/api/team/avatar), which resolves without the local
+              TeamMember row the membership-scoped relay needs — the same lane
+              the settings panel uses (TeamAvatarPanel).
+            */}
             <TeamAvatar
               imageUrl={active?.avatarImageUrl}
               label={active?.label ?? 'Team'}
               revision={avatarRevision}
               size={36}
-              teamId={active?.uoaTeam ? active.avatarTeamId ?? null : active?.teamId}
               token={token}
             />
             <span
@@ -353,7 +358,6 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
             label={active?.label ?? 'Team'}
             revision={avatarRevision}
             size={36}
-            teamId={active?.uoaTeam ? active.avatarTeamId ?? null : active?.teamId}
             token={token}
           />
           <span className="min-w-0 flex-1 truncate">{active?.label ?? 'Team'}</span>

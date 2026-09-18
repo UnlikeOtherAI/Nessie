@@ -8,7 +8,11 @@ const teamMembersKey = ['teams', 'members'] as const
 export const teamKeys = {
   all: ['teams'] as const,
   // Client-only cache-buster for the fixed `/api/team/avatar` URL; nothing
-  // fetches it, so it never refetches or resets on its own.
+  // fetches it. It must stay nested under `all` (the key-family invariant
+  // requires it), which means a NON-exact invalidation of `teamKeys.all`
+  // refetches this always-active query and its constant queryFn resets the
+  // counter to 0 — so every team-directory invalidation is `exact: true`
+  // (see facades/projects/hooks.ts).
   avatarRevision: ['teams', 'avatar', 'revision'] as const,
   invitations: ['teams', 'invitations'] as const,
   memberCandidates: (search: string) => [...teamMembersKey, 'candidates', search] as const,

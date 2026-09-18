@@ -167,6 +167,7 @@ test('the native phone home chrome delegates team, history, account, and Channel
   const nativePresentation = readSource('../../mobile/src/components/native-shell-presentation.ts')
   const teamSwitcher = readSource('../src/layouts/admin-shell/TeamSwitcher.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
+  const nativeAvatarSource = readSource('../../mobile/src/lib/native-avatar-source.ts')
 
   assert.match(shell, /useNativePhoneApp/)
   assert.match(shell, /useNativeLargePhoneLandscapeApp/)
@@ -249,11 +250,33 @@ test('the native phone home chrome delegates team, history, account, and Channel
     teamSwitcher,
     /type: 'nessie:team',\s+teamAvatarUrl: avatarImageUrl,\s+teamAvatarRevision: avatarRevision,/,
   )
+  // LEGACY_NATIVE_SHELL: installed builds recognise only this message, so it
+  // keeps its field untouched — the raw URL, and never a revision.
+  assert.match(teamSwitcher, /type: 'nessie:workspace', workspaceAvatarUrl: avatarImageUrl/)
   // Installed builds still speak the old message, so the reducer accepts either field.
   assert.match(
     nativePresentation,
     /teamAvatarUrl: optionalText\(message\.teamAvatarUrl \?\? message\.workspaceAvatarUrl\)/,
   )
+  // …and the legacy message that follows must not reset the revision the
+  // current one just delivered, or it would trigger a second reload.
+  assert.match(nativePresentation, /teamAvatarRevision: message\.type === 'nessie:team'/)
+  // The revision is the only upload signal the native chrome gets — the URL
+  // never changes — so the shell reloads on every bump past the initial 0
+  // (where the tile's own mount load is already in flight) and on every
+  // return to the foreground, the one moment a picture replaced on another
+  // device can be noticed.
+  assert.match(nativeApp, /if \(teamAvatarRevision > 0\) requestNativeAvatarRefresh\(\)/)
+  assert.match(nativeApp, /\}, \[teamAvatarRevision\]\)/)
+  assert.match(
+    nativeApp,
+    /if \(nativeAppForeground\.current\) \{[\s\S]*?requestNativeAvatarRefresh\(\)/,
+  )
+  // The loader defeats the URL-keyed caches by revalidating every load — the
+  // memo keeps the etag for the next If-None-Match, not bytes it trusts — so
+  // a 304 is the only response that keeps the picture already on screen.
+  assert.match(nativeAvatarSource, /'If-None-Match': previous\?\.etag \?\? UNKNOWN_ETAG/)
+  assert.match(nativeAvatarSource, /if \(response\.status === 304 && previous\) return previous\.source/)
   assert.match(nativeApp, /teamAvatarUrl=\{nativeTeamAvatarUrl\}/)
   assert.match(phoneHeader, /<NativeTeamAvatar/)
   assert.ok(

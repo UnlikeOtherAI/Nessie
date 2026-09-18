@@ -9,17 +9,23 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
  * is cached by the browser for five minutes, so a fresh upload would keep
  * showing the old image everywhere it is rendered. This counter is the shared
  * cache-buster: the settings panel and the sidebar both read it, and a
- * successful mutation bumps it. It is deliberately client-only — nothing fetches
- * it — so it never refetches or resets on its own.
+ * successful mutation bumps it. It is deliberately client-only — its queryFn
+ * returns a constant, so any refetch RESETS it. Because the key nests under
+ * `teamKeys.all` (the key-family invariant requires it) and the shell's
+ * TeamSwitcher keeps the query always active, a non-exact invalidation of
+ * that root refetches it and silently returns the counter to 0 — every
+ * team-directory invalidation is therefore `exact: true`.
  */
+export const teamAvatarRevisionQueryOptions = () => ({
+  queryKey: teamKeys.avatarRevision,
+  queryFn: () => 0,
+  initialData: 0,
+  gcTime: Infinity,
+  staleTime: Infinity,
+})
+
 export const useTeamAvatarRevision = (): number => {
-  const { data } = useQuery({
-    queryKey: teamKeys.avatarRevision,
-    queryFn: () => 0,
-    initialData: 0,
-    gcTime: Infinity,
-    staleTime: Infinity,
-  })
+  const { data } = useQuery(teamAvatarRevisionQueryOptions())
   return data
 }
 

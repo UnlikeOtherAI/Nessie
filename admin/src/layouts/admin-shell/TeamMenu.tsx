@@ -114,7 +114,9 @@ export const TeamMenu = ({
               label={team.label}
               revision={isActive ? avatarRevision : 0}
               size={32}
-              teamId={team.uoaTeam ? team.avatarTeamId ?? null : team.teamId}
+              // The active row takes the current-team relay (no teamId — see
+              // TeamSwitcher); other rows keep the membership-scoped relay.
+              {...(isActive ? {} : { teamId: team.uoaTeam ? team.avatarTeamId ?? null : team.teamId })}
               token={token}
             />
             <span className="min-w-0 flex-1">

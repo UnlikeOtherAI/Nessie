@@ -55,6 +55,17 @@ export const TeamAvatar = ({
   // Prefer the membership-scoped relay when it exists so an avatar changed in
   // Nessie can be cache-busted immediately. The public UOA URL fills the gap
   // for authorized teams that do not have a local Team row yet.
+  //
+  // That public URL is passed through UNCHANGED, and deliberately so: UOA parses
+  // this route's query with `.strict()` and allows only `style` and `size`
+  // (API/src/routes/avatar/public-team.ts, API/src/routes/avatar/shared.ts), so
+  // appending a `v=` cache-buster makes the request throw and the tile falls all
+  // the way back to initials — trading a stale picture for no picture. The lane
+  // is therefore left to `max-age=300` revalidation, which is also why the
+  // native chrome revalidates with `If-None-Match` instead
+  // (mobile/src/lib/native-avatar-source.ts). The team a person is actually
+  // looking at does not depend on this: the switcher routes the active team
+  // through the relay above.
   const url = relayedUrl ?? imageUrl ?? null
 
   return (
