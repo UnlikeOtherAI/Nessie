@@ -391,6 +391,14 @@ when one changes, the same turn updates it, not this section.
   Read [`docs/standards/connected-mailboxes.md`](docs/standards/connected-mailboxes.md)
   before writing code here.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
+- **Model availability — the owner decides, and the decision is real.** The
+  Models page lists Ledger's live catalogue left-joined to the organisation's
+  own rows, an absent row means available, and a row it writes is a container
+  that can never redirect a run. A disable is enforced at the picker *and* at
+  the one write-time validator; an agent already pinned keeps working, and every
+  surface says so.
+  Read [`docs/standards/inference-model-availability.md`](docs/standards/inference-model-availability.md)
+  before writing code here.
 - **Outbound egress is IP-pinned, not just validated.** Anything reaching a
   caller-, operator- or model-supplied address goes through `@nessie/runtime`
   `safeFetch`/`pinnedFetch` (raw sockets through `resolveVettedAddresses`);

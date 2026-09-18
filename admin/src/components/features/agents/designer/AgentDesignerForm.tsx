@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import type { AgentDesignerActions, AgentEffortValue, AgentFormState } from '../../../../facades/designer/types'
 import { AgentSpeechFieldset } from './AgentSpeechFieldset'
 import { ModelCombobox } from './ModelCombobox'
+import { ModelUnavailableNotice } from './ModelUnavailableNotice'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
 import { ToolPicker } from './ToolPicker'
@@ -191,13 +192,7 @@ export const AgentDesignerForm = ({
               value={selectedModel ?? null}
             />
             {hasUnavailableSelection ? (
-              <p className="text-xs text-[color:var(--tx3)]">
-                {state.model
-                  ? `Current model (${state.model}) is no longer available`
-                    + ' — select a replacement.'
-                  : 'This agent’s stored model could not be matched'
-                    + ' — select a replacement.'}
-              </p>
+              <ModelUnavailableNotice model={state.model} />
             ) : null}
             {selectedModel ? (
               <p className="text-xs text-[color:var(--tx3)]">

@@ -38,6 +38,7 @@ import type { RouteDeps } from './routes/types.js'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { registerBoardSourceAdaptersFromEnv } from '@nessie/board-source-providers'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
+import { registerInferenceModelCatalogRoutes } from './routes/inference-model-catalog.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerToolBundleRoutes } from './routes/tools-bundles.js'
@@ -337,6 +338,18 @@ export const buildApp = async (
 
   // ─── Inference control plane routes ─────────────────────────────────────
   registerInferenceControlPlaneRoutes(app, {
+    prisma,
+    requireActorContext,
+    requireOwner,
+  })
+
+  // The owner-facing Models page: Ledger's live catalogue, this organisation's
+  // enable/disable decisions over it, and the reachability test. Same owner
+  // gate as the control plane above; separate module because the source of the
+  // list is Ledger rather than the local rows.
+  registerInferenceModelCatalogRoutes(app, {
+    config: { ...config.model, apiKey: modelApiKey },
+    ledgerIdentity,
     prisma,
     requireActorContext,
     requireOwner,

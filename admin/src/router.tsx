@@ -35,6 +35,7 @@ import {
   KnowledgeBasePage,
   OperationalTelemetryPage,
   OpsHealthPage,
+  OrganizationModelsPage,
   OrganizationPairedAgentDetailPage,
   OrganizationPairedAgentsPage,
   OrganizationSecretsPage,
@@ -430,6 +431,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/team/secrets',
         element: lazyElement(TeamSecretsPage, 'list'),
+      },
+      {
+        path: '/settings/organization/models',
+        element: lazyElement(OrganizationModelsPage, 'list'),
       },
       {
         path: '/settings/organization/paired-agents',
