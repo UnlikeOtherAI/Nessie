@@ -18,6 +18,7 @@ import type {
 const DEFAULT_STATE: AgentFormState = {
   effort: 'medium',
   model: '',
+  modelSubscriptionId: '',
   name: '',
   provider: '',
   role: 'assistant',
@@ -45,6 +46,7 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return {
         ...state,
         model: action.option.model,
+        modelSubscriptionId: action.option.modelSubscriptionId ?? '',
         provider: action.option.provider,
       }
     case 'set_effort':

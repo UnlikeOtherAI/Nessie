@@ -44,7 +44,8 @@ sentence changes only if the invariant itself did.
 - Project peer tools and copied ticket checklists are covered by
   [the collaboration standard](docs/standards/global-agents.md) and
   [the sales verification walkthrough](docs/testing/sales-agent-collaboration.md).
-- **Verification is Playwright, headless, against `http://localhost:5455`.**
+- **Verification is Playwright, headless, against this worktree's admin port** —
+  `http://localhost:5455` unless it set `NESSIE_ADMIN_PORT`.
   Every UI change is screenshotted and confirmed rendering before the work is
   considered done — see [`AGENTS.md`](AGENTS.md) → "Verification". Do not ask a
   person to check a screen you can open yourself.
@@ -131,7 +132,8 @@ sentence changes only if the invariant itself did.
   in Navigation Transitions. Both entries start and stop their own API and
   admin and **never adopt a server that is already listening** — a run that
   adopted one drove another worktree's API and seeded into the wrong database
-  in silence — so free `5454`/`5455` before running it. The invariants it
+  in silence — so free this worktree's pair before running it, or point the run
+  at ports of its own with `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT`. The invariants it
   defends are in
   [`docs/standards/spreadsheets.md`](docs/standards/spreadsheets.md).
 - **Full-width tab bar geometry:** run
@@ -140,8 +142,13 @@ sentence changes only if the invariant itself did.
   API or database, and its fixture must gain the new call site's container —
   the rule it guards is in
   [`docs/standards/design-system.md`](docs/standards/design-system.md).
-- **Ports are non-negotiable:** API `5454`, admin `5455`. Never start either on
-  another port to work around a conflict.
+- **Ports:** API `5454`, admin `5455` by default. When they are busy — another
+  worktree is almost always the reason — give this worktree its own pair with
+  `NESSIE_API_PORT` / `NESSIE_ADMIN_PORT` (environment, or the repo root
+  `.env`) rather than killing the holder or verifying against its server.
+  `predev` names the holder and the variable to set. Within a worktree the pair
+  stays put once the servers are up; the full rule is in
+  [`AGENTS.md`](AGENTS.md) → "Ports".
 - **Production promotion uses the exact-SHA gate:** Deploy resolves the current
   `main` tip only after successful trusted main CI, including manual dispatch.
   Read [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md)

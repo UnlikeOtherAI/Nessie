@@ -207,7 +207,12 @@ export const runAgentUpdateTool = async (
         ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
         : {}),
       model: patch.model ?? stored?.model ?? undefined,
+      // Only for the provider it was linked under: a stored pointer carried
+      // across a provider change is validated against the wrong set of links
+      // and refuses a move that is perfectly legitimate. Same reasoning as
+      // `PUT /api/agents/:agentId`.
       ...(stored?.modelSubscriptionId
+        && (patch.provider ?? stored.provider) === stored.provider
         ? { modelSubscriptionId: stored.modelSubscriptionId }
         : {}),
       organizationId: member.organizationId,

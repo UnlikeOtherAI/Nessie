@@ -2,11 +2,12 @@
 // It is named for the navigation transition suite because that is where it
 // grew, but `executor-companion`, `page-header` and `connected-mail` all read
 // it too — the ports in particular are decided here for all four. Ports are
-// the repo's fixed local-dev ports (CLAUDE.md → "Ports — NON-NEGOTIABLE");
-// the viewports are the three widths §4.19 of
-// docs/done/2026-09-01-navigation-motion-system.md names.
+// this worktree's local-dev ports (AGENTS.md → "Ports"); the viewports are the
+// three widths §4.19 of docs/done/2026-09-01-navigation-motion-system.md names.
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { resolveAdminPort, resolveApiPort } from '../../../../scripts/dev-ports.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -15,11 +16,14 @@ export const ADMIN_ROOT = resolve(SUITE_ROOT, '..', '..')
 export const REPO_ROOT = resolve(ADMIN_ROOT, '..')
 export const SCREENSHOT_ROOT = resolve(REPO_ROOT, 'e2e', 'screenshots', 'navigation')
 
-// The repo's fixed local-dev ports are the default, so a run beside `pnpm dev`
-// adopts those servers as it always has. `NAV_E2E_API_PORT` /
-// `NAV_E2E_ADMIN_PORT` move the suite off them, which is what a second
-// worktree needs: adopting a server on 5454/5455 would drive *another*
-// checkout's code and prove nothing about this one.
+// This worktree's own dev ports are the default, so a run beside `pnpm dev`
+// adopts those servers as it always has — and a worktree that moved itself
+// with `NESSIE_API_PORT` / `NESSIE_ADMIN_PORT` is followed here without a
+// second setting. `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT` still move the
+// suite off them on their own, for a run that wants servers of its own beside
+// a dev loop it must not disturb. Either way the point is the same: adopting
+// another checkout's server would drive that checkout's code and prove
+// nothing about this one.
 const port = (name, fallback) => {
   const raw = process.env[name]?.trim()
   if (!raw) return fallback
@@ -30,8 +34,8 @@ const port = (name, fallback) => {
   return parsed
 }
 
-export const API_PORT = port('NAV_E2E_API_PORT', 5454)
-export const ADMIN_PORT = port('NAV_E2E_ADMIN_PORT', 5455)
+export const API_PORT = port('NAV_E2E_API_PORT', resolveApiPort())
+export const ADMIN_PORT = port('NAV_E2E_ADMIN_PORT', resolveAdminPort())
 export const API_URL = `http://127.0.0.1:${API_PORT}`
 export const ADMIN_URL = `http://127.0.0.1:${ADMIN_PORT}`
 

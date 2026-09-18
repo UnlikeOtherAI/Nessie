@@ -60,7 +60,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
   automatic and manual dispatches use the same gate. Read
   [`docs/deployment/redeploying.md`](docs/deployment/redeploying.md) before
   changing deployment automation.
-- Local dev runs with hot reload via `pnpm dev` (root) — API (5454, nodemon) + admin (5455, Vite HMR) in parallel. (Moved from 5554/5555 to dodge an Android emulator squatting on those ports; production internal port stays 5554.) Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
+- Local dev runs with hot reload via `pnpm dev` (root) — API (nodemon) + admin (Vite HMR) in parallel, on this worktree's ports (5454/5455 by default; see "Ports"). (Defaults moved from 5554/5555 to dodge an Android emulator squatting on those ports; production internal port stays 5554.) Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
 - **Build:** Install a release on the named device.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
@@ -74,21 +74,40 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - Run package tests through Turbo (`pnpm test`, or `pnpm exec turbo run test --filter=<pkg>`) **with `DATABASE_URL` exported for that run** — unset, every Postgres-backed suite silently skips and the run is green with zero database coverage.
 - **The full testing standard** — why only the Turbo path is valid, the deliberate worker-before-api ordering, process/memory limits, the shared-database discipline (no global mutations, counts, or poller assumptions), Prisma-fake obligations, the mock-LLM harness, and the local SMTP/IMAP wire smoke: read [docs/standards/testing.md](docs/standards/testing.md) before writing or debugging any test.
 
-## Ports — NON-NEGOTIABLE
+## Ports
 
-- **API**: `5454` (local dev) — always. Do not kill or restart without restarting on the same port.
-- **Admin**: `5455` (local dev) — always. UI verification MUST use `http://localhost:5455`.
-- Never use any other port for these services in local dev.
-- Moved from 5554/5555 on 2026-06-11 because an Android emulator (`gpteen_api34`) squats on 5554/5555 — see the emulator-port-conflict memory.
+- **Defaults: API `5454`, admin `5455`.** A checkout that sets nothing binds
+  these, and UI verification is then `http://localhost:5455`.
+- **A worktree may take its own pair, and should whenever the defaults are
+  busy.** Set `NESSIE_API_PORT` and `NESSIE_ADMIN_PORT` — in the environment,
+  or as `KEY=VALUE` lines in the repo root `.env`, which is the same file the
+  API's dev script loads. Both are resolved in exactly one place,
+  [`scripts/dev-ports.mjs`](scripts/dev-ports.mjs), which the `predev` guard,
+  the Vite dev/preview server, the `/api` proxy, the executor's pairing origin
+  and the browser harnesses all read. Move the pair there and the whole
+  worktree moves with it; never hardcode a port beside that resolver.
+- **Within one worktree the pair is fixed.** Do not restart either service on a
+  different port than the one it came up on — the admin proxies `/api` to the
+  API port resolved at startup, so a mid-session move points the browser at one
+  instance and its data at another.
+- **Never take a port another worktree is on.** `predev` probes first and
+  refuses rather than killing anything: it names the holding process (`lsof`,
+  or `netstat`/`tasklist` on Windows) and the variable to set instead. Killing
+  the holder destroys a parallel session's dev loop, and adopting its server
+  means verifying a change against a checkout that does not contain it.
+- Defaults moved from 5554/5555 on 2026-06-11 because an Android emulator
+  (`gpteen_api34`) squats on 5554/5555 — see the emulator-port-conflict memory.
 - **Production is unchanged:** the API container's internal port stays `5554`, pinned via `NESSIE_API_PORT` in `infrastructure/compose/docker-compose.prod.yml` (behind the shared Caddy proxy). Only local dev moved.
 
 ## Dev mode (hot reload)
 
-- `pnpm dev` (repo root) = `turbo run dev --parallel`: API (5454, nodemon) +
-  admin (5455, Vite HMR). Polling watchers are mandatory and must stay — see
-  `AGENTS.md` → "Workflow" for why (fsevents is dead on this volume).
-- After starting/restarting a dev server, verify it: hit `GET /health` (5454)
-  and `GET /` (5455), and confirm `@vite/client` is present in the served
+- `pnpm dev` (repo root) = `turbo run dev --parallel`: API (nodemon) + admin
+  (Vite HMR), on this worktree's resolved ports — 5454/5455 unless
+  `NESSIE_API_PORT` / `NESSIE_ADMIN_PORT` say otherwise. Polling watchers are
+  mandatory and must stay — see `AGENTS.md` → "Workflow" for why (fsevents is
+  dead on this volume).
+- After starting/restarting a dev server, verify it: hit `GET /health` on the
+  API port and `GET /` on the admin port, and confirm `@vite/client` is present in the served
   admin HTML.
 
 ## Build (production / CI)
@@ -167,7 +186,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 ## Verification
 
 - Every UI change must be visually verified using Playwright before considering the work complete.
-- Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:5455/<path>`, screenshot the affected page, and confirm the feature renders correctly.
+- Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:<admin port>/<path>` — 5455 unless this worktree set `NESSIE_ADMIN_PORT` — screenshot the affected page, and confirm the feature renders correctly.
 - Always run Playwright headless unless the user explicitly requests otherwise.
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
@@ -175,9 +194,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 
 **The codebase.**
 
-- **API** (`api/`, port 5454) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
+- **API** (`api/`, default port 5454) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
 - **Worker** (`worker/`) — async execution service: agentic loop, task scheduling, trigger delivery, mailbox processing
-- **Admin** (`admin/`, port 5455) — full product interface for operators and knowledge workers
+- **Admin** (`admin/`, default port 5455) — full product interface for operators and knowledge workers
 - **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not. Signing policy and build recipes: [docs/standards/build-and-release.md](docs/standards/build-and-release.md).
 - **Web** (`web/`) — public landing page only
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries

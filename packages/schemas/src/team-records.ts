@@ -402,6 +402,16 @@ export const AgentRecordSchema = z.object({
   parentAgentId: AgentIdSchema.nullish(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  /**
+   * WHICH linked personal subscription this agent spends, when `provider` is a
+   * `subscription/<key>` value. Read-only here and absent on a Ledger agent.
+   *
+   * The pair (provider, model) cannot tell two accounts at one provider apart,
+   * so without this an edit form could only guess which one the agent is on —
+   * and a save of an unrelated field would silently move its spend to the
+   * other account.
+   */
+  modelSubscriptionId: z.string().uuid().optional(),
   effort: AgentEffortSchema.optional(),
   // Explicit per-run caps. Absent = every dimension governed by the deployment
   // backstop; `effort` carries no spend meaning (see

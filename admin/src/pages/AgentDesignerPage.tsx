@@ -24,7 +24,10 @@ import {
   readAgentRunLimits,
   runLimitsToForm,
 } from '../facades/designer/run-limits'
-import { modelOptionSource } from '../components/features/agents/designer/model-options'
+import {
+  findModelOption,
+  modelOptionSource,
+} from '../components/features/agents/designer/model-options'
 import { saveBlockedReason } from '../components/features/agents/designer/save-readiness'
 import { QueryState } from '../components/shared/QueryState'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
@@ -181,6 +184,9 @@ export const AgentDesignerContent = ({
       role: editingAgent.role,
       provider: editingAgent.provider ?? '',
       model: editingAgent.model ?? '',
+      // Which of the person's linked accounts this agent already spends, so an
+      // edit that never touches the model cannot re-point it at another one.
+      modelSubscriptionId: editingAgent.modelSubscriptionId ?? '',
       runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
       speakingStyle: coreDocuments?.find((document) => document.role === 'working_rules')?.markdown
         ?? editingAgent.speakingStyle ?? '',
@@ -246,8 +252,11 @@ export const AgentDesignerContent = ({
   const updateAgent = useUpdateAgent()
 
   const isSaving = createAgent.isPending || updateAgent.isPending
-  const selectedModel = modelOptions.find(
-    (option) => option.model === state.model && option.provider === state.provider,
+  const selectedModel = findModelOption(
+    modelOptions,
+    state.model,
+    state.provider,
+    state.modelSubscriptionId,
   )
   const canSave = Boolean(state.name.trim() && selectedModel && !isSaving)
   const saveBlocker = saveBlockedReason({
@@ -308,6 +317,10 @@ export const AgentDesignerContent = ({
         todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,
         model: state.model || undefined,
+        // Explicit, because (provider, model) cannot say WHICH linked account
+        // a personal-subscription model belongs to. `null` on a Ledger model
+        // takes the agent off whatever plan it was on.
+        modelSubscriptionId: selectedModel.modelSubscriptionId ?? null,
         toolPolicy,
       })
     } else {
@@ -323,6 +336,7 @@ export const AgentDesignerContent = ({
         todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,
         model: state.model || undefined,
+        modelSubscriptionId: selectedModel.modelSubscriptionId ?? null,
         toolPolicy: Object.keys(toolPolicy).length > 0 ? toolPolicy : undefined,
         parentAgentId: parentId,
         visibility: state.visibility,
