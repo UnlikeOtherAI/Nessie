@@ -11,6 +11,26 @@ export const ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE =
   + ANDROID_TABLET_TAB_BAR_CONTENT_GAP
 
 /**
+ * Whether the dock is a thing the page has to keep clear of.
+ *
+ * Not the same question as whether the dock is drawn. While the soft keyboard
+ * is up the dock stays at the window's floor, *behind* the keyboard: measured
+ * on a Lenovo TB336FU, the page shortens itself to the keyboard's top edge
+ * while the dock does not move, so a page that still reserved the dock's
+ * height left an 86dp hole between the composer and the keyboard — the gap
+ * this shell was reported for, one taskbar smaller.
+ *
+ * The admin's own `100lvh - 100dvh` arithmetic cannot see this: both units
+ * shorten together on that device, so the subtraction is a no-op there. It
+ * stays as the answer for a WebView whose page keeps its full height while
+ * the keyboard covers it; this is the answer for one that does not.
+ */
+export const androidDockShowing = (input: {
+  keyboardOpen: boolean
+  showBar: boolean
+}): boolean => input.showBar && !input.keyboardOpen
+
+/**
  * What the page must keep clear at its bottom edge for the dock.
  *
  * The WebView runs to the bottom of the window and the dock floats over it, so

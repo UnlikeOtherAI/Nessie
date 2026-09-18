@@ -42,6 +42,7 @@ import { useNativePushNavigation } from './src/lib/native-push-navigation'
 import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
 import { useIosKeyboardOverlap } from './src/lib/ios-keyboard-overlap'
+import { useAndroidKeyboardOpen } from './src/lib/android-keyboard'
 import { shouldInstallNativeBackHandler } from './src/lib/native-phone-navigation'
 import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
 import {
@@ -89,6 +90,7 @@ import {
 import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
   androidDockContentClearance,
+  androidDockShowing,
 } from './src/lib/android-tablet-dock'
 import { NATIVE_CREATION_LANE_CLEARANCE } from './src/lib/native-creation-menu'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
@@ -321,6 +323,7 @@ const Shell = (): React.JSX.Element => {
 
   const keyboardOverlap = useIosKeyboardOverlap(windowHeight)
   const keyboardOpen = keyboardOverlap > 0
+  const androidKeyboardOpen = useAndroidKeyboardOpen()
 
   useEffect(() => {
     if (IS_IPAD || Platform.OS !== 'ios') return
@@ -579,7 +582,10 @@ const Shell = (): React.JSX.Element => {
   // a route that draws no dock.
   const androidDockClearance = androidDockContentClearance({
     bottomInset: insets.bottom,
-    dockShowing: IS_ANDROID && showBar,
+    dockShowing: IS_ANDROID && androidDockShowing({
+      keyboardOpen: androidKeyboardOpen,
+      showBar,
+    }),
   })
   useEffect(() => {
     if (!IS_ANDROID) return
