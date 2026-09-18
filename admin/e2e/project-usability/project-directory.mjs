@@ -59,7 +59,14 @@ export const exerciseProjectDirectory = async ({
     const entries = await api('/api/projects/directory', { token: session.token })
     const entry = entries.find((row) => row.id === project.id)
     assert.ok(entry, 'an outsider finds the project in the directory')
-    assert.deepEqual(Object.keys(entry).sort(), ['access', 'description', 'id', 'members', 'name'])
+    // The closed set an outsider may see. `visibility` belongs in it: a
+    // protected project is shown to non-members precisely so the lock can be
+    // drawn — `ProjectDirectoryEntrySchema` is `.strict()` and lists it, and
+    // this assertion is the second copy that has to agree with it.
+    assert.deepEqual(
+      Object.keys(entry).sort(),
+      ['access', 'description', 'id', 'members', 'name', 'visibility'],
+    )
 
     context = await openViewportContext(browser, { name: 'desktop', token: session.token })
     const outsiderPage = await context.newPage()

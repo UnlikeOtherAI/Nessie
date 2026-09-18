@@ -229,7 +229,18 @@ createRoot(document.getElementById('root')!).render(
               </div>
             ) : view ? (
               <ExecutorDetailPanels
-                access={view}
+                // The panel takes the *query*, not the view, so it can say
+                // when the access view could not be read rather than render a
+                // failed fetch as a finding. These scenarios are all the
+                // settled, successful state — the refusal has its own unit
+                // test in `executor-access-panel-error.test.ts`.
+                accessQuery={{
+                  data: view,
+                  error: null,
+                  isError: false,
+                  isLoading: false,
+                  refetch: () => undefined,
+                } as never}
                 agents={[]}
                 executor={executor}
                 onPrepared={() => undefined}
