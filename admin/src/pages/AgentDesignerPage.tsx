@@ -199,7 +199,7 @@ export const AgentDesignerContent = ({
     }
   }, [coreDocuments, editingAgent, requestedVisibility])
 
-  const { actions, clearDraft, state } = useAgentDesigner(
+  const { actions, clearDraft, markSaved, state } = useAgentDesigner(
     initialState, modelOptions, editingAgent?.id, toolCatalog.options,
   )
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
@@ -344,7 +344,14 @@ export const AgentDesignerContent = ({
     }
 
     // Saved: the form is no longer unsent, so its draft goes.
-    clearDraft()
+    //
+    // An edit settles ON what was sent, because that IS the stored agent now.
+    // Clearing back to the record read at mount repainted the form with the
+    // values the save had just replaced — a successful save that read as a
+    // rejected one. A create empties its `new` draft instead: the next
+    // new-agent form starts blank, not holding the agent just created.
+    if (isEditMode && editingAgent) markSaved(state)
+    else clearDraft()
 
     if (embedded) {
       onDone?.()

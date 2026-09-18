@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import type { AgentModelOption } from '../../../../lib/api-client'
 import { findModelOption } from './model-options'
@@ -108,15 +108,47 @@ export const useAgentDesigner = (
   // Memoised on `initialState` (itself memoised by AgentDesignerPage), so the
   // mirror effect below can depend on it honestly instead of on a fresh object
   // every render.
-  const baseline: AgentFormState = useMemo(
+  const recordBaseline: AgentFormState = useMemo(
     () => ({ ...DEFAULT_STATE, ...initialState }),
     [initialState],
   )
+  // The baseline is the STORED entity as this form knows it: what counts as
+  // "nothing unsent", and what a draft clear falls back to. A successful save
+  // makes the values just sent the stored entity, so the baseline has to move
+  // with them. While it did not, `markSaved`'s clear put the form back to the
+  // record read at mount — repainting a save that had just succeeded with the
+  // values it replaced, and leaving them there until a reload.
+  const [savedBaseline, setSavedBaseline] = useState<AgentFormState | null>(null)
+  // The override only bridges the gap until the refetched record arrives; from
+  // then on the record is the baseline again, so a change made elsewhere is
+  // not measured against a save of ours forever.
+  useEffect(() => { setSavedBaseline(null) }, [recordBaseline])
+  const baseline = savedBaseline ?? recordBaseline
+
   const formDraft = useDraft<AgentFormState>(draftKey('agent-designer', agentId ?? 'new'), {
     initial: baseline,
     isEmpty: (value) => sameAsBaseline(value, baseline),
   })
-  const { draft: draftState, revision: draftRevision, setDraft: setFormDraft } = formDraft
+  const {
+    clear: clearDraft,
+    draft: draftState,
+    revision: draftRevision,
+    setDraft: setFormDraft,
+  } = formDraft
+
+  /**
+   * A save landed: these values are the stored entity now.
+   *
+   * Both halves matter. The baseline moves so the form is measured against
+   * what was saved, and the draft is cleared ONTO those same values so the
+   * hook's own restore settles the form where it already is rather than
+   * dragging it backwards.
+   */
+  const markSaved = useCallback((saved: AgentFormState) => {
+    const settled: AgentFormState = { ...saved, streamingField: null }
+    setSavedBaseline(settled)
+    clearDraft(settled)
+  }, [clearDraft])
 
   // The reducer stays the single writer of form state, so the draft is written
   // from it rather than replacing it.
@@ -257,5 +289,5 @@ export const useAgentDesigner = (
     toggleTool,
   }
 
-  return { actions, clearDraft: formDraft.clear, state }
+  return { actions, clearDraft, markSaved, state }
 }
