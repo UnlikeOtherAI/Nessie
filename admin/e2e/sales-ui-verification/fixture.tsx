@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
 import { AgentCreationModeTabs } from '../../src/components/features/agents/designer/AgentCreationModeTabs'
-import { AgentDesignerForm } from '../../src/components/features/agents/designer/AgentDesignerForm'
+import { type AgentDesignerSection, AgentDesignerForm } from '../../src/components/features/agents/designer/AgentDesignerForm'
 import { useAgentDesigner } from '../../src/components/features/agents/designer/useAgentDesigner'
 import { GoogleScopeRequestCard } from '../../src/components/features/channels/GoogleScopeRequestCard'
 import { TodoTemplateEditor } from '../../src/components/features/agents/todos/TodoTemplateEditor'
@@ -26,7 +26,11 @@ const salesTask = {
   dueDate: null, fieldValues: {}, id: 'task-sales', priority: 'medium', projectId: 'project-sales',
   purpose: 'Book discovery event', status: 'todo', title: 'Verify the business and venue',
   updatedAt: '2026-09-07T09:00:00.000Z',
-} as TaskRecord
+  // One cast at the seam: `TaskRecord` carries twenty-odd more fields (a
+  // branded `organizationId` among them) that `TaskDialog` never reads on this
+  // path, and inventing them would be noise rather than proof. The prop stays
+  // typed, which is the drift this file is checked for.
+} as unknown as TaskRecord
 
 const client = {
   delete: async () => ({ ok: true }),
@@ -63,7 +67,7 @@ const client = {
 
 const DesignerFixture = () => {
   const [mode, setMode] = useState<'create' | 'configure'>('configure')
-  const [section, setSection] = useState<'basics' | 'behavior' | 'todos'>('basics')
+  const [section, setSection] = useState<AgentDesignerSection>('basics')
   const { actions, state } = useAgentDesigner({ name: 'Venue scout' })
   return <section aria-label="Designer verification" className="grid gap-4">
     <AgentCreationModeTabs onChange={setMode} value={mode} />

@@ -1,6 +1,12 @@
 import { ApiClientProvider, type ApiClient } from '@nessie/client-core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ExecutorLocalMcpStatus, ExecutorRecordResponse, KelpieDevice } from '@nessie/schemas'
+import {
+  ExecutorIdSchema,
+  OrganizationIdSchema,
+  type ExecutorLocalMcpStatus,
+  type ExecutorRecordResponse,
+  type KelpieDevice,
+} from '@nessie/schemas'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -22,8 +28,11 @@ import '../../src/styles.css'
  * current is the one lie this screen must never tell.
  */
 
-const EXECUTOR_ID = '00000000-0000-4000-8000-0000000000e1'
-const ORGANIZATION_ID = '00000000-0000-4000-8000-0000000000a1'
+// Parsed, not cast: these are branded ids, and `.parse` both satisfies the
+// brand and proves the fixture's stand-ins are the shape the product would
+// actually hand this screen.
+const EXECUTOR_ID = ExecutorIdSchema.parse('00000000-0000-4000-8000-0000000000e1')
+const ORGANIZATION_ID = OrganizationIdSchema.parse('00000000-0000-4000-8000-0000000000a1')
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
 const daysAgo = (days: number) => minutesAgo(days * 24 * 60)
@@ -34,7 +43,7 @@ const executor: ExecutorRecordResponse = {
   id: EXECUTOR_ID,
   label: 'Studio Mac',
   lastSeenAt: minutesAgo(1),
-  profiles: ['browser_isolated'],
+  profiles: ['connected_browser'],
   scope: { kind: 'organization', organizationId: ORGANIZATION_ID },
   status: 'online',
   updatedAt: minutesAgo(1),
@@ -44,7 +53,7 @@ const mcpRevision: ExecutorDescriptorRevisionView = {
   localPolicyDigest: `sha256:${'b'.repeat(64)}`,
   mcpServers: ['kelpie'],
   operationKeys: ['mcp.tools', 'mcp.call'],
-  profiles: ['browser_isolated'],
+  profiles: ['connected_browser'],
   reviewStatus: 'active',
   revision: 3,
 }
@@ -189,7 +198,7 @@ const REVIEW_SCENARIOS: Record<string, {
     descriptorRevisions: [{
       localPolicyDigest: `sha256:${'d'.repeat(64)}`,
       operationKeys: ['mcp.tools', 'mcp.call'],
-      profiles: ['browser_isolated'],
+      profiles: ['connected_browser'],
       reviewStatus: 'pending_review',
       revision: 4,
     }],

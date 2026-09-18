@@ -24,7 +24,7 @@ const Strip = () => (
 /** Stands in for the sibling a column call site has to leave room for. */
 const Filler = ({ rows }: { rows: number }) => (
   <div className="min-h-0 overflow-y-auto" data-filler>
-    {Array.from({ length: rows }, (unused, index) => (
+    {Array.from({ length: rows }, (_unused, index) => (
       <p className="border-b border-[var(--sep)] px-3 py-3 text-sm" key={index}>Row {index + 1}</p>
     ))}
   </div>

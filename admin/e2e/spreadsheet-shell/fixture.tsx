@@ -94,9 +94,10 @@ const base64 = (bytes: Uint8Array): string => {
   return btoa(binary)
 }
 
-const snapshot = base64(
-  new Uint8Array(await fetch(icalcUrl).then((response) => response.arrayBuffer())),
-)
+// Awaited in two steps: chained through `.then`, the argument widened to
+// `ArrayBuffer | Iterable<number>` and no `Uint8Array` overload took it.
+const icalcResponse = await fetch(icalcUrl)
+const snapshot = base64(new Uint8Array(await icalcResponse.arrayBuffer()))
 
 const bootstrap = {
   batches: [],

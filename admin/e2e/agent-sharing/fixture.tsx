@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
+import { requestUrl } from '../support/request-url'
 
 import { AgentOwnershipState } from '../../src/components/features/agents/AgentOwnershipState'
+import type { AgentRecord } from '../../src/lib/api-client'
 import { AgentVisibilityPicker } from '../../src/components/features/agents/AgentVisibilityPicker'
 import { ApiClientProvider } from '../../src/providers/ApiClientProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
@@ -9,7 +11,16 @@ import '../../src/styles.css'
 
 const timestamp = '2026-09-08T10:00:00.000Z'
 const userId = '00000000-0000-4000-8000-000000000105'
+/**
+ * `AgentOwnershipState` and `agent-edit-authority` read seven fields of an
+ * agent: `agentKind`, `id`, `name`, `owner`, `ownerUserId`, `systemManaged`
+ * and `visibility`. `AgentRecord` has thirty more this screen never touches,
+ * so the stub carries what is read and says so with one cast at the seam
+ * rather than inventing thirty fields of noise — the prop itself stays typed,
+ * which is the drift this file is checked for.
+ */
 const agent = {
+  agentKind: 'standard',
   channelIds: ['00000000-0000-4000-8000-000000000106'],
   createdAt: timestamp,
   id: '00000000-0000-4000-8000-000000000101',
@@ -19,10 +30,11 @@ const agent = {
   ownerUserId: userId,
   role: 'assistant',
   status: 'idle' as const,
+  systemManaged: false,
   todosEnabled: false,
   updatedAt: timestamp,
   visibility: 'team' as const,
-}
+} as unknown as AgentRecord
 const me = {
   auth: { autoRedirectToSso: false, providerId: 'local', providerType: 'local-bootstrap' as const },
   context: {
@@ -37,7 +49,7 @@ const me = {
 
 window.localStorage.setItem('nessie.admin.token', 'agent-sharing-e2e')
 window.fetch = async (input, init) => {
-  const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin)
+  const url = new URL(requestUrl(input), window.location.origin)
   if (url.pathname === '/api/auth/me') return Response.json({ data: me })
   if (url.pathname === `/api/agents/${agent.id}` && init?.method === 'PUT') {
     return Response.json({ data: { ...agent, owner: null, ownerUserId: null } })
