@@ -1224,6 +1224,61 @@ body.overlays-focus-mode .project-nav-tile {
   );
 }
 
+/* The Android shell's floating dock (mobile/src/lib/android-tablet-dock.ts) is
+   a pill over a WebView that runs to the bottom of the window, so nothing above
+   it may stop early: `main` keeps its full height and the full-height columns
+   inside it — the chat's tool rail among them — reach the screen's own floor.
+   Only what the pill actually covers is held clear, and only there.
+
+   `--nessie-native-bottom-overlay` is the dock's height, published by the shell
+   (mobile/src/lib/native-shell.ts) and zero on a route that draws no dock. The
+   clearance below is how much of it lands inside the page: the soft keyboard
+   shortens the page's viewport (`dvh`) without moving the dock, which stays at
+   the window's floor (`lvh`), so the overlap closes itself as the keyboard
+   opens. That subtraction is the composer's gap — a composer held up off a
+   dock that is behind the keyboard — expressed where it can never go stale.
+
+   `env(safe-area-inset-bottom)` is deliberately absent from these rules: the
+   Android WebView reports the system bars' inset to CSS whether or not the
+   native frame has already accounted for it, and the published value carries
+   it. Spending both is what left every column a taskbar's height short. */
+.admin-frame.has-native-android-shell {
+  --nessie-native-dock-clearance: max(
+    0px,
+    calc(var(--nessie-native-bottom-overlay, 0px) - (100lvh - 100dvh))
+  );
+}
+
+.admin-frame.has-native-android-shell .admin-shell > main {
+  padding-bottom: 0;
+}
+
+/* The chrome columns take the clearance as padding and keep their background
+   under the dock, so they read as reaching the floor while their last row
+   stays reachable above the pill. */
+.admin-frame.has-native-android-shell .admin-shell > aside,
+.admin-frame.has-native-android-shell .admin-shell > .resizable-sidebar > aside {
+  padding-bottom: var(--nessie-native-dock-clearance);
+}
+
+.admin-frame.has-native-android-shell .admin-shell > aside.admin-sidebar-rail {
+  padding-bottom: calc(24px + var(--nessie-native-dock-clearance));
+}
+
+/* Every page that scrolls its body through `PageBody` ends above the pill
+   rather than under it — that scroller and the channel composer are the two
+   things that own a page's floor, and between them they are where the whole
+   clearance is spent. The iPhone's end spacer on `.phone-navigation-page` is
+   deliberately *not* mirrored: that page is the whole content region on a
+   phone but only the detail half of a tablet's two columns, where a spacer
+   shortens the surface exactly as `main`'s padding did. The 1.25rem restates
+   the component's own `py-5`, because this unlayered rule beats that layered
+   utility outright. */
+.admin-frame.has-native-android-shell .admin-page-body {
+  padding-bottom: calc(1.25rem + var(--nessie-native-dock-clearance));
+  scroll-padding-bottom: var(--nessie-native-dock-clearance);
+}
+
 .resizable-sidebar-control {
   position: absolute;
   z-index: 20;

@@ -6,6 +6,10 @@
 # `modules/*/ios/` — the module compiled and shipped on the device while its
 # source was never committed. Only the generated projects at this level are
 # derived; a module's own native source is not.
+# A local module's own native source is committed; what Gradle compiles from it
+# is not. The pattern is deeper than a bare `build/` on purpose — the anchored
+# `/android/` below only covers the generated app project at this level.
+modules/*/android/build/
 node_modules/
 .gems/
 .expo/

@@ -2,9 +2,14 @@ import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
 // Injected into the admin page. The Android WebView continues beneath its
-// floating dock so full-height columns and dividers do not stop at a detached
-// native slab; its content reserves the dock through a shared CSS custom
-// property. This (1) enables CSS safe-area insets via viewport-fit=cover and
+// floating dock — and beneath the hidden system bars behind it — so full-height
+// columns and dividers do not stop at a detached native slab; only the content
+// the dock actually covers reserves it, through a shared CSS custom property.
+// The value below is the dock at rest, for the first paint; the shell
+// republishes the live one (`nativeAndroidDockClearanceScript`) as the safe
+// area moves and as routes that draw no dock come and go.
+//
+// This (1) enables CSS safe-area insets via viewport-fit=cover and
 // (2) publishes the inset values as :root custom properties — the selectors
 // that pad full-screen web surfaces clear of the home indicator and the
 // floating dock live in admin/src/styles.css, because only the app knows

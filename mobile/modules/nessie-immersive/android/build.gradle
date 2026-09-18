@@ -1,0 +1,18 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'works.nessie'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.nessieimmersive"
+  defaultConfig {
+    // Both are required: `expo-module-gradle-plugin` reads them while the
+    // autolinking plugin configures this project, and a module missing either
+    // fails the whole Android build at configuration time.
+    versionCode 1
+    versionName '0.1.0'
+  }
+}

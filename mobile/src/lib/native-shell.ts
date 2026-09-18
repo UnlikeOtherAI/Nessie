@@ -73,6 +73,29 @@ true;
 }
 
 /**
+ * The Android dock's clearance, republished whenever it changes.
+ *
+ * The injected stylesheet (webview-inject.ts) publishes the dock's resting
+ * height for the first paint; this is the live value — it follows the safe
+ * area, and it falls to zero on the routes that draw no dock. The admin owns
+ * the selectors that spend it (`--nessie-native-bottom-overlay`,
+ * admin/src/styles.css), and an inline property on the document element is
+ * what lets this value beat the stylesheet's own.
+ */
+export const nativeAndroidDockClearanceScript = (clearance: number): string => {
+  const safeClearance = Number.isFinite(clearance) ? Math.max(0, clearance) : 0
+  return `
+try {
+  document.documentElement.style.setProperty(
+    '--nessie-native-bottom-overlay',
+    ${JSON.stringify(`${safeClearance}px`)},
+  );
+} catch (e) {}
+true;
+`
+}
+
+/**
  * The list column's own bottom clearance, so the last row of a channel list
  * stays reachable above the native creation control floating over it. The
  * admin owns the selector that consumes it (admin/src/styles.css): only the

@@ -4,7 +4,14 @@ import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDraw
 import { DashboardRealtimeProvider } from '../components/features/dashboards/DashboardRealtimeProvider';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import { isReactNativeWebView } from '../lib/native-shell';
-import { useMobileLayout, useNativeLargePhoneLandscapeApp, useNativeIPadApp, useNativePhoneApp, useNavigationLayout } from '../navigation/mobile-shell';
+import {
+  useMobileLayout,
+  useNativeAndroidApp,
+  useNativeLargePhoneLandscapeApp,
+  useNativeIPadApp,
+  useNativePhoneApp,
+  useNavigationLayout,
+} from '../navigation/mobile-shell';
 import { MessageNotificationBridge } from '../bridges/MessageNotificationBridge';
 import { AgentIdentityProvider } from '../providers/AgentIdentityProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
@@ -136,6 +143,7 @@ const AuthenticatedAdminShellLayout = () => {
   const phoneLayout = navigationLayout === 'single';
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
+  const nativeAndroidApp = useNativeAndroidApp();
   const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
   const nativePhoneApp = useNativePhoneApp();
   const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
@@ -374,6 +382,7 @@ const AuthenticatedAdminShellLayout = () => {
     focusModeEnabled ? 'focus-mode' : '',
     showWebTabBar ? 'has-mobile-tabbar' : '',
     showNativePhoneTabBar ? 'has-native-phone-tabbar' : '',
+    nativeAndroidApp ? 'has-native-android-shell' : '',
   ]
     .filter(Boolean)
     .join(' ');

@@ -96,6 +96,18 @@ sentence changes only if the invariant itself did.
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
   model dropdown, and the tool/app fold that arrives closed.
+- **Android shell bottom-edge coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:android-dock`. It drives
+  the admin with the Android shell's own globals and its published dock
+  clearance, at a tablet viewport, and pins the contract the tablet layout
+  broke on: `main` keeps its full height so full-height columns reach the
+  window floor, while the composer and a page body each clear the dock by
+  exactly the published value and no more. The same screen without the shell
+  globals is measured beside it, which is the acceptance test for "the web and
+  the iPhone are untouched". Not in CI — it owns its servers through the
+  navigation lifecycle, so give it ports of its own (`NAV_E2E_API_PORT` /
+  `NAV_E2E_ADMIN_PORT`) beside a running dev pair. The rule it defends is in
+  [`docs/navigation/native-shell.md`](docs/navigation/native-shell.md).
 - **The browser suites run on request, not on every push.** They live in
   `.github/workflows/browser-suites.yml`; start them with
   `gh workflow run browser-suites.yml --ref <branch>` or from the Actions tab.

@@ -178,6 +178,53 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   path so the plain `hardwareBackPress` listener keeps firing with the flag
   on; the system's predictive-back preview only ever shows the launcher,
   never an in-app screen, and the in-app motion stays the web stack's.
+- **Android runs full screen, and one published number owns its bottom edge.**
+  Expo enforces edge-to-edge, which only moves the system bars *over* the app:
+  on a tablet that still left the status bar across the top, the system
+  taskbar — a strip of other apps — across the bottom, and both of them inset
+  from the window. `modules/nessie-immersive` hides the bars outright
+  (`WindowInsetsControllerCompat.hide(systemBars())`) and asks for
+  transient-by-swipe behaviour, so an edge swipe shows them floating for a
+  moment and they hide themselves again without ever insetting the window.
+  Android forgets that request across a configuration change and on the way
+  back from the background, which is why `App.tsx` re-applies it on both
+  rather than calling it once at start-up. An installed build that predates
+  the module degrades to the ordinary edge-to-edge window
+  (`requireOptionalNativeModule`), never a crash.
+
+  With the bars gone, the frame runs to the bottom of the window —
+  `getNativeWebviewFrameInsets` returns `bottom: 0` on every platform now — and
+  the floating dock (`AndroidTabletTabBar`) overlays the page rather than
+  standing in a band below it. That is the whole point: a frame that ended at
+  the safe-area inset left the page a taskbar's height short, with the dock
+  floating in the gap, every full-height column — the chat's tool rail, the
+  navy list column — stopping above it, and the composer held up off a floor
+  that was not there. The page is told what the dock covers, and nothing else:
+  `androidDockContentClearance` (`mobile/src/lib/android-tablet-dock.ts`)
+  publishes the dock, its gaps and the safe-area inset as
+  `--nessie-native-bottom-overlay`, zero on a route that draws no dock, and
+  `admin/src/styles.css` owns every selector that spends it under
+  `.admin-frame.has-native-android-shell`. Two rules there are load-bearing:
+
+  - **`main` keeps its full height** (`padding-bottom: 0`). The clearance goes
+    to the two things that own a page's floor — the channel composer and
+    `PageBody`'s scroller — so a column beside them still reaches the screen.
+    The iPhone's end spacer on `.phone-navigation-page` is deliberately *not*
+    mirrored: that page is the whole content region on a phone but only the
+    detail half of a tablet's two columns, where a spacer shortens the surface
+    exactly as `main`'s padding did.
+  - **`env(safe-area-inset-bottom)` is absent from those rules**, because the
+    published value already carries it. The Android WebView reports the system
+    bars' inset to CSS whether or not the native frame has accounted for it,
+    and spending both is what left the tool rail a taskbar's height short of
+    the floor.
+
+  The soft keyboard needs no bridge message: it shortens the page's viewport
+  (`dvh`) without moving the dock, which sits at the window's floor (`lvh`), so
+  the clearance is `max(0px, overlay - (100lvh - 100dvh))` and the gap between
+  composer and keyboard closes itself. Browser coverage is
+  `pnpm --filter @nessie/admin test:e2e:android-dock`; the immersive call and
+  the frame geometry are unit-covered but can only be *seen* on a device.
 - **`theme` and `bg` — the page publishes the chrome palette.**
   `NativeChromeThemeBridge` (`admin/src/bridges/`) renders an empty
   `.native-chrome-palette` element as a direct child of `.admin-frame` and

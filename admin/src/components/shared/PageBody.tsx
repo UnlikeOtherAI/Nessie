@@ -29,7 +29,10 @@ type PageBodyProps = {
  * sever. They keep their own shell.
  */
 export const PageBody = ({ children, className }: PageBodyProps) => (
-  <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">
+  // The class carries no styling of its own here: it is the hook the installed
+  // Android shell's bottom clearance hangs on (admin/src/styles.css), so a
+  // page's last row stays above the dock floating over the WebView.
+  <div className="admin-page-body min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">
     <div className={['grid w-full gap-6', className ?? ''].filter(Boolean).join(' ')}>
       {children}
     </div>

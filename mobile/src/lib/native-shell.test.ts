@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  nativeAndroidDockClearanceScript,
   nativePhoneTabBarClearanceScript,
   nativePushPathScript,
   nativeShellInfoScript,
@@ -133,4 +134,28 @@ test('routes a warm notification tap through the mounted SPA navigator immediate
   })
 
   assert.deepEqual(navigated, [path])
+})
+
+test('the Android dock republishes its clearance as the shell changes', () => {
+  const values = new Map<string, string>()
+  const document = {
+    documentElement: {
+      style: {
+        setProperty: (name: string, value: string): void => {
+          values.set(name, value)
+        },
+      },
+    },
+  }
+
+  new Function('document', nativeAndroidDockClearanceScript(114))(document)
+  assert.equal(values.get('--nessie-native-bottom-overlay'), '114px')
+
+  // A full-screen task route draws no dock, and the page must not hold a band
+  // clear for a control that is not there.
+  new Function('document', nativeAndroidDockClearanceScript(0))(document)
+  assert.equal(values.get('--nessie-native-bottom-overlay'), '0px')
+
+  new Function('document', nativeAndroidDockClearanceScript(Number.NaN))(document)
+  assert.equal(values.get('--nessie-native-bottom-overlay'), '0px')
 })
