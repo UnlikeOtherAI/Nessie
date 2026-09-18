@@ -27,6 +27,13 @@ import { fileURLToPath } from 'node:url'
 const ROUTER_PATH = fileURLToPath(new URL('../src/router.tsx', import.meta.url))
 const source = readFileSync(ROUTER_PATH, 'utf8').replaceAll('\r\n', '\n')
 
+// The `lazy()` declarations themselves live beside the router rather than in
+// it: the route table is what a person opens `router.tsx` for. Both halves are
+// still held against each other below — a name may be declared there only if
+// the router mounts it through `lazyElement`, and vice versa.
+const LAZY_PAGES_PATH = fileURLToPath(new URL('../src/router-lazy-pages.ts', import.meta.url))
+const lazySource = readFileSync(LAZY_PAGES_PATH, 'utf8').replaceAll('\r\n', '\n')
+
 const EAGER_PAGES = ['BootstrapPage', 'ChannelsPage', 'ExternalAuthCompletionPage', 'LoginRoute', 'NotFoundPage']
 
 // Non-page structural elements a route may reference directly (never through
@@ -70,17 +77,19 @@ test('each eager page is imported from the page file that shares its name', () =
 // prettier wraps some of these across three lines and not others.
 type LazyDecl = { exportName: string | null; name: string; path: string | null }
 
-const lazyDeclarations: LazyDecl[] = [...source.matchAll(/const\s+([A-Za-z0-9_]+)\s*=\s*lazy\(/g)].map(
+const lazyDeclarations: LazyDecl[] = [
+  ...lazySource.matchAll(/const\s+([A-Za-z0-9_]+)\s*=\s*lazy\(/g),
+].map(
   (match) => {
     const name = match[1]
-    const window = source.slice(match.index ?? 0, (match.index ?? 0) + 300)
+    const window = lazySource.slice(match.index ?? 0, (match.index ?? 0) + 300)
     const pathMatch = window.match(/import\('([^']+)'\)/)
     const exportMatch = window.match(/default:\s*m\.([A-Za-z0-9_]+)/)
     return { exportName: exportMatch?.[1] ?? null, name, path: pathMatch?.[1] ?? null }
   },
 )
 
-test('the router declares a substantial number of lazy pages', () => {
+test('the section declares a substantial number of lazy pages', () => {
   assert.ok(lazyDeclarations.length > 20, `expected many lazily-loaded pages, found ${lazyDeclarations.length}`)
 })
 
@@ -90,6 +99,21 @@ test('every lazy declaration imports from ./pages/... and re-exports the name it
     assert.ok(decl.path?.startsWith('./pages/'), `${decl.name}: lazy import must come from ./pages/..., got ${decl.path}`)
     assert.equal(decl.exportName, decl.name, `${decl.name}: must bind the named export it re-exports as default`)
   }
+})
+
+test('every lazily declared page is imported by the router, and nothing else is', () => {
+  const importBlock = source.match(/import \{([^}]+)\} from '\.\/router-lazy-pages'/)
+  assert.ok(importBlock, 'router.tsx must import its pages from ./router-lazy-pages')
+  const imported = importBlock[1]
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+  assert.deepEqual(
+    imported.slice().sort(),
+    lazyDeclarations.map((decl) => decl.name).slice().sort(),
+    'router-lazy-pages.ts is the router\u2019s own split point, not a shared module: every name '
+    + 'it declares is mounted by the router, and the router imports nothing it does not declare.',
+  )
 })
 
 test('no page name is both statically imported and lazily declared', () => {

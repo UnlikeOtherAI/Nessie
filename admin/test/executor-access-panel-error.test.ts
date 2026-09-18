@@ -155,9 +155,10 @@ test('a payload this build cannot read is said out loud, not rendered as a lack 
   assert.match(text, /Update or reinstall/, 'and the remedy Retry cannot reach')
   // The lie the panel used to tell.
   assert.doesNotMatch(text, /private=unknown/)
-  // The executor is still named, and the tabs still work: a failed fetch must
-  // not throw away the place the person had navigated to.
-  assert.match(text, /MINIS - Ondra Windows/)
+  // The tabs still work: a failed fetch must not throw away the place the
+  // person had navigated to. Naming the executor is the screen header's job on
+  // `/agents/executors/:executorId`, not this panel's — it used to repeat the
+  // label and status inside its own card, one heading below the screen's.
   assert.match(text, /Operations/)
 })
 

@@ -1,51 +1,32 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { faPlus } from '@fortawesome/free-solid-svg-icons'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  executorPairingOriginLabel,
-  type ExecutorCreateResponse,
-  type PreparedExecutorAccessChangeResponse,
-} from '@nessie/schemas'
-import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCreatePanel'
-import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
-import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
-import { ExecutorReviewedPolicy } from '../components/features/executors/ExecutorReviewedPolicy'
-import { ExecutorWorkspacePromotionsPanel } from '../components/features/executors/ExecutorWorkspacePromotionsPanel'
-import { FormError } from '../components/shared/FormActions'
-import { QueryState } from '../components/shared/QueryState'
-import { Row, RowList } from '../components/shared/RowList'
+  ExecutorDraftsDialog,
+  type PreparedExecutorPromotion,
+} from '../components/features/executors/ExecutorDraftsDialog'
+import { ExecutorPairDialog } from '../components/features/executors/ExecutorPairDialog'
+import {
+  ExecutorAccessChangeDialog,
+  ExecutorPromotionDialog,
+} from '../components/features/executors/ExecutorReviewDialogs'
+import { ExecutorsTable } from '../components/features/executors/ExecutorsTable'
+import {
+  loadExecutorsListState,
+  saveExecutorsListState,
+} from '../components/features/executors/executors-list-state'
+import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAgents } from '../facades/agents/hooks'
 import {
-  useConfirmExecutorAccessChange,
-  useConfirmExecutorEnrollment,
-  useConfirmExecutorWorkspacePromotion,
-  useExecutorAccess,
-  useExecutorAccessChange,
-  useExecutorWorkspacePromotion,
-  useExecutorWorkspaceReviews,
   useExecutors,
   useMyExecutorWorkspaceReviews,
-  usePendingExecutorEnrollment,
-  usePrepareExecutorWorkspacePromotion,
-  useRejectExecutorAccessChange,
-  useRejectExecutorWorkspacePromotion,
 } from '../facades/executors/hooks'
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
-import { getExecutorApiOrigin } from '../lib/api-client'
-import { buildPairingCommand } from '../lib/executor-pairing'
-import { ScreenHeader } from '../components/shared/ScreenHeader'
+import { useScrollMemory } from '../hooks/useScrollMemory'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { LOCAL_BACK_PRIORITY } from '../navigation/LocalBackContext'
-import { NestedStage } from '../navigation/NestedStage'
 import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
-
-const statusClass = (status: string): string => status === 'online'
-  ? 'text-[color:var(--success-text)]'
-  : status === 'pending_pairing' || status === 'draining'
-    ? 'text-[color:var(--warning-text)]'
-    : status === 'revoked' || status === 'error'
-      ? 'text-[color:var(--danger-text)]'
-      : 'text-[color:var(--tx3)]'
 
 // A project's "add executor" doorway (`?create=project&scopeProjectId=`) and
 // a Personal Assistant review link (`#confirmationToken=`) are one-shot
@@ -55,183 +36,83 @@ const statusClass = (status: string): string => status === 'online'
 const CREATE_INTENTS = ['create', 'scopeProjectId'] as const
 const parseConfirmationToken = parseHashParam('confirmationToken')
 
+/**
+ * Executors — the paired-machine list.
+ *
+ * The same shape as every other browsable list in the section: one header, one
+ * table, one pager. Everything that used to sit on this page as a stack of
+ * cards — the pairing form and its invitation, a prepared change waiting to be
+ * confirmed, your reviewed drafts — is a modal, and everything that belongs to
+ * one machine is its own screen at `/agents/executors/:executorId`.
+ */
 export const ExecutorsPage = () => {
   const { me } = useAuthSession()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const createIntent = useConsumedIntents(CREATE_INTENTS)
   const fixedProjectId = createIntent.values.create === 'project'
     ? createIntent.values.scopeProjectId ?? undefined
     : undefined
-  const [showCreate, setShowCreate] = useState(false)
-  const [created, setCreated] = useState<ExecutorCreateResponse | null>(null)
+  const [showPair, setShowPair] = useState(false)
+  const [showDrafts, setShowDrafts] = useState(false)
   const linkedToken = useConsumedHashIntent('confirmationToken', parseConfirmationToken)
   const [confirmationToken, setConfirmationToken] = useState<string | null>(null)
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [reviewError, setReviewError] = useState<string | null>(null)
+  // A promotion prepared here, rather than linked to. Its token is never put in
+  // the address; it lives only until the confirmation closes.
+  const [prepared, setPrepared] = useState<PreparedExecutorPromotion | null>(null)
+
   const executorsQuery = useExecutors()
+  const executors = executorsQuery.data ?? []
   const agentsQuery = useAgents()
   const usersQuery = useUsers()
   const projectsQuery = useProjects()
-  const executors = executorsQuery.data ?? []
-  const selectedId = searchParams.get('executorId') ?? created?.executor.id ?? executors[0]?.id
-  const selected = executors.find((executor) => executor.id === selectedId) ?? created?.executor
-  const accessQuery = useExecutorAccess(selected?.id)
-  const reviewsQuery = useExecutorWorkspaceReviews(selected?.id)
   const myReviewsQuery = useMyExecutorWorkspaceReviews()
-  const changeId = searchParams.get('accessChange') ?? undefined
-  const changeQuery = useExecutorAccessChange(changeId)
-  const promotionId = searchParams.get('promotion') ?? undefined
-  const promotionQuery = useExecutorWorkspacePromotion(promotionId)
-  const pendingPairing = usePendingExecutorEnrollment(selected?.id)
-  // A plain const narrows across the closure below; `pendingPairing.data`
-  // itself does not, which is what the `!` it replaces was working around.
-  const pendingFingerprint = pendingPairing.data?.fingerprint
-  const confirmPairing = useConfirmExecutorEnrollment()
-  const confirmChange = useConfirmExecutorAccessChange()
-  const rejectChange = useRejectExecutorAccessChange()
-  const preparePromotion = usePrepareExecutorWorkspacePromotion()
-  const confirmPromotion = useConfirmExecutorWorkspacePromotion()
-  const rejectPromotion = useRejectExecutorWorkspacePromotion()
+  const draftCount = myReviewsQuery.data?.length ?? 0
+
+  const [initialState] = useState(loadExecutorsListState)
+  const [pageSize, setPageSize] = useState(initialState.pageSize)
+  const [requestedPage, setRequestedPage] = useState(initialState.page)
 
   useEffect(() => {
-    if (fixedProjectId) setShowCreate(true)
+    if (fixedProjectId) setShowPair(true)
   }, [createIntent.serial, fixedProjectId])
   useEffect(() => {
     if (linkedToken.value) setConfirmationToken(linkedToken.value)
   }, [linkedToken])
 
-  const reviewChange = changeQuery.data
-  const promotionChange = promotionQuery.data
-  // The loaded revisions belong to the selected executor, so they describe the
-  // prepared change only when that change is this executor's.
-  const reviewedRevisions = reviewChange && reviewChange.executorId === accessQuery.data?.executorId
-    ? accessQuery.data?.descriptorRevisions
-    : undefined
-  const setSelection = (executorId: string) => {
-    const next = new URLSearchParams(searchParams)
-    next.set('executorId', executorId)
-    next.delete('accessChange')
-    next.delete('promotion')
-    setSearchParams(next, { replace: true })
-    setConfirmationToken(null)
-  }
-  const openReview = (prepared: PreparedExecutorAccessChangeResponse) => {
-    const next = new URLSearchParams(searchParams)
-    next.set('accessChange', prepared.accessChangeId)
-    next.set('executorId', prepared.executorId)
-    next.delete('promotion')
-    setSearchParams(next, { replace: true })
-    setConfirmationToken(prepared.confirmationToken)
-  }
-  const clearReview = () => {
-    const next = new URLSearchParams(searchParams)
-    next.delete('accessChange')
-    next.delete('promotion')
-    setSearchParams(next, { replace: true })
-    setConfirmationToken(null)
-    setCurrentPassword('')
-  }
-  const openPromotion = (prepared: {
-    confirmationToken: string
-    executorId: string
-    promotionId: string
-  }) => {
-    const next = new URLSearchParams(searchParams)
-    next.delete('accessChange')
-    next.set('executorId', prepared.executorId)
-    next.set('promotion', prepared.promotionId)
-    setSearchParams(next, { replace: true })
-    setConfirmationToken(prepared.confirmationToken)
-  }
-  const handleCreated = (result: ExecutorCreateResponse) => {
-    setCreated(result)
-    setShowCreate(false)
-    setSelection(result.executor.id)
-  }
-  const handleConfirmChange = async () => {
-    if (!reviewChange || !confirmationToken) return
-    setReviewError(null)
-    try {
-      await confirmChange.mutateAsync({
-        accessChangeId: reviewChange.accessChangeId,
-        confirmationToken,
-        ...(reviewChange.requiresFreshVerification ? { currentPassword } : {}),
-      })
-      clearReview()
-    } catch (cause) {
-      setReviewError(cause instanceof Error ? cause.message : 'Unable to confirm access change.')
-    }
-  }
-  const handleRejectChange = async () => {
-    if (!reviewChange || !confirmationToken) return
-    setReviewError(null)
-    try {
-      await rejectChange.mutateAsync({
-        accessChangeId: reviewChange.accessChangeId,
-        confirmationToken,
-      })
-      clearReview()
-    } catch (cause) {
-      setReviewError(cause instanceof Error ? cause.message : 'Unable to reject access change.')
-    }
-  }
-  const handlePreparePromotion = async (reviewCommandId: string) => {
-    setReviewError(null)
-    try {
-      openPromotion(await preparePromotion.mutateAsync({ reviewCommandId }))
-    } catch (cause) {
-      setReviewError(cause instanceof Error ? cause.message : 'Unable to prepare workspace promotion.')
-    }
-  }
-  const handleConfirmPromotion = async () => {
-    if (!promotionChange || !confirmationToken) return
-    setReviewError(null)
-    try {
-      await confirmPromotion.mutateAsync({
-        confirmationToken,
-        currentPassword,
-        promotionId: promotionChange.promotionId,
-      })
-      clearReview()
-    } catch (cause) {
-      setReviewError(cause instanceof Error ? cause.message : 'Unable to promote workspace draft.')
-    }
-  }
-  const handleRejectPromotion = async () => {
-    if (!promotionChange || !confirmationToken) return
-    setReviewError(null)
-    try {
-      await rejectPromotion.mutateAsync({ confirmationToken, promotionId: promotionChange.promotionId })
-      clearReview()
-    } catch (cause) {
-      setReviewError(cause instanceof Error ? cause.message : 'Unable to reject workspace promotion.')
-    }
-  }
+  const totalPages = Math.max(1, Math.ceil(executors.length / pageSize))
+  const page = Math.min(requestedPage, totalPages - 1)
+  const pageExecutors = executors.slice(page * pageSize, page * pageSize + pageSize)
+  const rangeStart = executors.length === 0 ? 0 : page * pageSize + 1
+  const rangeEnd = Math.min((page + 1) * pageSize, executors.length)
 
-  // The state directory is not a free choice, so the command is built where a
-  // test can hold it against the systemd unit itself — see
-  // `lib/executor-pairing.ts`.
-  // One resolution of the origin, used by the command and named on screen
-  // beside it: the `--api` in a command nobody reads is not the same as being
-  // told which server this machine is about to trust.
-  const pairingOrigin = useMemo(
-    () => created ? getExecutorApiOrigin(created.invitation.apiBaseUrl) : null,
-    [created],
-  )
-  const pairingCommand = useMemo(() => created && pairingOrigin
-    ? buildPairingCommand({
-      apiOrigin: pairingOrigin,
-      challenge: created.invitation.challenge,
-      enrollmentId: created.invitation.enrollmentId,
-      executorId: created.executor.id,
-    })
-    : null, [created, pairingOrigin])
+  useEffect(() => {
+    saveExecutorsListState({ page, pageSize })
+  }, [page, pageSize])
+
+  const scroll = useScrollMemory('executors:list')
+
+  // A linked review names its change in the query; one prepared here carries
+  // its own id. Either way the token is held in memory beside it.
+  const linkedAccessChangeId = searchParams.get('accessChange')
+  const linkedPromotionId = searchParams.get('promotion')
+  const promotionId = prepared?.promotionId ?? linkedPromotionId
+  const promotionToken = prepared ? prepared.confirmationToken : confirmationToken
+
+  const clearLinkedReview = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('accessChange')
+    next.delete('promotion')
+    setSearchParams(next, { replace: true })
+    setConfirmationToken(null)
+    setPrepared(null)
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* The hero's eyebrow, title and paragraph are the one header's
-          eyebrow, title and subtitle; its two buttons are measured actions
-          that fold into More rather than wrapping into a ragged row. */}
+      {/* One header: the section's eyebrow, its title, the sentence that says
+          what an executor is, and the measured actions — which fold into More
+          rather than wrapping into a ragged row. */}
       <ScreenHeader
         actions={[
           {
@@ -242,12 +123,17 @@ export const ExecutorsPage = () => {
             priority: 40,
           },
           {
+            id: 'reviewed-drafts',
+            label: draftCount > 0 ? `Reviewed drafts (${draftCount})` : 'Reviewed drafts',
+            onSelect: () => setShowDrafts(true),
+            priority: 60,
+          },
+          {
+            icon: faPlus,
             id: 'pair-executor',
-            label: showCreate ? 'Close pairing' : 'Pair executor',
-            onSelect: () => setShowCreate((open) => !open),
-            // Primary while it opens the pairing form; closing that form again
-            // is not the action this screen exists for.
-            primary: !showCreate,
+            label: 'Pair executor',
+            onSelect: () => setShowPair(true),
+            primary: true,
             priority: 100,
           },
         ]}
@@ -260,182 +146,85 @@ export const ExecutorsPage = () => {
         }
         title="Executors"
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid gap-5 px-[var(--page-gutter)] py-6">
 
-        <NestedStage
-          active={showCreate && Boolean(me)}
-          id="executors:create"
-          label="Back to executors"
-          onBack={() => setShowCreate(false)}
-          priority={LOCAL_BACK_PRIORITY.executorsCreate}
-          title="New executor"
-        >
-          {me ? (
-            <ExecutorCreatePanel
-              agents={agentsQuery.data ?? []}
-              currentUserId={me.user.id}
-              fixedProjectId={fixedProjectId}
-              onCreated={handleCreated}
-              organizationId={me.context.organizationId}
-              projects={projectsQuery.data ?? []}
-              users={usersQuery.data ?? []}
-            />
-          ) : null}
-        </NestedStage>
-
-        {pairingCommand && created ? (
-          <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">
-            <h2 className="text-sm font-semibold text-[color:var(--tx)]">Finish pairing on the companion</h2>
-            <p className="text-xs text-[color:var(--tx3)]">
-              This pairs the machine with{' '}
-              <span className="font-semibold text-[color:var(--tx)]">
-                {pairingOrigin ? executorPairingOriginLabel(pairingOrigin) : ''}
-              </span>
-              {' · '}
-              <code className="rounded bg-[color:var(--overlay-weak)] px-1 py-0.5 text-[color:var(--tx2)]">{pairingOrigin}</code>
-              . Confirm that host alongside the fingerprint the companion prints: the fingerprint
-              says a key belongs to that machine, the host says which Nessie it now talks to.
-            </p>
-            <p className="text-xs text-[color:var(--tx3)]">Replace the workspace placeholder with one existing absolute directory. The companion stores its canonical root and machine key in owner-only state, and can only read bounded files under that root. This invitation expires at {created.invitation.expiresAt}.</p>
-            <p className="text-xs text-[color:var(--tx3)]">This command is the Linux package’s: its systemd service reads that exact state directory, so pairing anywhere else leaves the service unable to start. On macOS, pair from the desktop companion below instead. On Windows the service owns its own state under <code>%ProgramData%\Nessie Executor</code> and pairs itself.</p>
-            <p className="text-xs text-[color:var(--tx3)]">Supported platforms: macOS 15+ on Apple Silicon, Ubuntu Linux x86_64, Windows 11/10 x86_64 (Windows and Linux support arrive with their releases).</p>
-            <code className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx)]">{pairingCommand}</code>
-          </section>
-        ) : null}
-
-        <ExecutorDesktopCompanionPanel created={created} executorId={selected?.id} />
-
-        {reviewChange ? (
-          <section className="admin-card grid gap-3 border border-[color:var(--accent)] p-4">
-            <div>
-              <h2 className="text-sm font-semibold text-[color:var(--tx)]">Review prepared executor change</h2>
-              <p className="mt-1 text-xs text-[color:var(--tx3)]">This one-time change expires at {reviewChange.expiresAt}. It is bound to your account and the executor’s current authorization revision.</p>
-            </div>
-            <pre className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{JSON.stringify(reviewChange.change, null, 2)}</pre>
-            <ExecutorReviewedPolicy
-              change={reviewChange.change}
-              descriptorRevisions={reviewedRevisions}
-            />
-            <FormError>
-              {!confirmationToken
-                ? 'The confirmation token is missing. Recreate the change from this page or reopen the Personal Assistant review link.'
-                : undefined}
-            </FormError>
-            {reviewChange.requiresFreshVerification ? (
-              <label className="grid max-w-sm gap-1 text-xs font-medium text-[color:var(--tx2)]">
-                Confirm with current password
-                <input className="admin-input" onChange={(event) => setCurrentPassword(event.target.value)} type="password" value={currentPassword} />
-              </label>
-            ) : null}
-            <FormError>{reviewError}</FormError>
-            <div className="flex flex-wrap gap-2">
-              <button className="admin-button admin-button-primary" disabled={!confirmationToken || confirmChange.isPending} onClick={() => void handleConfirmChange()} type="button">Confirm change</button>
-              <button className="admin-button admin-button-secondary" disabled={!confirmationToken || rejectChange.isPending} onClick={() => void handleRejectChange()} type="button">Reject</button>
-            </div>
-          </section>
-        ) : null}
-
-        {promotionChange ? (
-          <section className="admin-card grid gap-3 border border-[color:var(--accent)] p-4">
-            <div>
-              <h2 className="text-sm font-semibold text-[color:var(--tx)]">Confirm workspace promotion</h2>
-              <p className="mt-1 text-xs text-[color:var(--tx3)]">
-                This promotes {promotionChange.changeCount} reviewed change{promotionChange.changeCount === 1 ? '' : 's'}
-                {' '}only if the daemon reconstructs the same manifest digest and the host root is unchanged.
-                It expires at {promotionChange.expiresAt}.
-              </p>
-              <code className="mt-2 block overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{promotionChange.manifestDigest}</code>
-            </div>
-            <FormError>
-              {!confirmationToken
-                ? 'The confirmation token is missing. Prepare the promotion again from your reviewed drafts.'
-                : undefined}
-            </FormError>
-            <label className="grid max-w-sm gap-1 text-xs font-medium text-[color:var(--tx2)]">
-              Confirm with current password
-              <input className="admin-input" onChange={(event) => setCurrentPassword(event.target.value)} type="password" value={currentPassword} />
-            </label>
-            <FormError>{reviewError}</FormError>
-            <div className="flex flex-wrap gap-2">
-              <button className="admin-button admin-button-primary" disabled={!confirmationToken || confirmPromotion.isPending} onClick={() => void handleConfirmPromotion()} type="button">Confirm promotion</button>
-              <button className="admin-button admin-button-secondary" disabled={!confirmationToken || rejectPromotion.isPending} onClick={() => void handleRejectPromotion()} type="button">Reject</button>
-            </div>
-          </section>
-        ) : null}
-
-        <ExecutorWorkspacePromotionsPanel
-          executors={executors}
-          isError={myReviewsQuery.isError}
-          isLoading={myReviewsQuery.isLoading}
-          onPrepare={(reviewCommandId) => void handlePreparePromotion(reviewCommandId)}
-          preparingReviewId={preparePromotion.isPending ? preparePromotion.variables?.reviewCommandId : undefined}
-          refetch={myReviewsQuery.refetch}
-          reviews={myReviewsQuery.data ?? []}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-4"
+        onScroll={scroll.onScroll}
+        ref={scroll.ref}
+      >
+        <ExecutorsTable
+          emptyMessage="No executor is visible to you. Pair one, or ask its human administrator to assign you."
+          executors={pageExecutors}
+          isLoading={executorsQuery.isPending}
+          onOpen={(executorId) => void navigate(`/agents/executors/${executorId}`)}
         />
-
-        <div className="grid min-h-[460px] gap-4 lg:grid-cols-[minmax(230px,0.33fr)_minmax(0,0.67fr)]">
-          <aside className="admin-card min-h-0 p-3">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold text-[color:var(--tx)]">Available to you</h2><span className="text-xs text-[color:var(--tx3)]">{executors.length}</span></div>
-            <QueryState
-              className="py-6"
-              emptyLabel="No executor is visible to you. Pair one, or ask its human administrator to assign you."
-              errorLabel="Executors could not be loaded."
-              isEmpty={executors.length === 0}
-              loadingLabel="Loading executors…"
-              query={executorsQuery}
-            >
-              {() => (
-                <RowList label="Available executors">
-                  {executors.map((executor) => (
-                    <Row
-                      key={executor.id}
-                      onClick={() => setSelection(executor.id)}
-                      selected={executor.id === selected?.id}
-                      title={executor.label}
-                      trailing={
-                        <>
-                          <span className={statusClass(executor.status)}>{executor.status}</span>
-                          <span className="text-[color:var(--tx3)]">{executor.scope.kind}</span>
-                        </>
-                      }
-                    />
-                  ))}
-                </RowList>
-              )}
-            </QueryState>
-          </aside>
-          {selected ? <ExecutorDetailPanels accessQuery={accessQuery} agents={agentsQuery.data ?? []} executor={selected} onPrepared={openReview} reviews={reviewsQuery.data ?? []} users={usersQuery.data ?? []} /> : <section className="admin-card flex items-center justify-center p-6 text-sm text-[color:var(--tx3)]">Select an executor to inspect its boundary and effective access.</section>}
-        </div>
-
-        {selected?.status === 'pending_pairing' ? (
-          <section className="admin-card flex flex-wrap items-center gap-3 p-4 text-sm text-[color:var(--tx2)]">
-            <span>When the companion has submitted its descriptor, inspect and confirm the fingerprint here.</span>
-            <button className="admin-button admin-button-secondary" onClick={() => void pendingPairing.refetch()} type="button">Check pairing</button>
-            {pendingFingerprint ? (
-              <>
-                <code className="text-xs">{pendingFingerprint}</code>
-                <button
-                  className="admin-button admin-button-primary"
-                  disabled={confirmPairing.isPending}
-                  onClick={() => {
-                    // No local onError: the app-wide mutation default
-                    // (providers/QueryProvider.tsx) surfaces a failure as a
-                    // toast; `.catch` here only stops an unhandled rejection.
-                    void confirmPairing
-                      .mutateAsync({ executorId: selected.id, fingerprint: pendingFingerprint })
-                      .catch(() => undefined)
-                  }}
-                  type="button"
-                >
-                  Confirm fingerprint
-                </button>
-              </>
-            ) : null}
-          </section>
-        ) : null}
-        </div>
       </div>
+
+      {/* Always visible: an empty or single-page list keeps its size control,
+          and the table above it does not grow and shrink as pages change. */}
+      <PaginationFooter
+        canNext={page < totalPages - 1}
+        canPrevious={page > 0}
+        className="px-6 py-3"
+        label={
+          executors.length === 0
+            ? 'No executors'
+            : `${rangeStart}–${rangeEnd} of ${executors.length}`
+        }
+        onPageChange={setRequestedPage}
+        onPageSizeChange={(next) => {
+          setPageSize(next)
+          setRequestedPage(0)
+        }}
+        page={page}
+        pageCount={totalPages}
+        pageSize={pageSize}
+      />
+
+      {me ? (
+        <ExecutorPairDialog
+          agents={agentsQuery.data ?? []}
+          currentUserId={me.user.id}
+          {...(fixedProjectId ? { fixedProjectId } : {})}
+          onClose={() => setShowPair(false)}
+          onFinished={(created) => {
+            setShowPair(false)
+            void navigate(`/agents/executors/${created.executor.id}`)
+          }}
+          open={showPair}
+          organizationId={me.context.organizationId}
+          projects={projectsQuery.data ?? []}
+          users={usersQuery.data ?? []}
+        />
+      ) : null}
+
+      <ExecutorDraftsDialog
+        executors={executors}
+        onClose={() => setShowDrafts(false)}
+        onPrepared={(promotion) => {
+          setShowDrafts(false)
+          setPrepared(promotion)
+        }}
+        open={showDrafts}
+      />
+
+      {linkedAccessChangeId ? (
+        <ExecutorAccessChangeDialog
+          accessChangeId={linkedAccessChangeId}
+          confirmationToken={confirmationToken}
+          onClose={clearLinkedReview}
+          open
+        />
+      ) : null}
+
+      {promotionId ? (
+        <ExecutorPromotionDialog
+          confirmationToken={promotionToken}
+          onClose={clearLinkedReview}
+          open
+          promotionId={promotionId}
+        />
+      ) : null}
     </div>
   )
 }
