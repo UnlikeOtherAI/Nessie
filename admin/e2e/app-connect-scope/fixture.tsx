@@ -5,6 +5,7 @@ import type { AppConnectionSummaryRecord, AppDetailRecord, AppSummaryRecord } fr
 import { ApiClientProvider } from '@nessie/client-core'
 import type { ApiClient } from '@nessie/client-core'
 import { BrowserRouter } from 'react-router-dom'
+import { requestUrl } from '../support/request-url'
 
 import { AppAgentAccessList } from '../../src/components/features/apps/AppAgentAccessList'
 import { AppConnectDialog } from '../../src/components/features/apps/AppConnectDialog'
@@ -24,19 +25,22 @@ const app: AppSummaryRecord = {
 const pendingConnectionId = '44444444-4444-4444-8444-444444444444'
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 const mixedAccessApp: AppDetailRecord = {
-  agentsWithAccess: [], aliases: [], appSource: 'nessie', capabilities: { tools: [] },
+  agentsWithAccess: [], aliases: [], appSource: 'nessie',
+  // `authMethod` is the app's, not a connection's — it was on the rows below
+  // until this file was typechecked. `setupSurface` is required and nullable.
+  authMethod: 'api_key', capabilities: { tools: [] },
   categories: ['development'], connectionCount: 2, connections: [
+    // Exactly `AppConnectionSummaryRecord`: `agentCount`, `appName`,
+    // `authMethod`, `capabilities` and `connectedAt` were all carried here long
+    // after the record stopped having them, so this fixture was proving the
+    // screen's behaviour against rows the API cannot send.
     {
-      agentCount: 0, appName: 'kilotalk-fixture', authMethod: 'api_key',
-      capabilities: { resources: [], tools: [] }, connectedAt: '2026-09-09T00:00:00.000Z',
       canDisconnect: true, canReconnect: true, canRefreshCapabilities: true,
       displayName: 'Reviewed channel account', errorMessage: null,
       id: '33333333-3333-3333-8333-333333333333', lastConnectedAt: '2026-09-09T00:00:00.000Z',
       scopeId: '55555555-5555-4555-8555-555555555555', scopeType: 'channel', status: 'connected',
     },
     {
-      agentCount: 0, appName: 'kilotalk-fixture', authMethod: 'api_key',
-      capabilities: { resources: [], tools: [] }, connectedAt: '2026-09-09T00:00:00.000Z',
       canDisconnect: true, canReconnect: true, canRefreshCapabilities: true,
       displayName: 'Waiting project account', errorMessage: null,
       id: pendingConnectionId, lastConnectedAt: '2026-09-09T00:00:00.000Z',
@@ -46,6 +50,7 @@ const mixedAccessApp: AppDetailRecord = {
   displayName: 'KiloTalk fixture', distribution: 'remote', documentationUrl: null, featured: false,
   featuredOrder: null, iconUrl: null, id: app.id, locked: false, longDescription: null,
   managedByIntegration: false, name: app.name, primaryCategory: 'development', promptCount: null,
+  setupSurface: null,
   repositoryUrl: null, resourceCount: null, shortDescription: app.shortDescription, slug: app.slug,
   state: 'connected', tags: [], toolCount: 3, trustLevel: 'verified', vendor: 'Nessie', websiteUrl: null,
 }
@@ -123,7 +128,7 @@ Object.assign(window, {
 })
 window.localStorage.setItem('nessie.admin.token', 'app-connect-scope-e2e')
 window.fetch = async (input) => {
-  const url = new URL(typeof input === 'string' ? input : input.url, window.location.origin)
+  const url = new URL(requestUrl(input), window.location.origin)
   if (url.pathname === '/api/auth/me') return Response.json({ data: {
     auth: { autoRedirectToSso: false, providerId: 'local', providerType: 'local-bootstrap' },
     context: { bootstrapMode: false, organizationId: '77777777-7777-4777-8777-777777777777', projectId: null, teamId: null },

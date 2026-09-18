@@ -3,12 +3,11 @@ import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser } from '../navigation/lib/browser.mjs'
-import { REPO_ROOT } from '../navigation/lib/config.mjs'
+import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
 import { call, seedTeam } from '../navigation/lib/seed.mjs'
 import { startAdmin, startApi } from '../navigation/lib/servers.mjs'
 
 const SESSION_ID = '00000000-0000-4000-8000-000000000002'
-const ADMIN_URL = 'http://localhost:5455'
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/browser-cloud')
 // A real PNG keeps the canvas image path browser-native without a provider URL.
 const FRAME = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9J7YkAAAAASUVORK5CYII='

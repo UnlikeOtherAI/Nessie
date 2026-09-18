@@ -64,6 +64,7 @@ let alerts: UserAlertRecord[] = [{
   boardSourceId: null, callId: null, channelId: null, channelLabel: null,
   createdAt: '2026-09-12T10:00:00.000Z', id: '10000000-0000-4000-8000-000000000018',
   kind: 'automatic_membership_health', knowledgePageId: null, messageId: null,
+  workflowRunId: null,
   metadata: null, projectId: null, readAt: null, rootMessageId: null, taskId: null,
   threadId: null, triggerId: null,
 }]
@@ -143,7 +144,7 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   }
   else if (path.endsWith('/members')) members.push({ uoaSub: 'subject-ondrej', displayName: 'Ondřej Novák', status: 'ACTIVE' })
   else if (path === '/api/alerts/read') alerts = alerts.map((alert) => (
-    body?.ids?.includes(alert.id) || body?.all === true
+    (body?.ids as string[] | undefined)?.includes(alert.id) || body?.all === true
       ? { ...alert, readAt: '2026-09-12T10:01:00.000Z' }
       : alert
   ))
