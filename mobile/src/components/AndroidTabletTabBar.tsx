@@ -1,9 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import {
-  ANDROID_TABLET_TAB_BAR_HEIGHT,
-} from '../lib/android-tablet-dock'
+import { androidDockGeometry } from '../lib/android-tablet-dock'
 import type { NativeAttentionBadges } from '../lib/native-shell-layout'
 import { TABS } from '../lib/tabs'
 
@@ -15,6 +13,10 @@ type AndroidTabletTabBarProps = {
   bottom: number
   dark: boolean
   inactiveTintColor: string
+  // Sideways, the pill is shorter and lays each label beside its icon rather
+  // than under it. Its height comes from `androidDockGeometry`, the same
+  // answer the page's bottom clearance is spent from, so the two cannot drift.
+  landscape: boolean
   onIndexChange: (index: number) => void
   rippleColor: string
 }
@@ -27,11 +29,19 @@ export const AndroidTabletTabBar = ({
   bottom,
   dark,
   inactiveTintColor,
+  landscape,
   onIndexChange,
   rippleColor,
 }: AndroidTabletTabBarProps): React.JSX.Element => (
   <View pointerEvents="box-none" style={[styles.layer, { bottom }]}>
-    <View style={[styles.bar, dark ? styles.barDark : styles.barLight]}>
+    <View
+      style={[
+        styles.bar,
+        dark ? styles.barDark : styles.barLight,
+        landscape ? styles.barLandscape : null,
+        { height: androidDockGeometry(landscape).height },
+      ]}
+    >
       {TABS.map((tab, index) => {
         const active = index === activeIndex
         const color = active ? activeTintColor : inactiveTintColor
@@ -50,6 +60,7 @@ export const AndroidTabletTabBar = ({
             onPress={() => onIndexChange(index)}
             style={({ pressed }) => [
               styles.tab,
+              landscape ? styles.tabLandscape : null,
               active ? { backgroundColor: activeIndicatorColor } : null,
               pressed ? styles.tabPressed : null,
             ]}
@@ -58,9 +69,12 @@ export const AndroidTabletTabBar = ({
             <MaterialIcons
               color={color}
               name={tab.materialIcon}
-              size={24}
+              size={landscape ? 20 : 24}
             />
-            <Text numberOfLines={1} style={[styles.label, { color }]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.label, landscape ? styles.labelLandscape : null, { color }]}
+            >
               {tab.title}
             </Text>
             {badge > 0 ? <Text style={styles.badge}>{badge > 99 ? '99+' : badge}</Text> : null}
@@ -88,7 +102,6 @@ const styles = StyleSheet.create({
   bar: {
     width: '88%',
     maxWidth: 700,
-    height: ANDROID_TABLET_TAB_BAR_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 6,
@@ -104,6 +117,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#211b17',
     borderColor: 'rgba(255, 255, 255, 0.16)',
   },
+  barLandscape: {
+    padding: 4,
+    borderRadius: 25,
+  },
   barLight: {
     backgroundColor: '#fffaf2',
     borderColor: 'rgba(72, 48, 24, 0.12)',
@@ -113,6 +130,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 14,
+  },
+  labelLandscape: {
+    marginTop: 0,
+    marginLeft: 6,
   },
   layer: {
     position: 'absolute',
@@ -128,6 +149,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 24,
+  },
+  // Icon and label side by side: the row is what buys back the height, and it
+  // keeps every tab's target the full width of its lane.
+  tabLandscape: {
+    height: 42,
+    flexDirection: 'row',
+    borderRadius: 21,
   },
   tabPressed: {
     opacity: 0.74,

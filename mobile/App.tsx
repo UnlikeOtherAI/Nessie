@@ -88,8 +88,8 @@ import {
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
-  ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
   androidDockContentClearance,
+  androidDockGeometry,
   androidDockShowing,
 } from './src/lib/android-tablet-dock'
 import { NATIVE_CREATION_LANE_CLEARANCE } from './src/lib/native-creation-menu'
@@ -204,6 +204,15 @@ const Shell = (): React.JSX.Element => {
     width: windowWidth,
   })
   const nativeFormFactor = IS_IPAD ? 'ipad' : largePhoneLandscape ? 'large-phone-landscape' : 'phone'
+  // Android's own orientation question, asked of the window rather than the
+  // screen so a split-screen or freeform host is answered honestly. It is a
+  // separate flag from `largePhoneLandscape`, which gates the admitted iOS
+  // two-column lane and is false on Android by construction: here the only
+  // thing turning sideways changes is how much height the dock may spend.
+  const androidLandscape = IS_ANDROID && isLandscape({
+    height: windowHeight,
+    width: windowWidth,
+  })
   const [index, setIndex] = useState(() => tabIndexForSection(DEFAULT_LAST_KNOWN_SCREEN.section))
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   // The shell's last-known picture of what the WebView is showing, built
@@ -586,6 +595,7 @@ const Shell = (): React.JSX.Element => {
       keyboardOpen: androidKeyboardOpen,
       showBar,
     }),
+    landscape: androidLandscape,
   })
   useEffect(() => {
     if (!IS_ANDROID) return
@@ -680,9 +690,10 @@ const Shell = (): React.JSX.Element => {
           badgeCounts={attentionBadges}
           activeIndicatorColor={withOpacity(accent, 0.14)}
           activeTintColor={accent}
-          bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
+          bottom={insets.bottom + androidDockGeometry(androidLandscape).bottomGap}
           dark={isDark(bg)}
           inactiveTintColor={inactive}
+          landscape={androidLandscape}
           onIndexChange={onIndexChange}
           rippleColor={withOpacity(accent, 0.18)}
         />
@@ -708,6 +719,7 @@ const Shell = (): React.JSX.Element => {
           bottomInset={insets.bottom}
           creationAccentColor={strongAccent}
           dismissCreationMenuVersion={dismissCreationMenuVersion}
+          dockLandscape={androidLandscape}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
           landscape={largePhoneLandscape}
