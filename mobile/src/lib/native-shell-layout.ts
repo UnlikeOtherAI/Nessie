@@ -1,7 +1,4 @@
-import {
-  ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
-  ANDROID_TABLET_TAB_BAR_HEIGHT,
-} from './android-tablet-dock'
+import { androidDockGeometry } from './android-tablet-dock'
 import { getIpadContentTop } from './ipad-native-chrome'
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 import { DEFAULT_TAB_KEY, TABS, type TabKey } from './tabs'
@@ -203,12 +200,26 @@ export const shouldShowNativePhoneRootLanes = (input: NativePhoneBarInput): bool
 export const getNativePhoneHeaderHeight = (landscape: boolean): number =>
   landscape ? NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT : NATIVE_PHONE_MENU_HEADER_HEIGHT
 
-// Android's dock is taller and raised above the safe area, so its native phone
-// actions need their own exact bottom-chrome clearance.
-export const getNativePhoneBottomChromeClearance = (platform: 'android' | 'ios'): number =>
-  platform === 'android'
-    ? ANDROID_TABLET_TAB_BAR_HEIGHT + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP
-    : IPHONE_TAB_BAR_HEIGHT
+/**
+ * Where the floating native phone actions sit above the bottom chrome.
+ *
+ * Android's dock is taller than the iPhone's bar and raised off the safe area,
+ * so it needs its own exact answer — and that answer changes with orientation,
+ * because the landscape pill is shorter and sits nearer the floor. Taking it
+ * from `androidDockGeometry` is what keeps the creation control resting on the
+ * dock after a rotation instead of hovering where the portrait pill used to
+ * end. `landscape` is the dock's own orientation, not the admitted iOS
+ * large-phone landscape lane, which never applies to Android; iOS ignores it,
+ * since the system bar it clears is one height everywhere.
+ */
+export const getNativePhoneBottomChromeClearance = (
+  platform: 'android' | 'ios',
+  landscape: boolean,
+): number => {
+  if (platform !== 'android') return IPHONE_TAB_BAR_HEIGHT
+  const dock = androidDockGeometry(landscape)
+  return dock.height + dock.bottomGap
+}
 
 /**
  * The native frame, not a DOM selector, owns the top unsafe edge. The iPhone

@@ -7,6 +7,11 @@ import {
 
 type NativePhoneConversationMenuChromeProps = NativePhoneHeaderProps & {
   bottomInset: number
+  // The Android dock's orientation, which decides how much the floating
+  // creation control has to clear. Deliberately not the inherited `landscape`
+  // prop: that one is the admitted iOS large-phone landscape lane, and it is
+  // false on every Android device however the tablet is held.
+  dockLandscape: boolean
   creationAccentColor: string
   dismissCreationMenuVersion: number
   onAccentColor: string
@@ -37,6 +42,7 @@ export const NativePhoneConversationMenuChrome = ({
   accountPresence,
   bottomInset,
   creationAccentColor,
+  dockLandscape,
   dismissCreationMenuVersion,
   headerSurface,
   headerText,
@@ -83,7 +89,7 @@ export const NativePhoneConversationMenuChrome = ({
         accentColor={creationAccentColor}
         dismissVersion={dismissCreationMenuVersion}
         lane={{
-          bottom: bottomInset + getNativePhoneBottomChromeClearance(platform),
+          bottom: bottomInset + getNativePhoneBottomChromeClearance(platform, dockLandscape),
           left: NATIVE_PHONE_CREATION_LANE_INSET,
           right: NATIVE_PHONE_CREATION_LANE_INSET,
         }}

@@ -219,6 +219,32 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
     and spending both is what left the tool rail a taskbar's height short of
     the floor.
 
+  **The dock has two shapes, and orientation is the only thing that chooses
+  between them.** `androidDockGeometry(landscape)` is the single answer —
+  portrait is a 70dp pill lifted 8dp off the safe-area floor with each label
+  stacked under its icon; landscape is a 50dp pill lifted 2dp with the label
+  beside its icon. Sideways there is little height to spend, and the portrait
+  pill and its gap took about a tenth of a 10-inch tablet's screen. Everything
+  with a bottom measurement reads that one function — where the pill is drawn
+  (`App.tsx`), how tall it draws itself (`AndroidTabletTabBar`), what the page
+  reserves (`androidDockContentClearance`) and where the floating creation
+  control sits (`getNativePhoneBottomChromeClearance`) — because a rotation
+  that left any one of them holding the other orientation's number is the same
+  defect as reserving a dock that is not drawn.
+
+  The orientation is the **window's**, asked with `isLandscape` on
+  `useWindowDimensions`, so a split-screen or freeform host is answered
+  honestly rather than by the physical screen. It is deliberately not
+  `largePhoneLandscape`: that flag gates the admitted iOS two-column lane and
+  is false on every Android device by construction
+  (`supportsLargePhoneLandscape` requires iOS). Nothing about the compact
+  landscape header follows from this — that remains an iOS-only lane.
+
+  Only the published number changes with orientation, never the stylesheet:
+  `admin/src/styles.css` spends whatever `--nessie-native-bottom-overlay`
+  carries, so the web and the iPhone are untouched and the rules above hold
+  unchanged in both orientations.
+
   **The soft keyboard takes the dock away, so the page stops reserving it.**
   `androidDockShowing` is false while the keyboard is up, which publishes a
   clearance of zero. The dock does not move for the keyboard — it stays at the

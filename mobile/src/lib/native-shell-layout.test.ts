@@ -83,8 +83,13 @@ test('every native phone tab root reserves the team header on iPhone and Android
     showNativePhoneNavBar: true,
     showTabBar: true,
   }), { top: 96, bottom: 0 })
-  assert.equal(getNativePhoneBottomChromeClearance('ios'), 49)
-  assert.equal(getNativePhoneBottomChromeClearance('android'), 78)
+  assert.equal(getNativePhoneBottomChromeClearance('ios', false), 49)
+  assert.equal(getNativePhoneBottomChromeClearance('android', false), 78)
+  // Sideways the dock is shorter and lower, and the control that floats above
+  // it comes down with it rather than hovering over the pill's old top edge.
+  assert.equal(getNativePhoneBottomChromeClearance('android', true), 52)
+  // The iPhone's bar is one height in both orientations.
+  assert.equal(getNativePhoneBottomChromeClearance('ios', true), 49)
 })
 
 test('an admitted phone keeps a shorter native header on every landscape page', () => {

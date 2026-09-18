@@ -1,14 +1,57 @@
 // The Android dock overlays the WebView. Keep the native geometry and the CSS
 // interaction clearance in one place so the chat composer never falls under it.
+//
+// The dock has two shapes, and orientation is the only thing that chooses
+// between them. Portrait stacks each label under its icon in a tall pill
+// raised off the floor. Landscape has far less height to spend — the same pill
+// and gap took a tenth of a 10-inch tablet's screen turned sideways — so there
+// the label sits beside its icon in a shorter pill resting nearer the floor.
+// Same tabs, same targets, lower and flatter.
 export const ANDROID_TABLET_TAB_BAR_HEIGHT = 70
 export const ANDROID_TABLET_TAB_BAR_BOTTOM_GAP = 8
+export const ANDROID_TABLET_LANDSCAPE_TAB_BAR_HEIGHT = 50
+export const ANDROID_TABLET_LANDSCAPE_TAB_BAR_BOTTOM_GAP = 2
 // Keep the composer comfortably clear of the dock without making it look
 // visually detached from the primary navigation.
 export const ANDROID_TABLET_TAB_BAR_CONTENT_GAP = 8
-export const ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE =
-  ANDROID_TABLET_TAB_BAR_HEIGHT
-  + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP
-  + ANDROID_TABLET_TAB_BAR_CONTENT_GAP
+export const ANDROID_TABLET_LANDSCAPE_TAB_BAR_CONTENT_GAP = 6
+
+export type AndroidDockGeometry = {
+  // Between the pill's bottom edge and the safe-area floor.
+  bottomGap: number
+  // The pill, both gaps, and nothing else: what a page keeps clear at its
+  // bottom edge before the safe-area inset is added to it.
+  contentClearance: number
+  // The pill's own height.
+  height: number
+}
+
+/**
+ * The dock's shape for an orientation.
+ *
+ * Every other bottom measurement in the shell derives from this one answer —
+ * where the pill is drawn, what the page reserves, where the floating creation
+ * control sits — so a rotation can never leave one of them holding the other
+ * orientation's number. A page reserving the portrait pill's height under the
+ * landscape pill is the same defect as reserving a dock that is not drawn.
+ */
+export const androidDockGeometry = (landscape: boolean): AndroidDockGeometry => {
+  const height = landscape
+    ? ANDROID_TABLET_LANDSCAPE_TAB_BAR_HEIGHT
+    : ANDROID_TABLET_TAB_BAR_HEIGHT
+  const bottomGap = landscape
+    ? ANDROID_TABLET_LANDSCAPE_TAB_BAR_BOTTOM_GAP
+    : ANDROID_TABLET_TAB_BAR_BOTTOM_GAP
+  const contentGap = landscape
+    ? ANDROID_TABLET_LANDSCAPE_TAB_BAR_CONTENT_GAP
+    : ANDROID_TABLET_TAB_BAR_CONTENT_GAP
+
+  return { bottomGap, contentClearance: height + bottomGap + contentGap, height }
+}
+
+export const ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE = androidDockGeometry(false).contentClearance
+export const ANDROID_TABLET_LANDSCAPE_TAB_BAR_CONTENT_CLEARANCE =
+  androidDockGeometry(true).contentClearance
 
 /**
  * Whether the dock is a thing the page has to keep clear of.
@@ -48,8 +91,9 @@ export const androidDockShowing = (input: {
 export const androidDockContentClearance = (input: {
   bottomInset: number
   dockShowing: boolean
+  landscape: boolean
 }): number => {
   if (!input.dockShowing) return 0
   const inset = Number.isFinite(input.bottomInset) ? Math.max(0, input.bottomInset) : 0
-  return ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE + inset
+  return androidDockGeometry(input.landscape).contentClearance + inset
 }
