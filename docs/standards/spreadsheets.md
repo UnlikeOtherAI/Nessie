@@ -257,6 +257,33 @@ housekeeping bounds is replay cost and index staleness, never history.
   restore path publishes it, and the event schema throws after the restore has
   already landed otherwise.
 
+## Serving it: the admin CSP must carry `'wasm-unsafe-eval'`
+
+The browser engine is WebAssembly, so the policy that serves the admin decides
+whether the grid can start at all. `workbook-engine.ts` imports
+`@ironcalc/wasm/wasm_bg.wasm?url` and hands it to `init()`, which compiles it
+with `WebAssembly.instantiateStreaming`. Under a bare `script-src 'self'` every
+engine refuses to compile WebAssembly, and the pane renders "The spreadsheet
+engine could not start" with the CSP violation as its reason. So
+`infrastructure/docker/admin-nginx.conf` lists `script-src 'self'
+'wasm-unsafe-eval'`, and re-hardening it back to `'self'` alone takes the
+spreadsheets down with it.
+
+- **`'wasm-unsafe-eval'`, never `'unsafe-eval'`.** The narrow token grants
+  WebAssembly compilation and nothing else; `'unsafe-eval'` would also re-open
+  `eval()` and `new Function()` on JavaScript, on the one origin that holds
+  session tokens and renders attacker-supplied email HTML.
+- **`connect-src` already covers the fetch.** The wasm is a same-origin
+  fingerprinted `/assets/` file, so `'self'` is enough — only the compile step
+  ever needed a new token.
+- **This is the whole product surface, not just the web app.** The desktop
+  shells load the hosted admin (`desktop/src-tauri/tauri.conf.json` →
+  `frontendDist: https://app.nessie.works`, `security.csp: null`), so they
+  inherit this header verbatim. One wrong policy breaks web, macOS and Windows
+  identically, and one fix repairs all three.
+- The marketing site (`web-nginx.conf`) serves no workbook and keeps the strict
+  `script-src 'self'`.
+
 ## Engine pinning, and an upgrade is a data migration
 
 `SPREADSHEET_ENGINE_VERSION` pins one exact version across the API, the worker
