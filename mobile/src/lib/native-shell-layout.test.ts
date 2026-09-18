@@ -39,6 +39,10 @@ test('full-screen iPhone tasks keep the status inset while leaving the home indi
   }), { top: 59, bottom: 0 })
 })
 
+// The Android frame reaches the bottom of the window: the dock floats over it
+// and the page is told separately what to keep clear
+// (`androidDockContentClearance`), so a full-height column ends at the
+// screen's own floor rather than above a reserved band.
 test('iPad and Android retain their respective native-frame geometry', () => {
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 24,
@@ -57,7 +61,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     safeArea: { top: 32, bottom: 28 },
     showNativePhoneNavBar: false,
     showTabBar: true,
-  }), { top: 32, bottom: 28 })
+  }), { top: 32, bottom: 0 })
 })
 
 test('every native phone tab root reserves the team header on iPhone and Android', () => {
@@ -78,7 +82,7 @@ test('every native phone tab root reserves the team header on iPhone and Android
     safeArea: { top: 32, bottom: 28 },
     showNativePhoneNavBar: true,
     showTabBar: true,
-  }), { top: 96, bottom: 28 })
+  }), { top: 96, bottom: 0 })
   assert.equal(getNativePhoneBottomChromeClearance('ios'), 49)
   assert.equal(getNativePhoneBottomChromeClearance('android'), 78)
 })

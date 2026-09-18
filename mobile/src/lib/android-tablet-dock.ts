@@ -9,3 +9,27 @@ export const ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE =
   ANDROID_TABLET_TAB_BAR_HEIGHT
   + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP
   + ANDROID_TABLET_TAB_BAR_CONTENT_GAP
+
+/**
+ * What the page must keep clear at its bottom edge for the dock.
+ *
+ * The WebView runs to the bottom of the window and the dock floats over it, so
+ * this is the only bottom clearance the page gets: the shell publishes it, and
+ * `admin/src/styles.css` owns every selector that spends it. Zero while the
+ * dock is not drawn — a full-screen task route, or the login gate — because a
+ * page that reserves room for a control nobody can see is a page with a hole
+ * in it.
+ *
+ * The safe-area inset is added here rather than left to the page's own
+ * `env(safe-area-inset-bottom)`: the WebView reports the system bars' inset to
+ * CSS whether or not this shell has already accounted for it, and a page that
+ * spends both ends up a taskbar's height short of its own floor.
+ */
+export const androidDockContentClearance = (input: {
+  bottomInset: number
+  dockShowing: boolean
+}): number => {
+  if (!input.dockShowing) return 0
+  const inset = Number.isFinite(input.bottomInset) ? Math.max(0, input.bottomInset) : 0
+  return ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE + inset
+}

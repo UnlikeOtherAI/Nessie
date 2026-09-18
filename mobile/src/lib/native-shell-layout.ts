@@ -232,7 +232,14 @@ export const getNativeWebviewFrameInsets = (input: {
     : input.platform === 'ios' || input.platform === 'android'
       ? input.safeArea.top + (input.showNativePhoneNavBar ? input.nativePhoneHeaderHeight : 0)
       : 0
-  const bottom = input.platform === 'android' ? input.safeArea.bottom : 0
+  // Nobody's frame stops short at the bottom. The iPhone reaches under its
+  // translucent tab bar, and the Android WebView reaches under its floating
+  // dock and the hidden system bars behind it — a frame that ended at the
+  // safe-area inset instead left the page a taskbar's height short, with the
+  // dock floating in the gap and every full-height column stopping above it.
+  // What the *page* keeps clear is a separate value it is told
+  // (`androidDockContentClearance`), spent by the admin's own selectors.
+  const bottom = 0
 
   return { top, bottom }
 }

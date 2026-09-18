@@ -106,10 +106,16 @@ export const ChannelComposer = ({
   return (
     // Base 14px padding plus the soft-keyboard inset (docs/navigation/overview.md
     // §4.14): the active composer stays above an on-screen keyboard instead
-    // of sliding under it.
+    // of sliding under it. The third term is the installed Android shell's
+    // floating dock, which overlays the page's own floor; it is zero in every
+    // other shell and on the web, and it closes itself as that keyboard opens
+    // (admin/src/styles.css, `--nessie-native-dock-clearance`).
     <div
       className="flex-shrink-0 px-5"
-      style={{ paddingBottom: 'calc(14px + var(--keyboard-inset, 0px))' }}
+      style={{
+        paddingBottom:
+          'calc(14px + var(--keyboard-inset, 0px) + var(--nessie-native-dock-clearance, 0px))',
+      }}
     >
       {pendingAgentInvites.length > 0 && (
         <div className="admin-card mb-2 flex flex-col gap-2 p-3">

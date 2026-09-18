@@ -1,0 +1,10 @@
+{
+  "name": "nessie-immersive",
+  "version": "0.1.0",
+  "description": "Draws Nessie full screen on Android, with the system bars hidden.",
+  "main": "index.ts",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Nessie",
+  "homepage": "https://nessie.works"
+}

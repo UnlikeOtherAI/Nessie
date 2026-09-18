@@ -47,6 +47,7 @@ import { applyNativeTabIndexChange } from './src/lib/native-tab-index-change'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
+  nativeAndroidDockClearanceScript,
   nativeListColumnClearanceScript,
   nativePhoneTabBarClearanceScript,
   nativePushPathScript,
@@ -76,6 +77,7 @@ import {
   type AppIconVariant,
 } from './modules/nessie-app-icon'
 import { nativeAppIconScript } from './src/lib/native-app-icon'
+import { setNativeFullScreen } from './modules/nessie-immersive'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
   createIpadNativeChromeTheme,
@@ -84,7 +86,10 @@ import {
   isIpadWindowed,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
-import { ANDROID_TABLET_TAB_BAR_BOTTOM_GAP } from './src/lib/android-tablet-dock'
+import {
+  ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
+  androidDockContentClearance,
+} from './src/lib/android-tablet-dock'
 import { NATIVE_CREATION_LANE_CLEARANCE } from './src/lib/native-creation-menu'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
@@ -298,6 +303,21 @@ const Shell = (): React.JSX.Element => {
       : ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
     void orientation.catch(() => undefined)
   }, [largePhoneLandscapeCapable])
+
+  // Android draws Nessie over the whole screen — no status bar across the top,
+  // no system taskbar across the bottom — rather than merely under them. The
+  // screen's shape is the signal to ask again: Android forgets a hidden-bars
+  // request across a configuration change, which is exactly when these numbers
+  // move, and it forgets it again on the way back from the background.
+  const androidScreenShape = IS_ANDROID ? `${windowWidth}x${windowHeight}` : ''
+  useEffect(() => {
+    if (androidScreenShape === '') return undefined
+    setNativeFullScreen(true)
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') setNativeFullScreen(true)
+    })
+    return () => subscription.remove()
+  }, [androidScreenShape])
 
   const keyboardOverlap = useIosKeyboardOverlap(windowHeight)
   const keyboardOpen = keyboardOverlap > 0
@@ -553,6 +573,18 @@ const Shell = (): React.JSX.Element => {
   const ipadCreationColumn = IS_IPAD && showBar && listColumn?.section === 'channels'
     ? listColumn
     : null
+
+  // The dock floats over a WebView that runs to the bottom of the window, so
+  // this one value is every bottom clearance the page gets — and it is zero on
+  // a route that draws no dock.
+  const androidDockClearance = androidDockContentClearance({
+    bottomInset: insets.bottom,
+    dockShowing: IS_ANDROID && showBar,
+  })
+  useEffect(() => {
+    if (!IS_ANDROID) return
+    runScript(nativeAndroidDockClearanceScript(androidDockClearance))
+  }, [androidDockClearance, runScript])
 
   // Hold the column's last row clear of the control floating over it.
   useEffect(() => {

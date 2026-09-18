@@ -45,6 +45,16 @@ export const useNativePhoneApp = (): boolean => {
     && (info?.formFactor === 'phone' || info?.formFactor === 'large-phone-landscape')
 }
 
+// The Android shell draws a floating dock over a WebView that runs to the
+// bottom of the window, which is a different bottom-edge contract from the
+// iPhone's translucent tab bar — the shell publishes what the dock covers and
+// the page holds only that much clear (admin/src/styles.css). The frame says
+// which shell it is in; no page component asks.
+export const useNativeAndroidApp = (): boolean => {
+  const info = useNativeShellInfo()
+  return isReactNativeWebView() && info?.platform === 'android'
+}
+
 // iOS-only controls (such as its glass conversation Back affordance) still
 // need to distinguish an iPhone from an Android handset.
 export const useNativeIOSPhoneApp = (): boolean => {
