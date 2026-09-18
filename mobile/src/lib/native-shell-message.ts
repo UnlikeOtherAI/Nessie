@@ -144,13 +144,22 @@ export type ListColumnMessage = NativeShellMessage & {
   type: 'nessie:list-column'
 }
 
+/**
+ * A retirement (`section: null`) carries no geometry worth reading, and the
+ * admin sends it as a zero rect. Demanding a positive width of it refused the
+ * one message that takes native chrome down, so chrome placed on the channels
+ * column stayed over a section that no longer had a column at all. Geometry is
+ * therefore only required of a column that is actually standing.
+ */
 export const isListColumnMessage = (message: NativeShellMessage): message is ListColumnMessage =>
   message.type === 'nessie:list-column'
-  && typeof message.left === 'number' && Number.isFinite(message.left)
-  && typeof message.right === 'number' && Number.isFinite(message.right)
-  && message.right > message.left
   && (message.section === null
-    || (typeof message.section === 'string' && LIST_COLUMN_SECTIONS.has(message.section)))
+    ? true
+    : typeof message.section === 'string'
+      && LIST_COLUMN_SECTIONS.has(message.section)
+      && typeof message.left === 'number' && Number.isFinite(message.left)
+      && typeof message.right === 'number' && Number.isFinite(message.right)
+      && message.right > message.left)
 
 export type AttentionMessage = NativeShellMessage & {
   badges: Record<string, number>

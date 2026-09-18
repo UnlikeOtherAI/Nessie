@@ -116,3 +116,45 @@ test('the WebView leaves pull-to-refresh to the admin page', () => {
   const source = readFileSync(join(process.cwd(), 'src', 'components', 'MobileAdminWebView.tsx'), 'utf8')
   assert.match(source, /pullToRefreshEnabled=\{false\}/)
 })
+
+test('a retired list column takes down chrome the previous section pinned', () => {
+  const pinned = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:list-column',
+    left: 0,
+    right: 320,
+    section: 'channels',
+  })
+  assert.equal(pinned.listColumn?.section, 'channels')
+
+  // Knowledge pins no column, so the admin retires the one that was there. The
+  // rect it carries is inert; refusing the message for its width left the iPad
+  // drawing the channels creation control over every other section.
+  const retired = reduceNativeShellPresentation(pinned, {
+    type: 'nessie:list-column',
+    left: 0,
+    right: 0,
+    section: null,
+  })
+  assert.equal(retired.listColumn, null)
+})
+
+test('a list column that claims a section still has to report a real rect', () => {
+  const pinned = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:list-column',
+    left: 0,
+    right: 320,
+    section: 'channels',
+  })
+
+  for (const malformed of [
+    { type: 'nessie:list-column', left: 40, right: 40, section: 'projects' },
+    { type: 'nessie:list-column', left: 0, right: Number.NaN, section: 'projects' },
+    { type: 'nessie:list-column', left: 0, right: 320, section: 'feedback' },
+  ]) {
+    assert.deepEqual(
+      reduceNativeShellPresentation(pinned, malformed),
+      pinned,
+      `expected ${JSON.stringify(malformed)} to be refused`,
+    )
+  }
+})
