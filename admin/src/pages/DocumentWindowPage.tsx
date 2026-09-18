@@ -5,6 +5,7 @@ import { KnowledgeProvider, useKnowledge } from '../components/features/knowledg
 import { knowledgePageAncestors } from '../components/features/knowledge/page-ancestors'
 import { QueryState } from '../components/shared/QueryState'
 import { useKnowledgePage } from '../facades/knowledge/hooks'
+import { isDesktopApp } from '../lib/desktop'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { ToastProvider } from '../providers/ToastProvider'
 
@@ -69,7 +70,19 @@ const DocumentWindowView = ({ pageId }: { pageId: string }) => {
   }, [current])
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-[color:var(--main)] text-[color:var(--tx)]">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[color:var(--main)] text-[color:var(--tx)]">
+      {/* The window's own title bar. Every desktop platform paints its window
+          controls *over* the webview — macOS floats its traffic lights there,
+          Windows and Linux have the admin draw the controls itself — and the
+          shell normally reserves that lane inside its top bar. A document
+          window has no top bar, so without this strip the document's own
+          header paints underneath the controls; on Windows and Linux it is
+          also underneath the frame's drag region, which makes it unclickable
+          rather than merely obscured. */}
+      {isDesktopApp() ? (
+        <div aria-hidden="true" className="document-window-titlebar" data-tauri-drag-region />
+      ) : null}
+      <div className="min-h-0 flex-1">
       <QueryState
         className="py-16"
         // A document that has been deleted, archived out of view, or was
@@ -106,6 +119,7 @@ const DocumentWindowView = ({ pageId }: { pageId: string }) => {
           ) : null
         }
       </QueryState>
+      </div>
     </div>
   )
 }

@@ -1480,6 +1480,15 @@ html[data-desktop-platform='linux'] #root {
   padding-left: calc(12px + 76.8px + 8px);
 }
 
+/* A document window's own title bar. It carries nothing but the height the
+   window controls need, and the drag region that lets the window be moved by
+   it — the same `--topbar-h` the shell's top bar reserves for them. */
+.document-window-titlebar {
+  flex: 0 0 auto;
+  height: var(--topbar-h);
+  background: var(--main);
+}
+
 .desktop-window-frame-resize {
   position: fixed;
   z-index: var(--layer-card);
