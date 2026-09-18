@@ -57,6 +57,24 @@ This distinction carries the whole feature and every layer must preserve it.
 A `NOT NULL DEFAULT '[]'` on the column would make every pre-existing executor
 claim to have answered. The column is nullable with no default on purpose.
 
+### Two readers, one renderer
+
+The three states above have to survive being summarised into prose twice now:
+`executor_inspect`'s answer, and the Agent Designer's generated design
+catalogue. `formatExecutorLocalMcp` (`@nessie/executor-manage`) is the one
+renderer both use — the Personal Assistant's `formatLocalMcp` re-exports it —
+because a second copy is precisely how one of the three quietly becomes two.
+The catalogue adds a fourth thing it must not flatten into them: somebody who
+may *use* an executor but not administer it reads the report as **unreadable
+with their access**, never as "has never reported", which is a fact about that
+machine nobody established.
+
+An executor grant to an agent is whole-suite, so `mcp.tools` and `mcp.call`
+travel with the rest of the reviewed policy rather than being picked
+individually — the transport is still only ever onto the servers that policy
+names. The rule and its one exclusion (`workspace.promote`) are in
+[global-agents.md](global-agents.md).
+
 ## Availability rides the heartbeat, never the descriptor
 
 Installing Kelpie must not cost a reviewed policy revision, so what the daemon

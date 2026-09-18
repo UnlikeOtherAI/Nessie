@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import { AgentEffortSchema, AgentVisibilitySchema } from '@nessie/schemas'
 
+import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
+
 import { buildGlobalAgentCatalogueBlock } from '../src/global-agent-catalogue.js'
 import type { AgentToolCatalog } from '../src/agent-tool-catalog.js'
 
@@ -57,6 +59,7 @@ const block = (overrides: Parameters<typeof buildGlobalAgentCatalogueBlock>[0] e
   : Partial<Parameters<typeof buildGlobalAgentCatalogueBlock>[0]> = {}) =>
   buildGlobalAgentCatalogueBlock({
     catalogue: catalogue(),
+    executors: [],
     models: null,
     writeSurface: 'agent_tools',
     ...overrides,
@@ -204,4 +207,116 @@ test('the catalogue states that a binding is a channel and never a project', () 
   assert.match(rendered, /will\s+not have the agent in it/)
   // A DM is not a placement anybody arranges, so it is never offered as one.
   assert.match(rendered, /direct messages — not a binding anybody arranges/)
+})
+
+/**
+ * The Designer could not see an executor at all: the block had sections for
+ * parameters, tools, models, cloud-browser setup and the proposal card, and
+ * none for the machines an agent actually runs work on. Asked which executors
+ * it could assign, it answered that it could only see agents.
+ *
+ * The three states are the model catalogue's, deliberately, because the
+ * failure they prevent is the same one: a read that failed must never be
+ * reported as a deployment with nothing in it.
+ */
+const executor = (
+  over: Partial<GlobalAgentExecutorFacts> = {},
+): GlobalAgentExecutorFacts => ({
+  canManage: true,
+  executorId: '11111111-0000-4000-8000-00000000aaaa',
+  label: 'Ondrej’s Mac',
+  lastSeenAt: '2026-09-18T08:00:00.000Z',
+  operationKeys: ['file.read', 'command.run', 'workspace.promote'],
+  profiles: ['workspace_sandbox'],
+  revision: 3,
+  scopeKind: 'organization',
+  status: 'online',
+  ...over,
+})
+
+test('an unreadable executor list says so rather than claiming there are none', () => {
+  const rendered = block({ executors: null })
+  assert.match(rendered, /could not be read just now/)
+  assert.match(rendered, /never tell somebody they have none/)
+  assert.doesNotMatch(rendered, /Executors you can reach/)
+})
+
+test('a deployment with no reachable executor sends the person to pairing', () => {
+  const rendered = block({ executors: [] })
+  assert.match(rendered, /no executor you can reach/)
+  assert.match(rendered, /\/agents\/executors/)
+  // "None" is a fact, not a failed read.
+  assert.doesNotMatch(rendered, /could not be read just now. Say/)
+})
+
+test('a reachable executor is stated in full, from the reads that scope it', () => {
+  const rendered = block({ executors: [executor()] })
+  assert.match(rendered, /Executors you can reach \(1\)/)
+  assert.match(rendered, /Ondrej’s Mac \| executorId=11111111-0000-4000-8000-00000000aaaa/)
+  assert.match(rendered, /scope=organization/)
+  assert.match(rendered, /status=online/)
+  assert.match(rendered, /profiles=workspace_sandbox/)
+  assert.match(rendered, /last seen: 2026-09-18T08:00:00\.000Z/)
+  assert.match(rendered, /active policy revision 3 offers: file\.read, command\.run, workspace\.promote/)
+  // The visibility claim is the person's, never the deployment's.
+  assert.match(rendered, /This is your entitlement, not the deployment's/)
+})
+
+test('a project-scoped executor names its project, and a status detail travels', () => {
+  const rendered = block({
+    executors: [executor({
+      projectId: '22222222-0000-4000-8000-00000000bbbb',
+      scopeKind: 'project',
+      status: 'error',
+      statusDetail: 'The daemon stopped reporting.',
+    })],
+  })
+  assert.match(rendered, /scope=project project=22222222-0000-4000-8000-00000000bbbb/)
+  assert.match(rendered, /status detail: The daemon stopped reporting\./)
+})
+
+test('the three local-MCP states survive the summary', () => {
+  const never = block({ executors: [executor()] })
+  assert.match(never, /this executor has never reported its local MCP status/)
+
+  const reported = block({ executors: [executor({ localMcp: [] })] })
+  assert.match(reported, /reported, and names no local MCP server/)
+  assert.doesNotMatch(reported, /never reported its local MCP status/)
+
+  const named = block({
+    executors: [executor({
+      localMcp: [{
+        available: false,
+        observedAt: '2026-09-18T07:00:00.000Z',
+        reason: 'not_installed',
+        server: 'kelpie',
+      }],
+      localMcpObservedAt: '2026-09-18T07:00:00.000Z',
+    })],
+  })
+  assert.match(named, /kelpie=unavailable reason=not_installed/)
+  assert.match(named, /observed 2026-09-18T07:00:00\.000Z/)
+})
+
+test('an executor the person may not administer is unreadable, never empty', () => {
+  const rendered = block({ executors: [executor({ canManage: false })] })
+  assert.match(rendered, /not readable with your access/)
+  // "You may not read it" is a different fact from "it has never reported",
+  // and rendering the second would state something nobody established.
+  assert.doesNotMatch(rendered, /never reported its local MCP status/)
+  assert.doesNotMatch(rendered, /active policy revision/)
+})
+
+test('an executor with no activated revision says so rather than offering nothing', () => {
+  const rendered = block({
+    executors: [executor({ operationKeys: undefined, revision: undefined })],
+  })
+  assert.match(rendered, /no capability revision has been activated on it yet/)
+})
+
+test('the block states that an executor grant is whole-suite, never a pick', () => {
+  const rendered = block({ executors: [executor()] })
+  assert.match(rendered, /whole-suite and never a per-operation pick/)
+  assert.match(rendered, /minus workspace\.promote/)
+  assert.match(rendered, /never grant an executor to yourself or to any agent/)
 })

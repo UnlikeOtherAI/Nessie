@@ -80,6 +80,42 @@ file is the rule**.
   with the `createAgentTrigger` refusal: remove either and an unattended run
   reconstructing an absent creator's `effectiveUserId` creates agents and
   channels as that person. Delegated reads it opens feed the disclosure sink.
+- **An executor grant to an agent is whole-suite, never a per-operation pick by
+  an agent.** If an agent has access to an executor, it has access to the whole
+  suite of things available on that executor:
+  `{ kind: 'agent_executor_grant'; agentId; state }` covers every operation key
+  the executor's **active** capability revision names, intersected with
+  `IMPLEMENTED_EXECUTOR_OPERATION_KEYS` and **excluding `workspace.promote`**,
+  whose daemon path is real but which stays out of every model-facing toolset
+  because only a person may issue a reviewed promotion. The stored change names
+  no key: the set is derived at apply time
+  (`resolveExecutorWholeSuiteOperationKeys`, over the one derivation
+  `executorWholeSuiteOperationKeys` in `@nessie/schemas`), so a prepared change
+  cannot grant an operation the reviewed revision does not offer, and a denial
+  writes the same set denied rather than leaving a stale allow. An allow
+  requires fresh verification exactly as one operation does, and confirming
+  updates both halves — the logical executor tool policy first, so a failure is
+  fail-closed — for every key in the set. The per-operation kind and its tool
+  stay: a *person* may still pick one capability on the Executors page. What no
+  agent may do is issue that pick, because one confirmation per operation key
+  is how an ordinary "let the researcher use my Mac" became a dozen reviews.
+  `docs/global-agents.md`.
+- **Executor management is gated on the delegation predicate, not on the
+  Personal Assistant's kind.** `worker/src/run/pa-tools/executors.ts` keyed its
+  gate on `agentKind === 'personal_assistant'` AND the PA's own
+  `systemChannelType`, which is exactly the defect
+  `runDelegatesToRequestingPerson` was written to remove — the Agent Designer is
+  `agentKind: 'shared'` and delegates as completely inside its own home DM, so
+  the whole executor estate was invisible to it with no failing check anywhere.
+  The predicate replaces the kind test and nothing else: both its arms are
+  surface-keyed, so a shared channel and a non-delegating agent are still
+  refused, and `run.originatingUserId === actingUserId` still refuses an
+  unattended run, which has no requester to act as and must never reconstruct
+  one. A run with no loaded conversation fails closed. What the Designer reads
+  through it is `listVisibleExecutors`' own entitlement — the person's, never
+  wider — and the reviewed policy and local MCP report stay the administrator's
+  read they already were.
+
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored
   `system` brief — the trigger-kickoff mechanism, never the integration
@@ -157,7 +193,8 @@ lock anyone out. Invariants — the CHECKs, the ensure/policy-merge shape, the
 binding, trigger and run-placement refusals, the un-gated list arm, the
 delegation predicate with its one-arm identity-tool gate, and the handoff
 bounds: stated above. The mechanics —
-the Designer's toolset and shared reads, the generated capability catalogue,
+the Designer's toolset and shared reads (the three executor verbs included),
+the generated capability catalogue and its executor section,
 `agent_handoff`'s delivery, the sidebar's second face, the address book and
 the disabled detail surface: [docs/global-agents.md](../global-agents.md). Spec:
 [docs/plans/2026-09-02-agent-designer-global-agent.md](../plans/2026-09-02-agent-designer-global-agent.md).

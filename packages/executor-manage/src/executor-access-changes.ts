@@ -11,6 +11,7 @@ import {
   removePrivateAssignmentInTransaction,
   requireManagedExecutor,
   setExecutorAgentOperationGrantInTransaction,
+  setExecutorAgentWholeSuiteGrantInTransaction,
   setPrivateAssignmentInTransaction,
 } from './executor-access-mutations.js'
 import {
@@ -48,6 +49,19 @@ export type ExecutorAccessChange =
       state: 'allowed' | 'denied'
     }
   | {
+      /**
+       * The whole suite this executor offers, in one prepared change.
+       *
+       * It names no operation key: "access to an executor" is access to
+       * everything on it, so the set is derived from the active capability
+       * revision when the change is applied, never picked by whoever prepared
+       * it.
+       */
+      kind: 'agent_executor_grant'
+      agentId: string
+      state: 'allowed' | 'denied'
+    }
+  | {
       kind: 'lifecycle'
       action: ExecutorLifecycleAction
     }
@@ -74,6 +88,9 @@ type StoredAccessChange = {
 export const requiresFreshExecutorVerification = (change: ExecutorAccessChange): boolean =>
   change.kind === 'private_assignment'
   || (change.kind === 'agent_operation_grant' && change.state === 'allowed')
+  // The same rule as one operation, for the same reason: widening what an
+  // agent may reach on somebody's machine is the moment to re-prove the human.
+  || (change.kind === 'agent_executor_grant' && change.state === 'allowed')
   || (change.kind === 'lifecycle' && change.action === 'revoke')
   || (change.kind === 'descriptor_review' && change.status === 'active')
 
@@ -119,6 +136,13 @@ const parseStoredAccessChange = (value: unknown): StoredAccessChange | null => {
     return stored as StoredAccessChange
   }
   if (
+    change.kind === 'agent_executor_grant'
+    && typeof change.agentId === 'string'
+    && (change.state === 'allowed' || change.state === 'denied')
+  ) {
+    return stored as StoredAccessChange
+  }
+  if (
     change.kind === 'lifecycle'
     && ['pause', 'resume', 'drain', 'revoke'].includes(change.action)
   ) {
@@ -157,6 +181,13 @@ const applyChange = async (
       executorId,
       agentId: change.agentId,
       operationKey: change.operationKey,
+      state: change.state,
+    })
+  }
+  if (change.kind === 'agent_executor_grant') {
+    return setExecutorAgentWholeSuiteGrantInTransaction(tx, actorContext, {
+      executorId,
+      agentId: change.agentId,
       state: change.state,
     })
   }

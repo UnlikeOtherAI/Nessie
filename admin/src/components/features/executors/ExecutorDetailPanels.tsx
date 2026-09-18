@@ -125,6 +125,8 @@ export const ExecutorDetailPanels = ({
   const [grantAgentId, setGrantAgentId] = useState('')
   const [grantOperation, setGrantOperation] = useState<ImplementedExecutorOperationKey>('file.read')
   const [grantState, setGrantState] = useState<'allowed' | 'denied'>('allowed')
+  const [suiteAgentId, setSuiteAgentId] = useState('')
+  const [suiteState, setSuiteState] = useState<'allowed' | 'denied'>('allowed')
   const [error, setError] = useState<string | null>(null)
   const prepare = usePrepareExecutorAccessChange()
 
@@ -350,6 +352,43 @@ export const ExecutorDetailPanels = ({
                 </select>
               </div>
               <button className="admin-button admin-button-secondary justify-self-start" disabled={prepare.isPending} type="submit">Review operation change</button>
+            </form>
+          ) : null}
+          {canManage ? (
+            <form className="grid gap-2 border-t border-[color:var(--sep)] pt-3" onSubmit={(event) => {
+              event.preventDefault()
+              if (!suiteAgentId) return setError('Choose an agent.')
+              void submitPrepared({
+                kind: 'agent_executor_grant',
+                agentId: suiteAgentId,
+                state: suiteState,
+              })
+            }}>
+              <p className="text-xs font-semibold text-[color:var(--tx)]">Grant this agent the whole executor</p>
+              {/* The per-operation form above stays: it is how a person picks
+                  one capability. This one is the whole suite in a single
+                  confirmation, which is what an agent is ever given — every
+                  operation the active reviewed policy names, except promoting
+                  a draft back to the host, which only a person can issue. */}
+              <p className="text-xs text-[color:var(--tx3)]">
+                Every operation this executor’s active reviewed policy offers, in one change, except
+                workspace.promote. The confirmation lists them before anything is applied.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <select className="admin-input" onChange={(event) => setSuiteAgentId(event.target.value)} value={suiteAgentId}>
+                  <option value="">Choose agent</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agentSelectionLabel(agent.name, agent.visibility)}
+                    </option>
+                  ))}
+                </select>
+                <select className="admin-input" onChange={(event) => setSuiteState(event.target.value as 'allowed' | 'denied')} value={suiteState}>
+                  <option value="allowed">Allow the whole suite</option><option value="denied">Deny the whole suite</option>
+                </select>
+                <span />
+              </div>
+              <button className="admin-button admin-button-secondary justify-self-start" disabled={prepare.isPending} type="submit">Review whole-executor grant</button>
             </form>
           ) : null}
         </div>

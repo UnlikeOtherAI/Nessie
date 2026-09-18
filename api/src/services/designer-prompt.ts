@@ -3,6 +3,7 @@ import {
   buildGlobalAgentCatalogueBlock,
   type AgentToolCatalog,
 } from '@nessie/team-admin'
+import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 import type { z } from 'zod'
 
 import type { DesignerChatBodySchema } from '../contracts/designer.js'/**
@@ -178,6 +179,14 @@ export const DESIGNER_TOOLS = [
 export type DesignerPromptInput = {
   /** This organisation's live tool catalogue — the member-safe projection. */
   catalogue: AgentToolCatalog
+  /**
+   * The executors this person may reach, or `null` when the read failed.
+   *
+   * This face holds no tools at all, so the catalogue block is the only way it
+   * ever learns an executor exists. Without it the Designer answered, in the
+   * sidebar, that it could only see agents.
+   */
+  executors: GlobalAgentExecutorFacts[] | null
   formState: DesignerChatInput['formState']
   availableModels: DesignerChatInput['availableModels']
   organizationId: string
@@ -213,6 +222,7 @@ export const buildDesignerSystemPrompt = (
     '',
     buildGlobalAgentCatalogueBlock({
       catalogue: input.catalogue,
+      executors: input.executors,
       // The browser's own list, in the model picker's order: `set_model` only
       // lands if the pair it names is one the open form can resolve, and the
       // picker's order is what makes "the leading model" mean anything.

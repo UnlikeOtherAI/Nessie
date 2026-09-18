@@ -134,7 +134,9 @@ organisation's choice.
 ## The Designer's toolset
 
 The toolset is the blueprint's `identityToolIds`: the five Personal Assistant
-provisioning verbs, the three team-structure verbs below, plus
+provisioning verbs, the three team-structure verbs below, the three executor
+verbs (`executor_list`, `executor_inspect`, `executor_agent_grant_prepare` —
+see "The executors an agent can be given"), plus
 `agent_read`, `agent_update`, `agent_tool_catalog`, `agent_avatar_generate` and
 `agent_avatar_update` — `personalAssistantOnly` builtins whose handlers live in
 `worker/src/run/pa-tools/agent-config.ts` over shared
@@ -206,6 +208,86 @@ is assembled into the Designer's system prompt, and an organisation-level style
 would put one person's free text in instruction position inside every member's
 run. `style` is durable and remembered; `instructions` describe one portrait and
 are forgotten.
+
+## The executors an agent can be given
+
+The Designer could not see a paired executor at all. Asked to show the ones it
+could assign to an agent, it answered that it could only see agents — truthfully
+for what it held: the generated catalogue had sections for parameters, tools,
+models, cloud-browser setup and the proposal card and none for executors, and
+the blueprint listed no `executor_*` id.
+
+Three ids are now in `identityToolIds` (and `toolPolicy`): `executor_list`,
+`executor_inspect` and `executor_agent_grant_prepare`. None of them carries
+`identityDelegatedOnly` — that flag *removes* the Personal Assistant's arm, and
+the PA keeps its executor tools.
+
+**An executor grant to an agent is whole-suite, never a per-operation pick by
+an agent.** `executor_agent_grant_prepare` prepares one
+`{ kind: 'agent_executor_grant', agentId, state }` change covering every
+operation key the executor's **active** capability revision names, intersected
+with `IMPLEMENTED_EXECUTOR_OPERATION_KEYS` and minus `workspace.promote` —
+whose daemon path is real but which stays out of every model-facing toolset
+because only a person may issue a reviewed promotion. The set is *derived when
+the change is applied* (`resolveExecutorWholeSuiteOperationKeys`), not stored,
+so a prepared change cannot name an operation the reviewed revision does not
+offer; the executor's `authorizationRevision` fence refuses one prepared before
+a review anyway. `executorWholeSuiteOperationKeys` (`@nessie/schemas`) is the
+one derivation, and the confirmation dialog enumerates from it. Denying writes
+the same set denied rather than leaving a stale allow behind, and the whole
+suite costs **one** authorization bump rather than one per key.
+
+The per-operation kind (`agent_operation_grant`) and its tool
+(`executor_agent_access_prepare`) are untouched: a person picking one
+capability on the Executors page is still a thing to do. What no agent can do
+is issue that pick — one confirmation per operation key is how "let the
+researcher use my Mac" became a dozen reviews.
+
+Confirming either kind updates **both halves**, policy half first so a failure
+is fail-closed: an agent needs the exact executor-operation grant *and* the
+matching logical executor tool policy, so `POST
+/api/executor-access-changes/:id/confirm` walks the derived key set through
+`setAgentToolPolicyForRegistryEntry` before `confirmExecutorAccessChange`
+applies the resource grants.
+
+The surface is the Operations tab of the executor detail screen: a
+"Grant this agent the whole executor" form beside the per-operation one, and a
+confirmation (`ExecutorGrantedSuite`) that names the agent and lists every
+operation it is about to be able to run. The stored change is
+`{"kind":"agent_executor_grant","agentId":"…","state":"allowed"}` — a bare kind
+string and a uuid — so this is the one kind whose JSON tells a person nothing.
+
+### What the catalogue states, and what it withholds
+
+`GlobalAgentCatalogueFacts.executors` has the model catalogue's three states
+for the model catalogue's reason: `null` is "could not be read just now" and is
+said out loud, `[]` is "this deployment has none you can reach, pairing happens
+on the Executors page", and an array is the live list.
+`listExecutorCatalogueFacts` (`@nessie/executor-manage`) builds it on
+`listVisibleExecutors` plus `getExecutorAccessView` per executor — **the same
+entitlement-scoped reads the Executors page and `executor_inspect` make, and no
+wider**. "All executors" means all the requesting person is entitled to see:
+organization scope, project scope they belong to or manage, private scope they
+are assigned.
+
+Per executor it states the label, the `executorId`, the scope kind and its
+project, the status and status detail, last seen, the profiles, the operation
+keys the active revision offers, and the last-observed local MCP report. That
+report keeps the executor standard's absent-is-not-empty rule through one
+shared renderer, `formatExecutorLocalMcp`, which the Personal Assistant's
+`formatLocalMcp` now re-exports rather than duplicating.
+
+The reviewed policy and the local MCP report are an **administrator's** read:
+`executor_inspect` withholds both from somebody who may merely use a machine,
+and so does this block. Somebody without that standing is told the detail is
+*unreadable with their access* — never that the daemon has never reported,
+which is a fact about that machine nobody established.
+
+Both faces supply it best-effort with `.catch(() => null)`:
+`worker/src/run/execute/global-agent-catalogue.ts` in its existing
+`Promise.all`, and `api/src/services/designer.ts` beside
+`loadAgentToolCatalog`. The sidebar face is the load-bearing one — it can call
+no tools, so the block is the only way it ever learns an executor exists.
 
 ## Standing up a place to work: project → team → channel
 
@@ -344,6 +426,10 @@ from the contracts that validate them, tools from `BUILTIN_TOOL_DEFINITIONS`
 plus the organisation's live registry rows, and models from the same catalogue
 the model picker reads. Hand-written parameter or tool prose is forbidden: a new
 tool is in the Designer's knowledge the deploy it ships.
+
+`executors` follows `models`' three-state discipline exactly, and its own
+section lives in `global-agent-executor-catalogue.ts` because the main file was
+already at the size where a sixth subject would push it past the cap.
 
 Its `writeSurface` decides the one closing instruction, because the two faces
 genuinely differ — `agent_tools` for a run holding the write verbs,

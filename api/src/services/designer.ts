@@ -19,6 +19,7 @@ import {
   loadAgentToolCatalog,
   resolveGlobalAgentModel,
 } from '@nessie/team-admin'
+import { listExecutorCatalogueFacts } from '@nessie/executor-manage'
 import type { FastifyReply } from 'fastify'
 import { isWebSearchConfigured } from './web-search.js'
 import {
@@ -352,9 +353,19 @@ export const streamDesignerChat = async (
   // source, and this is the member-safe projection `agent_tool_catalog` uses.
   // Read BEFORE the stream opens, so a database failure is an ordinary route
   // error rather than a half-written event stream.
-  const catalogue = await loadAgentToolCatalog(usageContext.prisma, {
-    organizationId: usageContext.actorContext.tenant.organizationId,
-  })
+  // The executors are read here for the same reason and in the same breath:
+  // this face has no tools, so if the block does not carry them the Designer
+  // cannot know a paired machine exists. Best-effort, exactly as the worker
+  // face reads them — `null` is "could not be read", never "there are none".
+  const [catalogue, executors] = await Promise.all([
+    loadAgentToolCatalog(usageContext.prisma, {
+      organizationId: usageContext.actorContext.tenant.organizationId,
+    }),
+    listExecutorCatalogueFacts(
+      usageContext.prisma,
+      usageContext.actorContext,
+    ).catch(() => null),
+  ])
   const eligibleToolIds = new Set(catalogue.togglable.map((tool) => tool.key))
 
   // Writing to reply.raw directly bypasses @fastify/cors, so the cross-origin
@@ -375,6 +386,7 @@ export const streamDesignerChat = async (
       content: buildDesignerSystemPrompt({
         availableModels: input.availableModels,
         catalogue,
+        executors,
         formState: input.formState,
         organizationId: usageContext.actorContext.tenant.organizationId,
         ...(input.pageContext ? { pageContext: input.pageContext } : {}),

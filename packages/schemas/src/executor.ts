@@ -178,6 +178,37 @@ export const ImplementedExecutorOperationKeySchema = z.enum(
   IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
 )
 
+/**
+ * The operation a person alone may issue, and therefore the one operation a
+ * whole-suite grant to an agent never contains.
+ *
+ * `workspace.promote` has a real daemon path, which is why it stays in the
+ * implemented catalog — but it is deliberately absent from the model-facing
+ * toolset: promoting a reviewed draft back onto somebody's host root is a
+ * reviewed human act, not a capability an agent is handed with the rest.
+ */
+export const HUMAN_ONLY_EXECUTOR_OPERATION_KEYS = [
+  'workspace.promote',
+] as const satisfies readonly ImplementedExecutorOperationKey[]
+
+/**
+ * The whole suite an executor offers an agent: every operation key its ACTIVE
+ * capability revision names, kept to the implemented catalog and minus the
+ * human-only ones.
+ *
+ * An executor grant to an agent is whole-suite by construction. Deriving the
+ * set here — from the revision a person reviewed — is what makes the rule
+ * "if an agent has access to an executor, it has the whole suite available on
+ * that executor" a property of the code rather than of whoever assembled the
+ * list, and it is the same function the confirmation dialog enumerates from.
+ */
+export const executorWholeSuiteOperationKeys = (
+  revisionOperationKeys: readonly string[],
+): ImplementedExecutorOperationKey[] =>
+  IMPLEMENTED_EXECUTOR_OPERATION_KEYS.filter((key) =>
+    revisionOperationKeys.includes(key)
+    && !(HUMAN_ONLY_EXECUTOR_OPERATION_KEYS as readonly string[]).includes(key))
+
 /** Arguments accepted by the first read-only workspace backend. */
 export const ExecutorFileListArgumentsSchema = z
   .object({
@@ -1005,6 +1036,15 @@ export const ExecutorAccessChangeRequestSchema = z.union([
     kind: z.literal('agent_operation_grant'),
     agentId: AgentIdSchema,
     operationKey: ImplementedExecutorOperationKeySchema,
+    state: ExecutorAgentOperationGrantStateSchema,
+  }).strict(),
+  // The whole suite in one prepared change. It names no operation key on
+  // purpose: the set is derived at apply time from the revision the person
+  // reviewed, so a change prepared before a revision landed cannot grant an
+  // operation that revision does not offer.
+  z.object({
+    kind: z.literal('agent_executor_grant'),
+    agentId: AgentIdSchema,
     state: ExecutorAgentOperationGrantStateSchema,
   }).strict(),
   z.object({

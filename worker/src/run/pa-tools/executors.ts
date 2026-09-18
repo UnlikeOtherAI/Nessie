@@ -1,4 +1,5 @@
 import {
+  formatExecutorLocalMcp,
   getExecutorAccessView,
   getExecutorForUser,
   listVisibleExecutors,
@@ -12,24 +13,48 @@ import {
   parseAgentId,
   parseUserId,
   type AuthorizedActionContext,
-  type ExecutorLocalMcpReport,
 } from '@nessie/schemas'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
+import { runDelegatesToRequestingPerson } from '../delegated-identity.js'
 import { requireActingUserId } from './access.js'
 import { formatSection } from './tool-output.js'
 
-const requireExecutorPersonalAssistant = (
+/**
+ * The surface an executor tool may act on: a run that delegates to the person
+ * it is talking to, in that person's own private room.
+ *
+ * It used to be keyed on `agentKind === 'personal_assistant'` plus the PA's own
+ * channel type. That is the defect `runDelegatesToRequestingPerson` was written
+ * to remove — the Agent Designer is `agentKind: 'shared'` and delegates just as
+ * completely inside its own home DM, so keying on the kind made the whole
+ * executor estate invisible to it with no failing check anywhere.
+ *
+ * The predicate replaces the kind test, NOT the equality test below it. Both
+ * arms of the predicate are surface-keyed, so a shared channel and a
+ * non-delegating agent are still refused; `originatingUserId === actingUserId`
+ * is what additionally refuses an unattended run, which has no requester to act
+ * as and must never reconstruct one.
+ */
+const requireDelegatedExecutorSurface = (
   context: BuiltinToolRuntimeContext,
 ): AuthorizedActionContext => {
   const userId = requireActingUserId(context)
+  const runContext = context.runContext
   if (
-    context.agentKind !== 'personal_assistant'
-    || context.channel.systemChannelType !== 'personal_assistant'
+    !runContext
+    || !runDelegatesToRequestingPerson({
+      agentKind: runContext.agent.agentKind,
+      dmKey: runContext.channel.dmKey,
+      organizationId: runContext.channel.organizationId,
+      systemChannelType: runContext.channel.systemChannelType,
+      systemSlug: runContext.agent.systemSlug,
+    })
     || context.run.originatingUserId !== userId
   ) {
     throw new Error(
-      'Executor management is available only in the requesting user’s Personal Assistant conversation.',
+      'Executor management is available only in the requesting user’s own private '
+      + 'conversation with an assistant that acts with their authority.',
     )
   }
   return {
@@ -109,7 +134,7 @@ const prepare = async (
   executorId: string,
   change: ExecutorAccessChange,
 ): Promise<ToolExecutionResult> => {
-  const actorContext = requireExecutorPersonalAssistant(context)
+  const actorContext = requireDelegatedExecutorSurface(context)
   const prepared = await prepareExecutorAccessChange(context.prisma, actorContext, {
     executorId,
     change,
@@ -130,7 +155,7 @@ const prepare = async (
 export const runExecutorListTool = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<ToolExecutionResult> => {
-  const actorContext = requireExecutorPersonalAssistant(context)
+  const actorContext = requireDelegatedExecutorSurface(context)
   const executors = await listVisibleExecutors(context.prisma, actorContext)
   return {
     inputSummary: '',
@@ -142,58 +167,20 @@ export const runExecutorListTool = async (
 }
 
 /**
- * What the daemon last observed about its named MCP servers, in the few lines
- * a Personal Assistant answer can carry.
+ * The local MCP summary, from the one definition in `@nessie/executor-manage`.
  *
- * Three states must survive the summary because they lead to different
- * actions: never reported at all, reported-and-named-nothing, and named but
- * unavailable with the reason why. The instance list is Kelpie's, and it is
- * stated as last-observed with its own age — a caller that reads it as live
- * will send somebody to a browser that has moved or gone.
+ * Re-exported under its established name because it is not only this tool's
+ * answer any more: the Agent Designer's generated design catalogue renders the
+ * same three states, and two copies is how one of them quietly loses the
+ * difference between "has never reported" and "reports nothing".
  */
-export const formatLocalMcp = (
-  localMcp: ExecutorLocalMcpReport | undefined,
-  observedAt: string | undefined,
-): string => {
-  if (localMcp === undefined) {
-    return formatSection('Local MCP servers', ['- this executor has never reported its local MCP status'])
-  }
-  if (localMcp.length === 0) {
-    return formatSection('Local MCP servers', ['- reported, and names no local MCP server'])
-  }
-  const age = observedAt ? ` (observed ${observedAt})` : ''
-  return formatSection(`Local MCP servers${age}`, localMcp.flatMap((status) => {
-    const head = status.available
-      ? `- ${status.server}=available${
-        status.serverVersion ? ` version=${status.serverVersion}` : ''
-      }${status.toolCount === undefined ? '' : ` tools=${status.toolCount}`}`
-      : `- ${status.server}=unavailable reason=${status.reason ?? 'unstated'}`
-    if (status.kelpieDevices === undefined) return [head]
-    if (status.kelpieDevices.length === 0) {
-      return [head, '  instances: none announced on that network']
-    }
-    return [
-      head,
-      // Bounded: a Personal Assistant answer is read, not scrolled, and the
-      // wire contract already allows up to 32.
-      ...status.kelpieDevices.slice(0, 8).map((device) => (
-        `  - ${device.name}${device.model ? ` (${device.model})` : ''} ${device.platform}`
-        + `${device.version ? ` v${device.version}` : ''} at ${device.address}:${device.port}`
-        + ` ${device.paired ? 'paired' : 'NOT paired — a person must pair on the device'}`
-        + ` last seen ${device.lastSeenAt}`
-      )),
-      ...(status.kelpieDevices.length > 8
-        ? [`  - …and ${status.kelpieDevices.length - 8} more`]
-        : []),
-    ]
-  }))
-}
+export const formatLocalMcp = formatExecutorLocalMcp
 
 export const runExecutorInspectTool = async (
   context: BuiltinToolRuntimeContext,
   input: { executorId: unknown },
 ): Promise<ToolExecutionResult> => {
-  const actorContext = requireExecutorPersonalAssistant(context)
+  const actorContext = requireDelegatedExecutorSurface(context)
   const executorId = requireId(input.executorId, 'executorId')
   const [found, access] = await Promise.all([
     getExecutorForUser(context.prisma, actorContext, executorId),
@@ -231,7 +218,7 @@ export const runExecutorInspectTool = async (
 export const runExecutorPairTool = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<ToolExecutionResult> => {
-  requireExecutorPersonalAssistant(context)
+  requireDelegatedExecutorSurface(context)
   return {
     inputSummary: '',
     outputPreview:
@@ -284,6 +271,29 @@ export const runExecutorAgentAccessPrepareTool = async (
   })
 }
 
+/**
+ * Give one agent the whole suite an executor offers, as one prepared change.
+ *
+ * The product rule is that access to an executor is access to everything on
+ * it, so this tool names no operation key: the set is derived when the person
+ * confirms it, from the capability revision they themselves reviewed. That is
+ * also what keeps it to ONE confirmation — the per-operation door would make
+ * an ordinary "let the researcher use my Mac" a dozen separate reviews.
+ */
+export const runExecutorAgentGrantPrepareTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { agentId: unknown; executorId: unknown; state: unknown },
+): Promise<ToolExecutionResult> => {
+  if (input.state !== 'allowed' && input.state !== 'denied') {
+    throw new Error('state must be allowed or denied.')
+  }
+  return prepare(context, requireId(input.executorId, 'executorId'), {
+    kind: 'agent_executor_grant',
+    agentId: requireId(input.agentId, 'agentId'),
+    state: input.state,
+  })
+}
+
 export const runExecutorPrivateAssignmentPrepareTool = async (
   context: BuiltinToolRuntimeContext,
   input: {
@@ -331,7 +341,7 @@ export const runExecutorWorkspacePromotionPrepareTool = async (
   context: BuiltinToolRuntimeContext,
   input: { reviewCommandId: unknown },
 ): Promise<ToolExecutionResult> => {
-  const actorContext = requireExecutorPersonalAssistant(context)
+  const actorContext = requireDelegatedExecutorSurface(context)
   const encryptionSecret = context.executorCommandEncryptionSecret
   if (!encryptionSecret) {
     throw new Error('Executor promotion review is unavailable because encrypted executor receipt access is not configured.')

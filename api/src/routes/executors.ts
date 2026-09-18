@@ -14,6 +14,7 @@ import {
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   resolveExecutorAvailabilityCandidates,
+  resolveExecutorWholeSuiteOperationKeys,
 } from '@nessie/executor-manage'
 import type { FastifyInstance } from 'fastify'
 import { ImplementedExecutorOperationKeySchema } from '@nessie/schemas'
@@ -387,25 +388,40 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       }
     }
     try {
-      if (accessChange.change.kind === 'agent_operation_grant') {
+      // An agent needs both the exact executor-operation grant and the
+      // matching logical executor tool policy, so the two kinds differ only in
+      // how many keys they carry: one named operation, or the whole suite the
+      // executor's active reviewed policy offers (derived here rather than
+      // stored, exactly as the apply path derives it).
+      const grantChange =
+        accessChange.change.kind === 'agent_operation_grant'
+        || accessChange.change.kind === 'agent_executor_grant'
+          ? accessChange.change
+          : null
+      const grantedOperationKeys = grantChange === null
+        ? []
+        : grantChange.kind === 'agent_operation_grant'
+          ? [ImplementedExecutorOperationKeySchema.parse(grantChange.operationKey)]
+          : await resolveExecutorWholeSuiteOperationKeys(prisma, accessChange.executorId)
+      if (grantChange && grantedOperationKeys.length > 0) {
         const tools = await ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId)
-        const toolRegistryEntryId = tools.get(
-          ImplementedExecutorOperationKeySchema.parse(accessChange.change.operationKey),
-        )
-        if (!toolRegistryEntryId) {
-          throw new Error('Executor logical tool registry is incomplete.')
-        }
         // Apply the policy half first. A stale/failed confirmation can only
         // leave a logical grant without the exact executor-operation grant,
         // which remains fail-closed; the reverse ordering could confirm a
         // resource grant and then strand its mandatory policy update.
-        await setAgentToolPolicyForRegistryEntry(prisma, {
-          agentId: accessChange.change.agentId,
-          actorUserId: actorContext.actor.actorId,
-          enabled: accessChange.change.state === 'allowed',
-          organizationId: actorContext.tenant.organizationId,
-          toolRegistryEntryId,
-        })
+        for (const operationKey of grantedOperationKeys) {
+          const toolRegistryEntryId = tools.get(operationKey)
+          if (!toolRegistryEntryId) {
+            throw new Error('Executor logical tool registry is incomplete.')
+          }
+          await setAgentToolPolicyForRegistryEntry(prisma, {
+            agentId: grantChange.agentId,
+            actorUserId: actorContext.actor.actorId,
+            enabled: grantChange.state === 'allowed',
+            organizationId: actorContext.tenant.organizationId,
+            toolRegistryEntryId,
+          })
+        }
       }
       const result = await confirmExecutorAccessChange(prisma, actorContext, {
         accessChangeId,

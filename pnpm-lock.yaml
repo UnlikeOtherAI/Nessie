@@ -1039,6 +1039,9 @@ importers:
       '@nessie/db':
         specifier: workspace:*
         version: link:../db
+      '@nessie/executor-manage':
+        specifier: workspace:*
+        version: link:../executor-manage
       '@nessie/model-subscriptions':
         specifier: workspace:*
         version: link:../model-subscriptions
