@@ -7,18 +7,45 @@ interface SettingsPanelProps {
   title: string
   actions?: PageHeaderAction[]
   children: ReactNode
+  /**
+   * Pinned below the scroll area, outside it — where a paged list puts its
+   * `PaginationFooter` so the control stays reachable without scrolling to the
+   * end of the rows it pages, and the body above it does not grow and shrink
+   * as pages change. This is the layout `AgentsList` already has.
+   */
+  footer?: ReactNode
+  /** The header's own description line, not a paragraph inside the body. */
+  subtitle?: ReactNode
+  /** The page's `TabBar`, as the header's tabs slot rather than a second bar. */
+  tabs?: ReactNode
 }
 
 /**
  * Shared frame for every admin settings sub-page: the shared page header
- * (eyebrow + title, optional right-aligned actions) over a scrollable body.
+ * (eyebrow + title, optional right-aligned actions, optional description and
+ * tab strip) over a scrollable body, with an optional pinned footer.
  * Mirrors the layout of the governance pages (Audit, Approvals, …) so the
  * admin area reads as one coherent surface.
  */
-export const SettingsPanel = ({ eyebrow, title, actions, children }: SettingsPanelProps) => (
+export const SettingsPanel = ({
+  eyebrow,
+  title,
+  actions,
+  children,
+  footer,
+  subtitle,
+  tabs,
+}: SettingsPanelProps) => (
   <section className="flex h-full min-h-0 flex-col">
-    <ScreenHeader actions={actions} eyebrow={eyebrow} title={title} />
+    <ScreenHeader
+      actions={actions}
+      eyebrow={eyebrow}
+      subtitle={subtitle}
+      tabs={tabs}
+      title={title}
+    />
     <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">{children}</div>
+    {footer ? <div className="px-[var(--page-gutter)]">{footer}</div> : null}
   </section>
 )
 
