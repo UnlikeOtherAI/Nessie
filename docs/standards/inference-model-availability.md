@@ -38,6 +38,15 @@ Nothing the Models page writes can change where a run is dispatched. One column
 never carries two meanings: **this page decides selectability, the control plane
 decides routing.**
 
+### Pre-existing rows are read as decisions, deliberately
+
+A deployment that authored `inference_models` rows before this page existed —
+through the API or the CLI — has its `enabled = false` rows read as "not
+available" from now on. That is the honest reading of the column and it is
+visible and one click from reversible on the page itself, which is better than
+carving out a second flag to mean almost the same thing. Check the page after
+upgrading a deployment that used the control-plane API directly.
+
 ## Disabling is enforced in two places, and both are required
 
 1. **The picker.** `listAgentModelOptionsForUser`
