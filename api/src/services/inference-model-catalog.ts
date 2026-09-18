@@ -68,7 +68,15 @@ const decodeCursor = (cursor: string | undefined): string | null => {
   }
 }
 
-/** How many agents are pinned to each provider/model pair right now. */
+/**
+ * How many agents are pinned to each provider/model pair right now.
+ *
+ * `deletedAt: null` is load-bearing, not hygiene. `Agent` is soft-deleted, and
+ * the count exists so an owner can tell "switching this off strands three
+ * agents" from "nobody uses it" — a number inflated by agents somebody already
+ * deleted answers neither question, and it is the one number on this page a
+ * person acts on.
+ */
 const loadAgentPinCounts = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -76,7 +84,12 @@ const loadAgentPinCounts = async (
   const grouped = await prisma.agent.groupBy({
     _count: { _all: true },
     by: ['provider', 'model'],
-    where: { model: { not: null }, organizationId, provider: { not: null } },
+    where: {
+      deletedAt: null,
+      model: { not: null },
+      organizationId,
+      provider: { not: null },
+    },
   })
   const counts = new Map<string, number>()
   for (const row of grouped) {

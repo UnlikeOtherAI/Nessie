@@ -1,3 +1,5 @@
+import { Fragment } from 'react'
+
 import type { DeploymentModelRecord } from '../../../facades/inference-models/hooks'
 import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'
@@ -113,7 +115,8 @@ export const DeploymentModelsTable = ({
           const id = pairId(model)
           const result = testResults[id]
           return (
-            <tr key={id}>
+            <Fragment key={id}>
+            <tr>
               <td className="min-w-0 py-2.5 pl-4 pr-3 align-middle">
                 <div className="truncate text-sm font-medium text-[color:var(--tx)]">
                   {model.displayName}
@@ -121,20 +124,6 @@ export const DeploymentModelsTable = ({
                 <div className="truncate font-mono text-xs text-[color:var(--tx3)]">
                   {model.model}
                 </div>
-                {result ? (
-                  <div
-                    className={[
-                      'mt-1 text-xs',
-                      result.ok
-                        ? 'text-[color:var(--tx2)]'
-                        : 'text-[color:var(--danger-text)]',
-                    ].join(' ')}
-                    role="status"
-                  >
-                    {result.ok ? `Answered in ${result.latencyMs} ms — ` : 'Did not answer — '}
-                    {result.message}
-                  </div>
-                ) : null}
               </td>
               <td className="hidden w-48 px-3 py-2.5 align-middle text-xs text-[color:var(--tx2)] md:table-cell">
                 {model.providerDisplayName}
@@ -168,6 +157,30 @@ export const DeploymentModelsTable = ({
                 />
               </td>
             </tr>
+            {/* A result gets a row of its own spanning every column. Inside the
+                Model cell, a provider's verbatim refusal widened that column
+                until the switch — the control this table exists for — was
+                pushed out of the frame. Here it wraps instead, and the columns
+                never move. */}
+            {result ? (
+              <tr>
+                <td className="px-4 pb-2.5 pt-0" colSpan={COLUMN_COUNT}>
+                  <p
+                    className={[
+                      'max-w-3xl break-words text-xs',
+                      result.ok
+                        ? 'text-[color:var(--tx2)]'
+                        : 'text-[color:var(--danger-text)]',
+                    ].join(' ')}
+                    role="status"
+                  >
+                    {result.ok ? `Answered in ${result.latencyMs} ms — ` : 'Did not answer — '}
+                    {result.message}
+                  </p>
+                </td>
+              </tr>
+            ) : null}
+            </Fragment>
           )
         })}
       </tbody>
