@@ -43,7 +43,16 @@ export const describeListColumn = (
   section,
 })
 
-export const RETIRED_LIST_COLUMN: ListColumnMessage = { left: 0, right: 0, section: null }
+/**
+ * "There is no pinned column." Only `section` carries meaning here; the rect
+ * is inert, and the shell discards it. It is nonetheless a *positive* rect
+ * because shipped native builds validate every list-column message against
+ * `right > left` before reading its section, and a zero rect was refused —
+ * leaving those builds drawing the channels column's creation control over
+ * sections that have no column. Keeping this rect valid retires that chrome on
+ * builds already in people's hands.
+ */
+export const RETIRED_LIST_COLUMN: ListColumnMessage = { left: 0, right: 1, section: null }
 
 const post = (message: ListColumnMessage): void => {
   ;(window as RnWindow).ReactNativeWebView?.postMessage(
