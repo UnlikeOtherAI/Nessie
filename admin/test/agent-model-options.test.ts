@@ -74,6 +74,46 @@ test('a model resolves only when its provider matches too', () => {
   assert.equal(findModelOption([], 'gpt-5-mini', 'openai'), undefined)
 })
 
+test('two accounts at one provider are told apart by the subscription pointer', () => {
+  // Both rows are (provider, model)-identical: one Kimi plan linked twice is
+  // exactly the case the pair cannot express, and the pointer is the only
+  // thing that distinguishes the row the person clicked.
+  const work = option({
+    accountLabel: 'work',
+    displayName: 'Kimi for Coding',
+    model: 'kimi-for-coding',
+    modelSubscriptionId: '11111111-1111-4111-8111-111111111111',
+    provider: 'subscription/kimi',
+    providerDisplayName: 'Kimi for Coding',
+    source: 'subscription',
+  })
+  const personal = option({
+    ...work,
+    accountLabel: 'personal',
+    modelSubscriptionId: '22222222-2222-4222-8222-222222222222',
+  })
+  const options = [work, personal]
+
+  assert.equal(
+    findModelOption(options, 'kimi-for-coding', 'subscription/kimi', personal.modelSubscriptionId),
+    personal,
+  )
+  assert.equal(
+    findModelOption(options, 'kimi-for-coding', 'subscription/kimi', work.modelSubscriptionId),
+    work,
+  )
+  // No pointer — the Design Assistant names a model, never an account — keeps
+  // the long-standing behaviour of taking the first match.
+  assert.equal(findModelOption(options, 'kimi-for-coding', 'subscription/kimi'), work)
+  // A pointer to an account that is no longer linked resolves to the pair
+  // rather than to nothing: the model is still selectable, and the server
+  // decides which account it may spend.
+  assert.equal(
+    findModelOption(options, 'kimi-for-coding', 'subscription/kimi', 'deadbeef'),
+    work,
+  )
+})
+
 test('the field label repeats the model id only when it differs from the name', () => {
   assert.equal(modelOptionLabel(option({})), 'GPT-5 mini (gpt-5-mini)')
   assert.equal(modelOptionLabel(option({ displayName: 'gpt-5-mini' })), 'gpt-5-mini')

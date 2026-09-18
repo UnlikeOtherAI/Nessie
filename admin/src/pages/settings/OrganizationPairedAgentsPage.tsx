@@ -103,7 +103,6 @@ const OrganizationPairedAgentsBody = () => {
         <PaginationFooter
           canNext={page < totalPages - 1}
           canPrevious={page > 0}
-          className="px-6 py-3"
           label={rows.length === 0 ? 'Nothing paired' : `${rangeStart}–${rangeEnd} of ${rows.length}`}
           onPageChange={setRequestedPage}
           onPageSizeChange={(next) => {

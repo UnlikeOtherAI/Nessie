@@ -53,8 +53,19 @@ export type UseDraftResult<T> = {
   setDraft: (next: T | ((current: T) => T)) => void
   /** Write the buffer now and, when a server lane exists, send it now. */
   flush: () => Promise<void>
-  /** A successful send/save: forget the stored draft and go back to `initial`. */
-  clear: () => void
+  /**
+   * A successful send/save: forget the stored draft and go back to `initial`.
+   *
+   * `settled` is for the case where the save itself decided what the stored
+   * value now is — an entity editor, where `initial` is the record as it was
+   * read and the save has just replaced it. Passing it stops the clear
+   * restoring the values the save superseded. A composer, whose `initial` is
+   * emptiness, passes nothing.
+   *
+   * Call it as `clear()`, never as a bare event handler: a `MouseEvent` handed
+   * to `settled` would be adopted as the draft.
+   */
+  clear: (settled?: T) => void
   /** True when this mount hydrated from a stored draft rather than `initial`. */
   restored: boolean
   /**
@@ -317,13 +328,13 @@ export const useDraft = <T,>(
     await sendToServer(draftRef.current, 'flush')
   }, [persistLocal, sendToServer])
 
-  const clear = useCallback(() => {
+  const clear = useCallback((settled?: T) => {
     cancelLocalTimer()
     cancelServerTimer()
     if (keyRef.current) {
       removeStored(keyRef.current)
     }
-    const next = optionsRef.current.initial
+    const next = settled ?? optionsRef.current.initial
     draftRef.current = next
     storedSignatureRef.current = signatureOf(next)
     savedSignatureRef.current = signatureOf(next)

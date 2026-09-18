@@ -183,7 +183,6 @@ export const ConnectionsPage = () => {
         <PaginationFooter
           canNext={page < totalPages - 1}
           canPrevious={page > 0}
-          className="px-6 py-3"
           label={
             accountRows.length === 0
               ? 'No accounts'

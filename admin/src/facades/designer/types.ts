@@ -17,6 +17,16 @@ export type AgentVisibilityValue = 'private' | 'team'
 export type AgentFormState = {
   effort: AgentEffortValue
   model: string
+  /**
+   * WHICH linked personal subscription the chosen option spends, carried
+   * straight off the picker row. Empty for a Ledger model.
+   *
+   * Part of the selection, not a derivation of it: two accounts at one
+   * provider produce two rows with the same (provider, model), so dropping
+   * this is how a save either picked the wrong account or — when the provider
+   * changed — sent the server a pointer belonging to the previous plan.
+   */
+  modelSubscriptionId: string
   name: string
   provider: string
   role: string

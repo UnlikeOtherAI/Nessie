@@ -85,7 +85,6 @@ export const StatusesPage = () => {
         <PaginationFooter
           canNext={page < totalPages - 1}
           canPrevious={page > 0}
-          className="px-6 py-3"
           label={
             statusRows.length === 0
               ? 'No statuses'
