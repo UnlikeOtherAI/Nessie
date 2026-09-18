@@ -640,20 +640,6 @@ const Shell = (): React.JSX.Element => {
         statusBarStyle,
       )} />
 
-      {showBar && IS_ANDROID ? (
-        <AndroidTabletTabBar
-          activeIndex={index}
-          badgeCounts={attentionBadges}
-          activeIndicatorColor={withOpacity(accent, 0.14)}
-          activeTintColor={accent}
-          bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
-          dark={isDark(bg)}
-          inactiveTintColor={inactive}
-          onIndexChange={onIndexChange}
-          rippleColor={withOpacity(accent, 0.18)}
-        />
-      ) : null}
-
       <View style={webviewLayerStyle}>
         <MobileAdminWebView
           appIcon={appIcon}
@@ -678,6 +664,23 @@ const Shell = (): React.JSX.Element => {
           webviewKey={bootRecovery.webviewKey}
         />
       </View>
+
+      {/* After the WebView layer, not before it: the dock floats over a frame
+          that now reaches the bottom of the window, and a later sibling is
+          what puts it there on Android without relying on `zIndex` alone. */}
+      {showBar && IS_ANDROID ? (
+        <AndroidTabletTabBar
+          activeIndex={index}
+          badgeCounts={attentionBadges}
+          activeIndicatorColor={withOpacity(accent, 0.14)}
+          activeTintColor={accent}
+          bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
+          dark={isDark(bg)}
+          inactiveTintColor={inactive}
+          onIndexChange={onIndexChange}
+          rippleColor={withOpacity(accent, 0.18)}
+        />
+      ) : null}
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
