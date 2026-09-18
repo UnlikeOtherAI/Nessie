@@ -80,14 +80,14 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     type: 'detail',
   },
   {
-    // The team roster, the team/organisation Secrets pages and the
-    // organisation's paired-agent governance view are direct sibling doorways
-    // of their organisation counterparts, not tabs nested inside
+    // The team roster, the team/organisation Secrets pages, the organisation's
+    // paired-agent governance view and its model catalogue are direct sibling
+    // doorways of their organisation counterparts, not tabs nested inside
     // `/settings/team` or `/settings/organization`.
     depth: 1,
     intent: { state: ['tab'] },
     parentOf: toAdmin,
-    pattern: /^\/settings\/(?:team\/(?:members|secrets)|organization\/(?:paired-agents|secrets))$/,
+    pattern: /^\/settings\/(?:team\/(?:members|secrets)|organization\/(?:models|paired-agents|secrets))$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

@@ -315,6 +315,22 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        // Which models this deployment can actually run, and whether this
+        // organisation allows each one. Owner-only for the same reason the
+        // routes are: `requireOwner` guards every one of them, and the test
+        // button spends the organisation's own credits.
+        path: '/settings/organization/models',
+        label: 'Models',
+        ownerOnly: true,
+        icon: icon(
+          <>
+            <rect height="14" rx="2" width="14" x="5" y="5" />
+            <path d="M9 9h6v6H9z" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
         // Whose accounts outside programs are currently borrowing, and whether
         // that is allowed at all. The personal page under User is deliberately
         // self-only, which left an organisation with no view of its own live

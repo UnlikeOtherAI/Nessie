@@ -466,6 +466,14 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
             body.ownerUserId === undefined
               ? existingAgent.ownerUserId
               : body.ownerUserId,
+          // An agent already pinned to a pair the organisation later switched
+          // off keeps running and keeps being editable; only a MOVE onto a
+          // disabled pair is refused. Without this, disabling a model would
+          // block renaming every agent on it.
+          previousSelection: {
+            model: existingAgent.model,
+            provider: existingAgent.provider,
+          },
           provider: nextProvider ?? undefined,
           requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
             actorContext,

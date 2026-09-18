@@ -6,6 +6,10 @@ import {
   requireSubscriptionAdapter,
   subscriptionProviderKeyToColumn,
 } from '@nessie/model-subscriptions'
+import {
+  isModelPairDisabled,
+  loadDisabledModelPairs,
+} from './inference-model-availability.js'
 import { listLedgerAgentModels } from './ledger-agent-model-catalog.js'
 
 /**
@@ -16,6 +20,13 @@ import { listLedgerAgentModels } from './ledger-agent-model-catalog.js'
  * the other. Ledger being unreachable or out of credit must not make a person's
  * own paid subscriptions disappear from the picker — that would take away the
  * one option still able to run.
+ *
+ * The Ledger arm is additionally filtered by the organisation's own
+ * availability decisions (`/settings/organization/models`). A pair an owner
+ * switched off must not be offerable, or the switch would be cosmetic — the
+ * defect AGENTS.md Rule zero check 3 names. Personal subscriptions are NOT
+ * filtered: an organisation owner has no standing over somebody's own consumer
+ * plan (docs/standards/personal-model-subscriptions.md).
  *
  * Spec: docs/plans/2026-09-02-personal-model-subscriptions.md §2.3.
  */
@@ -72,21 +83,29 @@ export const listAgentModelOptionsForUser = async (
     userId: string | null | undefined
   },
 ): Promise<AgentModelOptionsResult> => {
-  const [ledger, subscriptions] = await Promise.allSettled([
-    listLedgerAgentModels({
-      config: input.config,
-      ...(input.ledgerPublicUrl ? { ledgerPublicUrl: input.ledgerPublicUrl } : {}),
-      ...(input.requestHeaders ? { requestHeaders: input.requestHeaders } : {}),
-    }),
-    listSubscriptionModelOptions(prisma, {
-      organizationId: input.organizationId,
-      userId: input.userId,
-    }),
+  // The availability set is awaited alongside the two catalogues but is NOT
+  // one of the independent arms: a read that failed would have to fall open,
+  // and falling open here means offering a pair the owner switched off.
+  const [[ledger, subscriptions], disabled] = await Promise.all([
+    Promise.allSettled([
+      listLedgerAgentModels({
+        config: input.config,
+        ...(input.ledgerPublicUrl ? { ledgerPublicUrl: input.ledgerPublicUrl } : {}),
+        ...(input.requestHeaders ? { requestHeaders: input.requestHeaders } : {}),
+      }),
+      listSubscriptionModelOptions(prisma, {
+        organizationId: input.organizationId,
+        userId: input.userId,
+      }),
+    ]),
+    loadDisabledModelPairs(prisma, input.organizationId),
   ])
 
   const ledgerOptions: AgentModelOption[] =
     ledger.status === 'fulfilled'
-      ? ledger.value.map((option) => ({ ...option, source: 'ledger' as const }))
+      ? ledger.value
+        .filter((option) => !isModelPairDisabled(disabled, option.provider, option.model))
+        .map((option) => ({ ...option, source: 'ledger' as const }))
       : []
   const ledgerError =
     ledger.status === 'rejected'
@@ -102,6 +121,8 @@ export const listAgentModelOptionsForUser = async (
       }
       : null
 
+  // Deliberately unfiltered: an organisation owner may not enable, disable or
+  // spend a person's own consumer plan.
   const subscriptionOptions =
     subscriptions.status === 'fulfilled' ? subscriptions.value : []
 

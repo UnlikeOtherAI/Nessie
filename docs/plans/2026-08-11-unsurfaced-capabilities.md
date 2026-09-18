@@ -20,7 +20,7 @@ field is displayed unless it drives a decision.
 | 1 | Execution runners (`/api/execution-runners`) | **Fix data first, then a section on `/ops`** | Owner (deployment operator) | "Can this deployment execute sandboxed work, and if not why" is a health question, but 558 zombie rows are a worker-registration bug that no UI should paper over. |
 | 1b | Execution env templates / instances / leases / usage-ledger | **Do not build** | — | All four are empty in production; the workflow-sandbox feature is dormant, and instances belong inside workflow-run detail when it wakes up, not on a standalone page nobody visits. |
 | 2 | Audit summary + verify (`/api/audit-log/summary`, `/verify`) | **Fix the 500, then surface on `/audit`** | Owner (compliance/security) | A tamper-evidence chain nobody can trigger is a trust feature that was paid for and never delivered; the summary turns a 50-row scroll into a filterable overview. |
-| 3 | Inference providers / credentials / models / routing profiles | **Surface as `/settings/models`** | Owner | A `draft`+`disabled` provider row silently does nothing while the worker falls back to deployment defaults — invisible configuration that *looks* configured is worse than none. |
+| 3 | Inference providers / credentials / models / routing profiles | **SURFACED (2026-09-18)** as `/settings/organization/models` | Owner | A `draft`+`disabled` provider row silently does nothing while the worker falls back to deployment defaults — invisible configuration that *looks* configured is worse than none. |
 | 4 | Run timing (`/api/ledger/runs/timing`) | **Surface on `/ops/usage`, echo per-run on Agents → Activity** | Owner | "Why was that run slow — queue, model, or tools?" is the first diagnostic question owners ask and the data already answers it. |
 | 5 | Scheduled/upcoming triggers (`/api/triggers/scheduled`, `/upcoming`) | **Surface on `/agents/triggers` + an overdue signal on `/ops`** | Owner | The Triggers page shows configuration but not the *schedule* — "what fires next, and is anything overdue" — which is the operational half of the feature. |
 | 6 | Effective policy (`/api/policy/effective`) | **Surface on `/policy` — gated on one small API addition** | Owner | The rules list shows inputs, not outcomes; but the endpoint is caller-scoped, and a self-only matrix for someone who passes every check is decoration, so build it only together with an owner-only `?userId=` parameter. |
@@ -140,6 +140,32 @@ styling) from `GET /api/audit-log/summary?groupBy=outcome`, plus a second call w
 | `/policy` page header | quiet link, owner-only | "Changes are audited →" | `/audit?action=policy.` (pre-filled action filter — policy mutations already emit `policy.*` audit events) |
 
 ### 2.3 Inference control plane — new page `/settings/models`
+
+> **Shipped 2026-09-18 as `/settings/organization/models`, labelled "Models".**
+> The as-built surface differs from the design below in three deliberate ways,
+> and [`docs/standards/inference-model-availability.md`](../standards/inference-model-availability.md)
+> is the authority for what exists:
+>
+> 1. **The list is Ledger's live catalogue**, left-joined to the organisation's
+>    `inference_models` rows, rather than a read of those rows alone. "Every
+>    model available in the deployment" is what Ledger offers; an absent row
+>    means available, and the first toggle upserts the provider container plus
+>    the model row.
+> 2. **Disabling is enforced**, at `GET /api/agents/models` and at the one
+>    write-time validator `assertAgentModelSelection`. An agent already pinned to
+>    a pair that is later disabled keeps working, and every surface says so —
+>    the decision and its three non-silent surfaces are recorded in the standard.
+> 3. **A per-pair reachability test** (`POST /api/inference/models/test`) was
+>    added, which this spec did not call for: it is the capability the product
+>    owner actually asked for, and it is a real, billed inference call.
+>
+> The three stacked sections below (providers / models / routing profiles with
+> approve + lifecycle) and the "Add provider" dialog are **not** built. They
+> govern routing, which the Models page deliberately does not touch; the
+> provider row it writes stays `draft` so it can never redirect a run. The
+> Agent Designer doorway named at the end of this section IS built, as
+> `ModelUnavailableNotice`. The `/ops/usage` "Configure →" link is not.
+
 
 The worker *does* consume these rows at run time (`worker/src/run/inference-provider.ts`):
 an org provider row supplies `baseUrl` + credential binding **only when**

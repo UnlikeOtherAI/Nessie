@@ -89,6 +89,11 @@ export const OrganizationPairedAgentDetailPage = lazy(() =>
 export const PairedAgentsPage = lazy(() =>
   import('./pages/settings/PairedAgentsPage').then((m) => ({ default: m.PairedAgentsPage })),
 )
+export const OrganizationModelsPage = lazy(() =>
+  import('./pages/settings/OrganizationModelsPage').then(
+    (m) => ({ default: m.OrganizationModelsPage }),
+  ),
+)
 export const OrganizationPairedAgentsPage = lazy(() =>
   import('./pages/settings/OrganizationPairedAgentsPage').then(
     (m) => ({ default: m.OrganizationPairedAgentsPage }),

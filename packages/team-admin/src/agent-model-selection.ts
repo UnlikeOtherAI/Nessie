@@ -7,6 +7,10 @@ import {
   looksLikeSubscriptionProviderColumn,
 } from '@nessie/model-subscriptions'
 import {
+  isModelPairDisabled,
+  loadDisabledModelPairs,
+} from './inference-model-availability.js'
+import {
   assertLedgerAgentModelSelection,
   LedgerAgentModelCatalogError,
   LEDGER_AGENT_MODEL_CATALOG_ERROR_CODES,
@@ -41,6 +45,17 @@ export type AgentModelSelectionInput = {
   actingUserId: string | null | undefined
   /** Who will own the agent afterwards; defaults to the acting user. */
   ownerUserId?: string | null | undefined
+  /**
+   * The pair this agent is on BEFORE the write, when there is one.
+   *
+   * It exists so an organisation disabling a model cannot brick every other
+   * edit of the agents already on it. Disabling takes effect on *new*
+   * selections; an agent already pinned keeps running and keeps being
+   * editable, and the Agent Designer says so where the person is standing.
+   * Omit it on create, which has no previous pair and is therefore always
+   * checked. See docs/standards/inference-model-availability.md.
+   */
+  previousSelection?: { model: string | null | undefined; provider: string | null | undefined }
 }
 
 export type AgentModelSelectionResult = {
@@ -61,7 +76,39 @@ export const AGENT_MODEL_SELECTION_ERROR_CODES = {
   NOT_OWNER: 'AGENT_MODEL_SUBSCRIPTION_NOT_OWNER',
   UNKNOWN_MODEL: 'AGENT_MODEL_SUBSCRIPTION_UNKNOWN_MODEL',
   UNKNOWN_PROVIDER: 'AGENT_MODEL_SUBSCRIPTION_UNKNOWN_PROVIDER',
+  DISABLED: 'AGENT_MODEL_DISABLED_FOR_ORGANIZATION',
 } as const
+
+/**
+ * An organisation owner switched this pair off on
+ * `/settings/organization/models`. Refused here so the switch is real at every
+ * write path — the picker already hides it, and a picker-only filter would be
+ * bypassed by the personal assistant's `agent_create` tool and by any client
+ * posting the pair directly.
+ */
+const assertPairEnabled = async (
+  prisma: PrismaClient,
+  input: {
+    model: string
+    organizationId: string
+    previousSelection: AgentModelSelectionInput['previousSelection']
+    provider: string
+  },
+): Promise<void> => {
+  const unchanged =
+    input.previousSelection?.provider?.trim() === input.provider
+    && input.previousSelection?.model?.trim() === input.model
+  if (unchanged) return
+
+  const disabled = await loadDisabledModelPairs(prisma, input.organizationId)
+  if (isModelPairDisabled(disabled, input.provider, input.model)) {
+    throw new AgentModelSelectionError(
+      AGENT_MODEL_SELECTION_ERROR_CODES.DISABLED,
+      'That model is switched off for this organisation. '
+        + 'An organisation owner can turn it back on under Organization → Models.',
+    )
+  }
+}
 
 export const assertAgentModelSelection = async (
   prisma: PrismaClient,
@@ -82,6 +129,14 @@ export const assertAgentModelSelection = async (
         model: model ?? undefined,
         provider: provider ?? undefined,
         ...(input.requestHeaders ? { requestHeaders: input.requestHeaders } : {}),
+      })
+    }
+    if (provider && model) {
+      await assertPairEnabled(prisma, {
+        model,
+        organizationId: input.organizationId,
+        previousSelection: input.previousSelection,
+        provider,
       })
     }
     // A Ledger selection clears any previous subscription pointer, so the two

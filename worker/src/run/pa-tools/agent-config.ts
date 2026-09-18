@@ -218,6 +218,10 @@ export const runAgentUpdateTool = async (
       organizationId: member.organizationId,
       ownerUserId:
         patch.ownerUserId === undefined ? stored?.ownerUserId ?? null : patch.ownerUserId,
+      // Same grandfathering as the route: an agent already on a pair the
+      // organisation switched off stays editable; moving one onto a disabled
+      // pair is refused.
+      previousSelection: { model: stored?.model, provider: stored?.provider },
       provider: patch.provider ?? stored?.provider ?? undefined,
       requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
         actorContext: member.actorContext,
