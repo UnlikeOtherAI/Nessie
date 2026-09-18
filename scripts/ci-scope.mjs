@@ -24,6 +24,7 @@
 //   code          '1' when any non-documentation file changed
 //   desktop       '1' when the Tauri desktop bundle's inputs changed
 //   windows_native '1' when Windows-native verification inputs changed
+//   images        '1' when a production container image's inputs changed
 //   turbo_scope   '--affected' when narrowing is safe; '' when it is not
 //
 // Local use: `node scripts/ci-scope.mjs` prints the decision and the reason.
@@ -68,6 +69,24 @@ const DESKTOP_PREFIXES = ['desktop/', 'executor/windows-provenance/', 'assets/']
 // cannot silently bypass this gate.
 const WINDOWS_NATIVE_PREFIXES = ['desktop/', 'executor/', 'assets/'];
 
+// Inputs to the three production container images Deploy builds and ships:
+//   admin ← admin/ + packages/ + api/prisma (its Prisma client)
+//   web   ← web/ + packages/
+//   app   ← api/, worker/, cli/, gateway/ + packages/
+// Deliberately narrower than "all code": desktop/, mobile/, macos/, executor/
+// and the test harnesses never enter a production image. Wider is not needed —
+// infrastructure/ (the Dockerfiles), scripts/ and the root manifests already
+// force `full` above, so no change to an image's build context can miss this.
+const IMAGE_PREFIXES = [
+  'admin/',
+  'web/',
+  'api/',
+  'worker/',
+  'cli/',
+  'gateway/',
+  'packages/',
+];
+
 function git(args) {
   return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
 }
@@ -106,6 +125,10 @@ function isDesktop(file) {
 
 export function isWindowsNative(file) {
   return WINDOWS_NATIVE_PREFIXES.some((p) => file.startsWith(p));
+}
+
+export function isImage(file) {
+  return IMAGE_PREFIXES.some((p) => file.startsWith(p));
 }
 
 function decide() {
@@ -151,12 +174,14 @@ function run() {
   const code = decision.full || files.some((f) => !isDocs(f));
   const desktop = decision.full || files.some(isDesktop);
   const windowsNative = decision.full || files.some(isWindowsNative);
+  const images = decision.full || files.some(isImage);
 
   const outputs = {
     full: decision.full ? '1' : '',
     code: code ? '1' : '',
     desktop: desktop ? '1' : '',
     windows_native: windowsNative ? '1' : '',
+    images: images ? '1' : '',
     turbo_scope: decision.full ? '' : '--affected',
   };
 
