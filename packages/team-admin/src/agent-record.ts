@@ -231,6 +231,7 @@ export const mapAgentRecord = (agent: {
   }>
   provider: string | null
   model: string | null
+  modelSubscriptionId: string | null
   effort: AgentEffort
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
@@ -303,6 +304,7 @@ export const mapAgentRecord = (agent: {
       : undefined,
     provider: agent.provider ?? undefined,
     model: agent.model ?? undefined,
+    modelSubscriptionId: agent.modelSubscriptionId ?? undefined,
     effort: agent.effort,
     runLimits: readAgentRunLimits(agent.runLimits) ?? undefined,
     todosEnabled: agent.todosEnabled,

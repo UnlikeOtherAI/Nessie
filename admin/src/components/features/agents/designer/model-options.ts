@@ -37,13 +37,26 @@ export const modelOptionSubtitle = (option: AgentModelOption): string =>
  * the catalogue, so a pair that resolves to nothing — a model the Design
  * Assistant invented, or one Ledger has since withdrawn — is not a selection
  * at all. Callers apply the returned option, never the raw pair.
+ *
+ * `modelSubscriptionId` narrows a person who has linked TWO accounts at one
+ * provider: both accounts contribute a row per model, identical in
+ * (provider, model), and the pointer is the only thing that tells them apart.
+ * Omitted or blank — the Design Assistant names a model, never an account —
+ * the first matching row stands, as it always did.
  */
 export const findModelOption = (
   options: AgentModelOption[],
   model: string,
   provider: string,
-): AgentModelOption | undefined =>
-  options.find((option) => option.model === model && option.provider === provider)
+  modelSubscriptionId?: string,
+): AgentModelOption | undefined => {
+  const matches = options.filter(
+    (option) => option.model === model && option.provider === provider,
+  )
+  if (!modelSubscriptionId) return matches[0]
+  return matches.find((option) => option.modelSubscriptionId === modelSubscriptionId)
+    ?? matches[0]
+}
 
 /**
  * Every whitespace-separated term must match somewhere, so "openai mini" and

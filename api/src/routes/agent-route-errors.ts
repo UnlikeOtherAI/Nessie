@@ -4,7 +4,11 @@ import {
   AgentManagementError,
 } from '../services/agents.js'
 import { AgentEditAuthorityError } from '../services/agent-management.js'
-import { AgentAvatarGenerationError, LedgerAgentModelCatalogError } from '@nessie/team-admin'
+import {
+  AgentAvatarGenerationError,
+  AgentModelSelectionError,
+  LedgerAgentModelCatalogError,
+} from '@nessie/team-admin'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,
@@ -86,5 +90,28 @@ export const sendAgentModelCatalogError = (
 
   const status = error.code === 'LEDGER_AGENT_MODEL_NOT_AVAILABLE' ? 400 : 503
   sendApiError(reply, status, error.code, error.message)
+  return true
+}
+
+/**
+ * A personal-subscription selection this person cannot make: the plan is not
+ * linked, the provider is unknown to the deployment, the model is not one that
+ * provider offers, or the agent's owner is not the person spending.
+ *
+ * Mapped HERE because `assertAgentModelSelection` throws on the same `model` /
+ * `provider` write that `LedgerAgentModelCatalogError` does, and only the
+ * Ledger arm had a mapper: every subscription refusal reached the generic
+ * handler and came back as a 500 "An unexpected error occurred", which is what
+ * saving an agent onto a second linked plan looked like from the form.
+ *
+ * A 400, not a 403: the caller may edit this agent, and the refusal is about
+ * the selection they sent. The validator's own message names what to do.
+ */
+export const sendAgentModelSelectionError = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: unknown,
+): boolean => {
+  if (!(error instanceof AgentModelSelectionError)) return false
+  sendApiError(reply, 400, error.code, error.message)
   return true
 }

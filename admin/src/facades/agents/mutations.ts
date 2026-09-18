@@ -20,6 +20,13 @@ export const useCreateAgent = () => {
       avatarAttachmentId?: string
       effort?: 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
+      /**
+       * Which linked personal subscription a `subscription/<key>` model spends.
+       * `null` — the value a Ledger model sends — leaves the agent on the
+       * deployment's own credits. Sent explicitly because two accounts at one
+       * provider are indistinguishable from (provider, model) alone.
+       */
+      modelSubscriptionId?: string | null
       name: string
       parentAgentId?: string
       provider?: string
@@ -51,6 +58,8 @@ export const useUpdateAgent = () => {
       agentId: string
       effort?: 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
+      /** See `useCreateAgent`: which linked account the model spends. */
+      modelSubscriptionId?: string | null
       name?: string
       /**
        * Ownership transitions: a user id transfers stewardship, `null` releases

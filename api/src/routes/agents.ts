@@ -61,6 +61,7 @@ import {
   sendAgentManagementError,
   sendAgentAvatarGenerationError,
   sendAgentModelCatalogError,
+  sendAgentModelSelectionError,
   sendProtectedPolicyError,
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
@@ -320,6 +321,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       if (sendProtectedPolicyError(reply, error)) return reply
       if (sendAgentManagementError(reply, error)) return reply
       if (sendAgentModelCatalogError(reply, error)) return reply
+      if (sendAgentModelSelectionError(reply, error)) return reply
       if (sendAgentAvatarGenerationError(reply, error)) return reply
       throw error
     }
@@ -441,6 +443,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       // lane this agent runs on.
       let modelSubscriptionId: string | null | undefined
       if (body.model !== undefined || body.provider !== undefined) {
+        const nextProvider = body.provider ?? existingAgent.provider
         const selection = await assertAgentModelSelection(prisma, {
           actingUserId: actorContext.actor.actorId,
           config: deps.config.model,
@@ -448,14 +451,22 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
             ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
             : {}),
           model: body.model ?? existingAgent.model ?? undefined,
+          // The stored pointer is only meaningful for the stored PROVIDER.
+          // Carrying it across a provider change sent a GLM subscription id
+          // in to be validated against the person's Kimi links, where it is
+          // correctly not found — so switching an agent between two personal
+          // plans failed instead of moving it.
           modelSubscriptionId:
-            body.modelSubscriptionId ?? existingAgent.modelSubscriptionId ?? undefined,
+            body.modelSubscriptionId
+            ?? (nextProvider === existingAgent.provider
+              ? existingAgent.modelSubscriptionId ?? undefined
+              : undefined),
           organizationId: actorContext.tenant.organizationId,
           ownerUserId:
             body.ownerUserId === undefined
               ? existingAgent.ownerUserId
               : body.ownerUserId,
-          provider: body.provider ?? existingAgent.provider ?? undefined,
+          provider: nextProvider ?? undefined,
           requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
             actorContext,
             ledgerIdentity: deps.ledgerIdentity,
@@ -532,6 +543,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       if (sendProtectedPolicyError(reply, error)) return reply
       if (sendAgentManagementError(reply, error)) return reply
       if (sendAgentModelCatalogError(reply, error)) return reply
+      if (sendAgentModelSelectionError(reply, error)) return reply
       throw error
     }
     if (!agent) {
