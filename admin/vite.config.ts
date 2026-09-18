@@ -3,7 +3,14 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const apiPort = process.env.NESSIE_API_PORT ?? '5454'
+// Both ports come from the one resolver the `predev` guard and the browser
+// harnesses read, so a worktree that takes its own pair moves the server, the
+// `/api` proxy and the executor's pairing origin together. Hardcoding either
+// here is what made a second checkout unable to run the app at all.
+import { resolveAdminPort, resolveApiPort } from '../scripts/dev-ports.mjs'
+
+const apiPort = String(resolveApiPort())
+const adminPort = resolveAdminPort()
 
 const apiProxy = {
   '/api': {
@@ -82,7 +89,10 @@ export default defineConfig(({ command, mode }) => {
   },
   server: {
     host: '0.0.0.0',
-    port: 5455,
+    port: adminPort,
+    // Still strict: a silent hop to the next free port is how a browser ends
+    // up on one worktree's admin while the proxy talks to another's API. The
+    // port is configurable now, so strictness costs nothing.
     strictPort: true,
     proxy: apiProxy,
     // Team hostnames in dev. Vite refuses a Host header it does not recognise,
@@ -100,7 +110,7 @@ export default defineConfig(({ command, mode }) => {
   },
   preview: {
     host: '0.0.0.0',
-    port: 5455,
+    port: adminPort,
     strictPort: true,
     proxy: apiProxy,
   },
