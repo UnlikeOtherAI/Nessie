@@ -143,13 +143,24 @@ const hashPartialFile = async (
   return { bytes: size, hash }
 }
 
-/** `bytes <start>-<end>/<total>` — the total is the only field worth trusting here. */
-export const parseContentRangeTotal = (header: string | null): number | undefined => {
+/**
+ * `bytes <start>-<end>/<total>`.
+ *
+ * The start matters as much as the total: a mirror that answers `206` from
+ * offset zero to a request that asked for byte 2 000 000 000 would otherwise
+ * have its body written at our offset, producing a file that is garbage in a
+ * way only the final digest notices — gigabytes later.
+ */
+export const parseContentRange = (
+  header: string | null,
+): { start: number; total: number } | undefined => {
   if (header === null) return undefined
-  const match = /^bytes \d+-\d+\/(\d+)$/.exec(header.trim())
-  if (!match?.[1]) return undefined
-  const total = Number.parseInt(match[1], 10)
-  return Number.isSafeInteger(total) && total > 0 ? total : undefined
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(header.trim())
+  if (!match?.[1] || !match[3]) return undefined
+  const start = Number.parseInt(match[1], 10)
+  const total = Number.parseInt(match[3], 10)
+  if (!Number.isSafeInteger(start) || start < 0) return undefined
+  return Number.isSafeInteger(total) && total > 0 ? { start, total } : undefined
 }
 
 export const hasRoomFor = async (
@@ -209,12 +220,32 @@ export const downloadModelFile = async (options: DownloadOptions): Promise<Downl
   try {
     const partial = await hashPartialFile(partPath)
     const metadata = partial === undefined ? {} : await readResumeMetadata(partPath)
+
+    // A `.part` that is already the full length means we died between the last
+    // write and the digest check. We have just hashed it, so the answer is in
+    // hand — finishing it costs nothing, where re-downloading costs gigabytes.
+    if (partial !== undefined && partial.bytes === file.bytes) {
+      const completed = partial.hash.digest('hex')
+      if (completed === file.sha256) {
+        await rename(partPath, finalPath)
+        await rm(metadataPath(partPath), { force: true })
+        return { ok: true, path: finalPath }
+      }
+      await rm(partPath, { force: true })
+      await rm(metadataPath(partPath), { force: true })
+      return { ok: false, reason: 'digest_mismatch', observedDigest: completed }
+    }
+
     const headers: Record<string, string> = {}
-    if (partial !== undefined && partial.bytes < file.bytes) {
+    const wantsResume = partial !== undefined && partial.bytes < file.bytes
+    if (wantsResume && partial !== undefined) {
       headers.Range = `bytes=${partial.bytes}-`
-      // Without this a rotated object would be spliced onto our prefix and the
-      // digest check would be the only thing that noticed, megabytes later.
-      if (metadata.etag !== undefined) headers['If-Match'] = metadata.etag
+      // `If-Range`, not `If-Match`. If the object moved, `If-Match` answers 412
+      // forever: the partial is kept, every retry re-sends the same stale
+      // validator, and the failure reads as a network problem. `If-Range`
+      // degrades to a plain 200 of the current object, which the restart path
+      // below already handles, so a rotated mirror self-heals in one attempt.
+      if (metadata.etag !== undefined) headers['If-Range'] = metadata.etag
     }
 
     let response: Response
@@ -237,8 +268,22 @@ export const downloadModelFile = async (options: DownloadOptions): Promise<Downl
     // not ours and the hash starts again from nothing.
     let resuming = false
     if (response.status === 206) {
-      const total = parseContentRangeTotal(response.headers.get('content-range'))
-      if (total !== file.bytes) return { ok: false, reason: 'size_mismatch' }
+      // A 206 we did not ask for has no prefix to continue, so there is no
+      // offset it could be correct at.
+      if (!wantsResume || partial === undefined) return { ok: false, reason: 'size_mismatch' }
+      const range = parseContentRange(response.headers.get('content-range'))
+      if (range === undefined || range.total !== file.bytes) {
+        return { ok: false, reason: 'size_mismatch' }
+      }
+      if (range.start !== partial.bytes) return { ok: false, reason: 'size_mismatch' }
+      // A cache edge that served the range without honouring `If-Range` would
+      // splice a different object onto our prefix. Comparing the validator we
+      // were given costs nothing and catches it before the transfer, rather
+      // than at the digest check several gigabytes later.
+      const servedEtag = response.headers.get('etag')
+      if (metadata.etag !== undefined && servedEtag !== null && servedEtag !== metadata.etag) {
+        return { ok: false, reason: 'size_mismatch' }
+      }
       resuming = true
     } else {
       const declared = response.headers.get('content-length')
@@ -255,20 +300,35 @@ export const downloadModelFile = async (options: DownloadOptions): Promise<Downl
       await writeFile(metadataPath(partPath), JSON.stringify({ etag }), { mode: 0o600 })
     }
 
-    const handle = await open(partPath, resuming ? 'r+' : 'w', 0o600)
     try {
-      if (resuming) await handle.truncate(written)
-      const body = response.body
-      if (body === null) return { ok: false, reason: 'mirror_unreachable', detail: 'empty body' }
-      for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
-        if (written + chunk.byteLength > file.bytes) return { ok: false, reason: 'size_mismatch' }
-        await handle.write(chunk, 0, chunk.byteLength, written)
-        hash.update(chunk)
-        written += chunk.byteLength
-        options.onProgress?.({ downloadedBytes: written, totalBytes: file.bytes })
+      const handle = await open(partPath, resuming ? 'r+' : 'w', 0o600)
+      try {
+        if (resuming) await handle.truncate(written)
+        const body = response.body
+        if (body === null) return { ok: false, reason: 'mirror_unreachable', detail: 'empty body' }
+        for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
+          if (written + chunk.byteLength > file.bytes) return { ok: false, reason: 'size_mismatch' }
+          await handle.write(chunk, 0, chunk.byteLength, written)
+          hash.update(chunk)
+          written += chunk.byteLength
+          options.onProgress?.({ downloadedBytes: written, totalBytes: file.bytes })
+        }
+      } finally {
+        await handle.close()
       }
-    } finally {
-      await handle.close()
+    } catch (error) {
+      // A volume that fills mid-stream, or a connection that drops, is an
+      // outcome like any other: every other failure here is reported rather
+      // than thrown, and a caller that has to catch for only these two would
+      // forget. The `.part` survives, so the next attempt resumes.
+      const code = (error as NodeJS.ErrnoException | null)?.code
+      return code === 'ENOSPC'
+        ? { ok: false, reason: 'no_storage', detail: 'the volume filled during the transfer' }
+        : {
+            ok: false,
+            reason: 'mirror_unreachable',
+            detail: error instanceof Error ? error.message : 'transfer failed',
+          }
     }
 
     if (written !== file.bytes) return { ok: false, reason: 'size_mismatch' }

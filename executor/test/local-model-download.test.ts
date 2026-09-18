@@ -10,7 +10,7 @@ import type { LocalModelFile } from '@nessie/schemas'
 import {
   downloadModelFile,
   hasRoomFor,
-  parseContentRangeTotal,
+  parseContentRange,
   stagedFilePath,
   verifiedFilePath,
   type WeightsFetch,
@@ -281,14 +281,153 @@ test('an unreachable mirror is a reported reason, not a throw', async () => {
   })
 })
 
-test('content-range totals are read strictly', () => {
-  assert.equal(parseContentRangeTotal('bytes 0-9/100'), 100)
-  assert.equal(parseContentRangeTotal('bytes 0-9/*'), undefined)
-  assert.equal(parseContentRangeTotal('items 0-9/100'), undefined)
-  assert.equal(parseContentRangeTotal(null), undefined)
+test('content ranges are read strictly, start as well as total', () => {
+  assert.deepEqual(parseContentRange('bytes 0-9/100'), { start: 0, total: 100 })
+  assert.deepEqual(parseContentRange('bytes 10-99/100'), { start: 10, total: 100 })
+  assert.equal(parseContentRange('bytes 0-9/*'), undefined)
+  assert.equal(parseContentRange('items 0-9/100'), undefined)
+  assert.equal(parseContentRange(null), undefined)
 })
 
 test('an unreadable volume does not block a download', async () => {
   const room = await hasRoomFor('/nowhere', 10, () => Promise.reject(new Error('ENOENT')))
   assert.equal(room.ok, true)
+})
+
+test('resume asks with If-Range, so a rotated object self-heals instead of sticking on 412', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    // Shorter than the pinned length, so this is genuinely a resume.
+    await writeFile(partPath, Buffer.from('a stale prefix'))
+    await writeFile(partPath + '.meta', JSON.stringify({ etag: '"old"' }))
+
+    let sentHeaders: Record<string, string> = {}
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      // An If-Range whose validator no longer matches yields the whole current
+      // object, which is the restart path. If-Match would have yielded 412.
+      fetchImpl: (url, init) => {
+        sentHeaders = init.headers
+        return respondWholeObject(url, init)
+      },
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(sentHeaders['If-Range'], '"old"')
+    assert.equal(sentHeaders['If-Match'], undefined)
+    assert.equal(outcome.ok, true)
+    assert.deepEqual(await readFile(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)), BYTES)
+  })
+})
+
+test('a 206 starting at the wrong offset is refused rather than written at ours', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    await writeFile(partPath, BYTES.subarray(0, 10))
+
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: () =>
+        Promise.resolve(
+          new Response(new Uint8Array(BYTES), {
+            status: 206,
+            // We asked from byte 10; this answers from zero with the right total.
+            headers: { 'content-range': 'bytes 0-' + String(BYTES.byteLength - 1) + '/' + String(BYTES.byteLength) },
+          }),
+        ),
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok === false && outcome.reason, 'size_mismatch')
+  })
+})
+
+test('a 206 carrying a different validator is refused before the transfer', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    await writeFile(partPath, BYTES.subarray(0, 10))
+    await writeFile(partPath + '.meta', JSON.stringify({ etag: '"v1"' }))
+
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      // A cache edge that served the range without honouring If-Range.
+      fetchImpl: () =>
+        Promise.resolve(
+          new Response(new Uint8Array(BYTES.subarray(10)), {
+            status: 206,
+            headers: {
+              'content-range': 'bytes 10-' + String(BYTES.byteLength - 1) + '/' + String(BYTES.byteLength),
+              etag: '"v2"',
+            },
+          }),
+        ),
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok === false && outcome.reason, 'size_mismatch')
+  })
+})
+
+test('a partial that is already complete is finished from disk, with no request at all', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    // Died between the last write and the digest check.
+    await writeFile(partPath, BYTES)
+
+    let dialed = false
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: (url, init) => {
+        dialed = true
+        return respondWholeObject(url, init)
+      },
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(dialed, false)
+    assert.equal(outcome.ok, true)
+    assert.deepEqual(await readFile(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)), BYTES)
+  })
+})
+
+test('a complete partial that hashes wrong is destroyed rather than promoted', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    await writeFile(partPath, Buffer.alloc(BYTES.byteLength, 0x41))
+
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok === false && outcome.reason, 'digest_mismatch')
+    await assert.rejects(stat(partPath))
+    await assert.rejects(stat(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)))
+  })
 })

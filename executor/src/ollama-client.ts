@@ -11,14 +11,26 @@ import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
  * problem, and it means a person can see and delete what we put on their disk
  * with the tool they already use.
  *
- * **Why this file talks to a loopback origin directly.** Everything else in
- * `executor/src` dials through `@nessie/runtime`'s pinned transport, which
- * refuses private and loopback addresses by design — that is what makes it an
- * SSRF boundary. Ollama is a loopback service, so the pinned transport cannot
- * express this call at all. The origin is not caller-influenced: it is a
- * compiled default that only the reviewed local policy may change, never the
- * server and never a delegation. This is the same admission
- * `cli/src/local.ts` already holds for localhost health polling.
+ * **This module is the executor's only Ollama transport, and that is load
+ * bearing.** Everything else in `executor/src` dials through
+ * `@nessie/runtime`'s pinned transport, which refuses loopback by design —
+ * that is exactly what makes it an SSRF boundary, and it is why it cannot
+ * express a call to a loopback daemon. So this file holds the egress
+ * allowlist's one Ollama entry, and every future Ollama call (the delegation
+ * loop's `/api/chat` included) belongs here rather than in a second module
+ * with a second entry: that list only shrinks.
+ *
+ * What earns the entry is `assertLoopbackOrigin` below. The origin is not a
+ * string this module trusts — it is re-derived on every call and must be an
+ * address that cannot leave the machine, so this is a loopback transport
+ * rather than a general HTTP client that happens to point at one.
+ *
+ * **What it cannot promise.** Ollama's API has no authentication, so this
+ * talks to a *port*, not provably to Ollama: whoever binds 11434 first is
+ * Ollama as far as this code is concerned. That is inherent to Ollama and is
+ * not fixable here, but it is the real trust assumption — worth stating
+ * plainly, because the delegation loop will later post host text to this same
+ * origin.
  */
 
 /** Where Ollama listens unless the reviewed policy says otherwise. */
@@ -49,7 +61,53 @@ export type OllamaFetch = (
 ) => Promise<Response>
 
 const defaultOllamaFetch: OllamaFetch = (url, init) =>
-  fetch(url, init as RequestInit & { duplex?: 'half' })
+  // Global fetch follows redirects by default, which would let anything
+  // answering on 11434 bounce a request — or a replayed POST body — off the
+  // machine. A loopback daemon has no business redirecting us anywhere.
+  fetch(url, { ...init, redirect: 'error' } as RequestInit & { duplex?: 'half' })
+
+export class OllamaOriginError extends Error {}
+
+/** `127.0.0.1`, `127.0.0.53`, … — the whole 127.0.0.0/8 loopback block. */
+const IPV4_LOOPBACK = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+
+/**
+ * Accept only an origin whose socket cannot leave this machine, and hand back
+ * its normalised form.
+ *
+ * Literal addresses only. `localhost` is deliberately refused despite being
+ * the conventional spelling: it is a name the operating system resolves, and a
+ * hosts file or a resolver can point it anywhere, which would quietly turn
+ * this module into the unpinned general client the egress lint exists to
+ * prevent. The compiled default below is an address, and a reviewed policy
+ * that wants to move the port can say `http://127.0.0.1:<port>`.
+ */
+export const assertLoopbackOrigin = (origin: string): string => {
+  let url: URL
+  try {
+    url = new URL(origin)
+  } catch {
+    throw new OllamaOriginError('Ollama origin must be a URL')
+  }
+  if (url.protocol !== 'http:') throw new OllamaOriginError('Ollama origin must be http')
+  if (url.username !== '' || url.password !== '') {
+    throw new OllamaOriginError('Ollama origin must carry no credentials')
+  }
+  if ((url.pathname !== '' && url.pathname !== '/') || url.search !== '' || url.hash !== '') {
+    throw new OllamaOriginError('Ollama origin must be a bare origin')
+  }
+  const host = url.hostname.toLowerCase()
+  const ipv4 = IPV4_LOOPBACK.exec(host)
+  const isIpv4Loopback =
+    ipv4 !== null && ipv4.slice(1).every((octet) => Number(octet) >= 0 && Number(octet) <= 255)
+  // WHATWG `hostname` keeps the brackets on an IPv6 literal, so `[::1]` is
+  // what arrives here; accept the bare spelling too rather than depend on it.
+  const isIpv6Loopback = host === '[::1]' || host === '::1'
+  if (!isIpv4Loopback && !isIpv6Loopback) {
+    throw new OllamaOriginError('Ollama origin must be a loopback address')
+  }
+  return `${url.protocol}//${url.host}`
+}
 
 /** `0.34.1` against `0.34.0`, numerically and per segment; a version we cannot read is not a version that passes. */
 export const meetsVersionFloor = (observed: string, floor: string): boolean => {
@@ -77,8 +135,12 @@ export const detectOllama = async (
   origin: string = DEFAULT_OLLAMA_ORIGIN,
   fetchImpl: OllamaFetch = defaultOllamaFetch,
 ): Promise<OllamaPresence> => {
+  // Outside the catch on purpose: an origin the policy should never have
+  // contained is a configuration defect, and reporting it as "no daemon here"
+  // would hide it behind a plausible-looking absence.
+  const base = assertLoopbackOrigin(origin)
   try {
-    const response = await fetchImpl(`${origin}/api/version`, {
+    const response = await fetchImpl(`${base}/api/version`, {
       signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     })
     if (!response.ok) return { available: false, reason: 'unreachable' }
@@ -108,8 +170,9 @@ export const blobExists = async (
   digest: string,
   fetchImpl: OllamaFetch = defaultOllamaFetch,
 ): Promise<boolean> => {
+  const base = assertLoopbackOrigin(origin)
   try {
-    const response = await fetchImpl(`${origin}/api/blobs/sha256:${digest}`, {
+    const response = await fetchImpl(`${base}/api/blobs/sha256:${digest}`, {
       method: 'HEAD',
       signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     })
@@ -132,8 +195,9 @@ export const pushBlob = async (
   path: string,
   fetchImpl: OllamaFetch = defaultOllamaFetch,
 ): Promise<ImportOutcome> => {
+  const base = assertLoopbackOrigin(origin)
   try {
-    const response = await fetchImpl(`${origin}/api/blobs/sha256:${digest}`, {
+    const response = await fetchImpl(`${base}/api/blobs/sha256:${digest}`, {
       method: 'POST',
       body: Readable.toWeb(createReadStream(path)),
       duplex: 'half',
@@ -157,8 +221,9 @@ export const createModel = async (
   files: Record<string, string>,
   fetchImpl: OllamaFetch = defaultOllamaFetch,
 ): Promise<ImportOutcome> => {
+  const base = assertLoopbackOrigin(origin)
   try {
-    const response = await fetchImpl(`${origin}/api/create`, {
+    const response = await fetchImpl(`${base}/api/create`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: modelName, files, stream: false }),
@@ -176,19 +241,35 @@ export const createModel = async (
 }
 
 /**
- * Every digest the created model reports holding.
+ * The blob digests the created model was assembled from.
  *
- * `/api/show` is the only way to ask Ollama what it actually assembled, as
- * opposed to what we asked it to assemble. A model whose blobs do not include
- * our pin is not the model we pinned, whatever it is called.
+ * Ollama 0.34.x has no API that lists a model's layer digests: `/api/show`
+ * returns `license, modelfile, parameters, template, details, model_info,
+ * projector_info, capabilities, modified_at, requires` and nothing else, and
+ * `/api/tags` reports the manifest hash rather than the blobs. The one place a
+ * blob digest appears is the rendered `modelfile`, as the path in its `FROM`
+ * lines:
+ *
+ * ```
+ * FROM /home/me/.ollama/models/blobs/sha256-1278394b6936…a606
+ * ```
+ *
+ * **What this proves, precisely.** That `modelfile` is rendered from the
+ * manifest `/api/create` wrote from the `files` map we sent, so agreement is a
+ * round trip: it confirms the model was assembled from the blob we named, not
+ * that anyone hashed it a second time here. The independent hash is `pushBlob`
+ * — Ollama refuses a body that is not the digest in the URL. This step catches
+ * the different failure of a model that was created from some other blob, or
+ * not created at all.
  */
-export const showModelDigests = async (
+export const modelSourceDigests = async (
   origin: string,
   modelName: string,
   fetchImpl: OllamaFetch = defaultOllamaFetch,
 ): Promise<string[] | undefined> => {
+  const base = assertLoopbackOrigin(origin)
   try {
-    const response = await fetchImpl(`${origin}/api/show`, {
+    const response = await fetchImpl(`${base}/api/show`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: modelName }),
@@ -196,27 +277,29 @@ export const showModelDigests = async (
     })
     if (!response.ok) return undefined
     const body: unknown = await response.json()
-    const found = new Set<string>()
-    const walk = (value: unknown, depth: number): void => {
-      if (depth > 6) return
-      if (typeof value === 'string') {
-        const match = /^sha256[:-]([0-9a-f]{64})$/.exec(value)
-        if (match?.[1]) found.add(match[1])
-        return
-      }
-      if (Array.isArray(value)) {
-        for (const item of value) walk(item, depth + 1)
-        return
-      }
-      if (typeof value === 'object' && value !== null) {
-        for (const item of Object.values(value)) walk(item, depth + 1)
-      }
-    }
-    walk(body, 0)
-    return [...found]
+    const modelfile = (body as { modelfile?: unknown } | null)?.modelfile
+    if (typeof modelfile !== 'string') return undefined
+    return parseModelfileDigests(modelfile)
   } catch {
     return undefined
   }
+}
+
+/**
+ * Read the blob digests out of a rendered modelfile.
+ *
+ * The digest is the last path segment of a `FROM` line, spelled `sha256-<hex>`
+ * on disk. A `FROM` naming another model rather than a blob path has no digest
+ * and contributes nothing.
+ */
+export const parseModelfileDigests = (modelfile: string): string[] => {
+  const found = new Set<string>()
+  for (const line of modelfile.split(/\r?\n/)) {
+    if (!/^\s*FROM\s/i.test(line)) continue
+    const match = /sha256[-:]([0-9a-f]{64})\s*$/i.exec(line)
+    if (match?.[1]) found.add(match[1].toLowerCase())
+  }
+  return [...found]
 }
 
 export type ImportRequest = {
@@ -252,7 +335,7 @@ export const importVerifiedModel = async (request: ImportRequest): Promise<Impor
   )
   if (!created.ok) return created
 
-  const digests = await showModelDigests(origin, request.modelName, fetchImpl)
+  const digests = await modelSourceDigests(origin, request.modelName, fetchImpl)
   if (digests === undefined) {
     return { ok: false, reason: 'digest_unconfirmed', detail: 'show returned nothing readable' }
   }
