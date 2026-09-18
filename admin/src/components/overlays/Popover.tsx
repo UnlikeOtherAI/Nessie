@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import { OverlayPortal } from './OverlayPortal'
+import { useOverlayOwner } from './overlay-owner'
 import { useOverlay } from './useOverlay'
 import { placePopover, viewportBounds } from './placePopover'
 import type { PopoverAnchorRect, PopoverPlacement } from './placePopover'
@@ -50,7 +51,11 @@ type PopoverProps = {
   id?: string
   /** The accessible name; also what the Back control announces on `single`. */
   label: string
-  /** A modal-owned menu sits above its modal but remains below blocking. */
+  /**
+   * A modal-owned menu sits above its modal but remains below blocking.
+   * Left unset, an enclosing `Dialog` answers this — a picker that can be
+   * mounted on a page or inside a dialog gets the right layer either way.
+   */
   layer?: PopoverLayer
   /** Sizes the panel to its anchor, the way a combobox listbox matches its input. */
   matchAnchorWidth?: boolean
@@ -83,7 +88,7 @@ export const Popover = ({
   className,
   id,
   label,
-  layer = 'popover',
+  layer,
   matchAnchorWidth = false,
   onClose,
   onKeyDown,
@@ -93,13 +98,16 @@ export const Popover = ({
   style,
 }: PopoverProps) => {
   const generatedId = useId()
+  // The layer the call site asked for, else the one its surroundings imply.
+  const owner = useOverlayOwner()
+  const effectiveLayer: PopoverLayer = layer ?? (owner === 'modal' ? 'modal' : 'popover')
   const overlay = useOverlay({
     id: id ?? generatedId,
     kind: 'popover',
     label,
     onClose,
     open,
-    ownerKind: layer === 'modal' ? 'modal' : undefined,
+    ownerKind: effectiveLayer === 'modal' ? 'modal' : undefined,
     escapeAnchorRef: anchorRef,
   })
   const { panelRef, requestClose } = overlay

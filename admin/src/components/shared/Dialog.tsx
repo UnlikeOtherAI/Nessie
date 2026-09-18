@@ -5,6 +5,7 @@ import {
   type RefObject,
 } from 'react'
 import { OverlayPortal } from '../overlays/OverlayPortal'
+import { OverlayOwnerProvider } from '../overlays/overlay-owner'
 import { useOverlay } from '../overlays/useOverlay'
 
 /**
@@ -195,7 +196,12 @@ export const Dialog = ({
             </div>
           </div>
 
-          {children}
+          {/* An anchored control mounted in here takes the modal-owned layer
+              without being told, so a shared picker cannot open behind the
+              dialog that holds it. A `blocking` panel announces nothing: it
+              sits at 80, above every popover layer there is, so claiming an
+              owner would promise a menu it still cannot rise above. */}
+          <OverlayOwnerProvider value={blocking ? null : 'modal'}>{children}</OverlayOwnerProvider>
         </div>
       </div>
     </OverlayPortal>
