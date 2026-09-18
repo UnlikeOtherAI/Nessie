@@ -81,8 +81,10 @@ It is not silent, in three places:
 
 - **Before the decision:** each row on the Models page states how many agents
   are currently pinned to that exact pair (`agentCount`, from a `groupBy` over
-  `agents`). Nothing renders a zero — a pair nobody uses says nothing, so the
-  column reads as the list of rows that need care.
+  `agents` **where `deletedAt` is null** — `Agent` is soft-deleted, and a count
+  inflated by agents somebody already removed answers neither "this strands
+  three agents" nor "nobody uses it"). Nothing renders a zero — a pair nobody
+  uses says nothing, so the column reads as the list of rows that need care.
 - **After it, where it is discovered:** the Agent Designer's model picker no
   longer offers the pair, so the existing "selection is unavailable" branch
   fires and `ModelUnavailableNotice` names both possible causes — retired
