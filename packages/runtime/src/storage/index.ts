@@ -1,4 +1,5 @@
-import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import { type Storage, type StorageConfig } from './base.js'
 import { FilesystemStorage } from './filesystem.js'
@@ -14,15 +15,25 @@ export {
   StreamingStorage,
 } from './base.js'
 
-const DEFAULT_LOCAL_PATH = '.nessie-storage'
+/**
+ * Only reached by a `StorageConfig` built without a `localPath` — the config
+ * loader always supplies one, and owns the real default. It is kept identical
+ * to that one on purpose: when the two were `.nessie-storage` here and
+ * `.nessie/storage` there, they were two different stores a mistake away.
+ * `scripts/lint-local-state-paths.mjs` holds them together.
+ */
+const DEFAULT_LOCAL_PATH = join(homedir(), '.nessie', 'storage')
 
 export const getStorage = (config: StorageConfig): Storage => {
   switch (config.provider) {
     case 'filesystem':
+      // `resolve`, not `join`: the configured path is absolute in local mode
+      // (it has to outlive the working tree the API was started from), and
+      // `join` would have pasted it onto the working directory instead. A
+      // relative path — which is what the tests pass — still resolves against
+      // the working directory exactly as before.
       return new FilesystemStorage(
-        config.localPath
-          ? join(process.cwd(), config.localPath)
-          : join(process.cwd(), DEFAULT_LOCAL_PATH),
+        resolve(process.cwd(), config.localPath ?? DEFAULT_LOCAL_PATH),
       )
     case 'gcs': {
       if (!config.bucket) {
