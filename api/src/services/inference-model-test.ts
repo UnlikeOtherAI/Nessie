@@ -62,24 +62,29 @@ export const runInferenceModelTest = async (
   const signer = isLedgerEndpoint(input.config.baseUrl) && input.ledgerIdentity
     ? input.ledgerIdentity
     : null
-  const client = createModelClient(
-    { ...input.config, modelName: input.model, serviceId: input.provider },
-    {
-      recordUsage: (invocations, attribution) =>
-        recordModelUsage(input.prisma, input.logger, invocations, attribution),
-      ...(signer
-        ? {
-          requestHeaders: (attribution: Parameters<LedgerIdentityService['requestHeaders']>[0]) =>
-            signer.requestHeaders(attribution, { requireUoaIdentity: true }),
-        }
-        : {}),
-      systemComponent: 'inference-model-test',
-    },
-  )
-
   const startedAt = Date.now()
   let timer: ReturnType<typeof setTimeout> | undefined
+  // Constructed inside the try: `resolveLedgerServiceBaseUrl` refuses a service
+  // id that is not a single URL segment, and an owner who typed one is owed the
+  // refusal as this route's structured failure rather than a 500.
+  let client: ReturnType<typeof createModelClient> | null = null
   try {
+    client = createModelClient(
+      { ...input.config, modelName: input.model, serviceId: input.provider },
+      {
+        recordUsage: (invocations, attribution) =>
+          recordModelUsage(input.prisma, input.logger, invocations, attribution),
+        ...(signer
+          ? {
+            requestHeaders: (
+              attribution: Parameters<LedgerIdentityService['requestHeaders']>[0],
+            ) => signer.requestHeaders(attribution, { requireUoaIdentity: true }),
+          }
+          : {}),
+        systemComponent: 'inference-model-test',
+      },
+    )
+
     const reply = await Promise.race([
       client.chat(
         [
@@ -129,6 +134,6 @@ export const runInferenceModelTest = async (
     // The losing half of the race keeps an event-loop handle alive otherwise,
     // which is how a route handler holds a process open past its own response.
     if (timer) clearTimeout(timer)
-    client.close()
+    client?.close()
   }
 }
