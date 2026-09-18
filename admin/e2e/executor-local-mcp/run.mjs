@@ -134,6 +134,24 @@ const cases = [
     ],
     mustNot: ['Local MCP servers (0)'],
   },
+  {
+    // The one prepared change whose stored JSON tells a person nothing: it
+    // names an agent and a state and no operation at all, because the set is
+    // derived from the reviewed revision when it is applied. So the
+    // confirmation has to name the agent and list what it is about to be able
+    // to run — and must not list the one operation only a person may issue.
+    scenario: 'whole-suite-grant',
+    must: [
+      'Give Repo Researcher everything this executor offers',
+      'An executor grant is whole-suite',
+      'file.list',
+      'file.read',
+      'file.write',
+      'command.run',
+      'workspace.review',
+    ],
+    mustNot: ['workspace.promote', 'agent_executor_grant'],
+  },
 ]
 
 const admin = await startAdmin()
@@ -149,7 +167,9 @@ try {
     // this panel mounted, so it would go green on a page that failed to
     // render the thing being asserted.
     await page.getByText(
-      testCase.scenario.startsWith('policy-') ? 'Review prepared executor change' : 'Local MCP servers',
+      testCase.scenario.startsWith('policy-') || testCase.scenario === 'whole-suite-grant'
+        ? 'Review prepared executor change'
+        : 'Local MCP servers',
       { exact: true },
     ).waitFor()
     const text = await page.locator('body').innerText()

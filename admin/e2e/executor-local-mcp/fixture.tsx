@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 
 import { ExecutorDetailPanels } from '../../src/components/features/executors/ExecutorDetailPanels'
+import { ExecutorGrantedSuite } from '../../src/components/features/executors/ExecutorGrantedSuite'
 import { ExecutorReviewedPolicy } from '../../src/components/features/executors/ExecutorReviewedPolicy'
 import type {
   ExecutorAccessViewWithLocalMcp,
@@ -205,10 +206,43 @@ const REVIEW_SCENARIOS: Record<string, {
   },
 }
 
+/**
+ * The whole-suite grant, which is the one prepared change whose JSON tells a
+ * person nothing: it names an agent and a state and no operation at all,
+ * because the set is derived from the reviewed revision when it is applied.
+ * The confirmation therefore has to name the agent and list what it is about
+ * to be able to run, and that is what this scenario renders.
+ */
+const suiteRevision: ExecutorDescriptorRevisionView = {
+  commandAllowlist: ['git'],
+  localPolicyDigest: `sha256:${'c'.repeat(64)}`,
+  operationKeys: [
+    'file.list', 'file.read', 'file.write', 'command.run',
+    'workspace.review', 'workspace.promote',
+  ],
+  profiles: ['workspace_sandbox'],
+  reviewStatus: 'active',
+  revision: 5,
+}
+
+const GRANT_AGENT_ID = '00000000-0000-4000-8000-0000000000c1'
+
 const unavailable = async () => { throw new Error('unexpected API call') }
+// Only the grant scenario reads through the client, and only the two reads
+// its confirmation needs: the executor's access view for the active revision,
+// and the agent list for the name. Everything else still refuses, so a
+// component that started fetching would fail loudly rather than silently.
 const client = {
   delete: unavailable,
-  get: unavailable,
+  get: async (path: string) => {
+    if (path === `/api/executors/${EXECUTOR_ID}/access`) {
+      return access(undefined, [suiteRevision])
+    }
+    if (path.startsWith('/api/agents')) {
+      return [{ id: GRANT_AGENT_ID, name: 'Repo Researcher', visibility: 'team' }]
+    }
+    return unavailable()
+  },
   patch: unavailable,
   post: unavailable,
   put: unavailable,
@@ -217,6 +251,7 @@ const client = {
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
 const scenarioName = new URLSearchParams(window.location.search).get('scenario') ?? 'available'
+const grantingWholeSuite = scenarioName === 'whole-suite-grant'
 const review = REVIEW_SCENARIOS[scenarioName]
 const view = scenarios[scenarioName]
 
@@ -226,7 +261,21 @@ createRoot(document.getElementById('root')!).render(
       <MemoryRouter initialEntries={['/agents/executors']}>
         <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px' }}>
           <div style={{ margin: '0 auto', maxWidth: '720px' }}>
-            {review ? (
+            {grantingWholeSuite ? (
+              <div className="admin-card grid gap-3 p-4">
+                <h2 className="text-sm font-semibold text-[color:var(--tx)]">
+                  Review prepared executor change
+                </h2>
+                <ExecutorGrantedSuite
+                  change={{
+                    kind: 'agent_executor_grant',
+                    agentId: GRANT_AGENT_ID,
+                    state: 'allowed',
+                  }}
+                  executorId={EXECUTOR_ID}
+                />
+              </div>
+            ) : review ? (
               <div className="admin-card grid gap-3 p-4">
                 <h2 className="text-sm font-semibold text-[color:var(--tx)]">
                   Review prepared executor change
