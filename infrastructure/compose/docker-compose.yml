@@ -1,3 +1,15 @@
+# The local development database.
+#
+# Its data lives in a NAMED VOLUME, never a path inside the checkout. A bind
+# mount at `../../.nessie/docker/postgres` put the cluster inside whichever
+# working tree started it, and `git worktree remove` — which AGENTS.md tells
+# every agent to run once its branch merges — deleted the data directory out
+# from under the running container. The next `docker start` found an empty
+# directory, ran initdb, and the whole local install was gone: organisations,
+# users, agents, channels, sessions. A volume survives that, and survives the
+# repository being moved or re-cloned.
+#
+# Read docs/standards/local-state.md before changing any of this.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -14,4 +26,15 @@ services:
     ports:
       - "55432:5432"
     volumes:
-      - ../../.nessie/docker/postgres:/var/lib/postgresql/data
+      - nessie-local-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  nessie-local-postgres-data:
+    # `name` is explicit, and must stay explicit. Compose otherwise prefixes a
+    # volume with the project name, which it derives from the directory it was
+    # invoked from — so every working tree would get a volume of its own while
+    # they all share one `container_name` and one published port. That is the
+    # same split brain by another route: whichever tree started the container
+    # first would own the data and the rest would silently be talking to it
+    # anyway, until the day one of them recreated it.
+    name: nessie-local-postgres-data

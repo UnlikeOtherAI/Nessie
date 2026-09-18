@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import {
   type NessieConfig,
@@ -153,6 +154,25 @@ const localPostgresUser = (): string =>
   ?? process.env['USERNAME']
   ?? 'postgres'
 
+/**
+ * Where the filesystem storage backend keeps uploaded bytes in local mode.
+ *
+ * Absolute, and outside the checkout, for the same two reasons the local
+ * database is a named Docker volume (docs/standards/local-state.md):
+ *
+ * 1. It must not be deleted by `git worktree remove`. `.nessie/storage`
+ *    resolved against the working directory, so the store lived inside
+ *    whichever tree started the API — and every working tree is temporary.
+ * 2. It must be SHARED. Every tree talks to one local Postgres, so a row
+ *    written from one checkout names bytes that every other checkout has to
+ *    be able to read. A per-tree store meant an agent's canonical Markdown
+ *    read back as "Markdown attachment bytes not found" from anywhere else.
+ *
+ * Local mode only: `FILESYSTEM_STORAGE` is a local-only capability, and every
+ * other mode runs object storage. `NESSIE_STORAGE_LOCAL_PATH` overrides it.
+ */
+const LOCAL_STORAGE_PATH = join(homedir(), '.nessie', 'storage')
+
 const DEFAULT_LOCAL_DATABASE_URL =
   `postgresql://${encodeURIComponent(localPostgresUser())}`
   + `@${process.env['PGHOST'] ?? 'localhost'}:${process.env['PGPORT'] ?? '5432'}/nessie`
@@ -176,7 +196,7 @@ const DEFAULT_CONFIG: NessieConfig = {
   },
   storage: {
     provider: 'filesystem',
-    localPath: '.nessie/storage',
+    localPath: LOCAL_STORAGE_PATH,
     maxUploadBytes: 5 * 1024 * 1024 * 1024,
     signedDownloadMinBytes: 8 * 1024 * 1024,
   },
