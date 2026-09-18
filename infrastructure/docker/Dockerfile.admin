@@ -20,7 +20,13 @@ ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json turbo.json eslint.config.js ./
-COPY scripts/with-deep-agent-token.sh scripts/with-deep-agent-token.sh
+# The whole directory, not the one install-time script it used to be. The
+# admin's own Vite config imports a root script (`scripts/dev-ports.mjs`, the
+# single port resolver), and a config that cannot load fails the image build
+# long after CI has gone green — CI builds the admin outside Docker, so it
+# never sees this context. Copying the directory keeps the next root-script
+# import from breaking production deploys the same way.
+COPY scripts/ scripts/
 COPY packages/ packages/
 COPY admin/ admin/
 COPY api/package.json api/package.json

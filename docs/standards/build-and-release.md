@@ -16,7 +16,7 @@ summary and points here; **this file is the rule.**
 
 ## Lint gates and generation ordering
 
-- Root `pnpm build`, `make build`, and production Dockerfiles are lint-gated. Do not replace them with raw build commands unless the replacement keeps an equivalent lint gate. Partial Docker build contexts must copy the root build/lint config files they invoke, including `eslint.config.js`.
+- Root `pnpm build`, `make build`, and production Dockerfiles are lint-gated. Do not replace them with raw build commands unless the replacement keeps an equivalent lint gate. Partial Docker build contexts must copy the root build/lint config files they invoke, including `eslint.config.js`, **and the root scripts those configs import** — `Dockerfile.admin` copies all of `scripts/` for that reason. A config that cannot load is not a lint failure but an unresolved import, and it surfaces only in the Deploy image build: CI compiles the admin outside Docker, so a root-script import added to `admin/vite.config.ts` goes green through merge and breaks production deploys afterwards.
 - Root `pnpm build` and `pnpm typecheck` generate the Prisma client once, run
   Turbo with `@nessie/cli` excluded, then compile/typecheck the CLI through its
   prepared task. This keeps every generator outside the concurrent phase:
