@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "Default permissions for the Nessie desktop window",
   "windows": [
-    "main"
+    "main",
+    "document-*"
   ],
   "remote": {
     "urls": [

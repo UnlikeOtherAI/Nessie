@@ -3,7 +3,8 @@
   "identifier": "development",
   "description": "Development-only permissions for the local Nessie Desktop window",
   "windows": [
-    "main"
+    "main",
+    "document-*"
   ],
   "remote": {
     "urls": [

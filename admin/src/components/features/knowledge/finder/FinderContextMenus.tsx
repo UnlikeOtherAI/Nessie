@@ -12,6 +12,7 @@ import { ContextMenu } from '../../../overlays/ContextMenu'
 import { useContextMenu } from '../../../overlays/useContextMenu'
 import { knowledgeKeys } from '../../../../facades/knowledge/keys'
 import { useKnowledge } from '../KnowledgeProvider'
+import { useOpenDocument } from '../useOpenDocument'
 import { AccessReadoutDialog } from './AccessReadoutDialog'
 import { GetInfoDialog } from './GetInfoDialog'
 import { ShareDialog } from './ShareDialog'
@@ -77,6 +78,7 @@ export const useFinderMenus = ({
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const { pushToast } = useToasts()
+  const openDocument = useOpenDocument()
   const menu = useContextMenu()
   const rename = useRenamePage()
   const reindex = useReindexPage()
@@ -242,10 +244,26 @@ export const useFinderMenus = ({
         spaceId,
       },
       newSharedFolder: onCreateRootFolder,
+      // The menu's Open is the same open as the row's, so it lands in the
+      // same place — a window of its own on the desktop shell. A folder is a
+      // move inside the browser and never becomes a window.
       open: () => {
-        if (first) knowledge.openPagePath([...knowledge.pagePath, first.id])
-        else if (virtualRow) {
-          knowledge.openPageDeepLink({ pageId: virtualRow.id, spaceId: virtualRow.home.spaceId })
+        if (first) {
+          const inPlace = () => knowledge.openPagePath([...knowledge.pagePath, first.id])
+          if (first.kind === 'folder') inPlace()
+          else openDocument(first, inPlace)
+          return
+        }
+        if (virtualRow) {
+          const inPlace = () =>
+            knowledge.openPageDeepLink({ pageId: virtualRow.id, spaceId: virtualRow.home.spaceId })
+          if (virtualRow.kind === 'folder') inPlace()
+          else {
+            openDocument(
+              { id: virtualRow.id, spaceId: virtualRow.home.spaceId, title: virtualRow.title },
+              inPlace,
+            )
+          }
         }
       },
       openAsSpreadsheet: onConvertToSpreadsheet
@@ -328,7 +346,7 @@ export const useFinderMenus = ({
   }, [
     active, failed, knowledge, me?.user.id, navigate, onConvertToSpreadsheet, onCreateRootFolder,
     onCreateSpreadsheet, onImportSpreadsheet, onNewFolderIn, onRefresh, onUploadFiles,
-    openSharing, pushToast,
+    openDocument, openSharing, pushToast,
     queryClient, reindex, removeShare, renderMoveTo, space, targetPages,
   ])
 

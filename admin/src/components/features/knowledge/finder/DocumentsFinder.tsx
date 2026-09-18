@@ -15,6 +15,7 @@ import { QueryState } from '../../../shared/QueryState'
 import { ScreenHeader } from '../../../shared/ScreenHeader'
 import { ColumnBrowserViewport } from '../../../shared/column-browser/ColumnBrowserViewport'
 import { useKnowledge } from '../KnowledgeProvider'
+import { useOpenDocument } from '../useOpenDocument'
 import { isAgentDraft } from '../page-status'
 import { FinderListHost } from './FinderListView'
 import { FinderRootColumn, type FinderRootRow } from './FinderRootColumn'
@@ -249,6 +250,10 @@ export const DocumentsFinder = ({
     }
   }, [knowledge, navigate])
 
+  // Where an opened document goes: the pane beside the browser, or — on the
+  // desktop shell — a window of its own. A folder never reaches it.
+  const openDocument = useOpenDocument()
+
   const openPageIn = useCallback(
     (level: FinderFolderLevel, page: KnowledgePageRecord) => {
       const prefix = pagePath.slice(0, level.depth)
@@ -257,9 +262,9 @@ export const DocumentsFinder = ({
         dispatch({ columnKey: `folder:${page.id}`, type: 'enterColumn' })
         return
       }
-      knowledge.openPagePath([...prefix, page.id])
+      openDocument(page, () => knowledge.openPagePath([...prefix, page.id]))
     },
-    [browseTo, knowledge, pagePath],
+    [browseTo, knowledge, openDocument, pagePath],
   )
 
   // ── Spreadsheets ──────────────────────────────────────────────────────────
@@ -421,10 +426,14 @@ export const DocumentsFinder = ({
           key={virtualColumnKey}
           kind={virtualKind ?? 'latest'}
           onBack={backToRoot}
-          onOpen={(row) => knowledge.openPageDeepLink({
-            pageId: row.id,
-            spaceId: row.home.spaceId,
-          })}
+          onOpen={(row) => {
+            const inPlace = () =>
+              knowledge.openPageDeepLink({ pageId: row.id, spaceId: row.home.spaceId })
+            // Latest and Shared with me list folders too, and a folder is a
+            // place to browse to, never a window.
+            if (row.kind === 'folder') return inPlace()
+            openDocument({ id: row.id, spaceId: row.home.spaceId, title: row.title }, inPlace)
+          }}
           query={virtualQuery}
           refuseProps={uploads.refuseProps}
           resize={resizeFor('virtual')}

@@ -51,10 +51,14 @@ test('a router path matched by more than one surface row is a seeded shadow', ()
   assert.deepEqual([...shadowed.keys()].sort(), [...SHADOWED_PATHS].sort())
 })
 
-test('the routes outside the stack are exactly the unauthenticated ones and not-found', () => {
+// A closed list on purpose: "outside the stack" is where an unclassified route
+// would land silently, so each member is named here as well as in the registry.
+// The document window is the one authenticated screen among them — a whole OS
+// window holding one document, with no section to light, no depth and no Back.
+test('the routes outside the stack are the unauthenticated ones, not-found, and the document window', () => {
   assert.deepEqual(
     routerPaths.filter((routerPath) => OUTSIDE_STACK_PATHS.includes(routerPath)).sort(),
-    ['*', '/bootstrap', '/login', '/login/completing'],
+    ['*', '/bootstrap', '/documents/:spaceId/:pageId', '/login', '/login/completing'],
   )
   // They are outside deliberately: no section, no depth, no Back.
   for (const outside of OUTSIDE_STACK_PATHS) {

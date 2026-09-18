@@ -424,10 +424,23 @@ export const SURFACES: Surface[] = [
 ]
 
 // The screens that are deliberately outside the navigation stack (plan §5,
-// "Outside"): unauthenticated entry points and the not-found catch-all. They
-// render without the shell, so they have no section, no depth and no Back.
-// The totality gate reads this list rather than keeping its own copy.
-export const OUTSIDE_STACK_PATHS = ['/bootstrap', '/login', '/login/completing', '*']
+// "Outside"): unauthenticated entry points, the not-found catch-all, and the
+// desktop shell's one-document window. They render without the shell, so they
+// have no section, no depth and no Back. The totality gate reads this list
+// rather than keeping its own copy.
+//
+// The document window is outside for the same structural reason the others
+// are, not as an exemption: it is a whole OS window holding one document, so
+// there is no stack to push onto, no tab bar to light and nowhere for a Back
+// to return to. Its in-shell twin — the same document opened into the pane —
+// is the Knowledge row below, and that one is fully classified.
+export const OUTSIDE_STACK_PATHS = [
+  '/bootstrap',
+  '/documents/:spaceId/:pageId',
+  '/login',
+  '/login/completing',
+  '*',
+]
 
 export type SurfaceMatch = {
   match: RegExpMatchArray

@@ -1,14 +1,11 @@
 import { useState } from 'react'
-import {
-  useKnowledgePage,
-  useKnowledgeVersions,
-  type KnowledgePageRecord,
-} from '../../../facades/knowledge/hooks'
+import { useKnowledgePage, useKnowledgeVersions } from '../../../facades/knowledge/hooks'
 import { LOCAL_BACK_PRIORITY } from '../../../navigation/LocalBackContext'
 import { NestedStage, useNestedStageHosted } from '../../../navigation/NestedStage'
 import { CreateSpaceDialog } from './CreateSpaceDialog'
 import { KnowledgeDocumentPane } from './KnowledgeDocumentPane'
 import { KnowledgePane } from './KnowledgePane'
+import { knowledgePageAncestors } from './page-ancestors'
 import { ProductDocumentsView } from './ProductDocumentsView'
 import { QueryState } from '../../shared/QueryState'
 import { useKnowledge } from './KnowledgeProvider'
@@ -80,18 +77,7 @@ export const KnowledgeWorkspace = ({
     .map((pageId) => pageById(pageId))
     .filter((page): page is NonNullable<typeof page> => Boolean(page))
   const current = openPageId ? pageById(openPageId) : undefined
-  const breadcrumbPages = (() => {
-    if (!current) return []
-    const ancestors: KnowledgePageRecord[] = []
-    const visited = new Set<string>([current.id])
-    let parent = current.parentPageId ? pageById(current.parentPageId) : undefined
-    while (parent && !visited.has(parent.id)) {
-      visited.add(parent.id)
-      ancestors.unshift(parent)
-      parent = parent.parentPageId ? pageById(parent.parentPageId) : undefined
-    }
-    return ancestors
-  })()
+  const breadcrumbPages = knowledgePageAncestors(current, pageById)
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
 
