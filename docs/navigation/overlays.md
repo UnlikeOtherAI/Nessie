@@ -141,11 +141,25 @@ and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
 hover hint, not a dismissible anchored surface.
 
-An anchored control inside a modal passes `layer="modal"`: it takes the
-modal-owned popover layer (75), above its owner and below `blocking` (80).
-It also owns Back ahead of that modal, but yields to blocking. Its focus
-behavior remains unchanged. Escape is captured by a portalled Popover before
-the owning modal's focus trap, so it closes the focused menu first.
+An anchored control inside a modal takes the modal-owned popover layer (75),
+above its owner and below `blocking` (80). It also owns Back ahead of that
+modal, but yields to blocking. Its focus behavior remains unchanged. Escape is
+captured by a portalled Popover before the owning modal's focus trap, so it
+closes the focused menu first.
+
+**`Dialog` announces that ownership; the call site does not have to.** A
+non-blocking `Dialog` wraps its children in the `OverlayOwnerProvider`
+(`components/overlays/overlay-owner.ts`) and `Popover` reads it, so a popover
+mounted anywhere inside a dialog is modal-owned by default. An explicit
+`layer` still wins. The prop alone was not enough because a shared picker does
+not know where it was mounted: `StatusEmojiPicker` is the same component on
+the status detail page and inside the "New status" dialog, and in the dialog
+its emoji grid opened underneath the dialog's own blurred scrim — the emoji
+showing through only as smudges of colour. `PersonPicker` in `ShareDialog` and
+`AssigneePicker` in `TaskDialog` were one open away from the same picture. A
+`blocking` panel deliberately announces nothing: it sits at 80, above every
+popover layer there is, so claiming an owner would promise a menu it still
+could not rise above.
 
 **`OverlayCard`** (`components/overlays/OverlayCard.tsx`) is the ambient kind, and one
 **`CardViewport`** per shell (mounted by `ToastProvider`) is the region it lives

@@ -9,6 +9,7 @@ import { createElement, createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { Popover } from '../src/components/overlays/Popover.js'
+import { Dialog } from '../src/components/shared/Dialog.js'
 import { OVERLAY_BACK_PRIORITY, OVERLAY_LAYER } from '../src/navigation/overlay.js'
 import { stubResizeObserver } from './support/resize-observer-stub'
 
@@ -68,6 +69,51 @@ test('a modal-owned popover sits above its owner, owns Back, and still yields to
   assert.ok(OVERLAY_LAYER.modalPopover < OVERLAY_LAYER.blocking)
   assert.ok(OVERLAY_BACK_PRIORITY.modal < OVERLAY_BACK_PRIORITY.modalPopover)
   assert.ok(OVERLAY_BACK_PRIORITY.modalPopover < OVERLAY_BACK_PRIORITY.blocking)
+})
+
+// The picker does not know where it was mounted, so the dialog says so. The
+// status emoji grid used to open *under* "New status" and its blurred scrim —
+// the emoji were visible only as smudges of colour through the blur — because
+// the one component serves a settings page and a dialog, and only a call site
+// could ask for the modal layer.
+test('a popover inside a dialog takes the modal-owned layer without being asked', () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      Dialog,
+      { onClose: () => undefined, open: true, title: 'New status' },
+      createElement(Popover, {
+        anchorRef: createRef<HTMLElement>(),
+        children: createElement('p', null, 'body'),
+        label: 'New status icon',
+        onClose: () => undefined,
+        open: true,
+      }),
+    ),
+  )
+  assert.match(html, /z-index:var\(--layer-modal-popover, 75\)/)
+  assert.match(html, /z-index:var\(--layer-modal, 70\)/)
+  // An explicit layer still wins, for the call site that knows better.
+  assert.match(render({ layer: 'popover' }), /z-index:var\(--layer-popover, 50\)/)
+})
+
+// A blocking panel sits at 80, above every popover layer there is, so it must
+// not claim an ownership that would promise a menu it cannot rise above.
+test('a blocking dialog claims no ownership of the popovers inside it', () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      Dialog,
+      { blocking: true, onClose: () => undefined, open: true, title: 'Discard draft?' },
+      createElement(Popover, {
+        anchorRef: createRef<HTMLElement>(),
+        children: createElement('p', null, 'body'),
+        label: 'Menu',
+        onClose: () => undefined,
+        open: true,
+      }),
+    ),
+  )
+  assert.match(html, /z-index:var\(--layer-popover, 50\)/)
+  assert.doesNotMatch(html, /--layer-modal-popover/)
 })
 
 // Before the first measurement the panel is in the DOM at its natural size so
