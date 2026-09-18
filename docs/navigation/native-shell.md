@@ -219,12 +219,25 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
     and spending both is what left the tool rail a taskbar's height short of
     the floor.
 
-  The soft keyboard needs no bridge message: it shortens the page's viewport
-  (`dvh`) without moving the dock, which sits at the window's floor (`lvh`), so
-  the clearance is `max(0px, overlay - (100lvh - 100dvh))` and the gap between
-  composer and keyboard closes itself. Browser coverage is
-  `pnpm --filter @nessie/admin test:e2e:android-dock`; the immersive call and
-  the frame geometry are unit-covered but can only be *seen* on a device.
+  **The soft keyboard takes the dock away, so the page stops reserving it.**
+  `androidDockShowing` is false while the keyboard is up, which publishes a
+  clearance of zero. The dock does not move for the keyboard — it stays at the
+  window's floor, behind it — so on a device whose page shortens itself to the
+  keyboard's top edge the reserved band becomes a hole between the composer and
+  the keyboard. Measured on a Lenovo TB336FU: 86dp of it, which is the reported
+  gap one taskbar smaller.
+
+  The stylesheet's own `max(0px, overlay - (100lvh - 100dvh))` stays beside it
+  and is deliberately belt-and-braces. It is the answer for a WebView that
+  keeps its page at full height while the keyboard covers the bottom of it —
+  there `dvh` shrinks and `lvh` does not. On the tablet above both units shrink
+  together, so that subtraction is a no-op and the native signal is what
+  closes the gap. Either way the two compose to zero rather than fighting.
+
+  Browser coverage is `pnpm --filter @nessie/admin test:e2e:android-dock`; the
+  immersive call, the frame geometry and the keyboard rule are unit-covered and
+  were confirmed on the device by screenshot — a headless browser cannot show
+  a system taskbar or a soft keyboard.
 - **`theme` and `bg` — the page publishes the chrome palette.**
   `NativeChromeThemeBridge` (`admin/src/bridges/`) renders an empty
   `.native-chrome-palette` element as a direct child of `.admin-frame` and
