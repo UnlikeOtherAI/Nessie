@@ -127,8 +127,19 @@ pub fn document_window_config(
 /// Every refusal is an `Err` the admin can act on: it opens the document in
 /// place instead, so a double-tap always lands somewhere. That is also what a
 /// Desktop build older than this command does, by answering "no such command".
+///
+/// **It is `async`, and that is load-bearing on Windows.** `WebviewWindowBuilder`
+/// deadlocks when a window is built from a *synchronous* command (its own docs
+/// say so, over the WebView2 issue tauri-apps/wry#583). The first version of
+/// this command was synchronous, and the symptom was not an error anywhere: the
+/// native window appeared with the right title and size, and its webview then
+/// sat on `about:blank` forever — no navigation, no initialization script, no
+/// `__TAURI_INTERNALS__`. On an undecorated Windows frame, where the admin
+/// draws the title bar itself, that is a window with no close button either.
+/// `async` moves the build off the IPC thread, which is what lets the webview
+/// come up at all.
 #[tauri::command]
-pub fn desktop_open_document_window(
+pub async fn desktop_open_document_window(
     app: AppHandle,
     webview: tauri::WebviewWindow,
     page_id: String,
@@ -197,6 +208,20 @@ mod tests {
             .expect("every config must declare the main window")
             .clone();
         serde_json::from_value(window).expect("the main window must deserialize")
+    }
+
+    /// The one defect no unit test can provoke and no error reports: a
+    /// synchronous command that builds a window deadlocks WebView2, and the
+    /// window comes up empty and unclosable instead of failing. Guarding the
+    /// keyword is the only cheap way to keep the fix from being undone by
+    /// somebody tidying an `async fn` that appears to await nothing.
+    #[test]
+    fn the_command_that_builds_a_window_stays_async() {
+        let source = include_str!("document_window.rs");
+        assert!(
+            source.contains("pub async fn desktop_open_document_window"),
+            "building a window from a synchronous command deadlocks on Windows",
+        );
     }
 
     #[test]
