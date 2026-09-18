@@ -27,18 +27,31 @@ const openDestination = async (page, checks, destination, label) => {
   await rootRow(page, destination).click()
   await page.waitForURL(new RegExp(`${pathOf(destination).replaceAll('/', '\\/')}$`, 'u'))
 
-  // The folder column beside the root lists the space's own pages. A document
-  // opens on a double click, not the single one that selects it — a folder and
-  // a root row open on one, an item waits, so a selection can be extended
-  // without opening every document on the way.
+  // The folder column beside the root lists the space's own pages. One tap
+  // opens, for every kind of row: the click that selects is the click that
+  // opens (`finderClickOpens` in FinderRow refuses a second click's
+  // `detail`, so a double click selects without opening twice).
   const pageRow = page.locator(`[data-finder-row="${destination.page.id}"]`).first()
   await pageRow.waitFor()
-  await pageRow.dblclick()
+  await pageRow.click()
   const reader = page.locator('.kb-reader h1').filter({ hasText: destination.page.title })
   await reader.waitFor()
 
   checks.equal(`${label}: route`, new URL(page.url()).pathname, pathOf(destination))
   checks.ok(`${label}: page detail rendered`, await reader.count() > 0)
+
+  // An open document covers the browser on this layout, deliberately: the
+  // columns stay mounted and keep their scroll positions underneath so the
+  // document's Back returns to the exact browser it left (KnowledgeWorkspace's
+  // `browserCovered`). The next hop therefore starts by closing the document —
+  // and that Back is itself the reachability this case is about, so it is
+  // walked rather than worked around with a fresh navigation.
+  await page
+    .getByRole('button', { name: `Back from ${destination.page.title}`, exact: true })
+    .first()
+    .click()
+  await rootRow(page, destination).waitFor()
+  checks.ok(`${label}: the document's Back uncovers the browser`, await rootRow(page, destination).isVisible())
 }
 
 export const desktopKnowledgeCrossNavigation = {
