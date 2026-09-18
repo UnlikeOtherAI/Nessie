@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 
-use tauri::WebviewWindow;
+use tauri::utils::config::Color;
+use tauri::{Theme, WebviewWindow};
 
 /// The desktop frame the admin paints is decided by the shell, never by a user
 /// agent string, so the platform is published before any other init script runs.
@@ -60,6 +61,85 @@ pub fn should_register_deep_link_schemes(
         && (debug_build || appimage_path.is_some_and(|value| !value.is_empty()))
 }
 
+/// A CSS colour as a custom property hands it over: `#rgb`, `#rrggbb`, or the
+/// `rgb()`/`rgba()` form a computed style falls back to. Anything else — a
+/// colour function the page picked up from an organisation palette, an empty
+/// string before the palette resolves — answers `None`, and the window keeps
+/// the colour it had rather than flashing black.
+pub fn parse_css_colour(value: &str) -> Option<Color> {
+    let value = value.trim();
+    if let Some(hex) = value.strip_prefix('#') {
+        let digits: Vec<u8> = hex
+            .chars()
+            .map(|character| character.to_digit(16).map(|digit| digit as u8))
+            .collect::<Option<_>>()?;
+        return match digits.len() {
+            3 => Some(Color(
+                digits[0] * 17,
+                digits[1] * 17,
+                digits[2] * 17,
+                255,
+            )),
+            6 => Some(Color(
+                digits[0] * 16 + digits[1],
+                digits[2] * 16 + digits[3],
+                digits[4] * 16 + digits[5],
+                255,
+            )),
+            _ => None,
+        };
+    }
+
+    let inner = value
+        .strip_prefix("rgba(")
+        .or_else(|| value.strip_prefix("rgb("))?
+        .strip_suffix(')')?;
+    let mut parts = inner.split([',', '/', ' ']).filter(|part| !part.trim().is_empty());
+    let mut channel = || -> Option<f32> { parts.next()?.trim().parse::<f32>().ok() };
+    let (red, green, blue) = (channel()?, channel()?, channel()?);
+    // The alpha a translucent overlay would carry is dropped rather than
+    // honoured: the window behind the webview has nothing to blend with.
+    Some(Color(red as u8, green as u8, blue as u8, 255))
+}
+
+/// The page's `color-scheme`, as the native window understands it. An
+/// unrecognised value leaves the window following the system, which is what it
+/// did before the page had an opinion.
+pub fn window_theme(scheme: &str) -> Option<Theme> {
+    match scheme.trim() {
+        "dark" => Some(Theme::Dark),
+        "light" => Some(Theme::Light),
+        _ => None,
+    }
+}
+
+/// The page's chrome, handed to the native window. Two things the page cannot
+/// paint for itself:
+///
+/// **The colour of an empty window.** Cmd/Ctrl+R throws the document away, and
+/// until the next one paints there is nothing on screen but this colour — it
+/// was a hard-coded `#2e1132`, the rail of the palette that was default before
+/// the Nessie theme, so every reload flashed purple.
+///
+/// **The window's appearance.** AppKit draws its own titlebar furniture — the
+/// traffic lights, and the screen-sharing control macOS inserts beside them
+/// while a window is shared — in the window's `NSAppearance`, not in anything
+/// the webview paints. Left following the system, that control rendered as a
+/// white block on the dark bar. `set_theme` is app-wide on macOS and Linux,
+/// which is what we want: a document window is the same chrome.
+///
+/// Best-effort like the badge: a platform that ignores either call is not a
+/// reason to fail the page's render.
+#[tauri::command]
+pub fn desktop_set_chrome(window: WebviewWindow, background: String, scheme: String) -> bool {
+    let painted = parse_css_colour(&background)
+        .is_some_and(|colour| window.set_background_color(Some(colour)).is_ok());
+    if let Some(theme) = window_theme(&scheme) {
+        let _ = window.set_theme(Some(theme));
+    }
+    painted
+}
+
 /// Best-effort by construction: nothing in the admin depends on the badge, so a
 /// platform that cannot show one answers `false` instead of failing the call.
 #[tauri::command]
@@ -85,8 +165,8 @@ pub fn desktop_set_badge(window: WebviewWindow, count: Option<i64>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_init_script, desktop_platform, desktop_platform_literal,
-        should_register_deep_link_schemes, SUPPORTED_PLATFORMS,
+        desktop_init_script, desktop_platform, desktop_platform_literal, parse_css_colour,
+        should_register_deep_link_schemes, window_theme, Color, Theme, SUPPORTED_PLATFORMS,
     };
     use std::ffi::OsStr;
 
@@ -204,6 +284,53 @@ mod tests {
             .and_then(serde_json::Value::as_object)
             .cloned()
             .expect("every config must declare the main window")
+    }
+
+    #[test]
+    fn reads_every_colour_shape_a_css_custom_property_arrives_in() {
+        assert_eq!(parse_css_colour("#0b172a"), Some(Color(11, 23, 42, 255)));
+        assert_eq!(parse_css_colour("  #FFF  "), Some(Color(255, 255, 255, 255)));
+        assert_eq!(parse_css_colour("rgb(11, 23, 42)"), Some(Color(11, 23, 42, 255)));
+        assert_eq!(parse_css_colour("rgb(11 23 42)"), Some(Color(11, 23, 42, 255)));
+        // The window behind the webview has nothing to blend with, so alpha goes.
+        assert_eq!(parse_css_colour("rgba(11, 23, 42, 0.5)"), Some(Color(11, 23, 42, 255)));
+    }
+
+    #[test]
+    fn keeps_the_window_it_has_rather_than_guessing() {
+        // A palette that has not resolved yet, and a colour space this shell
+        // does not read, both leave the window alone — a black flash would be
+        // worse than the colour already on it.
+        assert_eq!(parse_css_colour(""), None);
+        assert_eq!(parse_css_colour("#12345"), None);
+        assert_eq!(parse_css_colour("#zzzzzz"), None);
+        assert_eq!(parse_css_colour("oklch(0.7 0.1 250)"), None);
+        assert_eq!(parse_css_colour("rgb(11, 23)"), None);
+    }
+
+    #[test]
+    fn only_a_scheme_the_page_states_moves_the_window_off_the_system_one() {
+        assert_eq!(window_theme("dark"), Some(Theme::Dark));
+        assert_eq!(window_theme(" light "), Some(Theme::Light));
+        assert_eq!(window_theme("normal"), None);
+        assert_eq!(window_theme(""), None);
+    }
+
+    /// The configured colour is what an empty window shows before the page has
+    /// published anything, so it has to be the default theme's chrome rather
+    /// than a palette nobody is on any more. `#0b172a` is `--rail` under
+    /// `[data-theme="nessie"]`'s chrome scope in admin/src/styles.css.
+    #[test]
+    fn every_window_starts_on_the_default_theme_chrome() {
+        for source in [
+            include_str!("../tauri.conf.json"),
+            include_str!("../tauri.macos.conf.json"),
+            include_str!("../tauri.windows.conf.json"),
+            include_str!("../tauri.linux.conf.json"),
+        ] {
+            let window = main_window(source);
+            assert_eq!(window["backgroundColor"], serde_json::json!("#0b172a"));
+        }
     }
 
     #[test]

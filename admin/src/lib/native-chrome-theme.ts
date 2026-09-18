@@ -73,24 +73,37 @@ export const readNativeChromeTheme = (
 export const isIosPhoneShell = (info: NativeShellInfo | null): boolean =>
   info?.platform === 'ios' && (info.formFactor === 'phone' || info.formFactor === 'large-phone-landscape')
 
+export const isIpadShell = (info: NativeShellInfo | null): boolean =>
+  info?.platform === 'ios' && info.formFactor === 'ipad'
+
 /**
  * The colour behind the WebView (the iPad status strip, overscroll, load).
- * Focus keeps the work surface there, as the shell always has. Otherwise it is
- * the chrome's `--rail` (the token the page body is painted with), or the
- * chrome's `--main` on an iPhone, where the injected CSS paints the body with
- * `--main` instead. These are the chrome's values, not the body's: under a
- * theme with its own chrome scope the body's are the work surface, and the
- * backdrop belongs with the native chrome drawn over it.
+ * Outside focus it is the chrome's `--rail` (the token the page body is
+ * painted with), or the chrome's `--main` on an iPhone, where the injected CSS
+ * paints the body with `--main` instead. These are the chrome's values, not the
+ * body's: under a theme with its own chrome scope the body's are the work
+ * surface, and the backdrop belongs with the native chrome drawn over it.
+ *
+ * Focus mode keeps the work surface there — except on an iPad, which is the one
+ * form factor where the backdrop is not merely *behind* the WebView. There the
+ * shell insets the page and draws its toolbar in the band above it
+ * (`IpadNativeChrome`'s layer has no background of its own), so the backdrop is
+ * the top bar. Handing it focus mode's white work surface left the toolbar's
+ * dark pills floating on a white band while the sidebar beside them stayed
+ * charcoal. An iPhone is unaffected either way: `NativePhoneHeader` paints the
+ * whole strip with `headerSurface`, so no backdrop shows through.
  */
 export const readNativeBackdrop = ({
   focusSurface,
+  ipad,
   iosPhone,
   palette,
 }: {
   focusSurface: string | null
+  ipad: boolean
   iosPhone: boolean
   palette: PaletteStyle
-}): string => focusSurface ?? token(palette, iosPhone ? '--main' : '--rail')
+}): string => (ipad ? token(palette, '--rail') : focusSurface ?? token(palette, iosPhone ? '--main' : '--rail'))
 
 export const isTransparentColour = (colour: string): boolean => {
   if (!colour || colour === 'transparent') return true

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   isIosPhoneShell,
+  isIpadShell,
   isTransparentColour,
   NATIVE_CHROME_PALETTE_SELECTOR,
   readNativeBackdrop,
@@ -45,13 +46,21 @@ test('the theme message carries the chrome palette, not the work surface', () =>
   })
 })
 
+const backdrop = (over: Partial<Parameters<typeof readNativeBackdrop>[0]> = {}) =>
+  readNativeBackdrop({ focusSurface: null, ipad: false, iosPhone: false, palette: NESSIE_CHROME, ...over })
+
 test('the backdrop is the chrome rail, its --main on an iPhone, and the work surface in focus', () => {
-  assert.equal(readNativeBackdrop({ focusSurface: null, iosPhone: false, palette: NESSIE_CHROME }), '#0b172a')
-  assert.equal(readNativeBackdrop({ focusSurface: null, iosPhone: true, palette: NESSIE_CHROME }), '#13223b')
-  assert.equal(
-    readNativeBackdrop({ focusSurface: 'rgb(255, 255, 255)', iosPhone: true, palette: NESSIE_CHROME }),
-    'rgb(255, 255, 255)',
-  )
+  assert.equal(backdrop(), '#0b172a')
+  assert.equal(backdrop({ iosPhone: true }), '#13223b')
+  assert.equal(backdrop({ focusSurface: 'rgb(255, 255, 255)', iosPhone: true }), 'rgb(255, 255, 255)')
+})
+
+// The iPad's backdrop *is* its top bar: the shell insets the page and draws the
+// toolbar in the band above it, so focus mode's white work surface put dark
+// pills on a white band with a charcoal sidebar beside them.
+test('an iPad keeps the chrome rail behind its toolbar, focus mode included', () => {
+  assert.equal(backdrop({ ipad: true }), '#0b172a')
+  assert.equal(backdrop({ focusSurface: 'rgb(255, 255, 255)', ipad: true }), '#0b172a')
 })
 
 test('only an iOS phone shell reads the iPhone backdrop', () => {
@@ -60,6 +69,13 @@ test('only an iOS phone shell reads the iPhone backdrop', () => {
   assert.equal(isIosPhoneShell({ formFactor: 'ipad', platform: 'ios' }), false)
   assert.equal(isIosPhoneShell({ formFactor: 'phone', platform: 'android' }), false)
   assert.equal(isIosPhoneShell(null), false)
+})
+
+test('only an iPad shell keeps the rail through focus mode', () => {
+  assert.equal(isIpadShell({ formFactor: 'ipad', platform: 'ios' }), true)
+  assert.equal(isIpadShell({ formFactor: 'phone', platform: 'ios' }), false)
+  assert.equal(isIpadShell({ formFactor: 'ipad', platform: 'android' }), false)
+  assert.equal(isIpadShell(null), false)
 })
 
 test('a transparent shell background never becomes the backdrop', () => {

@@ -240,6 +240,31 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `admin/test/native-chrome-theme.test.ts` fails a chrome rule that forgets
   the element.
 
+  `bg` is the colour *around* the WebView, and what that means depends on the
+  form factor. An iPhone gets the chrome's `--main`, because `NativePhoneHeader`
+  paints the whole top strip itself and the backdrop only shows through as
+  overscroll; focus mode there hands over the work surface, so the frame keeps
+  matching the page. **An iPad is the exception: its backdrop *is* its top bar.**
+  `IpadNativeChrome`'s layer has no background of its own — the shell insets the
+  page and floats translucent pills over whatever `bg` is — so an iPad always
+  gets the chrome's `--rail`, focus mode included. Handing it focus mode's white
+  work surface left dark pills on a white band with a charcoal sidebar beside
+  them. `readNativeBackdrop` takes `ipad` for exactly this, and
+  `admin/test/native-chrome-theme.test.ts` pins both halves.
+
+  **The Tauri desktop window takes the same palette**, through
+  `publishDesktopChrome` (`admin/src/lib/desktop-chrome.ts`) and the
+  `desktop_set_chrome` command (`desktop/src-tauri/src/shell.rs`), which is why
+  the bridge mounts for the desktop app as well as the native shell. Two things
+  there are the window's to paint and not the page's: the flat colour a reload
+  shows while there is no document — fixed in the bundle at `#2e1132`, the rail
+  of the palette that was default before the Nessie theme, so every Cmd/Ctrl+R
+  flashed purple — and the window's `NSAppearance`, which is what macOS draws
+  the traffic lights and the screen-sharing control beside them in. Following
+  the system rather than the page, that control rendered as a white block on the
+  dark bar. The configured `backgroundColor` is now the default theme's chrome
+  (`#0b172a`) for the window that exists before the page has published anything.
+
   The page sets `window.__nessieChromeThemePublisher`; the injected script
   (`mobile/src/lib/webview-inject.ts`) then posts neither message, and
   `applyNativeFocusChrome` shows a page-sourced palette as sent, keeping

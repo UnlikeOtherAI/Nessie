@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import {
   isIosPhoneShell,
+  isIpadShell,
   isTransparentColour,
   NATIVE_CHROME_PALETTE_CLASS,
   NATIVE_CHROME_PALETTE_SELECTOR,
@@ -8,6 +9,8 @@ import {
   readNativeChromeTheme,
   type NativeChromeThemeMessage,
 } from '../lib/native-chrome-theme'
+import { isDesktopApp } from '../lib/desktop'
+import { publishDesktopChrome } from '../lib/desktop-chrome'
 import { isReactNativeWebView, readNativeShellInfo } from '../lib/native-shell'
 import { ORGANIZATION_THEME_STYLE_ID } from '../lib/theme-storage'
 
@@ -47,30 +50,42 @@ const touchesOrganizationTheme = (records: MutationRecord[]): boolean =>
   })
 
 /**
- * Publishes the chrome palette to the native shell
- * (docs/navigation/native-shell.md, "`theme` and `bg`"). Must render as a
- * direct child of `.admin-frame`: the element it renders is where the palette
- * is read, and styles.css addresses it there.
+ * Publishes the chrome palette to whichever shell draws chrome of its own: the
+ * React Native shell (docs/navigation/native-shell.md, "`theme` and `bg`") and
+ * the Tauri desktop window, which takes the same palette through
+ * `publishDesktopChrome`. Must render as a direct child of `.admin-frame`: the
+ * element it renders is where the palette is read, and styles.css addresses it
+ * there.
  */
 export const NativeChromeThemeBridge = () => {
   useEffect(() => {
-    if (!isReactNativeWebView()) return undefined
+    if (!isReactNativeWebView() && !isDesktopApp()) return undefined
     const target = window as NativeChromeWindow
+    // Ownership, for both shells: the injected React Native script reads it to
+    // stand down, and the hand-back below reads it so a bridge that remounts in
+    // the same commit never repaints the window with the signed-out palette.
     target.__nessieChromeThemePublisher = true
-    const iosPhone = isIosPhoneShell(readNativeShellInfo())
+    const shellInfo = readNativeShellInfo()
+    const iosPhone = isIosPhoneShell(shellInfo)
+    const ipad = isIpadShell(shellInfo)
 
     const post = (): void => {
       const probe = document.querySelector(NATIVE_CHROME_PALETTE_SELECTOR)
-      const bridge = target.ReactNativeWebView
-      if (!probe || !bridge) return
+      if (!probe) return
       const palette = getComputedStyle(probe)
+      const chrome = readNativeChromeTheme(palette)
+      // The desktop window takes the chrome itself: it is what a reload paints
+      // while there is no document, and what macOS draws its titlebar in.
+      publishDesktopChrome(chrome)
+      const bridge = target.ReactNativeWebView
+      if (!bridge) return
       const frame = probe.parentElement
       const shell = frame?.classList.contains('focus-mode')
         ? frame.querySelector(':scope > .admin-shell')
         : null
       const shellBackground = shell ? getComputedStyle(shell).backgroundColor : ''
       const focusSurface = shell && !isTransparentColour(shellBackground) ? shellBackground : null
-      postPalette(bridge, readNativeChromeTheme(palette), readNativeBackdrop({ focusSurface, iosPhone, palette }))
+      postPalette(bridge, chrome, readNativeBackdrop({ focusSurface, ipad, iosPhone, palette }))
     }
 
     // Leaving the shell (sign-out) hands the shell back the document's own
@@ -79,14 +94,15 @@ export const NativeChromeThemeBridge = () => {
     // holds the palette from before this bridge mounted. Deferred a tick so a
     // bridge that remounts in the same commit keeps ownership without a flash.
     const handBack = (): void => {
+      if (target.__nessieChromeThemePublisher) return
+      const documentPalette = readNativeChromeTheme(getComputedStyle(document.documentElement), { fromPage: false })
+      // The sign-in doorway has colours of its own; the window follows it out
+      // of the shell rather than keeping the chrome of a session that ended.
+      publishDesktopChrome(documentPalette)
       const bridge = target.ReactNativeWebView
-      if (target.__nessieChromeThemePublisher || !bridge) return
+      if (!bridge) return
       const bodyBackground = document.body ? getComputedStyle(document.body).backgroundColor : ''
-      postPalette(
-        bridge,
-        readNativeChromeTheme(getComputedStyle(document.documentElement), { fromPage: false }),
-        isTransparentColour(bodyBackground) ? '' : bodyBackground,
-      )
+      postPalette(bridge, documentPalette, isTransparentColour(bodyBackground) ? '' : bodyBackground)
     }
 
     let repost: number | undefined

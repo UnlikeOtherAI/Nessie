@@ -54,7 +54,9 @@ const messages: Message[] = []
 const shellWindow = dom.window as unknown as Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieChromeThemePublisher?: boolean
+  __nessieDesktopPlatform?: string
   __nessieNativeShell?: { formFactor: string; platform: string }
+  __TAURI_INTERNALS__?: { invoke: (command: string, args: unknown) => Promise<unknown> }
 }
 shellWindow.ReactNativeWebView = { postMessage: (data) => { messages.push(JSON.parse(data) as Message) } }
 shellWindow.__nessieNativeShell = { formFactor: 'phone', platform: 'ios' }
@@ -171,6 +173,51 @@ test('a bridge that remounts at once keeps ownership without handing back', asyn
   }
 })
 
+// The desktop window is the other shell that draws chrome of its own. Its
+// background is what a reload paints while there is no document — hard-coded
+// purple until this bridge started telling it — and on macOS its appearance is
+// what AppKit draws the traffic lights and the screen-sharing control in.
+test('the desktop window is handed the same chrome palette, with its scheme', async () => {
+  const restore = installDom()
+  const shell = shellWindow.ReactNativeWebView
+  delete shellWindow.ReactNativeWebView
+  const invocations: { args: Record<string, unknown>; command: string }[] = []
+  shellWindow.__nessieDesktopPlatform = 'macos'
+  shellWindow.__TAURI_INTERNALS__ = {
+    invoke: (command, args) => {
+      invocations.push({ args: args as Record<string, unknown>, command })
+      return Promise.resolve(true)
+    },
+  }
+  try {
+    messages.length = 0
+    const { frame, root } = await mountFrame()
+    const chrome = invocations.filter((call) => call.command === 'desktop_set_chrome')
+    assert.ok(chrome.length > 0, 'the desktop shell was never told what colour it is')
+    assert.equal(chrome.at(-1)?.args.background, '#0b172a')
+    assert.equal(chrome.at(-1)?.args.scheme, 'dark')
+    // Nothing is posted to a React Native bridge that is not there.
+    assert.equal(messages.length, 0)
+
+    // Signing out hands the window the document's own palette rather than
+    // leaving it painted in the chrome of a session that ended.
+    invocations.length = 0
+    await act(async () => { root.unmount() })
+    await wait(20)
+    const handedBack = invocations.filter((call) => call.command === 'desktop_set_chrome').at(-1)
+    assert.equal(handedBack?.args.background, '#eef2f8')
+    assert.equal(handedBack?.args.scheme, 'light')
+    // Let the legacy re-post fire while the DOM globals are still installed.
+    await wait(REPOST_AFTER_LEGACY_SETTLE_MS + 50)
+    frame.remove()
+  } finally {
+    delete shellWindow.__TAURI_INTERNALS__
+    delete shellWindow.__nessieDesktopPlatform
+    shellWindow.ReactNativeWebView = shell
+    restore()
+  }
+})
+
 // Removing this mount would bring back the white native header with every
 // other test still green.
 test('the admin shell mounts the bridge as a direct child of the frame, inside the native shell only', () => {
@@ -180,6 +227,6 @@ test('the admin shell mounts the bridge as a direct child of the frame, inside t
   )
   assert.match(
     layout,
-    /<div className=\{frameClassName\}[^>]*>\s*\{nativeShell \? <NativeChromeThemeBridge \/> : null\}/,
+    /<div className=\{frameClassName\}[^>]*>\s*\{nativeShell \|\| desktopApp \? <NativeChromeThemeBridge \/> : null\}/,
   )
 })
