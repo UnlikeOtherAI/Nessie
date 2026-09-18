@@ -125,6 +125,9 @@ export const TokenUsagePage = lazy(() =>
   import('./pages/TokenUsagePage').then((m) => ({ default: m.TokenUsagePage })),
 )
 export const TriggersPage = lazy(() => import('./pages/TriggersPage').then((m) => ({ default: m.TriggersPage })))
+export const TriggerDetailPage = lazy(() =>
+  import('./pages/TriggerDetailPage').then((m) => ({ default: m.TriggerDetailPage })),
+)
 export const WorkflowDesignerPage = lazy(() =>
   import('./pages/WorkflowDesignerPage').then((m) => ({ default: m.WorkflowDesignerPage })),
 )

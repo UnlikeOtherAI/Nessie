@@ -5,6 +5,7 @@ import {
   toApps,
   toExecutors,
   toStatuses,
+  toTriggers,
   toWorkflows,
 } from './surface-parents'
 
@@ -90,7 +91,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
       hash: ['confirmationToken'],
       state: [
         'accessChange', 'promotion', 'tab',
-        'status', 'search', 'source', 'instance', 'deepWaterInstance', 'trigger',
+        'status', 'search', 'type', 'source', 'instance', 'deepWaterInstance',
       ],
     },
     parentOf: toAdmin,
@@ -108,6 +109,17 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     keyScope: () => 'executor',
     parentOf: toExecutors,
     pattern: /^\/agents\/executors\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // One trigger, pushed from the Triggers table.
+    depth: 2,
+    identityOf: (match) => `trigger:${match[1]}`,
+    keyScope: () => 'trigger',
+    parentOf: toTriggers,
+    pattern: /^\/agents\/triggers\/([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

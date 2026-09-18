@@ -54,6 +54,7 @@ import {
   ThreadsPage,
   TokenUsagePage,
   ToolsPage,
+  TriggerDetailPage,
   TriggersPage,
   UnreadMessagesPage,
   UserSettingsPage,
@@ -337,6 +338,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents/triggers',
         element: lazyElement(TriggersPage, 'list'),
+      },
+      {
+        path: '/agents/triggers/:triggerId',
+        element: lazyElement(TriggerDetailPage, 'detail'),
       },
       {
         path: '/agents/workflows',

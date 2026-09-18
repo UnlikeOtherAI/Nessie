@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { useTriggers } from '../../../facades/triggers/hooks'
 import { useAgents } from '../../../facades/agents/hooks'
@@ -55,24 +55,68 @@ export const TRIGGER_TYPE_FILTERS: readonly TriggerTypeFilter[] = [
 
 export type TriggerStatusCounts = Record<TriggerStatusFilter, number>
 
-export type TriggersPageState = {
+export type TriggerRegistry = {
   agents: AgentRecord[]
   channels: ChannelRecord[]
+  registry: TriggerRegistryMaps
+  workflowInstallations: WorkflowInstallationRecord[]
+  workflowTemplates: WorkflowTemplateRecord[]
+}
+
+/**
+ * What a trigger's target *is*, resolved to names. Both the list and a single
+ * trigger's screen need it — a row says "Agent X in #general" and so does the
+ * detail's fact list — so it is one hook rather than a prop threaded down a
+ * column browser that no longer exists.
+ */
+export const useTriggerRegistry = (): TriggerRegistry => {
+  const isOwner = useIsOwner()
+  const { data: agents = [] } = useAgents()
+  const { data: channels = [] } = useChannels()
+  const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
+  const { data: workflowTemplates = [] } = useWorkflowTemplates(isOwner)
+
+  const agentsById = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  )
+  const channelsById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel])),
+    [channels],
+  )
+  const workflowInstallationsById = useMemo(
+    () =>
+      new Map(
+        workflowInstallations.map((installation) => [installation.id, installation]),
+      ),
+    [workflowInstallations],
+  )
+  const workflowTemplatesById = useMemo(
+    () => new Map(workflowTemplates.map((template) => [template.id, template])),
+    [workflowTemplates],
+  )
+  const registry = useMemo<TriggerRegistryMaps>(
+    () => ({
+      agentsById,
+      channelsById,
+      workflowInstallationsById,
+      workflowTemplatesById,
+    }),
+    [agentsById, channelsById, workflowInstallationsById, workflowTemplatesById],
+  )
+
+  return { agents, channels, registry, workflowInstallations, workflowTemplates }
+}
+
+export type TriggersPageState = TriggerRegistry & {
   defaultCreateTarget: CreateTarget
-  editingTrigger?: AgentTriggerRecord
-  effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
   isCreateDialogOpen: boolean
   /** The triggers read has not settled; the list shows a skeleton, not "none yet". */
   isPending: boolean
-  registry: TriggerRegistryMaps
   searchQuery: string
-  selectedTrigger?: AgentTriggerRecord
-  selectedTriggerId?: string
   setCreateDialogOpen: (open: boolean) => void
-  setEditingTriggerId: (triggerId: string | undefined) => void
   setSearchQuery: (query: string) => void
-  setSelectedTriggerId: (triggerId: string | undefined) => void
   setStatusFilter: (filter: TriggerStatusFilter) => void
   setTypeFilter: (filter: TriggerTypeFilter) => void
   statusCounts: TriggerStatusCounts
@@ -80,23 +124,19 @@ export type TriggersPageState = {
   totalCount: number
   triggersQuery: UseQueryResult<AgentTriggerRecord[]>
   typeFilter: TriggerTypeFilter
-  workflowInstallations: WorkflowInstallationRecord[]
-  workflowTemplates: WorkflowTemplateRecord[]
 }
 
 export const useTriggersPageState = (): TriggersPageState => {
-  // The three owner-only reads below stay gated on this flag; the page's
-  // refusal is <OwnerGate>, which asks the same question of the same session.
+  // The four owner-only reads stay gated on this flag; the page's refusal is
+  // <OwnerGate>, which asks the same question of the same session.
   const isOwner = useIsOwner()
   const triggersQuery = useTriggers(isOwner)
   // Memoised: the empty-array fallback would otherwise be a fresh literal on
   // every render, and the sort/filter memos below key off this identity.
   const triggers = useMemo(() => triggersQuery.data ?? [], [triggersQuery.data])
   const triggersPending = triggersQuery.isPending
-  const { data: agents = [] } = useAgents()
-  const { data: channels = [] } = useChannels()
-  const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
-  const { data: workflowTemplates = [] } = useWorkflowTemplates(isOwner)
+  const directory = useTriggerRegistry()
+  const { registry } = directory
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   // `/agents/triggers?create=<agentId>` — the "New trigger" button on an
   // agent's own Triggers panel. The doorway lands in the create form already
@@ -106,31 +146,11 @@ export const useTriggersPageState = (): TriggersPageState => {
   // stripped, and Back leaves the page instead of reopening the dialog.
   const createForAgent = useConsumedIntent('create')
   const [createTargetAgentId, setCreateTargetAgentId] = useState<string | undefined>(undefined)
-  const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
   // The search phrase and the status/type narrowing are all part of what the
   // list shows, so they live in the URL: `/agents/triggers?status=error` is
   // linkable and survives a refresh, and Back leaves the page rather than
   // undoing the filter (docs/navigation/overview.md §1).
   const [searchParams, setSearchParams] = useSearchParams()
-  const location = useLocation()
-  // Selecting a trigger answers which recovery controls the person is
-  // inspecting. It is durable URL state, so a cold alert link and a refresh
-  // both retain the exact selected row.
-  const selectedTriggerId = searchParams.get('trigger') ?? undefined
-  const setSelectedTriggerId = useCallback(
-    (triggerId: string | undefined) => {
-      setSearchParams(
-        (current) => {
-          const params = new URLSearchParams(current)
-          if (triggerId) params.set('trigger', triggerId)
-          else params.delete('trigger')
-          return params
-        },
-        { replace: true, state: location.state },
-      )
-    },
-    [location.state, setSearchParams],
-  )
   const searchQuery = searchParams.get('search') ?? ''
   const setSearchQuery = useCallback(
     (next: string) => {
@@ -163,35 +183,6 @@ export const useTriggersPageState = (): TriggersPageState => {
         return (left.name ?? left.type).localeCompare(right.name ?? right.type)
       }),
     [triggers],
-  )
-
-  const agentsById = useMemo(
-    () => new Map(agents.map((agent) => [agent.id, agent])),
-    [agents],
-  )
-  const channelsById = useMemo(
-    () => new Map(channels.map((channel) => [channel.id, channel])),
-    [channels],
-  )
-  const workflowInstallationsById = useMemo(
-    () =>
-      new Map(
-        workflowInstallations.map((installation) => [installation.id, installation]),
-      ),
-    [workflowInstallations],
-  )
-  const workflowTemplatesById = useMemo(
-    () => new Map(workflowTemplates.map((template) => [template.id, template])),
-    [workflowTemplates],
-  )
-  const registry = useMemo<TriggerRegistryMaps>(
-    () => ({
-      agentsById,
-      channelsById,
-      workflowInstallationsById,
-      workflowTemplatesById,
-    }),
-    [agentsById, channelsById, workflowInstallationsById, workflowTemplatesById],
   )
 
   const filteredTriggers = useMemo(() => {
@@ -234,71 +225,33 @@ export const useTriggersPageState = (): TriggersPageState => {
     [sortedTriggers],
   )
 
-  const effectiveTriggerId =
-    selectedTriggerId && sortedTriggers.some((trigger) => trigger.id === selectedTriggerId)
-      ? selectedTriggerId
-      : filteredTriggers[0]?.id
-
-  const selectedTrigger = useMemo(
-    () => sortedTriggers.find((trigger) => trigger.id === effectiveTriggerId),
-    [effectiveTriggerId, sortedTriggers],
+  // Only the explicit doorway scopes a new trigger now. The list has no
+  // selected row to borrow a target from, and inheriting one from whichever
+  // row a person happened to leave highlighted was never something they asked
+  // for.
+  const defaultCreateTarget = useMemo<CreateTarget>(
+    () => createTargetAgentId
+      ? { targetKind: 'agent' as const, agentId: createTargetAgentId }
+      : undefined,
+    [createTargetAgentId],
   )
-  const editingTrigger = useMemo(
-    () => sortedTriggers.find((trigger) => trigger.id === editingTriggerId),
-    [editingTriggerId, sortedTriggers],
-  )
-  const defaultCreateTarget = useMemo<CreateTarget>(() => {
-    // An explicit doorway outranks whatever row happens to be selected.
-    if (createTargetAgentId) {
-      return { targetKind: 'agent' as const, agentId: createTargetAgentId }
-    }
-
-    if (!selectedTrigger) {
-      return undefined
-    }
-
-    if (selectedTrigger.agentId) {
-      return {
-        targetKind: 'agent' as const,
-        agentId: selectedTrigger.agentId,
-        targetChannelId: selectedTrigger.targetChannelId,
-      }
-    }
-
-    if (selectedTrigger.workflowInstallationId) {
-      return {
-        targetKind: 'workflow' as const,
-        workflowInstallationId: selectedTrigger.workflowInstallationId,
-      }
-    }
-
-    return undefined
-  }, [createTargetAgentId, selectedTrigger])
 
   return {
-    agents,
-    channels,
+    ...directory,
     defaultCreateTarget,
-    editingTrigger,
-    effectiveTriggerId,
     filteredTriggers,
     isCreateDialogOpen: createDialogOpen,
     // A disabled query reports `pending` forever, so a non-owner (whose
     // refusal is <OwnerGate>) must not read as loading.
     isPending: isOwner && triggersPending,
-    registry,
     searchQuery,
-    selectedTrigger,
-    selectedTriggerId,
     setCreateDialogOpen: (open: boolean) => {
       // Closing the dialog releases the doorway's target, so the next plain
       // "New trigger" press on this page opens an unscoped form.
       if (!open) setCreateTargetAgentId(undefined)
       setCreateDialogOpen(open)
     },
-    setEditingTriggerId,
     setSearchQuery,
-    setSelectedTriggerId,
     setStatusFilter,
     setTypeFilter,
     statusCounts,
@@ -306,7 +259,5 @@ export const useTriggersPageState = (): TriggersPageState => {
     totalCount: sortedTriggers.length,
     triggersQuery,
     typeFilter,
-    workflowInstallations,
-    workflowTemplates,
   }
 }
