@@ -3,10 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { TriggerEditorDialog } from '../components/features/triggers/TriggerEditorDialog'
 import { TriggersTable } from '../components/features/triggers/TriggersTable'
-import {
-  loadTriggersListState,
-  saveTriggersListState,
-} from '../components/features/triggers/triggers-list-state'
+import { createListPageStore } from '../components/shared/list-page-state'
 import {
   useTriggersPageState,
   type TriggerTypeFilter,
@@ -38,12 +35,14 @@ const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
  * `/agents/triggers/:triggerId`. Creating and editing were already a dialog
  * and stay one.
  */
+const triggersListStore = createListPageStore()
+
 export const TriggersPage = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const state = useTriggersPageState()
 
-  const [initialState] = useState(loadTriggersListState)
+  const [initialState] = useState(triggersListStore.load)
   const [pageSize, setPageSize] = useState(initialState.pageSize)
   const [requestedPage, setRequestedPage] = useState(initialState.page)
 
@@ -65,7 +64,7 @@ export const TriggersPage = () => {
   const rangeEnd = Math.min((page + 1) * pageSize, filteredTriggers.length)
 
   useEffect(() => {
-    saveTriggersListState({ page, pageSize })
+    triggersListStore.save({ page, pageSize })
   }, [page, pageSize])
 
   const scroll = useScrollMemory('triggers:list')

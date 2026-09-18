@@ -42,7 +42,6 @@ test('registrations use explicit numeric priority, never mount order', () => {
 
 test('admin column-browser pages delegate Back to the shared column, with no ad-hoc phone Back buttons', () => {
   for (const page of [
-    '../src/pages/ToolsPage.tsx',
     '../src/pages/WorkflowsPage.tsx',
   ]) {
     const source = readSource(page)
@@ -103,17 +102,11 @@ test('a pushed column browser column owns Back through its stage, registered onc
   assert.doesNotMatch(navigation, /useColumnBackContext/)
 })
 
-// Triggers left the column browser: a trigger is its own route now
-// (`/agents/triggers/:triggerId`), so its Back is the surface registry's, not
-// a column's. Tools is the one stateful column browser left here.
+// Triggers and Tools both left the column browser: each is its own route now
+// (`/agents/triggers/:triggerId`, `/agents/tools/:toolId`), so their Back is
+// the surface registry's rather than a column's. Workflows is the one stateful
+// column browser left, and it owns four.
 test('every stateful column-browser detail column owns exactly one Back action', () => {
-  const expectations: Array<[string, RegExp]> = [
-    ['../src/pages/ToolsPage.tsx', /onBack=\{\(\) => setSelectedToolId\(undefined\)\}[\s\S]*?showBack/],
-  ]
-  for (const [path, pattern] of expectations) {
-    assert.match(readSource(path), pattern, path)
-  }
-
   const workflows = readSource('../src/pages/WorkflowsPage.tsx')
   // Template, installation, its run, and the cold-linked failed-run detail
   // each own one Back; the failed-runs list extracted to its own file (06-F7)

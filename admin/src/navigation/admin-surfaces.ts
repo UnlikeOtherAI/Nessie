@@ -1,10 +1,14 @@
 import type { Surface } from './page-types'
 import {
   toAdmin,
+  toConnections,
+  toOrganizationPairedAgents,
+  toPairedAgents,
   toAgents,
   toApps,
   toExecutors,
   toStatuses,
+  toTools,
   toTriggers,
   toWorkflows,
 } from './surface-parents'
@@ -23,11 +27,46 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     identityOf: (match) => `status:${match[1]}`,
     keyScope: () => 'status',
     parentOf: toStatuses,
+    // Not `splitInline`: a status is its own route component now, so a wide
+    // layout pushes it like every other detail screen rather than the list
+    // page rendering it in a second column of its own.
     pattern: /^\/settings\/statuses\/([^/]+)$/,
     root: adminRoot,
     section: 'admin',
-    splitInline: true,
     type: 'nested',
+  },
+  {
+    // One connected account, pushed from the Email or Slack tab.
+    depth: 2,
+    identityOf: (match) => `connection:${match[1]}`,
+    keyScope: () => 'connection',
+    parentOf: toConnections,
+    pattern: /^\/settings\/connections\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // One paired agent, pushed from either paired-agent list. Declared ahead of
+    // the generic `/settings/:tab` row, which would otherwise swallow them.
+    depth: 2,
+    identityOf: (match) => `paired-agent:${match[1]}`,
+    keyScope: () => 'paired-agent',
+    parentOf: toOrganizationPairedAgents,
+    pattern: /^\/settings\/organization\/paired-agents\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    depth: 2,
+    identityOf: (match) => `paired-agent:${match[1]}`,
+    keyScope: () => 'paired-agent',
+    parentOf: toPairedAgents,
+    pattern: /^\/settings\/paired-agents\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
   },
   {
     // Every settings page shares one screen identity, so page A → page B swaps
@@ -109,6 +148,17 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     keyScope: () => 'executor',
     parentOf: toExecutors,
     pattern: /^\/agents\/executors\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    // One tool, pushed from the Tools table.
+    depth: 2,
+    identityOf: (match) => `tool:${match[1]}`,
+    keyScope: () => 'tool',
+    parentOf: toTools,
+    pattern: /^\/agents\/tools\/([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

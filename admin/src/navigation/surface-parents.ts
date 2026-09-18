@@ -10,6 +10,10 @@ export const toExecutors = (): SurfaceParent => ({
   label: 'Back to Executors',
   pathname: '/agents/executors',
 })
+export const toTools = (): SurfaceParent => ({
+  label: 'Back to Tools',
+  pathname: '/agents/tools',
+})
 export const toTriggers = (): SurfaceParent => ({
   label: 'Back to Triggers',
   pathname: '/agents/triggers',
@@ -17,6 +21,18 @@ export const toTriggers = (): SurfaceParent => ({
 export const toWorkflows = (): SurfaceParent => ({
   label: 'Back to Workflows',
   pathname: '/agents/workflows',
+})
+export const toConnections = (): SurfaceParent => ({
+  label: 'Back to Connected accounts',
+  pathname: '/settings/connections',
+})
+export const toPairedAgents = (): SurfaceParent => ({
+  label: 'Back to Paired agents',
+  pathname: '/settings/paired-agents',
+})
+export const toOrganizationPairedAgents = (): SurfaceParent => ({
+  label: 'Back to Paired agents',
+  pathname: '/settings/organization/paired-agents',
 })
 export const toStatuses = (): SurfaceParent => ({
   label: 'Back to Statuses',

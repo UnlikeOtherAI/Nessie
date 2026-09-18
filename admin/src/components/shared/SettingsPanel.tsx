@@ -6,19 +6,49 @@ interface SettingsPanelProps {
   eyebrow: string
   title: string
   actions?: PageHeaderAction[]
+  /** A settings page pushed from another one: Statuses → one status. */
+  backLabel?: string
   children: ReactNode
+  /**
+   * Pinned below the scroll region rather than inside it — a paged list's
+   * `PaginationFooter`, which must not scroll away from the table it pages.
+   */
+  footer?: ReactNode
+  onBack?: () => void
+  subtitle?: ReactNode
+  tabs?: ReactNode
 }
 
 /**
  * Shared frame for every admin settings sub-page: the shared page header
- * (eyebrow + title, optional right-aligned actions) over a scrollable body.
- * Mirrors the layout of the governance pages (Audit, Approvals, …) so the
- * admin area reads as one coherent surface.
+ * (eyebrow + title, optional subtitle, tab strip and right-aligned actions)
+ * over a scrollable body, with an optional pinned footer. Mirrors the layout of
+ * the governance pages (Audit, Approvals, …) so the admin area reads as one
+ * coherent surface.
  */
-export const SettingsPanel = ({ eyebrow, title, actions, children }: SettingsPanelProps) => (
+export const SettingsPanel = ({
+  actions,
+  backLabel,
+  children,
+  eyebrow,
+  footer,
+  onBack,
+  subtitle,
+  tabs,
+  title,
+}: SettingsPanelProps) => (
   <section className="flex h-full min-h-0 flex-col">
-    <ScreenHeader actions={actions} eyebrow={eyebrow} title={title} />
+    <ScreenHeader
+      actions={actions}
+      {...(backLabel ? { backLabel } : {})}
+      eyebrow={eyebrow}
+      {...(onBack ? { onBack } : {})}
+      {...(subtitle ? { subtitle } : {})}
+      {...(tabs ? { tabs } : {})}
+      title={title}
+    />
     <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">{children}</div>
+    {footer}
   </section>
 )
 

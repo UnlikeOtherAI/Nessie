@@ -24,20 +24,20 @@ import { useSendGrants } from '../../../facades/gmail/hooks'
 import { ConnectionPermissions } from './ConnectionPermissions'
 import { AddSendAuthorization } from './AddSendAuthorization'
 
-const PROVIDER_LABEL: Record<CommsProvider, string> = {
+export const PROVIDER_LABEL: Record<CommsProvider, string> = {
   slack: 'Slack',
   google: 'Gmail',
   microsoft: 'Microsoft',
 }
 
-const STATUS_LABEL: Record<CommsConnectionStatus, string> = {
+export const STATUS_LABEL: Record<CommsConnectionStatus, string> = {
   active: 'Healthy',
   needs_reauthorization: 'Needs reauthorization',
   disconnected: 'Disconnected',
   error: 'Error',
 }
 
-const STATUS_TONE: Record<CommsConnectionStatus, PillTone> = {
+export const STATUS_TONE: Record<CommsConnectionStatus, PillTone> = {
   active: 'success',
   needs_reauthorization: 'warning',
   disconnected: 'muted',
@@ -51,8 +51,15 @@ type PendingAction = 'delete' | 'disconnect' | null
 
 export const ConnectionCard = ({
   connection,
+  heading = true,
 }: {
   connection: CommsConnectionSummary
+  /**
+   * Withheld on the connection's own screen, where `ScreenHeader` already
+   * names the provider, its status and the account — the card would repeat
+   * all three one heading below the screen's own.
+   */
+  heading?: boolean
 }) => {
   const [expanded, setExpanded] = useState(false)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
@@ -97,24 +104,29 @@ export const ConnectionCard = ({
 
   return (
     <Card as="section" id={connectionAnchorId(connection.id)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[color:var(--tx)]">{providerLabel}</h2>
-            <Pill
-              className="font-semibold"
-              radius="chip"
-              size="sm"
-              tone={STATUS_TONE[connection.status]}
-              uppercase={false}
-            >
-              {STATUS_LABEL[connection.status]}
-            </Pill>
+      <div className={[
+        'flex flex-wrap items-start gap-3',
+        heading ? 'justify-between' : 'justify-end',
+      ].join(' ')}>
+        {heading ? (
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-[color:var(--tx)]">{providerLabel}</h2>
+              <Pill
+                className="font-semibold"
+                radius="chip"
+                size="sm"
+                tone={STATUS_TONE[connection.status]}
+                uppercase={false}
+              >
+                {STATUS_LABEL[connection.status]}
+              </Pill>
+            </div>
+            <div className="mt-1 truncate text-xs text-[color:var(--tx3)]">
+              {connection.externalUserId} · team {connection.externalTenantId}
+            </div>
           </div>
-          <div className="mt-1 truncate text-xs text-[color:var(--tx3)]">
-            {connection.externalUserId} · team {connection.externalTenantId}
-          </div>
-        </div>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           {connection.provider === 'google' && connection.status === 'active' && gmailReadAvailable ? (
             <button
