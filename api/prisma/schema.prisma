@@ -284,6 +284,32 @@ enum BoardStyle {
   scrum
 }
 
+/// The resource boundary named by a cross-organisation share. A scope never
+/// changes after offer creation; changing it creates a new offer.
+enum ResourceShareScope {
+  project
+  board
+}
+
+enum ResourceShareAccess {
+  read
+  write
+}
+
+enum ResourceShareStatus {
+  pending
+  active
+  declined
+  revoked
+  expired
+}
+
+/// Operational availability is independent of the offer/grant lifecycle.
+enum ResourceShareHealth {
+  healthy
+  suspended
+}
+
 enum BoardSourceProvider {
   jira
   linear
@@ -1338,6 +1364,9 @@ model Organization {
   agentAppConnectionRequests            AgentAppConnectionRequest[]
   agentHandoffRequests                  AgentHandoffRequest[]
   automaticMembershipDomains            AutomaticMembershipDomain[]
+  outgoingResourceShares                ResourceShare[]                        @relation("ResourceShareSourceOrganization")
+  incomingResourceShares                ResourceShare[]                        @relation("ResourceShareRecipientOrganization")
+  boardSharePublications                BoardSharePublication[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1433,6 +1462,7 @@ model Organization {
   voiceDeviceCredentials VoiceDeviceCredential[]
   agentAccessCredentials AgentAccessCredential[]
 
+  @@unique([id, externalOrgId])
   @@map("organizations")
 }
 
@@ -1635,9 +1665,12 @@ model Project {
   pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
   userPushSurfacePresences UserPushSurfacePresence[]
   executors                Executor[]
+  resourceShares           ResourceShare[]
+  boardSharePublications   BoardSharePublication[]
   avatarAttachment         Attachment?               @relation("ProjectAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@unique([id, organizationId])
+  @@unique([id, organizationId, teamId])
   @@index([avatarAttachmentId])
   @@index([teamId])
   @@map("projects")
@@ -1667,9 +1700,11 @@ model TaskFieldDefinition {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  boardSharedFields BoardSharedField[]
 
+  @@unique([id, projectId, organizationId])
   @@unique([projectId, name])
   @@index([projectId, position])
   @@map("task_field_definitions")
@@ -1702,15 +1737,157 @@ model Board {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  columns      BoardColumn[]
-  watchers     BoardWatcher[]
-  placements   TaskBoardPlacement[]
-  tasks        Task[]
+  project          Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  columns          BoardColumn[]
+  watchers         BoardWatcher[]
+  placements       TaskBoardPlacement[]
+  tasks            Task[]
+  resourceShares   ResourceShare[]
+  sharePublication BoardSharePublication?
 
+  @@unique([id, projectId, organizationId])
   @@index([projectId, position])
   @@map("boards")
+}
+
+/// A cross-organisation product grant. It references UOA-backed local bindings
+/// but does not copy any UOA-owned labels, roster, roles, or commercial state.
+/// Both lifecycle and health must authorize access; services use `revision`
+/// for compare-and-swap transitions.
+model ResourceShare {
+  id                      String               @id @default(uuid()) @db.Uuid
+  scope                   ResourceShareScope
+  sourceOrganizationId    String               @map("source_organization_id") @db.Uuid
+  sourceExternalOrgId     String               @map("source_external_org_id")
+  sourceTeamId            String               @map("source_team_id") @db.Uuid
+  sourceExternalTeamId    String               @map("source_external_team_id")
+  projectId               String               @map("project_id") @db.Uuid
+  targetBoardId           String?              @map("target_board_id") @db.Uuid
+  boardId                 String?              @map("board_id") @db.Uuid
+  recipientOrganizationId String               @map("recipient_organization_id") @db.Uuid
+  recipientExternalOrgId  String               @map("recipient_external_org_id")
+  recipientTeamId         String               @map("recipient_team_id") @db.Uuid
+  recipientExternalTeamId String               @map("recipient_external_team_id")
+  proposedAccess          ResourceShareAccess  @map("proposed_access")
+  proposedRevision        Int                  @default(1) @map("proposed_revision")
+  effectiveAccess         ResourceShareAccess? @map("effective_access")
+  effectiveRevision       Int?                 @map("effective_revision")
+  status                  ResourceShareStatus  @default(pending)
+  revision                Int                  @default(1)
+  expiresAt               DateTime?            @map("expires_at")
+  createdBySubject        String               @map("created_by_subject")
+  createdByActingOrgRef   String               @map("created_by_acting_org_ref")
+  acceptedBySubject       String?              @map("accepted_by_subject")
+  acceptedByActingOrgRef  String?              @map("accepted_by_acting_org_ref")
+  acceptedAt              DateTime?            @map("accepted_at")
+  declinedBySubject       String?              @map("declined_by_subject")
+  declinedByActingOrgRef  String?              @map("declined_by_acting_org_ref")
+  declinedAt              DateTime?            @map("declined_at")
+  revokedBySubject        String?              @map("revoked_by_subject")
+  revokedByActingOrgRef   String?              @map("revoked_by_acting_org_ref")
+  revokedAt               DateTime?            @map("revoked_at")
+  expiredAt               DateTime?            @map("expired_at")
+  health                  ResourceShareHealth  @default(healthy)
+  healthReasonCode        String?              @map("health_reason_code")
+  healthRevision          Int                  @default(1) @map("health_revision")
+  healthTransitionedAt    DateTime             @default(now()) @map("health_transitioned_at")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+
+  sourceOrganization    Organization @relation("ResourceShareSourceOrganization", fields: [sourceOrganizationId, sourceExternalOrgId], references: [id, externalOrgId], onDelete: Restrict, map: "resource_shares_source_organization_fkey")
+  sourceTeam            Team         @relation("ResourceShareSourceTeam", fields: [sourceTeamId, sourceExternalOrgId, sourceExternalTeamId], references: [id, externalOrgId, externalTeamId], onDelete: Restrict, map: "resource_shares_source_team_fkey")
+  project               Project      @relation(fields: [projectId, sourceOrganizationId, sourceTeamId], references: [id, organizationId, teamId], onDelete: Restrict, map: "resource_shares_project_fkey")
+  /// Prisma models the nullable live lookup by id. The immutable migration
+  /// strengthens this to a composite board/project/organisation FK and uses
+  /// PostgreSQL's column-scoped SET NULL for board_id only.
+  board                 Board?       @relation(fields: [boardId], references: [id], onDelete: SetNull, map: "resource_shares_board_fkey")
+  recipientOrganization Organization @relation("ResourceShareRecipientOrganization", fields: [recipientOrganizationId, recipientExternalOrgId], references: [id, externalOrgId], onDelete: Restrict, map: "resource_shares_recipient_organization_fkey")
+  recipientTeam         Team         @relation("ResourceShareRecipientTeam", fields: [recipientTeamId, recipientExternalOrgId, recipientExternalTeamId], references: [id, externalOrgId, externalTeamId], onDelete: Restrict, map: "resource_shares_recipient_team_fkey")
+
+  @@index([recipientTeamId, status, expiresAt])
+  @@index([projectId, status])
+  @@index([targetBoardId, status])
+  @@index([boardId, status])
+  @@index([id, revision])
+  @@map("resource_shares")
+}
+
+/// One publication policy per board. Its revision changes in the same
+/// transaction as any allowed field, iteration, or page/folder edge.
+model BoardSharePublication {
+  boardId              String   @id @map("board_id") @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  sourceOrganizationId String   @map("source_organization_id") @db.Uuid
+  revision             Int      @default(1)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  board        Board                  @relation(fields: [boardId, projectId, sourceOrganizationId], references: [id, projectId, organizationId], onDelete: Cascade, map: "board_share_publications_board_fkey")
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization           @relation(fields: [sourceOrganizationId], references: [id], onDelete: Cascade)
+  fields       BoardSharedField[]
+  iterations   BoardSharedIteration[]
+  resources    BoardSharedResource[]
+
+  @@unique([boardId, projectId, sourceOrganizationId], map: "board_share_publications_scope_key")
+  @@index([projectId])
+  @@map("board_share_publications")
+}
+
+/// A project field explicitly visible on a shared board. Option ids are stable
+/// ids from TaskFieldDefinition.options; the publication service validates the
+/// closed list because those options currently live in JSON.
+model BoardSharedField {
+  boardId              String   @map("board_id") @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  sourceOrganizationId String   @map("source_organization_id") @db.Uuid
+  fieldDefinitionId    String   @map("field_definition_id") @db.Uuid
+  allowedOptionIds     String[] @default([]) @map("allowed_option_ids")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  publication     BoardSharePublication @relation(fields: [boardId, projectId, sourceOrganizationId], references: [boardId, projectId, sourceOrganizationId], onDelete: Cascade, map: "board_shared_fields_publication_fkey")
+  fieldDefinition TaskFieldDefinition   @relation(fields: [fieldDefinitionId, projectId, sourceOrganizationId], references: [id, projectId, organizationId], onDelete: Restrict, map: "board_shared_fields_definition_fkey")
+
+  @@id([boardId, fieldDefinitionId])
+  @@index([projectId, sourceOrganizationId])
+  @@map("board_shared_fields")
+}
+
+/// Iterations a board-only recipient may see and assign. The definition stays
+/// project-owned and is never copied into the recipient organisation.
+model BoardSharedIteration {
+  boardId              String   @map("board_id") @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  sourceOrganizationId String   @map("source_organization_id") @db.Uuid
+  iterationId          String   @map("iteration_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  publication BoardSharePublication @relation(fields: [boardId, projectId, sourceOrganizationId], references: [boardId, projectId, sourceOrganizationId], onDelete: Cascade, map: "board_shared_iterations_publication_fkey")
+  iteration   Iteration             @relation(fields: [iterationId, projectId, sourceOrganizationId], references: [id, projectId, organizationId], onDelete: Restrict, map: "board_shared_iterations_iteration_fkey")
+
+  @@id([boardId, iterationId])
+  @@index([projectId, sourceOrganizationId])
+  @@map("board_shared_iterations")
+}
+
+/// A page or folder root explicitly published to board recipients. Descendant
+/// authorization follows current KnowledgePage ancestry; descendants are not
+/// snapshotted here.
+model BoardSharedResource {
+  boardId              String   @map("board_id") @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  sourceOrganizationId String   @map("source_organization_id") @db.Uuid
+  pageId               String   @map("page_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  publication BoardSharePublication @relation(fields: [boardId, projectId, sourceOrganizationId], references: [boardId, projectId, sourceOrganizationId], onDelete: Cascade, map: "board_shared_resources_publication_fkey")
+  page        KnowledgePage         @relation(fields: [pageId, projectId, sourceOrganizationId], references: [id, projectId, organizationId], onDelete: Restrict, map: "board_shared_resources_page_fkey")
+
+  @@id([boardId, pageId])
+  @@index([projectId, sourceOrganizationId])
+  @@map("board_shared_resources")
 }
 
 /// Who to tell when a ticket on this board changes.
@@ -2034,23 +2211,25 @@ model BoardSourceIdentityLink {
 }
 
 model Iteration {
-  id             String          @id @default(uuid()) @db.Uuid
-  projectId      String          @map("project_id") @db.Uuid
-  organizationId String          @map("organization_id") @db.Uuid
-  name           String
-  goal           String?
-  status         IterationStatus @default(planned)
-  startDate      DateTime?       @map("start_date")
-  endDate        DateTime?       @map("end_date")
-  capacity       Int?
-  position       Int
-  completedAt    DateTime?       @map("completed_at")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks          Task[]
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                    String                 @id @default(uuid()) @db.Uuid
+  projectId             String                 @map("project_id") @db.Uuid
+  organizationId        String                 @map("organization_id") @db.Uuid
+  name                  String
+  goal                  String?
+  status                IterationStatus        @default(planned)
+  startDate             DateTime?              @map("start_date")
+  endDate               DateTime?              @map("end_date")
+  capacity              Int?
+  position              Int
+  completedAt           DateTime?              @map("completed_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  project               Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks                 Task[]
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  boardSharedIterations BoardSharedIteration[]
 
+  @@unique([id, projectId, organizationId])
   @@index([projectId, position])
   @@index([projectId, status])
   @@map("iterations")
@@ -2098,7 +2277,10 @@ model Team {
   scopedSettings           ScopedSetting[]           @relation("ScopedSettingTeam")
   automaticMembershipRules AutomaticMembershipRule[]
   projects                 Project[]                 @relation("ProjectOwningTeam")
+  outgoingResourceShares   ResourceShare[]           @relation("ResourceShareSourceTeam")
+  incomingResourceShares   ResourceShare[]           @relation("ResourceShareRecipientTeam")
 
+  @@unique([id, externalOrgId, externalTeamId])
   @@map("teams")
 }
 
@@ -5811,7 +5993,9 @@ model KnowledgePage {
   shares                 KnowledgePageShare[]
   spreadsheetHead        SpreadsheetHead?
   spreadsheetOpBatches   SpreadsheetOpBatch[]
+  boardSharedResources   BoardSharedResource[]
 
+  @@unique([id, projectId, organizationId])
   @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")

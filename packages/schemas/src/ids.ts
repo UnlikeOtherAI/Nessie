@@ -24,6 +24,15 @@ export const BoardIdSchema = createUuidBrandSchema<'BoardId'>()
 export type BoardId = z.infer<typeof BoardIdSchema>
 export const BoardColumnIdSchema = createUuidBrandSchema<'BoardColumnId'>()
 export type BoardColumnId = z.infer<typeof BoardColumnIdSchema>
+export const ResourceShareIdSchema = createUuidBrandSchema<'ResourceShareId'>()
+export type ResourceShareId = z.infer<typeof ResourceShareIdSchema>
+export const TaskFieldDefinitionIdSchema =
+  createUuidBrandSchema<'TaskFieldDefinitionId'>()
+export type TaskFieldDefinitionId = z.infer<typeof TaskFieldDefinitionIdSchema>
+export const IterationIdSchema = createUuidBrandSchema<'IterationId'>()
+export type IterationId = z.infer<typeof IterationIdSchema>
+export const KnowledgePageIdSchema = createUuidBrandSchema<'KnowledgePageId'>()
+export type KnowledgePageId = z.infer<typeof KnowledgePageIdSchema>
 export const ThoughtIdSchema = createUuidBrandSchema<'ThoughtId'>()
 export type ThoughtId = z.infer<typeof ThoughtIdSchema>
 export const ThoughtRecallIdSchema = createUuidBrandSchema<'ThoughtRecallId'>()
@@ -68,6 +77,14 @@ export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
 export const parseBoardId = (value: string): BoardId => BoardIdSchema.parse(value)
 export const parseBoardColumnId = (value: string): BoardColumnId =>
   BoardColumnIdSchema.parse(value)
+export const parseResourceShareId = (value: string): ResourceShareId =>
+  ResourceShareIdSchema.parse(value)
+export const parseTaskFieldDefinitionId = (value: string): TaskFieldDefinitionId =>
+  TaskFieldDefinitionIdSchema.parse(value)
+export const parseIterationId = (value: string): IterationId =>
+  IterationIdSchema.parse(value)
+export const parseKnowledgePageId = (value: string): KnowledgePageId =>
+  KnowledgePageIdSchema.parse(value)
 export const parseThoughtId = (value: string): ThoughtId => ThoughtIdSchema.parse(value)
 export const parseThoughtRecallId = (value: string): ThoughtRecallId =>
   ThoughtRecallIdSchema.parse(value)
