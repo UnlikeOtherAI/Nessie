@@ -33,8 +33,13 @@ export const ExecutorGrantedSuite = ({ change, executorId }: ExecutorGrantedSuit
   const agentId = typeof change.agentId === 'string' ? change.agentId : ''
   const agentName = (agentsQuery.data ?? []).find((agent) => agent.id === agentId)?.name ?? agentId
   const allowed = change.state === 'allowed'
-  const active = (accessQuery.data?.descriptorRevisions ?? [])
-    .find((revision) => revision.reviewStatus === 'active')
+  // The latest revision, and only when it is active — the definition the
+  // daemon enforces. A superseded revision keeps its `active` row, so picking
+  // the highest-numbered active one would list operations this executor will
+  // refuse, on the screen somebody reads before authorising the grant.
+  const latest = [...(accessQuery.data?.descriptorRevisions ?? [])]
+    .sort((left, right) => right.revision - left.revision)[0]
+  const active = latest?.reviewStatus === 'active' ? latest : undefined
   const operationKeys = active
     ? executorWholeSuiteOperationKeys(active.operationKeys)
     : null

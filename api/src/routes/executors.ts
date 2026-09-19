@@ -4,6 +4,7 @@ import {
   bindExecutorCandidate,
   createExecutor,
   ensureExecutorLogicalTools,
+  executorGrantedOperationKeys,
   ExecutorError,
   getExecutorAccessChangeForUser,
   getExecutorAccessView,
@@ -390,9 +391,16 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     try {
       // An agent needs both the exact executor-operation grant and the
       // matching logical executor tool policy, so the two kinds differ only in
-      // how many keys they carry: one named operation, or the whole suite the
-      // executor's active reviewed policy offers (derived here rather than
-      // stored, exactly as the apply path derives it).
+      // how many keys they carry: one named operation, or the whole suite
+      // (derived here rather than stored, exactly as the apply path derives
+      // it).
+      //
+      // A whole-suite REVOKE takes the keys the agent actually holds, not the
+      // ones the live policy offers. Those two sets differ the moment a
+      // revision narrows, and clearing only the live set would leave the
+      // dropped keys' tool policy enabled — dormant now, live again the day a
+      // later revision re-adds the key. The apply path makes the same
+      // distinction, and the two must not drift.
       const grantChange =
         accessChange.change.kind === 'agent_operation_grant'
         || accessChange.change.kind === 'agent_executor_grant'
@@ -402,7 +410,13 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         ? []
         : grantChange.kind === 'agent_operation_grant'
           ? [ImplementedExecutorOperationKeySchema.parse(grantChange.operationKey)]
-          : await resolveExecutorWholeSuiteOperationKeys(prisma, accessChange.executorId)
+          : grantChange.state === 'allowed'
+            ? await resolveExecutorWholeSuiteOperationKeys(prisma, accessChange.executorId)
+            : await executorGrantedOperationKeys(
+                prisma,
+                accessChange.executorId,
+                grantChange.agentId,
+              )
       if (grantChange && grantedOperationKeys.length > 0) {
         const tools = await ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId)
         // Apply the policy half first. A stale/failed confirmation can only

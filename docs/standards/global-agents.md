@@ -91,8 +91,20 @@ file is the rule**.
   no key: the set is derived at apply time
   (`resolveExecutorWholeSuiteOperationKeys`, over the one derivation
   `executorWholeSuiteOperationKeys` in `@nessie/schemas`), so a prepared change
-  cannot grant an operation the reviewed revision does not offer, and a denial
-  writes the same set denied rather than leaving a stale allow. An allow
+  cannot grant an operation the reviewed revision does not offer.
+  **"Active" means the LATEST revision, and only when its `reviewStatus` is
+  `active`** — the definition `executor-binding.ts` and `executor-commands.ts`
+  enforce, shared as `latestActiveCapabilityRevision`. Reviewing a revision
+  never demotes the one before it, so superseded `active` rows persist: a
+  reader that merely filters on status grants against a policy the daemon will
+  refuse, and tells the person authorising it that a dead revision is live.
+  **A revoke clears every grant row the agent holds on that executor, not the
+  live policy's keys** — those two sets diverge the moment a revision narrows,
+  and clearing only the live set leaves the dropped keys at `allowed`, dormant
+  now and effective again the day a later revision re-adds them, with no
+  confirmation and no fresh verification. For the same reason the
+  no-live-policy refusal is an *allow* rule only: disabling an executor's last
+  reviewed revision must never strand a grant with no way to take it back. An allow
   requires fresh verification exactly as one operation does, and confirming
   updates both halves — the logical executor tool policy first, so a failure is
   fail-closed — for every key in the set. The per-operation kind and its tool

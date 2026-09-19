@@ -331,8 +331,37 @@ export const setExecutorAgentOperationGrant = async (
 })
 
 /**
- * The operation keys the executor's ACTIVE capability revision offers an
- * agent: what a person reviewed, kept to the implemented catalog and minus
+ * The executor's live policy, defined exactly as enforcement defines it: the
+ * LATEST revision, and only when that revision is `active`.
+ *
+ * Not "the highest-numbered active revision". Reviewing a revision never
+ * demotes the one before it, so superseded `active` rows persist — and a query
+ * that merely filters on `reviewStatus` happily returns one of them when the
+ * latest revision is pending review or disabled. `executor-binding.ts` and
+ * `executor-commands.ts` both require `revision.id === latest.id AND
+ * reviewStatus === 'active'`, so anything looser grants against a policy the
+ * daemon will not honour and, worse, reports a superseded policy as live to
+ * the person authorising it.
+ *
+ * One definition, used by every new reader. A second answer to "which policy
+ * is in force" is how the two drift apart.
+ */
+export const latestActiveCapabilityRevision = async (
+  tx: Prisma.TransactionClient,
+  executorId: string,
+): Promise<{ descriptor: unknown; revision: number } | null> => {
+  const latest = await tx.executorCapabilityRevision.findFirst({
+    where: { executorId },
+    orderBy: { revision: 'desc' },
+    select: { descriptor: true, reviewStatus: true, revision: true },
+  })
+  if (!latest || latest.reviewStatus !== 'active') return null
+  return { descriptor: latest.descriptor, revision: latest.revision }
+}
+
+/**
+ * The operation keys the executor's live capability revision offers an agent:
+ * what a person reviewed, kept to the implemented catalog and minus
  * `workspace.promote`.
  *
  * Read inside the applying transaction rather than captured when the change
@@ -344,15 +373,34 @@ export const resolveExecutorWholeSuiteOperationKeys = async (
   tx: Prisma.TransactionClient,
   executorId: string,
 ): Promise<ImplementedExecutorOperationKey[]> => {
-  const active = await tx.executorCapabilityRevision.findFirst({
-    where: { executorId, reviewStatus: 'active' },
-    orderBy: { revision: 'desc' },
-    select: { descriptor: true },
-  })
+  const active = await latestActiveCapabilityRevision(tx, executorId)
   if (!active) return []
   const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(active.descriptor)
   if (!descriptor.success) return []
   return executorWholeSuiteOperationKeys(descriptor.data.operationKeys)
+}
+
+/**
+ * Every operation key this agent already holds a grant row for on this
+ * executor, whatever its state.
+ *
+ * This is the revoke set, and it is deliberately NOT the live policy's set.
+ * Rows outlive the revision that created them, so a revoke driven by the
+ * current policy would leave a narrowed-away key sitting at `allowed`, ready
+ * to take effect again the day a later revision re-adds it.
+ */
+export const executorGrantedOperationKeys = async (
+  tx: Prisma.TransactionClient,
+  executorId: string,
+  agentId: string,
+): Promise<ImplementedExecutorOperationKey[]> => {
+  const rows = await tx.executorAgentOperationGrant.findMany({
+    where: { executorId, agentId },
+    select: { operationKey: true },
+  })
+  return rows
+    .map((row) => ImplementedExecutorOperationKeySchema.safeParse(row.operationKey))
+    .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
 }
 
 export type AgentExecutorGrantMutation = {
@@ -366,9 +414,21 @@ export type AgentExecutorGrantMutation = {
  *
  * The product rule is that access to an executor is access to everything on
  * it: an agent never holds a hand-picked subset, and a specialist agent never
- * issues one confirmation per operation key. So the set is derived, every key
- * is written under ONE authorization-revision bump, and a denial writes the
- * same set denied rather than leaving a stale allow behind.
+ * issues one confirmation per operation key. So the set is derived and every
+ * key is written under ONE authorization-revision bump.
+ *
+ * **Allow and deny are not symmetrical, deliberately.** Allowing writes the
+ * live policy's keys. Denying clears EVERY grant row this agent holds on this
+ * executor, not just the live policy's keys — a revision that narrowed since
+ * the grant leaves rows for keys it no longer offers, and denying only the
+ * current set would leave those sitting at `allowed`. They are dormant while
+ * the narrow revision is live and re-arm the moment a later revision re-adds
+ * the key, handing back file writes or command execution with no confirmation
+ * and no fresh verification. A revoke has to mean revoked.
+ *
+ * That is also why the no-live-policy refusal applies to `allowed` only:
+ * disabling an executor's only reviewed revision must never strand an existing
+ * grant with no way to take it back.
  */
 export const setExecutorAgentWholeSuiteGrantInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -383,11 +443,19 @@ export const setExecutorAgentWholeSuiteGrantInTransaction = async (
   if (executor.scopeKind === 'private' && input.state === 'allowed') {
     await assertPrivateExecutorAgentAssignment(tx, executor, input.agentId)
   }
-  const operationKeys = await resolveExecutorWholeSuiteOperationKeys(tx, executor.id)
+  const operationKeys = input.state === 'allowed'
+    ? await resolveExecutorWholeSuiteOperationKeys(tx, executor.id)
+    : await executorGrantedOperationKeys(tx, executor.id, input.agentId)
   if (operationKeys.length === 0) {
+    if (input.state === 'allowed') {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.SCOPE_INVALID,
+        'This executor has no active reviewed policy, so it offers no operations to grant.',
+      )
+    }
     throw new ExecutorError(
       EXECUTOR_ERROR_CODES.SCOPE_INVALID,
-      'This executor has no active reviewed policy, so it offers no operations to grant.',
+      'This agent holds no operation grant on this executor, so there is nothing to revoke.',
     )
   }
   const authorizationRevision = await nextAuthorizationRevision(tx, executor.id)

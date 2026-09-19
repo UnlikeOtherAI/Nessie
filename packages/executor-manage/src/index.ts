@@ -79,6 +79,8 @@ export {
   type ExecutorAccessView,
 } from './executor-records.js'
 export {
+  executorGrantedOperationKeys,
+  latestActiveCapabilityRevision,
   removePrivateAssignment,
   removePrivateAssignmentInTransaction,
   resolveExecutorWholeSuiteOperationKeys,

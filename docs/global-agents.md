@@ -233,9 +233,21 @@ the change is applied* (`resolveExecutorWholeSuiteOperationKeys`), not stored,
 so a prepared change cannot name an operation the reviewed revision does not
 offer; the executor's `authorizationRevision` fence refuses one prepared before
 a review anyway. `executorWholeSuiteOperationKeys` (`@nessie/schemas`) is the
-one derivation, and the confirmation dialog enumerates from it. Denying writes
-the same set denied rather than leaving a stale allow behind, and the whole
-suite costs **one** authorization bump rather than one per key.
+one derivation, and the confirmation dialog enumerates from it.
+
+"Active" here means the **latest** revision, and only when its `reviewStatus`
+is `active` — `latestActiveCapabilityRevision`, the same definition the binding
+and command paths enforce. A superseded revision keeps its `active` row, so
+reading "the highest-numbered active revision" would grant against a policy the
+daemon no longer honours and name it as live on the confirmation screen.
+
+Denying is deliberately not the mirror of allowing: it clears **every** grant
+row the agent holds on that executor. A revision that narrowed since the grant
+leaves rows for keys it no longer offers, and revoking only the live set would
+leave those at `allowed` — inert while the narrow revision stands, live again
+the day a later revision re-adds the key. That is why the no-live-policy
+refusal applies to allow alone. Either way the whole suite costs **one**
+authorization bump rather than one per key.
 
 The per-operation kind (`agent_operation_grant`) and its tool
 (`executor_agent_access_prepare`) are untouched: a person picking one
