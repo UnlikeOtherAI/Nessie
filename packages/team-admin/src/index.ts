@@ -218,3 +218,5 @@ export {
   resolveConnectedMailPresentationAccess,
   type ConnectedMailPresentationAccess,
 } from './connected-mail-presentation.js'
+
+export * from './resource-shares.js'

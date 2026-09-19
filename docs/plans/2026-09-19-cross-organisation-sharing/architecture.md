@@ -161,6 +161,17 @@ make personal, team, organisation-wide or otherwise ineligible knowledge content
 shareable; the resource authority and disclosure checks described below remain a
 prerequisite.
 
+The machine-only offer lifecycle now creates, accepts, declines, revokes and
+expires grants through revision compare-and-swap transitions. Creation and
+acceptance require an explicit rollout decision, injected current source/recipient
+manager proofs and an injected sharing-policy decision. Acceptance locks and
+revalidates the live source project, owning team, board and publication before the
+grant becomes active. Each successful transition appends source and recipient
+audit-chain entries inside the same transaction, taking organisation locks in a
+stable order. Revocation remains available when rollout is disabled. No route or
+surface calls this lifecycle yet, and exact-team management remains an upstream
+UOA contract that callers must supply rather than infer from local roles.
+
 Never edit an existing migration. Test baseline upgrade convergence; index large
 message/run/audit tables following build-and-release guidance, not by blocking
 unbounded rewrites in a request.
