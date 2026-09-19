@@ -161,6 +161,12 @@ make personal, team, organisation-wide or otherwise ineligible knowledge content
 shareable; the resource authority and disclosure checks described below remain a
 prerequisite.
 
+`@nessie/team-admin` owns exact Prisma selects and strict record presentation for
+shares and board publication policy. Those mappers expose only the shared schema
+contracts, convert database timestamps at the boundary, and order publication
+children by stable id. They do not join UOA display, membership or commercial
+data, and they grant no access by themselves.
+
 Never edit an existing migration. Test baseline upgrade convergence; index large
 message/run/audit tables following build-and-release guidance, not by blocking
 unbounded rewrites in a request.
