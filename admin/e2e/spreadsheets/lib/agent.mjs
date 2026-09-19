@@ -37,6 +37,7 @@ import pg from 'pg'
 import { REPO_ROOT, databaseUrl } from '../../navigation/lib/config.mjs'
 
 const WORKER_DIST = resolve(REPO_ROOT, 'worker', 'dist', 'run', 'tools.js')
+const TURBO_ENTRY = resolve(REPO_ROOT, 'node_modules', 'turbo', 'bin', 'turbo')
 
 /**
  * The worker is imported from `dist`, so a stale build is a wrong answer that
@@ -46,8 +47,8 @@ const WORKER_DIST = resolve(REPO_ROOT, 'worker', 'dist', 'run', 'tools.js')
  */
 const buildWorker = () => {
   execFileSync(
-    'npx',
-    ['turbo', 'run', 'build', '--no-daemon', '--filter=@nessie/worker'],
+    process.execPath,
+    [TURBO_ENTRY, 'run', 'build', '--no-daemon', '--filter=@nessie/worker'],
     { cwd: REPO_ROOT, stdio: 'pipe' },
   )
   if (!existsSync(WORKER_DIST)) {
