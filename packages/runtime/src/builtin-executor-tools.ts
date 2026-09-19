@@ -133,6 +133,31 @@ export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinitio
   personalAssistantOnly: true,
 }
 
+export const EXECUTOR_AGENT_GRANT_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'executor_agent_grant_prepare',
+  category: 'executors',
+  summary: 'Prepare whole-suite executor access for one agent, for confirmation.',
+  label: 'Prepare Executor Agent Grant',
+  description:
+    'Prepare one allow or deny covering the WHOLE suite an executor offers one named agent: every '
+    + 'operation its active reviewed policy names, except workspace.promote, which only a person can '
+    + 'issue. There is no per-operation pick here — access to an executor is access to everything on '
+    + 'it. The requesting person still reviews and confirms the exact change in Executors, and an '
+    + 'allow requires fresh account verification; an agent can never grant executor access to itself '
+    + 'or to another agent.',
+  parameters: {
+    type: 'object',
+    properties: {
+      executorId: UUID,
+      agentId: UUID,
+      state: { type: 'string', enum: ['allowed', 'denied'] },
+    },
+    required: ['executorId', 'agentId', 'state'],
+  },
+  safe: false,
+  personalAssistantOnly: true,
+}
+
 export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_private_assignment_prepare',
   category: 'executors',
@@ -182,6 +207,7 @@ export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_REVOKE_TOOL_DEFINITION,
   EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION,
   EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION,
+  EXECUTOR_AGENT_GRANT_PREPARE_TOOL_DEFINITION,
   EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION,
   EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION,
 ]

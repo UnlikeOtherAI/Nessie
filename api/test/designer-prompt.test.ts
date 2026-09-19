@@ -79,6 +79,7 @@ const prompt = (
   buildDesignerSystemPrompt({
     availableModels: models,
     catalogue,
+    executors: null,
     formState: formState(),
     organizationId,
     webSearchAvailable: true,

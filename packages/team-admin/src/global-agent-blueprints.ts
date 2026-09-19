@@ -240,6 +240,15 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     connector_list: true,
     connector_set_secret: true,
     connector_test: true,
+    // The machines an agent can be given work on. Reading them is what makes
+    // "which of my executors should it use" answerable at all; the grant is
+    // whole-suite and still ends in the person's own confirmation with fresh
+    // verification on the Executors page. No `identityDelegatedOnly` on any of
+    // the three: that flag removes the Personal Assistant's arm, and the PA
+    // keeps its executor tools.
+    executor_agent_grant_prepare: true,
+    executor_inspect: true,
+    executor_list: true,
     project_create: true,
     project_list: true,
     team_create: true,
@@ -278,6 +287,14 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     'connector_list',
     'connector_set_secret',
     'connector_test',
+    // Executors: the two reads that let this conversation name a real machine,
+    // and the one prepared change that gives an agent the whole suite on it.
+    // The handlers act as the sole member of this home DM, so visibility is
+    // exactly `listVisibleExecutors`' — the person's own entitlement — and
+    // administering one still requires that they can administer it.
+    'executor_agent_grant_prepare',
+    'executor_inspect',
+    'executor_list',
     // The containers a channel needs, plus the read that resolves a project or
     // team NAME to its id. Both writes are organisation-owner actions and say
     // so to anybody else, exactly as their routes do.

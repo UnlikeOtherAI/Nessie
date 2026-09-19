@@ -8,6 +8,7 @@ import {
   useRejectExecutorAccessChange,
   useRejectExecutorWorkspacePromotion,
 } from '../../../facades/executors/hooks'
+import { ExecutorGrantedSuite } from './ExecutorGrantedSuite'
 import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { QueryState } from '../../shared/QueryState'
@@ -111,6 +112,7 @@ export const ExecutorAccessChangeDialog = ({
         {() => change ? (
           <div className="grid gap-3">
             <p className="text-xs text-[color:var(--tx3)]">It expires at {change.expiresAt}.</p>
+            <ExecutorGrantedSuite change={change.change} executorId={change.executorId} />
             <pre className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{JSON.stringify(change.change, null, 2)}</pre>
             <ExecutorReviewedPolicy
               change={change.change}

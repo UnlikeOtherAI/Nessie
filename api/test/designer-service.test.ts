@@ -81,7 +81,46 @@ const fakeToolResponse = (name: string, args: Record<string, unknown>, id: strin
  * what the catalogue queries, and the connector row proves the service reads
  * the organisation's own rows rather than a client-supplied list.
  */
-const fakePrisma = (): PrismaClient => ({
+const EXECUTOR_ID = '7a1b3c8a-0000-4000-8000-0000000012ab'
+
+const executorRow = {
+  authorizationRevision: 2,
+  createdAt: new Date('2026-09-01T00:00:00.000Z'),
+  id: EXECUTOR_ID,
+  label: 'Ondrej’s Mac',
+  lastSeenAt: new Date('2026-09-18T08:00:00.000Z'),
+  machineKeyFingerprint: null,
+  organizationId,
+  platformFacts: null,
+  profiles: ['workspace_sandbox'],
+  projectId: null,
+  scopeKind: 'organization' as const,
+  status: 'online' as const,
+  statusDetail: null,
+  updatedAt: new Date('2026-09-18T08:00:00.000Z'),
+}
+
+/**
+ * The sidebar face holds no tools at all, so the only way it can ever learn an
+ * executor exists is the catalogue block. This fake therefore models the
+ * executor reads as well as the tool ones: the pair is exactly what the
+ * service queries, and a delegate it does not model is a runtime TypeError.
+ */
+const fakePrisma = (overrides: { withExecutors?: boolean } = {}): PrismaClient => ({
+  executor: {
+    findFirst: async () => (overrides.withExecutors ? executorRow : null),
+    findMany: async () => (overrides.withExecutors ? [executorRow] : []),
+    findUnique: async () => ({ localMcp: [], localMcpObservedAt: null }),
+    updateMany: async () => ({ count: 0 }),
+  },
+  executorAgentOperationGrant: { findMany: async () => [] },
+  executorCapabilityRevision: { findMany: async () => [] },
+  executorPrivateAssignment: { findFirst: async () => null, findMany: async () => [] },
+  executorSession: { findMany: async () => [] },
+  organizationMember: {
+    findUnique: async () => ({ deactivatedAt: null, role: 'owner' }),
+  },
+  projectMember: { findMany: async () => [], findUnique: async () => null },
   toolRegistryEntry: {
     findMany: async (args: { where?: { builtin?: boolean } }) =>
       (args.where?.builtin === true
@@ -116,6 +155,7 @@ const createFakeReply = (): { chunks: string[]; reply: FastifyReply } => {
 const runDesignerChat = async (
   input: DesignerChatInput,
   responses: Response[] = [fakeDoneResponse()],
+  prismaOverrides: { withExecutors?: boolean } = {},
 ): Promise<{ calls: number; systemPromptSent: string }> => {
   let capturedMessages: Array<{ content: string | null; role: string }> = []
   let calls = 0
@@ -140,7 +180,7 @@ const runDesignerChat = async (
       designerModel: 'test-chat-model',
       ledgerIdentity: null,
       modelProvider: 'openai',
-      prisma: fakePrisma(),
+      prisma: fakePrisma(prismaOverrides),
     },
     {},
   )
@@ -264,4 +304,36 @@ test('a full bounded Designer loop reports that its explanation is unfinished', 
     fakeToolResponse('set_name', { name: `Scout ${index}` }, `name-${index}`))
   const { calls } = await runDesignerChat({ messages: [], formState: baseFormState }, responses)
   assert.equal(calls, 6)
+})
+
+/**
+ * The Agent Designer, asked on this page which executors it could assign to an
+ * agent, answered that it could only see agents. The sidebar has no read
+ * tools, so nothing but the catalogue block could have told it otherwise.
+ */
+test('the executors this person can reach travel into the sidebar prompt', async () => {
+  const { systemPromptSent } = await runDesignerChat(
+    { messages: [], formState: baseFormState },
+    [fakeDoneResponse()],
+    { withExecutors: true },
+  )
+  assert.match(systemPromptSent, /Executors you can reach \(1\)/)
+  assert.match(systemPromptSent, new RegExp(`executorId=${EXECUTOR_ID}`))
+  assert.match(systemPromptSent, /whole-suite and never a per-operation pick/)
+  // This face calls no tool, so the rule is stated without telling it to use
+  // one. The restricted section still NAMES the tool with its reason, which is
+  // the catalogue doing its job, so the assertion is on the rule's own words.
+  assert.match(systemPromptSent, /confirmation happens on the Executors page, not here/)
+  assert.doesNotMatch(
+    systemPromptSent,
+    /executor_agent_grant_prepare prepares ONE change/,
+  )
+})
+
+test('an executor read that fails says so rather than claiming there are none', async () => {
+  // `fakePrisma()` models no executor delegates at all, which is how a failed
+  // read looks to the service. `null` must never render as "you have none".
+  const { systemPromptSent } = await runDesignerChat({ messages: [], formState: baseFormState })
+  assert.match(systemPromptSent, /could not be read just now/)
+  assert.doesNotMatch(systemPromptSent, /Executors you can reach/)
 })

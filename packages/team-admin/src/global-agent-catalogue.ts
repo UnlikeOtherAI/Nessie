@@ -6,6 +6,12 @@ import {
   type AgentModelOption,
 } from '@nessie/schemas'
 import { buildBrowserbaseSetupPrompt } from '@nessie/runtime'
+import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
+
+import {
+  executorSection,
+  type GlobalAgentCatalogueWriteSurface,
+} from './global-agent-executor-catalogue.js'
 
 import type {
   AgentToolCatalog,
@@ -38,6 +44,15 @@ import type {
 
 export type GlobalAgentCatalogueFacts = {
   catalogue: AgentToolCatalog
+  /**
+   * Every executor the requesting person is entitled to see, with the detail
+   * their own access affords. Three states, exactly as `models` has them and
+   * for the same reason: `null` is "could not be read just now" and is said
+   * out loud rather than guessed at, `[]` is "this deployment has none you can
+   * reach", and an array is the live list. This is the ONLY way the page's
+   * sidebar face ever learns an executor exists — it holds no read tools.
+   */
+  executors: GlobalAgentExecutorFacts[] | null
   /** Null when the model catalogue could not be read; never a stale guess. */
   models: AgentModelOption[] | null
   /**
@@ -58,7 +73,7 @@ export type GlobalAgentCatalogueFacts = {
    * "never imply you did work you did not do" rule being broken by the prompt
    * itself.
    */
-  writeSurface: 'agent_tools' | 'designer_form' | 'read_only'
+  writeSurface: GlobalAgentCatalogueWriteSurface
 }
 
 const MODEL_SHORTLIST = 20
@@ -325,6 +340,8 @@ export const buildGlobalAgentCatalogueBlock = (
         ]
       : []),
     ...modelSection(facts.models),
+    '',
+    ...executorSection(facts.executors, facts.writeSurface),
     '',
     ...(facts.writeSurface === 'agent_tools' ? [...proposalCardSection(), ''] : []),
     ...cloudBrowserSetupSection(facts.writeSurface),

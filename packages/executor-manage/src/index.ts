@@ -81,14 +81,23 @@ export {
 export {
   removePrivateAssignment,
   removePrivateAssignmentInTransaction,
+  resolveExecutorWholeSuiteOperationKeys,
   setExecutorAgentOperationGrant,
   setExecutorAgentOperationGrantInTransaction,
+  setExecutorAgentWholeSuiteGrant,
+  setExecutorAgentWholeSuiteGrantInTransaction,
   setPrivateAssignment,
   setPrivateAssignmentInTransaction,
+  type AgentExecutorGrantMutation,
   type AgentOperationGrantMutation,
   type PrivateAssignmentMutation,
   type PrivateAssignmentRemoval,
 } from './executor-access-mutations.js'
+export {
+  listExecutorCatalogueFacts,
+  type GlobalAgentExecutorFacts,
+} from './executor-catalogue-facts.js'
+export { formatExecutorLocalMcp } from './executor-local-mcp-format.js'
 export {
   nextExecutorLifecycleStatus,
   transitionExecutorLifecycle,

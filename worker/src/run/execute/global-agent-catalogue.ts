@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { loadConfig } from '@nessie/config'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { LedgerIdentityService } from '@nessie/runtime'
+import { listExecutorCatalogueFacts } from '@nessie/executor-manage'
 import {
   buildGlobalAgentCatalogueBlock,
   getGlobalAgentBlueprint,
@@ -63,10 +64,14 @@ export const loadGlobalAgentCatalogueBlock = async (
   // portrait style is nobody's in particular and stays unresolved.
   const requesterUserId = input.actorContext.actionContext.effectiveUserId ?? null
 
-  const [catalogue, models, avatarStyle] = await Promise.all([
+  const [catalogue, executors, models, avatarStyle] = await Promise.all([
     loadAgentToolCatalog(prisma, {
       organizationId: context.channel.organizationId,
     }),
+    // Best-effort in exactly the model catalogue's sense: a design
+    // conversation is still worth having when a read fails, and `null` is the
+    // block's own word for "could not be read", never for "there are none".
+    listExecutorCatalogueFacts(prisma, input.actorContext).catch(() => null),
     listLedgerAgentModels({
       config: loadConfig().model,
       ...(process.env.LEDGER_PUBLIC_URL
@@ -89,6 +94,7 @@ export const loadGlobalAgentCatalogueBlock = async (
   return buildGlobalAgentCatalogueBlock({
     avatarStyle,
     catalogue,
+    executors,
     models,
     writeSurface: IDENTITY_WRITE_TOOL_IDS.some((toolId) =>
       input.resolvedToolIds.has(toolId))

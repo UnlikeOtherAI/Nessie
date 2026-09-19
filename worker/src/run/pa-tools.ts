@@ -53,6 +53,7 @@ export {
 } from './pa-tools/connectors.js'
 export {
   runExecutorAgentAccessPrepareTool,
+  runExecutorAgentGrantPrepareTool,
   runExecutorDescriptorReviewPrepareTool,
   runExecutorInspectTool,
   runExecutorLifecyclePrepareTool,

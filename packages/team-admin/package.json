@@ -17,17 +17,18 @@
   },
   "dependencies": {
     "@nessie/agent-mail": "workspace:*",
+    "@nessie/board-sources": "workspace:*",
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
+    "@nessie/executor-manage": "workspace:*",
     "@nessie/model-subscriptions": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1",
     "jmespath": "^0.16.0",
-    "zod": "^3.25.76",
-    "@nessie/board-sources": "workspace:*"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/jmespath": "^0.15.2",

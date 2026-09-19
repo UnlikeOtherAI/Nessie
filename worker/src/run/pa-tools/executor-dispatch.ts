@@ -1,5 +1,6 @@
 import {
   runExecutorAgentAccessPrepareTool,
+  runExecutorAgentGrantPrepareTool,
   runExecutorDescriptorReviewPrepareTool,
   runExecutorInspectTool,
   runExecutorLifecyclePrepareTool,
@@ -43,6 +44,12 @@ export const executorManagementTool = (
         agentId: args.agentId,
         executorId: args.executorId,
         operationKey: args.operationKey,
+        state: args.state,
+      })
+    case 'executor_agent_grant_prepare':
+      return () => runExecutorAgentGrantPrepareTool(context, {
+        agentId: args.agentId,
+        executorId: args.executorId,
         state: args.state,
       })
     case 'executor_private_assignment_prepare':
