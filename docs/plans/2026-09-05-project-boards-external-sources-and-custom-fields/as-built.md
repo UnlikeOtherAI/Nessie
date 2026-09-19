@@ -21,6 +21,13 @@ fact. Read this before treating any section above as a description of the code.
   directory. Boards own their tickets and their columns; deleting a board
   moves its tickets to the project's default board.
 
+- **Changing the default no longer moves existing work.** `Task.boardId = null`
+  means the default board at the time a board-unaware writer creates the task.
+  Before promoting another board, `updateBoard` now materialises those null rows
+  onto the old default. Future board-unaware writes continue to use null and
+  therefore land on the new default. This preserves ticket ownership and avoids
+  turning a default change into an implicit audience change.
+
 - **The board assignee filter is a rich, linkable listbox.** Mapped people use
   their `UserAvatar` through the authenticated UOA relay in both the trigger
   and the `People` options. Provider people with no identity link remain
