@@ -41,7 +41,16 @@ type Upsert = { agentId: string; operationKey: string; state: string }
 
 const transactionFake = (input: {
   descriptorOperationKeys?: readonly string[]
+  /** What the agent already holds, which is the revoke set. */
+  existingGrantKeys?: readonly string[]
   hasActiveRevision?: boolean
+  /**
+   * The review status of the LATEST revision. `pending_review` models the case
+   * the derivation used to get wrong: a superseded revision keeps its `active`
+   * row, so a query filtering on status alone would find one and grant against
+   * a policy the daemon no longer honours.
+   */
+  latestReviewStatus?: string
 }) => {
   const upserts: Upsert[] = []
   let bumps = 0
@@ -60,6 +69,8 @@ const transactionFake = (input: {
       },
     },
     executorAgentOperationGrant: {
+      findMany: async () => (input.existingGrantKeys ?? [])
+        .map((operationKey) => ({ operationKey })),
       upsert: async (args: {
         create: { agentId: string; operationKey: string; state: string }
       }) => {
@@ -74,6 +85,8 @@ const transactionFake = (input: {
       findFirst: async () => (input.hasActiveRevision === false
         ? null
         : {
+            reviewStatus: input.latestReviewStatus ?? 'active',
+            revision: 3,
             descriptor: {
               limits: {
                 maxCommandRuntimeSeconds: 60,
@@ -142,9 +155,15 @@ test('applying the grant writes exactly the active revision\u2019s suite', async
   assert.equal(fake.bumps(), 1)
 })
 
-test('denying covers the same suite rather than leaving a stale allow', async () => {
+test('denying clears every key the agent holds, not just the ones still offered', async () => {
+  // The revision narrowed after the grant: it no longer names command.run or
+  // mcp.call, but the agent still holds rows for them. Revoking against the
+  // live policy would leave those two sitting at `allowed` — dormant while
+  // this revision is live, and effective again the day a later revision
+  // re-adds the key, with no confirmation and no fresh verification.
   const fake = transactionFake({
-    descriptorOperationKeys: ['file.read', 'command.run', 'workspace.promote'],
+    descriptorOperationKeys: ['file.read'],
+    existingGrantKeys: ['file.read', 'command.run', 'mcp.call'],
   })
   await setExecutorAgentWholeSuiteGrantInTransaction(fake.tx, actorContext, {
     agentId: AGENT,
@@ -152,10 +171,64 @@ test('denying covers the same suite rather than leaving a stale allow', async ()
     state: 'denied',
   })
   assert.deepEqual(
-    fake.upserts.map((upsert) => upsert.operationKey),
-    ['file.read', 'command.run'],
+    fake.upserts.map((upsert) => upsert.operationKey).sort(),
+    ['command.run', 'file.read', 'mcp.call'],
   )
   assert.ok(fake.upserts.every((upsert) => upsert.state === 'denied'))
+  assert.equal(fake.bumps(), 1)
+})
+
+test('a revoke still works once the executor has no live policy left', async () => {
+  // Disabling an executor's only reviewed revision must never strand a grant
+  // with no way to take it back, so the no-live-policy refusal is an ALLOW
+  // rule only.
+  const fake = transactionFake({
+    existingGrantKeys: ['file.read', 'command.run'],
+    hasActiveRevision: false,
+  })
+  await setExecutorAgentWholeSuiteGrantInTransaction(fake.tx, actorContext, {
+    agentId: AGENT,
+    executorId: EXECUTOR,
+    state: 'denied',
+  })
+  assert.deepEqual(
+    fake.upserts.map((upsert) => upsert.operationKey).sort(),
+    ['command.run', 'file.read'],
+  )
+  assert.ok(fake.upserts.every((upsert) => upsert.state === 'denied'))
+})
+
+test('a superseded active revision is not the live policy', async () => {
+  // The latest revision is awaiting review. An earlier revision keeps its
+  // `active` row, and the daemon honours neither — so there is nothing to
+  // grant, and the refusal must fire rather than granting the old suite.
+  const fake = transactionFake({
+    descriptorOperationKeys: ['file.read', 'command.run'],
+    latestReviewStatus: 'pending_review',
+  })
+  await assert.rejects(
+    () => setExecutorAgentWholeSuiteGrantInTransaction(fake.tx, actorContext, {
+      agentId: AGENT,
+      executorId: EXECUTOR,
+      state: 'allowed',
+    }),
+    (error: unknown) => error instanceof ExecutorError && error.code === 'EXECUTOR_SCOPE_INVALID',
+  )
+  assert.equal(fake.upserts.length, 0)
+  assert.equal(fake.bumps(), 0)
+})
+
+test('revoking nothing is refused rather than bumping the fence', async () => {
+  const fake = transactionFake({ existingGrantKeys: [] })
+  await assert.rejects(
+    () => setExecutorAgentWholeSuiteGrantInTransaction(fake.tx, actorContext, {
+      agentId: AGENT,
+      executorId: EXECUTOR,
+      state: 'denied',
+    }),
+    (error: unknown) => error instanceof ExecutorError && error.code === 'EXECUTOR_SCOPE_INVALID',
+  )
+  assert.equal(fake.bumps(), 0)
 })
 
 test('an executor with no active reviewed policy grants nothing at all', async () => {
