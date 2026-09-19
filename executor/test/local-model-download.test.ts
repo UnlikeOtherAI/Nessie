@@ -13,8 +13,10 @@ import {
   parseContentRange,
   stagedFilePath,
   verifiedFilePath,
+  type OpenStagedFile,
   type WeightsFetch,
 } from '../src/local-model-download.js'
+import { open as openFile } from 'node:fs/promises'
 
 const BYTES = Buffer.from('the weights, such as they are, in this test')
 const DIGEST = createHash('sha256').update(BYTES).digest('hex')
@@ -290,7 +292,7 @@ test('content ranges are read strictly, start as well as total', () => {
 })
 
 test('an unreadable volume does not block a download', async () => {
-  const room = await hasRoomFor('/nowhere', 10, () => Promise.reject(new Error('ENOENT')))
+  const room = await hasRoomFor('/nowhere', 10_000, () => Promise.reject(new Error('ENOENT')))
   assert.equal(room.ok, true)
 })
 
@@ -429,5 +431,293 @@ test('a complete partial that hashes wrong is destroyed rather than promoted', a
     assert.equal(outcome.ok === false && outcome.reason, 'digest_mismatch')
     await assert.rejects(stat(partPath))
     await assert.rejects(stat(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)))
+  })
+})
+
+test('an empty lock is treated as occupied, not as wreckage to clear', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const directory = resolve(stagedFilePath(stateDir, 'gemma4-e2b-q4', file), '..')
+    await mkdir(directory, { recursive: true })
+    // Exactly what an exclusive create publishes in the instant before its
+    // JSON lands. A competitor that read this as abandoned would take a lock
+    // another process already holds, and both would write one partial file.
+    await writeFile(resolve(directory, '.downloading'), '')
+
+    let dialed = false
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: (url, init) => {
+        dialed = true
+        return respondWholeObject(url, init)
+      },
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(dialed, false)
+    assert.equal(outcome.ok === false && outcome.reason, 'download_in_progress')
+  })
+})
+
+test('a short write is completed rather than silently leaving a hole', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      // A body delivered in many small chunks exercises the write loop at
+      // every offset; the file on disk must equal the bytes we hashed.
+      fetchImpl: () => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let index = 0; index < BYTES.byteLength; index += 3) {
+              controller.enqueue(new Uint8Array(BYTES.subarray(index, index + 3)))
+            }
+            controller.close()
+          },
+        })
+        return Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: { 'content-length': String(BYTES.byteLength) },
+          }),
+        )
+      },
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok, true)
+    assert.deepEqual(await readFile(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)), BYTES)
+  })
+})
+
+test('a resume is not refused for room to re-fetch bytes it already has', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    await writeFile(partPath, BYTES.subarray(0, 40))
+
+    // Room for the two bytes still missing and Ollama copy, but nowhere near
+    // 2.2x the whole file. The old check charged for the whole file again.
+    const required = file.bytes - 40 + Math.ceil(file.bytes * 1.2)
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: () =>
+        Promise.resolve(
+          new Response(new Uint8Array(BYTES.subarray(40)), {
+            status: 206,
+            headers: { 'content-range': 'bytes 40-' + String(BYTES.byteLength - 1) + '/' + String(BYTES.byteLength) },
+          }),
+        ),
+      statfsImpl: () => Promise.resolve({ bavail: required, bsize: 1 }),
+    })
+
+    assert.equal(outcome.ok, true)
+    assert.deepEqual(await readFile(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)), BYTES)
+  })
+})
+
+test('a complete partial is finished even when the disk has no room to fetch anything', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const partPath = stagedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(partPath, '..'), { recursive: true })
+    await writeFile(partPath, BYTES)
+
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      statfsImpl: () => Promise.resolve({ bavail: 0, bsize: 512 }),
+    })
+
+    assert.equal(outcome.ok, true)
+  })
+})
+
+test('a cached file of the right length but the wrong bytes can be recovered from', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const finalPath = verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(finalPath, '..'), { recursive: true })
+    await writeFile(finalPath, Buffer.alloc(BYTES.byteLength, 0x41))
+
+    // Trusted by length, this hands back the corrupt file for ever.
+    const trusted = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      statfsImpl: plentyOfRoom,
+    })
+    assert.equal(trusted.ok, true)
+    assert.notDeepEqual(await readFile(finalPath), BYTES)
+
+    // Asked to revalidate, it throws the bad copy away and fetches again.
+    const repaired = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      revalidateCached: true,
+      fetchImpl: respondWholeObject,
+      statfsImpl: plentyOfRoom,
+    })
+    assert.equal(repaired.ok, true)
+    assert.deepEqual(await readFile(finalPath), BYTES)
+  })
+})
+
+test('a filesystem refusal is an outcome, not a rejected promise', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const finalPath = verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)
+    await mkdir(resolve(finalPath, '..'), { recursive: true })
+    // A directory where the staged file needs to be: open() fails with EISDIR.
+    await mkdir(stagedFilePath(stateDir, 'gemma4-e2b-q4', file), { recursive: true })
+
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok, false)
+    assert.ok(outcome.ok === false && outcome.reason !== 'digest_mismatch')
+  })
+})
+
+/**
+ * A handle that stores at most `limit` bytes per call, which is what a real
+ * short write looks like. Splitting the network body into small chunks does
+ * not exercise this: the bug was in how one chunk is written, not how many
+ * chunks arrive.
+ */
+const shortWritingOpen = (limit: number): OpenStagedFile => async (path, flags, mode) => {
+  const handle = await openFile(path, flags, mode)
+  return {
+    close: () => handle.close(),
+    truncate: (length) => handle.truncate(length),
+    write: async (data, offset, length, position) => {
+      const capped = Math.min(length, limit)
+      const { bytesWritten } = await handle.write(data, offset, capped, position)
+      return { bytesWritten }
+    },
+  }
+}
+
+test('a genuinely short write is retried until the bytes are all on disk', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      // One byte at a time: without the write loop the file would be full of
+      // holes while the streamed digest still matched, and it would be
+      // promoted as verified.
+      openImpl: shortWritingOpen(1),
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok, true)
+    assert.deepEqual(await readFile(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)), BYTES)
+  })
+})
+
+test('a write that stores nothing fails the download instead of looping forever', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      openImpl: shortWritingOpen(0),
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok, false)
+    await assert.rejects(stat(verifiedFilePath(stateDir, 'gemma4-e2b-q4', file)))
+  })
+})
+
+test('only one of two racers reclaims the same dead lock', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const directory = resolve(stagedFilePath(stateDir, 'gemma4-e2b-q4', file), '..')
+    await mkdir(directory, { recursive: true })
+    await writeFile(
+      resolve(directory, '.downloading'),
+      JSON.stringify({ pid: 2_147_483_600, startedAt: new Date().toISOString() }),
+    )
+
+    // Both see the same dead holder. Reclaim is a rename, which succeeds for
+    // exactly one of them, so the loser must back off rather than delete the
+    // winner lock and write the same partial file alongside it.
+    const race = () =>
+      downloadModelFile({
+        baseUrl: 'https://mirror.example.com',
+        entryId: 'gemma4-e2b-q4',
+        file,
+        stateDir,
+        fetchImpl: respondWholeObject,
+        statfsImpl: plentyOfRoom,
+      })
+    const [first, second] = await Promise.all([race(), race()])
+
+    const outcomes = [first, second]
+    const busy = outcomes.filter((o) => o.ok === false && o.reason === 'download_in_progress')
+    const done = outcomes.filter((o) => o.ok)
+    assert.equal(done.length + busy.length, 2, JSON.stringify(outcomes))
+    assert.ok(done.length >= 1)
+  })
+})
+
+test('a disk failure mid-transfer is a local error, not a blamed mirror', async () => {
+  await withStateDir(async (stateDir) => {
+    const file = fileOf()
+    const failing: OpenStagedFile = async (path, flags, mode) => {
+      const handle = await openFile(path, flags, mode)
+      return {
+        close: () => handle.close(),
+        truncate: (length) => handle.truncate(length),
+        write: () => {
+          const error: NodeJS.ErrnoException = new Error('read-only file system')
+          error.code = 'EROFS'
+          return Promise.reject(error)
+        },
+      }
+    }
+
+    const outcome = await downloadModelFile({
+      baseUrl: 'https://mirror.example.com',
+      entryId: 'gemma4-e2b-q4',
+      file,
+      stateDir,
+      fetchImpl: respondWholeObject,
+      openImpl: failing,
+      statfsImpl: plentyOfRoom,
+    })
+
+    assert.equal(outcome.ok === false && outcome.reason, 'local_error')
   })
 })

@@ -294,7 +294,17 @@ export const modelSourceDigests = async (
  */
 export const parseModelfileDigests = (modelfile: string): string[] => {
   const found = new Set<string>()
+  let insideQuotedBlock = false
   for (const line of modelfile.split(/\r?\n/)) {
+    // `TEMPLATE """…"""` and `SYSTEM """…"""` carry arbitrary text, and that
+    // text comes from the GGUF rather than from us. A line inside one that
+    // reads like `FROM …sha256-<our pin>` must not be mistaken for a model
+    // source, or a model assembled from some other blob could present our
+    // digest and be accepted. An odd number of fences on a line toggles.
+    const fences = (line.match(/"""/g) ?? []).length
+    const startedQuoted = insideQuotedBlock
+    if (fences % 2 === 1) insideQuotedBlock = !insideQuotedBlock
+    if (startedQuoted) continue
     if (!/^\s*FROM\s/i.test(line)) continue
     const match = /sha256[-:]([0-9a-f]{64})\s*$/i.exec(line)
     if (match?.[1]) found.add(match[1].toLowerCase())

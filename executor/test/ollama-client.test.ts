@@ -169,6 +169,50 @@ test('digests are read out of the modelfile FROM lines, which is where they are'
   assert.deepEqual(parseModelfileDigests(`PARAMETER seed sha256-${DIGEST}`), [])
 })
 
+test('a FROM line inside a template block is text, not a model source', () => {
+  const real = 'b'.repeat(64)
+  // The template comes from the GGUF, so its contents are not ours. A model
+  // assembled from some other blob must not be able to present our pin by
+  // writing it into its own prompt template.
+  const modelfile = [
+    `FROM /home/me/.ollama/models/blobs/sha256-${real}`,
+    'TEMPLATE """',
+    `FROM /home/me/.ollama/models/blobs/sha256-${DIGEST}`,
+    '{{ .Prompt }}',
+    '"""',
+  ].join('\n')
+
+  assert.deepEqual(parseModelfileDigests(modelfile), [real])
+})
+
+test('an import is refused when only a template block claims our digest', async () => {
+  await withFile(async (path) => {
+    const modelfile = [
+      `FROM /home/me/.ollama/models/blobs/sha256-${'b'.repeat(64)}`,
+      'SYSTEM """',
+      `FROM /home/me/.ollama/models/blobs/sha256-${DIGEST}`,
+      '"""',
+    ].join('\n')
+
+    const fetchImpl: OllamaFetch = (url) => {
+      if (url.endsWith('/api/show')) return Promise.resolve(json({ modelfile }))
+      if (url.includes('/api/blobs/')) return Promise.resolve(new Response(null, { status: 200 }))
+      return Promise.resolve(json({ status: 'success' }))
+    }
+
+    const outcome = await importVerifiedModel({
+      digest: DIGEST,
+      fileName: 'model.gguf',
+      modelName: 'nessie/gemma4-e2b-q4',
+      origin: DEFAULT_OLLAMA_ORIGIN,
+      path,
+      fetchImpl,
+    })
+
+    assert.equal(outcome.ok === false && outcome.reason, 'digest_unconfirmed')
+  })
+})
+
 test('a show response with no modelfile proves nothing', async () => {
   const digests = await modelSourceDigests(DEFAULT_OLLAMA_ORIGIN, 'nessie/gemma4-e2b-q4', () =>
     Promise.resolve(json({ details: { families: ['gemma4'] } })),
