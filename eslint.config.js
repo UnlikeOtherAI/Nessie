@@ -459,6 +459,7 @@ export default [
       'executor/src/api-client.ts', // (b) executor daemon → our own configured API base URL only.
       'executor/src/egress-gateway.ts', // (a) the egress boundary itself: it HOSTS the allow/deny proxy with node:http.
       'executor/src/firecracker/api.ts', // (a) host-local Firecracker control over a fixed Unix socket; it cannot dial an IP endpoint.
+      'executor/src/ollama-client.ts', // (a) the executor's loopback transport, and its only Ollama caller: `assertLoopbackOrigin` admits 127.0.0.0/8 and [::1] literals only (no DNS names, no https, no credentials, no path) and `redirect: 'error'`, so it cannot dial off-box — safeFetch refuses loopback by design and cannot express this call. Caveat: Ollama's API is unauthenticated, so this reaches a port, not provably Ollama.
       'cli/src/local.ts', // (b) localhost health polling against a dev server the CLI itself launched.
       'packages/mock-llm/src/server.ts', // (a) test-harness HTTP server (mock inference endpoint), never a client.
       'packages/runtime/src/web-search.ts', // (c) `fetchImpl?: typeof fetch` DI seam; the handler pins at dial.
