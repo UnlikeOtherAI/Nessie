@@ -56,28 +56,30 @@ Add **`ResourceShare`** (product authorization, not identity), with:
 
 | Field group | Proposed data |
 | --- | --- |
-| Target | UUID id; `scope: project | board`; immutable `sourceOrganizationId`, `projectId`, optional `boardId`; immutable source team stable reference validated from `Project.teamId` |
+| Target | UUID id; `scope: project | board`; immutable `sourceOrganizationId`, `projectId`, optional `targetBoardId`; nullable live `boardId`; immutable source team stable reference validated from `Project.teamId` |
 | Audience | Immutable recipient UOA organisation/team identifiers plus existing local product binding references where needed; no labels, profiles, members or mirrored hierarchy |
 | Authority | Effective `access: read | write`; pending proposed access/version for upgrade; lifecycle state; monotone `revision`; nullable expiry |
 | Actors | Stable creator, acceptor, revoker subject references with their acting org references; creation/acceptance/revocation timestamps |
 | Health | Health state, stable reason code, `healthRevision`, transition timestamp; no raw provider messages or commercial state |
 
-Enforce `project` iff board is null and `board` iff board is non-null with a DB
-CHECK. Composite foreign keys/constraints prove project belongs to source org and
-board belongs to that project/org; add the required composite uniqueness to the
-parent tables rather than relying solely on route checks. Validate source and
-recipient orgs differ, source team binding agrees, and recipient local binding
-agrees with the immutable UOA references. Reject system/channel-root projects,
-system teams and unresolved ownership. UOA hierarchy correctness is live proof,
-not a new durable projection.
+Enforce that project scope has neither board reference, while board scope always
+keeps immutable `targetBoardId`. Pending and active board rows also require the
+matching live `boardId`; a terminal row may lose that foreign key when its board
+is deleted without losing its audit target. Composite foreign keys/constraints
+prove project belongs to source org and a live board belongs to that project/org;
+add the required composite uniqueness to the parent tables rather than relying
+solely on route checks. Validate source and recipient orgs differ, source team
+binding agrees, and recipient local binding agrees with the immutable UOA
+references. Reject system/channel-root projects, system teams and unresolved
+ownership. UOA hierarchy correctness is live proof, not a new durable projection.
 
 Use separate partial unique indexes for active/pending project and board offers
 to the same recipient team; nullable board uniqueness alone is insufficient.
 Keep terminal rows for review, audit linkage and run dependencies. Add indexes for
 recipient team/state/expiry, source project/state, board/state and revision-aware
 run invalidation. No `ON DELETE SET NULL` may turn a board grant into a project
-grant. Require explicit revoke before hard deletion, retain a terminal target
-reference for audit, and use restrictive FKs/tombstone metadata where appropriate.
+grant. Require explicit revoke before hard deletion, retain `targetBoardId` on
+the terminal row, and clear only its separate live ancestry FK.
 
 Add **board publication policy**, scoped to the board and separate from any one
 recipient: `BoardSharedField` references allowed definitions/options, and
@@ -133,6 +135,31 @@ Migration is expand/backfill/validate, not a big-bang identity rewrite:
    unification plan; do not add a compatibility copy to unblock sharing.
 5. Audit and publish resource field/link policy explicitly. No grants, document
    exposure or provenance claims are inferred by a bulk backfill.
+
+### Foundation schema now present
+
+The additive, machine-only foundation consists of `ResourceShare`,
+`BoardSharePublication`, `BoardSharedField`, `BoardSharedIteration` and
+`BoardSharedResource`, plus strict shared record contracts. It does not activate
+sharing or add an authorization path. `ResourceShare` retains local binding UUIDs
+and their immutable UOA organisation/team references, with composite foreign keys
+that prove source project/team and live board ancestry. Board shares keep an
+immutable `targetBoardId` for terminal audit and a separate nullable `boardId`
+relation; only the latter is cleared after revocation when a board is deleted.
+Proposed and effective access each carry their own revision so an accepted read
+grant can remain effective while a write widening awaits recipient acceptance.
+The grant id, creation audit, target and audience are immutable. Decline,
+revocation and expiry audit facts are append-only; an acceptance audit may change
+only when a newly accepted widening advances the effective revision.
+
+The database advances a board publication's revision for every field/option,
+iteration or page-root insert, update and delete. Field option ids remain a closed
+array because the current field definition stores options in JSON; the future
+publication service must validate those ids before writing. A published page's
+composite foreign key proves only its source project and organisation. It does not
+make personal, team, organisation-wide or otherwise ineligible knowledge content
+shareable; the resource authority and disclosure checks described below remain a
+prerequisite.
 
 Never edit an existing migration. Test baseline upgrade convergence; index large
 message/run/audit tables following build-and-release guidance, not by blocking

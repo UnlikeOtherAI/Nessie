@@ -341,6 +341,11 @@ authority after expiry is not. No new member-facing operational dashboard.
 
 Rollback first disables new offers/activation and shared data access, fences
 shared-origin jobs, invalidates caches/streams and leaves native source work intact.
+The foundation migration is additive and creates no grants or backfilled audience:
+an application rollback can ignore its unused tables. A schema rollback, if ever
+required before shares exist, drops publication children, publication and grant
+tables, their triggers/functions and enums in reverse dependency order; it never
+rewrites existing project, board, identity or knowledge rows.
 Keep source/recipient revoke/leave management reachable. Do not drop grants, source
 contributions, audit records or provenance. Resume requires an explicit manager
 action after compatibility/authority is restored. Do not roll binaries back to a
