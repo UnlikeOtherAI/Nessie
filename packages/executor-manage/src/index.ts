@@ -80,6 +80,7 @@ export {
 } from './executor-records.js'
 export {
   executorGrantedOperationKeys,
+  executorOperationKeysHeldElsewhere,
   latestActiveCapabilityRevision,
   removePrivateAssignment,
   removePrivateAssignmentInTransaction,

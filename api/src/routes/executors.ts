@@ -5,6 +5,7 @@ import {
   createExecutor,
   ensureExecutorLogicalTools,
   executorGrantedOperationKeys,
+  executorOperationKeysHeldElsewhere,
   ExecutorError,
   getExecutorAccessChangeForUser,
   getExecutorAccessView,
@@ -18,7 +19,10 @@ import {
   resolveExecutorWholeSuiteOperationKeys,
 } from '@nessie/executor-manage'
 import type { FastifyInstance } from 'fastify'
-import { ImplementedExecutorOperationKeySchema } from '@nessie/schemas'
+import {
+  ImplementedExecutorOperationKeySchema,
+  type ImplementedExecutorOperationKey,
+} from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -419,11 +423,27 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
               )
       if (grantChange && grantedOperationKeys.length > 0) {
         const tools = await ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId)
+        // The logical tool policy is ORGANISATION-wide — one
+        // `executor.<operation>` entry, never a per-machine projection — while
+        // the grant row is the per-machine half. So a revoke on one executor
+        // must leave the shared entry alone when the agent still holds that
+        // operation on another machine, or withdrawing consent for one laptop
+        // silently cuts the agent off every executor it is still granted on.
+        // The binding gate reads the policy entry with no executor dimension,
+        // so it cannot tell the difference.
+        const heldElsewhere = grantChange.state === 'allowed'
+          ? new Set<ImplementedExecutorOperationKey>()
+          : await executorOperationKeysHeldElsewhere(prisma, {
+              agentId: grantChange.agentId,
+              excludeExecutorId: accessChange.executorId,
+              organizationId: actorContext.tenant.organizationId,
+            })
         // Apply the policy half first. A stale/failed confirmation can only
         // leave a logical grant without the exact executor-operation grant,
         // which remains fail-closed; the reverse ordering could confirm a
         // resource grant and then strand its mandatory policy update.
         for (const operationKey of grantedOperationKeys) {
+          if (heldElsewhere.has(operationKey)) continue
           const toolRegistryEntryId = tools.get(operationKey)
           if (!toolRegistryEntryId) {
             throw new Error('Executor logical tool registry is incomplete.')
