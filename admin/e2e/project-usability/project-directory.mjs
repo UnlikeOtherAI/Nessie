@@ -73,6 +73,7 @@ export const exerciseProjectDirectory = async ({
     const { page } = outsiderPage
     try {
       await page.goto(`${adminUrl}/projects`, { waitUntil: 'domcontentloaded' })
+      await page.waitForURL((url) => url.pathname !== '/projects')
       const doorway = page.getByRole('link', { name: 'Browse all projects', exact: true })
       await doorway.waitFor()
       await doorway.click()
