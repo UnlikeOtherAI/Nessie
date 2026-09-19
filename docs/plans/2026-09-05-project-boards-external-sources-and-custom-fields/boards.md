@@ -1,6 +1,11 @@
-# Boards — many views over one task pool
+# Boards — historical view design
 
 Part of [the project boards design](overview.md).
+
+> Historical design only. The shipped model was changed so each board owns its
+> tickets through `Task.boardId`; see [As built](as-built.md). The sections below
+> explain the superseded view model and must not be used as the implementation
+> contract.
 
 ## 3. Boards (A)
 
