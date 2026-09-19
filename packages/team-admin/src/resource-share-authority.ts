@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 import {
   resolveLiveEntitlements,
@@ -167,6 +167,109 @@ const actionAllowed = (
   access: 'read' | 'write',
 ): boolean => action === 'read' || (action === 'write' && access === 'write')
 
+type QualifiedShare = {
+  effectiveAccess: 'read' | 'write'
+  effectiveRevision: number
+  expiresAt: Date | null
+  id: string
+  recipientTeamId: string
+  revision: number
+  sourceTeamId: string
+  verifiedAt: Date
+}
+
+/**
+ * Re-qualify every database-owned edge after live UOA and policy calls. The
+ * database clock is authoritative for expiry. The publication revision pins
+ * the projection read just above this check, so a concurrent policy change
+ * makes this read fail instead of returning a mixed authority.
+ */
+const readFinalQualifiedShare = async (
+  prisma: PrismaClient,
+  input: ResourceAccessInput,
+  share: {
+    id: string
+    recipientOrganizationId: string
+    recipientTeamId: string
+    scope: 'board' | 'project'
+  },
+  publicationRevision: number | null,
+): Promise<QualifiedShare | null> => {
+  if (share.scope === 'board' && input.target.kind !== 'board') return null
+  const targetBoardJoin = input.target.kind === 'board'
+    ? Prisma.sql`
+        JOIN "boards" target_board
+          ON target_board."id" = ${input.target.boardId}::uuid
+         AND target_board."project_id" = p."id"
+         AND target_board."organization_id" = p."organization_id"
+      `
+    : Prisma.empty
+  const scopeQualification = share.scope === 'board'
+    ? Prisma.sql`
+        AND rs."scope" = 'board'::"ResourceShareScope"
+        AND rs."target_board_id" = ${
+          input.target.kind === 'board' ? input.target.boardId : input.target.projectId
+        }::uuid
+        AND rs."board_id" = rs."target_board_id"
+        AND EXISTS (
+          SELECT 1
+          FROM "board_share_publications" publication
+          WHERE publication."board_id" = rs."board_id"
+            AND publication."project_id" = p."id"
+            AND publication."source_organization_id" = p."organization_id"
+            AND publication."revision" = ${publicationRevision ?? 0}
+        )
+      `
+    : Prisma.sql`
+        AND rs."scope" = 'project'::"ResourceShareScope"
+        AND rs."target_board_id" IS NULL
+        AND rs."board_id" IS NULL
+      `
+
+  const rows = await prisma.$queryRaw<QualifiedShare[]>(Prisma.sql`
+    SELECT
+      rs."effective_access"::text AS "effectiveAccess",
+      rs."effective_revision" AS "effectiveRevision",
+      rs."expires_at" AS "expiresAt",
+      rs."id",
+      rs."recipient_team_id" AS "recipientTeamId",
+      rs."revision",
+      rs."source_team_id" AS "sourceTeamId",
+      CURRENT_TIMESTAMP AS "verifiedAt"
+    FROM "resource_shares" rs
+    JOIN "projects" p
+      ON p."id" = rs."project_id"
+     AND p."organization_id" = rs."source_organization_id"
+     AND p."team_id" = rs."source_team_id"
+     AND p."deleted_at" IS NULL
+     AND p."channel_root" = false
+    JOIN "teams" source_team
+      ON source_team."id" = rs."source_team_id"
+     AND source_team."external_org_id" = rs."source_external_org_id"
+     AND source_team."external_team_id" = rs."source_external_team_id"
+     AND source_team."system_managed" = false
+    JOIN "teams" recipient_team
+      ON recipient_team."id" = rs."recipient_team_id"
+     AND recipient_team."external_org_id" = rs."recipient_external_org_id"
+     AND recipient_team."external_team_id" = rs."recipient_external_team_id"
+     AND recipient_team."system_managed" = false
+    ${targetBoardJoin}
+    WHERE rs."id" = ${share.id}::uuid
+      AND rs."project_id" = ${input.target.projectId}::uuid
+      AND rs."source_organization_id" = ${input.target.sourceOrganizationId}::uuid
+      AND rs."recipient_organization_id" = ${share.recipientOrganizationId}::uuid
+      AND rs."recipient_team_id" = ${share.recipientTeamId}::uuid
+      AND rs."status" = 'active'::"ResourceShareStatus"
+      AND rs."health" = 'healthy'::"ResourceShareHealth"
+      AND rs."effective_access" IS NOT NULL
+      AND rs."effective_revision" IS NOT NULL
+      AND (rs."expires_at" IS NULL OR rs."expires_at" > CURRENT_TIMESTAMP)
+      AND (${input.action} = 'read' OR rs."effective_access" = 'write'::"ResourceShareAccess")
+      ${scopeQualification}
+  `)
+  return rows.length === 1 ? rows[0] ?? null : null
+}
+
 /**
  * Resolves one qualified project or board access path without changing the
  * authenticated tenant. Native checks run only when actor and resource tenant
@@ -309,6 +412,14 @@ export const resolveResourceAccess = async (
     }
   }
 
+  const qualified = await readFinalQualifiedShare(
+    prisma,
+    input,
+    share,
+    publication?.revision ?? null,
+  )
+  if (!qualified) return denied('grant_denied')
+
   const credentialEpoch = input.actor.uoaIdentity?.tokenVersion
   if (credentialEpoch === undefined || credentialEpoch === null) {
     return denied('grant_denied')
@@ -319,14 +430,14 @@ export const resolveResourceAccess = async (
       organizationId: input.actor.organizationId,
       recipientTeamId: share.recipientTeamId,
       userId: input.actor.userId,
-      verifiedAt: now,
+      verifiedAt: qualified.verifiedAt,
     },
     grant: {
-      access: share.effectiveAccess,
-      effectiveRevision: share.effectiveRevision,
-      expiresAt: share.expiresAt,
-      id: share.id,
-      revision: share.revision,
+      access: qualified.effectiveAccess,
+      effectiveRevision: qualified.effectiveRevision,
+      expiresAt: qualified.expiresAt,
+      id: qualified.id,
+      revision: qualified.revision,
     },
     kind: 'shared',
     operations: share.effectiveAccess === 'write' ? ['read', 'write'] : ['read'],
@@ -335,7 +446,7 @@ export const resolveResourceAccess = async (
       boardId: input.target.kind === 'board' ? input.target.boardId : null,
       organizationId: input.target.sourceOrganizationId,
       projectId: input.target.projectId,
-      teamId: share.sourceTeamId,
+      teamId: qualified.sourceTeamId,
     },
     target: input.target,
   }

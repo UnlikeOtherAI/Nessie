@@ -80,7 +80,13 @@ export * from './agent-conversations.js'
 export * from './board-watch-notify.js'
 export * from './board-placement.js'
 export * from './resource-authority.js'
-export * from './resource-share-records.js'
+export {
+  boardSharePublicationRecordSelect,
+  mapBoardSharePublicationRecord,
+  presentResourceShare,
+  type BoardSharePublicationRecordRow,
+  type ResourceShareViewCapabilitiesInput,
+} from './resource-share-records.js'
 export * from './resource-share-authority.js'
 export * from './project-delete.js'
 export * from './project-structure.js'

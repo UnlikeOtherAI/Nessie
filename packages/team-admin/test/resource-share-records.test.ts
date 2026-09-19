@@ -4,7 +4,8 @@ import test from 'node:test'
 import {
   boardSharePublicationRecordSelect,
   mapBoardSharePublicationRecord,
-  mapResourceShareRecord,
+  mapResourceSharePersistenceRecord,
+  presentResourceShare,
   resourceShareRecordSelect,
   type BoardSharePublicationRecordRow,
   type ResourceShareRecordRow,
@@ -122,10 +123,10 @@ test('resource share select contains exactly the strict record fields', () => {
 })
 
 test('resource share mapping validates exact rows and terminal board audit', () => {
-  const active = mapResourceShareRecord(activeBoardRow())
+  const active = mapResourceSharePersistenceRecord(activeBoardRow())
   assert.equal(active.createdAt, NOW.toISOString())
 
-  const terminal = mapResourceShareRecord({
+  const terminal = mapResourceSharePersistenceRecord({
     ...activeBoardRow(),
     boardId: null,
     status: 'revoked',
@@ -140,18 +141,55 @@ test('resource share mapping validates exact rows and terminal board audit', () 
 test('resource share mapping rejects omitted, unexpected and invalid fields', () => {
   const omitted: Partial<ResourceShareRecordRow> = { ...activeBoardRow() }
   delete omitted.projectId
-  assert.throws(() => mapResourceShareRecord(omitted as ResourceShareRecordRow))
+  assert.throws(() => mapResourceSharePersistenceRecord(omitted as ResourceShareRecordRow))
 
-  assert.throws(() => mapResourceShareRecord({
+  assert.throws(() => mapResourceSharePersistenceRecord({
     ...activeBoardRow(),
     recipientTeamName: 'Copied UOA label',
   } as unknown as ResourceShareRecordRow))
 
-  assert.throws(() => mapResourceShareRecord({
+  assert.throws(() => mapResourceSharePersistenceRecord({
     ...activeBoardRow(),
     effectiveAccess: null,
     effectiveRevision: null,
   }))
+})
+
+test('viewer presentation excludes every persistence and cross-tenant identity field', () => {
+  const view = presentResourceShare(activeBoardRow(), {
+    accept: false,
+    decline: false,
+    revoke: true,
+  })
+  assert.deepEqual(view, {
+    capabilities: { accept: false, decline: false, revoke: true },
+    effectiveAccess: 'read',
+    expiresAt: null,
+    health: 'healthy',
+    healthReasonCode: null,
+    healthRevision: 1,
+    id: IDS.share,
+    proposedAccess: 'read',
+    revision: 2,
+    scope: 'board',
+    status: 'active',
+  })
+  for (const privateField of [
+    'sourceOrganizationId',
+    'sourceExternalOrgId',
+    'sourceTeamId',
+    'sourceExternalTeamId',
+    'projectId',
+    'targetBoardId',
+    'boardId',
+    'recipientOrganizationId',
+    'recipientExternalOrgId',
+    'recipientTeamId',
+    'recipientExternalTeamId',
+    'createdBySubject',
+    'acceptedBySubject',
+    'revokedBySubject',
+  ]) assert.equal(privateField in view, false)
 })
 
 test('publication select is exact and orders every child collection', () => {

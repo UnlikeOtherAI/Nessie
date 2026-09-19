@@ -269,6 +269,80 @@ runDatabaseTest('changing the default keeps existing null-owned tickets on the o
   }
 })
 
+runDatabaseTest('a concurrent implicit-board write cannot cross a default switch', async () => {
+  const setupPrisma = new PrismaClient()
+  const switchPrisma = new PrismaClient()
+  const writerPrisma = new PrismaClient()
+  const seeded = await seed(setupPrisma)
+  try {
+    const project = { id: seeded.projectId, organizationId: seeded.organizationId }
+    const [oldDefault] = await listBoards(setupPrisma, project)
+    assert.ok(oldDefault)
+    const nextDefault = await createBoard(setupPrisma, project, { name: 'Concurrent default' })
+    assert.ok('columns' in nextDefault)
+
+    let releaseBlocker!: () => void
+    const blockerReleased = new Promise<void>((resolve) => {
+      releaseBlocker = resolve
+    })
+    let blockerReady!: () => void
+    const blockerReadyPromise = new Promise<void>((resolve) => {
+      blockerReady = resolve
+    })
+    const blocker = setupPrisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT "id" FROM "projects"
+        WHERE "id" = ${seeded.projectId}::uuid
+        FOR UPDATE
+      `
+      blockerReady()
+      await blockerReleased
+    })
+    await blockerReadyPromise
+
+    let switchSettled = false
+    const switching = updateBoard(switchPrisma, seeded.projectId, nextDefault.id, {
+      isDefault: true,
+    }).finally(() => { switchSettled = true })
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    let writerSettled = false
+    const writing = writerPrisma.task.create({
+      data: {
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        status: 'inbox',
+        title: 'Written across the switch',
+      },
+    }).finally(() => { writerSettled = true })
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    assert.equal(switchSettled, false)
+    assert.equal(writerSettled, false)
+
+    releaseBlocker()
+    await blocker
+    const [promoted, created] = await Promise.all([switching, writing])
+    assert.ok(!('error' in promoted), JSON.stringify(promoted))
+    assert.equal(created.boardId, null)
+    assert.equal(
+      (await setupPrisma.task.findUniqueOrThrow({ where: { id: seeded.taskId } })).boardId,
+      oldDefault.id,
+    )
+    assert.deepEqual(
+      (await listBoardTasks(setupPrisma, promoted, { limit: 50 })).tasks
+        .map(({ id }) => id),
+      [created.id],
+    )
+  } finally {
+    await cleanup(setupPrisma, seeded)
+    await Promise.all([
+      setupPrisma.$disconnect(),
+      switchPrisma.$disconnect(),
+      writerPrisma.$disconnect(),
+    ])
+  }
+})
+
 runDatabaseTest('dropping a ticket on another board’s column moves it there', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
