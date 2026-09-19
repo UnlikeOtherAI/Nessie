@@ -179,6 +179,17 @@ transactional lifecycle and safe DTO presentation. Keep cohesive modules under
 the code size cap. Contracts live in new `packages/schemas/src/resource-shares.ts`
 and the normal API contract/facade path, not duplicated handwritten DTOs.
 
+The machine-only authority foundation now implements the qualified
+`native | shared | denied` decision for projects and boards. Native decisions run
+only when the actor and resource organisation match and continue through the
+existing project read/modify predicates. A foreign decision requires an explicit
+share id, request-fresh UOA proof for the actor and exact recipient team, an active
+healthy unexpired grant, current source ancestry, an explicit rollout switch and
+an injected source/recipient policy decision. Board grants return the exact
+publication revision and projection. The default switch is off, no route calls
+this function yet, and recipient organisation roles never enter source-native
+authority.
+
 Thin proposed route families:
 
 | Contract | Gate / response |
