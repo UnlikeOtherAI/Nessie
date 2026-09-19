@@ -252,6 +252,21 @@ export const updateBoard = async (
     // One default per project is a partial unique index, so the demotion has
     // to happen before the promotion rather than beside it.
     if (input.isDefault) {
+      const currentDefault = await tx.board.findFirst({
+        where: { projectId, isDefault: true, NOT: { id: boardId } },
+        select: { id: true },
+      })
+      if (currentDefault) {
+        // `boardId: null` means the default board at write time. Materialise
+        // that ownership before changing which board is the default, or old
+        // tickets silently move to the newly promoted board. Apart from being
+        // surprising, that becomes an audience change once boards can be
+        // shared outside their source team.
+        await tx.task.updateMany({
+          where: { projectId, boardId: null },
+          data: { boardId: currentDefault.id },
+        })
+      }
       await tx.board.updateMany({
         where: { projectId, isDefault: true, NOT: { id: boardId } },
         data: { isDefault: false },

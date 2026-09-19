@@ -1675,9 +1675,10 @@ model TaskFieldDefinition {
   @@map("task_field_definitions")
 }
 
-/// A saved view over its project's task pool: a name, a style, an ordered set
-/// of columns, and a closed filter. Never a container — deleting a board
-/// deletes its columns and placements, never a task.
+/// A container that owns its project's tickets, its columns, and a closed
+/// display filter. Deleting a board deletes its columns and placements, but
+/// returns its tickets to the project's default board through Task.boardId's
+/// SetNull relation rather than deleting the work.
 model Board {
   id             String     @id @default(uuid()) @db.Uuid
   projectId      String     @map("project_id") @db.Uuid
@@ -1715,9 +1716,8 @@ model Board {
 
 /// Who to tell when a ticket on this board changes.
 ///
-/// A board is a view, so a watcher is a statement about a slice of the pool and
-/// never about the tasks: the same task on two watched boards still tells each
-/// recipient once. Exactly one of `userId` / `agentId` is set.
+/// A watcher follows the tickets owned by this board. Exactly one of `userId`
+/// / `agentId` is set.
 model BoardWatcher {
   id             String   @id @default(uuid()) @db.Uuid
   boardId        String   @map("board_id") @db.Uuid

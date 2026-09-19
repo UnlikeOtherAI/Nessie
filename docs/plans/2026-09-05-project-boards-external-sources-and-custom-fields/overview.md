@@ -17,7 +17,12 @@ board is a **view** over a pool of work rather than a bucket that owns it;
 custom fields are what external fields land in; and per-board columns are what
 external states map onto.
 
-## 0. The one-paragraph version
+## 0. The historical one-paragraph design
+
+The paragraph and decision table below describe the original design. The
+shipped ownership model differs: a board owns its tickets through `Task.boardId`,
+as recorded in [As built](as-built.md). Use that section and the executable
+`boardTaskPoolWhere` rule for current behavior.
 
 A **board is a saved view over its project's task pool**, never a container:
 `Board` owns a name, a style, an ordered set of `BoardColumn`s (each still

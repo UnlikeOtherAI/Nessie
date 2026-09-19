@@ -13,6 +13,7 @@ import {
   resolveBoardPlacement,
   resolveProjectTaskDetailPlacement,
   transitionProjectTask,
+  updateBoard,
 } from '../src/index.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
@@ -219,6 +220,48 @@ runDatabaseTest('a task without an explicit board resolves to the project defaul
     assert.deepEqual(
       await resolveProjectTaskDetailPlacement(prisma, task),
       { boardId: defaultBoard.id, columnId: defaultBoard.columns[0]?.id ?? null, position: null },
+    )
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('changing the default keeps existing null-owned tickets on the old default', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const project = { id: seeded.projectId, organizationId: seeded.organizationId }
+    const [oldDefault] = await listBoards(prisma, project)
+    assert.ok(oldDefault)
+    const nextDefault = await createBoard(prisma, project, { name: 'Next default' })
+    assert.ok('columns' in nextDefault)
+
+    const promoted = await updateBoard(prisma, seeded.projectId, nextDefault.id, {
+      isDefault: true,
+    })
+    assert.ok(!('error' in promoted), JSON.stringify(promoted))
+
+    const existing = await prisma.task.findUniqueOrThrow({ where: { id: seeded.taskId } })
+    assert.equal(existing.boardId, oldDefault.id)
+    assert.deepEqual(
+      (await listBoardTasks(prisma, oldDefault, { limit: 50 })).tasks.map((task) => task.id),
+      [seeded.taskId],
+    )
+    assert.deepEqual((await listBoardTasks(prisma, promoted, { limit: 50 })).tasks, [])
+
+    const future = await prisma.task.create({
+      data: {
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        status: 'inbox',
+        title: 'Created after the default changed',
+      },
+    })
+    assert.equal(future.boardId, null)
+    assert.deepEqual(
+      (await listBoardTasks(prisma, promoted, { limit: 50 })).tasks.map((task) => task.id),
+      [future.id],
     )
   } finally {
     await cleanup(prisma, seeded)
