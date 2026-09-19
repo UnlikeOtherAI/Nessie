@@ -21,6 +21,7 @@ const IDS = {
 } as const
 
 const NOW = '2026-09-19T10:00:00.000Z'
+const LATER = '2026-09-19T11:00:00.000Z'
 
 const activeBoardShare = () => ({
   id: IDS.share,
@@ -115,7 +116,7 @@ test('terminal board audit survives loss of the live board relation', () => {
   assert.equal(ResourceShareRecordSchema.safeParse(terminal).success, true)
 })
 
-test('resource share transitions keep the target and audience immutable', () => {
+test('resource share transitions keep identity, target, audience and creation audit immutable', () => {
   const previous = activeBoardShare()
   assert.equal(ResourceShareStateTransitionSchema.safeParse({
     previous,
@@ -131,8 +132,88 @@ test('resource share transitions keep the target and audience immutable', () => 
   }).success, false)
   assert.equal(ResourceShareStateTransitionSchema.safeParse({
     previous,
-    next: { ...previous, targetBoardId: IDS.recipientTeam, revision: 3 },
+    next: {
+      ...previous,
+      targetBoardId: IDS.recipientTeam,
+      boardId: IDS.recipientTeam,
+      revision: 3,
+    },
   }).success, false)
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous,
+    next: { ...previous, createdBySubject: 'another-subject', revision: 3 },
+  }).success, false)
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous,
+    next: { ...previous, createdAt: LATER, revision: 3 },
+  }).success, false)
+})
+
+test('resource share transitions keep terminal audit append-only', () => {
+  const revoked = {
+    ...activeBoardShare(),
+    status: 'revoked' as const,
+    revokedBySubject: 'uoa-sub-source-manager',
+    revokedByActingOrgRef: 'uoa-org-source',
+    revokedAt: NOW,
+  }
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous: revoked,
+    next: { ...revoked, revokedBySubject: 'another-subject', revision: 3 },
+  }).success, false)
+
+  const declined = {
+    ...activeBoardShare(),
+    effectiveAccess: null,
+    effectiveRevision: null,
+    acceptedBySubject: null,
+    acceptedByActingOrgRef: null,
+    acceptedAt: null,
+    status: 'declined' as const,
+    declinedBySubject: 'uoa-sub-recipient-manager',
+    declinedByActingOrgRef: 'uoa-org-recipient',
+    declinedAt: NOW,
+  }
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous: declined,
+    next: { ...declined, declinedAt: LATER, revision: 3 },
+  }).success, false)
+
+  const expired = {
+    ...activeBoardShare(),
+    status: 'expired' as const,
+    expiredAt: NOW,
+  }
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous: expired,
+    next: { ...expired, expiredAt: LATER, revision: 3 },
+  }).success, false)
+})
+
+test('acceptance audit changes require a newly effective revision', () => {
+  const previous = activeBoardShare()
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous,
+    next: {
+      ...previous,
+      acceptedBySubject: 'new-acceptor',
+      acceptedAt: LATER,
+      revision: 3,
+    },
+  }).success, false)
+  assert.equal(ResourceShareStateTransitionSchema.safeParse({
+    previous,
+    next: {
+      ...previous,
+      proposedAccess: 'write',
+      proposedRevision: 3,
+      effectiveAccess: 'write',
+      effectiveRevision: 3,
+      acceptedBySubject: 'new-acceptor',
+      acceptedAt: LATER,
+      revision: 3,
+    },
+  }).success, true)
 })
 
 test('resource share requires complete stable actor references and health reason state', () => {

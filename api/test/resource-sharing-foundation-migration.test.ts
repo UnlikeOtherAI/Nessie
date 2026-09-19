@@ -19,9 +19,13 @@ test('resource share migration enforces exact scope and tenant ancestry', () => 
   assert.match(migrationSql, /CONSTRAINT "resource_shares_board_fkey"[\s\S]*FOREIGN KEY \("board_id", "project_id", "source_organization_id"\)[\s\S]*ON DELETE SET NULL \("board_id"\)/)
 })
 
-test('resource share migration preserves immutable target and audience facts', () => {
-  assert.match(migrationSql, /resource share target and audience are immutable/)
+test('resource share migration preserves immutable identity, target and audience facts', () => {
+  assert.match(
+    migrationSql,
+    /resource share identity, target, audience and creation audit are immutable/,
+  )
   for (const column of [
+    'id',
     'scope',
     'source_organization_id',
     'source_external_org_id',
@@ -33,10 +37,30 @@ test('resource share migration preserves immutable target and audience facts', (
     'recipient_external_org_id',
     'recipient_team_id',
     'recipient_external_team_id',
+    'created_by_subject',
+    'created_by_acting_org_ref',
+    'created_at',
   ]) {
     assert.match(migrationSql, new RegExp(`NEW\\."${column}"`))
     assert.match(migrationSql, new RegExp(`OLD\\."${column}"`))
   }
+})
+
+test('resource share migration keeps terminal audit append-only', () => {
+  assert.match(migrationSql, /resource share decline audit is append-only/)
+  assert.match(migrationSql, /resource share revocation audit is append-only/)
+  assert.match(migrationSql, /resource share expiry audit is append-only/)
+  assert.match(
+    migrationSql,
+    /resource share acceptance audit changes require a higher effective revision/,
+  )
+  assert.match(migrationSql, /OLD\."declined_at" IS NOT NULL/)
+  assert.match(migrationSql, /OLD\."revoked_at" IS NOT NULL/)
+  assert.match(migrationSql, /OLD\."expired_at" IS NOT NULL/)
+  assert.match(
+    migrationSql,
+    /NEW\."effective_revision" <= OLD\."effective_revision"/,
+  )
 })
 
 test('resource share migration gives project and board scopes separate live uniqueness', () => {

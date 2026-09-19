@@ -271,6 +271,7 @@ CREATE FUNCTION "enforce_resource_share_revision_monotonic"()
 RETURNS TRIGGER AS $$
 BEGIN
   IF (
+    NEW."id",
     NEW."scope",
     NEW."source_organization_id",
     NEW."source_external_org_id",
@@ -281,8 +282,12 @@ BEGIN
     NEW."recipient_organization_id",
     NEW."recipient_external_org_id",
     NEW."recipient_team_id",
-    NEW."recipient_external_team_id"
+    NEW."recipient_external_team_id",
+    NEW."created_by_subject",
+    NEW."created_by_acting_org_ref",
+    NEW."created_at"
   ) IS DISTINCT FROM (
+    OLD."id",
     OLD."scope",
     OLD."source_organization_id",
     OLD."source_external_org_id",
@@ -293,9 +298,44 @@ BEGIN
     OLD."recipient_organization_id",
     OLD."recipient_external_org_id",
     OLD."recipient_team_id",
-    OLD."recipient_external_team_id"
+    OLD."recipient_external_team_id",
+    OLD."created_by_subject",
+    OLD."created_by_acting_org_ref",
+    OLD."created_at"
   ) THEN
-    RAISE EXCEPTION 'resource share target and audience are immutable';
+    RAISE EXCEPTION 'resource share identity, target, audience and creation audit are immutable';
+  END IF;
+
+  IF OLD."declined_at" IS NOT NULL
+     AND (NEW."declined_by_subject", NEW."declined_by_acting_org_ref", NEW."declined_at")
+       IS DISTINCT FROM
+       (OLD."declined_by_subject", OLD."declined_by_acting_org_ref", OLD."declined_at") THEN
+    RAISE EXCEPTION 'resource share decline audit is append-only';
+  END IF;
+
+  IF OLD."revoked_at" IS NOT NULL
+     AND (NEW."revoked_by_subject", NEW."revoked_by_acting_org_ref", NEW."revoked_at")
+       IS DISTINCT FROM
+       (OLD."revoked_by_subject", OLD."revoked_by_acting_org_ref", OLD."revoked_at") THEN
+    RAISE EXCEPTION 'resource share revocation audit is append-only';
+  END IF;
+
+  IF OLD."expired_at" IS NOT NULL
+     AND NEW."expired_at" IS DISTINCT FROM OLD."expired_at" THEN
+    RAISE EXCEPTION 'resource share expiry audit is append-only';
+  END IF;
+
+  IF (NEW."accepted_by_subject", NEW."accepted_by_acting_org_ref", NEW."accepted_at")
+       IS DISTINCT FROM
+       (OLD."accepted_by_subject", OLD."accepted_by_acting_org_ref", OLD."accepted_at")
+     AND (
+       NEW."effective_revision" IS NULL
+       OR (
+         OLD."effective_revision" IS NOT NULL
+         AND NEW."effective_revision" <= OLD."effective_revision"
+       )
+     ) THEN
+    RAISE EXCEPTION 'resource share acceptance audit changes require a higher effective revision';
   END IF;
 
   -- PostgreSQL implements the board FK's column-scoped SET NULL as an UPDATE.

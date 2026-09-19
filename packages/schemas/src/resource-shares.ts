@@ -194,6 +194,7 @@ export const ResourceShareRecordSchema = ResourceShareRecordBaseSchema.superRefi
 export type ResourceShareRecord = z.infer<typeof ResourceShareRecordSchema>
 
 const IMMUTABLE_RESOURCE_SHARE_FIELDS = [
+  'id',
   'scope',
   'sourceOrganizationId',
   'sourceExternalOrgId',
@@ -205,7 +206,15 @@ const IMMUTABLE_RESOURCE_SHARE_FIELDS = [
   'recipientExternalOrgId',
   'recipientTeamId',
   'recipientExternalTeamId',
+  'createdBySubject',
+  'createdByActingOrgRef',
+  'createdAt',
 ] as const satisfies readonly (keyof ResourceShareRecord)[]
+
+const actorAuditChanged = (
+  previous: readonly (string | null)[],
+  next: readonly (string | null)[],
+) => previous.some((value, index) => value !== next[index])
 
 export const ResourceShareStateTransitionSchema = z
   .object({
@@ -221,6 +230,42 @@ export const ResourceShareStateTransitionSchema = z
     }
     if (next.revision <= previous.revision) {
       addIssue(context, ['next', 'revision'], 'revision must increase')
+    }
+    if (
+      previous.declinedAt !== null &&
+      actorAuditChanged(
+        [previous.declinedBySubject, previous.declinedByActingOrgRef, previous.declinedAt],
+        [next.declinedBySubject, next.declinedByActingOrgRef, next.declinedAt],
+      )
+    ) {
+      addIssue(context, ['next', 'declinedAt'], 'decline audit is append-only')
+    }
+    if (
+      previous.revokedAt !== null &&
+      actorAuditChanged(
+        [previous.revokedBySubject, previous.revokedByActingOrgRef, previous.revokedAt],
+        [next.revokedBySubject, next.revokedByActingOrgRef, next.revokedAt],
+      )
+    ) {
+      addIssue(context, ['next', 'revokedAt'], 'revocation audit is append-only')
+    }
+    if (previous.expiredAt !== null && next.expiredAt !== previous.expiredAt) {
+      addIssue(context, ['next', 'expiredAt'], 'expiry audit is append-only')
+    }
+    const acceptanceAuditChanged = actorAuditChanged(
+      [previous.acceptedBySubject, previous.acceptedByActingOrgRef, previous.acceptedAt],
+      [next.acceptedBySubject, next.acceptedByActingOrgRef, next.acceptedAt],
+    )
+    const effectiveRevisionIncreased =
+      next.effectiveRevision !== null &&
+      (previous.effectiveRevision === null ||
+        next.effectiveRevision > previous.effectiveRevision)
+    if (acceptanceAuditChanged && !effectiveRevisionIncreased) {
+      addIssue(
+        context,
+        ['next', 'acceptedAt'],
+        'acceptance audit changes require a higher effective revision',
+      )
     }
     if (next.healthRevision < previous.healthRevision) {
       addIssue(context, ['next', 'healthRevision'], 'health revision cannot decrease')

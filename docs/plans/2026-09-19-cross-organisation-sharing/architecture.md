@@ -148,6 +148,9 @@ immutable `targetBoardId` for terminal audit and a separate nullable `boardId`
 relation; only the latter is cleared after revocation when a board is deleted.
 Proposed and effective access each carry their own revision so an accepted read
 grant can remain effective while a write widening awaits recipient acceptance.
+The grant id, creation audit, target and audience are immutable. Decline,
+revocation and expiry audit facts are append-only; an acceptance audit may change
+only when a newly accepted widening advances the effective revision.
 
 The database advances a board publication's revision for every field/option,
 iteration or page-root insert, update and delete. Field option ids remain a closed
