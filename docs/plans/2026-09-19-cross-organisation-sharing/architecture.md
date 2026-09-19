@@ -172,6 +172,12 @@ stable order. Revocation remains available when rollout is disabled. No route or
 surface calls this lifecycle yet, and exact-team management remains an upstream
 UOA contract that callers must supply rather than infer from local roles.
 
+`@nessie/team-admin` owns exact Prisma selects and strict record presentation for
+shares and board publication policy. Those mappers expose only the shared schema
+contracts, convert database timestamps at the boundary, and order publication
+children by stable id. They do not join UOA display, membership or commercial
+data, and they grant no access by themselves.
+
 Never edit an existing migration. Test baseline upgrade convergence; index large
 message/run/audit tables following build-and-release guidance, not by blocking
 unbounded rewrites in a request.
