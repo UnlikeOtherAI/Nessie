@@ -107,7 +107,20 @@ file is the rule**.
   reviewed revision must never strand a grant with no way to take it back. An allow
   requires fresh verification exactly as one operation does, and confirming
   updates both halves — the logical executor tool policy first, so a failure is
-  fail-closed — for every key in the set. The per-operation kind and its tool
+  fail-closed — for every key in the set.
+  **The two halves are scoped differently, and a revoke must respect that.**
+  The logical tool policy is ORGANISATION-wide — one `executor.<operation>`
+  registry entry, never a per-machine projection, because the machine is chosen
+  later by the availability authority (`ensureExecutorLogicalTools`). The grant
+  row is the per-machine half. The binding gate reads the policy entry with no
+  executor dimension, so switching it off on a revoke withdraws the agent from
+  EVERY executor, not the one whose owner withdrew consent. A revoke therefore
+  disables the shared entry only for operations the agent holds nowhere else
+  (`executorOperationKeysHeldElsewhere`), and that query excludes the executor
+  being revoked, whose rows are still `allowed` at that point because the
+  policy half is written first. Revoking a laptop once cut an agent off the
+  server it was still granted on, and recovery needed a fresh prepare, confirm
+  and password on the other machine. The per-operation kind and its tool
   stay: a *person* may still pick one capability on the Executors page. What no
   agent may do is issue that pick, because one confirmation per operation key
   is how an ordinary "let the researcher use my Mac" became a dozen reviews.
