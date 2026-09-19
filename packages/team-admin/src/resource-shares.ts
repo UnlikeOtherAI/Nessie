@@ -13,6 +13,8 @@ import {
   type ResourceShareTransitionResult,
 } from './resource-share-audit.js'
 
+export type { ResourceShareTransitionResult } from './resource-share-audit.js'
+
 export type ResourceShareLifecycleActor = AuthorizedActionContext
 
 export type ResourceShareLifecycleDependencies = {
