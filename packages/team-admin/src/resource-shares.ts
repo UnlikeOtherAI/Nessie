@@ -12,8 +12,21 @@ import {
   type ResourceShareAuditActor,
   type ResourceShareTransitionResult,
 } from './resource-share-audit.js'
+import {
+  denyResourceShareLifecycle as deny,
+  ResourceShareLifecycleError,
+} from './resource-share-lifecycle-errors.js'
+import {
+  findResourceShareAtRevision,
+  transitionResourceShare,
+  type ResourceShareTransitionRow,
+} from './resource-share-transition.js'
 
 export type { ResourceShareTransitionResult } from './resource-share-audit.js'
+export {
+  ResourceShareLifecycleError,
+  type ResourceShareLifecycleErrorCode,
+} from './resource-share-lifecycle-errors.js'
 
 export type ResourceShareLifecycleActor = AuthorizedActionContext
 
@@ -49,24 +62,6 @@ export type ResourceShareLifecycleDependencies = {
     },
   ) => Promise<boolean>
   now?: () => Date
-}
-
-export type ResourceShareLifecycleErrorCode =
-  | 'conflict'
-  | 'denied'
-  | 'invalid_target'
-  | 'not_found'
-  | 'sharing_disabled'
-
-export class ResourceShareLifecycleError extends Error {
-  constructor(public readonly code: ResourceShareLifecycleErrorCode) {
-    super(code)
-    this.name = 'ResourceShareLifecycleError'
-  }
-}
-
-const deny = (code: ResourceShareLifecycleErrorCode): never => {
-  throw new ResourceShareLifecycleError(code)
 }
 
 const requireHumanUoaActor = (
@@ -161,8 +156,6 @@ export const createResourceShare = async (
   deps: ResourceShareLifecycleDependencies,
 ): Promise<ResourceShareTransitionResult> => {
   sharingEnabled(deps)
-  const now = deps.now?.() ?? new Date()
-  if (input.expiresAt && input.expiresAt <= now) deny('invalid_target')
   if ((input.scope === 'board') !== Boolean(input.boardId)) deny('invalid_target')
 
   const [project, recipientOrganization, recipientTeam] = await Promise.all([
@@ -249,14 +242,19 @@ export const createResourceShare = async (
         sourceOrganizationId: project.organizationId,
         sourceTeamId,
       })
+      const databaseClock = await tx.$queryRaw<{ now: Date }[]>`
+        SELECT CURRENT_TIMESTAMP AS "now"
+      `
+      const databaseNow = databaseClock[0]?.now
+      if (!databaseNow || (input.expiresAt && input.expiresAt <= databaseNow)) {
+        deny('invalid_target')
+      }
       const row = await tx.resourceShare.create({
         data: {
           boardId: input.boardId ?? null,
           createdByActingOrgRef: shareActor.actorOrganizationRef,
           createdBySubject: shareActor.actorSubject,
-          createdAt: now,
           expiresAt: input.expiresAt ?? null,
-          healthTransitionedAt: now,
           projectId: project.id,
           proposedAccess: input.access,
           recipientExternalOrgId,
@@ -269,7 +267,6 @@ export const createResourceShare = async (
           sourceOrganizationId: project.organizationId,
           sourceTeamId,
           targetBoardId: input.boardId ?? null,
-          updatedAt: now,
         },
         select: RESOURCE_SHARE_AUDIT_SELECT,
       })
@@ -289,27 +286,9 @@ export const createResourceShare = async (
   }
 }
 
-type ExistingShare = Awaited<ReturnType<typeof findShareForTransition>>
-
-const findShareForTransition = async (prisma: PrismaClient, shareId: string) =>
-  prisma.resourceShare.findUnique({
-    where: { id: shareId },
-    select: {
-      ...RESOURCE_SHARE_AUDIT_SELECT,
-      expiresAt: true,
-      proposedAccess: true,
-      proposedRevision: true,
-      recipientExternalOrgId: true,
-      recipientExternalTeamId: true,
-      sourceExternalTeamId: true,
-      sourceExternalOrgId: true,
-      targetBoardId: true,
-    },
-  })
-
 const authorizeRecipient = async (
   prisma: PrismaClient,
-  share: NonNullable<ExistingShare>,
+  share: ResourceShareTransitionRow,
   actor: ResourceShareLifecycleActor,
   deps: ResourceShareLifecycleDependencies,
 ): Promise<ResourceShareAuditActor> => {
@@ -328,37 +307,6 @@ const authorizeRecipient = async (
   return shareActor
 }
 
-const transitionShare = async (
-  prisma: PrismaClient,
-  input: { shareId: string; expectedRevision: number },
-  where: Prisma.ResourceShareWhereInput,
-  data: Prisma.ResourceShareUpdateManyMutationInput,
-  action: string,
-  actor: ResourceShareAuditActor | null,
-  requestId: string,
-  reasonCode: string,
-  previous: { access: ResourceShareAccess | null; status: ResourceShareTransitionResult['status'] },
-  beforeUpdate?: (tx: Prisma.TransactionClient) => Promise<void>,
-): Promise<ResourceShareTransitionResult> => prisma.$transaction(async (tx) => {
-  await beforeUpdate?.(tx)
-  const changed = await tx.resourceShare.updateMany({
-    where: { id: input.shareId, revision: input.expectedRevision, ...where },
-    data: { ...data, revision: { increment: 1 } },
-  })
-  if (changed.count !== 1) deny('conflict')
-  const row = await tx.resourceShare.findUnique({
-    where: { id: input.shareId },
-    select: RESOURCE_SHARE_AUDIT_SELECT,
-  })
-  if (!row) throw new ResourceShareLifecycleError('not_found')
-  await writeResourceShareLifecycleAudit(tx, row, action, actor, requestId, {
-    previousAccess: previous.access,
-    previousStatus: previous.status,
-    reasonCode,
-  })
-  return toResourceShareTransitionResult(row)
-})
-
 export type ResourceShareDecisionInput = {
   actor: ResourceShareLifecycleActor
   expectedRevision: number
@@ -371,8 +319,11 @@ export const acceptResourceShare = async (
   deps: ResourceShareLifecycleDependencies,
 ): Promise<ResourceShareTransitionResult> => {
   sharingEnabled(deps)
-  const share = await findShareForTransition(prisma, input.shareId)
-  if (!share) throw new ResourceShareLifecycleError('not_found')
+  const share = await findResourceShareAtRevision(
+    prisma,
+    input.shareId,
+    input.expectedRevision,
+  )
   const actor = await authorizeRecipient(prisma, share, input.actor, deps)
   if (!(await deps.isSharingPolicyEligible(prisma, {
     projectId: share.projectId,
@@ -382,23 +333,22 @@ export const acceptResourceShare = async (
     sourceTeamId: share.sourceTeamId,
   }))) deny('denied')
   const now = deps.now?.() ?? new Date()
-  return transitionShare(
+  return transitionResourceShare(
     prisma,
     input,
     { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }], status: 'pending' },
-    {
+    () => ({
       acceptedAt: now,
       acceptedByActingOrgRef: actor.actorOrganizationRef,
       acceptedBySubject: actor.actorSubject,
       effectiveAccess: share.proposedAccess,
       effectiveRevision: share.proposedRevision,
       status: 'active',
-    },
+    }),
     'resource_share.accepted',
     actor,
     actor.requestId,
     'recipient_accepted',
-    { access: share.effectiveAccess, status: share.status },
     (tx) => lockLiveShareTarget(tx, {
       boardId: share.targetBoardId,
       projectId: share.projectId,
@@ -416,25 +366,27 @@ export const declineResourceShare = async (
   input: ResourceShareDecisionInput,
   deps: ResourceShareLifecycleDependencies,
 ): Promise<ResourceShareTransitionResult> => {
-  const share = await findShareForTransition(prisma, input.shareId)
-  if (!share) throw new ResourceShareLifecycleError('not_found')
+  const share = await findResourceShareAtRevision(
+    prisma,
+    input.shareId,
+    input.expectedRevision,
+  )
   const actor = await authorizeRecipient(prisma, share, input.actor, deps)
   const now = deps.now?.() ?? new Date()
-  return transitionShare(
+  return transitionResourceShare(
     prisma,
     input,
     { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }], status: 'pending' },
-    {
+    () => ({
       declinedAt: now,
       declinedByActingOrgRef: actor.actorOrganizationRef,
       declinedBySubject: actor.actorSubject,
       status: 'declined',
-    },
+    }),
     'resource_share.declined',
     actor,
     actor.requestId,
     'recipient_declined',
-    { access: share.effectiveAccess, status: share.status },
   )
 }
 
@@ -443,8 +395,11 @@ export const revokeResourceShare = async (
   input: ResourceShareDecisionInput,
   deps: ResourceShareLifecycleDependencies,
 ): Promise<ResourceShareTransitionResult> => {
-  const share = await findShareForTransition(prisma, input.shareId)
-  if (!share) throw new ResourceShareLifecycleError('not_found')
+  const share = await findResourceShareAtRevision(
+    prisma,
+    input.shareId,
+    input.expectedRevision,
+  )
   let actor: ResourceShareAuditActor
   if (input.actor.tenant.organizationId === share.sourceOrganizationId) {
     actor = requireHumanUoaActor(input.actor, share.sourceOrganizationId, share.sourceExternalOrgId)
@@ -458,21 +413,20 @@ export const revokeResourceShare = async (
     actor = await authorizeRecipient(prisma, share, input.actor, deps)
   }
   const now = deps.now?.() ?? new Date()
-  return transitionShare(
+  return transitionResourceShare(
     prisma,
     input,
     { status: { in: ['active', 'pending'] } },
-    {
+    () => ({
       revokedAt: now,
       revokedByActingOrgRef: actor.actorOrganizationRef,
       revokedBySubject: actor.actorSubject,
       status: 'revoked',
-    },
+    }),
     'resource_share.revoked',
     actor,
     actor.requestId,
     'manager_revoked',
-    { access: share.effectiveAccess, status: share.status },
   )
 }
 
@@ -482,17 +436,15 @@ export const expireResourceShare = async (
   deps: Pick<ResourceShareLifecycleDependencies, 'now'>,
 ): Promise<ResourceShareTransitionResult> => {
   const now = deps.now?.() ?? new Date()
-  const share = await findShareForTransition(prisma, input.shareId)
-  if (!share) throw new ResourceShareLifecycleError('not_found')
-  return transitionShare(
+  await findResourceShareAtRevision(prisma, input.shareId, input.expectedRevision)
+  return transitionResourceShare(
     prisma,
     input,
     { expiresAt: { lte: now }, status: { in: ['active', 'pending'] } },
-    { expiredAt: now, status: 'expired' },
+    () => ({ expiredAt: now, status: 'expired' }),
     'resource_share.expired',
     null,
     input.requestId,
     'expiry_elapsed',
-    { access: share.effectiveAccess, status: share.status },
   )
 }

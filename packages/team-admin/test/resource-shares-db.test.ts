@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
-import { AuthorizedActionContextSchema } from '@nessie/schemas'
 
 import {
   acceptResourceShare,
@@ -12,185 +11,17 @@ import {
   expireResourceShare,
   ResourceShareLifecycleError,
   revokeResourceShare,
-  type ResourceShareLifecycleActor,
-  type ResourceShareLifecycleDependencies,
 } from '../src/resource-shares.js'
+import { resolveResourceAccess } from '../src/resource-share-authority.js'
+import {
+  cleanupResourceShare as cleanup,
+  createBoardOffer,
+  loadResourceShareActors as loadActors,
+  resourceShareDependencies as dependencies,
+  seedResourceShare as seed,
+} from './resource-shares-db-fixture.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
-const NOW = new Date('2026-09-19T12:00:00.000Z')
-
-type Seed = {
-  boardId: string
-  recipientOrganizationId: string
-  recipientTeamId: string
-  recipientUserId: string
-  sourceOrganizationId: string
-  sourceProjectId: string
-  sourceTeamId: string
-  sourceUserId: string
-}
-
-const seed = async (prisma: PrismaClient): Promise<Seed> => {
-  const suffix = randomUUID()
-  const [sourceUser, recipientUser] = await Promise.all([
-    prisma.user.create({
-      data: { displayName: 'Share source', email: `share-source-${suffix}@example.test` },
-    }),
-    prisma.user.create({
-      data: { displayName: 'Share recipient', email: `share-recipient-${suffix}@example.test` },
-    }),
-  ])
-  const sourceOrganization = await prisma.organization.create({
-    data: { externalOrgId: `uoa-source-${suffix}`, name: `source-${suffix}` },
-  })
-  const recipientOrganization = await prisma.organization.create({
-    data: { externalOrgId: `uoa-recipient-${suffix}`, name: `recipient-${suffix}` },
-  })
-  const sourceAnchor = await prisma.project.create({
-    data: { name: 'Source team anchor', organizationId: sourceOrganization.id },
-  })
-  const recipientAnchor = await prisma.project.create({
-    data: { name: 'Recipient team anchor', organizationId: recipientOrganization.id },
-  })
-  const sourceTeam = await prisma.team.create({
-    data: {
-      externalOrgId: sourceOrganization.externalOrgId,
-      externalTeamId: `uoa-source-team-${suffix}`,
-      name: 'Source team',
-      projectId: sourceAnchor.id,
-    },
-  })
-  const recipientTeam = await prisma.team.create({
-    data: {
-      externalOrgId: recipientOrganization.externalOrgId,
-      externalTeamId: `uoa-recipient-team-${suffix}`,
-      name: 'Recipient team',
-      projectId: recipientAnchor.id,
-    },
-  })
-  const sourceProject = await prisma.project.create({
-    data: {
-      name: 'Shareable project',
-      organizationId: sourceOrganization.id,
-      teamId: sourceTeam.id,
-    },
-  })
-  const board = await prisma.board.create({
-    data: {
-      isDefault: true,
-      name: 'Shareable board',
-      organizationId: sourceOrganization.id,
-      position: 0,
-      projectId: sourceProject.id,
-    },
-  })
-  await prisma.boardSharePublication.create({
-    data: {
-      boardId: board.id,
-      projectId: sourceProject.id,
-      sourceOrganizationId: sourceOrganization.id,
-    },
-  })
-  return {
-    boardId: board.id,
-    recipientOrganizationId: recipientOrganization.id,
-    recipientTeamId: recipientTeam.id,
-    recipientUserId: recipientUser.id,
-    sourceOrganizationId: sourceOrganization.id,
-    sourceProjectId: sourceProject.id,
-    sourceTeamId: sourceTeam.id,
-    sourceUserId: sourceUser.id,
-  }
-}
-
-const cleanup = async (prisma: PrismaClient, seeded: Seed): Promise<void> => {
-  await prisma.resourceShare.deleteMany({
-    where: { sourceOrganizationId: seeded.sourceOrganizationId },
-  })
-  await prisma.organization.deleteMany({
-    where: { id: { in: [seeded.sourceOrganizationId, seeded.recipientOrganizationId] } },
-  })
-  await prisma.user.deleteMany({
-    where: { id: { in: [seeded.sourceUserId, seeded.recipientUserId] } },
-  })
-}
-
-const actor = (
-  organizationId: string,
-  userId: string,
-  externalOrganizationId: string,
-  externalTeamId: string,
-  requestId: string,
-): ResourceShareLifecycleActor => AuthorizedActionContextSchema.parse({
-  actionContext: {
-    requestId,
-    uoaIdentity: {
-      organizationId: externalOrganizationId,
-      subject: `subject-${userId}`,
-      teamId: externalTeamId,
-      tokenVersion: 3,
-    },
-  },
-  actor: { actorId: userId, actorType: 'user' },
-  tenant: { organizationId },
-})
-
-const loadActors = async (prisma: PrismaClient, seeded: Seed) => {
-  const [sourceOrganization, sourceTeam, recipientOrganization, recipientTeam] =
-    await Promise.all([
-      prisma.organization.findUniqueOrThrow({ where: { id: seeded.sourceOrganizationId } }),
-      prisma.team.findUniqueOrThrow({ where: { id: seeded.sourceTeamId } }),
-      prisma.organization.findUniqueOrThrow({ where: { id: seeded.recipientOrganizationId } }),
-      prisma.team.findUniqueOrThrow({ where: { id: seeded.recipientTeamId } }),
-    ])
-  assert.ok(sourceOrganization.externalOrgId)
-  assert.ok(sourceTeam.externalTeamId)
-  assert.ok(recipientOrganization.externalOrgId)
-  assert.ok(recipientTeam.externalTeamId)
-  return {
-    recipient: actor(
-      seeded.recipientOrganizationId,
-      seeded.recipientUserId,
-      recipientOrganization.externalOrgId,
-      recipientTeam.externalTeamId,
-      `recipient-${randomUUID()}`,
-    ),
-    source: actor(
-      seeded.sourceOrganizationId,
-      seeded.sourceUserId,
-      sourceOrganization.externalOrgId,
-      sourceTeam.externalTeamId,
-      `source-${randomUUID()}`,
-    ),
-  }
-}
-
-const dependencies = (
-  overrides: Partial<ResourceShareLifecycleDependencies> = {},
-): ResourceShareLifecycleDependencies => ({
-  authorizeRecipientTeamManager: async () => true,
-  authorizeSourceManager: async () => true,
-  isSharingEnabled: () => true,
-  isSharingPolicyEligible: async () => true,
-  now: () => NOW,
-  ...overrides,
-})
-
-const createBoardOffer = async (
-  prisma: PrismaClient,
-  seeded: Seed,
-  source: ResourceShareLifecycleActor,
-  deps = dependencies(),
-) => createResourceShare(prisma, {
-  access: 'read',
-  actor: source,
-  boardId: seeded.boardId,
-  expiresAt: new Date(NOW.getTime() + 60_000),
-  projectId: seeded.sourceProjectId,
-  recipientOrganizationId: seeded.recipientOrganizationId,
-  recipientTeamId: seeded.recipientTeamId,
-  scope: 'board',
-}, deps)
 
 runDatabaseTest('offer and acceptance are CAS transitions audited in both tenants', async (t) => {
   const prisma = new PrismaClient()
@@ -234,6 +65,58 @@ runDatabaseTest('offer and acceptance are CAS transitions audited in both tenant
     .every(({ projectId, teamId }) => projectId === null && teamId === seeded.recipientTeamId))
 })
 
+runDatabaseTest('shared authority re-qualifies the live grant and project in PostgreSQL', async (t) => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
+  const actors = await loadActors(prisma, seeded)
+  const offered = await createBoardOffer(prisma, seeded, actors.source)
+  const accepted = await acceptResourceShare(prisma, {
+    actor: actors.recipient,
+    expectedRevision: offered.revision,
+    shareId: offered.id,
+  }, dependencies())
+  const recipientIdentity = actors.recipient.actionContext.uoaIdentity
+  assert.ok(recipientIdentity)
+  const accessInput = {
+    action: 'read' as const,
+    actor: {
+      isOrganizationAdmin: true,
+      organizationId: seeded.recipientOrganizationId,
+      uoaIdentity: recipientIdentity,
+      userId: seeded.recipientUserId,
+    },
+    shareId: accepted.id,
+    target: {
+      boardId: seeded.boardId,
+      kind: 'board' as const,
+      projectId: seeded.sourceProjectId,
+      sourceOrganizationId: seeded.sourceOrganizationId,
+    },
+  }
+  const authorityDeps = {
+    isSharingEnabled: () => true,
+    isSharingPolicyEligible: async () => true,
+    resolveLiveRecipientEntitlements: async () => ({
+      kind: 'uoa' as const,
+      organizationId: seeded.recipientOrganizationId,
+      organizationRole: 'owner' as const,
+      teamIds: [seeded.recipientTeamId],
+      userId: seeded.recipientUserId,
+    }),
+  }
+  assert.equal((await resolveResourceAccess(prisma, accessInput, authorityDeps)).kind, 'shared')
+
+  await prisma.project.update({
+    where: { id: seeded.sourceProjectId },
+    data: { deletedAt: new Date() },
+  })
+  assert.deepEqual(await resolveResourceAccess(prisma, accessInput, authorityDeps), {
+    kind: 'denied',
+    reason: 'target_not_found',
+  })
+})
+
 runDatabaseTest('two recipient managers cannot both accept one revision', async (t) => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
@@ -262,6 +145,115 @@ runDatabaseTest('two recipient managers cannot both accept one revision', async 
   assert.equal(await prisma.auditLog.count({
     where: { action: 'resource_share.accepted', resourceId: offered.id },
   }), 2)
+})
+
+runDatabaseTest('accept and revoke cannot both transition one pending revision', async (t) => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
+  const actors = await loadActors(prisma, seeded)
+  const offered = await createBoardOffer(prisma, seeded, actors.source)
+
+  let releaseAuthorization!: () => void
+  const authorizationReleased = new Promise<void>((resolve) => {
+    releaseAuthorization = resolve
+  })
+  let authorizationCalls = 0
+  let bothAuthorizing!: () => void
+  const bothAuthorizingPromise = new Promise<void>((resolve) => {
+    bothAuthorizing = resolve
+  })
+  const waitAtAuthorization = async () => {
+    authorizationCalls += 1
+    if (authorizationCalls === 2) bothAuthorizing()
+    await authorizationReleased
+    return true
+  }
+  const deps = dependencies({
+    authorizeRecipientTeamManager: waitAtAuthorization,
+    authorizeSourceManager: waitAtAuthorization,
+  })
+
+  const accepted = acceptResourceShare(prisma, {
+    actor: actors.recipient,
+    expectedRevision: offered.revision,
+    shareId: offered.id,
+  }, deps)
+  const revoked = revokeResourceShare(prisma, {
+    actor: actors.source,
+    expectedRevision: offered.revision,
+    shareId: offered.id,
+  }, deps)
+  await bothAuthorizingPromise
+  releaseAuthorization()
+
+  const outcomes = await Promise.allSettled([accepted, revoked])
+  assert.equal(outcomes.filter(({ status }) => status === 'fulfilled').length, 1)
+  const rejected = outcomes.find(({ status }) => status === 'rejected')
+  assert.equal(rejected?.status, 'rejected')
+  if (rejected?.status === 'rejected') {
+    assert.ok(rejected.reason instanceof ResourceShareLifecycleError)
+    assert.equal(rejected.reason.code, 'conflict')
+  }
+  const stored = await prisma.resourceShare.findUniqueOrThrow({ where: { id: offered.id } })
+  assert.equal(stored.revision, 2)
+  assert.ok(stored.status === 'active' || stored.status === 'revoked')
+})
+
+runDatabaseTest('a future revision is rejected before stale authorization can run', async (t) => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
+  const actors = await loadActors(prisma, seeded)
+  const offered = await createBoardOffer(prisma, seeded, actors.source)
+  let authorizationCalls = 0
+
+  await assert.rejects(
+    revokeResourceShare(prisma, {
+      actor: actors.source,
+      expectedRevision: offered.revision + 1,
+      shareId: offered.id,
+    }, dependencies({
+      authorizeSourceManager: async () => {
+        authorizationCalls += 1
+        return true
+      },
+    })),
+    (error: unknown) =>
+      error instanceof ResourceShareLifecycleError && error.code === 'conflict',
+  )
+  assert.equal(authorizationCalls, 0)
+})
+
+runDatabaseTest('offer creation refuses expiry crossed during policy evaluation', async (t) => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
+  const actors = await loadActors(prisma, seeded)
+  const expiresAt = new Date(Date.now() + 30)
+
+  await assert.rejects(
+    createResourceShare(prisma, {
+      access: 'read',
+      actor: actors.source,
+      boardId: seeded.boardId,
+      expiresAt,
+      projectId: seeded.sourceProjectId,
+      recipientOrganizationId: seeded.recipientOrganizationId,
+      recipientTeamId: seeded.recipientTeamId,
+      scope: 'board',
+    }, dependencies({
+      isSharingPolicyEligible: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        return true
+      },
+    })),
+    (error: unknown) =>
+      error instanceof ResourceShareLifecycleError && error.code === 'invalid_target',
+  )
+  assert.equal(await prisma.resourceShare.count({
+    where: { sourceOrganizationId: seeded.sourceOrganizationId },
+  }), 0)
 })
 
 runDatabaseTest('acceptance refuses a board whose publication was withdrawn', async (t) => {
@@ -342,7 +334,7 @@ runDatabaseTest('expiry is an audited system transition, not a read-time rewrite
     expectedRevision: offered.revision,
     requestId: `expiry-${randomUUID()}`,
     shareId: offered.id,
-  }, { now: () => new Date(NOW.getTime() + 120_000) })
+  }, { now: () => new Date(Date.now() + 1_200_000) })
   assert.deepEqual(expired, { id: offered.id, revision: 2, status: 'expired' })
   assert.equal(await prisma.auditLog.count({
     where: { action: 'resource_share.expired', resourceId: offered.id },

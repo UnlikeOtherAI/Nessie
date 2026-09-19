@@ -140,7 +140,7 @@ Migration is expand/backfill/validate, not a big-bang identity rewrite:
 
 The additive, machine-only foundation consists of `ResourceShare`,
 `BoardSharePublication`, `BoardSharedField`, `BoardSharedIteration` and
-`BoardSharedResource`, plus strict shared record contracts. It does not activate
+`BoardSharedResource`, plus strict server persistence validation. It does not activate
 sharing or add an authorization path. `ResourceShare` retains local binding UUIDs
 and their immutable UOA organisation/team references, with composite foreign keys
 that prove source project/team and live board ancestry. Board shares keep an
@@ -166,17 +166,23 @@ expires grants through revision compare-and-swap transitions. Creation and
 acceptance require an explicit rollout decision, injected current source/recipient
 manager proofs and an injected sharing-policy decision. Acceptance locks and
 revalidates the live source project, owning team, board and publication before the
-grant becomes active. Each successful transition appends source and recipient
+grant becomes active. Authorization is bound to the caller's expected revision;
+the transition locks that exact revision and derives its audit predecessor from
+the locked row. Offer creation checks expiry against the database clock after
+policy evaluation and lets database defaults stamp creation. Each successful
+transition appends source and recipient
 audit-chain entries inside the same transaction, taking organisation locks in a
 stable order. Revocation remains available when rollout is disabled. No route or
 surface calls this lifecycle yet, and exact-team management remains an upstream
 UOA contract that callers must supply rather than infer from local roles.
 
-`@nessie/team-admin` owns exact Prisma selects and strict record presentation for
-shares and board publication policy. Those mappers expose only the shared schema
-contracts, convert database timestamps at the boundary, and order publication
-children by stable id. They do not join UOA display, membership or commercial
-data, and they grant no access by themselves.
+`@nessie/team-admin` owns exact Prisma selects and server-private persistence
+validation for shares and board publication policy. The public
+`ResourceShareView` presenter constructs a field allowlist containing scope,
+mode, health, revisions and caller-supplied capabilities. Local ancestry UUIDs,
+stable UOA references and lifecycle actor subjects cannot enter it. Publication
+children remain ordered by stable id. These mappers do not join UOA display,
+membership or commercial data, and they grant no access by themselves.
 
 Never edit an existing migration. Test baseline upgrade convergence; index large
 message/run/audit tables following build-and-release guidance, not by blocking
@@ -189,6 +195,12 @@ New **`resource-share-authority.ts`**, **`resource-shares.ts`** and
 transactional lifecycle and safe DTO presentation. Keep cohesive modules under
 the code size cap. Contracts live in new `packages/schemas/src/resource-shares.ts`
 and the normal API contract/facade path, not duplicated handwritten DTOs.
+
+Shared access performs a final qualified database read after the live UOA and
+policy calls. That read uses `CURRENT_TIMESTAMP` and joins the still-live source
+project/team, recipient team, requested board, grant and exact publication
+revision. A deletion, expiry or projection change during an external call thus
+fails the request rather than returning stale authority.
 
 The machine-only authority foundation now implements the qualified
 `native | shared | denied` decision for projects and boards. Native decisions run

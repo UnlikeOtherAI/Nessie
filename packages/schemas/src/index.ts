@@ -66,7 +66,29 @@ export * from './navigation.js'
 export * from './dashboards.js'
 export * from './board-lifecycle.js'
 export * from './boards.js'
-export * from './resource-shares.js'
+export {
+  BoardSharePublicationRecordSchema,
+  BoardSharedFieldRecordSchema,
+  BoardSharedIterationRecordSchema,
+  BoardSharedResourceRecordSchema,
+  ResourceShareAccessSchema,
+  ResourceShareHealthReasonCodeSchema,
+  ResourceShareHealthSchema,
+  ResourceShareScopeSchema,
+  ResourceShareStatusSchema,
+  ResourceShareViewCapabilitiesSchema,
+  ResourceShareViewSchema,
+  type BoardSharePublicationRecord,
+  type BoardSharedFieldRecord,
+  type BoardSharedIterationRecord,
+  type BoardSharedResourceRecord,
+  type ResourceShareAccess,
+  type ResourceShareHealth,
+  type ResourceShareScope,
+  type ResourceShareStatus,
+  type ResourceShareView,
+  type ResourceShareViewCapabilities,
+} from './resource-shares.js'
 export * from './task-fields.js'
 export * from './task-records.js'
 export * from './task-checklists.js'

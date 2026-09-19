@@ -34,6 +34,38 @@ export const ResourceShareHealthReasonCodeSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]{0,79}$/)
 
+export const ResourceShareViewCapabilitiesSchema = z
+  .object({
+    accept: z.boolean(),
+    decline: z.boolean(),
+    revoke: z.boolean(),
+  })
+  .strict()
+export type ResourceShareViewCapabilities = z.infer<
+  typeof ResourceShareViewCapabilitiesSchema
+>
+
+/**
+ * Viewer-safe share presentation. UOA subjects/references and local ancestry
+ * ids remain in the server persistence contract and cannot enter this DTO.
+ */
+export const ResourceShareViewSchema = z
+  .object({
+    capabilities: ResourceShareViewCapabilitiesSchema,
+    effectiveAccess: ResourceShareAccessSchema.nullable(),
+    expiresAt: TimestampSchema.nullable(),
+    health: ResourceShareHealthSchema,
+    healthReasonCode: ResourceShareHealthReasonCodeSchema.nullable(),
+    healthRevision: z.number().int().min(1),
+    id: ResourceShareIdSchema,
+    proposedAccess: ResourceShareAccessSchema,
+    revision: z.number().int().min(1),
+    scope: ResourceShareScopeSchema,
+    status: ResourceShareStatusSchema,
+  })
+  .strict()
+export type ResourceShareView = z.infer<typeof ResourceShareViewSchema>
+
 const StableUoaReferenceSchema = NonEmptyStringSchema.trim().max(255)
 const PositiveRevisionSchema = z.number().int().min(1)
 

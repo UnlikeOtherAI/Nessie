@@ -84,6 +84,38 @@ type FakeRows = {
 }
 
 const fakePrisma = (rows: FakeRows = {}): PrismaClient => ({
+  $queryRaw: async () => {
+    const project = rows.project === undefined
+      ? {
+          channelRoot: false,
+          deletedAt: null,
+          organizationId: IDS.sourceOrg,
+          teamId: IDS.sourceTeam,
+        }
+      : rows.project
+    const share = rows.share === undefined ? activeBoardShare() : rows.share
+    const board = rows.board === undefined ? { id: IDS.board } : rows.board
+    const publication = rows.publication === undefined
+      ? { revision: 4 }
+      : rows.publication
+    if (
+      !project || project.deletedAt || project.channelRoot || !project.teamId ||
+      !share || share.status !== 'active' || share.health !== 'healthy' ||
+      !share.effectiveAccess || share.effectiveRevision === null ||
+      (share.expiresAt instanceof Date && share.expiresAt <= NOW) ||
+      (share.scope === 'board' && (!board || !publication))
+    ) return []
+    return [{
+      effectiveAccess: share.effectiveAccess,
+      effectiveRevision: share.effectiveRevision,
+      expiresAt: share.expiresAt,
+      id: share.id,
+      recipientTeamId: share.recipientTeamId,
+      revision: share.revision,
+      sourceTeamId: share.sourceTeamId,
+      verifiedAt: NOW,
+    }]
+  },
   board: {
     findFirst: async () => rows.board === undefined ? { id: IDS.board } : rows.board,
   },
@@ -311,4 +343,45 @@ test('a project grant can authorize its exact board without borrowing a board po
   )
   assert.equal(result.kind, 'shared')
   if (result.kind === 'shared') assert.equal(result.publication, null)
+})
+
+test('the final database qualification rejects a project deleted during UOA proof', async () => {
+  const project = {
+    channelRoot: false,
+    deletedAt: null as Date | null,
+    organizationId: IDS.sourceOrg,
+    teamId: IDS.sourceTeam,
+  }
+  const result = await resolveResourceAccess(
+    fakePrisma({ project }),
+    boardInput(),
+    sharedDeps({
+      resolveLiveRecipientEntitlements: async () => {
+        project.deletedAt = NOW
+        return {
+          kind: 'uoa',
+          organizationId: IDS.recipientOrg,
+          organizationRole: 'owner',
+          teamIds: [IDS.recipientTeam],
+          userId: IDS.user,
+        }
+      },
+    }),
+  )
+  assert.deepEqual(result, { kind: 'denied', reason: 'grant_denied' })
+})
+
+test('the final database qualification rejects a grant expiring during policy evaluation', async () => {
+  const share = { ...activeBoardShare(), expiresAt: null as Date | null }
+  const result = await resolveResourceAccess(
+    fakePrisma({ share }),
+    boardInput(),
+    sharedDeps({
+      isSharingPolicyEligible: async () => {
+        share.expiresAt = NOW
+        return true
+      },
+    }),
+  )
+  assert.deepEqual(result, { kind: 'denied', reason: 'grant_denied' })
 })

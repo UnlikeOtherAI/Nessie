@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   type BoardColumnRecord,
   type BoardColumnStateBinding,
@@ -252,6 +252,16 @@ export const updateBoard = async (
     // One default per project is a partial unique index, so the demotion has
     // to happen before the promotion rather than beside it.
     if (input.isDefault) {
+      // The task-table trigger takes the same project-row lock for every
+      // project task written without an explicit board. Whichever transaction
+      // gets this lock first defines whether the task belongs to the old or
+      // new default; neither can slip through the materialization window.
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "projects"
+        WHERE "id" = ${projectId}::uuid
+        FOR UPDATE
+      `)
       const currentDefault = await tx.board.findFirst({
         where: { projectId, isDefault: true, NOT: { id: boardId } },
         select: { id: true },

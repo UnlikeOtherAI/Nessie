@@ -5,6 +5,7 @@ import {
   BoardSharePublicationRecordSchema,
   ResourceShareRecordSchema,
   ResourceShareStateTransitionSchema,
+  ResourceShareViewSchema,
 } from '../resource-shares.js'
 
 const IDS = {
@@ -241,6 +242,31 @@ test('resource share record refuses unknown identity or commercial fields', () =
   assert.equal(ResourceShareRecordSchema.safeParse({
     ...activeBoardShare(),
     subscriptionPlan: 'enterprise',
+  }).success, false)
+})
+
+test('resource share views refuse persistence ids and UOA actor references', () => {
+  const view = {
+    capabilities: { accept: false, decline: false, revoke: true },
+    effectiveAccess: 'read',
+    expiresAt: null,
+    health: 'healthy',
+    healthReasonCode: null,
+    healthRevision: 1,
+    id: IDS.share,
+    proposedAccess: 'read',
+    revision: 2,
+    scope: 'board',
+    status: 'active',
+  }
+  assert.equal(ResourceShareViewSchema.safeParse(view).success, true)
+  assert.equal(ResourceShareViewSchema.safeParse({
+    ...view,
+    sourceOrganizationId: IDS.sourceOrg,
+  }).success, false)
+  assert.equal(ResourceShareViewSchema.safeParse({
+    ...view,
+    acceptedBySubject: 'uoa-sub-recipient-manager',
   }).success, false)
 })
 

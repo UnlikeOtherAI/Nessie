@@ -139,6 +139,8 @@ export const exerciseBoardManagement = async ({
   await waitForBoard(call, token, projectId, renamedBoardName, { style: 'kanban' })
   await page.getByRole('button', { name: 'Make default', exact: true }).click()
   await waitForBoard(call, token, projectId, renamedBoardName, { isDefault: true })
+  await page.getByText("This is the project's default board.", { exact: true }).waitFor()
+  await shot(page, 'desktop-board-management-default')
 
   await settingsTabs.getByRole('tab', { name: 'Columns' }).click()
   await waitForSettings(page, projectId, board.id, 'columns')

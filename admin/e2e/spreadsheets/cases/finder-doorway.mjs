@@ -77,13 +77,13 @@ export const run = async ({ contextFor, browser, seed }) => {
     await page.locator('.ic-formula-bar-address').first().waitFor({ timeout: 90_000 })
     checks.ok(
       'creating one opens it',
-      await page.getByText(title, { exact: true }).first().isVisible(),
+      await page.getByRole('heading', { name: title, exact: true }).isVisible(),
       page.url(),
     )
-    // The columns are still there beside it: this is a Finder with a preview,
-    // not a screen that replaced the place the person was standing in.
+    // The Finder stays mounted under the full-surface workbook, so Back can
+    // return to the same folder, scroll position and selection.
     checks.ok(
-      'the folder it was made in is still on screen',
+      'the folder it was made in stays mounted beneath the workbook',
       (await page.locator('[data-finder-row]').count()) > 0,
     )
     await shot(page, 'finder-doorway-4-opened')
@@ -107,7 +107,12 @@ export const run = async ({ contextFor, browser, seed }) => {
     }
 
     // ── The folder's own background menu offers it too ────────────────────
-    const background = page.locator('.finder-drop-body').first()
+    await page.getByRole('button', { name: `Back from ${title}` }).click()
+    await page.locator('.finder-drop-body:visible').first().waitFor({ timeout: 15_000 })
+    // The Finder keeps prior columns mounted while the active folder changes.
+    // Target the background a person can actually see, rather than the first
+    // mounted column, which may already be hidden beneath the workbook.
+    const background = page.locator('.finder-drop-body:visible').first()
     const backgroundItems = await contextMenuLabels(page, background)
     checks.ok(
       'a folder’s background menu offers New spreadsheet',
@@ -198,6 +203,8 @@ export const run = async ({ contextFor, browser, seed }) => {
         after.filter((row) => row.kind === 'spreadsheet').length >= 2,
         JSON.stringify(after.map((row) => `${row.kind}:${row.title}`)))
       await shot(page, 'finder-doorway-9-converted')
+      await page.getByRole('button', { name: /^Back from / }).click()
+      await page.getByRole('button', { name: 'New', exact: true }).waitFor({ timeout: 15_000 })
     }
 
     // ── Import: the same bytes, as a workbook rather than a file node ─────

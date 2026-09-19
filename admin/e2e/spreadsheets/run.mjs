@@ -14,7 +14,7 @@
 // is usually only legible next to the case that still works.
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { launchBrowser } from '../navigation/lib/browser.mjs'
 import { ADMIN_URL, API_URL, databaseUrl } from '../navigation/lib/config.mjs'
@@ -159,7 +159,7 @@ const main = async () => {
       }
       const start = Date.now()
       try {
-        const module = await import(path)
+        const module = await import(pathToFileURL(path).href)
         // A case exports `run`, or an object with one. Both shapes are in the
         // suite because the phases wrote their cases against each other's
         // description of the harness rather than against the harness, and a

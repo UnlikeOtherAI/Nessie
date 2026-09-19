@@ -1,10 +1,15 @@
 import type { Prisma } from '@prisma/client'
 import {
   BoardSharePublicationRecordSchema,
-  ResourceShareRecordSchema,
   type BoardSharePublicationRecord,
-  type ResourceShareRecord,
+  ResourceShareViewSchema,
+  type ResourceShareView,
 } from '@nessie/schemas'
+
+import {
+  ResourceSharePersistenceRecordSchema,
+  type ResourceSharePersistenceRecord,
+} from './resource-share-persistence.js'
 
 /**
  * The complete persisted grant contract, with no joined identity, membership,
@@ -56,10 +61,10 @@ export type ResourceShareRecordRow = Prisma.ResourceShareGetPayload<{
   select: typeof resourceShareRecordSelect
 }>
 
-export const mapResourceShareRecord = (
+export const mapResourceSharePersistenceRecord = (
   row: ResourceShareRecordRow,
-): ResourceShareRecord =>
-  ResourceShareRecordSchema.parse({
+): ResourceSharePersistenceRecord =>
+  ResourceSharePersistenceRecordSchema.parse({
     ...row,
     expiresAt: row.expiresAt?.toISOString() ?? null,
     acceptedAt: row.acceptedAt?.toISOString() ?? null,
@@ -70,6 +75,34 @@ export const mapResourceShareRecord = (
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   })
+
+export type ResourceShareViewCapabilitiesInput = {
+  accept: boolean
+  decline: boolean
+  revoke: boolean
+}
+
+/**
+ * Build the only public share DTO field by field. Capability decisions come
+ * from the caller's live authority check; persistence ids, UOA references and
+ * actor subjects have no path into this projection.
+ */
+export const presentResourceShare = (
+  row: ResourceShareRecordRow,
+  capabilities: ResourceShareViewCapabilitiesInput,
+): ResourceShareView => ResourceShareViewSchema.parse({
+  capabilities,
+  effectiveAccess: row.effectiveAccess,
+  expiresAt: row.expiresAt?.toISOString() ?? null,
+  health: row.health,
+  healthReasonCode: row.healthReasonCode,
+  healthRevision: row.healthRevision,
+  id: row.id,
+  proposedAccess: row.proposedAccess,
+  revision: row.revision,
+  scope: row.scope,
+  status: row.status,
+})
 
 /**
  * A board's whole publication fence. Child rows are ordered by their stable
