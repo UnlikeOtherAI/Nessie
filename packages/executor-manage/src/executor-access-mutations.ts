@@ -403,6 +403,45 @@ export const executorGrantedOperationKeys = async (
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
 }
 
+/**
+ * The operation keys this agent still holds on some OTHER executor.
+ *
+ * The logical executor tool policy is organisation-wide by design — one
+ * `executor.<operation>` registry entry per organisation, never a per-machine
+ * projection (`executor-logical-tools.ts`), because the machine is chosen
+ * later by the availability authority. The per-machine half of the decision is
+ * the grant row.
+ *
+ * That means revoking on one executor must not switch the shared policy entry
+ * off: the agent's grants on every other machine are still live, and the
+ * binding gate reads the policy entry with no executor dimension, so it would
+ * refuse them all. A revoke is consent withdrawn for ONE machine.
+ *
+ * `excludeExecutorId` is load-bearing: the confirm route writes the policy half
+ * before the grant rows are cleared, so the executor being revoked is still
+ * holding `allowed` rows at the moment this is asked.
+ */
+export const executorOperationKeysHeldElsewhere = async (
+  prisma: ExecutorMutationClient,
+  input: { agentId: string; excludeExecutorId: string; organizationId: string },
+): Promise<Set<ImplementedExecutorOperationKey>> => {
+  const rows = await prisma.executorAgentOperationGrant.findMany({
+    where: {
+      agentId: input.agentId,
+      executorId: { not: input.excludeExecutorId },
+      state: 'allowed',
+      executor: { organizationId: input.organizationId },
+    },
+    select: { operationKey: true },
+  })
+  const held = new Set<ImplementedExecutorOperationKey>()
+  for (const row of rows) {
+    const parsed = ImplementedExecutorOperationKeySchema.safeParse(row.operationKey)
+    if (parsed.success) held.add(parsed.data)
+  }
+  return held
+}
+
 export type AgentExecutorGrantMutation = {
   agentId: string
   executorId: string
