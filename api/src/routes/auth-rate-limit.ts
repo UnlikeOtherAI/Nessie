@@ -51,6 +51,10 @@ export const RATE_LIMIT_BUCKETS = {
   agentEmailInboundIp: 'agent_email.inbound.ip',
   executorDaemonSessionIp: 'executor.daemon_session.ip',
   publicRouteIp: 'api.public.ip',
+  // Dictation is handler-applied, not global: the transcription route is
+  // authenticated, so it is limited per account as well as per IP.
+  voiceTranscriptionIp: 'voice.transcription.ip',
+  voiceTranscriptionAccount: 'voice.transcription.account',
 } as const
 
 export type RateLimitBucketName = keyof typeof RATE_LIMIT_BUCKETS

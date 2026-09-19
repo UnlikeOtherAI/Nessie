@@ -39,6 +39,10 @@ export type ApiClient = {
     body?: unknown,
     headers?: Record<string, string>,
     schema?: ApiResponseDataSchema<TData>,
+    // Dictation is the one caller that must be able to abandon a POST in
+    // flight: a person who stops recording should not go on paying for the
+    // transcription of what they just cancelled.
+    options?: { signal?: AbortSignal },
   ) =>
     Promise<TData>
   put: <TData>(
@@ -211,11 +215,12 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
       }, schema),
-    post: (path, body, headers, schema) =>
+    post: (path, body, headers, schema, options) =>
       request(path, {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(headers ? { headers } : {}),
+        ...(options?.signal ? { signal: options.signal } : {}),
       }, schema),
     put: (path, body, headers, schema) =>
       request(path, {

@@ -127,6 +127,23 @@ export const StartVoiceSessionRequestSchema = z
 export type StartVoiceSessionRequest = z.infer<typeof StartVoiceSessionRequestSchema>
 
 /**
+ * One short dictation request. The client owns no provider setting: it sends
+ * only fixed-format PCM and a structural browser locale; Nessie and Ledger set
+ * the Google recognition configuration.
+ */
+export const VoiceDictationRequestSchema = z.object({
+  idempotencyKey: z.string().uuid(),
+  audioBase64: z.string().min(4).max(2_400_000),
+  locale: z.string().min(2).max(35).optional(),
+}).strict()
+export type VoiceDictationRequest = z.infer<typeof VoiceDictationRequestSchema>
+
+export const VoiceDictationResponseSchema = z.object({
+  transcript: z.string(),
+})
+export type VoiceDictationResponse = z.infer<typeof VoiceDictationResponseSchema>
+
+/**
  * One seeded conversation turn.
  *
  * `model` is Gemini's name for the assistant role. Seeded history is sent as

@@ -75,6 +75,7 @@ test('the voice subsystem still registers every route in its authorization matri
     '/api/voice/sessions/:sessionId/tool-call',
     '/api/voice/sessions/:sessionId/transcript',
     '/api/voice/sessions/:sessionId/usage',
+    '/api/voice/transcriptions',
   ])
 
   // The `session, device` column of the matrix, as code. Enrolment is

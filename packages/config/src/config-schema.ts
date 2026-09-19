@@ -222,6 +222,11 @@ export const NessieConfigSchema = z.object({
       // while still bounding what one member can aim at the provider.
       subscriptionDeviceIp: RateLimitRuleSchema.default({ max: 240, windowMs: 10 * 60_000 }),
       subscriptionDeviceAccount: RateLimitRuleSchema.default({ max: 120, windowMs: 10 * 60_000 }),
+      // Dictation posts an audio clip per utterance. The IP ceiling bounds an
+      // unauthenticated flood; the account ceiling bounds what one signed-in
+      // person can aim at the speech provider, which is billed per second.
+      voiceTranscriptionIp: RateLimitRuleSchema.default({ max: 30, windowMs: 10 * 60_000 }),
+      voiceTranscriptionAccount: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
       // SSO authorize-URL minting used to borrow `mcpOauthIp`'s thresholds
       // because it had no rule of its own; it is a different surface and now
       // carries one (2026-09-05 review, FO3-7). Same starting numbers.
