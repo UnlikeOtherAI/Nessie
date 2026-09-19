@@ -179,6 +179,12 @@ export const resolveResourceAccess = async (
   input: ResourceAccessInput,
   deps: ResourceShareAuthorityDependencies = {},
 ): Promise<ResourceAccessDecision> => {
+  const isNativeTenant = input.actor.organizationId === input.target.sourceOrganizationId
+  if (!isNativeTenant) {
+    if (!(deps.isSharingEnabled?.() ?? false)) return denied('sharing_disabled')
+    if (!input.shareId) return denied('share_context_required')
+  }
+
   const project = await prisma.project.findUnique({
     where: { id: input.target.projectId },
     select: {
@@ -206,11 +212,7 @@ export const resolveResourceAccess = async (
     if (!board) return denied('target_not_found')
   }
 
-  if (input.actor.organizationId === input.target.sourceOrganizationId) {
-    return resolveNativeAccess(prisma, input, deps)
-  }
-  if (!(deps.isSharingEnabled?.() ?? false)) return denied('sharing_disabled')
-  if (!input.shareId) return denied('share_context_required')
+  if (isNativeTenant) return resolveNativeAccess(prisma, input, deps)
   if (project.channelRoot || !project.teamId || input.action === 'manage') {
     return denied('grant_denied')
   }
