@@ -14,6 +14,7 @@ import {
   mutateAgentToolPolicyInTransaction,
 } from '@nessie/team-admin'
 import { runWithDeepWaterTransitionLock } from './deepwater-transition-lock.js'
+import { synchronizeMcpAgentGrant } from './agent-tool-policy-registry.js'
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
 import { ensureBuiltinToolsRegistered } from '@nessie/team-admin'
@@ -348,7 +349,9 @@ export const setDeepWaterAgentAccess = async (
         await mutateAgentToolPolicyInTransaction(tx, {
           agentId: input.agentId,
           organizationId: input.organizationId,
-          update: (currentPolicy) => {
+          update: async (currentPolicy, policyTx) => {
+            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: access.policyKeys }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
+            for (const entry of entries) await synchronizeMcpAgentGrant(policyTx, entry as never, { agentId: input.agentId, enabled: true })
             const bundleMarker = deepWaterBundleMarkerKey(input.teamId)
             const next = mergeAgentToolPolicy(
               currentPolicy,
@@ -391,6 +394,8 @@ export const setDeepWaterAgentAccess = async (
               currentTeamId: input.teamId,
               otherTeamBundles,
             })
+            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: revokeKeys }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
+            for (const entry of entries) await synchronizeMcpAgentGrant(policyTx, entry as never, { agentId: input.agentId, enabled: false })
             return mergeAgentToolPolicy(currentPolicy, revokeKeys, false)
           },
         })

@@ -144,7 +144,7 @@ const mcpDescriptorName = (entry: RegistryEntry): string | null => {
  * Keep protected MCP policy and its descriptor-bound agent grant in one
  * transaction. The caller already holds the per-agent policy advisory lock.
  */
-const synchronizeMcpAgentGrant = async (
+export const synchronizeMcpAgentGrant = async (
   tx: Prisma.TransactionClient,
   entry: RegistryEntry,
   input: Pick<PolicyInput, 'agentId' | 'enabled'>,
