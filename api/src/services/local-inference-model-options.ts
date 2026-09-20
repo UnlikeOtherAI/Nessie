@@ -17,13 +17,15 @@ export const listLocalInferenceModelOptions = async (
   }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
   if (enabled.value !== true) return []
 
+  const freshAfter = new Date(Date.now() - 60_000)
   const hosts = await prisma.localInferenceHost.findMany({
     where: {
       custodianUserId: input.userId,
       organizationId: input.organizationId,
       pausedAt: null,
       revokedAt: null,
-      lastSeenAt: { gt: new Date(Date.now() - 60_000) },
+      inventoryObservedAt: { gt: freshAfter },
+      lastSeenAt: { gt: freshAfter },
     },
     orderBy: { createdAt: 'asc' },
     select: { id: true, inventory: true, transport: true },

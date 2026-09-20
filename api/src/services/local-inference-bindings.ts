@@ -56,7 +56,18 @@ const policyVersion = async (tx: Transaction, organizationId: string): Promise<n
   return row.version
 }
 
-const selectedObservedModel = (inventory: unknown, modelName: string, manifestDigest: string) => {
+const freshInventory = (observedAt: Date | null, now: Date): boolean => (
+  observedAt !== null && observedAt.getTime() + 60_000 > now.getTime()
+)
+
+const selectedObservedModel = (
+  inventory: unknown,
+  inventoryObservedAt: Date | null,
+  modelName: string,
+  manifestDigest: string,
+  now: Date,
+) => {
+  if (!freshInventory(inventoryObservedAt, now)) return null
   const parsed = ObservedLocalModelSchema.array().safeParse(inventory)
   if (!parsed.success) return null
   return parsed.data.find((model) =>
@@ -96,7 +107,7 @@ export const prepareLocalInferenceBinding = async (
         where: { id: input.hostId, organizationId: input.organizationId, revokedAt: null },
         select: {
           authorizationRevision: true, connectionEpoch: true, custodianUserId: true,
-          id: true, inventory: true, pausedAt: true,
+          id: true, inventory: true, inventoryObservedAt: true, pausedAt: true,
         },
       }),
       tx.user.findUnique({
@@ -166,7 +177,13 @@ export const prepareLocalInferenceBinding = async (
     if (entitlement.status === 'denied') {
       throw new LocalInferenceBindingError('POLICY_DENIED', 'Access to local inference has been removed.')
     }
-    const model = selectedObservedModel(host.inventory, input.modelName, input.manifestDigest)
+    const model = selectedObservedModel(
+      host.inventory,
+      host.inventoryObservedAt,
+      input.modelName,
+      input.manifestDigest,
+      new Date(),
+    )
     if (!model) {
       throw new LocalInferenceBindingError('MODEL_NOT_LOCAL',
         'That model is not currently verified as local on the selected computer.')
@@ -414,7 +431,7 @@ export const activateConsentedLocalInferenceBinding = async (
       }),
       tx.localInferenceHost.findFirst({
         where: { id: binding.hostId, organizationId: input.organizationId, pausedAt: null, revokedAt: null },
-        select: { connectionEpoch: true, custodianUserId: true, inventory: true },
+        select: { connectionEpoch: true, custodianUserId: true, inventory: true, inventoryObservedAt: true },
       }),
       policyVersion(tx, input.organizationId),
     ])
@@ -423,7 +440,13 @@ export const activateConsentedLocalInferenceBinding = async (
       || agent.routingProfileId !== null
       || agent.updatedAt.getTime() !== binding.agentEditRevision.getTime()
       || version !== binding.policyVersion
-      || !selectedObservedModel(host.inventory, binding.modelName, binding.manifestDigest)) {
+      || !selectedObservedModel(
+        host.inventory,
+        host.inventoryObservedAt,
+        binding.modelName,
+        binding.manifestDigest,
+        new Date(),
+      )) {
       throw new LocalInferenceBindingError('ACTIVATION_CONFLICT',
         'The agent, local model, or policy changed before this consent was saved.')
     }

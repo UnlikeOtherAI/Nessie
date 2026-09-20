@@ -41,7 +41,7 @@ export const projectAgentLocalInferenceAvailability = async (
   if (!binding) return projection('offline', 'needs_reauthorization', 0, now)
   const host = await prisma.localInferenceHost.findFirst({
     where: { id: binding.hostId, organizationId: input.organizationId },
-    select: { inventory: true, lastSeenAt: true, pausedAt: true, revokedAt: true },
+    select: { inventory: true, inventoryObservedAt: true, lastSeenAt: true, pausedAt: true, revokedAt: true },
   })
   if (!host) return projection('offline', 'needs_reauthorization', binding.healthRevision, now)
   if (binding.status === 'needs_rebinding') return projection('offline', 'needs_reauthorization', binding.healthRevision, now)
@@ -50,6 +50,9 @@ export const projectAgentLocalInferenceAvailability = async (
   if (host.pausedAt) return projection('offline', 'paused', binding.healthRevision, now)
   if (!host.lastSeenAt || host.lastSeenAt.getTime() + 60_000 <= now.getTime()) {
     return projection('offline', 'offline', binding.healthRevision, now)
+  }
+  if (!host.inventoryObservedAt || host.inventoryObservedAt.getTime() + 60_000 <= now.getTime()) {
+    return projection('offline', 'model_missing', binding.healthRevision, now)
   }
   const ownerUserId = agent.ownerUserId ?? null
   if (!ownerUserId) return projection('offline', 'needs_reauthorization', binding.healthRevision, now)

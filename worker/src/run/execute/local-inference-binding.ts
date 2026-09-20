@@ -3,6 +3,7 @@ import {
   resolveLiveEntitlementDecision,
   resolveScopedSetting,
 } from '@nessie/runtime'
+import { ObservedLocalModelSchema } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
@@ -23,6 +24,24 @@ export type RunLocalInferenceResolution =
 
 const freshHost = (lastSeenAt: Date | null, now: Date): boolean =>
   lastSeenAt !== null && lastSeenAt.getTime() + 60_000 > now.getTime()
+
+const selectedLocalModelIsFresh = (input: {
+  inventory: unknown
+  inventoryObservedAt: Date | null
+  manifestDigest: string
+  modelName: string
+  now: Date
+}): boolean => {
+  if (!freshHost(input.inventoryObservedAt, input.now)) return false
+  const models = ObservedLocalModelSchema.array().safeParse(input.inventory)
+  return models.success && models.data.some((model) => (
+    model.name === input.modelName
+    && model.manifestDigest === input.manifestDigest
+    && model.remoteHost === null
+    && model.remoteModel === null
+    && model.capabilities.includes('text')
+  ))
+}
 
 /**
  * Resolves the explicit local-device lane at run admission. This deliberately
@@ -65,7 +84,8 @@ export const resolveRunLocalInferenceBinding = async (
     ? await deps.prisma.localInferenceHost.findFirst({
       where: { id: binding.hostId, organizationId: context.channel.organizationId },
       select: {
-        connectionEpoch: true, custodianUserId: true, id: true, lastSeenAt: true,
+        connectionEpoch: true, custodianUserId: true, id: true, inventory: true,
+        inventoryObservedAt: true, lastSeenAt: true,
         pausedAt: true, revokedAt: true,
       },
     })
@@ -88,6 +108,18 @@ export const resolveRunLocalInferenceBinding = async (
     return {
       kind: 'unavailable',
       reason: 'The selected local host is offline',
+    }
+  }
+  if (!selectedLocalModelIsFresh({
+    inventory: host.inventory,
+    inventoryObservedAt: host.inventoryObservedAt,
+    manifestDigest: binding.manifestDigest,
+    modelName: binding.modelName,
+    now: new Date(),
+  })) {
+    return {
+      kind: 'unavailable',
+      reason: 'The selected local model is no longer available',
     }
   }
   const [policy, entitlement, version] = await Promise.all([

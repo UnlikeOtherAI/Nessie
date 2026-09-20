@@ -72,6 +72,15 @@ export type LedgerAttribution = {
     /** Whose plan paid. Attribution follows the owner, not the poster. */
     ownerUserId: string
   } | null
+  /**
+   * A run pinned to one owner-controlled local host.  This is intentionally a
+   * billing source rather than a provider spelling: local token telemetry is
+   * useful, but neither a pricing profile nor a currency cost applies.
+   */
+  localDevice?: {
+    bindingId: string
+    hostId: string
+  } | null
   // Immutable external proof captured at the originating UOA login. Durable
   // work copies this tuple; callers must never replace it with a newer mutable
   // ProductAccountLink identity after the work/session was created.
@@ -331,7 +340,8 @@ export const recordInferenceUsage = async (
       // did not pay for it, so an estimate here would flow straight into org
       // cost budgets and owner-facing totals as money nobody spent — and an
       // owner-authored wildcard pricing profile would produce exactly that.
-      const pricing = attribution.personalSubscription
+      const localDevice = attribution.localDevice ?? null
+      const pricing = attribution.personalSubscription || localDevice
         ? null
         : await cached(pricingByPair, pairKey, () =>
           findPricingProfile(
@@ -341,23 +351,29 @@ export const recordInferenceUsage = async (
             invocation.model,
           ),
         )
-      const { modelId, providerId } = await cached(idsByPair, pairKey, () =>
-        resolveProviderModelIds(
-          prisma,
-          attribution.organizationId,
-          invocation.provider,
-          invocation.model,
-        ),
-      )
+      const { modelId, providerId } = localDevice
+        ? { modelId: null, providerId: null }
+        : await cached(idsByPair, pairKey, () =>
+          resolveProviderModelIds(
+            prisma,
+            attribution.organizationId,
+            invocation.provider,
+            invocation.model,
+          ),
+        )
       return {
         inferenceInvocationId: invocation.invocationId,
         organizationId: attribution.organizationId,
-        billingSource: attribution.personalSubscription ? 'personal_subscription' as const : 'ledger' as const,
-        modelSubscriptionId: attribution.personalSubscription?.subscriptionId ?? null,
+        billingSource: localDevice
+          ? 'local_device' as const
+          : attribution.personalSubscription ? 'personal_subscription' as const : 'ledger' as const,
+        modelSubscriptionId: localDevice ? null : attribution.personalSubscription?.subscriptionId ?? null,
         // Whose plan paid, not who happened to post: a colleague's question
         // answered by someone else's agent still spends that owner's plan.
         userId:
-          attribution.personalSubscription?.ownerUserId
+          localDevice
+          ? attribution.userId ?? null
+          : attribution.personalSubscription?.ownerUserId
           ?? attribution.userId
           ?? null,
         projectId: attribution.projectId ?? null,
@@ -384,15 +400,17 @@ export const recordInferenceUsage = async (
         cacheReadTokens: invocation.usage.cacheReadTokens ?? null,
         cacheWriteTokens: invocation.usage.cacheWriteTokens ?? null,
         totalTokens: invocation.usage.totalTokens ?? null,
-        providerCostAmount: invocation.providerReportedCost?.amount ?? null,
-        providerCostCurrency: invocation.providerReportedCost?.currency ?? null,
-        pricingProfileId: pricing?.id ?? null,
+        providerCostAmount: localDevice ? null : invocation.providerReportedCost?.amount ?? null,
+        providerCostCurrency: localDevice ? null : invocation.providerReportedCost?.currency ?? null,
+        pricingProfileId: localDevice ? null : pricing?.id ?? null,
         pricingSource: pricing?.source ?? null,
         pricingCurrency: pricing?.currency ?? null,
         pricingInputPerM: pricing?.inputPerMillion ?? null,
         pricingOutputPerM: pricing?.outputPerMillion ?? null,
-        estimatedCostAmount: calculateEstimatedCost(invocation.usage, pricing),
-        estimatedCostCurrency: pricing?.currency ?? null,
+        estimatedCostAmount: localDevice ? null : calculateEstimatedCost(invocation.usage, pricing),
+        estimatedCostCurrency: localDevice ? null : pricing?.currency ?? null,
+        localInferenceHostId: localDevice?.hostId ?? null,
+        localInferenceBindingId: localDevice?.bindingId ?? null,
         occurredAt,
         metadata: {
           invocationId: invocation.invocationId,
