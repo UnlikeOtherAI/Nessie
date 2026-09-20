@@ -9,7 +9,7 @@ import {
   defaultOllamaFetch,
   type OllamaFetch,
 } from './ollama-client.js'
-import { assertNoRemoteOllamaMarker } from './ollama-observed.js'
+import { assertNoRemoteOllamaMarker, OllamaObservationError } from './ollama-observed.js'
 
 const MAX_CHAT_LINE_BYTES = 64 * 1024
 const MAX_TOOL_CALLS = 128
@@ -229,7 +229,13 @@ export const streamOllamaChat = async function* (input: {
       } catch {
         throw new OllamaChatError('protocol_error')
       }
-      const event = parseChatObject(parsed, input.attempt, allowedToolNames)
+      let event: OllamaChatEvent
+      try {
+        event = parseChatObject(parsed, input.attempt, allowedToolNames)
+      } catch (error) {
+        if (error instanceof OllamaObservationError) throw new OllamaChatError('protocol_error')
+        throw error
+      }
       if (sawTerminal) throw new OllamaChatError('protocol_error')
       if (event.done) sawTerminal = true
       yield event

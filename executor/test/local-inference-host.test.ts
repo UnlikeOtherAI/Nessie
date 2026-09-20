@@ -174,7 +174,7 @@ test('the host relays a fixed typed Ollama request and signs independent daemon 
   assert.equal(calls.heartbeats.length, 1)
   assert.equal(calls.frames.length, 1)
   assert.equal(Buffer.from(calls.frames[0]?.frame.data ?? '', 'base64url').toString('utf8'),
-    JSON.stringify({ text: 'hello', type: 'output_text.delta' }))
+    JSON.stringify({ type: 'output_text.delta', text: 'hello' }))
   assert.equal(calls.results[0]?.receipt.result.content, 'hello')
   assert.equal(calls.results[0]?.receipt.result.usage.outputTokens, 2)
 
