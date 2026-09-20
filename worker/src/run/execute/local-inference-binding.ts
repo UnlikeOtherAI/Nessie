@@ -50,16 +50,6 @@ export const resolveRunLocalInferenceBinding = async (
       status: 'active',
     },
     select: {
-      host: {
-        select: {
-          connectionEpoch: true,
-          custodianUserId: true,
-          id: true,
-          lastSeenAt: true,
-          pausedAt: true,
-          revokedAt: true,
-        },
-      },
       hostId: true,
       id: true,
       manifestDigest: true,
@@ -69,21 +59,30 @@ export const resolveRunLocalInferenceBinding = async (
     },
   })
   const ownerUserId = context.agent.ownerUserId ?? null
-  if (!binding || !ownerUserId || binding.host.custodianUserId !== ownerUserId) {
+  const host = binding
+    ? await deps.prisma.localInferenceHost.findFirst({
+      where: { id: binding.hostId, organizationId: context.channel.organizationId },
+      select: {
+        connectionEpoch: true, custodianUserId: true, id: true, lastSeenAt: true,
+        pausedAt: true, revokedAt: true,
+      },
+    })
+    : null
+  if (!binding || !host || !ownerUserId || host.custodianUserId !== ownerUserId) {
     return {
       kind: 'unavailable',
       reason: 'This agent’s local model connection needs repair',
     }
   }
-  if (binding.host.revokedAt || binding.host.pausedAt) {
+  if (host.revokedAt || host.pausedAt) {
     return {
       kind: 'unavailable',
-      reason: binding.host.pausedAt
+      reason: host.pausedAt
         ? 'The selected local host is paused'
         : 'The selected local host was revoked',
     }
   }
-  if (!freshHost(binding.host.lastSeenAt, new Date())) {
+  if (!freshHost(host.lastSeenAt, new Date())) {
     return {
       kind: 'unavailable',
       reason: 'The selected local host is offline',
@@ -116,7 +115,7 @@ export const resolveRunLocalInferenceBinding = async (
   return {
     binding: {
       bindingId: binding.id,
-      hostEpoch: binding.host.connectionEpoch,
+      hostEpoch: host.connectionEpoch,
       hostId: binding.hostId,
       manifestDigest: binding.manifestDigest,
       modelName: binding.modelName,

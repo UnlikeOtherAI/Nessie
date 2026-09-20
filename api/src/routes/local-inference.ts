@@ -3,10 +3,10 @@ import crypto from 'node:crypto'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import {
-  LocalInferenceHostListSchema,
   LOCAL_INFERENCE_ENABLED_SETTING_KEY,
   resolveScopedSetting,
 } from '@nessie/runtime'
+import { LocalInferenceHostListSchema } from '@nessie/schemas'
 import { assertAgentEditAuthority } from '@nessie/team-admin'
 
 import {

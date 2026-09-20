@@ -2,10 +2,10 @@ import crypto from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
-  ObservedLocalModelSchema,
   resolveLiveEntitlementDecision,
   resolveScopedSetting,
 } from '@nessie/runtime'
+import { ObservedLocalModelSchema } from '@nessie/schemas'
 import { LOCAL_INFERENCE_ENABLED_SETTING_KEY } from '@nessie/runtime'
 
 export class LocalInferenceBindingError extends Error {

@@ -69,6 +69,7 @@ import { registerAgentDeleteRoutes } from './agent-delete.js'
 import { registerAgentDocumentRoutes } from './agent-documents.js'
 import { createKnowledgeAccess } from './knowledge-base-access.js'
 import { migrateLegacyAgentCoreDocuments } from '../services/agent-core-documents.js'
+import { projectAgentLocalInferenceAvailability } from '../services/local-inference-availability.js'
 
 const AgentMessagesQuerySchema = z.object({
   cursor: z.string().min(1).max(2048).optional(),
@@ -966,6 +967,20 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     return createApiResponse(status)
+  })
+
+  app.get('/api/agents/:agentId/availability', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    return createApiResponse(await projectAgentLocalInferenceAvailability(prisma, {
+      agentId,
+      organizationId: actorContext.tenant.organizationId,
+    }))
   })
 
   app.get('/api/agents/:agentId/activity', async (request, reply) => {
