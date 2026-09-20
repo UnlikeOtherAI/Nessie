@@ -12,6 +12,7 @@ import {
   resolveAgentEditAuthority,
   updateAgentAvatar,
 } from '@nessie/team-admin'
+import { LOCAL_INFERENCE_ENABLED_SETTING_KEY } from '@nessie/runtime'
 import { AgentToolPolicyError } from '../src/services/agent-tool-policy.js'
 import { cloneAgentRecord, updateAgentRecord } from '../src/services/agent-management.js'
 
@@ -103,6 +104,8 @@ const seed = async (prisma: PrismaClient) => {
 }
 
 const cleanup = async (prisma: PrismaClient) => {
+  await prisma.scopedSetting.deleteMany({ where: { organizationId: orgId } })
+  await prisma.localInferencePolicyVersion.deleteMany({ where: { organizationId: orgId } })
   await prisma.agentLocalInferenceBinding.deleteMany({ where: { organizationId: orgId } })
   await prisma.localInferenceHost.deleteMany({ where: { organizationId: orgId } })
   await prisma.agent.deleteMany({ where: { organizationId: orgId } })
@@ -395,6 +398,82 @@ dbTest('transferring a local agent fences the old owner host instead of falling 
       select: { reason: true, status: true }, where: { id: binding.id },
     })
     assert.deepEqual(fenced, { reason: 'ownership_changed', status: 'needs_rebinding' })
+  })
+})
+
+dbTest('Designer Save rejects a consent whose host connection epoch rotated', async () => {
+  await withDb(async (prisma) => {
+    const agent = await createPersonOwnedAgent(prisma)
+    const host = await prisma.localInferenceHost.create({
+      data: {
+        custodianUserId: stewardUserId,
+        displayLabel: 'owner computer',
+        inventory: [{
+          capabilities: ['text'],
+          manifestDigest: 'a'.repeat(64),
+          name: 'local-model',
+          numCtxCap: 8192,
+          remoteHost: null,
+          remoteModel: null,
+          reportedAt: '2026-09-20T00:00:00.000Z',
+          sizeBytes: 1,
+        }],
+        organizationId: orgId,
+        publicKey: 'test-public-key-save-fence',
+        publicKeyFingerprint: `fingerprint-save-fence-${suite}`,
+        transport: 'desktop',
+      },
+    })
+    await prisma.scopedSetting.create({
+      data: {
+        key: LOCAL_INFERENCE_ENABLED_SETTING_KEY,
+        locked: false,
+        organizationId: orgId,
+        scope: 'organization',
+        updatedByUserId: stewardUserId,
+        value: true,
+      },
+    })
+    await prisma.localInferencePolicyVersion.create({
+      data: { organizationId: orgId, version: 1 },
+    })
+    const binding = await prisma.agentLocalInferenceBinding.create({
+      data: {
+        agentEditRevision: agent.updatedAt,
+        agentId: agent.id,
+        capabilitySnapshot: { capabilities: ['text'] },
+        hostAuthorizationRevision: host.authorizationRevision,
+        hostConnectionEpoch: host.connectionEpoch,
+        hostId: host.id,
+        manifestDigest: 'a'.repeat(64),
+        modelName: 'local-model',
+        numCtx: 8192,
+        organizationId: orgId,
+        policyVersion: 1,
+        preparedEditorTokenVersion: 0,
+        preparedEditorUserId: stewardUserId,
+        status: 'consented_pending_activation',
+      },
+    })
+
+    await prisma.localInferenceHost.update({
+      where: { id: host.id },
+      data: { connectionEpoch: { increment: 1 } },
+    })
+
+    await assert.rejects(
+      () => updateAgentRecord(prisma, agent.id, actor(stewardUserId), {
+        localInferenceBindingId: binding.id,
+        organizationId: orgId,
+      }),
+      (error: unknown) => error instanceof AgentManagementError
+        && error.code === AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_CONFLICT,
+    )
+    const unchanged = await prisma.agent.findUniqueOrThrow({
+      where: { id: agent.id },
+      select: { localInferenceBindingId: true, provider: true },
+    })
+    assert.deepEqual(unchanged, { localInferenceBindingId: null, provider: null })
   })
 })
 

@@ -8405,6 +8405,17 @@ model AgentLocalInferenceBinding {
   capabilitySnapshot       Json                        @map("capability_snapshot")
   numCtx                   Int                         @map("num_ctx")
   agentEditRevision        DateTime                    @map("agent_edit_revision")
+  /// The exact editor and their server credential generation that prepared
+  /// this consent. Save cannot be completed by a different browser session.
+  preparedEditorUserId     String?                     @map("prepared_editor_user_id") @db.Uuid
+  preparedEditorTokenVersion Int?                      @map("prepared_editor_token_version")
+  /// UOA deployments also retain the opaque subject/version provenance that
+  /// the live account link must still prove at confirmation and Save.
+  preparedEditorUoaSubject String?                     @map("prepared_editor_uoa_subject")
+  preparedEditorUoaTokenVersion Int?                   @map("prepared_editor_uoa_token_version")
+  /// Re-pairing and key repair must invalidate an unactivated consent too.
+  hostAuthorizationRevision Int?                       @map("host_authorization_revision")
+  hostConnectionEpoch      Int?                        @map("host_connection_epoch")
   policyVersion            Int                         @map("policy_version")
   revision                 Int                         @default(1)
   consentDigest            String?                     @map("consent_digest")

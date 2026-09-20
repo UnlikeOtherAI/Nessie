@@ -1,7 +1,6 @@
 import crypto from 'node:crypto'
 
-import type { FastifyInstance, FastifyReply } from 'fastify'
-import { z } from 'zod'
+import type { FastifyInstance } from 'fastify'
 import {
   LOCAL_INFERENCE_ENABLED_SETTING_KEY,
   openLocalInferenceAttempt,
@@ -15,44 +14,24 @@ import {
   LOCAL_INFERENCE_MAX_UNACKNOWLEDGED_FRAME_BYTES,
   LocalInferenceHostListSchema,
 } from '@nessie/schemas'
-import { assertAgentEditAuthority } from '@nessie/team-admin'
 import { verifyLocalInferenceEnvelope } from '@nessie/local-inference-host'
 
 import {
-  ConfirmLocalInferenceBindingBodySchema,
   EnrollLocalInferenceHostBodySchema,
   LocalInferenceAttemptFrameRequestSchema,
   LocalInferenceAttemptPollRequestSchema,
   LocalInferenceAttemptResultRequestSchema,
   LocalInferenceHeartbeatRequestSchema,
-  PrepareLocalInferenceBindingBodySchema,
 } from '../contracts/local-inference.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import {
-  confirmLocalInferenceBinding,
-  LocalInferenceBindingError,
-  prepareLocalInferenceBinding,
-} from '../services/local-inference-bindings.js'
 import {
   authorizeLocalInferenceDaemon,
   executorLocalInferenceDaemonStillAuthorized,
 } from '../services/local-inference-daemon-auth.js'
 import { registerLocalInferenceDaemonClaimRoutes } from './local-inference-daemon-claim.js'
+import { registerLocalInferenceConsentRoutes } from './local-inference-consent-routes.js'
 import { registerLocalInferenceExecutorHostRoute } from './local-inference-executor-host.js'
 import type { RouteDeps } from './types.js'
-
-const HostIdParamsSchema = z.object({ hostId: z.string().uuid() })
-const AgentIdParamsSchema = z.object({ agentId: z.string().uuid() })
-
-const sendBindingError = (reply: FastifyReply, error: unknown): boolean => {
-  if (!(error instanceof LocalInferenceBindingError)) return false
-  const status = error.code === 'NOT_FOUND' ? 404
-    : error.code === 'ENTITLEMENT_UNAVAILABLE' ? 503
-      : error.code.endsWith('CONFLICT') || error.code === 'CHALLENGE_INVALID' ? 409
-        : 403
-  sendApiError(reply, status, error.code, error.message)
-  return true
-}
 
 /** Owner-host-only surfaces. Browser sessions may list/select their own host;
  * native daemon confirmation remains signature-proven and cannot be replaced
@@ -61,6 +40,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   const { prisma, requireActorContext, requireUserActor } = deps
   registerLocalInferenceDaemonClaimRoutes(app, deps)
   registerLocalInferenceExecutorHostRoute(app, deps)
+  registerLocalInferenceConsentRoutes(app, deps)
 
   const authenticateDaemonEnvelope = async (input: {
     body: unknown
@@ -414,90 +394,4 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     return createApiResponse({ acknowledged: true })
   })
 
-  app.post('/api/agents/:agentId/local-inference/prepare', async (request, reply) => {
-    const actor = requireActorContext(request, reply)
-    if (!actor || !requireUserActor(actor, reply)) return reply
-    const params = parseInput(AgentIdParamsSchema, request.params, reply, 'params')
-    const body = parseInput(PrepareLocalInferenceBindingBodySchema, request.body, reply)
-    if (!params || !body) return reply
-    const agent = await prisma.agent.findFirst({
-      where: { id: params.agentId, organizationId: actor.tenant.organizationId, deletedAt: null },
-      select: { id: true, organizationId: true, ownerUserId: true, systemManaged: true, visibility: true },
-    })
-    if (!agent) {
-      sendApiError(reply, 404, 'NOT_FOUND', 'Agent not found.')
-      return reply
-    }
-    try {
-      await assertAgentEditAuthority(prisma, {
-        organizationId: actor.tenant.organizationId,
-        uoaIdentity: actor.actionContext.uoaIdentity,
-        userId: actor.actor.actorId,
-      }, agent)
-      const prepared = await prepareLocalInferenceBinding(prisma, {
-        agentId: agent.id,
-        editorUserId: actor.actor.actorId,
-        hostId: body.hostId,
-        manifestDigest: body.manifestDigest,
-        modelName: body.modelName,
-        organizationId: actor.tenant.organizationId,
-      })
-      reply.header('Cache-Control', 'no-store')
-      return createApiResponse({
-        bindingId: prepared.bindingId,
-        challengeId: prepared.challengeId,
-        expiresAt: prepared.expiresAt.toISOString(),
-      })
-    } catch (error) {
-      if (sendBindingError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.post('/api/local-inference/hosts/:hostId/confirm', async (request, reply) => {
-    const params = parseInput(HostIdParamsSchema, request.params, reply, 'params')
-    const body = parseInput(ConfirmLocalInferenceBindingBodySchema, request.body, reply)
-    if (!params || !body) return reply
-    try {
-      return createApiResponse(await confirmLocalInferenceBinding(prisma, {
-        challengeId: body.challengeId,
-        hostId: params.hostId,
-        signature: body.signature,
-      }))
-    } catch (error) {
-      if (sendBindingError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  for (const action of ['pause', 'resume', 'revoke'] as const) {
-    app.post(`/api/local-inference/hosts/:hostId/${action}`, async (request, reply) => {
-      const actor = requireActorContext(request, reply)
-      if (!actor || !requireUserActor(actor, reply)) return reply
-      const params = parseInput(HostIdParamsSchema, request.params, reply, 'params')
-      if (!params) return reply
-      const where = {
-        custodianUserId: actor.actor.actorId,
-        id: params.hostId,
-        organizationId: actor.tenant.organizationId,
-      }
-      const data = action === 'pause'
-        ? { pausedAt: new Date() }
-        : action === 'resume'
-          ? { pausedAt: null }
-          : { authorizationRevision: { increment: 1 }, revokedAt: new Date() }
-      const updated = await prisma.localInferenceHost.updateMany({ where, data })
-      if (updated.count === 0) {
-        sendApiError(reply, 404, 'NOT_FOUND', 'Local host not found.')
-        return reply
-      }
-      if (action === 'revoke') {
-        await prisma.agentLocalInferenceBinding.updateMany({
-          where: { hostId: params.hostId, status: { in: ['active', 'consented_pending_activation', 'pending'] } },
-          data: { reason: 'host_revoked', status: 'revoked' },
-        })
-      }
-      return createApiResponse({ ok: true })
-    })
-  }
 }

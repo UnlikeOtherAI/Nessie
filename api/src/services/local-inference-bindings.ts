@@ -77,6 +77,7 @@ export const prepareLocalInferenceBinding = async (
   prisma: PrismaClient,
   input: {
     agentId: string
+    editorUoaIdentity?: { subject: string; tokenVersion: number | null }
     editorUserId: string
     manifestDigest: string
     modelName: string
@@ -86,7 +87,7 @@ export const prepareLocalInferenceBinding = async (
 ): Promise<{ bindingId: string; challengeId: string; expiresAt: Date }> => {
   return prisma.$transaction(async (tx) => {
     await policyLock(tx, input.organizationId)
-    const [agent, host] = await Promise.all([
+    const [agent, host, editor] = await Promise.all([
       tx.agent.findFirst({
         where: { id: input.agentId, organizationId: input.organizationId, deletedAt: null },
         select: { id: true, ownerUserId: true, systemManaged: true, updatedAt: true },
@@ -98,8 +99,47 @@ export const prepareLocalInferenceBinding = async (
           id: true, inventory: true, pausedAt: true,
         },
       }),
+      tx.user.findUnique({
+        where: { id: input.editorUserId },
+        select: { id: true, tokenVersion: true, uoaSub: true },
+      }),
     ])
-    if (!agent || !host) throw new LocalInferenceBindingError('NOT_FOUND', 'Agent or local host not found.')
+    if (!agent || !host || !editor) {
+      throw new LocalInferenceBindingError('NOT_FOUND', 'Agent or local host not found.')
+    }
+    if (
+      input.editorUoaIdentity
+      && (
+        editor.uoaSub !== input.editorUoaIdentity.subject
+        || input.editorUoaIdentity.tokenVersion === null
+      )
+    ) {
+      throw new LocalInferenceBindingError('ENTITLEMENT_UNAVAILABLE',
+        'The editor identity could not be verified for local inference.')
+    }
+    const editorUoaLink = input.editorUoaIdentity
+      ? await tx.productAccountLink.findUnique({
+        where: {
+          organizationId_userId_productSlug: {
+            organizationId: input.organizationId,
+            productSlug: 'nessie',
+            userId: input.editorUserId,
+          },
+        },
+        select: { status: true, uoaSub: true, uoaTokenVersion: true },
+      })
+      : null
+    if (
+      input.editorUoaIdentity
+      && (
+        editorUoaLink?.status !== 'linked'
+        || editorUoaLink.uoaSub !== input.editorUoaIdentity.subject
+        || editorUoaLink.uoaTokenVersion !== input.editorUoaIdentity.tokenVersion
+      )
+    ) {
+      throw new LocalInferenceBindingError('ENTITLEMENT_UNAVAILABLE',
+        'The editor identity could not be verified for local inference.')
+    }
     if (agent.systemManaged || !agent.ownerUserId) {
       throw new LocalInferenceBindingError('OWNER_HOST_ONLY', 'Only a person-owned agent can use a local host.')
     }
@@ -140,11 +180,17 @@ export const prepareLocalInferenceBinding = async (
           capabilities: model.capabilities,
           reportedAt: model.reportedAt,
         },
+        hostAuthorizationRevision: host.authorizationRevision,
+        hostConnectionEpoch: host.connectionEpoch,
         hostId: host.id,
         manifestDigest: model.manifestDigest,
         modelName: model.name,
         numCtx: Math.min(8_192, model.numCtxCap ?? 8_192),
         organizationId: input.organizationId,
+        preparedEditorTokenVersion: editor.tokenVersion,
+        preparedEditorUoaSubject: input.editorUoaIdentity?.subject ?? null,
+        preparedEditorUoaTokenVersion: input.editorUoaIdentity?.tokenVersion ?? null,
+        preparedEditorUserId: editor.id,
         policyVersion: version,
         reason: null,
         status: 'pending',
@@ -177,30 +223,117 @@ const signedConsentPayload = (challengeId: string, bindingId: string, hostId: st
  */
 export const confirmLocalInferenceBinding = async (
   prisma: PrismaClient,
-  input: { challengeId: string; hostId: string; signature: string },
+  input: { agentId?: string; challengeId: string; hostId?: string; signature: string },
 ): Promise<{ bindingId: string }> => prisma.$transaction(async (tx) => {
   const challenge = await tx.localInferenceChallenge.findFirst({
-    where: { id: input.challengeId, expiresAt: { gt: new Date() } },
+    where: { id: input.challengeId, expiresAt: { gt: new Date() }, purpose: 'binding' },
     select: { bindingId: true, consumedAt: true, hostId: true, id: true },
   })
-  if (!challenge || !challenge.bindingId || challenge.hostId !== input.hostId) {
+  if (!challenge || !challenge.bindingId) {
     throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The local consent request is no longer valid.')
   }
   const [binding, host] = await Promise.all([
     tx.agentLocalInferenceBinding.findUnique({
       where: { id: challenge.bindingId },
-      select: { hostId: true, id: true, status: true },
+      select: {
+        agentId: true, hostAuthorizationRevision: true, hostConnectionEpoch: true, hostId: true,
+        id: true, preparedEditorTokenVersion: true, preparedEditorUoaSubject: true,
+        preparedEditorUoaTokenVersion: true, preparedEditorUserId: true, status: true,
+      },
     }),
     tx.localInferenceHost.findUnique({
-      where: { id: input.hostId },
+      where: { id: challenge.hostId },
       select: {
-        custodianUserId: true, executorId: true, organizationId: true,
-        publicKey: true, revokedAt: true, transport: true,
+        authorizationRevision: true, connectionEpoch: true, custodianUserId: true,
+        executorId: true, organizationId: true, publicKey: true, revokedAt: true,
+        transport: true,
       },
     }),
   ])
-  if (!binding || !host || binding.hostId !== input.hostId || host.revokedAt) {
+  if (
+    !binding || !host || (input.hostId !== undefined && binding.hostId !== input.hostId)
+    || (input.agentId !== undefined && binding.agentId !== input.agentId)
+    || host.revokedAt
+    || binding.hostAuthorizationRevision === null
+    || binding.hostConnectionEpoch === null
+    || binding.preparedEditorTokenVersion === null
+    || !binding.preparedEditorUserId
+    || binding.hostAuthorizationRevision !== host.authorizationRevision
+    || binding.hostConnectionEpoch !== host.connectionEpoch
+  ) {
     throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The selected local host is no longer available.')
+  }
+  const [agent, editor, memberships] = await Promise.all([
+    tx.agent.findFirst({
+      where: {
+        id: binding.agentId,
+        organizationId: host.organizationId,
+        deletedAt: null,
+      },
+      select: { id: true, ownerUserId: true, systemManaged: true },
+    }),
+    tx.user.findUnique({
+      where: { id: binding.preparedEditorUserId },
+      select: { id: true, tokenVersion: true },
+    }),
+    tx.organizationMember.findMany({
+      where: {
+        deactivatedAt: null,
+        organizationId: host.organizationId,
+        userId: { in: [binding.preparedEditorUserId, host.custodianUserId] },
+      },
+      select: { userId: true },
+    }),
+  ])
+  if (
+    !agent || agent.systemManaged || agent.ownerUserId !== host.custodianUserId
+    || !editor || editor.tokenVersion !== binding.preparedEditorTokenVersion
+    || memberships.length !== new Set([binding.preparedEditorUserId, host.custodianUserId]).size
+  ) {
+    throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The local consent request is no longer valid.')
+  }
+  if (binding.preparedEditorUoaSubject !== null || binding.preparedEditorUoaTokenVersion !== null) {
+    const link = binding.preparedEditorUoaSubject && binding.preparedEditorUoaTokenVersion !== null
+      ? await tx.productAccountLink.findUnique({
+        where: {
+          organizationId_userId_productSlug: {
+            organizationId: host.organizationId,
+            productSlug: 'nessie',
+            userId: binding.preparedEditorUserId,
+          },
+        },
+        select: { status: true, uoaSub: true, uoaTokenVersion: true },
+      })
+      : null
+    if (
+      link?.status !== 'linked'
+      || link.uoaSub !== binding.preparedEditorUoaSubject
+      || link.uoaTokenVersion !== binding.preparedEditorUoaTokenVersion
+    ) {
+      throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The local consent request is no longer valid.')
+    }
+  }
+  const [editorEntitlement, ownerEntitlement] = await Promise.all([
+    resolveLiveEntitlementDecision(tx, {
+      allowStoredIdentity: true,
+      organizationId: host.organizationId,
+      userId: binding.preparedEditorUserId,
+    }),
+    binding.preparedEditorUserId === host.custodianUserId
+      ? null
+      : resolveLiveEntitlementDecision(tx, {
+        allowStoredIdentity: true,
+        organizationId: host.organizationId,
+        userId: host.custodianUserId,
+      }),
+  ])
+  if (editorEntitlement.status !== 'allowed' || ownerEntitlement?.status !== 'allowed') {
+    throw new LocalInferenceBindingError(
+      editorEntitlement.status === 'unavailable' || ownerEntitlement?.status === 'unavailable'
+        ? 'ENTITLEMENT_UNAVAILABLE'
+        : 'CHALLENGE_INVALID',
+      'The local consent request is no longer valid.',
+    )
   }
   const publicKey = host.transport === 'desktop'
     ? (host.executorId === null ? host.publicKey : null)
@@ -241,7 +374,12 @@ export const confirmLocalInferenceBinding = async (
   if (binding.status === 'pending') {
     await tx.agentLocalInferenceBinding.update({
       where: { id: binding.id },
-      data: { consentedAt: new Date(), status: 'consented_pending_activation' },
+      data: {
+        consentDigest: digest(input.signature),
+        consentedAt: new Date(),
+        consentedByUserId: host.custodianUserId,
+        status: 'consented_pending_activation',
+      },
     })
   }
   return { bindingId: binding.id }

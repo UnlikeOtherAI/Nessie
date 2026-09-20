@@ -23,17 +23,13 @@ import {
   assertAgentFieldAuthority,
   type AgentEditActor,
 } from './agent-edit-authority.js'
-import {
-  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
-  resolveLiveEntitlementDecision,
-  resolveLiveEntitlements,
-  resolveScopedSetting,
-} from '@nessie/runtime'
+import { resolveLiveEntitlements } from '@nessie/runtime'
 import {
   acquireAgentToolPolicyLock,
   mergeGenericAgentToolPolicy,
 } from './agent-tool-policy-core.js'
 import { AGENT_OWNER_MEMBERSHIP_SELECT, mapAgentRecord } from './agent-record.js'
+import { activateConsentedLocalInferenceBinding } from './local-inference-binding-activation.js'
 
 /**
  * Rewriting an agent, under the acting person's live authority.
@@ -219,70 +215,18 @@ export const updateAgentRecord = async (
       )
     }
     if (input.localInferenceBindingId !== undefined) {
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(
-          hashtextextended(${`local-inference-policy:${input.organizationId}`}::text, 0)
-        )
-      `
       if (input.localInferenceBindingId === null) {
         throw new AgentManagementError(
           AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_REPLACEMENT_REQUIRED,
           'Choose another model before removing a local model selection.',
         )
       }
-      const binding = await tx.agentLocalInferenceBinding.findFirst({
-        where: {
-          agentId,
-          id: input.localInferenceBindingId,
-          organizationId: input.organizationId,
-          status: 'consented_pending_activation',
-        },
-        select: {
-          agentEditRevision: true, hostId: true, id: true, manifestDigest: true,
-          modelName: true, policyVersion: true,
-        },
+      localBinding = await activateConsentedLocalInferenceBinding(tx, {
+        actor,
+        agent: existing,
+        bindingId: input.localInferenceBindingId,
+        organizationId: input.organizationId,
       })
-      const host = binding
-        ? await tx.localInferenceHost.findFirst({
-            where: { id: binding.hostId, organizationId: input.organizationId, pausedAt: null, revokedAt: null },
-            select: { custodianUserId: true, inventory: true },
-          })
-        : null
-      const policy = await tx.localInferencePolicyVersion.upsert({
-        where: { organizationId: input.organizationId }, create: { organizationId: input.organizationId },
-        update: {}, select: { version: true },
-      })
-      const setting = await resolveScopedSetting<boolean>(tx, {
-        organizationId: input.organizationId, userId: existing.ownerUserId,
-      }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
-      const entitlement = existing.ownerUserId
-        ? await resolveLiveEntitlementDecision(tx, {
-            allowStoredIdentity: true, organizationId: input.organizationId, userId: existing.ownerUserId,
-          })
-        : { status: 'denied' as const }
-      const inventory = Array.isArray(host?.inventory) ? host.inventory : []
-      const observed = inventory.find((entry) => typeof entry === 'object' && entry !== null
-        && (entry as Record<string, unknown>)['name'] === binding?.modelName
-        && (entry as Record<string, unknown>)['manifestDigest'] === binding?.manifestDigest
-        && (entry as Record<string, unknown>)['remoteHost'] === null
-        && (entry as Record<string, unknown>)['remoteModel'] === null)
-      if (!binding || !host || !existing.ownerUserId || existing.systemManaged
-        || existing.ownerUserId !== host.custodianUserId
-        || existing.updatedAt.getTime() !== binding.agentEditRevision.getTime()
-        || policy.version !== binding.policyVersion || setting.value !== true
-        || entitlement.status !== 'allowed' || !observed) {
-        throw new AgentManagementError(
-          AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_CONFLICT,
-          'The local consent, model, or policy changed before this form was saved.',
-        )
-      }
-      await tx.agentLocalInferenceBinding.updateMany({
-        where: { agentId, status: 'active' }, data: { reason: 'replaced', status: 'revoked' },
-      })
-      await tx.agentLocalInferenceBinding.update({
-        where: { id: binding.id }, data: { reason: null, status: 'active' },
-      })
-      localBinding = { id: binding.id, modelName: binding.modelName }
     }
 
     if (transfersLocalInferenceOwnership) {
