@@ -26,6 +26,8 @@ local consent surface.
   consent, states, doorways and the decision justified by every UI element.
 - [Delivery and verification](delivery.md): exact integration points, phased
   work, compatibility, durable evaluations, release gates and open decisions.
+- [Adversarial review](adversarial-review.md): architecture, security, product,
+  and complete element-inventory findings against this proposal.
 
 ## Goals and release boundary
 
