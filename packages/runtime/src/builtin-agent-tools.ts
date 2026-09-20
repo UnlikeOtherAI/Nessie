@@ -274,6 +274,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     parameters: { type: 'object', properties: { agentId: { type: 'string' }, toolRegistryEntryId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'toolRegistryEntryId', 'enabled'] },
     safe: false,
   },
+  { id: 'agent_tool_access_inspect', category: 'agents', summary: 'Inspect protected tool access for an agent.', label: 'Inspect Agent Protected Tool Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Shows protected builtin and active connector tools, their exact registry ids, and whether the target agent currently has each access grant.', parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] }, safe: true },
   {
     id: 'agent_avatar_generate',
     category: 'agents',

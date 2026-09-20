@@ -129,6 +129,7 @@ export {
   runAgentReadTool,
   runAgentToolCatalogTool,
   runAgentToolAccessSetTool,
+  runAgentToolAccessInspectTool,
   runAgentUpdateTool,
 } from './pa-tools/agent-config.js'
 export {

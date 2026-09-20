@@ -30,7 +30,7 @@ import { z } from 'zod'
 
 import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveActingMember } from './access.js'
+import { requireOwnerMember, resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 
@@ -395,6 +395,7 @@ export const runAgentToolAccessSetTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = AgentToolAccessSetInputSchema.parse(input)
   const member = await resolveActingMember(context)
+  requireOwnerMember(member, 'change protected agent tool access')
   const target = await setAgentExplicitToolAccess(context.prisma, {
     ...args,
     actorUserId: member.userId,
@@ -405,6 +406,17 @@ export const runAgentToolAccessSetTool = async (
     outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} protected tool access for ${target.name}.`,
     toolName: 'agent_tool_access_set',
   }
+}
+
+export const runAgentToolAccessInspectTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
+  const { agentId } = z.object({ agentId: z.string().uuid() }).parse(input)
+  const member = await resolveActingMember(context)
+  requireOwnerMember(member, 'inspect protected agent tool access')
+  const agent = await context.prisma.agent.findFirst({ where: { id: agentId, organizationId: member.organizationId }, select: { name: true, toolPolicy: true } })
+  if (!agent) throw new Error('Agent not found.')
+  const entries = await context.prisma.toolRegistryEntry.findMany({ where: { organizationId: member.organizationId, enabled: true, OR: [{ metadata: { path: ['requiresExplicitGrant'], equals: true } }, { builtin: true, toolId: { in: ['browser_open'] } }] }, select: { id: true, label: true, toolId: true } })
+  const policy = agent.toolPolicy && typeof agent.toolPolicy === 'object' ? agent.toolPolicy as Record<string, unknown> : {}
+  return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => `- ${entry.label} | registryId=${entry.id} | ${policy[entry.id] === true || policy[entry.toolId] === true ? 'granted' : 'not granted'}`)].join('\n'), toolName: 'agent_tool_access_inspect' }
 }
 
 const AgentAvatarUpdateInputSchema = z.object({
