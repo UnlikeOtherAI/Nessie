@@ -151,3 +151,139 @@ test('refuses to generate an avatar when the configured model endpoint is not Le
 
   assert.equal(promptCalled, false)
 })
+
+/**
+ * What a failure has to say. A portrait that did not get drawn used to report
+ * `Ledger image generation failed with HTTP 500.` — a sentence that separates
+ * no cause from any other, and the Designer paraphrased even that away. These
+ * assert the three facts an operator has no production access to look up:
+ * which route was asked, what Ledger answered, and whether it ran out of time.
+ */
+const failureMessage = async (promise: Promise<unknown>): Promise<string> => {
+  try {
+    await promise
+  } catch (error) {
+    assert.ok(error instanceof AgentAvatarGenerationError, 'failures keep their own type')
+    return error.message
+  }
+  throw new Error('expected the avatar generation to fail')
+}
+
+const failingGeneration = (input: {
+  imagePurposeApiId?: string
+  imageRequest: Parameters<typeof generateAgentAvatar>[0]['imageRequest']
+}) =>
+  generateAgentAvatar({
+    actorContext,
+    agent: { name: 'CTO', role: 'chief technology officer' },
+    config: {
+      apiKey: 'lk_nessie_deployment_key',
+      baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
+      ...(input.imagePurposeApiId ? { imagePurposeApiId: input.imagePurposeApiId } : {}),
+    },
+    fileService: { store: async () => ({ attachment: { id: 'unused' } }) } as never,
+    imageRequest: input.imageRequest,
+    ledgerIdentity: {
+      requestHeaders: async () => ({ 'X-UOA-Delegation': 'signed-uoa-delegation' }),
+    },
+    modelClient: { chat: async () => 'A portrait prompt.' },
+  })
+
+test('an HTTP refusal carries the route, the code and Ledger\'s own words', async () => {
+  const message = await failureMessage(failingGeneration({
+    imagePurposeApiId: 'pa_dd11af80_25a7',
+    imageRequest: async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'insufficient_credit',
+            message: 'Purpose API has no funded provider key. Bearer lk_nessie_deployment_key rejected.',
+          },
+        }),
+        { status: 403 },
+      ),
+  }))
+
+  assert.match(message, /HTTP 403/)
+  assert.match(message, /Ledger purpose image route pa_dd11af80_25a7/)
+  assert.match(message, /code insufficient_credit/)
+  assert.match(message, /no funded provider key/)
+  // The reason travels; the credential never does, in a log line, a tool
+  // output or a 503 body.
+  assert.equal(message.includes('lk_nessie_deployment_key'), false)
+  assert.equal(message.includes('signed-uoa-delegation'), false)
+})
+
+test('a refusal from the direct service route says so, and stays one line long', async () => {
+  const message = await failureMessage(failingGeneration({
+    imageRequest: async () =>
+      new Response(`<html>\n<body>\n${'gateway '.repeat(200)}</body>\n</html>`, { status: 502 }),
+  }))
+
+  assert.match(message, /HTTP 502/)
+  assert.match(message, /Ledger OpenAI service image route/)
+  assert.match(message, /gateway gateway/)
+  assert.equal(message.includes('\n'), false, 'an excerpt is flattened to one line')
+  assert.ok(message.length < 600, `a body excerpt is truncated, got ${message.length} characters`)
+  assert.match(message, /\.\.\.$/)
+})
+
+test('running out of time reads as a timeout, not as a refusal', async () => {
+  const message = await failureMessage(failingGeneration({
+    imagePurposeApiId: 'pa_dd11af80_25a7',
+    imageRequest: async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    },
+  }))
+
+  // The timeout a 1024x1024 render behind a two-provider fallback chain is
+  // given, named in seconds, so a report says whether to wait longer or look
+  // at the route.
+  assert.match(message, /timed out after 120s/)
+  assert.match(message, /Ledger purpose image route pa_dd11af80_25a7/)
+})
+
+test('never arriving reads as a transport failure, not as a timeout', async () => {
+  const message = await failureMessage(failingGeneration({
+    imageRequest: async () => {
+      throw new Error('getaddrinfo ENOTFOUND ledger.unlikeotherai.com')
+    },
+  }))
+
+  assert.match(message, /could not reach the Ledger OpenAI service image route/)
+  assert.match(message, /ENOTFOUND/)
+  assert.equal(message.includes('timed out'), false)
+})
+
+test('a well-formed response that is not an image names the route it came from', async () => {
+  const message = await failureMessage(failingGeneration({
+    imagePurposeApiId: 'pa_dd11af80_25a7',
+    imageRequest: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+  }))
+
+  assert.match(message, /invalid image response from the Ledger purpose image route/)
+  assert.match(message, /"data":\[\]/)
+})
+
+test('the prompt call and the image call are distinguishable in the error text', async () => {
+  const message = await failureMessage(generateAgentAvatar({
+    actorContext,
+    agent: { name: 'CTO', role: 'chief technology officer' },
+    config: {
+      apiKey: 'lk_nessie_deployment_key',
+      baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
+      imagePurposeApiId: 'pa_dd11af80_25a7',
+    },
+    fileService: { store: async () => ({ attachment: { id: 'unused' } }) } as never,
+    imageRequest: async () => new Response('{}', { status: 200 }),
+    ledgerIdentity: null,
+    modelClient: {
+      chat: async () => {
+        throw new Error('model gateway unavailable')
+      },
+    },
+  }))
+
+  assert.match(message, /avatar prompt could not be generated: model gateway unavailable/)
+  assert.equal(message.includes('image generation'), false)
+})
