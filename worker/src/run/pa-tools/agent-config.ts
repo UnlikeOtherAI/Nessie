@@ -412,8 +412,9 @@ export const runAgentToolAccessInspectTool = async (context: BuiltinToolRuntimeC
   const { agentId } = z.object({ agentId: z.string().uuid() }).parse(input)
   const member = await resolveActingMember(context)
   requireOwnerMember(member, 'inspect protected agent tool access')
-  const agent = await context.prisma.agent.findFirst({ where: { id: agentId, organizationId: member.organizationId }, select: { name: true, toolPolicy: true } })
-  if (!agent) throw new Error('Agent not found.')
+  const visible = await readAgentRecordForActor(context.prisma, { agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
+  if (!visible?.record) throw new Error('Agent not found, or you cannot inspect its protected access.')
+  const agent = { name: visible.config.name, toolPolicy: visible.config.toolPolicy }
   const entries = await context.prisma.toolRegistryEntry.findMany({ where: { organizationId: member.organizationId, enabled: true, OR: [{ metadata: { path: ['requiresExplicitGrant'], equals: true } }, { builtin: true, toolId: { in: ['browser_open'] } }] }, select: { id: true, label: true, toolId: true } })
   const policy = agent.toolPolicy && typeof agent.toolPolicy === 'object' ? agent.toolPolicy as Record<string, unknown> : {}
   return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => `- ${entry.label} | registryId=${entry.id} | ${policy[entry.id] === true || policy[entry.toolId] === true ? 'granted' : 'not granted'}`)].join('\n'), toolName: 'agent_tool_access_inspect' }
