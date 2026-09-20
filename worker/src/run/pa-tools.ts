@@ -128,6 +128,7 @@ export {
   runAgentAvatarUpdateTool,
   runAgentReadTool,
   runAgentToolCatalogTool,
+  runAgentToolAccessSetTool,
   runAgentUpdateTool,
 } from './pa-tools/agent-config.js'
 export {

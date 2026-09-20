@@ -1,9 +1,11 @@
 import { loadConfig } from '@nessie/config'
+import { setAgentExplicitToolAccess } from '@nessie/mcp-manage'
 import {
   AgentAvatarBackgroundColorSchema,
   AgentAvatarStyleSchema,
   AgentEffortSchema,
   AgentRunLimitsSchema,
+  VoiceNameSchema,
 } from '@nessie/schemas'
 import {
   assertAgentEditAuthority,
@@ -85,6 +87,9 @@ const describeConfig = (
     ? `${config.owner.displayName ?? config.owner.userId} (${config.owner.ownerState})`
     : 'team-owned'}`,
   `model: ${config.model ? `${config.provider ?? '?'}/${config.model}` : 'deployment default'}`,
+  `model subscription: ${config.modelSubscriptionId ?? 'organisation/default lane'}`,
+  `local inference binding: ${config.localInferenceBindingId ?? 'none'}`,
+  `voice: ${config.voiceName ?? 'default'}`,
   `effort: ${config.effort ?? 'medium'}`,
   `run limits: ${describeRunLimits(config.runLimits)}`,
   `to-dos: ${config.todosEnabled ? 'on' : 'off'}`,
@@ -155,11 +160,14 @@ const AgentUpdateInputSchema = z.object({
   systemPrompt: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
+  modelSubscriptionId: z.string().uuid().nullable().optional(),
+  localInferenceBindingId: z.string().uuid().nullable().optional(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   todosEnabled: z.boolean().optional(),
   ownerUserId: z.string().uuid().nullish(),
+  voiceName: VoiceNameSchema.nullish(),
 })
 
 export const runAgentUpdateTool = async (
@@ -195,7 +203,7 @@ export const runAgentUpdateTool = async (
   // `PUT /api/agents/:agentId` validates it: chat cannot point an agent at a
   // model that will fail on its first run, nor at somebody else's personal plan.
   let modelSubscriptionId: string | null | undefined
-  if (patch.model !== undefined || patch.provider !== undefined) {
+  if (patch.model !== undefined || patch.provider !== undefined || patch.modelSubscriptionId !== undefined) {
     const stored = await context.prisma.agent.findFirst({
       where: { id: agentId, organizationId: member.organizationId },
       select: { model: true, modelSubscriptionId: true, ownerUserId: true, provider: true, teamId: true },
@@ -211,7 +219,9 @@ export const runAgentUpdateTool = async (
       // across a provider change is validated against the wrong set of links
       // and refuses a move that is perfectly legitimate. Same reasoning as
       // `PUT /api/agents/:agentId`.
-      ...(stored?.modelSubscriptionId
+      ...(patch.modelSubscriptionId !== undefined
+        ? { modelSubscriptionId: patch.modelSubscriptionId }
+        : stored?.modelSubscriptionId
         && (patch.provider ?? stored.provider) === stored.provider
         ? { modelSubscriptionId: stored.modelSubscriptionId }
         : {}),
@@ -370,6 +380,30 @@ export const runAgentToolCatalogTool = async (
         : '',
     ].filter(Boolean).join('\n\n'),
     toolName: 'agent_tool_catalog',
+  }
+}
+
+const AgentToolAccessSetInputSchema = z.object({
+  agentId: z.string().uuid(),
+  enabled: z.boolean(),
+  toolRegistryEntryId: z.string().uuid(),
+})
+
+export const runAgentToolAccessSetTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = AgentToolAccessSetInputSchema.parse(input)
+  const member = await resolveActingMember(context)
+  const target = await setAgentExplicitToolAccess(context.prisma, {
+    ...args,
+    actorUserId: member.userId,
+    organizationId: member.organizationId,
+  })
+  return {
+    inputSummary: `agentId=${args.agentId} tool=${args.toolRegistryEntryId} enabled=${args.enabled}`,
+    outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} protected tool access for ${target.name}.`,
+    toolName: 'agent_tool_access_set',
   }
 }
 
