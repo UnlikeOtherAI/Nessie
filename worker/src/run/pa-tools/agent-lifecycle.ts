@@ -1,12 +1,14 @@
 import {
-  AgentTriggerStatusSchema,
+  deleteAgent,
   isAgentAccessibleToActor,
   unbindAgentFromChannel,
 } from '@nessie/team-admin'
+import { AgentTriggerStatusSchema, parseAgentId, parseOrganizationId } from '@nessie/schemas'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
+import { emitWorkerAuditEvent } from '../execute/policy.js'
 
 const Id = z.string().uuid()
 
@@ -62,4 +64,15 @@ export const runAgentUnbindChannelTool = async (context: BuiltinToolRuntimeConte
   if (channel.systemChannelType) throw new Error('System-managed conversation bindings are owned by their bootstrap.')
   await unbindAgentFromChannel(context.prisma, { agentId, channelId, organizationId: member.organizationId })
   return { inputSummary: `agentId=${agentId} channelId=${channelId}`, outputPreview: `Unbound agentId=${agentId} from channelId=${channelId}.`, toolName: 'agent_unbind_channel' }
+}
+
+export const runAgentDeleteTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
+  const { agentId } = z.object({ agentId: Id }).parse(input)
+  const member = await resolveActingMember(context)
+  const outcome = await deleteAgent(context.prisma, member.actorContext, agentId)
+  if (outcome.kind === 'not_found') throw new Error('Agent not found.')
+  if (outcome.kind === 'refused') throw new Error(outcome.message)
+  await emitWorkerAuditEvent(context.prisma, member.actorContext, { action: 'agent.deleted', outcome: 'success', resourceId: outcome.agentId, resourceType: 'agent' })
+  await context.realtimeTransport.publishWs([{ kind: 'organization', organizationId: parseOrganizationId(member.organizationId) }, { kind: 'agent', agentId: parseAgentId(outcome.agentId) }], { data: { agentId: parseAgentId(outcome.agentId) }, event: 'agent.updated' })
+  return { inputSummary: `agentId=${agentId}`, outputPreview: `Deleted agentId=${agentId}; its bindings, triggers, queued work, mailbox, and standing access were revoked.`, toolName: 'agent_delete' }
 }

@@ -202,6 +202,7 @@ export const emitWorkerAuditEvent = async (
     action:
       | 'executor.browser.action.dispatched'
       | 'executor.command.run.dispatched'
+      | 'agent.deleted'
       | 'policy.evaluated'
     metadata?: Record<string, unknown>
     outcome: 'denied' | 'error' | 'success'

@@ -1,3 +1,4 @@
+export { deleteAgent, type DeleteAgentResult } from '@nessie/team-admin'
 import type { PrismaClient } from '@prisma/client'
 import {
   AGENT_EDIT_AUTHORITY_ERROR_CODES,
@@ -25,16 +26,16 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
  * carries on working, which is worse than no delete at all.
  */
 
-export type DeleteAgentResult =
+export type LegacyDeleteAgentResult =
   | { kind: 'deleted'; agentId: string }
   | { kind: 'not_found' }
   | { kind: 'refused'; code: AgentEditAuthorityErrorCode; message: string }
 
-export const deleteAgent = async (
+const legacyDeleteAgent = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   agentId: string,
-): Promise<DeleteAgentResult> => {
+): Promise<LegacyDeleteAgentResult> => {
   const agent = await prisma.agent.findFirst({
     where: { id: agentId, organizationId: actorContext.tenant.organizationId },
     select: {

@@ -19,6 +19,7 @@ import {
   runAgentReadTool,
   runAgentToolCatalogTool,
   runAgentTriggerCreateTool,
+  runAgentDeleteTool,
   runAgentTriggerDeleteTool,
   runAgentTriggerListTool,
   runAgentTriggerUpdateTool,
@@ -343,6 +344,8 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    case 'agent_delete':
+      return wrapTool(inputSummary, () => runAgentDeleteTool(context, args))
     case 'agent_trigger_list':
       return wrapTool(inputSummary, () => runAgentTriggerListTool(context, args))
     case 'agent_trigger_update':

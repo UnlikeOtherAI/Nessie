@@ -96,6 +96,7 @@ export {
   runChannelCreateTool,
 } from './pa-tools/provisioning.js'
 export {
+  runAgentDeleteTool,
   runAgentTriggerDeleteTool,
   runAgentTriggerListTool,
   runAgentTriggerUpdateTool,
