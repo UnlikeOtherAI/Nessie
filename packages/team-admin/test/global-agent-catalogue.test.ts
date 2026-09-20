@@ -449,3 +449,17 @@ test('every grant verb a blueprint holds is one the catalogue will explain', () 
     assert.doesNotMatch(rendered, /granted from the owner surfaces/)
   }
 })
+
+test('DeepWater is described as an ordinary grant, not a bundle nobody may split', () => {
+  // It reads as a special case only in prose: `agent_tool_access_set` grants a
+  // DeepWater registry entry one id at a time, under the same transition lock
+  // and revocation guard as the bundle verb. An agent told otherwise refuses
+  // work the product supports.
+  const rendered = block({
+    catalogue: catalogue({ restricted: [deepWaterEntry] }),
+    protectedAccess: grantedAccess,
+  })
+  assert.match(rendered, /ordinary explicit-grant tool/)
+  assert.match(rendered, /gives one of its tools to any agent/)
+  assert.doesNotMatch(rendered, /cannot be granted one projection at a time/)
+})

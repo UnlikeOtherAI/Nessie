@@ -157,11 +157,13 @@ const protectedGrantSection = (
     : []),
   ...(access.canSetDeepWater
     ? [bullet(
-        'agent_deepwater_access_set(agentId, teamId, enabled) moves the whole '
-        + 'DeepWater research bundle at once. It cannot be granted one '
-        + 'projection at a time, and it needs DeepWater enabled for the team '
-        + 'with every explicit-grant tool ready — the tool says so when it is '
-        + 'not.',
+        'agent_deepwater_access_set(agentId, teamId, enabled) is the shortcut '
+        + 'that moves the whole DeepWater research bundle at once, and it '
+        + 'needs DeepWater ready for that team — the tool says so when it is '
+        + 'not. DeepWater is an ordinary explicit-grant tool otherwise: '
+        + 'agent_tool_access_set gives one of its tools to any agent, exactly '
+        + 'like a connector. Revoking one is refused while another still '
+        + 'depends on it.',
       )]
     : []),
   bullet(
