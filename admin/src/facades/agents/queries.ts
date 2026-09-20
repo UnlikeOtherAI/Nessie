@@ -104,6 +104,7 @@ export const useAgentModelOptions = (agentId?: string) => {
 
   return useQuery<AgentModelOption[]>({
     queryKey: agentKeys.modelOptions(agentId),
+    placeholderData: keepPreviousData,
     queryFn: () => apiClient.get(
       agentId
         ? `/api/agents/models?agentId=${encodeURIComponent(agentId)}`
