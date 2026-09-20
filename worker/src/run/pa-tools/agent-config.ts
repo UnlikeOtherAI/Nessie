@@ -16,6 +16,7 @@ import {
   loadAgentToolCatalog,
   readAgentRecordForActor,
   resolveAgentAvatarStyle,
+  registryEntryRequiresExplicitPolicy,
   styleForGeneration,
   updateAgentAvatar,
   updateAgentRecord,
@@ -415,9 +416,9 @@ export const runAgentToolAccessInspectTool = async (context: BuiltinToolRuntimeC
   const visible = await readAgentRecordForActor(context.prisma, { agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
   if (!visible?.record) throw new Error('Agent not found, or you cannot inspect its protected access.')
   const agent = { name: visible.config.name, toolPolicy: visible.config.toolPolicy }
-  const entries = await context.prisma.toolRegistryEntry.findMany({ where: { organizationId: member.organizationId, enabled: true, OR: [{ metadata: { path: ['requiresExplicitGrant'], equals: true } }, { builtin: true, toolId: { in: ['browser_open'] } }] }, select: { id: true, label: true, toolId: true } })
+  const entries = (await context.prisma.toolRegistryEntry.findMany({ where: { OR: [{ organizationId: null }, { organizationId: member.organizationId }], enabled: true, status: 'active' }, select: { handlerKind: true, id: true, label: true, metadata: true, toolId: true } })).filter(registryEntryRequiresExplicitPolicy)
   const policy = agent.toolPolicy && typeof agent.toolPolicy === 'object' ? agent.toolPolicy as Record<string, unknown> : {}
-  return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => `- ${entry.label} | registryId=${entry.id} | ${policy[entry.id] === true || policy[entry.toolId] === true ? 'granted' : 'not granted'}`)].join('\n'), toolName: 'agent_tool_access_inspect' }
+  return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => `- ${entry.label} | registryId=${entry.id} | ${policy[entry.handlerKind === 'builtin' ? entry.toolId : entry.id] === true ? 'granted' : 'not granted'}`)].join('\n'), toolName: 'agent_tool_access_inspect' }
 }
 
 export const runAgentDeepWaterAccessSetTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
