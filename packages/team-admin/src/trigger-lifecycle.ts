@@ -27,22 +27,50 @@ export const agentTriggerScopeWhere = (scope: AgentTriggerScope): Prisma.AgentTr
 export const listAgentTriggers = async (prisma: PrismaClient, agentId: string): Promise<AgentTriggerRecord[]> =>
   (await prisma.agentTrigger.findMany({ where: { agentId }, orderBy: { createdAt: 'asc' } })).map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 
-export const getAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope): Promise<AgentTriggerRecord | null> => {
+export const getAgentTrigger = async (
+  prisma: PrismaClient,
+  scope: AgentTriggerScope,
+): Promise<AgentTriggerRecord | null> => {
   const trigger = await prisma.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
   return trigger ? mapTriggerRecord(trigger) : null
 }
 
-export const updateAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope, input: { config?: Record<string, unknown>; description?: string | null; enabled?: boolean; name?: string | null; nextRunAt?: string | null; status?: AgentTriggerStatus; targetChannelId?: string | null; targetThreadId?: string | null }): Promise<AgentTriggerRecord | null> => {
-  const existing = await prisma.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope), select: { agentId: true, config: true, id: true, targetChannelId: true, targetThreadId: true, type: true } })
+export const updateAgentTrigger = async (
+  prisma: PrismaClient,
+  scope: AgentTriggerScope,
+  input: {
+    config?: Record<string, unknown>
+    description?: string | null
+    enabled?: boolean
+    name?: string | null
+    nextRunAt?: string | null
+    status?: AgentTriggerStatus
+    targetChannelId?: string | null
+    targetThreadId?: string | null
+  },
+): Promise<AgentTriggerRecord | null> => {
+  const existing = await prisma.agentTrigger.findFirst({
+    where: agentTriggerScopeWhere(scope),
+    select: { agentId: true, config: true, id: true, targetChannelId: true, targetThreadId: true, type: true },
+  })
   if (!existing) return null
   const agentId = existing.agentId
   const targetChanged = input.targetChannelId !== undefined || input.targetThreadId !== undefined
   const target = agentId
-    ? targetChanged ? await resolveExecutionTarget(prisma, agentId, { targetChannelId: input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId, targetThreadId: input.targetThreadId === undefined ? existing.targetThreadId : input.targetThreadId }) : { channelId: existing.targetChannelId, threadId: existing.targetThreadId }
+    ? targetChanged
+      ? await resolveExecutionTarget(prisma, agentId, {
+          targetChannelId: input.targetChannelId === undefined
+            ? existing.targetChannelId : input.targetChannelId,
+          targetThreadId: input.targetThreadId === undefined
+            ? existing.targetThreadId : input.targetThreadId,
+        })
+      : { channelId: existing.targetChannelId, threadId: existing.targetThreadId }
     : targetChanged ? null : { channelId: null, threadId: null }
   if (!target || (agentId && (!target.channelId || !target.threadId))) return null
   const status = input.status ?? (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
-  const config = input.config === undefined ? existing.config : mergeTriggerConfigPreservingIdentity(existing.config, input.config)
+  const config = input.config === undefined
+    ? existing.config
+    : mergeTriggerConfigPreservingIdentity(existing.config, input.config)
   const normalizedConfig = existing.type === 'webhook' ? ensureWebhookConfig(config) : config
   if (existing.type === 'scheduled' && input.config !== undefined && !parseScheduledCronConfig(normalizedConfig)) return null
   if (existing.type === 'interval' && input.config !== undefined && !parseIntervalMinutes(normalizedConfig)) return null
@@ -52,7 +80,13 @@ export const updateAgentTrigger = async (prisma: PrismaClient, scope: AgentTrigg
   const write = (tx: PrismaClient | Prisma.TransactionClient) => tx.agentTrigger.update({ where: { id: existing.id }, data: { name: input.name === undefined ? undefined : input.name, description: input.description === undefined ? undefined : input.description, enabled: status === 'paused' ? false : input.enabled, status, config: shouldPersistConfig ? normalizedConfig as Prisma.InputJsonValue : undefined, ...(targetChanged ? { targetChannelId: target.channelId, targetThreadId: target.threadId } : {}), nextRunAt } })
   const configRecord = isJsonRecord(normalizedConfig) ? normalizedConfig : {}
   const trigger = Object.hasOwn(configRecord, 'todoTemplateId') && (input.config !== undefined || input.enabled === true)
-    ? agentId ? await prisma.$transaction(async (tx) => { await acquireAgentTodoAgentLock(tx, agentId); return await validateTodoTemplateTriggerConfig(tx, agentId, configRecord) ? write(tx) : null }) : null
+    ? agentId
+      ? await prisma.$transaction(async (tx) => {
+          await acquireAgentTodoAgentLock(tx, agentId)
+          return await validateTodoTemplateTriggerConfig(tx, agentId, configRecord)
+            ? write(tx) : null
+        })
+      : null
     : await write(prisma)
   return trigger ? mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE) : null
 }

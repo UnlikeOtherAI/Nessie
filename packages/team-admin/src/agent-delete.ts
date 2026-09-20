@@ -8,10 +8,26 @@ export type DeleteAgentResult =
   | { kind: 'refused'; code: AgentEditAuthorityErrorCode; message: string }
 
 /** Shared soft delete. The transaction revokes every standing way an agent can act. */
-export const deleteAgent = async (prisma: PrismaClient, actorContext: AuthorizedActionContext, agentId: string): Promise<DeleteAgentResult> => {
-  const agent = await prisma.agent.findFirst({ where: { id: agentId, organizationId: actorContext.tenant.organizationId }, select: { deletedAt: true, id: true, organizationId: true, ownerUserId: true, systemManaged: true, visibility: true } })
+export const deleteAgent = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  agentId: string,
+): Promise<DeleteAgentResult> => {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, organizationId: actorContext.tenant.organizationId },
+    select: {
+      deletedAt: true, id: true, organizationId: true, ownerUserId: true,
+      systemManaged: true, visibility: true,
+    },
+  })
   if (!agent || agent.deletedAt) return { kind: 'not_found' }
-  const authority = await resolveAgentEditAuthority(prisma, { organizationId: actorContext.tenant.organizationId, ...(actorContext.actionContext.uoaIdentity ? { uoaIdentity: actorContext.actionContext.uoaIdentity } : {}), userId: actorContext.actor.actorId }, agent)
+  const authority = await resolveAgentEditAuthority(prisma, {
+    organizationId: actorContext.tenant.organizationId,
+    ...(actorContext.actionContext.uoaIdentity
+      ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+      : {}),
+    userId: actorContext.actor.actorId,
+  }, agent)
   if (!authority.canEdit) return { kind: 'refused', ...(authority.refusal ?? { code: AGENT_EDIT_AUTHORITY_ERROR_CODES.NOT_ENTITLED, message: 'You cannot change this agent.' }) }
   const now = new Date()
   await prisma.$transaction(async (tx) => {
