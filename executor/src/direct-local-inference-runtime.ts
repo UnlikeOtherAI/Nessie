@@ -19,6 +19,8 @@ import { EncryptedLocalInferenceReceiptJournal } from './local-inference-receipt
 import { discoverOllamaInventory } from './ollama-observed.js'
 
 const RECEIPT_FILE = 'direct-local-inference-receipts.json'
+const DIRECT_HEARTBEAT_INTERVAL_MS = 20_000
+const DIRECT_POLL_INTERVAL_MS = 1_000
 
 export type DirectLocalInferenceConfig = {
   apiBaseUrl: string
@@ -119,6 +121,66 @@ const directReceiptDirectory = (): string => {
   return value
 }
 
+type DirectHostLoop = Pick<LocalInferenceHostLoop, 'heartbeat' | 'pollOnce' | 'stop'>
+
+const wait = (milliseconds: number): Promise<void> => new Promise((resolve) => {
+  setTimeout(resolve, milliseconds)
+})
+
+/**
+ * Keep a direct Desktop host visible while a long local generation is running.
+ * A heartbeat failure is an authority failure, not a reason to keep polling
+ * with a stale epoch: abort the literal-loopback request and let Desktop start
+ * a fresh claimed process after the person repairs/re-pairs it.
+ */
+export const superviseDirectLocalInference = async (input: {
+  heartbeatIntervalMs?: number
+  loop: DirectHostLoop
+  pollIntervalMs?: number
+  stopped: Promise<void>
+}): Promise<void> => {
+  const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DIRECT_HEARTBEAT_INTERVAL_MS
+  const pollIntervalMs = input.pollIntervalMs ?? DIRECT_POLL_INTERVAL_MS
+  let stopping = false
+  let heartbeat: Promise<void> | null = null
+  let heartbeatFailure: unknown = null
+  let loopStopped = false
+  let resolveFailure: (() => void) | null = null
+  const failed = new Promise<void>((resolve) => { resolveFailure = resolve })
+  const stopLoop = (): void => {
+    if (loopStopped) return
+    loopStopped = true
+    input.loop.stop()
+  }
+  const heartbeatTick = (): void => {
+    if (stopping || heartbeat !== null) return
+    heartbeat = input.loop.heartbeat().catch((error: unknown) => {
+      heartbeatFailure = error
+      stopLoop()
+      resolveFailure?.()
+    }).finally(() => { heartbeat = null })
+  }
+  const poller = (async () => {
+    while (!stopping) {
+      await input.loop.pollOnce().catch(() => undefined)
+      if (!stopping) await wait(pollIntervalMs)
+    }
+  })()
+  const timer = setInterval(heartbeatTick, heartbeatIntervalMs)
+  try {
+    await Promise.race([input.stopped, failed])
+  } finally {
+    stopping = true
+    clearInterval(timer)
+    stopLoop()
+    await Promise.allSettled([
+      poller,
+      ...(heartbeat === null ? [] : [heartbeat]),
+    ])
+  }
+  if (heartbeatFailure !== null) throw heartbeatFailure
+}
+
 /** Starts the direct host after native code has proven the origin and supplied
  * secrets over its private pipe.  Nothing in this function accepts webview
  * input, a model name, an endpoint, headers, or command arguments. */
@@ -137,7 +199,6 @@ export const serveDirectLocalInference = async (): Promise<void> => {
     machinePrivateKey: config.machinePrivateKey,
   })
   const connection = await api.claim({ challenge: issued.challenge, envelope })
-  process.stdout.write(`${JSON.stringify({ connectionEpoch: connection.connectionEpoch })}\n`)
   // Discovery happens before advertising any availability. It is bounded to
   // the two literal loopback endpoints and does not issue a model request.
   const inventory = await discoverOllamaInventory()
@@ -157,17 +218,18 @@ export const serveDirectLocalInference = async (): Promise<void> => {
     journal,
     origin: inventory.origin,
   })
+  // Desktop treats this one line as readiness. Do not expose a claimed epoch
+  // until the first fresh inventory heartbeat reached the server.
   await loop.heartbeat()
-  let stopped = false
-  const stop = () => { stopped = true }
+  process.stdout.write(`${JSON.stringify({ connectionEpoch: connection.connectionEpoch })}\n`)
+  let resolveStopped: (() => void) | null = null
+  const stopped = new Promise<void>((resolve) => { resolveStopped = resolve })
+  const stop = () => { resolveStopped?.() }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
   process.stdin.once('close', stop)
   process.stdin.once('end', stop)
-  while (!stopped) {
-    await loop.pollOnce().catch(() => undefined)
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
-  }
+  await superviseDirectLocalInference({ loop, stopped })
   // A typed signed goodbye cannot be mistaken for a heartbeat. The server may
   // be unavailable during quit, in which case its short lease remains the
   // conservative fallback.

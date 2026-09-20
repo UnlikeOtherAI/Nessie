@@ -80,8 +80,8 @@ impl MachineIdentity {
     /// SPKI was enrolled; the webview never sees either representation.
     pub(super) fn private_key_pkcs8_base64url(&self) -> Result<String, String> {
         const PKCS8_PREFIX: [u8; 16] = [
-            0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
-            0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+            0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22,
+            0x04, 0x20,
         ];
         let mut der = PKCS8_PREFIX.to_vec();
         der.extend(self.signing_key()?.to_bytes());
@@ -411,7 +411,8 @@ pub(super) fn rotate_identity(
 #[cfg(test)]
 mod tests {
     use super::{
-        public_key_pem, rotate_identity, save_identity, MachineIdentity, MachineIdentityStore,
+        public_key_pem, record_connection_epoch, rotate_identity, save_identity, MachineIdentity,
+        MachineIdentityStore,
     };
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use ed25519_dalek::SigningKey;
@@ -448,6 +449,20 @@ mod tests {
             replacement.public_key_pem().unwrap(),
             first.public_key_pem().unwrap()
         );
+    }
+
+    #[test]
+    fn connection_epoch_persists_each_monotonic_host_reconnect() {
+        let store = FixtureStore::default();
+        let first = MachineIdentity::new(1, 1);
+        save_identity(&store, &first).unwrap();
+
+        let second = record_connection_epoch(&store, &first, 2).unwrap();
+        let third = record_connection_epoch(&store, &second, 3).unwrap();
+
+        assert_eq!(second.connection_epoch, 2);
+        assert_eq!(third.connection_epoch, 3);
+        assert!(record_connection_epoch(&store, &third, 3).is_err());
     }
 
     #[test]

@@ -211,6 +211,11 @@ export class LocalInferenceHostLoop {
     this.#active.get(attemptId)?.abort('cancelled')
   }
 
+  /** Stop every in-flight local request when this host loses its authority. */
+  stop(): void {
+    for (const controller of this.#active.values()) controller.abort('host_stopped')
+  }
+
   private async run(attempt: LocalInferenceAttemptRequest, dispatchFence: number): Promise<LocalInferencePollOutcome> {
     const controller = new AbortController()
     this.#active.set(attempt.attemptId, controller)

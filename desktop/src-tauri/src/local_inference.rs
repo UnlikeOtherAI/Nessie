@@ -5,22 +5,20 @@
 //! HTTP proxy nor a general process launcher. Prompt bytes and private keys
 //! never cross the webview boundary.
 
-use std::{
-    io::{BufRead, BufReader, Write},
-    process::{Child, ChildStdin, Stdio},
-    sync::Mutex,
-};
+use std::{io::Write, process::Stdio, sync::Mutex};
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use ed25519_dalek::Signer as _;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
+mod direct_host;
 mod identity;
 
+use direct_host::DirectHostSupervisor;
 use identity::{
-    identity_from_store, provision_identity, record_connection_epoch, rotate_identity, MachineIdentityStore,
+    identity_from_store, provision_identity, rotate_identity, MachineIdentityStore,
     PlatformMachineIdentityStore,
 };
 
@@ -31,16 +29,6 @@ const DEVELOPMENT_ADMIN_ORIGIN: &str = "http://localhost:5455";
 #[derive(Default)]
 pub struct LocalInferenceState {
     supervisor: Mutex<DirectHostSupervisor>,
-}
-
-#[derive(Default)]
-struct DirectHostSupervisor {
-    /// A direct host is process-bound. It cannot survive a Desktop exit and
-    /// must establish a fresh server lease before it may process anything.
-    child: Option<Child>,
-    parent_liveness: Option<ChildStdin>,
-    host_id: Option<String>,
-    organization_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,7 +72,8 @@ struct CanonicalConsentDisplay {
 
 fn configured_desktop_origin(debug: bool) -> String {
     if debug {
-        let port = std::env::var("NESSIE_ADMIN_PORT").ok()
+        let port = std::env::var("NESSIE_ADMIN_PORT")
+            .ok()
             .and_then(|value| value.parse::<u16>().ok())
             .filter(|port| *port > 0)
             .unwrap_or(5455);
@@ -96,7 +85,8 @@ fn configured_desktop_origin(debug: bool) -> String {
 
 fn configured_api_origin(debug: bool) -> String {
     if debug {
-        let port = std::env::var("NESSIE_API_PORT").ok()
+        let port = std::env::var("NESSIE_API_PORT")
+            .ok()
             .and_then(|value| value.parse::<u16>().ok())
             .filter(|port| *port > 0)
             .unwrap_or(5454);
@@ -122,8 +112,13 @@ fn canonical_https_origin(value: &str, allow_local_development: bool) -> Result<
         );
     }
     let origin = parsed.origin().ascii_serialization();
-    if parsed.scheme() == "https" || (allow_local_development && parsed.scheme() == "http"
-        && matches!(parsed.host_str(), Some("localhost") | Some("127.0.0.1") | Some("[::1]") | Some("::1")))
+    if parsed.scheme() == "https"
+        || (allow_local_development
+            && parsed.scheme() == "http"
+            && matches!(
+                parsed.host_str(),
+                Some("localhost") | Some("127.0.0.1") | Some("[::1]") | Some("::1")
+            ))
     {
         Ok(origin)
     } else {
@@ -135,75 +130,10 @@ fn valid_identifier(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() == 36
         && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
-        && bytes.iter().enumerate().all(|(index, byte)| {
-            [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit()
-        })
-}
-
-fn stop_direct_host(supervisor: &mut DirectHostSupervisor) {
-    // Closing stdin is the direct host's cross-platform graceful stop signal.
-    // It sends its signed goodbye before returning; Desktop never force-kills a
-    // model process and a failed goodbye still expires through the 60s lease.
-    supervisor.parent_liveness.take();
-    let _ = direct_host_running(supervisor);
-}
-
-fn direct_host_receipt_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let directory = app.path().app_data_dir()
-        .map_err(|_| "Nessie Desktop could not resolve protected local inference storage.".to_owned())?
-        .join("local-inference");
-    std::fs::create_dir_all(&directory)
-        .map_err(|_| "Nessie Desktop could not prepare protected local inference storage.".to_owned())?;
-    Ok(directory)
-}
-
-fn start_direct_host(
-    app: &AppHandle,
-    supervisor: &mut DirectHostSupervisor,
-    host_id: &str,
-    organization_id: &str,
-) -> Result<(), String> {
-    if direct_host_running(supervisor) { return Ok(()); }
-    let store = PlatformMachineIdentityStore::new(app)?;
-    let identity = identity_from_store(&store)?
-        .ok_or_else(|| "Prepare local Ollama hosting before starting it.".to_owned())?;
-    let mut command = crate::executor_companion::executor_command(app)?;
-    command.args(["serve-direct-local-inference", "--config-stdin"]);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped());
-    command.env("NESSIE_DIRECT_LOCAL_INFERENCE_RECEIPT_DIR", direct_host_receipt_directory(app)?);
-    let mut child = command.spawn()
-        .map_err(|_| "Nessie Desktop could not start its protected local Ollama host.".to_owned())?;
-    let mut stdin = child.stdin.take()
-        .ok_or_else(|| "Nessie Desktop could not provide local host material securely.".to_owned())?;
-    let input = serde_json::json!({
-        "apiBaseUrl": configured_api_origin(cfg!(debug_assertions)),
-        "connectionEpoch": identity.connection_epoch.to_string(),
-        "hostId": host_id,
-        "machinePrivateKey": identity.private_key_pkcs8_base64url()?,
-        "organizationId": organization_id,
-        "receiptJournalKey": identity.receipt_journal_key_base64url()?,
-    });
-    let serialized = serde_json::to_vec(&input)
-        .map_err(|_| "Nessie Desktop could not prepare protected local host material.".to_owned())?;
-    stdin.write_all(&serialized)
-        .and_then(|_| stdin.write_all(b"\n"))
-        .map_err(|_| "Nessie Desktop could not provide local host material securely.".to_owned())?;
-    let stdout = child.stdout.take()
-        .ok_or_else(|| "Nessie Desktop could not read local host state.".to_owned())?;
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    reader.read_line(&mut line)
-        .map_err(|_| "Nessie Desktop could not read local host state.".to_owned())?;
-    let next_epoch = serde_json::from_str::<serde_json::Value>(&line)
-        .ok().and_then(|value| value.get("connectionEpoch")?.as_str()?.parse::<u64>().ok())
-        .filter(|epoch| *epoch > identity.connection_epoch)
-        .ok_or_else(|| "Nessie Desktop could not verify local host state.".to_owned())?;
-    record_connection_epoch(&store, &identity, next_epoch)?;
-    supervisor.child = Some(child);
-    supervisor.parent_liveness = Some(stdin);
-    supervisor.host_id = Some(host_id.to_owned());
-    supervisor.organization_id = Some(organization_id.to_owned());
-    Ok(())
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit())
 }
 
 fn canonical_consent_display(
@@ -216,10 +146,12 @@ fn canonical_consent_display(
     let mut command = crate::executor_companion::executor_command(app)?;
     command.args(["local-inference-consent-display", "--config-stdin"]);
     command.stdin(Stdio::piped()).stdout(Stdio::piped());
-    let mut child = command.spawn()
+    let mut child = command
+        .spawn()
         .map_err(|_| "Nessie Desktop could not fetch the local model confirmation.".to_owned())?;
-    let mut stdin = child.stdin.take()
-        .ok_or_else(|| "Nessie Desktop could not provide local confirmation material securely.".to_owned())?;
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+        "Nessie Desktop could not provide local confirmation material securely.".to_owned()
+    })?;
     let input = serde_json::json!({
         "apiBaseUrl": configured_api_origin(cfg!(debug_assertions)),
         "connectionEpoch": identity.connection_epoch.to_string(),
@@ -235,10 +167,12 @@ fn canonical_consent_display(
     // (The direct host gets its organisation only from its own enrollment.)
     let serialized = serde_json::to_vec(&input)
         .map_err(|_| "Nessie Desktop could not prepare local confirmation material.".to_owned())?;
-    stdin.write_all(&serialized)
-        .map_err(|_| "Nessie Desktop could not provide local confirmation material securely.".to_owned())?;
+    stdin.write_all(&serialized).map_err(|_| {
+        "Nessie Desktop could not provide local confirmation material securely.".to_owned()
+    })?;
     drop(stdin);
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .map_err(|_| "Nessie Desktop could not read the local model confirmation.".to_owned())?;
     if !output.status.success() || output.stdout.len() > 4_096 {
         return Err("Nessie Desktop could not verify the local model confirmation.".to_owned());
@@ -307,15 +241,6 @@ async fn confirm_native(
     .map_err(|_| "Nessie Desktop could not show its local inference confirmation.".to_owned())
 }
 
-fn direct_host_running(supervisor: &mut DirectHostSupervisor) -> bool {
-    let running = matches!(supervisor.child.as_mut().map(Child::try_wait), Some(Ok(None)));
-    if !running {
-        supervisor.child.take();
-        supervisor.parent_liveness.take();
-    }
-    running
-}
-
 fn status(app: &AppHandle, supervisor: &mut DirectHostSupervisor) -> LocalInferenceDesktopStatus {
     let key = match PlatformMachineIdentityStore::new(app)
         .and_then(|store| identity_from_store(&store))
@@ -325,7 +250,11 @@ fn status(app: &AppHandle, supervisor: &mut DirectHostSupervisor) -> LocalInfere
         _ => "unavailable",
     };
     LocalInferenceDesktopStatus {
-        bridge: if direct_host_running(supervisor) { "running" } else { "stopped" },
+        bridge: if supervisor.is_running() {
+            "running"
+        } else {
+            "stopped"
+        },
         configured_origin: configured_desktop_origin(cfg!(debug_assertions)),
         key,
     }
@@ -358,7 +287,7 @@ pub async fn local_inference_prepare_desktop_enrollment(
         .supervisor
         .lock()
         .map_err(|_| "Nessie Desktop local inference state is unavailable.".to_owned())?;
-    stop_direct_host(&mut supervisor);
+    supervisor.stop();
     identity.enrollment_material(false)
 }
 
@@ -388,7 +317,7 @@ pub async fn local_inference_rotate_machine_key(
         .supervisor
         .lock()
         .map_err(|_| "Nessie Desktop local inference state is unavailable.".to_owned())?;
-    stop_direct_host(&mut supervisor);
+    supervisor.stop();
     identity.enrollment_material(true)
 }
 
@@ -415,9 +344,11 @@ pub async fn local_inference_start_direct_host(
     ).await? {
         return Err("Starting local Ollama hosting was cancelled.".to_owned());
     }
-    let mut supervisor = state.supervisor.lock()
+    let mut supervisor = state
+        .supervisor
+        .lock()
         .map_err(|_| "Nessie Desktop local inference state is unavailable.".to_owned())?;
-    start_direct_host(&app, &mut supervisor, &host_id, &organization_id)?;
+    supervisor.start(&app, &host_id, &organization_id)?;
     Ok(status(&app, &mut supervisor))
 }
 
@@ -428,9 +359,11 @@ pub fn local_inference_stop_direct_host(
     webview: WebviewWindow,
 ) -> Result<LocalInferenceDesktopStatus, String> {
     require_local_inference_caller(&webview)?;
-    let mut supervisor = state.supervisor.lock()
+    let mut supervisor = state
+        .supervisor
+        .lock()
         .map_err(|_| "Nessie Desktop local inference state is unavailable.".to_owned())?;
-    stop_direct_host(&mut supervisor);
+    supervisor.stop();
     Ok(status(&app, &mut supervisor))
 }
 
@@ -451,18 +384,19 @@ pub async fn local_inference_sign_binding_consent(
     let identity = identity_from_store(&store)?
         .ok_or_else(|| "Prepare local Ollama hosting before confirming a model.".to_owned())?;
     let (host_id, organization_id) = {
-        let mut supervisor = state.supervisor.lock()
+        let mut supervisor = state
+            .supervisor
+            .lock()
             .map_err(|_| "Nessie Desktop local inference state is unavailable.".to_owned())?;
-        if !direct_host_running(&mut supervisor) {
-            return Err("Start this computer's local Ollama host before confirming a model.".to_owned());
+        if !supervisor.is_running() {
+            return Err(
+                "Start this computer's local Ollama host before confirming a model.".to_owned(),
+            );
         }
-        (supervisor.host_id.clone(), supervisor.organization_id.clone())
+        supervisor.host_context()?
     };
-    let (host_id, organization_id) = match (host_id, organization_id) {
-        (Some(host), Some(organization)) => (host, organization),
-        _ => return Err("Nessie Desktop could not verify the local host confirmation.".to_owned()),
-    };
-    let shown = canonical_consent_display(&app, &identity, &challenge_id, &host_id, &organization_id)?;
+    let shown =
+        canonical_consent_display(&app, &identity, &challenge_id, &host_id, &organization_id)?;
     if shown.host_id != host_id || !valid_identifier(&shown.binding_id) {
         return Err("Nessie Desktop could not verify the local model confirmation.".to_owned());
     }
@@ -470,12 +404,23 @@ pub async fn local_inference_sign_binding_consent(
         "Nessie will connect this local model while Desktop is running.\n\nOrganization reference: {}\nAccount reference: {}\nAgent: {}\nModel: {}\nThis computer: {}\n\nIt will not start Ollama, download models, or use another computer's model.",
         shown.organization_reference, shown.account_reference, shown.agent_label, shown.model_label, shown.host_label,
     );
-    if !confirm_native(app.clone(), "Confirm local model use", &message, "Confirm model").await? {
+    if !confirm_native(
+        app.clone(),
+        "Confirm local model use",
+        &message,
+        "Confirm model",
+    )
+    .await?
+    {
         return Err("Confirming local model use was cancelled.".to_owned());
     }
-    let payload = format!("nessie-local-inference-consent-v1\n{challenge_id}\n{}\n{host_id}", shown.binding_id);
+    let payload = format!(
+        "nessie-local-inference-consent-v1\n{challenge_id}\n{}\n{host_id}",
+        shown.binding_id
+    );
     Ok(LocalInferenceBindingConsent {
-        signature: URL_SAFE_NO_PAD.encode(identity.signing_key()?.sign(payload.as_bytes()).to_bytes()),
+        signature: URL_SAFE_NO_PAD
+            .encode(identity.signing_key()?.sign(payload.as_bytes()).to_bytes()),
     })
 }
 
@@ -504,7 +449,7 @@ pub async fn local_inference_forget_local_state(
         .supervisor
         .lock()
         .map_err(|_| "Nessie Desktop local inference state is unavailable.".to_owned())?;
-    stop_direct_host(&mut supervisor);
+    supervisor.stop();
     Ok(status(&app, &mut supervisor))
 }
 
@@ -524,7 +469,7 @@ pub fn local_inference_desktop_status(
 
 pub fn shutdown(state: &LocalInferenceState) {
     if let Ok(mut supervisor) = state.supervisor.lock() {
-        stop_direct_host(&mut supervisor);
+        supervisor.stop();
     }
 }
 
