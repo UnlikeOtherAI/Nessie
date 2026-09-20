@@ -15,7 +15,8 @@ import {
   type ExecutorOperationKey,
 } from '@nessie/schemas'
 
-import { claimExecutor, heartbeatExecutor, serveExecutor } from '../src/daemon.js'
+import { serveExecutor } from '../src/daemon-server.js'
+import { claimExecutor, heartbeatExecutor } from '../src/daemon.js'
 import { pairExecutor } from '../src/pair.js'
 import { loadExecutorState } from '../src/state-store.js'
 
