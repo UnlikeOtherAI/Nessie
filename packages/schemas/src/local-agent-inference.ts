@@ -165,6 +165,42 @@ export const LocalInferenceResultSchema = z.object({
 })
 export type LocalInferenceResult = z.infer<typeof LocalInferenceResultSchema>
 
+/** A host receives only one leased attempt at a time; an empty poll body is
+ * still signed so a captured request cannot be replayed under another route. */
+export const LocalInferenceAttemptPollSchema = z.object({}).strict()
+
+export const LocalInferenceAttemptFrameSchema = z.object({
+  attemptId: z.string().uuid(),
+  data: z.string().max(21_848), // base64url encoding of a 16 KiB frame
+  dispatchFence: z.number().int().positive(),
+  sequence: z.number().int().positive(),
+}).strict()
+export type LocalInferenceAttemptFrame = z.infer<typeof LocalInferenceAttemptFrameSchema>
+
+export const LocalInferenceAttemptResultReceiptSchema = z.object({
+  attemptId: z.string().uuid(),
+  dispatchFence: z.number().int().positive(),
+  result: LocalInferenceResultSchema,
+}).strict()
+export type LocalInferenceAttemptResultReceipt = z.infer<
+  typeof LocalInferenceAttemptResultReceiptSchema
+>
+
+/** JSON limits are enforced before the encrypted payload is persisted. */
+export const LOCAL_INFERENCE_MAX_REQUEST_BYTES = 2 * 1024 * 1024
+export const LOCAL_INFERENCE_MAX_RESULT_BYTES = 512 * 1024
+export const LOCAL_INFERENCE_MAX_FRAME_BYTES = 16 * 1024
+export const LOCAL_INFERENCE_MAX_UNACKNOWLEDGED_FRAME_BYTES = 128 * 1024
+
+export const assertLocalInferenceSerializedSize = (
+  value: unknown,
+  maximum: number,
+): void => {
+  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > maximum) {
+    throw new Error('Local inference protocol payload exceeds its bounded limit.')
+  }
+}
+
 export const AgentAvailabilityProjectionSchema = z.object({
   availability: AgentAvailabilitySchema,
   reason: LocalInferenceAvailabilityReasonSchema,

@@ -74,6 +74,7 @@ export const AT_REST_SECRET_PURPOSE = {
   dashboardCredential: 'dashboard.credential',
   executorCommand: 'executor.command',
   mailboxCredential: 'mailbox.credential',
+  localInferenceAttempt: 'local-inference.attempt',
   mcpCredential: 'mcp.credential',
   mcpOauth: 'mcp.oauth',
   productWebhook: 'product.webhook',
