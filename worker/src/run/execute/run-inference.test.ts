@@ -168,6 +168,7 @@ test('mainOutputTokens stays on the pinned subscription lane without a Ledger lo
 
 test('a local-device pin cannot fall through to the Ledger provider resolver', async () => {
   let providerResolverCalled = false
+  let inferenceFactoryCalled = false
   const inference = createRunInference(
     inferenceDeps,
     inferencePayload,
@@ -189,6 +190,10 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
         },
         runFence: 'fence',
       },
+      inferenceServiceFactory: () => {
+        inferenceFactoryCalled = true
+        throw new Error('must not create a cloud inference service for a local pin')
+      },
       stageProviderResolver: async () => {
         providerResolverCalled = true
         throw new Error('must not resolve a local pin through the provider route')
@@ -201,6 +206,7 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
 
   assert.equal(await inference.mainOutputTokens?.(), 2_048)
   assert.equal(providerResolverCalled, false)
+  assert.equal(inferenceFactoryCalled, false)
   await assert.rejects(
     inference.runMain([coverProviderInputComponent(
       { content: 'No cloud fallback.', role: 'user' },
@@ -209,4 +215,5 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
     /secure storage/,
   )
   assert.equal(providerResolverCalled, false)
+  assert.equal(inferenceFactoryCalled, false)
 })
