@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AgentToolPolicyTarget } from '@nessie/schemas'
+import { fingerprintMcpToolDescriptor, MCP_TOOL_DESCRIPTOR_FINGERPRINT_KEY } from './mcp-tool-grant-fingerprint.js'
+import { mcpToolDescriptorAnnotationsFromMetadata } from './mcp-tool-registry-projection.js'
 import {
   mutateAgentToolPolicy,
   registryEntryPolicyKey,
@@ -21,7 +23,7 @@ export const setAgentExplicitToolAccess = async (
 ): Promise<AgentToolPolicyTarget> => {
   const entry = await prisma.toolRegistryEntry.findFirst({
     where: { id: input.toolRegistryEntryId, OR: [{ organizationId: null }, { organizationId: input.organizationId }] },
-    select: { handlerKind: true, id: true, metadata: true, toolId: true, mcpInstance: { select: { catalogEntry: { select: { name: true } } } } },
+    select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true, mcpInstance: { select: { catalogEntry: { select: { name: true } } } } },
   })
   if (!entry || !registryEntryRequiresExplicitPolicy(entry)) {
     throw new AgentExplicitToolAccessError('This protected tool is not available in this organization.')
@@ -31,19 +33,26 @@ export const setAgentExplicitToolAccess = async (
       'Deep Water access is a complete protected bundle. It cannot be granted or revoked one projection at a time.',
     )
   }
-  // MCP consent is descriptor-bound. Do not manufacture a policy allow until
-  // the exact registry service has also written its fingerprinted ToolGrant.
-  // This keeps a partial conversational implementation from claiming access
-  // that the worker correctly refuses at dispatch.
-  if (entry.handlerKind !== 'builtin') {
-    throw new AgentExplicitToolAccessError(
-      'This connected tool needs its descriptor-bound grant. Its access service is not available in this conversation yet.',
-    )
-  }
   return mutateAgentToolPolicy(prisma, {
     agentId: input.agentId,
     actorUserId: input.actorUserId,
     organizationId: input.organizationId,
-    update: (current) => mergeAgentToolPolicy(current, [registryEntryPolicyKey(entry)], input.enabled),
+    update: async (current, tx) => {
+      if (entry.handlerKind === 'mcp') {
+        if (input.enabled) {
+          const configured = entry.transportConfig && typeof entry.transportConfig === 'object'
+            ? (entry.transportConfig as Record<string, unknown>).toolName : undefined
+          const name = typeof configured === 'string' && configured.length > 0
+            ? configured : entry.toolId.split(':').at(-1)
+          if (!name) throw new AgentExplicitToolAccessError('Protected MCP registry entry has no descriptor name.')
+          const config = { [MCP_TOOL_DESCRIPTOR_FINGERPRINT_KEY]: fingerprintMcpToolDescriptor({ annotations: mcpToolDescriptorAnnotationsFromMetadata(entry.metadata), description: entry.description, inputSchema: entry.inputSchema, name, outputSchema: entry.outputSchema }) }
+          const updated = await tx.toolGrant.updateMany({ where: { agentId: input.agentId, roleId: null, toolId: entry.id }, data: { config: config as never, source: 'agent_override' as never, state: 'allowed' } })
+          if (updated.count === 0) await tx.toolGrant.create({ data: { agentId: input.agentId, config: config as never, roleId: null, source: 'agent_override' as never, state: 'allowed', toolId: entry.id } })
+        } else {
+          await tx.toolGrant.updateMany({ where: { agentId: input.agentId, roleId: null, toolId: entry.id }, data: { state: 'denied' } })
+        }
+      }
+      return mergeAgentToolPolicy(current, [registryEntryPolicyKey(entry)], input.enabled)
+    },
   })
 }
