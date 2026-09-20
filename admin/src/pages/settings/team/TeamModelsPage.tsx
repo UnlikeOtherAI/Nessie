@@ -1,5 +1,9 @@
-import type { TeamRecord } from '../../../lib/api-client'
-import type { SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
+import { Navigate, useSearchParams } from 'react-router-dom'
+
+import { Select } from '../../../components/shared/FormControls'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../../facades/auth/hooks'
+import { useTeams } from '../../../facades/projects/hooks'
 import { ModelAvailabilitySettings } from '../OrganizationModelsPage'
 
 /**
@@ -8,7 +12,49 @@ import { ModelAvailabilitySettings } from '../OrganizationModelsPage'
  * team can narrow its choices but cannot discover or restore an org-disabled
  * provider/model pair.
  */
-export const TeamModelsPage = ({ tabs, team }: SettingsTabHostProps & { team?: TeamRecord }) => {
+export const TeamModelsPage = () => {
+  const { me } = useAuthSession()
+  const isOwner = useIsOwner()
+  const canManage = isOwner || (me?.user.roleIds.includes('admin') ?? false)
+  const teams = useTeams()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  if (!me) return null
+  if (!canManage) return <Navigate to="/settings/account" replace />
+
+  const rows = teams.data ?? []
+  const requestedTeamId = searchParams.get('team')
+  const team = rows.find((row) => row.id === requestedTeamId) ?? rows[0]
   if (!team) return null
-  return <ModelAvailabilitySettings tabs={tabs} teamId={team.id} />
+
+  const scopeControl = rows.length > 1 ? (
+    <div className="w-full max-w-xs">
+      <Select
+        aria-label="Team"
+        onChange={(event) => {
+          setSearchParams((current) => {
+            const next = new URLSearchParams(current)
+            next.set('team', event.target.value)
+            next.delete('cursor')
+            next.delete('direction')
+            next.delete('page')
+            next.delete('scope')
+            return next
+          }, { replace: true })
+        }}
+        value={team.id}
+      >
+        {rows.map((row) => (
+          <option key={row.id} value={row.id}>{row.name}</option>
+        ))}
+      </Select>
+    </div>
+  ) : null
+
+  return (
+    <ModelAvailabilitySettings
+      scopeControl={scopeControl}
+      teamId={team.id}
+    />
+  )
 }

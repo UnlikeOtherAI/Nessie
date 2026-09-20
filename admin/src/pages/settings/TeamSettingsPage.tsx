@@ -3,7 +3,6 @@ import { Navigate, useSearchParams } from 'react-router-dom'
 import { Select } from '../../components/shared/FormControls'
 import { TabBar } from '../../components/primitives/TabBar'
 import { TeamAgentsPage } from './team/TeamAgentsPage'
-import { TeamModelsPage } from './team/TeamModelsPage'
 import { TeamProfilePage } from './team/TeamProfilePage'
 import type { TeamRecord } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -11,14 +10,13 @@ import { useIsOwner } from '../../facades/auth/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
 import { useTeams } from '../../facades/projects/hooks'
 
-const TEAM_SETTINGS_TABS = ['profile', 'agents', 'models'] as const
+const TEAM_SETTINGS_TABS = ['profile', 'agents'] as const
 
 type TeamSettingsTab = (typeof TEAM_SETTINGS_TABS)[number]
 
 const TABS: ReadonlyArray<{ label: string; value: TeamSettingsTab }> = [
   { label: 'Profile', value: 'profile' },
   { label: 'Agents', value: 'agents' },
-  { label: 'Models', value: 'models' },
 ]
 
 const PAGES: Record<
@@ -26,7 +24,6 @@ const PAGES: Record<
   (props: { tabs?: React.ReactNode; team?: TeamRecord }) => React.JSX.Element | null
 > = {
   agents: TeamAgentsPage,
-  models: TeamModelsPage,
   profile: TeamProfilePage,
 }
 

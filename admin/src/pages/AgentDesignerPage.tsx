@@ -171,7 +171,7 @@ export const AgentDesignerContent = ({
   }, [assistantCanEditForm])
 
   const toolCatalog = useDesignerToolCatalog(isOwner)
-  const modelOptionsQuery = useAgentModelOptions()
+  const modelOptionsQuery = useAgentModelOptions(editingAgent?.id)
   const modelOptions = modelOptionsQuery.data ?? []
 
   const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {

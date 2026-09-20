@@ -46,9 +46,16 @@ type BulkAction = 'disable' | 'enable'
  * owner has no standing to enable, disable or spend a person's own consumer
  * plan (docs/standards/personal-model-subscriptions.md).
  */
-type ModelAvailabilitySettingsProps = SettingsTabHostProps & { teamId?: string }
+type ModelAvailabilitySettingsProps = SettingsTabHostProps & {
+  scopeControl?: React.ReactNode
+  teamId?: string
+}
 
-export const ModelAvailabilitySettings = ({ tabs, teamId }: ModelAvailabilitySettingsProps) => {
+export const ModelAvailabilitySettings = ({
+  scopeControl,
+  tabs,
+  teamId,
+}: ModelAvailabilitySettingsProps) => {
   // A toggle or a test that failed silently would leave an owner believing the
   // deployment was in a state it is not — the one outcome this page must never
   // produce.
@@ -220,6 +227,7 @@ export const ModelAvailabilitySettings = ({ tabs, teamId }: ModelAvailabilitySet
               value={providerFilter}
             />
           </div>
+          {scopeControl}
           <div className="flex flex-wrap gap-2">
             <button
               className="admin-button admin-button-secondary admin-button-compact"
