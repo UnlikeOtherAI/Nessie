@@ -1,6 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AGENT_PAIRING_SETTING_KEY, BROWSER_HOMEPAGE_SETTING_KEY } from '@nessie/schemas'
-import { LOCAL_INFERENCE_ENABLED_SETTING_KEY } from '@nessie/runtime'
+import {
+  AGENT_PAIRING_SETTING_KEY,
+  BROWSER_HOMEPAGE_SETTING_KEY,
+  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
+} from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { scopedSettingKeys } from './keys'
@@ -34,9 +37,8 @@ export const SETTING_KEYS = {
   // key nothing reads would look saved and change nothing.
   browserHomepage: BROWSER_HOMEPAGE_SETTING_KEY,
   callsProvider: 'calls.provider',
-  // This must stay the runtime-owned literal: the API admits a target person
-  // only for this registered, administrator-authored key. A similar-looking
-  // string would render a control that can never grant local inference.
+  // This browser-safe contract is the exact key the API recognizes for the
+  // registered, administrator-authored local-inference decision.
   localInferenceEnabled: LOCAL_INFERENCE_ENABLED_SETTING_KEY,
 } as const
 

@@ -227,7 +227,7 @@ export const ModelCombobox = ({
             const sectionLabel = !startsSection
               ? null
               : isLocal
-                ? 'This computer'
+                ? 'Your computers'
                 : isSubscription
                 ? 'Your subscriptions'
                 : previous === undefined ? null : 'Ledger models'

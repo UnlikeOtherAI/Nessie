@@ -1,5 +1,9 @@
-/** The only scoped-setting key which permits the owner-host-only local lane. */
-export const LOCAL_INFERENCE_ENABLED_SETTING_KEY = 'inference.localAgents.enabled'
+import {
+  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
+  LocalInferenceEnabledSettingValueSchema,
+} from '@nessie/schemas'
+
+export { LOCAL_INFERENCE_ENABLED_SETTING_KEY }
 
 /**
  * Protected settings are authored by a live organisation administrator even
@@ -14,4 +18,4 @@ export const isAdminAuthoredScopedSettingKey = (key: string): boolean =>
   ADMIN_AUTHORED_SCOPED_SETTING_KEYS.has(key)
 
 export const isLocalInferenceEnabledValue = (value: unknown): value is boolean =>
-  typeof value === 'boolean'
+  LocalInferenceEnabledSettingValueSchema.safeParse(value).success

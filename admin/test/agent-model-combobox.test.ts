@@ -194,6 +194,27 @@ test('a deployment with no linked subscriptions gets no section headings at all'
   }
 })
 
+test('local models are scoped to a person’s computers, not this browser', async () => {
+  const picker = await mount([
+    {
+      displayName: 'Qwen 3',
+      localInferenceHostId: '00000000-0000-4000-8000-0000000000f1',
+      localManifestDigest: 'a'.repeat(64),
+      model: 'qwen3:8b',
+      provider: 'local/ollama',
+      providerDisplayName: 'Paired executor',
+      source: 'local',
+    },
+  ])
+  try {
+    await picker.open()
+    assert.equal(picker.lines().includes('Your computers'), true)
+    assert.equal(picker.lines().includes('This computer'), false)
+  } finally {
+    await picker.close()
+  }
+})
+
 test('opening the list keeps the selected model in the field', async () => {
   const picker = await mount()
   try {
