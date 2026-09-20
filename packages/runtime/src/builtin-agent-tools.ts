@@ -275,6 +275,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   { id: 'agent_tool_access_inspect', category: 'agents', summary: 'Inspect protected tool access for an agent.', label: 'Inspect Agent Protected Tool Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Shows protected builtin and active connector tools, their exact registry ids, and whether the target agent currently has each access grant.', parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] }, safe: true },
+  { id: 'agent_deepwater_access_set', category: 'agents', summary: 'Grant or revoke the complete DeepWater bundle.', label: 'Set Agent DeepWater Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Changes the complete ready DeepWater bundle for one agent and team. Individual DeepWater tools cannot be changed separately.', parameters: { type: 'object', properties: { agentId: { type: 'string' }, teamId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'teamId', 'enabled'] }, safe: false },
   {
     id: 'agent_avatar_generate',
     category: 'agents',
