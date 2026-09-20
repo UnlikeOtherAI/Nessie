@@ -392,6 +392,19 @@ const AgentToolAccessSetInputSchema = z.object({
   toolRegistryEntryId: z.string().uuid(),
 })
 
+const mayUseConnectorScope = async (
+  context: BuiltinToolRuntimeContext,
+  member: Awaited<ReturnType<typeof resolveActingMember>>,
+  scope: { scopeId: string; scopeType: string } | null | undefined,
+): Promise<boolean> => {
+  if (!scope || scope.scopeType === 'organization') return true
+  if (scope.scopeType === 'user') return scope.scopeId === member.userId
+  if (scope.scopeType === 'team') return Boolean(await context.prisma.teamMember.findFirst({ where: { teamId: scope.scopeId, userId: member.userId }, select: { id: true } }))
+  if (scope.scopeType === 'channel') return Boolean(await context.prisma.channelMember.findFirst({ where: { channelId: scope.scopeId, userId: member.userId }, select: { id: true } }))
+  if (scope.scopeType === 'project') return Boolean(await context.prisma.projectMember.findFirst({ where: { projectId: scope.scopeId, userId: member.userId }, select: { id: true } }))
+  return false
+}
+
 export const runAgentToolAccessSetTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
@@ -402,7 +415,7 @@ export const runAgentToolAccessSetTool = async (
   const requested = await context.prisma.toolRegistryEntry.findFirst({ where: { id: args.toolRegistryEntryId, OR: [{ organizationId: null }, { organizationId: member.organizationId }] }, select: { mcpInstance: { select: { scopeId: true, scopeType: true } } } })
   const executorManaged = await context.prisma.toolRegistryEntry.findFirst({ where: { id: args.toolRegistryEntryId, organizationId: member.organizationId, source: 'executor' }, select: { id: true } })
   if (executorManaged) throw new Error('Executor logical tools are managed from the Executors access controls.')
-  if (requested?.mcpInstance?.scopeType === 'user' && requested.mcpInstance.scopeId !== member.userId) throw new Error('This private connection belongs to another person.')
+  if (!(await mayUseConnectorScope(context, member, requested?.mcpInstance))) throw new Error('This connection is outside your accessible scope.')
   const target = await setAgentExplicitToolAccess(context.prisma, {
     ...args,
     actorUserId: member.userId,
@@ -424,7 +437,8 @@ export const runAgentToolAccessInspectTool = async (context: BuiltinToolRuntimeC
   const visible = await readAgentRecordForActor(context.prisma, { agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
   if (!visible?.record) throw new Error('Agent not found, or you cannot inspect its protected access.')
   const agent = { name: visible.config.name, toolPolicy: visible.config.toolPolicy }
-  const entries = (await context.prisma.toolRegistryEntry.findMany({ where: { OR: [{ organizationId: null }, { organizationId: member.organizationId }], enabled: true, status: 'active' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, label: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true, mcpInstance: { select: { scopeId: true, scopeType: true } } } })).filter((entry) => registryEntryRequiresExplicitPolicy(entry) && (entry.mcpInstance?.scopeType !== 'user' || entry.mcpInstance.scopeId === member.userId))
+  const candidates = await context.prisma.toolRegistryEntry.findMany({ where: { OR: [{ organizationId: null }, { organizationId: member.organizationId }], enabled: true, status: 'active' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, label: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true, mcpInstance: { select: { scopeId: true, scopeType: true } } } })
+  const entries = (await Promise.all(candidates.map(async (entry) => registryEntryRequiresExplicitPolicy(entry) && await mayUseConnectorScope(context, member, entry.mcpInstance) ? entry : null))).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
   const grants = await context.prisma.toolGrant.findMany({ where: { agentId, roleId: null, toolId: { in: entries.filter((entry) => entry.handlerKind === 'mcp').map((entry) => entry.id) } }, select: { config: true, state: true, toolId: true } })
   const policy = agent.toolPolicy && typeof agent.toolPolicy === 'object' ? agent.toolPolicy as Record<string, unknown> : {}
   return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => { const configured = entry.transportConfig && typeof entry.transportConfig === 'object' ? (entry.transportConfig as Record<string, unknown>).toolName : null; const name = typeof configured === 'string' ? configured : entry.toolId.split(':').at(-1); const fingerprint = entry.handlerKind === 'mcp' && name ? fingerprintMcpToolDescriptor({ annotations: mcpToolDescriptorAnnotationsFromMetadata(entry.metadata), description: entry.description, inputSchema: entry.inputSchema, name, outputSchema: entry.outputSchema }) : null; const granted = entry.handlerKind === 'builtin' ? policy[entry.toolId] === true : fingerprint !== null && grants.some((grant) => grant.toolId === entry.id && isCurrentAllowedMcpToolGrant(grant, fingerprint)); return `- ${entry.label} | registryId=${entry.id} | ${granted ? 'granted' : 'not granted'}` })].join('\n'), toolName: 'agent_tool_access_inspect' }
