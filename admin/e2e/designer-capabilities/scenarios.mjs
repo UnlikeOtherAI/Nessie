@@ -10,6 +10,13 @@ export const buildDesignerScenarios = (parseScenario, { scope, browserTool }) =>
   grant: parseScenario({
     name: 'designer-private-grant-and-output-recovery',
     turns: [
+      {
+        finishReason: 'length',
+        reasoning: 'I need to inspect the agent and carry out the requested access and voice changes.',
+        stream: { chunkSize: 12 },
+        text: '',
+        usage: { inputTokens: 100, outputTokens: 2_048 },
+      },
       toolTurn('tool_spec', {
         names: ['agent_tool_access_inspect', 'agent_tool_access_set', 'agent_update'],
       }, 0),
@@ -18,13 +25,6 @@ export const buildDesignerScenarios = (parseScenario, { scope, browserTool }) =>
         agentId: scope.agentId, toolRegistryEntryId: browserTool.id, enabled: true,
       }, 2),
       toolTurn('agent_update', { agentId: scope.agentId, voiceName: 'Puck' }, 3),
-      {
-        finishReason: 'length',
-        reasoning: 'The changes are complete; prepare a short account of what changed.',
-        stream: { chunkSize: 12 },
-        text: '',
-        usage: { inputTokens: 100, outputTokens: 2_048 },
-      },
       { text: GRANTED_ANSWER, usage: { inputTokens: 100, outputTokens: 20 } },
     ],
     utility: { text: '{}' },

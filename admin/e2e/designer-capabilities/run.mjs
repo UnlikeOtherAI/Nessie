@@ -48,14 +48,14 @@ const main = async () => {
   const { createMockLlmServer, parseScenario } = await import('@nessie/mock-llm')
   let phase = 'grant'
   let scenarios
-  let recoveries = 0
+  let prematureFinalizations = 0
   const model = await createMockLlmServer({
     scenario: parseScenario({ name: 'designer-bootstrap', turns: [{ text: '{}' }], utility: { text: '{}' } }),
     mainScenarioResolver: () => scenarios?.[phase],
     utilityResponder: (prompt) => {
       // Fixed system protocol, not interpretation of the person's language.
       if (prompt.includes('Your previous response reached the provider output limit.')) {
-        recoveries += 1
+        prematureFinalizations += 1
         return GRANTED_ANSWER
       }
       return undefined
@@ -119,6 +119,7 @@ const main = async () => {
       where: { runId: grantRun.id, operationType: 'chat', outputTokens: 2_048 },
     })
     assert.equal(truncatedInvocations, 1, 'the scripted truncated response was actually consumed')
+    assert.equal(prematureFinalizations, 0, 'reasoning-only truncation must retain tools to finish the work')
     await showReply(page, GRANTED_ANSWER)
     assert.doesNotMatch(await page.locator('body').innerText(), /reached its token limit|Continue this run to finish/)
     await page.screenshot({ path: resolve(screenshots, 'desktop-granted.png'), fullPage: true })
@@ -144,7 +145,7 @@ const main = async () => {
     await showReply(page, REVOKED_ANSWER)
     await page.screenshot({ path: resolve(screenshots, 'desktop-revoked.png'), fullPage: true })
     await writeFile(resolve(screenshots, 'verification.json'), JSON.stringify({
-      runIds, recoveries, result: 'passed', scriptedInference: true,
+      runIds, recoveries: truncatedInvocations, prematureFinalizations, result: 'passed', scriptedInference: true,
     }, null, 2))
     console.log('Designer browser evaluation passed: private schema lookup, grants, voice, output recovery and revoke.')
   } catch (error) {

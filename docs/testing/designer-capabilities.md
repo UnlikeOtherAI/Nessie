@@ -18,9 +18,10 @@ repository's shared port resolver, and Chromium runs headless. Screenshots and
 the result record are written to `e2e/screenshots/designer-capabilities/`.
 
 The owner submits a Czech request through the rendered conversation composer.
-Designer reads exact tool schemas from private context, inspects target access,
-grants protected browser access, and changes the target's voice. Scripted
-reasoning then returns `finish_reason=length` without a visible answer. The
+Before any tool executes, scripted reasoning returns `finish_reason=length`
+without a visible answer. Recovery must retain the tools needed to complete
+the authorized work: Designer reads exact tool schemas from private context,
+inspects target access, grants browser access and changes the target's voice. The
 evaluation requires a successful automatic recovery, a useful final answer on
 desktop and phone, one execution of each mutation, and no false token-budget
 event or manual Continue message. A second conversation revokes the grant;
@@ -47,3 +48,8 @@ explicit revocation, alongside the builtin updater dependency.
 Local API tests that import the worker require an isolated encryption key ring,
 matching CI's test environment. This is test setup; production keys are never
 used for these evaluations.
+
+The stronger pre-action truncation scenario reproduced a second recovery defect:
+the run completed without invoking even `tool_spec` because no-tools finalization
+prevented all requested mutations. Its assertions check stored changes and exact
+tool-call counts, so a premature success message cannot make this evaluation pass.
