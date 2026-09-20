@@ -1,7 +1,6 @@
 import crypto from 'node:crypto'
 
 import type { FastifyInstance } from 'fastify'
-import type { Prisma } from '@prisma/client'
 import { openLocalInferenceAttempt, sealLocalInferenceAttempt } from '@nessie/runtime'
 import {
   LOCAL_INFERENCE_MAX_FRAME_BYTES,
@@ -20,26 +19,6 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { authenticateLocalInferenceDaemonEnvelope } from '../services/local-inference-daemon-intake.js'
 import type { RouteDeps } from './types.js'
 
-const RETENTION_MS = 60 * 60_000
-
-const sweepExpiredTransport = async (tx: Prisma.TransactionClient, now: Date): Promise<void> => {
-  const cutoff = new Date(now.getTime() - RETENTION_MS)
-  const terminal = await tx.localInferenceAttempt.findMany({
-    where: { terminalAt: { lte: cutoff } }, select: { id: true }, take: 200,
-  })
-  await tx.localInferenceFrame.deleteMany({
-    where: {
-      OR: [
-        { acknowledgedAt: { lte: cutoff } },
-        ...(terminal.length ? [{ attemptId: { in: terminal.map((attempt) => attempt.id) } }] : []),
-      ],
-    },
-  })
-  if (terminal.length) {
-    await tx.localInferenceAttempt.deleteMany({ where: { id: { in: terminal.map((attempt) => attempt.id) } } })
-  }
-}
-
 export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma } = deps
 
@@ -53,7 +32,6 @@ export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: 
     const now = new Date()
     const attempt = await prisma.$transaction(async (tx) => {
       if (!await daemon.stillAuthorized(tx)) return null
-      await sweepExpiredTransport(tx, now)
       const active = await tx.localInferenceHost.findFirst({
         where: { id: daemon.hostId, pausedAt: null, revokedAt: null }, select: { id: true },
       })

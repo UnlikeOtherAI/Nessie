@@ -75,20 +75,20 @@ export const dispatchLocalInference = async (input: {
     throw new LocalInferenceDispatchError('source_not_allowed')
   }
 
-  const deadlineAt = new Date(Date.now() + FIVE_MINUTES)
+  const proposedDeadline = new Date(Date.now() + FIVE_MINUTES)
   const requestIdentity = {
     bindingId: input.binding.bindingId,
-    bindingRevision: input.binding.revision, deadlineAt: deadlineAt.toISOString(),
+    bindingRevision: input.binding.revision,
     hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
     maxOutputTokens: input.maxOutputTokens, messages, modelDigest: input.binding.manifestDigest,
     modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1,
-    runFence: input.runFence, runId: input.context.run.id, tools: input.tools,
+    runId: input.context.run.id, tools: input.tools,
   }
   const requestDigest = digest(requestIdentity)
   const attemptId = uuidFromDigest(digest({ requestDigest, type: 'attempt' }))
   const invocationId = uuidFromDigest(digest({ requestDigest, type: 'invocation' }))
   const request: LocalInferenceAttemptRequest = {
-    ...requestIdentity, attemptId, invocationId,
+    ...requestIdentity, attemptId, deadlineAt: proposedDeadline.toISOString(), invocationId, runFence: input.runFence,
   }
   try {
     assertLocalInferenceSerializedSize(request, LOCAL_INFERENCE_MAX_REQUEST_BYTES)
@@ -96,7 +96,7 @@ export const dispatchLocalInference = async (input: {
     throw new LocalInferenceDispatchError('The local inference request is too large.')
   }
   const existing = await input.deps.prisma.localInferenceAttempt.findUnique({
-    where: { invocationId }, select: { id: true, modelDigest: true, requestDigest: true },
+    where: { invocationId }, select: { deadlineAt: true, id: true, modelDigest: true, requestDigest: true },
   })
   if (existing && (existing.id !== request.attemptId || existing.requestDigest !== requestDigest
     || existing.modelDigest !== input.binding.manifestDigest)) {
@@ -105,7 +105,7 @@ export const dispatchLocalInference = async (input: {
   if (!existing) {
     await input.deps.prisma.localInferenceAttempt.create({
       data: {
-        bindingId: input.binding.bindingId, deadlineAt, encryptedRequest: Uint8Array.from(
+        bindingId: input.binding.bindingId, deadlineAt: proposedDeadline, encryptedRequest: Uint8Array.from(
           sealLocalInferenceAttempt(input.deps.atRestEncryptionKeyRing, request),
         ), hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
         id: request.attemptId, invocationId, modelDigest: input.binding.manifestDigest,
@@ -114,6 +114,7 @@ export const dispatchLocalInference = async (input: {
       },
     })
   }
+  const deadlineAt = existing?.deadlineAt ?? proposedDeadline
   const consumeFrames = async (): Promise<void> => {
     for (;;) {
       const frame = await input.deps.prisma.localInferenceFrame.findFirst({

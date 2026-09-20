@@ -9,6 +9,7 @@ import {
 import { sweepExpiredApprovals } from './approvals.js'
 import { sweepStalePushSurfacePresence } from './push-surface-presence.js'
 import { sweepExpiredUoaSessionCredentials } from './refresh-session-management.js'
+import { sweepExpiredLocalInferenceTransport } from './local-inference-transport-sweep.js'
 import { requestRunCancellation } from './runs.js'
 
 /**
@@ -32,6 +33,7 @@ const APPROVAL_SWEEP_LOCK = 'api-maintenance:expired-approvals'
 const AGENT_CARD_SWEEP_LOCK = 'api-maintenance:expired-agent-cards'
 const REFRESH_CREDENTIAL_SWEEP_LOCK = 'api-maintenance:expired-uoa-session-credentials'
 const PUSH_SURFACE_SWEEP_LOCK = 'api-maintenance:stale-push-surface-presence'
+const LOCAL_INFERENCE_TRANSPORT_SWEEP_LOCK = 'api-maintenance:expired-local-inference-transport'
 
 const runApprovalSweep = async (
   prisma: PrismaClient,
@@ -94,6 +96,14 @@ const runPushSurfaceSweep = async (
   }
 }
 
+const runLocalInferenceTransportSweep = async (prisma: PrismaClient, lockPool: SweepLockPool): Promise<void> => {
+  try {
+    await withSweepLock(lockPool, LOCAL_INFERENCE_TRANSPORT_SWEEP_LOCK, () => sweepExpiredLocalInferenceTransport(prisma))
+  } catch {
+    console.error('[local-inference-sweep] Failed to erase expired transport data')
+  }
+}
+
 /** Start bounded API housekeeping and return one shutdown callback. */
 export const startApiMaintenance = (
   prisma: PrismaClient,
@@ -112,10 +122,14 @@ export const startApiMaintenance = (
   const pushSurfaceInterval = setInterval(() => {
     void runPushSurfaceSweep(prisma, lockPool)
   }, 5 * 60_000)
+  const localInferenceInterval = setInterval(() => {
+    void runLocalInferenceTransportSweep(prisma, lockPool)
+  }, 5 * 60_000)
   return () => {
     clearInterval(agentCardInterval)
     clearInterval(approvalInterval)
     clearInterval(refreshCredentialInterval)
     clearInterval(pushSurfaceInterval)
+    clearInterval(localInferenceInterval)
   }
 }

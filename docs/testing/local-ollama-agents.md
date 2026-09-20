@@ -61,8 +61,9 @@ and a deterministic invocation id. Retrying the same logical request reuses
 that receipt rather than starting another Ollama call or creating another tool
 effect. The server accepts a receipt only before its deadline and only for the
 pinned model digest. It keeps encrypted terminal attempts and acknowledged
-frames for at most one hour; the authenticated host poll transaction sweeps
-that bounded transport state safely across API replicas. A `response.error`
+frames for at most one hour; the API maintenance sweep holds a cluster-wide
+lock while it clears that bounded transport state, including data for hosts
+that never reconnect. A `response.error`
 frame is an error delivery, never an empty successful answer. Live local text
 uses the ordinary SSE redactor and emits its held tail exactly once after the
 receipt completes.

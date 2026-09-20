@@ -16,12 +16,13 @@ export type ExecutorLocalInferenceSupervisor = {
 export const startExecutorLocalInferenceSupervisor = async (
   stateDir: string,
   state: ExecutorLocalState,
+  connectLocal: typeof connectExecutorLocalInference = connectExecutorLocalInference,
 ): Promise<{ state: ExecutorLocalState; supervisor: ExecutorLocalInferenceSupervisor }> => {
   let desiredState = state
   let connected: Awaited<ReturnType<typeof connectExecutorLocalInference>> | null = null
   const connect = async (nextState: ExecutorLocalState): Promise<ExecutorLocalState> => {
     desiredState = nextState
-    connected = await connectExecutorLocalInference(stateDir, desiredState)
+    connected = await connectLocal(stateDir, desiredState)
     desiredState = connected.state
     return desiredState
   }
