@@ -203,6 +203,7 @@ export const emitWorkerAuditEvent = async (
       | 'executor.browser.action.dispatched'
       | 'executor.command.run.dispatched'
       | 'policy.evaluated'
+      | 'agent.tool_access.updated'
     metadata?: Record<string, unknown>
     outcome: 'denied' | 'error' | 'success'
     reason?: string

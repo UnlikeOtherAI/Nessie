@@ -6,6 +6,7 @@ import {
   AgentEffortSchema,
   AgentRunLimitsSchema,
   VoiceNameSchema,
+  parseAgentId,
 } from '@nessie/schemas'
 import {
   assertAgentEditAuthority,
@@ -30,6 +31,7 @@ import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
 import { fileServiceFor } from '../file-service.js'
+import { emitWorkerAuditEvent } from '../execute/policy.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
@@ -404,6 +406,8 @@ export const runAgentToolAccessSetTool = async (
     actorUserId: member.userId,
     organizationId: member.organizationId,
   })
+  await emitWorkerAuditEvent(context.prisma, member.actorContext, { action: 'agent.tool_access.updated', outcome: 'success', resourceId: args.agentId, resourceType: 'agent', metadata: { enabled: args.enabled, toolRegistryEntryId: args.toolRegistryEntryId } })
+  await context.realtimeTransport.publishWs([{ kind: 'agent', agentId: parseAgentId(args.agentId) }], { event: 'agent.updated', data: { agentId: parseAgentId(args.agentId) } })
   return {
     inputSummary: `agentId=${args.agentId} tool=${args.toolRegistryEntryId} enabled=${args.enabled}`,
     outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} protected tool access for ${target.name}.`,
@@ -433,6 +437,8 @@ export const runAgentDeepWaterAccessSetTool = async (context: BuiltinToolRuntime
   const team = await context.prisma.team.findFirst({ where: { id: args.teamId, project: { organizationId: member.organizationId } }, select: { id: true } })
   if (!team) throw new Error('Team not found in this organization.')
   await setDeepWaterAgentAccess(context.prisma, { ...args, organizationId: member.organizationId })
+  await emitWorkerAuditEvent(context.prisma, member.actorContext, { action: 'agent.tool_access.updated', outcome: 'success', resourceId: args.agentId, resourceType: 'agent', metadata: { enabled: args.enabled, teamId: args.teamId } })
+  await context.realtimeTransport.publishWs([{ kind: 'agent', agentId: parseAgentId(args.agentId) }], { event: 'agent.updated', data: { agentId: parseAgentId(args.agentId) } })
   return { inputSummary: `agentId=${args.agentId} teamId=${args.teamId} enabled=${args.enabled}`, outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} the complete DeepWater bundle for ${visible.config.name}.`, toolName: 'agent_deepwater_access_set' }
 }
 
