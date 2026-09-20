@@ -61,6 +61,7 @@ export {
   EMPTY_OUTPUT_FINALIZATION_INSTRUCTION,
   EMPTY_OUTPUT_TERMINAL_MESSAGE,
   OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+  OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION,
 } from './output-finalization.js'
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
@@ -414,7 +415,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
           role: 'assistant',
         }), 'assistant_output'))
         messages.push(coverProviderInputComponent({
-          content: outputFinalizationInstruction(finalization.reason, outputFinalization.noTools),
+          content: outputFinalizationInstruction(finalization.reason, finalization.recovery),
           role: 'system',
         }, 'loop_instruction'))
         await checkpoint()
