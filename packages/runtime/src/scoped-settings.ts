@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 
+import { isAdminAuthoredScopedSettingKey } from './local-inference-policy.js'
+
 /**
  * Settings resolved across organisation → team → person, with locks.
  *
@@ -244,6 +246,16 @@ export const writeScopedSetting = async (
   }
 
   return prisma.$transaction(async (tx) => {
+    // Every protected local-inference setting write serializes with prepare,
+    // Save activation and revocation on the organisation token.  The ordinary
+    // setting-target lock below still owns its own upsert race.
+    if (isAdminAuthoredScopedSettingKey(input.key)) {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`local-inference-policy:${input.organizationId}`}::text, 0)
+        )
+      `
+    }
     // Before the read, not after: the whole point is that the loser of the race
     // waits here and then reads the winner's row.
     await tx.$executeRaw`
@@ -293,6 +305,19 @@ export const writeScopedSetting = async (
           userId,
         },
       })
+    }
+
+    if (isAdminAuthoredScopedSettingKey(input.key)) {
+      // Deliberately raw rather than a second service-owned policy table API:
+      // the version is a serialization token and must advance in THIS exact
+      // transaction, even when the value is unchanged or only the lock moves.
+      await tx.$executeRaw`
+        INSERT INTO "local_inference_policy_versions" ("organization_id", "version", "updated_at")
+        VALUES (${input.organizationId}::uuid, 1, NOW())
+        ON CONFLICT ("organization_id") DO UPDATE
+        SET "version" = "local_inference_policy_versions"."version" + 1,
+            "updated_at" = NOW()
+      `
     }
 
     return resolveScopedSetting(tx, {

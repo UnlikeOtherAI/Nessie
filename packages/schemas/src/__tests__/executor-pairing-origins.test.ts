@@ -55,4 +55,18 @@ test('the local API is reachable only when a caller says it is a development bui
     approveExecutorPairingOrigin('http://127.0.0.1:9999', { allowLocalDevelopment: true }).ok,
     false,
   )
+  assert.deepEqual(
+    approveExecutorPairingOrigin('http://127.0.0.1:5464', {
+      allowLocalDevelopment: true,
+      localDevelopmentOrigin: 'http://127.0.0.1:5464',
+    }),
+    { ok: true, origin: 'http://127.0.0.1:5464' },
+  )
+  assert.equal(
+    approveExecutorPairingOrigin('http://127.0.0.1:5465', {
+      allowLocalDevelopment: true,
+      localDevelopmentOrigin: 'http://127.0.0.1:5464',
+    }).ok,
+    false,
+  )
 })

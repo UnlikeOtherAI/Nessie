@@ -39,3 +39,26 @@ test('discovery is only limited on the write; reading connections is not', () =>
     null,
   )
 })
+
+test('local daemon pairing is tight before proof and flood-limited after proof', () => {
+  assert.equal(
+    resolveGlobalRateLimitBucket({
+      isPublic: true,
+      method: 'POST',
+      routePath: '/api/local-inference/daemon/challenge',
+    }),
+    'executorDaemonIp',
+  )
+  for (const routePath of [
+    '/api/local-inference/daemon/claim',
+    '/api/local-inference/daemon/heartbeat',
+    '/api/local-inference/daemon/attempts/poll',
+    '/api/local-inference/daemon/attempts/frame',
+    '/api/local-inference/daemon/attempts/result',
+  ]) {
+    assert.equal(
+      resolveGlobalRateLimitBucket({ isPublic: true, method: 'POST', routePath }),
+      'executorDaemonSessionIp',
+    )
+  }
+})

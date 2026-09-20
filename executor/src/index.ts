@@ -3,11 +3,20 @@ import { dirname } from 'node:path'
 
 import { approveExecutorPairingOrigin } from '@nessie/schemas'
 
-import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
+import { claimExecutor, heartbeatExecutor } from './daemon.js'
+import { serveExecutor } from './daemon-server.js'
 import { describeExecutor } from './describe.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveDeepTestExecutionAdapter } from './deeptest-execution-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
+import { executorApi } from './api-client.js'
+import { signExecutorLocalInferenceConsent } from './local-inference-consent.js'
+import { connectExecutorLocalInference } from './local-inference-runtime.js'
+import {
+  fetchDirectLocalInferenceConsentDisplay,
+  readDirectLocalInferenceConsentRequest,
+  serveDirectLocalInference,
+} from './direct-local-inference-runtime.js'
 import {
   configureExecutorBrowserSandbox,
   configureExecutorCodexSandbox,
@@ -79,6 +88,9 @@ type ParsedCommand =
     vmHelperPath: string
   }
   | { kind: 'connect'; stateDir: string }
+  | { kind: 'serve-direct-local-inference' }
+  | { kind: 'local-inference-consent-display' }
+  | { bindingId: string; challengeId: string; kind: 'local-inference-confirm'; stateDir: string }
   | { kind: 'describe'; stateDir: string }
   | { kind: 'deeptest-source'; sourceGrantFile: string }
   | { executionGrantFile: string; kind: 'deeptest-execution' }
@@ -126,6 +138,9 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor serve-direct-local-inference --config-stdin\n'
+    + '       nessie-executor local-inference-consent-display --config-stdin\n'
+    + '       nessie-executor local-inference-confirm --state-dir <owner-only-path> --challenge <uuid> --binding <uuid>\n'
     + '       nessie-executor describe --state-dir <owner-only-path>\n'
     + '       nessie-executor deeptest-source --source-grant-file <absolute-owner-only-file>\n'
     + '       nessie-executor deeptest-execution --execution-grant-file <absolute-owner-only-file>\n'
@@ -272,8 +287,21 @@ const readConfigurationInput = async (): Promise<{
  * into three readings of it.
  */
 const secureApiUrl = (value: string): string => {
+  const configuredPort = process.env.NESSIE_API_PORT?.trim()
+  const localDevelopmentOrigin = configuredPort === undefined || configuredPort === ''
+    ? 'http://127.0.0.1:5454'
+    : (() => {
+      const port = Number(configuredPort)
+      if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        throw new Error(
+          `NESSIE_API_PORT must be a port number between 1 and 65535, got "${configuredPort}"`,
+        )
+      }
+      return `http://127.0.0.1:${port}`
+    })()
   const verdict = approveExecutorPairingOrigin(value, {
     allowLocalDevelopment: process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API === '1',
+    localDevelopmentOrigin,
   })
   if (!verdict.ok) throw new Error(verdict.reason)
   return verdict.origin
@@ -371,6 +399,22 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   }
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
+  }
+  if (command === 'serve-direct-local-inference') {
+    if (!args.includes('--config-stdin') || args.length !== 2) return usage()
+    return { kind: command }
+  }
+  if (command === 'local-inference-consent-display') {
+    if (!args.includes('--config-stdin') || args.length !== 2) return usage()
+    return { kind: command }
+  }
+  if (command === 'local-inference-confirm') {
+    return {
+      bindingId: option(args, '--binding'),
+      challengeId: option(args, '--challenge'),
+      kind: command,
+      stateDir: option(args, '--state-dir'),
+    }
   }
   if (command === 'deeptest-source') {
     return { kind: command, sourceGrantFile: option(args, '--source-grant-file') }
@@ -501,6 +545,18 @@ export const run = async (args: string[]): Promise<void> => {
     )
     return
   }
+  if (command.kind === 'serve-direct-local-inference') {
+    await assertPackagedExecutorRuntime()
+    await serveDirectLocalInference()
+    return
+  }
+  if (command.kind === 'local-inference-consent-display') {
+    await assertPackagedExecutorRuntime()
+    process.stdout.write(`${JSON.stringify(await fetchDirectLocalInferenceConsentDisplay(
+      await readDirectLocalInferenceConsentRequest(),
+    ))}\n`)
+    return
+  }
   const state = await loadExecutorState(command.stateDir)
   if (command.kind === 'configure') {
     const input = command.configurationInputFromStandardInput
@@ -547,8 +603,26 @@ export const run = async (args: string[]): Promise<void> => {
     return
   }
   if (command.kind === 'connect') {
-    await claimExecutor(command.stateDir, state)
-    process.stdout.write('Executor daemon connection established.\n')
+    const live = await claimExecutor(command.stateDir, state)
+    await connectExecutorLocalInference(command.stateDir, live)
+    process.stdout.write('Executor and local inference daemon connections established.\n')
+    return
+  }
+  if (command.kind === 'local-inference-confirm') {
+    if (!state.localInference) {
+      throw new Error('Connect the executor before confirming local inference consent.')
+    }
+    const signature = signExecutorLocalInferenceConsent({
+      bindingId: command.bindingId,
+      challengeId: command.challengeId,
+      hostId: state.localInference.hostId,
+      machinePrivateKey: state.machinePrivateKey,
+    })
+    await executorApi.confirmLocalInference(state.apiBaseUrl, state.localInference.hostId, {
+      challengeId: command.challengeId,
+      signature,
+    })
+    process.stdout.write('Local inference consent confirmed. Save the Agent Designer change to activate it.\n')
     return
   }
   if (command.kind === 'heartbeat') {

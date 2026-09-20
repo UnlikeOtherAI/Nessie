@@ -29,6 +29,7 @@ import {
   mergeGenericAgentToolPolicy,
 } from './agent-tool-policy-core.js'
 import { AGENT_OWNER_MEMBERSHIP_SELECT, mapAgentRecord } from './agent-record.js'
+import { activateConsentedLocalInferenceBinding } from './local-inference-binding-activation.js'
 
 /**
  * Rewriting an agent, under the acting person's live authority.
@@ -58,6 +59,8 @@ export type UpdateAgentRecordInput = {
    * written, so a Ledger selection actively clears a stale subscription.
    */
   modelSubscriptionId?: string | null
+  /** Set only by the Designer's Save of an exact consented local binding. */
+  localInferenceBindingId?: string | null
   name?: string
   /** undefined = leave stewardship alone; null = return to the unowned pool. */
   ownerUserId?: string | null
@@ -143,10 +146,19 @@ export const updateAgentRecord = async (
 
     // A transfer is any change of steward to a different person (or to the
     // unowned pool) on an agent currently running on a personal subscription.
+    const changesOwner =
+      input.ownerUserId !== undefined
+      && input.ownerUserId !== existing.ownerUserId
     const transfersOwnership =
       existing.modelSubscriptionId !== null
-      && input.ownerUserId !== undefined
-      && input.ownerUserId !== existing.ownerUserId
+      && changesOwner
+    // A host consent is always personal to its original owner/custodian. Keep
+    // the explicit local pin so the transferred agent fails closed instead of
+    // silently moving prompt bytes to Ledger, but fence every outstanding
+    // consent before the new owner is written.
+    const transfersLocalInferenceOwnership =
+      existing.localInferenceBindingId !== null
+      && changesOwner
 
     if (existing.todosEnabled && input.todosEnabled === false) {
       await acquireAgentTodoAgentLock(tx, agentId)
@@ -195,6 +207,39 @@ export const updateAgentRecord = async (
           input.toolPolicy,
         )
 
+    let localBinding: { id: string; modelName: string } | null = null
+    if (transfersLocalInferenceOwnership && input.localInferenceBindingId !== undefined) {
+      throw new AgentManagementError(
+        AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_CONFLICT,
+        'Transfer this agent separately from choosing a local model. The new owner must consent on their own host.',
+      )
+    }
+    if (input.localInferenceBindingId !== undefined) {
+      if (input.localInferenceBindingId === null) {
+        throw new AgentManagementError(
+          AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_REPLACEMENT_REQUIRED,
+          'Choose another model before removing a local model selection.',
+        )
+      }
+      localBinding = await activateConsentedLocalInferenceBinding(tx, {
+        actor,
+        agent: existing,
+        bindingId: input.localInferenceBindingId,
+        organizationId: input.organizationId,
+      })
+    }
+
+    if (transfersLocalInferenceOwnership) {
+      await tx.agentLocalInferenceBinding.updateMany({
+        data: { reason: 'ownership_changed', status: 'needs_rebinding' },
+        where: {
+          agentId,
+          organizationId: input.organizationId,
+          status: { in: ['active', 'consented_pending_activation', 'pending'] },
+        },
+      })
+    }
+
     // A system-managed agent has no steward by construction (the CHECK would
     // refuse), and a transfer target must be an active member of THIS agent's
     // organization — refused in words here rather than as a raw constraint
@@ -215,17 +260,18 @@ export const updateAgentRecord = async (
         agentKind: existing.agentKind,
         delegationMode: existing.delegationMode,
         effort: input.effort ?? existing.effort,
-        model: transfersOwnership ? null : input.model ?? existing.model,
+        model: localBinding?.modelName ?? (transfersOwnership ? null : input.model ?? existing.model),
         // An owner transfer takes the agent off the previous owner's personal
         // plan. Clearing all three together is what stops the new owner
         // inheriting spend on somebody else's subscription; the run-time gate
         // would refuse it anyway, but a silently broken agent is a worse
         // outcome than one that falls back to the deployment default.
-        modelSubscriptionId: transfersOwnership
+        modelSubscriptionId: localBinding ? null : (transfersOwnership
           ? null
           : input.modelSubscriptionId === undefined
             ? existing.modelSubscriptionId
-            : input.modelSubscriptionId,
+            : input.modelSubscriptionId),
+        localInferenceBindingId: localBinding?.id ?? existing.localInferenceBindingId,
         name: existing.systemManaged
           ? existing.name
           : input.name ?? existing.name,
@@ -234,7 +280,7 @@ export const updateAgentRecord = async (
           : input.ownerUserId === undefined
             ? existing.ownerUserId
             : input.ownerUserId,
-        provider: transfersOwnership ? null : input.provider ?? existing.provider,
+        provider: localBinding ? 'local/ollama' : (transfersOwnership ? null : input.provider ?? existing.provider),
         role: input.role ?? existing.role,
         runLimits: runLimitsWriteValue(input.runLimits),
         surfacePolicy: existing.surfacePolicy,

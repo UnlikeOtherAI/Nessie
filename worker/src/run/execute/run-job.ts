@@ -33,6 +33,11 @@ import {
   subscriptionUnavailableNotice,
 } from './subscription-binding.js'
 import {
+  localInferenceUnavailableNotice,
+  persistRunLocalInferenceBinding,
+  resolveRunLocalInferenceBinding,
+} from './local-inference-binding.js'
+import {
   applyBudgetGate,
   createBudgetBlockedProbe,
   terminalizeBudgetBlockedRun,
@@ -76,6 +81,7 @@ import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
 import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
 import { admitTriggerMessageLineage } from './private-conversation-lineage.js'
 import { persistCurrentRunBasis } from './agent-message.js'
+import { coverProviderInputComponent } from './provenanced-provider-input.js'
 import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
@@ -293,7 +299,29 @@ const runJobUnderFence = async (
     // the budget gate because the gate's verdict depends on the answer: an
     // organization cost or token cap exists to protect the organization's
     // spend, and must not block a run the organization is not paying for.
-    const subscriptionLane = await resolveRunSubscriptionBinding(deps, context)
+    const localLane = await resolveRunLocalInferenceBinding(deps, context)
+    if (localLane.kind === 'unavailable') {
+      await terminalizeBudgetBlockedRun(
+        deps,
+        payload,
+        context,
+        localInferenceUnavailableNotice({
+          isOwnerViewing:
+            context.agent.ownerUserId !== null
+            && context.agent.ownerUserId === payload.actorContext.actionContext.effectiveUserId,
+          reason: localLane.reason,
+        }),
+        {
+          terminalMessageMetadata: {
+            runRestart: { restartable: true, runId: context.run.id },
+          },
+        },
+      )
+      return
+    }
+    const subscriptionLane = localLane.kind === 'local'
+      ? { kind: 'ledger' as const }
+      : await resolveRunSubscriptionBinding(deps, context)
     if (subscriptionLane.kind === 'unavailable') {
       // Never a quiet fallback to Ledger: that would move a person's spend onto
       // the organization without anyone agreeing to it. Fail with the remedy.
@@ -313,6 +341,12 @@ const runJobUnderFence = async (
     }
     const subscriptionBinding =
       subscriptionLane.kind === 'subscription' ? subscriptionLane.binding : null
+    if (localLane.kind === 'local') {
+      await persistRunLocalInferenceBinding(deps.prisma, {
+        binding: localLane.binding,
+        runId: context.run.id,
+      })
+    }
     if (subscriptionBinding) {
       await persistRunSubscriptionBinding(deps, {
         binding: subscriptionBinding,
@@ -321,7 +355,7 @@ const runJobUnderFence = async (
     }
 
     const budgetGate = await applyBudgetGate(deps, context, payload, {
-      subscriptionPinned: subscriptionBinding !== null,
+      subscriptionPinned: subscriptionBinding !== null || localLane.kind === 'local',
       ...(handoffLocator
         ? {
             beforeBlockedRunTerminalization: async () => {
@@ -445,7 +479,10 @@ const runJobUnderFence = async (
     const initialMessages = catalogueBlock
       ? [
         setup.initialMessages[0]!,
-        { content: catalogueBlock, role: 'system' as const },
+        coverProviderInputComponent(
+          { content: catalogueBlock, role: 'system' as const },
+          'global_catalogue',
+        ),
         ...setup.initialMessages.slice(1),
       ]
       : setup.initialMessages
@@ -475,6 +512,9 @@ const runJobUnderFence = async (
 
     const inference = createRunInference(executionDeps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
+      local: localLane.kind === 'local'
+        ? { binding: localLane.binding, runFence: claim.token }
+        : null,
       subscription: subscriptionBinding,
       thinkingRecorder,
       utilityModel,

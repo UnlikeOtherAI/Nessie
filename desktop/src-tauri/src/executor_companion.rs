@@ -50,6 +50,10 @@ pub use runtime::{
     shutdown, ExecutorCompanionAvailability, ExecutorCompanionState, ExecutorCompanionStatus,
     MenuBarCompanion,
 };
+// Direct local inference uses the same verified packaged Node runtime as the
+// executor companion; exposing this narrow constructor prevents a second
+// process-launch policy from drifting into the Desktop bridge.
+pub(crate) use runtime::executor_command;
 
 /// Pairing, starting, stopping and reconfiguring all need a runtime this
 /// computer may actually run. The refusal repeats the availability card's own

@@ -76,6 +76,8 @@ export type RunContext = {
     model: string | null
     /** Set when this agent runs on its owner's personal subscription. */
     modelSubscriptionId?: string | null
+    /** Explicit owner-host local-device lane. Never inferred from provider text. */
+    localInferenceBindingId?: string | null
     parentAgentId: string | null
     provider: string | null
     /**

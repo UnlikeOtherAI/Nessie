@@ -42,6 +42,10 @@ import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 import { originalHumanAuthorId } from './private-conversation-lineage.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
+import {
+  coverProviderInputComponent,
+  deriveProviderInputComponent,
+} from './provenanced-provider-input.js'
 
 export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
 
@@ -94,19 +98,19 @@ const toProviderConversationMessage = (
     && message.authorAgentId !== actingAgentId
 
   if (message.role === 'user') {
-    return {
+    return coverProviderInputComponent({
       content,
       role: 'user',
       ...(message.images?.length ? { images: message.images } : {}),
-    }
+    }, 'conversation')
   }
 
   if (!isOtherAgent) {
-    return { content, role: message.role }
+    return coverProviderInputComponent({ content, role: message.role }, 'conversation')
   }
 
   const authorName = message.authorAgentName?.trim() || 'Another agent'
-  return { content: `${authorName}: ${content}`, role: 'assistant' }
+  return coverProviderInputComponent({ content: `${authorName}: ${content}`, role: 'assistant' }, 'conversation')
 }
 
 export const buildModelPrompt = (
@@ -256,27 +260,39 @@ export const buildModelPrompt = (
       : '',
   ].filter((part) => part.length > 0)
 
-  const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]
+  const messages: ProviderMessage[] = [coverProviderInputComponent(
+    { content: systemParts.join('\n\n'), role: 'system' },
+    'prompt_system',
+  )]
 
   if (memoryContext) {
-    messages.push({
+    messages.push(coverProviderInputComponent({
       content: memoryContext,
       role: 'system',
-    })
+    }, 'memory'))
   }
 
   // Checkpoint notes come after the system messages and before the
   // conversation, carrying their own untrusted framing (§5).
   if (options.checkpointNotes) {
-    messages.push({ content: options.checkpointNotes, role: 'system' })
+    messages.push(coverProviderInputComponent(
+      { content: options.checkpointNotes, role: 'system' },
+      'admitted_checkpoint',
+    ))
   }
   if (options.approvalInstruction) {
-    messages.push({ content: options.approvalInstruction, role: 'system' })
+    messages.push(coverProviderInputComponent(
+      { content: options.approvalInstruction, role: 'system' },
+      'prompt_system',
+    ))
   }
   // Beside the checkpoint notes and for the same reason: server-authored
   // context that carries its own untrusted framing.
   if (options.emailConversation) {
-    messages.push({ content: options.emailConversation, role: 'system' })
+    messages.push(coverProviderInputComponent(
+      { content: options.emailConversation, role: 'system' },
+      'conversation',
+    ))
   }
 
   // The clock is volatile by nature, so it rides behind the stable anchor and
@@ -287,14 +303,14 @@ export const buildModelPrompt = (
   // conversation window when memory and checkpoint happen to match.
   const now = options.now ?? new Date()
   const hourStart = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000)
-  messages.push({
+  messages.push(coverProviderInputComponent({
     content:
       `Current date and time: ${hourStart.toISOString()} (UTC, rounded down to `
       + 'the hour). When the user gives a relative or wall-clock time, resolve it '
       + 'against this; treat wall-clock times as UTC unless the user states a '
       + 'timezone.',
     role: 'system',
-  })
+  }, 'prompt_system'))
 
   if (conversation.length > 0) {
     messages.push(
@@ -316,7 +332,10 @@ export const buildModelPrompt = (
       || lastConversationMessage.content.trim() !== prompt.trim())
 
   if (shouldAppendPrompt) {
-    messages.push({ content: prompt.trim(), role: 'user' })
+    messages.push(coverProviderInputComponent(
+      { content: prompt.trim(), role: 'user' },
+      'direct_prompt',
+    ))
   }
 
   // The API and composer intercept credentials before persistence. This final
@@ -325,7 +344,11 @@ export const buildModelPrompt = (
   // before any inference provider receives it.
   return messages.map((message) => {
     if (typeof message.content !== 'string') return message
-    return { ...message, content: redactDetectedSecrets(message.content) } as ProviderMessage
+    return deriveProviderInputComponent(
+      message,
+      { ...message, content: redactDetectedSecrets(message.content) } as ProviderMessage,
+      'secret_redaction',
+    )
   })
 }
 

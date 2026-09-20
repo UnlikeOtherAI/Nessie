@@ -17,6 +17,8 @@ import {
 } from '../../../facades/users/member-roster'
 import { useRemoveTeamMember, useSetTeamMemberActivation } from '../../../facades/users/team-members'
 import { memberDisplayName } from '../../../lib/member-display-name'
+import { LocalInferenceEnablement } from '../local-inference/LocalInferenceEnablement'
+import { Notice } from '../../primitives/Notice'
 
 type MemberDetailsDialogProps = {
   member: TeamMemberRecord | null
@@ -211,6 +213,17 @@ export const MemberDetailsDialog = ({
               <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change this access.</p>
             ) : null}
           </div>
+        ) : null}
+
+        {scope === 'organization' ? (
+          member?.userId ? (
+            <LocalInferenceEnablement scope="user" userId={member.userId} />
+          ) : (
+            <Notice tone="neutral">
+              This person needs to sign in to Nessie before a personal Local Ollama policy can be
+              saved. A team policy can still apply when they join.
+            </Notice>
+          )
         ) : null}
 
         <FormError>{error}</FormError>

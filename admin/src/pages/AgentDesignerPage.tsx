@@ -173,6 +173,11 @@ export const AgentDesignerContent = ({
   const toolCatalog = useDesignerToolCatalog(isOwner)
   const modelOptionsQuery = useAgentModelOptions(editingAgent?.id)
   const modelOptions = modelOptionsQuery.data ?? []
+  // Native consent names an existing person-owned agent. A new agent starts on
+  // an ordinary model, then its Model section becomes the exact local doorway.
+  const selectableModelOptions = isEditMode
+    ? modelOptions
+    : modelOptions.filter((option) => modelOptionSource(option) !== 'local')
 
   const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {
     if (!editingAgent) {
@@ -187,6 +192,8 @@ export const AgentDesignerContent = ({
       // Which of the person's linked accounts this agent already spends, so an
       // edit that never touches the model cannot re-point it at another one.
       modelSubscriptionId: editingAgent.modelSubscriptionId ?? '',
+      localInferenceHostId: '',
+      localManifestDigest: '',
       runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
       speakingStyle: coreDocuments?.find((document) => document.role === 'working_rules')?.markdown
         ?? editingAgent.speakingStyle ?? '',
@@ -200,9 +207,12 @@ export const AgentDesignerContent = ({
   }, [coreDocuments, editingAgent, requestedVisibility])
 
   const { actions, clearDraft, markSaved, state } = useAgentDesigner(
-    initialState, modelOptions, editingAgent?.id, toolCatalog.options,
+    initialState, selectableModelOptions, editingAgent?.id, toolCatalog.options,
   )
   const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
+  const [localBindingId, setLocalBindingId] = useState<string | null>(
+    editingAgent?.provider === 'local/ollama' ? editingAgent.localInferenceBindingId ?? null : null,
+  )
 
   // A new agent cannot be saved without a model, and the Design Assistant may
   // never be asked to pick one. Lead with the catalogue's first Ledger entry —
@@ -216,9 +226,9 @@ export const AgentDesignerContent = ({
   // falls back to whatever there is, because an unsaveable form helps less.
   const { setModelSelection } = actions
   const { setVisibility } = actions
-  const leadingModelOption = modelOptions.find(
+  const leadingModelOption = selectableModelOptions.find(
     (option) => modelOptionSource(option) === 'ledger',
-  ) ?? modelOptions[0]
+  ) ?? selectableModelOptions[0]
   useEffect(() => {
     if (isEditMode || state.model || state.provider || !leadingModelOption) return
     setModelSelection(leadingModelOption)
@@ -228,7 +238,7 @@ export const AgentDesignerContent = ({
   useEffect(() => {
     if (requestedVisibility) setVisibility(requestedVisibility)
   }, [requestedVisibility, setVisibility])
-  const chat = useDesignerChat(state, actions, modelOptions, {
+  const chat = useDesignerChat(state, actions, selectableModelOptions, {
     onToolCall: handleAssistantToolCall,
     onToolCallStart: handleAssistantToolCallStart,
     pageContext: assistantPanel?.pageContext,
@@ -253,17 +263,25 @@ export const AgentDesignerContent = ({
 
   const isSaving = createAgent.isPending || updateAgent.isPending
   const selectedModel = findModelOption(
-    modelOptions,
+    selectableModelOptions,
     state.model,
     state.provider,
     state.modelSubscriptionId,
+    state.localInferenceHostId,
+    state.localManifestDigest,
   )
-  const canSave = Boolean(state.name.trim() && selectedModel && !isSaving)
-  const saveBlocker = saveBlockedReason({
+  const localSelection = selectedModel?.source === 'local'
+  const canSave = Boolean(
+    state.name.trim() && selectedModel && (!localSelection || localBindingId) && !isSaving,
+  )
+  const ordinarySaveBlocker = saveBlockedReason({
     action: isEditMode ? 'save' : 'create',
     hasModel: Boolean(selectedModel),
     hasName: Boolean(state.name.trim()),
   })
+  const saveBlocker = localSelection && !localBindingId
+    ? 'Approve this local model before saving.'
+    : ordinarySaveBlocker
   const modelOptionsError = modelOptionsQuery.error instanceof Error
     ? modelOptionsQuery.error.message
     : modelOptionsQuery.isError
@@ -315,12 +333,13 @@ export const AgentDesignerContent = ({
         // legacy-column carry-forward.
         systemPrompt: state.systemPrompt,
         todosEnabled: state.todosEnabled,
-        provider: state.provider || undefined,
-        model: state.model || undefined,
+        ...(localSelection
+          ? { localInferenceBindingId: localBindingId ?? undefined }
+          : { provider: state.provider || undefined, model: state.model || undefined }),
         // Explicit, because (provider, model) cannot say WHICH linked account
         // a personal-subscription model belongs to. `null` on a Ledger model
         // takes the agent off whatever plan it was on.
-        modelSubscriptionId: selectedModel.modelSubscriptionId ?? null,
+        modelSubscriptionId: localSelection ? undefined : selectedModel.modelSubscriptionId ?? null,
         toolPolicy,
       })
     } else {
@@ -483,14 +502,20 @@ export const AgentDesignerContent = ({
             )}
             <AgentDesignerForm
               actions={actions}
+              agentId={editingAgent?.id}
               canManageExplicitTools={isOwner}
               canManageTodos={isOwner}
               leadIn={leadIn}
-              modelOptions={modelOptions}
+              modelOptions={selectableModelOptions}
               modelOptionsError={modelOptionsError}
               modelsLoading={modelOptionsQuery.isLoading}
               parentAgentName={parentAgent?.name}
               readOnly={readOnly}
+              onLocalBindingChange={setLocalBindingId}
+              onModelSelect={(option) => {
+                actions.setModelSelection(option)
+                setLocalBindingId(null)
+              }}
               onSectionChange={setDesignerSection}
               section={designerSection}
               showTools={!isEditMode}

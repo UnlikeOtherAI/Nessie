@@ -18,6 +18,8 @@ import type {
 const DEFAULT_STATE: AgentFormState = {
   effort: 'medium',
   model: '',
+  localInferenceHostId: '',
+  localManifestDigest: '',
   modelSubscriptionId: '',
   name: '',
   provider: '',
@@ -46,6 +48,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return {
         ...state,
         model: action.option.model,
+        localInferenceHostId: action.option.localInferenceHostId ?? '',
+        localManifestDigest: action.option.localManifestDigest ?? '',
         modelSubscriptionId: action.option.modelSubscriptionId ?? '',
         provider: action.option.provider,
       }

@@ -1,6 +1,6 @@
 # Model Provider Connector and Orchestration System
 
-> Status: target-state design.
+> Status: target-state design. The opt-in local-device lane is specified in [Local Ollama agents](plans/2026-09-20-local-ollama-agents/overview.md); it uses an explicit device/model binding, not a worker-loopback provider URL or an orchestration profile.
 
 ## 1) Objective
 

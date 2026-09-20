@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import {
   DeploymentModelsTable,
@@ -11,6 +11,7 @@ import { Input } from '../../components/shared/FormControls'
 import { ListToolbar } from '../../components/shared/ListToolbar'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
+import { LocalInferenceEnablement } from '../../components/features/local-inference/LocalInferenceEnablement'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
 import type { SettingsTabHostProps } from '../../components/shared/SettingsPanel'
@@ -247,6 +248,18 @@ export const ModelAvailabilitySettings = ({
             </button>
           </div>
         </ListToolbar>
+
+        {!teamId ? (
+          <>
+            <LocalInferenceEnablement scope="organization" />
+            <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
+              Choose a person’s policy from their{' '}
+              <Link className="underline" to="/settings/members">member details</Link>, or set the
+              inherited policy for a whole{' '}
+              <Link className="underline" to="/settings/team?tab=agents">team</Link>.
+            </section>
+          </>
+        ) : null}
 
         <DeploymentModelsTable
           emptyMessage={

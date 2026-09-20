@@ -1,6 +1,15 @@
 # Local LLM offload — Gemma 4 on the person's own machine
 
-**Status: proposed (2026-09-18). Nothing in this document is built.**
+**Status: proposed (2026-09-18), with foundational primitives landed.** As of
+2026-09-20, the pinned catalogue and executor Ollama detection/verified-import
+client exist; the delegated inference/watch capability below is still proposed.
+
+Scope extension: [Local Ollama agents](../2026-09-20-local-ollama-agents/overview.md)
+adds explicit whole-agent model selection, direct desktop connectivity and
+online/offline presence. This document continues to own bounded local offload;
+its rejection of an agent lane applies only to that mode. The new plan also
+consolidates the not-yet-shipped billing discriminator as `local_device`, with
+a typed host reference, so both modes do not introduce competing local lanes.
 
 The ask: cheap, recurring work — "check this every two minutes", "check that
 every five minutes", "give me a wrap-up of what is happening in this tmux

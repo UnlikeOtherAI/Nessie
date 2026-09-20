@@ -30,7 +30,7 @@ test('section switches retain one designer draft and keep unavailable tools out 
   assert.doesNotMatch(form, /useState<AgentFormState>/)
   assert.match(page, /useTabParam\(\n    'designerSection'/)
   const sharedReducerCalls = page.match(
-    /useAgentDesigner\(\s*initialState,\s*modelOptions,\s*editingAgent\?\.id,\s*toolCatalog\.options,\s*\)/g,
+    /useAgentDesigner\(\s*initialState,\s*selectableModelOptions,\s*editingAgent\?\.id,\s*toolCatalog\.options,\s*\)/g,
   ) ?? []
   assert.equal(sharedReducerCalls.length, 1, 'all Configure sections must write the page-level draft reducer')
 })

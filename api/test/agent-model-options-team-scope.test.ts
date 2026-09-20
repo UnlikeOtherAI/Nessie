@@ -4,6 +4,7 @@ import test from 'node:test'
 import Fastify from 'fastify'
 
 import { registerAgentRoutes } from '../src/routes/agents.js'
+import { listLocalInferenceModelOptions } from '../src/services/local-inference-model-options.js'
 
 const actorContext = {
   actionContext: { requestId: 'request-1' },
@@ -38,6 +39,9 @@ test('an editing agent id resolves its own team, and a foreign agent is not disc
     },
     inferenceModel: { findMany: async () => [] },
     modelSubscription: { findMany: async () => [] },
+    scopedSetting: {
+      findMany: async () => [],
+    },
     teamInferenceModelAvailability: {
       findMany: async ({ where }: { where: { teamId: string } }) => {
         seenTeamIds.push(where.teamId)
@@ -73,4 +77,31 @@ test('an editing agent id resolves its own team, and a foreign agent is not disc
     if (originalLedgerPublicUrl === undefined) delete process.env.LEDGER_PUBLIC_URL
     else process.env.LEDGER_PUBLIC_URL = originalLedgerPublicUrl
   }
+})
+
+test('local model options resolve the same organization, team, and person cascade', async () => {
+  const targets: Array<Array<{ scope: string; teamId?: string; userId?: string }>> = []
+  const prisma = {
+    scopedSetting: {
+      findMany: async ({ where }: {
+        where: { OR: Array<{ scope: string; teamId?: string; userId?: string }> }
+      }) => {
+        targets.push(where.OR)
+        return []
+      },
+    },
+  }
+
+  const options = await listLocalInferenceModelOptions(prisma as never, {
+    organizationId: 'organization-1',
+    teamId: 'team-agent',
+    userId: 'user-1',
+  })
+
+  assert.deepEqual(options, [])
+  assert.deepEqual(targets, [[
+    { scope: 'organization' },
+    { scope: 'team', teamId: 'team-agent' },
+    { scope: 'user', userId: 'user-1' },
+  ]])
 })

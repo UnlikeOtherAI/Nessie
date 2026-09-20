@@ -105,7 +105,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     depth: 2,
     identityOf: (match) => `designer:${match[1] ?? 'new'}`,
     keyScope: () => 'agent-designer',
-    intent: { state: ['parentId'] },
+    intent: { state: ['designerSection', 'parentId'] },
     parentOf: toAgents,
     pattern: /^\/agents\/designer(?:\/([^/]+))?$/,
     root: adminRoot,

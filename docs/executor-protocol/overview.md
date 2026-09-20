@@ -186,9 +186,10 @@ the candidate is not an authorization cache or a caller-selectable machine.
 
 The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
 owner-only local state directory. The sole exception is the desktop-packaged
-debug build, which injects an internal opt-in for exactly
-`http://127.0.0.1:5454`; no user-provided flag enables a non-TLS production
-origin. It prepares and stores the machine key and exact signed enrollment
+debug build, which injects an internal opt-in for exactly the loopback API
+origin resolved for that worktree (`http://127.0.0.1:${NESSIE_API_PORT}`, or
+`:5454` by default); no user-provided flag enables a non-TLS production origin
+or an arbitrary loopback listener. It prepares and stores the machine key and exact signed enrollment
 request locally before submission, and after the human confirms the
 fingerprint, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW team operations:

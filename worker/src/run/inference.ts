@@ -282,18 +282,34 @@ export const runInferenceGraph = async (
  * where one gets forgotten and a personal-subscription run silently reports as
  * organization spend, so the obligation sits on the single writer instead.
  */
+type RunBillingSource =
+  | { bindingId: string; hostId: string; kind: 'local_device' }
+  | { ownerUserId: string; kind: 'personal_subscription'; subscriptionId: string }
+  | null
+
 const loadRunBillingSource = async (
   prisma: PrismaClient,
   runId: string | null | undefined,
-): Promise<{ subscriptionId: string; ownerUserId: string } | null> => {
+): Promise<RunBillingSource> => {
   if (!runId) return null
   const run = await prisma.run.findUnique({
-    select: { modelSubscription: { select: { id: true, userId: true } } },
+    select: {
+      localInferenceBindingId: true,
+      localInferenceHostId: true,
+      modelSubscription: { select: { id: true, userId: true } },
+    },
     where: { id: runId },
   })
+  if (run?.localInferenceBindingId && run.localInferenceHostId) {
+    return {
+      bindingId: run.localInferenceBindingId,
+      hostId: run.localInferenceHostId,
+      kind: 'local_device',
+    }
+  }
   const subscription = run?.modelSubscription
   return subscription
-    ? { ownerUserId: subscription.userId, subscriptionId: subscription.id }
+    ? { ownerUserId: subscription.userId, kind: 'personal_subscription', subscriptionId: subscription.id }
     : null
 }
 
@@ -301,14 +317,15 @@ export const persistInvocationLedgerEvents = async (
   prisma: PrismaClient,
   input: PersistInvocationLedgerInput,
 ): Promise<void> => {
-  const personalSubscription = await loadRunBillingSource(prisma, input.runId)
+  const billingSource = await loadRunBillingSource(prisma, input.runId)
   await recordInferenceUsage(prisma, {
     attribution: {
       ...attributionFromActorContext(input.actorContext, {
         agentId: input.agentId,
         runId: input.runId ?? null,
       }),
-      personalSubscription,
+      personalSubscription: billingSource?.kind === 'personal_subscription' ? billingSource : null,
+      localDevice: billingSource?.kind === 'local_device' ? billingSource : null,
     },
     invocations: input.invocations,
   })

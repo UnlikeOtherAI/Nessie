@@ -4,12 +4,14 @@ import type { PreparedExecutorAccessChangeResponse } from '@nessie/schemas'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
 import { ExecutorAccessChangeDialog } from '../components/features/executors/ExecutorReviewDialogs'
+import { LocalInferenceHostStatus } from '../components/features/local-inference/LocalInferenceHostStatus'
 import {
   EXECUTOR_STATUS_LABELS,
   executorScopeSummary,
   executorStatusTone,
 } from '../components/features/executors/executor-presentation'
 import { Pill } from '../components/primitives/Pill'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAgents } from '../facades/agents/hooks'
@@ -128,6 +130,23 @@ export const ExecutorDetailPage = () => {
           ) : null}
 
           <ExecutorDesktopCompanionPanel executorId={executor.id} />
+
+          <section className="grid gap-2">
+            <div>
+              <SectionLabel as="h2">Local Ollama</SectionLabel>
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">
+                This executor’s local model status and controls.
+              </p>
+            </div>
+            <LocalInferenceHostStatus
+              empty={(
+                <p className="text-sm text-[color:var(--tx2)]">
+                  This executor has not connected a local Ollama host.
+                </p>
+              )}
+              executorId={executor.id}
+            />
+          </section>
 
           <ExecutorDetailPanels
             accessQuery={accessQuery}

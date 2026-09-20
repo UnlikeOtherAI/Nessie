@@ -5,6 +5,7 @@ use tauri::WebviewWindowBuilder;
 
 mod document_window;
 mod executor_companion;
+mod local_inference;
 mod shell;
 #[cfg(feature = "direct-updater")]
 mod direct_updater;
@@ -81,6 +82,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .manage(executor_companion::ExecutorCompanionState::default())
+        .manage(local_inference::LocalInferenceState::default())
         .invoke_handler(tauri::generate_handler![
             executor_companion::executor_companion_change_workspace,
             executor_companion::executor_companion_configure_workspace,
@@ -90,6 +92,13 @@ pub fn run() {
             executor_companion::executor_companion_start,
             executor_companion::executor_companion_status,
             executor_companion::executor_companion_stop,
+            local_inference::local_inference_desktop_status,
+            local_inference::local_inference_forget_local_state,
+            local_inference::local_inference_prepare_desktop_enrollment,
+            local_inference::local_inference_rotate_machine_key,
+            local_inference::local_inference_start_direct_host,
+            local_inference::local_inference_stop_direct_host,
+            local_inference::local_inference_sign_binding_consent,
             shell::desktop_set_badge,
             shell::desktop_set_chrome,
             document_window::desktop_open_document_window,
@@ -138,6 +147,9 @@ pub fn run() {
                 executor_companion::shutdown(
                     app.state::<executor_companion::ExecutorCompanionState>()
                         .inner(),
+                );
+                local_inference::shutdown(
+                    app.state::<local_inference::LocalInferenceState>().inner(),
                 );
             }
         });

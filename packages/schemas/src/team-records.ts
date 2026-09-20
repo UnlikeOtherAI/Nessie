@@ -412,6 +412,8 @@ export const AgentRecordSchema = z.object({
    * other account.
    */
   modelSubscriptionId: z.string().uuid().optional(),
+  /** Exact local-device consent selected by the Designer Save transaction. */
+  localInferenceBindingId: z.string().uuid().optional(),
   effort: AgentEffortSchema.optional(),
   // Explicit per-run caps. Absent = every dimension governed by the deployment
   // backstop; `effort` carries no spend meaning (see

@@ -220,12 +220,15 @@ export const ModelCombobox = ({
               || startsSection
               || previous.providerDisplayName !== option.providerDisplayName
             const isSubscription = modelOptionSource(option) === 'subscription'
+            const isLocal = modelOptionSource(option) === 'local'
             // "Your subscriptions" leads the list whenever the person has any.
             // The Ledger heading only earns its place underneath one — on its
             // own the catalogue is the whole list and needs no label.
             const sectionLabel = !startsSection
               ? null
-              : isSubscription
+              : isLocal
+                ? 'Your computers'
+                : isSubscription
                 ? 'Your subscriptions'
                 : previous === undefined ? null : 'Ledger models'
             return (

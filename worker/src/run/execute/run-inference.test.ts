@@ -3,10 +3,15 @@ import test from 'node:test'
 
 import type { PinnedFetch } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
-import { createRunInference, resolveAdvertisedOutputTokens, resolveMainOutputTokens } from './run-inference.js'
+import {
+  createRunInference,
+  resolveAdvertisedOutputTokens,
+  resolveMainOutputTokens,
+} from './run-inference.js'
 import type { RunSubscriptionBinding } from './subscription-binding.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import { coverProviderInputComponent } from './provenanced-provider-input.js'
 
 test('document compose never exceeds the loop-admitted output cap', () => {
   assert.equal(resolveMainOutputTokens({
@@ -161,3 +166,54 @@ test('mainOutputTokens stays on the pinned subscription lane without a Ledger lo
   assert.equal(ledgerCatalogCalled, false)
 })
 
+test('a local-device pin cannot fall through to the Ledger provider resolver', async () => {
+  let providerResolverCalled = false
+  let inferenceFactoryCalled = false
+  const inference = createRunInference(
+    inferenceDeps,
+    inferencePayload,
+    {
+      ...inferenceContext,
+      agent: {
+        ...inferenceContext.agent,
+        localInferenceBindingId: 'local-binding',
+        model: 'only-local',
+        provider: 'local/ollama',
+      },
+    },
+    {
+      budgetModelOverride: null,
+      local: {
+        binding: {
+          bindingId: 'local-binding', hostEpoch: 1, hostId: 'host',
+          manifestDigest: 'a'.repeat(64), modelName: 'only-local', numCtx: 8192, revision: 1,
+        },
+        runFence: 'fence',
+      },
+      inferenceServiceFactory: () => {
+        inferenceFactoryCalled = true
+        throw new Error('must not create a cloud inference service for a local pin')
+      },
+      stageProviderResolver: async () => {
+        providerResolverCalled = true
+        throw new Error('must not resolve a local pin through the provider route')
+      },
+      subscription: null,
+      thinkingRecorder,
+      utilityModel: null,
+    },
+  )
+
+  assert.equal(await inference.mainOutputTokens?.(), 2_048)
+  assert.equal(providerResolverCalled, false)
+  assert.equal(inferenceFactoryCalled, false)
+  await assert.rejects(
+    inference.runMain([coverProviderInputComponent(
+      { content: 'No cloud fallback.', role: 'user' },
+      'direct_prompt',
+    )], []),
+    /secure storage/,
+  )
+  assert.equal(providerResolverCalled, false)
+  assert.equal(inferenceFactoryCalled, false)
+})

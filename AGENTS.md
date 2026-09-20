@@ -366,6 +366,13 @@ when one changes, the same turn updates it, not this section.
   and a Kelpie that could not look has not found nothing.
   Read [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md)
   before writing code here.
+- **Local Ollama agents are owner-host-only and never fall back to cloud.**
+  A user/team setting permits setup but grants no machine access; an exact
+  native consent plus Agent Designer Save pins the model, and availability is
+  a separate expiring agent lease. Read
+  [`docs/standards/local-ollama-agents.md`](docs/standards/local-ollama-agents.md)
+  before touching local discovery, bindings, host transport, presence or its
+  user/executor surfaces.
 - **A capability that can stop working owns the way a person finds out.**
   Classify the failure into a state that names its remedy, persist the reason,
   and alert exactly once per transition; recovery is explicit, never

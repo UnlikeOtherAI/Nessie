@@ -46,6 +46,11 @@ import {
 import { type AgenticLoopInput, type LoopResult } from './agentic-loop-types.js'
 import { normalizeLegacyCompactionNotes } from './context-compaction.js'
 import {
+  coverCompactedProviderInput,
+  coverProviderInputComponent,
+  deriveProviderInputComponent,
+} from './execute/provenanced-provider-input.js'
+import {
   advanceOutputFinalization,
   outputFinalizationInstruction,
   outputFinalizationTerminalText,
@@ -66,11 +71,14 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
   const resume = input.resume ?? null
-  // Covers every caller, including delegated agents whose initial prompt does
-  // not pass through buildModelPrompt. Raw values never remain in the loop's
-  // retained context or its eventual checkpoint input.
-  const messages: ProviderMessage[] = normalizeLegacyCompactionNotes(resume?.messages ?? initialMessages)
-    .map(redactMessageContent)
+  const messages: ProviderMessage[] = normalizeLegacyCompactionNotes(
+    resume?.messages ?? initialMessages,
+  ).map((message) => {
+    const redacted = redactMessageContent(message)
+    return resume
+      ? coverProviderInputComponent(redacted, 'admitted_checkpoint')
+      : deriveProviderInputComponent(message, redacted, 'secret_redaction')
+  })
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   if (resume) allInvocations.push(...resume.invocations)
   const signatureCounts = new Map<string, number>(
@@ -241,8 +249,9 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         .catch(() => null)
       : null
     const rebuilt = compacted ?? trimConversationToFit(messages, targetTokens)
+    const source = [...messages]
     messages.length = 0
-    messages.push(...rebuilt)
+    messages.push(...coverCompactedProviderInput(source, rebuilt))
   }
 
   while (true) {
@@ -271,7 +280,10 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       totalCostCents: spend.totalCostCents,
     })) {
       woundDown = true
-      messages.push({ content: input.windDownInstruction, role: 'system' })
+      messages.push(coverProviderInputComponent(
+        { content: input.windDownInstruction, role: 'system' },
+        'wind_down',
+      ))
       input.onWindDown?.()
     }
 
@@ -396,14 +408,14 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       })
       if (finalization?.kind === 'recover') {
         // Persist before the bounded no-tools turn, so a reclaim cannot replay work.
-        messages.push(redactMessageContent({
+        messages.push(coverProviderInputComponent(redactMessageContent({
           content: safeOutputText || null,
           role: 'assistant',
-        }))
-        messages.push({
+        }), 'assistant_output'))
+        messages.push(coverProviderInputComponent({
           content: outputFinalizationInstruction(finalization.reason),
           role: 'system',
-        })
+        }, 'loop_instruction'))
         await checkpoint()
         continue
       }
@@ -422,11 +434,11 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         return finish(null, safeOutputText)
       }
 
-      messages.push(redactMessageContent({
+      messages.push(coverProviderInputComponent(redactMessageContent({
         content: safeOutputText || null,
         role: 'assistant',
         toolCalls: result.toolCalls,
-      }))
+      }), 'assistant_output'))
       toolCalls = result.toolCalls
     }
 
@@ -468,11 +480,11 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       // Builtins pre-truncate in `tools.ts` (idempotent: the marker is
       // detected and not re-applied); MCP and delegate results have no other
       // cap, so this is what bounds them (audit F1).
-      messages.push({
+      messages.push(coverProviderInputComponent({
         content: truncateToolResult(tr.output),
         role: 'tool',
         toolCallId: tr.toolCallId!,
-      })
+      }, 'tool_result'))
       tr.acknowledgeDelivery?.()
     }
     // The batch is closed: every result is in the transcript, so from here a
@@ -480,10 +492,10 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     markDispatchBoundary(null)
 
     if (batch.loopDetected) {
-      messages.push({
+      messages.push(coverProviderInputComponent({
         content: 'You are repeating the same tool call. Stop and produce a final answer with the information you already have.',
         role: 'user',
-      })
+      }, 'loop_instruction'))
     }
 
     const batchStop = stopAfterToolBatch(budget, { elapsedMs: elapsed(), toolCallsUsed })

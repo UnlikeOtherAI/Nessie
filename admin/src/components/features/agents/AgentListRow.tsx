@@ -7,6 +7,8 @@ import { useCanDeleteAgent } from './agent-edit-authority'
 import { AgentOwnerCell } from './AgentOwnerCell'
 import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
 import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
+import { AgentAvailability } from './AgentAvailability'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 
 type AgentListRowProps = {
   agent: AgentRecord
@@ -36,6 +38,12 @@ export const AgentListRow = ({
   // somebody else's person-owned one unless this viewer administers the
   // organisation.
   const canDelete = useCanDeleteAgent(agent)
+  const { me } = useAuthSession()
+  const canRepairLocalHost = Boolean(
+    !agent.systemManaged
+    && agent.ownerUserId
+    && me?.user.id === agent.ownerUserId,
+  )
 
   return (
   <tr
@@ -63,6 +71,12 @@ export const AgentListRow = ({
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {agent.role}
       </div>
+      <AgentAvailability
+        agentId={agent.id}
+        canRepair={canRepairLocalHost}
+        localBindingId={agent.localInferenceBindingId}
+        provider={agent.provider}
+      />
       <PrivateAgentHomeLink
         agent={agent}
         className="mt-1 inline-flex text-xs text-[color:var(--lnk)] hover:underline"

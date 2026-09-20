@@ -25,7 +25,7 @@ test('both creation panels stay mounted over the same designer draft', () => {
   assert.match(designer, /hidden=\{showCreationModes && creationMode !== 'configure'\}/)
   assert.match(designer, /hidden=\{showCreationModes && creationMode !== 'create'\}/)
   const sharedReducerCalls = designer.match(
-    /useAgentDesigner\(\s*initialState,\s*modelOptions,\s*editingAgent\?\.id,\s*toolCatalog\.options,\s*\)/g,
+    /useAgentDesigner\(\s*initialState,\s*selectableModelOptions,\s*editingAgent\?\.id,\s*toolCatalog\.options,\s*\)/g,
   ) ?? []
   assert.equal(sharedReducerCalls.length, 1, 'the tabs must not fork the form reducer or its persisted draft')
 })

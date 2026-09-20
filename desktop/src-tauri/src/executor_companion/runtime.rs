@@ -123,7 +123,7 @@ pub(super) fn companion_availability(app: &AppHandle) -> (CompanionAvailability,
     )
 }
 
-pub(super) fn executor_command(app: &AppHandle) -> Result<Command, String> {
+pub(crate) fn executor_command(app: &AppHandle) -> Result<Command, String> {
     let runtime = verified_runtime(app)?;
     // The Node binary's file name is whatever the verified manifest declared —
     // `node` on POSIX, `node.exe` on Windows — never a guess from this host.

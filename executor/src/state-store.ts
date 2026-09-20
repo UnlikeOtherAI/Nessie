@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { open, readFile, readdir, rename, unlink } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
@@ -86,6 +86,17 @@ export type ExecutorLocalState = {
   executorId: string
   machinePrivateKey: string
   machinePublicKey: string
+  /**
+   * Pairing-owned identity for the optional local Ollama host. The receipt key
+   * lives exclusively in this owner-only state, never in a workspace grant or
+   * ordinary executor descriptor.
+   */
+  localInference?: {
+    connectionEpoch: string
+    hostId: string
+    organizationId: string
+    receiptJournalKey: string
+  }
   /** Verified owner-only path to the separately packaged native helper. */
   nativeHelperPath?: string
   /** Local-only browser VM configuration; it is never supplied by Nessie. */
@@ -105,6 +116,30 @@ export type ExecutorLocalState = {
    */
   workspaceFolders: ExecutorWorkspaceFolder[]
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+const validLocalInferenceState = (value: unknown): value is NonNullable<ExecutorLocalState['localInference']> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  if (
+    !exactKeys(record, ['connectionEpoch', 'hostId', 'organizationId', 'receiptJournalKey'])
+    || typeof record.connectionEpoch !== 'string'
+    || !/^[1-9][0-9]{0,18}$/.test(record.connectionEpoch)
+    || typeof record.hostId !== 'string'
+    || !UUID.test(record.hostId)
+    || typeof record.organizationId !== 'string'
+    || !UUID.test(record.organizationId)
+    || typeof record.receiptJournalKey !== 'string'
+  ) return false
+  try {
+    return Buffer.from(record.receiptJournalKey, 'base64url').byteLength === 32
+  } catch {
+    return false
+  }
+}
+
+export const newLocalInferenceReceiptJournalKey = (): string => randomBytes(32).toString('base64url')
 
 /**
  * A state or grant file written before folders had names. It carries one
@@ -580,6 +615,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
     || typeof parsed.executorId !== 'string'
     || typeof parsed.machinePrivateKey !== 'string'
     || typeof parsed.machinePublicKey !== 'string'
+    || (parsed.localInference !== undefined && !validLocalInferenceState(parsed.localInference))
     || workspaceFolders === null
     || mcpServers === null
     || (parsed.nativeHelperPath !== undefined && typeof parsed.nativeHelperPath !== 'string')

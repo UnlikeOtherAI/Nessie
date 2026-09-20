@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { AgentRecordSchema } from '@nessie/schemas'
+import { AgentAvailabilityProjectionSchema, AgentRecordSchema } from '@nessie/schemas'
 import {
   infiniteQueryOptions,
   keepPreviousData,
@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query'
 import type {
   AgentModelOption,
+  AgentAvailabilityProjection,
   AgentActivityResponse,
   AgentChild,
   AgentConversationRecord,
@@ -128,6 +129,26 @@ export const useAgentStatus = (agentId?: string) => {
     queryKey: agentKeys.status(agentId),
     queryFn: () => fetchAgentStatus(apiClient, agentId ?? ''),
     enabled: Boolean(agentId),
+  })
+}
+
+/** A local agent's server-derived host readiness, never human presence. */
+export const useAgentAvailability = (agentId?: string, enabled = true) => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentAvailabilityProjection>({
+    enabled: Boolean(agentId) && enabled,
+    // Availability may stay visible through a refetch for this same agent, but
+    // must never flash one agent's host readiness on another agent's identity.
+    placeholderData: (previousData, previousQuery) => (
+      previousQuery?.queryKey[1] === agentId ? previousData : undefined
+    ),
+    queryKey: agentKeys.availability(agentId),
+    queryFn: () => apiClient.get(
+      `/api/agents/${agentId ?? ''}/availability`,
+      AgentAvailabilityProjectionSchema,
+    ),
+    refetchInterval: 30_000,
   })
 }
 

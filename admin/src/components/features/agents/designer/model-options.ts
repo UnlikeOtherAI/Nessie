@@ -1,8 +1,8 @@
 import type { AgentModelOption } from '../../../../lib/api-client'
 
 export const modelOptionKey = (
-  option: Pick<AgentModelOption, 'model' | 'provider'>,
-): string => `${option.provider} ${option.model}`
+  option: Pick<AgentModelOption, 'localInferenceHostId' | 'model' | 'provider'>,
+): string => `${option.provider} ${option.model} ${option.localInferenceHostId ?? ''}`
 
 /**
  * Which purse an option spends. Absent means the deployment's Ledger credits —
@@ -10,7 +10,7 @@ export const modelOptionKey = (
  */
 export const modelOptionSource = (
   option: Pick<AgentModelOption, 'source'>,
-): 'ledger' | 'subscription' => option.source ?? 'ledger'
+): 'ledger' | 'subscription' | 'local' => option.source ?? 'ledger'
 
 export const modelOptionLabel = (option: AgentModelOption): string =>
   option.displayName === option.model
@@ -49,10 +49,18 @@ export const findModelOption = (
   model: string,
   provider: string,
   modelSubscriptionId?: string,
+  localInferenceHostId?: string,
+  localManifestDigest?: string,
 ): AgentModelOption | undefined => {
   const matches = options.filter(
     (option) => option.model === model && option.provider === provider,
   )
+  if (localInferenceHostId) {
+    return matches.find((option) =>
+      option.localInferenceHostId === localInferenceHostId
+      && (!localManifestDigest || option.localManifestDigest === localManifestDigest),
+    ) ?? matches[0]
+  }
   if (!modelSubscriptionId) return matches[0]
   return matches.find((option) => option.modelSubscriptionId === modelSubscriptionId)
     ?? matches[0]
@@ -96,8 +104,11 @@ export const filterModelOptions = (
 export const orderModelOptionsForPicker = (
   options: AgentModelOption[],
 ): AgentModelOption[] => [
+  // A local model is a choice on this person's own machine, so it leads the
+  // list. It does not spend the deployment or a personal subscription.
+  ...options.filter((option) => modelOptionSource(option) === 'local'),
   ...options.filter((option) => modelOptionSource(option) === 'subscription'),
-  ...options.filter((option) => modelOptionSource(option) !== 'subscription'),
+  ...options.filter((option) => modelOptionSource(option) === 'ledger'),
 ]
 
 /**

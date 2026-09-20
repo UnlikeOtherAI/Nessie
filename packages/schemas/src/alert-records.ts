@@ -43,6 +43,10 @@ export const UserAlertKindSchema = z.enum([
   // because a realtime payload carrying a kind an older replica cannot parse
   // crashes that replica during a blue-green swap.
   'knowledge_shared',
+  // Reader-first for a custodian-private local host repair. The writer is
+  // deliberately separate from this parse contract so a rolling deploy never
+  // sends an unparseable realtime alert to an older replica.
+  'local_inference_health',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -85,6 +89,11 @@ export const UserAlertRecordSchema = z.object({
   boardSourceId: z.string().uuid().nullable(),
   workflowRunId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
+  // Reader-first for the local host health writer. These stay optional while
+  // older API replicas and persisted alert fixtures are still being drained;
+  // a writer must always set the host id so visibility is custodian-bound.
+  localInferenceHostId: z.string().uuid().nullable().optional(),
+  localInferenceBindingId: z.string().uuid().nullable().optional(),
   metadata: TeamInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),

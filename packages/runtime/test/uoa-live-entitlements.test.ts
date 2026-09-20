@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import test from 'node:test'
 
 import {
+  resolveLiveEntitlementDecision,
   resolveLiveEntitlements,
   type UoaLiveEntitlementsPrisma,
 } from '../src/uoa-live-entitlements.js'
@@ -115,4 +116,16 @@ test('an unbound organization is local only when the deployment has no UOA mode'
 
   assert.deepEqual(local, { kind: 'local', organizationId: 'local-org', userId: 'user-1' })
   assert.deepEqual(partialUoa, { kind: 'denied' })
+})
+
+test('device disclosure keeps UOA unavailability distinct from an authoritative denial', async () => {
+  const unavailable = await resolveLiveEntitlementDecision(prisma(), {
+    organizationId: 'local-org', uoaIdentity: identity, userId: 'user-1',
+  }, deps(async () => new Response('temporarily unavailable', { status: 503 })))
+  const denied = await resolveLiveEntitlementDecision(prisma(), {
+    organizationId: 'local-org', uoaIdentity: identity, userId: 'user-1',
+  }, deps(async () => new Response('no', { status: 403 })))
+
+  assert.deepEqual(unavailable, { status: 'unavailable' })
+  assert.deepEqual(denied, { status: 'denied' })
 })

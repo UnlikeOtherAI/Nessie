@@ -15,7 +15,8 @@ import {
   type ExecutorOperationKey,
 } from '@nessie/schemas'
 
-import { claimExecutor, heartbeatExecutor, serveExecutor } from '../src/daemon.js'
+import { serveExecutor } from '../src/daemon-server.js'
+import { claimExecutor, heartbeatExecutor } from '../src/daemon.js'
 import { pairExecutor } from '../src/pair.js'
 import { loadExecutorState } from '../src/state-store.js'
 
@@ -163,6 +164,7 @@ test('pairing, signed control traffic, and selected-folder enforcement work end 
         assertSignature(publicKey, 'nessie.executor.daemon.heartbeat.v1', {
           connectionEpoch,
           executorId: body.executorId,
+          ...(body.localMcp === undefined ? {} : { localMcp: body.localMcp }),
           observedAt: body.observedAt,
         }, body.signature)
         send(response, { connectionEpoch, status: 'online' })

@@ -64,6 +64,7 @@ jobs:
       NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE: '1'
       NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE: '1'
+      NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE: '1'
 
     steps:
       - name: Checkout
@@ -173,6 +174,13 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:agent-conversations
 
+      # Local Ollama is a browser-to-host boundary: the suite renders the real
+      # setup, policy, availability and consent controls over a deterministic
+      # host-protocol fixture, including the browser's no-scan restriction.
+      - name: Run local Ollama agents browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:local-ollama-agents
+
       # Two Chromium contexts on one spreadsheet: a batch from one pane landing
       # live in the other, the presence overlay, and a structural batch forcing
       # the intent replay. Its own `ci.mjs` starts and stops the API and admin
@@ -244,6 +252,14 @@ jobs:
         with:
           name: agent-conversations-screenshots
           path: e2e/screenshots/agent-conversations
+          if-no-files-found: warn
+
+      - name: Upload local Ollama agents screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-ollama-agents-screenshots
+          path: e2e/screenshots/local-ollama-agents
           if-no-files-found: warn
 
       - name: Upload spreadsheets screenshots

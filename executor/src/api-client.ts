@@ -44,6 +44,15 @@ export type ExecutorApiClient = {
   ) => Promise<{ recorded: boolean }>
   issueChallenge: (baseUrl: string, executorId: string) =>
     Promise<{ challenge: string; expiresAt: string }>
+  localInferenceHost: (
+    baseUrl: string,
+    input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },
+  ) => Promise<{ connectionEpoch: string; hostId: string; organizationId: string }>
+  confirmLocalInference: (
+    baseUrl: string,
+    hostId: string,
+    input: { challengeId: string; signature: string },
+  ) => Promise<{ bindingId: string }>
   pollBrowserCookieImport: (
     baseUrl: string,
     input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },
@@ -134,6 +143,10 @@ export const createExecutorApi = (options: {
       post(baseUrl, '/api/executor-daemon/commands/receipt', input),
     issueChallenge: (baseUrl, executorId) =>
       post(baseUrl, '/api/executor-daemon/challenge', { executorId }),
+    localInferenceHost: (baseUrl, input) =>
+      post(baseUrl, '/api/local-inference/daemon/executor-host', input),
+    confirmLocalInference: (baseUrl, hostId, input) =>
+      post(baseUrl, `/api/local-inference/hosts/${hostId}/confirm`, input),
     pollBrowserCookieImport: (baseUrl, input) =>
       post(baseUrl, '/api/executor-daemon/browser-cookie-imports/pending', input),
     submitDescriptor: (baseUrl, input) => post(baseUrl, '/api/executor-daemon/descriptor', input),

@@ -36,6 +36,8 @@ export const WriteScopedSettingBodySchema = z
      * failed, since the panel is one component for all three scopes.
      */
     teamId: z.string().uuid().nullish(),
+    /** Only registered admin-authored settings may target another person. */
+    userId: z.string().uuid().nullish(),
     value: z.unknown().optional(),
     locked: z.boolean(),
   })

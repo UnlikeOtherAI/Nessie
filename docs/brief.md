@@ -50,6 +50,18 @@ and the Nessie/deep.agent boundary are specified in the
 [agent documents and learning plan](plans/2026-09-08-agent-documents-and-learning.md).
 This is planned work, not a claim that the learning loop has shipped.
 
+## Local model agents direction (2026-09-20)
+
+An existing agent may explicitly use an installed Ollama model through a paired
+executor or directly while Nessie Desktop runs on macOS, Windows or Linux.
+Administrators enable the capability for a person or team; the computer's
+custodian separately consents to processing that agent's input. Agent
+online/offline availability remains distinct from human identity and presence.
+The [local Ollama agents plan](plans/2026-09-20-local-ollama-agents/overview.md)
+defines the implementation, privacy boundaries, friendly automatic discovery,
+and decision-based UI inventory. This is planned work, with no automatic cloud
+fallback, and creates no UOA identity or membership copies.
+
 ## Vision
 
 A personal AI agent that lives on your Mac, voice-first but keyboard-capable. You talk to it, it talks back. When you need deep research done across your computer, it spins up a sub-agent to do the work. When you're in keyboard mode, it types into whatever app you're using — no UI, no interruption, just you and the machine working together.

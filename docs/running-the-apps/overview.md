@@ -113,8 +113,8 @@ at an arbitrary executable. The connected-tab operations are intentionally not
 configurable or advertised yet: the server-side private-run and disclosure gate
 must land first, so no signed-in browser session can be invoked prematurely.
 
-In dev, the companion intentionally pairs only with the local API at
-`http://127.0.0.1:5454`. It cannot pair an unsigned development app with the
+In dev, the companion intentionally pairs only with the exact local API origin
+resolved through `NESSIE_API_PORT` (`http://127.0.0.1:5454` by default). It cannot pair an unsigned development app with the
 production API. Production executor pairing, local workspace selection, daemon
 lifecycle, and policy controls require an intact publisher-verified desktop
 release: Developer ID on macOS, the pinned Authenticode publisher on Windows,

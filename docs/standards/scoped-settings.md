@@ -59,6 +59,13 @@ uses for the rest: `AGENTS.md` carries the one-line invariant and points here;
   organisation and its teams are owner-or-admin; a personal setting is the
   person's own. Teams carry no `organization_id` of their own — tenancy runs
   through their project — so the FK cannot prove tenancy and the service must.
+- **A selected person is an exception with a named key, not a generic reader
+  capability.** `GET /api/settings/scoped` ordinarily resolves personal
+  settings only for its caller. A registered administrator-authored key may
+  name one active local member for a personal-scope read when the same live
+  organisation-administration authority required by its write is present. The
+  route rejects a target on every other key, mixed-key request, and scope, so
+  a policy control cannot turn into an arbitrary member-settings browser.
 
 - **A write is audited, never the value.** `PUT /api/settings/scoped/:key`
   (`api/src/routes/scoped-settings.ts`) emits `setting.scoped.written` with

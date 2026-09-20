@@ -1,4 +1,5 @@
 import { CloudBrowserPanel } from '../../../components/features/browser-cloud/CloudBrowserPanel'
+import { LocalInferenceEnablement } from '../../../components/features/local-inference/LocalInferenceEnablement'
 import { SettingsPanel, type SettingsTabHostProps } from '../../../components/shared/SettingsPanel'
 import type { TeamRecord } from '../../../lib/api-client'
 
@@ -12,6 +13,7 @@ export const TeamAgentsPage = ({ tabs, team }: SettingsTabHostProps & { team?: T
     {tabs}
     <div className="grid gap-4">
       {team ? <CloudBrowserPanel scope="team" teamId={team.id} /> : null}
+      {team ? <LocalInferenceEnablement scope="team" teamId={team.id} /> : null}
     </div>
   </SettingsPanel>
 )

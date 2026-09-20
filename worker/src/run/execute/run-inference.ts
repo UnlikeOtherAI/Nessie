@@ -30,6 +30,12 @@ import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './t
 import type { RunSubscriptionBinding } from './subscription-binding.js'
 import { runReplyIsRestricted } from './agent-message.js'
 import { createStreamRedactor } from './stream-redaction.js'
+import { dispatchLocalInference } from './local-inference-dispatch.js'
+import type { RunLocalInferenceBinding } from './local-inference-binding.js'
+import {
+  coverGeneratedUtilityInput,
+  finalizeProvenancedProviderInput,
+} from './provenanced-provider-input.js'
 
 const runtimeModelConfig = loadConfig().model
 
@@ -129,6 +135,7 @@ export const createRunInference = (
     stageProviderResolver?: StageProviderResolver
     inferenceServiceFactory?: MainOutputInferenceServiceFactory
     ledgerCatalogFetch?: PinnedFetch
+    local?: { binding: RunLocalInferenceBinding; runFence: string } | null
     thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
   },
@@ -150,6 +157,10 @@ export const createRunInference = (
   }
 
   const mainOutputTokens = async (): Promise<number> => {
+    // A local binding owns the complete inference transport. Capability and
+    // catalogue lookups through the configured provider would be a cloud call
+    // even though `runMain` correctly uses the local host below.
+    if (options.local) return runtimeModelConfig.maxTokens
     const providerConfig = await (options.stageProviderResolver ?? resolveStageProviderConfig)(deps.prisma, {
       modelConfig: runtimeModelConfig,
       organizationId: context.channel.organizationId,
@@ -214,6 +225,43 @@ export const createRunInference = (
     streaming: boolean,
     maxOutputTokens?: number,
   ): Promise<InferenceResult> => {
+    if (options.local) {
+      let localTextReceived = false
+      const streamRedactor = createStreamRedactor()
+      const publishSafeLocalText = async (content: string): Promise<void> => {
+        if (!streaming || runReplyIsRestricted(context)) return
+        const safe = streamRedactor.push(content)
+        if (!safe) return
+        currentTurnStreamed = true
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+          content: safe,
+          runId: parseRunId(context.run.id),
+        })
+      }
+      const result = await dispatchLocalInference({
+        binding: options.local.binding, context, deps,
+        maxOutputTokens: maxOutputTokens ?? runtimeModelConfig.maxTokens,
+        onTextDelta: async (content) => {
+          localTextReceived = true
+          await publishSafeLocalText(content)
+        },
+        providerInput: finalizeProvenancedProviderInput(messages),
+        runFence: options.local.runFence, tools,
+      })
+      if (!allowEmptySuccess && !result.outputText && result.toolCalls.length === 0) {
+        throw new Error('Inference execution produced no final answer')
+      }
+      if (!localTextReceived && result.outputText) await publishSafeLocalText(result.outputText)
+      const tail = streamRedactor.flush()
+      if (tail && streaming && !runReplyIsRestricted(context)) {
+        currentTurnStreamed = true
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+          content: tail,
+          runId: parseRunId(context.run.id),
+        })
+      }
+      return result
+    }
     const documentStream = streaming ? deps.documentStream : undefined
     // A document is emitted as tool-call arguments inside one completion, so
     // the ordinary per-call output cap would truncate it mid-sentence. When the
@@ -332,7 +380,10 @@ export const createRunInference = (
     },
     runUtility: (messages, tools) =>
       call(
-        messages,
+        // Utility calls assemble model-generated prompts outside the main
+        // transcript adapters. Mark them at their one construction boundary;
+        // the dispatcher still rejects any component an adapter forgot.
+        options.local ? coverGeneratedUtilityInput(messages) : messages,
         tools,
         options.utilityModel
           ? { model: options.utilityModel.model, provider: options.utilityModel.provider }

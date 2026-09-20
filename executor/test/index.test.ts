@@ -148,19 +148,21 @@ test('a preset and a self-hosted origin both pair, a look-alike does not', () =>
 
 test('only the desktop development process may use the exact local API origin', () => {
   const previous = process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API
+  const previousPort = process.env.NESSIE_API_PORT
   try {
     process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API = '1'
+    process.env.NESSIE_API_PORT = '5464'
     assert.equal(
       parseCommand([
-        'pair', '--api', 'http://127.0.0.1:5454', '--enrollment', 'x',
+        'pair', '--api', 'http://127.0.0.1:5464', '--enrollment', 'x',
         '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
         '--workspace', '/private/tmp/nessie-workspace',
       ]).apiBaseUrl,
-      'http://127.0.0.1:5454',
+      'http://127.0.0.1:5464',
     )
     assert.throws(
       () => parseCommand([
-        'pair', '--api', 'http://localhost:5454', '--enrollment', 'x',
+        'pair', '--api', 'http://127.0.0.1:5454', '--enrollment', 'x',
         '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
         '--workspace', '/private/tmp/nessie-workspace',
       ]),
@@ -169,6 +171,8 @@ test('only the desktop development process may use the exact local API origin', 
   } finally {
     if (previous === undefined) delete process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API
     else process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API = previous
+    if (previousPort === undefined) delete process.env.NESSIE_API_PORT
+    else process.env.NESSIE_API_PORT = previousPort
   }
 })
 

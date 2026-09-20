@@ -96,3 +96,21 @@ test('automatic-membership health alerts name the remedy and exact rule setting'
     to: '/settings/members?membersTab=automatic&automaticMembershipRule=55555555-5555-4555-8555-555555555555',
   })
 })
+
+test('local inference health opens the exact owner-only recovery host', () => {
+  const alert: UserAlertRecord = {
+    ...missedCall,
+    actorDisplayName: null,
+    channelId: null,
+    channelLabel: null,
+    kind: 'local_inference_health',
+    localInferenceHostId: '55555555-5555-4555-8555-555555555555',
+    messageId: null,
+  }
+  const html = renderToStaticMarkup(createElement(AlertRow, { alert }))
+
+  assert.match(html, /Your local Ollama connection needs attention/)
+  assert.deepEqual(getAlertLink(alert), {
+    to: '/settings/connections?tab=inference#local-inference-host-55555555-5555-4555-8555-555555555555',
+  })
+})

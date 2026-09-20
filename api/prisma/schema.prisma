@@ -22,6 +22,31 @@ enum AgentStatus {
   offline
 }
 
+/// The transport proves how a host reaches its local loopback Ollama daemon;
+/// it never changes the agent's authority or creates a second user identity.
+enum LocalInferenceTransport {
+  executor
+  desktop
+}
+
+enum LocalInferenceBindingStatus {
+  pending
+  consented_pending_activation
+  active
+  needs_rebinding
+  revoked
+}
+
+enum LocalInferenceAttemptState {
+  queued
+  leased
+  accepted
+  completed
+  failed
+  cancelled
+  expired
+}
+
 enum AgentKind {
   shared
   personal_assistant
@@ -2512,6 +2537,8 @@ enum UserAlertKind {
   // older replica cannot parse crashes that replica during a blue-green swap,
   // so the reader side lands one deploy ahead of the writer.
   knowledge_shared
+  /// A local inference host or exact binding needs an authorised repair.
+  local_inference_health
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -2537,6 +2564,8 @@ model UserAlert {
   boardSourceId             String?                  @map("board_source_id") @db.Uuid
   workflowRunId             String?                  @map("workflow_run_id") @db.Uuid
   approvalRequestId         String?                  @map("approval_request_id") @db.Uuid
+  localInferenceHostId      String?                  @map("local_inference_host_id") @db.Uuid
+  localInferenceBindingId   String?                  @map("local_inference_binding_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey                  String?                  @map("event_key")
@@ -2561,6 +2590,10 @@ model UserAlert {
   automaticMembershipRule   AutomaticMembershipRule? @relation("AutomaticMembershipHealthAlert", fields: [automaticMembershipRuleId], references: [id], onDelete: Cascade)
   boardSource               BoardSource?             @relation("BoardSourceHealthAlert", fields: [boardSourceId], references: [id], onDelete: Cascade)
   workflowRun               WorkflowRun?             @relation("WorkflowRunFailureAlert", fields: [workflowRunId], references: [id], onDelete: Cascade)
+  // This relation is deliberately host-only: the custodian is the sole
+  // recipient of local device health, and a binding id is supplemental
+  // context rather than a second authority path.
+  localInferenceHost        LocalInferenceHost?      @relation("LocalInferenceHealthAlert", fields: [localInferenceHostId], references: [id], onDelete: Cascade)
   actorUser                 User?                    @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent                Agent?                   @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -2572,6 +2605,8 @@ model UserAlert {
   @@index([automaticMembershipRuleId])
   @@index([boardSourceId])
   @@index([workflowRunId])
+  @@index([localInferenceHostId])
+  @@index([localInferenceBindingId])
   @@map("user_alerts")
 }
 
@@ -3118,6 +3153,9 @@ model Agent {
   /// `subscription/<key>` namespace so a value that escapes this branch fails
   /// closed (a `/` is illegal in a Ledger service id) instead of dispatching.
   modelSubscriptionId            String?                         @map("model_subscription_id") @db.Uuid
+  /// Exact consented local binding. A dangling/revoked pointer stays visible
+  /// as unavailable; it is never reinterpreted as a Ledger provider default.
+  localInferenceBindingId        String?                         @map("local_inference_binding_id") @db.Uuid
   routingProfileId               String?                         @map("routing_profile_id") @db.Uuid
   avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
   avatarBackgroundColor          String?                         @map("avatar_background_color")
@@ -3216,6 +3254,7 @@ model Agent {
   @@index([organizationId, agentKind, systemManaged])
   @@index([routingProfileId])
   @@index([organizationId, ownerUserId])
+  @@index([localInferenceBindingId])
   @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
   @@map("agents")
 }
@@ -3390,6 +3429,13 @@ model Run {
   // back to the organization's Ledger route.
   modelSubscriptionId                 String?                         @map("model_subscription_id") @db.Uuid
   modelSubscriptionEpoch              Int?                            @map("model_subscription_epoch")
+  /// Immutable local lane pin, written at admission.  These nullable fields
+  /// are expand/contract compatible: legacy and old writers see no local run.
+  localInferenceBindingId              String?                         @map("local_inference_binding_id") @db.Uuid
+  localInferenceBindingRevision        Int?                            @map("local_inference_binding_revision")
+  localInferenceHostId                 String?                         @map("local_inference_host_id") @db.Uuid
+  localInferenceModelDigest            String?                         @map("local_inference_model_digest")
+  localInferenceHostEpoch              Int?                            @map("local_inference_host_epoch")
   // Run-level executor fencing. The run row — not the queue lock — is the
   // authority for who is executing it: `claimRunForExecution` mints a token in
   // one conditional UPDATE, the winning executor refreshes
@@ -3457,6 +3503,7 @@ model Run {
   @@index([triggerId, createdAt])
   @@index([restartOfRunId])
   @@index([continuationOfRunId])
+  @@index([localInferenceBindingId])
   @@map("runs")
 }
 
@@ -5555,6 +5602,10 @@ model TokenLedgerEvent {
   /// Which link paid, and therefore whose plan. Attribution for these rows is
   /// the subscription owner, not the person who happened to post.
   modelSubscriptionId   String?                @map("model_subscription_id") @db.Uuid
+  /// Local-device rows have no currency price. Stable opaque references make
+  /// billing/audit joinable without ever recording a host address or label.
+  localInferenceHostId    String?                @map("local_inference_host_id") @db.Uuid
+  localInferenceBindingId String?                @map("local_inference_binding_id") @db.Uuid
   metadata              Json?
   inferenceProvider     InferenceProvider?     @relation(fields: [providerId], references: [id], onDelete: SetNull)
   inferenceModel        InferenceModel?        @relation(fields: [modelId], references: [id], onDelete: SetNull)
@@ -5569,6 +5620,8 @@ model TokenLedgerEvent {
   @@index([organizationId, teamId, occurredAt(sort: Desc)])
   @@index([organizationId, channelId, occurredAt(sort: Desc)])
   @@index([organizationId, runId, occurredAt(sort: Desc)])
+  @@index([localInferenceHostId])
+  @@index([localInferenceBindingId])
   // Budget period sums query by project/team ALONE (scopeUsageWhere), so they
   // need indexes leading with project_id / team_id, not organization_id.
   @@index([projectId, occurredAt(sort: Desc)])
@@ -8119,6 +8172,7 @@ enum ModelSubscriptionHealthReason {
 enum InferenceBillingSource {
   ledger
   personal_subscription
+  local_device
 }
 
 /// One person's link to one account at one subscription provider. Scoped to
@@ -8309,6 +8363,167 @@ model ScopedSetting {
   /// unique violation instead of updating the winner's row. That is what the
   /// per-target advisory lock in `writeScopedSetting` is for.
   @@map("scoped_settings")
+}
+
+/// A single owner-controlled processor.  It contains no UOA profile data and
+/// no endpoint URL: the endpoint is a local-machine concern, never a server
+/// dial target.  `inventory` is a bounded last observation, not authority.
+model LocalInferenceHost {
+  id                       String                    @id @default(uuid()) @db.Uuid
+  organizationId           String                    @map("organization_id") @db.Uuid
+  custodianUserId          String                    @map("custodian_user_id") @db.Uuid
+  transport                LocalInferenceTransport
+  executorId               String?                   @unique @map("executor_id") @db.Uuid
+  publicKey                String?                   @map("public_key")
+  publicKeyFingerprint     String?                   @unique @map("public_key_fingerprint")
+  displayLabel             String                    @map("display_label")
+  authorizationRevision    Int                       @default(1) @map("authorization_revision")
+  connectionEpoch          Int                       @default(1) @map("connection_epoch")
+  policyRevision           Int                       @default(0) @map("policy_revision")
+  lastSeenAt               DateTime?                 @map("last_seen_at")
+  inventory                Json?                     @map("inventory")
+  inventoryObservedAt      DateTime?                 @map("inventory_observed_at")
+  pausedAt                 DateTime?                 @map("paused_at")
+  revokedAt                DateTime?                 @map("revoked_at")
+  healthReason             String?                   @map("health_reason")
+  healthRevision           Int                       @default(0) @map("health_revision")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  userAlerts               UserAlert[]               @relation("LocalInferenceHealthAlert")
+
+  @@index([organizationId, custodianUserId])
+  @@index([organizationId, lastSeenAt])
+  @@map("local_inference_hosts")
+}
+
+/// Monotonic host-protocol replay fence. One row per host and purpose avoids
+/// letting a delayed poll block a heartbeat while still making an old signed
+/// heartbeat unable to extend a lease.
+model LocalInferenceHostSequence {
+  hostId       String   @map("host_id") @db.Uuid
+  purpose      String
+  lastSequence BigInt   @map("last_sequence")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@id([hostId, purpose])
+  @@map("local_inference_host_sequences")
+}
+
+/// Serializes every protected local-inference policy mutation with prepare,
+/// activation and revocation.  It is not a copied membership/role authority.
+model LocalInferencePolicyVersion {
+  organizationId String   @id @map("organization_id") @db.Uuid
+  version        Int      @default(0)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("local_inference_policy_versions")
+}
+
+/// Consent is intentionally inactive until the ordinary Agent Designer Save
+/// transaction atomically selects it.  The history remains after revocation.
+model AgentLocalInferenceBinding {
+  id                       String                      @id @default(uuid()) @db.Uuid
+  organizationId           String                      @map("organization_id") @db.Uuid
+  agentId                  String                      @map("agent_id") @db.Uuid
+  hostId                   String                      @map("host_id") @db.Uuid
+  modelName                String                      @map("model_name")
+  manifestDigest           String                      @map("manifest_digest")
+  capabilitySnapshot       Json                        @map("capability_snapshot")
+  numCtx                   Int                         @map("num_ctx")
+  agentEditRevision        DateTime                    @map("agent_edit_revision")
+  /// The exact editor and their server credential generation that prepared
+  /// this consent. Save cannot be completed by a different browser session.
+  preparedEditorUserId     String?                     @map("prepared_editor_user_id") @db.Uuid
+  preparedEditorTokenVersion Int?                      @map("prepared_editor_token_version")
+  /// UOA deployments also retain the opaque subject/version provenance that
+  /// the live account link must still prove at confirmation and Save.
+  preparedEditorUoaSubject String?                     @map("prepared_editor_uoa_subject")
+  preparedEditorUoaTokenVersion Int?                   @map("prepared_editor_uoa_token_version")
+  /// Re-pairing and key repair must invalidate an unactivated consent too.
+  hostAuthorizationRevision Int?                       @map("host_authorization_revision")
+  hostConnectionEpoch      Int?                        @map("host_connection_epoch")
+  policyVersion            Int                         @map("policy_version")
+  revision                 Int                         @default(1)
+  consentDigest            String?                     @map("consent_digest")
+  consentedByUserId        String?                     @map("consented_by_user_id") @db.Uuid
+  consentedAt              DateTime?                   @map("consented_at")
+  status                   LocalInferenceBindingStatus @default(pending)
+  reason                   String?                     @map("reason")
+  healthRevision           Int                         @default(0) @map("health_revision")
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  updatedAt                DateTime                    @updatedAt @map("updated_at")
+
+  @@index([organizationId, agentId])
+  @@index([hostId, status])
+  @@index([organizationId, status])
+  @@map("agent_local_inference_bindings")
+}
+
+/// A hashed, one-use, short-lived consent capability.  Display text stays in
+/// the canonical signed native projection and is never trusted from a webview.
+model LocalInferenceChallenge {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  hostId            String   @map("host_id") @db.Uuid
+  bindingId         String?  @map("binding_id") @db.Uuid
+  digest            String   @unique
+  subjectDigest     String   @map("subject_digest")
+  /// `binding` is designer consent; `daemon` is a 60-second connection claim.
+  purpose           String   @default("binding")
+  connectionEpoch   Int?     @map("connection_epoch")
+  expiresAt         DateTime @map("expires_at")
+  consumedAt        DateTime? @map("consumed_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([hostId, expiresAt])
+  @@map("local_inference_challenges")
+}
+
+/// Encrypted, bounded transport state.  Prompt/result bytes are never normal
+/// transcript rows and are swept after acknowledgement or hard expiry.
+model LocalInferenceAttempt {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  invocationId       String                     @unique @map("invocation_id")
+  organizationId     String                     @map("organization_id") @db.Uuid
+  runId              String                     @map("run_id") @db.Uuid
+  hostId             String                     @map("host_id") @db.Uuid
+  bindingId          String                     @map("binding_id") @db.Uuid
+  runFence           String                     @map("run_fence")
+  hostEpoch          Int                        @map("host_epoch")
+  dispatchFence      Int                        @default(1) @map("dispatch_fence")
+  modelDigest        String                     @map("model_digest")
+  requestDigest      String                     @map("request_digest")
+  state              LocalInferenceAttemptState @default(queued)
+  leaseExpiresAt     DateTime?                  @map("lease_expires_at")
+  deadlineAt         DateTime                   @map("deadline_at")
+  acceptedAt         DateTime?                  @map("accepted_at")
+  terminalAt         DateTime?                  @map("terminal_at")
+  encryptedRequest   Bytes?                     @map("encrypted_request")
+  encryptedResult    Bytes?                     @map("encrypted_result")
+  resultDigest       String?                    @map("result_digest")
+  failureReason      String?                    @map("failure_reason")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+
+  @@index([hostId, state, deadlineAt])
+  @@index([runId, state])
+  @@index([terminalAt])
+  @@map("local_inference_attempts")
+}
+
+model LocalInferenceFrame {
+  id            String   @id @default(uuid()) @db.Uuid
+  attemptId     String   @map("attempt_id") @db.Uuid
+  dispatchFence Int      @map("dispatch_fence")
+  sequence      Int
+  encryptedData Bytes    @map("encrypted_data")
+  digest        String
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([attemptId, dispatchFence, sequence])
+  @@index([attemptId, acknowledgedAt, sequence])
+  @@map("local_inference_frames")
 }
 
 enum SettingScope {

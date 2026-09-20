@@ -2,6 +2,17 @@
 
 Part of [the local LLM offload design](overview.md).
 
+Scope note, 2026-09-20: this chapter describes **delegated offload**.
+[Local Ollama agents](../2026-09-20-local-ollama-agents/overview.md) separately
+permits an explicit whole-agent local lane and a typed direct-desktop bridge.
+The rejection below of whole-agent routing and generic reverse proxies does
+not prohibit that consented, non-HTTP-proxy inference protocol. Before either
+feature ships, use its shared `local_device` billing discriminator and host
+reference in place of the not-yet-implemented `local_executor`/`localExecutorId`
+spellings below. Curated downloads and host-source delegation retain this
+chapter's own bounds; automatically detected existing models do not enter the
+trusted download catalogue.
+
 ## 2. Shape of the feature
 
 ### 2.0 Delegation, not routing — what the local model is for

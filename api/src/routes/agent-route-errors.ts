@@ -77,6 +77,20 @@ export const sendAgentManagementError = (
     sendApiError(reply, 409, error.code, error.message)
     return true
   }
+  if (
+    error instanceof AgentManagementError
+    && error.code === AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_CONFLICT
+  ) {
+    sendApiError(reply, 409, error.code, error.message)
+    return true
+  }
+  if (
+    error instanceof AgentManagementError
+    && error.code === AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_REPLACEMENT_REQUIRED
+  ) {
+    sendApiError(reply, 400, error.code, error.message)
+    return true
+  }
   return false
 }
 

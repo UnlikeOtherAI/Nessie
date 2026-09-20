@@ -11,6 +11,7 @@ import { OversizePasteDialog } from '../../shared/OversizePasteDialog'
 import { Sheet } from '../../overlays/Sheet'
 import type { MentionEntity } from '../../shared/MentionInput'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
+import { AgentAvailability } from '../agents/AgentAvailability'
 import { ChannelComposer } from './ChannelComposer'
 import {
   ChannelMessageFeed,
@@ -288,6 +289,14 @@ export const ChannelAgentInfoDrawer = ({
                   </h2>
                   <div className="truncate text-xs text-[color:var(--tx3)]">
                     {agent.role}
+                  </div>
+                  <div className="mt-1">
+                    <AgentAvailability
+                      agentId={agent.id}
+                      canRepair={agent.ownerUserId === meUserId && agent.systemManaged !== true}
+                      localBindingId={agent.localInferenceBindingId}
+                      provider={agent.provider}
+                    />
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold">
                     {/* Not a `Pill`: this chip inherits the row's text-[11px], and

@@ -22,29 +22,18 @@ import {
 
 import { executorApi } from './api-client.js'
 import { signExecutorDaemonPayload } from './daemon-signature.js'
-import {
-  createExecutorBrowserSessionManager,
-  type ExecutorBrowserSessionManager,
-} from './browser-session-manager.js'
+import type { ExecutorBrowserSessionManager } from './browser-session-manager.js'
 import type { ExecutorConnectedBrowserSessionManager } from './connected-browser-session-manager.js'
-import {
-  createExecutorCodingSessionManager,
-  type ExecutorCodingSessionManager,
-} from './coding-session-manager.js'
-import {
-  createExecutorCommandSessionManager,
-  type ExecutorCommandSessionManager,
-} from './command-session-manager.js'
+import type { ExecutorCodingSessionManager } from './coding-session-manager.js'
+import type { ExecutorCommandSessionManager } from './command-session-manager.js'
 import {
   createExecutorCommandRecoveryStore,
   recoverOrPollExecutorCommand,
 } from './command-recovery.js'
 import { executeExecutorMcpCommand } from './mcp-dispatch.js'
-import { createExecutorMcpSessionManager, type ExecutorMcpSessionManager } from './mcp-session-manager.js'
-import { createLocalMcpReporter } from './local-mcp-report.js'
+import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
 import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
-import { acquireExecutorDaemonLease } from './daemon-lease.js'
 import {
   stopSandboxWorkspace,
   reviewSandboxWorkspace,
@@ -373,7 +362,7 @@ export const executeExecutorCommand = async (
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
 
-const pollAndExecuteCommand = async (
+export const pollAndExecuteCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
   browserSessions: ExecutorBrowserSessionManager,
@@ -445,96 +434,5 @@ export const createNonOverlappingExecutorTask = (
       current = started
       return started
     },
-  }
-}
-
-export const serveExecutor = async (
-  stateDir: string,
-  state: ExecutorLocalState,
-  options: { parentLiveness?: Readable } = {},
-): Promise<void> => {
-  const daemonLease = await acquireExecutorDaemonLease(stateDir)
-  try {
-    let live = await claimExecutor(stateDir, state)
-    const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
-    const commandSessions = createExecutorCommandSessionManager(stateDir, live)
-    const codingSessions = createExecutorCodingSessionManager(stateDir, live)
-    const namedMcpServers = live.mcpServers ?? []
-    const mcpSessions = createExecutorMcpSessionManager(namedMcpServers, live.descriptor.limits)
-    const localMcp = createLocalMcpReporter(namedMcpServers, mcpSessions)
-    // One sweep up front so the first heartbeat carries something better than
-    // silence; a failure here is not fatal, it just leaves the report absent
-    // until the interval comes round.
-    void localMcp.refresh().catch(() => undefined)
-    let shuttingDown = false
-    const commandPoll = createNonOverlappingExecutorTask(() => pollAndExecuteCommand(
-      stateDir,
-      live,
-      browserSessions,
-      commandSessions,
-      codingSessions,
-      mcpSessions,
-    ).catch(async (error) => {
-      // A lost or fenced control plane may mean that a human revoked an
-      // operation. Preserve fail-closed egress by ending any live browser
-      // before this daemon attempts another poll or reconnect.
-      await browserSessions.stopAll()
-      await commandSessions.stopAll()
-      await codingSessions.stopAll()
-      console.error(
-        '[nessie-executor] command poll failed:',
-        error instanceof Error ? error.message : String(error),
-      )
-    }))
-    const heartbeat = createNonOverlappingExecutorTask(async () => {
-      try {
-        await heartbeatExecutor(live, localMcp.current())
-      } catch (error) {
-        await browserSessions.stopAll()
-        await commandSessions.stopAll()
-        await codingSessions.stopAll()
-        if (!shuttingDown) {
-          try {
-            live = await claimExecutor(stateDir, live)
-          } catch (claimError) {
-            console.error(
-              '[nessie-executor] reconnect failed:',
-              claimError instanceof Error ? claimError.message : String(claimError),
-            )
-          }
-        }
-        console.error(
-          '[nessie-executor] heartbeat failed:',
-          error instanceof Error ? error.message : String(error),
-        )
-      }
-    })
-    const commandInterval = setInterval(() => {
-      void commandPoll.run()
-    }, 1_000)
-    const interval = setInterval(() => {
-      void heartbeat.run()
-    }, 20_000)
-    try {
-      await waitForExecutorDaemonShutdown(options.parentLiveness)
-    } finally {
-      shuttingDown = true
-      localMcp.stop()
-      clearInterval(interval)
-      clearInterval(commandInterval)
-      executorApi.cancelPending()
-      await Promise.allSettled([
-        ...(commandPoll.current() ? [commandPoll.current()] : []),
-        ...(heartbeat.current() ? [heartbeat.current()] : []),
-      ])
-      await Promise.allSettled([
-        browserSessions.stopAll(),
-        commandSessions.stopAll(),
-        codingSessions.stopAll(),
-        mcpSessions.stopAll(),
-      ])
-    }
-  } finally {
-    await daemonLease.release()
   }
 }

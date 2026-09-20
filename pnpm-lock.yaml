@@ -256,6 +256,9 @@ importers:
       '@nessie/knowledge':
         specifier: workspace:*
         version: link:../packages/knowledge
+      '@nessie/local-inference-host':
+        specifier: workspace:*
+        version: link:../packages/local-inference-host
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../packages/mcp-client
@@ -357,6 +360,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
+      '@nessie/local-inference-host':
+        specifier: workspace:*
+        version: link:../packages/local-inference-host
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
@@ -809,6 +815,16 @@ importers:
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.1.2
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
+  packages/local-inference-host:
+    dependencies:
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+    devDependencies:
       '@types/node':
         specifier: ^20.19.24
         version: 20.19.39

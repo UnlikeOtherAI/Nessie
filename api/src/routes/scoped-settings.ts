@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { z } from 'zod'
 
 import {
   isLockedAbove,
+  isAdminAuthoredScopedSettingKey,
+  isLocalInferenceEnabledValue,
+  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
   lockExplanation,
   resolveScopedSetting,
   resolveScopedSettings,
@@ -17,6 +21,7 @@ import {
 } from '../contracts/scoped-settings.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { resolveOrganizationAdministrationAccess } from '../services/uoa-organization-administration.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -122,12 +127,44 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     return { isOwnerOrAdmin: membership.role === 'owner' || membership.role === 'admin' }
   }
 
+  const authorizeAdminAuthoredKey = async (
+    reply: FastifyReply,
+    key: string,
+    actorContext: NonNullable<ReturnType<typeof requireActorContext>>,
+    organizationId: string,
+    userId: string,
+  ): Promise<boolean> => {
+    if (!isAdminAuthoredScopedSettingKey(key)) return true
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { externalOrgId: true },
+    })
+    const localRole = await prisma.organizationMember.findFirst({
+      where: { organizationId, userId, deactivatedAt: null },
+      select: { role: true },
+    })
+    const access = await resolveOrganizationAdministrationAccess({
+      actorContext,
+      localRole: localRole?.role ?? null,
+      organization: { externalOrgId: organization?.externalOrgId ?? null },
+    })
+    if (access.status === 'allowed') return true
+    if (access.status === 'unavailable') {
+      sendApiError(reply, 503, 'UOA_ORGANIZATION_ACCESS_UNAVAILABLE',
+        'UnlikeOtherAI could not confirm organisation administrator access. Try again shortly.')
+      return false
+    }
+    sendApiError(reply, 403, 'ORGANIZATION_ADMIN_REQUIRED',
+      'Organisation administrator access is required for this setting.')
+    return false
+  }
+
   app.get('/api/settings/scoped', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
 
-    const query = request.query as { keys?: string; scope?: string; teamId?: string }
+    const query = request.query as { keys?: string; scope?: string; teamId?: string; userId?: string }
     const keys = (query.keys ?? '').split(',').map((key) => key.trim()).filter(Boolean)
     const scope = (query.scope ?? 'user') as SettingScope
     const organizationId = actorContext.tenant.organizationId
@@ -142,12 +179,65 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
       return reply
     }
 
+    // An administrator may inspect the effective decision for one selected
+    // person, but only for the registered administrator-authored local
+    // inference key.  Keeping the exception here (instead of teaching the
+    // generic resolver an arbitrary user selector) preserves self-only reads
+    // for every other personal setting.
+    const targetedLocalInferenceRead = query.userId !== undefined
+    if (targetedLocalInferenceRead && (
+      scope !== 'user'
+      || keys.length !== 1
+      || keys[0] !== LOCAL_INFERENCE_ENABLED_SETTING_KEY
+    )) {
+      sendApiError(reply, 400, 'VALIDATION_ERROR',
+        'A selected person is only supported for the Local Ollama personal setting.')
+      return reply
+    }
+
+    for (const key of keys) {
+      if (!await authorizeAdminAuthoredKey(reply, key, actorContext, organizationId, userId)) {
+        return reply
+      }
+    }
+
+    let resolvedUserId = userId
+    if (targetedLocalInferenceRead) {
+      const targetUserId = z.string().uuid().safeParse(query.userId)
+      if (!targetUserId.success) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'The selected member is invalid.')
+        return reply
+      }
+      resolvedUserId = targetUserId.data
+      const target = await prisma.organizationMember.findFirst({
+        where: { organizationId, userId: resolvedUserId, deactivatedAt: null },
+        select: { userId: true },
+      })
+      if (!target) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Member not found')
+        return reply
+      }
+    }
+
+    const personalTeamId = scope === 'user'
+      ? targetedLocalInferenceRead
+        ? query.teamId
+          ? await prisma.team.findFirst({
+            where: {
+              id: query.teamId,
+              members: { some: { userId: resolvedUserId } },
+              project: { organizationId },
+            },
+            select: { id: true },
+          }).then((team) => team?.id ?? null)
+          : null
+        : await memberTeamId(prisma, organizationId, userId, query.teamId)
+      : query.teamId ?? null
+
     const resolved = await resolveScopedSettings(prisma, {
       organizationId,
-      teamId: scope === 'user'
-        ? await memberTeamId(prisma, organizationId, userId, query.teamId)
-        : query.teamId ?? null,
-      userId: scope === 'user' ? userId : null,
+      teamId: personalTeamId,
+      userId: scope === 'user' ? resolvedUserId : null,
     }, keys)
 
     return createApiResponse(
@@ -182,7 +272,33 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
       sendApiError(reply, 403, 'FORBIDDEN', 'Your access to this organisation is not active.')
       return reply
     }
-    if (!(await authorizeScope(reply, {
+    if (isAdminAuthoredScopedSettingKey(key)) {
+      if (!isLocalInferenceEnabledValue(body.value)) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'Local Ollama enablement must be a boolean.')
+        return reply
+      }
+      if (body.scope === 'user' && !body.userId) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'Choose the person this administrative setting applies to.')
+        return reply
+      }
+      if (!await authorizeAdminAuthoredKey(reply, key, actorContext, organizationId, userId)) {
+        return reply
+      }
+      if (body.scope === 'team' && (!body.teamId || !await isTeamInOrganization(prisma, organizationId, body.teamId))) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+        return reply
+      }
+      const targetUserId = body.userId ?? userId
+      const target = await prisma.organizationMember.findFirst({
+        where: { organizationId, userId: targetUserId, deactivatedAt: null },
+        select: { userId: true },
+      })
+      if (!target) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Member not found')
+        return reply
+      }
+    }
+    if (!isAdminAuthoredScopedSettingKey(key) && !(await authorizeScope(reply, {
       ...role, organizationId, scope: body.scope, teamId: body.teamId ?? undefined, userId,
     }))) {
       return reply
@@ -192,8 +308,11 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     // organisation, and `writeScopedSetting` cannot know which team that is —
     // a person may be in several. Check it here, where the team is verified.
     if (body.scope === 'user') {
-      const teamId = await memberTeamId(prisma, organizationId, userId, body.teamId ?? undefined)
-      const current = await resolveScopedSetting(prisma, { organizationId, teamId, userId }, key)
+      const targetUserId = isAdminAuthoredScopedSettingKey(key) ? body.userId ?? userId : userId
+      const teamId = isAdminAuthoredScopedSettingKey(key)
+        ? body.teamId ?? null
+        : await memberTeamId(prisma, organizationId, userId, body.teamId ?? undefined)
+      const current = await resolveScopedSetting(prisma, { organizationId, teamId, userId: targetUserId }, key)
       if (isLockedAbove(current, 'user')) {
         sendApiError(reply, 409, SCOPED_SETTING_ERROR_CODES.LOCKED_ABOVE, lockExplanation(
           current.lockedAtScope as 'organization' | 'team',
@@ -210,7 +329,9 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
         scope: body.scope,
         teamId: body.teamId ?? null,
         updatedByUserId: userId,
-        userId: body.scope === 'user' ? userId : null,
+        userId: body.scope === 'user'
+          ? (isAdminAuthoredScopedSettingKey(key) ? body.userId ?? null : userId)
+          : null,
         value: (body.value ?? null) as never,
       })
       // A scoped setting is policy: which level it was written at, and whether
