@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createOpenAiLikeConnector } from '../src/inference/connectors/openai.js'
+import { createKimiConnector } from '../src/inference/connectors/kimi.js'
 import type {
   ProviderInvocationResult,
   ProviderStreamEvent,
@@ -142,4 +143,24 @@ test('an unbounded conversational request omits completion caps while an explici
   assert.equal(requests[0]?.max_completion_tokens, undefined)
   assert.equal(requests[0]?.max_tokens, undefined)
   assert.equal(requests[1]?.max_tokens, 77)
+})
+
+test('Kimi derives its required Messages max_tokens from provider model metadata', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = []
+  globalThis.fetch = async (input, init) => {
+    const url = input.toString()
+    requests.push({ url, ...(init?.body ? { body: JSON.parse(String(init.body)) as Record<string, unknown> } : {}) })
+    if (url.endsWith('/v1/models')) return new Response(JSON.stringify({ data: [{ id: 'kimi-for-coding', context_length: 1_048_576 }] }))
+    return new Response(JSON.stringify({ content: [{ text: 'ok', type: 'text' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }))
+  }
+  try {
+    const connector = createKimiConnector({ apiKey: 'key', baseUrl: 'https://api.kimi.com/coding', provider: 'kimi' })
+    const capability = await connector.getModelCapabilities('kimi-for-coding')
+    assert.equal(capability.maxOutputTokens, 1_048_576)
+    await connector.invoke({ maxOutputTokens: capability.maxOutputTokens, messages: [{ content: 'hi', role: 'user' }], model: 'kimi-for-coding', requestId: 'kimi' })
+    assert.equal(requests[1]?.body?.max_tokens, 1_048_576)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
