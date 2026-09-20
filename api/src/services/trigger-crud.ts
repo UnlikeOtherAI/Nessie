@@ -1,27 +1,24 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
-import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
+import type { PrismaClient } from '@prisma/client'
 import {
   buildAgentVisibilityWhere,
-  acquireAgentTodoAgentLock,
   createAgentTrigger,
   createWorkflowTrigger,
-  mergeTriggerConfigPreservingIdentity,
-  validateTodoTemplateTriggerConfig,
+  deleteAgentTrigger,
+  getAgentTrigger,
+  listAgentTriggers,
+  updateAgentTrigger,
+  type AgentTriggerScope,
+  agentTriggerScopeWhere,
 } from '@nessie/team-admin'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
-  AgentTriggerStatus,
   AgentTriggerType,
 } from '../contracts/triggers.js'
 import {
-  ensureWebhookConfig,
-  extractWebhookApiKey,
-  isJsonRecord,
   mapTriggerDeliveryRecord,
   mapTriggerRecord,
   normalizeNextRunAt,
-  resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
   TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-shared.js'
@@ -29,18 +26,8 @@ import {
 // Trigger creation is shared with the worker (the assistant's
 // `agent_trigger_create` tool); the route keeps importing it from here.
 export { createAgentTrigger }
-
-export const listAgentTriggers = async (
-  prisma: PrismaClient,
-  agentId: string,
-): Promise<AgentTriggerRecord[]> => {
-  const triggers = await prisma.agentTrigger.findMany({
-    where: { agentId },
-    orderBy: [{ createdAt: 'asc' }],
-  })
-
-  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
-}
+export { deleteAgentTrigger, getAgentTrigger, listAgentTriggers, updateAgentTrigger }
+export type { AgentTriggerScope }
 
 export const listOrganizationTriggers = async (
   prisma: PrismaClient,
@@ -161,217 +148,6 @@ export { createWorkflowTrigger }
  * were two different queries against two different `where` clauses, and a
  * second caller — the worker, the PA, a new route — inherited nothing.
  */
-export type AgentTriggerScope = {
-  organizationId: string
-  triggerId: string
-}
-
-const scopedTriggerWhere = (
-  scope: AgentTriggerScope,
-): Prisma.AgentTriggerWhereInput => ({
-  id: scope.triggerId,
-  OR: [
-    {
-      agent: {
-        OR: [
-          { organizationId: scope.organizationId },
-          // A global agent carries no organizationId; it reaches a tenant
-          // through the channels it is bound into. Same arm
-          // `listOrganizationTriggers` uses, so the two cannot disagree.
-          { bindings: { some: { channel: { organizationId: scope.organizationId } } } },
-        ],
-      },
-    },
-    { workflowInstallation: { organizationId: scope.organizationId } },
-  ],
-})
-
-export const getAgentTrigger = async (
-  prisma: PrismaClient,
-  scope: AgentTriggerScope,
-): Promise<AgentTriggerRecord | null> => {
-  const trigger = await prisma.agentTrigger.findFirst({
-    where: scopedTriggerWhere(scope),
-  })
-
-  return trigger ? mapTriggerRecord(trigger) : null
-}
-
-export const updateAgentTrigger = async (
-  prisma: PrismaClient,
-  scope: AgentTriggerScope,
-  input: {
-    config?: Record<string, unknown>
-    description?: string | null
-    enabled?: boolean
-    name?: string | null
-    nextRunAt?: string | null
-    status?: AgentTriggerStatus
-    targetChannelId?: string | null
-    targetThreadId?: string | null
-  },
-): Promise<AgentTriggerRecord | null> => {
-  const existing = await prisma.agentTrigger.findFirst({
-    where: scopedTriggerWhere(scope),
-    select: {
-      agentId: true,
-      config: true,
-      id: true,
-      targetChannelId: true,
-      targetThreadId: true,
-      type: true,
-      workflowInstallationId: true,
-    },
-  })
-
-  if (!existing) {
-    return null
-  }
-  const triggerId = existing.id
-
-  const shouldUpdateTarget =
-    input.targetChannelId !== undefined || input.targetThreadId !== undefined
-
-  let target: { channelId: string | null; threadId: string | null }
-  if (existing.agentId) {
-    const resolved = shouldUpdateTarget
-      ? await resolveExecutionTarget(prisma, existing.agentId, {
-          targetChannelId:
-            input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId,
-          targetThreadId:
-            input.targetThreadId === undefined ? existing.targetThreadId : input.targetThreadId,
-        })
-      : {
-          channelId: existing.targetChannelId,
-          threadId: existing.targetThreadId,
-        }
-    if (!resolved?.channelId || !resolved.threadId) {
-      return null
-    }
-    target = resolved
-  } else {
-    if (shouldUpdateTarget) {
-      return null
-    }
-    target = { channelId: null, threadId: null }
-  }
-
-  const nextStatus =
-    input.status ??
-    (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
-  // The scheduler is the sole owner of an enabled, paused trigger with no
-  // next run: it uses that state only after natural schedule exhaustion while
-  // a durable final delivery finishes retrying. A person pausing through the
-  // generic update route must disable the trigger too, even if they supplied
-  // a contradictory `enabled: true`, so their pause always cancels retries.
-  const normalizedEnabled = nextStatus === 'paused' ? false : input.enabled
-  const nextConfig =
-    input.config === undefined
-      ? existing.config
-      : mergeTriggerConfigPreservingIdentity(existing.config, input.config)
-  const normalizedConfig =
-    existing.type === 'webhook' ? ensureWebhookConfig(nextConfig) : nextConfig
-  const shouldPersistConfig =
-    existing.type === 'webhook'
-      ? input.config !== undefined || !extractWebhookApiKey(existing.config)
-      : input.config !== undefined
-  const shouldRecomputeSchedulerNextRun =
-    input.nextRunAt === undefined && input.config !== undefined
-  const normalizedNextRunAt =
-    existing.type === 'scheduled' || existing.type === 'interval'
-      ? input.nextRunAt === undefined
-        ? shouldRecomputeSchedulerNextRun
-          ? normalizeNextRunAt({
-              config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined,
-              type: existing.type,
-            })
-          : undefined
-        : input.nextRunAt === null
-          ? null
-          : normalizeNextRunAt({
-              config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined,
-              nextRunAt: input.nextRunAt,
-              type: existing.type,
-            })
-      : input.nextRunAt === undefined
-        ? undefined
-        : input.nextRunAt === null
-          ? null
-          : new Date(input.nextRunAt)
-
-  if (
-    existing.type === 'scheduled' &&
-    input.config !== undefined &&
-    !parseScheduledCronConfig(normalizedConfig)
-  ) {
-    return null
-  }
-
-  if (
-    existing.type === 'interval' &&
-    input.config !== undefined &&
-    !parseIntervalMinutes(normalizedConfig)
-  ) {
-    return null
-  }
-
-  const update = (tx: PrismaClient | Prisma.TransactionClient) => tx.agentTrigger.update({
-    where: { id: triggerId },
-    data: {
-      name: input.name === undefined ? undefined : input.name,
-      description: input.description === undefined ? undefined : input.description,
-      enabled: normalizedEnabled,
-      status: nextStatus,
-      config: shouldPersistConfig
-        ? (normalizedConfig as Prisma.InputJsonValue)
-        : undefined,
-      ...(shouldUpdateTarget
-        ? {
-            targetChannelId: target.channelId,
-            targetThreadId: target.threadId,
-          }
-        : {}),
-      nextRunAt: normalizedNextRunAt,
-    },
-  })
-  const config = isJsonRecord(normalizedConfig) ? normalizedConfig : {}
-  const shouldValidateTodoTemplate = Object.hasOwn(config, 'todoTemplateId')
-    && (input.config !== undefined || input.enabled === true)
-  const trigger = shouldValidateTodoTemplate && existing.agentId
-    ? await prisma.$transaction(async (tx) => {
-        await acquireAgentTodoAgentLock(tx, existing.agentId!)
-        if (!await validateTodoTemplateTriggerConfig(tx, existing.agentId!, config)) {
-          return null
-        }
-        return update(tx)
-      })
-    : shouldValidateTodoTemplate
-      ? null
-    : await update(prisma)
-
-  if (!trigger) return null
-
-  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
-}
-
-export const deleteAgentTrigger = async (
-  prisma: PrismaClient,
-  scope: AgentTriggerScope,
-): Promise<boolean> => {
-  const deliveryCount = await prisma.agentTriggerDelivery.count({
-    where: { triggerId: scope.triggerId },
-  })
-  if (deliveryCount > 0) {
-    return false
-  }
-
-  const result = await prisma.agentTrigger.deleteMany({
-    where: scopedTriggerWhere(scope),
-  })
-
-  return result.count > 0
-}
-
 export const pauseAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
@@ -397,7 +173,7 @@ export const resumeAgentTrigger = async (
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     select: { config: true, id: true, nextRunAt: true, type: true },
-    where: scopedTriggerWhere(scope),
+    where: agentTriggerScopeWhere(scope),
   })
   if (!existing) return null
   const triggerId = existing.id
@@ -442,7 +218,7 @@ export const listAgentTriggerDeliveries = async (
   limit: number,
 ): Promise<AgentTriggerDeliveryRecord[]> => {
   const deliveries = await prisma.agentTriggerDelivery.findMany({
-    where: { trigger: scopedTriggerWhere(scope) },
+    where: { trigger: agentTriggerScopeWhere(scope) },
     include: {
       run: {
         select: { id: true, status: true },

@@ -13,15 +13,12 @@ import { emitAuditEvent } from '../services/audit.js'
 import { checkPolicy } from '../services/policy.js'
 import {
   createAgentTrigger,
-  deleteAgentTrigger,
   dispatchAgentTrigger,
   getAgentTrigger,
   listAgentTriggerActivity,
   listAgentTriggerDeliveries,
-  listAgentTriggers,
   listOrganizationTriggers,
   listScheduledTriggers,
-  updateAgentTrigger,
 } from '../services/triggers.js'
 import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'

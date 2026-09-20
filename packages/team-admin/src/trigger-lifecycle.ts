@@ -9,7 +9,7 @@ import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
 export type AgentTriggerScope = { organizationId: string; triggerId: string }
 /** Every trigger is tenant-scoped through its agent (including bound global
  * agents) or its workflow installation; never look up a caller id bare. */
-const whereFor = (scope: AgentTriggerScope): Prisma.AgentTriggerWhereInput => ({
+export const agentTriggerScopeWhere = (scope: AgentTriggerScope): Prisma.AgentTriggerWhereInput => ({
   id: scope.triggerId,
   OR: [
     {
@@ -28,12 +28,12 @@ export const listAgentTriggers = async (prisma: PrismaClient, agentId: string): 
   (await prisma.agentTrigger.findMany({ where: { agentId }, orderBy: { createdAt: 'asc' } })).map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 
 export const getAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope): Promise<AgentTriggerRecord | null> => {
-  const trigger = await prisma.agentTrigger.findFirst({ where: whereFor(scope) })
+  const trigger = await prisma.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
   return trigger ? mapTriggerRecord(trigger) : null
 }
 
 export const updateAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope, input: { config?: Record<string, unknown>; description?: string | null; enabled?: boolean; name?: string | null; nextRunAt?: string | null; status?: AgentTriggerStatus; targetChannelId?: string | null; targetThreadId?: string | null }): Promise<AgentTriggerRecord | null> => {
-  const existing = await prisma.agentTrigger.findFirst({ where: whereFor(scope), select: { agentId: true, config: true, id: true, targetChannelId: true, targetThreadId: true, type: true } })
+  const existing = await prisma.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope), select: { agentId: true, config: true, id: true, targetChannelId: true, targetThreadId: true, type: true } })
   if (!existing) return null
   const agentId = existing.agentId
   const targetChanged = input.targetChannelId !== undefined || input.targetThreadId !== undefined
@@ -59,5 +59,5 @@ export const updateAgentTrigger = async (prisma: PrismaClient, scope: AgentTrigg
 
 export const deleteAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope): Promise<boolean> => {
   if (await prisma.agentTriggerDelivery.count({ where: { triggerId: scope.triggerId } })) return false
-  return (await prisma.agentTrigger.deleteMany({ where: whereFor(scope) })).count > 0
+  return (await prisma.agentTrigger.deleteMany({ where: agentTriggerScopeWhere(scope) })).count > 0
 }
