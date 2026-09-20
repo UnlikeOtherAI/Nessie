@@ -1,8 +1,10 @@
 import {
   deleteAgent,
   deleteAgentTrigger,
+  checkPolicy,
   isAgentAccessibleToActor,
   listAgentTriggers,
+  loadChannelForAgentManagement,
   unbindAgentFromChannel,
   updateAgentTrigger,
 } from '@nessie/team-admin'
@@ -64,10 +66,23 @@ export const runAgentTriggerDeleteTool = async (context: BuiltinToolRuntimeConte
 
 export const runAgentUnbindChannelTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
   const { agentId, channelId } = z.object({ agentId: Id, channelId: Id }).parse(input)
-  const member = await requireAccessibleAgent(context, agentId)
-  const channel = await context.prisma.channel.findFirst({ where: { id: channelId, organizationId: member.organizationId }, select: { systemChannelType: true } })
-  if (!channel) throw new Error('Channel not found.')
-  if (channel.systemChannelType) throw new Error('System-managed conversation bindings are owned by their bootstrap.')
+  const member = await resolveActingMember(context)
+  if (!member.isOrganizationAdmin) {
+    throw new Error(`Only an organisation owner or admin can unbind an agent (your role is "${member.role}").`)
+  }
+  const channel = await loadChannelForAgentManagement(context.prisma, {
+    channelId,
+    isOrganizationAdmin: member.isOrganizationAdmin,
+    organizationId: member.organizationId,
+    userId: member.userId,
+  })
+  if (channel.kind === 'not_found') throw new Error('Channel not found.')
+  if (channel.kind === 'system_managed') throw new Error('System-managed conversation bindings are owned by their bootstrap.')
+  const policy = await checkPolicy(context.prisma, {
+    ...member.actorContext,
+    actionContext: { ...member.actorContext.actionContext, toolId: undefined },
+  }, 'agent', 'bind', { agentId, channelId })
+  if (!policy.allowed) throw new Error(`Agent unbinding denied by policy: ${policy.reasonCode}`)
   await unbindAgentFromChannel(context.prisma, { agentId, channelId, organizationId: member.organizationId })
   await emitWorkerAuditEvent(context.prisma, member.actorContext, { action: 'agent.unbound', metadata: { channelId }, outcome: 'success', resourceId: agentId, resourceType: 'agent' })
   await context.realtimeTransport.publishWs([{ kind: 'agent', agentId: parseAgentId(agentId) }], { data: { agentId: parseAgentId(agentId) }, event: 'agent.updated' })
