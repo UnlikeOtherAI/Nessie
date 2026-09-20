@@ -24,6 +24,31 @@ Consequences that are not negotiable:
   `PaginationMetaSchema` with `total` required, like every other admin list. The
   cursor is the sorted `provider\0model` key, base64url-encoded and opaque.
 
+## Filtering and catalogue-wide decisions
+
+`GET /api/inference/model-catalog` accepts optional `provider` and `model`
+filters. Both are case-insensitive partial matches; provider searches Ledger's
+stable service key **and** its display name, while model searches the Ledger
+model identifier. Filtering happens against the freshly read Ledger catalogue
+*before* cursor pagination, so `meta.total`, the page rows, and the cursor all
+describe the same filtered set.
+
+`PATCH /api/inference/model-catalog/bulk` accepts `{ enabled, provider?,
+model? }` and applies the decision to every matching pair in that same kind of
+live catalogue read — never only the page of rows currently visible. Omitting
+both filters means every currently offered Ledger pair. Its response reports
+`updatedCount`, so the caller can state exactly how many availability decisions
+were written. A filter that matches no live pair succeeds with `updatedCount:
+0`; it never resurrects a local row for a model Ledger no longer offers.
+
+All of the matched pair upserts happen in one database transaction. Provider
+containers created for the operation remain `draft` and disabled, and existing
+provider configuration is never changed, so a bulk availability decision cannot
+become a routing override. The interactive transaction has an explicit 60-second
+timeout (and a five-second acquisition limit): Ledger catalogues can contain
+hundreds of pairs, and Prisma's five-second default would otherwise let a whole
+catalogue decision expire before all upserts finish.
+
 ## A row this page writes is a container, never a routing override
 
 The same two tables carry an older meaning. `worker/src/run/inference-provider.ts`
