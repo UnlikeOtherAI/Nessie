@@ -143,10 +143,6 @@ export const createRunInference = (
       return result
     }
     const documentStream = streaming ? deps.documentStream : undefined
-    // A document is emitted as tool-call arguments inside one completion, so
-    // the ordinary per-call output cap would truncate it mid-sentence. When the
-    // tool is on the table this call asks for the model's own maximum instead;
-    // the run budget, not this number, remains the spend envelope.
     const controller = documentStream ? new AbortController() : null
     const cancelPoll = controller
       ? startCancellationPoll({

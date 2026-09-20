@@ -679,7 +679,7 @@ test('a repeated provider length is not fabricated as a run token limit', async 
   })
   assert.equal(calls, 2)
   assert.equal(result.exhaustedBudget, null)
-  assert.equal(result.incompleteReason, 'empty_provider_response')
+  assert.equal(result.incompleteReason, 'provider_output_limit')
   assert.match(result.finalText, /model provider reached its response limit again/)
 })
 
@@ -704,6 +704,25 @@ test('a length-stopped tool frame is regenerated before any tool dispatch', asyn
   })
   assert.equal(executions, 1)
   assert.equal(result.finalText, 'card posted')
+})
+
+test('a prose-only recovery never dispatches a newly requested tool', async () => {
+  let executions = 0
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 4 }), callbacks: noopCallbacks(),
+    executeTool: async () => { executions += 1; return { inputSummary: 'x', output: 'x', success: true } },
+    initialMessages: initial,
+    runInference: async () => {
+      calls += 1
+      return calls === 1
+        ? { ...finalAnswerInference('partial'), finishReason: 'length' }
+        : toolCallInference('')
+    },
+    tools: [{ description: 'must not run', inputSchema: {}, toolName: 'noop' }],
+  })
+  assert.equal(executions, 0)
+  assert.equal(result.incompleteReason, 'provider_output_limit')
 })
 
 test('an empty provider success after tools gets one checkpointed no-tools finalisation', async () => {

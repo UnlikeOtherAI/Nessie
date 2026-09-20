@@ -49,9 +49,10 @@ export type StageExecutionSuccess = {
  */
 export const resolveStageOutputTokens = (input: {
   capabilityMaxOutputTokens?: number
+  requiresProviderOutputLimit?: boolean
   requestedMaxOutputTokens?: number
 }): number | undefined => input.requestedMaxOutputTokens === undefined
-  ? undefined
+  ? input.requiresProviderOutputLimit ? input.capabilityMaxOutputTokens : undefined
   : Math.min(
   input.requestedMaxOutputTokens,
   input.capabilityMaxOutputTokens ?? Number.POSITIVE_INFINITY,
@@ -275,6 +276,9 @@ export const executeStage = async (
     const capabilities = await service.getCapabilities(providerConfig.model)
     const maxOutputTokens = resolveStageOutputTokens({
       capabilityMaxOutputTokens: capabilities.effectiveSnapshot.maxOutputTokens,
+      // Kimi's Anthropic-compatible Messages protocol requires max_tokens.
+      // This is its advertised provider ceiling, never a verbosity policy.
+      requiresProviderOutputLimit: runtimeProvider === 'kimi',
       requestedMaxOutputTokens: input.maxOutputTokensOverride,
     })
     input.onInferenceAttempt?.({ invocationId })

@@ -20,3 +20,9 @@ test('output admission lets a larger selected model use its run allowance', () =
 test('an unbounded conversational turn omits an output-token request', () => {
   assert.equal(resolveStageOutputTokens({}), undefined)
 })
+
+test('Kimi receives its advertised protocol maximum when its Messages API requires it', () => {
+  assert.equal(resolveStageOutputTokens({
+    capabilityMaxOutputTokens: 32_000, requiresProviderOutputLimit: true,
+  }), 32_000)
+})

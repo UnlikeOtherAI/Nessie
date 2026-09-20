@@ -23,6 +23,13 @@ export class EmptyProviderResponseError extends Error {
   }
 }
 
+export class ProviderOutputLimitError extends Error {
+  constructor() {
+    super('Provider repeatedly reached its output limit before completing the response')
+    this.name = 'ProviderOutputLimitError'
+  }
+}
+
 export const restoreOutputFinalizationState = (input: {
   lengthFinalizationPending?: boolean
   lengthFinalizationUsed?: boolean
@@ -97,12 +104,16 @@ export const advanceOutputFinalization = (
     state.noTools = input.toolCalls.length === 0
     return { kind: 'recover', reason }
   }
-  if (state.pending && input.toolCalls.length > 0) {
+  if (state.pending && input.toolCalls.length > 0 && !state.noTools) {
     state.pending = false
     // This is the one permitted regenerated tool batch after a truncated
     // frame. It will proceed through ordinary authorization and effect
     // idempotency; the original length-stopped batch was never dispatched.
     return null
+  }
+  if (state.pending && input.toolCalls.length > 0) {
+    state.pending = false
+    return { kind: 'terminal', reason: state.reason ?? 'length' }
   }
   return null
 }

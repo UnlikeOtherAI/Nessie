@@ -201,6 +201,7 @@ export const buildModelPrompt = (
       'sentence or two that makes it useful, and stop. That is a default, not',
       'a limit.',
     ].join(' '),
+    'Complete the requested work before replying. Use clear, proportionate detail; do not mention internal budgets or response limits unless the provider actually prevents completion.',
     [
       'Write long when long is genuinely the right answer: someone asked for',
       'detail or a full report, the work has several parts that each matter,',

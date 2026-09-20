@@ -193,7 +193,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     cancelled = false,
     pendingApproval: ToolApprovalSuspension | null = null,
     pendingInput: AgentCardSuspension | null = null,
-    incompleteReason: 'empty_provider_response' | null = null,
+    incompleteReason: 'empty_provider_response' | 'provider_output_limit' | null = null,
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
@@ -321,7 +321,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       if (postCompactionTimeStop) return stop(postCompactionTimeStop)
 
       const finalizationPending = outputFinalization.pending
-      const activeToolSchemaTokens = finalizationPending ? 0 : toolSchemaTokens
+      const activeToolSchemaTokens = finalizationPending && outputFinalization.noTools ? 0 : toolSchemaTokens
       const admission = () => resolveOutputAdmission({
         contextPlan,
         effectiveTokensUsed: spend.effectiveTokensUsed,
@@ -427,7 +427,8 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         // well inside its ledger allowance (as the production incident was),
         // and reporting it as `token_limit` fabricates both the cause and a
         // misleading manual continuation path.
-        return finish(null, finalText, false, null, null, 'empty_provider_response')
+        return finish(null, finalText, false, null, null,
+          finalization.reason === 'length' ? 'provider_output_limit' : 'empty_provider_response')
       }
 
       if (!result.toolCalls || result.toolCalls.length === 0) {
