@@ -328,7 +328,7 @@ const RESTRICTION_REASONS: Record<AgentToolCatalogRestrictedEntry['restriction']
     'reserved for Nessie’s built-in specialists — nobody can give it to a '
     + 'designed agent, including you',
   explicit_grant:
-    'granted only from the owner surfaces (Apps, Tools) — never from here',
+    'requires an organisation owner: inspect the target, then use the dedicated protected-access control (or the complete DeepWater bundle control)',
   personal_assistant_only:
     'only a person’s own Personal Assistant may use it; a designed agent cannot',
 }
@@ -374,7 +374,7 @@ export const runAgentToolCatalogTool = async (
       `Tools you can give an agent here (${togglable.length}), `
       + `and ${restricted.length} you cannot.`,
       ...sections,
-      formatSection('Not grantable from a conversation', restricted.map(describeRestrictedEntry)),
+      formatSection('Special access and unavailable tools', restricted.map(describeRestrictedEntry)),
       catalogue.connectorCount === 0
         ? 'No connected apps are active in this team yet — install one from '
           + 'the Apps page to give an agent access to an outside service.'
