@@ -27,6 +27,7 @@ import { type OllamaFetch } from './ollama-client.js'
 
 const MAX_FRAME_BYTES = 16 * 1024
 const MAX_OUTPUT_BYTES = 512 * 1024
+const CONTROL_POLL_INTERVAL_MS = 250
 
 export type LocalInferenceHostIdentity = {
   connectionEpoch: string
@@ -162,6 +163,7 @@ export class LocalInferenceHostLoop {
     identity: LocalInferenceHostIdentity
     isPaused: () => boolean
     journal: EncryptedLocalInferenceReceiptJournal
+    controlIntervalMs?: number
     now?: () => Date
     origin: string
   }) {}
@@ -222,6 +224,18 @@ export class LocalInferenceHostLoop {
     this.#frameSequences.set(attempt.attemptId, 1)
     const remainingMs = new Date(attempt.deadlineAt).valueOf() - this.now().valueOf()
     const deadlineTimer = setTimeout(() => controller.abort('deadline_exceeded'), Math.max(1, remainingMs))
+    let controlPending = false
+    const controlTimer = setInterval(() => {
+      if (controlPending || controller.signal.aborted) return
+      controlPending = true
+      const control = { attemptId: attempt.attemptId, dispatchFence }
+      void this.dependencies.api.control({ envelope: this.envelope('control', control), control })
+        .then((response) => {
+          if (response.state !== 'active') controller.abort(response.state)
+        })
+        .catch(() => undefined)
+        .finally(() => { controlPending = false })
+    }, this.dependencies.controlIntervalMs ?? CONTROL_POLL_INTERVAL_MS)
     let model: EligibleModel | undefined
     try {
       model = await this.selectedModel(attempt)
@@ -257,6 +271,7 @@ export class LocalInferenceHostLoop {
       return { attemptId: attempt.attemptId, kind: 'completed' }
     } finally {
       clearTimeout(deadlineTimer)
+      clearInterval(controlTimer)
       this.#active.delete(attempt.attemptId)
       this.#frameSequences.delete(attempt.attemptId)
     }

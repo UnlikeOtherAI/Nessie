@@ -10,6 +10,7 @@ import type {
   LocalInferenceResult,
   LocalInferenceSignedEnvelope,
 } from '@nessie/schemas'
+import { LocalInferenceAttemptFrameSchema } from '@nessie/schemas'
 
 import { LocalInferenceHostLoop } from '../src/local-inference-host.js'
 import { EncryptedLocalInferenceReceiptJournal } from '../src/local-inference-receipts.js'
@@ -143,6 +144,7 @@ const apiFor = (
         return { serverTime: new Date().toISOString() }
       },
       poll: async () => ({ attempt: lease, dispatchFence: lease === null ? null : dispatchFence }),
+      control: async () => ({ state: 'active' }),
       submitFrame: async (input) => {
         calls.frames.push(input)
         return { acknowledged: true }
@@ -242,6 +244,42 @@ test('a durable encrypted receipt is retried without dialing Ollama again', asyn
   assert.equal(await journal.get({ attemptId: ATTEMPT_ID, dispatchFence: 1 }), undefined)
 })
 
+test('a signed control response aborts a blocked Ollama stream before its next frame', async () => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api, calls } = apiFor(attempt())
+  let aborted = false
+  api.control = async () => ({ state: 'cancelled' })
+  const loop = new LocalInferenceHostLoop({
+    api,
+    controlIntervalMs: 1,
+    fetchImpl: ((url, init) => {
+      if (url.endsWith('/api/chat')) {
+        const signal = init?.signal as AbortSignal
+        return Promise.resolve(new Response(new ReadableStream({
+          start(controller) {
+            signal.addEventListener('abort', () => {
+              aborted = true
+              controller.error(new Error('aborted'))
+            }, { once: true })
+          },
+        })))
+      }
+      return ollama([])(url, init)
+    }) as OllamaFetch,
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false,
+    journal,
+    origin: 'http://127.0.0.1:11434',
+  })
+
+  await loop.pollOnce()
+
+  assert.equal(aborted, true)
+  assert.equal(calls.frames.length, 1)
+  assert.match(Buffer.from(calls.frames[0]?.frame.data ?? '', 'base64url').toString('utf8'), /cancelled/)
+})
+
 test('the chat transport refuses a remote result before yielding an event', async () => {
   const controller = new AbortController()
   await assert.rejects(async () => {
@@ -255,4 +293,31 @@ test('the chat transport refuses a remote result before yielding an event', asyn
       throw new Error('must not yield')
     }
   }, OllamaChatError)
+})
+
+test('tool ids are scoped to the durable invocation, not an Ollama-local counter', async () => {
+  const toolAttempt = (): LocalInferenceAttemptRequest => ({
+    ...attempt(),
+    tools: [{ description: 'A safe tool', inputSchema: { type: 'object' }, toolName: 'safe_tool' }],
+  })
+  const response = [{
+    done: true,
+    message: { tool_calls: [{ function: { arguments: {}, name: 'safe_tool' } }] },
+    model: 'local:latest',
+  }]
+  const first = toolAttempt()
+  const second = { ...toolAttempt(), invocationId: 'invocation-2' }
+  const calls = await Promise.all([first, second].map(async (request) => {
+    for await (const event of streamOllamaChat({
+      attempt: request, fetchImpl: ollama(response), origin: 'http://127.0.0.1:11434', signal: new AbortController().signal,
+    })) return event.toolCalls?.[0]?.toolCallId
+    return undefined
+  }))
+  assert.deepEqual(calls, ['invocation-1:ollama-1', 'invocation-2:ollama-1'])
+})
+
+test('frame transport rejects malformed base64url before it reaches storage', () => {
+  assert.equal(LocalInferenceAttemptFrameSchema.safeParse({
+    attemptId: ATTEMPT_ID, data: '%', dispatchFence: 1, sequence: 1,
+  }).success, false)
 })

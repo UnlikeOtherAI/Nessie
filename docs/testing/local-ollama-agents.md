@@ -13,6 +13,7 @@ From the repository root, with dependencies installed:
 ```powershell
 pnpm --filter @nessie/executor exec node --test --import tsx test/ollama-observed.test.ts
 pnpm --filter @nessie/executor exec node --test --import tsx test/local-inference-host.test.ts
+pnpm --filter @nessie/executor exec node --test --import tsx test/local-inference-receipts.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/uoa-live-entitlements.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/local-inference-policy.test.ts
 pnpm --filter @nessie/admin exec node --test --import tsx test/local-inference-run-restart.test.ts
@@ -49,27 +50,31 @@ Results on 2026-09-20:
 The direct Desktop bridge uses DPAPI for the current Windows user and native
 Keychain/Secret Service stores on macOS/Linux; it has no plaintext fallback.
 It creates or rotates its key only after an OS-native confirmation, stops on
-Desktop exit, and exposes no general process or fetch command. The native-only
-signed canonical consent-display endpoint and the signed direct host loop are
-not available yet, so the bridge deliberately does not accept webview-supplied
-consent fields or claim that hosting has started.
+Desktop exit, and exposes no general process or fetch command. Its
+consent-display and host-loop requests are machine-signed; webview input cannot
+choose the identity or model being confirmed.
+
+## Transport retention and recovery
+
+Each attempt is bound to a canonical request digest, its selected model digest,
+and a deterministic invocation id. Retrying the same logical request reuses
+that receipt rather than starting another Ollama call or creating another tool
+effect. The server accepts a receipt only before its deadline and only for the
+pinned model digest. It keeps encrypted terminal attempts and acknowledged
+frames for at most one hour; the authenticated host poll transaction sweeps
+that bounded transport state safely across API replicas. A `response.error`
+frame is an error delivery, never an empty successful answer. Live local text
+uses the ordinary SSE redactor and emits its held tail exactly once after the
+receipt completes.
 
 The agent detail header consumes the server-derived availability projection only
 when the record has a local binding. It reuses `PresenceBadge` for
 online/offline/unknown readiness, keeps it separate from human Presence, and
 offers the registered Model repair link only to an editor.
 
-The general type checks run through the workspace packages. The admin package
-currently cannot complete in this checkout because the pre-existing private
-`@unlikeotherai/billing-statement-protocol` dependency is unavailable; its
-errors are confined to billing files, not the Local Ollama components.
-
-On 2026-09-20 an isolated `pnpm dev` attempt with `NESSIE_API_PORT=5654` and
-`NESSIE_ADMIN_PORT=5655` did not reach either health check: the nodemon and
-Vite processes stayed live but neither port bound. They were stopped after the
-verified failed checks, without touching another worktree. Consequently there
-are no Playwright screenshots yet; visual verification remains a release
-blocker rather than a claimed pass.
+The general type checks run through the workspace packages. This transport
+record does not claim a real-device product-path Ollama smoke; that check needs
+the owner's explicit consent and is recorded separately when performed.
 
 ## Required release-gate coverage
 

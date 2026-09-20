@@ -35,6 +35,7 @@ export const LocalInferenceEnvelopePurposeSchema = z.enum([
   'claim',
   'heartbeat',
   'poll',
+  'control',
   'frames',
   'result',
   'goodbye',
@@ -180,6 +181,14 @@ export type LocalInferenceResult = z.infer<typeof LocalInferenceResultSchema>
  * still signed so a captured request cannot be replayed under another route. */
 export const LocalInferenceAttemptPollSchema = z.object({}).strict()
 
+/** A running host polls this independently of output frames, so a cancelled
+ * run can abort a blocked literal-loopback response before its next token. */
+export const LocalInferenceAttemptControlSchema = z.object({
+  attemptId: z.string().uuid(),
+  dispatchFence: z.number().int().positive(),
+}).strict()
+export type LocalInferenceAttemptControl = z.infer<typeof LocalInferenceAttemptControlSchema>
+
 /** A process-bound host sends this on orderly exit so presence becomes offline
  * immediately; an old epoch cannot disconnect a newly claimed host. */
 export const LocalInferenceGoodbyeSchema = z.object({
@@ -221,9 +230,16 @@ export const LocalInferenceExecutorHostSchema = z.object({
 }).strict()
 export type LocalInferenceExecutorHost = z.infer<typeof LocalInferenceExecutorHostSchema>
 
+const LocalInferenceFrameDataSchema = z.string()
+  .min(1)
+  .max(21_848) // base64url encoding of a 16 KiB frame
+  .regex(/^[A-Za-z0-9_-]+$/)
+  .refine((value) => value.length % 4 !== 1, 'Invalid base64url frame encoding')
+  .refine((value) => Math.floor(value.length * 3 / 4) <= 16 * 1024, 'Frame exceeds decoded limit')
+
 export const LocalInferenceAttemptFrameSchema = z.object({
   attemptId: z.string().uuid(),
-  data: z.string().max(21_848), // base64url encoding of a 16 KiB frame
+  data: LocalInferenceFrameDataSchema,
   dispatchFence: z.number().int().positive(),
   sequence: z.number().int().positive(),
 }).strict()

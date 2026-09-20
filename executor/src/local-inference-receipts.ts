@@ -30,7 +30,7 @@ export type LocalInferenceReceiptStorage = {
 export class LocalInferenceReceiptError extends Error {
   override readonly name = 'LocalInferenceReceiptError'
 
-  constructor(readonly code: 'protected_storage_unavailable' | 'receipt_limit_exceeded') {
+  constructor(readonly code: 'protected_storage_unavailable' | 'receipt_conflict' | 'receipt_limit_exceeded') {
     super(code)
   }
 }
@@ -109,7 +109,12 @@ export class EncryptedLocalInferenceReceiptJournal {
       await this.load()
       await this.sweep()
       const key = receiptKey(receipt)
-      if (!this.#records.has(key) && this.#records.size >= MAX_RECEIPTS) {
+      const existing = this.#records.get(key)
+      if (existing) {
+        if (JSON.stringify(existing.result) === JSON.stringify(receipt.result)) return
+        throw new LocalInferenceReceiptError('receipt_conflict')
+      }
+      if (this.#records.size >= MAX_RECEIPTS) {
         throw new LocalInferenceReceiptError('receipt_limit_exceeded')
       }
       this.#records.set(key, {

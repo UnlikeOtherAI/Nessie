@@ -96,7 +96,11 @@ const parseArguments = (value: unknown): Record<string, unknown> | undefined => 
   }
 }
 
-const toolCallsFrom = (value: unknown, allowedNames: ReadonlySet<string>): ProviderToolCall[] => {
+const toolCallsFrom = (
+  value: unknown,
+  allowedNames: ReadonlySet<string>,
+  invocationId: string,
+): ProviderToolCall[] => {
   if (!Array.isArray(value) || value.length > MAX_TOOL_CALLS) {
     throw new OllamaChatError('protocol_error')
   }
@@ -107,7 +111,11 @@ const toolCallsFrom = (value: unknown, allowedNames: ReadonlySet<string>): Provi
     if (name === undefined || argumentsValue === undefined || !allowedNames.has(name)) {
       throw new OllamaChatError('protocol_error')
     }
-    return { arguments: argumentsValue, toolCallId: `ollama-${index + 1}`, toolName: name }
+    return {
+      arguments: argumentsValue,
+      toolCallId: `${invocationId}:ollama-${index + 1}`,
+      toolName: name,
+    }
   })
 }
 
@@ -137,7 +145,7 @@ const parseChatObject = (
   }
   const toolCalls = message?.tool_calls === undefined
     ? undefined
-    : toolCallsFrom(message.tool_calls, allowedToolNames)
+    : toolCallsFrom(message.tool_calls, allowedToolNames, input.invocationId)
   if (body.done !== true && body.done !== false) throw new OllamaChatError('protocol_error')
   return body.done
     ? {

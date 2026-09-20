@@ -1,25 +1,8 @@
-import crypto from 'node:crypto'
-
 import type { FastifyInstance } from 'fastify'
-import {
-  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
-  openLocalInferenceAttempt,
-  resolveScopedSetting,
-  sealLocalInferenceAttempt,
-} from '@nessie/runtime'
-import {
-  assertLocalInferenceSerializedSize,
-  LOCAL_INFERENCE_MAX_FRAME_BYTES,
-  LOCAL_INFERENCE_MAX_RESULT_BYTES,
-  LOCAL_INFERENCE_MAX_UNACKNOWLEDGED_FRAME_BYTES,
-  LocalInferenceHostListSchema,
-} from '@nessie/schemas'
+import { LocalInferenceHostListSchema } from '@nessie/schemas'
 import { verifyLocalInferenceEnvelope } from '@nessie/local-inference-host'
 
 import {
-  LocalInferenceAttemptFrameRequestSchema,
-  LocalInferenceAttemptPollRequestSchema,
-  LocalInferenceAttemptResultRequestSchema,
   LocalInferenceGoodbyeRequestSchema,
   LocalInferenceConsentDisplayRequestSchema,
   LocalInferenceHeartbeatRequestSchema,
@@ -33,6 +16,8 @@ import { registerLocalInferenceDaemonClaimRoutes } from './local-inference-daemo
 import { registerLocalInferenceConsentRoutes } from './local-inference-consent-routes.js'
 import { registerLocalInferenceExecutorHostRoute } from './local-inference-executor-host.js'
 import { registerLocalInferenceDesktopEnrollmentRoute } from './local-inference-desktop-enrollment.js'
+import { registerLocalInferenceAttemptRoutes } from './local-inference-attempt-routes.js'
+import { authenticateLocalInferenceDaemonEnvelope } from '../services/local-inference-daemon-intake.js'
 import type { RouteDeps } from './types.js'
 
 /** Owner-host-only surfaces. Browser sessions may list/select their own host;
@@ -45,7 +30,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   registerLocalInferenceExecutorHostRoute(app, deps)
   registerLocalInferenceConsentRoutes(app, deps)
   registerLocalInferenceDesktopEnrollmentRoute(app, deps)
-
+  registerLocalInferenceAttemptRoutes(app, deps)
   // The native dialog fetches its own text through a machine-signed, one-use
   // challenge capability. This is deliberately public only in transport terms:
   // a browser session, deep link, or copied challenge cannot read or choose the
@@ -109,59 +94,6 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       hostId: authorization.host.id,
     })
   })
-
-  const authenticateDaemonEnvelope = async (input: {
-    body: unknown
-    envelope: {
-      connectionEpoch: string
-      executorConnectionEpoch?: string
-      hostId: string
-      organizationId: string
-      purpose: string
-      sentAt: string
-      sequence: number
-    }
-    purpose: 'frames' | 'poll' | 'result' | 'goodbye'
-  }): Promise<{
-    authorization: NonNullable<
-      Awaited<ReturnType<typeof authorizeLocalInferenceDaemon>>
-    >
-    hostId: string
-  } | null> => {
-    const authorization = await authorizeLocalInferenceDaemon(prisma, input.envelope)
-    const host = authorization?.host
-    const verified = authorization
-      ? verifyLocalInferenceEnvelope({
-        body: input.body, envelope: input.envelope, machinePublicKey: authorization.machinePublicKey,
-      })
-      : { ok: false as const }
-    const sentAt = Date.parse(input.envelope.sentAt)
-    if (
-      !host || !authorization || !verified.ok || input.envelope.purpose !== input.purpose
-      || !Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > 30_000
-      || BigInt(input.envelope.connectionEpoch) !== BigInt(host.connectionEpoch)
-    ) return null
-    const accepted = await prisma.$transaction(async (tx) => {
-      if (!await executorLocalInferenceDaemonStillAuthorized(tx, authorization)) return false
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(
-          hashtextextended(${`local-inference-host:${host.id}:${input.purpose}`}::text, 0)
-        )
-      `
-      const prior = await tx.localInferenceHostSequence.findUnique({
-        where: { hostId_purpose: { hostId: host.id, purpose: input.purpose } },
-        select: { lastSequence: true },
-      })
-      if (prior && prior.lastSequence >= BigInt(input.envelope.sequence)) return false
-      await tx.localInferenceHostSequence.upsert({
-        where: { hostId_purpose: { hostId: host.id, purpose: input.purpose } },
-        create: { hostId: host.id, lastSequence: BigInt(input.envelope.sequence), purpose: input.purpose },
-        update: { lastSequence: BigInt(input.envelope.sequence) },
-      })
-      return true
-    })
-    return accepted ? { authorization, hostId: host.id } : null
-  }
 
   app.get('/api/local-inference/hosts', async (request, reply) => {
     const actor = requireActorContext(request, reply)
@@ -292,183 +224,12 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     return createApiResponse({ serverTime: new Date().toISOString() })
   })
 
-  app.post('/api/local-inference/daemon/attempts/poll', { config: { public: true } }, async (request, reply) => {
-    const body = parseInput(LocalInferenceAttemptPollRequestSchema, request.body, reply)
-    if (!body) return reply
-    const daemon = await authenticateDaemonEnvelope({
-      body: body.poll, envelope: body.envelope, purpose: 'poll',
-    })
-    if (!daemon) {
-      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
-      return reply
-    }
-    const now = new Date()
-    const attempt = await prisma.$transaction(async (tx) => {
-      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
-        return null
-      }
-      // Re-read this owner-controlled stop at the leasing boundary. The
-      // daemon's envelope was authenticated before the transaction, so a
-      // concurrent pause must still win over a queued prompt.
-      const active = await tx.localInferenceHost.findFirst({
-        where: { id: daemon.hostId, pausedAt: null, revokedAt: null },
-        select: { id: true },
-      })
-      if (!active) return null
-      const candidate = await tx.localInferenceAttempt.findFirst({
-        where: {
-          deadlineAt: { gt: now }, hostId: daemon.hostId,
-          OR: [
-            { state: 'queued' },
-            { leaseExpiresAt: { lt: now }, state: 'leased' },
-          ],
-        },
-        orderBy: { createdAt: 'asc' },
-        select: { dispatchFence: true, encryptedRequest: true, id: true, state: true },
-      })
-      if (!candidate?.encryptedRequest) return null
-      const leased = await tx.localInferenceAttempt.updateMany({
-        where: {
-          id: candidate.id,
-          OR: [
-            { state: 'queued' },
-            { leaseExpiresAt: { lt: now }, state: 'leased' },
-          ],
-        },
-        data: { leaseExpiresAt: new Date(now.getTime() + 60_000), state: 'leased' },
-      })
-      if (leased.count !== 1) return null
-      return {
-        dispatchFence: candidate.dispatchFence,
-        request: openLocalInferenceAttempt<Record<string, unknown>>(
-          deps.encryptionKeyRing,
-          candidate.encryptedRequest,
-        ),
-      }
-    })
-    return createApiResponse({ attempt: attempt?.request ?? null, dispatchFence: attempt?.dispatchFence ?? null })
-  })
-
-  app.post('/api/local-inference/daemon/attempts/frame', { config: { public: true } }, async (request, reply) => {
-    const body = parseInput(LocalInferenceAttemptFrameRequestSchema, request.body, reply)
-    if (!body) return reply
-    const daemon = await authenticateDaemonEnvelope({
-      body: body.frame, envelope: body.envelope, purpose: 'frames',
-    })
-    if (!daemon) {
-      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
-      return reply
-    }
-    const data = Buffer.from(body.frame.data, 'base64url')
-    if (data.byteLength > LOCAL_INFERENCE_MAX_FRAME_BYTES) {
-      sendApiError(reply, 400, 'LOCAL_FRAME_TOO_LARGE', 'Local inference frame exceeds its limit.')
-      return reply
-    }
-    const digest = crypto.createHash('sha256').update(data).digest('hex')
-    const recorded = await prisma.$transaction(async (tx) => {
-      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
-        return 'fenced' as const
-      }
-      const attempt = await tx.localInferenceAttempt.findFirst({
-        where: { id: body.frame.attemptId, hostId: daemon.hostId, state: { in: ['leased', 'accepted'] } },
-        select: { dispatchFence: true, id: true },
-      })
-      if (!attempt || attempt.dispatchFence !== body.frame.dispatchFence) return 'fenced' as const
-      const frames = await tx.localInferenceFrame.findMany({
-        where: { attemptId: attempt.id, dispatchFence: attempt.dispatchFence },
-        select: { encryptedData: true }, take: 9,
-      })
-      const total = frames.reduce((sum, frame) => sum + frame.encryptedData.byteLength, 0)
-      if (frames.length >= 8 || total + data.byteLength > LOCAL_INFERENCE_MAX_UNACKNOWLEDGED_FRAME_BYTES) {
-        return 'overflow' as const
-      }
-      try {
-        await tx.localInferenceFrame.create({
-          data: {
-            attemptId: attempt.id,
-            digest,
-            dispatchFence: attempt.dispatchFence,
-            encryptedData: Uint8Array.from(
-              sealLocalInferenceAttempt(deps.encryptionKeyRing, { data: body.frame.data }),
-            ),
-            sequence: body.frame.sequence,
-          },
-        })
-      } catch {
-        const duplicate = await tx.localInferenceFrame.findFirst({
-          where: { attemptId: attempt.id, dispatchFence: attempt.dispatchFence, sequence: body.frame.sequence },
-          select: { digest: true },
-        })
-        return duplicate?.digest === digest ? 'duplicate' as const : 'fenced' as const
-      }
-      return 'recorded' as const
-    })
-    if (recorded === 'overflow') {
-      sendApiError(reply, 409, 'LOCAL_FRAME_OVERFLOW', 'Local inference frame credit is exhausted.')
-      return reply
-    }
-    if (recorded === 'fenced') {
-      sendApiError(reply, 409, 'LOCAL_ATTEMPT_FENCED', 'Local inference attempt is no longer current.')
-      return reply
-    }
-    return createApiResponse({ acknowledged: true })
-  })
-
-  app.post('/api/local-inference/daemon/attempts/result', { config: { public: true } }, async (request, reply) => {
-    const body = parseInput(LocalInferenceAttemptResultRequestSchema, request.body, reply)
-    if (!body) return reply
-    const daemon = await authenticateDaemonEnvelope({
-      body: body.receipt, envelope: body.envelope, purpose: 'result',
-    })
-    if (!daemon) {
-      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
-      return reply
-    }
-    if (body.receipt.result.remoteHost !== null || body.receipt.result.remoteModel !== null) {
-      sendApiError(reply, 409, 'LOCAL_MODEL_REMOTE', 'Remote Ollama output is not accepted.')
-      return reply
-    }
-    try {
-      assertLocalInferenceSerializedSize(body.receipt.result, LOCAL_INFERENCE_MAX_RESULT_BYTES)
-    } catch {
-      sendApiError(reply, 400, 'LOCAL_RESULT_TOO_LARGE', 'Local inference result exceeds its limit.')
-      return reply
-    }
-    const digest = crypto.createHash('sha256').update(JSON.stringify(body.receipt.result)).digest('hex')
-    const completed = await prisma.$transaction(async (tx) => {
-      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
-        return false
-      }
-      const attempt = await tx.localInferenceAttempt.findFirst({
-        where: { id: body.receipt.attemptId, hostId: daemon.hostId },
-        select: { dispatchFence: true, resultDigest: true, state: true },
-      })
-      if (!attempt || attempt.dispatchFence !== body.receipt.dispatchFence) return false
-      if (attempt.state === 'completed') return attempt.resultDigest === digest
-      const updated = await tx.localInferenceAttempt.updateMany({
-        where: { id: body.receipt.attemptId, dispatchFence: attempt.dispatchFence, state: { in: ['leased', 'accepted'] } },
-        data: {
-          encryptedResult: Uint8Array.from(
-            sealLocalInferenceAttempt(deps.encryptionKeyRing, body.receipt.result),
-          ),
-          resultDigest: digest, state: 'completed', terminalAt: new Date(),
-        },
-      })
-      return updated.count === 1
-    })
-    if (!completed) {
-      sendApiError(reply, 409, 'LOCAL_ATTEMPT_FENCED', 'Local inference attempt is no longer current.')
-      return reply
-    }
-    return createApiResponse({ acknowledged: true })
-  })
-
   // An orderly Desktop/executor exit is a signed transition. A delayed
   // goodbye from an old epoch cannot disconnect a replacement connection.
   app.post('/api/local-inference/daemon/goodbye', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LocalInferenceGoodbyeRequestSchema, request.body, reply)
     if (!body) return reply
-    const daemon = await authenticateDaemonEnvelope({
+    const daemon = await authenticateLocalInferenceDaemonEnvelope(prisma, {
       body: body.goodbye, envelope: body.envelope, purpose: 'goodbye',
     })
     if (!daemon) {
@@ -476,9 +237,9 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       return reply
     }
     const disconnected = await prisma.$transaction(async (tx) => {
-      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) return false
+      if (!await daemon.stillAuthorized(tx)) return false
       const updated = await tx.localInferenceHost.updateMany({
-        where: { connectionEpoch: BigInt(body.envelope.connectionEpoch), id: daemon.hostId, revokedAt: null },
+        where: { connectionEpoch: Number(body.envelope.connectionEpoch), id: daemon.hostId, revokedAt: null },
         data: { lastSeenAt: null },
       })
       return updated.count === 1

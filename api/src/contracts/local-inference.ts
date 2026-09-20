@@ -1,6 +1,7 @@
 import {
   AgentAvailabilityProjectionSchema,
   LocalInferenceAttemptFrameSchema,
+  LocalInferenceAttemptControlSchema,
   LocalInferenceAttemptPollSchema,
   LocalInferenceAttemptResultReceiptSchema,
   LocalInferenceSignedEnvelopeSchema,
@@ -72,6 +73,11 @@ export const LocalInferenceHeartbeatRequestSchema = z.object({
 export const LocalInferenceAttemptPollRequestSchema = z.object({
   envelope: LocalInferenceSignedEnvelopeSchema,
   poll: LocalInferenceAttemptPollSchema,
+}).strict()
+
+export const LocalInferenceAttemptControlRequestSchema = z.object({
+  control: LocalInferenceAttemptControlSchema,
+  envelope: LocalInferenceSignedEnvelopeSchema,
 }).strict()
 
 export const LocalInferenceAttemptFrameRequestSchema = z.object({

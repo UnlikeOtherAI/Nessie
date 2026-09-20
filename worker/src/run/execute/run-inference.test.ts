@@ -199,6 +199,8 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
     },
   )
 
+  assert.equal(await inference.mainOutputTokens?.(), 2_048)
+  assert.equal(providerResolverCalled, false)
   await assert.rejects(
     inference.runMain([coverProviderInputComponent(
       { content: 'No cloud fallback.', role: 'user' },

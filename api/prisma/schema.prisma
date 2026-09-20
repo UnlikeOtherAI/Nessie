@@ -8470,6 +8470,7 @@ model LocalInferenceAttempt {
   runFence           String                     @map("run_fence")
   hostEpoch          Int                        @map("host_epoch")
   dispatchFence      Int                        @default(1) @map("dispatch_fence")
+  modelDigest        String                     @map("model_digest")
   requestDigest      String                     @map("request_digest")
   state              LocalInferenceAttemptState @default(queued)
   leaseExpiresAt     DateTime?                  @map("lease_expires_at")
@@ -8496,10 +8497,11 @@ model LocalInferenceFrame {
   sequence      Int
   encryptedData Bytes    @map("encrypted_data")
   digest        String
+  acknowledgedAt DateTime? @map("acknowledged_at")
   createdAt     DateTime @default(now()) @map("created_at")
 
   @@unique([attemptId, dispatchFence, sequence])
-  @@index([attemptId, createdAt])
+  @@index([attemptId, acknowledgedAt, sequence])
   @@map("local_inference_frames")
 }
 

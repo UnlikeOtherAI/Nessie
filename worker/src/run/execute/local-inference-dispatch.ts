@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 
 import {
@@ -20,6 +20,19 @@ export class LocalInferenceDispatchError extends Error {
 
 const FIVE_MINUTES = 5 * 60_000
 
+const canonicalJson = (value: unknown): string => {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`
+}
+
+const digest = (value: unknown): string => createHash('sha256').update(canonicalJson(value)).digest('hex')
+
+const uuidFromDigest = (value: string): string => (
+  `${value.slice(0, 8)}-${value.slice(8, 12)}-4${value.slice(13, 16)}-8${value.slice(17, 20)}-${value.slice(20, 32)}`
+)
+
 /**
  * Durable local-device handoff.  The worker writes one sealed attempt then
  * waits on the receipt row; it never dials an endpoint or retries accepted
@@ -32,6 +45,7 @@ export const dispatchLocalInference = async (input: {
   providerInput: ProviderInputFinalization
   runFence: string
   context: RunContext
+  onTextDelta?: (text: string) => Promise<void>
   tools: ToolSchemaDescriptor[]
 }): Promise<InferenceResult> => {
   // A provider input reaches the delivery store only after every ordered
@@ -61,15 +75,20 @@ export const dispatchLocalInference = async (input: {
     throw new LocalInferenceDispatchError('source_not_allowed')
   }
 
-  const invocationId = randomUUID()
   const deadlineAt = new Date(Date.now() + FIVE_MINUTES)
-  const request: LocalInferenceAttemptRequest = {
-    attemptId: randomUUID(), bindingId: input.binding.bindingId,
+  const requestIdentity = {
+    bindingId: input.binding.bindingId,
     bindingRevision: input.binding.revision, deadlineAt: deadlineAt.toISOString(),
-    hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId, invocationId,
+    hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
     maxOutputTokens: input.maxOutputTokens, messages, modelDigest: input.binding.manifestDigest,
     modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1,
     runFence: input.runFence, runId: input.context.run.id, tools: input.tools,
+  }
+  const requestDigest = digest(requestIdentity)
+  const attemptId = uuidFromDigest(digest({ requestDigest, type: 'attempt' }))
+  const invocationId = uuidFromDigest(digest({ requestDigest, type: 'invocation' }))
+  const request: LocalInferenceAttemptRequest = {
+    ...requestIdentity, attemptId, invocationId,
   }
   try {
     assertLocalInferenceSerializedSize(request, LOCAL_INFERENCE_MAX_REQUEST_BYTES)
@@ -77,19 +96,66 @@ export const dispatchLocalInference = async (input: {
     throw new LocalInferenceDispatchError('The local inference request is too large.')
   }
   const existing = await input.deps.prisma.localInferenceAttempt.findUnique({
-    where: { invocationId }, select: { id: true },
+    where: { invocationId }, select: { id: true, modelDigest: true, requestDigest: true },
   })
-  if (existing) throw new LocalInferenceDispatchError('Local inference invocation conflict.')
-  await input.deps.prisma.localInferenceAttempt.create({
-    data: {
-      bindingId: input.binding.bindingId, deadlineAt, encryptedRequest: Uint8Array.from(
-        sealLocalInferenceAttempt(input.deps.atRestEncryptionKeyRing, request),
-      ), hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
-      id: request.attemptId, invocationId, organizationId: input.context.channel.organizationId,
-      requestDigest: input.binding.manifestDigest, runFence: input.runFence, runId: input.context.run.id,
-    },
-  })
+  if (existing && (existing.id !== request.attemptId || existing.requestDigest !== requestDigest
+    || existing.modelDigest !== input.binding.manifestDigest)) {
+    throw new LocalInferenceDispatchError('Local inference invocation conflict.')
+  }
+  if (!existing) {
+    await input.deps.prisma.localInferenceAttempt.create({
+      data: {
+        bindingId: input.binding.bindingId, deadlineAt, encryptedRequest: Uint8Array.from(
+          sealLocalInferenceAttempt(input.deps.atRestEncryptionKeyRing, request),
+        ), hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
+        id: request.attemptId, invocationId, modelDigest: input.binding.manifestDigest,
+        organizationId: input.context.channel.organizationId,
+        requestDigest, runFence: input.runFence, runId: input.context.run.id,
+      },
+    })
+  }
+  const consumeFrames = async (): Promise<void> => {
+    for (;;) {
+      const frame = await input.deps.prisma.localInferenceFrame.findFirst({
+        where: { acknowledgedAt: null, attemptId: request.attemptId },
+        orderBy: { sequence: 'asc' },
+        select: { encryptedData: true, id: true },
+      })
+      if (!frame) return
+      let event: unknown
+      try {
+        const sealed = openLocalInferenceAttempt<{ data: string }>(
+          input.deps.atRestEncryptionKeyRing,
+          frame.encryptedData as Uint8Array,
+        )
+        event = JSON.parse(Buffer.from(sealed.data, 'base64url').toString('utf8')) as unknown
+      } catch {
+        throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
+      }
+      const parsed = event !== null && typeof event === 'object' && !Array.isArray(event)
+        ? event as Record<string, unknown>
+        : null
+      const text = parsed?.type === 'output_text.delta' && typeof parsed.text === 'string'
+        ? parsed.text
+        : null
+      const error = parsed?.type === 'response.error' && typeof parsed.message === 'string'
+        && parsed.message.length > 0 && parsed.message.length <= 200
+        ? parsed.message
+        : null
+      if (!text && !error) {
+        throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
+      }
+      const acknowledged = await input.deps.prisma.localInferenceFrame.updateMany({
+        where: { acknowledgedAt: null, id: frame.id },
+        data: { acknowledgedAt: new Date() },
+      })
+      if (acknowledged.count !== 1) continue
+      if (error) throw new LocalInferenceDispatchError(error)
+      if (text) await input.onTextDelta?.(text)
+    }
+  }
   while (Date.now() < deadlineAt.getTime()) {
+    await consumeFrames()
     const row = await input.deps.prisma.localInferenceAttempt.findUnique({
       where: { id: request.attemptId },
       select: { encryptedResult: true, failureReason: true, state: true },

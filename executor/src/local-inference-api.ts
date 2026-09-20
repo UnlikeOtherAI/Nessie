@@ -31,6 +31,11 @@ export type LocalInferenceResultReceipt = {
   result: LocalInferenceResult
 }
 
+export type LocalInferenceAttemptControl = {
+  attemptId: string
+  dispatchFence: number
+}
+
 export type LocalInferenceDaemonApi = {
   claim: (input: { challenge: string; envelope: LocalInferenceSignedEnvelope }) => Promise<{
     connectionEpoch: string
@@ -41,6 +46,9 @@ export type LocalInferenceDaemonApi = {
     input: ApiEnvelopeRequest<'heartbeat', { inventory: ObservedLocalModel[]; paused: boolean }>,
   ) => Promise<{ serverTime: string }>
   poll: (input: ApiEnvelopeRequest<'poll', Record<string, never>>) => Promise<LocalInferenceAttemptLease>
+  control: (input: ApiEnvelopeRequest<'control', LocalInferenceAttemptControl>) => Promise<{
+    state: 'active' | 'cancelled' | 'expired' | 'fenced'
+  }>
   submitFrame: (input: ApiEnvelopeRequest<'frame', LocalInferenceFrame>) => Promise<{ acknowledged: true }>
   submitResult: (input: ApiEnvelopeRequest<'receipt', LocalInferenceResultReceipt>) => Promise<{ acknowledged: true }>
   goodbye: (input: ApiEnvelopeRequest<'goodbye', { reason: 'desktop_exit' | 'executor_shutdown'; receipt: string }>) => Promise<{ acknowledged: true }>
@@ -149,6 +157,7 @@ export const createLocalInferenceDaemonApi = (input: {
     issueChallenge: (body) => post('/api/local-inference/daemon/challenge', body),
     heartbeat: (body) => post('/api/local-inference/daemon/heartbeat', body),
     poll: (body) => post('/api/local-inference/daemon/attempts/poll', body),
+    control: (body) => post('/api/local-inference/daemon/attempts/control', body),
     submitFrame: (body) => post('/api/local-inference/daemon/attempts/frame', body),
     submitResult: (body) => post('/api/local-inference/daemon/attempts/result', body),
     goodbye: (body) => post('/api/local-inference/daemon/goodbye', body),

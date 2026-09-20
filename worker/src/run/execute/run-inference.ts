@@ -157,6 +157,10 @@ export const createRunInference = (
   }
 
   const mainOutputTokens = async (): Promise<number> => {
+    // A local binding owns the complete inference transport. Capability and
+    // catalogue lookups through the configured provider would be a cloud call
+    // even though `runMain` correctly uses the local host below.
+    if (options.local) return runtimeModelConfig.maxTokens
     const providerConfig = await (options.stageProviderResolver ?? resolveStageProviderConfig)(deps.prisma, {
       modelConfig: runtimeModelConfig,
       organizationId: context.channel.organizationId,
@@ -222,16 +226,38 @@ export const createRunInference = (
     maxOutputTokens?: number,
   ): Promise<InferenceResult> => {
     if (options.local) {
+      let localTextReceived = false
+      const streamRedactor = createStreamRedactor()
+      const publishSafeLocalText = async (content: string): Promise<void> => {
+        if (!streaming || runReplyIsRestricted(context)) return
+        const safe = streamRedactor.push(content)
+        if (!safe) return
+        currentTurnStreamed = true
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+          content: safe,
+          runId: parseRunId(context.run.id),
+        })
+      }
       const result = await dispatchLocalInference({
         binding: options.local.binding, context, deps,
         maxOutputTokens: maxOutputTokens ?? runtimeModelConfig.maxTokens,
+        onTextDelta: async (content) => {
+          localTextReceived = true
+          await publishSafeLocalText(content)
+        },
         providerInput: finalizeProvenancedProviderInput(messages),
         runFence: options.local.runFence, tools,
       })
-      if (streaming && result.outputText && !runReplyIsRestricted(context)) {
+      if (!allowEmptySuccess && !result.outputText && result.toolCalls.length === 0) {
+        throw new Error('Inference execution produced no final answer')
+      }
+      if (!localTextReceived && result.outputText) await publishSafeLocalText(result.outputText)
+      const tail = streamRedactor.flush()
+      if (tail && streaming && !runReplyIsRestricted(context)) {
         currentTurnStreamed = true
         await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-          content: result.outputText, runId: parseRunId(context.run.id),
+          content: tail,
+          runId: parseRunId(context.run.id),
         })
       }
       return result
