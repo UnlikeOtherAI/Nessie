@@ -3,7 +3,12 @@ import test from 'node:test'
 
 import type { PinnedFetch } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
-import { createRunInference, resolveAdvertisedOutputTokens, resolveMainOutputTokens } from './run-inference.js'
+import {
+  createRunInference,
+  LocalDeviceDispatchRequiredError,
+  resolveAdvertisedOutputTokens,
+  resolveMainOutputTokens,
+} from './run-inference.js'
 import type { RunSubscriptionBinding } from './subscription-binding.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
@@ -161,3 +166,35 @@ test('mainOutputTokens stays on the pinned subscription lane without a Ledger lo
   assert.equal(ledgerCatalogCalled, false)
 })
 
+test('a local-device pin cannot fall through to the Ledger provider resolver', async () => {
+  let providerResolverCalled = false
+  const inference = createRunInference(
+    inferenceDeps,
+    inferencePayload,
+    {
+      ...inferenceContext,
+      agent: {
+        ...inferenceContext.agent,
+        localInferenceBindingId: 'local-binding',
+        model: 'only-local',
+        provider: 'local/ollama',
+      },
+    },
+    {
+      budgetModelOverride: null,
+      stageProviderResolver: async () => {
+        providerResolverCalled = true
+        throw new Error('must not resolve a local pin through the provider route')
+      },
+      subscription: null,
+      thinkingRecorder,
+      utilityModel: null,
+    },
+  )
+
+  await assert.rejects(
+    inference.runMain([{ content: 'No cloud fallback.', role: 'user' }], []),
+    LocalDeviceDispatchRequiredError,
+  )
+  assert.equal(providerResolverCalled, false)
+})

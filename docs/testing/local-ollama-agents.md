@@ -34,6 +34,8 @@ Results on 2026-09-20:
   Desktop key encodings; endpoint ordering and conflicts stay deterministic.
 - `local-inference-binding.test.ts`: 2 passed — admission pins exactly one
   binding revision/host epoch tuple and rejects a conflicting retry.
+- `run-inference.test.ts`: 6 passed — a `local_device` pin is rejected at the
+  provider boundary rather than resolving through the Ledger/cloud route.
 
 The agent detail header consumes the server-derived availability projection only
 when the record has a local binding. It reuses `PresenceBadge` for

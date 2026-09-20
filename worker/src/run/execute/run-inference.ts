@@ -108,6 +108,20 @@ export type RunInference = {
   ) => Promise<InferenceResult>
 }
 
+/**
+ * `local/ollama` is an explicit device transport, not a provider key that may
+ * be passed through the ordinary Ledger/direct-provider resolver.  Keeping a
+ * dedicated error at this seam prevents a partially deployed host relay from
+ * ever turning an owner-host pin into a cloud inference request.
+ */
+export class LocalDeviceDispatchRequiredError extends Error {
+  override readonly name = 'LocalDeviceDispatchRequiredError'
+
+  constructor() {
+    super('The selected local host cannot accept this inference attempt.')
+  }
+}
+
 export const createRunInference = (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
@@ -214,6 +228,15 @@ export const createRunInference = (
     streaming: boolean,
     maxOutputTokens?: number,
   ): Promise<InferenceResult> => {
+    if (
+      agentModel.provider === 'local/ollama'
+      || context.agent.localInferenceBindingId
+    ) {
+      // The local-attempt service owns the next hop and its encrypted spool.
+      // It must be installed as one complete transport; falling through here
+      // would resolve the deployment Ledger base URL for an unknown provider.
+      throw new LocalDeviceDispatchRequiredError()
+    }
     const documentStream = streaming ? deps.documentStream : undefined
     // A document is emitted as tool-call arguments inside one completion, so
     // the ordinary per-call output cap would truncate it mid-sentence. When the
