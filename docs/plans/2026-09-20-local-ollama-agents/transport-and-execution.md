@@ -34,13 +34,19 @@ implementation process, not a second product the person configures. Refactor
 runtime packaging to include this package without starting the executor.
 
 The native wrapper exposes narrow commands: inspect local availability,
-confirm/start hosting, pause, forget, and open the registered Ollama app/help.
+confirm/start hosting, pause, forget, and open verified help.
 It launches only its signed/package-verified entry point with fixed arguments;
 enrollment secrets travel on stdin/IPC, never argv. No generic process or fetch
-command reaches the hosted webview. Only the approved first-party admin origin
-and main window may invoke commands; secondary document windows cannot pair.
-Self-hosted desktop origins require the existing explicit trusted-origin
-selection and native confirmation; a deep link cannot set that trust itself.
+command reaches the hosted webview. Every command requires
+`window.label == "main"` and the currently configured, TLS-verified Nessie
+origin; secondary document windows cannot pair. Consent accepts only an opaque
+challenge id. Native code fetches canonical display fields from that origin,
+verifies the signed server response, current signed-in custodian and
+organisation, and displays them outside webview-controlled text before signing.
+A custom self-hosted origin is chosen in native settings, confirmed locally,
+certificate-verified and pinned by origin; changing or clearing it signs out,
+stops hosting, rotates the connection epoch and makes bindings require
+reconsent. A deep link or web document cannot set this trust.
 
 The bridge runs while Desktop's process runs, including a minimized window. On
 full Quit or sign-out it stops accepting requests and sends a signed goodbye;
@@ -67,12 +73,15 @@ boundary without turning normal setup into a form. On an executor the local
 “Use Ollama for Nessie agents” action establishes this consent; the server can
 request a refresh only after that local permission exists.
 
-1. Try the saved local endpoint, then `http://127.0.0.1:11434` and
-   `http://[::1]:11434`, deduplicated. A user-entered `localhost` is converted
-   to those literal loopback choices before dialing, never resolved as a DNS
-   name. At most three probes, two seconds each, in parallel, with one active
-   discovery sweep. No port scan, mDNS discovery, WSL enumeration, registry
-   crawl or network sweep.
+1. Try the saved canonical socket first, then `http://127.0.0.1:11434` and
+   `http://[::1]:11434`, deduplicated, in that deterministic order. A user-
+   entered `localhost` becomes an explicit IPv4/IPv6 choice before dialing,
+   never a DNS lookup. Probe at most three endpoints for two seconds each under
+   one sweep. If more than one distinct daemon identity/model set responds,
+   stop and ask the local custodian which exact socket to bind; response timing
+   never chooses. Re-probe that canonical socket immediately before consent and
+   dispatch. No port scan, mDNS discovery, WSL enumeration, registry crawl or
+   network sweep.
 2. Check `/api/version`; list `/api/tags`; read `/api/show` only for displayed
    candidates and the selected model. Bound JSON sizes, names and capability
    arrays. Only the name, manifest digest, model size and supported features
@@ -89,8 +98,12 @@ request a refresh only after that local permission exists.
    or a model based on its name. A single compatible model is preselected,
    multiple models require one choice, and Save/Use confirms either. Embedding
    models and unsupported cloud-backed Ollama entries are ineligible with an
-   explanation. Verify local-vs-remote metadata using recorded real responses;
-   if locality cannot be established, do not advertise the model as local.
+   explanation. A selectable entry must have empty `remote_host` and
+   `remote_model` in both `/api/tags` and `/api/show`, a non-empty manifest
+   digest, locally populated model metadata, and no remote marker in any chat
+   frame. These are official Ollama structural fields, not a name heuristic.
+   Unknown locality is ineligible. A release fixture installs/observes a real
+   cloud entry and proves rejection while monitoring outbound traffic.
 5. No inference, loading, downloading or service start is part of discovery.
    After the person chooses “Use this model”, perform one bounded capability
    smoke call (at most 64 output tokens, 60 seconds, no private content), then
@@ -98,14 +111,15 @@ request a refresh only after that local permission exists.
    test preserves the previous active selection and names the remedy.
 
 The fast path is therefore “Local Ollama → detected model → Use this model”;
-manual endpoint entry appears only under “Ollama is running somewhere else on
-this computer”. It accepts a loopback port, not an arbitrary URL. Retain
+manual endpoint entry appears only under “Ollama is using another local port”.
+It accepts a loopback port, not an arbitrary URL. Retain
 `assertLoopbackOrigin`'s literal-only, no credentials/path/query/fragment,
 no-redirect invariant after its extraction. LAN origins, public origins,
 metadata addresses, unix-socket paths, proxy environment settings and DNS
-rebinding are refused. A VM/WSL Ollama unreachable from host loopback needs a
-person-configured local endpoint; Nessie does not open firewall ports or
-change WSL forwarding. LAN support is outside this release.
+rebinding are refused. VM/WSL Ollama that is not already reachable through a
+user-created host-loopback forward is unsupported; Nessie neither creates nor
+documents a LAN endpoint, firewall rule or WSL forward. LAN support is outside
+this release.
 
 Refresh the selected model every 30 seconds while hosting, on wake/reconnect,
 on explicit retry, and immediately before dispatch. Refresh the unselected
@@ -158,8 +172,10 @@ under platform-protected app data (Keychain on macOS, DPAPI for the current
 user on Windows; Secret Service on Linux), delivered to the native bridge
 through private IPC. If a Linux credential store is unavailable, setup says so
 and fails closed; it must not silently introduce a plaintext-key fallback.
-No new password account or UOA credential store is created. Re-pairing rotates
-the key and fences all previous attempts and sessions.
+No new password account or UOA credential store is created. Re-pairing or
+secure-store repair rotates the key, increments host authorization and
+connection epochs, fences all previous attempts, receipts and sessions, and
+makes every binding `needs_rebinding`; no consent is inherited.
 
 All remote links use authenticated HTTPS with certificate verification. The
 host connection is outbound; NAT needs no listener, public Ollama bind or
@@ -185,11 +201,12 @@ use the existing cursor/limit/total schema, with limit at most 100.
 
 | Door | Contract and authorization |
 | --- | --- |
-| `GET /api/local-inference/hosts` | Entitled published hosts/models only; explicit optional team filter. Custodians see their own private hosts. Never an org-wide machine inventory. |
+| `GET /api/local-inference/hosts` | The current stable subject's own entitled hosts/models only, optionally evaluated for an explicit destination team. Never an org-wide or team machine inventory. |
 | `POST /api/local-inference/hosts/enroll` | Authenticated eligible custodian, native confirmation pending; direct mode only. Returns five-minute one-use enrollment material, `no-store`. |
-| `POST /api/local-inference/hosts/:id/pause`, `/resume`, `/revoke` | Custodian or authorised host manager; private-host details remain custodian-only. Resume cannot cure reauthorization. Native local pause is always possible offline. |
+| `POST /api/local-inference/hosts/:id/pause`, `/resume`, `/revoke` | Custodian only in V1. Resume cannot cure reauthorization. Native local pause is always possible offline. |
 | `POST /api/agents/:id/local-inference/prepare` | Agent editor + eligible scope + eligible host. Returns expiring exact selection digest/challenge; no active lane change yet. |
-| `POST /api/agents/:id/local-inference/confirm` | Signed host consent plus fresh revalidation of the prepared editor's stable identity/epoch; rechecks all prepare assumptions. Activates selection atomically; conflicts are 409. |
+| `POST /api/agents/:id/local-inference/confirm` | Signed host consent plus fresh revalidation of the prepared editor and owner stable identity/epoch; changes only the exact inactive binding to `consented_pending_activation`. Conflicts are 409; it never changes the agent lane. |
+| Existing Agent Designer Save mutation | Sole activation commit. Locks agent, binding and policy version, compares the prepared form/host/model/setting revisions, revalidates live authority and locality, then atomically swaps the agent lane. Any mismatch is 409 and leaves the prior lane intact. |
 | `DELETE /api/agents/:id/local-inference` | Normal agent field authority; revoke binding and require explicit replacement model, never implicit cloud. |
 | `GET /api/agents/:id/availability` | Existing agent visibility predicate; presence plus safe reason/action and revision, no host address, inventory or private activity. Lists may batch this projection for visible ids. |
 | `POST /api/local-inference/daemon/challenge`, `/claim` | Paired host key, one-use challenge, epoch CAS. Executor variant delegates to the executor authority. No bearer user session substitutes for machine proof. |
@@ -231,6 +248,7 @@ not a promise that memory allocation or a particular future prompt will work.
 | `ready` | Online | A fresh host and selected model can accept work |
 | `busy` | Online, “Busy” in conversation | Capacity leased; bounded queue is available |
 | `disconnected`, `sleeping`, `expired` | Offline | Start/wake/reconnect the selected host |
+| `entitlement_unavailable`, stale viewer data | Unknown | Wait for authority/realtime recovery; never render green or revoke |
 | `paused` | Offline | Custodian explicitly resumes |
 | `model_missing`, `model_changed`, `incompatible` | Offline | Install/select/reconfirm/update locally |
 | `policy_denied`, `needs_reauthorization`, `revoked` | Offline | Authorised explicit repair; a login/heartbeat cannot heal it |
@@ -255,7 +273,9 @@ double-counting capacity when both modes are active. Different OS accounts
 cannot reliably coordinate that lock; Ollama resource failures remain bounded
 and truthful, not a promise of whole-machine GPU exclusivity.
 
-Human presence never enters this calculation. A person can be away while the
+The API returns server-computed availability, `serverTime` and `validUntil`.
+Client time may animate a cosmetic countdown but can never turn unknown or
+expired state online. Human presence never enters this calculation. A person can be away while the
 executor agent is online, or online on a phone while their desktop agent is
 offline. Agents get no manual away state. If the viewing client's realtime
 connection is lost, its status becomes “Connection lost”/unknown locally;
@@ -289,8 +309,14 @@ acknowledges within five seconds, renews every 20 seconds and has a 60-second
 lease; absolute deadlines remain fixed. No database transaction stays open
 over an Ollama call. Workers/API replicas may fail over, but a new claimant
 must recover the attempt receipt by id and fence rather than issue the prompt
-again. The host keeps a bounded owner-only receipt journal without prompt
-text, so duplicate delivery returns status/result instead of recomputing.
+again. The host keeps a bounded owner-only receipt journal without prompt text.
+Replay material is capped at 512 KiB per accepted result and eight results,
+encrypted with a non-exportable platform machine key under owner-only ACLs,
+excluded from logs, crash diagnostics and support bundles, deleted immediately
+after durable server acknowledgement, and removed unconditionally after a
+one-hour hard TTL. If protected storage is unavailable, the host refuses work;
+there is no plaintext journal. Duplicate delivery returns the protected
+status/result instead of recomputing.
 
 Before acceptance, an expired delivery may be retried once to the **same host,
 model and consent revision**, if the queue deadline permits. After acceptance,
@@ -330,11 +356,16 @@ with a routing profile. Normalize Ollama chat content, native tool calls,
 usage, finish reasons and optional thinking to `ProviderMessage`,
 `ProviderToolCall`, `ModelCapabilitySnapshot` and the existing delta vocabulary.
 Incomplete streamed tool calls never execute; validate completed arguments
-through the same tool schemas and existing authorization/approval path.
+through the same tool schemas and existing authorization/approval path. V1's
+owner-host invariant is rechecked before each tool round, so a model never
+borrows a different person's agent authority. Model output remains hostile;
+externally effective actions keep their existing approval gates.
 
 Use the selected runtime's `/api/show` metadata and a bounded smoke test for
 tools/structured output; never infer capabilities from “qwen” or “gemma” in a
-name. A tool-bearing agent cannot select a model without native tool support.
+name. The smoke exposes only a synthetic `nessie_capability_probe` no-op schema,
+inspects and discards the returned call, and never invokes `authorizeToolCall`
+or any real tool runner. A tool-bearing agent cannot select a model without native tool support.
 Text-only models may serve agents with no tools. Adding tools later revalidates
 the selection. Start with text inputs and native tool calling; unsupported
 images/audio produce an explicit refusal instead of silently dropping bytes.
@@ -350,12 +381,16 @@ The hardware smoke establishes the tested Ollama minimum; the current import
 client's `0.34.0` floor is not evidence that every older chat API is incompatible.
 Use a capability/version compatibility table, initially tested at 0.34.1.
 
-Utility inference must consume the same local service and selected model, not
+Every discovery, pre-dispatch and result parser rejects non-empty Ollama
+`remote_host` or `remote_model`; a mid-stream remote marker terminates the
+attempt without accepting output. Utility inference must consume the same local service and selected model, not
 `NESSIE_UTILITY_MODEL`. General spawn/delegation cannot create an unconfigured
-cloud child from a local run: ephemeral children inherit a run-scoped local
-capability tied to the consenting parent, same digest, same disclosure gate,
-and the existing delegate budget. This capability cannot attach to a persistent
-agent or widen tools. `agent_peer_delegate` targeting another ordinary agent
+cloud child from a local run: ephemeral children inherit a **child Run** pin
+tied to the consenting parent, same owner/host/digest, same disclosure gate,
+and the existing delegate budget. `subtask-tools.ts` must not copy the binding
+onto the durable child `Agent` row; later independent child runs cannot reuse
+it. This capability cannot attach to a persistent agent or widen tools.
+`agent_peer_delegate` targeting another ordinary agent
 retains that target's own explicit policy and is identified as a separate
 agent's work, not a local fallback. If that action would export restricted
 material, the existing destination gate still refuses it.
@@ -369,12 +404,17 @@ ids, model tags or device labels. Trace ids can reference authorized records.
 Count rejected signatures, stale epochs, overflow, expired leases and lost
 receipts. Never expose GPU stats, heartbeats or tokens in ordinary chat.
 
-A CAS transition increments host/binding `healthRevision` and creates one
-`UserAlert` per live repair-capable recipient with an event key containing
-resource id and revision. Private binding alerts go only to its owner; shared
-binding alerts to its editor/custodian, without leaking private conversation
-content. Push text is generic. The alert deep-links to the exact existing
-agent's Model section or host connection, and rechecks visibility on read.
+A CAS transition increments host/binding `healthRevision` and creates one typed
+`UserAlert` per exact recipient with an event key containing resource id and
+revision. Agent selection/source failures go only to the person-owned agent's
+owner/editor; endpoint, key and local-runtime failures go only to that same
+host custodian; policy failures go to live UOA organisation owners/admins who
+can change the protected setting. Never notify all team members. Reader support
+lands before writers and stores a typed host/binding reference, not display
+names. The alert route recomputes viewer authorization and returns a safe
+current projection. Push text is generic. The alert deep-links through the
+navigation registry to `designerSection=model`, the exact owner Connections
+row, or the real conversation run-restart action.
 
 Routine app close, idle sleep and brief network loss change presence quietly.
 A scheduled or accepted run that cannot proceed, or a persistent actionable
