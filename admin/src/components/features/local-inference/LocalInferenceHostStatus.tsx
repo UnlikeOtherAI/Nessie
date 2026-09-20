@@ -5,6 +5,7 @@ import {
   useLocalInferenceHosts,
   type LocalInferenceHost,
 } from '../../../facades/local-inference/hooks'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { QueryState } from '../../shared/QueryState'
 
 type LocalInferenceHostStatusProps = {
@@ -34,12 +35,20 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
   const hosts = useLocalInferenceHosts()
   const action = useLocalInferenceHostAction()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<LocalInferenceHost | null>(null)
 
-  const performHostAction = (hostId: string, nextAction: 'pause' | 'resume' | 'revoke') => {
+  const performHostAction = (
+    hostId: string,
+    nextAction: 'pause' | 'resume' | 'revoke',
+    onSuccess?: () => void,
+  ) => {
     setActionError(null)
     action.mutate(
       { action: nextAction, hostId },
-      { onError: () => setActionError('Nessie could not update this local Ollama connection. Try again.') },
+      {
+        onError: () => setActionError('Nessie could not update this local Ollama connection. Try again.'),
+        onSuccess,
+      },
     )
   }
 
@@ -88,7 +97,7 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
                   <button
                     className="admin-button admin-button-danger"
                     disabled={action.isPending || host.status === 'revoked'}
-                    onClick={() => performHostAction(host.id, 'revoke')}
+                    onClick={() => setRevokeTarget(host)}
                     type="button"
                   >
                     Revoke
@@ -99,6 +108,19 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
           </div>
         ) : empty}
       </QueryState>
+      <ConfirmDialog
+        body="This disconnects Nessie’s relationship with this computer. Its local key and Ollama state stay on that computer until you repair the connection or rotate its key."
+        confirmLabel="Disconnect"
+        destructive
+        onCancel={() => setRevokeTarget(null)}
+        onConfirm={() => {
+          if (!revokeTarget) return
+          performHostAction(revokeTarget.id, 'revoke', () => setRevokeTarget(null))
+        }}
+        open={revokeTarget !== null}
+        pending={action.isPending}
+        title="Disconnect this local Ollama connection?"
+      />
     </div>
   )
 }

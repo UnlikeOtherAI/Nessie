@@ -67,7 +67,7 @@ export const LocalOllamaSection = () => {
             onClick={() => void prepareDesktop()}
             type="button"
           >
-            {enroll.isPending ? 'Preparing this computer…' : 'Prepare this computer'}
+            {enroll.isPending ? 'Looking for Ollama…' : 'Find Ollama on this computer'}
           </button>
         ) : null}
         <Link className="text-sm text-[color:var(--lnk)] hover:underline" to="/agents/executors">
