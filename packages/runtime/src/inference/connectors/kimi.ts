@@ -60,12 +60,13 @@ export const createKimiConnector = (
     // context capacity is the provider's own accepted protocol maximum, not a
     // Nessie response-length policy.
     if (ledgerRouted) return {}
-    const response = await fetch(`${baseUrl}/v1/models`, {
+    try {
+      const response = await fetch(`${baseUrl}/v1/models`, {
         headers: { ...headers }, method: 'GET',
         signal: AbortSignal.timeout(10_000),
       })
-    if (!response.ok) throw new Error(`Kimi model catalogue request failed with HTTP ${response.status}`)
-    const body = await response.json() as { data?: Array<{
+      if (!response.ok) return {}
+      const body = await response.json() as { data?: Array<{
         context_length?: unknown
         id?: unknown
         max_output_tokens?: unknown
@@ -75,9 +76,12 @@ export const createKimiConnector = (
         ? row.context_length : undefined
       const outputLimit = typeof row?.max_output_tokens === 'number' && Number.isInteger(row.max_output_tokens) && row.max_output_tokens > 0
         ? row.max_output_tokens : undefined
-    return {
+      return {
         ...(contextLength === undefined ? {} : { maxInputTokens: contextLength }),
         ...(outputLimit ?? contextLength ? { maxOutputTokens: outputLimit ?? contextLength } : {}),
+      }
+    } catch {
+      return {}
     }
   }
 

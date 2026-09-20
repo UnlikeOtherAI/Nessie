@@ -293,6 +293,9 @@ export const executeStage = async (
       requiresProviderOutputLimit: runtimeProvider === 'kimi',
       requestedMaxOutputTokens: input.maxOutputTokensOverride,
     })
+    if (runtimeProvider === 'kimi' && maxOutputTokens === undefined) {
+      throw new Error('Kimi model output metadata is unavailable; retry after the provider catalogue is reachable.')
+    }
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({
