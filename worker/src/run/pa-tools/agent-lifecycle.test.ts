@@ -36,5 +36,5 @@ test('delete refuses a Nessie-managed agent before revocation writes', async () 
     actorContext: { actor: { actorId: '00000000-0000-4000-8000-000000000004', actorType: 'user', roles: ['owner'] }, tenant: { organizationId: '00000000-0000-4000-8000-000000000003' }, actionContext: {} },
     prisma: { organizationMember: { findUnique: async () => ({ role: 'owner', deactivatedAt: null }) }, agent: { findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000005', deletedAt: null, organizationId: '00000000-0000-4000-8000-000000000003', ownerUserId: null, systemManaged: true, visibility: 'team' }) } },
   } as unknown as BuiltinToolRuntimeContext
-  await assert.rejects(() => runAgentDeleteTool(context, { agentId: '00000000-0000-4000-8000-000000000005' }), /defined by Nessie|cannot change/i)
+  await assert.rejects(() => runAgentDeleteTool(context, { agentId: '00000000-0000-4000-8000-000000000005' }), /managed by Nessie|cannot be edited/i)
 })
