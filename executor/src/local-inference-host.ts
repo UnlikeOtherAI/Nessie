@@ -106,7 +106,7 @@ const capabilityFor = (
 ): ModelCapabilitySnapshot => ({
   discoveredAt: now.toISOString(),
   lastVerifiedAt: now.toISOString(),
-  maxInputTokens: model.numCtxCap ?? undefined,
+  ...(model.numCtxCap === null ? {} : { maxInputTokens: model.numCtxCap }),
   maxOutputTokens: attempt.maxOutputTokens,
   model: attempt.modelName,
   provider: 'local_device',

@@ -56,7 +56,7 @@ const json = (value: unknown): Response => new Response(JSON.stringify(value), {
   headers: { 'content-type': 'application/json' },
 })
 
-const ollama = (chatLines: unknown[]): OllamaFetch => (url) => {
+const ollama = (chatLines: unknown[], contextLength: number | null = 8192): OllamaFetch => (url) => {
   if (url.endsWith('/api/version')) return Promise.resolve(json({ version: '0.34.1' }))
   if (url.endsWith('/api/tags')) {
     return Promise.resolve(json({ models: [{ digest: DIGEST, name: 'local:latest', size: 7 }] }))
@@ -65,7 +65,7 @@ const ollama = (chatLines: unknown[]): OllamaFetch => (url) => {
     return Promise.resolve(json({
       capabilities: ['completion', 'tools'],
       details: { family: 'gemma' },
-      model_info: { 'general.context_length': 8192 },
+      model_info: contextLength === null ? {} : { 'general.context_length': contextLength },
     }))
   }
   if (url.endsWith('/api/chat')) {
@@ -166,7 +166,7 @@ test('the host relays a fixed typed Ollama request and signs independent daemon 
     api,
     fetchImpl: ollama([
       { done: false, message: { content: 'hello' }, model: 'local:latest' },
-      { done: true, done_reason: 'stop', eval_count: 2, message: {}, model: 'local:latest', prompt_eval_count: 3 },
+      { done: true, done_reason: 'stop', eval_count: 2, message: { content: '' }, model: 'local:latest', prompt_eval_count: 3 },
     ]),
     identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
     isPaused: () => false,
@@ -194,6 +194,27 @@ test('the host relays a fixed typed Ollama request and signs independent daemon 
     envelope,
     machinePublicKey: keys.publicKey,
   }).ok, true)
+})
+
+test('a model without a reported context size still produces a signed receipt', async () => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api, calls } = apiFor(attempt())
+  const loop = new LocalInferenceHostLoop({
+    api,
+    fetchImpl: ollama([
+      { done: false, message: { content: 'hello' }, model: 'local:latest' },
+      { done: true, done_reason: 'stop', message: { content: '' }, model: 'local:latest' },
+    ], null),
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false,
+    journal,
+    origin: 'http://127.0.0.1:11434',
+  })
+
+  assert.deepEqual(await loop.pollOnce(), { attemptId: ATTEMPT_ID, kind: 'completed' })
+  assert.equal(calls.results[0]?.receipt.result.content, 'hello')
+  assert.equal(calls.results[0]?.envelope.purpose, 'result')
 })
 
 test('a remote marker in any streamed chat object aborts acceptance', async () => {
@@ -293,6 +314,19 @@ test('the chat transport refuses a remote result before yielding an event', asyn
       throw new Error('must not yield')
     }
   }, OllamaChatError)
+})
+
+test('the chat transport disables separate Ollama thinking output', async () => {
+  let request: Record<string, unknown> | undefined
+  const fetchImpl: OllamaFetch = async (url, init) => {
+    if (url.endsWith('/api/chat')) request = JSON.parse(String(init.body)) as Record<string, unknown>
+    return ollama([{ done: true, message: { content: 'answer' }, model: 'local:latest' }])(url, init)
+  }
+  for await (const event of streamOllamaChat({
+    attempt: attempt(), fetchImpl, origin: 'http://127.0.0.1:11434', signal: new AbortController().signal,
+  })) void event
+
+  assert.equal(request?.think, false)
 })
 
 test('tool ids are scoped to the durable invocation, not an Ollama-local counter', async () => {

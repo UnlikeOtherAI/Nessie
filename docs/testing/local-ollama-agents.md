@@ -14,6 +14,7 @@ From the repository root, with dependencies installed:
 pnpm --filter @nessie/executor exec node --test --import tsx test/ollama-observed.test.ts
 pnpm --filter @nessie/executor exec node --test --import tsx test/local-inference-host.test.ts
 pnpm --filter @nessie/executor exec node --test --import tsx test/local-inference-receipts.test.ts
+pnpm --filter @nessie/api exec tsx --test test/local-inference-attempt-result-route.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/uoa-live-entitlements.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/local-inference-policy.test.ts
 pnpm --filter @nessie/admin exec node --test --import tsx test/local-inference-run-restart.test.ts
@@ -26,9 +27,17 @@ Results on 2026-09-20:
 
 - `ollama-observed.test.ts`: 4 passed — read-only tags/show discovery, official
   remote markers, changed output digest, malformed/oversized observations.
-- `local-inference-host.test.ts`: 4 passed — typed literal-loopback chat relay,
+- `local-inference-host.test.ts`: 9 passed — typed literal-loopback chat relay,
   signed heartbeat framing, per-chunk remote-marker rejection, and encrypted
-  receipt replay without re-running an ambiguous model call.
+  receipt replay without re-running an ambiguous model call. The live-shaped
+  cases also cover Ollama's empty terminal content, disabled separate thinking,
+  and models that do not report a context size.
+- `local-inference-receipts.test.ts`: 2 passed — exact durable replay is
+  idempotent, conflicting replay is rejected and expired protected receipts are
+  not replayed.
+- `local-inference-attempt-result-route.test.ts`: 4 passed — late and
+  wrong-model receipts are fenced, an exact terminal replay is acknowledged,
+  and a conflicting terminal replay is rejected.
 - `uoa-live-entitlements.test.ts`: 6 passed — active link, authoritative denial
   and unavailable UOA authority remain distinct.
 - `local-inference-policy.test.ts`: 2 passed — only the typed setting key is
@@ -68,14 +77,15 @@ frame is an error delivery, never an empty successful answer. Live local text
 uses the ordinary SSE redactor and emits its held tail exactly once after the
 receipt completes.
 
-The agent detail header consumes the server-derived availability projection only
-when the record has a local binding. It reuses `PresenceBadge` for
-online/offline/unknown readiness, keeps it separate from human Presence, and
-offers the registered Model repair link only to an editor.
+The agent list, agent detail header and addressed-agent conversation drawer
+consume the server-derived availability projection only when the record has a
+local binding. They reuse `PresenceBadge` for online/offline/unknown readiness,
+keep it separate from human Presence, and offer the registered Model repair
+link only to the agent's owner/custodian. The channel drawer is a single-agent
+surface, so it does not turn a roster or mention picker into one request per
+agent.
 
-The general type checks run through the workspace packages. This transport
-record does not claim a real-device product-path Ollama smoke; that check needs
-the owner's explicit consent and is recorded separately when performed.
+The general type checks run through the workspace packages.
 
 ## Required release-gate coverage
 
@@ -101,8 +111,21 @@ macOS or Linux native support.
 Do not pull, delete, alter configuration, stop, or otherwise mutate a person's
 Ollama installation. A real-device check is read-only and only follows product
 consent: list the selected literal loopback endpoint and make the bounded
-synthetic no-op inference/tool probe. This record intentionally makes no claim
-that a real installed model was exercised.
+synthetic no-op inference probe.
+
+Run the opt-in product-host smoke with:
+
+```powershell
+pnpm --filter @nessie/executor smoke:local-ollama
+```
+
+On 2026-09-20 it autodetected 11 models on the installed Ollama 0.34.1,
+selected the smallest structurally local text model (`gemma4:12b`), and passed
+one bounded 24-token attempt through `LocalInferenceHostLoop`. The terminal
+receipt was local-only, its content matched the acknowledged stream exactly,
+and its finish reason was `stop`. The smoke issued only the product's bounded
+version/tags/show discovery requests and one `/api/chat`; it did not pull,
+create, rename, delete, reconfigure or stop any model or daemon.
 
 ## Durable browser evidence
 

@@ -139,10 +139,14 @@ const parseChatObject = (
     throw new OllamaChatError('protocol_error')
   }
   const message = asRecord(body.message)
-  const text = message === undefined ? undefined : nonEmptyText(message.content, MAX_CHAT_LINE_BYTES)
-  if (message !== undefined && message.content !== undefined && text === undefined) {
+  const content = message?.content
+  if (content !== undefined && (typeof content !== 'string' || content.length > MAX_CHAT_LINE_BYTES)) {
     throw new OllamaChatError('protocol_error')
   }
+  // Ollama commonly repeats an empty assistant message on its terminal line
+  // after the text arrived in earlier chunks. It is valid framing, not a text
+  // delta and not a malformed response.
+  const text = typeof content === 'string' && content.length > 0 ? content : undefined
   const toolCalls = message?.tool_calls === undefined
     ? undefined
     : toolCallsFrom(message.tool_calls, allowedToolNames, input.invocationId)
@@ -216,6 +220,10 @@ export const streamOllamaChat = async function* (input: {
         model: input.attempt.modelName,
         options: { num_ctx: input.attempt.numCtx, num_predict: input.attempt.maxOutputTokens },
         stream: true,
+        // Nessie's worker owns reasoning policy and budgets. Asking Ollama for
+        // separate hidden thinking can consume the whole output allowance and
+        // leave no answer text for the conversation.
+        think: false,
         ...(input.attempt.tools.length === 0 ? {} : { tools: toolDefinitionsForOllama(input.attempt) }),
       }),
       headers: { 'content-type': 'application/json' },

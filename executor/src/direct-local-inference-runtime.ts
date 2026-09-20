@@ -87,8 +87,12 @@ export const readDirectLocalInferenceConsentRequest = async (): Promise<DirectLo
   }
   const config = input as unknown as DirectLocalInferenceConsentRequest
   if (!validConfig({
-    apiBaseUrl: config.apiBaseUrl, connectionEpoch: config.connectionEpoch, hostId: config.hostId, machinePrivateKey: config.machinePrivateKey,
-    organizationId: config.organizationId, receiptJournalKey: config.receiptJournalKey,
+    apiBaseUrl: config.apiBaseUrl,
+    connectionEpoch: config.connectionEpoch,
+    hostId: config.hostId,
+    machinePrivateKey: config.machinePrivateKey,
+    organizationId: config.organizationId,
+    receiptJournalKey: config.receiptJournalKey,
   }) || !UUID.test(config.challengeId)) {
     throw new Error('Desktop local inference IPC is malformed.')
   }
