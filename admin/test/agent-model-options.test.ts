@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   filterModelOptions,
   findModelOption,
+  modelOptionKey,
   modelOptionLabel,
   modelOptionSubtitle,
   orderModelOptionsForPicker,
@@ -112,6 +113,31 @@ test('two accounts at one provider are told apart by the subscription pointer', 
     findModelOption(options, 'kimi-for-coding', 'subscription/kimi', 'deadbeef'),
     work,
   )
+})
+
+test('two own hosts with the same Ollama tag remain distinct selections', () => {
+  const laptop = option({
+    displayName: 'qwen3:8b',
+    localInferenceHostId: '11111111-1111-4111-8111-111111111111',
+    localManifestDigest: 'a'.repeat(64),
+    model: 'qwen3:8b',
+    provider: 'local/ollama',
+    providerDisplayName: 'Local Ollama',
+    source: 'local',
+  })
+  const desktop = option({
+    ...laptop,
+    localInferenceHostId: '22222222-2222-4222-8222-222222222222',
+    localManifestDigest: 'b'.repeat(64),
+  })
+  const options = [laptop, desktop]
+
+  assert.notEqual(modelOptionKey(laptop), modelOptionKey(desktop))
+  assert.equal(
+    findModelOption(options, 'qwen3:8b', 'local/ollama', undefined, desktop.localInferenceHostId, desktop.localManifestDigest),
+    desktop,
+  )
+  assert.deepEqual(orderModelOptionsForPicker([option({}), desktop, laptop]), [desktop, laptop, option({})])
 })
 
 test('the field label repeats the model id only when it differs from the name', () => {
