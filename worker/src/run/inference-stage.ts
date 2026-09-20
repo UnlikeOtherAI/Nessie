@@ -49,10 +49,11 @@ export type StageExecutionSuccess = {
  */
 export const resolveStageOutputTokens = (input: {
   capabilityMaxOutputTokens?: number
-  configuredMaxOutputTokens: number
   requestedMaxOutputTokens?: number
-}): number => Math.min(
-  input.requestedMaxOutputTokens ?? input.configuredMaxOutputTokens,
+}): number | undefined => input.requestedMaxOutputTokens === undefined
+  ? undefined
+  : Math.min(
+  input.requestedMaxOutputTokens,
   input.capabilityMaxOutputTokens ?? Number.POSITIVE_INFINITY,
 )
 
@@ -274,14 +275,13 @@ export const executeStage = async (
     const capabilities = await service.getCapabilities(providerConfig.model)
     const maxOutputTokens = resolveStageOutputTokens({
       capabilityMaxOutputTokens: capabilities.effectiveSnapshot.maxOutputTokens,
-      configuredMaxOutputTokens: input.modelConfig.maxTokens,
       requestedMaxOutputTokens: input.maxOutputTokensOverride,
     })
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
-        maxOutputTokens,
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
         messages,
         model: providerConfig.model,
         promptCacheKey,
@@ -330,7 +330,7 @@ export const executeStage = async (
     } else {
       const result = await service.run({
         actorContext: input.actorContext,
-        maxOutputTokens,
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
         messages,
         model: providerConfig.model,
         promptCacheKey,

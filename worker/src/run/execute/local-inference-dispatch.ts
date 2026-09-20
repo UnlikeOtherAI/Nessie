@@ -69,7 +69,7 @@ export const localInferenceFrameEvent = (event: unknown): { error?: string; text
 export const dispatchLocalInference = async (input: {
   binding: RunLocalInferenceBinding
   deps: ExecutionDependencies
-  maxOutputTokens: number
+  maxOutputTokens?: number
   providerInput: ProviderInputFinalization
   runFence: string
   context: RunContext
@@ -109,7 +109,8 @@ export const dispatchLocalInference = async (input: {
     bindingId: input.binding.bindingId,
     bindingRevision: input.binding.revision,
     hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
-    maxOutputTokens: input.maxOutputTokens, messages, modelDigest: input.binding.manifestDigest,
+    ...(input.maxOutputTokens === undefined ? {} : { maxOutputTokens: input.maxOutputTokens }),
+    messages, modelDigest: input.binding.manifestDigest,
     modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1 as const,
     runId: input.context.run.id, tools: input.tools,
   }

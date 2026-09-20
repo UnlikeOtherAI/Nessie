@@ -353,11 +353,10 @@ export const createOpenAiLikeConnector = (
 
       try {
         const tools = mapToolsToOpenAi(request.tools)
-        const maxTokens = request.maxOutputTokens ?? 1024
         const response = await invokeRequest({
-          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-            ? { max_tokens: maxTokens }
-            : { max_completion_tokens: maxTokens }),
+          ...(request.maxOutputTokens === undefined ? {} : provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+            ? { max_tokens: request.maxOutputTokens }
+            : { max_completion_tokens: request.maxOutputTokens }),
           messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
           // DeepSeek defaults to thinking mode. Its API requires the returned
@@ -431,11 +430,10 @@ export const createOpenAiLikeConnector = (
 
       try {
         const tools = mapToolsToOpenAi(request.tools)
-        const maxTokens = request.maxOutputTokens ?? 1024
         const response = await invokeRequest({
-          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-            ? { max_tokens: maxTokens }
-            : { max_completion_tokens: maxTokens }),
+          ...(request.maxOutputTokens === undefined ? {} : provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
+            ? { max_tokens: request.maxOutputTokens }
+            : { max_completion_tokens: request.maxOutputTokens }),
           messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
           ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'

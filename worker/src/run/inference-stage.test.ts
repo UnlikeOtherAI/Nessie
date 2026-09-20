@@ -6,7 +6,6 @@ import { resolveStageOutputTokens } from './inference-stage.js'
 test('output admission honors a selected small model capability', () => {
   assert.equal(resolveStageOutputTokens({
     capabilityMaxOutputTokens: 2_048,
-    configuredMaxOutputTokens: 12_000,
     requestedMaxOutputTokens: 8_000,
   }), 2_048)
 })
@@ -14,13 +13,10 @@ test('output admission honors a selected small model capability', () => {
 test('output admission lets a larger selected model use its run allowance', () => {
   assert.equal(resolveStageOutputTokens({
     capabilityMaxOutputTokens: 32_000,
-    configuredMaxOutputTokens: 12_000,
     requestedMaxOutputTokens: 18_000,
   }), 18_000)
 })
 
-test('unknown capability keeps the configured fallback', () => {
-  assert.equal(resolveStageOutputTokens({
-    configuredMaxOutputTokens: 12_000,
-  }), 12_000)
+test('an unbounded conversational turn omits an output-token request', () => {
+  assert.equal(resolveStageOutputTokens({}), undefined)
 })

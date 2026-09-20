@@ -150,6 +150,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       lastAssistantText,
       outputFinalizationUsed: outputFinalization.used,
       outputFinalizationPending: outputFinalization.pending,
+      outputFinalizationNoTools: outputFinalization.noTools,
       outputFinalizationReason: outputFinalization.reason,
       // Older rolling workers see the recovery as already spent too.
       lengthFinalizationUsed: outputFinalization.used,
@@ -385,7 +386,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
             ...(currentAdmission.requestedOutputTokens === undefined
               ? {}
               : { maxOutputTokens: currentAdmission.requestedOutputTokens }),
-            ...(finalizationPending ? { noTools: true } : {}),
+            ...(finalizationPending && outputFinalization.noTools ? { noTools: true } : {}),
           },
         ),
         retryBudget,
@@ -413,7 +414,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
           role: 'assistant',
         }), 'assistant_output'))
         messages.push(coverProviderInputComponent({
-          content: outputFinalizationInstruction(finalization.reason),
+          content: outputFinalizationInstruction(finalization.reason, outputFinalization.noTools),
           role: 'system',
         }, 'loop_instruction'))
         await checkpoint()
@@ -422,7 +423,10 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       if (finalization?.kind === 'terminal') {
         const finalText = outputFinalizationTerminalText(finalization.reason, safeOutputText || lastAssistantText)
         lastAssistantText = finalText
-        if (finalization.reason === 'length') return stop('tokens')
+        // Provider output exhaustion is not a run-token stop. The run can be
+        // well inside its ledger allowance (as the production incident was),
+        // and reporting it as `token_limit` fabricates both the cause and a
+        // misleading manual continuation path.
         return finish(null, finalText, false, null, null, 'empty_provider_response')
       }
 

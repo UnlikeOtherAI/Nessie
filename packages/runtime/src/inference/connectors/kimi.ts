@@ -130,7 +130,7 @@ export const createKimiConnector = (
 
       try {
         const response = await invokeRequest({
-          max_tokens: request.maxOutputTokens ?? 1024,
+          ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
           messages: payload.messages,
           model,
           system: payload.system,
@@ -193,7 +193,7 @@ export const createKimiConnector = (
 
       try {
         const response = await invokeRequest({
-          max_tokens: request.maxOutputTokens ?? 1024,
+          ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
           messages: payload.messages,
           model,
           stream: true,
