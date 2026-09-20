@@ -26,6 +26,15 @@ test('a repeated provider output limit remains distinct from an empty response',
   })
 })
 
+test('Kimi metadata availability is retryable while malformed metadata is a format failure', () => {
+  assert.equal(classifyError(new Error('Kimi model metadata is temporarily unavailable')), 'transient')
+  assert.deepEqual(resolveRecovery('transient', 0, { remaining: 2, total: 2 }), {
+    action: 'retry', delayMs: 2_000,
+  })
+  assert.equal(classifyError(new Error('Kimi model metadata response is malformed')), 'format')
+  assert.equal(classifyError(new Error('Kimi configured model was not found in model metadata')), 'model_not_found')
+})
+
 test('missing model credentials tell the user how to resolve the problem', () => {
   const error = new Error('Missing API key for provider kimi')
 

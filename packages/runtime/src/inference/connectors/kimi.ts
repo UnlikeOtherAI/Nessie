@@ -60,28 +60,53 @@ export const createKimiConnector = (
     // context capacity is the provider's own accepted protocol maximum, not a
     // Nessie response-length policy.
     if (ledgerRouted) return {}
+    let response: Response
     try {
-      const response = await fetch(`${baseUrl}/v1/models`, {
+      response = await fetch(`${baseUrl}/v1/models`, {
         headers: { ...headers }, method: 'GET',
         signal: AbortSignal.timeout(10_000),
       })
-      if (!response.ok) return {}
-      const body = await response.json() as { data?: Array<{
-        context_length?: unknown
-        id?: unknown
-        max_output_tokens?: unknown
-      }> }
-      const row = body.data?.find((entry) => entry.id === model)
-      const contextLength = typeof row?.context_length === 'number' && Number.isInteger(row.context_length) && row.context_length > 0
-        ? row.context_length : undefined
-      const outputLimit = typeof row?.max_output_tokens === 'number' && Number.isInteger(row.max_output_tokens) && row.max_output_tokens > 0
-        ? row.max_output_tokens : undefined
-      return {
-        ...(contextLength === undefined ? {} : { maxInputTokens: contextLength }),
-        ...(outputLimit ?? contextLength ? { maxOutputTokens: outputLimit ?? contextLength } : {}),
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        throw new Error('Kimi model metadata request timed out')
       }
+      throw new Error('Kimi model metadata is temporarily unavailable')
+    }
+    if (!response.ok) {
+      throw await providerHttpError({
+        ledgerRouted,
+        operation: 'model metadata',
+        provider: 'kimi',
+        response,
+      })
+    }
+    let body: unknown
+    try {
+      body = await response.json()
     } catch {
-      return {}
+      throw new Error('Kimi model metadata response is malformed')
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error('Kimi model metadata response is malformed')
+    }
+    const data = (body as Record<string, unknown>).data
+    if (!Array.isArray(data)) throw new Error('Kimi model metadata response is malformed')
+    const row = data.find((entry): entry is Record<string, unknown> =>
+      Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+      && (entry as Record<string, unknown>).id === model,
+    )
+    if (!row) throw new Error('Kimi configured model was not found in model metadata')
+    const contextLength = typeof row.context_length === 'number' && Number.isInteger(row.context_length) && row.context_length > 0
+      ? row.context_length : undefined
+    const outputLimit = typeof row.max_output_tokens === 'number' && Number.isInteger(row.max_output_tokens) && row.max_output_tokens > 0
+      ? row.max_output_tokens : undefined
+    if (contextLength === undefined && outputLimit === undefined) {
+      throw new Error('Kimi model metadata response is malformed')
+    }
+    const protocolOutputLimit = outputLimit ?? contextLength
+    return {
+      ...(contextLength === undefined ? {} : { maxInputTokens: contextLength }),
+      ...(protocolOutputLimit === undefined ? {} : { maxOutputTokens: protocolOutputLimit }),
     }
   }
 

@@ -200,9 +200,8 @@ export const executeStage = async (
     stage: RouteStage
     stageIndex: number
     stream: boolean
-    // Raises this call's output ceiling above `modelConfig.maxTokens`. A
-    // document is emitted as tool-call arguments in one completion, so the
-    // ordinary per-call default would truncate it mid-write.
+    // Sets an explicit operational ceiling for bounded utility work. Main
+    // conversational calls leave this absent and rely on provider defaults.
     maxOutputTokensOverride?: number
     toolChoice?: 'auto' | 'none' | 'required'
     tools?: ToolSchemaDescriptor[]
@@ -294,7 +293,7 @@ export const executeStage = async (
       requestedMaxOutputTokens: input.maxOutputTokensOverride,
     })
     if (runtimeProvider === 'kimi' && maxOutputTokens === undefined) {
-      throw new Error('Kimi model output metadata is unavailable; retry after the provider catalogue is reachable.')
+      throw new Error('Kimi model metadata is temporarily unavailable')
     }
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
