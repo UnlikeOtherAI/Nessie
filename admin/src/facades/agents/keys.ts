@@ -10,6 +10,7 @@ export const agentKeys = {
   // both live under the family root so one invalidation covers them.
   allScopes: ['agents', 'all'] as const,
   activity: (agentId?: string) => ['agents', agentId, 'activity'] as const,
+  availability: (agentId?: string) => ['agents', agentId, 'availability'] as const,
   children: (agentId?: string) => ['agents', agentId, 'children'] as const,
   // Every conversation with this agent the caller is privy to
   // (docs/plans/2026-09-08-agent-conversations.md). Keyed on the agent because

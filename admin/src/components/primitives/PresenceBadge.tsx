@@ -1,10 +1,13 @@
 import type { PresenceState } from '../../lib/api-client'
 
+/** `unknown` is for server-derived agent readiness, never a human presence. */
+export type PresenceBadgeState = PresenceState | 'unknown'
+
 type PresenceBadgeProps = {
   // Focus mode replaces the ordinary solid online dot with an intentional
   // hollow ring. It is a status marker, not a second availability state.
   focusModeEnabled?: boolean
-  state: PresenceState
+  state: PresenceBadgeState
   // Dot diameter in px.
   size?: number
   // Colour of the separating ring — should match the background the dot sits on.
@@ -14,8 +17,9 @@ type PresenceBadgeProps = {
   ringWidth?: number
 }
 
-// Three-state presence dot: filled green when online, an amber "z" when away
-// (idle / tab hidden), and an empty muted ring when offline.
+// Human presence stays three-state: green online, amber away, muted offline.
+// Local-agent readiness additionally uses the muted question marker for a
+// server-declared unknown state; it is not a human presence assertion.
 export const PresenceBadge = ({
   focusModeEnabled = false,
   state,
@@ -74,11 +78,34 @@ export const PresenceBadge = ({
     )
   }
 
+  if (state === 'away') {
+    return (
+      <span
+        aria-hidden
+        className="flex items-center justify-center rounded-full"
+        style={{ ...base, background: 'var(--warning)', color: 'var(--ink)' }}
+      >
+        <svg
+          fill="none"
+          height={Math.round(size * 0.66)}
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.5"
+          viewBox="0 0 10 10"
+          width={Math.round(size * 0.66)}
+        >
+          <path d="M3 3.4 H7 L3 6.6 H7" />
+        </svg>
+      </span>
+    )
+  }
+
   return (
     <span
       aria-hidden
       className="flex items-center justify-center rounded-full"
-      style={{ ...base, background: 'var(--warning)', color: 'var(--ink)' }}
+      style={{ ...base, background: 'var(--overlay-weak)', border: '1.5px solid var(--muted)', color: 'var(--tx3)' }}
     >
       <svg
         fill="none"
@@ -90,7 +117,7 @@ export const PresenceBadge = ({
         viewBox="0 0 10 10"
         width={Math.round(size * 0.66)}
       >
-        <path d="M3 3.4 H7 L3 6.6 H7" />
+        <path d="M5 2.5 v3.2 M5 7.5 h.01" />
       </svg>
     </span>
   )

@@ -3,6 +3,7 @@ export { patchAgentStatusRecord } from './realtime-snapshot'
 export type { AgentConversationPage, AgentConversationPages } from './queries'
 export {
   useAgentActivity,
+  useAgentAvailability,
   useAgentChildren,
   useAgentConversations,
   useAgentDocuments,

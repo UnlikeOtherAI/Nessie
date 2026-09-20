@@ -29,6 +29,11 @@ Results on 2026-09-20:
   server-authored local-host failure may render the fresh-run Restart control;
   malformed metadata cannot create it.
 
+The agent detail header consumes the server-derived availability projection only
+when the record has a local binding. It reuses `PresenceBadge` for
+online/offline/unknown readiness, keeps it separate from human Presence, and
+offers the registered Model repair link only to an editor.
+
 The general type checks run through the workspace packages. The admin package
 currently cannot complete in this checkout because the pre-existing private
 `@unlikeotherai/billing-statement-protocol` dependency is unavailable; its

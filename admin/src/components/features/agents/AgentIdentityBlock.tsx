@@ -5,6 +5,7 @@ import { Pill } from '../../primitives/Pill'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from '../../shared/AgentStatusDot'
 import { agentStatusTone } from '../../shared/agent-presentation'
+import { AgentAvailability } from './AgentAvailability'
 
 type AgentIdentityBlockProps = {
   agent: AgentRecord
@@ -69,6 +70,14 @@ export const AgentIdentityBlock = ({
           <Pill tone={agentStatusTone(agent.status)}>{agent.status}</Pill>
         </div>
         <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
+        <div className="mt-1">
+          <AgentAvailability
+            agentId={agent.id}
+            canRepair={canEditAvatar}
+            localBindingId={agent.localInferenceBindingId}
+            provider={agent.provider}
+          />
+        </div>
         {children}
         <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
           {status?.currentToolName
