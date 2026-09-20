@@ -17,6 +17,51 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 export const LocalInferenceTransportSchema = z.enum(['executor', 'desktop'])
 export type LocalInferenceTransport = z.infer<typeof LocalInferenceTransportSchema>
 
+/** The single version both the executor and Desktop-host bridge speak. */
+export const LOCAL_INFERENCE_PROTOCOL_VERSION = 1
+
+const LocalInferenceDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
+const LocalInferenceMachineSignatureSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]+$/)
+  .min(64)
+  .max(128)
+
+/**
+ * Each host message has an independent sequence lane.  A poll may wait without
+ * delaying a cancellation or liveness update, but cannot be replayed as one.
+ */
+export const LocalInferenceEnvelopePurposeSchema = z.enum([
+  'claim',
+  'heartbeat',
+  'poll',
+  'frames',
+  'goodbye',
+])
+export type LocalInferenceEnvelopePurpose = z.infer<typeof LocalInferenceEnvelopePurposeSchema>
+
+/**
+ * The body travels beside this header, but only its canonical digest is signed.
+ * Routes still parse their own purpose-specific bounded body before acting.
+ */
+export const LocalInferenceEnvelopeCoreSchema = z.object({
+  bodyDigest: LocalInferenceDigestSchema,
+  connectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  hostId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  protocolVersion: z.literal(LOCAL_INFERENCE_PROTOCOL_VERSION),
+  purpose: LocalInferenceEnvelopePurposeSchema,
+  sentAt: z.string().datetime({ offset: true }).max(40),
+  sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+}).strict()
+export type LocalInferenceEnvelopeCore = z.infer<typeof LocalInferenceEnvelopeCoreSchema>
+export type LocalInferenceEnvelopeCoreInput = z.input<typeof LocalInferenceEnvelopeCoreSchema>
+
+export const LocalInferenceSignedEnvelopeSchema = LocalInferenceEnvelopeCoreSchema.extend({
+  signature: LocalInferenceMachineSignatureSchema,
+}).strict()
+export type LocalInferenceSignedEnvelope = z.infer<typeof LocalInferenceSignedEnvelopeSchema>
+
 export const LocalInferenceBindingStatusSchema = z.enum([
   'pending',
   'consented_pending_activation',

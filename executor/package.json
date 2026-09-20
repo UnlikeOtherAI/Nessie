@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/local-inference-host": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*"

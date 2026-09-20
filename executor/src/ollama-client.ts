@@ -2,6 +2,11 @@ import { createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
 
+import {
+  LocalLoopbackOriginError,
+  assertLoopbackOrigin as assertSharedLoopbackOrigin,
+} from '@nessie/local-inference-host'
+
 /**
  * The executor's side of Ollama: detect it, and import a verified GGUF into it.
  *
@@ -66,47 +71,16 @@ export const defaultOllamaFetch: OllamaFetch = (url, init) =>
   // machine. A loopback daemon has no business redirecting us anywhere.
   fetch(url, { ...init, redirect: 'error' } as RequestInit & { duplex?: 'half' })
 
-export class OllamaOriginError extends Error {}
+/** Compatibility alias; shared host code owns the literal-loopback admission. */
+export class OllamaOriginError extends LocalLoopbackOriginError {}
 
-/** `127.0.0.1`, `127.0.0.53`, … — the whole 127.0.0.0/8 loopback block. */
-const IPV4_LOOPBACK = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
-
-/**
- * Accept only an origin whose socket cannot leave this machine, and hand back
- * its normalised form.
- *
- * Literal addresses only. `localhost` is deliberately refused despite being
- * the conventional spelling: it is a name the operating system resolves, and a
- * hosts file or a resolver can point it anywhere, which would quietly turn
- * this module into the unpinned general client the egress lint exists to
- * prevent. The compiled default below is an address, and a reviewed policy
- * that wants to move the port can say `http://127.0.0.1:<port>`.
- */
 export const assertLoopbackOrigin = (origin: string): string => {
-  let url: URL
   try {
-    url = new URL(origin)
-  } catch {
-    throw new OllamaOriginError('Ollama origin must be a URL')
+    return assertSharedLoopbackOrigin(origin)
+  } catch (error) {
+    if (error instanceof LocalLoopbackOriginError) throw new OllamaOriginError(error.message)
+    throw error
   }
-  if (url.protocol !== 'http:') throw new OllamaOriginError('Ollama origin must be http')
-  if (url.username !== '' || url.password !== '') {
-    throw new OllamaOriginError('Ollama origin must carry no credentials')
-  }
-  if ((url.pathname !== '' && url.pathname !== '/') || url.search !== '' || url.hash !== '') {
-    throw new OllamaOriginError('Ollama origin must be a bare origin')
-  }
-  const host = url.hostname.toLowerCase()
-  const ipv4 = IPV4_LOOPBACK.exec(host)
-  const isIpv4Loopback =
-    ipv4 !== null && ipv4.slice(1).every((octet) => Number(octet) >= 0 && Number(octet) <= 255)
-  // WHATWG `hostname` keeps the brackets on an IPv6 literal, so `[::1]` is
-  // what arrives here; accept the bare spelling too rather than depend on it.
-  const isIpv6Loopback = host === '[::1]' || host === '::1'
-  if (!isIpv4Loopback && !isIpv6Loopback) {
-    throw new OllamaOriginError('Ollama origin must be a loopback address')
-  }
-  return `${url.protocol}//${url.host}`
 }
 
 /** `0.34.1` against `0.34.0`, numerically and per segment; a version we cannot read is not a version that passes. */
