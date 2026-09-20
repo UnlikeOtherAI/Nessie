@@ -122,6 +122,8 @@ export type ObservedLocalModel = z.infer<typeof ObservedLocalModelSchema>
 export const LocalInferenceHostSchema = z.object({
   availability: AgentAvailabilitySchema,
   canonicalSocket: LocalSocketSchema.nullable(),
+  /** The owned executor detail doorway, present only for executor transport. */
+  executorId: z.string().uuid().nullable(),
   id: z.string().uuid(),
   lastSeenAt: TimestampSchema.nullable(),
   models: z.array(ObservedLocalModelSchema).max(100),

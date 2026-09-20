@@ -170,6 +170,35 @@ an independent executor model manager. None enables a decision in this brief.
 Diagnostic ids belong only in expandable failure details. Queue length is not
 a prediction of latency and does not merit a normal-screen counter.
 
+## Implemented doorway details
+
+The live picker receives only fresh, local-only observations from the signed
+host belonging to the effective person. It groups them as **This computer**;
+the group is a choice of processing location, not a hardware or performance
+dashboard. A local option carries the host and manifest internally so two
+computers with the same tag cannot be silently conflated.
+
+Connections renders **Prepare this computer** only in Nessie Desktop. It asks
+the native shell to create the protected identity, registers its public half,
+then starts the direct host so its bounded loopback observation can report a
+verified model. It never starts Ollama. The interim copy is a real pending
+state rather than a successful-looking offline registration. **Open paired executors** is the
+browser's honest doorway to a host it cannot inspect. Each executor-backed row
+also has **Open executor**, because the executor detail is where its pairing
+and recovery controls live. Pause, resume, and revoke remain next to the
+connection they affect; no heartbeat, socket, GPU, token, or raw-id telemetry
+is rendered.
+
+Selecting a local model on an existing agent renders one approval block. Its
+only actions are **Approve local model**, the already-paired executor doorway
+when applicable, and the existing final Save. Desktop receives just the opaque
+challenge identifier and must fetch the canonical consent details before its
+native confirmation; it never trusts browser display text. The executor path
+shows its exact existing command only after the server created that one-use
+challenge. “I approved it in the executor” merely enables Save; the server
+still rejects Save unless that machine's signature has created the inactive
+consent, so the acknowledgement cannot activate or bypass anything.
+
 ## Reuse and accessibility
 
 Extend `AgentAvatar` with the shared `PresenceBadge` rendering used by the

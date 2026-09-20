@@ -107,7 +107,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       orderBy: { createdAt: 'asc' },
       take: 100,
       select: {
-        id: true, inventory: true, inventoryObservedAt: true, lastSeenAt: true,
+        executorId: true, id: true, inventory: true, inventoryObservedAt: true, lastSeenAt: true,
         pausedAt: true, revokedAt: true, transport: true,
       },
     })
@@ -142,6 +142,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
         availability: host.revokedAt || host.pausedAt || !host.lastSeenAt || now - host.lastSeenAt.getTime() > 60_000
           ? 'offline' : 'online',
         canonicalSocket: null,
+        executorId: host.executorId,
         id: host.id,
         lastSeenAt: host.lastSeenAt?.toISOString() ?? null,
         models: Array.isArray(host.inventory) ? host.inventory : [],
@@ -188,7 +189,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       select: { id: true },
     })
     reply.header('Cache-Control', 'no-store')
-    return createApiResponse({ hostId: host.id })
+    return createApiResponse({ hostId: host.id, organizationId: actor.tenant.organizationId })
   })
 
   // A host may advertise only a signed, bounded observation of its own local

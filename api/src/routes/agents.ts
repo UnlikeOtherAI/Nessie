@@ -70,6 +70,7 @@ import { registerAgentDocumentRoutes } from './agent-documents.js'
 import { createKnowledgeAccess } from './knowledge-base-access.js'
 import { migrateLegacyAgentCoreDocuments } from '../services/agent-core-documents.js'
 import { projectAgentLocalInferenceAvailability } from '../services/local-inference-availability.js'
+import { listLocalInferenceModelOptions } from '../services/local-inference-model-options.js'
 
 const AgentMessagesQuerySchema = z.object({
   cursor: z.string().min(1).max(2048).optional(),
@@ -176,7 +177,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     // subscriptions — that would take away the one option still able to run —
     // so the composer resolves them separately and only reports the Ledger
     // error when it produced nothing at all.
-    const { ledgerError, options } = await listAgentModelOptionsForUser(prisma, {
+    const effectiveUserId = actorContext.actionContext.effectiveUserId ?? actorContext.actor.actorId
+    const [{ ledgerError, options }, localOptions] = await Promise.all([
+      listAgentModelOptionsForUser(prisma, {
       config: deps.config.model,
       ...(process.env.LEDGER_PUBLIC_URL
         ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
@@ -186,14 +189,19 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         actorContext,
         ledgerIdentity: deps.ledgerIdentity,
       }),
-      userId: actorContext.actionContext.effectiveUserId ?? actorContext.actor.actorId,
-    })
-    if (ledgerError && options.length === 0) {
+      userId: effectiveUserId,
+      }),
+      listLocalInferenceModelOptions(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        userId: effectiveUserId,
+      }),
+    ])
+    if (ledgerError && options.length === 0 && localOptions.length === 0) {
       return reply.code(503).send({
         error: { code: ledgerError.code, message: ledgerError.message },
       })
     }
-    return createApiResponse(AgentModelOptionSchema.array().parse(options))
+    return createApiResponse(AgentModelOptionSchema.array().parse([...localOptions, ...options]))
   })
 
   app.post('/api/agents', async (request, reply) => {

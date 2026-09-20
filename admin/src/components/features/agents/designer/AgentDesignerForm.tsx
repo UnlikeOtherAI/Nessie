@@ -18,6 +18,7 @@ import { Input, Select, Textarea } from '../../../shared/FormControls'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
+  agentId?: string
   canManageExplicitTools: boolean
   canManageTodos: boolean
   /**
@@ -31,6 +32,8 @@ type AgentDesignerFormProps = {
   modelsLoading: boolean
   parentAgentName?: string
   onSectionChange: (section: AgentDesignerSection) => void
+  onLocalBindingChange: (bindingId: string | null) => void
+  onModelSelect: (option: AgentModelOption) => void
   /**
    * Render every control disabled and offer no way to change anything. A reader
    * who may not edit this agent sees the *same* form — same sections, same
@@ -81,6 +84,7 @@ const DESIGNER_SECTIONS: ReadonlyArray<{
 
 export const AgentDesignerForm = ({
   actions,
+  agentId,
   canManageExplicitTools,
   canManageTodos,
   leadIn,
@@ -89,6 +93,8 @@ export const AgentDesignerForm = ({
   modelsLoading,
   parentAgentName,
   onSectionChange,
+  onLocalBindingChange,
+  onModelSelect,
   readOnly = false,
   section,
   showTools = true,
@@ -179,11 +185,13 @@ export const AgentDesignerForm = ({
 
       <div hidden={section !== 'model'}>
         <AgentModelField
+          agentId={agentId}
           disabled={readOnly}
           error={modelOptionsError}
           loading={modelsLoading}
           model={state.model}
-          onSelect={actions.setModelSelection}
+          onSelect={onModelSelect}
+          onLocalBindingChange={onLocalBindingChange}
           options={modelOptions}
           provider={state.provider}
           selected={selectedModel ?? null}

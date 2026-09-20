@@ -3,13 +3,16 @@ import type { AgentModelOption } from '../../../../lib/api-client'
 import { FieldLabel } from '../../../primitives/FieldLabel'
 import { ModelCombobox } from './ModelCombobox'
 import { ModelUnavailableNotice } from './ModelUnavailableNotice'
+import { LocalModelBindingApproval } from '../../local-inference/LocalModelBindingApproval'
 
 type AgentModelFieldProps = {
   disabled: boolean
+  agentId?: string
   error?: string
   loading: boolean
   model: string
   onSelect: (option: AgentModelOption) => void
+  onLocalBindingChange: (bindingId: string | null) => void
   options: AgentModelOption[]
   provider: string
   selected: AgentModelOption | null
@@ -18,7 +21,7 @@ type AgentModelFieldProps = {
 
 /** The one model chooser used by the Model section for every agent surface. */
 export const AgentModelField = ({
-  disabled, error, loading, model, onSelect, options, provider, selected, streaming,
+  agentId, disabled, error, loading, model, onLocalBindingChange, onSelect, options, provider, selected, streaming,
 }: AgentModelFieldProps) => {
   const unavailable = Boolean((model || provider) && !selected)
   return (
@@ -41,6 +44,13 @@ export const AgentModelField = ({
           {selected.description ?? `Runs through ${selected.providerDisplayName}.`}
         </p>
       ) : null}
+      <LocalModelBindingApproval
+        agentId={agentId}
+        disabled={disabled}
+        key={`${selected?.localInferenceHostId ?? 'none'}:${selected?.localManifestDigest ?? 'none'}`}
+        onBindingChange={onLocalBindingChange}
+        option={selected}
+      />
       <p className="text-xs leading-5 text-[color:var(--tx3)]">
         To run this agent locally, connect Ollama on your own computer in{' '}
         <Link className="underline" to="/settings/connections?tab=inference">Connected accounts</Link>.

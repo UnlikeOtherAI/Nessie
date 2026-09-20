@@ -1,8 +1,18 @@
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
-import { useLocalInferenceHostAction, useLocalInferenceHosts, type LocalInferenceHost } from '../../../facades/local-inference/hooks'
+import { useEffect, useState } from 'react'
+import {
+  useEnrollLocalInferenceDesktopHost,
+  useLocalInferenceHostAction,
+  useLocalInferenceHosts,
+  type LocalInferenceHost,
+} from '../../../facades/local-inference/hooks'
 import { QueryState } from '../../../components/shared/QueryState'
 import { SectionLabel } from '../../../components/primitives/SectionLabel'
+import { isDesktopApp } from '../../../lib/desktop'
+import {
+  prepareLocalInferenceDesktopEnrollment,
+  startLocalInferenceDirectHost,
+} from '../../../lib/local-inference-desktop'
 
 const hostCopy = (host: LocalInferenceHost): string => {
   if (host.status === 'revoked') return 'Revoked — connect it again before an agent can use it.'
@@ -17,7 +27,15 @@ const hostCopy = (host: LocalInferenceHost): string => {
 export const LocalOllamaSection = () => {
   const hosts = useLocalInferenceHosts()
   const action = useLocalInferenceHostAction()
+  const enroll = useEnrollLocalInferenceDesktopHost()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [startingHostId, setStartingHostId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!startingHostId) return
+    const host = hosts.data?.hosts.find((candidate) => candidate.id === startingHostId)
+    if (host?.availability === 'online' && host.models.length > 0) setStartingHostId(null)
+  }, [hosts.data?.hosts, startingHostId])
 
   const performHostAction = (hostId: string, nextAction: 'pause' | 'resume' | 'revoke') => {
     setActionError(null)
@@ -25,6 +43,19 @@ export const LocalOllamaSection = () => {
       { action: nextAction, hostId },
       { onError: () => setActionError('Nessie could not update this local Ollama connection. Try again.') },
     )
+  }
+
+  const prepareDesktop = async () => {
+    setActionError(null)
+    try {
+      const enrollment = await prepareLocalInferenceDesktopEnrollment()
+      const host = await enroll.mutateAsync({ displayLabel: 'Nessie Desktop', publicKey: enrollment.publicKey })
+      await startLocalInferenceDirectHost(host)
+      setStartingHostId(host.hostId)
+      await hosts.refetch()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Nessie could not prepare this computer.')
+    }
   }
 
   return (
@@ -36,10 +67,27 @@ export const LocalOllamaSection = () => {
           discovers Ollama there after you give that computer permission; this browser never scans your device.
         </p>
       </div>
-      <p className="text-sm text-[color:var(--tx3)]">
-        On the computer running Ollama, open Nessie Desktop or use its paired executor, then choose
-        {' '}“Use Ollama for Nessie agents”.
-      </p>
+      {startingHostId ? (
+        <p className="text-sm text-[color:var(--tx2)]" role="status">
+          Looking for local Ollama models on this computer. Keep Nessie Desktop and Ollama open; this connection
+          will appear when a local chat model is verified.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        {isDesktopApp() ? (
+          <button
+            className="admin-button admin-button-secondary"
+            disabled={enroll.isPending}
+            onClick={() => void prepareDesktop()}
+            type="button"
+          >
+            {enroll.isPending ? 'Preparing this computer…' : 'Prepare this computer'}
+          </button>
+        ) : null}
+        <Link className="text-sm text-[color:var(--lnk)] hover:underline" to="/agents/executors">
+          Open paired executors
+        </Link>
+      </div>
       {actionError ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{actionError}</p> : null}
       <QueryState
         errorLabel="Could not load your local Ollama connections."
@@ -61,6 +109,14 @@ export const LocalOllamaSection = () => {
                   <p className="mt-1 text-xs text-[color:var(--tx3)]">{hostCopy(host)}</p>
                 </div>
                 <div className="flex gap-2">
+                  {host.transport === 'executor' && host.executorId ? (
+                    <Link
+                      className="admin-button admin-button-secondary"
+                      to={`/agents/executors/${host.executorId}`}
+                    >
+                      Open executor
+                    </Link>
+                  ) : null}
                   {host.status !== 'revoked' ? (
                     <button
                       className="admin-button admin-button-secondary"
@@ -85,8 +141,9 @@ export const LocalOllamaSection = () => {
           </div>
         ) : (
           <p className="text-sm text-[color:var(--tx2)]">
-            No local computer is connected yet. Configure one where Ollama is installed; then select it from an
-            {' '}<Link className="underline" to="/agents">agent’s Model section</Link>.
+            No local computer is connected yet. On this computer, prepare Nessie Desktop; on another computer,
+            {' '}<Link className="underline" to="/agents/executors">open its paired executor</Link>. Once it reports a
+            local model, select it from an <Link className="underline" to="/agents">agent’s Model section</Link>.
           </p>
         )}
       </QueryState>

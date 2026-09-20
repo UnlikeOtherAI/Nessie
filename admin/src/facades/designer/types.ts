@@ -17,6 +17,9 @@ export type AgentVisibilityValue = 'private' | 'team'
 export type AgentFormState = {
   effort: AgentEffortValue
   model: string
+  /** Exact own-host observation for a local/ollama selection. */
+  localInferenceHostId: string
+  localManifestDigest: string
   /**
    * WHICH linked personal subscription the chosen option spends, carried
    * straight off the picker row. Empty for a Ledger model.
