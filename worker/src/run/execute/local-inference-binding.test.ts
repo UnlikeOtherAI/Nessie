@@ -14,24 +14,26 @@ const binding = {
 }
 
 test('local admission pins one exact binding before provider selection', async () => {
-  let update: { data: unknown; where: unknown } | null = null
-  await persistRunLocalInferenceBinding({
+  type UpdateInput = { data: unknown; where: unknown }
+  const updates: UpdateInput[] = []
+  const prisma = {
     run: {
-      updateMany: async (input) => {
-        update = input
+      updateMany: async (input: UpdateInput) => {
+        updates.push(input)
         return { count: 1 }
       },
     },
-  } as never, { binding, runId: 'run-id' })
+  }
+  await persistRunLocalInferenceBinding(prisma as never, { binding, runId: 'run-id' })
 
-  assert.deepEqual(update?.data, {
+  assert.deepEqual(updates[0]?.data, {
     localInferenceBindingId: 'binding-id',
     localInferenceBindingRevision: 3,
     localInferenceHostEpoch: 7,
     localInferenceHostId: 'host-id',
     localInferenceModelDigest: 'a'.repeat(64),
   })
-  assert.deepEqual(update?.where, {
+  assert.deepEqual(updates[0]?.where, {
     id: 'run-id',
     OR: [
       {
