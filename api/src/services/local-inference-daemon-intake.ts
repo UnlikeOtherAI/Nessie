@@ -25,7 +25,11 @@ export const authenticateLocalInferenceDaemonEnvelope = async (
   const authorization = await authorizeLocalInferenceDaemon(prisma, input.envelope)
   const host = authorization?.host
   const verified = authorization
-    ? verifyLocalInferenceEnvelope({ body: input.body, envelope: input.envelope, machinePublicKey: authorization.machinePublicKey })
+    ? verifyLocalInferenceEnvelope({
+      body: input.body,
+      envelope: input.envelope,
+      machinePublicKey: authorization.machinePublicKey,
+    })
     : { ok: false as const }
   const sentAt = Date.parse(input.envelope.sentAt)
   if (!host || !authorization || !verified.ok || input.envelope.purpose !== input.purpose
@@ -46,6 +50,10 @@ export const authenticateLocalInferenceDaemonEnvelope = async (
     return true
   })
   return accepted
-    ? { authorization, hostId: host.id, stillAuthorized: (tx) => executorLocalInferenceDaemonStillAuthorized(tx, authorization) }
+    ? {
+      authorization,
+      hostId: host.id,
+      stillAuthorized: (tx) => executorLocalInferenceDaemonStillAuthorized(tx, authorization),
+    }
     : null
 }
