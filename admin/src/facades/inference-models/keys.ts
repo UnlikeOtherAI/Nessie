@@ -9,4 +9,5 @@ export const inferenceModelKeys = {
   // `usePagedList` appends the page identity through `paginationKeys.page`, so
   // a toggle invalidating the root reaches every page of it.
   catalog: ['inference-models', 'catalog'] as const,
+  teamCatalog: (teamId: string) => ['inference-models', 'team-catalog', teamId] as const,
 }

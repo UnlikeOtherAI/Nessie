@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -24,6 +26,7 @@ const controls = {
 
 test('builds iPad top chrome from the active theme colours', () => {
   const theme = createIpadNativeChromeTheme({
+    activeForegroundColor: '#ffffff',
     activeTintColor: '#2563eb',
     dark: false,
     inactiveTintColor: '#64748b',
@@ -31,10 +34,27 @@ test('builds iPad top chrome from the active theme colours', () => {
   })
 
   assert.equal(theme.backgroundColor, '#ffffffe0')
-  assert.equal(theme.activeBackgroundColor, '#2563eb24')
-  assert.equal(theme.pressedBackgroundColor, '#2563eb33')
+  assert.equal(theme.activeBackgroundColor, '#2563eb')
+  assert.equal(theme.activeForegroundColor, '#ffffff')
+  assert.equal(theme.pressedBackgroundColor, '#2563ebc2')
   assert.equal(theme.activeTintColor, '#2563eb')
   assert.equal(theme.inactiveTintColor, '#64748b')
+})
+
+test('the selected iPad section uses the on-accent foreground', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src', 'components', 'IpadNativeTabBar.tsx'),
+    'utf8',
+  )
+
+  assert.match(
+    source,
+    /active \? theme\.activeForegroundColor : theme\.inactiveTintColor/,
+  )
+  assert.match(
+    source,
+    /backgroundColor: active\s*\? theme\.activeForegroundColor\s*: theme\.activeTintColor/,
+  )
 })
 
 test('centres the complete iPad chrome group when no team is present', () => {

@@ -2,6 +2,8 @@ import { parseRgb } from './webview-inject'
 
 export type IpadNativeChromeTheme = {
   activeBackgroundColor: string
+  /** Foreground used on the selected section's filled accent pill. */
+  activeForegroundColor: string
   activeTintColor: string
   backgroundColor: string
   borderColor: string
@@ -10,6 +12,7 @@ export type IpadNativeChromeTheme = {
 }
 
 type IpadNativeChromeThemeOptions = {
+  activeForegroundColor: string
   activeTintColor: string
   dark: boolean
   inactiveTintColor: string
@@ -93,17 +96,19 @@ export const withOpacity = (color: string, opacity: number): string => {
 }
 
 export const createIpadNativeChromeTheme = ({
+  activeForegroundColor,
   activeTintColor,
   dark,
   inactiveTintColor,
   surfaceColor,
 }: IpadNativeChromeThemeOptions): IpadNativeChromeTheme => ({
-  activeBackgroundColor: withOpacity(activeTintColor, dark ? 0.3 : 0.14),
+  activeBackgroundColor: activeTintColor,
+  activeForegroundColor,
   activeTintColor,
   backgroundColor: withOpacity(surfaceColor, 0.88),
   borderColor: dark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(15, 23, 42, 0.1)',
   inactiveTintColor,
-  pressedBackgroundColor: withOpacity(activeTintColor, dark ? 0.42 : 0.2),
+  pressedBackgroundColor: withOpacity(activeTintColor, dark ? 0.82 : 0.76),
 })
 
 const getCentredControlsLeft = (screenWidth: number, controlsWidth: number): number =>

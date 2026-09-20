@@ -53,21 +53,32 @@ export type SetDeploymentModelsEnabledResult = {
 export const useDeploymentModelCatalog = (
   enabled: boolean,
   filters: DeploymentModelCatalogFilters = {},
+  teamId?: string,
 ) =>
   usePagedList<DeploymentModelRecord>({
     enabled,
-    path: '/api/inference/model-catalog',
+    path: teamId
+      ? `/api/teams/${encodeURIComponent(teamId)}/inference/model-catalog`
+      : '/api/inference/model-catalog',
     params: filters,
-    queryKey: inferenceModelKeys.catalog,
+    queryKey: teamId
+      ? inferenceModelKeys.teamCatalog(teamId)
+      : inferenceModelKeys.catalog,
+    ...(teamId ? { scope: teamId } : {}),
   })
 
-export const useSetDeploymentModelEnabled = () => {
+export const useSetDeploymentModelEnabled = (teamId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (input: { enabled: boolean; model: string; provider: string }) =>
-      apiClient.patch<DeploymentModelRecord>('/api/inference/model-catalog', input),
+      apiClient.patch<DeploymentModelRecord>(
+        teamId
+          ? `/api/teams/${encodeURIComponent(teamId)}/inference/model-catalog`
+          : '/api/inference/model-catalog',
+        input,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: inferenceModelKeys.all })
       // The Agent Designer's picker is the same decision seen from the other
@@ -79,13 +90,18 @@ export const useSetDeploymentModelEnabled = () => {
 }
 
 /** Apply one availability decision to the full live filtered Ledger catalogue. */
-export const useSetDeploymentModelsEnabled = () => {
+export const useSetDeploymentModelsEnabled = (teamId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (input: DeploymentModelCatalogFilters & { enabled: boolean }) =>
-      apiClient.patch<SetDeploymentModelsEnabledResult>('/api/inference/model-catalog/bulk', input),
+      apiClient.patch<SetDeploymentModelsEnabledResult>(
+        teamId
+          ? `/api/teams/${encodeURIComponent(teamId)}/inference/model-catalog/bulk`
+          : '/api/inference/model-catalog/bulk',
+        input,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: inferenceModelKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.models })
