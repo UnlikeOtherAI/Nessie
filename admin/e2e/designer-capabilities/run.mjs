@@ -10,6 +10,16 @@ import { buildDesignerScenarios, GRANTED_ANSWER, REVOKED_ANSWER } from './scenar
 
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/designer-capabilities')
 
+const showReply = async (page, text) => {
+  const answer = page.getByText(text, { exact: true })
+  if (!await answer.isVisible()) {
+    // Agent conversations retain the root request in the feed; its answer is
+    // in the reply drawer, the same surface shown in the reported incident.
+    await page.getByText('1 reply', { exact: true }).click({ timeout: 30_000 })
+  }
+  await answer.waitFor({ timeout: 30_000 })
+}
+
 const submit = async (page, threadId, text) => {
   const composer = page.locator('form.admin-compose:visible [role="textbox"]').last()
   await composer.waitFor({ timeout: 60_000 })
@@ -109,7 +119,7 @@ const main = async () => {
       where: { runId: grantRun.id, operationType: 'chat', outputTokens: 2_048 },
     })
     assert.equal(truncatedInvocations, 1, 'the scripted truncated response was actually consumed')
-    await page.getByText(GRANTED_ANSWER, { exact: true }).waitFor({ timeout: 30_000 })
+    await showReply(page, GRANTED_ANSWER)
     assert.doesNotMatch(await page.locator('body').innerText(), /reached its token limit|Continue this run to finish/)
     await page.screenshot({ path: resolve(screenshots, 'desktop-granted.png'), fullPage: true })
 
@@ -117,7 +127,7 @@ const main = async () => {
     contexts.push(phone)
     const phonePage = (await phone.newPage()).page
     await phonePage.goto(conversationUrl(0))
-    await phonePage.getByText(GRANTED_ANSWER, { exact: true }).waitFor({ timeout: 30_000 })
+    await showReply(phonePage, GRANTED_ANSWER)
     await phonePage.screenshot({ path: resolve(screenshots, 'phone-recovered.png'), fullPage: true })
 
     phase = 'revoke'
@@ -129,9 +139,9 @@ const main = async () => {
     const updated = await pipeline.prisma.agent.findUniqueOrThrow({ where: { id: fixture.scope.agentId } })
     assert.equal(updated.toolPolicy?.browser_open, false)
     assert.equal(updated.voiceName, 'Puck')
-    await page.getByText(REVOKED_ANSWER, { exact: true }).waitFor({ timeout: 30_000 })
+    await showReply(page, REVOKED_ANSWER)
     await page.reload()
-    await page.getByText(REVOKED_ANSWER, { exact: true }).waitFor({ timeout: 30_000 })
+    await showReply(page, REVOKED_ANSWER)
     await page.screenshot({ path: resolve(screenshots, 'desktop-revoked.png'), fullPage: true })
     await writeFile(resolve(screenshots, 'verification.json'), JSON.stringify({
       runIds, recoveries, result: 'passed', scriptedInference: true,
