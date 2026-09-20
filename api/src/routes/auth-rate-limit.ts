@@ -181,6 +181,14 @@ const EXECUTOR_DAEMON_SESSION_ROUTES = new Set([
   '/api/executor-daemon/browser-cookie-imports/pending',
   '/api/executor-daemon/browser-cookie-imports/upload',
   '/api/executor-enrollments/submit',
+  // Local inference uses the same already-paired machine class. It polls less
+  // frequently, but can stream several response frames, so the daemon-session
+  // flood ceiling is the right shared IP protection after a signed claim.
+  '/api/local-inference/daemon/claim',
+  '/api/local-inference/daemon/heartbeat',
+  '/api/local-inference/daemon/attempts/poll',
+  '/api/local-inference/daemon/attempts/frame',
+  '/api/local-inference/daemon/attempts/result',
 ])
 
 const POST_ROUTE_BUCKETS: ReadonlyMap<string, RateLimitBucketName> = new Map([
@@ -188,6 +196,10 @@ const POST_ROUTE_BUCKETS: ReadonlyMap<string, RateLimitBucketName> = new Map([
   // one of the seven daemon routes that did, so the pairing surface was split
   // between this table and a hand-written call (2026-09-05 review, FO3-3).
   ['/api/executor-daemon/challenge', 'executorDaemonIp'],
+  // Like the executor pairing challenge, this is deliberately much tighter
+  // than its signed follow-up requests: it is public before the host key has
+  // been proved and must not become a host-id probing or storage-flood path.
+  ['/api/local-inference/daemon/challenge', 'executorDaemonIp'],
   ['/api/threads/:threadId/messages', 'threadMessageIp'],
   ['/api/mailbox-connections/discover', 'mailboxDiscoverIp'],
   ['/api/triggers/webhook', 'triggerWebhookIp'],

@@ -9,7 +9,7 @@ import {
   LocalInferenceDaemonClaimBodySchema,
   LocalInferenceDaemonConnectionSchema,
 } from '../contracts/local-inference.js'
-import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { createApiResponse, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
 
 const challengeDigest = (challenge: string): string => crypto.createHash('sha256')
@@ -29,8 +29,12 @@ export const registerLocalInferenceDaemonClaimRoutes = (
   { prisma }: RouteDeps,
 ): void => {
   app.post('/api/local-inference/daemon/challenge', { config: { public: true } }, async (request, reply) => {
-    const body = parseInput(LocalInferenceDaemonChallengeBodySchema, request.body, reply)
-    if (!body) return reply
+    // A malformed body is not distinguishable from an unknown host.  `parseInput`
+    // would turn this into a validation oracle before we even reach the host
+    // lookup, which is exactly what this public pairing doorway must avoid.
+    const parsed = LocalInferenceDaemonChallengeBodySchema.safeParse(request.body)
+    if (!parsed.success) return daemonUnavailable(reply)
+    const body = parsed.data
     const host = await prisma.localInferenceHost.findFirst({
       where: { id: body.hostId, revokedAt: null },
       select: { connectionEpoch: true, id: true, organizationId: true },
@@ -56,8 +60,9 @@ export const registerLocalInferenceDaemonClaimRoutes = (
   })
 
   app.post('/api/local-inference/daemon/claim', { config: { public: true } }, async (request, reply) => {
-    const body = parseInput(LocalInferenceDaemonClaimBodySchema, request.body, reply)
-    if (!body) return reply
+    const parsed = LocalInferenceDaemonClaimBodySchema.safeParse(request.body)
+    if (!parsed.success) return daemonUnavailable(reply)
+    const body = parsed.data
     const host = await prisma.localInferenceHost.findFirst({
       where: { id: body.envelope.hostId, organizationId: body.envelope.organizationId, revokedAt: null },
       select: { connectionEpoch: true, id: true, publicKey: true },
