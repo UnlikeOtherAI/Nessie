@@ -281,6 +281,9 @@ export const executeStage = async (
       requiresProviderOutputLimit: runtimeProvider === 'kimi',
       requestedMaxOutputTokens: input.maxOutputTokensOverride,
     })
+    if (runtimeProvider === 'kimi' && maxOutputTokens === undefined) {
+      throw new Error('Kimi Messages requires an advertised model output limit; the selected model did not provide one.')
+    }
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({
