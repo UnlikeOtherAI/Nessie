@@ -31,6 +31,15 @@ export const setAgentExplicitToolAccess = async (
       'Deep Water access is a complete protected bundle. It cannot be granted or revoked one projection at a time.',
     )
   }
+  // MCP consent is descriptor-bound. Do not manufacture a policy allow until
+  // the exact registry service has also written its fingerprinted ToolGrant.
+  // This keeps a partial conversational implementation from claiming access
+  // that the worker correctly refuses at dispatch.
+  if (entry.handlerKind !== 'builtin') {
+    throw new AgentExplicitToolAccessError(
+      'This connected tool needs its descriptor-bound grant. Its access service is not available in this conversation yet.',
+    )
+  }
   return mutateAgentToolPolicy(prisma, {
     agentId: input.agentId,
     actorUserId: input.actorUserId,
