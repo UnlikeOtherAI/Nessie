@@ -24,7 +24,7 @@ test('control accepts and renews a leased attempt', async () => {
     tx: {
       localInferenceAttempt: {
         findFirst: async () => ({ deadlineAt: new Date('2026-09-20T12:01:00.000Z'), dispatchFence: 3, state: 'leased' }),
-        updateMany: async (input: unknown) => { update = input },
+        updateMany: async (input: unknown) => { update = input; return { count: 1 } },
       },
     } as never,
   })
@@ -33,4 +33,18 @@ test('control accepts and renews a leased attempt', async () => {
     where: { id: 'attempt', dispatchFence: 3, state: { in: ['leased', 'accepted'] } },
     data: { acceptedAt: now, leaseExpiresAt: new Date('2026-09-20T12:01:00.000Z'), state: 'accepted' },
   })
+})
+
+test('a terminal transition winning the renew CAS never reports active', async () => {
+  const state = await controlLocalInferenceAttempt({
+    attemptId: 'attempt', dispatchFence: 3, hostId: 'host', now,
+    stillAuthorized: async () => true,
+    tx: {
+      localInferenceAttempt: {
+        findFirst: async () => ({ deadlineAt: new Date('2026-09-20T12:01:00.000Z'), dispatchFence: 3, state: 'leased' }),
+        updateMany: async () => ({ count: 0 }),
+      },
+    } as never,
+  })
+  assert.equal(state, 'fenced')
 })

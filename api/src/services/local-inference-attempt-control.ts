@@ -23,7 +23,7 @@ export const controlLocalInferenceAttempt = async (input: {
     })
     return 'expired'
   }
-  await input.tx.localInferenceAttempt.updateMany({
+  const renewed = await input.tx.localInferenceAttempt.updateMany({
     where: {
       id: input.attemptId,
       dispatchFence: input.dispatchFence,
@@ -35,5 +35,5 @@ export const controlLocalInferenceAttempt = async (input: {
       state: 'accepted',
     },
   })
-  return 'active'
+  return renewed.count === 1 ? 'active' : 'fenced'
 }
