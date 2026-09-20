@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { parseCommand } from '../src/index.js'
+import { executorCliEntry, parseCommand, UNMARKED_BUNDLE_MESSAGE } from '../src/index.js'
 import type { ExecutorHost } from '../src/host-platform.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import { deriveExecutorWorkspaceFolderName } from '../src/workspace-folders.js'
@@ -309,4 +309,37 @@ test('local policy configuration proposes only implemented COW operations', asyn
     await rm(stateDir, { force: true, recursive: true })
     await rm(replacementWorkspace, { force: true, recursive: true })
   }
+})
+
+/**
+ * Running the packaged bundle by hand used to exit 0 and print nothing, because
+ * the entry guard only recognised `index.js`/`index.ts` or the package's own
+ * marker. A silent success is indistinguishable from a daemon that started and
+ * detached, so an autostart script written that way leaves a machine with no
+ * executor and no evidence of why. The marker itself is not something this file
+ * may set: `spawnPackagedStateSecurityHelper` reads it as the assertion that
+ * this process *is* the installed package.
+ */
+test('the packaged bundle run without its marker is refused in words, not in silence', () => {
+  assert.equal(executorCliEntry('/opt/nessie/nessie-executor.cjs', undefined), 'unmarked-bundle')
+  assert.equal(
+    executorCliEntry(String.raw`C:\Program Files\Nessie Executor\nessie-executor.cjs`, ''),
+    'unmarked-bundle',
+  )
+  assert.match(UNMARKED_BUNDLE_MESSAGE, /NESSIE_EXECUTOR_PACKAGED_CLI=1/)
+})
+
+test('the marked bundle and the source entry both run the CLI', () => {
+  assert.equal(executorCliEntry('/opt/nessie/nessie-executor.cjs', '1'), 'run')
+  assert.equal(executorCliEntry('/src/executor/dist/index.js', undefined), 'run')
+  assert.equal(executorCliEntry('/src/executor/src/index.ts', undefined), 'run')
+})
+
+/**
+ * Importing the module must still run nothing at all — the refusal is scoped to
+ * a caller that named the bundle as the program to run.
+ */
+test('an import of the module neither runs nor complains', () => {
+  assert.equal(executorCliEntry('/usr/bin/some-other-program', undefined), 'imported')
+  assert.equal(executorCliEntry(undefined, undefined), 'imported')
 })

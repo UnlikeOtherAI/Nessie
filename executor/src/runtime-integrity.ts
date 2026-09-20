@@ -20,9 +20,16 @@ import { pipeline } from 'node:stream/promises'
  * cannot be produced in a temporary directory by an ordinary test.
  */
 
+/**
+ * The packaged CLI bundle. Named once because two places need it to agree: the
+ * manifest that pins its bytes, and the entry check in `index.ts` that tells a
+ * caller who ran this bundle directly why nothing happened.
+ */
+export const EXECUTOR_PACKAGED_BUNDLE_FILE = 'nessie-executor.cjs'
+
 /** The files present in every package, whatever the host. */
 export const EXECUTOR_RUNTIME_FIXED_FILES = [
-  'nessie-executor.cjs',
+  EXECUTOR_PACKAGED_BUNDLE_FILE,
   'manifest.json',
   'NODE_LICENSE',
 ] as const

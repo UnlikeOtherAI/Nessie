@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import type { ExecutorCommandEnvelope } from '@nessie/schemas'
 
 import { ExecutorApiError } from '../src/api-client.js'
 import {
+  createExecutorCommandRecoveryStore,
   recoverOrPollExecutorCommand,
   type ExecutorCommandRecovery,
   type ExecutorCommandRecoveryStore,
@@ -155,5 +159,69 @@ test('client-recovery: server timeout before execution resolves as unknown outco
   assert.deepEqual(server.result(), {
     code: 'EXECUTOR_COMMAND_UNKNOWN_OUTCOME',
     success: false,
+  })
+})
+
+const withStateDirectory = async (body: (stateDir: string) => Promise<void>): Promise<void> => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-command-recovery-'))
+  try {
+    await body(directory)
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+}
+
+/**
+ * The daemon polls once a second and used to build a recovery store per poll,
+ * each of which re-secured the runtime directory. On POSIX that is an `lstat`;
+ * on Windows it applies a DACL through the packaged native helper, so it was
+ * two process spawns every second for as long as the daemon ran — the reason a
+ * Windows executor burned roughly fifty times the CPU of its macOS counterpart
+ * while both sat idle. One store now secures once, however many operations it
+ * serves.
+ *
+ * Only `load` and `clear` are exercised, because `save` proves the journal file
+ * itself owner-only and that proof is host-shaped; every operation derives the
+ * path the same way, which is the thing under test.
+ */
+test('one recovery store secures its runtime directory once, not once per operation', async () => {
+  await withStateDirectory(async (stateDir) => {
+    let ensured = 0
+    const store = createExecutorCommandRecoveryStore(stateDir, {
+      ensureRuntimeDirectory: async (directory) => {
+        ensured += 1
+        return directory
+      },
+    })
+
+    assert.equal(await store.load(), null)
+    await store.clear()
+    assert.equal(await store.load(), null)
+    await store.clear()
+
+    assert.equal(ensured, 1)
+  })
+})
+
+/**
+ * Securing once means caching the promise, which makes a rejected one
+ * dangerous: cache that and a single transient failure would leave the daemon
+ * unable to journal anything for the rest of its life, silently losing command
+ * recovery. A failure must be attempted again on the next operation.
+ */
+test('a runtime directory that could not be secured is attempted again', async () => {
+  await withStateDirectory(async (stateDir) => {
+    let attempts = 0
+    const store = createExecutorCommandRecoveryStore(stateDir, {
+      ensureRuntimeDirectory: async (directory) => {
+        attempts += 1
+        if (attempts === 1) throw new Error('state security timed out')
+        return directory
+      },
+    })
+
+    await assert.rejects(store.load(), /state security timed out/)
+    assert.equal(await store.load(), null)
+    assert.equal(attempts, 2)
   })
 })

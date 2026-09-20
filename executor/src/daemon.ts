@@ -29,6 +29,7 @@ import type { ExecutorCommandSessionManager } from './command-session-manager.js
 import {
   createExecutorCommandRecoveryStore,
   recoverOrPollExecutorCommand,
+  type ExecutorCommandRecoveryStore,
 } from './command-recovery.js'
 import { executeExecutorMcpCommand } from './mcp-dispatch.js'
 import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
@@ -362,6 +363,13 @@ export const executeExecutorCommand = async (
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
 
+/**
+ * `store` is owned by the caller and lives as long as the daemon does. It used
+ * to be built here, once per poll, which rebuilt the owner-only proof of the
+ * runtime directory every second — two native-helper process spawns per poll on
+ * Windows. The journal it fronts is per-`stateDir` state, and `stateDir` does
+ * not change across a daemon's life, so one store is the honest lifetime.
+ */
 export const pollAndExecuteCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
@@ -369,6 +377,7 @@ export const pollAndExecuteCommand = async (
   commandSessions: ExecutorCommandSessionManager,
   codingSessions: ExecutorCodingSessionManager,
   mcpSessions: ExecutorMcpSessionManager,
+  store: ExecutorCommandRecoveryStore = createExecutorCommandRecoveryStore(stateDir),
 ): Promise<void> => {
   const connectionEpoch = state.connectionEpoch
   if (!connectionEpoch) return
@@ -379,7 +388,7 @@ export const pollAndExecuteCommand = async (
       mcpSessions,
       commandSessions,
     }),
-    store: createExecutorCommandRecoveryStore(stateDir),
+    store,
     transport: {
       poll: async () => {
         const observedAt = new Date().toISOString()

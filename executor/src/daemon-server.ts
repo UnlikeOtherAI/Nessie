@@ -11,6 +11,7 @@ import {
   pollAndExecuteCommand,
   waitForExecutorDaemonShutdown,
 } from './daemon.js'
+import { createExecutorCommandRecoveryStore } from './command-recovery.js'
 import { acquireExecutorDaemonLease } from './daemon-lease.js'
 import { createLocalMcpReporter } from './local-mcp-report.js'
 import { startExecutorLocalInferenceSupervisor } from './local-inference-supervisor.js'
@@ -36,8 +37,12 @@ export const serveExecutor = async (
     const localMcp = createLocalMcpReporter(namedMcpServers, mcpSessions)
     void localMcp.refresh().catch(() => undefined)
     let shuttingDown = false
+    // One store for the daemon's whole life. Building it per poll re-secured
+    // the runtime directory every second, which on Windows is two native-helper
+    // process spawns a second and nothing at all on POSIX.
+    const recoveryStore = createExecutorCommandRecoveryStore(stateDir)
     const commandPoll = createNonOverlappingExecutorTask(() => pollAndExecuteCommand(
-      stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions,
+      stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions, recoveryStore,
     ).catch(async (error) => {
       await browserSessions.stopAll()
       await commandSessions.stopAll()
