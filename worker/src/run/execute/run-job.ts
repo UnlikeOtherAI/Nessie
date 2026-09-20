@@ -309,7 +309,11 @@ const runJobUnderFence = async (
             && context.agent.ownerUserId === payload.actorContext.actionContext.effectiveUserId,
           reason: localLane.reason,
         }),
-        {},
+        {
+          terminalMessageMetadata: {
+            runRestart: { restartable: true, runId: context.run.id },
+          },
+        },
       )
       return
     }

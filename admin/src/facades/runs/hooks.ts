@@ -30,3 +30,16 @@ export const useContinueRun = () => {
     },
   })
 }
+
+// A terminal local-host failure is repaired by minting a fresh run.  It does
+// not replay the old attempt or reuse any provider receipt.
+export const useRestartRun = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation<{ run: { id: string; restartOfRunId: string; status: 'pending'; taskId: string } }, Error, string>({
+    mutationFn: (runId) => apiClient.post(`/api/runs/${runId}/restart`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: runKeys.active })
+    },
+  })
+}

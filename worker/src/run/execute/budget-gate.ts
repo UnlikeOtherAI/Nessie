@@ -1,5 +1,6 @@
 import { admitRunToBudget, type BudgetReservationEstimate, evaluateBudget } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import type { Prisma } from '@prisma/client'
 import { maybeEmitBudgetAlerts } from './budget-alert.js'
 import { resolveRunBackstop } from '../run-budget.js'
 import { buildScopes } from './scopes.js'
@@ -12,6 +13,12 @@ import { enqueueInteractiveReplyPush } from './reply-push.js'
 
 type BudgetBlockOptions = {
   beforeBlockedRunTerminalization?: () => Promise<void>
+  /**
+   * Server-authored metadata for a terminal notice.  Local-device admission
+   * uses this for its single, authorized restart doorway after a host repair;
+   * model output never supplies message metadata.
+   */
+  terminalMessageMetadata?: Prisma.InputJsonValue
   /**
    * True when this run spends the agent owner's personal subscription.
    *
@@ -45,6 +52,9 @@ export const terminalizeBudgetBlockedRun = async (
     ...(context.replyRootMessageId
       ? { rootMessageId: context.replyRootMessageId }
       : {}),
+    ...(options.terminalMessageMetadata === undefined
+      ? {}
+      : { metadata: options.terminalMessageMetadata }),
   })
   const reply = await applyRunReplyBookkeeping(
     deps.prisma,

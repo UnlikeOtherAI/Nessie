@@ -14,6 +14,7 @@ From the repository root, with dependencies installed:
 pnpm --filter @nessie/executor exec node --test --import tsx test/ollama-observed.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/uoa-live-entitlements.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/local-inference-policy.test.ts
+pnpm --filter @nessie/admin exec node --test --import tsx test/local-inference-run-restart.test.ts
 ```
 
 Results on 2026-09-20:
@@ -24,6 +25,9 @@ Results on 2026-09-20:
   and unavailable UOA authority remain distinct.
 - `local-inference-policy.test.ts`: 2 passed — only the typed setting key is
   administrator-authored and its value is a boolean.
+- `local-inference-run-restart.test.ts`: 2 passed — only an exact,
+  server-authored local-host failure may render the fresh-run Restart control;
+  malformed metadata cannot create it.
 
 The general type checks run through the workspace packages. The admin package
 currently cannot complete in this checkout because the pre-existing private
