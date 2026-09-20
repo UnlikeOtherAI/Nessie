@@ -329,6 +329,20 @@ test('the chat transport disables separate Ollama thinking output', async () => 
   assert.equal(request?.think, false)
 })
 
+test('an unbounded main attempt omits Ollama num_predict', async () => {
+  let request: Record<string, unknown> | undefined
+  const fetchImpl: OllamaFetch = async (url, init) => {
+    if (url.endsWith('/api/chat')) request = JSON.parse(String(init.body)) as Record<string, unknown>
+    return ollama([{ done: true, message: { content: 'answer' }, model: 'local:latest' }])(url, init)
+  }
+  const unbounded = attempt()
+  delete unbounded.maxOutputTokens
+  for await (const event of streamOllamaChat({
+    attempt: unbounded, fetchImpl, origin: 'http://127.0.0.1:11434', signal: new AbortController().signal,
+  })) void event
+  assert.equal((request?.options as Record<string, unknown> | undefined)?.num_predict, undefined)
+})
+
 test('tool ids are scoped to the durable invocation, not an Ollama-local counter', async () => {
   const toolAttempt = (): LocalInferenceAttemptRequest => ({
     ...attempt(),
