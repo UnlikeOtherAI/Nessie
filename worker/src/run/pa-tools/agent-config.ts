@@ -1,5 +1,5 @@
 import { loadConfig } from '@nessie/config'
-import { setAgentExplicitToolAccess, setDeepWaterAgentAccess } from '@nessie/mcp-manage'
+import { fingerprintMcpToolDescriptor, isCurrentAllowedMcpToolGrant, mcpToolDescriptorAnnotationsFromMetadata, setAgentExplicitToolAccess, setDeepWaterAgentAccess } from '@nessie/mcp-manage'
 import {
   AgentAvatarBackgroundColorSchema,
   AgentAvatarStyleSchema,
@@ -418,9 +418,10 @@ export const runAgentToolAccessInspectTool = async (context: BuiltinToolRuntimeC
   const visible = await readAgentRecordForActor(context.prisma, { agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
   if (!visible?.record) throw new Error('Agent not found, or you cannot inspect its protected access.')
   const agent = { name: visible.config.name, toolPolicy: visible.config.toolPolicy }
-  const entries = (await context.prisma.toolRegistryEntry.findMany({ where: { OR: [{ organizationId: null }, { organizationId: member.organizationId }], enabled: true, status: 'active' }, select: { handlerKind: true, id: true, label: true, metadata: true, toolId: true, mcpInstance: { select: { scopeId: true, scopeType: true } } } })).filter((entry) => registryEntryRequiresExplicitPolicy(entry) && (entry.mcpInstance?.scopeType !== 'user' || entry.mcpInstance.scopeId === member.userId))
+  const entries = (await context.prisma.toolRegistryEntry.findMany({ where: { OR: [{ organizationId: null }, { organizationId: member.organizationId }], enabled: true, status: 'active' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, label: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true, mcpInstance: { select: { scopeId: true, scopeType: true } } } })).filter((entry) => registryEntryRequiresExplicitPolicy(entry) && (entry.mcpInstance?.scopeType !== 'user' || entry.mcpInstance.scopeId === member.userId))
+  const grants = await context.prisma.toolGrant.findMany({ where: { agentId, roleId: null, toolId: { in: entries.filter((entry) => entry.handlerKind === 'mcp').map((entry) => entry.id) } }, select: { config: true, state: true, toolId: true } })
   const policy = agent.toolPolicy && typeof agent.toolPolicy === 'object' ? agent.toolPolicy as Record<string, unknown> : {}
-  return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => `- ${entry.label} | registryId=${entry.id} | ${policy[entry.handlerKind === 'builtin' ? entry.toolId : entry.id] === true ? 'granted' : 'not granted'}`)].join('\n'), toolName: 'agent_tool_access_inspect' }
+  return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => { const configured = entry.transportConfig && typeof entry.transportConfig === 'object' ? (entry.transportConfig as Record<string, unknown>).toolName : null; const name = typeof configured === 'string' ? configured : entry.toolId.split(':').at(-1); const fingerprint = entry.handlerKind === 'mcp' && name ? fingerprintMcpToolDescriptor({ annotations: mcpToolDescriptorAnnotationsFromMetadata(entry.metadata), description: entry.description, inputSchema: entry.inputSchema, name, outputSchema: entry.outputSchema }) : null; const granted = entry.handlerKind === 'builtin' ? policy[entry.toolId] === true : fingerprint !== null && grants.some((grant) => grant.toolId === entry.id && isCurrentAllowedMcpToolGrant(grant, fingerprint)); return `- ${entry.label} | registryId=${entry.id} | ${granted ? 'granted' : 'not granted'}` })].join('\n'), toolName: 'agent_tool_access_inspect' }
 }
 
 export const runAgentDeepWaterAccessSetTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
