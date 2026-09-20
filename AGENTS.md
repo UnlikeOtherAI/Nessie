@@ -517,6 +517,15 @@ explicit grants are a separate contract: read
 [docs/plans/2026-09-07-private-browser-access-and-import.md](docs/plans/2026-09-07-private-browser-access-and-import.md)
 before touching those surfaces.
 
+## Conversational Agent Designer access
+
+The Designer acts only with the live requesting member's authority. Generic
+agent updates must continue to reject protected keys; protected builtins and
+MCP tools use their specialist grant service, and DeepWater remains an atomic
+ready bundle with active-run revocation protection. Read
+[docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md)
+before changing these contracts.
+
 ## Settings — one cascade, and a lock a person can see
 
 A setting that exists at more than one level resolves through `ScopedSetting`
