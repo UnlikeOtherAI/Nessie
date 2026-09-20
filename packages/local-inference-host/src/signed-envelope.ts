@@ -58,7 +58,7 @@ const publicMachineKey = (encoded: string) => {
 
 export const signLocalInferenceEnvelope = (input: {
   body: unknown
-  header: LocalInferenceEnvelopeCoreInput
+  header: Omit<LocalInferenceEnvelopeCoreInput, 'bodyDigest'>
   machinePrivateKey: string
 }): LocalInferenceSignedEnvelope => {
   const core = LocalInferenceEnvelopeCoreSchema.parse({

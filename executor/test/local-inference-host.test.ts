@@ -1,0 +1,252 @@
+import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
+import { test } from 'node:test'
+
+import {
+  verifyLocalInferenceEnvelope,
+} from '@nessie/local-inference-host'
+import type {
+  LocalInferenceAttemptRequest,
+  LocalInferenceResult,
+  LocalInferenceSignedEnvelope,
+} from '@nessie/schemas'
+
+import { LocalInferenceHostLoop } from '../src/local-inference-host.js'
+import { EncryptedLocalInferenceReceiptJournal } from '../src/local-inference-receipts.js'
+import { OllamaChatError, streamOllamaChat } from '../src/ollama-chat.js'
+import type { LocalInferenceDaemonApi } from '../src/local-inference-api.js'
+import type { OllamaFetch } from '../src/ollama-client.js'
+
+const HOST_ID = '11111111-1111-4111-8111-111111111111'
+const ORG_ID = '22222222-2222-4222-8222-222222222222'
+const ATTEMPT_ID = '33333333-3333-4333-8333-333333333333'
+const BINDING_ID = '44444444-4444-4444-8444-444444444444'
+const RUN_ID = '55555555-5555-4555-8555-555555555555'
+const DIGEST = 'a'.repeat(64)
+
+const machineKeys = (): { privateKey: string; publicKey: string } => {
+  const keys = generateKeyPairSync('ed25519')
+  return {
+    privateKey: keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url'),
+    publicKey: keys.publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'),
+  }
+}
+
+const attempt = (): LocalInferenceAttemptRequest => ({
+  attemptId: ATTEMPT_ID,
+  bindingId: BINDING_ID,
+  bindingRevision: 1,
+  deadlineAt: new Date(Date.now() + 60_000).toISOString(),
+  hostEpoch: 1,
+  hostId: HOST_ID,
+  invocationId: 'invocation-1',
+  maxOutputTokens: 64,
+  messages: [{ content: 'Say hello', role: 'user' }],
+  modelDigest: DIGEST,
+  modelName: 'local:latest',
+  numCtx: 8192,
+  protocolVersion: 1,
+  runFence: 'run-fence-1',
+  runId: RUN_ID,
+  tools: [],
+})
+
+const json = (value: unknown): Response => new Response(JSON.stringify(value), {
+  headers: { 'content-type': 'application/json' },
+})
+
+const ollama = (chatLines: unknown[]): OllamaFetch => (url) => {
+  if (url.endsWith('/api/version')) return Promise.resolve(json({ version: '0.34.1' }))
+  if (url.endsWith('/api/tags')) {
+    return Promise.resolve(json({ models: [{ digest: DIGEST, name: 'local:latest', size: 7 }] }))
+  }
+  if (url.endsWith('/api/show')) {
+    return Promise.resolve(json({
+      capabilities: ['completion', 'tools'],
+      details: { family: 'gemma' },
+      model_info: { 'general.context_length': 8192 },
+    }))
+  }
+  if (url.endsWith('/api/chat')) {
+    return Promise.resolve(new Response(`${chatLines.map((line) => JSON.stringify(line)).join('\n')}\n`))
+  }
+  throw new Error(`Unexpected local call ${url}`)
+}
+
+const localResult = (): LocalInferenceResult => ({
+  capability: {
+    discoveredAt: new Date().toISOString(),
+    model: 'local:latest',
+    provider: 'local_device',
+    source: 'live',
+    structuredOutputMode: 'text-only',
+    supportsChat: true,
+    supportsEmbeddings: false,
+    supportsModelDiscovery: true,
+    supportsStreaming: true,
+    supportsVision: false,
+    systemPromptMode: 'native',
+    toolCallingMode: 'disabled',
+    toolResultMode: 'native-tool-message',
+    usageReporting: {
+      cachedInputTokens: false,
+      cachedOutputTokens: false,
+      cacheReadTokens: false,
+      cacheWriteTokens: false,
+      inputTokens: true,
+      outputTokens: true,
+      providerReportedCost: false,
+    },
+  },
+  content: 'saved result',
+  finishReason: 'stop',
+  modelDigest: DIGEST,
+  remoteHost: null,
+  remoteModel: null,
+  toolCalls: [],
+  usage: { inputTokens: 1, outputTokens: 1 },
+})
+
+const receiptJournal = () => {
+  let stored: { ciphertext: string; iv: string; tag: string; version: 1 } | undefined
+  const journal = new EncryptedLocalInferenceReceiptJournal({
+    read: async () => stored,
+    remove: async () => { stored = undefined },
+    write: async (value) => { stored = value },
+  }, new Uint8Array(32).fill(7))
+  return { getStored: () => stored, journal }
+}
+
+type ApiCalls = {
+  frames: Array<{ frame: { data: string; sequence: number } }>
+  heartbeats: Array<{
+    envelope: LocalInferenceSignedEnvelope
+    heartbeat: { inventory: unknown[]; paused: boolean }
+  }>
+  results: Array<{
+    envelope: LocalInferenceSignedEnvelope
+    receipt: { result: LocalInferenceResult }
+  }>
+}
+
+const apiFor = (lease: LocalInferenceAttemptRequest | null, dispatchFence = 1): { api: LocalInferenceDaemonApi; calls: ApiCalls } => {
+  const calls: ApiCalls = { frames: [], heartbeats: [], results: [] }
+  return {
+    api: {
+      heartbeat: async (input) => {
+        calls.heartbeats.push(input)
+        return { serverTime: new Date().toISOString() }
+      },
+      poll: async () => ({ attempt: lease, dispatchFence: lease === null ? null : dispatchFence }),
+      submitFrame: async (input) => {
+        calls.frames.push(input)
+        return { acknowledged: true }
+      },
+      submitResult: async (input) => {
+        calls.results.push(input)
+        return { acknowledged: true }
+      },
+    },
+    calls,
+  }
+}
+
+test('the host relays a fixed typed Ollama request and signs independent daemon lanes', async () => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api, calls } = apiFor(attempt())
+  const loop = new LocalInferenceHostLoop({
+    api,
+    fetchImpl: ollama([
+      { done: false, message: { content: 'hello' }, model: 'local:latest' },
+      { done: true, done_reason: 'stop', eval_count: 2, message: {}, model: 'local:latest', prompt_eval_count: 3 },
+    ]),
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false,
+    journal,
+    origin: 'http://127.0.0.1:11434',
+  })
+
+  await loop.heartbeat()
+  const outcome = await loop.pollOnce()
+
+  assert.deepEqual(outcome, { attemptId: ATTEMPT_ID, kind: 'completed' })
+  assert.equal(calls.heartbeats.length, 1)
+  assert.equal(calls.frames.length, 1)
+  assert.equal(Buffer.from(calls.frames[0]?.frame.data ?? '', 'base64url').toString('utf8'),
+    JSON.stringify({ text: 'hello', type: 'output_text.delta' }))
+  assert.equal(calls.results[0]?.receipt.result.content, 'hello')
+  assert.equal(calls.results[0]?.receipt.result.usage.outputTokens, 2)
+
+  const heartbeat = calls.heartbeats[0]
+  assert.ok(heartbeat)
+  const envelope = heartbeat.envelope
+  assert.equal(envelope.purpose, 'heartbeat')
+  assert.equal(verifyLocalInferenceEnvelope({
+    body: heartbeat.heartbeat,
+    envelope,
+    machinePublicKey: keys.publicKey,
+  }).ok, true)
+})
+
+test('a remote marker in any streamed chat object aborts acceptance', async () => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api, calls } = apiFor(attempt())
+  const loop = new LocalInferenceHostLoop({
+    api,
+    fetchImpl: ollama([{ done: true, message: {}, model: 'local:latest', remote_model: 'cloud:latest' }]),
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false,
+    journal,
+    origin: 'http://127.0.0.1:11434',
+  })
+
+  await loop.pollOnce()
+
+  assert.equal(calls.results[0]?.receipt.result.content, null)
+  assert.equal(calls.results[0]?.receipt.result.finishReason, 'error')
+  const error = Buffer.from(calls.frames[0]?.frame.data ?? '', 'base64url').toString('utf8')
+  assert.match(error, /protocol_error/)
+})
+
+test('a durable encrypted receipt is retried without dialing Ollama again', async () => {
+  const keys = machineKeys()
+  const { getStored, journal } = receiptJournal()
+  await journal.record({ attemptId: ATTEMPT_ID, dispatchFence: 1, result: localResult() })
+  assert.ok(getStored())
+  assert.doesNotMatch(getStored()?.ciphertext ?? '', /saved result/)
+  const { api, calls } = apiFor(attempt())
+  let ollamaCalls = 0
+  const loop = new LocalInferenceHostLoop({
+    api,
+    fetchImpl: ((url, init) => {
+      ollamaCalls += 1
+      return ollama([])(url, init)
+    }),
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false,
+    journal,
+    origin: 'http://127.0.0.1:11434',
+  })
+
+  await loop.pollOnce()
+
+  assert.equal(ollamaCalls, 0)
+  assert.equal(calls.results[0]?.receipt.result.content, 'saved result')
+  assert.equal(await journal.get({ attemptId: ATTEMPT_ID, dispatchFence: 1 }), undefined)
+})
+
+test('the chat transport refuses a remote result before yielding an event', async () => {
+  const controller = new AbortController()
+  await assert.rejects(async () => {
+    for await (const _ of streamOllamaChat({
+      attempt: attempt(),
+      fetchImpl: ollama([{ done: true, message: {}, model: 'local:latest', remote_host: 'cloud.example' }]),
+      origin: 'http://127.0.0.1:11434',
+      signal: controller.signal,
+    })) {
+      throw new Error('must not yield')
+    }
+  }, OllamaChatError)
+})

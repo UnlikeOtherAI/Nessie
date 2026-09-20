@@ -48,6 +48,19 @@ const boundedText = (value: unknown, max: number): string | null =>
 const remoteMarker = (value: unknown): string | null =>
   value === undefined || value === null || value === '' ? null : boundedText(value, 512)
 
+/**
+ * Ollama's cloud-routing fields are a structural locality signal. The chat
+ * transport calls this for every streamed object; discovery alone is not a
+ * sufficient check because a locally mutable tag can change between the
+ * inventory sweep and a request.
+ */
+export const assertNoRemoteOllamaMarker = (result: unknown): void => {
+  const body = asRecord(result)
+  if (remoteMarker(body?.remote_host) !== null || remoteMarker(body?.remote_model) !== null) {
+    throw new OllamaObservationError('Ollama result is not local')
+  }
+}
+
 const responseJson = async (response: Response): Promise<unknown> => {
   if (!response.ok) throw new OllamaObservationError(`Ollama returned HTTP ${response.status}`)
   const declared = Number(response.headers.get('content-length') ?? '0')
@@ -133,10 +146,9 @@ export const observeOllamaInventory = async (
 /** Remote markers are also mandatory at output time, not discovery-only. */
 export const assertLocalOllamaResult = (result: unknown, expectedDigest: string): void => {
   const body = asRecord(result)
-  const remoteHost = remoteMarker(body?.remote_host)
-  const remoteModel = remoteMarker(body?.remote_model)
   const digest = boundedText(body?.digest, 64)?.toLowerCase()
-  if (remoteHost !== null || remoteModel !== null || digest !== expectedDigest) {
+  assertNoRemoteOllamaMarker(result)
+  if (digest !== expectedDigest) {
     throw new OllamaObservationError('Ollama result is not the consented local model')
   }
 }
