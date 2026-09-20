@@ -350,13 +350,14 @@ dbTest('agent_avatar_update follows the same edit authority', async () => {
   })
 })
 
-dbTest('agent_tool_catalog names the keys and the tools nobody may grant', async () => {
+dbTest('agent_tool_catalog distinguishes direct toggles from protected and unavailable tools', async () => {
   await withDb(async (prisma) => {
     const result = await runAgentToolCatalogTool(buildContext(prisma, otherMemberUserId), {})
     assert.match(result.outputPreview, /key=web_search/)
-    assert.match(result.outputPreview, /Not grantable from a conversation/)
+    assert.match(result.outputPreview, /dedicated protected-access control/)
+    assert.match(result.outputPreview, /reserved for Nessie’s built-in specialists/)
     assert.match(result.outputPreview, /own Personal Assistant may use it/)
-    assert.match(result.outputPreview, /owner surfaces \(Apps, Tools\)/)
+    assert.match(result.outputPreview, /Special access and unavailable tools/)
     // A narrowing query filters an already-authorized list.
     const narrowed = await runAgentToolCatalogTool(
       buildContext(prisma, otherMemberUserId),
@@ -460,4 +461,3 @@ dbTest('agent_avatar_generate says a deployment cannot draw rather than failing 
     assert.equal(unchanged?.avatarAttachmentId, null)
   })
 })
-
