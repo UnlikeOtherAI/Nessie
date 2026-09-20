@@ -119,6 +119,7 @@ CREATE TABLE "local_inference_attempts" (
   "host_epoch" INTEGER NOT NULL,
   "dispatch_fence" INTEGER NOT NULL DEFAULT 1,
   "request_digest" TEXT NOT NULL,
+  "model_digest" TEXT NOT NULL,
   "state" "LocalInferenceAttemptState" NOT NULL DEFAULT 'queued',
   "lease_expires_at" TIMESTAMP(3),
   "deadline_at" TIMESTAMP(3) NOT NULL,
@@ -159,8 +160,6 @@ ALTER TABLE "runs"
   ADD COLUMN "local_inference_host_id" UUID,
   ADD COLUMN "local_inference_model_digest" TEXT,
   ADD COLUMN "local_inference_host_epoch" INTEGER;
-CREATE INDEX "runs_local_inference_binding_idx" ON "runs"("local_inference_binding_id");
-
 ALTER TABLE "token_ledger_events"
   ADD COLUMN "local_inference_host_id" UUID,
   ADD COLUMN "local_inference_binding_id" UUID;
