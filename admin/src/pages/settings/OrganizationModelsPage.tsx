@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   DeploymentModelsTable,
@@ -7,6 +8,7 @@ import {
 import { FormError } from '../../components/shared/FormActions'
 import { PaginationFooter } from '../../components/shared/PaginationFooter'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
+import { LocalInferenceEnablement } from '../../components/features/local-inference/LocalInferenceEnablement'
 import { OrganizationAdministrationGate } from './OrganizationAdministrationGate'
 import {
   useDeploymentModelCatalog,
@@ -131,6 +133,15 @@ const OrganizationModelsBody = () => {
       <div className="grid gap-3">
         <FormError>{actionError}</FormError>
         <FormError>{catalogError}</FormError>
+
+        <LocalInferenceEnablement scope="organization" />
+
+        <section className="border-b border-[color:var(--sep)] pb-4 text-sm text-[color:var(--tx2)]">
+          Choose a person’s policy from their{' '}
+          <Link className="underline" to="/settings/members">member details</Link>, or set the
+          inherited policy for a whole{' '}
+          <Link className="underline" to="/settings/team?tab=agents">team</Link>.
+        </section>
 
         <DeploymentModelsTable
           emptyMessage="The model service offers no chat models to this deployment."

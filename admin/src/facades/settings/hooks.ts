@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AGENT_PAIRING_SETTING_KEY, BROWSER_HOMEPAGE_SETTING_KEY } from '@nessie/schemas'
+import { LOCAL_INFERENCE_ENABLED_SETTING_KEY } from '@nessie/runtime'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { scopedSettingKeys } from './keys'
@@ -33,23 +34,34 @@ export const SETTING_KEYS = {
   // key nothing reads would look saved and change nothing.
   browserHomepage: BROWSER_HOMEPAGE_SETTING_KEY,
   callsProvider: 'calls.provider',
+  // This must stay the runtime-owned literal: the API admits a target person
+  // only for this registered, administrator-authored key. A similar-looking
+  // string would render a control that can never grant local inference.
+  localInferenceEnabled: LOCAL_INFERENCE_ENABLED_SETTING_KEY,
 } as const
 
 export const useScopedSettings = (
   scope: SettingScope,
   keys: readonly string[],
   teamId: string | null = null,
+  /**
+   * An organisation administrator may resolve the one registered local
+   * inference policy for a selected person. The API rejects this selector for
+   * every other key, so ordinary user settings retain their self-only read.
+   */
+  userId: string | null = null,
 ) => {
   const apiClient = useApiClient()
   const query = new URLSearchParams({ keys: keys.join(','), scope })
   if (teamId) query.set('teamId', teamId)
+  if (userId) query.set('userId', userId)
   return useQuery<{ settings: ResolvedSetting[] }>({
     enabled: keys.length > 0,
     // Switching team keeps the previous answer on screen rather than blanking
     // the control mid-read — see docs/navigation/overview.md, "Arriving with
     // content".
     placeholderData: keepPreviousData,
-    queryKey: scopedSettingKeys.list(scope, teamId, keys),
+    queryKey: [...scopedSettingKeys.list(scope, teamId, keys), userId ?? 'self'],
     queryFn: () => apiClient.get(`/api/settings/scoped?${query.toString()}`),
   })
 }
@@ -58,6 +70,8 @@ export type WriteScopedSettingInput = {
   key: string
   scope: SettingScope
   teamId?: string | null
+  /** Present only for the registered administrator-authored local inference key. */
+  userId?: string | null
   value?: unknown
   locked: boolean
 }

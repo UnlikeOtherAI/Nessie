@@ -1,9 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { z } from 'zod'
 
 import {
   isLockedAbove,
   isAdminAuthoredScopedSettingKey,
   isLocalInferenceEnabledValue,
+  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
   lockExplanation,
   resolveScopedSetting,
   resolveScopedSettings,
@@ -162,7 +164,7 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
 
-    const query = request.query as { keys?: string; scope?: string; teamId?: string }
+    const query = request.query as { keys?: string; scope?: string; teamId?: string; userId?: string }
     const keys = (query.keys ?? '').split(',').map((key) => key.trim()).filter(Boolean)
     const scope = (query.scope ?? 'user') as SettingScope
     const organizationId = actorContext.tenant.organizationId
@@ -177,18 +179,65 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
       return reply
     }
 
+    // An administrator may inspect the effective decision for one selected
+    // person, but only for the registered administrator-authored local
+    // inference key.  Keeping the exception here (instead of teaching the
+    // generic resolver an arbitrary user selector) preserves self-only reads
+    // for every other personal setting.
+    const targetedLocalInferenceRead = query.userId !== undefined
+    if (targetedLocalInferenceRead && (
+      scope !== 'user'
+      || keys.length !== 1
+      || keys[0] !== LOCAL_INFERENCE_ENABLED_SETTING_KEY
+    )) {
+      sendApiError(reply, 400, 'VALIDATION_ERROR',
+        'A selected person is only supported for the Local Ollama personal setting.')
+      return reply
+    }
+
     for (const key of keys) {
       if (!await authorizeAdminAuthoredKey(reply, key, actorContext, organizationId, userId)) {
         return reply
       }
     }
 
+    let resolvedUserId = userId
+    if (targetedLocalInferenceRead) {
+      const targetUserId = z.string().uuid().safeParse(query.userId)
+      if (!targetUserId.success) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'The selected member is invalid.')
+        return reply
+      }
+      resolvedUserId = targetUserId.data
+      const target = await prisma.organizationMember.findFirst({
+        where: { organizationId, userId: resolvedUserId, deactivatedAt: null },
+        select: { userId: true },
+      })
+      if (!target) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Member not found')
+        return reply
+      }
+    }
+
+    const personalTeamId = scope === 'user'
+      ? targetedLocalInferenceRead
+        ? query.teamId
+          ? await prisma.team.findFirst({
+            where: {
+              id: query.teamId,
+              members: { some: { userId: resolvedUserId } },
+              project: { organizationId },
+            },
+            select: { id: true },
+          }).then((team) => team?.id ?? null)
+          : null
+        : await memberTeamId(prisma, organizationId, userId, query.teamId)
+      : query.teamId ?? null
+
     const resolved = await resolveScopedSettings(prisma, {
       organizationId,
-      teamId: scope === 'user'
-        ? await memberTeamId(prisma, organizationId, userId, query.teamId)
-        : query.teamId ?? null,
-      userId: scope === 'user' ? userId : null,
+      teamId: personalTeamId,
+      userId: scope === 'user' ? resolvedUserId : null,
     }, keys)
 
     return createApiResponse(
