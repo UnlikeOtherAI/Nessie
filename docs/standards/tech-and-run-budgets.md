@@ -29,6 +29,10 @@ summary and points here; **this file is the rule**.
   - Main conversational turns do not set an application output-token cap.
     The common system prompt asks for complete, proportionate communication;
     real context and run/org spend budgets remain independent safeguards.
+    Shared utility and delegate inference also omit the former blanket 2,048
+    output cap. Purpose-specific extraction limits remain explicit at their
+    callers. Metering includes utility calls; a run budget can still overshoot
+    by the cost of its last provider call before the next budget check.
     A protocol which requires an output field may use only its provider
     catalogue's advertised maximum. Kimi's Messages lane discovers `/v1/models`
     and uses `max_output_tokens`, or its advertised `context_length` when Kimi
@@ -46,10 +50,11 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
-  - A provider `finish_reason: length` gets one bounded recovery. Prose uses a
-    no-tools finalisation from completed evidence; a truncated tool frame is
-    never dispatched and gets one tool-enabled regeneration under the same
-    identity and effect ledger. Crash state carries the mode. Repeated length
+  - A provider `finish_reason: length` gets one bounded recovery. Partial prose
+    uses a no-tools finalisation from completed evidence. Empty reasoning-only
+    output retains tools to finish the already authorized work; a truncated tool
+    frame is never dispatched and gets one tool-enabled regeneration under the
+    same identity and effect ledger. Crash state carries the mode. Repeated length
     is `provider_output_limit`, never `token_limit`; empty recovery remains
     `empty_provider_response`.
 
