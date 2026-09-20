@@ -33,7 +33,8 @@ export const seedDesignerFixture = async (prisma, seedScope) => {
       teamId: scope.teamId,
     },
   })
-  const { AGENT_DESIGNER_BLUEPRINT, ensureGlobalAgentBootstrap } = await import('@nessie/team-admin')
+  const { AGENT_DESIGNER_BLUEPRINT, ensureGlobalAgentBootstrap } =
+    await import('../../../packages/team-admin/src/index.ts')
   const designer = await ensureGlobalAgentBootstrap(prisma, {
     blueprint: AGENT_DESIGNER_BLUEPRINT,
     organizationId: scope.organizationId,
