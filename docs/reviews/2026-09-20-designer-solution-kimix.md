@@ -54,3 +54,36 @@ No must-fix findings. The implementation matches the brief and correctly avoids 
   executor 361 (four skipped). Full workspace typecheck and lint passed. The
   reasoning-only continuation adds focused loop/crash recovery regressions.
   These are local checks, separate from final CI and production verification.
+
+
+## Final delta review
+
+A fresh Kimix `k3` session (`01a0bf92-b690-7df3-948e-e58a4e0af4ad`)
+reviewed `b3ae7a40d..525bbc923`. The report below is verbatim. Timeout errors
+retain the separate `timeout` classification; other network errors become
+`transient` (the report groups both as retryable availability failures).
+
+**Verdict: No must-fix findings.** All six delta items verified in code; the three low findings from the prior review are genuinely resolved, not patched over.
+
+**Delta Verified**
+- **Empty reasoning-only `length` recovery** (`worker/src/run/output-finalization.ts:111`): `state.noTools` is false only when `reason === 'length'` with empty text and no tool calls, yielding exactly one tool-enabled `unfinished_work` continuation. Partial prose still resolves to no-tools `final_answer`; truncated tool frames still get `tool_regeneration` and are never dispatched (the recover branch at `worker/src/run/agentic-loop.ts:411` `continue`s before `markDispatchBoundary`). Checkpoint persists `outputFinalizationNoTools` and the instruction travels in `messages`, so crash reclaim keeps tool authority (covered by the new resume test). Repeated `length` hits the terminal branch with `state.reason ?? reason` → truthful `provider_output_limit` (`worker/src/run/agentic-loop.ts:432`), never `token_limit`.
+- **Browser test** (`admin/e2e/designer-capabilities/run.mjs:122`): the mock routes no-tools requests into the utility lane (`packages/mock-llm/src/server.ts:259`), so the old defect would increment `prematureFinalizations` and return `GRANTED_ANSWER` as false success — now asserted `=== 0`. Exact once-per-tool call counts, persisted grant/voice state, zero `run.budget_exhausted` events, and one consumed truncated invocation are all asserted. The truncated turn moved before `tool_spec` in `scenarios.mjs`, exercising the pre-action path. The unasserted `recoveries` counter is gone.
+- **Org+agent scope parity** (`worker/src/run/pa-tools/agent-access.ts:64`): publishes `[organization, agent]`, byte-identical in shape to `api/src/routes/agents.ts:624` and `api/src/routes/mcp/tools.ts:316`; the real-DB test asserts exact scopes.
+- **Kimi metadata failure** (`packages/runtime/src/inference/connectors/kimi.ts:63`): network/timeout → `temporarily unavailable` → `transient` (retryable, `worker/src/run/error-classification.ts:158`); non-2xx → `providerHttpError` preserving `statusCode`/`providerCode` (401/403 classify as auth/forbidden); malformed body/shape → `format`; missing model row → `model_not_found`. Capability cache only writes after a successful resolve (`packages/runtime/src/inference/catalog.ts:66`), so failures are never cached. Ledger-routed configs early-return `{}` — signed resolver only — and both-absent now throws instead of inventing a cap.
+- **Stale comments/dead helper**: `resolveComposeOutputTokens` deleted with zero remaining references; `maxOutputTokensOverride` and config `maxTokens` comments now match reality (config field retained as deprecated compat — correct, since removal would break existing configs).
+- **Connected-mail barrier** (`admin/e2e/connected-mail/run.mjs:115`): test-only double-rAF after the URL assertion with an accurate comment; no production code touched.
+- Standards paragraph (`docs/standards/tech-and-run-budgets.md:32`) documents the utility/delegate cap omission plus last-call overshoot, matching the stated user guidance. Run/org/context safeguards (metering, wind-down, budget checks) are untouched.
+
+**Static vs Runtime**
+- This is a static read-only review of `b3ae7a4..525bbc923` (10 commits, 19 files) plus surrounding code. I did not execute tests, lint, or the browser suites in this session.
+- The reported runtime evidence (connector 9/9, classification 15/15, loop 36/36, DB access 1/1, browser red→green, full prior suites) is consistent with what the code and assertions actually check, but I did not independently reproduce it. CI and the broad browser workflow are still running — no claim made on them.
+
+**Findings**
+- None at must-fix or low severity. One cosmetic observation, not a finding: `verification.json` writes the old key `recoveries` with `truncatedInvocations`' value (`admin/e2e/designer-capabilities/run.mjs:148`) — value is identical in the passing path, and the file records `prematureFinalizations` separately.
+
+Final local verification at `525bbc923`: API/worker build passed, 52 focused
+recovery/classification/real-database access regressions passed, and the built
+admin desktop/phone Designer browser evaluation passed. The catalogue fix is
+`b136650dd`; connector regressions verify malformed responses and a successful
+lookup after a transient failure, without caching the failure or inventing a
+response limit. CI and production delivery are tracked on the pull request.
