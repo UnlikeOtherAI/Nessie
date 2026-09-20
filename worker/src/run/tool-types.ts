@@ -27,6 +27,13 @@ export type AgentCardSuspension = {
 
 export type ToolExecutionResult = {
   connectorUsage?: ToolExecutionUsage
+  /**
+   * The tool put the agent's turn into the conversation itself — a card, not a
+   * lookup. A run that has done this may legitimately end with no final text,
+   * so the empty-output recovery must not read that silence as a provider
+   * fault and ask for the answer a second time.
+   */
+  deliveredToConversation?: boolean
   inputSummary: string
   outputPreview: string
   pendingInput?: AgentCardSuspension
@@ -39,6 +46,8 @@ export type ToolExecutionResult = {
 export type AgenticToolResult = {
   acknowledgeDelivery?: () => void
   connectorUsage?: ToolExecutionUsage
+  /** See `ToolExecutionResult.deliveredToConversation`. */
+  deliveredToConversation?: boolean
   inputSummary: string
   output: string
   pendingInput?: AgentCardSuspension

@@ -321,6 +321,53 @@ test('completeRunExecution stamps an id-only todoRef on its assistant reply', as
   assert.equal(messageCreates[0]?.data.role, 'assistant')
 })
 
+/**
+ * A run that already delivered its turn — a card it posted — has nothing left
+ * to say, and the empty bubble that used to follow it was the second message
+ * of the pair this removes. The test is emptiness and nothing else.
+ */
+test('a completed run with nothing to say writes no message at all', async () => {
+  const { deps, messageCreates, queuedPayloads, sse, ws } = makeDeps()
+
+  await complete(deps, makeContext(), '   ')
+
+  assert.equal(messageCreates.length, 0)
+  assert.deepEqual(queuedPayloads[0]?.delivery, { kind: 'silent' })
+  assert.deepEqual(ws, [])
+  assert.deepEqual(sse, [])
+})
+
+// The guard on the line above: silence is emptiness, not a judgement about
+// whether the words were worth posting. A bare emoji is a real answer and is
+// only ever withheld by the reaction branch, which knows the run reacted.
+test('a wordless but non-empty answer is still posted', async () => {
+  const { deps, messageCreates, queuedPayloads } = makeDeps()
+
+  await complete(deps, makeContext(), '👍')
+
+  assert.equal(messageCreates.length, 1)
+  assert.equal(messageCreates[0]!.data.content, '👍')
+  assert.equal((queuedPayloads[0]?.delivery as Record<string, unknown>).kind, 'message')
+})
+
+// The delegated Personal Assistant branch writes its answer as the owner's own
+// `user` turn. Silencing an empty run must not have moved that seam.
+test('a delegated personal-assistant answer is still authored by its owner', async () => {
+  const { deps, messageCreates, queuedPayloads } = makeDeps()
+  const context = makeContext()
+  context.agent.agentKind = 'personal_assistant'
+
+  await complete(deps, context, 'Booked for Thursday.')
+
+  assert.equal(messageCreates.length, 1)
+  assert.equal(messageCreates[0]!.data.role, 'user')
+  assert.equal(messageCreates[0]!.data.userId, USER_ID)
+  assert.equal(
+    (queuedPayloads[0]?.delivery as Record<string, unknown>).authoredByOwner,
+    true,
+  )
+})
+
 test('terminalizeBudgetBlockedRun attaches rootMessageId and emits reply events', async () => {
   const { deps, messageCreates, queryRawCalls, ws } = makeDeps()
   const context = makeContext(ROOT_MESSAGE_ID)

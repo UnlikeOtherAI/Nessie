@@ -51,6 +51,25 @@ const CardImage = ({ alt, attachmentId, caption }: {
   )
 }
 
+/**
+ * Agent-authored prose inside a card. A `text` block's body and the card's own
+ * covering note are the same thing — the agent talking — so they render
+ * through one component rather than two copies of the same markdown call.
+ */
+export const AgentCardProse = ({ className, markdown }: {
+  className: string
+  markdown: string
+}) => (
+  <div className={className}>
+    {/* Card prose is agent-authored, not channel chat: it carries no @mention
+        entities to resolve, so text nodes pass through unchanged. Remote
+        images stay blocked by the default. */}
+    <MessageMarkdown renderInlineText={(text) => text}>
+      {markdown}
+    </MessageMarkdown>
+  </div>
+)
+
 export type AgentCardFieldValue = string | number | boolean
 
 /**
@@ -104,16 +123,7 @@ const CardStaticBlock = ({ block }: {
   block: Extract<PresentedAgentCardBlock, { type: 'text' | 'fields' | 'chips' | 'details' | 'image' | 'link' }>
 }) => {
   if (block.type === 'text') {
-    return (
-      <div className="agent-card-text">
-        {/* Card text is agent-authored prose, not channel chat: it carries
-            no @mention entities to resolve, so text nodes pass through
-            unchanged. Remote images stay blocked by the default. */}
-        <MessageMarkdown renderInlineText={(text) => text}>
-          {block.markdown}
-        </MessageMarkdown>
-      </div>
-    )
+    return <AgentCardProse className="agent-card-text" markdown={block.markdown} />
   }
   if (block.type === 'fields') {
     return (

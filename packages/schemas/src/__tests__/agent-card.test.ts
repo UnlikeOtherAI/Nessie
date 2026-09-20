@@ -6,6 +6,7 @@ import {
   CardPostToolInputSchema,
   AGENT_CARD_MAX_INPUT_CHARS,
   AGENT_CARD_MAX_EXPIRY_SECONDS,
+  AGENT_CARD_MAX_MESSAGE_CHARS,
   isAgentCardResponseMessage,
 } from '../agent-card.js'
 import { DashboardPresentationMessageMetadataSchema } from '../dashboard-presentation.js'
@@ -19,6 +20,45 @@ const baseSpec = {
 
 test('a minimal card is valid', () => {
   assert.equal(AgentCardSpecSchema.safeParse(baseSpec).success, true)
+})
+
+/**
+ * The card carries the agent's own covering note so a proposal is one message
+ * rather than prose followed by a card. It is optional in both directions:
+ * every card written before the field existed still parses, and a card that
+ * needs no note still posts.
+ */
+test('a card may carry the agent\'s own message, and every older card still parses', () => {
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      message: 'Here is the CTO proposal — press Accept or just tell me what to change.',
+    }).success,
+    true,
+  )
+  // The legacy shape: no `message` key at all, unchanged and still valid.
+  assert.equal('message' in baseSpec, false)
+  const legacy = AgentCardSpecSchema.safeParse(baseSpec)
+  assert.equal(legacy.success, true)
+  assert.equal(legacy.success && legacy.data.message, undefined)
+})
+
+test('the card message is bounded, and never an empty bubble', () => {
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      message: 'a'.repeat(AGENT_CARD_MAX_MESSAGE_CHARS),
+    }).success,
+    true,
+  )
+  assert.equal(
+    AgentCardSpecSchema.safeParse({
+      ...baseSpec,
+      message: 'a'.repeat(AGENT_CARD_MAX_MESSAGE_CHARS + 1),
+    }).success,
+    false,
+  )
+  assert.equal(AgentCardSpecSchema.safeParse({ ...baseSpec, message: '   ' }).success, false)
 })
 
 test('a dashboard-source secret is a closed credential destination', () => {

@@ -312,7 +312,7 @@ test('a folded details block is unfolded in the card\'s plain text', () => {
     actions: [
       { key: 'accept', label: 'Accept', style: 'primary', submits: true },
       { key: 'edit', label: 'Edit', style: 'secondary', submits: false },
-      { key: 'discard', label: 'Discard', style: 'danger', submits: false },
+      { key: 'decline', label: 'Decline', style: 'danger', submits: false },
     ],
     blocks: [
       { markdown: 'Fetches deal details from Sales Portal on request.', type: 'text' },
@@ -334,5 +334,38 @@ test('a folded details block is unfolded in the card\'s plain text', () => {
   assert.match(text, /What it can reach:/)
   assert.match(text, /Tools: send_message, ticket_read/)
   assert.match(text, /Apps: Sales Portal/)
-  assert.match(text, /Buttons: Accept, Edit, Discard/)
+  assert.match(text, /Buttons: Accept, Edit, Decline/)
+})
+
+// The prose that used to arrive as a second chat message now rides inside the
+// card. Every reader that gets the plain text instead of the card — search, a
+// push preview, the model's own transcript window — must still get those
+// words, and get them first, because on screen they sit above the card.
+test('the card\'s own message leads its plain text', () => {
+  const text = renderAgentCardPlainText({
+    ...formSpec,
+    message: 'Ready when you are — this one goes to production.',
+  })
+  assert.equal(text.split('\n')[0], 'Ready when you are — this one goes to production.')
+  assert.match(text, /Deploy hotfix/)
+  assert.match(text, /Buttons: Send, Cancel/)
+})
+
+// A card stored before the field existed has no `message` key at all. It must
+// render byte-for-byte as it always did, because the same function writes the
+// message content that is already durable in thousands of threads.
+test('a card without a message renders exactly as it did before the field existed', () => {
+  assert.equal('message' in formSpec, false)
+  assert.equal(
+    renderAgentCardPlainText(formSpec),
+    [
+      'Deploy hotfix',
+      '',
+      'Deploy?',
+      '',
+      'Asks for: Environment, Note, API key (secret)',
+      '',
+      'Buttons: Send, Cancel',
+    ].join('\n'),
+  )
 })

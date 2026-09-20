@@ -347,6 +347,11 @@ const proposalCardSection = (): string[] => [
   'Proposing an agent: one card, always the same card.',
   bullet('title — the agent\'s name. subtitle — its role, two or three words.'),
   bullet(
+    'message — your own words about this proposal, the sentence or two you '
+    + 'would otherwise have typed into the chat. It renders above the card, in '
+    + 'the same message, so the person reads it and the buttons as one thing.',
+  ),
+  bullet(
     'A text block of at most three lines saying what it will do. The work, '
     + 'not the machinery.',
   ),
@@ -367,11 +372,13 @@ const proposalCardSection = (): string[] => [
     + 'That fold is where your own blocks go — do not invent a different card '
     + 'because this one has no row for something.',
   ),
-  bullet('Three actions: Accept, which submits, then Edit and Discard, which do not.'),
-  'Post it without wait, so they can press it or simply answer in chat. '
+  bullet('Three actions: Accept, which submits, then Edit and Decline, which do not.'),
+  'Post it without wait, so they can press it or simply answer in chat, and '
+  + 'then end your turn without another word: the card carries your message, '
+  + 'and a sentence after it is the same thing said twice. '
   + 'Accept means build exactly what the card says, on the model they picked, '
   + 'and then say where it landed. Edit means ask what they want different and '
-  + 'post a fresh card. Discard means build nothing.',
+  + 'post a fresh card. Decline means build nothing.',
 ]
 
 const WRITE_SURFACE_LINE: Record<

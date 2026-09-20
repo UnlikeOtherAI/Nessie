@@ -76,11 +76,17 @@ export const outputFinalizationTerminalText = (
   : EMPTY_OUTPUT_TERMINAL_MESSAGE
 
 export const outputFinalizationReasonFor = (input: {
+  deliveredToConversation?: boolean
   finishReason: string | null | undefined
   outputText: string
   toolCalls: readonly unknown[]
 }): OutputFinalizationReason | null => {
   if (input.finishReason === 'length') return 'length'
+  // A run that already posted a card has put its whole turn in the
+  // conversation, so ending without a final sentence is a choice, not the
+  // provider failing to answer. Asking again would produce exactly the
+  // duplicate prose the card was meant to replace.
+  if (input.deliveredToConversation) return null
   return !input.outputText.trim() && input.toolCalls.length === 0
     ? 'empty_output'
     : null
@@ -89,6 +95,7 @@ export const outputFinalizationReasonFor = (input: {
 export const advanceOutputFinalization = (
   state: OutputFinalizationState,
   input: {
+    deliveredToConversation?: boolean
     finishReason: string | null | undefined
     outputText: string
     toolCalls: readonly unknown[]

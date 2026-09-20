@@ -27,7 +27,9 @@ export const buildAgentCardsBlock = (
     + '(a ticket or email overview, an image with a caption, a small form) whose buttons the '
     + 'person presses, and the press and any entered values come back to you and stay in the '
     + 'conversation — prefer it over prose whenever you need a decision, a confirmation, a '
-    + 'secret, or structured input.'
+    + 'secret, or structured input. Whatever you would have said about the card goes in the '
+    + 'card\'s own `message` field, which renders above it in the same message; having '
+    + 'posted one, end your turn without repeating yourself in prose.'
     )
     : ''
   return [card, buildBrowserbaseSetupPrompt(facts)].filter(Boolean).join('\n\n')

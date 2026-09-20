@@ -186,7 +186,11 @@ test('the standard proposal card is described for the chat face and nowhere else
   const chat = block()
   assert.match(chat, /Proposing an agent: one card, always the same card\./)
   assert.match(chat, /A details block, which arrives closed/)
-  assert.match(chat, /Accept, which submits, then Edit and Discard/)
+  assert.match(chat, /Accept, which submits, then Edit and Decline/)
+  // One message, not two: the prose the Designer used to post beside the card
+  // is a field on the card, and it is told to stop talking once it has posted.
+  assert.match(chat, /message — your own words about this proposal/)
+  assert.match(chat, /end your turn without another word/)
   // The model is asked for on the card, not in prose, and as one exact pair.
   assert.match(chat, /An input block, a select, for the model/)
   assert.match(chat, /provider and model as one pair/)

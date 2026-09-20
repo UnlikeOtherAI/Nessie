@@ -30,6 +30,9 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
     + 'Cancel, and set submits:false on the ones that dismiss without reading the inputs. '
     + 'An internal href may instead set collectsValues:true with submits:false to claim a '
     + 'non-secret partial form and continue it in the same app; that never submits the decision. '
+    + 'Put whatever you would otherwise have written about the card in the card\'s own '
+    + '"message" field rather than in a separate reply: it renders above the card in the '
+    + 'same message, so the person reads your words and the buttons as one thing. '
     + 'Pressing resolves the card permanently: the answer arrives as a message in the '
     + 'conversation and the card freezes showing what was decided and by whom. '
     + 'Set respondents to choose who may press ("requester" — the person who asked, the '
@@ -61,6 +64,13 @@ export const CARD_POST_TOOL_DEFINITION: BuiltinToolDefinition = {
           },
           title: { type: 'string', description: 'Short headline, e.g. the ticket title.' },
           subtitle: { type: 'string' },
+          message: {
+            type: 'string',
+            description:
+              'Your own words about this card, in your normal voice — what you would have '
+              + 'said in a chat message. Shown above the card, inside the same message, so '
+              + 'do not repeat it in prose after posting.',
+          },
           blocks: {
             type: 'array',
             minItems: 1,
