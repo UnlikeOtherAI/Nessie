@@ -19,6 +19,10 @@ import {
   runAgentReadTool,
   runAgentToolCatalogTool,
   runAgentTriggerCreateTool,
+  runAgentTriggerDeleteTool,
+  runAgentTriggerListTool,
+  runAgentTriggerUpdateTool,
+  runAgentUnbindChannelTool,
   runAgentUpdateTool,
   runAuthoredMessageSearchTool,
   runCallStartTool,
@@ -339,6 +343,14 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    case 'agent_trigger_list':
+      return wrapTool(inputSummary, () => runAgentTriggerListTool(context, args))
+    case 'agent_trigger_update':
+      return wrapTool(inputSummary, () => runAgentTriggerUpdateTool(context, args))
+    case 'agent_trigger_delete':
+      return wrapTool(inputSummary, () => runAgentTriggerDeleteTool(context, args))
+    case 'agent_unbind_channel':
+      return wrapTool(inputSummary, () => runAgentUnbindChannelTool(context, args))
     // Conversations with an agent: open one and hand it a job, or list the ones
     // this person can see. `agent_conversations_list` is to a thread id what
     // `agent_list` is to an agent id.
