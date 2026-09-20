@@ -3,6 +3,7 @@ import {
   resolveLiveEntitlementDecision,
   resolveScopedSetting,
 } from '@nessie/runtime'
+import type { PrismaClient } from '@prisma/client'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 export type RunLocalInferenceBinding = {
@@ -56,6 +57,7 @@ export const resolveRunLocalInferenceBinding = async (
       modelName: true,
       numCtx: true,
       policyVersion: true,
+      revision: true,
     },
   })
   const ownerUserId = context.agent.ownerUserId ?? null
@@ -120,9 +122,53 @@ export const resolveRunLocalInferenceBinding = async (
       manifestDigest: binding.manifestDigest,
       modelName: binding.modelName,
       numCtx: binding.numCtx,
-      revision: binding.policyVersion,
+      revision: binding.revision,
     },
     kind: 'local',
+  }
+}
+
+/**
+ * Write the selected local lane to the Run before a budget or provider path is
+ * allowed to continue.  A retry may repeat the exact pin, but a stale worker
+ * can never replace it with a newly selected binding or host.  This is the
+ * run-level counterpart to the durable Agent selection: spawned child agents
+ * do not inherit a binding merely because one parent run happened to use it.
+ */
+export const persistRunLocalInferenceBinding = async (
+  prisma: Pick<PrismaClient, 'run'>,
+  input: { binding: RunLocalInferenceBinding; runId: string },
+): Promise<void> => {
+  const existingOrExactPin = {
+    OR: [
+      {
+        localInferenceBindingId: null,
+        localInferenceBindingRevision: null,
+        localInferenceHostEpoch: null,
+        localInferenceHostId: null,
+        localInferenceModelDigest: null,
+      },
+      {
+        localInferenceBindingId: input.binding.bindingId,
+        localInferenceBindingRevision: input.binding.revision,
+        localInferenceHostEpoch: input.binding.hostEpoch,
+        localInferenceHostId: input.binding.hostId,
+        localInferenceModelDigest: input.binding.manifestDigest,
+      },
+    ],
+  }
+  const updated = await prisma.run.updateMany({
+    where: { id: input.runId, ...existingOrExactPin },
+    data: {
+      localInferenceBindingId: input.binding.bindingId,
+      localInferenceBindingRevision: input.binding.revision,
+      localInferenceHostEpoch: input.binding.hostEpoch,
+      localInferenceHostId: input.binding.hostId,
+      localInferenceModelDigest: input.binding.manifestDigest,
+    },
+  })
+  if (updated.count !== 1) {
+    throw new Error('Local inference run pin changed before admission completed.')
   }
 }
 

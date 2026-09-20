@@ -34,6 +34,7 @@ import {
 } from './subscription-binding.js'
 import {
   localInferenceUnavailableNotice,
+  persistRunLocalInferenceBinding,
   resolveRunLocalInferenceBinding,
 } from './local-inference-binding.js'
 import {
@@ -339,6 +340,12 @@ const runJobUnderFence = async (
     }
     const subscriptionBinding =
       subscriptionLane.kind === 'subscription' ? subscriptionLane.binding : null
+    if (localLane.kind === 'local') {
+      await persistRunLocalInferenceBinding(deps.prisma, {
+        binding: localLane.binding,
+        runId: context.run.id,
+      })
+    }
     if (subscriptionBinding) {
       await persistRunSubscriptionBinding(deps, {
         binding: subscriptionBinding,

@@ -15,6 +15,8 @@ pnpm --filter @nessie/executor exec node --test --import tsx test/ollama-observe
 pnpm --filter @nessie/runtime exec node --test --import tsx test/uoa-live-entitlements.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/local-inference-policy.test.ts
 pnpm --filter @nessie/admin exec node --test --import tsx test/local-inference-run-restart.test.ts
+pnpm --filter @nessie/local-inference-host exec node --test --import tsx test/protocol.test.ts
+pnpm --filter @nessie/worker exec node --test --import tsx src/run/execute/local-inference-binding.test.ts
 ```
 
 Results on 2026-09-20:
@@ -28,6 +30,10 @@ Results on 2026-09-20:
 - `local-inference-run-restart.test.ts`: 2 passed — only an exact,
   server-authored local-host failure may render the fresh-run Restart control;
   malformed metadata cannot create it.
+- `protocol.test.ts`: 4 passed — canonical signatures verify for executor and
+  Desktop key encodings; endpoint ordering and conflicts stay deterministic.
+- `local-inference-binding.test.ts`: 2 passed — admission pins exactly one
+  binding revision/host epoch tuple and rejects a conflicting retry.
 
 The agent detail header consumes the server-derived availability projection only
 when the record has a local binding. It reuses `PresenceBadge` for
