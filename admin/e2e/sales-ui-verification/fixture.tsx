@@ -73,7 +73,8 @@ const DesignerFixture = () => {
     <AgentCreationModeTabs onChange={setMode} value={mode} />
     <p data-testid="designer-mode">{mode}</p>
     <AgentDesignerForm actions={actions} canManageExplicitTools={false} canManageTodos modelOptions={[]}
-      modelsLoading={false} onSectionChange={setSection} section={section} showTools={false} state={state}
+      modelsLoading={false} onLocalBindingChange={() => undefined} onModelSelect={actions.setModelSelection}
+      onSectionChange={setSection} section={section} showTools={false} state={state}
       toolGroups={[]} toolsQuery={{ data: [], isError: false, isLoading: false } as never} />
   </section>
 }

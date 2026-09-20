@@ -5,6 +5,7 @@ import { assertAgentEditAuthority } from '@nessie/team-admin'
 
 import {
   ConfirmLocalInferenceBindingBodySchema,
+  LocalInferenceBindingStatusResponseSchema,
   PrepareLocalInferenceBindingBodySchema,
 } from '../contracts/local-inference.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -17,6 +18,7 @@ import type { RouteDeps } from './types.js'
 
 const HostIdParamsSchema = z.object({ hostId: z.string().uuid() })
 const AgentIdParamsSchema = z.object({ agentId: z.string().uuid() })
+const BindingStatusParamsSchema = AgentIdParamsSchema.extend({ bindingId: z.string().uuid() })
 
 const sendBindingError = (reply: FastifyReply, error: unknown): boolean => {
   if (!(error instanceof LocalInferenceBindingError)) return false
@@ -101,6 +103,51 @@ export const registerLocalInferenceConsentRoutes = (
       if (sendBindingError(reply, error)) return reply
       throw error
     }
+  })
+
+  // The executor confirms out of band. The Designer is allowed to select the
+  // resulting binding only after this owner-authorized read observes the exact
+  // server transition; a local button or copied command output cannot do it.
+  app.get('/api/agents/:agentId/local-inference/bindings/:bindingId/status', async (request, reply) => {
+    const actor = requireActorContext(request, reply)
+    if (!actor || !requireUserActor(actor, reply)) return reply
+    const params = parseInput(BindingStatusParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const agent = await prisma.agent.findFirst({
+      where: { id: params.agentId, organizationId: actor.tenant.organizationId, deletedAt: null },
+      select: { id: true, organizationId: true, ownerUserId: true, systemManaged: true, visibility: true },
+    })
+    if (!agent) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Agent not found.')
+      return reply
+    }
+    try {
+      await assertAgentEditAuthority(prisma, {
+        organizationId: actor.tenant.organizationId,
+        uoaIdentity: actor.actionContext.uoaIdentity,
+        userId: actor.actor.actorId,
+      }, agent)
+    } catch {
+      sendApiError(reply, 403, 'FORBIDDEN', 'You cannot edit this agent.')
+      return reply
+    }
+    const binding = await prisma.agentLocalInferenceBinding.findFirst({
+      where: {
+        agentId: agent.id,
+        id: params.bindingId,
+        organizationId: actor.tenant.organizationId,
+      },
+      select: { id: true, status: true },
+    })
+    if (!binding) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Local model approval not found.')
+      return reply
+    }
+    reply.header('Cache-Control', 'no-store')
+    return createApiResponse(LocalInferenceBindingStatusResponseSchema.parse({
+      bindingId: binding.id,
+      status: binding.status,
+    }))
   })
 
   // Compatibility for the headless executor command. It is equally

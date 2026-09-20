@@ -9,12 +9,17 @@ import {
   LocalInferenceExecutorHostRequestSchema,
   LocalInferenceExecutorHostSchema,
   LocalInferenceHostListSchema,
+  LocalInferenceBindingStatusSchema,
   LocalInferenceGoodbyeSchema,
   ObservedLocalModelSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
-export { AgentAvailabilityProjectionSchema, LocalInferenceHostListSchema }
+export {
+  AgentAvailabilityProjectionSchema,
+  LocalInferenceBindingStatusSchema,
+  LocalInferenceHostListSchema,
+}
 export { LocalInferenceDaemonChallengeSchema, LocalInferenceDaemonConnectionSchema }
 export { LocalInferenceExecutorHostSchema }
 
@@ -44,6 +49,13 @@ export const PrepareLocalInferenceBindingBodySchema = z.object({
 export const ConfirmLocalInferenceBindingBodySchema = z.object({
   challengeId: z.string().uuid(),
   signature: z.string().min(16).max(16_384),
+}).strict()
+
+/** The browser checks this server-derived transition before Designer Save can
+ * select a local lane. A local UI acknowledgement is never sufficient. */
+export const LocalInferenceBindingStatusResponseSchema = z.object({
+  bindingId: z.string().uuid(),
+  status: LocalInferenceBindingStatusSchema,
 }).strict()
 
 export const LocalInferenceHeartbeatSchema = z.object({

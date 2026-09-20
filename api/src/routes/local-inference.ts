@@ -17,7 +17,6 @@ import {
 import { verifyLocalInferenceEnvelope } from '@nessie/local-inference-host'
 
 import {
-  EnrollLocalInferenceHostBodySchema,
   LocalInferenceAttemptFrameRequestSchema,
   LocalInferenceAttemptPollRequestSchema,
   LocalInferenceAttemptResultRequestSchema,
@@ -33,6 +32,7 @@ import {
 import { registerLocalInferenceDaemonClaimRoutes } from './local-inference-daemon-claim.js'
 import { registerLocalInferenceConsentRoutes } from './local-inference-consent-routes.js'
 import { registerLocalInferenceExecutorHostRoute } from './local-inference-executor-host.js'
+import { registerLocalInferenceDesktopEnrollmentRoute } from './local-inference-desktop-enrollment.js'
 import type { RouteDeps } from './types.js'
 
 /** Owner-host-only surfaces. Browser sessions may list/select their own host;
@@ -44,6 +44,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   registerLocalInferenceDaemonClaimRoutes(app, deps)
   registerLocalInferenceExecutorHostRoute(app, deps)
   registerLocalInferenceConsentRoutes(app, deps)
+  registerLocalInferenceDesktopEnrollmentRoute(app, deps)
 
   // The native dialog fetches its own text through a machine-signed, one-use
   // challenge capability. This is deliberately public only in transport terms:
@@ -218,44 +219,6 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       })),
       meta: { hasMore: false, nextCursor: null, prevCursor: null, total: rows.length },
     }))
-  })
-
-  app.post('/api/local-inference/hosts/enroll', async (request, reply) => {
-    const actor = requireActorContext(request, reply)
-    if (!actor || !requireUserActor(actor, reply)) return reply
-    const body = parseInput(EnrollLocalInferenceHostBodySchema, request.body, reply)
-    if (!body) return reply
-    const enabled = await resolveScopedSetting<boolean>(prisma, {
-      organizationId: actor.tenant.organizationId,
-      userId: actor.actor.actorId,
-    }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
-    if (enabled.value !== true) {
-      sendApiError(reply, 403, 'POLICY_DENIED', 'Local models are disabled for this work.')
-      return reply
-    }
-    let publicKey: crypto.KeyObject
-    try {
-      publicKey = crypto.createPublicKey(body.publicKey)
-    } catch {
-      sendApiError(reply, 400, 'VALIDATION_ERROR', 'The local host public key is invalid.')
-      return reply
-    }
-    const fingerprint = crypto.createHash('sha256')
-      .update(publicKey.export({ format: 'der', type: 'spki' }))
-      .digest('hex')
-    const host = await prisma.localInferenceHost.create({
-      data: {
-        custodianUserId: actor.actor.actorId,
-        displayLabel: body.displayLabel,
-        organizationId: actor.tenant.organizationId,
-        publicKey: body.publicKey,
-        publicKeyFingerprint: fingerprint,
-        transport: 'desktop',
-      },
-      select: { id: true },
-    })
-    reply.header('Cache-Control', 'no-store')
-    return createApiResponse({ hostId: host.id, organizationId: actor.tenant.organizationId })
   })
 
   // A host may advertise only a signed, bounded observation of its own local

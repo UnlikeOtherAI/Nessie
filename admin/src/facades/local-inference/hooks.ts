@@ -67,3 +67,31 @@ export const useConfirmLocalInferenceBinding = () => {
     },
   })
 }
+
+/** The Designer observes this server transition rather than treating an
+ * executor command or a browser acknowledgement as local-machine consent. */
+export const useLocalInferenceBindingStatus = (
+  agentId: string | undefined,
+  bindingId: string | undefined,
+  enabled = true,
+) => {
+  const apiClient = useApiClient()
+  return useQuery<{ bindingId: string; status: LocalInferenceHost['status'] }>({
+    enabled: enabled && Boolean(agentId) && Boolean(bindingId),
+    queryKey: localInferenceKeys.bindingStatus(agentId, bindingId),
+    queryFn: () => apiClient.get(
+      `/api/agents/${agentId ?? ''}/local-inference/bindings/${bindingId ?? ''}/status`,
+    ),
+    refetchInterval: 2_000,
+  })
+}
+
+export const useCheckLocalInferenceBindingStatus = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (input: { agentId: string; bindingId: string }) => apiClient.get<{
+      bindingId: string
+      status: LocalInferenceHost['status']
+    }>(`/api/agents/${input.agentId}/local-inference/bindings/${input.bindingId}/status`),
+  })
+}

@@ -18,6 +18,13 @@ export const prepareLocalInferenceDesktopEnrollment = async (): Promise<LocalInf
   return invoke<LocalInferenceDesktopEnrollment>('local_inference_prepare_desktop_enrollment')
 }
 
+/** Replaces a server-revoked local key only after Desktop's native repair
+ * confirmation. The browser cannot mint or rotate a machine identity. */
+export const rotateLocalInferenceDesktopMachineKey = async (): Promise<LocalInferenceDesktopEnrollment> => {
+  requireDesktop()
+  return invoke<LocalInferenceDesktopEnrollment>('local_inference_rotate_machine_key')
+}
+
 /** Starts the native direct host only after the server has assigned its host id. */
 export const startLocalInferenceDirectHost = async (input: {
   hostId: string
