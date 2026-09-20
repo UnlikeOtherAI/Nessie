@@ -101,8 +101,10 @@ const DEFAULT_PAGE_SIZE = 25
  * used to hit under CI load, where the render reliably loses the race that it
  * wins on an idle machine.
  *
- * The size is a URL write, made in the same discrete-event flush as the render
- * it triggers, so seeing it in the address bar means the render landed.
+ * The URL write happens before the router has committed the new query
+ * observer. Wait through a rendered frame after the URL assertion: a Refresh
+ * dispatched sooner can still call the previous observer's `refetch`, which
+ * is especially misleading when that key is fresh in React Query's cache.
  */
 const choosePageSize = async (page, pageSize) => {
   await page.getByLabel('Items per page').selectOption(String(pageSize))
@@ -110,6 +112,9 @@ const choosePageSize = async (page, pageSize) => {
     (expected) => new URL(window.location.href).searchParams.get('pageSize') === expected,
     pageSize === DEFAULT_PAGE_SIZE ? null : String(pageSize),
   )
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  }))
 }
 
 const fillCompose = async (page, subject) => {
