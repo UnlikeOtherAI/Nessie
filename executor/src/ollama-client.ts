@@ -60,7 +60,7 @@ export type OllamaFetch = (
   },
 ) => Promise<Response>
 
-const defaultOllamaFetch: OllamaFetch = (url, init) =>
+export const defaultOllamaFetch: OllamaFetch = (url, init) =>
   // Global fetch follows redirects by default, which would let anything
   // answering on 11434 bounce a request — or a replayed POST body — off the
   // machine. A loopback daemon has no business redirecting us anywhere.

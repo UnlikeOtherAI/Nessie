@@ -23,7 +23,12 @@ import {
   assertAgentFieldAuthority,
   type AgentEditActor,
 } from './agent-edit-authority.js'
-import { resolveLiveEntitlements } from '@nessie/runtime'
+import {
+  LOCAL_INFERENCE_ENABLED_SETTING_KEY,
+  resolveLiveEntitlementDecision,
+  resolveLiveEntitlements,
+  resolveScopedSetting,
+} from '@nessie/runtime'
 import {
   acquireAgentToolPolicyLock,
   mergeGenericAgentToolPolicy,
@@ -58,6 +63,8 @@ export type UpdateAgentRecordInput = {
    * written, so a Ledger selection actively clears a stale subscription.
    */
   modelSubscriptionId?: string | null
+  /** Set only by the Designer's Save of an exact consented local binding. */
+  localInferenceBindingId?: string | null
   name?: string
   /** undefined = leave stewardship alone; null = return to the unowned pool. */
   ownerUserId?: string | null
@@ -195,6 +202,74 @@ export const updateAgentRecord = async (
           input.toolPolicy,
         )
 
+    let localBinding: { id: string; modelName: string } | null = null
+    if (input.localInferenceBindingId !== undefined) {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`local-inference-policy:${input.organizationId}`}::text, 0)
+        )
+      `
+      if (input.localInferenceBindingId === null) {
+        throw new AgentManagementError(
+          AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_REPLACEMENT_REQUIRED,
+          'Choose another model before removing a local model selection.',
+        )
+      }
+      const binding = await tx.agentLocalInferenceBinding.findFirst({
+        where: {
+          agentId,
+          id: input.localInferenceBindingId,
+          organizationId: input.organizationId,
+          status: 'consented_pending_activation',
+        },
+        select: {
+          agentEditRevision: true, hostId: true, id: true, manifestDigest: true,
+          modelName: true, policyVersion: true,
+        },
+      })
+      const host = binding
+        ? await tx.localInferenceHost.findFirst({
+            where: { id: binding.hostId, organizationId: input.organizationId, pausedAt: null, revokedAt: null },
+            select: { custodianUserId: true, inventory: true },
+          })
+        : null
+      const policy = await tx.localInferencePolicyVersion.upsert({
+        where: { organizationId: input.organizationId }, create: { organizationId: input.organizationId },
+        update: {}, select: { version: true },
+      })
+      const setting = await resolveScopedSetting<boolean>(tx, {
+        organizationId: input.organizationId, userId: existing.ownerUserId,
+      }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
+      const entitlement = existing.ownerUserId
+        ? await resolveLiveEntitlementDecision(tx, {
+            allowStoredIdentity: true, organizationId: input.organizationId, userId: existing.ownerUserId,
+          })
+        : { status: 'denied' as const }
+      const inventory = Array.isArray(host?.inventory) ? host.inventory : []
+      const observed = inventory.find((entry) => typeof entry === 'object' && entry !== null
+        && (entry as Record<string, unknown>)['name'] === binding?.modelName
+        && (entry as Record<string, unknown>)['manifestDigest'] === binding?.manifestDigest
+        && (entry as Record<string, unknown>)['remoteHost'] === null
+        && (entry as Record<string, unknown>)['remoteModel'] === null)
+      if (!binding || !host || !existing.ownerUserId || existing.systemManaged
+        || existing.ownerUserId !== host.custodianUserId
+        || existing.updatedAt.getTime() !== binding.agentEditRevision.getTime()
+        || policy.version !== binding.policyVersion || setting.value !== true
+        || entitlement.status !== 'allowed' || !observed) {
+        throw new AgentManagementError(
+          AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_CONFLICT,
+          'The local consent, model, or policy changed before this form was saved.',
+        )
+      }
+      await tx.agentLocalInferenceBinding.updateMany({
+        where: { agentId, status: 'active' }, data: { reason: 'replaced', status: 'revoked' },
+      })
+      await tx.agentLocalInferenceBinding.update({
+        where: { id: binding.id }, data: { reason: null, status: 'active' },
+      })
+      localBinding = { id: binding.id, modelName: binding.modelName }
+    }
+
     // A system-managed agent has no steward by construction (the CHECK would
     // refuse), and a transfer target must be an active member of THIS agent's
     // organization — refused in words here rather than as a raw constraint
@@ -215,17 +290,18 @@ export const updateAgentRecord = async (
         agentKind: existing.agentKind,
         delegationMode: existing.delegationMode,
         effort: input.effort ?? existing.effort,
-        model: transfersOwnership ? null : input.model ?? existing.model,
+        model: localBinding?.modelName ?? (transfersOwnership ? null : input.model ?? existing.model),
         // An owner transfer takes the agent off the previous owner's personal
         // plan. Clearing all three together is what stops the new owner
         // inheriting spend on somebody else's subscription; the run-time gate
         // would refuse it anyway, but a silently broken agent is a worse
         // outcome than one that falls back to the deployment default.
-        modelSubscriptionId: transfersOwnership
+        modelSubscriptionId: localBinding ? null : (transfersOwnership
           ? null
           : input.modelSubscriptionId === undefined
             ? existing.modelSubscriptionId
-            : input.modelSubscriptionId,
+            : input.modelSubscriptionId),
+        localInferenceBindingId: localBinding?.id ?? existing.localInferenceBindingId,
         name: existing.systemManaged
           ? existing.name
           : input.name ?? existing.name,
@@ -234,7 +310,7 @@ export const updateAgentRecord = async (
           : input.ownerUserId === undefined
             ? existing.ownerUserId
             : input.ownerUserId,
-        provider: transfersOwnership ? null : input.provider ?? existing.provider,
+        provider: localBinding ? 'local/ollama' : (transfersOwnership ? null : input.provider ?? existing.provider),
         role: input.role ?? existing.role,
         runLimits: runLimitsWriteValue(input.runLimits),
         surfacePolicy: existing.surfacePolicy,

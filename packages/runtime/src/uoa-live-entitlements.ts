@@ -31,6 +31,15 @@ export type LiveEntitlements =
   | { kind: 'denied' }
 
 /**
+ * Local-device disclosure has a stricter failure contract than ordinary list
+ * reads.  A UOA timeout is neither a revocation nor permission to proceed.
+ */
+export type LiveEntitlementDecision =
+  | { status: 'allowed'; entitlements: Exclude<LiveEntitlements, { kind: 'denied' }> }
+  | { status: 'denied' }
+  | { status: 'unavailable' }
+
+/**
  * Request identity is required at an interactive boundary. The stored-link arm
  * is deliberately opt-in for delivery/grant rechecks that have no request
  * session; its subject and epoch still have to survive `/org/me`.
@@ -162,11 +171,11 @@ const localTeamIds = async (
  * Reads one live UOA membership response and translates it to existing Nessie
  * team ids. It intentionally neither writes nor caches UOA roster data.
  */
-export const resolveLiveEntitlements = async (
+const resolveLiveEntitlementsInternal = async (
   prisma: UoaLiveEntitlementsPrisma,
   input: ResolveLiveEntitlementsInput,
   deps: ResolveLiveEntitlementsDeps = {},
-): Promise<LiveEntitlements> => {
+): Promise<LiveEntitlements | { kind: 'unavailable' }> => {
   const organization = await prisma.organization.findUnique({
     where: { id: input.organizationId },
     select: { externalOrgId: true },
@@ -219,10 +228,38 @@ export const resolveLiveEntitlements = async (
       userId: input.userId,
     }
   } catch (error) {
-    if (
-      error instanceof UoaOrgRequestRejectedError
-      || error instanceof UoaOrgRequestUnavailableError
-    ) return { kind: 'denied' }
+    if (error instanceof UoaOrgRequestRejectedError) return { kind: 'denied' }
+    if (error instanceof UoaOrgRequestUnavailableError) return { kind: 'unavailable' }
     throw error
   }
+}
+
+/**
+ * Existing readers retain their historic denial-shaped result so a transient
+ * identity outage cannot accidentally widen a visibility predicate.  New
+ * disclosure-capable integrations must call the tri-state boundary below.
+ */
+export const resolveLiveEntitlements = async (
+  prisma: UoaLiveEntitlementsPrisma,
+  input: ResolveLiveEntitlementsInput,
+  deps: ResolveLiveEntitlementsDeps = {},
+): Promise<LiveEntitlements> => {
+  const resolved = await resolveLiveEntitlementsInternal(prisma, input, deps)
+  return resolved.kind === 'unavailable' ? { kind: 'denied' } : resolved
+}
+
+/**
+ * A fresh UOA decision for any operation that would disclose prompt material
+ * to a device.  Callers must dispatch only from `allowed`; `unavailable` is
+ * rendered as Unknown and is never silently promoted from a cached allow.
+ */
+export const resolveLiveEntitlementDecision = async (
+  prisma: UoaLiveEntitlementsPrisma,
+  input: ResolveLiveEntitlementsInput,
+  deps: ResolveLiveEntitlementsDeps = {},
+): Promise<LiveEntitlementDecision> => {
+  const resolved = await resolveLiveEntitlementsInternal(prisma, input, deps)
+  if (resolved.kind === 'unavailable') return { status: 'unavailable' }
+  if (resolved.kind === 'denied') return { status: 'denied' }
+  return { status: 'allowed', entitlements: resolved }
 }

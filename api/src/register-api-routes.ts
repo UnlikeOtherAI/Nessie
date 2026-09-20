@@ -13,6 +13,7 @@ import { registerBrowserCloudRoutes } from './routes/browser-cloud.js'
 import { registerBrowserCookieImportRoutes } from './routes/browser-cookie-imports.js'
 import { registerBrowserPersonalAccessRoutes } from './routes/browser-personal-access.js'
 import { registerScopedSettingsRoutes } from './routes/scoped-settings.js'
+import { registerLocalInferenceRoutes } from './routes/local-inference.js'
 import { registerAgentCardRoutes } from './routes/agent-cards.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
@@ -213,6 +214,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentCardRoutes(app, { ...deps, dashboardCredentials })
   registerBrowserCloudRoutes(app, { ...deps, dashboardCredentials })
   registerScopedSettingsRoutes(app, deps)
+  registerLocalInferenceRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps, spreadsheetContext)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)

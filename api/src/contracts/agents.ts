@@ -90,6 +90,8 @@ export const UpdateAgentBodySchema = z.object({
    * at one provider and the (provider, model) pair cannot tell them apart.
    */
   modelSubscriptionId: z.string().uuid().nullish(),
+  /** Inactive consent becomes active only as part of this Designer Save. */
+  localInferenceBindingId: z.string().uuid().nullish(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   todosEnabled: z.boolean().optional(),
