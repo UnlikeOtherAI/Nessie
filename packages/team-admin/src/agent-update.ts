@@ -150,10 +150,19 @@ export const updateAgentRecord = async (
 
     // A transfer is any change of steward to a different person (or to the
     // unowned pool) on an agent currently running on a personal subscription.
+    const changesOwner =
+      input.ownerUserId !== undefined
+      && input.ownerUserId !== existing.ownerUserId
     const transfersOwnership =
       existing.modelSubscriptionId !== null
-      && input.ownerUserId !== undefined
-      && input.ownerUserId !== existing.ownerUserId
+      && changesOwner
+    // A host consent is always personal to its original owner/custodian. Keep
+    // the explicit local pin so the transferred agent fails closed instead of
+    // silently moving prompt bytes to Ledger, but fence every outstanding
+    // consent before the new owner is written.
+    const transfersLocalInferenceOwnership =
+      existing.localInferenceBindingId !== null
+      && changesOwner
 
     if (existing.todosEnabled && input.todosEnabled === false) {
       await acquireAgentTodoAgentLock(tx, agentId)
@@ -203,6 +212,12 @@ export const updateAgentRecord = async (
         )
 
     let localBinding: { id: string; modelName: string } | null = null
+    if (transfersLocalInferenceOwnership && input.localInferenceBindingId !== undefined) {
+      throw new AgentManagementError(
+        AGENT_MANAGEMENT_ERROR_CODES.LOCAL_BINDING_CONFLICT,
+        'Transfer this agent separately from choosing a local model. The new owner must consent on their own host.',
+      )
+    }
     if (input.localInferenceBindingId !== undefined) {
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(
@@ -268,6 +283,17 @@ export const updateAgentRecord = async (
         where: { id: binding.id }, data: { reason: null, status: 'active' },
       })
       localBinding = { id: binding.id, modelName: binding.modelName }
+    }
+
+    if (transfersLocalInferenceOwnership) {
+      await tx.agentLocalInferenceBinding.updateMany({
+        data: { reason: 'ownership_changed', status: 'needs_rebinding' },
+        where: {
+          agentId,
+          organizationId: input.organizationId,
+          status: { in: ['active', 'consented_pending_activation', 'pending'] },
+        },
+      })
     }
 
     // A system-managed agent has no steward by construction (the CHECK would

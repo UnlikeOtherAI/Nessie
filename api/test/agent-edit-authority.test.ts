@@ -103,6 +103,8 @@ const seed = async (prisma: PrismaClient) => {
 }
 
 const cleanup = async (prisma: PrismaClient) => {
+  await prisma.agentLocalInferenceBinding.deleteMany({ where: { organizationId: orgId } })
+  await prisma.localInferenceHost.deleteMany({ where: { organizationId: orgId } })
   await prisma.agent.deleteMany({ where: { organizationId: orgId } })
   await prisma.channel.deleteMany({ where: { id: { in: [publicChannelId, privateChannelId] } } })
   await prisma.team.deleteMany({ where: { id: teamId } })
@@ -345,6 +347,54 @@ dbTest('a private agent still refuses transfer, for its owner too', async () => 
       (error: unknown) => error instanceof AgentManagementError
         && error.code === AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED,
     )
+  })
+})
+
+dbTest('transferring a local agent fences the old owner host instead of falling back', async () => {
+  await withDb(async (prisma) => {
+    const agent = await createPersonOwnedAgent(prisma)
+    await prisma.agentBinding.create({ data: { agentId: agent.id, channelId: publicChannelId } })
+    const host = await prisma.localInferenceHost.create({
+      data: {
+        custodianUserId: stewardUserId,
+        displayLabel: 'owner computer',
+        organizationId: orgId,
+        publicKey: 'test-public-key',
+        publicKeyFingerprint: `fingerprint-${suite}`,
+        transport: 'desktop',
+      },
+    })
+    const binding = await prisma.agentLocalInferenceBinding.create({
+      data: {
+        agentEditRevision: new Date(),
+        agentId: agent.id,
+        capabilitySnapshot: { tools: true },
+        hostId: host.id,
+        manifestDigest: 'sha256:local',
+        modelName: 'local-model',
+        numCtx: 8192,
+        organizationId: orgId,
+        policyVersion: 1,
+        status: 'active',
+      },
+    })
+    await prisma.agent.update({
+      data: { localInferenceBindingId: binding.id, model: 'local-model', provider: 'local/ollama' },
+      where: { id: agent.id },
+    })
+
+    const transferred = await updateAgentRecord(prisma, agent.id, actor(stewardUserId), {
+      organizationId: orgId,
+      ownerUserId: otherMemberUserId,
+    })
+    assert.equal(transferred?.ownerUserId, otherMemberUserId)
+    assert.equal(transferred?.provider, 'local/ollama')
+    assert.equal(transferred?.localInferenceBindingId, binding.id)
+
+    const fenced = await prisma.agentLocalInferenceBinding.findUniqueOrThrow({
+      select: { reason: true, status: true }, where: { id: binding.id },
+    })
+    assert.deepEqual(fenced, { reason: 'ownership_changed', status: 'needs_rebinding' })
   })
 })
 

@@ -77,6 +77,7 @@ export const cloneAgentRecord = async (
       todosEnabled: true,
       toolPolicy: true,
       modelSubscriptionId: true,
+      localInferenceBindingId: true,
       visibility: true,
     },
   })
@@ -87,6 +88,13 @@ export const cloneAgentRecord = async (
   // Both halves of the selection are dropped together so the copy falls back to
   // the deployment default rather than becoming a broken agent.
   const clonesSubscription = source.modelSubscriptionId !== null
+  // A local binding includes the original owner's host consent. A copy cannot
+  // inherit either the host pointer or the `local/ollama` provider namespace:
+  // create would otherwise try to validate it as a cloud model, and a later
+  // run could expose the new owner's work to the old owner's computer.
+  const clonesLocalInference =
+    source.localInferenceBindingId !== null
+    || source.provider === 'local/ollama'
 
   const toolPolicy = await stripProtectedAgentToolPolicy(
     prisma,
@@ -99,11 +107,11 @@ export const cloneAgentRecord = async (
   // owner-only home atomically instead of silently widening its visibility.
   return createAgentRecord(prisma, {
     effort: source.effort,
-    model: clonesSubscription ? undefined : source.model ?? undefined,
+    model: clonesSubscription || clonesLocalInference ? undefined : source.model ?? undefined,
     name: `${source.name} (copy)`,
     organizationId: source.organizationId,
     ownerUserId: clonedByUserId,
-    provider: clonesSubscription ? undefined : source.provider ?? undefined,
+    provider: clonesSubscription || clonesLocalInference ? undefined : source.provider ?? undefined,
     projectId: source.projectId ?? undefined,
     role: source.role,
     runLimits: readAgentRunLimits(source.runLimits),
