@@ -168,3 +168,28 @@ test('with no style the writer keeps its default look', async () => {
     /clean cartoon style when there is not/,
   )
 })
+
+test('the create seam waits less for the picture than a standalone request does', async () => {
+  const failures: unknown[] = []
+  const generated = await generateAvatarForNewAgent({
+    actorContext,
+    agent,
+    config,
+    fileService,
+    imageRequest: async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    },
+    ledgerIdentity: null,
+    modelClient,
+    onFailure: (error) => failures.push(error),
+  })
+
+  assert.equal(generated, undefined)
+  // The seam draws inside a budget somebody else is holding — the worker kills
+  // a tool call at 75s — so it gives up first, with a reason, rather than
+  // being killed mid-creation while still waiting for a picture.
+  assert.match(
+    failures[0] instanceof Error ? failures[0].message : '',
+    /timed out after 45s on the Ledger OpenAI service image route/,
+  )
+})

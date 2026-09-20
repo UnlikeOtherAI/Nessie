@@ -204,7 +204,15 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
     toolRegistryEntry: { findMany: async () => [] },
   })
 
-  const result = await runAgentCreateTool(context, { name: 'Researcher' })
+  const logged: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => { logged.push(args) }
+  let result
+  try {
+    result = await runAgentCreateTool(context, { name: 'Researcher' })
+  } finally {
+    console.warn = originalWarn
+  }
 
   assert.match(result.outputPreview, /Created agent "Researcher"/)
   assert.equal(created.length, 1)
@@ -213,6 +221,16 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
   // tile with the agent that built it unable to explain why.
   assert.match(result.outputPreview, /It has NO portrait/)
   assert.match(result.outputPreview, /model service is not configured/)
+  // The reason is handed over to be quoted, because the one time this happened
+  // the model paraphrased it into "the picture couldn't be drawn" and the
+  // reason left the building.
+  assert.match(result.outputPreview, /word for word/)
+  assert.match(result.outputPreview, /"The model service is not configured."/)
+  // And an operator can read it without the chat transcript, exactly as
+  // `POST /api/agents` already logs it.
+  assert.equal(logged.length, 1)
+  assert.match(String(logged[0]?.[0]), /\[worker\.agent-avatar\] generation failed for "Researcher"/)
+  assert.match(String(logged[0]?.[1]), /model service is not configured/)
 })
 
 const SECOND_AGENT_ID = '4f7d1c00-0e64-4d10-a517-0d0b69c1d012'
