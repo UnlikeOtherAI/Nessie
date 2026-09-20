@@ -23,7 +23,10 @@ import {
   configureExecutorLocalPolicy,
   pairExecutor,
 } from './pair.js'
-import { assertPackagedExecutorRuntime } from './runtime-integrity.js'
+import {
+  assertPackagedExecutorRuntime,
+  EXECUTOR_PACKAGED_BUNDLE_FILE,
+} from './runtime-integrity.js'
 import {
   disableExecutorService,
   enableExecutorService,
@@ -109,6 +112,17 @@ type ParsedCommand =
   | { assumeYes: boolean; executorId: string; kind: 'enable'; stateDir?: string }
   | { executorId: string; kind: 'disable' }
   | { executorId?: string; kind: 'status'; stateRoot?: string }
+
+/**
+ * What a person sees when they run the packaged bundle by hand. It names the
+ * marker and the supported way in, because the two callers who hit this are a
+ * hand-written autostart script and somebody debugging one.
+ */
+export const UNMARKED_BUNDLE_MESSAGE =
+  `${EXECUTOR_PACKAGED_BUNDLE_FILE} ran no command: it is the packaged executor CLI and `
+  + 'must be started by its package, which sets NESSIE_EXECUTOR_PACKAGED_CLI=1. '
+  + 'Start the executor through its installed service, menu bar app or tray; to run this '
+  + 'bundle directly, set that variable first.'
 
 const usage = (): never => {
   throw new Error(
@@ -638,13 +652,39 @@ export const run = async (args: string[]): Promise<void> => {
   })
 }
 
-if (
-  process.argv[1]?.endsWith('index.js')
-  || process.argv[1]?.endsWith('index.ts')
-  || process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1'
-) {
+/**
+ * Whether this process was started to *be* the CLI, as opposed to importing it.
+ *
+ * The source entry is `index.js`/`index.ts`. The packaged bundle is
+ * `nessie-executor.cjs`, which neither name matches, so the package marks
+ * itself with `NESSIE_EXECUTOR_PACKAGED_CLI` — the same marker
+ * `spawnPackagedStateSecurityHelper` requires before it will run the native
+ * helper, because it asserts "this process is the installed package", not
+ * merely "this process is an entry point". It is therefore never something
+ * this file may set on its own behalf.
+ */
+export const executorCliEntry = (
+  invokedPath: string | undefined,
+  packagedMarker: string | undefined,
+): 'run' | 'unmarked-bundle' | 'imported' => {
+  if (invokedPath?.endsWith('index.js') || invokedPath?.endsWith('index.ts')) return 'run'
+  if (packagedMarker === '1') return 'run'
+  // Being named as argv[1] means a person or a script asked this file to do
+  // something. Without the marker it cannot, and exiting 0 in silence — the
+  // old behaviour — is indistinguishable from a daemon that started and
+  // detached. An autostart script built that way leaves a machine with no
+  // executor and no evidence of why.
+  if (invokedPath?.endsWith(EXECUTOR_PACKAGED_BUNDLE_FILE)) return 'unmarked-bundle'
+  return 'imported'
+}
+
+const entry = executorCliEntry(process.argv[1], process.env.NESSIE_EXECUTOR_PACKAGED_CLI)
+if (entry === 'run') {
   run(process.argv.slice(2)).catch((error: unknown) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
   })
+} else if (entry === 'unmarked-bundle') {
+  process.stderr.write(`${UNMARKED_BUNDLE_MESSAGE}\n`)
+  process.exitCode = 1
 }

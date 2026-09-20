@@ -67,17 +67,42 @@ const parseRecovery = (value: unknown): ExecutorCommandRecovery => {
   }
 }
 
+export type ExecutorCommandRecoveryStoreDeps = {
+  ensureRuntimeDirectory?: (stateDir: string) => Promise<string>
+}
+
 /**
  * The journal is local control state, not a second server queue. It lives under
  * the same owner-only boundary as the machine key and is atomically replaced.
+ *
+ * One store secures the runtime directory **once**, not once per operation.
+ * Securing it creates and re-applies an explicit DACL, which on Windows means
+ * spawning the packaged native helper twice; the daemon polls once a second, so
+ * deriving the journal path per operation cost two process creations a second
+ * for the life of the daemon and burned roughly fifty times the CPU its macOS
+ * counterpart did, where the same proof is an `lstat`. It is setup, not a
+ * per-operation proof: every `load` and `save` below still proves the journal
+ * *file* owner-only before this process reads or replaces its contents, which
+ * is the check that stands between the daemon and content someone else wrote.
  */
 export const createExecutorCommandRecoveryStore = (
   stateDir: string,
+  deps: ExecutorCommandRecoveryStoreDeps = {},
 ): ExecutorCommandRecoveryStore => {
-  const journalPath = async (): Promise<string> => resolve(
-    await ensureExecutorRuntimeDirectory(stateDir),
-    JOURNAL_FILE,
-  )
+  const ensureRuntimeDirectory = deps.ensureRuntimeDirectory ?? ensureExecutorRuntimeDirectory
+  let secured: Promise<string> | undefined
+  const journalPath = async (): Promise<string> => {
+    // A rejected promise must never be the cached answer: a directory that
+    // could not be secured once has to be attempted again, or one transient
+    // failure would disable recovery for as long as the daemon runs.
+    secured ??= ensureRuntimeDirectory(stateDir)
+    try {
+      return resolve(await secured, JOURNAL_FILE)
+    } catch (error) {
+      secured = undefined
+      throw error
+    }
+  }
 
   return {
     clear: async () => {
