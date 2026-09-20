@@ -11,6 +11,7 @@ import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 import type { ToolActorContext, ToolAuthorizationDecision } from './execute/tool-authorization.js'
 import { AGENT_SECRET_SAFETY_INSTRUCTION } from './execute/prompt.js'
+import { coverProviderInputComponent } from './execute/provenanced-provider-input.js'
 
 const SUB_AGENT_SYSTEM_PROMPT = `You are a focused sub-agent dispatched by another agent to complete a single task using external tools (MCP).
 
@@ -71,13 +72,19 @@ export type DelegateResult = AgenticToolResult & {
 
 const buildInitialMessages = (task: string, hint: string | undefined): ProviderMessage[] => {
   const messages: ProviderMessage[] = [
-    { role: 'system', content: SUB_AGENT_SYSTEM_PROMPT },
+    coverProviderInputComponent(
+      { role: 'system', content: SUB_AGENT_SYSTEM_PROMPT },
+      'prompt_system',
+    ),
   ]
   const userParts = [`Task:\n${task}`]
   if (hint && hint.trim()) {
     userParts.push(`Hint: ${hint.trim()}`)
   }
-  messages.push({ role: 'user', content: userParts.join('\n\n') })
+  messages.push(coverProviderInputComponent(
+    { role: 'user', content: userParts.join('\n\n') },
+    'loop_instruction',
+  ))
   return messages
 }
 

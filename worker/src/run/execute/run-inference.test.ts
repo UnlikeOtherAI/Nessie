@@ -11,6 +11,7 @@ import {
 import type { RunSubscriptionBinding } from './subscription-binding.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import { coverProviderInputComponent } from './provenanced-provider-input.js'
 
 test('document compose never exceeds the loop-admitted output cap', () => {
   assert.equal(resolveMainOutputTokens({
@@ -199,7 +200,10 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
   )
 
   await assert.rejects(
-    inference.runMain([{ content: 'No cloud fallback.', role: 'user' }], []),
+    inference.runMain([coverProviderInputComponent(
+      { content: 'No cloud fallback.', role: 'user' },
+      'direct_prompt',
+    )], []),
     /secure storage/,
   )
   assert.equal(providerResolverCalled, false)

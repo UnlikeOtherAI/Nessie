@@ -32,6 +32,10 @@ import { runReplyIsRestricted } from './agent-message.js'
 import { createStreamRedactor } from './stream-redaction.js'
 import { dispatchLocalInference } from './local-inference-dispatch.js'
 import type { RunLocalInferenceBinding } from './local-inference-binding.js'
+import {
+  coverGeneratedUtilityInput,
+  finalizeProvenancedProviderInput,
+} from './provenanced-provider-input.js'
 
 const runtimeModelConfig = loadConfig().model
 
@@ -221,7 +225,8 @@ export const createRunInference = (
       const result = await dispatchLocalInference({
         binding: options.local.binding, context, deps,
         maxOutputTokens: maxOutputTokens ?? runtimeModelConfig.maxTokens,
-        messages, runFence: options.local.runFence, tools,
+        providerInput: finalizeProvenancedProviderInput(messages),
+        runFence: options.local.runFence, tools,
       })
       if (streaming && result.outputText && !runReplyIsRestricted(context)) {
         currentTurnStreamed = true
@@ -349,7 +354,10 @@ export const createRunInference = (
     },
     runUtility: (messages, tools) =>
       call(
-        messages,
+        // Utility calls assemble model-generated prompts outside the main
+        // transcript adapters. Mark them at their one construction boundary;
+        // the dispatcher still rejects any component an adapter forgot.
+        options.local ? coverGeneratedUtilityInput(messages) : messages,
         tools,
         options.utilityModel
           ? { model: options.utilityModel.model, provider: options.utilityModel.provider }

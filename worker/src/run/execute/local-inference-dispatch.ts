@@ -7,9 +7,11 @@ import {
   LocalInferenceResultSchema,
   type LocalInferenceAttemptRequest,
 } from '@nessie/schemas'
-import { openLocalInferenceAttempt, sealLocalInferenceAttempt, type InferenceResult, type ProviderMessage, type ToolSchemaDescriptor } from '@nessie/runtime'
+import { openLocalInferenceAttempt, sealLocalInferenceAttempt, type InferenceResult, type ToolSchemaDescriptor } from '@nessie/runtime'
 
 import { resolveRunLocalInferenceBinding, type RunLocalInferenceBinding } from './local-inference-binding.js'
+import { openProvenancedProviderInput, type ProviderInputFinalization } from './provenanced-provider-input.js'
+import { authorizeLocalInferenceRecipient } from './local-inference-recipient.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 export class LocalInferenceDispatchError extends Error {
@@ -27,21 +29,37 @@ export const dispatchLocalInference = async (input: {
   binding: RunLocalInferenceBinding
   deps: ExecutionDependencies
   maxOutputTokens: number
-  messages: ProviderMessage[]
+  providerInput: ProviderInputFinalization
   runFence: string
   context: RunContext
   tools: ToolSchemaDescriptor[]
 }): Promise<InferenceResult> => {
+  // A provider input reaches the delivery store only after every ordered
+  // component has a distinct source-adapter token. This stays before every
+  // database read/write so an omitted adapter leaks neither an attempt nor a
+  // frame byte.
+  const messages = input.providerInput.kind === 'ready'
+    ? openProvenancedProviderInput(input.providerInput.providerInput)
+    : null
+  if (!messages) {
+    throw new LocalInferenceDispatchError('unclassified_input')
+  }
   if (!input.deps.atRestEncryptionKeyRing) {
     throw new LocalInferenceDispatchError('Local inference secure storage is unavailable.')
   }
   const current = await resolveRunLocalInferenceBinding(input.deps, input.context)
+  // This re-resolves the binding, host and live entitlement immediately before
+  // persistence; its owner/custodian equality check is the recipient check,
+  // not a fact trusted from the earlier run admission.
   if (
     current.kind !== 'local'
     || current.binding.bindingId !== input.binding.bindingId
     || current.binding.hostEpoch !== input.binding.hostEpoch
     || current.binding.revision !== input.binding.revision
   ) throw new LocalInferenceDispatchError('The selected local host needs repair.')
+  if (!(await authorizeLocalInferenceRecipient(input.deps, input.context))) {
+    throw new LocalInferenceDispatchError('source_not_allowed')
+  }
 
   const invocationId = randomUUID()
   const deadlineAt = new Date(Date.now() + FIVE_MINUTES)
@@ -49,7 +67,7 @@ export const dispatchLocalInference = async (input: {
     attemptId: randomUUID(), bindingId: input.binding.bindingId,
     bindingRevision: input.binding.revision, deadlineAt: deadlineAt.toISOString(),
     hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId, invocationId,
-    maxOutputTokens: input.maxOutputTokens, messages: input.messages, modelDigest: input.binding.manifestDigest,
+    maxOutputTokens: input.maxOutputTokens, messages, modelDigest: input.binding.manifestDigest,
     modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1,
     runFence: input.runFence, runId: input.context.run.id, tools: input.tools,
   }

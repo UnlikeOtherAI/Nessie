@@ -237,6 +237,25 @@ It carries no URL. Host refusal/error vocabulary includes `policy_denied`,
 `protocol_error`. Raw exception messages, model templates and host paths are
 never customer-facing details.
 
+Before local dispatch can serialize a request, source adapters issue one opaque
+coverage token for every ordered provider component: prompt assembly covers
+system, memory, checkpoint, conversation and direct-input components; the
+catalogue, delegated loop, compaction, tool-result and generated-utility
+adapters cover the components they create. `ProvenancedProviderInput` finalizes
+only when every component has one distinct, non-empty token; otherwise it
+returns the structural error `unclassified_input`. An empty coverage set is
+never a public-only shortcut. The opaque handle owns a frozen structural copy
+and the dispatcher checks it before it creates any encrypted attempt or frame
+bytes. `ConsumedSourceSink` remains reply-disclosure evidence, not proof that a
+prompt may be sent to a computer.
+
+Immediately before the same attempt write, the dispatcher re-resolves the
+active binding (including owner equals live host custodian), resolves the
+owner's current stored-identity UOA entitlement, and requires that viewer to
+satisfy the complete, unsubtracted consumed basis. Unknown or another person's
+private-conversation lineage returns `source_not_allowed`; neither a sharing
+grant nor a local retry substitutes for host consent.
+
 Use `agent.updated` as a content-free cache invalidation during compatibility
 rollout. Once all replicas understand it, `agent.availability` may carry only
 `{agentId, availability, reason, revision, validUntil}` to the same currently

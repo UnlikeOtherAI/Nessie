@@ -81,6 +81,7 @@ import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
 import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
 import { admitTriggerMessageLineage } from './private-conversation-lineage.js'
 import { persistCurrentRunBasis } from './agent-message.js'
+import { coverProviderInputComponent } from './provenanced-provider-input.js'
 import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
@@ -478,7 +479,10 @@ const runJobUnderFence = async (
     const initialMessages = catalogueBlock
       ? [
         setup.initialMessages[0]!,
-        { content: catalogueBlock, role: 'system' as const },
+        coverProviderInputComponent(
+          { content: catalogueBlock, role: 'system' as const },
+          'global_catalogue',
+        ),
         ...setup.initialMessages.slice(1),
       ]
       : setup.initialMessages

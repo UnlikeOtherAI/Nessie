@@ -7,6 +7,7 @@ import {
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { buildModelPrompt } from './prompt.js'
+import { finalizeProvenancedProviderInput } from './provenanced-provider-input.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 
@@ -53,6 +54,15 @@ const systemContent = (messages: ProviderMessage[]): string => {
 test('acting agent is told its own name in the system prompt', () => {
   const messages = buildModelPrompt([], makeContext('Aria'), 'hi', null)
   assert.match(systemContent(messages), /^You are Aria\./)
+})
+
+test('prompt source adapters cover every ordered provider component', () => {
+  const messages = buildModelPrompt([], makeContext('Aria'), 'hi', 'remember this', {
+    approvalInstruction: 'The approved action is ready.',
+    checkpointNotes: 'Resume only after checking the saved state.',
+    emailConversation: 'Inbound mail: a user asked for an update.',
+  })
+  assert.equal(finalizeProvenancedProviderInput(messages).kind, 'ready')
 })
 
 test('the agent’s speaking style lands in the system prompt, once', () => {
