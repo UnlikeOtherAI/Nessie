@@ -133,6 +133,11 @@ export const useAgentAvailability = (agentId?: string, enabled = true) => {
 
   return useQuery<AgentAvailabilityProjection>({
     enabled: Boolean(agentId) && enabled,
+    // Availability may stay visible through a refetch for this same agent, but
+    // must never flash one agent's host readiness on another agent's identity.
+    placeholderData: (previousData, previousQuery) => (
+      previousQuery?.queryKey[1] === agentId ? previousData : undefined
+    ),
     queryKey: agentKeys.availability(agentId),
     queryFn: () => apiClient.get(
       `/api/agents/${agentId ?? ''}/availability`,

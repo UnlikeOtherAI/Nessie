@@ -78,6 +78,13 @@ export const useLocalInferenceBindingStatus = (
   const apiClient = useApiClient()
   return useQuery<{ bindingId: string; status: LocalInferenceHost['status'] }>({
     enabled: enabled && Boolean(agentId) && Boolean(bindingId),
+    // A consent status is authority for one exact agent/binding pair. Keep it
+    // during that pair's refetch only; never replay it onto another approval.
+    placeholderData: (previousData, previousQuery) => (
+      previousQuery?.queryKey[2] === agentId && previousQuery?.queryKey[3] === bindingId
+        ? previousData
+        : undefined
+    ),
     queryKey: localInferenceKeys.bindingStatus(agentId, bindingId),
     queryFn: () => apiClient.get(
       `/api/agents/${agentId ?? ''}/local-inference/bindings/${bindingId ?? ''}/status`,

@@ -44,13 +44,15 @@ export const AgentModelField = ({
           {selected.description ?? `Runs through ${selected.providerDisplayName}.`}
         </p>
       ) : null}
-      <LocalModelBindingApproval
-        agentId={agentId}
-        disabled={disabled}
-        key={`${selected?.localInferenceHostId ?? 'none'}:${selected?.localManifestDigest ?? 'none'}`}
-        onBindingChange={onLocalBindingChange}
-        option={selected}
-      />
+      {selected?.source === 'local' ? (
+        <LocalModelBindingApproval
+          agentId={agentId}
+          disabled={disabled}
+          key={`${selected.localInferenceHostId ?? 'none'}:${selected.localManifestDigest ?? 'none'}`}
+          onBindingChange={onLocalBindingChange}
+          option={selected}
+        />
+      ) : null}
       <p className="text-xs leading-5 text-[color:var(--tx3)]">
         To run this agent locally, connect Ollama on your own computer in{' '}
         <Link className="underline" to="/settings/connections?tab=inference">Connected accounts</Link>.

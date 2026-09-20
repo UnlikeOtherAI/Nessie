@@ -63,7 +63,7 @@ export const useScopedSettings = (
     // the control mid-read — see docs/navigation/overview.md, "Arriving with
     // content".
     placeholderData: keepPreviousData,
-    queryKey: [...scopedSettingKeys.list(scope, teamId, keys), userId ?? 'self'],
+    queryKey: scopedSettingKeys.listForUser(scope, teamId, keys, userId),
     queryFn: () => apiClient.get(`/api/settings/scoped?${query.toString()}`),
   })
 }

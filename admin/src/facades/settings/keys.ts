@@ -11,4 +11,10 @@ export const scopedSettingKeys = {
   all: ['scoped-settings'] as const,
   list: (scope: SettingScope, teamId: string | null, keys: readonly string[]) =>
     ['scoped-settings', scope, teamId ?? 'none', [...keys].sort().join(',')] as const,
+  listForUser: (
+    scope: SettingScope,
+    teamId: string | null,
+    keys: readonly string[],
+    userId: string | null,
+  ) => ['scoped-settings', scope, teamId ?? 'none', [...keys].sort().join(','), userId ?? 'self'] as const,
 }

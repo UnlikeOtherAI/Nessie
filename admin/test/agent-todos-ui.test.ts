@@ -5,6 +5,7 @@ import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { JSDOM } from 'jsdom'
+import { MemoryRouter } from 'react-router-dom'
 import {
   AGENT_TODO_MAX_STEPS,
   AGENT_TODO_STEP_INSTRUCTIONS_MAX,
@@ -61,7 +62,7 @@ const state: AgentFormState = {
 
 test('the Designer renders the persisted to-dos switch and visibility caveat', () => {
   const html = renderToStaticMarkup(
-    createElement(AgentDesignerForm, {
+    createElement(MemoryRouter, null, createElement(AgentDesignerForm, {
       actions,
       canManageExplicitTools: true,
       canManageTodos: true,
@@ -73,7 +74,7 @@ test('the Designer renders the persisted to-dos switch and visibility caveat', (
       state,
       toolGroups: [],
       toolsLoading: false,
-    }),
+    })),
   )
 
   assert.match(html, /role="switch"/)
@@ -84,7 +85,7 @@ test('the Designer renders the persisted to-dos switch and visibility caveat', (
 
 test('a member sees the to-dos switch but cannot change it', () => {
   const html = renderToStaticMarkup(
-    createElement(AgentDesignerForm, {
+    createElement(MemoryRouter, null, createElement(AgentDesignerForm, {
       actions,
       canManageExplicitTools: false,
       canManageTodos: false,
@@ -96,7 +97,7 @@ test('a member sees the to-dos switch but cannot change it', () => {
       state,
       toolGroups: [],
       toolsLoading: false,
-    }),
+    })),
   )
 
   assert.match(html, /aria-label="Enable to-dos for this agent"[^>]*disabled=""/)

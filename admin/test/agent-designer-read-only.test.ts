@@ -5,6 +5,7 @@ import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { JSDOM } from 'jsdom'
+import { MemoryRouter } from 'react-router-dom'
 
 import { AgentDesignerForm } from '../src/components/features/agents/designer/AgentDesignerForm.js'
 import { emptyRunLimitsForm } from '../src/facades/designer/run-limits.js'
@@ -47,7 +48,7 @@ const state: AgentFormState = {
 
 const renderForm = (readOnly: boolean): Document => {
   const html = renderToStaticMarkup(
-    createElement(AgentDesignerForm, {
+    createElement(MemoryRouter, null, createElement(AgentDesignerForm, {
       actions,
       canManageExplicitTools: true,
       canManageTodos: true,
@@ -60,7 +61,7 @@ const renderForm = (readOnly: boolean): Document => {
       state,
       toolGroups: [],
       toolsLoading: false,
-    }),
+    })),
   )
   return new JSDOM(`<body>${html}</body>`).window.document
 }
