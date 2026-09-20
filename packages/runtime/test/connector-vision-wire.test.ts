@@ -75,7 +75,12 @@ test('capability snapshots report vision truthfully per provider', async () => {
   const registry = createConnectorRegistry()
   const visionOf = async (provider: ModelProviderName): Promise<boolean> =>
     (await registry
-      .getConfigured({ apiKey: 'k', provider })
+      .getConfigured({
+        apiKey: 'k', provider,
+        // The Ledger lane gets its Kimi catalogue from the signed scoped
+        // resolver, so this capability-only check must not make a native call.
+        ...(provider === 'kimi' ? { baseUrl: 'https://ledger.unlikeotherai.com/v1/kimi' } : {}),
+      })
       .getModelCapabilities('test-model')).supportsVision
 
   assert.equal(await visionOf('openai'), true)

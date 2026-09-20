@@ -3,17 +3,6 @@ import type { DocumentStreamRecorder } from './document-stream.js'
 
 const POLL_INTERVAL_MS = 1_000
 
-/**
- * Model's-maximum output for a turn that can compose a document.
- *
- * A document is emitted as tool-call arguments inside a single completion, so
- * the deployment's ordinary per-call cap (2,048 tokens by default) would cut it
- * off mid-sentence. There is deliberately no env knob: the run budget is the
- * spend envelope, and this only lifts the per-call ceiling under it.
- */
-export const resolveComposeOutputTokens = (configuredMaxTokens: number): number =>
-  Math.max(configuredMaxTokens, 32_768)
-
 type PollInput = {
   documentStream: DocumentStreamRecorder | undefined
   onCancelled: () => void

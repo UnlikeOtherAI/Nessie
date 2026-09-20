@@ -155,6 +155,9 @@ export const classifyError = (error: unknown): FailoverReason => {
   if (message.includes('timeout') || message.includes('timed out') || message.includes('etimedout') || message.includes('econnreset')) {
     return 'timeout'
   }
+  if (message.includes('model metadata') && message.includes('temporarily unavailable')) {
+    return 'transient'
+  }
   if (status === 503 || message.includes('overloaded') || message.includes('service unavailable')) {
     return 'overloaded'
   }
@@ -172,7 +175,8 @@ export const classifyError = (error: unknown): FailoverReason => {
   if (message.includes('content_filter') || message.includes('content policy') || message.includes('safety')) {
     return 'content_filter'
   }
-  if (message.includes('json') && (message.includes('parse') || message.includes('unexpected'))) {
+  if (message.includes('json') && (message.includes('parse') || message.includes('unexpected'))
+    || message.includes('model metadata') && message.includes('malformed')) {
     return 'format'
   }
   // 400 is a terminal request rejection only once the message-shaped branches
