@@ -1,1 +1,4 @@
-export * from '@nessie/mcp-manage'
+export {
+  getIntegrationPluginManifest,
+  integrationPluginManifests,
+} from '@nessie/mcp-manage'

@@ -12,7 +12,13 @@ export class AgentExplicitToolAccessError extends Error {
  */
 export const setAgentExplicitToolAccess = async (
   prisma: PrismaClient,
-  input: { agentId: string; actorUserId: string; enabled: boolean; organizationId: string; toolRegistryEntryId: string },
+  input: {
+    agentId: string
+    actorUserId: string
+    enabled: boolean
+    organizationId: string
+    toolRegistryEntryId: string
+  },
 ): Promise<AgentToolPolicyTarget> => {
   return setAgentToolPolicyForRegistryEntry(prisma, input)
 }
