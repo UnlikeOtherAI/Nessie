@@ -6,7 +6,7 @@ import {
   setAgentExplicitToolAccess,
   setDeepWaterAgentAccess,
 } from '@nessie/mcp-manage'
-import { parseAgentId } from '@nessie/schemas'
+import { parseAgentId, parseOrganizationId } from '@nessie/schemas'
 import {
   listAgentToolPolicyTargets,
   registryEntryRequiresExplicitPolicy,
@@ -63,7 +63,13 @@ const publishAgentUpdated = async (
 ): Promise<void> => {
   const parsedAgentId = parseAgentId(agentId)
   await context.realtimeTransport.publishWs(
-    [{ kind: 'agent', agentId: parsedAgentId }],
+    [
+      {
+        kind: 'organization',
+        organizationId: parseOrganizationId(context.channel.organizationId),
+      },
+      { kind: 'agent', agentId: parsedAgentId },
+    ],
     { event: 'agent.updated', data: { agentId: parsedAgentId } },
   )
 }
