@@ -400,6 +400,8 @@ export const runAgentToolAccessSetTool = async (
   const member = await resolveActingMember(context)
   requireOwnerMember(member, 'change protected agent tool access')
   const requested = await context.prisma.toolRegistryEntry.findFirst({ where: { id: args.toolRegistryEntryId, OR: [{ organizationId: null }, { organizationId: member.organizationId }] }, select: { mcpInstance: { select: { scopeId: true, scopeType: true } } } })
+  const executorManaged = await context.prisma.toolRegistryEntry.findFirst({ where: { id: args.toolRegistryEntryId, organizationId: member.organizationId, source: 'executor' }, select: { id: true } })
+  if (executorManaged) throw new Error('Executor logical tools are managed from the Executors access controls.')
   if (requested?.mcpInstance?.scopeType === 'user' && requested.mcpInstance.scopeId !== member.userId) throw new Error('This private connection belongs to another person.')
   const target = await setAgentExplicitToolAccess(context.prisma, {
     ...args,
