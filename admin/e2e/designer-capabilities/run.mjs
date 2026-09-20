@@ -105,6 +105,10 @@ const main = async () => {
       where: { eventType: 'run.budget_exhausted', task: { runId: grantRun.id } },
     })
     assert.equal(budgetStops, 0, 'provider truncation is not run-budget exhaustion')
+    const truncatedInvocations = await pipeline.prisma.tokenLedgerEvent.count({
+      where: { runId: grantRun.id, operationType: 'chat', outputTokens: 2_048 },
+    })
+    assert.equal(truncatedInvocations, 1, 'the scripted truncated response was actually consumed')
     await page.getByText(GRANTED_ANSWER, { exact: true }).waitFor({ timeout: 30_000 })
     assert.doesNotMatch(await page.locator('body').innerText(), /reached its token limit|Continue this run to finish/)
     await page.screenshot({ path: resolve(screenshots, 'desktop-granted.png'), fullPage: true })
