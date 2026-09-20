@@ -373,7 +373,7 @@ dbTest('transferring a local agent fences the old owner host instead of falling 
         agentId: agent.id,
         capabilitySnapshot: { tools: true },
         hostId: host.id,
-        manifestDigest: 'sha256:local',
+        manifestDigest: 'a'.repeat(64),
         modelName: 'local-model',
         numCtx: 8192,
         organizationId: orgId,
