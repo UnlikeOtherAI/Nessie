@@ -6,6 +6,14 @@
 export type BrowserbaseSetupPromptFacts = {
   hasCardTool: boolean
   hasBrowserLoginRequestTool?: boolean
+  /**
+   * True when this agent holds `agent_tool_access_set`, which grants another
+   * agent the browser tools with the requesting person's own authority. Without
+   * it the owner surface is the only truthful path; with it, sending an owner
+   * to Agents → Tools is a refusal to do work the agent is holding the tool
+   * for. It never covers this agent's own toolset, which the deployment fixes.
+   */
+  canGrantBrowserTools?: boolean
 }
 
 export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts): string => [
@@ -38,8 +46,14 @@ export const buildBrowserbaseSetupPrompt = (facts: BrowserbaseSetupPromptFacts):
       + 'secret handle. Ending browser access does not revoke the service-issued key.'
     : 'Never ask for or receive a service-issued API key in chat. Without card_post, explain that the existing '
       + 'personal secret form is required before the key is revealed.',
-  'A Browserbase account connection is separate from cloud-browser access for an agent. '
-    + 'An owner must explicitly grant the named agent the browser tools at Agents → Tools '
-    + '(`/agents/tools`); '
-    + 'never enable or imply that grant yourself.',
+  facts.canGrantBrowserTools
+    ? 'A Browserbase account connection is separate from cloud-browser access for an agent. '
+      + 'The account connection is theirs to make on the settings surface above; the browser tools '
+      + 'themselves you grant to the named agent with `agent_tool_access_set`, which is refused '
+      + 'unless the person asking is an organisation owner. Do not send an owner to Agents → Tools '
+      + 'for that grant, and never claim it is done before the tool returns.'
+    : 'A Browserbase account connection is separate from cloud-browser access for an agent. '
+      + 'An owner must explicitly grant the named agent the browser tools at Agents → Tools '
+      + '(`/agents/tools`); '
+      + 'never enable or imply that grant yourself.',
 ].join('\n')

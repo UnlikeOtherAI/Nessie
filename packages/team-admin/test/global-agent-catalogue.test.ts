@@ -6,6 +6,7 @@ import { AgentEffortSchema, AgentVisibilitySchema } from '@nessie/schemas'
 import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 
 import { buildGlobalAgentCatalogueBlock } from '../src/global-agent-catalogue.js'
+import { listGlobalAgentBlueprints } from '../src/global-agent-blueprints.js'
 import type { AgentToolCatalog } from '../src/agent-tool-catalog.js'
 
 /**
@@ -333,5 +334,114 @@ test('a face that holds no tools states the rule without naming one', () => {
     // the catalogue doing its job. What must not appear is an instruction to
     // call it.
     assert.doesNotMatch(rendered, /executor_agent_grant_prepare prepares ONE change/)
+  }
+})
+
+/**
+ * The Designer once refused to grant deep research, browser and connector tools
+ * on an agent it had just built, and sent the owner to the Tools tab instead —
+ * while holding `agent_tool_access_set` in the very same run. The capability was
+ * granted to the blueprint; this block still said nobody could do it from here.
+ * These cases pin the prompt to the verbs the run actually resolved, in both
+ * directions.
+ */
+
+const grantedAccess = {
+  canInspect: true,
+  canSet: true,
+  canSetDeepWater: true,
+} as const
+
+const deepWaterEntry = {
+  allowMode: true,
+  defaultEnabled: false,
+  group: 'Web & research',
+  key: 'deep_water_run_update',
+  kind: 'builtin',
+  label: 'Deep Water Run Update',
+  restriction: 'explicit_grant',
+  summary: 'Drive a Deep Water research run.',
+} as const
+
+test('a face holding the grant verbs is told how to use them, not where to send people', () => {
+  const rendered = block({
+    catalogue: catalogue({ restricted: [deepWaterEntry] }),
+    protectedAccess: grantedAccess,
+  })
+  assert.match(rendered, /agent_tool_access_inspect\(agentId\) first/)
+  assert.match(
+    rendered,
+    /agent_tool_access_set\(agentId, toolRegistryEntryId, enabled\)/,
+  )
+  assert.match(
+    rendered,
+    /agent_deepwater_access_set\(agentId, teamId, enabled\)/,
+  )
+  assert.match(rendered, /deep_water_run_update \(Deep Water Run Update\)/)
+  // The owner check is real and stays stated — it is the requesting person's
+  // authority the verbs act with, not the agent's own.
+  assert.match(rendered, /refused unless that person is an organisation owner/)
+  // What must not survive: the blanket denial, and the hand-off that followed
+  // from it.
+  assert.doesNotMatch(rendered, /not yours to grant/)
+  assert.doesNotMatch(rendered, /granted from the owner surfaces/)
+  assert.doesNotMatch(rendered, /owner approval required/)
+})
+
+test('the browser grant follows the same verb, and the account connection stays theirs', () => {
+  const rendered = block({
+    catalogue: catalogue({ restricted: [deepWaterEntry] }),
+    protectedAccess: grantedAccess,
+  })
+  assert.match(rendered, /browser tools themselves you grant to the named agent/)
+  assert.doesNotMatch(
+    rendered,
+    /An owner must explicitly grant the named agent the browser tools/,
+  )
+})
+
+test('a face without the grant verbs keeps pointing at the owner surfaces', () => {
+  const rendered = block({ catalogue: catalogue({ restricted: [deepWaterEntry] }) })
+  assert.match(rendered, /deep_water_run_update — owner approval required/)
+  assert.match(rendered, /granted from the owner surfaces/)
+  assert.match(
+    rendered,
+    /An owner must explicitly grant the named agent the browser tools/,
+  )
+  // Naming a verb this run cannot call would be the mirror image of the bug.
+  assert.doesNotMatch(rendered, /agent_tool_access_set\(agentId/)
+})
+
+test('a partly granted face names only the verbs it holds', () => {
+  const rendered = block({
+    catalogue: catalogue({ restricted: [deepWaterEntry] }),
+    protectedAccess: { ...grantedAccess, canSetDeepWater: false },
+  })
+  assert.match(rendered, /agent_tool_access_set\(agentId/)
+  assert.doesNotMatch(rendered, /agent_deepwater_access_set\(agentId/)
+})
+
+test('every grant verb a blueprint holds is one the catalogue will explain', () => {
+  // The drift this catches is exactly what shipped: a blueprint gained the
+  // verbs while the generated prompt kept denying them. Read from the blueprint
+  // rather than a list written here, so a fourth verb cannot be added silently.
+  for (const blueprint of listGlobalAgentBlueprints()) {
+    const held = blueprint.identityToolIds
+    if (!held.includes('agent_tool_access_set')) continue
+    const rendered = block({
+      catalogue: catalogue({ restricted: [deepWaterEntry] }),
+      protectedAccess: {
+        canInspect: held.includes('agent_tool_access_inspect'),
+        canSet: true,
+        canSetDeepWater: held.includes('agent_deepwater_access_set'),
+      },
+    })
+    for (const toolId of held) {
+      if (!toolId.startsWith('agent_tool_access') && toolId !== 'agent_deepwater_access_set') {
+        continue
+      }
+      assert.match(rendered, new RegExp(toolId))
+    }
+    assert.doesNotMatch(rendered, /granted from the owner surfaces/)
   }
 })
