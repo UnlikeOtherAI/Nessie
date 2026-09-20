@@ -3,7 +3,7 @@ import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
 import type { AgentTriggerRecord, AgentTriggerStatus } from '@nessie/schemas'
 import { mergeTriggerConfigPreservingIdentity } from './trigger-config-identity.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
-import { ensureWebhookConfig, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
+import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
 import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
 
 export type AgentTriggerScope = { organizationId: string; triggerId: string }
@@ -46,8 +46,10 @@ export const updateAgentTrigger = async (prisma: PrismaClient, scope: AgentTrigg
   const normalizedConfig = existing.type === 'webhook' ? ensureWebhookConfig(config) : config
   if (existing.type === 'scheduled' && input.config !== undefined && !parseScheduledCronConfig(normalizedConfig)) return null
   if (existing.type === 'interval' && input.config !== undefined && !parseIntervalMinutes(normalizedConfig)) return null
-  const nextRunAt = input.nextRunAt === undefined ? (input.config === undefined ? undefined : normalizeNextRunAt({ config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined, type: existing.type })) : input.nextRunAt === null ? null : normalizeNextRunAt({ config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined, nextRunAt: input.nextRunAt, type: existing.type })
-  const write = (tx: PrismaClient | Prisma.TransactionClient) => tx.agentTrigger.update({ where: { id: existing.id }, data: { name: input.name, description: input.description, enabled: status === 'paused' ? false : input.enabled, status, config: input.config === undefined ? undefined : normalizedConfig as Prisma.InputJsonValue, ...(targetChanged ? { targetChannelId: target.channelId, targetThreadId: target.threadId } : {}), nextRunAt } })
+  const shouldPersistConfig = existing.type === 'webhook' ? input.config !== undefined || !extractWebhookApiKey(existing.config) : input.config !== undefined
+  const recompute = input.nextRunAt === undefined && input.config !== undefined
+  const nextRunAt = existing.type === 'scheduled' || existing.type === 'interval' ? input.nextRunAt === undefined ? recompute ? normalizeNextRunAt({ config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined, type: existing.type }) : undefined : input.nextRunAt === null ? null : normalizeNextRunAt({ config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined, nextRunAt: input.nextRunAt, type: existing.type }) : input.nextRunAt === undefined ? undefined : input.nextRunAt === null ? null : new Date(input.nextRunAt)
+  const write = (tx: PrismaClient | Prisma.TransactionClient) => tx.agentTrigger.update({ where: { id: existing.id }, data: { name: input.name === undefined ? undefined : input.name, description: input.description === undefined ? undefined : input.description, enabled: status === 'paused' ? false : input.enabled, status, config: shouldPersistConfig ? normalizedConfig as Prisma.InputJsonValue : undefined, ...(targetChanged ? { targetChannelId: target.channelId, targetThreadId: target.threadId } : {}), nextRunAt } })
   const configRecord = isJsonRecord(normalizedConfig) ? normalizedConfig : {}
   const trigger = Object.hasOwn(configRecord, 'todoTemplateId') && (input.config !== undefined || input.enabled === true)
     ? agentId ? await prisma.$transaction(async (tx) => { await acquireAgentTodoAgentLock(tx, agentId); return await validateTodoTemplateTriggerConfig(tx, agentId, configRecord) ? write(tx) : null }) : null
