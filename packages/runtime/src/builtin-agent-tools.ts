@@ -162,7 +162,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     identityDelegatedOnly: true,
     description:
       'Change an existing agent: its name, role, instructions, model, effort, '
-      + 'run limits, or tool policy. Read it with agent_read first and send only '
+      + 'subscription, voice, exact consented local model binding, run limits, or tool policy. Read it with agent_read first and send only '
       + 'the fields that change — everything you omit is left exactly as it is, '
       + 'and toolPolicy is merged rather than replaced. Who may edit follows the '
       + 'agent: a private or person-owned agent is its owner’s (plus '
@@ -188,6 +188,14 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         provider: {
           type: 'string',
           description: 'Provider/service id. Send together with model.',
+        },
+        modelSubscriptionId: {
+          type: 'string',
+          description: 'Optional owner-owned personal model subscription id. Send null to use the selected model without a personal subscription.',
+        },
+        localInferenceBindingId: {
+          type: 'string',
+          description: 'An exact local-model binding which the agent owner has already consented to on their native host. You cannot create consent; use this only after its existing in-chat consent handoff completes.',
         },
         effort: {
           type: 'string',
@@ -220,6 +228,10 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
             + 'team-owned. Only its current owner or an organisation owner may; '
             + 'private agents cannot be transferred at all.',
         },
+        voiceName: {
+          type: 'string',
+          description: 'Voice selected for spoken replies, or null to clear it.',
+        },
       },
       required: ['agentId'],
     },
@@ -251,6 +263,19 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: true,
   },
+  {
+    id: 'agent_tool_access_set',
+    category: 'agents',
+    summary: 'Grant or revoke a protected tool for an editable agent.',
+    label: 'Set Agent Protected Tool Access',
+    personalAssistantOnly: true,
+    identityDelegatedOnly: true,
+    description: 'Grant or revoke one protected builtin or connected-app tool using the requester\'s current authority. Inspect the agent and catalogue first. Deep Water is managed as its complete bundle and cannot be changed one projection at a time.',
+    parameters: { type: 'object', properties: { agentId: { type: 'string' }, toolRegistryEntryId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'toolRegistryEntryId', 'enabled'] },
+    safe: false,
+  },
+  { id: 'agent_tool_access_inspect', category: 'agents', summary: 'Inspect protected tool access for an agent.', label: 'Inspect Agent Protected Tool Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Shows protected builtin and active connector tools, their exact registry ids, and whether the target agent currently has each access grant.', parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] }, safe: true },
+  { id: 'agent_deepwater_access_set', category: 'agents', summary: 'Grant or revoke the complete DeepWater bundle.', label: 'Set Agent DeepWater Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Changes the complete ready DeepWater bundle for one agent and team. Individual DeepWater tools cannot be changed separately.', parameters: { type: 'object', properties: { agentId: { type: 'string' }, teamId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'teamId', 'enabled'] }, safe: false },
   {
     id: 'agent_avatar_generate',
     category: 'agents',

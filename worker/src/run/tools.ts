@@ -18,6 +18,9 @@ import {
   runAgentListTool,
   runAgentReadTool,
   runAgentToolCatalogTool,
+  runAgentToolAccessSetTool,
+  runAgentToolAccessInspectTool,
+  runAgentDeepWaterAccessSetTool,
   runAgentTriggerCreateTool,
   runAgentUpdateTool,
   runAuthoredMessageSearchTool,
@@ -331,6 +334,12 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentUpdateTool(context, args))
     case 'agent_tool_catalog':
       return wrapTool(inputSummary, () => runAgentToolCatalogTool(context, args))
+    case 'agent_tool_access_set':
+      return wrapTool(inputSummary, () => runAgentToolAccessSetTool(context, args))
+    case 'agent_tool_access_inspect':
+      return wrapTool(inputSummary, () => runAgentToolAccessInspectTool(context, args))
+    case 'agent_deepwater_access_set':
+      return wrapTool(inputSummary, () => runAgentDeepWaterAccessSetTool(context, args))
     case 'agent_avatar_generate':
       return wrapTool(inputSummary, () => runAgentAvatarGenerateTool(context, args))
     case 'agent_avatar_update':
