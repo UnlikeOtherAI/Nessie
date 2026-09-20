@@ -4,15 +4,13 @@ import type { AgentModelOption } from '../../../../lib/api-client'
 import { Link } from 'react-router-dom'
 import type { AgentDesignerActions, AgentEffortValue, AgentFormState } from '../../../../facades/designer/types'
 import { AgentSpeechFieldset } from './AgentSpeechFieldset'
-import { ModelCombobox } from './ModelCombobox'
-import { ModelUnavailableNotice } from './ModelUnavailableNotice'
+import { AgentModelField } from './AgentModelField'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { STREAMING_HIGHLIGHT_CLASS } from './streaming-highlight'
 import { ToolPicker } from './ToolPicker'
 import { Switch } from '../../../primitives/Switch'
 import { TabBar } from '../../../primitives/TabBar'
 import { AgentVisibilityPicker } from '../AgentVisibilityPicker'
-import { FieldLabel } from '../../../primitives/FieldLabel'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { Card } from '../../../shared/Card'
 import { FormField } from '../../../shared/FormField'
@@ -60,10 +58,11 @@ const EFFORTS: { hint: string; label: string; value: string }[] = [
   { value: 'xhigh', label: 'Ultra', hint: 'deepest reasoning the model offers' },
 ]
 
-export type AgentDesignerSection = 'basics' | 'behavior' | 'todos' | 'tools'
+export type AgentDesignerSection = 'basics' | 'model' | 'behavior' | 'todos' | 'tools'
 
 export const AGENT_DESIGNER_SECTION_VALUES: readonly AgentDesignerSection[] = [
   'basics',
+  'model',
   'behavior',
   'todos',
   'tools',
@@ -74,6 +73,7 @@ const DESIGNER_SECTIONS: ReadonlyArray<{
   value: AgentDesignerSection
 }> = [
   { label: 'Basics', value: 'basics' },
+  { label: 'Model', value: 'model' },
   { label: 'Behavior', value: 'behavior' },
   { label: 'To-dos', value: 'todos' },
   { label: 'Tools', value: 'tools' },
@@ -102,11 +102,6 @@ export const AgentDesignerForm = ({
   const selectedModel = modelOptions.find(
     (option) => option.model === state.model && option.provider === state.provider,
   )
-  // Either half missing is the same dead end for the person: the field renders
-  // empty and nothing says why. A stored model with no provider is the shape a
-  // pre-provider agent row has, and it used to render as a silently blank
-  // picker with no hint at all.
-  const hasUnavailableSelection = Boolean((state.model || state.provider) && !selectedModel)
 
   return (
     <div className="grid gap-5">
@@ -166,47 +161,6 @@ export const AgentDesignerForm = ({
             value={state.visibility}
           />
 
-          {/* Model stays outside `FormField`, and the reason is not its pinned id
-              — `FormField` takes one now. `ModelCombobox` is a bespoke combobox
-              with its own listbox and keyboard handling, and it does not consume
-              the field context, so wrapping it would render a label and an error
-              region that were not actually wired to the control it describes:
-              the appearance of the contract without the contract. */}
-          <div className="grid gap-1.5">
-            <FieldLabel htmlFor="agent-model">Model</FieldLabel>
-            <ModelCombobox
-              // Deliberately NOT disabled on an empty list: the list itself now
-              // carries the "Link a personal subscription…" doorway, and a
-              // deployment whose Ledger catalogue is empty or unreachable is
-              // exactly when a person most needs to reach it.
-              disabled={modelsLoading || readOnly}
-              emptyLabel="No models match that search"
-              highlighted={isStreaming('model')}
-              id="agent-model"
-              onLinkSubscription={() => {
-                window.open('/settings/connections', '_blank', 'noopener,noreferrer')
-              }}
-              onSelect={actions.setModelSelection}
-              options={modelOptions}
-              placeholder={modelsLoading ? 'Loading Ledger models…' : 'Search models…'}
-              value={selectedModel ?? null}
-            />
-            {hasUnavailableSelection ? (
-              <ModelUnavailableNotice model={state.model} />
-            ) : null}
-            {selectedModel ? (
-              <p className="text-xs text-[color:var(--tx3)]">
-                {selectedModel.description
-                  ?? `Runs through Ledger’s ${selectedModel.providerDisplayName} service.`}
-              </p>
-            ) : null}
-            {modelOptionsError ? (
-              <p className="text-xs text-[color:var(--danger-text)]" role="alert">
-                {modelOptionsError}
-              </p>
-            ) : null}
-          </div>
-
           <FormField id="agent-system-prompt" label="System prompt">
             <Textarea
               autoComplete="off"
@@ -221,6 +175,20 @@ export const AgentDesignerForm = ({
             />
           </FormField>
         </div>
+      </div>
+
+      <div hidden={section !== 'model'}>
+        <AgentModelField
+          disabled={readOnly}
+          error={modelOptionsError}
+          loading={modelsLoading}
+          model={state.model}
+          onSelect={actions.setModelSelection}
+          options={modelOptions}
+          provider={state.provider}
+          selected={selectedModel ?? null}
+          streaming={isStreaming('model')}
+        />
       </div>
 
       <div hidden={section !== 'behavior'}>

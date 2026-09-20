@@ -164,8 +164,8 @@ export const confirmLocalInferenceBinding = async (
   input: { challengeId: string; hostId: string; signature: string },
 ): Promise<{ bindingId: string }> => prisma.$transaction(async (tx) => {
   const challenge = await tx.localInferenceChallenge.findFirst({
-    where: { id: input.challengeId, consumedAt: null, expiresAt: { gt: new Date() } },
-    select: { bindingId: true, hostId: true, id: true },
+    where: { id: input.challengeId, expiresAt: { gt: new Date() } },
+    select: { bindingId: true, consumedAt: true, hostId: true, id: true },
   })
   if (!challenge || challenge.hostId !== input.hostId) {
     throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The local consent request is no longer valid.')
@@ -191,6 +191,14 @@ export const confirmLocalInferenceBinding = async (
     signature,
   )
   if (!valid) throw new LocalInferenceBindingError('SIGNATURE_INVALID', 'Local consent could not be verified.')
+  // A lost server response may make the native bridge post the exact signed
+  // consent again. It is idempotent only for this exact consumed challenge.
+  if (challenge.consumedAt && binding.status === 'consented_pending_activation') {
+    return { bindingId: binding.id }
+  }
+  if (challenge.consumedAt) {
+    throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The local consent request is no longer valid.')
+  }
   await tx.localInferenceChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } })
   if (binding.status === 'pending') {
     await tx.agentLocalInferenceBinding.update({

@@ -33,6 +33,10 @@ import {
   subscriptionUnavailableNotice,
 } from './subscription-binding.js'
 import {
+  localInferenceUnavailableNotice,
+  resolveRunLocalInferenceBinding,
+} from './local-inference-binding.js'
+import {
   applyBudgetGate,
   createBudgetBlockedProbe,
   terminalizeBudgetBlockedRun,
@@ -293,7 +297,25 @@ const runJobUnderFence = async (
     // the budget gate because the gate's verdict depends on the answer: an
     // organization cost or token cap exists to protect the organization's
     // spend, and must not block a run the organization is not paying for.
-    const subscriptionLane = await resolveRunSubscriptionBinding(deps, context)
+    const localLane = await resolveRunLocalInferenceBinding(deps, context)
+    if (localLane.kind === 'unavailable') {
+      await terminalizeBudgetBlockedRun(
+        deps,
+        payload,
+        context,
+        localInferenceUnavailableNotice({
+          isOwnerViewing:
+            context.agent.ownerUserId !== null
+            && context.agent.ownerUserId === payload.actorContext.actionContext.effectiveUserId,
+          reason: localLane.reason,
+        }),
+        {},
+      )
+      return
+    }
+    const subscriptionLane = localLane.kind === 'local'
+      ? { kind: 'ledger' as const }
+      : await resolveRunSubscriptionBinding(deps, context)
     if (subscriptionLane.kind === 'unavailable') {
       // Never a quiet fallback to Ledger: that would move a person's spend onto
       // the organization without anyone agreeing to it. Fail with the remedy.
@@ -321,7 +343,7 @@ const runJobUnderFence = async (
     }
 
     const budgetGate = await applyBudgetGate(deps, context, payload, {
-      subscriptionPinned: subscriptionBinding !== null,
+      subscriptionPinned: subscriptionBinding !== null || localLane.kind === 'local',
       ...(handoffLocator
         ? {
             beforeBlockedRunTerminalization: async () => {

@@ -21,6 +21,7 @@ import { useTabParam } from '../../navigation/useTabParam'
 import { ConnectionsTable } from './connections/ConnectionsTable'
 import { GoogleWorkspaceConnectDialog } from './connections/GoogleWorkspaceConnectDialog'
 import { ModelSubscriptionSection } from './connections/ModelSubscriptionSection'
+import { LocalOllamaSection } from './connections/LocalOllamaSection'
 import { ProjectToolConnections } from './connections/ProjectToolConnections'
 import { SendAuthorizationSection } from './connections/SendAuthorizationSection'
 
@@ -240,7 +241,7 @@ export const ConnectionsPage = () => {
           </>
         ) : null}
 
-        {tab === 'inference' ? <ModelSubscriptionSection /> : null}
+        {tab === 'inference' ? <><ModelSubscriptionSection /><LocalOllamaSection /></> : null}
 
         {tab === 'slack' ? (
           <QueryState

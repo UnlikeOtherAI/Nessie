@@ -167,17 +167,6 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     const scope = (query.scope ?? 'user') as SettingScope
     const organizationId = actorContext.tenant.organizationId
     const userId = actorContext.actor.actorId
-    if (!await authorizeAdminAuthoredKey(reply, key, actorContext, organizationId, userId)) {
-      return reply
-    }
-    if (isAdminAuthoredScopedSettingKey(key) && !isLocalInferenceEnabledValue(body.value)) {
-      sendApiError(reply, 400, 'VALIDATION_ERROR', 'Local Ollama enablement must be a boolean.')
-      return reply
-    }
-    if (isAdminAuthoredScopedSettingKey(key) && body.scope === 'user' && !body.userId) {
-      sendApiError(reply, 400, 'VALIDATION_ERROR', 'Choose the person this administrative setting applies to.')
-      return reply
-    }
 
     const role = await resolveRole(organizationId, userId)
     if (!role) {
@@ -186,6 +175,12 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     }
     if (!(await authorizeScope(reply, { ...role, organizationId, scope, teamId: query.teamId, userId }))) {
       return reply
+    }
+
+    for (const key of keys) {
+      if (!await authorizeAdminAuthoredKey(reply, key, actorContext, organizationId, userId)) {
+        return reply
+      }
     }
 
     const resolved = await resolveScopedSettings(prisma, {
@@ -227,6 +222,32 @@ export const registerScopedSettingsRoutes = (app: FastifyInstance, deps: RouteDe
     if (!role) {
       sendApiError(reply, 403, 'FORBIDDEN', 'Your access to this organisation is not active.')
       return reply
+    }
+    if (isAdminAuthoredScopedSettingKey(key)) {
+      if (!isLocalInferenceEnabledValue(body.value)) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'Local Ollama enablement must be a boolean.')
+        return reply
+      }
+      if (body.scope === 'user' && !body.userId) {
+        sendApiError(reply, 400, 'VALIDATION_ERROR', 'Choose the person this administrative setting applies to.')
+        return reply
+      }
+      if (!await authorizeAdminAuthoredKey(reply, key, actorContext, organizationId, userId)) {
+        return reply
+      }
+      if (body.scope === 'team' && (!body.teamId || !await isTeamInOrganization(prisma, organizationId, body.teamId))) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+        return reply
+      }
+      const targetUserId = body.userId ?? userId
+      const target = await prisma.organizationMember.findFirst({
+        where: { organizationId, userId: targetUserId, deactivatedAt: null },
+        select: { userId: true },
+      })
+      if (!target) {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Member not found')
+        return reply
+      }
     }
     if (!isAdminAuthoredScopedSettingKey(key) && !(await authorizeScope(reply, {
       ...role, organizationId, scope: body.scope, teamId: body.teamId ?? undefined, userId,

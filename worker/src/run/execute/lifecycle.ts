@@ -399,6 +399,7 @@ export const loadRunContext = async (
           executionMode: true,
           id: true,
           model: true,
+          localInferenceBindingId: true,
           modelSubscriptionId: true,
           name: true,
           parentAgentId: true,
