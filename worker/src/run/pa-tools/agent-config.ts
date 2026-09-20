@@ -13,6 +13,7 @@ import {
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
   loadAgentToolCatalog,
+  readAgentRecordForActor,
   resolveAgentAvatarStyle,
   styleForGeneration,
   updateAgentAvatar,
