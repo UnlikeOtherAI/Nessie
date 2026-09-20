@@ -352,7 +352,12 @@ export const setDeepWaterAgentAccess = async (
           organizationId: input.organizationId,
           update: async (currentPolicy, policyTx) => {
             const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: access.policyKeys.filter((key) => UUID_PATTERN.test(key)) }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
-            for (const entry of entries) await synchronizeMcpAgentGrant(policyTx, entry as never, { agentId: input.agentId, enabled: true })
+            for (const entry of entries) {
+              await synchronizeMcpAgentGrant(policyTx, entry, {
+                agentId: input.agentId,
+                enabled: true,
+              })
+            }
             const bundleMarker = deepWaterBundleMarkerKey(input.teamId)
             const next = mergeAgentToolPolicy(
               currentPolicy,
@@ -396,7 +401,12 @@ export const setDeepWaterAgentAccess = async (
               otherTeamBundles,
             })
             const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: revokeKeys.filter((key) => UUID_PATTERN.test(key)) }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
-            for (const entry of entries) await synchronizeMcpAgentGrant(policyTx, entry as never, { agentId: input.agentId, enabled: false })
+            for (const entry of entries) {
+              await synchronizeMcpAgentGrant(policyTx, entry, {
+                agentId: input.agentId,
+                enabled: false,
+              })
+            }
             return mergeAgentToolPolicy(currentPolicy, revokeKeys, false)
           },
         })

@@ -1,12 +1,10 @@
 import { loadConfig } from '@nessie/config'
-import { fingerprintMcpToolDescriptor, isCurrentAllowedMcpToolGrant, listInstancesVisibleToUser, mcpToolDescriptorAnnotationsFromMetadata, setAgentExplicitToolAccess, setDeepWaterAgentAccess } from '@nessie/mcp-manage'
 import {
   AgentAvatarBackgroundColorSchema,
   AgentAvatarStyleSchema,
   AgentEffortSchema,
   AgentRunLimitsSchema,
   VoiceNameSchema,
-  parseAgentId,
 } from '@nessie/schemas'
 import {
   assertAgentEditAuthority,
@@ -15,9 +13,7 @@ import {
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
   loadAgentToolCatalog,
-  readAgentRecordForActor,
   resolveAgentAvatarStyle,
-  registryEntryRequiresExplicitPolicy,
   styleForGeneration,
   updateAgentAvatar,
   updateAgentRecord,
@@ -31,9 +27,8 @@ import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
 import { fileServiceFor } from '../file-service.js'
-import { emitWorkerAuditEvent } from '../execute/policy.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { requireOwnerMember, resolveActingMember } from './access.js'
+import { resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 
@@ -386,71 +381,11 @@ export const runAgentToolCatalogTool = async (
   }
 }
 
-const AgentToolAccessSetInputSchema = z.object({
-  agentId: z.string().uuid(),
-  enabled: z.boolean(),
-  toolRegistryEntryId: z.string().uuid(),
-})
-
-const visibleMcpInstanceIds = async (
-  context: BuiltinToolRuntimeContext,
-  member: Awaited<ReturnType<typeof resolveActingMember>>,
-): Promise<Set<string>> => new Set((await listInstancesVisibleToUser(context.prisma, member.organizationId, member.userId)).map((instance) => instance.id))
-
-export const runAgentToolAccessSetTool = async (
-  context: BuiltinToolRuntimeContext,
-  input: Record<string, unknown>,
-): Promise<ToolExecutionResult> => {
-  const args = AgentToolAccessSetInputSchema.parse(input)
-  const member = await resolveActingMember(context)
-  requireOwnerMember(member, 'change protected agent tool access')
-  const requested = await context.prisma.toolRegistryEntry.findFirst({ where: { id: args.toolRegistryEntryId, OR: [{ organizationId: null }, { organizationId: member.organizationId }] }, select: { mcpInstance: { select: { id: true } } } })
-  const executorManaged = await context.prisma.toolRegistryEntry.findFirst({ where: { id: args.toolRegistryEntryId, organizationId: member.organizationId, source: 'executor' }, select: { id: true } })
-  if (executorManaged) throw new Error('Executor logical tools are managed from the Executors access controls.')
-  const visibleInstances = await visibleMcpInstanceIds(context, member)
-  if (requested?.mcpInstance && !visibleInstances.has(requested.mcpInstance.id)) throw new Error('This connection is outside your accessible scope.')
-  const target = await setAgentExplicitToolAccess(context.prisma, {
-    ...args,
-    actorUserId: member.userId,
-    organizationId: member.organizationId,
-  })
-  await emitWorkerAuditEvent(context.prisma, member.actorContext, { action: 'agent.tool_access.updated', outcome: 'success', resourceId: args.agentId, resourceType: 'agent', metadata: { enabled: args.enabled, toolRegistryEntryId: args.toolRegistryEntryId } })
-  await context.realtimeTransport.publishWs([{ kind: 'agent', agentId: parseAgentId(args.agentId) }], { event: 'agent.updated', data: { agentId: parseAgentId(args.agentId) } })
-  return {
-    inputSummary: `agentId=${args.agentId} tool=${args.toolRegistryEntryId} enabled=${args.enabled}`,
-    outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} protected tool access for ${target.name}.`,
-    toolName: 'agent_tool_access_set',
-  }
-}
-
-export const runAgentToolAccessInspectTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
-  const { agentId } = z.object({ agentId: z.string().uuid() }).parse(input)
-  const member = await resolveActingMember(context)
-  requireOwnerMember(member, 'inspect protected agent tool access')
-  const visible = await readAgentRecordForActor(context.prisma, { agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
-  if (!visible?.record) throw new Error('Agent not found, or you cannot inspect its protected access.')
-  const agent = { name: visible.config.name, toolPolicy: visible.config.toolPolicy }
-  const candidates = await context.prisma.toolRegistryEntry.findMany({ where: { OR: [{ organizationId: null }, { organizationId: member.organizationId }], enabled: true, status: 'active' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, label: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true, mcpInstance: { select: { id: true } } } })
-  const visibleInstances = await visibleMcpInstanceIds(context, member)
-  const entries = candidates.filter((entry) => registryEntryRequiresExplicitPolicy(entry) && (!entry.mcpInstance || visibleInstances.has(entry.mcpInstance.id)))
-  const grants = await context.prisma.toolGrant.findMany({ where: { agentId, roleId: null, toolId: { in: entries.filter((entry) => entry.handlerKind === 'mcp').map((entry) => entry.id) } }, select: { config: true, state: true, toolId: true } })
-  const policy = agent.toolPolicy && typeof agent.toolPolicy === 'object' ? agent.toolPolicy as Record<string, unknown> : {}
-  return { inputSummary: `agentId=${agentId}`, outputPreview: [`Protected access for ${agent.name}:`, ...entries.map((entry) => { const configured = entry.transportConfig && typeof entry.transportConfig === 'object' ? (entry.transportConfig as Record<string, unknown>).toolName : null; const name = typeof configured === 'string' ? configured : entry.toolId.split(':').at(-1); const fingerprint = entry.handlerKind === 'mcp' && name ? fingerprintMcpToolDescriptor({ annotations: mcpToolDescriptorAnnotationsFromMetadata(entry.metadata), description: entry.description, inputSchema: entry.inputSchema, name, outputSchema: entry.outputSchema }) : null; const granted = entry.handlerKind === 'builtin' ? policy[entry.toolId] === true : fingerprint !== null && grants.some((grant) => grant.toolId === entry.id && isCurrentAllowedMcpToolGrant(grant, fingerprint)); return `- ${entry.label} | registryId=${entry.id} | ${granted ? 'granted' : 'not granted'}` })].join('\n'), toolName: 'agent_tool_access_inspect' }
-}
-
-export const runAgentDeepWaterAccessSetTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
-  const args = z.object({ agentId: z.string().uuid(), teamId: z.string().uuid(), enabled: z.boolean() }).parse(input)
-  const member = await resolveActingMember(context)
-  requireOwnerMember(member, 'change DeepWater agent access')
-  const visible = await readAgentRecordForActor(context.prisma, { agentId: args.agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
-  if (!visible?.record) throw new Error('Agent not found, or you cannot change its DeepWater access.')
-  const team = await context.prisma.team.findFirst({ where: { id: args.teamId, project: { organizationId: member.organizationId } }, select: { id: true } })
-  if (!team) throw new Error('Team not found in this organization.')
-  await setDeepWaterAgentAccess(context.prisma, { ...args, organizationId: member.organizationId })
-  await emitWorkerAuditEvent(context.prisma, member.actorContext, { action: 'agent.tool_access.updated', outcome: 'success', resourceId: args.agentId, resourceType: 'agent', metadata: { enabled: args.enabled, teamId: args.teamId } })
-  await context.realtimeTransport.publishWs([{ kind: 'agent', agentId: parseAgentId(args.agentId) }], { event: 'agent.updated', data: { agentId: parseAgentId(args.agentId) } })
-  return { inputSummary: `agentId=${args.agentId} teamId=${args.teamId} enabled=${args.enabled}`, outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} the complete DeepWater bundle for ${visible.config.name}.`, toolName: 'agent_deepwater_access_set' }
-}
+export {
+  runAgentDeepWaterAccessSetTool,
+  runAgentToolAccessInspectTool,
+  runAgentToolAccessSetTool,
+} from './agent-access.js'
 
 const AgentAvatarUpdateInputSchema = z.object({
   agentId: z.string().uuid(),
