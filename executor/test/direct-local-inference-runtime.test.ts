@@ -7,6 +7,14 @@ const pause = (milliseconds: number): Promise<void> => new Promise((resolve) => 
   setTimeout(resolve, milliseconds)
 })
 
+const waitUntil = async (
+  satisfied: () => boolean,
+  timeoutMs = 2_000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!satisfied() && Date.now() < deadline) await pause(1)
+}
+
 test('direct Desktop supervision keeps fresh inventory heartbeats non-overlapping', async () => {
   let release: (() => void) | null = null
   const stopped = new Promise<void>((resolve) => { release = resolve })
@@ -33,7 +41,12 @@ test('direct Desktop supervision keeps fresh inventory heartbeats non-overlappin
     pollIntervalMs: 1,
     stopped,
   })
-  await pause(35)
+  // Waiting a fixed 35ms for two 12ms heartbeats assumed the scheduler
+  // would keep up: on a loaded CI runner it did not, and a required check
+  // failed on a change that touches nothing here. Wait for the condition the
+  // test is actually about, with a deadline generous enough that only a real
+  // stall trips it.
+  await waitUntil(() => heartbeats >= 2)
   release?.()
   await supervised
   assert.ok(heartbeats >= 2)
