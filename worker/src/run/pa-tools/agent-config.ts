@@ -426,6 +426,8 @@ export const runAgentDeepWaterAccessSetTool = async (context: BuiltinToolRuntime
   requireOwnerMember(member, 'change DeepWater agent access')
   const visible = await readAgentRecordForActor(context.prisma, { agentId: args.agentId, isOwner: member.isOwner, organizationId: member.organizationId, userId: member.userId })
   if (!visible?.record) throw new Error('Agent not found, or you cannot change its DeepWater access.')
+  const team = await context.prisma.team.findFirst({ where: { id: args.teamId, project: { organizationId: member.organizationId } }, select: { id: true } })
+  if (!team) throw new Error('Team not found in this organization.')
   await setDeepWaterAgentAccess(context.prisma, { ...args, organizationId: member.organizationId })
   return { inputSummary: `agentId=${args.agentId} teamId=${args.teamId} enabled=${args.enabled}`, outputPreview: `${args.enabled ? 'Granted' : 'Revoked'} the complete DeepWater bundle for ${visible.config.name}.`, toolName: 'agent_deepwater_access_set' }
 }
