@@ -51,6 +51,19 @@ const LIFECYCLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = LIFECYCLE_TOOL_INPUT
   safe: id === 'agent_trigger_list',
 }))
 
+const updateLifecycleTool = LIFECYCLE_TOOL_DEFINITIONS.find((tool) => tool.id === 'agent_trigger_update')!
+updateLifecycleTool.parameters.properties = {
+  triggerId: { type: 'string' },
+  config: { type: 'object' },
+  description: { type: 'string' },
+  enabled: { type: 'boolean' },
+  name: { type: 'string' },
+  nextRunAt: { type: 'string' },
+  status: { type: 'string', enum: ['active', 'paused', 'error', 'needs_reauthorization'] },
+  targetChannelId: { type: 'string' },
+  targetThreadId: { type: 'string' },
+}
+
 export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'agent_list',
