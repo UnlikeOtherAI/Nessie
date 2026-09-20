@@ -15,6 +15,7 @@ use base64::{
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::AppHandle;
 #[cfg(windows)]
 use tauri::Manager;
@@ -72,6 +73,28 @@ impl MachineIdentity {
             public_key: self.public_key_pem()?,
             requires_reconsent,
         })
+    }
+
+    /// The packaged host receives this only through Desktop's private stdin
+    /// pipe. It is PKCS#8 so Node's crypto creates the same Ed25519 key whose
+    /// SPKI was enrolled; the webview never sees either representation.
+    pub(super) fn private_key_pkcs8_base64url(&self) -> Result<String, String> {
+        const PKCS8_PREFIX: [u8; 16] = [
+            0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+            0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+        ];
+        let mut der = PKCS8_PREFIX.to_vec();
+        der.extend(self.signing_key()?.to_bytes());
+        Ok(URL_SAFE_NO_PAD.encode(der))
+    }
+
+    /// The receipt cache has a purpose-separated encryption key. It is derived
+    /// in native memory and is never serialized to the browser or Nessie.
+    pub(super) fn receipt_journal_key_base64url(&self) -> Result<String, String> {
+        let mut hasher = Sha256::new();
+        hasher.update(b"nessie-direct-local-inference-receipt-v1\\0");
+        hasher.update(self.signing_key()?.to_bytes());
+        Ok(URL_SAFE_NO_PAD.encode(hasher.finalize()))
     }
 }
 
@@ -345,6 +368,23 @@ pub(super) fn provision_identity(
             Ok(identity)
         }
     }
+}
+
+pub(super) fn record_connection_epoch(
+    store: &impl MachineIdentityStore,
+    identity: &MachineIdentity,
+    connection_epoch: u64,
+) -> Result<MachineIdentity, String> {
+    if connection_epoch <= identity.connection_epoch {
+        return Err("Nessie Desktop local inference connection epoch is stale.".to_owned());
+    }
+    let updated = MachineIdentity {
+        authorization_revision: identity.authorization_revision,
+        connection_epoch,
+        private_key: identity.private_key.clone(),
+    };
+    save_identity(store, &updated)?;
+    Ok(updated)
 }
 
 pub(super) fn rotate_identity(

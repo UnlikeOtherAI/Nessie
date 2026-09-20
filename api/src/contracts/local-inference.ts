@@ -9,6 +9,7 @@ import {
   LocalInferenceExecutorHostRequestSchema,
   LocalInferenceExecutorHostSchema,
   LocalInferenceHostListSchema,
+  LocalInferenceGoodbyeSchema,
   ObservedLocalModelSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
@@ -69,4 +70,16 @@ export const LocalInferenceAttemptFrameRequestSchema = z.object({
 export const LocalInferenceAttemptResultRequestSchema = z.object({
   envelope: LocalInferenceSignedEnvelopeSchema,
   receipt: LocalInferenceAttemptResultReceiptSchema,
+}).strict()
+
+export const LocalInferenceGoodbyeRequestSchema = z.object({
+  envelope: LocalInferenceSignedEnvelopeSchema,
+  goodbye: LocalInferenceGoodbyeSchema,
+}).strict()
+
+/** A machine-signed capability fetch for the native confirmation dialog.
+ * Labels are server-derived; no browser-provided text reaches the dialog. */
+export const LocalInferenceConsentDisplayRequestSchema = z.object({
+  challengeId: z.string().uuid(),
+  envelope: LocalInferenceSignedEnvelopeSchema,
 }).strict()

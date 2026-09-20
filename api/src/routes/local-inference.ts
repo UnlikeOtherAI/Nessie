@@ -21,6 +21,8 @@ import {
   LocalInferenceAttemptFrameRequestSchema,
   LocalInferenceAttemptPollRequestSchema,
   LocalInferenceAttemptResultRequestSchema,
+  LocalInferenceGoodbyeRequestSchema,
+  LocalInferenceConsentDisplayRequestSchema,
   LocalInferenceHeartbeatRequestSchema,
 } from '../contracts/local-inference.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -43,6 +45,70 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   registerLocalInferenceExecutorHostRoute(app, deps)
   registerLocalInferenceConsentRoutes(app, deps)
 
+  // The native dialog fetches its own text through a machine-signed, one-use
+  // challenge capability. This is deliberately public only in transport terms:
+  // a browser session, deep link, or copied challenge cannot read or choose the
+  // displayed identity/model fields without the enrolled host private key.
+  app.post('/api/local-inference/consent-display', { config: { public: true } }, async (request, reply) => {
+    const body = parseInput(LocalInferenceConsentDisplayRequestSchema, request.body, reply)
+    if (!body) return reply
+    const authorization = await authorizeLocalInferenceDaemon(prisma, body.envelope)
+    const verified = authorization ? verifyLocalInferenceEnvelope({
+      body: { challengeId: body.challengeId },
+      envelope: body.envelope, machinePublicKey: authorization.machinePublicKey,
+    }) : { ok: false as const }
+    if (!authorization || !verified.ok || body.envelope.purpose !== 'consent_display'
+      || authorization.host.id !== body.envelope.hostId) {
+      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
+      return reply
+    }
+    const challenge = await prisma.localInferenceChallenge.findFirst({
+      where: {
+        consumedAt: null, expiresAt: { gt: new Date() }, hostId: authorization.host.id,
+        id: body.challengeId, organizationId: authorization.host.organizationId, purpose: 'binding',
+      },
+      select: { bindingId: true },
+    })
+    if (!challenge?.bindingId) {
+      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
+      return reply
+    }
+    const [binding, host, organization] = await Promise.all([
+      prisma.agentLocalInferenceBinding.findUnique({
+        where: { id: challenge.bindingId },
+        select: { agentId: true, modelName: true, preparedEditorUserId: true },
+      }),
+      prisma.localInferenceHost.findUnique({
+        where: { id: authorization.host.id }, select: { displayLabel: true },
+      }),
+      prisma.organization.findUnique({
+        where: { id: authorization.host.organizationId }, select: { externalOrgId: true },
+      }),
+    ])
+    if (!binding || !host || !organization || !binding.preparedEditorUserId) {
+      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
+      return reply
+    }
+    const [agent, editor] = await Promise.all([
+      prisma.agent.findUnique({ where: { id: binding.agentId }, select: { name: true } }),
+      prisma.user.findUnique({ where: { id: binding.preparedEditorUserId }, select: { id: true, uoaSub: true } }),
+    ])
+    if (!agent || !editor) {
+      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
+      return reply
+    }
+    reply.header('Cache-Control', 'no-store')
+    return createApiResponse({
+      accountReference: editor.uoaSub ?? editor.id,
+      agentLabel: agent.name,
+      hostLabel: host.displayLabel,
+      modelLabel: binding.modelName,
+      organizationReference: organization.externalOrgId ?? authorization.host.organizationId,
+      bindingId: challenge.bindingId,
+      hostId: authorization.host.id,
+    })
+  })
+
   const authenticateDaemonEnvelope = async (input: {
     body: unknown
     envelope: {
@@ -54,7 +120,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       sentAt: string
       sequence: number
     }
-    purpose: 'frames' | 'poll' | 'result'
+    purpose: 'frames' | 'poll' | 'result' | 'goodbye'
   }): Promise<{
     authorization: NonNullable<
       Awaited<ReturnType<typeof authorizeLocalInferenceDaemon>>
@@ -429,6 +495,33 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     })
     if (!completed) {
       sendApiError(reply, 409, 'LOCAL_ATTEMPT_FENCED', 'Local inference attempt is no longer current.')
+      return reply
+    }
+    return createApiResponse({ acknowledged: true })
+  })
+
+  // An orderly Desktop/executor exit is a signed transition. A delayed
+  // goodbye from an old epoch cannot disconnect a replacement connection.
+  app.post('/api/local-inference/daemon/goodbye', { config: { public: true } }, async (request, reply) => {
+    const body = parseInput(LocalInferenceGoodbyeRequestSchema, request.body, reply)
+    if (!body) return reply
+    const daemon = await authenticateDaemonEnvelope({
+      body: body.goodbye, envelope: body.envelope, purpose: 'goodbye',
+    })
+    if (!daemon) {
+      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
+      return reply
+    }
+    const disconnected = await prisma.$transaction(async (tx) => {
+      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) return false
+      const updated = await tx.localInferenceHost.updateMany({
+        where: { connectionEpoch: BigInt(body.envelope.connectionEpoch), id: daemon.hostId, revokedAt: null },
+        data: { lastSeenAt: null },
+      })
+      return updated.count === 1
+    })
+    if (!disconnected) {
+      sendApiError(reply, 409, 'LOCAL_HOST_FENCED', 'Local host is no longer current.')
       return reply
     }
     return createApiResponse({ acknowledged: true })

@@ -43,6 +43,16 @@ export type LocalInferenceDaemonApi = {
   poll: (input: ApiEnvelopeRequest<'poll', Record<string, never>>) => Promise<LocalInferenceAttemptLease>
   submitFrame: (input: ApiEnvelopeRequest<'frame', LocalInferenceFrame>) => Promise<{ acknowledged: true }>
   submitResult: (input: ApiEnvelopeRequest<'receipt', LocalInferenceResultReceipt>) => Promise<{ acknowledged: true }>
+  goodbye: (input: ApiEnvelopeRequest<'goodbye', { reason: 'desktop_exit' | 'executor_shutdown'; receipt: string }>) => Promise<{ acknowledged: true }>
+  consentDisplay: (input: { challengeId: string; envelope: LocalInferenceSignedEnvelope }) => Promise<{
+    accountReference: string
+    agentLabel: string
+    hostLabel: string
+    modelLabel: string
+    organizationReference: string
+    bindingId: string
+    hostId: string
+  }>
 }
 
 export class LocalInferenceApiError extends Error {
@@ -141,5 +151,7 @@ export const createLocalInferenceDaemonApi = (input: {
     poll: (body) => post('/api/local-inference/daemon/attempts/poll', body),
     submitFrame: (body) => post('/api/local-inference/daemon/attempts/frame', body),
     submitResult: (body) => post('/api/local-inference/daemon/attempts/result', body),
+    goodbye: (body) => post('/api/local-inference/daemon/goodbye', body),
+    consentDisplay: (body) => post('/api/local-inference/consent-display', body),
   }
 }

@@ -38,6 +38,7 @@ export const LocalInferenceEnvelopePurposeSchema = z.enum([
   'frames',
   'result',
   'goodbye',
+  'consent_display',
 ])
 export type LocalInferenceEnvelopePurpose = z.infer<typeof LocalInferenceEnvelopePurposeSchema>
 
@@ -178,6 +179,14 @@ export type LocalInferenceResult = z.infer<typeof LocalInferenceResultSchema>
 /** A host receives only one leased attempt at a time; an empty poll body is
  * still signed so a captured request cannot be replayed under another route. */
 export const LocalInferenceAttemptPollSchema = z.object({}).strict()
+
+/** A process-bound host sends this on orderly exit so presence becomes offline
+ * immediately; an old epoch cannot disconnect a newly claimed host. */
+export const LocalInferenceGoodbyeSchema = z.object({
+  reason: z.enum(['desktop_exit', 'executor_shutdown']),
+  receipt: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict()
+export type LocalInferenceGoodbye = z.infer<typeof LocalInferenceGoodbyeSchema>
 
 /** An opaque, one-use challenge is the only input to a connection claim. */
 export const LocalInferenceDaemonChallengeSchema = z.object({

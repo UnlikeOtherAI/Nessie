@@ -13,6 +13,11 @@ import { executorApi } from './api-client.js'
 import { signExecutorLocalInferenceConsent } from './local-inference-consent.js'
 import { connectExecutorLocalInference } from './local-inference-runtime.js'
 import {
+  fetchDirectLocalInferenceConsentDisplay,
+  readDirectLocalInferenceConsentRequest,
+  serveDirectLocalInference,
+} from './direct-local-inference-runtime.js'
+import {
   configureExecutorBrowserSandbox,
   configureExecutorCodexSandbox,
   configureExecutorLocalPolicy,
@@ -83,6 +88,8 @@ type ParsedCommand =
     vmHelperPath: string
   }
   | { kind: 'connect'; stateDir: string }
+  | { kind: 'serve-direct-local-inference' }
+  | { kind: 'local-inference-consent-display' }
   | { bindingId: string; challengeId: string; kind: 'local-inference-confirm'; stateDir: string }
   | { kind: 'describe'; stateDir: string }
   | { kind: 'deeptest-source'; sourceGrantFile: string }
@@ -131,6 +138,8 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor serve-direct-local-inference --config-stdin\n'
+    + '       nessie-executor local-inference-consent-display --config-stdin\n'
     + '       nessie-executor local-inference-confirm --state-dir <owner-only-path> --challenge <uuid> --binding <uuid>\n'
     + '       nessie-executor describe --state-dir <owner-only-path>\n'
     + '       nessie-executor deeptest-source --source-grant-file <absolute-owner-only-file>\n'
@@ -391,6 +400,14 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
+  if (command === 'serve-direct-local-inference') {
+    if (!args.includes('--config-stdin') || args.length !== 2) return usage()
+    return { kind: command }
+  }
+  if (command === 'local-inference-consent-display') {
+    if (!args.includes('--config-stdin') || args.length !== 2) return usage()
+    return { kind: command }
+  }
   if (command === 'local-inference-confirm') {
     return {
       bindingId: option(args, '--binding'),
@@ -526,6 +543,18 @@ export const run = async (args: string[]): Promise<void> => {
       process.stdout,
       () => loadExecutorDeepTestExecutionGrant(command.executionGrantFile),
     )
+    return
+  }
+  if (command.kind === 'serve-direct-local-inference') {
+    await assertPackagedExecutorRuntime()
+    await serveDirectLocalInference()
+    return
+  }
+  if (command.kind === 'local-inference-consent-display') {
+    await assertPackagedExecutorRuntime()
+    process.stdout.write(`${JSON.stringify(await fetchDirectLocalInferenceConsentDisplay(
+      await readDirectLocalInferenceConsentRequest(),
+    ))}\n`)
     return
   }
   const state = await loadExecutorState(command.stateDir)

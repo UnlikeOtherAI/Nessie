@@ -4,6 +4,10 @@ import {
   defaultOllamaFetch,
   type OllamaFetch,
 } from './ollama-client.js'
+import {
+  ollamaObservationFingerprints,
+  resolveOllamaLoopbackEndpoint,
+} from '@nessie/local-inference-host'
 
 /**
  * Read-only observation of a person's installed Ollama inventory.  This must
@@ -141,6 +145,44 @@ export const observeOllamaInventory = async (
     if (model) models.push(model)
   }
   return { models, origin: base, version: versionText }
+}
+
+/**
+ * The host never scans ports or resolves names.  It tries the reviewed
+ * literal-loopback candidates once and refuses to guess when they describe
+ * different daemons/model sets.  This is shared by the executor and Desktop
+ * direct runtime so their discovery privacy boundary cannot drift.
+ */
+export const discoverOllamaInventory = async (
+  savedOrigin?: string | null,
+  fetchImpl: OllamaFetch = defaultOllamaFetch,
+): Promise<OllamaInventory> => {
+  const candidates = savedOrigin === undefined || savedOrigin === null
+    ? [DEFAULT_OLLAMA_ORIGIN, 'http://[::1]:11434']
+    : [assertLoopbackOrigin(savedOrigin), DEFAULT_OLLAMA_ORIGIN, 'http://[::1]:11434']
+  const unique = [...new Set(candidates)]
+  const observed = await Promise.all(unique.map(async (origin) => {
+    try {
+      const inventory = await observeOllamaInventory(origin, fetchImpl)
+      const fingerprints = ollamaObservationFingerprints({
+        modelManifestDigests: inventory.models.map((model) => model.manifestDigest),
+        version: inventory.version,
+      })
+      return { ...fingerprints, inventory, origin }
+    } catch {
+      return undefined
+    }
+  }))
+  const evidence = observed.flatMap((value) => value === undefined ? [] : [{
+    daemonFingerprint: value.daemonFingerprint,
+    modelSetFingerprint: value.modelSetFingerprint,
+    origin: value.origin,
+  }])
+  const resolved = resolveOllamaLoopbackEndpoint({ evidence, savedOrigin })
+  if (resolved.kind !== 'selected') throw new OllamaObservationError('Ollama endpoint could not be resolved')
+  const selected = observed.find((value) => value?.origin === resolved.canonicalSocket)
+  if (!selected) throw new OllamaObservationError('Ollama endpoint could not be resolved')
+  return selected.inventory
 }
 
 /** Remote markers are also mandatory at output time, not discovery-only. */

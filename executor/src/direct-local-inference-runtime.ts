@@ -1,0 +1,203 @@
+/** The narrow Desktop-owned entry point for the same local-host protocol.
+ *
+ * This is deliberately not an executor: it accepts one native IPC document,
+ * can only call the configured Nessie API and literal loopback Ollama, and
+ * terminates when Desktop closes its stdin pipe.  It reuses the executor's
+ * signed host loop rather than becoming a second relay implementation.
+ */
+import { createHash } from 'node:crypto'
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
+import { join } from 'node:path'
+import { createInterface } from 'node:readline'
+
+import { LOCAL_INFERENCE_PROTOCOL_VERSION } from '@nessie/schemas'
+import { signLocalInferenceEnvelope } from '@nessie/local-inference-host'
+
+import { createLocalInferenceDaemonApi } from './local-inference-api.js'
+import { LocalInferenceHostLoop } from './local-inference-host.js'
+import { EncryptedLocalInferenceReceiptJournal } from './local-inference-receipts.js'
+import { discoverOllamaInventory } from './ollama-observed.js'
+
+const RECEIPT_FILE = 'direct-local-inference-receipts.json'
+
+export type DirectLocalInferenceConfig = {
+  apiBaseUrl: string
+  connectionEpoch: string
+  hostId: string
+  machinePrivateKey: string
+  organizationId: string
+  receiptJournalKey: string
+}
+
+export type DirectLocalInferenceConsentRequest = DirectLocalInferenceConfig & { challengeId: string }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+const validConfig = (value: unknown): value is DirectLocalInferenceConfig => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const input = value as Record<string, unknown>
+  if (Object.keys(input).length !== 6
+    || typeof input.apiBaseUrl !== 'string'
+    || typeof input.connectionEpoch !== 'string' || !/^[1-9][0-9]{0,18}$/.test(input.connectionEpoch)
+    || typeof input.machinePrivateKey !== 'string'
+    || typeof input.receiptJournalKey !== 'string'
+    || typeof input.hostId !== 'string'
+    || typeof input.organizationId !== 'string'
+    || !UUID.test(input.hostId) || !UUID.test(input.organizationId)) return false
+  try {
+    return Buffer.from(input.machinePrivateKey, 'base64url').byteLength > 32
+      && Buffer.from(input.receiptJournalKey, 'base64url').byteLength === 32
+  } catch {
+    return false
+  }
+}
+
+const readConfigAndKeepLiveness = async (): Promise<DirectLocalInferenceConfig> => {
+  const line = await new Promise<string>((resolve, reject) => {
+    const reader = createInterface({ input: process.stdin, crlfDelay: Infinity })
+    let received = false
+    reader.once('line', (value) => { received = true; reader.close(); resolve(value) })
+    reader.once('close', () => { if (!received) reject(new Error('Desktop local inference IPC ended before configuration.')) })
+    reader.once('error', reject)
+  })
+  if (Buffer.byteLength(line, 'utf8') > 8_192) throw new Error('Desktop local inference IPC is too large.')
+  let parsed: unknown
+  try { parsed = JSON.parse(line) } catch { throw new Error('Desktop local inference IPC is malformed.') }
+  if (!validConfig(parsed)) throw new Error('Desktop local inference IPC is malformed.')
+  return parsed
+}
+
+export const readDirectLocalInferenceConsentRequest = async (): Promise<DirectLocalInferenceConsentRequest> => {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += bytes.byteLength
+    if (size > 8_192) throw new Error('Desktop local inference IPC is too large.')
+    chunks.push(bytes)
+  }
+  let parsed: unknown
+  try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { throw new Error('Desktop local inference IPC is malformed.') }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Desktop local inference IPC is malformed.')
+  const input = parsed as Record<string, unknown>
+  if (Object.keys(input).length !== 7 || typeof input.challengeId !== 'string') {
+    throw new Error('Desktop local inference IPC is malformed.')
+  }
+  const config = input as unknown as DirectLocalInferenceConsentRequest
+  if (!validConfig({
+    apiBaseUrl: config.apiBaseUrl, connectionEpoch: config.connectionEpoch, hostId: config.hostId, machinePrivateKey: config.machinePrivateKey,
+    organizationId: config.organizationId, receiptJournalKey: config.receiptJournalKey,
+  }) || !UUID.test(config.challengeId)) {
+    throw new Error('Desktop local inference IPC is malformed.')
+  }
+  return config
+}
+
+const receiptStorage = async (directory: string) => {
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const path = join(directory, RECEIPT_FILE)
+  return {
+    read: async () => {
+      try { return JSON.parse(await readFile(path, 'utf8')) as { ciphertext: string; iv: string; tag: string; version: 1 } }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
+    },
+    remove: async () => { await unlink(path).catch((error: unknown) => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }) },
+    write: async (value: unknown) => {
+      const temporary = `${path}.${process.pid}.new`
+      const file = await open(temporary, 'wx', 0o600)
+      try { await file.writeFile(`${JSON.stringify(value)}\n`, 'utf8'); await file.sync() } finally { await file.close() }
+      try { await rename(temporary, path) } finally { await unlink(temporary).catch(() => undefined) }
+    },
+  }
+}
+
+const directReceiptDirectory = (): string => {
+  const value = process.env.NESSIE_DIRECT_LOCAL_INFERENCE_RECEIPT_DIR
+  if (!value || !value.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(value)) {
+    throw new Error('Desktop local inference receipt storage is unavailable.')
+  }
+  return value
+}
+
+/** Starts the direct host after native code has proven the origin and supplied
+ * secrets over its private pipe.  Nothing in this function accepts webview
+ * input, a model name, an endpoint, headers, or command arguments. */
+export const serveDirectLocalInference = async (): Promise<void> => {
+  const config = await readConfigAndKeepLiveness()
+  process.stdin.resume()
+  const api = createLocalInferenceDaemonApi({ apiBaseUrl: config.apiBaseUrl })
+  const issued = await api.issueChallenge({ hostId: config.hostId })
+  const claim = { challenge: issued.challenge }
+  const envelope = signLocalInferenceEnvelope({
+    body: claim,
+    header: {
+      connectionEpoch: config.connectionEpoch, hostId: config.hostId, organizationId: config.organizationId,
+      protocolVersion: LOCAL_INFERENCE_PROTOCOL_VERSION, purpose: 'claim', sentAt: new Date().toISOString(), sequence: 1,
+    },
+    machinePrivateKey: config.machinePrivateKey,
+  })
+  const connection = await api.claim({ challenge: issued.challenge, envelope })
+  process.stdout.write(`${JSON.stringify({ connectionEpoch: connection.connectionEpoch })}\n`)
+  // Discovery happens before advertising any availability. It is bounded to
+  // the two literal loopback endpoints and does not issue a model request.
+  const inventory = await discoverOllamaInventory()
+  const journal = new EncryptedLocalInferenceReceiptJournal(
+    await receiptStorage(directReceiptDirectory()),
+    Buffer.from(config.receiptJournalKey, 'base64url'),
+  )
+  const loop = new LocalInferenceHostLoop({
+    api,
+    identity: {
+      connectionEpoch: connection.connectionEpoch,
+      hostId: config.hostId,
+      machinePrivateKey: config.machinePrivateKey,
+      organizationId: config.organizationId,
+    },
+    isPaused: () => false,
+    journal,
+    origin: inventory.origin,
+  })
+  await loop.heartbeat()
+  let stopped = false
+  const stop = () => { stopped = true }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
+  process.stdin.once('close', stop)
+  process.stdin.once('end', stop)
+  while (!stopped) {
+    await loop.pollOnce().catch(() => undefined)
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
+  // A typed signed goodbye cannot be mistaken for a heartbeat. The server may
+  // be unavailable during quit, in which case its short lease remains the
+  // conservative fallback.
+  const goodbye = { reason: 'desktop_exit' as const, receipt: createHash('sha256').update(config.hostId).digest('hex') }
+  await api.goodbye({ envelope: signLocalInferenceEnvelope({
+    body: goodbye,
+    header: {
+      connectionEpoch: connection.connectionEpoch, hostId: config.hostId, organizationId: config.organizationId,
+      protocolVersion: LOCAL_INFERENCE_PROTOCOL_VERSION, purpose: 'goodbye', sentAt: new Date().toISOString(), sequence: 1,
+    },
+    machinePrivateKey: config.machinePrivateKey,
+  }), goodbye }).catch(() => undefined)
+}
+
+/** A one-shot machine-signed fetch for text shown by the native dialog. */
+export const fetchDirectLocalInferenceConsentDisplay = async (
+  input: DirectLocalInferenceConsentRequest,
+): Promise<Awaited<ReturnType<ReturnType<typeof createLocalInferenceDaemonApi>['consentDisplay']>>> => {
+  if (!validConfig(input) || !UUID.test(input.challengeId)) {
+    throw new Error('Desktop local inference consent request is malformed.')
+  }
+  const api = createLocalInferenceDaemonApi({ apiBaseUrl: input.apiBaseUrl })
+  const body = { challengeId: input.challengeId }
+  const envelope = signLocalInferenceEnvelope({
+    body,
+    header: {
+      connectionEpoch: input.connectionEpoch, hostId: input.hostId, organizationId: input.organizationId,
+      protocolVersion: LOCAL_INFERENCE_PROTOCOL_VERSION, purpose: 'consent_display', sentAt: new Date().toISOString(), sequence: 1,
+    },
+    machinePrivateKey: input.machinePrivateKey,
+  })
+  return api.consentDisplay({ ...body, envelope })
+}
