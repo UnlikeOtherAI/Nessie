@@ -218,6 +218,9 @@ export const runCardPostTool = async (
   })
 
   return {
+    // The card is this turn's message in the conversation, so the run owes the
+    // person nothing further and may end without a word.
+    deliveredToConversation: true,
     inputSummary:
       `title=${args.card.title}; actions=${args.card.actions.length}`
       + `; respondents=${respondentUserIds.length === 0 ? 'thread' : respondentUserIds.length}`

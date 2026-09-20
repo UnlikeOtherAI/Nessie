@@ -61,6 +61,7 @@ one at a glance:
 | Part | Block | Holds |
 |---|---|---|
 | Name | `title` | the agent's name; `subtitle` is its role |
+| The covering note | `message` | the Designer's own words, rendered above the card in the same message |
 | What it does | `text` | at most three lines — the work, not the machinery |
 | Where it lives | `fields` | team, project and channel, or that it is private |
 | Model | `input` `select` | a few catalogue models, recommendation as the default; each option's value is the exact `provider/model` pair |
@@ -70,10 +71,11 @@ one at a glance:
 the Designer's own blocks go inside `details` rather than into a different card.
 
 Actions are **Accept** (`submits`, so the model choice travels with the press), **Edit**
-and **Discard**. Accept means build exactly what the card says and then say where it
+and **Decline**. Accept means build exactly what the card says and then say where it
 landed; Edit wakes the Designer to ask what should change and post a fresh card;
-Discard builds nothing. The card is posted without `wait`, so a person may press it or
-simply answer in chat.
+Decline builds nothing. The card is posted without `wait`, so a person may press it or
+simply answer in chat — and the Designer says nothing after posting, because its words
+are on the card and a paragraph beside it is the same thing said twice.
 
 The description lives in `buildGlobalAgentCatalogueBlock` under
 `writeSurface: 'agent_tools'`, **not** in the shared persona: three faces read the

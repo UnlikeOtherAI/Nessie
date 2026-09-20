@@ -238,6 +238,7 @@ export const presentAgentCard = async (
       : null,
     cardId: card.id,
     expiresAt: card.expiresAt?.toISOString() ?? null,
+    ...(spec.message === undefined ? {} : { message: spec.message }),
     messageId: card.messageId,
     resolution:
       status === 'resolved' && card.resolvedActionKey

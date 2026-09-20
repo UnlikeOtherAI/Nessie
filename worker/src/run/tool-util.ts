@@ -73,6 +73,7 @@ export const wrapTool = async (
   inputSummary: string,
   fn: () => Promise<{
     connectorUsage?: ToolExecutionUsage
+    deliveredToConversation?: boolean
     outputPreview: string
     pendingInput?: AgentCardSuspension
   }>,
@@ -81,6 +82,7 @@ export const wrapTool = async (
     const result = await fn()
     return {
       connectorUsage: result.connectorUsage,
+      ...(result.deliveredToConversation ? { deliveredToConversation: true } : {}),
       inputSummary,
       output: truncateToolResult(result.outputPreview),
       // Only a successful post may suspend the run: a card nobody can see is

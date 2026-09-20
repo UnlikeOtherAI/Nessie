@@ -64,6 +64,10 @@ const inputLabels = (spec: AgentCardSpec): string[] =>
  */
 export const renderAgentCardPlainText = (spec: AgentCardSpec): string => {
   const lines: string[] = []
+  // The covering note leads, because it is the agent's own sentence and it is
+  // what a search hit or a push preview should open with — on screen it sits
+  // above the card's header for the same reason.
+  if (spec.message) lines.push(spec.message, '')
   lines.push(spec.service ? `${spec.service.label} — ${spec.title}` : spec.title)
   if (spec.subtitle) lines.push(spec.subtitle)
 

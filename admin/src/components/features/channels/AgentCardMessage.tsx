@@ -11,7 +11,7 @@ import {
 import { FormError } from '../../shared/FormActions'
 import { AppIcon } from '../apps/AppIcon'
 import { Pill, type PillTone } from '../../primitives/Pill'
-import { AgentCardBlocks, type AgentCardFieldValue } from './AgentCardBlocks'
+import { AgentCardBlocks, AgentCardProse, type AgentCardFieldValue } from './AgentCardBlocks'
 import { ChatCardShell } from './ChatCardShell'
 
 const statusCopy: Record<AgentCardPresenter['status'], string> = {
@@ -160,6 +160,12 @@ export const AgentCardMessage = ({
 
   return (
     <ChatCardShell className="agent-card-message" testId="agent-card">
+      {/* The agent's own words ride inside the card rather than arriving as a
+          separate message before it, so a person reads the sentence and the
+          buttons that answer it as one thing. */}
+      {card.message ? (
+        <AgentCardProse className="agent-card-prose" markdown={card.message} />
+      ) : null}
       <header className="agent-card-header">
         {card.service ? (
           <AppIcon

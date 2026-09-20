@@ -112,6 +112,21 @@ this standard, not an exception to it.
   Text inputs default to 500 characters; a text or textarea card block alone
   may declare a smaller or larger `maxLength`, bounded at 100,000, so mail copy
   does not silently widen every card field.
+- **A card is one message, prose included.** `AgentCardSpec.message` is the
+  agent's own covering note — the sentence it would otherwise have typed beside
+  the card. It renders above the card's header inside the same bubble, with the
+  actions still in the footer, so the words, the detail and the decision arrive
+  once and are answered in one place. It leads `renderAgentCardPlainText`, so
+  search, push previews and the model's transcript window keep it. The field is
+  optional in both directions: a card stored before it existed parses and
+  renders exactly as it did. The other half of the rule is in the run: a
+  completed run whose final text is empty writes no message at all
+  (`delivery.kind: 'silent'`), and a tool that already delivered its turn to
+  the conversation (`ToolExecutionResult.deliveredToConversation`, today only
+  `card_post`) excuses that silence from the empty-output recovery — which
+  would otherwise ask the model for exactly the duplicate paragraph the card
+  replaced. Emptiness is the only test: a bare "👍" is a real message, and is
+  withheld only by the reaction path, which knows the run reacted.
 - **One chat-card treatment does not merge authority.** The universal
   `AgentCardMessage` renderer and the read-only historical Gmail-draft preview
   share `ChatCardShell`'s compact visual surface. The preview remains its own

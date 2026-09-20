@@ -58,6 +58,14 @@ const RunCompletionDeliverySchema = z.discriminatedUnion('kind', [
     kind: z.literal('reaction'),
     sourceMessageId: z.string().uuid(),
   }),
+  /**
+   * The run finished with nothing to say. Everything it had to deliver is
+   * already in the conversation — a card it posted, a document it wrote — so
+   * there is no message, no push and no mention scan, only the stream's end.
+   */
+  z.object({
+    kind: z.literal('silent'),
+  }),
   z.object({
     kind: z.literal('watch'),
     content: z.string(),
