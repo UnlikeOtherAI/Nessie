@@ -22,6 +22,7 @@ import {
   type RoutingMode,
   type StepMetadataStep,
 } from '@nessie/schemas'
+import { findLedgerModelOutputTokenCap } from '@nessie/team-admin'
 import {
   resolveRuntimeProvider,
   resolveStageProviderConfig,
@@ -274,8 +275,19 @@ export const executeStage = async (
     // the boundary a fragment consumer must reset on.
     const invocationId = randomUUID()
     const capabilities = await service.getCapabilities(providerConfig.model)
+    let ledgerOutputTokens: number | undefined
+    const ledgerBaseUrl = providerConfig.baseUrl
+    if (runtimeProvider === 'kimi' && ledgerBaseUrl && isLedgerEndpoint(ledgerBaseUrl) && providerConfig.model) {
+      ledgerOutputTokens = await findLedgerModelOutputTokenCap({
+        config: { apiKey: providerConfig.apiKey, baseUrl: ledgerBaseUrl },
+        ledgerPublicUrl: new URL(ledgerBaseUrl).origin,
+        model: providerConfig.model,
+        provider: providerConfig.providerKey,
+        ...(requestHeaders ? { requestHeaders } : {}),
+      })
+    }
     const maxOutputTokens = resolveStageOutputTokens({
-      capabilityMaxOutputTokens: capabilities.effectiveSnapshot.maxOutputTokens,
+      capabilityMaxOutputTokens: ledgerOutputTokens ?? capabilities.effectiveSnapshot.maxOutputTokens,
       // Kimi's Anthropic-compatible Messages protocol requires max_tokens.
       // This is its advertised provider ceiling, never a verbosity policy.
       requiresProviderOutputLimit: runtimeProvider === 'kimi',
