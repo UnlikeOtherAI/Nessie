@@ -51,6 +51,40 @@ export const createKimiConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_KIMI_MODEL
 
+  const fetchModelCapability = async (model: string): Promise<{
+    maxInputTokens?: number
+    maxOutputTokens?: number
+  }> => {
+    // Kimi's Messages endpoint requires max_tokens, while its catalogue
+    // currently advertises context_length rather than an output limit. That
+    // context capacity is the provider's own accepted protocol maximum, not a
+    // Nessie response-length policy.
+    if (ledgerRouted) return {}
+    try {
+      const response = await fetch(`${baseUrl}/v1/models`, {
+        headers: { ...headers }, method: 'GET',
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!response.ok) return {}
+      const body = await response.json() as { data?: Array<{
+        context_length?: unknown
+        id?: unknown
+        max_output_tokens?: unknown
+      }> }
+      const row = body.data?.find((entry) => entry.id === model)
+      const contextLength = typeof row?.context_length === 'number' && Number.isInteger(row.context_length) && row.context_length > 0
+        ? row.context_length : undefined
+      const outputLimit = typeof row?.max_output_tokens === 'number' && Number.isInteger(row.max_output_tokens) && row.max_output_tokens > 0
+        ? row.max_output_tokens : undefined
+      return {
+        ...(contextLength === undefined ? {} : { maxInputTokens: contextLength }),
+        ...(outputLimit ?? contextLength ? { maxOutputTokens: outputLimit ?? contextLength } : {}),
+      }
+    } catch {
+      return {}
+    }
+  }
+
   const invokeRequest = async (
     body: Record<string, unknown>,
     requestHeaders?: Record<string, string>,
@@ -97,7 +131,9 @@ export const createKimiConnector = (
     },
 
     async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
-      return createBaseSnapshot({
+      const capability = await fetchModelCapability(model)
+      return {
+        ...createBaseSnapshot({
         model,
         provider: 'kimi',
         structuredOutputMode: 'prompt-json',
@@ -108,7 +144,10 @@ export const createKimiConnector = (
         systemPromptMode: 'native',
         toolCallingMode: 'prompt-translated',
         toolResultMode: 'context-block',
-      })
+        }),
+        ...capability,
+        source: capability.maxOutputTokens === undefined ? 'static' : 'live',
+      }
     },
 
     async getProviderMeta() {
@@ -130,7 +169,7 @@ export const createKimiConnector = (
 
       try {
         const response = await invokeRequest({
-          max_tokens: request.maxOutputTokens ?? 1024,
+          ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
           messages: payload.messages,
           model,
           system: payload.system,
@@ -193,7 +232,7 @@ export const createKimiConnector = (
 
       try {
         const response = await invokeRequest({
-          max_tokens: request.maxOutputTokens ?? 1024,
+          ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
           messages: payload.messages,
           model,
           stream: true,

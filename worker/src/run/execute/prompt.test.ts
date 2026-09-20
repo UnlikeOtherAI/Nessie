@@ -491,3 +491,10 @@ test('an empty prompt never appends an empty trailing user turn', () => {
   const messages = buildModelPrompt(conversation, makeContext('Aria'), '', null)
   assert.equal(messages.filter((message) => message.role === 'user').length, 1)
 })
+
+test('the shared main prompt guides proportionate completion without a token rule', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
+  assert.match(system, /Complete the requested work before replying/)
+  assert.match(system, /clear, proportionate detail/)
+  assert.doesNotMatch(system, /output-token cap/)
+})

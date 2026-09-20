@@ -6,7 +6,7 @@ import {
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
 import { GlobalAgentPlacementError } from './execute/global-agent-placement.js'
 import { PrivateAgentPlacementError } from './execute/private-agent-placement.js'
-import { EmptyProviderResponseError } from './output-finalization.js'
+import { EmptyProviderResponseError, ProviderOutputLimitError } from './output-finalization.js'
 
 export type FailoverReason =
   | 'auth'
@@ -27,6 +27,7 @@ export type FailoverReason =
   | 'global_agent_placement'
   | 'format'
   | 'empty_response'
+  | 'provider_output_limit'
   | 'transient'
   | 'unknown'
 
@@ -79,6 +80,8 @@ export const userMessageForFailureReason = (
       return 'The model provider returned an invalid response. Please try again.'
     case 'empty_response':
       return 'The model provider returned no final answer. Please try again.'
+    case 'provider_output_limit':
+      return 'The model provider reached its response limit before finishing. Please try again with a narrower request.'
     case 'unknown':
       return 'I could not complete that request because the assistant service encountered an unexpected error. Please try again; if it keeps happening, ask a team owner to check the worker logs.'
   }
@@ -88,6 +91,7 @@ export const classifyError = (error: unknown): FailoverReason => {
   if (error instanceof PrivateAgentPlacementError) return 'private_agent_placement'
   if (error instanceof GlobalAgentPlacementError) return 'global_agent_placement'
   if (error instanceof EmptyProviderResponseError) return 'empty_response'
+  if (error instanceof ProviderOutputLimitError) return 'provider_output_limit'
   if (!(error instanceof Error)) return 'unknown'
 
   if (isCreditsExhaustedError(error)) {
@@ -231,6 +235,7 @@ export const resolveRecovery = (
         : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'empty_response':
+    case 'provider_output_limit':
       return { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'format':

@@ -218,7 +218,10 @@ export const streamOllamaChat = async function* (input: {
         keep_alive: '5m',
         messages: input.attempt.messages.map(messageForOllama),
         model: input.attempt.modelName,
-        options: { num_ctx: input.attempt.numCtx, num_predict: input.attempt.maxOutputTokens },
+        options: {
+          num_ctx: input.attempt.numCtx,
+          ...(input.attempt.maxOutputTokens === undefined ? {} : { num_predict: input.attempt.maxOutputTokens }),
+        },
         stream: true,
         // Nessie's worker owns reasoning policy and budgets. Asking Ollama for
         // separate hidden thinking can consume the whole output allowance and

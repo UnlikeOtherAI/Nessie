@@ -1,12 +1,8 @@
 import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
-  type CapabilityResolution,
-  createInferenceService,
-  isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
-  type PinnedFetch,
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
@@ -16,11 +12,8 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
-import { findLedgerModelOutputTokenCap } from '@nessie/team-admin'
 import { runInferenceGraph } from '../inference.js'
-import { resolveRuntimeProvider, resolveStageProviderConfig } from '../inference-provider.js'
 import {
-  resolveComposeOutputTokens,
   startCancellationPoll,
 } from './document-cancel-poll.js'
 import { createProviderRequestHeadersResolver } from '../inference-identity.js'
@@ -42,53 +35,6 @@ const runtimeModelConfig = loadConfig().model
 export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
   tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
 
-export const resolveAdvertisedOutputTokens = (input: {
-  configuredMaxTokens: number
-  staticMaxOutputTokens?: number
-  ledgerMaxOutputTokens?: number
-}): number => Math.min(
-  input.configuredMaxTokens,
-  input.staticMaxOutputTokens ?? Number.POSITIVE_INFINITY,
-  input.ledgerMaxOutputTokens ?? Number.POSITIVE_INFINITY,
-)
-
-export const resolveMainOutputTokens = (input: {
-  admittedMaxOutputTokens?: number
-  composeAvailable: boolean
-  configuredMaxTokens: number
-}): number | undefined => {
-  if (!input.composeAvailable) return input.admittedMaxOutputTokens
-  return Math.min(
-    resolveComposeOutputTokens(input.configuredMaxTokens),
-    input.admittedMaxOutputTokens ?? Number.POSITIVE_INFINITY,
-  )
-}
-
-type MainOutputProviderConfig = Pick<
-  Awaited<ReturnType<typeof resolveStageProviderConfig>>,
-  | 'apiKey'
-  | 'baseUrl'
-  | 'connectorKind'
-  | 'deepseekThinkingMode'
-  | 'extraHeaders'
-  | 'model'
-  | 'providerKey'
->
-
-type StageProviderResolver = (
-  ...args: Parameters<typeof resolveStageProviderConfig>
-) => Promise<MainOutputProviderConfig>
-
-type MainOutputInferenceService = {
-  getCapabilities: (model?: string) => Promise<{
-    effectiveSnapshot: Pick<CapabilityResolution['effectiveSnapshot'], 'maxOutputTokens'>
-  }>
-}
-
-type MainOutputInferenceServiceFactory = (
-  input: Parameters<typeof createInferenceService>[0],
-) => MainOutputInferenceService
-
 /**
  * How this run calls the model. One construction point for every inference the
  * run makes — the main turn, delegate sub-agents, compaction and checkpoint
@@ -98,7 +44,6 @@ type MainOutputInferenceServiceFactory = (
 export type RunInference = {
   /** True when the current main turn already streamed text to the thread. */
   consumeStreamedFlag: () => boolean
-  mainOutputTokens?: () => Promise<number>
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
@@ -131,10 +76,6 @@ export const createRunInference = (
      * mixes a person's plan with the organization's credits.
      */
     subscription: RunSubscriptionBinding | null
-    /** Narrow test seams; production uses the imported resolvers. */
-    stageProviderResolver?: StageProviderResolver
-    inferenceServiceFactory?: MainOutputInferenceServiceFactory
-    ledgerCatalogFetch?: PinnedFetch
     local?: { binding: RunLocalInferenceBinding; runFence: string } | null
     thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
@@ -154,67 +95,6 @@ export const createRunInference = (
   const runModel = {
     model: options.budgetModelOverride?.model ?? context.agent.model,
     provider: options.budgetModelOverride?.provider ?? context.agent.provider,
-  }
-
-  const mainOutputTokens = async (): Promise<number> => {
-    // A local binding owns the complete inference transport. Capability and
-    // catalogue lookups through the configured provider would be a cloud call
-    // even though `runMain` correctly uses the local host below.
-    if (options.local) return runtimeModelConfig.maxTokens
-    const providerConfig = await (options.stageProviderResolver ?? resolveStageProviderConfig)(deps.prisma, {
-      modelConfig: runtimeModelConfig,
-      organizationId: context.channel.organizationId,
-      providerKey: runModel.provider ?? runtimeModelConfig.provider,
-      requestedModel: runModel.model ?? runtimeModelConfig.modelName ?? '',
-      routeSource: 'direct',
-      subscription: options.subscription
-        ? {
-          ownerUserId: options.subscription.ownerUserId,
-          secretStore: deps.subscriptionSecrets ?? null,
-          subscriptionId: options.subscription.subscriptionId,
-        }
-        : null,
-    })
-    const runtimeProvider = resolveRuntimeProvider(providerConfig.providerKey)
-      ?? (providerConfig.connectorKind === 'openai-compatible'
-        || isLedgerEndpoint(providerConfig.baseUrl)
-        ? 'openai-compatible'
-        : null)
-    if (!runtimeProvider) return runtimeModelConfig.maxTokens
-    const service = (options.inferenceServiceFactory ?? createInferenceService)({
-      apiKey: providerConfig.apiKey,
-      baseUrl: providerConfig.baseUrl,
-      ...(providerConfig.deepseekThinkingMode
-        ? { deepseekThinkingMode: providerConfig.deepseekThinkingMode }
-        : {}),
-      ...(providerConfig.extraHeaders ? { extraHeaders: providerConfig.extraHeaders } : {}),
-      modelName: providerConfig.model,
-      provider: runtimeProvider,
-      serviceId: providerConfig.providerKey,
-    })
-    const capability = await service.getCapabilities(providerConfig.model)
-    let ledgerMaxOutputTokens: number | undefined
-    if (providerConfig.baseUrl && isLedgerEndpoint(providerConfig.baseUrl) && providerConfig.model) {
-      try {
-        const requestHeaders = await requestHeadersForProvider(providerConfig)
-        ledgerMaxOutputTokens = await findLedgerModelOutputTokenCap({
-          config: { apiKey: providerConfig.apiKey, baseUrl: providerConfig.baseUrl },
-          ledgerPublicUrl: new URL(providerConfig.baseUrl).origin,
-          model: providerConfig.model,
-          provider: providerConfig.providerKey,
-          ...(requestHeaders ? { requestHeaders } : {}),
-          ...(options.ledgerCatalogFetch ? { fetchImpl: options.ledgerCatalogFetch } : {}),
-        })
-      } catch {
-        // Ledger metadata is advisory. Its absence or a transient listing failure
-        // must retain the configured cap rather than invent a provider limit.
-      }
-    }
-    return resolveAdvertisedOutputTokens({
-      configuredMaxTokens: runtimeModelConfig.maxTokens,
-      staticMaxOutputTokens: capability.effectiveSnapshot.maxOutputTokens,
-      ledgerMaxOutputTokens,
-    })
   }
 
   const call = async (
@@ -240,7 +120,7 @@ export const createRunInference = (
       }
       const result = await dispatchLocalInference({
         binding: options.local.binding, context, deps,
-        maxOutputTokens: maxOutputTokens ?? runtimeModelConfig.maxTokens,
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
         onTextDelta: async (content) => {
           localTextReceived = true
           await publishSafeLocalText(content)
@@ -263,11 +143,6 @@ export const createRunInference = (
       return result
     }
     const documentStream = streaming ? deps.documentStream : undefined
-    // A document is emitted as tool-call arguments inside one completion, so
-    // the ordinary per-call output cap would truncate it mid-sentence. When the
-    // tool is on the table this call asks for the model's own maximum instead;
-    // the run budget, not this number, remains the spend envelope.
-    const composeAvailable = hasDocumentComposeTool(tools)
     const controller = documentStream ? new AbortController() : null
     const cancelPoll = controller
       ? startCancellationPoll({
@@ -291,11 +166,7 @@ export const createRunInference = (
           routingProfileId: null,
         },
         baseMessages: messages,
-        maxOutputTokensOverride: resolveMainOutputTokens({
-          admittedMaxOutputTokens: maxOutputTokens,
-          composeAvailable,
-          configuredMaxTokens: runtimeModelConfig.maxTokens,
-        }),
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokensOverride: maxOutputTokens }),
         modelConfig: runtimeModelConfig,
         subscription: options.subscription
           ? {
@@ -373,7 +244,6 @@ export const createRunInference = (
       currentTurnStreamed = false
       return streamed
     },
-    mainOutputTokens,
     runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
       return call(messages, tools, runModel, true, true, callOptions?.maxOutputTokens)

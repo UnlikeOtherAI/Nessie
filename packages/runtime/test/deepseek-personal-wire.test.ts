@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createOpenAiLikeConnector } from '../src/inference/connectors/openai.js'
+import { createKimiConnector } from '../src/inference/connectors/kimi.js'
 import type {
   ProviderInvocationResult,
   ProviderStreamEvent,
@@ -122,4 +123,44 @@ test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fi
   assert.equal(replay[1]?.content, '')
   assert.equal(replay[2]?.role, 'tool')
   assert.equal(replay[2]?.tool_call_id, 'call_weather')
+})
+
+test('an unbounded conversational request omits completion caps while an explicit utility cap remains', async () => {
+  const requests: Array<Record<string, unknown>> = []
+  const connector = createOpenAiLikeConnector('deepseek', {
+    apiKey: 'key', baseUrl: 'https://api.deepseek.com/v1', deepseekThinkingMode: 'disabled', provider: 'deepseek',
+  }, {
+    personalDeepSeekSafeFetchOptions: {
+      fetchImpl: async (_url, init) => {
+        requests.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+      },
+      resolveHost: async () => ['1.1.1.1'],
+    },
+  })
+  await connector.invoke({ messages: [{ content: 'hello', role: 'user' }], model: 'test', requestId: 'main' })
+  await connector.invoke({ maxOutputTokens: 77, messages: [{ content: 'note', role: 'user' }], model: 'test', requestId: 'utility' })
+  assert.equal(requests[0]?.max_completion_tokens, undefined)
+  assert.equal(requests[0]?.max_tokens, undefined)
+  assert.equal(requests[1]?.max_tokens, 77)
+})
+
+test('Kimi derives its required Messages max_tokens from provider model metadata', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = []
+  globalThis.fetch = async (input, init) => {
+    const url = input.toString()
+    requests.push({ url, ...(init?.body ? { body: JSON.parse(String(init.body)) as Record<string, unknown> } : {}) })
+    if (url.endsWith('/v1/models')) return new Response(JSON.stringify({ data: [{ id: 'kimi-for-coding', context_length: 1_048_576 }] }))
+    return new Response(JSON.stringify({ content: [{ text: 'ok', type: 'text' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }))
+  }
+  try {
+    const connector = createKimiConnector({ apiKey: 'key', baseUrl: 'https://api.kimi.com/coding', provider: 'kimi' })
+    const capability = await connector.getModelCapabilities('kimi-for-coding')
+    assert.equal(capability.maxOutputTokens, 1_048_576)
+    await connector.invoke({ maxOutputTokens: capability.maxOutputTokens, messages: [{ content: 'hi', role: 'user' }], model: 'kimi-for-coding', requestId: 'kimi' })
+    assert.equal(requests[1]?.body?.max_tokens, 1_048_576)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

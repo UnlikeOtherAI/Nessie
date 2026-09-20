@@ -4,7 +4,6 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { loadConfig } from '@nessie/config'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
 import type { LoopResumeState } from '../loop-resume.js'
@@ -101,8 +100,6 @@ export const runExecutionAgentLoop = async (
   // the initial plan record was created. Make that complete basis durable before
   // this loop can write a thought, a tool record, or any model-derived state.
   await persistCurrentRunBasis(deps.prisma, context)
-  const mainOutputTokens = await input.inference.mainOutputTokens?.()
-    ?? loadConfig().model.maxTokens
   // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
   // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
@@ -125,10 +122,18 @@ export const runExecutionAgentLoop = async (
   const mcpView = input.mcpToolset.createView()
   const mcpExposedNames = mcpView.handledNames
   const builtinMetaNames = input.toolSpecEnabled ? [BUILTIN_TOOL_SPEC_NAME] : []
-  const externalToolNames = new Set([
+  // `tool_spec` is worker-owned schema discovery. It bypasses the builtin
+  // registry because it is not a grantable builtin, but it is neither an MCP
+  // call nor an executor dispatch and must not be mistaken for an external
+  // content sink after the transcript admits private material.
+  const unregisteredToolNames = new Set([
     ...mcpExposedNames,
     ...input.executorToolset.handledNames,
     ...builtinMetaNames,
+  ])
+  const externalContentToolNames = new Set([
+    ...mcpExposedNames,
+    ...input.executorToolset.handledNames,
   ])
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
@@ -173,7 +178,8 @@ export const runExecutionAgentLoop = async (
         mcpToolNames: mcpExposedNames,
         skipAutoReview: options.skipAutoReview,
         resolvedBuiltinToolIds: input.resolvedToolIds,
-        externalToolNames,
+        unregisteredToolNames,
+        externalContentToolNames,
         // One hook per family, tried in order: each returns null for tools it
         // does not own, so adding a family costs one comparison rather than a
         // second gate the next family could forget to consult.
@@ -259,10 +265,11 @@ export const runExecutionAgentLoop = async (
               // agent that has them denies `delegate` outright, so this arm is
               // unreachable today — it stays correct if that ever changes.)
               resolvedBuiltinToolIds: input.resolvedToolIds,
-              externalToolNames: new Set([
+              unregisteredToolNames: new Set([
                 ...subAgentMcpView.handledNames,
                 ...builtinMetaNames,
               ]),
+              externalContentToolNames: new Set(subAgentMcpView.handledNames),
               maySuspendForApproval: false,
               parentAgentId: context.agent.parentAgentId,
               toolPolicy: input.toolPolicy,
@@ -548,15 +555,12 @@ export const runExecutionAgentLoop = async (
     executeTool: effects.executeTool,
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
-    maxOutputTokens: mainOutputTokens,
     ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
     runInference: (messages, _captured, options) =>
       input.inference.runMain(
         messages,
         options?.noTools ? [] : [...input.toolDefs, ...mcpView.descriptors],
-        options?.maxOutputTokens === undefined
-          ? undefined
-          : { maxOutputTokens: options.maxOutputTokens },
+        undefined,
       ),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,

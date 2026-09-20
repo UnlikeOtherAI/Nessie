@@ -26,11 +26,13 @@ summary and points here; **this file is the rule**.
   - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
     `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
     (`budget-stop.ts`); member-visible copy carries **no currency figures**.
-  - For Ledger-routed models, main-turn admission reads the authenticated
-    `GET /v1/models` `max_output_tokens` field when Ledger advertises it and
-    uses the smaller of that value, the static connector capability, and the
-    configured cap. Missing or unavailable catalog metadata remains unknown;
-    it never becomes an inferred provider ceiling.
+  - Main conversational turns do not set an application output-token cap.
+    The common system prompt asks for complete, proportionate communication;
+    real context and run/org spend budgets remain independent safeguards.
+    A protocol which requires an output field may use only its provider
+    catalogue's advertised maximum. Kimi's Messages lane discovers `/v1/models`
+    and uses `max_output_tokens`, or its advertised `context_length` when Kimi
+    exposes no separate output maximum.
   - The cache-read weight resolves once per run from the org
     `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
     [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25).
@@ -44,26 +46,12 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
-  - A provider `finish_reason: length` — or a successful response with neither
-    visible text nor tool calls — checkpoints the retained transcript and gets
-    one no-tools finalisation turn from completed evidence; incomplete provider
-    tool calls never dispatch. That attempt is carried in crash state, so a
-    resumed run neither repeats it nor replays a completed tool effect; a
-    second length result surfaces a truthful partial answer and checkpoint, and
-    a second empty success names the provider response failure for the person.
-  - Per-call output admission starts with the configured fallback, narrows to
-    the selected provider capability's `maxOutputTokens` when it is present,
-    and reserves that output together with the projected input before dispatch.
-    If retained context plus that reserve cannot fit, the existing compaction
-    hook runs before dispatch. When the run allowance leaves no output after a
-    retained transcript, it also gets one compaction attempt if the schemas do
-    not already consume the allowance, targeted to leave answer room and
-    checkpointed before its utility call; no advertised capability means the fallback is
-    retained rather than guessing a model limit. This recovery covers
-    normalized `finish_reason: length` results and advertised capability
-    ceilings. A provider request-validation refusal for an oversized
-    `max_tokens`/`max_completion_tokens` value without capability metadata is
-    an ordinary provider failure, not an adaptive fallback signal.
+  - A provider `finish_reason: length` gets one bounded recovery. Prose uses a
+    no-tools finalisation from completed evidence; a truncated tool frame is
+    never dispatched and gets one tool-enabled regeneration under the same
+    identity and effect ledger. Crash state carries the mode. Repeated length
+    is `provider_output_limit`, never `token_limit`; empty recovery remains
+    `empty_provider_response`.
 
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the

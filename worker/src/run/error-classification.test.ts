@@ -7,7 +7,7 @@ import {
   userMessageForFailureReason,
 } from './error-classification.js'
 import { ProviderInvocationError } from '@nessie/runtime'
-import { EmptyProviderResponseError } from './output-finalization.js'
+import { EmptyProviderResponseError, ProviderOutputLimitError } from './output-finalization.js'
 
 test('an exhausted empty-provider recovery is terminal', () => {
   const error = new EmptyProviderResponseError()
@@ -15,6 +15,14 @@ test('an exhausted empty-provider recovery is terminal', () => {
   assert.deepEqual(resolveRecovery('empty_response', 0, { remaining: 6, total: 6 }), {
     action: 'surface_error',
     userMessage: userMessageForFailureReason('empty_response'),
+  })
+})
+
+test('a repeated provider output limit remains distinct from an empty response', () => {
+  const error = new ProviderOutputLimitError()
+  assert.equal(classifyError(error), 'provider_output_limit')
+  assert.deepEqual(resolveRecovery('provider_output_limit', 0, { remaining: 6, total: 6 }), {
+    action: 'surface_error', userMessage: userMessageForFailureReason('provider_output_limit'),
   })
 })
 

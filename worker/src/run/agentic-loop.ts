@@ -150,6 +150,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       lastAssistantText,
       outputFinalizationUsed: outputFinalization.used,
       outputFinalizationPending: outputFinalization.pending,
+      outputFinalizationNoTools: outputFinalization.noTools,
       outputFinalizationReason: outputFinalization.reason,
       // Older rolling workers see the recovery as already spent too.
       lengthFinalizationUsed: outputFinalization.used,
@@ -192,7 +193,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     cancelled = false,
     pendingApproval: ToolApprovalSuspension | null = null,
     pendingInput: AgentCardSuspension | null = null,
-    incompleteReason: 'empty_provider_response' | null = null,
+    incompleteReason: 'empty_provider_response' | 'provider_output_limit' | null = null,
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
@@ -320,7 +321,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       if (postCompactionTimeStop) return stop(postCompactionTimeStop)
 
       const finalizationPending = outputFinalization.pending
-      const activeToolSchemaTokens = finalizationPending ? 0 : toolSchemaTokens
+      const activeToolSchemaTokens = finalizationPending && outputFinalization.noTools ? 0 : toolSchemaTokens
       const admission = () => resolveOutputAdmission({
         contextPlan,
         effectiveTokensUsed: spend.effectiveTokensUsed,
@@ -385,7 +386,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
             ...(currentAdmission.requestedOutputTokens === undefined
               ? {}
               : { maxOutputTokens: currentAdmission.requestedOutputTokens }),
-            ...(finalizationPending ? { noTools: true } : {}),
+            ...(finalizationPending && outputFinalization.noTools ? { noTools: true } : {}),
           },
         ),
         retryBudget,
@@ -413,7 +414,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
           role: 'assistant',
         }), 'assistant_output'))
         messages.push(coverProviderInputComponent({
-          content: outputFinalizationInstruction(finalization.reason),
+          content: outputFinalizationInstruction(finalization.reason, outputFinalization.noTools),
           role: 'system',
         }, 'loop_instruction'))
         await checkpoint()
@@ -422,8 +423,12 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       if (finalization?.kind === 'terminal') {
         const finalText = outputFinalizationTerminalText(finalization.reason, safeOutputText || lastAssistantText)
         lastAssistantText = finalText
-        if (finalization.reason === 'length') return stop('tokens')
-        return finish(null, finalText, false, null, null, 'empty_provider_response')
+        // Provider output exhaustion is not a run-token stop. The run can be
+        // well inside its ledger allowance (as the production incident was),
+        // and reporting it as `token_limit` fabricates both the cause and a
+        // misleading manual continuation path.
+        return finish(null, finalText, false, null, null,
+          finalization.reason === 'length' ? 'provider_output_limit' : 'empty_provider_response')
       }
 
       if (!result.toolCalls || result.toolCalls.length === 0) {

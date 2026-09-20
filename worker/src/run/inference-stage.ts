@@ -22,6 +22,7 @@ import {
   type RoutingMode,
   type StepMetadataStep,
 } from '@nessie/schemas'
+import { findLedgerModelOutputTokenCap } from '@nessie/team-admin'
 import {
   resolveRuntimeProvider,
   resolveStageProviderConfig,
@@ -49,10 +50,12 @@ export type StageExecutionSuccess = {
  */
 export const resolveStageOutputTokens = (input: {
   capabilityMaxOutputTokens?: number
-  configuredMaxOutputTokens: number
+  requiresProviderOutputLimit?: boolean
   requestedMaxOutputTokens?: number
-}): number => Math.min(
-  input.requestedMaxOutputTokens ?? input.configuredMaxOutputTokens,
+}): number | undefined => input.requestedMaxOutputTokens === undefined
+  ? input.requiresProviderOutputLimit ? input.capabilityMaxOutputTokens : undefined
+  : Math.min(
+  input.requestedMaxOutputTokens,
   input.capabilityMaxOutputTokens ?? Number.POSITIVE_INFINITY,
 )
 
@@ -272,16 +275,32 @@ export const executeStage = async (
     // the boundary a fragment consumer must reset on.
     const invocationId = randomUUID()
     const capabilities = await service.getCapabilities(providerConfig.model)
+    let ledgerOutputTokens: number | undefined
+    const ledgerBaseUrl = providerConfig.baseUrl
+    if (runtimeProvider === 'kimi' && ledgerBaseUrl && isLedgerEndpoint(ledgerBaseUrl) && providerConfig.model) {
+      ledgerOutputTokens = await findLedgerModelOutputTokenCap({
+        config: { apiKey: providerConfig.apiKey, baseUrl: ledgerBaseUrl },
+        ledgerPublicUrl: new URL(ledgerBaseUrl).origin,
+        model: providerConfig.model,
+        provider: providerConfig.providerKey,
+        ...(requestHeaders ? { requestHeaders } : {}),
+      })
+    }
     const maxOutputTokens = resolveStageOutputTokens({
-      capabilityMaxOutputTokens: capabilities.effectiveSnapshot.maxOutputTokens,
-      configuredMaxOutputTokens: input.modelConfig.maxTokens,
+      capabilityMaxOutputTokens: ledgerOutputTokens ?? capabilities.effectiveSnapshot.maxOutputTokens,
+      // Kimi's Anthropic-compatible Messages protocol requires max_tokens.
+      // This is its advertised provider ceiling, never a verbosity policy.
+      requiresProviderOutputLimit: runtimeProvider === 'kimi',
       requestedMaxOutputTokens: input.maxOutputTokensOverride,
     })
+    if (runtimeProvider === 'kimi' && maxOutputTokens === undefined) {
+      throw new Error('Kimi model output metadata is unavailable; retry after the provider catalogue is reachable.')
+    }
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
-        maxOutputTokens,
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
         messages,
         model: providerConfig.model,
         promptCacheKey,
@@ -330,7 +349,7 @@ export const executeStage = async (
     } else {
       const result = await service.run({
         actorContext: input.actorContext,
-        maxOutputTokens,
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
         messages,
         model: providerConfig.model,
         promptCacheKey,

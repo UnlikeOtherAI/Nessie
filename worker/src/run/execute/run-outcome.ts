@@ -11,7 +11,7 @@ import type { DocumentStreamRecorder } from './document-stream.js'
 import { handleRunExecutionFailure } from './failure.js'
 import { stripLeadingSectionTag } from './memory.js'
 import type { RunInference } from './run-inference.js'
-import { EmptyProviderResponseError } from '../output-finalization.js'
+import { EmptyProviderResponseError, ProviderOutputLimitError } from '../output-finalization.js'
 import type { RunExecutionSetup } from './run-setup.js'
 import {
   applyRunStopContinuation,
@@ -151,7 +151,7 @@ export const handleRunLoopOutcome = async (
     return hadPartialText ? 'completed' : 'failed'
   }
 
-  if (input.loopResult.incompleteReason === 'empty_provider_response' && !input.handoffLocator) {
+  if (input.loopResult.incompleteReason && !input.handoffLocator) {
     await input.documentStream.finalizeOutstanding('run_failed')
     await persistInvocationLedgerEvents(deps.prisma, {
       actorContext: payload.actorContext,
@@ -160,7 +160,9 @@ export const handleRunLoopOutcome = async (
       runId: context.run.id,
     })
     await handleRunExecutionFailure(deps, payload, context, {
-      error: new EmptyProviderResponseError(),
+      error: input.loopResult.incompleteReason === 'provider_output_limit'
+        ? new ProviderOutputLimitError()
+        : new EmptyProviderResponseError(),
       planContext: input.planContext,
       streamStarted: input.streamStarted,
       terminalMessage: responseText,

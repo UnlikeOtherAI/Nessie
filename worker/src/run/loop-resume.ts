@@ -71,6 +71,7 @@ export type LoopResumeState = {
   outputFinalizationUsed: boolean
   /** The retained transcript is waiting for that no-tools turn after a crash. */
   outputFinalizationPending: boolean
+  outputFinalizationNoTools?: boolean
   /** Why the current or completed no-tools finalisation was needed. */
   outputFinalizationReason: OutputFinalizationReason | null
   /**

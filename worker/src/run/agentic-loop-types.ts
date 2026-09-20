@@ -39,7 +39,7 @@ export type LoopResult = {
   cacheReadTokens: number
   exhaustedBudget: BudgetExhaustionReason | null
   /** A provider success remained empty after the loop's bounded recovery. */
-  incompleteReason?: 'empty_provider_response' | null
+  incompleteReason?: 'empty_provider_response' | 'provider_output_limit' | null
   pendingApproval?: ToolApprovalSuspension | null
   pendingInput?: AgentCardSuspension | null
   /** Cooperative cancellation keeps any partial answer without a budget stop. */
