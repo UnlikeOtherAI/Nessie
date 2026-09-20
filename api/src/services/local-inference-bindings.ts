@@ -101,7 +101,7 @@ export const prepareLocalInferenceBinding = async (
     const [agent, host, editor] = await Promise.all([
       tx.agent.findFirst({
         where: { id: input.agentId, organizationId: input.organizationId, deletedAt: null },
-        select: { id: true, ownerUserId: true, systemManaged: true, updatedAt: true },
+        select: { id: true, ownerUserId: true, systemManaged: true, teamId: true, updatedAt: true },
       }),
       tx.localInferenceHost.findFirst({
         where: { id: input.hostId, organizationId: input.organizationId, revokedAt: null },
@@ -161,6 +161,7 @@ export const prepareLocalInferenceBinding = async (
     if (host.pausedAt) throw new LocalInferenceBindingError('HOST_PAUSED', 'This local host is paused.')
     const resolved = await resolveScopedSetting<boolean>(tx, {
       organizationId: input.organizationId,
+      teamId: agent.teamId,
       userId: agent.ownerUserId,
     }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
     if (resolved.value !== true) {
@@ -427,7 +428,14 @@ export const activateConsentedLocalInferenceBinding = async (
     const [agent, host, version] = await Promise.all([
       tx.agent.findFirst({
         where: { id: input.agentId, organizationId: input.organizationId, deletedAt: null },
-        select: { id: true, ownerUserId: true, routingProfileId: true, systemManaged: true, updatedAt: true },
+        select: {
+          id: true,
+          ownerUserId: true,
+          routingProfileId: true,
+          systemManaged: true,
+          teamId: true,
+          updatedAt: true,
+        },
       }),
       tx.localInferenceHost.findFirst({
         where: { id: binding.hostId, organizationId: input.organizationId, pausedAt: null, revokedAt: null },
@@ -465,6 +473,7 @@ export const activateConsentedLocalInferenceBinding = async (
     }
     const resolved = await resolveScopedSetting<boolean>(tx, {
       organizationId: input.organizationId,
+      teamId: agent.teamId,
       userId: agent.ownerUserId,
     }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
     if (resolved.value !== true) {

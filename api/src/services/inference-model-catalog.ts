@@ -7,7 +7,11 @@ import {
   modelPairKey,
 } from '@nessie/team-admin'
 
-import type { DeploymentModelRecord } from '../contracts/inference-model-catalog.js'
+import type {
+  DeploymentModelCatalogFilters,
+  DeploymentModelRecord,
+  SetDeploymentModelsEnabledResult,
+} from '../contracts/inference-model-catalog.js'
 import { asJsonValue, type PrismaClient } from './inference-control-plane-core.js'
 
 /**
@@ -42,7 +46,7 @@ export type DeploymentModelCatalogInput = DeploymentModelCatalogSource & {
   cursor?: string | undefined
   direction?: PaginationDirection | undefined
   limit: number
-}
+} & DeploymentModelCatalogFilters
 
 export type DeploymentModelCatalogPage = {
   data: DeploymentModelRecord[]
@@ -66,6 +70,25 @@ const decodeCursor = (cursor: string | undefined): string | null => {
   } catch {
     return null
   }
+}
+
+/**
+ * The filters intentionally apply to Ledger's identifiers before pagination.
+ * A local `inference_models` row can describe a withdrawn pair, so filtering
+ * it would give an owner a stale and incomplete answer.
+ */
+export const filterDeploymentModelCatalogue = (
+  catalogue: AgentModelOption[],
+  filters: DeploymentModelCatalogFilters,
+): AgentModelOption[] => {
+  const modelNeedle = filters.model?.toLocaleLowerCase()
+  const providerNeedle = filters.provider?.toLocaleLowerCase()
+  return catalogue.filter((option) =>
+    (providerNeedle === undefined
+      || option.provider.toLocaleLowerCase().includes(providerNeedle)
+      || option.providerDisplayName.toLocaleLowerCase().includes(providerNeedle))
+    && (modelNeedle === undefined || option.model.toLocaleLowerCase().includes(modelNeedle)),
+  )
 }
 
 /**
@@ -127,16 +150,17 @@ export const listDeploymentModelCatalog = async (
     loadAgentPinCounts(prisma, input.organizationId),
   ])
 
+  const filteredCatalogue = filterDeploymentModelCatalogue(catalogue, input)
   const boundary = decodeCursor(input.cursor)
   const boundaryIndex = boundary === null
     ? -1
-    : catalogue.findIndex((option) => modelPairKey(option.provider, option.model) === boundary)
+    : filteredCatalogue.findIndex((option) => modelPairKey(option.provider, option.model) === boundary)
   const backward = input.direction === 'backward' && boundaryIndex >= 0
 
   const start = backward
     ? Math.max(0, boundaryIndex - input.limit)
     : boundaryIndex + 1
-  const slice = catalogue.slice(start, start + input.limit)
+  const slice = filteredCatalogue.slice(start, start + input.limit)
 
   const data = slice.map((option) => {
     const key = modelPairKey(option.provider, option.model)
@@ -160,10 +184,10 @@ export const listDeploymentModelCatalog = async (
   return {
     data,
     meta: {
-      hasMore: end < catalogue.length,
-      nextCursor: end < catalogue.length && last ? encodeCursor(last) : null,
+      hasMore: end < filteredCatalogue.length,
+      nextCursor: end < filteredCatalogue.length && last ? encodeCursor(last) : null,
       prevCursor: start > 0 && first ? encodeCursor(first) : null,
-      total: catalogue.length,
+      total: filteredCatalogue.length,
     },
   }
 }
@@ -270,6 +294,67 @@ const catalogueSnapshot = (option: AgentModelOption, discoveredAt: string) => ({
   },
 })
 
+/**
+ * Persist a set of decisions as one unit. The catalogue is read and scoped
+ * before this runs, so the database transaction has one simple responsibility:
+ * create only inert provider containers and upsert every requested pair.
+ */
+const writeDeploymentModelDecisions = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  options: AgentModelOption[],
+  enabled: boolean,
+): Promise<void> => {
+  if (options.length === 0) return
+
+  const organizationId = actorContext.tenant.organizationId
+  const now = new Date()
+
+  await prisma.$transaction(async (transaction) => {
+    const tx = transaction as unknown as PrismaClient
+    const providers = new Map<string, { id: string; providerKey: string }>()
+
+    for (const option of options) {
+      let provider = providers.get(option.provider)
+      if (!provider) {
+        // This only creates `draft` + disabled containers. In particular, it
+        // never changes an existing provider's routing configuration.
+        provider = await upsertProviderContainer(tx, actorContext, option)
+        providers.set(option.provider, provider)
+      }
+
+      await tx.inferenceModel.upsert({
+        create: {
+          capabilitySnapshot: asJsonValue(catalogueSnapshot(option, now.toISOString())),
+          createdByActorId: actorContext.actor.actorId,
+          discoveredAt: now,
+          displayName: option.displayName,
+          enabled,
+          lifecycleStatus: 'draft',
+          model: option.model,
+          organizationId,
+          providerId: provider.id,
+          source: 'static',
+          updatedByActorId: actorContext.actor.actorId,
+        },
+        update: {
+          enabled,
+          lastVerifiedAt: now,
+          updatedByActorId: actorContext.actor.actorId,
+        },
+        where: { providerId_model: { model: option.model, providerId: provider.id } },
+      })
+    }
+  }, {
+    // A Ledger deployment can legitimately offer hundreds of models (the
+    // owner action writes one provider/model uniqueness upsert per pair).
+    // Prisma defaults an interactive transaction to five seconds, which can
+    // expire halfway through a 687-pair catalogue even on a healthy database.
+    maxWait: 5_000,
+    timeout: 60_000,
+  })
+}
+
 export const setDeploymentModelEnabled = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
@@ -280,32 +365,8 @@ export const setDeploymentModelEnabled = async (
   },
 ): Promise<DeploymentModelRecord> => {
   const option = await findCatalogueOption(input)
-  const provider = await upsertProviderContainer(prisma, actorContext, option)
   const organizationId = actorContext.tenant.organizationId
-  const now = new Date()
-  const snapshot = catalogueSnapshot(option, now.toISOString())
-
-  await prisma.inferenceModel.upsert({
-    create: {
-      capabilitySnapshot: asJsonValue(snapshot),
-      createdByActorId: actorContext.actor.actorId,
-      discoveredAt: now,
-      displayName: option.displayName,
-      enabled: input.enabled,
-      lifecycleStatus: 'draft',
-      model: option.model,
-      organizationId,
-      providerId: provider.id,
-      source: 'static',
-      updatedByActorId: actorContext.actor.actorId,
-    },
-    update: {
-      enabled: input.enabled,
-      lastVerifiedAt: now,
-      updatedByActorId: actorContext.actor.actorId,
-    },
-    where: { providerId_model: { model: option.model, providerId: provider.id } },
-  })
+  await writeDeploymentModelDecisions(prisma, actorContext, [option], input.enabled)
 
   const pins = await loadAgentPinCounts(prisma, organizationId)
   return {
@@ -318,4 +379,22 @@ export const setDeploymentModelEnabled = async (
     provider: option.provider,
     providerDisplayName: option.providerDisplayName,
   }
+}
+
+export const setDeploymentModelsEnabled = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: DeploymentModelCatalogSource & DeploymentModelCatalogFilters & { enabled: boolean },
+): Promise<SetDeploymentModelsEnabledResult> => {
+  // Deliberately fetch once and use that same live result to scope every
+  // write. `limit`/cursor do not exist here, so this is the whole matching
+  // catalogue rather than whichever page the owner happens to be viewing.
+  const catalogue = await listLedgerAgentModels({
+    config: input.config,
+    ...(input.ledgerPublicUrl ? { ledgerPublicUrl: input.ledgerPublicUrl } : {}),
+    ...(input.requestHeaders ? { requestHeaders: input.requestHeaders } : {}),
+  })
+  const options = filterDeploymentModelCatalogue(catalogue, input)
+  await writeDeploymentModelDecisions(prisma, actorContext, options, input.enabled)
+  return { enabled: input.enabled, updatedCount: options.length }
 }

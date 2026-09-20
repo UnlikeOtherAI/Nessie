@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { resolvePageLimit } from '@nessie/schemas'
 import {
   CallLinkProviderSchema,
   createTeamForUser,
   isCallLinkProviderConfigured,
+  ledgerAgentModelCatalogRequestHeaders,
+  LedgerAgentModelCatalogError,
   listTeamsForOrganization,
   ProjectValidationError,
   UoaBoundOrganizationError,
@@ -12,6 +15,13 @@ import {
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import {
+  DeploymentModelCatalogQuerySchema,
+  DeploymentModelRecordSchema,
+  SetDeploymentModelEnabledBodySchema,
+  SetDeploymentModelsEnabledBodySchema,
+  SetDeploymentModelsEnabledResultSchema,
+} from '../contracts/inference-model-catalog.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { renameCachedUoaTeam } from '../services/uoa-directory-cache.js'
 import {
@@ -24,6 +34,13 @@ import {
   type UoaRosterDeps,
 } from '../services/uoa-org-roster.js'
 import { mirrorExternalTeamName } from '../services/team-target.js'
+import {
+  TeamModelCatalogError,
+  listTeamModelCatalog,
+  setTeamModelEnabled,
+  setTeamModelsEnabled,
+} from '../services/team-inference-model-catalog.js'
+import type { PrismaClient as WidenedPrismaClient } from '../services/inference-control-plane-core.js'
 import { requireUnboundMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
@@ -62,6 +79,19 @@ const configuredCallProviders = (): Record<CallLinkProvider, boolean> => ({
   jitsi: isCallLinkProviderConfigured('jitsi'),
   microsoft_teams: isCallLinkProviderConfigured('microsoft_teams'),
 })
+
+const sendTeamModelCatalogError = (reply: FastifyReply, error: unknown): boolean => {
+  if (error instanceof LedgerAgentModelCatalogError) {
+    sendApiError(reply, 503, error.code, error.message)
+    return true
+  }
+  if (error instanceof TeamModelCatalogError) {
+    const status = error.code === 'TEAM_MODEL_CATALOG_TEAM_NOT_FOUND' ? 404 : 400
+    sendApiError(reply, status, error.code, error.message)
+    return true
+  }
+  return false
+}
 
 /**
  * `rosterDeps` is the injectable egress seam (pinned fetch + DNS) for the one
@@ -358,6 +388,103 @@ export const registerTeamRoutes = (
       select: { id: true, name: true },
     })
     return createApiResponse(updated)
+  })
+
+  /**
+   * Team availability is a product setting layered under the organisation's
+   * deployment policy. `listTeamModelCatalog` verifies both the team's tenant
+   * and the live Ledger pair set before any local decision is read or written.
+   */
+  const teamModelCatalogueInput = async (
+    actorContext: AuthorizedActionContext,
+    teamId: string,
+  ) => ({
+    config: deps.config.model,
+    ...(process.env.LEDGER_PUBLIC_URL
+      ? { ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL }
+      : {}),
+    organizationId: actorContext.tenant.organizationId,
+    requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
+      actorContext,
+      ledgerIdentity: deps.ledgerIdentity,
+    }),
+    teamId,
+  })
+  const widenedPrisma = prisma as WidenedPrismaClient
+
+  app.get('/api/teams/:teamId/inference/model-catalog', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOrgAdmin(actorContext, reply)) return reply
+
+    const query = parseInput(DeploymentModelCatalogQuerySchema, request.query, reply)
+    if (!query) return reply
+    const { teamId } = request.params as { teamId: string }
+
+    try {
+      const page = await listTeamModelCatalog(widenedPrisma, {
+        ...(await teamModelCatalogueInput(actorContext, teamId)),
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+        ...(query.direction ? { direction: query.direction } : {}),
+        limit: resolvePageLimit(query.limit),
+        ...(query.model ? { model: query.model } : {}),
+        ...(query.provider ? { provider: query.provider } : {}),
+      })
+      return createApiResponse(
+        DeploymentModelRecordSchema.array().parse(page.data),
+        page.meta,
+      )
+    } catch (error) {
+      if (sendTeamModelCatalogError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.patch('/api/teams/:teamId/inference/model-catalog', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOrgAdmin(actorContext, reply)) return reply
+
+    const body = parseInput(SetDeploymentModelEnabledBodySchema, request.body, reply)
+    if (!body) return reply
+    const { teamId } = request.params as { teamId: string }
+
+    try {
+      const record = await setTeamModelEnabled(widenedPrisma, actorContext, {
+        ...(await teamModelCatalogueInput(actorContext, teamId)),
+        enabled: body.enabled,
+        model: body.model,
+        provider: body.provider,
+      })
+      return createApiResponse(DeploymentModelRecordSchema.parse(record))
+    } catch (error) {
+      if (sendTeamModelCatalogError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.patch('/api/teams/:teamId/inference/model-catalog/bulk', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOrgAdmin(actorContext, reply)) return reply
+
+    const body = parseInput(SetDeploymentModelsEnabledBodySchema, request.body, reply)
+    if (!body) return reply
+    const { teamId } = request.params as { teamId: string }
+
+    try {
+      const result = await setTeamModelsEnabled(widenedPrisma, actorContext, {
+        ...(await teamModelCatalogueInput(actorContext, teamId)),
+        enabled: body.enabled,
+        limit: 1,
+        ...(body.model ? { model: body.model } : {}),
+        ...(body.provider ? { provider: body.provider } : {}),
+      })
+      return createApiResponse(SetDeploymentModelsEnabledResultSchema.parse(result))
+    } catch (error) {
+      if (sendTeamModelCatalogError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.patch('/api/teams/:teamId/settings', async (request, reply) => {

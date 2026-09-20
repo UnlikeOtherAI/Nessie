@@ -55,6 +55,7 @@ import {
   StatusDetailPage,
   StatusesPage,
   TeamMembersPage,
+  TeamModelsPage,
   TeamSecretsPage,
   TeamSettingsPage,
   ThreadsPage,
@@ -427,6 +428,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/team/members',
         element: lazyElement(TeamMembersPage, 'list'),
+      },
+      {
+        path: '/settings/team/models',
+        element: lazyElement(TeamModelsPage, 'list'),
       },
       {
         path: '/settings/team/secrets',

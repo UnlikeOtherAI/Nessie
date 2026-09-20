@@ -171,7 +171,7 @@ export const AgentDesignerContent = ({
   }, [assistantCanEditForm])
 
   const toolCatalog = useDesignerToolCatalog(isOwner)
-  const modelOptionsQuery = useAgentModelOptions()
+  const modelOptionsQuery = useAgentModelOptions(editingAgent?.id)
   const modelOptions = modelOptionsQuery.data ?? []
   // Native consent names an existing person-owned agent. A new agent starts on
   // an ordinary model, then its Model section becomes the exact local doorway.

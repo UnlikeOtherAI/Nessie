@@ -9,10 +9,11 @@ import { LOCAL_INFERENCE_ENABLED_SETTING_KEY, resolveScopedSetting } from '@ness
  */
 export const listLocalInferenceModelOptions = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string },
+  input: { organizationId: string; teamId?: string | null; userId: string },
 ): Promise<AgentModelOption[]> => {
   const enabled = await resolveScopedSetting<boolean>(prisma, {
     organizationId: input.organizationId,
+    teamId: input.teamId,
     userId: input.userId,
   }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
   if (enabled.value !== true) return []

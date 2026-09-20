@@ -9,6 +9,7 @@ import {
 import {
   isModelPairDisabled,
   loadDisabledModelPairs,
+  loadDisabledTeamModelPairs,
 } from './inference-model-availability.js'
 import { listLedgerAgentModels } from './ledger-agent-model-catalog.js'
 
@@ -80,13 +81,14 @@ export const listAgentModelOptionsForUser = async (
     ledgerPublicUrl?: string
     organizationId: string
     requestHeaders?: Record<string, string>
+    teamId?: string | null
     userId: string | null | undefined
   },
 ): Promise<AgentModelOptionsResult> => {
   // The availability set is awaited alongside the two catalogues but is NOT
   // one of the independent arms: a read that failed would have to fall open,
   // and falling open here means offering a pair the owner switched off.
-  const [[ledger, subscriptions], disabled] = await Promise.all([
+  const [[ledger, subscriptions], [organizationDisabled, teamDisabled]] = await Promise.all([
     Promise.allSettled([
       listLedgerAgentModels({
         config: input.config,
@@ -98,13 +100,19 @@ export const listAgentModelOptionsForUser = async (
         userId: input.userId,
       }),
     ]),
-    loadDisabledModelPairs(prisma, input.organizationId),
+    Promise.all([
+      loadDisabledModelPairs(prisma, input.organizationId),
+      input.teamId ? loadDisabledTeamModelPairs(prisma, input.teamId) : new Set<string>(),
+    ]),
   ])
 
   const ledgerOptions: AgentModelOption[] =
     ledger.status === 'fulfilled'
       ? ledger.value
-        .filter((option) => !isModelPairDisabled(disabled, option.provider, option.model))
+        .filter((option) =>
+          !isModelPairDisabled(organizationDisabled, option.provider, option.model)
+          && !isModelPairDisabled(teamDisabled, option.provider, option.model),
+        )
         .map((option) => ({ ...option, source: 'ledger' as const }))
       : []
   const ledgerError =

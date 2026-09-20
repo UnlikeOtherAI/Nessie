@@ -14,6 +14,8 @@ import {
   DeploymentModelRecordSchema,
   InferenceModelTestResultSchema,
   SetDeploymentModelEnabledBodySchema,
+  SetDeploymentModelsEnabledBodySchema,
+  SetDeploymentModelsEnabledResultSchema,
   TestInferenceModelBodySchema,
 } from '../contracts/inference-model-catalog.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -21,6 +23,7 @@ import {
   DeploymentModelError,
   listDeploymentModelCatalog,
   setDeploymentModelEnabled,
+  setDeploymentModelsEnabled,
 } from '../services/inference-model-catalog.js'
 import { runInferenceModelTest } from '../services/inference-model-test.js'
 import type { PrismaClient as WidenedPrismaClient } from '../services/inference-control-plane-core.js'
@@ -96,6 +99,8 @@ export const registerInferenceModelCatalogRoutes = (
         ...(query.cursor ? { cursor: query.cursor } : {}),
         ...(query.direction ? { direction: query.direction } : {}),
         limit: resolvePageLimit(query.limit),
+        ...(query.model ? { model: query.model } : {}),
+        ...(query.provider ? { provider: query.provider } : {}),
       })
       return createApiResponse(
         DeploymentModelRecordSchema.array().parse(page.data),
@@ -123,6 +128,28 @@ export const registerInferenceModelCatalogRoutes = (
         provider: body.provider,
       })
       return createApiResponse(DeploymentModelRecordSchema.parse(record))
+    } catch (error) {
+      if (sendCatalogueError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.patch('/api/inference/model-catalog/bulk', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = parseInput(SetDeploymentModelsEnabledBodySchema, request.body, reply)
+    if (!body) return reply
+
+    try {
+      const result = await setDeploymentModelsEnabled(widenedPrisma, actorContext, {
+        ...(await catalogueInput(actorContext)),
+        enabled: body.enabled,
+        ...(body.model ? { model: body.model } : {}),
+        ...(body.provider ? { provider: body.provider } : {}),
+      })
+      return createApiResponse(SetDeploymentModelsEnabledResultSchema.parse(result))
     } catch (error) {
       if (sendCatalogueError(reply, error)) return reply
       throw error

@@ -27,7 +27,7 @@ export const projectAgentLocalInferenceAvailability = async (
   const now = new Date()
   const agent = await prisma.agent.findFirst({
     where: { id: input.agentId, organizationId: input.organizationId, deletedAt: null },
-    select: { localInferenceBindingId: true, ownerUserId: true, provider: true },
+    select: { localInferenceBindingId: true, ownerUserId: true, provider: true, teamId: true },
   })
   if (!agent?.localInferenceBindingId || agent.provider !== 'local/ollama') {
     return projection('offline', 'unconfigured', 0, now)
@@ -62,7 +62,7 @@ export const projectAgentLocalInferenceAvailability = async (
   if (entitlement.status === 'unavailable') return projection('unknown', 'entitlement_unavailable', binding.healthRevision, now)
   if (entitlement.status === 'denied') return projection('offline', 'policy_denied', binding.healthRevision, now)
   const setting = await resolveScopedSetting<boolean>(prisma, {
-    organizationId: input.organizationId, userId: ownerUserId,
+    organizationId: input.organizationId, teamId: agent.teamId, userId: ownerUserId,
   }, LOCAL_INFERENCE_ENABLED_SETTING_KEY)
   if (setting.value !== true) return projection('offline', 'policy_denied', binding.healthRevision, now)
   const models = ObservedLocalModelSchema.array().safeParse(host.inventory)

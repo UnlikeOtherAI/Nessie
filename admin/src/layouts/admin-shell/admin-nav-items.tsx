@@ -83,6 +83,14 @@ const icon = (path: ReactNode) => (
   </svg>
 );
 
+const modelsIcon = icon(
+  <>
+    <rect height="14" rx="2" width="14" x="5" y="5" />
+    <path d="M9 9h6v6H9z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" strokeLinecap="round" />
+  </>,
+);
+
 export const ADMIN_NAV: AdminNavGroup[] = [
   {
     id: 'agents',
@@ -248,6 +256,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/team/models',
+        label: 'Models',
+        visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
+        icon: modelsIcon,
+      },
+      {
         // Writing a team secret is owner-gated, so the doorway is too: a member
         // already sees what their team set on their own Secrets page, where it
         // is the part of the cascade that reaches them.
@@ -322,13 +336,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         path: '/settings/organization/models',
         label: 'Models',
         ownerOnly: true,
-        icon: icon(
-          <>
-            <rect height="14" rx="2" width="14" x="5" y="5" />
-            <path d="M9 9h6v6H9z" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" strokeLinecap="round" />
-          </>,
-        ),
+        icon: modelsIcon,
       },
       {
         // Whose accounts outside programs are currently borrowing, and whether

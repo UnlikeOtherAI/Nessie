@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import test from 'node:test'
+
+const source = readFileSync(
+  join(process.cwd(), 'src', 'pages', 'settings', 'OrganizationModelsPage.tsx'),
+  'utf8',
+)
+
+test('deployment model filters are server-side URL state', () => {
+  assert.match(source, /searchParams\.get\('model'\)/)
+  assert.match(source, /searchParams\.get\('provider'\)/)
+  assert.match(source, /useDeploymentModelCatalog\(true, filters, teamId\)/)
+  assert.match(source, /next\.delete\('cursor'\)/)
+  assert.doesNotMatch(source, /catalog\.items\.filter/)
+})
+
+test('the shared surface uses team-scoped catalogue controls when given a team', () => {
+  assert.match(source, /useSetDeploymentModelsEnabled\(teamId\)/)
+  assert.match(source, /useSetDeploymentModelEnabled\(teamId\)/)
+  assert.match(source, /eyebrow=\{teamId \? 'Team' : 'Organization'\}/)
+  assert.doesNotMatch(source, /Every model this deployment can run, as the model service/)
+})
+
+test('bulk availability acts on the filtered catalogue rather than shown rows', () => {
+  assert.match(source, /useSetDeploymentModelsEnabled\(teamId\)/)
+  assert.match(source, /setBulkEnabled\.mutate\(\s*\{ \.\.\.filters, enabled \}/)
+  assert.match(source, /across the full catalogue/)
+  assert.match(source, /not only the rows on this page/)
+  assert.doesNotMatch(source, /catalog\.items\.map\([^)]*setEnabled/)
+})
+
+test('bulk controls wait for the visible filter to be the applied filter', () => {
+  assert.match(source, /const filtersSettled = modelFilter === debouncedModelFilter/)
+  assert.match(source, /disabled=\{!filtersSettled \|\| !matchingCount/)
+})

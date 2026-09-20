@@ -38,25 +38,72 @@ export type InferenceModelTestResult = {
   reply?: string
 }
 
-export const useDeploymentModelCatalog = (enabled: boolean) =>
+export type DeploymentModelCatalogFilters = {
+  /** Case-insensitive partial Ledger provider key or display name. */
+  provider?: string
+  /** Case-insensitive partial Ledger model identifier. */
+  model?: string
+}
+
+export type SetDeploymentModelsEnabledResult = {
+  enabled: boolean
+  updatedCount: number
+}
+
+export const useDeploymentModelCatalog = (
+  enabled: boolean,
+  filters: DeploymentModelCatalogFilters = {},
+  teamId?: string,
+) =>
   usePagedList<DeploymentModelRecord>({
     enabled,
-    path: '/api/inference/model-catalog',
-    queryKey: inferenceModelKeys.catalog,
+    path: teamId
+      ? `/api/teams/${encodeURIComponent(teamId)}/inference/model-catalog`
+      : '/api/inference/model-catalog',
+    params: filters,
+    queryKey: teamId
+      ? inferenceModelKeys.teamCatalog(teamId)
+      : inferenceModelKeys.catalog,
+    ...(teamId ? { scope: teamId } : {}),
   })
 
-export const useSetDeploymentModelEnabled = () => {
+export const useSetDeploymentModelEnabled = (teamId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (input: { enabled: boolean; model: string; provider: string }) =>
-      apiClient.patch<DeploymentModelRecord>('/api/inference/model-catalog', input),
+      apiClient.patch<DeploymentModelRecord>(
+        teamId
+          ? `/api/teams/${encodeURIComponent(teamId)}/inference/model-catalog`
+          : '/api/inference/model-catalog',
+        input,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: inferenceModelKeys.all })
       // The Agent Designer's picker is the same decision seen from the other
       // side: a pair switched off here must stop being offerable there without
       // a reload.
+      void queryClient.invalidateQueries({ queryKey: agentKeys.models })
+    },
+  })
+}
+
+/** Apply one availability decision to the full live filtered Ledger catalogue. */
+export const useSetDeploymentModelsEnabled = (teamId?: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: DeploymentModelCatalogFilters & { enabled: boolean }) =>
+      apiClient.patch<SetDeploymentModelsEnabledResult>(
+        teamId
+          ? `/api/teams/${encodeURIComponent(teamId)}/inference/model-catalog/bulk`
+          : '/api/inference/model-catalog/bulk',
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: inferenceModelKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.models })
     },
   })
