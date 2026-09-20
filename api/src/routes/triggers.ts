@@ -13,21 +13,24 @@ import { emitAuditEvent } from '../services/audit.js'
 import { checkPolicy } from '../services/policy.js'
 import {
   createAgentTrigger,
-  deleteAgentTrigger,
   dispatchAgentTrigger,
   getAgentTrigger,
   listAgentTriggerActivity,
   listAgentTriggerDeliveries,
-  listAgentTriggers,
   listOrganizationTriggers,
   listScheduledTriggers,
-  updateAgentTrigger,
 } from '../services/triggers.js'
 import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import { captureScheduledLaunchOrigin } from '@nessie/team-admin'
+import {
+  deleteAgentTrigger as deleteSharedAgentTrigger,
+  getAgentTrigger as getSharedAgentTrigger,
+  listAgentTriggers as listSharedAgentTriggers,
+  updateAgentTrigger as updateSharedAgentTrigger,
+} from '@nessie/team-admin'
 
 // Read once at startup, exactly like the runtime signer itself: whether this
 // deployment signs Ledger calls is never a per-request or per-user decision.
@@ -61,7 +64,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const triggers = await listAgentTriggers(prisma, agentId)
+    const triggers = await listSharedAgentTriggers(prisma, agentId)
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })
 
@@ -187,7 +190,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       organizationId: actorContext.tenant.organizationId,
       triggerId,
     }
-    const trigger = await getAgentTrigger(prisma, scope)
+    const trigger = await getSharedAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -203,7 +206,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const updated = await updateAgentTrigger(prisma, scope, body)
+    const updated = await updateSharedAgentTrigger(prisma, scope, body)
     if (!updated) {
       sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply
@@ -236,7 +239,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       organizationId: actorContext.tenant.organizationId,
       triggerId,
     }
-    const trigger = await getAgentTrigger(prisma, scope)
+    const trigger = await getSharedAgentTrigger(prisma, scope)
     if (!trigger) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
@@ -247,7 +250,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const deleted = await deleteAgentTrigger(prisma, scope)
+    const deleted = await deleteSharedAgentTrigger(prisma, scope)
     if (!deleted) {
       sendApiError(
         reply,
