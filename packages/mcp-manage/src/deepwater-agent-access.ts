@@ -16,6 +16,7 @@ import {
 import { runWithDeepWaterTransitionLock } from './deepwater-transition-lock.js'
 import { synchronizeMcpAgentGrant } from './agent-tool-policy-registry.js'
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
 import { ensureBuiltinToolsRegistered } from '@nessie/team-admin'
 import {
@@ -350,7 +351,7 @@ export const setDeepWaterAgentAccess = async (
           agentId: input.agentId,
           organizationId: input.organizationId,
           update: async (currentPolicy, policyTx) => {
-            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: access.policyKeys }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
+            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: access.policyKeys.filter((key) => UUID_PATTERN.test(key)) }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
             for (const entry of entries) await synchronizeMcpAgentGrant(policyTx, entry as never, { agentId: input.agentId, enabled: true })
             const bundleMarker = deepWaterBundleMarkerKey(input.teamId)
             const next = mergeAgentToolPolicy(
@@ -394,7 +395,7 @@ export const setDeepWaterAgentAccess = async (
               currentTeamId: input.teamId,
               otherTeamBundles,
             })
-            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: revokeKeys }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
+            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: revokeKeys.filter((key) => UUID_PATTERN.test(key)) }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
             for (const entry of entries) await synchronizeMcpAgentGrant(policyTx, entry as never, { agentId: input.agentId, enabled: false })
             return mergeAgentToolPolicy(currentPolicy, revokeKeys, false)
           },
