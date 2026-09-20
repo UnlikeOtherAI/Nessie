@@ -66,7 +66,10 @@ export const runAgentTriggerDeleteTool = async (context: BuiltinToolRuntimeConte
 
 export const runAgentUnbindChannelTool = async (context: BuiltinToolRuntimeContext, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
   const { agentId, channelId } = z.object({ agentId: Id, channelId: Id }).parse(input)
-  const member = await requireAccessibleAgent(context, agentId)
+  const member = await resolveActingMember(context)
+  if (!member.isOrganizationAdmin) {
+    throw new Error(`Only an organisation owner or admin can unbind an agent (your role is "${member.role}").`)
+  }
   const channel = await loadChannelForAgentManagement(context.prisma, {
     channelId,
     isOrganizationAdmin: member.isOrganizationAdmin,
