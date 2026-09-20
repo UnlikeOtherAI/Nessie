@@ -137,7 +137,7 @@ const main = async () => {
     runIds.push(revokeRun.id)
     assert.equal(revokeRun.status, 'completed')
     const updated = await pipeline.prisma.agent.findUniqueOrThrow({ where: { id: fixture.scope.agentId } })
-    assert.equal(updated.toolPolicy?.browser_open, false)
+    assert.equal(updated.toolPolicy?.browser_open, undefined, 'revocation removes the explicit grant')
     assert.equal(updated.voiceName, 'Puck')
     await showReply(page, REVOKED_ANSWER)
     await page.reload()
