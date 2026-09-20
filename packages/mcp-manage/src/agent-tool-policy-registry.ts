@@ -68,6 +68,18 @@ type RegistryEntry = Prisma.ToolRegistryEntryGetPayload<{
   select: typeof registryEntrySelect
 }>
 
+export type McpAgentGrantDescriptor = Pick<
+  RegistryEntry,
+  | 'description'
+  | 'handlerKind'
+  | 'id'
+  | 'inputSchema'
+  | 'metadata'
+  | 'outputSchema'
+  | 'toolId'
+  | 'transportConfig'
+>
+
 const loadRegistryEntry = (
   prisma: RegistryDb,
   input: PolicyInput,
@@ -129,7 +141,7 @@ const grantHasDescriptorFingerprint = (config: unknown): boolean =>
   Object.hasOwn(stringRecord(config), MCP_TOOL_DESCRIPTOR_FINGERPRINT_KEY)
 
 /** Mirrors the worker's persisted-registry descriptor name resolution. */
-const mcpDescriptorName = (entry: RegistryEntry): string | null => {
+const mcpDescriptorName = (entry: McpAgentGrantDescriptor): string | null => {
   const configuredName = stringRecord(entry.transportConfig).toolName
   if (typeof configuredName === 'string' && configuredName.length > 0) {
     return configuredName
@@ -146,7 +158,7 @@ const mcpDescriptorName = (entry: RegistryEntry): string | null => {
  */
 export const synchronizeMcpAgentGrant = async (
   tx: Prisma.TransactionClient,
-  entry: RegistryEntry,
+  entry: McpAgentGrantDescriptor,
   input: Pick<PolicyInput, 'agentId' | 'enabled'>,
 ): Promise<void> => {
   if (entry.handlerKind !== 'mcp') return
