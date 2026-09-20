@@ -188,6 +188,9 @@ export const dispatchLocalInference = async (input: {
       if (result.remoteHost !== null || result.remoteModel !== null) {
         throw new LocalInferenceDispatchError('The local host reported a remote model.')
       }
+      if (result.finishReason === 'error') {
+        throw new LocalInferenceDispatchError('The local inference host reported an error.')
+      }
       return {
         finishReason: result.finishReason,
         invocations: [{
