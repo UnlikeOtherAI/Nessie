@@ -17,6 +17,7 @@ import {
 } from '../contracts/local-inference.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { authenticateLocalInferenceDaemonEnvelope } from '../services/local-inference-daemon-intake.js'
+import { controlLocalInferenceAttempt } from '../services/local-inference-attempt-control.js'
 import type { RouteDeps } from './types.js'
 
 export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -69,37 +70,14 @@ export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: 
       body: body.control, envelope: body.envelope, purpose: 'control',
     })
     if (!daemon) return unavailable(reply)
-    const state = await prisma.$transaction(async (tx) => {
-      if (!await daemon.stillAuthorized(tx)) return 'fenced' as const
-      const attempt = await tx.localInferenceAttempt.findFirst({
-        where: { id: body.control.attemptId, hostId: daemon.hostId },
-        select: { deadlineAt: true, dispatchFence: true, state: true },
-      })
-      if (!attempt || attempt.dispatchFence !== body.control.dispatchFence) return 'fenced' as const
-      if (attempt.state === 'cancelled') return 'cancelled' as const
-      if (attempt.state === 'completed' || attempt.state === 'failed' || attempt.state === 'expired') return 'fenced' as const
-      if (attempt.deadlineAt <= new Date()) {
-        await tx.localInferenceAttempt.updateMany({
-          where: { id: body.control.attemptId, state: { in: ['queued', 'leased', 'accepted'] } },
-          data: { failureReason: 'deadline_exceeded', state: 'expired', terminalAt: new Date() },
-        })
-        return 'expired' as const
-      }
-      const now = new Date()
-      await tx.localInferenceAttempt.updateMany({
-        where: {
-          id: body.control.attemptId,
-          dispatchFence: body.control.dispatchFence,
-          state: { in: ['leased', 'accepted'] },
-        },
-        data: {
-          acceptedAt: attempt.state === 'leased' ? now : undefined,
-          leaseExpiresAt: new Date(now.getTime() + 60_000),
-          state: 'accepted',
-        },
-      })
-      return 'active' as const
-    })
+    const state = await prisma.$transaction((tx) => controlLocalInferenceAttempt({
+      attemptId: body.control.attemptId,
+      dispatchFence: body.control.dispatchFence,
+      hostId: daemon.hostId,
+      now: new Date(),
+      stillAuthorized: () => daemon.stillAuthorized(tx),
+      tx,
+    }))
     return createApiResponse({ state })
   })
 
@@ -133,7 +111,9 @@ export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: 
         await tx.localInferenceFrame.create({
           data: {
             attemptId: attempt.id, digest, dispatchFence: attempt.dispatchFence,
-            encryptedData: Uint8Array.from(sealLocalInferenceAttempt(deps.encryptionKeyRing, { data: body.frame.data })),
+            encryptedData: Uint8Array.from(
+              sealLocalInferenceAttempt(deps.encryptionKeyRing, { data: body.frame.data }),
+            ),
             sequence: body.frame.sequence,
           },
         })

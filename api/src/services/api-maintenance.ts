@@ -14,7 +14,7 @@ import { requestRunCancellation } from './runs.js'
 
 /**
  * Horizontal-scaling invariant 2 (docs/standards/horizontal-scaling/overview.md, audit
- * 2.6): these four sweeps had no leader, so every API replica ran all four on
+ * 2.6): these maintenance sweeps had no leader, so every API replica ran each on
  * its own timer — N redundant DELETEs contending on the same rows every
  * minute. Each body is one indivisible pass rather than a batch of
  * independent rows, so the primitive is `withSweepLock`, and the lock names
@@ -96,9 +96,13 @@ const runPushSurfaceSweep = async (
   }
 }
 
-const runLocalInferenceTransportSweep = async (prisma: PrismaClient, lockPool: SweepLockPool): Promise<void> => {
+const runLocalInferenceTransportSweep = async (
+  prisma: PrismaClient,
+  lockPool: SweepLockPool,
+): Promise<void> => {
   try {
-    await withSweepLock(lockPool, LOCAL_INFERENCE_TRANSPORT_SWEEP_LOCK, () => sweepExpiredLocalInferenceTransport(prisma))
+    await withSweepLock(lockPool, LOCAL_INFERENCE_TRANSPORT_SWEEP_LOCK, () =>
+      sweepExpiredLocalInferenceTransport(prisma))
   } catch {
     console.error('[local-inference-sweep] Failed to erase expired transport data')
   }

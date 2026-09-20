@@ -33,6 +33,34 @@ const uuidFromDigest = (value: string): string => (
   `${value.slice(0, 8)}-${value.slice(8, 12)}-4${value.slice(13, 16)}-8${value.slice(17, 20)}-${value.slice(20, 32)}`
 )
 
+/** Lease timing and the current worker claim fence cannot identify a model call. */
+export const localInferenceRequestDigest = (input: Record<string, unknown>): string => {
+  const logicalRequest = { ...input }
+  delete logicalRequest.deadlineAt
+  delete logicalRequest.runFence
+  return digest(logicalRequest)
+}
+
+export const localInferenceInvocationId = (input: Record<string, unknown>): string => {
+  const requestDigest = localInferenceRequestDigest(input)
+  return uuidFromDigest(digest({ requestDigest, type: 'invocation' }))
+}
+
+export const localInferenceFrameEvent = (event: unknown): { error?: string; text?: string } => {
+  const parsed = event !== null && typeof event === 'object' && !Array.isArray(event)
+    ? event as Record<string, unknown>
+    : null
+  const text = parsed?.type === 'output_text.delta' && typeof parsed.text === 'string'
+    ? parsed.text
+    : undefined
+  const error = parsed?.type === 'response.error' && typeof parsed.message === 'string'
+    && parsed.message.length > 0 && parsed.message.length <= 200
+    ? parsed.message
+    : undefined
+  if (!text && !error) throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
+  return { ...(text ? { text } : {}), ...(error ? { error } : {}) }
+}
+
 /**
  * Durable local-device handoff.  The worker writes one sealed attempt then
  * waits on the receipt row; it never dials an endpoint or retries accepted
@@ -84,9 +112,13 @@ export const dispatchLocalInference = async (input: {
     modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1,
     runId: input.context.run.id, tools: input.tools,
   }
-  const requestDigest = digest(requestIdentity)
+  const requestDigest = localInferenceRequestDigest({
+    ...requestIdentity, deadlineAt: proposedDeadline.toISOString(), runFence: input.runFence,
+  })
   const attemptId = uuidFromDigest(digest({ requestDigest, type: 'attempt' }))
-  const invocationId = uuidFromDigest(digest({ requestDigest, type: 'invocation' }))
+  const invocationId = localInferenceInvocationId({
+    ...requestIdentity, deadlineAt: proposedDeadline.toISOString(), runFence: input.runFence,
+  })
   const request: LocalInferenceAttemptRequest = {
     ...requestIdentity, attemptId, deadlineAt: proposedDeadline.toISOString(), invocationId, runFence: input.runFence,
   }
@@ -133,19 +165,7 @@ export const dispatchLocalInference = async (input: {
       } catch {
         throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
       }
-      const parsed = event !== null && typeof event === 'object' && !Array.isArray(event)
-        ? event as Record<string, unknown>
-        : null
-      const text = parsed?.type === 'output_text.delta' && typeof parsed.text === 'string'
-        ? parsed.text
-        : null
-      const error = parsed?.type === 'response.error' && typeof parsed.message === 'string'
-        && parsed.message.length > 0 && parsed.message.length <= 200
-        ? parsed.message
-        : null
-      if (!text && !error) {
-        throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
-      }
+      const { error, text } = localInferenceFrameEvent(event)
       const acknowledged = await input.deps.prisma.localInferenceFrame.updateMany({
         where: { acknowledgedAt: null, id: frame.id },
         data: { acknowledgedAt: new Date() },
