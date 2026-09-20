@@ -41,6 +41,17 @@ pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
 /// Prove a private file is owned by the current account and its own DACL grants
 /// access only to that account and SYSTEM. Files normally inherit the safe ACEs
 /// from their protected parent, so inherited ACE flags are valid here.
+///
+/// "Owned by the current account" means the token user **or** the SID this
+/// token stamps on what it creates, which for an elevated process is the
+/// Administrators group. Windows chooses a new file's owner from the token, and
+/// nothing in the supervisor can ask it to choose otherwise, so requiring the
+/// token user alone rejected the supervisor's own writes whenever it ran
+/// elevated — pairing could not save its state at all. For an ordinary account
+/// the two SIDs are the same value, so the accepted set stays exactly one SID
+/// and nothing is widened for the case that matters. The DACL check is
+/// untouched either way: the file must still admit only the token user and
+/// SYSTEM.
 pub fn verify_owner_only_file(path: &str) -> Result<(), NativeError> {
     imp::verify_owner_only_file(path)
 }
@@ -82,11 +93,11 @@ mod imp {
     use windows_sys::Win32::Security::{
         CopySid, CreateWellKnownSid, EqualSid, GetAce, GetLengthSid, GetSecurityDescriptorControl,
         AdjustTokenPrivileges, GetTokenInformation, IsValidSid, LookupAccountNameW, LookupPrivilegeValueW,
-        LUID_AND_ATTRIBUTES, SID_NAME_USE, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TokenUser,
-        WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL,
+        LUID_AND_ATTRIBUTES, SID_NAME_USE, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TokenOwner,
+        TokenUser, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL,
         DACL_SECURITY_INFORMATION, INHERITED_ACE, OWNER_SECURITY_INFORMATION,
         PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE,
-        SE_DACL_PROTECTED, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
+        SE_DACL_PROTECTED, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_OWNER, TOKEN_QUERY, TOKEN_USER,
     };
     use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
@@ -144,6 +155,40 @@ mod imp {
             Err(NativeError::new(IO_FAILURE))
         } else {
             copy_sid(unsafe { (*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid })
+        };
+        unsafe { CloseHandle(token) };
+        sid
+    }
+
+    /// The SID Windows stamps as owner on objects **this token creates**.
+    ///
+    /// It is the token user for an ordinary account, and the Administrators
+    /// group for an elevated one, which is the whole reason this function
+    /// exists: a file the supervisor creates with an ordinary `open` is owned
+    /// by this SID, never by the token user as such. Reading it is what lets
+    /// the file check ask "did this account create this file?" instead of a
+    /// question Windows never promised to answer.
+    fn token_owner_sid() -> Result<OwnedSid, NativeError> {
+        let mut token: HANDLE = INVALID_HANDLE_VALUE;
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+            return Err(NativeError::new(IO_FAILURE));
+        }
+        let mut needed = 0_u32;
+        unsafe { GetTokenInformation(token, TokenOwner, std::ptr::null_mut(), 0, &mut needed) };
+        let mut buffer = vec![0_u8; needed.max(1) as usize];
+        let read = unsafe {
+            GetTokenInformation(
+                token,
+                TokenOwner,
+                buffer.as_mut_ptr().cast(),
+                buffer.len() as u32,
+                &mut needed,
+            )
+        };
+        let sid = if read == 0 {
+            Err(NativeError::new(IO_FAILURE))
+        } else {
+            copy_sid(unsafe { (*buffer.as_ptr().cast::<TOKEN_OWNER>()).Owner })
         };
         unsafe { CloseHandle(token) };
         sid
@@ -273,7 +318,7 @@ mod imp {
         }
         // Establishing and proving are the same command's job: a DACL that did
         // not take is indistinguishable from one never asked for.
-        verify_owner_only_for(path, &owner, false)
+        verify_owner_only_for(path, &owner, false, None)
     }
 
     pub fn secure_directory(path: &str) -> Result<(), NativeError> {
@@ -316,7 +361,17 @@ mod imp {
         true
     }
 
-    fn verify_owner_only_for(path: &str, user: &OwnedSid, allow_inherited: bool) -> Result<(), NativeError> {
+    /// `creator_owner` is the second SID an owner may be: the one this token
+    /// stamps on what it creates. It is `None` wherever the helper stamped the
+    /// owner itself — a directory it secured must be owned by exactly the SID
+    /// it wrote, and accepting a second answer there would hide a DACL that
+    /// never took.
+    fn verify_owner_only_for(
+        path: &str,
+        user: &OwnedSid,
+        allow_inherited: bool,
+        creator_owner: Option<&OwnedSid>,
+    ) -> Result<(), NativeError> {
         let system = local_system_sid()?;
         let mut owner: PSID = std::ptr::null_mut();
         let mut dacl: *mut ACL = std::ptr::null_mut();
@@ -342,7 +397,9 @@ mod imp {
             unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) } != 0;
         let owned = !owner.is_null()
             && unsafe { IsValidSid(owner) } != 0
-            && unsafe { EqualSid(owner, user.pointer()) } != 0;
+            && (unsafe { EqualSid(owner, user.pointer()) } != 0
+                || creator_owner
+                    .is_some_and(|creator| unsafe { EqualSid(owner, creator.pointer()) } != 0));
         let verdict = described
             && owned
             && (allow_inherited || control & SE_DACL_PROTECTED != 0)
@@ -355,12 +412,17 @@ mod imp {
         }
     }
 
+    /// A directory this helper secured, whose owner it stamped itself, so the
+    /// owner must be exactly the token user.
     pub fn verify_owner_only(path: &str) -> Result<(), NativeError> {
-        verify_owner_only_for(path, &current_user_sid()?, false)
+        verify_owner_only_for(path, &current_user_sid()?, false, None)
     }
 
+    /// A file the supervisor created with an ordinary `open`, so Windows — not
+    /// this helper — chose its owner, and chose the token's owner SID.
     pub fn verify_owner_only_file(path: &str) -> Result<(), NativeError> {
-        verify_owner_only_for(path, &current_user_sid()?, true)
+        let creator = token_owner_sid()?;
+        verify_owner_only_for(path, &current_user_sid()?, true, Some(&creator))
     }
 }
 
@@ -415,21 +477,11 @@ mod tests {
         secure_directory(secured.to_str().expect("a UTF-8 test path")).expect("securing succeeds");
         let file = secured.join("private.json");
         std::fs::write(&file, b"{}").expect("the inherited file must be writable");
-        // An elevated Windows test process can create a file owned by the
-        // Administrators group instead of its token user. Production rightly
-        // refuses that distinction, so stamp this fixture to its actual token
-        // account before proving the inherited DACL branch.
-        let account = std::process::Command::new("whoami")
-            .output()
-            .expect("whoami must be available on Windows");
-        assert!(account.status.success(), "whoami must identify the token user");
-        let account = String::from_utf8(account.stdout).expect("whoami output is UTF-8");
-        let set_owner = std::process::Command::new("icacls")
-            .arg(&file)
-            .args(["/setowner", account.trim()])
-            .output()
-            .expect("icacls must be available on Windows");
-        assert!(set_owner.status.success(), "icacls must stamp the token user as owner");
+        // Deliberately not stamped. An elevated test process creates this file
+        // owned by the Administrators group rather than by its token user, and
+        // so does the supervisor when it writes pairing state; a fixture that
+        // corrected the owner first was hiding the fact that production refused
+        // its own writes. The file is verified exactly as it was created.
         verify_owner_only_file(file.to_str().expect("a UTF-8 test path"))
             .expect("the inherited file DACL remains private");
         // The parent remains protected and valid: only this file overrides its
