@@ -57,11 +57,15 @@ Confirmed defects and contributing paths:
 3. Repair `tool_spec` classification without weakening the disclosure guard for
    content writes. Preserve allowed-tool filtering and test restricted/private
    conversation schema discovery and subsequent valid card creation.
-4. Make main output allocation reasoning/model-capability aware, with an adequate
-   reserve and bounded adaptive recovery when a provider truncates output. Respect
-   explicit operator caps, model context/output limits and run/organisation
-   budgets. Never execute incomplete tool calls or replay completed mutations.
-   Utility calls must retain their separate bounded budgets.
+4. Remove application-imposed output-token ceilings from agent responses,
+   including defaults and provider-adapter fallbacks that silently restore them.
+   Guide clear, concise, proportionate communication through system prompts;
+   never use a deterministic token cap as a verbosity control. Context admission
+   and real run/organisation spend budgets remain separate safeguards, without
+   silently translating them back into a response token ceiling. Retain bounded
+   recovery for provider-imposed truncation. Never execute incomplete tool calls
+   or replay completed mutations. Identify utility-only operational limits
+   separately from the main conversational path.
 5. Separate provider output exhaustion from run token exhaustion through result,
    checkpoint, event, continuation and UI metadata. Recover automatically where
    safe instead of returning the screenshot's manual Continue dead end. If a
@@ -73,7 +77,8 @@ Confirmed defects and contributing paths:
 6. Add durable regression coverage: owner Designer grants/revokes target access;
    non-owner, private, cross-org and unattended requests denied; DeepWater bundle
    and revocation invariants; every new tool exposed only on the intended surface;
-   private `tool_spec` and card flow; reasoning-only length then success; repeated
+   private `tool_spec` and card flow; main provider requests omit output-token
+   caps and include communication guidance; reasoning-only length then success; repeated
    length accurately classified; real budget exhaustion; checkpoint recovery with
    identity, cancellation, replay and bounded continuation. Run focused tests via
    Turbo with a dedicated migrated database and required builds/lint/typechecks.
