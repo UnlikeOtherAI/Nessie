@@ -86,7 +86,8 @@ export const dispatchLocalInference = async (input: {
   if (!messages) {
     throw new LocalInferenceDispatchError('unclassified_input')
   }
-  if (!input.deps.atRestEncryptionKeyRing) {
+  const atRestEncryptionKeyRing = input.deps.atRestEncryptionKeyRing
+  if (!atRestEncryptionKeyRing) {
     throw new LocalInferenceDispatchError('Local inference secure storage is unavailable.')
   }
   const current = await resolveRunLocalInferenceBinding(input.deps, input.context)
@@ -109,7 +110,7 @@ export const dispatchLocalInference = async (input: {
     bindingRevision: input.binding.revision,
     hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
     maxOutputTokens: input.maxOutputTokens, messages, modelDigest: input.binding.manifestDigest,
-    modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1,
+    modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1 as const,
     runId: input.context.run.id, tools: input.tools,
   }
   const requestDigest = localInferenceRequestDigest({
@@ -138,7 +139,7 @@ export const dispatchLocalInference = async (input: {
     await input.deps.prisma.localInferenceAttempt.create({
       data: {
         bindingId: input.binding.bindingId, deadlineAt: proposedDeadline, encryptedRequest: Uint8Array.from(
-          sealLocalInferenceAttempt(input.deps.atRestEncryptionKeyRing, request),
+          sealLocalInferenceAttempt(atRestEncryptionKeyRing, request),
         ), hostEpoch: input.binding.hostEpoch, hostId: input.binding.hostId,
         id: request.attemptId, invocationId, modelDigest: input.binding.manifestDigest,
         organizationId: input.context.channel.organizationId,
@@ -158,7 +159,7 @@ export const dispatchLocalInference = async (input: {
       let event: unknown
       try {
         const sealed = openLocalInferenceAttempt<{ data: string }>(
-          input.deps.atRestEncryptionKeyRing,
+          atRestEncryptionKeyRing,
           frame.encryptedData as Uint8Array,
         )
         event = JSON.parse(Buffer.from(sealed.data, 'base64url').toString('utf8')) as unknown
@@ -183,7 +184,7 @@ export const dispatchLocalInference = async (input: {
     })
     if (row?.state === 'completed' && row.encryptedResult) {
       const result = LocalInferenceResultSchema.parse(openLocalInferenceAttempt(
-        input.deps.atRestEncryptionKeyRing, row.encryptedResult as Uint8Array,
+        atRestEncryptionKeyRing, row.encryptedResult as Uint8Array,
       ))
       if (result.remoteHost !== null || result.remoteModel !== null) {
         throw new LocalInferenceDispatchError('The local host reported a remote model.')
