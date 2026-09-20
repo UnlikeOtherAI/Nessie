@@ -48,6 +48,12 @@ export type LocalInferenceEnvelopePurpose = z.infer<typeof LocalInferenceEnvelop
 export const LocalInferenceEnvelopeCoreSchema = z.object({
   bodyDigest: LocalInferenceDigestSchema,
   connectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  /**
+   * Present only for executor hosts. It pins the local-host request to the
+   * current executor daemon claim, so an older process with the same machine
+   * key is fenced immediately when the executor reconnects elsewhere.
+   */
+  executorConnectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/).optional(),
   hostId: z.string().uuid(),
   organizationId: z.string().uuid(),
   protocolVersion: z.literal(LOCAL_INFERENCE_PROTOCOL_VERSION),
@@ -180,6 +186,28 @@ export const LocalInferenceDaemonConnectionSchema = z.object({
   connectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/),
   serverTime: TimestampSchema,
 })
+
+/**
+ * An already-paired executor asks for its one local-inference host record
+ * through its daemon key.  This is deliberately not an enrollment API: it
+ * neither accepts a host label nor lets the daemon choose a custodian.
+ */
+export const LocalInferenceExecutorHostRequestSchema = z.object({
+  connectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  executorId: z.string().uuid(),
+  observedAt: TimestampSchema,
+  signature: LocalInferenceMachineSignatureSchema,
+}).strict()
+export type LocalInferenceExecutorHostRequest = z.infer<
+  typeof LocalInferenceExecutorHostRequestSchema
+>
+
+export const LocalInferenceExecutorHostSchema = z.object({
+  connectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  hostId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+}).strict()
+export type LocalInferenceExecutorHost = z.infer<typeof LocalInferenceExecutorHostSchema>
 
 export const LocalInferenceAttemptFrameSchema = z.object({
   attemptId: z.string().uuid(),

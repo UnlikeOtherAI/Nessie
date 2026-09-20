@@ -15,6 +15,9 @@ const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 const signedCore = (envelope: LocalInferenceEnvelopeCore): LocalInferenceEnvelopeCore => ({
   bodyDigest: envelope.bodyDigest,
   connectionEpoch: envelope.connectionEpoch,
+  ...(envelope.executorConnectionEpoch === undefined
+    ? {}
+    : { executorConnectionEpoch: envelope.executorConnectionEpoch }),
   hostId: envelope.hostId,
   organizationId: envelope.organizationId,
   protocolVersion: envelope.protocolVersion,

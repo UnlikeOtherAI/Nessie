@@ -22,6 +22,22 @@ type Transaction = Parameters<PrismaClient['$transaction']>[0] extends (
 
 const digest = (value: string): string => crypto.createHash('sha256').update(value).digest('hex')
 
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
+
+const executorMachineKey = (encoded: string): crypto.KeyObject | null => {
+  try {
+    const key = Buffer.from(encoded, 'base64url')
+    if (key.byteLength !== 32) return null
+    return crypto.createPublicKey({
+      format: 'der',
+      key: Buffer.concat([ED25519_SPKI_PREFIX, key]),
+      type: 'spki',
+    })
+  } catch {
+    return null
+  }
+}
+
 const policyLock = async (tx: Transaction, organizationId: string): Promise<void> => {
   await tx.$executeRaw`
     SELECT pg_advisory_xact_lock(
@@ -177,17 +193,39 @@ export const confirmLocalInferenceBinding = async (
     }),
     tx.localInferenceHost.findUnique({
       where: { id: input.hostId },
-      select: { publicKey: true, revokedAt: true },
+      select: {
+        custodianUserId: true, executorId: true, organizationId: true,
+        publicKey: true, revokedAt: true, transport: true,
+      },
     }),
   ])
-  if (!binding || !host || binding.hostId !== input.hostId || host.revokedAt || !host.publicKey) {
+  if (!binding || !host || binding.hostId !== input.hostId || host.revokedAt) {
+    throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The selected local host is no longer available.')
+  }
+  const publicKey = host.transport === 'desktop'
+    ? (host.executorId === null ? host.publicKey : null)
+    : host.transport === 'executor' && host.publicKey === null && host.executorId !== null
+      ? await tx.executor.findFirst({
+        where: {
+          id: host.executorId,
+          machinePublicKey: { not: null },
+          organizationId: host.organizationId,
+          pairingOwnerUserId: host.custodianUserId,
+          status: 'online',
+        },
+        select: { machinePublicKey: true },
+      }).then((executor) => executor?.machinePublicKey
+        ? executorMachineKey(executor.machinePublicKey)
+        : null)
+      : null
+  if (!publicKey) {
     throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The selected local host is no longer available.')
   }
   const signature = Buffer.from(input.signature, 'base64url')
   const valid = crypto.verify(
     null,
     signedConsentPayload(challenge.id, binding.id, binding.hostId),
-    host.publicKey,
+    publicKey,
     signature,
   )
   if (!valid) throw new LocalInferenceBindingError('SIGNATURE_INVALID', 'Local consent could not be verified.')

@@ -10,6 +10,10 @@ import {
   LocalInferenceDaemonConnectionSchema,
 } from '../contracts/local-inference.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import {
+  authorizeLocalInferenceDaemon,
+  executorLocalInferenceDaemonStillAuthorized,
+} from '../services/local-inference-daemon-auth.js'
 import type { RouteDeps } from './types.js'
 
 const challengeDigest = (challenge: string): string => crypto.createHash('sha256')
@@ -63,22 +67,21 @@ export const registerLocalInferenceDaemonClaimRoutes = (
     const parsed = LocalInferenceDaemonClaimBodySchema.safeParse(request.body)
     if (!parsed.success) return daemonUnavailable(reply)
     const body = parsed.data
-    const host = await prisma.localInferenceHost.findFirst({
-      where: { id: body.envelope.hostId, organizationId: body.envelope.organizationId, revokedAt: null },
-      select: { connectionEpoch: true, id: true, publicKey: true },
-    })
-    const verified = host?.publicKey
+    const authorization = await authorizeLocalInferenceDaemon(prisma, body.envelope)
+    const host = authorization?.host
+    const verified = authorization
       ? verifyLocalInferenceEnvelope({
-        body: { challenge: body.challenge }, envelope: body.envelope, machinePublicKey: host.publicKey,
+        body: { challenge: body.challenge }, envelope: body.envelope, machinePublicKey: authorization.machinePublicKey,
       })
       : { ok: false as const }
     const sentAt = Date.parse(body.envelope.sentAt)
     if (
-      !host || !verified.ok || body.envelope.purpose !== 'claim'
+      !host || !authorization || !verified.ok || body.envelope.purpose !== 'claim'
       || !Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > 30_000
       || BigInt(body.envelope.connectionEpoch) !== BigInt(host.connectionEpoch)
     ) return daemonUnavailable(reply)
     const nextEpoch = await prisma.$transaction(async (tx) => {
+      if (!await executorLocalInferenceDaemonStillAuthorized(tx, authorization)) return null
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtextextended(${`local-inference-host:${host.id}:claim`}::text, 0))
       `

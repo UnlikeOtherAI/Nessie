@@ -185,6 +185,7 @@ const EXECUTOR_DAEMON_SESSION_ROUTES = new Set([
   // frequently, but can stream several response frames, so the daemon-session
   // flood ceiling is the right shared IP protection after a signed claim.
   '/api/local-inference/daemon/claim',
+  '/api/local-inference/daemon/executor-host',
   '/api/local-inference/daemon/heartbeat',
   '/api/local-inference/daemon/attempts/poll',
   '/api/local-inference/daemon/attempts/frame',

@@ -3,11 +3,15 @@ import { dirname } from 'node:path'
 
 import { approveExecutorPairingOrigin } from '@nessie/schemas'
 
-import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
+import { claimExecutor, heartbeatExecutor } from './daemon.js'
+import { serveExecutor } from './daemon-server.js'
 import { describeExecutor } from './describe.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveDeepTestExecutionAdapter } from './deeptest-execution-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
+import { executorApi } from './api-client.js'
+import { signExecutorLocalInferenceConsent } from './local-inference-consent.js'
+import { connectExecutorLocalInference } from './local-inference-runtime.js'
 import {
   configureExecutorBrowserSandbox,
   configureExecutorCodexSandbox,
@@ -79,6 +83,7 @@ type ParsedCommand =
     vmHelperPath: string
   }
   | { kind: 'connect'; stateDir: string }
+  | { bindingId: string; challengeId: string; kind: 'local-inference-confirm'; stateDir: string }
   | { kind: 'describe'; stateDir: string }
   | { kind: 'deeptest-source'; sourceGrantFile: string }
   | { executionGrantFile: string; kind: 'deeptest-execution' }
@@ -126,6 +131,7 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor local-inference-confirm --state-dir <owner-only-path> --challenge <uuid> --binding <uuid>\n'
     + '       nessie-executor describe --state-dir <owner-only-path>\n'
     + '       nessie-executor deeptest-source --source-grant-file <absolute-owner-only-file>\n'
     + '       nessie-executor deeptest-execution --execution-grant-file <absolute-owner-only-file>\n'
@@ -372,6 +378,14 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
+  if (command === 'local-inference-confirm') {
+    return {
+      bindingId: option(args, '--binding'),
+      challengeId: option(args, '--challenge'),
+      kind: command,
+      stateDir: option(args, '--state-dir'),
+    }
+  }
   if (command === 'deeptest-source') {
     return { kind: command, sourceGrantFile: option(args, '--source-grant-file') }
   }
@@ -547,8 +561,26 @@ export const run = async (args: string[]): Promise<void> => {
     return
   }
   if (command.kind === 'connect') {
-    await claimExecutor(command.stateDir, state)
-    process.stdout.write('Executor daemon connection established.\n')
+    const live = await claimExecutor(command.stateDir, state)
+    await connectExecutorLocalInference(command.stateDir, live)
+    process.stdout.write('Executor and local inference daemon connections established.\n')
+    return
+  }
+  if (command.kind === 'local-inference-confirm') {
+    if (!state.localInference) {
+      throw new Error('Connect the executor before confirming local inference consent.')
+    }
+    const signature = signExecutorLocalInferenceConsent({
+      bindingId: command.bindingId,
+      challengeId: command.challengeId,
+      hostId: state.localInference.hostId,
+      machinePrivateKey: state.machinePrivateKey,
+    })
+    await executorApi.confirmLocalInference(state.apiBaseUrl, state.localInference.hostId, {
+      challengeId: command.challengeId,
+      signature,
+    })
+    process.stdout.write('Local inference consent confirmed. Save the Agent Designer change to activate it.\n')
     return
   }
   if (command.kind === 'heartbeat') {

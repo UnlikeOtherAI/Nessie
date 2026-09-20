@@ -7,6 +7,7 @@ export type ExecutorDaemonSignatureDomain =
   | 'browser_cookie_import.upload'
   | 'claim'
   | 'heartbeat'
+  | 'local_inference.host'
   | 'poll'
   | 'receipt'
 

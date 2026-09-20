@@ -33,7 +33,12 @@ import {
   LocalInferenceBindingError,
   prepareLocalInferenceBinding,
 } from '../services/local-inference-bindings.js'
+import {
+  authorizeLocalInferenceDaemon,
+  executorLocalInferenceDaemonStillAuthorized,
+} from '../services/local-inference-daemon-auth.js'
 import { registerLocalInferenceDaemonClaimRoutes } from './local-inference-daemon-claim.js'
+import { registerLocalInferenceExecutorHostRoute } from './local-inference-executor-host.js'
 import type { RouteDeps } from './types.js'
 
 const HostIdParamsSchema = z.object({ hostId: z.string().uuid() })
@@ -55,26 +60,41 @@ const sendBindingError = (reply: FastifyReply, error: unknown): boolean => {
 export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
   registerLocalInferenceDaemonClaimRoutes(app, deps)
+  registerLocalInferenceExecutorHostRoute(app, deps)
 
   const authenticateDaemonEnvelope = async (input: {
     body: unknown
-    envelope: { connectionEpoch: string; hostId: string; organizationId: string; purpose: string; sentAt: string; sequence: number }
+    envelope: {
+      connectionEpoch: string
+      executorConnectionEpoch?: string
+      hostId: string
+      organizationId: string
+      purpose: string
+      sentAt: string
+      sequence: number
+    }
     purpose: 'frames' | 'poll' | 'result'
-  }): Promise<{ hostId: string } | null> => {
-    const host = await prisma.localInferenceHost.findFirst({
-      where: { id: input.envelope.hostId, organizationId: input.envelope.organizationId, revokedAt: null },
-      select: { connectionEpoch: true, id: true, publicKey: true },
-    })
-    const verified = host?.publicKey
-      ? verifyLocalInferenceEnvelope({ body: input.body, envelope: input.envelope, machinePublicKey: host.publicKey })
+  }): Promise<{
+    authorization: NonNullable<
+      Awaited<ReturnType<typeof authorizeLocalInferenceDaemon>>
+    >
+    hostId: string
+  } | null> => {
+    const authorization = await authorizeLocalInferenceDaemon(prisma, input.envelope)
+    const host = authorization?.host
+    const verified = authorization
+      ? verifyLocalInferenceEnvelope({
+        body: input.body, envelope: input.envelope, machinePublicKey: authorization.machinePublicKey,
+      })
       : { ok: false as const }
     const sentAt = Date.parse(input.envelope.sentAt)
     if (
-      !host || !verified.ok || input.envelope.purpose !== input.purpose
+      !host || !authorization || !verified.ok || input.envelope.purpose !== input.purpose
       || !Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > 30_000
       || BigInt(input.envelope.connectionEpoch) !== BigInt(host.connectionEpoch)
     ) return null
     const accepted = await prisma.$transaction(async (tx) => {
+      if (!await executorLocalInferenceDaemonStillAuthorized(tx, authorization)) return false
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(
           hashtextextended(${`local-inference-host:${host.id}:${input.purpose}`}::text, 0)
@@ -92,7 +112,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       })
       return true
     })
-    return accepted ? { hostId: host.id } : null
+    return accepted ? { authorization, hostId: host.id } : null
   }
 
   app.get('/api/local-inference/hosts', async (request, reply) => {
@@ -170,25 +190,19 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   app.post('/api/local-inference/daemon/heartbeat', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LocalInferenceHeartbeatRequestSchema, request.body, reply)
     if (!body) return reply
-    const host = await prisma.localInferenceHost.findFirst({
-      where: {
-        id: body.envelope.hostId,
-        organizationId: body.envelope.organizationId,
-        revokedAt: null,
-      },
-      select: { connectionEpoch: true, id: true, organizationId: true, publicKey: true },
-    })
-    const verified = host?.publicKey
+    const authorization = await authorizeLocalInferenceDaemon(prisma, body.envelope)
+    const host = authorization?.host
+    const verified = authorization
       ? verifyLocalInferenceEnvelope({
           body: body.heartbeat,
           envelope: body.envelope,
-          machinePublicKey: host.publicKey,
+          machinePublicKey: authorization.machinePublicKey,
         })
       : { ok: false as const }
     const sentAt = Date.parse(body.envelope.sentAt)
     const fresh = Number.isFinite(sentAt) && Math.abs(Date.now() - sentAt) <= 30_000
     if (
-      !host
+      !host || !authorization
       || !verified.ok
       || !fresh
       || body.envelope.purpose !== 'heartbeat'
@@ -200,6 +214,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       return reply
     }
     const accepted = await prisma.$transaction(async (tx) => {
+      if (!await executorLocalInferenceDaemonStillAuthorized(tx, authorization)) return false
       // A separate purpose lane is deliberate: a long poll never serializes a
       // fresh heartbeat, while an old signed heartbeat cannot replay forever.
       await tx.$executeRaw`
@@ -248,6 +263,9 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     }
     const now = new Date()
     const attempt = await prisma.$transaction(async (tx) => {
+      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
+        return null
+      }
       const candidate = await tx.localInferenceAttempt.findFirst({
         where: {
           deadlineAt: { gt: now }, hostId: daemon.hostId,
@@ -299,6 +317,9 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     }
     const digest = crypto.createHash('sha256').update(data).digest('hex')
     const recorded = await prisma.$transaction(async (tx) => {
+      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
+        return 'fenced' as const
+      }
       const attempt = await tx.localInferenceAttempt.findFirst({
         where: { id: body.frame.attemptId, hostId: daemon.hostId, state: { in: ['leased', 'accepted'] } },
         select: { dispatchFence: true, id: true },
@@ -366,6 +387,9 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     }
     const digest = crypto.createHash('sha256').update(JSON.stringify(body.receipt.result)).digest('hex')
     const completed = await prisma.$transaction(async (tx) => {
+      if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
+        return false
+      }
       const attempt = await tx.localInferenceAttempt.findFirst({
         where: { id: body.receipt.attemptId, hostId: daemon.hostId },
         select: { dispatchFence: true, resultDigest: true, state: true },

@@ -129,10 +129,15 @@ type ApiCalls = {
   }>
 }
 
-const apiFor = (lease: LocalInferenceAttemptRequest | null, dispatchFence = 1): { api: LocalInferenceDaemonApi; calls: ApiCalls } => {
+const apiFor = (
+  lease: LocalInferenceAttemptRequest | null,
+  dispatchFence = 1,
+): { api: LocalInferenceDaemonApi; calls: ApiCalls } => {
   const calls: ApiCalls = { frames: [], heartbeats: [], results: [] }
   return {
     api: {
+      claim: async () => ({ connectionEpoch: '2', serverTime: new Date().toISOString() }),
+      issueChallenge: async () => ({ challenge: 'a'.repeat(43), expiresAt: new Date().toISOString() }),
       heartbeat: async (input) => {
         calls.heartbeats.push(input)
         return { serverTime: new Date().toISOString() }
@@ -240,12 +245,13 @@ test('a durable encrypted receipt is retried without dialing Ollama again', asyn
 test('the chat transport refuses a remote result before yielding an event', async () => {
   const controller = new AbortController()
   await assert.rejects(async () => {
-    for await (const _ of streamOllamaChat({
+    for await (const event of streamOllamaChat({
       attempt: attempt(),
       fetchImpl: ollama([{ done: true, message: {}, model: 'local:latest', remote_host: 'cloud.example' }]),
       origin: 'http://127.0.0.1:11434',
       signal: controller.signal,
     })) {
+      void event
       throw new Error('must not yield')
     }
   }, OllamaChatError)

@@ -124,6 +124,33 @@ test('a terminal receipt has a separate signing domain from a streamed frame', (
   }).ok, false)
 })
 
+test('the executor connection fence is signed and cannot be upgraded in transit', () => {
+  const keys = machineKeys()
+  const body = { attemptId: hostId }
+  const envelope = signLocalInferenceEnvelope({
+    body,
+    header: {
+      connectionEpoch: '3',
+      executorConnectionEpoch: '11',
+      hostId,
+      organizationId,
+      protocolVersion: 1,
+      purpose: 'poll',
+      sentAt: '2026-09-20T12:00:00.000Z',
+      sequence: 1,
+    },
+    machinePrivateKey: keys.machinePrivateKey,
+  })
+  assert.equal(verifyLocalInferenceEnvelope({
+    body, envelope, machinePublicKey: keys.machinePublicKey,
+  }).ok, true)
+  assert.equal(verifyLocalInferenceEnvelope({
+    body,
+    envelope: { ...envelope, executorConnectionEpoch: '12' },
+    machinePublicKey: keys.machinePublicKey,
+  }).ok, false)
+})
+
 test('discovery ordering is deterministic and refuses DNS or competing local daemons', () => {
   assert.deepEqual(orderedOllamaLoopbackEndpoints('http://127.0.0.1:11434'), [
     'http://127.0.0.1:11434',

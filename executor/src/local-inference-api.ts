@@ -11,6 +11,8 @@ type ApiEnvelopeRequest<TName extends string, TBody> = Record<TName, TBody> & {
   envelope: LocalInferenceSignedEnvelope
 }
 
+type LocalInferenceApiFetch = (url: string, init: RequestInit) => Promise<Response>
+
 export type LocalInferenceAttemptLease = {
   attempt: LocalInferenceAttemptRequest | null
   dispatchFence: number | null
@@ -30,6 +32,11 @@ export type LocalInferenceResultReceipt = {
 }
 
 export type LocalInferenceDaemonApi = {
+  claim: (input: { challenge: string; envelope: LocalInferenceSignedEnvelope }) => Promise<{
+    connectionEpoch: string
+    serverTime: string
+  }>
+  issueChallenge: (input: { hostId: string }) => Promise<{ challenge: string; expiresAt: string }>
   heartbeat: (
     input: ApiEnvelopeRequest<'heartbeat', { inventory: ObservedLocalModel[]; paused: boolean }>,
   ) => Promise<{ serverTime: string }>
@@ -48,7 +55,12 @@ export class LocalInferenceApiError extends Error {
 
 const endpoint = (baseUrl: string, path: string): string => {
   const base = new URL(baseUrl)
-  if (base.protocol !== 'https:') throw new Error('Local inference requires an HTTPS API origin.')
+  const developmentLoopback = process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API === '1'
+    && base.protocol === 'http:'
+    && ['127.0.0.1', '::1', 'localhost'].includes(base.hostname)
+  if (base.protocol !== 'https:' && !developmentLoopback) {
+    throw new Error('Local inference requires an HTTPS API origin.')
+  }
   return new URL(path, base).toString()
 }
 
@@ -74,10 +86,17 @@ const responseData = <T>(value: unknown): T => {
  */
 export const createLocalInferenceDaemonApi = (input: {
   apiBaseUrl: string
-  fetchImpl?: typeof fetch
+  fetchImpl?: LocalInferenceApiFetch
   requestTimeoutMs?: number
 }): LocalInferenceDaemonApi => {
-  const fetchImpl = input.fetchImpl ?? fetch
+  const fetchImpl = input.fetchImpl ?? ((url, init) => {
+    // The paired API origin is validated when executor state is created. This
+    // transport subsequently permits HTTPS only, apart from the explicit
+    // development-loopback switch above, so the generic SSRF transport cannot
+    // be used here (it rightly rejects loopback).
+    // eslint-disable-next-line no-restricted-globals -- constrained paired API transport
+    return fetch(url, init)
+  })
   const timeoutMs = input.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Local inference request timeout is invalid.')
 
@@ -116,6 +135,8 @@ export const createLocalInferenceDaemonApi = (input: {
   }
 
   return {
+    claim: (body) => post('/api/local-inference/daemon/claim', body),
+    issueChallenge: (body) => post('/api/local-inference/daemon/challenge', body),
     heartbeat: (body) => post('/api/local-inference/daemon/heartbeat', body),
     poll: (body) => post('/api/local-inference/daemon/attempts/poll', body),
     submitFrame: (body) => post('/api/local-inference/daemon/attempts/frame', body),

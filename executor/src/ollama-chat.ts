@@ -214,7 +214,7 @@ export const streamOllamaChat = async function* (input: {
       method: 'POST',
       signal: input.signal,
     })
-  } catch (error) {
+  } catch {
     if (input.signal.aborted) throw new OllamaChatError('cancelled')
     throw new OllamaChatError('ollama_unreachable')
   }

@@ -30,6 +30,7 @@ const MAX_OUTPUT_BYTES = 512 * 1024
 
 export type LocalInferenceHostIdentity = {
   connectionEpoch: string
+  executorConnectionEpoch?: string
   hostId: string
   machinePrivateKey: string
   organizationId: string
@@ -67,7 +68,10 @@ const deadlinePassed = (attempt: LocalInferenceAttemptRequest, now: Date): boole
   new Date(attempt.deadlineAt).valueOf() <= now.valueOf()
 )
 
-const matchesSelectedModel = (model: ObservedOllamaModel, attempt: LocalInferenceAttemptRequest): model is EligibleModel => (
+const matchesSelectedModel = (
+  model: ObservedOllamaModel,
+  attempt: LocalInferenceAttemptRequest,
+): model is EligibleModel => (
   isStructurallyLocalOllamaModel(model)
   && model.name === attempt.modelName
   && model.manifestDigest === attempt.modelDigest
@@ -333,6 +337,9 @@ export class LocalInferenceHostLoop {
       body,
       header: {
         connectionEpoch: this.dependencies.identity.connectionEpoch,
+        ...(this.dependencies.identity.executorConnectionEpoch === undefined
+          ? {}
+          : { executorConnectionEpoch: this.dependencies.identity.executorConnectionEpoch }),
         hostId: this.dependencies.identity.hostId,
         organizationId: this.dependencies.identity.organizationId,
         protocolVersion: LOCAL_INFERENCE_PROTOCOL_VERSION,
