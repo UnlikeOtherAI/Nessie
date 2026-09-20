@@ -30,3 +30,20 @@ voice setting remains unchanged.
 Service and worker regressions separately cover unauthorized callers, private
 and cross-organisation targets, consent boundaries, DeepWater bundle consistency,
 genuine budgets, and bounded repeated provider failure.
+
+## Recorded local verification
+
+The desktop and phone evaluation passed on 2026-09-20. The real API and worker
+executed schema lookup, inspection, browser grant, voice update and revocation;
+the scripted provider returned one empty, truncated 2,048-token response. The
+same run completed with a visible answer, no repeated mutations and no token
+budget exhaustion event. Screenshots were visually inspected in both layouts.
+
+The real-database DeepWater regression first failed against the original
+implementation because policy entries created no descriptor-bound grants. It
+now verifies all five MCP grants, stale descriptor rejection, re-grant and
+explicit revocation, alongside the builtin updater dependency.
+
+Local API tests that import the worker require an isolated encryption key ring,
+matching CI's test environment. This is test setup; production keys are never
+used for these evaluations.
