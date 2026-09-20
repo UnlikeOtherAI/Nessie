@@ -250,6 +250,8 @@ when one changes, the same turn updates it, not this section.
   threshold alerts, and the active-run lifecycle controls.
   Read [`docs/standards/tech-and-run-budgets.md`](docs/standards/tech-and-run-budgets.md)
   before writing code here.
+  Main response length is guided by the shared prompt, never an application
+  token ceiling; provider protocol requirements and real budgets are documented there.
 - **UOA owns the org structure, not just the people in it.** Where UOA SSO is
   configured, its organisation and team hierarchy maps **1:1** into Nessie: one
   UOA organisation is one Nessie `Organization` (bound by the unique

@@ -14,6 +14,9 @@ map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
+Agent response length is prompt-guided rather than application-capped; follow
+the run-budget standard linked from `AGENTS.md` for provider protocol limits.
+
 > **Rule zero — a capability is not done until a person can reach it.** A
 > feature nobody can navigate to counts as unfinished. The four checks and the
 > history behind each are in [`AGENTS.md`](AGENTS.md) → "Rule zero".
