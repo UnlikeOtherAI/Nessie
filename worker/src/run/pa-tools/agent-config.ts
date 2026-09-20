@@ -10,6 +10,7 @@ import {
   assertAgentEditAuthority,
   assertAgentModelSelection,
   generateAgentAvatar,
+  IN_TOOL_IMAGE_TIMEOUT_MS,
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
   loadAgentToolCatalog,
@@ -516,6 +517,9 @@ export const runAgentAvatarGenerateTool = async (
     },
     config: loadConfig().model,
     fileService: fileServiceFor(context.prisma),
+    // A redraw asked for in chat is a tool call, and a tool call that waits
+    // longer than the loop allows is killed without a reason to report.
+    imageTimeoutMs: IN_TOOL_IMAGE_TIMEOUT_MS,
     ...(args.instructions ? { instructions: args.instructions } : {}),
     ledgerIdentity: context.ledgerIdentity,
     modelClient: context.modelClient,

@@ -22,12 +22,14 @@ const IMAGE_MODEL = 'gpt-image-2'
 // pay for two renders in sequence. At 60s the second attempt was cut off
 // before it could answer, and the caller could not tell that from a refusal.
 const IMAGE_GENERATION_TIMEOUT_MS = 120_000
-// The create seam draws inside somebody else's budget — the worker gives a
-// tool call 75s (`TOOL_TIMEOUT_MS`, worker/src/run/run-budget.ts) and the HTTP
-// create route owes its caller a response — so its portrait gets a smaller
-// share of the wait. Out-living that budget buys no picture: the call around
-// it is killed first, and the agent is then created with nobody left to tell.
-const NEW_AGENT_IMAGE_TIMEOUT_MS = 45_000
+/**
+ * The share a portrait gets when it is drawn inside somebody else's budget: a
+ * tool call in an agent run, which the worker kills at 75s (`TOOL_TIMEOUT_MS`,
+ * worker/src/run/run-budget.ts). Out-living that budget buys no picture — the
+ * call around it is killed first, and whatever it was doing finishes with
+ * nobody left to tell. It gives up early and says why instead.
+ */
+export const IN_TOOL_IMAGE_TIMEOUT_MS = 45_000
 const MAX_GENERATED_IMAGE_BYTES = 25 * 1024 * 1024
 /** Ledger's own failure text, kept short enough to sit in one log line. */
 const MAX_FAILURE_EXCERPT_CHARS = 400
@@ -422,7 +424,9 @@ export const generateAvatarForNewAgent = async (input: {
       config: input.config,
       fileService: input.fileService,
       ...(input.imageRequest ? { imageRequest: input.imageRequest } : {}),
-      imageTimeoutMs: NEW_AGENT_IMAGE_TIMEOUT_MS,
+      // Both create paths take the tool-call share: one of them IS a tool
+      // call, and the HTTP route owes its caller a response either way.
+      imageTimeoutMs: IN_TOOL_IMAGE_TIMEOUT_MS,
       ledgerIdentity: input.ledgerIdentity,
       modelClient: input.modelClient,
       ...(input.style ? { style: input.style } : {}),
