@@ -373,8 +373,8 @@ export const runAgentToolCatalogTool = async (
   return {
     inputSummary: needle ? `query="${args.query}"` : 'all',
     outputPreview: [
-      `Tools you can give an agent here (${togglable.length}), `
-      + `and ${restricted.length} you cannot.`,
+      `${togglable.length} ordinary tool controls and ${restricted.length} `
+      + 'special-access or unavailable tools are listed below.',
       ...sections,
       formatSection('Special access and unavailable tools', restricted.map(describeRestrictedEntry)),
       catalogue.connectorCount === 0
