@@ -28,6 +28,8 @@ const executorDirectory = resolve(packagingDirectory, '../..')
 const repositoryDirectory = resolve(executorDirectory, '..')
 const outputDirectory = resolve(repositoryDirectory, 'dist')
 const stagingDirectory = join(outputDirectory, 'nessie-executor-windows')
+/** The installer's own artwork and licence, which are not staged payload. */
+const assetsDirectory = join(packagingDirectory, 'assets')
 
 /**
  * The WiX major this authoring targets. WiX is a .NET global tool, so the
@@ -37,12 +39,22 @@ const stagingDirectory = join(outputDirectory, 'nessie-executor-windows')
  */
 const WIX_VERSION = '5.0.2'
 
+/**
+ * The WiX dialog set this package's UI comes from, pinned to the same major as
+ * the toolset: its dialogs and its variable names both change between majors.
+ * It is a separate install from the toolset itself, so the message below names
+ * the exact command rather than leaving a person to discover it from a build
+ * error about an unknown `ui:WixUI` element.
+ */
+const UI_EXTENSION = `WixToolset.UI.wixext/${WIX_VERSION}`
+
 const requireWindows = () => {
   if (process.platform !== 'win32') {
     throw new Error(
       'The Nessie Executor MSI is built on Windows. It needs the MSVC toolchain for its two Rust '
       + 'binaries, a Windows Node 22 to copy as the packaged runtime, and the WiX toolset '
-      + `(dotnet tool install --global wix --version ${WIX_VERSION}). `
+      + `(dotnet tool install --global wix --version ${WIX_VERSION}) `
+      + `with its UI extension (wix extension add --global ${UI_EXTENSION}). `
       + `This host is ${process.platform}.`,
     )
   }
@@ -202,6 +214,12 @@ await run('wix', [
   'build',
   join(packagingDirectory, 'nessie-executor.wxs'),
   '-arch', 'x64',
+  // The dialog set, its two bitmaps, the licence and the Apps & features icon.
+  // Without the extension the package still builds, but installs through
+  // Windows Installer's bare progress bar and a system dialog with an OK
+  // button, which is not a product.
+  '-ext', UI_EXTENSION,
+  '-bindpath', `Assets=${assetsDirectory}`,
   '-d', `Version=${version}`,
   '-d', `StagingDir=${stagingDirectory}`,
   '-o', packagePath,

@@ -70,6 +70,21 @@ pub fn secure_directory(helper: &Path, path: &Path) -> Result<(), String> {
     run(helper, "secure-directory", path)
 }
 
+/// Establishes a directory the **service account** owns, for the installer's
+/// one bootstrap call.
+///
+/// Windows Installer runs that call as SYSTEM, before the service has ever
+/// started, so `secure-directory` — which owns the directory to whoever is
+/// running — would hand the state root to SYSTEM and lock the service account
+/// out of its own state. `secure-service-directory` names the service's virtual
+/// account instead, which is why the two are separate commands rather than one
+/// with a flag.
+pub fn secure_service_directory(helper: &Path, path: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(path)
+        .map_err(|_| "Nessie Executor could not create its state directory.".to_owned())?;
+    run(helper, "secure-service-directory", path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_helper_answer, HelperVerdict};
