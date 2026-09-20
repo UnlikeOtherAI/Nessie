@@ -80,6 +80,7 @@ dbTest('protected access revalidates owner, tenant, connector visibility, execut
   const otherUserId = randomUUID()
   const agentId = randomUUID()
   const foreignAgentId = randomUUID()
+  const personalAssistantChannelId = randomUUID()
   const projectId = randomUUID()
   const teamId = randomUUID()
   const privateChannelId = randomUUID()
@@ -110,6 +111,13 @@ dbTest('protected access revalidates owner, tenant, connector visibility, execut
       id: privateChannelId, label: 'private connector channel', organization: { connect: { id: organizationId } },
       project: { connect: { id: projectId } }, team: { connect: { id: teamId } }, slug: `private-${randomUUID()}`, visibility: 'private',
     } })
+    const personalAssistantChannel = await prisma.channel.create({ data: {
+      dmKey: `pa:${organizationId}:${ownerUserId}`, id: personalAssistantChannelId, label: 'Personal Assistant',
+      organization: { connect: { id: organizationId } }, project: { connect: { id: projectId } },
+      team: { connect: { id: teamId } }, type: 'dm', visibility: 'private',
+    } })
+    await prisma.channelMember.create({ data: { channelId: personalAssistantChannel.id, userId: ownerUserId } })
+    await prisma.agentBinding.create({ data: { agentId, channelId: personalAssistantChannel.id, principalUserId: ownerUserId } })
 
     const catalogue = await catalogEntry(prisma, { organizationId, userId: ownerUserId })
     const ownTool = await protectedMcpTool(prisma, { catalogEntryId: catalogue.id, installedBy: ownerUserId, label: 'Own private MCP', organizationId, scopeId: ownerUserId, scopeType: 'user' })
@@ -137,7 +145,7 @@ dbTest('protected access revalidates owner, tenant, connector visibility, execut
     assert.deepEqual(published, ['agent.updated'])
     assert.equal(await prisma.auditLog.count({ where: { action: 'agent.tool_access.updated', organizationId, resourceId: agentId } }), 1)
     const current = await runAgentToolAccessInspectTool(ownerContext, { agentId })
-    assert.match(current.outputPreview, /Own private MCP.*granted/)
+    assert.match(current.outputPreview, /^- Own private MCP \| registryId=.+ \| granted$/m)
     assert.doesNotMatch(current.outputPreview, /Other private MCP|Unjoined channel MCP|Executor controlled/)
 
     await prisma.toolRegistryEntry.update({ where: { id: ownTool.id }, data: { description: 'Descriptor changed after grant' } })
