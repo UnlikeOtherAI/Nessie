@@ -18,6 +18,7 @@ pnpm --filter @nessie/runtime exec node --test --import tsx test/local-inference
 pnpm --filter @nessie/admin exec node --test --import tsx test/local-inference-run-restart.test.ts
 pnpm --filter @nessie/local-inference-host exec node --test --import tsx test/protocol.test.ts
 pnpm --filter @nessie/worker exec node --test --import tsx src/run/execute/local-inference-binding.test.ts
+cargo test --manifest-path desktop/src-tauri/Cargo.toml --lib local_inference
 ```
 
 Results on 2026-09-20:
@@ -40,6 +41,18 @@ Results on 2026-09-20:
   binding revision/host epoch tuple and rejects a conflicting retry.
 - `run-inference.test.ts`: 6 passed — a `local_device` pin is rejected at the
   provider boundary rather than resolving through the Ledger/cloud route.
+- Desktop `local_inference`: 4 passed on Windows — native controls reject
+  document/foreign-origin callers, release origins require TLS, a protected
+  machine-key rotation advances both local fences, and the enrollment export is
+  a public Ed25519 SPKI PEM only.
+
+The direct Desktop bridge uses DPAPI for the current Windows user and native
+Keychain/Secret Service stores on macOS/Linux; it has no plaintext fallback.
+It creates or rotates its key only after an OS-native confirmation, stops on
+Desktop exit, and exposes no general process or fetch command. The native-only
+signed canonical consent-display endpoint and the signed direct host loop are
+not available yet, so the bridge deliberately does not accept webview-supplied
+consent fields or claim that hosting has started.
 
 The agent detail header consumes the server-derived availability projection only
 when the record has a local binding. It reuses `PresenceBadge` for
