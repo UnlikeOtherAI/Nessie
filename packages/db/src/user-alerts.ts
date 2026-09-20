@@ -221,5 +221,23 @@ export const visibleUserAlertWhere = (input: {
         },
       },
     },
+    {
+      // Local inference is a private machine capability, not organisation
+      // telemetry. The linked host proves both the exact recipient and the
+      // recovery scope on every bell read; an old row cannot outlive a
+      // custody transfer or be displayed to an administrator who merely has
+      // broad organisation access. A deliberate pause is not a fault and is
+      // excluded by the writer, while a repaired host clears healthReason and
+      // makes this alert disappear without a second delete path.
+      kind: 'local_inference_health',
+      localInferenceHost: {
+        is: {
+          custodianUserId: input.userId,
+          healthReason: { not: null },
+          organizationId: input.organizationId,
+          revokedAt: null,
+        },
+      },
+    },
   ],
 })

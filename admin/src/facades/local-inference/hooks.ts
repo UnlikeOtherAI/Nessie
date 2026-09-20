@@ -7,6 +7,7 @@ export type LocalInferenceHost = {
   id: string
   lastSeenAt: string | null
   models: Array<{ manifestDigest: string; name: string }>
+  paused: boolean
   status: 'consented_pending_activation' | 'needs_rebinding' | 'pending' | 'revoked' | 'active' | 'unconfigured'
   transport: 'desktop' | 'executor'
 }
@@ -27,7 +28,7 @@ export const useLocalInferenceHostAction = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: { action: 'pause' | 'resume' | 'revoke'; hostId: string }) =>
-      apiClient.post(`/api/local-inference/hosts/${input.hostId}/${input.action}`),
+      apiClient.post(`/api/local-inference/hosts/${input.hostId}/${input.action}`, {}),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: localInferenceKeys.all }),
   })
 }

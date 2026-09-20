@@ -125,6 +125,7 @@ export const LocalInferenceHostSchema = z.object({
   id: z.string().uuid(),
   lastSeenAt: TimestampSchema.nullable(),
   models: z.array(ObservedLocalModelSchema).max(100),
+  paused: z.boolean(),
   status: LocalInferenceBindingStatusSchema.or(z.literal('unconfigured')),
   transport: LocalInferenceTransportSchema,
 })

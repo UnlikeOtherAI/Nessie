@@ -48,6 +48,8 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   boardSourceId: alert.boardSourceId ?? null,
   workflowRunId: alert.workflowRunId ?? null,
   callId: alert.callId ?? null,
+  localInferenceHostId: alert.localInferenceHostId ?? null,
+  localInferenceBindingId: alert.localInferenceBindingId ?? null,
   metadata: alertMetadata(alert),
   actorUserId: alert.actorUserId,
   actorAgentId: alert.actorAgentId,

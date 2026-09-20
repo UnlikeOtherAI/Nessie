@@ -2569,6 +2569,10 @@ model UserAlert {
   automaticMembershipRule   AutomaticMembershipRule? @relation("AutomaticMembershipHealthAlert", fields: [automaticMembershipRuleId], references: [id], onDelete: Cascade)
   boardSource               BoardSource?             @relation("BoardSourceHealthAlert", fields: [boardSourceId], references: [id], onDelete: Cascade)
   workflowRun               WorkflowRun?             @relation("WorkflowRunFailureAlert", fields: [workflowRunId], references: [id], onDelete: Cascade)
+  // This relation is deliberately host-only: the custodian is the sole
+  // recipient of local device health, and a binding id is supplemental
+  // context rather than a second authority path.
+  localInferenceHost        LocalInferenceHost?      @relation("LocalInferenceHealthAlert", fields: [localInferenceHostId], references: [id], onDelete: Cascade)
   actorUser                 User?                    @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent                Agent?                   @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -8364,6 +8368,7 @@ model LocalInferenceHost {
   healthRevision           Int                       @default(0) @map("health_revision")
   createdAt                DateTime                  @default(now()) @map("created_at")
   updatedAt                DateTime                  @updatedAt @map("updated_at")
+  userAlerts               UserAlert[]               @relation("LocalInferenceHealthAlert")
 
   @@index([organizationId, custodianUserId])
   @@index([organizationId, lastSeenAt])

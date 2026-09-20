@@ -35,7 +35,8 @@ import type { RouteDeps } from './types.js'
 
 /** Owner-host-only surfaces. Browser sessions may list/select their own host;
  * native daemon confirmation remains signature-proven and cannot be replaced
- * with a session cookie. */
+ * with a session cookie. The status projection is intentionally derived from
+ * current host and binding facts, never a browser-maintained cache. */
 export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
   registerLocalInferenceDaemonClaimRoutes(app, deps)
@@ -110,6 +111,31 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
         pausedAt: true, revokedAt: true, transport: true,
       },
     })
+    const bindings = rows.length === 0 ? [] : await prisma.agentLocalInferenceBinding.findMany({
+      where: {
+        hostId: { in: rows.map((host) => host.id) },
+        organizationId: actor.tenant.organizationId,
+        status: { not: 'revoked' },
+      },
+      select: { hostId: true, status: true },
+    })
+    const statusPriority = {
+      active: 4,
+      consented_pending_activation: 3,
+      needs_rebinding: 2,
+      pending: 1,
+    } as const
+    const bindingStatus = new Map<string, keyof typeof statusPriority>()
+    for (const binding of bindings) {
+      // Prisma's enum type keeps `revoked` even though the query excludes it.
+      // Do not let a type assertion turn a future query change into an invalid
+      // status projection.
+      if (binding.status === 'revoked') continue
+      const current = bindingStatus.get(binding.hostId)
+      if (!current || statusPriority[binding.status] > statusPriority[current]) {
+        bindingStatus.set(binding.hostId, binding.status)
+      }
+    }
     const now = Date.now()
     return createApiResponse(LocalInferenceHostListSchema.parse({
       hosts: rows.map((host) => ({
@@ -119,10 +145,11 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
         id: host.id,
         lastSeenAt: host.lastSeenAt?.toISOString() ?? null,
         models: Array.isArray(host.inventory) ? host.inventory : [],
-        status: host.revokedAt ? 'revoked' : 'unconfigured',
+        paused: host.pausedAt !== null,
+        status: host.revokedAt ? 'revoked' : bindingStatus.get(host.id) ?? 'unconfigured',
         transport: host.transport,
       })),
-      meta: { hasMore: false, total: rows.length },
+      meta: { hasMore: false, nextCursor: null, prevCursor: null, total: rows.length },
     }))
   })
 
@@ -219,7 +246,11 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
           inventory: body.heartbeat.inventory,
           inventoryObservedAt: new Date(),
           lastSeenAt: new Date(),
-          pausedAt: body.heartbeat.paused ? new Date() : null,
+          // A device may always pause itself, including while it is offline.
+          // Only the custodian's explicit resume route clears that pause: an
+          // old or restarted daemon claiming `paused: false` cannot silently
+          // reverse the owner's decision.
+          ...(body.heartbeat.paused ? { pausedAt: new Date() } : {}),
         },
       })
       return true
@@ -246,6 +277,14 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       if (!daemon.authorization || !await executorLocalInferenceDaemonStillAuthorized(tx, daemon.authorization)) {
         return null
       }
+      // Re-read this owner-controlled stop at the leasing boundary. The
+      // daemon's envelope was authenticated before the transaction, so a
+      // concurrent pause must still win over a queued prompt.
+      const active = await tx.localInferenceHost.findFirst({
+        where: { id: daemon.hostId, pausedAt: null, revokedAt: null },
+        select: { id: true },
+      })
+      if (!active) return null
       const candidate = await tx.localInferenceAttempt.findFirst({
         where: {
           deadlineAt: { gt: now }, hostId: daemon.hostId,

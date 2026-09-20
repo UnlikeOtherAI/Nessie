@@ -215,6 +215,16 @@ use the existing cursor/limit/total schema, with limit at most 100.
 | `POST /api/local-inference/daemon/frames` | Signed attempt id/fence, sequence range, bounded deltas or terminal result/usage; duplicates accepted only with identical digest. Reply cumulatively acknowledges and grants byte credit. |
 | `POST /api/local-inference/daemon/goodbye` | Signed current epoch; sets that connection unavailable without revoking consent. Delayed old-epoch goodbye cannot disconnect a new session. |
 
+Local host health uses the ordinary durable alert substrate, not a new device
+notification channel. The reader validates every row against the current
+`LocalInferenceHost`: it is visible only to that host's current custodian in
+the same organisation while a non-paused repairable health reason remains.
+The bell deliberately carries no hostname, model name, or raw failure detail;
+its recovery link opens that exact host in **Connected accounts → AI inference
+provider → Local Ollama**. The shared reader/parser and owner-only recovery
+surface land before a health writer, so a rolling deployment cannot emit a
+kind older API/admin replicas reject.
+
 Worker dispatch calls an injected domain service, not its own HTTP route.
 Each request carries `protocolVersion`, attempt/invocation/run ids, host and
 binding ids/revisions, model tag+digest, run/host fences, deadline, maximum

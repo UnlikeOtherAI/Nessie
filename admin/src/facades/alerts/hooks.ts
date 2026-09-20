@@ -149,6 +149,13 @@ export const useAlertEvents = (): void => {
 export const getAlertLink = (
   alert: UserAlertRecord,
 ): { to: string; state?: { highlightCallId?: string; highlightMessageId?: string } } | null => {
+  if (alert.kind === 'local_inference_health' && alert.localInferenceHostId) {
+    // The explicit host fragment is an in-context repair doorway, rather than
+    // a generic settings landing page that makes the custodian search their
+    // own device list. The inference tab is also required: Connections opens
+    // on email by default.
+    return { to: `/settings/connections?tab=inference#local-inference-host-${alert.localInferenceHostId}` }
+  }
   if (alert.kind === 'trigger_health' && alert.triggerId) {
     // The Triggers page selects by hash, so the row opens the schedule that
     // stopped rather than a list the reader has to search.
