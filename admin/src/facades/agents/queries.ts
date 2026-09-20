@@ -103,7 +103,7 @@ export const useAgentModelOptions = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentModelOption[]>({
-    queryKey: [...agentKeys.models, agentId ?? 'create'],
+    queryKey: agentKeys.modelOptions(agentId),
     queryFn: () => apiClient.get(
       agentId
         ? `/api/agents/models?agentId=${encodeURIComponent(agentId)}`
