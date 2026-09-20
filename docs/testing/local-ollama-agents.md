@@ -47,6 +47,13 @@ currently cannot complete in this checkout because the pre-existing private
 `@unlikeotherai/billing-statement-protocol` dependency is unavailable; its
 errors are confined to billing files, not the Local Ollama components.
 
+On 2026-09-20 an isolated `pnpm dev` attempt with `NESSIE_API_PORT=5654` and
+`NESSIE_ADMIN_PORT=5655` did not reach either health check: the nodemon and
+Vite processes stayed live but neither port bound. They were stopped after the
+verified failed checks, without touching another worktree. Consequently there
+are no Playwright screenshots yet; visual verification remains a release
+blocker rather than a claimed pass.
+
 ## Required release-gate coverage
 
 The complete release suite must additionally run with `DATABASE_URL` explicitly
