@@ -93,3 +93,22 @@ Confirmed defects and contributing paths:
 Kimix independently verifies these findings and plan before Terra implements.
 Terra owns implementation, regression tests, and self-review in its own worktree;
 the orchestrator reviews and integrates the completed work and ships one PR.
+
+## Provider protocol verification
+
+Live Kimi Coding API probes on 2026-09-20 used a synthetic connectivity prompt,
+without organisation or conversation content. The `/coding/v1/models` response
+advertised `context_length: 1048576` for `kimi-for-coding`, but no output maximum.
+Identical Messages requests produced these results:
+
+| Request output field | HTTP result | Provider stop | Actual output tokens |
+| --- | --- | --- | --- |
+| Omitted `max_tokens` | 400 | Invalid request | None |
+| `max_tokens: 32` | 200 | `max_tokens` | 32 |
+| Advertised context capacity, `max_tokens: 1048576` | 200 | `end_turn` | 48 |
+
+Consequently, protocols that require this field must receive provider-advertised
+capacity, rather than a Nessie verbosity allowance. Other main conversational
+requests omit it. Do not invent a static Kimi output limit or disable working
+Kimi conversations because the provider reports context capacity rather than a
+separate output maximum. The ordinary system prompt governs communication.
