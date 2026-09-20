@@ -40,6 +40,7 @@ export default defineConfig(({ command, mode }) => {
   const includeChannelAgentControlsFixture =
     env.NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE === '1'
   const includeExecutorLocalMcpFixture = env.NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE === '1'
+  const includeLocalOllamaAgentsFixture = env.NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
 
@@ -57,7 +58,8 @@ export default defineConfig(({ command, mode }) => {
     || includeAgentProposalCardFixture
     || includeChannelAgentControlsFixture
     || includeVisibilityAffordancesFixture
-    || includeExecutorLocalMcpFixture ? {
+    || includeExecutorLocalMcpFixture
+    || includeLocalOllamaAgentsFixture ? {
     build: {
       rollupOptions: {
         input: {
@@ -79,6 +81,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeExecutorLocalMcpFixture ? {
             executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),
+          } : {}),
+          ...(includeLocalOllamaAgentsFixture ? {
+            localOllamaAgents: resolve(__dirname, 'e2e/local-ollama-agents/index.html'),
           } : {}),
         },
       },

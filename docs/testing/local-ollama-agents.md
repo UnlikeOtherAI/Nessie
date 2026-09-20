@@ -97,3 +97,24 @@ Ollama installation. A real-device check is read-only and only follows product
 consent: list the selected literal loopback endpoint and make the bounded
 synthetic no-op inference/tool probe. This record intentionally makes no claim
 that a real installed model was exercised.
+
+## Durable browser evidence
+
+Run the deterministic headless component/API-boundary proof with the worktree's
+configured ports:
+
+```powershell
+pnpm --filter @nessie/admin test:e2e:local-ollama-agents
+```
+
+It covers the browser's no-scan doorway and friendly online/offline/unknown
+states, shared Connections/executor host controls, exact model-binding approval
+with Save-only activation, list/detail availability and editable team versus
+inherited locked-person policy. It also checks keyboard reachability at phone
+width. Screenshots are written to `e2e/screenshots/local-ollama-agents/` and
+uploaded by `Browser Suites` as `local-ollama-agents-screenshots`.
+
+The fixture is preview-only under `NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE=1`
+and never appears in an ordinary production bundle. It exercises real shared
+admin components over deterministic API responses; it intentionally does not
+claim a live Ollama, native shell, executor or UOA integration check.
