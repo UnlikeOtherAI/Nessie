@@ -4,12 +4,24 @@ import {
   LocalInferenceAttemptPollSchema,
   LocalInferenceAttemptResultReceiptSchema,
   LocalInferenceSignedEnvelopeSchema,
+  LocalInferenceDaemonChallengeSchema,
+  LocalInferenceDaemonConnectionSchema,
   LocalInferenceHostListSchema,
   ObservedLocalModelSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
 export { AgentAvailabilityProjectionSchema, LocalInferenceHostListSchema }
+export { LocalInferenceDaemonChallengeSchema, LocalInferenceDaemonConnectionSchema }
+
+export const LocalInferenceDaemonChallengeBodySchema = z.object({
+  hostId: z.string().uuid(),
+}).strict()
+
+export const LocalInferenceDaemonClaimBodySchema = z.object({
+  challenge: z.string().regex(/^[A-Za-z0-9_-]{32,256}$/),
+  envelope: LocalInferenceSignedEnvelopeSchema,
+}).strict()
 
 export const EnrollLocalInferenceHostBodySchema = z.object({
   displayLabel: z.string().trim().min(1).max(80),

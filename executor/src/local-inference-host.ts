@@ -317,7 +317,7 @@ export class LocalInferenceHostLoop {
 
   private async submitReceipt(receipt: JournalResultReceipt): Promise<void> {
     const apiReceipt: ApiResultReceipt = receipt
-    await this.dependencies.api.submitResult({ envelope: this.envelope('frames', apiReceipt), receipt: apiReceipt })
+    await this.dependencies.api.submitResult({ envelope: this.envelope('result', apiReceipt), receipt: apiReceipt })
     await this.dependencies.journal.acknowledge(receipt)
   }
 

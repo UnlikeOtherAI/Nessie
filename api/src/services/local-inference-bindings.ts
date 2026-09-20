@@ -167,7 +167,7 @@ export const confirmLocalInferenceBinding = async (
     where: { id: input.challengeId, expiresAt: { gt: new Date() } },
     select: { bindingId: true, consumedAt: true, hostId: true, id: true },
   })
-  if (!challenge || challenge.hostId !== input.hostId) {
+  if (!challenge || !challenge.bindingId || challenge.hostId !== input.hostId) {
     throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The local consent request is no longer valid.')
   }
   const [binding, host] = await Promise.all([
@@ -180,7 +180,7 @@ export const confirmLocalInferenceBinding = async (
       select: { publicKey: true, revokedAt: true },
     }),
   ])
-  if (!binding || binding.hostId !== input.hostId || host?.revokedAt || !host.publicKey) {
+  if (!binding || !host || binding.hostId !== input.hostId || host.revokedAt || !host.publicKey) {
     throw new LocalInferenceBindingError('CHALLENGE_INVALID', 'The selected local host is no longer available.')
   }
   const signature = Buffer.from(input.signature, 'base64url')

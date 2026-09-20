@@ -33,6 +33,7 @@ import {
   LocalInferenceBindingError,
   prepareLocalInferenceBinding,
 } from '../services/local-inference-bindings.js'
+import { registerLocalInferenceDaemonClaimRoutes } from './local-inference-daemon-claim.js'
 import type { RouteDeps } from './types.js'
 
 const HostIdParamsSchema = z.object({ hostId: z.string().uuid() })
@@ -53,11 +54,12 @@ const sendBindingError = (reply: FastifyReply, error: unknown): boolean => {
  * with a session cookie. */
 export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
+  registerLocalInferenceDaemonClaimRoutes(app, deps)
 
   const authenticateDaemonEnvelope = async (input: {
     body: unknown
     envelope: { connectionEpoch: string; hostId: string; organizationId: string; purpose: string; sentAt: string; sequence: number }
-    purpose: 'frames' | 'poll'
+    purpose: 'frames' | 'poll' | 'result'
   }): Promise<{ hostId: string } | null> => {
     const host = await prisma.localInferenceHost.findFirst({
       where: { id: input.envelope.hostId, organizationId: input.envelope.organizationId, revokedAt: null },
@@ -165,7 +167,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   // A host may advertise only a signed, bounded observation of its own local
   // Ollama. This route has no user-session substitute: a copied browser cookie
   // cannot extend a device lease or publish an inventory.
-  app.post('/api/local-inference/daemon/heartbeat', async (request, reply) => {
+  app.post('/api/local-inference/daemon/heartbeat', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LocalInferenceHeartbeatRequestSchema, request.body, reply)
     if (!body) return reply
     const host = await prisma.localInferenceHost.findFirst({
@@ -234,7 +236,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     return createApiResponse({ serverTime: new Date().toISOString() })
   })
 
-  app.post('/api/local-inference/daemon/attempts/poll', async (request, reply) => {
+  app.post('/api/local-inference/daemon/attempts/poll', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LocalInferenceAttemptPollRequestSchema, request.body, reply)
     if (!body) return reply
     const daemon = await authenticateDaemonEnvelope({
@@ -280,7 +282,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     return createApiResponse({ attempt: attempt?.request ?? null, dispatchFence: attempt?.dispatchFence ?? null })
   })
 
-  app.post('/api/local-inference/daemon/attempts/frame', async (request, reply) => {
+  app.post('/api/local-inference/daemon/attempts/frame', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LocalInferenceAttemptFrameRequestSchema, request.body, reply)
     if (!body) return reply
     const daemon = await authenticateDaemonEnvelope({
@@ -316,7 +318,9 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
             attemptId: attempt.id,
             digest,
             dispatchFence: attempt.dispatchFence,
-            encryptedData: sealLocalInferenceAttempt(deps.encryptionKeyRing, { data: body.frame.data }),
+            encryptedData: Uint8Array.from(
+              sealLocalInferenceAttempt(deps.encryptionKeyRing, { data: body.frame.data }),
+            ),
             sequence: body.frame.sequence,
           },
         })
@@ -340,11 +344,11 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     return createApiResponse({ acknowledged: true })
   })
 
-  app.post('/api/local-inference/daemon/attempts/result', async (request, reply) => {
+  app.post('/api/local-inference/daemon/attempts/result', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LocalInferenceAttemptResultRequestSchema, request.body, reply)
     if (!body) return reply
     const daemon = await authenticateDaemonEnvelope({
-      body: body.receipt, envelope: body.envelope, purpose: 'frames',
+      body: body.receipt, envelope: body.envelope, purpose: 'result',
     })
     if (!daemon) {
       sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
@@ -371,7 +375,9 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       const updated = await tx.localInferenceAttempt.updateMany({
         where: { id: body.receipt.attemptId, dispatchFence: attempt.dispatchFence, state: { in: ['leased', 'accepted'] } },
         data: {
-          encryptedResult: sealLocalInferenceAttempt(deps.encryptionKeyRing, body.receipt.result),
+          encryptedResult: Uint8Array.from(
+            sealLocalInferenceAttempt(deps.encryptionKeyRing, body.receipt.result),
+          ),
           resultDigest: digest, state: 'completed', terminalAt: new Date(),
         },
       })

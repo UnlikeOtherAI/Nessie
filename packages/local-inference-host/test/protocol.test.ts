@@ -105,6 +105,25 @@ test('a Desktop PEM enrollment key verifies the same signed host envelope', () =
   }).ok, true)
 })
 
+test('a terminal receipt has a separate signing domain from a streamed frame', () => {
+  const keys = machineKeys()
+  const body = { attemptId: hostId, dispatchFence: 1, result: { content: 'ok' } }
+  const envelope = signLocalInferenceEnvelope({
+    body,
+    header: {
+      connectionEpoch: '3', hostId, organizationId, protocolVersion: 1,
+      purpose: 'result', sentAt: '2026-09-20T12:00:00.000Z', sequence: 1,
+    },
+    machinePrivateKey: keys.machinePrivateKey,
+  })
+  assert.equal(verifyLocalInferenceEnvelope({
+    body, envelope, machinePublicKey: keys.machinePublicKey,
+  }).ok, true)
+  assert.equal(verifyLocalInferenceEnvelope({
+    body, envelope: { ...envelope, purpose: 'frames' }, machinePublicKey: keys.machinePublicKey,
+  }).ok, false)
+})
+
 test('discovery ordering is deterministic and refuses DNS or competing local daemons', () => {
   assert.deepEqual(orderedOllamaLoopbackEndpoints('http://127.0.0.1:11434'), [
     'http://127.0.0.1:11434',

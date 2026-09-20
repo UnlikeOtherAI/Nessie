@@ -36,6 +36,7 @@ export const LocalInferenceEnvelopePurposeSchema = z.enum([
   'heartbeat',
   'poll',
   'frames',
+  'result',
   'goodbye',
 ])
 export type LocalInferenceEnvelopePurpose = z.infer<typeof LocalInferenceEnvelopePurposeSchema>
@@ -168,6 +169,17 @@ export type LocalInferenceResult = z.infer<typeof LocalInferenceResultSchema>
 /** A host receives only one leased attempt at a time; an empty poll body is
  * still signed so a captured request cannot be replayed under another route. */
 export const LocalInferenceAttemptPollSchema = z.object({}).strict()
+
+/** An opaque, one-use challenge is the only input to a connection claim. */
+export const LocalInferenceDaemonChallengeSchema = z.object({
+  challenge: z.string().regex(/^[A-Za-z0-9_-]{32,256}$/),
+  expiresAt: TimestampSchema,
+})
+
+export const LocalInferenceDaemonConnectionSchema = z.object({
+  connectionEpoch: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  serverTime: TimestampSchema,
+})
 
 export const LocalInferenceAttemptFrameSchema = z.object({
   attemptId: z.string().uuid(),

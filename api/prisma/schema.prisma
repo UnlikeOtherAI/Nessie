@@ -8428,9 +8428,12 @@ model LocalInferenceChallenge {
   id                String   @id @default(uuid()) @db.Uuid
   organizationId    String   @map("organization_id") @db.Uuid
   hostId            String   @map("host_id") @db.Uuid
-  bindingId         String   @map("binding_id") @db.Uuid
+  bindingId         String?  @map("binding_id") @db.Uuid
   digest            String   @unique
   subjectDigest     String   @map("subject_digest")
+  /// `binding` is designer consent; `daemon` is a 60-second connection claim.
+  purpose           String   @default("binding")
+  connectionEpoch   Int?     @map("connection_epoch")
   expiresAt         DateTime @map("expires_at")
   consumedAt        DateTime? @map("consumed_at")
   createdAt         DateTime @default(now()) @map("created_at")
