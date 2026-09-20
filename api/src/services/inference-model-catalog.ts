@@ -77,7 +77,7 @@ const decodeCursor = (cursor: string | undefined): string | null => {
  * A local `inference_models` row can describe a withdrawn pair, so filtering
  * it would give an owner a stale and incomplete answer.
  */
-const filterCatalogue = (
+export const filterDeploymentModelCatalogue = (
   catalogue: AgentModelOption[],
   filters: DeploymentModelCatalogFilters,
 ): AgentModelOption[] => {
@@ -150,7 +150,7 @@ export const listDeploymentModelCatalog = async (
     loadAgentPinCounts(prisma, input.organizationId),
   ])
 
-  const filteredCatalogue = filterCatalogue(catalogue, input)
+  const filteredCatalogue = filterDeploymentModelCatalogue(catalogue, input)
   const boundary = decodeCursor(input.cursor)
   const boundaryIndex = boundary === null
     ? -1
@@ -394,7 +394,7 @@ export const setDeploymentModelsEnabled = async (
     ...(input.ledgerPublicUrl ? { ledgerPublicUrl: input.ledgerPublicUrl } : {}),
     ...(input.requestHeaders ? { requestHeaders: input.requestHeaders } : {}),
   })
-  const options = filterCatalogue(catalogue, input)
+  const options = filterDeploymentModelCatalogue(catalogue, input)
   await writeDeploymentModelDecisions(prisma, actorContext, options, input.enabled)
   return { enabled: input.enabled, updatedCount: options.length }
 }

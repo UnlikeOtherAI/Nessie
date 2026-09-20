@@ -6,6 +6,8 @@ import type { PrismaClient } from '@prisma/client'
 import {
   isModelPairDisabled,
   loadDisabledModelPairs,
+  loadDisabledTeamModelPairs,
+  loadTeamModelAvailabilityDecisions,
   MODEL_PAIR_SEPARATOR,
   modelPairKey,
 } from '../src/inference-model-availability.js'
@@ -85,4 +87,38 @@ test('surrounding whitespace on a stored selection does not smuggle a disabled p
   const disabled = new Set([modelPairKey('deepseek', 'deepseek-v4-flash')])
 
   assert.equal(isModelPairDisabled(disabled, ' deepseek ', ' deepseek-v4-flash '), true)
+})
+
+test('team decisions are scoped to one team and retain an explicit re-enable', async () => {
+  const seen: unknown[] = []
+  const prisma = {
+    teamInferenceModelAvailability: {
+      findMany: async (args: unknown) => {
+        seen.push(args)
+        const rows = [
+          { enabled: false, model: 'gpt-5-mini', provider: 'openai' },
+          { enabled: true, model: 'claude-sonnet', provider: 'anthropic' },
+        ]
+        const enabled = (args as { where: { enabled?: boolean } }).where.enabled
+        return enabled === undefined ? rows : rows.filter((row) => row.enabled === enabled)
+      },
+    },
+  } as unknown as PrismaClient
+
+  const decisions = await loadTeamModelAvailabilityDecisions(prisma, 'team-1')
+  const disabled = await loadDisabledTeamModelPairs(prisma, 'team-1')
+
+  assert.equal(decisions.get(modelPairKey('openai', 'gpt-5-mini')), false)
+  assert.equal(decisions.get(modelPairKey('anthropic', 'claude-sonnet')), true)
+  assert.deepEqual([...disabled], [modelPairKey('openai', 'gpt-5-mini')])
+  assert.deepEqual(
+    (seen[0] as { where: unknown }).where,
+    { teamId: 'team-1' },
+    'decisions never bleed across UOA-backed teams',
+  )
+  assert.deepEqual(
+    (seen[1] as { where: unknown }).where,
+    { enabled: false, teamId: 'team-1' },
+    'the picker and validator only load explicit team disables',
+  )
 })

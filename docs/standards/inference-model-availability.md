@@ -124,6 +124,33 @@ pair passes. Without it, disabling a model would block renaming, re-prompting or
 re-scoping every agent already on it — a disable that bricks edits is not
 "keeps working".
 
+## Teams can narrow, never widen, the organization decision
+
+A `TeamInferenceModelAvailability` row is a product-specific setting on the
+existing UOA-backed `Team`; it is not another copy of a team, a Ledger
+catalogue, or an organization allow-list. It records a team’s local decision
+for one pair. No row inherits `enabled: true`, so a team can disable a pair and
+later re-enable it without changing any other team.
+
+The organization remains the hard upper bound. Before the team catalogue does
+filtering, pagination, counting, or writing, it reads Ledger and removes every
+organization-disabled pair. Therefore an organization-disabled pair cannot be
+listed, cannot receive a team decision, and cannot be re-enabled by a team.
+Team routes also verify that the route’s `teamId` belongs to the acting
+organization; their agent counts are scoped to that exact team.
+
+`GET /api/teams/:teamId/inference/model-catalog` and its single-pair and bulk
+`PATCH` variants use the same provider/model partial filters, cursor page
+contract, and `{ enabled, updatedCount }` bulk result as the organization
+catalogue. They use the existing Team Settings organization-admin gate. Bulk
+writes share the organization catalogue’s bounded 60-second interactive
+transaction because a live Ledger catalogue can contain hundreds of pairs.
+
+The agent picker and every Ledger selection validator receive the resulting
+agent’s `teamId`. They remove or refuse team-disabled pairs with
+`AGENT_MODEL_DISABLED_FOR_TEAM`; an unchanged pinned selection still passes, so
+turning a team pair off does not interrupt or brick an existing agent.
+
 ## The test button
 
 `POST /api/inference/models/test` sends one short prompt to one exact pair and
@@ -151,11 +178,13 @@ own words.
 |---|---|---|
 | Sidebar → Organization | "Models", `ownerOnly: true` | `/settings/organization/models` — home |
 | Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/settings/organization/models` |
+| Team Settings → Models | Team-scoped catalogue | `/settings/team` — product-policy narrowing |
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and
 `admin/src/navigation/admin-surfaces.ts` — all four, each enforced by its own
 admin test.
 
-No migration: `inference_providers` and `inference_models` already carry
-everything this needs.
+Organization decisions continue to use `inference_providers` and
+`inference_models`. Team decisions are persisted by the immutable
+`20260920120000_team_inference_model_availability` migration.

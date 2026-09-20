@@ -9,6 +9,7 @@ import {
 import {
   isModelPairDisabled,
   loadDisabledModelPairs,
+  loadDisabledTeamModelPairs,
 } from './inference-model-availability.js'
 import {
   assertLedgerAgentModelSelection,
@@ -56,6 +57,8 @@ export type AgentModelSelectionInput = {
    * checked. See docs/standards/inference-model-availability.md.
    */
   previousSelection?: { model: string | null | undefined; provider: string | null | undefined }
+  /** Team policy further narrows its organisation's allowed Ledger pairs. */
+  teamId?: string | null | undefined
 }
 
 export type AgentModelSelectionResult = {
@@ -77,6 +80,7 @@ export const AGENT_MODEL_SELECTION_ERROR_CODES = {
   UNKNOWN_MODEL: 'AGENT_MODEL_SUBSCRIPTION_UNKNOWN_MODEL',
   UNKNOWN_PROVIDER: 'AGENT_MODEL_SUBSCRIPTION_UNKNOWN_PROVIDER',
   DISABLED: 'AGENT_MODEL_DISABLED_FOR_ORGANIZATION',
+  TEAM_DISABLED: 'AGENT_MODEL_DISABLED_FOR_TEAM',
 } as const
 
 /**
@@ -93,6 +97,7 @@ const assertPairEnabled = async (
     organizationId: string
     previousSelection: AgentModelSelectionInput['previousSelection']
     provider: string
+    teamId: string | null | undefined
   },
 ): Promise<void> => {
   const unchanged =
@@ -107,6 +112,16 @@ const assertPairEnabled = async (
       'That model is switched off for this organisation. '
         + 'An organisation owner can turn it back on under Organization → Models.',
     )
+  }
+  if (input.teamId) {
+    const teamDisabled = await loadDisabledTeamModelPairs(prisma, input.teamId)
+    if (isModelPairDisabled(teamDisabled, input.provider, input.model)) {
+      throw new AgentModelSelectionError(
+        AGENT_MODEL_SELECTION_ERROR_CODES.TEAM_DISABLED,
+        'That model is switched off for this team. '
+          + 'A team administrator can turn it back on under Team Settings → Models.',
+      )
+    }
   }
 }
 
@@ -137,6 +152,7 @@ export const assertAgentModelSelection = async (
         organizationId: input.organizationId,
         previousSelection: input.previousSelection,
         provider,
+        teamId: input.teamId,
       })
     }
     // A Ledger selection clears any previous subscription pointer, so the two

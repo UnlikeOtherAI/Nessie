@@ -2279,9 +2279,30 @@ model Team {
   projects                 Project[]                 @relation("ProjectOwningTeam")
   outgoingResourceShares   ResourceShare[]           @relation("ResourceShareSourceTeam")
   incomingResourceShares   ResourceShare[]           @relation("ResourceShareRecipientTeam")
+  inferenceModelAvailability TeamInferenceModelAvailability[]
 
   @@unique([id, externalOrgId, externalTeamId])
   @@map("teams")
+}
+
+/// Product-specific model availability decisions for one team. Ledger remains
+/// the source of the deployment catalogue, and organization availability is
+/// evaluated separately as the non-bypassable upper bound.
+model TeamInferenceModelAvailability {
+  id               String   @id @default(uuid()) @db.Uuid
+  teamId           String   @map("team_id") @db.Uuid
+  provider         String
+  model            String
+  enabled          Boolean  @default(false)
+  createdByActorId String   @map("created_by_actor_id")
+  updatedByActorId String   @map("updated_by_actor_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  team             Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, provider, model])
+  @@index([teamId, enabled])
+  @@map("team_inference_model_availability")
 }
 
 model TeamMember {
