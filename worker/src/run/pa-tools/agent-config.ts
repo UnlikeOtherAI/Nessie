@@ -198,7 +198,7 @@ export const runAgentUpdateTool = async (
   if (patch.model !== undefined || patch.provider !== undefined) {
     const stored = await context.prisma.agent.findFirst({
       where: { id: agentId, organizationId: member.organizationId },
-      select: { model: true, modelSubscriptionId: true, ownerUserId: true, provider: true },
+      select: { model: true, modelSubscriptionId: true, ownerUserId: true, provider: true, teamId: true },
     })
     const selection = await assertAgentModelSelection(context.prisma, {
       actingUserId: member.userId,
@@ -227,6 +227,7 @@ export const runAgentUpdateTool = async (
         actorContext: member.actorContext,
         ledgerIdentity: context.ledgerIdentity,
       }),
+      teamId: stored?.teamId,
     })
     modelSubscriptionId = selection.modelSubscriptionId
   }

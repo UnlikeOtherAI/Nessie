@@ -637,6 +637,7 @@ const Shell = (): React.JSX.Element => {
     bottom: Math.max(webviewInsets.bottom, keyboardOverlap),
   }
   const ipadChromeTheme = createIpadNativeChromeTheme({
+    activeForegroundColor: phoneOnAccent,
     activeTintColor: accent,
     dark: isDark(bg),
     inactiveTintColor: inactive,

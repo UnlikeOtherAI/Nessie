@@ -99,12 +99,17 @@ export const usePausedPrivateAgentCount = (enabled: boolean) => {
   })
 }
 
-export const useAgentModelOptions = () => {
+export const useAgentModelOptions = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentModelOption[]>({
-    queryKey: agentKeys.models,
-    queryFn: () => apiClient.get('/api/agents/models'),
+    queryKey: agentKeys.modelOptions(agentId),
+    placeholderData: keepPreviousData,
+    queryFn: () => apiClient.get(
+      agentId
+        ? `/api/agents/models?agentId=${encodeURIComponent(agentId)}`
+        : '/api/agents/models',
+    ),
     staleTime: 60_000,
   })
 }

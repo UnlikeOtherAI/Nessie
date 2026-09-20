@@ -279,6 +279,12 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `admin/test/native-chrome-theme.test.ts` fails a chrome rule that forgets
   the element.
 
+  The iPad section strip uses the published `--accent` as a filled selected
+  pill and the published `--on-accent` as its selected label/icon colour.
+  Those two tokens are one contrast contract: tinting the pill and then
+  reusing the accent for its text made the default Nessie theme render blue on
+  blue. Inactive sections continue to use the chrome's muted foreground.
+
   `bg` is the colour *around* the WebView, and what that means depends on the
   form factor. An iPhone gets the chrome's `--main`, because `NativePhoneHeader`
   paints the whole top strip itself and the backdrop only shows through as
@@ -394,4 +400,3 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   `badgeCounts[tab.key]` directly instead of a three-way `channels
   | assignedWork | knowledge` mapping, so every section — including Admin and
   Search — can carry a badge once the admin posts one.
-

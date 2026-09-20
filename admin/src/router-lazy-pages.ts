@@ -133,6 +133,9 @@ export const TeamMembersPage = lazy(() =>
 export const TeamSettingsPage = lazy(() =>
   import('./pages/settings/TeamSettingsPage').then((m) => ({ default: m.TeamSettingsPage })),
 )
+export const TeamModelsPage = lazy(() =>
+  import('./pages/settings/team/TeamModelsPage').then((m) => ({ default: m.TeamModelsPage })),
+)
 export const UserSettingsPage = lazy(() =>
   import('./pages/settings/UserSettingsPage').then((m) => ({ default: m.UserSettingsPage })),
 )

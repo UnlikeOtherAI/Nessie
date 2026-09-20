@@ -33,6 +33,8 @@ test('agent keys keep the arrays the call sites used', () => {
   assert.deepEqual(agentKeys.all, ['agents'])
   assert.deepEqual(agentKeys.allScopes, ['agents', 'all'])
   assert.deepEqual(agentKeys.models, ['agents', 'models'])
+  assert.deepEqual(agentKeys.modelOptions(), ['agents', 'models', 'create'])
+  assert.deepEqual(agentKeys.modelOptions('agent-1'), ['agents', 'models', 'agent-1'])
   assert.deepEqual(agentKeys.status('a-1'), ['agents', 'a-1', 'status'])
   assert.deepEqual(agentKeys.activity('a-1'), ['agents', 'a-1', 'activity'])
   assert.deepEqual(agentKeys.children('a-1'), ['agents', 'a-1', 'children'])

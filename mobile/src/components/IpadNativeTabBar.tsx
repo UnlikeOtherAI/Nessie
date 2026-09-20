@@ -41,7 +41,7 @@ const IpadNativeTabButton = ({
 }: IpadNativeTabButtonProps): React.JSX.Element => {
   const index = TABS.indexOf(tab)
   const active = index === activeIndex
-  const color = active ? theme.activeTintColor : theme.inactiveTintColor
+  const color = active ? theme.activeForegroundColor : theme.inactiveTintColor
   const badge = badgeCounts[tab.key] ?? 0
 
   return (
@@ -70,7 +70,20 @@ const IpadNativeTabButton = ({
         </Text>
       )}
       {badge > 0 ? (
-        <Text style={[styles.badge, iconOnly ? styles.iconBadge : null, { backgroundColor: theme.activeTintColor }]}>
+        <Text
+          style={[
+            styles.badge,
+            iconOnly ? styles.iconBadge : null,
+            {
+              backgroundColor: active
+                ? theme.activeForegroundColor
+                : theme.activeTintColor,
+              color: active
+                ? theme.activeTintColor
+                : theme.activeForegroundColor,
+            },
+          ]}
+        >
           {badge > 99 ? '99+' : badge}
         </Text>
       ) : null}
@@ -122,7 +135,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: 8,
     overflow: 'hidden',
-    color: '#fff',
     fontSize: 9,
     fontWeight: '700',
     lineHeight: 15,

@@ -28,6 +28,7 @@ export const modelPairKey = (provider: string, model: string): string =>
   `${provider}${MODEL_PAIR_SEPARATOR}${model}`
 
 export type DisabledModelPairs = ReadonlySet<string>
+export type ModelAvailabilityDecisions = ReadonlyMap<string, boolean>
 
 /**
  * Every pair this organisation has explicitly disabled.
@@ -46,6 +47,36 @@ export const loadDisabledModelPairs = async (
     where: { enabled: false, organizationId },
   })
   return new Set(rows.map((row) => modelPairKey(row.provider.providerKey, row.model)))
+}
+
+/**
+ * Every local decision for one team, keyed by its Ledger provider/model pair.
+ *
+ * An absent row inherits the organisation's allowed state. A true row is
+ * meaningful because it records that a team reversed its own earlier disable;
+ * it never overrides an organisation-level disable, which callers check first.
+ */
+export const loadTeamModelAvailabilityDecisions = async (
+  prisma: PrismaClient,
+  teamId: string,
+): Promise<Map<string, boolean>> => {
+  const rows = await prisma.teamInferenceModelAvailability.findMany({
+    select: { enabled: true, model: true, provider: true },
+    where: { teamId },
+  })
+  return new Map(rows.map((row) => [modelPairKey(row.provider, row.model), row.enabled]))
+}
+
+/** Every pair this team explicitly disabled, not its inherited org exclusions. */
+export const loadDisabledTeamModelPairs = async (
+  prisma: PrismaClient,
+  teamId: string,
+): Promise<Set<string>> => {
+  const rows = await prisma.teamInferenceModelAvailability.findMany({
+    select: { model: true, provider: true },
+    where: { enabled: false, teamId },
+  })
+  return new Set(rows.map((row) => modelPairKey(row.provider, row.model)))
 }
 
 export const isModelPairDisabled = (

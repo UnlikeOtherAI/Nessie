@@ -76,6 +76,16 @@ const AgentMessagesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 })
 
+/**
+ * Editing an existing agent must derive model availability from that agent's
+ * team, not from whichever team the editor happened to select in this session.
+ * The id is resolved server-side so this read cannot turn a team id into a
+ * capability or disclose an inaccessible agent.
+ */
+const AgentModelsQuerySchema = z.object({
+  agentId: z.string().uuid().optional(),
+}).strict()
+
 const validateAgentAvatarAttachment = async (input: {
   actorContext: NonNullable<ReturnType<RouteDeps['requireActorContext']>>
   attachmentId: string
@@ -170,6 +180,26 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
+    const query = parseInput(AgentModelsQuerySchema, request.query, reply)
+    if (!query) return reply
+
+    let teamId: string | null | undefined = actorContext.tenant.teamId
+    if (query.agentId) {
+      const agent = await prisma.agent.findFirst({
+        select: { id: true, teamId: true },
+        where: {
+          deletedAt: null,
+          id: query.agentId,
+          organizationId: actorContext.tenant.organizationId,
+        },
+      })
+      if (!agent || !(await isAgentAccessibleToActor(actorContext, agent.id))) {
+        sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+        return reply
+      }
+      teamId = agent.teamId
+    }
+
     // Two independent sources: the deployment's Ledger catalogue and this
     // person's own linked subscriptions. A Ledger failure must not hide the
     // subscriptions — that would take away the one option still able to run —
@@ -185,6 +215,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         actorContext,
         ledgerIdentity: deps.ledgerIdentity,
       }),
+      teamId,
       userId: actorContext.actionContext.effectiveUserId ?? actorContext.actor.actorId,
     })
     if (ledgerError && options.length === 0) {
@@ -259,6 +290,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
             actorContext,
             ledgerIdentity: deps.ledgerIdentity,
           }),
+          teamId: actorContext.tenant.teamId,
         })
         modelSubscriptionId = selection.modelSubscriptionId
       }
@@ -393,6 +425,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         projectId: true,
         provider: true,
         systemManaged: true,
+        teamId: true,
         todosEnabled: true,
         visibility: true,
       },
@@ -479,6 +512,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
             actorContext,
             ledgerIdentity: deps.ledgerIdentity,
           }),
+          teamId: existingAgent.teamId,
         })
         modelSubscriptionId = selection.modelSubscriptionId
       }

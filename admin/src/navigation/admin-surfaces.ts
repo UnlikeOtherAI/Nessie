@@ -87,7 +87,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     depth: 1,
     intent: { state: ['tab'] },
     parentOf: toAdmin,
-    pattern: /^\/settings\/(?:team\/(?:members|secrets)|organization\/(?:models|paired-agents|secrets))$/,
+    pattern: /^\/settings\/(?:team\/(?:members|models|secrets)|organization\/(?:models|paired-agents|secrets))$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

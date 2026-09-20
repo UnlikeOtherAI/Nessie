@@ -174,6 +174,7 @@ export const runAgentCreateTool = async (
         actorContext: member.actorContext,
         ledgerIdentity: context.ledgerIdentity,
       }),
+      teamId: context.actorContext.tenant.teamId,
     })
     modelSubscriptionId = selection.modelSubscriptionId
   }

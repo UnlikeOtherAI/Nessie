@@ -24,6 +24,31 @@ Consequences that are not negotiable:
   `PaginationMetaSchema` with `total` required, like every other admin list. The
   cursor is the sorted `provider\0model` key, base64url-encoded and opaque.
 
+## Filtering and catalogue-wide decisions
+
+`GET /api/inference/model-catalog` accepts optional `provider` and `model`
+filters. Both are case-insensitive partial matches; provider searches Ledger's
+stable service key **and** its display name, while model searches the Ledger
+model identifier. Filtering happens against the freshly read Ledger catalogue
+*before* cursor pagination, so `meta.total`, the page rows, and the cursor all
+describe the same filtered set.
+
+`PATCH /api/inference/model-catalog/bulk` accepts `{ enabled, provider?,
+model? }` and applies the decision to every matching pair in that same kind of
+live catalogue read — never only the page of rows currently visible. Omitting
+both filters means every currently offered Ledger pair. Its response reports
+`updatedCount`, so the caller can state exactly how many availability decisions
+were written. A filter that matches no live pair succeeds with `updatedCount:
+0`; it never resurrects a local row for a model Ledger no longer offers.
+
+All of the matched pair upserts happen in one database transaction. Provider
+containers created for the operation remain `draft` and disabled, and existing
+provider configuration is never changed, so a bulk availability decision cannot
+become a routing override. The interactive transaction has an explicit 60-second
+timeout (and a five-second acquisition limit): Ledger catalogues can contain
+hundreds of pairs, and Prisma's five-second default would otherwise let a whole
+catalogue decision expire before all upserts finish.
+
 ## A row this page writes is a container, never a routing override
 
 The same two tables carry an older meaning. `worker/src/run/inference-provider.ts`
@@ -99,6 +124,33 @@ pair passes. Without it, disabling a model would block renaming, re-prompting or
 re-scoping every agent already on it — a disable that bricks edits is not
 "keeps working".
 
+## Teams can narrow, never widen, the organization decision
+
+A `TeamInferenceModelAvailability` row is a product-specific setting on the
+existing UOA-backed `Team`; it is not another copy of a team, a Ledger
+catalogue, or an organization allow-list. It records a team’s local decision
+for one pair. No row inherits `enabled: true`, so a team can disable a pair and
+later re-enable it without changing any other team.
+
+The organization remains the hard upper bound. Before the team catalogue does
+filtering, pagination, counting, or writing, it reads Ledger and removes every
+organization-disabled pair. Therefore an organization-disabled pair cannot be
+listed, cannot receive a team decision, and cannot be re-enabled by a team.
+Team routes also verify that the route’s `teamId` belongs to the acting
+organization; their agent counts are scoped to that exact team.
+
+`GET /api/teams/:teamId/inference/model-catalog` and its single-pair and bulk
+`PATCH` variants use the same provider/model partial filters, cursor page
+contract, and `{ enabled, updatedCount }` bulk result as the organization
+catalogue. They use the existing Team Settings organization-admin gate. Bulk
+writes share the organization catalogue’s bounded 60-second interactive
+transaction because a live Ledger catalogue can contain hundreds of pairs.
+
+The agent picker and every Ledger selection validator receive the resulting
+agent’s `teamId`. They remove or refuse team-disabled pairs with
+`AGENT_MODEL_DISABLED_FOR_TEAM`; an unchanged pinned selection still passes, so
+turning a team pair off does not interrupt or brick an existing agent.
+
 ## The test button
 
 `POST /api/inference/models/test` sends one short prompt to one exact pair and
@@ -126,11 +178,13 @@ own words.
 |---|---|---|
 | Sidebar → Organization | "Models", `ownerOnly: true` | `/settings/organization/models` — home |
 | Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/settings/organization/models` |
+| Sidebar → Team | "Models", same icon and catalogue surface as Organization | `/settings/team/models` — product-policy narrowing |
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and
 `admin/src/navigation/admin-surfaces.ts` — all four, each enforced by its own
 admin test.
 
-No migration: `inference_providers` and `inference_models` already carry
-everything this needs.
+Organization decisions continue to use `inference_providers` and
+`inference_models`. Team decisions are persisted by the immutable
+`20260920120000_team_inference_model_availability` migration.
