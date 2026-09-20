@@ -8370,6 +8370,19 @@ model LocalInferenceHost {
   @@map("local_inference_hosts")
 }
 
+/// Monotonic host-protocol replay fence. One row per host and purpose avoids
+/// letting a delayed poll block a heartbeat while still making an old signed
+/// heartbeat unable to extend a lease.
+model LocalInferenceHostSequence {
+  hostId       String   @map("host_id") @db.Uuid
+  purpose      String
+  lastSequence BigInt   @map("last_sequence")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@id([hostId, purpose])
+  @@map("local_inference_host_sequences")
+}
+
 /// Serializes every protected local-inference policy mutation with prepare,
 /// activation and revocation.  It is not a copied membership/role authority.
 model LocalInferencePolicyVersion {

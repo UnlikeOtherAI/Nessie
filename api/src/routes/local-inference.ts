@@ -8,10 +8,12 @@ import {
 } from '@nessie/runtime'
 import { LocalInferenceHostListSchema } from '@nessie/schemas'
 import { assertAgentEditAuthority } from '@nessie/team-admin'
+import { verifyLocalInferenceEnvelope } from '@nessie/local-inference-host'
 
 import {
   ConfirmLocalInferenceBindingBodySchema,
   EnrollLocalInferenceHostBodySchema,
+  LocalInferenceHeartbeatRequestSchema,
   PrepareLocalInferenceBindingBodySchema,
 } from '../contracts/local-inference.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -108,6 +110,78 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
     })
     reply.header('Cache-Control', 'no-store')
     return createApiResponse({ hostId: host.id })
+  })
+
+  // A host may advertise only a signed, bounded observation of its own local
+  // Ollama. This route has no user-session substitute: a copied browser cookie
+  // cannot extend a device lease or publish an inventory.
+  app.post('/api/local-inference/daemon/heartbeat', async (request, reply) => {
+    const body = parseInput(LocalInferenceHeartbeatRequestSchema, request.body, reply)
+    if (!body) return reply
+    const host = await prisma.localInferenceHost.findFirst({
+      where: {
+        id: body.envelope.hostId,
+        organizationId: body.envelope.organizationId,
+        revokedAt: null,
+      },
+      select: { connectionEpoch: true, id: true, organizationId: true, publicKey: true },
+    })
+    const verified = host?.publicKey
+      ? verifyLocalInferenceEnvelope({
+          body: body.heartbeat,
+          envelope: body.envelope,
+          machinePublicKey: host.publicKey,
+        })
+      : { ok: false as const }
+    const sentAt = Date.parse(body.envelope.sentAt)
+    const fresh = Number.isFinite(sentAt) && Math.abs(Date.now() - sentAt) <= 30_000
+    if (
+      !host
+      || !verified.ok
+      || !fresh
+      || body.envelope.purpose !== 'heartbeat'
+      || BigInt(body.envelope.connectionEpoch) !== BigInt(host.connectionEpoch)
+    ) {
+      // No distinction between unknown, revoked, stale and unauthenticated
+      // hosts: exposing it would become a tenant/device enumeration oracle.
+      sendApiError(reply, 404, 'LOCAL_HOST_UNAVAILABLE', 'Local host unavailable.')
+      return reply
+    }
+    const accepted = await prisma.$transaction(async (tx) => {
+      // A separate purpose lane is deliberate: a long poll never serializes a
+      // fresh heartbeat, while an old signed heartbeat cannot replay forever.
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`local-inference-host:${host.id}:heartbeat`}::text, 0)
+        )
+      `
+      const sequence = await tx.localInferenceHostSequence.findUnique({
+        where: { hostId_purpose: { hostId: host.id, purpose: 'heartbeat' } },
+        select: { lastSequence: true },
+      })
+      const next = BigInt(body.envelope.sequence)
+      if (sequence && sequence.lastSequence >= next) return false
+      await tx.localInferenceHostSequence.upsert({
+        where: { hostId_purpose: { hostId: host.id, purpose: 'heartbeat' } },
+        create: { hostId: host.id, lastSequence: next, purpose: 'heartbeat' },
+        update: { lastSequence: next },
+      })
+      await tx.localInferenceHost.update({
+        where: { id: host.id },
+        data: {
+          inventory: body.heartbeat.inventory,
+          inventoryObservedAt: new Date(),
+          lastSeenAt: new Date(),
+          pausedAt: body.heartbeat.paused ? new Date() : null,
+        },
+      })
+      return true
+    })
+    if (!accepted) {
+      sendApiError(reply, 409, 'LOCAL_HOST_REPLAY', 'Local host message was already processed.')
+      return reply
+    }
+    return createApiResponse({ serverTime: new Date().toISOString() })
   })
 
   app.post('/api/agents/:agentId/local-inference/prepare', async (request, reply) => {

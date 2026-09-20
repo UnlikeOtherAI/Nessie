@@ -256,6 +256,9 @@ importers:
       '@nessie/knowledge':
         specifier: workspace:*
         version: link:../packages/knowledge
+      '@nessie/local-inference-host':
+        specifier: workspace:*
+        version: link:../packages/local-inference-host
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../packages/mcp-client

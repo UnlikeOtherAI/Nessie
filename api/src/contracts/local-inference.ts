@@ -1,5 +1,6 @@
 import {
   AgentAvailabilityProjectionSchema,
+  LocalInferenceSignedEnvelopeSchema,
   LocalInferenceHostListSchema,
   ObservedLocalModelSchema,
 } from '@nessie/schemas'
@@ -24,8 +25,13 @@ export const ConfirmLocalInferenceBindingBodySchema = z.object({
   signature: z.string().min(16).max(16_384),
 }).strict()
 
-export const LocalInferenceHeartbeatBodySchema = z.object({
-  connectionEpoch: z.number().int().positive(),
+export const LocalInferenceHeartbeatSchema = z.object({
   inventory: z.array(ObservedLocalModelSchema).max(100),
   paused: z.boolean(),
+}).strict()
+
+/** Signed by the machine key; the body digest covers `heartbeat`, not headers. */
+export const LocalInferenceHeartbeatRequestSchema = z.object({
+  envelope: LocalInferenceSignedEnvelopeSchema,
+  heartbeat: LocalInferenceHeartbeatSchema,
 }).strict()

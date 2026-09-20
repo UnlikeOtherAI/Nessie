@@ -42,6 +42,12 @@ const privateMachineKey = (encoded: string) => createPrivateKey({
 })
 
 const publicMachineKey = (encoded: string) => {
+  // Desktop enrollment stores the public key in the representation the native
+  // keychain bridge produced (normally PEM). Executor pairing uses a compact
+  // raw/DER value. Both are the same Ed25519 identity; accepting neither a URL
+  // nor an algorithm selector keeps this parser a key decoder, not a generic
+  // crypto endpoint.
+  if (encoded.includes('BEGIN PUBLIC KEY')) return createPublicKey(encoded)
   const decoded = Buffer.from(encoded, 'base64url')
   return createPublicKey({
     format: 'der',

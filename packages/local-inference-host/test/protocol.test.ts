@@ -22,6 +22,7 @@ const machineKeys = () => {
   return {
     machinePrivateKey: privateDer.toString('base64url'),
     machinePublicKey: publicDer.subarray(-32).toString('base64url'),
+    machinePublicPem: keys.publicKey.export({ format: 'pem', type: 'spki' }).toString(),
   }
 }
 
@@ -86,6 +87,22 @@ test('a changed body, purpose, or malformed machine key cannot verify a host env
     verifyLocalInferenceEnvelope({ body: { attemptId: hostId }, envelope, machinePublicKey: 'invalid' }),
     { ok: false, reason: 'invalid_machine_key' },
   )
+})
+
+test('a Desktop PEM enrollment key verifies the same signed host envelope', () => {
+  const keys = machineKeys()
+  const body = { paused: false }
+  const envelope = signLocalInferenceEnvelope({
+    body,
+    header: {
+      connectionEpoch: '1', hostId, organizationId, protocolVersion: 1,
+      purpose: 'heartbeat', sentAt: '2026-09-20T12:00:00.000Z', sequence: 1,
+    },
+    machinePrivateKey: keys.machinePrivateKey,
+  })
+  assert.equal(verifyLocalInferenceEnvelope({
+    body, envelope, machinePublicKey: keys.machinePublicPem,
+  }).ok, true)
 })
 
 test('discovery ordering is deterministic and refuses DNS or competing local daemons', () => {

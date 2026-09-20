@@ -42,6 +42,7 @@
     "@nessie/db": "workspace:*",
     "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",
+    "@nessie/local-inference-host": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",
     "@nessie/memory": "workspace:*",
