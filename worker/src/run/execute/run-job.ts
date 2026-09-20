@@ -508,6 +508,9 @@ const runJobUnderFence = async (
 
     const inference = createRunInference(executionDeps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
+      local: localLane.kind === 'local'
+        ? { binding: localLane.binding, runFence: claim.token }
+        : null,
       subscription: subscriptionBinding,
       thinkingRecorder,
       utilityModel,

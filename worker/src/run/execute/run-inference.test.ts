@@ -5,7 +5,6 @@ import type { PinnedFetch } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import {
   createRunInference,
-  LocalDeviceDispatchRequiredError,
   resolveAdvertisedOutputTokens,
   resolveMainOutputTokens,
 } from './run-inference.js'
@@ -182,6 +181,13 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
     },
     {
       budgetModelOverride: null,
+      local: {
+        binding: {
+          bindingId: 'local-binding', hostEpoch: 1, hostId: 'host',
+          manifestDigest: 'a'.repeat(64), modelName: 'only-local', numCtx: 8192, revision: 1,
+        },
+        runFence: 'fence',
+      },
       stageProviderResolver: async () => {
         providerResolverCalled = true
         throw new Error('must not resolve a local pin through the provider route')
@@ -194,7 +200,7 @@ test('a local-device pin cannot fall through to the Ledger provider resolver', a
 
   await assert.rejects(
     inference.runMain([{ content: 'No cloud fallback.', role: 'user' }], []),
-    LocalDeviceDispatchRequiredError,
+    /secure storage/,
   )
   assert.equal(providerResolverCalled, false)
 })

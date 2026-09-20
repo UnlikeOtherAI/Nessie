@@ -28,7 +28,7 @@ export const sealLocalInferenceAttempt = (
 
 export const openLocalInferenceAttempt = <Value>(
   ring: EncryptionKeyRingInput,
-  ciphertext: Uint8Array,
+  ciphertext: Uint8Array<ArrayBufferLike>,
 ): Value => {
   const packed = JSON.parse(Buffer.from(ciphertext).toString('utf8')) as PackedCiphertext
   return JSON.parse(decryptWithKeyRing(
