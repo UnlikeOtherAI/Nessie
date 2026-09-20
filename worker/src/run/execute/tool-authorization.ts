@@ -69,13 +69,10 @@ export type ToolAuthorizationContext = {
   allowedToolIds: Set<string>
   /** Registry membership is the organisational ceiling for this resolved offer. */
   resolvedBuiltinToolIds?: Set<string>
-  /**
-   * Names dispatched outside the builtin registry (MCP views, the executor
-   * toolset, and worker-owned meta tools such as `tool_spec`). The
-   * registry/grant gate only judges registered builtin ids — external names
-   * skip it and still pass the policy/approval evaluation.
-   */
-  externalToolNames?: Set<string>
+  /** Names that bypass the builtin registry (MCP, executor and worker metadata). */
+  unregisteredToolNames?: Set<string>
+  /** Calls capable of arbitrary external side effects (MCP and executor only). */
+  externalContentToolNames?: Set<string>
   /**
    * The `personalAssistantOnly` ids this run's global-agent blueprint may
    * exercise (D3), resolved once at run setup. Absent ⇒ the empty set, which is
@@ -208,8 +205,9 @@ export const authorizeToolExecution = async (
     }
   }
 
-  const isExternalName = auth.externalToolNames?.has(toolName) ?? false
-  if (blocksPrivateConversationWrite({ context, isExternal: isExternalName, toolName })) {
+  const isUnregisteredName = auth.unregisteredToolNames?.has(toolName) ?? false
+  const isExternalContentName = auth.externalContentToolNames?.has(toolName) ?? false
+  if (blocksPrivateConversationWrite({ context, isExternal: isExternalContentName, toolName })) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
       source: 'private_conversation_write_gate',
     }, 'private_conversation_disclosure_required')
@@ -250,7 +248,7 @@ export const authorizeToolExecution = async (
   }
 
   const resolvedBuiltinToolIds = auth.resolvedBuiltinToolIds ?? auth.allowedToolIds
-  const registryDecision = isExternalName
+  const registryDecision = isUnregisteredName
     ? ({ allowed: true } as const)
     : authorizeToolCall(
       toolName,
@@ -272,8 +270,8 @@ export const authorizeToolExecution = async (
 
   if (
     !registryDecision.allowed
-    || (!isExternalName && !auth.allowedToolIds.has(toolName))
-    || (!isExternalName && !resolvedBuiltinToolIds.has(toolName))
+    || (!isUnregisteredName && !auth.allowedToolIds.has(toolName))
+    || (!isUnregisteredName && !resolvedBuiltinToolIds.has(toolName))
   ) {
     const reason = registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason
     await auditDenial(emitAudit, toolActorContext, context, toolName, {

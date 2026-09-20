@@ -51,6 +51,8 @@ export const toAgentConfigProjection = (
   ...(record.effort ? { effort: record.effort } : {}),
   id: record.id,
   ...(record.model ? { model: record.model } : {}),
+  ...(record.modelSubscriptionId ? { modelSubscriptionId: record.modelSubscriptionId } : {}),
+  ...(record.localInferenceBindingId ? { localInferenceBindingId: record.localInferenceBindingId } : {}),
   name: record.name,
   owner: record.owner ?? null,
   ...(record.provider ? { provider: record.provider } : {}),
@@ -60,6 +62,7 @@ export const toAgentConfigProjection = (
   ...(record.systemPrompt ? { systemPrompt: record.systemPrompt } : {}),
   todosEnabled: record.todosEnabled,
   ...(record.toolPolicy ? { toolPolicy: record.toolPolicy } : {}),
+  voiceName: record.voiceName ?? null,
   visibility: record.visibility,
 })
 

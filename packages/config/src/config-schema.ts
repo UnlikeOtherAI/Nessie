@@ -76,6 +76,8 @@ export const ModelConfigSchema = z.object({
   // OpenAI-compatible connector. Unset keeps today's behaviour: the segment
   // defaults to `provider`. Mirrors `embedding.serviceId`.
   serviceId: z.string().min(1).regex(/^[A-Za-z0-9._-]+$/).optional(),
+  // Deprecated compatibility setting. Inference callers now declare their own
+  // operational bounds; main agent responses omit an output-token request.
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),

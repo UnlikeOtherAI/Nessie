@@ -192,3 +192,52 @@ test('preparing a private share does not consume a second model judgement at dis
     false,
   )
 })
+
+test('private conversation schema discovery is allowed while external content dispatch stays closed', async () => {
+  const privateContext = context()
+  privateContext.consumedSources.addPrivateConversationSource({
+    sourceAuthorUserId: 'person',
+    sourceChannelId: CHANNEL,
+  })
+  const hooks = {
+    deepWaterHandoffGuard: { suppressBuiltin: async () => false } as never,
+    emitAudit: async () => undefined,
+  }
+  const schema = await authorizeToolExecution(
+    fakePrisma().prisma as never,
+    actor(), privateContext, 'tool_spec', { names: ['card_post'] }, 'schema-call',
+    {
+      agentKind: 'shared',
+      allowedToolIds: new Set(),
+      externalContentToolNames: new Set(['mcp_publish']),
+      maySuspendForApproval: false,
+      parentAgentId: null,
+      resolvedBuiltinToolIds: new Set(),
+      toolPolicy: null,
+      unregisteredToolNames: new Set(['tool_spec', 'mcp_publish']),
+    },
+    hooks,
+  )
+  assert.equal(schema.decision, 'allow')
+
+  const content = await authorizeToolExecution(
+    fakePrisma().prisma as never,
+    actor(), privateContext, 'mcp_publish', { body: 'private words' }, 'content-call',
+    {
+      agentKind: 'shared',
+      allowedToolIds: new Set(),
+      externalContentToolNames: new Set(['mcp_publish']),
+      maySuspendForApproval: false,
+      parentAgentId: null,
+      resolvedBuiltinToolIds: new Set(),
+      toolPolicy: null,
+      unregisteredToolNames: new Set(['tool_spec', 'mcp_publish']),
+    },
+    hooks,
+  )
+  assert.equal(content.decision, 'deny')
+  assert.equal(
+    content.decision === 'deny' && content.result.output.includes('private conversation'),
+    true,
+  )
+})

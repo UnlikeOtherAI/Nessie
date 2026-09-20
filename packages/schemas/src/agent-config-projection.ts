@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { AgentEffortSchema, AgentRunLimitsSchema } from './lifecycle.js'
 import { AgentOwnerSchema, AgentVisibilitySchema } from './team-records.js'
+import { VoiceNameSchema } from './voice.js'
 
 /**
  * What a Nessie-managed agent *is*, for a reader who may look but not touch.
@@ -25,6 +26,8 @@ export const AgentConfigProjectionSchema = z.object({
   effort: AgentEffortSchema.optional(),
   id: z.string().uuid(),
   model: z.string().optional(),
+  modelSubscriptionId: z.string().uuid().optional(),
+  localInferenceBindingId: z.string().uuid().optional(),
   name: z.string(),
   owner: AgentOwnerSchema.nullable(),
   provider: z.string().optional(),
@@ -34,6 +37,7 @@ export const AgentConfigProjectionSchema = z.object({
   systemPrompt: z.string().optional(),
   todosEnabled: z.boolean(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
+  voiceName: VoiceNameSchema.nullish(),
   visibility: AgentVisibilitySchema,
 })
 export type AgentConfigProjectionRecord = z.infer<typeof AgentConfigProjectionSchema>

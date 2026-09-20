@@ -6,6 +6,7 @@ import {
   EMPTY_OUTPUT_FINALIZATION_INSTRUCTION,
   EMPTY_OUTPUT_TERMINAL_MESSAGE,
   OUTPUT_LENGTH_FINALIZATION_INSTRUCTION,
+  OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION,
   runAgenticLoop,
   type BudgetLimits,
 } from './agentic-loop.js'
@@ -662,6 +663,144 @@ test('a length-limited turn gets one no-tools finalisation without replaying wor
   assert.deepEqual(noTools, [false, true])
   assert.ok(result.messages.some((message) => message.role === 'system'
     && message.content === OUTPUT_LENGTH_FINALIZATION_INSTRUCTION))
+})
+
+test('a repeated provider length is not fabricated as a run token limit', async () => {
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxTokens: 500_000 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async () => {
+      calls += 1
+      return { ...finalAnswerInference('partial answer'), finishReason: 'length' }
+    },
+    tools: [],
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.exhaustedBudget, null)
+  assert.equal(result.incompleteReason, 'provider_output_limit')
+  assert.match(result.finalText, /model provider reached its response limit again/)
+})
+
+test('an empty length-stopped reasoning turn continues authorized work once', async () => {
+  const noTools: boolean[] = []
+  let calls = 0
+  let executions = 0
+  let checkpoint: LoopResumeState | undefined
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 5, maxTokens: 500_000 }),
+    callbacks: {
+      ...noopCallbacks(),
+      onCheckpoint: async (state) => {
+        if (state.outputFinalizationPending) checkpoint = state
+      },
+    },
+    executeTool: async () => {
+      executions += 1
+      return { inputSummary: 'authorized research', output: 'research complete', success: true }
+    },
+    initialMessages: initial,
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      calls += 1
+      if (calls === 1) return { ...finalAnswerInference(''), finishReason: 'length' }
+      if (calls === 2) return toolCallInference('')
+      return finalAnswerInference('Research is complete.')
+    },
+    tools: [{ description: 'authorized research', inputSchema: {}, toolName: 'noop' }],
+  })
+  assert.equal(executions, 1)
+  assert.deepEqual(noTools, [false, false, false])
+  assert.equal(result.finalText, 'Research is complete.')
+  assert.equal(result.exhaustedBudget, null)
+  assert.equal(result.incompleteReason, null)
+  assert.equal(checkpoint?.outputFinalizationNoTools, false)
+  assert.ok(checkpoint?.messages.some((message) => message.role === 'system'
+    && message.content === OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION))
+})
+
+test('a reclaimed empty-length continuation keeps its tool authority', async () => {
+  let checkpoint: LoopResumeState | undefined
+  await assert.rejects(runAgenticLoop({
+    budget: budget({}),
+    callbacks: {
+      ...noopCallbacks(),
+      onCheckpoint: async (state) => {
+        if (!state.outputFinalizationPending) return
+        checkpoint = state
+        throw new Error('drain after empty-length checkpoint')
+      },
+    },
+    executeTool: async () => ({ inputSummary: 'must not run before reclaim', output: '', success: true }),
+    initialMessages: initial,
+    runInference: async () => ({ ...finalAnswerInference(''), finishReason: 'length' }),
+    tools: [{ description: 'authorized research', inputSchema: {}, toolName: 'noop' }],
+  }), /drain after empty-length checkpoint/)
+  assert.ok(checkpoint)
+
+  const noTools: boolean[] = []
+  let executions = 0
+  let calls = 0
+  const resumed = await runAgenticLoop({
+    budget: budget({}), callbacks: noopCallbacks(), initialMessages: initial, resume: checkpoint,
+    executeTool: async () => {
+      executions += 1
+      return { inputSummary: 'authorized research', output: 'done', success: true }
+    },
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      calls += 1
+      return calls === 1 ? toolCallInference('') : finalAnswerInference('Recovered completion.')
+    },
+    tools: [{ description: 'authorized research', inputSchema: {}, toolName: 'noop' }],
+  })
+  assert.deepEqual(noTools, [false, false])
+  assert.equal(executions, 1)
+  assert.equal(resumed.finalText, 'Recovered completion.')
+})
+
+test('a length-stopped tool frame is regenerated before any tool dispatch', async () => {
+  let calls = 0
+  let executions = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 5 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => {
+      executions += 1
+      return { inputSummary: 'card', output: 'posted', success: true }
+    },
+    initialMessages: initial,
+    runInference: async () => {
+      calls += 1
+      if (calls === 1) return { ...toolCallInference(''), finishReason: 'length' }
+      if (calls === 2) return toolCallInference('')
+      return finalAnswerInference('card posted')
+    },
+    tools: [{ description: 'post card', inputSchema: {}, toolName: 'noop' }],
+  })
+  assert.equal(executions, 1)
+  assert.equal(result.finalText, 'card posted')
+})
+
+test('a prose-only recovery never dispatches a newly requested tool', async () => {
+  let executions = 0
+  let calls = 0
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 4 }), callbacks: noopCallbacks(),
+    executeTool: async () => { executions += 1; return { inputSummary: 'x', output: 'x', success: true } },
+    initialMessages: initial,
+    runInference: async () => {
+      calls += 1
+      return calls === 1
+        ? { ...finalAnswerInference('partial'), finishReason: 'length' }
+        : toolCallInference('')
+    },
+    tools: [{ description: 'must not run', inputSchema: {}, toolName: 'noop' }],
+  })
+  assert.equal(executions, 0)
+  assert.equal(result.incompleteReason, 'provider_output_limit')
 })
 
 test('an empty provider success after tools gets one checkpointed no-tools finalisation', async () => {

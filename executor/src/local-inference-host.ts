@@ -107,7 +107,7 @@ const capabilityFor = (
   discoveredAt: now.toISOString(),
   lastVerifiedAt: now.toISOString(),
   ...(model.numCtxCap === null ? {} : { maxInputTokens: model.numCtxCap }),
-  maxOutputTokens: attempt.maxOutputTokens,
+  ...(attempt.maxOutputTokens === undefined ? {} : { maxOutputTokens: attempt.maxOutputTokens }),
   model: attempt.modelName,
   provider: 'local_device',
   source: 'live' as const,

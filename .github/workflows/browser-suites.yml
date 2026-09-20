@@ -139,6 +139,12 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:disclosure
 
+      # Designer capability changes and provider truncation travel through the
+      # actual private chat, API and worker; each suite owns its server lifecycle.
+      - name: Run Agent Designer capability browser evaluation
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:designer-capabilities
+
       # Real-browser navigation transitions: each case freezes the actual
       # animation with document.getAnimations() at 0 %, 50 % and 100 %,
       # asserts layer positions and scrollLeft numerically, and saves the
@@ -196,6 +202,14 @@ jobs:
         with:
           name: navigation-transition-frames
           path: e2e/screenshots/navigation
+          if-no-files-found: warn
+
+      - name: Upload Agent Designer capability screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: designer-capabilities-screenshots
+          path: e2e/screenshots/designer-capabilities
           if-no-files-found: warn
 
       - name: Upload project usability screenshots

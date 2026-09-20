@@ -2,6 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseOrganizationId } from '@nessie/schemas'
 import { SYSTEM_TOOL_DEFINITIONS } from '@nessie/runtime'
 import { ensureExecutorLogicalTools } from '@nessie/executor-manage'
+export { ensureBuiltinToolsRegistered } from '@nessie/team-admin'
+import { ensureBuiltinToolsRegistered } from '@nessie/team-admin'
 
 // Builtin ids whose exposure requires an explicit per-agent grant (default off).
 // The admin tool catalog reads this to render them off-by-default and to write
@@ -88,47 +90,6 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
     SYSTEM_TOOL_DEFINITIONS.find((tool) => tool.id === entry.toolId)?.personalAssistantOnly || undefined,
   category: BUILTIN_TOOL_CATEGORIES.get(entry.toolId),
 })
-
-export const ensureBuiltinToolsRegistered = async (
-  prisma: PrismaClient | Prisma.TransactionClient,
-  organizationId: string,
-): Promise<void> => {
-  await Promise.all(
-    SYSTEM_TOOL_DEFINITIONS.map((tool) =>
-      prisma.toolRegistryEntry.upsert({
-        where: {
-          organizationId_scopeKey_toolId: {
-            organizationId,
-            scopeKey: BUILTIN_TOOL_SCOPE_KEY,
-            toolId: tool.id,
-          },
-        },
-        create: {
-          builtin: true,
-          description: tool.description,
-          // Builtins ship with concise one-line descriptions that already
-          // double as the human-readable summary (spec §3.1).
-          overview: tool.description,
-          enabled: true,
-          handlerKind: 'builtin',
-          label: tool.label,
-          organizationId,
-          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
-          safe: tool.safe,
-          toolId: tool.id,
-        },
-        update: {
-          builtin: true,
-          description: tool.description,
-          handlerKind: 'builtin',
-          label: tool.label,
-          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
-          safe: tool.safe,
-        },
-      }),
-    ),
-  )
-}
 
 export const listToolRegistryEntries = async (
   prisma: PrismaClient,

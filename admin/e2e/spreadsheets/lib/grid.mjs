@@ -65,12 +65,27 @@ export const openSpreadsheet = async (page, { pageId, spaceId }) => {
  * Put the keyboard into the grid without changing the selection more than
  * once. The outline div covers the canvas, so a plain Playwright click is
  * refused as "intercepted" — `page.mouse` dispatches at viewport coordinates
- * and lands like a finger would.
+ * and lands like a finger would. Use the widget's selected-cell outline rather
+ * than a fixed canvas offset: the latter can sit on the column header while
+ * IronCalc finishes laying out, selecting `A:A` instead of a cell.
  */
 export const focusGrid = async (page) => {
-  const canvas = await page.locator('.ic-worksheet-sheet-canvas').boundingBox()
-  await page.mouse.click(canvas.x + 45, canvas.y + 40)
+  const outline = await page.locator('.ic-worksheet-cell-outline').boundingBox()
+  if (!outline || outline.width < 1 || outline.height < 1) {
+    throw new Error('the selected spreadsheet cell has no outline')
+  }
+  await page.mouse.click(outline.x + outline.width / 2, outline.y + outline.height / 2)
   await page.waitForTimeout(80)
+  const selected = await page.locator('.ic-formula-bar-address').first().textContent()
+  if (!parseA1(selected)) {
+    // IronCalc keeps A1 as the active cell when a column range is selected;
+    // ArrowDown intentionally collapses that range to a real adjacent cell.
+    await page.keyboard.press('ArrowDown')
+    await page.waitForFunction(() => {
+      const text = document.querySelector('.ic-formula-bar-address')?.textContent ?? ''
+      return /^[A-Z]{1,3}[0-9]+$/.test(text.trim())
+    })
+  }
 }
 
 /** Arrow-key navigation, verified against the address box rather than assumed. */

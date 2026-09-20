@@ -4,6 +4,7 @@ import {
   AgentAvatarStyleSchema,
   AgentEffortSchema,
   AgentRunLimitsSchema,
+  VoiceNameSchema,
 } from '@nessie/schemas'
 import {
   assertAgentEditAuthority,
@@ -85,6 +86,9 @@ const describeConfig = (
     ? `${config.owner.displayName ?? config.owner.userId} (${config.owner.ownerState})`
     : 'team-owned'}`,
   `model: ${config.model ? `${config.provider ?? '?'}/${config.model}` : 'deployment default'}`,
+  `model subscription: ${config.modelSubscriptionId ?? 'organisation/default lane'}`,
+  `local inference binding: ${config.localInferenceBindingId ?? 'none'}`,
+  `voice: ${config.voiceName ?? 'default'}`,
   `effort: ${config.effort ?? 'medium'}`,
   `run limits: ${describeRunLimits(config.runLimits)}`,
   `to-dos: ${config.todosEnabled ? 'on' : 'off'}`,
@@ -155,11 +159,14 @@ const AgentUpdateInputSchema = z.object({
   systemPrompt: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
+  modelSubscriptionId: z.string().uuid().nullable().optional(),
+  localInferenceBindingId: z.string().uuid().nullable().optional(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   todosEnabled: z.boolean().optional(),
   ownerUserId: z.string().uuid().nullish(),
+  voiceName: VoiceNameSchema.nullish(),
 })
 
 export const runAgentUpdateTool = async (
@@ -195,7 +202,7 @@ export const runAgentUpdateTool = async (
   // `PUT /api/agents/:agentId` validates it: chat cannot point an agent at a
   // model that will fail on its first run, nor at somebody else's personal plan.
   let modelSubscriptionId: string | null | undefined
-  if (patch.model !== undefined || patch.provider !== undefined) {
+  if (patch.model !== undefined || patch.provider !== undefined || patch.modelSubscriptionId !== undefined) {
     const stored = await context.prisma.agent.findFirst({
       where: { id: agentId, organizationId: member.organizationId },
       select: { model: true, modelSubscriptionId: true, ownerUserId: true, provider: true, teamId: true },
@@ -211,7 +218,9 @@ export const runAgentUpdateTool = async (
       // across a provider change is validated against the wrong set of links
       // and refuses a move that is perfectly legitimate. Same reasoning as
       // `PUT /api/agents/:agentId`.
-      ...(stored?.modelSubscriptionId
+      ...(patch.modelSubscriptionId !== undefined
+        ? { modelSubscriptionId: patch.modelSubscriptionId }
+        : stored?.modelSubscriptionId
         && (patch.provider ?? stored.provider) === stored.provider
         ? { modelSubscriptionId: stored.modelSubscriptionId }
         : {}),
@@ -317,7 +326,7 @@ const RESTRICTION_REASONS: Record<AgentToolCatalogRestrictedEntry['restriction']
     'reserved for Nessie’s built-in specialists — nobody can give it to a '
     + 'designed agent, including you',
   explicit_grant:
-    'granted only from the owner surfaces (Apps, Tools) — never from here',
+    'requires an organisation owner: inspect the target, then use the dedicated protected-access control (or the complete DeepWater bundle control)',
   personal_assistant_only:
     'only a person’s own Personal Assistant may use it; a designed agent cannot',
 }
@@ -360,10 +369,10 @@ export const runAgentToolCatalogTool = async (
   return {
     inputSummary: needle ? `query="${args.query}"` : 'all',
     outputPreview: [
-      `Tools you can give an agent here (${togglable.length}), `
-      + `and ${restricted.length} you cannot.`,
+      `${togglable.length} ordinary tool controls and ${restricted.length} `
+      + 'special-access or unavailable tools are listed below.',
       ...sections,
-      formatSection('Not grantable from a conversation', restricted.map(describeRestrictedEntry)),
+      formatSection('Special access and unavailable tools', restricted.map(describeRestrictedEntry)),
       catalogue.connectorCount === 0
         ? 'No connected apps are active in this team yet — install one from '
           + 'the Apps page to give an agent access to an outside service.'
@@ -372,6 +381,12 @@ export const runAgentToolCatalogTool = async (
     toolName: 'agent_tool_catalog',
   }
 }
+
+export {
+  runAgentDeepWaterAccessSetTool,
+  runAgentToolAccessInspectTool,
+  runAgentToolAccessSetTool,
+} from './agent-access.js'
 
 const AgentAvatarUpdateInputSchema = z.object({
   agentId: z.string().uuid(),

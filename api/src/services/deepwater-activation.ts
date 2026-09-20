@@ -4,6 +4,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   createInstance,
   projectMcpToolDescriptors,
+  runWithDeepWaterTransitionLock,
   type McpInstanceRow,
 } from '@nessie/mcp-manage'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
@@ -158,28 +159,7 @@ const assertLedgerConnectionConfigured = (): void => {
   }
 }
 
-const deepWaterTransitionLockKey = (input: DeepWaterScope): string =>
-  `${input.organizationId}:${input.teamId}:${DEEP_WATER_PRODUCT_SLUG}`
-
-/**
- * PostgreSQL transaction-scoped advisory locking serializes opposite
- * enable/disable requests across API processes. All transition reads and writes
- * use the locked transaction client, so the lock does not rely on process-local
- * memory and cannot be bypassed by a second Nessie replica.
- */
-export const runWithDeepWaterTransitionLock = <T>(
-  prisma: PrismaClient,
-  input: DeepWaterScope,
-  action: (tx: Prisma.TransactionClient) => Promise<T>,
-): Promise<T> =>
-  prisma.$transaction(async (tx) => {
-    await tx.$executeRaw(Prisma.sql`
-      SELECT pg_advisory_xact_lock(
-        hashtextextended(${deepWaterTransitionLockKey(input)}, 0)
-      )
-    `)
-    return action(tx)
-  })
+export { runWithDeepWaterTransitionLock } from '@nessie/mcp-manage'
 
 const loadPublishedCatalogEntryId = async (
   prisma: DeepWaterDb,

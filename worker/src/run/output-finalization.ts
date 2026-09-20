@@ -1,6 +1,8 @@
 export type OutputFinalizationReason = 'empty_output' | 'length'
+export type OutputFinalizationRecovery = 'final_answer' | 'tool_regeneration' | 'unfinished_work'
 
 export type OutputFinalizationState = {
+  noTools: boolean
   pending: boolean
   reason: OutputFinalizationReason | null
   used: boolean
@@ -15,6 +17,9 @@ export const EMPTY_OUTPUT_TERMINAL_MESSAGE =
 export const OUTPUT_LENGTH_FINALIZATION_INSTRUCTION =
   'Your previous response reached the provider output limit. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
 
+export const OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION =
+  'Your previous response reached the provider output limit before any visible answer or tool call. Continue only the already authorized unfinished work. Call only the tools needed to complete it, do not repeat completed calls, and do not begin unrelated work.'
+
 export class EmptyProviderResponseError extends Error {
   constructor() {
     super('Provider returned no final answer after one no-tools recovery attempt')
@@ -22,22 +27,39 @@ export class EmptyProviderResponseError extends Error {
   }
 }
 
+export class ProviderOutputLimitError extends Error {
+  constructor() {
+    super('Provider repeatedly reached its output limit before completing the response')
+    this.name = 'ProviderOutputLimitError'
+  }
+}
+
 export const restoreOutputFinalizationState = (input: {
   lengthFinalizationPending?: boolean
   lengthFinalizationUsed?: boolean
   outputFinalizationPending?: boolean
+  outputFinalizationNoTools?: boolean
   outputFinalizationReason?: OutputFinalizationReason | null
   outputFinalizationUsed?: boolean
 }): OutputFinalizationState => {
   const used = input.outputFinalizationUsed ?? input.lengthFinalizationUsed ?? false
   return {
+    noTools: input.outputFinalizationNoTools ?? true,
     pending: input.outputFinalizationPending ?? input.lengthFinalizationPending ?? false,
     reason: input.outputFinalizationReason ?? (used ? 'length' : null),
     used,
   }
 }
 
-export const outputFinalizationInstruction = (reason: OutputFinalizationReason): string =>
+export const outputFinalizationInstruction = (
+  reason: OutputFinalizationReason,
+  recovery: OutputFinalizationRecovery = 'final_answer',
+): string =>
+  recovery === 'unfinished_work'
+    ? OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION
+    : recovery === 'tool_regeneration'
+      ? 'Your previous tool-call response reached the provider output limit. Regenerate only the complete tool call needed to continue the already requested work. Do not repeat completed calls or begin unrelated work.'
+    :
   reason === 'length'
     ? OUTPUT_LENGTH_FINALIZATION_INSTRUCTION
     : EMPTY_OUTPUT_FINALIZATION_INSTRUCTION
@@ -48,7 +70,8 @@ export const outputFinalizationTerminalText = (
 ): string => reason === 'length'
   ? [
     partialText.trim(),
-    'I reached the response limit before completing the answer. Continue this run to finish.',
+    'The model provider reached its response limit again before it could finish. '
+      + 'Completed work has been kept; please try again with a narrower request.',
   ].filter(Boolean).join('\n\n')
   : EMPTY_OUTPUT_TERMINAL_MESSAGE
 
@@ -70,7 +93,7 @@ export const advanceOutputFinalization = (
     outputText: string
     toolCalls: readonly unknown[]
   },
-): { kind: 'recover'; reason: OutputFinalizationReason } | {
+): { kind: 'recover'; reason: OutputFinalizationReason; recovery: OutputFinalizationRecovery } | {
   kind: 'terminal'
   reason: OutputFinalizationReason
 } | null => {
@@ -83,7 +106,28 @@ export const advanceOutputFinalization = (
     state.used = true
     state.pending = true
     state.reason = reason
-    return { kind: 'recover', reason }
+    // A length-stopped tool-call frame is not a complete operation. Do not
+    // dispatch it; give the model one bounded chance to regenerate a complete
+    // call under the same identity and effect ledger. A length stop before any
+    // visible answer or call may be hidden reasoning before authorized work,
+    // so it gets the same bounded, ledger-protected continuation. Partial prose
+    // and ordinary empty output instead recover as a final answer only.
+    state.noTools = input.toolCalls.length === 0
+      && !(reason === 'length' && input.outputText.trim().length === 0)
+    return {
+      kind: 'recover',
+      reason,
+      recovery: state.noTools
+        ? 'final_answer'
+        : input.toolCalls.length > 0 ? 'tool_regeneration' : 'unfinished_work',
+    }
+  }
+  if (state.pending && input.toolCalls.length > 0 && !state.noTools) {
+    state.pending = false
+    // This is the one permitted regenerated tool batch after a truncated
+    // frame. It will proceed through ordinary authorization and effect
+    // idempotency; the original length-stopped batch was never dispatched.
+    return null
   }
   if (state.pending && input.toolCalls.length > 0) {
     state.pending = false

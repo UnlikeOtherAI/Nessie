@@ -51,6 +51,65 @@ export const createKimiConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_KIMI_MODEL
 
+  const fetchModelCapability = async (model: string): Promise<{
+    maxInputTokens?: number
+    maxOutputTokens?: number
+  }> => {
+    // Kimi's Messages endpoint requires max_tokens, while its catalogue
+    // currently advertises context_length rather than an output limit. That
+    // context capacity is the provider's own accepted protocol maximum, not a
+    // Nessie response-length policy.
+    if (ledgerRouted) return {}
+    let response: Response
+    try {
+      response = await fetch(`${baseUrl}/v1/models`, {
+        headers: { ...headers }, method: 'GET',
+        signal: AbortSignal.timeout(10_000),
+      })
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        throw new Error('Kimi model metadata request timed out')
+      }
+      throw new Error('Kimi model metadata is temporarily unavailable')
+    }
+    if (!response.ok) {
+      throw await providerHttpError({
+        ledgerRouted,
+        operation: 'model metadata',
+        provider: 'kimi',
+        response,
+      })
+    }
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      throw new Error('Kimi model metadata response is malformed')
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error('Kimi model metadata response is malformed')
+    }
+    const data = (body as Record<string, unknown>).data
+    if (!Array.isArray(data)) throw new Error('Kimi model metadata response is malformed')
+    const row = data.find((entry): entry is Record<string, unknown> =>
+      Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+      && (entry as Record<string, unknown>).id === model,
+    )
+    if (!row) throw new Error('Kimi configured model was not found in model metadata')
+    const contextLength = typeof row.context_length === 'number' && Number.isInteger(row.context_length) && row.context_length > 0
+      ? row.context_length : undefined
+    const outputLimit = typeof row.max_output_tokens === 'number' && Number.isInteger(row.max_output_tokens) && row.max_output_tokens > 0
+      ? row.max_output_tokens : undefined
+    if (contextLength === undefined && outputLimit === undefined) {
+      throw new Error('Kimi model metadata response is malformed')
+    }
+    const protocolOutputLimit = outputLimit ?? contextLength
+    return {
+      ...(contextLength === undefined ? {} : { maxInputTokens: contextLength }),
+      ...(protocolOutputLimit === undefined ? {} : { maxOutputTokens: protocolOutputLimit }),
+    }
+  }
+
   const invokeRequest = async (
     body: Record<string, unknown>,
     requestHeaders?: Record<string, string>,
@@ -97,7 +156,9 @@ export const createKimiConnector = (
     },
 
     async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
-      return createBaseSnapshot({
+      const capability = await fetchModelCapability(model)
+      return {
+        ...createBaseSnapshot({
         model,
         provider: 'kimi',
         structuredOutputMode: 'prompt-json',
@@ -108,7 +169,10 @@ export const createKimiConnector = (
         systemPromptMode: 'native',
         toolCallingMode: 'prompt-translated',
         toolResultMode: 'context-block',
-      })
+        }),
+        ...capability,
+        source: capability.maxOutputTokens === undefined ? 'static' : 'live',
+      }
     },
 
     async getProviderMeta() {
@@ -130,7 +194,7 @@ export const createKimiConnector = (
 
       try {
         const response = await invokeRequest({
-          max_tokens: request.maxOutputTokens ?? 1024,
+          ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
           messages: payload.messages,
           model,
           system: payload.system,
@@ -193,7 +257,7 @@ export const createKimiConnector = (
 
       try {
         const response = await invokeRequest({
-          max_tokens: request.maxOutputTokens ?? 1024,
+          ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
           messages: payload.messages,
           model,
           stream: true,

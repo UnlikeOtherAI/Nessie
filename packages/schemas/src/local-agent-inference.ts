@@ -150,7 +150,9 @@ export const LocalInferenceAttemptRequestSchema = z.object({
   hostEpoch: z.number().int().positive(),
   hostId: z.string().uuid(),
   invocationId: NonEmptyStringSchema.max(160),
-  maxOutputTokens: z.number().int().positive().max(100_000),
+  // Main conversational inference omits an application output ceiling. A
+  // bounded operational caller may still supply one explicitly.
+  maxOutputTokens: z.number().int().positive().max(100_000).optional(),
   messages: z.array(LocalInferenceMessageSchema).max(1_000),
   modelDigest: z.string().regex(/^[a-f0-9]{64}$/),
   modelName: NonEmptyStringSchema.max(200),

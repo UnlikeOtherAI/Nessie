@@ -14,6 +14,9 @@ map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
+Agent response length is prompt-guided rather than application-capped; follow
+the run-budget standard linked from `AGENTS.md` for provider protocol limits.
+
 > **Rule zero — a capability is not done until a person can reach it.** A
 > feature nobody can navigate to counts as unfinished. The four checks and the
 > history behind each are in [`AGENTS.md`](AGENTS.md) → "Rule zero".
@@ -38,6 +41,10 @@ sentence changes only if the invariant itself did.
 - **Private browser access, human control, and selected-site Chrome import**
   have their own explicit-grant contract; read
   [`docs/plans/2026-09-07-private-browser-access-and-import.md`](docs/plans/2026-09-07-private-browser-access-and-import.md).
+- **Conversational Agent Designer grants** act as the live requesting member;
+  protected policy keys stay closed to generic updates, and DeepWater remains
+  an atomic bundle. Read
+  [`docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md`](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md).
 
 ## Notes specific to Claude Code
 

@@ -34,7 +34,7 @@ const researchCardTitle = (query: string): string => {
 // Every other launcher choice therefore travels as a labelled line inside the
 // optional `context` string, which Ledger forwards to the research pipeline
 // verbatim. Keep this list and the tool description in
-// `integration-plugin-manifests/deep-water.ts` in step, so an agent composing a
+// `@nessie/mcp-manage`'s DeepWater integration manifest in step, so an agent composing a
 // research request by hand produces the same instructions the launcher does.
 export const buildDeepWaterLaunchMessage = (
   input: DeepWaterLaunchInput,

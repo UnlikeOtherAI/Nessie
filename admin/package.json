@@ -42,7 +42,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "shots": "node e2e/marketing-shots/run.mjs",
     "shots:save": "node e2e/marketing-shots/snapshot.mjs save",
-    "shots:restore": "node e2e/marketing-shots/snapshot.mjs restore"
+    "shots:restore": "node e2e/marketing-shots/snapshot.mjs restore",
+    "test:e2e:designer-capabilities": "node --import tsx e2e/designer-capabilities/run.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

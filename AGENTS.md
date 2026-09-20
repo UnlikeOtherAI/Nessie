@@ -250,6 +250,8 @@ when one changes, the same turn updates it, not this section.
   threshold alerts, and the active-run lifecycle controls.
   Read [`docs/standards/tech-and-run-budgets.md`](docs/standards/tech-and-run-budgets.md)
   before writing code here.
+  Main response length is guided by the shared prompt, never an application
+  token ceiling; provider protocol requirements and real budgets are documented there.
 - **UOA owns the org structure, not just the people in it.** Where UOA SSO is
   configured, its organisation and team hierarchy maps **1:1** into Nessie: one
   UOA organisation is one Nessie `Organization` (bound by the unique
@@ -516,6 +518,15 @@ Private browser access, human control, selected-site Chrome import, and their
 explicit grants are a separate contract: read
 [docs/plans/2026-09-07-private-browser-access-and-import.md](docs/plans/2026-09-07-private-browser-access-and-import.md)
 before touching those surfaces.
+
+## Conversational Agent Designer access
+
+The Designer acts only with the live requesting member's authority. Generic
+agent updates must continue to reject protected keys; protected builtins and
+MCP tools use their specialist grant service, and DeepWater remains an atomic
+ready bundle with active-run revocation protection. Read
+[docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md)
+before changing these contracts.
 
 ## Settings — one cascade, and a lock a person can see
 

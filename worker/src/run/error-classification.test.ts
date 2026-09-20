@@ -7,7 +7,7 @@ import {
   userMessageForFailureReason,
 } from './error-classification.js'
 import { ProviderInvocationError } from '@nessie/runtime'
-import { EmptyProviderResponseError } from './output-finalization.js'
+import { EmptyProviderResponseError, ProviderOutputLimitError } from './output-finalization.js'
 
 test('an exhausted empty-provider recovery is terminal', () => {
   const error = new EmptyProviderResponseError()
@@ -16,6 +16,23 @@ test('an exhausted empty-provider recovery is terminal', () => {
     action: 'surface_error',
     userMessage: userMessageForFailureReason('empty_response'),
   })
+})
+
+test('a repeated provider output limit remains distinct from an empty response', () => {
+  const error = new ProviderOutputLimitError()
+  assert.equal(classifyError(error), 'provider_output_limit')
+  assert.deepEqual(resolveRecovery('provider_output_limit', 0, { remaining: 6, total: 6 }), {
+    action: 'surface_error', userMessage: userMessageForFailureReason('provider_output_limit'),
+  })
+})
+
+test('Kimi metadata availability is retryable while malformed metadata is a format failure', () => {
+  assert.equal(classifyError(new Error('Kimi model metadata is temporarily unavailable')), 'transient')
+  assert.deepEqual(resolveRecovery('transient', 0, { remaining: 2, total: 2 }), {
+    action: 'retry', delayMs: 2_000,
+  })
+  assert.equal(classifyError(new Error('Kimi model metadata response is malformed')), 'format')
+  assert.equal(classifyError(new Error('Kimi configured model was not found in model metadata')), 'model_not_found')
 })
 
 test('missing model credentials tell the user how to resolve the problem', () => {
