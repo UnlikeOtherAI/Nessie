@@ -55,6 +55,36 @@ export type ExecutorPairingOriginVerdict =
   | { ok: true; origin: string; presetId?: ExecutorPairingPresetId }
   | { ok: false; reason: string }
 
+export type ExecutorPairingOriginOptions = {
+  /** The caller is an explicitly marked development build. */
+  allowLocalDevelopment?: boolean
+  /**
+   * The one loopback API origin its current worktree resolved. This remains an
+   * exact comparison: a development caller does not get to pair with arbitrary
+   * HTTP loopback listeners.
+   */
+  localDevelopmentOrigin?: string
+}
+
+const isLoopbackDevelopmentOrigin = (origin: string): boolean => {
+  try {
+    const parsed = new URL(origin)
+    const port = Number(parsed.port)
+    return parsed.protocol === 'http:'
+      && parsed.hostname === '127.0.0.1'
+      && parsed.pathname === '/'
+      && parsed.search === ''
+      && parsed.hash === ''
+      && parsed.username === ''
+      && parsed.password === ''
+      && Number.isInteger(port)
+      && port >= 1
+      && port <= 65_535
+  } catch {
+    return false
+  }
+}
+
 /**
  * The one decision every surface shares: may this executor pair with this
  * origin, and is it one of ours or somebody's own server?
@@ -68,7 +98,7 @@ export type ExecutorPairingOriginVerdict =
  */
 export const approveExecutorPairingOrigin = (
   value: string,
-  options: { allowLocalDevelopment?: boolean } = {},
+  options: ExecutorPairingOriginOptions = {},
 ): ExecutorPairingOriginVerdict => {
   const preset = executorPairingPreset(value.trim())
   if (preset) return { ok: true, origin: preset.apiBaseUrl, presetId: preset.id }
@@ -93,7 +123,12 @@ export const approveExecutorPairingOrigin = (
   }
   const origin = parsed.origin
   if (parsed.protocol === 'https:') return { ok: true, origin }
-  if (options.allowLocalDevelopment && origin === EXECUTOR_LOCAL_DEVELOPMENT_ORIGIN) {
+  const localDevelopmentOrigin = options.localDevelopmentOrigin ?? EXECUTOR_LOCAL_DEVELOPMENT_ORIGIN
+  if (
+    options.allowLocalDevelopment
+    && isLoopbackDevelopmentOrigin(localDevelopmentOrigin)
+    && origin === localDevelopmentOrigin
+  ) {
     return { ok: true, origin }
   }
   return {

@@ -278,8 +278,21 @@ const readConfigurationInput = async (): Promise<{
  * into three readings of it.
  */
 const secureApiUrl = (value: string): string => {
+  const configuredPort = process.env.NESSIE_API_PORT?.trim()
+  const localDevelopmentOrigin = configuredPort === undefined || configuredPort === ''
+    ? 'http://127.0.0.1:5454'
+    : (() => {
+      const port = Number(configuredPort)
+      if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        throw new Error(
+          `NESSIE_API_PORT must be a port number between 1 and 65535, got "${configuredPort}"`,
+        )
+      }
+      return `http://127.0.0.1:${port}`
+    })()
   const verdict = approveExecutorPairingOrigin(value, {
     allowLocalDevelopment: process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API === '1',
+    localDevelopmentOrigin,
   })
   if (!verdict.ok) throw new Error(verdict.reason)
   return verdict.origin
