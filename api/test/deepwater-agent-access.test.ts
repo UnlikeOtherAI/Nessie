@@ -27,6 +27,9 @@ const names = [
 const projectedEntries = names.map((toolName, index) => ({
   id: `registry-${index + 1}`,
   metadata: { requiresExplicitGrant: true },
+  inputSchema: {},
+  outputSchema: {},
+  toolId: `deep-water:${toolName}`,
   transportConfig: { toolName },
 }))
 
@@ -177,7 +180,9 @@ const connectorId = '00000000-0000-4000-8000-000000000013'
 const runId = '00000000-0000-4000-8000-000000000014'
 const channelId = '00000000-0000-4000-8000-000000000015'
 const liveEntries = names.map((toolName, index) => ({
+  description: toolName,
   enabled: true,
+  handlerKind: 'mcp',
   id: `00000000-0000-4000-8000-${String(100 + index).padStart(12, '0')}`,
   metadata: { requiresExplicitGrant: true },
   status: 'active',
@@ -199,6 +204,7 @@ const buildAccessPrisma = (
     [deepWaterBundleMarkerKey(teamId), true] as const,
   ])
   let updateCalls = 0
+  const grants: Array<{ toolId: string; state: string; config: unknown }> = []
   const tx = {
     $executeRaw: async () => {
       events.push(events.length === 0 ? 'team-lock' : 'agent-lock')
@@ -252,6 +258,10 @@ const buildAccessPrisma = (
       },
       upsert: async () => ({}),
     },
+    toolGrant: {
+      updateMany: async ({ where, data }: any) => { const grant = grants.find((item) => item.toolId === where.toolId); if (!grant) return { count: 0 }; Object.assign(grant, data); return { count: 1 } },
+      create: async ({ data }: any) => { grants.push(data); return data },
+    },
   }
   const prisma = {
     $transaction: async <T>(action: (client: typeof tx) => Promise<T>) =>
@@ -269,6 +279,7 @@ const buildAccessPrisma = (
     get updateCalls() {
       return updateCalls
     },
+    get grants() { return grants },
   }
 }
 
@@ -287,6 +298,7 @@ test('bundle grant locks team before final projection read and agent policy', as
   )
   assert.equal(state.updateCalls, 1)
   for (const entry of liveEntries) assert.equal(state.policy[entry.id], true)
+  assert.equal(state.grants.filter((grant) => grant.state === 'allowed').length, liveEntries.length)
 })
 
 test('bundle revoke blocks while a linked run is nonterminal', async () => {
