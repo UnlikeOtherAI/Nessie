@@ -33,6 +33,7 @@ const catalogueResponse = () => new Response(JSON.stringify({
 
 const makePrisma = () => {
   const decisions = new Map<string, boolean>()
+  const teamLookups: unknown[] = []
   const upserts: Array<Record<string, unknown>> = []
   let transactionOptions: unknown
   const client = {
@@ -46,8 +47,10 @@ const makePrisma = () => {
       ],
     },
     team: {
-      findFirst: async ({ where }: { where: { id: string } }) =>
-        where.id === 'team-1' ? { id: 'team-1' } : null,
+      findFirst: async ({ where }: { where: { id: string } }) => {
+        teamLookups.push(where)
+        return where.id === 'team-1' ? { id: 'team-1' } : null
+      },
     },
     teamInferenceModelAvailability: {
       findMany: async ({ where }: { where: { enabled?: boolean } }) =>
@@ -79,6 +82,7 @@ const makePrisma = () => {
       return callback(client)
     },
     get transactionOptions() { return transactionOptions },
+    teamLookups,
     upserts,
   }
 }
@@ -119,7 +123,7 @@ const withTeamCatalogueRoute = async (
 }
 
 test('team catalogue filters the live rows after removing organisation-disabled pairs', async () => {
-  await withTeamCatalogueRoute(async (app) => {
+  await withTeamCatalogueRoute(async (app, prisma) => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/teams/team-1/inference/model-catalog?provider=openai&model=mini',
@@ -129,6 +133,10 @@ test('team catalogue filters the live rows after removing organisation-disabled 
     const body = response.json() as { data: Array<{ model: string }>; meta: { total: number } }
     assert.deepEqual(body.data.map((row) => row.model), ['gpt-5-mini'])
     assert.equal(body.meta.total, 1)
+    assert.deepEqual(prisma.teamLookups[0], {
+      id: 'team-1',
+      projects: { some: { organizationId: 'organization-1' } },
+    })
   })
 })
 

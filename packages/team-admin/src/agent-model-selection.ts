@@ -119,7 +119,7 @@ const assertPairEnabled = async (
       throw new AgentModelSelectionError(
         AGENT_MODEL_SELECTION_ERROR_CODES.TEAM_DISABLED,
         'That model is switched off for this team. '
-          + 'A team administrator can turn it back on under Team Settings → Models.',
+          + 'A team administrator can turn it back on under Team → Models.',
       )
     }
   }

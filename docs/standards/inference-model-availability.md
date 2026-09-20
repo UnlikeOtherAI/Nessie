@@ -178,7 +178,7 @@ own words.
 |---|---|---|
 | Sidebar → Organization | "Models", `ownerOnly: true` | `/settings/organization/models` — home |
 | Agent Designer → model picker | `ModelUnavailableNotice`, owner-only link | `/settings/organization/models` |
-| Team Settings → Models | Team-scoped catalogue | `/settings/team` — product-policy narrowing |
+| Sidebar → Team | "Models", same icon and catalogue surface as Organization | `/settings/team/models` — product-policy narrowing |
 
 Registered in `admin/src/router-lazy-pages.ts`, `admin/src/router.tsx`,
 `admin/src/layouts/admin-shell/admin-nav-items.tsx` and

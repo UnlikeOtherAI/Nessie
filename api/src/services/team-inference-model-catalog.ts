@@ -1,6 +1,10 @@
 import type { AgentModelOption } from '@nessie/schemas'
 import type { AuthorizedActionContext, PaginationDirection, PaginationMeta } from '@nessie/schemas'
-import { listLedgerAgentModels, modelPairKey } from '@nessie/team-admin'
+import {
+  listLedgerAgentModels,
+  MODEL_PAIR_SEPARATOR,
+  modelPairKey,
+} from '@nessie/team-admin'
 
 import type {
   DeploymentModelCatalogFilters,
@@ -51,7 +55,7 @@ const decodeCursor = (cursor: string | undefined): string | null => {
   if (!cursor) return null
   try {
     const decoded = Buffer.from(cursor, 'base64url').toString('utf8')
-    return decoded.includes('\u0000') ? decoded : null
+    return decoded.includes(MODEL_PAIR_SEPARATOR) ? decoded : null
   } catch {
     return null
   }
@@ -64,7 +68,9 @@ const assertTeamInOrganization = async (
 ): Promise<void> => {
   const team = await prisma.team.findFirst({
     select: { id: true },
-    where: { id: teamId, project: { organizationId } },
+    // Project.teamId is the forward ownership edge. Team.projectId is the
+    // legacy inverted relation and must not gain another authorization use.
+    where: { id: teamId, projects: { some: { organizationId } } },
   })
   if (!team) {
     throw new TeamModelCatalogError(
