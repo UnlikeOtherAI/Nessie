@@ -12,6 +12,7 @@ From the repository root, with dependencies installed:
 
 ```powershell
 pnpm --filter @nessie/executor exec node --test --import tsx test/ollama-observed.test.ts
+pnpm --filter @nessie/executor exec node --test --import tsx test/local-inference-host.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/uoa-live-entitlements.test.ts
 pnpm --filter @nessie/runtime exec node --test --import tsx test/local-inference-policy.test.ts
 pnpm --filter @nessie/admin exec node --test --import tsx test/local-inference-run-restart.test.ts
@@ -23,6 +24,9 @@ Results on 2026-09-20:
 
 - `ollama-observed.test.ts`: 4 passed — read-only tags/show discovery, official
   remote markers, changed output digest, malformed/oversized observations.
+- `local-inference-host.test.ts`: 4 passed — typed literal-loopback chat relay,
+  signed heartbeat framing, per-chunk remote-marker rejection, and encrypted
+  receipt replay without re-running an ambiguous model call.
 - `uoa-live-entitlements.test.ts`: 6 passed — active link, authoritative denial
   and unavailable UOA authority remain distinct.
 - `local-inference-policy.test.ts`: 2 passed — only the typed setting key is
