@@ -24,7 +24,7 @@ const refusal = async (promise: Promise<unknown>): Promise<string> => {
 const contextFor = (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string; agentId: string },
-  published: string[],
+  published: Array<{ event: string; scopes: unknown }>,
 ): BuiltinToolRuntimeContext => ({
   actorContext: {
     actionContext: { requestId: randomUUID() },
@@ -36,7 +36,9 @@ const contextFor = (
   channel: { id: randomUUID(), organizationId: input.organizationId },
   prisma,
   realtimeTransport: {
-    publishWs: async (_scopes: unknown, event: { event: string }) => { published.push(event.event) },
+    publishWs: async (scopes: unknown, event: { event: string }) => {
+      published.push({ event: event.event, scopes })
+    },
   },
   run: { id: randomUUID(), interactive: true, messageId: randomUUID(), threadId: randomUUID() },
   toolCallId: randomUUID(),
@@ -84,7 +86,7 @@ dbTest('protected access revalidates owner, tenant, connector visibility, execut
   const projectId = randomUUID()
   const teamId = randomUUID()
   const privateChannelId = randomUUID()
-  const published: string[] = []
+  const published: Array<{ event: string; scopes: unknown }> = []
   try {
     await prisma.organization.createMany({ data: [
       { id: organizationId, name: 'Protected access owner org' },
@@ -142,7 +144,13 @@ dbTest('protected access revalidates owner, tenant, connector visibility, execut
 
     const granted = await runAgentToolAccessSetTool(ownerContext, { agentId, enabled: true, toolRegistryEntryId: ownTool.id })
     assert.match(granted.outputPreview, /Granted protected tool access/)
-    assert.deepEqual(published, ['agent.updated'])
+    assert.deepEqual(published, [{
+      event: 'agent.updated',
+      scopes: [
+        { kind: 'organization', organizationId },
+        { agentId, kind: 'agent' },
+      ],
+    }])
     assert.equal(await prisma.auditLog.count({ where: { action: 'agent.tool_access.updated', organizationId, resourceId: agentId } }), 1)
     const current = await runAgentToolAccessInspectTool(ownerContext, { agentId })
     assert.match(current.outputPreview, /^- Own private MCP \| registryId=.+ \| granted$/m)
