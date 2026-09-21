@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
-import { type AuthorizedActionContext, ProjectIdSchema, TaskStatusSchema } from '@nessie/schemas'
-import { TicketSearchCursorError } from '@nessie/team-admin'
+import { type AuthorizedActionContext, ProjectIdSchema, type TaskStatus, TaskStatusSchema } from '@nessie/schemas'
+import { publishTaskUpdated, TicketSearchCursorError } from '@nessie/team-admin'
 import {
   ArchiveDoneTasksBodySchema,
   AssignableUserSchema,
@@ -30,6 +30,7 @@ import {
   transitionTask,
   updateTask,
 } from '../services/tasks.js'
+import { sendTaskActivityError } from './task-activity-gate.js'
 import type { RouteDeps } from './types.js'
 
 
@@ -82,6 +83,13 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     requireUserActor,
     listAccessibleProjectIds,
   } = deps
+
+  // The REST task mutations say so, as the checklist routes and the worker do:
+  // content-free, on the organisation scope, and the refetch is the check.
+  const announce = (actorContext: AuthorizedActionContext, task: { id: string; status: TaskStatus }) =>
+    publishTaskUpdated(deps.realtimeHub, [
+      { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+    ], task.id, task.status)
 
   const resolveTaskUserFilter = (
     value: string | undefined,
@@ -257,9 +265,12 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       assigneeUserId: body.assigneeUserId,
       assigneeAgentId: body.assigneeAgentId,
       ownerUserId: body.ownerUserId,
+      labelIds: body.labelIds,
+      attachmentIds: body.attachmentIds,
     })
 
     if ('error' in result) {
+      if (sendTaskActivityError(reply, result)) return reply
       if (
         result.error === 'PROJECT_NOT_FOUND' ||
         result.error === 'ITERATION_NOT_FOUND' ||
@@ -330,6 +341,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    await announce(actorContext, result)
     return createApiResponse(TaskRecordSchema.parse(result))
   })
 
@@ -373,6 +385,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    await announce(actorContext, result)
     return createApiResponse(TaskRecordSchema.parse(result))
   })
 
@@ -420,6 +433,8 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       ...(body.archivedAt !== undefined ? { archivedAt: body.archivedAt } : {}),
       ...(body.storyPoints !== undefined ? { storyPoints: body.storyPoints } : {}),
       ...(body.fieldValues !== undefined ? { fieldValues: body.fieldValues } : {}),
+      ...(body.labelIds !== undefined ? { labelIds: body.labelIds } : {}),
+      ...(body.attachmentIds !== undefined ? { attachmentIds: body.attachmentIds } : {}),
     }
     if (Object.keys(fields).length === 0) {
       sendApiError(reply, 400, 'NO_FIELDS', 'No updatable fields provided')
@@ -430,9 +445,11 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       organizationId: actorContext.tenant.organizationId,
       fields,
+      actorId: actorContext.actor.actorId,
     }, deps.encryptionKeyRing)
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
+      if (sendTaskActivityError(reply, result)) return reply
       // A refused custom field value says which field and why; anything else
       // about a task the caller could reach is a missing task.
       if (result.error === 'FIELD_UNKNOWN') {
@@ -446,6 +463,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
       return reply
     }
+    await announce(actorContext, result)
     return createApiResponse(TaskRecordSchema.parse(result))
   })
 

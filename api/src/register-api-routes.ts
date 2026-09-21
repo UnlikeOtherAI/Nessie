@@ -22,6 +22,9 @@ import { registerBillingRoutes } from './routes/billing.js'
 import { registerBoardRoutes } from './routes/boards.js'
 import { registerBoardWatcherRoutes } from './routes/board-watchers.js'
 import { registerTaskFieldRoutes } from './routes/task-fields.js'
+import { registerTaskAttachmentRoutes } from './routes/task-attachments.js'
+import { registerTaskCommentRoutes } from './routes/task-comments.js'
+import { registerTaskLabelRoutes } from './routes/task-labels.js'
 import { registerBoardSourceConnectionRoutes } from './routes/board-sources/connections.js'
 import { registerBoardSourceRoutes } from './routes/board-sources/sources.js'
 import { registerBoardSourceWebhookRoutes } from './routes/board-sources/webhooks.js'
@@ -195,6 +198,9 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerBoardRoutes(app, deps)
   registerBoardWatcherRoutes(app, deps)
   registerTaskFieldRoutes(app, deps)
+  registerTaskLabelRoutes(app, deps)
+  registerTaskCommentRoutes(app, deps)
+  registerTaskAttachmentRoutes(app, deps)
   registerBoardSourceConnectionRoutes(app, deps)
   registerBoardSourceRoutes(app, deps)
   registerBoardSourceWebhookRoutes(app, deps)

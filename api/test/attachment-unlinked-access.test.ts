@@ -18,6 +18,10 @@ type Published = {
   feedback?: boolean
   /** The viewer can see the agent whose mailbox this email attachment belongs to. */
   emailReadable?: boolean
+  /** The viewer is a member of the project whose ticket carries this file. */
+  taskReadable?: boolean
+  /** The viewer's organisation role, read when the caller does not pass it. */
+  role?: string
 }
 
 /**
@@ -48,6 +52,23 @@ const makePrisma = (published: Published = {}): PrismaClient =>
     emailMessage: {
       findFirst: async () => ({ mailbox: { agentId: '00000000-0000-4000-8000-0000000000ee' } }),
     },
+    // The task arm asks the shared `isTaskAccessibleToUser`: the viewer's
+    // role (when not passed), their project memberships, then whether the
+    // task is inside that visibility. The count stands in for the last query.
+    organizationMember: {
+      findUnique: async () => ({ role: published.role ?? 'member', deactivatedAt: null }),
+    },
+    projectMember: {
+      findMany: async () => (published.taskReadable ? [{ projectId: '00000000-0000-4000-8000-0000000000aa' }] : []),
+    },
+    task: {
+      count: async (args: { where: { AND?: unknown[] } }) => {
+        const visibility = JSON.stringify(args.where.AND ?? [])
+        // An admin's query carries no project-id filter (`projectId: { in }`) at all.
+        if (!visibility.includes('"in"')) return 1
+        return published.taskReadable ? 1 : 0
+      },
+    },
   }) as unknown as PrismaClient
 
 const unlinked = {
@@ -56,6 +77,7 @@ const unlinked = {
   messageId: null,
   knowledgePageId: null,
   emailMessageId: null,
+  taskId: null,
   uploaderId,
 }
 
@@ -157,4 +179,31 @@ test('an email attachment is refused to someone who cannot see its agent', async
     { organizationId, userId: otherMemberId },
   )
   assert.equal(allowed, false)
+})
+
+const onTask = { ...unlinked, taskId: '00000000-0000-4000-8000-00000000000c', uploaderId: null }
+
+test('a ticket file is readable by a member of the ticket\'s project', async () => {
+  const allowed = await canAccessAttachment(makePrisma({ taskReadable: true }), onTask, {
+    organizationId,
+    userId: otherMemberId,
+  })
+  assert.equal(allowed, true)
+})
+
+test('a ticket file is refused to somebody outside the ticket\'s project', async () => {
+  // A published avatar elsewhere does not open it: the task arm answers alone.
+  const allowed = await canAccessAttachment(makePrisma({ userAvatar: true }), onTask, {
+    organizationId,
+    userId: otherMemberId,
+  })
+  assert.equal(allowed, false)
+})
+
+test('an organisation admin reads a ticket file without being a project member', async () => {
+  const allowed = await canAccessAttachment(makePrisma({ role: 'admin' }), onTask, {
+    organizationId,
+    userId: otherMemberId,
+  })
+  assert.equal(allowed, true)
 })
