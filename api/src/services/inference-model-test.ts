@@ -5,6 +5,7 @@ import {
   attributionFromActorContext,
   createModelClient,
   isLedgerEndpoint,
+  ProviderHttpError,
   type LedgerIdentityService,
 } from '@nessie/runtime'
 
@@ -26,12 +27,33 @@ import { recordModelUsage } from './model-usage-recorder.js'
  * call carries the owner's own provenance and lands in the token ledger exactly
  * like any other. The UI says so; the prompt and the output cap are both tiny
  * so the truthful answer to "what does this cost" is "almost nothing".
+ *
+ * **What it sends.** A plain "Hi" as the only message — what a person would
+ * type — and the reply is shown verbatim. No system prompt: some providers
+ * (Gemma on Google AI Studio, among others) refuse one outright, which made
+ * the probe fail on models that chat perfectly well.
+ *
+ * **Why the output cap is not tiny.** Reasoning models (gpt-5, o-series,
+ * DeepSeek R1, Gemma thinking) spend completion tokens thinking before they
+ * write anything. A 64-token cap left them nothing to answer with, so a
+ * healthy model came back as "returned no text". A greeting's answer is short
+ * whatever the cap, so the cap only bounds the thinking.
+ *
+ * **One retry for a transient refusal.** A 429 or 5xx says "not now", not
+ * "broken" — free OpenRouter models are throttled upstream constantly. One
+ * retry after a short pause, inside the same overall deadline, turns most of
+ * those into a real answer; a second refusal is reported as it came.
  */
 
-const TEST_PROMPT = 'Reply with one short sentence confirming you are reachable.'
-const TEST_SYSTEM_PROMPT = 'You are a reachability probe. Answer in one short sentence.'
-const MAX_OUTPUT_TOKENS = 64
-const TEST_TIMEOUT_MS = 30_000
+export const TEST_PROMPT = 'Hi'
+export const MAX_OUTPUT_TOKENS = 1024
+const TEST_TIMEOUT_MS = 45_000
+const RETRY_DELAY_MS = 2_000
+const MAX_ATTEMPTS = 2
+
+const isTransient = (error: unknown): boolean =>
+  error instanceof ProviderHttpError
+  && (error.statusCode === 429 || error.statusCode >= 500)
 
 export type InferenceModelTestInput = {
   actorContext: AuthorizedActionContext
@@ -41,14 +63,35 @@ export type InferenceModelTestInput = {
   model: string
   prisma: PrismaClient
   provider: string
+  /** Injected by tests; production always builds the real pinned client. */
+  createClient?: typeof createModelClient
+  sleep?: (ms: number) => Promise<void>
 }
 
-const failureFrom = (error: unknown): { code: string; message: string } => {
+const RATE_LIMIT_NOTE =
+  'The provider is rate-limiting this model right now; try again in a minute. '
+
+const failureFrom = (
+  error: unknown,
+  connectorName: string,
+  provider: string,
+): { code: string; message: string } => {
   if (error instanceof Error) {
     // The provider's own words, verbatim. An owner distinguishes a rejected key
     // from a retired model from a timeout by reading them, and a message this
-    // layer rewrote would take that away.
-    return { code: error.name || 'INFERENCE_MODEL_TEST_FAILED', message: error.message }
+    // layer rewrote would take that away. Two things are corrected around
+    // them: the leading label names the deployment's connector ("deepseek"),
+    // not the provider under test, which read as the wrong model answering;
+    // and a rate limit says in plain words that the model is not broken.
+    const prefix = `${connectorName} `
+    const message = error.message.startsWith(prefix)
+      ? `${provider} ${error.message.slice(prefix.length)}`
+      : error.message
+    const rateLimited = error instanceof ProviderHttpError && error.statusCode === 429
+    return {
+      code: error.name || 'INFERENCE_MODEL_TEST_FAILED',
+      message: rateLimited ? `${RATE_LIMIT_NOTE}${message}` : message,
+    }
   }
   return {
     code: 'INFERENCE_MODEL_TEST_FAILED',
@@ -68,8 +111,10 @@ export const runInferenceModelTest = async (
   // id that is not a single URL segment, and an owner who typed one is owed the
   // refusal as this route's structured failure rather than a 500.
   let client: ReturnType<typeof createModelClient> | null = null
+  const build = input.createClient ?? createModelClient
+  const sleep = input.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
   try {
-    client = createModelClient(
+    client = build(
       { ...input.config, modelName: input.model, serviceId: input.provider },
       {
         recordUsage: (invocations, attribution) =>
@@ -85,20 +130,28 @@ export const runInferenceModelTest = async (
       },
     )
 
+    const activeClient = client
+    const ask = async (): Promise<string> => {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await activeClient.chat(
+            [{ content: TEST_PROMPT, role: 'user' }],
+            {
+              maxTokens: MAX_OUTPUT_TOKENS,
+              model: input.model,
+              usage: attributionFromActorContext(input.actorContext, {
+                systemComponent: 'inference-model-test',
+              }),
+            },
+          )
+        } catch (error) {
+          if (attempt >= MAX_ATTEMPTS || !isTransient(error)) throw error
+          await sleep(RETRY_DELAY_MS)
+        }
+      }
+    }
     const reply = await Promise.race([
-      client.chat(
-        [
-          { content: TEST_SYSTEM_PROMPT, role: 'system' },
-          { content: TEST_PROMPT, role: 'user' },
-        ],
-        {
-          maxTokens: MAX_OUTPUT_TOKENS,
-          model: input.model,
-          usage: attributionFromActorContext(input.actorContext, {
-            systemComponent: 'inference-model-test',
-          }),
-        },
-      ),
+      ask(),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () => reject(new Error(`The model did not answer within ${TEST_TIMEOUT_MS / 1000}s.`)),
@@ -124,7 +177,7 @@ export const runInferenceModelTest = async (
     return { latencyMs, model: input.model, ok: true, provider: input.provider, reply: text }
   } catch (error) {
     return {
-      failure: failureFrom(error),
+      failure: failureFrom(error, input.config.provider, input.provider),
       latencyMs: Date.now() - startedAt,
       model: input.model,
       ok: false,

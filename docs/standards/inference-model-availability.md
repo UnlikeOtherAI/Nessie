@@ -153,9 +153,9 @@ turning a team pair off does not interrupt or brick an existing agent.
 
 ## The test button
 
-`POST /api/inference/models/test` sends one short prompt to one exact pair and
-reports the reply, the latency, or a structured failure carrying the provider's
-own words.
+`POST /api/inference/models/test` sends `Hi` as the only message to one exact
+pair and reports the reply verbatim, the latency, or a structured failure
+carrying the provider's own words.
 
 - **Destination is per client, not per call.** `createInferenceService` rewrites
   the base URL to `/v1/<serviceId>` once, at construction, so testing pair
@@ -166,8 +166,19 @@ own words.
   egress block fails the build otherwise ([`egress.md`](egress.md)).
 - **It is billed.** Attribution is mandatory on a signing deployment, so the
   call carries the owner's own provenance and appears in the token ledger. The
-  prompt is one sentence and the output is capped at 64 tokens; the UI says the
-  call is real and billed.
+  UI says the call is real and billed.
+- **No system prompt, and room to think.** Some providers refuse a system
+  prompt outright, and reasoning models spend completion tokens before they
+  write. The probe sends the user turn alone with a 1024-token cap; a 64-token
+  cap reported healthy reasoning models as "returned no text".
+- **One retry for a transient refusal.** A 429 or 5xx is retried once after a
+  short pause inside the same deadline, because free OpenRouter models are
+  throttled upstream constantly. A second 429 is reported with a plain note
+  that the model is rate-limited, not broken.
+- **Name the pair, not the connector.** The runtime labels an HTTP failure
+  with the deployment's connector (`deepseek`), which read as the wrong model
+  answering. The probe replaces that leading label with the tested provider and
+  keeps the provider's words after it unchanged.
 - **A failure is a result, not an exception.** The route answers 200 with
   `ok: false` and the provider's message, because only the provider's own words
   let an owner tell a bad key from a retired model from a timeout.
