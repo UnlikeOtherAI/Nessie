@@ -305,6 +305,14 @@
   --overlay-strong: rgba(11, 23, 42, 0.14); --scrim-weak: rgba(11, 23, 42, 0.08); --scrim: rgba(11, 23, 42, 0.18); --scrim-strong: rgba(11, 23, 42, 0.45);
 }
 
+/* Nessie's --sb is the same white as the work surface, so a kanban column's
+   track vanished and an empty column read as nothing at all. The default
+   theme alone gets a faint tint; every other theme keeps --sb, which already
+   differs from its --main. The drop highlight still wins while dragging. */
+:where([data-theme="nessie"]) .kanban-track:not([data-drop-over]) {
+  background-color: var(--main-hover);
+}
+
 [data-theme="contrast"] {
   color-scheme: dark;
   --rail: #000000; --sb: #050505; --sb-active: #4da3ff; --ink: #000000;

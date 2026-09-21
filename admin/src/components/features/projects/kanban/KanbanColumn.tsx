@@ -60,9 +60,10 @@ export const KanbanColumn = ({
           // Only the top corners round: the track runs to the window's
           // bottom edge, and a rounded bottom would read as a panel floating
           // above a dead band rather than a track leaving the screen.
-          'rounded-t-lg p-2 transition-colors',
+          'kanban-track rounded-t-lg p-2 transition-colors',
           isOver ? 'bg-[color:var(--overlay)]' : 'bg-[color:var(--sb)]',
         ].join(' ')}
+        data-drop-over={isOver ? '' : undefined}
         data-kanban-dropzone={droppable ? columnId : undefined}
       >
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
