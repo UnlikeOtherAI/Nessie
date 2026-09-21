@@ -1,6 +1,6 @@
 import {
-  createBoardSourceWriteBack,
   createTaskComment,
+  createTaskCommentWriteBackFromSource,
   deleteTaskComment,
   listTaskComments,
   publishTaskActivity,
@@ -47,16 +47,16 @@ export const ticketActorFor = (
 })
 
 /**
- * The comment half of the board-source write-back collaborator, from the same
- * registry the API builds it from, so an agent's comment reaches the provider
+ * The comment write-back collaborator, built by the one shared builder the
+ * API's comment routes use, so an agent's comment reaches the provider
  * exactly as a person's does. Absent key ring: comments stay in Nessie.
  */
 const commentWriteBackFor = (context: BuiltinToolRuntimeContext): TaskCommentWriteBack | undefined =>
   context.boardSourceEncryptionSecret
-    ? createBoardSourceWriteBack({
+    ? createTaskCommentWriteBackFromSource({
         prisma: context.prisma,
         encryptionSecret: context.boardSourceEncryptionSecret,
-      }) as unknown as TaskCommentWriteBack
+      })
     : undefined
 
 /** An open ticket dialog refreshes on this, whoever changed the ticket. */
