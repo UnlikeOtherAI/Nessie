@@ -5,7 +5,7 @@ import {
   type TaskSetKnowledgeAccess,
 } from '@nessie/knowledge'
 import type { AuthorizedActionContext, TaskSetOutput, TaskSetSource } from '@nessie/schemas'
-import { assertTaskSetActor } from './task-set-access.js'
+import { assertTaskSetActor } from './task-set-authority.js'
 
 export const taskSetKnowledgeAccess = async (
   prisma: PrismaClient, actor: AuthorizedActionContext, options: { processingAgentId?: string } = {},

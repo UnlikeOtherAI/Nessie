@@ -28,7 +28,8 @@ starts the set. It does not stay in a model loop polling the workload.
 List calls return at most twenty concise records and server cursors. Detailed
 configuration is JSON text in `configuration.text`, with the next offset in
 `configuration.page.nextOffset`. An item read selects `result`, `input` or
-`prompt` (or `metadata` for the complete reason/locator), returning `text` and `page.nextOffset`. Follow those offsets until
+`prompt` (or `metadata` for the complete reason/locator), returning `text` and
+`page.nextOffset`. Follow those offsets until
 null; chunks also budget JSON escaping so large results remain recoverable
 through the normal tool-output limit. Result journal storage does not require
 a receiver or publication into Documents.
@@ -40,7 +41,12 @@ create stamps the current run's thread and triggering message. An autonomous
 agent without a responsible human cannot acquire one through these tools.
 
 Every content-bearing shared reader observes the set, item input and result
-disclosures before returning content. The worker feeds their exact scopes and
+disclosures before returning content. A pinned source also rechecks current
+document authority for both the human and the actual reading agent, including
+human-only spaces, restricted pages and another agent's private pages. Native
+calls obtain that agent from the trusted tool actor context. Human UI access
+continues to use the human's own authority; denied list entries expose no name.
+The worker feeds their exact scopes and
 private author lineage into the run's consumed-source sink. A missing sink fails
 before any read or mutation. Create and content edits monotonically union the
 trusted run lineage with existing set/item/source lineage; a model cannot reset

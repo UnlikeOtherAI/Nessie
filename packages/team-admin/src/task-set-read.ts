@@ -5,7 +5,9 @@ import {
   type AuthorizedActionContext, type PaginationDirection,
 } from '@nessie/schemas'
 import type { TaskSetReadObserver } from './task-set-disclosure.js'
-import { assertTaskSetActor, assertTaskSetDisclosure, getTaskSetForActor, TaskSetError } from './task-set-access.js'
+import {
+  assertTaskSetActor, assertTaskSetDisclosure, assertTaskSetContentAccess, getTaskSetForActor, TaskSetError,
+} from './task-set-access.js'
 
 export const taskSetRecord = (row: TaskSet) => TaskSetRecordSchema.parse({
   ...row, createdAt: row.createdAt.toISOString(), statusChangedAt: row.statusChangedAt.toISOString(),
@@ -40,7 +42,7 @@ export const listTaskSetsForActor = async (
   const visible = []
   for (const row of page.data) {
     try {
-      await assertTaskSetDisclosure(prisma, actor, row.disclosure)
+      await assertTaskSetContentAccess(prisma, actor, row)
     } catch {
       // No title, input or result metadata for a revoked source.
       continue

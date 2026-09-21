@@ -3,7 +3,8 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext, TaskSetDisclosure } from '@nessie/schemas'
 import { mergeTaskSetDisclosure } from '../src/task-set-disclosure.js'
-import { getTaskSetItemForActor, listTaskSetItemsForActor } from '../src/task-set-read.js'
+import { getTaskSetItemForActor, listTaskSetItemsForActor, listTaskSetsForActor } from '../src/task-set-read.js'
+import { getTaskSetForActor } from '../src/task-set-access.js'
 import { appendTaskSetItems } from '../src/task-set-items.js'
 
 const ids = Array.from({ length: 6 }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`)
@@ -85,4 +86,61 @@ test('task-set idempotent append retains additional trusted lineage without anot
   assert.equal(added.length, 1)
   assert.equal(count, 1)
   assert.deepEqual(saved, mergeTaskSetDisclosure(owner, result))
+})
+
+test('task-set journal reads enforce current agent source access without denying the human UI', async () => {
+  const source = { kind: 'document', pageId: setId, versionId: itemId, format: 'csv', selection: {} }
+  const set = { id: setId, disclosure: owner, source, totalItems: 1, createdAt: new Date(),
+    name: 'Sensitive source name', objective: 'Research', instructions: '', status: 'completed', reason: null,
+    processor: { provider: 'example', model: 'small' }, output: { kind: 'journal' }, receiver: null,
+    maxParallelRequests: 1, maxAttempts: 3, search: 'none', completedItems: 1, skippedItems: 0,
+    currentItemId: null, originThreadId: null, originMessageId: null, outputPageId: null,
+    deliveryStatus: 'none', statusChangedAt: new Date(),
+  }
+  const human = { ...actor, actor: { actorType: 'user', actorId: userId } } as AuthorizedActionContext
+  // Actual native calls preserve their original user actor and stamp the executing agent here.
+  const native = { ...human, actionContext: { ...human.actionContext, agentId: authorId } } as AuthorizedActionContext
+  for (const policy of ['restricted-page', 'private-to-other-agent', 'human-only-space']) {
+    const checkedAgents: string[] = []
+    const prisma = {
+      ...reader(), $queryRaw: async () => [],
+      taskSet: { findFirst: async () => set, findMany: async () => [set] },
+      agent: {
+        findMany: async () => [],
+        findFirst: async ({ where }: { where: { id: string } }) => {
+          checkedAgents.push(where.id)
+          return { parentAgentId: null, knowledgeSpaceMemberships: [],
+            bindings: [{ channelId, channel: { projectId: organizationId, teamId: null } }] }
+        },
+      },
+      knowledgePage: { findFirst: async () => ({
+        id: setId, kind: 'file', status: 'published', deletedAt: null,
+        sensitivityTier: policy === 'restricted-page' ? 'restricted' : 'internal',
+        privateToAgentId: policy === 'private-to-other-agent' ? itemId : null,
+        space: { id: setId, organizationId, userId, projectId: organizationId, name: 'Source',
+          visibility: policy === 'human-only-space' ? 'private' : 'project', sensitivityTier: 'internal',
+          createdBy: userId, members: [], ownerAgentId: null, privateToAgentId: null,
+          deletedAt: null, createdAt: new Date(), updatedAt: new Date(), writeRestricted: false },
+      }) },
+      knowledgePageVersion: { findFirst: async () => ({
+        id: itemId, pageId: setId, attachmentId: itemId, createdAt: new Date(),
+        basisScopes: owner.basisScopes, disclosureSources: [],
+      }) },
+    } as unknown as PrismaClient
+    assert.equal((await getTaskSetForActor(prisma, human, setId)).id, setId)
+    assert.equal((await listTaskSetsForActor(prisma, human)).data.length, 1)
+    assert.equal((await getTaskSetItemForActor(prisma, human, setId, itemId)).result, 'A finding')
+    for (const agentActor of [native, actor]) {
+      const observed: TaskSetDisclosure[] = []
+      await assert.rejects(
+        getTaskSetForActor(prisma, agentActor, setId, (value) => observed.push(value)), /source document/,
+      )
+      assert.deepEqual(observed, [], 'refused source content never enters context')
+      assert.deepEqual((await listTaskSetsForActor(prisma, agentActor)).data, [], 'even its name is omitted')
+      await assert.rejects(getTaskSetItemForActor(prisma, agentActor, setId, itemId), /source document/)
+      await assert.rejects(listTaskSetItemsForActor(prisma, agentActor, setId), /source document/)
+    }
+    assert.ok(checkedAgents.length > 0)
+    assert.ok(checkedAgents.every((id) => id === authorId), 'check the executing/receiving agent, not the processor')
+  }
 })
