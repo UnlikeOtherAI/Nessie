@@ -305,6 +305,8 @@ export type UpdateSpaceInput = Partial<{
 }>
 
 export type CreatePageInput = KnowledgeScopeInput & KnowledgePageVersionDisclosureInput & {
+  /** Internal durable-effect identity. Routes never accept a caller-selected page id. */
+  id?: string
   authorId: string
   authorType: KnowledgeAuthorType
   body?: string | null
