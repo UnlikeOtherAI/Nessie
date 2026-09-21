@@ -177,6 +177,73 @@ jobs:
           TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
           TURBO_CONCURRENCY: 4
 
+  # The production images, built exactly as Deploy builds them — same
+  # Dockerfiles, same build args, same private-package secret — but not pushed.
+  #
+  # This job exists because every other check compiles the workspace on the
+  # runner, where the whole repo is on disk, while the images build from a
+  # *partial* context that each Dockerfile assembles by hand. Anything the
+  # context omits is invisible until Deploy, which runs after merge: an import
+  # of `scripts/dev-ports.mjs` added to admin/vite.config.ts passed all nine
+  # checks, merged, and then took production promotion down with
+  # `failed to load config from /app/admin/vite.config.ts`. The gap was
+  # structural, not a fluke — the merge gate could not see the thing that ships.
+  #
+  # Cost is close to free in wall clock: app is the long leg at ~9m30s against a
+  # CI run that already takes 15-21 minutes, and the three legs are parallel.
+  # `cache-from` reads the scope Deploy writes on main, so these start warm;
+  # nothing is written back, which keeps PR branches from evicting main's cache.
+  images:
+    name: Production Image ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: app
+            dockerfile: infrastructure/docker/Dockerfile.app
+            build-args: ""
+          - name: admin
+            dockerfile: infrastructure/docker/Dockerfile.admin
+            # Must match Deploy's arg: the value is baked into the bundle.
+            build-args: VITE_API_BASE_URL=https://api.nessie.works
+          - name: web
+            dockerfile: infrastructure/docker/Dockerfile.web
+            build-args: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Resolved before Buildx so a docs-only run sets nothing up. Only the
+      # runner's preinstalled Node is needed; ci-scope.mjs shells out to git.
+      - name: Determine CI scope
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      - name: Set up Buildx
+        if: steps.scope.outputs.images == '1'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.name }} image
+        if: steps.scope.outputs.images == '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          build-args: ${{ matrix.build-args }}
+          secrets: |
+            "deep_agent_read_token=${{ secrets.DEEP_AGENT_READ_TOKEN }}"
+          cache-from: type=gha,scope=${{ matrix.name }}
+
+      # The job still reports success, which is what a required check needs.
+      - name: Report skip
+        if: steps.scope.outputs.images != '1'
+        run: echo "No production image input changed — ${{ matrix.name }} image not rebuilt."
+
   linux-desktop:
     name: Linux Desktop Bundle
     runs-on: ubuntu-latest
@@ -411,6 +478,13 @@ jobs:
       - name: Install the WiX toolset
         if: steps.scope.outputs.windows_native == '1'
         run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
+
+      # The dialog set the package's UI comes from. It is a separate install
+      # from the toolset, and without it `wix build` fails on the `ui:WixUI`
+      # element with WIX0144 rather than on anything that names a dialog.
+      - name: Install the WiX UI extension
+        if: steps.scope.outputs.windows_native == '1'
+        run: wix extension add --global WixToolset.UI.wixext/${{ env.WIX_VERSION }}
 
       - name: Enable VBScript for MSI validation
         if: steps.scope.outputs.windows_native == '1'
