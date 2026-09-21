@@ -1,0 +1,343 @@
+# Sequential task sets: spreadsheet research gap map
+
+Status: source audit and proposed delivery scope; the task-set capability is not
+implemented by this document. Audited 2026-09-21 against `57a2642d2` on `main`.
+Source references below refer to that revision. This is not an 80,000-row
+benchmark or a verification of a particular Mac, installed model or production
+deployment.
+
+## Accepted requirements
+
+- Agents can create database-backed task sets with shared instructions and an
+  objective. Items may have their own prompts and reference earlier results.
+- Execution within a set is strictly sequential. Dependencies select which
+  earlier results an item consumes; they do not introduce parallel execution.
+- A required **processor** selects an authorized model, including a model on an
+  approved executor. Model selection and the optional receiving agent are
+  separate concepts.
+- A **receiver agent** and its follow-up instructions are optional. Results can
+  instead be saved deterministically as spreadsheet output or files in a
+  selected Documents folder, ready for future processing. No downstream agent
+  is needed for saving, formatting a predefined output or advancing the job.
+- Nessie's scheduling, capacity admission, cursor advancement, retries and
+  persistence are deterministic. The LLM researches, interprets and writes.
+- Use the processor's own configured search capability when it has one. Do not
+  automatically substitute Nessie's Ledger-backed search. An unavailable
+  research capability is a setup/waiting failure, not permission to change
+  provider or generate unsupported findings.
+- A concrete workload is an Excel file with 80,000 items uploaded into
+  Documents, processed by worksheet row, one after another, over a long period
+  on local Ollama. Only the current row and explicitly needed context enter a
+  model request; the model does not enumerate or remember the whole dataset.
+
+## Conclusion
+
+The missing piece is durable dataset orchestration around existing run and
+queue primitives. Nessie already stores files, imports spreadsheets, reads and
+writes bounded ranges, runs local inference, and executes authorized tools.
+Those parts do not yet compose into a resumable row-processing product.
+
+Uploading an XLSX and asking a chat agent to keep going is insufficient. The
+job must retain its source version, next item, attempts, results and delivery
+state outside the model's conversation. It must also avoid creating one huge
+workflow graph or rewriting an entire workbook after every row.
+
+## Deterministic execution contract
+
+1. Resolve and authorize the source document's exact version, worksheet,
+   header policy, selected input columns, output mapping and data-row bounds.
+2. Persist the task-set definition, execution authority, processor pin and
+   output policy. Select only earlier items as dependencies.
+3. Claim the next eligible item under a per-set database lease and reserve
+   capacity for its actual inference resource. One set has at most one active
+   item; all sets share the applicable host/provider limits.
+4. Read that item's frozen inputs and selected earlier results. Construct a
+   bounded processor invocation with its approved search/tool capabilities.
+   Reuse the existing execution lifecycle without adding a separate reasoning
+   agent to orchestrate the set or save its output. The model never chooses
+   which row is next or claims that a database item has completed.
+5. Validate the output contract. Plain coherent text is a valid contract;
+   named spreadsheet fields require structured validation. Formatting, paths
+   and cell mappings come from the configured output contract, not another
+   model call. A supported
+   no-finding result is different from a failed search or model call.
+6. Save the result under a stable item/attempt identity and record any required
+   output write durably. Advance only after the required effects are
+   acknowledged; a crash retries unfinished persistence rather than assuming
+   the row completed. Dependency reads use committed item results.
+7. Release capacity and repeat. Temporary host unavailability is a visible
+   waiting state, separate from a failed model attempt. After bounded retries,
+   a failed item pauses the set for intervention; an explicit skip cannot
+   fabricate a result for its dependents.
+8. Once the closed input set is resolved, finish the artifact and, if selected,
+   enqueue the receiver with a result reference and follow-up instructions.
+   Delivery has its own status/retry identity and cannot rerun finished items.
+
+Lease expiry alone is not proof that a model has stopped. Admission must fence
+stale execution and confirm termination or use a host-enforced slot before
+starting replacement inference. Lowering concurrency does not cancel existing
+work silently. These are resource guarantees, not in-memory counters in one
+API replica.
+
+## Gaps and existing foundations
+
+### 1. A stored XLSX file is not a row-addressable source yet
+
+Documents upload creates a file page (`api/src/routes/knowledge-base-files.ts`,
+lines 193–216). Generic extraction has text/PDF/DOCX support but no XLSX reader
+(`packages/knowledge/src/extractable.ts`, lines 22–42). A filename in a chat
+attachment inventory does not load all of its cells into context.
+
+There is already an **Open as spreadsheet** action that creates an editable
+workbook beside the original (`admin/src/components/features/knowledge/FileNodeViewer.tsx`,
+lines 36–40 and 106–115). Existing sheet tools can address rows such as
+`125:127` (`packages/knowledge/src/spreadsheet/agent-reads.ts`, lines 76–137).
+
+Required: a task-set source adapter that resolves a pinned file into bounded
+rows. Reuse the supported workbook import/read path when its limits fit. A
+large file may need a bounded, persistent row index or streaming ingestion;
+upload size alone does not prove import capacity. Neither path should expose
+the complete 80,000-row file to the model.
+
+Current XLSX import caps are 16 MiB compressed and 256 MiB declared uncompressed;
+reads and writes each allow 10,000 cells per call
+(`packages/schemas/src/spreadsheet.ts`, lines 13–37). Import still buffers and
+loads the workbook (`packages/knowledge/src/spreadsheet/import.ts`, line 221).
+There is no categorical 80,000-row rejection: width and content determine
+feasibility. The recorded spike's million-cell workbook used 864 MB RSS
+(`docs/plans/2026-09-15-spreadsheets-ironcalc/spike-b-xlsx.md`, line 46); that
+measurement does not prove a sustained 80,000-item enrichment pipeline.
+
+### 2. Row numbers need a stable source version
+
+`withSpreadsheetAtHead` reads the mutable workbook under its page lock
+(`packages/knowledge/src/spreadsheet/agent-reads.ts`, lines 29–42). A row address
+identifies a position, not an enduring business item. Inserting or sorting
+rows while a long job is running changes what row 125 means.
+
+Required: pin the input version and use `(source version, sheet, row)` as the
+item identity for the initial design. Store row numbers as spreadsheet row
+numbers, explicitly accounting for headers and the selected range. A live
+editable source instead needs a stable item key and input-change detection.
+Output cell positions need the same protection; freezing the input does not
+make writing into a separately edited output workbook safe.
+
+### 3. Existing workflow execution is not a dataset iterator
+
+No `TaskSet` contract/model/tool was found in the audited Prisma schema,
+builtin registry or worker/admin surfaces. Existing ordered workflows are
+useful sequencing machinery, but `ensureWorkflowStepRuns` materializes graph
+steps individually, and `listWorkflowStepRuns` loads all step rows
+(`worker/src/run/workflows.ts`, lines 71 and 311). Each iteration rebuilds prior
+step snapshots (`worker/src/control/workflows.ts`, lines 760–794).
+
+There is no fixed graph-step maximum in the inspected schema; the issue is the
+eager representation and repeated whole-graph work, not a supposed numerical
+step cap. Workflow overlap also permits only ten withheld workflow runs
+(`packages/team-admin/src/workflow-concurrency.ts`, line 36), not a bulk work
+ledger of 80,000 items.
+
+One chat run cannot substitute for the iterator either: run backstops default
+to 45 minutes, 1,000 iterations and 2,000 tool calls, and unattended runs default
+to two auto-continuations (`worker/src/run/run-budget.ts`, lines 19–27;
+`worker/src/run/execute/continuation.ts`, line 25). These are configurable run
+limits, not permission to make the model own multi-day progress.
+
+Required: a paged source iterator, durable cursor, item attempts/results and
+one active-item lease per set. Create bounded execution work on demand through
+the existing queue and run lifecycle. Do not create 80,000 prompts in one tool
+call, an 80,000-node graph, or 80,000 short-deadline inference attempts.
+
+### 4. A processor model needs an execution context and suitable tools
+
+The current model picker already distinguishes Ledger, personal subscription
+and local options (`admin/src/components/features/agents/designer/model-options.ts`).
+Local selection requests consent for an agent binding
+(`admin/src/components/features/agents/designer/AgentModelField.tsx`, lines
+47–55); an arbitrary model/host string is not an execution grant.
+
+The local catalogue filters for text capability
+(`api/src/services/local-inference-model-options.ts`, lines 35–51), while the
+executor rejects a request containing tools when the model lacks the observed
+`tools` capability (`executor/src/local-inference-host.ts`, lines 241–244).
+
+Required: preserve the model dropdown in the product, but bind each job to
+explicit execution authority, exact authorized local binding or hosted lane,
+and approved tools. Do not temporarily edit an agent's normal model to run a
+job. Current local binding is person-owned-agent-specific
+(`api/src/services/local-inference-bindings.ts`, lines 154–157); a processor-only
+product must reuse an authorized identity or deliberately extend that consent
+contract, not silently create another agent or bypass it. Autonomous research
+needs a tool-capable processor; deterministic search followed by text-only
+synthesis is a distinct supported recipe if offered.
+Nessie's worker executes the tools; Ollama generates requests and consumes
+their results. Neither a model name nor the processor selection grants web or
+document access.
+
+### 5. Local unavailability does not currently mean durable job waiting
+
+At run setup an unavailable local lane is terminalized, with a restart action
+(`worker/src/run/execute/run-job.ts`, lines 302–320). This is not a persistent
+task set waiting for tomorrow's host availability.
+
+Inference attempts have a five-minute deadline starting at dispatch/enqueue
+(`worker/src/run/execute/local-inference-dispatch.ts`, lines 21 and 107).
+Transport receipts are short-lived recovery state: terminal server attempts
+are swept after one hour, and the local receipt journal holds eight receipts
+with a one-hour TTL (`api/src/services/local-inference-transport-sweep.ts`,
+lines 3–35; `executor/src/local-inference-receipts.ts`, lines 5–7). They cannot
+serve as the long-term result store. Local input context is capped at 8,192
+tokens (`packages/schemas/src/local-agent-inference.ts`, line 159), so each
+item's research and dependency input must be bounded.
+
+The host loop currently serializes its own calls
+(`executor/src/local-inference-host.ts`, lines 181–209), but server leasing is
+per host ID and does not count active machine-wide slots
+(`api/src/routes/local-inference-attempt-routes.ts`, lines 44–56). Executor and
+Desktop enroll separate host identities. Cross-set admission must account for
+the physical inference resource instead of assuming these loops together
+guarantee a single request on one Mac.
+
+Required: a task-set waiting state above individual runs; bounded retries and
+resumption from durable item state; preserved exact model/host pin; no cloud
+fallback. Revocation, deleted principals and lost document access must block
+with their own reason rather than being treated as ordinary offline recovery.
+
+### 6. Saving every row through ordinary live-sheet runs is expensive
+
+The first spreadsheet write per agent run requests a safety version
+(`packages/knowledge/src/spreadsheet/apply.ts`, lines 90–112). A version renders
+the whole workbook to native bytes, XLSX, text projection and canonical hash
+(`packages/knowledge/src/spreadsheet/snapshot.ts`, lines 70–90).
+
+Consequently, 80,000 separate row runs each writing the live workbook would
+request up to 80,000 whole-workbook safety snapshots. This is a code-derived
+scaling concern, not a measured runtime or storage estimate.
+
+Required: persist row results independently, then materialize spreadsheet
+output in bounded deterministic batches or an explicitly finalized artifact.
+Preserve the existing write chokepoint, access checks, sequence order and
+safety guarantees; do not suppress snapshots globally to make the workload
+appear cheap. Text/file output can use the result journal directly without
+making a workbook mutation for each inference.
+
+### 7. Ollama's own search needs an explicit integration
+
+Ollama does offer its own hosted search and page-fetch APIs. Its official
+[web search documentation](https://docs.ollama.com/capabilities/web-search)
+(checked 2026-09-21) describes an API key on an Ollama account, separate
+`/api/web_search` and `/api/web_fetch` endpoints, and an MCP integration.
+Its search-agent example supplies those functions to the model and executes
+the returned calls. This is a usable provider capability, not an automatic
+property of every local `/api/chat` invocation. Account access is not evidence
+of unlimited 80,000-query capacity; no quota or price was verified here.
+
+The audited Nessie local adapter relays authorized chat/tool schemas and
+returns tool calls (`executor/src/ollama-chat.ts`, lines 85–120). No native
+Ollama search/fetch integration was found in that path. The current generic
+Nessie search is a different lane:
+
+Builtin `web_search` is Ledger-routed and carries usage attribution
+(`packages/runtime/src/web-search.ts`, lines 116–143 and 180–186;
+`docs/standards/web-search.md`). Local inference has no currency charge in its
+usage record (`packages/runtime/src/ledger.ts`, lines 403–410), but paid tools
+remain separate.
+
+Required: expose the processor's configured Ollama search/fetch capability
+through an approved tool/connector path, using existing executor-local MCP
+transport where suitable. Keep credentials in that connector/host boundary,
+out of prompts. Preserve its identity and surface authentication, quota and
+availability failures without falling back to Ledger search. This does not
+change the Ledger-only contract of Nessie's existing `web_search` builtin.
+If a future implementation instead changes that builtin's routing contract,
+it must explicitly update the standing standard in the same change.
+
+### 8. Results, receiver delivery and human controls need a shared surface
+
+Sheet tools already check knowledge access and propagate source disclosure
+(`worker/src/run/pa-tools/spreadsheet-access.ts`, `openSpreadsheetPage`). A task
+set must retain that basis through item results, saved files, progress
+metadata, dependency reads and the receiver's context. Long-running jobs must
+revalidate current authority at each dispatch/read/write/delivery boundary.
+
+Required: a result reader with pagination and an optional durable receiver
+handoff carrying a result reference, counts and instructions. Do not put
+80,000 outputs into one completion message or receiver context. Large
+synthesis can consume bounded result pages with persisted intermediate work.
+
+Existing mailbox dispatch has a per-recipient correlation key
+(`api/prisma/schema.prisma`, line 4392). Use that durable delivery pattern for
+an explicitly selected receiver. `agent_handoff` is for interactive specialist
+conversation transfer and rejects unattended work
+(`worker/src/run/pa-tools/agent-handoff.ts`, line 72). Existing workflow terminal
+notifications catch enqueue failures after bookkeeping, so they are not a
+guaranteed delivery queue (`worker/src/control/workflow-run-events.ts`, line
+144). Persist the result completion and receiver intent together.
+
+Without a receiver, the selected output writer stores exactly the processor's
+result (or a predefined field mapping) through `FileService`/the spreadsheet
+write service. Use stable item-derived file/write identities, a configured
+destination folder or output sheet, and paginated result browsing; never
+create another inference call merely to save a file. Keep raw per-item output
+durable even when spreadsheet materialization is delayed or blocked.
+
+The proposed owning surface is **Automation → Task Sets**, reusing one detail
+view from an originating conversation status card and the source document's
+processing entry. Show completed/total items, current row, waiting/failure
+reason, output link and Pause/Resume/Cancel/Retry. Keep item attempt detail
+available without producing a chat message for every row. Documents remains
+the home of input/output artifacts, and the receiver stays optional.
+
+## Proposed delivery order
+
+1. **Durable task-set core:** definition, pinned source, bounded row/item
+   iterator, dependency validation, execution authority, strict sequential
+   claim, result ledger, waiting/failure controls and agent tools. Reuse the
+   queue/run machinery and model/tool authorization.
+2. **End-to-end source/output slice:** Documents entry, frozen row source,
+   text/file result, conversation progress and the shared set detail. Add
+   spreadsheet materialization only with safe identity, retry and scale rules.
+3. **Local research and optional receiver:** capability-aware processor
+   selection, exact local consent, resource admission, Ollama search binding, offline
+   recovery and deduplicated final handoff. These are release requirements
+   for this user's local-research use case, not optional follow-ups.
+4. **Acceptance:** prove a representative 80,000-row source and bounded output
+   without doing 80,000 paid searches; run a small real authorized Ollama/tool
+   sample for compatibility and rate measurement, then an injected-provider
+   full-size recovery/throughput scenario.
+
+## Verification required before claiming the use case works
+
+- Input/import, range access and output export at representative width and
+  content, including long text, formulas and the intended workbook format.
+- Exactly one item active in a set across multiple workers, including crash
+  takeover, stale leases and host reconnect. Shared host capacity remains
+  enforced across several sets using the same machine.
+- Crash after result persistence, after output commit, before cursor advance
+  and before receiver acknowledgement: no skipped row, duplicate result or
+  duplicate downstream effect. An ambiguous model request may execute again;
+  never promise exactly-once inference without provider support.
+- Sleep/offline longer than an inference deadline, explicit pause/cancel,
+  model change, owner/grant revocation, deleted input and quota exhaustion.
+- Input sort/insert/version replacement and output edits: either pinned input
+  is unchanged or a conflict blocks explicitly; no positional misdelivery.
+- Text-only processor refusal for tool-requiring research, search rate limits,
+  missing Ollama search credentials/capability, no automatic Ledger search,
+  no-finding results, output validation failures and retry exhaustion.
+- Saving text into a Documents folder and configured spreadsheet columns
+  invokes no additional model. Receiver absence completes normally; selecting
+  a receiver produces one durable handoff, independently retryable on failure.
+- Disclosure retained on artifacts, dependency reads and receiver delivery;
+  inaccessible results and metadata never leak through the progress surface.
+- Headless browser flows from the conversation and document into one detail
+  view, with visible waiting/retry states and reachable saved results.
+
+At 10 seconds per item, 80,000 sequential items take about 9.3 days; at one
+minute each, about 55.6 days, before downtime and retries. These are arithmetic
+scenarios, not measured Ollama performance. They make durable source/result
+retention and automatic resource-wait recovery essential to the first release.
+
+This audit changes no runtime, UI, MCP contract, migrations or standing goals.
+The accepted scope is recorded here; existing standards and `AGENTS.md` remain
+unchanged. No production search, model call or spreadsheet mutation was
+performed for the audit.
