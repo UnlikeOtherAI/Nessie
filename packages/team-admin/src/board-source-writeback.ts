@@ -388,6 +388,41 @@ export const createBoardSourceCommentWriteBack = (
   }
 }
 
+/**
+ * The provider collaborator in the shape the shared comment functions take
+ * (`TaskCommentWriteBack`): the API routes and the worker's agent tools both
+ * build it here, so a comment posted by a person and one posted by an agent
+ * reach the provider the same way. A comment that is not propagated (not
+ * mirrored, read-only, or an adapter with no comment write) answers `null`
+ * and stays Nessie-only.
+ */
+export const createTaskCommentWriteBackFromSource = (deps: WriteBackDeps) => {
+  const source = createBoardSourceCommentWriteBack(deps)
+  const asComment = (echo: CommentEcho): NormalisedComment => ({
+    externalId: echo.externalId,
+    issueExternalId: '',
+    body: echo.body,
+    author: null,
+    createdAt: echo.externalUpdatedAt.toISOString(),
+    updatedAt: echo.externalUpdatedAt.toISOString(),
+    editedAt: echo.editedAt?.toISOString() ?? null,
+    url: echo.externalUrl,
+  })
+  return {
+    createComment: async (input: { taskId: string; body: string }) => {
+      const outcome = await source.create(input)
+      if ('error' in outcome) return outcome
+      return outcome.propagated ? { ok: true as const, comment: asComment(outcome.echo) } : null
+    },
+    updateComment: async (input: { commentId: string; body: string }) => {
+      const outcome = await source.update({ commentId: input.commentId, body: input.body })
+      if (!outcome || 'error' in outcome) return outcome
+      return { ok: true as const, comment: asComment(outcome.echo) }
+    },
+    deleteComment: async (input: { commentId: string }) => source.remove({ commentId: input.commentId }),
+  }
+}
+
 const PROVIDER_NAMES: Record<string, string> = {
   jira: 'Jira',
   linear: 'Linear',

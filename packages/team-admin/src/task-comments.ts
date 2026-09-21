@@ -10,7 +10,7 @@ import {
   type TaskCommentRecord,
 } from '@nessie/schemas'
 
-import type { BoardSourceWriteBackError } from './board-source-writeback.js'
+import type { BoardSourceCommentWriteBackError as BoardSourceWriteBackError } from './board-source-writeback.js'
 import { findAccessibleTask, isUuid, taskEventBy, type TaskActor } from './task-access.js'
 import {
   linkUploadsToTask,
@@ -39,10 +39,10 @@ export type TaskCommentWriteBack = {
   createComment?: (input: { taskId: string; body: string }) => Promise<
     { ok: true; comment: NormalisedComment } | BoardSourceWriteBackError | null
   >
-  updateComment?: (input: { taskId: string; externalId: string; body: string }) => Promise<
+  updateComment?: (input: { taskId: string; commentId: string; externalId: string; body: string }) => Promise<
     { ok: true; comment: NormalisedComment } | BoardSourceWriteBackError | null
   >
-  deleteComment?: (input: { taskId: string; externalId: string }) => Promise<
+  deleteComment?: (input: { taskId: string; commentId: string; externalId: string }) => Promise<
     { ok: true } | BoardSourceWriteBackError | null
   >
 }
@@ -353,6 +353,7 @@ export const updateTaskComment = async (
   if (comment.sourceId && comment.externalId && deps.writeBack?.updateComment) {
     const outcome = await deps.writeBack.updateComment({
       taskId: task.id,
+      commentId: comment.id,
       externalId: comment.externalId,
       body: input.body,
     })
@@ -388,7 +389,11 @@ export const deleteTaskComment = async (
   if ('error' in target) return target
   const { task, comment } = target
   if (comment.sourceId && comment.externalId && deps.writeBack?.deleteComment) {
-    const outcome = await deps.writeBack.deleteComment({ taskId: task.id, externalId: comment.externalId })
+    const outcome = await deps.writeBack.deleteComment({
+      taskId: task.id,
+      commentId: comment.id,
+      externalId: comment.externalId,
+    })
     if (outcome && 'error' in outcome) return outcome
   }
   await prisma.$transaction(async (tx) => {
