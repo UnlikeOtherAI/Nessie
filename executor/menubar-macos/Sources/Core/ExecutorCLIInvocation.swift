@@ -36,34 +36,40 @@ public enum ExecutorCLI {
         ExecutorCLIInvocation(arguments: ["serve", "--parent-liveness-stdin", "--state-dir", stateDirectory])
     }
 
-    /// The challenge and the workspace path travel on standard input, never in
-    /// `argv`: a pairing challenge in a process list is a credential anybody
-    /// signed into this Mac can read.
-    ///
-    /// Pairing sends the single `workspaceRoot` spelling on purpose: a person
-    /// pairing a Mac has chosen one folder and has not been asked to name it,
-    /// and the CLI derives the name from the directory. Naming and adding more
-    /// folders is the reach surface's job, afterwards.
-    public static func pair(
+    /// The runtime owns key generation, pending state and replacement. The app
+    /// sends the selected folder through stdin so paths stay off process lists.
+    public static func pairingStart(
         apiBaseUrl: String,
-        enrollmentId: String,
-        challenge: String,
         workspaceRoot: String,
+        replace: Bool,
         stateDirectory: String
     ) throws -> ExecutorCLIInvocation {
         ExecutorCLIInvocation(
             arguments: [
-                "pair",
+                "pairing-start", "--json",
                 "--api", apiBaseUrl,
-                "--enrollment", enrollmentId,
-                "--pair-input-stdin",
+                "--pairing-input-stdin",
                 "--state-dir", stateDirectory,
             ],
             standardInput: try canonicalJSON([
-                "challenge": challenge,
+                "replace": replace,
                 "workspaceRoot": workspaceRoot,
             ])
         )
+    }
+
+    public static func pairingStatus(stateDirectory: String) -> ExecutorCLIInvocation {
+        ExecutorCLIInvocation(arguments: ["pairing-status", "--json", "--state-dir", stateDirectory])
+    }
+
+    public static func pairingConfirm(stateDirectory: String, claimDigest: String) -> ExecutorCLIInvocation {
+        ExecutorCLIInvocation(arguments: [
+            "pairing-confirm", "--json", "--state-dir", stateDirectory, "--claim-digest", claimDigest,
+        ])
+    }
+
+    public static func pairingCancel(stateDirectory: String) -> ExecutorCLIInvocation {
+        ExecutorCLIInvocation(arguments: ["pairing-cancel", "--json", "--state-dir", stateDirectory])
     }
 
     /// One local-policy proposal. Operations, folders and permitted commands are
@@ -94,18 +100,5 @@ public enum ExecutorCLI {
 
     private static func canonicalJSON(_ value: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
-    }
-}
-
-/// What `pair` prints when it succeeds. The fingerprint is the whole point of
-/// the pairing surface — a person compares it in Nessie before the executor is
-/// allowed to do anything — so it is read out of the CLI's own success line
-/// rather than recomputed here from the machine key, which this app never sees.
-public enum PairingOutput {
-    public static func fingerprint(in standardOutput: String) -> String? {
-        guard let range = standardOutput.range(of: "Confirm fingerprint ") else { return nil }
-        let rest = standardOutput[range.upperBound...]
-        let fingerprint = rest.prefix { !$0.isWhitespace }
-        return fingerprint.isEmpty ? nil : String(fingerprint)
     }
 }

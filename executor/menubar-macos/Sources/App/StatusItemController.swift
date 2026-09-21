@@ -109,12 +109,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openNessie() {
-        // The admin origin that matches this build's API origin. A development
-        // build opens the local admin; a release opens the hosted one.
-        let url = controller.isDevelopmentBuild
-            ? URL(string: "http://localhost:5455/agents/executors")
-            : URL(string: "https://app.nessie.works/agents/executors")
-        if let url { NSWorkspace.shared.open(url) }
+        NSWorkspace.shared.open(controller.nessieExecutorsURL)
     }
 
     @objc private func quit() {

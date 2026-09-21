@@ -30,6 +30,7 @@ final class ConsoleWindowController: NSObject, NSWindowDelegate {
         let hosting = NSHostingController(
             rootView: ConsoleView()
                 .environmentObject(controller)
+                .environmentObject(controller.pairing)
                 .environmentObject(selection)
         )
         hosting.sizingOptions = [.preferredContentSize]

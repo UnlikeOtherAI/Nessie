@@ -63,13 +63,6 @@ public struct ExecutorDescription: Equatable, Decodable, Sendable {
         try JSONDecoder().decode(ExecutorDescription.self, from: data)
     }
 
-    /// Enough of an executor id to tell two apart, and never so much that a menu
-    /// line grows wider than the screen. Ids are UUIDs; the first segment is
-    /// what a person compares against the Executors page in Nessie.
-    public var shortExecutorId: String {
-        String(executorId.split(separator: "-").first ?? Substring(executorId))
-    }
-
     public var commandRunEnabled: Bool { policy.operations.contains(ExecutorPolicy.commandOperationKey) }
 }
 

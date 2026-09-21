@@ -1,0 +1,110 @@
+import Combine
+import Foundation
+
+/// Owns the lifetime of one pairing attempt. Every transition comes from the
+/// packaged runtime; the UI never reads keys or edits pending or paired state.
+@MainActor
+final class ExecutorPairingController: ObservableObject {
+    @Published private(set) var state: ExecutorPairing?
+    @Published private(set) var busy = false
+    @Published private(set) var failure: String?
+
+    var onPaired: (() -> Void)?
+    var onChanged: (() -> Void)?
+    var beforeReplace: (() -> Bool)?
+    private let runner: ExecutorProcessRunner?
+    private let stateDirectory: String
+    private let isDevelopmentBuild: Bool
+    private let work = DispatchQueue(label: "com.unlikeotherai.nessie.executor.menubar.pairing")
+    private var pollTimer: Timer?
+
+    init(runner: ExecutorProcessRunner?, stateDirectory: String, isDevelopmentBuild: Bool) {
+        self.runner = runner
+        self.stateDirectory = stateDirectory
+        self.isDevelopmentBuild = isDevelopmentBuild
+    }
+
+    func restore() {
+        perform(ExecutorCLI.pairingStatus(stateDirectory: stateDirectory))
+    }
+
+    func begin(origin: String, workspace: String, replace: Bool) {
+        guard !busy else { return }
+        guard !replace || beforeReplace?() == true else { return }
+        do {
+            let approved = try ApprovedAPIOrigin.approve(origin, isDevelopmentBuild: isDevelopmentBuild).get()
+            try ExecutorPaths.prepare(stateDirectory)
+            perform(try ExecutorCLI.pairingStart(
+                apiBaseUrl: approved,
+                workspaceRoot: workspace,
+                replace: replace,
+                stateDirectory: stateDirectory
+            ))
+        } catch {
+            failure = "Nessie could not start pairing. Check the address and selected folder, then try again."
+        }
+    }
+
+    /// This is reached only by the local confirmation button, never by polling.
+    func confirm(_ displayed: ExecutorPairing) {
+        guard displayed.status == .confirmation, let claimDigest = displayed.claimDigest,
+              let expiration = displayed.expiration, expiration > Date() else { return }
+        perform(
+            ExecutorCLI.pairingConfirm(stateDirectory: stateDirectory, claimDigest: claimDigest),
+            startWhenPaired: true
+        )
+    }
+
+    func cancel() {
+        perform(ExecutorCLI.pairingCancel(stateDirectory: stateDirectory))
+    }
+
+    func shutdown() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
+    private func perform(_ invocation: ExecutorCLIInvocation, startWhenPaired: Bool = false) {
+        guard !busy else { return }
+        guard let runner else {
+            failure = "Nessie Executor needs to be reinstalled before this Mac can pair."
+            return
+        }
+        busy = true
+        failure = nil
+        work.async { [weak self] in
+            let result: Result<ExecutorPairing, Error>
+            do {
+                let completion = try runner.run(invocation)
+                guard completion.succeeded else {
+                    throw ExecutorRefusal("Nessie could not finish this step. Check your connection and try again.")
+                }
+                result = .success(try ExecutorPairing.decode(Data(completion.standardOutput.utf8)))
+            } catch {
+                result = .failure(error)
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.busy = false
+                switch result {
+                case let .success(state):
+                    self.state = state
+                    self.updatePolling()
+                    self.onChanged?()
+                    if startWhenPaired, state.isPaired { self.onPaired?() }
+                case .failure:
+                    self.failure = "Nessie could not finish this step. Check your connection and try again."
+                }
+            }
+        }
+    }
+
+    private func updatePolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+        guard state?.isPending == true else { return }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.restore() }
+        }
+    }
+}

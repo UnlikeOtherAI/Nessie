@@ -55,9 +55,7 @@ final class ExecutorController: ObservableObject {
     /// the API's own sentence alone — see `ExecutorFailure`.
     @Published var failure: ExecutorFailure?
     @Published private(set) var busy = false
-    /// The fingerprint the most recent `pair` printed, held until the daemon
-    /// starts, because confirming it in Nessie is the next thing a person does.
-    @Published private(set) var pendingFingerprint: String?
+    let pairing: ExecutorPairingController
 
     let isDevelopmentBuild: Bool
     let stateDirectory: String
@@ -65,6 +63,7 @@ final class ExecutorController: ObservableObject {
     private let work = DispatchQueue(label: "com.unlikeotherai.nessie.executor.menubar.cli")
     private var daemon: (process: Process, parentLiveness: FileHandle)?
     private var refreshTimer: Timer?
+    private var startAfterRefresh = false
 
     /// How many fresh revisions `reProposePolicy` will offer before it gives up.
     /// A state file that fell behind is behind by a handful of revisions, not by
@@ -76,6 +75,18 @@ final class ExecutorController: ObservableObject {
         self.isDevelopmentBuild = isDevelopmentBuild
         self.stateDirectory = ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
         self.runtime = PackagedRuntime.locate(in: Bundle.main.resourceURL)
+        let runtime = try? self.runtime.get()
+        self.pairing = ExecutorPairingController(
+            runner: runtime.map { ExecutorProcessRunner(runtime: $0, isDevelopmentBuild: isDevelopmentBuild) },
+            stateDirectory: stateDirectory,
+            isDevelopmentBuild: isDevelopmentBuild
+        )
+        pairing.onPaired = { [weak self] in self?.refresh(startWhenPaired: true) }
+        pairing.onChanged = { [weak self] in self?.refresh() }
+        pairing.beforeReplace = { [weak self] in
+            guard let self, self.model.daemon != .stopping else { return false }
+            return self.stopDaemon()
+        }
     }
 
     private var runner: ExecutorProcessRunner? {
@@ -87,24 +98,11 @@ final class ExecutorController: ObservableObject {
     /// is never what authorizes an origin — `ApprovedAPIOrigin.approve` is.
     var defaultAPIOrigin: String { ApprovedAPIOrigin.default(isDevelopmentBuild: isDevelopmentBuild) }
 
-    /// The Nessie a paste is actually pairing with: the origin the invitation
-    /// names, and otherwise the one the person chose. The panel shows the answer
-    /// beside the button, and `pair` resolves it exactly the same way, so what
-    /// is on screen is what is sent.
-    func approvedOrigin(
-        invitationText: String,
-        chosenOrigin: String
-    ) -> Result<String, ExecutorRefusal> {
-        ApprovedAPIOrigin.approve(
-            InvitationParser.apiBaseUrl(in: invitationText) ?? chosenOrigin,
-            isDevelopmentBuild: isDevelopmentBuild
-        )
-    }
-
     // MARK: - Reading
 
     func start() {
-        refresh()
+        pairing.restore()
+        refresh(startWhenPaired: true)
         // The daemon's own lease and a child that exited on its own are both
         // facts this app has to notice without being clicked, so the icon can
         // never be showing something that stopped being true.
@@ -113,7 +111,8 @@ final class ExecutorController: ObservableObject {
         }
     }
 
-    func refresh() {
+    func refresh(startWhenPaired: Bool = false) {
+        if startWhenPaired { startAfterRefresh = true }
         guard let runner else {
             if case let .failure(refusal) = runtime {
                 model = MenuModel(pairing: .unavailable(refusal.message), daemon: .stopped)
@@ -131,8 +130,16 @@ final class ExecutorController: ObservableObject {
             let lease = DaemonLeaseReader.read(in: stateDirectory)
             Task { @MainActor [weak self] in
                 self?.apply(description: description, completion: completion, lease: lease)
+                self?.startIfRequested()
             }
         }
+    }
+
+    private func startIfRequested() {
+        guard startAfterRefresh, model.description != nil, model.daemon == .stopped,
+              !busy, !pairing.busy, pairing.state?.isPending != true else { return }
+        startAfterRefresh = false
+        startDaemon()
     }
 
     private func apply(
@@ -170,7 +177,6 @@ final class ExecutorController: ObservableObject {
             self.daemon = nil
         }
         if leaseBlocksStart(lease, daemonIsLive: { kill($0, 0) == 0 }) { return .stopping }
-        if pendingFingerprint != nil { return .awaitingConfirmation }
         return .stopped
     }
 
@@ -206,37 +212,6 @@ final class ExecutorController: ObservableObject {
                     self.fail(refusal.message)
                 }
                 self.refresh()
-            }
-        }
-    }
-
-    func pair(invitationText: String, chosenOrigin: String, workspaceRoot: String) {
-        switch InvitationParser.parse(invitationText, defaultApiBaseUrl: chosenOrigin) {
-        case let .failure(refusal):
-            self.fail(refusal.message)
-        case let .success(invitation):
-            switch ApprovedAPIOrigin.approve(invitation.apiBaseUrl, isDevelopmentBuild: isDevelopmentBuild) {
-            case let .failure(refusal):
-                self.fail(refusal.message)
-            case let .success(apiBaseUrl):
-                do {
-                    try ExecutorPaths.prepare(stateDirectory)
-                    let invocation = try ExecutorCLI.pair(
-                        apiBaseUrl: apiBaseUrl,
-                        enrollmentId: invitation.enrollmentId,
-                        challenge: invitation.challenge,
-                        workspaceRoot: workspaceRoot,
-                        stateDirectory: stateDirectory
-                    )
-                    perform(
-                        invocation,
-                        fallbackRefusal: "Nessie executor pairing was rejected. No pairing output was retained."
-                    ) { [weak self] output in
-                        self?.pendingFingerprint = PairingOutput.fingerprint(in: output)
-                    }
-                } catch {
-                    fail("Nessie Executor could not prepare its private state directory.")
-                }
             }
         }
     }
@@ -299,7 +274,7 @@ final class ExecutorController: ObservableObject {
     /// nessie.works would be a remedy pointing at a stranger's console.
     var nessieExecutorsURL: URL {
         ApprovedAPIOrigin.consoleURL(
-            forAPIOrigin: model.description?.apiBaseUrl ?? defaultAPIOrigin,
+            forAPIOrigin: pairing.state?.apiBaseUrl ?? model.description?.apiBaseUrl ?? defaultAPIOrigin,
             isDevelopmentBuild: isDevelopmentBuild
         )
     }
@@ -376,6 +351,7 @@ final class ExecutorController: ObservableObject {
     // MARK: - Supervision
 
     func startDaemon() {
+        guard !busy, !pairing.busy, pairing.state?.isPending != true else { return }
         guard let runner else {
             fail(PackagedRuntime.missingRefusal)
             return
@@ -418,7 +394,6 @@ final class ExecutorController: ObservableObject {
                     return
                 }
                 self.daemon = spawned
-                self.pendingFingerprint = nil
                 self.refresh()
             }
         }
@@ -429,6 +404,7 @@ final class ExecutorController: ObservableObject {
     /// never abandoned half-torn-down.
     @discardableResult
     func stopDaemon() -> Bool {
+        startAfterRefresh = false
         guard let daemon else { return true }
         if !daemon.process.isRunning {
             self.daemon = nil
@@ -454,6 +430,7 @@ final class ExecutorController: ObservableObject {
     /// its own, but the app waits for the teardown rather than exiting while
     /// guests are still running.
     func shutdown() {
+        pairing.shutdown()
         guard daemon != nil else { return }
         _ = stopDaemon()
         daemon?.parentLiveness.closeFile()
