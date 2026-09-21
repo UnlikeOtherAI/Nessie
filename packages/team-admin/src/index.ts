@@ -232,3 +232,4 @@ export {
 } from './connected-mail-presentation.js'
 
 export * from './resource-shares.js'
+export * from './board-source-apply-activity.js'
