@@ -121,6 +121,11 @@ export const TaskSetForm = ({ initial, identity, onSave, onSaved, submitLabel, s
               <option value="processor">Processor's configured search</option>
             </Select>
           </FormField>
+          <FormField error={errorFor('maxParallelRequests')} label="Parallel requests across task sets"
+            help="Each set still runs one item at a time. The lowest active set limit applies to this processor; local device capacity may be lower.">
+            <Input max={32} min={1} onChange={(event) => patch({ maxParallelRequests: Number(event.target.value) })}
+              type="number" value={draft.maxParallelRequests ?? 1} />
+          </FormField>
           <FormField help="A failed item stops the set when its attempts are exhausted." label="Maximum attempts per item">
             <Input max={10} min={1} onChange={(event) => patch({ maxAttempts: Number(event.target.value) })}
               type="number" value={draft.maxAttempts ?? 3} />

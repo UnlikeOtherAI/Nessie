@@ -89,6 +89,7 @@ try {
   await page.getByLabel(/^Name/).fill('Spreadsheet enrichment')
   await page.getByLabel(/^Objective/).fill('Enrich every company row.')
   await page.getByLabel(/^Processor model/).selectOption('hosted')
+  await page.getByLabel('Parallel requests across task sets', { exact: true }).fill('3')
   assert.equal(await page.getByLabel('File format', { exact: true }).inputValue(), 'xlsx')
   await page.getByLabel('Worksheet').fill('Companies')
   await page.getByLabel('First row').fill('125')
@@ -104,6 +105,7 @@ try {
   await page.getByRole('heading', { name: 'Spreadsheet enrichment', exact: true }).waitFor()
   const source = (await calls()).find((call) => call.method === 'POST' && call.path === '/api/task-sets').body
   assert.equal(source.source.versionId, '00000000-0000-4000-8000-000000000006')
+  assert.equal(source.maxParallelRequests, 3)
   assert.deepEqual(source.source.selection, { sheet: 'Companies', firstRow: 125, lastRow: 127 })
   assert.deepEqual(source.output.fields, { Summary: 'summary', Website: 'website' })
   assert.ok(source.receiver.channelId)
@@ -150,6 +152,8 @@ try {
   assert.deepEqual(errors, [], errors.join('\n'))
   console.log(`Task Set UI contract proofs passed: ${screenshots}`)
 } catch (error) {
+  console.error(errors.join('\n'))
+  console.error(admin.output())
   if (page) {
     await shot('failure')
     console.error(await page.locator('body').innerText())

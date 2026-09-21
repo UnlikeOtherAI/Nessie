@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { TestContext } from 'node:test'
 import { PrismaClient, type TaskSet } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { AuthorizedActionContextSchema } from '@nessie/schemas'
 import { taskSetJson } from '@nessie/team-admin'
 
 /** Isolated tenant and two independent connections; no test registration. */
@@ -20,10 +20,10 @@ export const seedTaskSetRecoveryFixture = async (t: TestContext) => {
   const agent = await prisma.agent.create({ data: {
     organizationId: organization.id, ownerUserId: user.id, name: 'Fixture',
   } })
-  const actor: AuthorizedActionContext = {
+  const actor = AuthorizedActionContextSchema.parse({
     actor: { actorType: 'user', actorId: user.id }, tenant: { organizationId: organization.id },
     actionContext: { requestId: randomUUID(), effectiveUserId: user.id },
-  }
+  })
   const sets: string[] = []
   t.after(async () => {
     await prisma.queueJob.deleteMany({ where: { OR: sets.map((id) => ({ idempotencyKey: { startsWith: `task-set:${id}:` } })) } })

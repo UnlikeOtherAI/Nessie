@@ -72,7 +72,8 @@ dbTest('the real processor transport commits ordered results, dependencies and o
   assert.equal(f.stored(), 1)
   assert.equal(server.stats().requests, 2)
   assert.equal(await f.prisma.agentMailboxMessage.count({ where: { taskSetId: f.set.id } }), 0)
-  assert.equal(await f.prisma.tokenLedgerEvent.count({ where: { run: { threadId: f.thread.id } } }), 2)
+  const runs = await f.prisma.run.findMany({ where: { threadId: f.thread.id }, select: { id: true } })
+  assert.equal(await f.prisma.tokenLedgerEvent.count({ where: { runId: { in: runs.map((run) => run.id) } } }), 2)
 
   await t.test('oversized context blocks before dispatch and retains the row', async (context) => {
     const large = await fixture(context)

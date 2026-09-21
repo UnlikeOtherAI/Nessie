@@ -51,7 +51,7 @@ export const TaskSetDetailPage = () => {
     return next
   }, { replace: true })
   const editable = Boolean(set && ['draft', 'ready', 'paused', 'blocked'].includes(set.status)
-    && !(set.status === 'paused' && set.currentItemId))
+    && !set.currentItemId)
   const actions: PageHeaderAction[] = []
   const addAction = (value: TaskSetAction['action'], label: string, primary = false) => actions.push({
     id: value, label, primary, priority: primary ? 100 : 70, disabled: action.isPending,
@@ -130,7 +130,7 @@ export const TaskSetDetailPage = () => {
                 {editable ? <TaskSetForm identity={set.id} sourceLocked={set.totalItems > 0 || set.status !== 'draft'} initial={{
                   name: set.name, objective: set.objective, instructions: set.instructions,
                   processor: set.processor, source: set.source, output: set.output, receiver: set.receiver,
-                  search: set.search, maxAttempts: set.maxAttempts, maxParallelRequests: 1,
+                  search: set.search, maxAttempts: set.maxAttempts, maxParallelRequests: set.maxParallelRequests,
                 } satisfies TaskSetCreate} onSave={(input) => {
                   const changed = Object.fromEntries(Object.entries(input).filter(([key, value]) =>
                     JSON.stringify(value) !== JSON.stringify(set[key as keyof typeof set]),

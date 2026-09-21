@@ -11,6 +11,8 @@ access. A receiver is optional and separately names an agent, a conversation
 and continuation instructions. Each set stays sequential. Local resource
 capacity and pause controls reuse `LocalInferenceHostStatus`, so changing
 shared capacity affects all sets on that resource without changing item order.
+The form also exposes the request limit shared across sets for hosted and local
+processors; editing other settings retains that configured limit.
 
 Manual tasks can depend on earlier items. File inputs specify record selection
 against a pinned version. Results remain readable on paginated item detail,
