@@ -1,7 +1,7 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 const UUID = { type: 'string', description: 'The UUID returned by a resolving tool.' } as const
-const LABEL_IDS = { type: 'array', items: { type: 'string' }, description: 'The ticket’s whole label set, as label UUIDs from ticket_labels_read; an empty list clears it.' } as const
+const LABEL_IDS = { type: 'array', items: { type: 'string' }, description: 'The ticket’s whole label set, as label UUIDs of the ticket’s board from ticket_labels_read; an empty list clears it.' } as const
 const MARKDOWN = 'Ticket descriptions (detail) and comments are Markdown. To show an image inline, upload it with attachment_upload, attach it with ticket_attachment_add, and write ![alt](/api/attachments/<attachmentId>).'
 
 /**
@@ -78,15 +78,15 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'ticket_labels_read', category: 'projects', label: 'Read Ticket Labels', personalAssistantOnly: true, projectDelegatedOnly: true,
-    summary: 'List a project’s labels and their IDs.', safe: true,
-    description: 'Read a project’s labels before setting labelIds with ticket_create or ticket_update. Each line gives the labelId to use; do not guess them. A label an external source (Linear, Jira, GitHub, Trello) owns says so.',
-    parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
+    summary: 'List a board’s labels and their IDs.', safe: true,
+    description: 'Read a board’s labels before setting labelIds with ticket_create or ticket_update. A ticket’s labels are the labels of the board it is on (ticket_read names it). With boardId, that board’s labels; without, every board’s, grouped by board. Each line gives the labelId to use; do not guess them. A label an external source (Linear, Jira, GitHub, Trello) owns says so.',
+    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID }, required: ['projectId'] },
   },
   {
     id: 'ticket_label_create', category: 'projects', label: 'Create Ticket Label', personalAssistantOnly: true, projectDelegatedOnly: true,
-    summary: 'Add a label to a project.', safe: false,
-    description: 'Create a label in a project. If the name is already taken (ignoring case), the existing label is returned instead; use it. color is #rrggbb and optional.',
-    parameters: { type: 'object', properties: { projectId: UUID, name: { type: 'string' }, color: { type: 'string', description: '#rrggbb' } }, required: ['projectId', 'name'] },
+    summary: 'Add a label to a board.', safe: false,
+    description: 'Create a label on a board: boardId’s, or the project’s default board when it is omitted. If the name is already taken on that board (ignoring case), the existing label is returned instead; use it. color is #rrggbb and optional.',
+    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID, name: { type: 'string' }, color: { type: 'string', description: '#rrggbb' } }, required: ['projectId', 'name'] },
   },
   {
     id: 'ticket_comment_list', category: 'projects', label: 'Read Ticket Comments', personalAssistantOnly: true, projectDelegatedOnly: true,
@@ -109,13 +109,13 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'ticket_comment_delete', category: 'projects', label: 'Delete Ticket Comment', personalAssistantOnly: true,
     summary: 'Delete a comment you wrote.', safe: false,
-    description: 'Delete a comment, and the files attached to it. Only its author can delete a comment; take the commentId from ticket_comment_list.',
+    description: 'Delete a comment; its files are marked removed and stay downloadable. Only its author can delete a comment; take the commentId from ticket_comment_list.',
     parameters: { type: 'object', properties: { ticketId: UUID, commentId: UUID }, required: ['ticketId', 'commentId'] },
   },
   {
     id: 'ticket_attachment_list', category: 'projects', label: 'Read Ticket Files', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'List the files on one ticket.', safe: true,
-    description: 'List a ticket’s files, newest first, with the attachmentId to read one with attachment_read. Files an external system keeps are listed as links.',
+    description: 'List a ticket’s files, newest first, with the attachmentId to read one with attachment_read. Files an external system keeps are listed as links; a removed file says who removed it, when and why, and can still be read.',
     parameters: { type: 'object', properties: { ticketId: UUID }, required: ['ticketId'] },
   },
   {
@@ -126,9 +126,9 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'ticket_attachment_remove', category: 'projects', label: 'Remove Ticket File', personalAssistantOnly: true,
-    summary: 'Remove a file from a ticket and delete it.', safe: false,
-    description: 'Remove a file from a ticket and delete it. Whoever uploaded it, or any member of the project, can remove it; take the attachmentId from ticket_attachment_list.',
-    parameters: { type: 'object', properties: { ticketId: UUID, attachmentId: UUID }, required: ['ticketId', 'attachmentId'] },
+    summary: 'Mark a file on a ticket as removed.', safe: false,
+    description: 'Mark a file on a ticket as removed. It stays downloadable and the ticket shows who removed it and why; give a reason when you have one (at most 500 characters). Take the attachmentId from ticket_attachment_list.',
+    parameters: { type: 'object', properties: { ticketId: UUID, attachmentId: UUID, reason: { type: 'string', maxLength: 500 } }, required: ['ticketId', 'attachmentId'] },
   },
   {
     id: 'ticket_fields_read', category: 'projects', label: 'Read Ticket Fields', personalAssistantOnly: true,

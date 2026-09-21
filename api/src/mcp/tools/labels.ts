@@ -1,20 +1,23 @@
 import { z } from 'zod'
 import { TASK_LABEL_NAME_MAX_CHARS, type TaskLabelRecord } from '@nessie/schemas'
-import { publishProjectBoardUpdated } from '@nessie/team-admin'
+import { findProjectLabelBoard, publishProjectBoardUpdated, type BoardRef } from '@nessie/team-admin'
 
 import {
-  createProjectLabel,
-  deleteProjectLabel,
+  createBoardLabel,
+  deleteBoardLabel,
   isTaskLabelError,
+  listBoardLabels,
   listProjectLabels,
-  updateProjectLabel,
+  updateBoardLabel,
 } from '../../services/task-labels.js'
 import { requireScope } from '../scopes.js'
 import type { McpToolContext, McpToolDefinition } from '../tool-context.js'
 import { describeWriteFailure, PROJECT_NOT_REACHABLE, projectAccess } from './boards.js'
 
 /**
- * A project's labels.
+ * A board's labels. A ticket's labels are the labels of the board it is on;
+ * `boardId` is optional everywhere, and absent means the project's default
+ * board (a create) or every board (a list, a lookup by label id).
  *
  * Unlike the Personal Assistant, a paired agent gets rename, recolour and
  * delete: it has no settings page to send a person to, which is the same
@@ -55,6 +58,19 @@ const repaint = async (
   })
 }
 
+const BOARD_NOT_FOUND = 'Board not found in this project.'
+
+/** The named board of the project, or its default when none is named. */
+const projectBoard = async (
+  context: McpToolContext,
+  projectId: string,
+  boardId: string | undefined,
+): Promise<BoardRef | null> =>
+  context.prisma.board.findFirst({
+    where: { projectId, ...(boardId ? { id: boardId } : { isDefault: true }) },
+    select: { id: true, projectId: true, organizationId: true },
+  })
+
 const nameTaken = (existing: TaskLabelRecord) => ({
   ...describeWriteFailure({ error: 'LABEL_NAME_TAKEN' }),
   label: existing,
@@ -63,25 +79,34 @@ const nameTaken = (existing: TaskLabelRecord) => ({
 export const labelTools = (): McpToolDefinition[] => [
   {
     description:
-      "List a project's labels, each with its colour, how many tasks carry it, "
-      + 'and whether an external source (Linear, Jira, GitHub, Trello) owns it. '
-      + 'Use the ids as labelIds on nessie_task_create and nessie_task_update.',
-    inputSchema: { projectId: z.string().uuid() },
+      "List a board's labels — with boardId, that board's; without, every "
+      + "board's in the project, each naming its boardId — with its colour, how "
+      + 'many tasks carry it, and whether an external source (Linear, Jira, '
+      + "GitHub, Trello) owns it. A task's labels are the labels of the board it "
+      + 'is on: use that board\'s ids as labelIds on nessie_task_create and nessie_task_update.',
+    inputSchema: { boardId: z.string().uuid().optional(), projectId: z.string().uuid() },
     name: 'nessie_label_list',
     run: async (context, input) => {
       requireScope(context.scopes, 'boards_read')
       const project = await projectAccess(context, input.projectId as string)
       if (!project) return { error: PROJECT_NOT_REACHABLE }
-      return { labels: await listProjectLabels(context.prisma, project.id) }
+      if (input.boardId === undefined) {
+        return { labels: await listProjectLabels(context.prisma, project.id) }
+      }
+      const board = await projectBoard(context, project.id, input.boardId as string)
+      if (!board) return { error: BOARD_NOT_FOUND }
+      return { labels: await listBoardLabels(context.prisma, board.id) }
     },
   },
   {
     description:
-      'Create a label in a project. Names are unique ignoring case and '
-      + 'surrounding spaces; if the name is taken the existing label is '
+      "Create a label on a board — boardId's, or the project's default board "
+      + 'when it is omitted. Names are unique on a board ignoring case and '
+      + 'surrounding spaces; if the name is taken the board\'s existing label is '
       + 'returned as `label` beside the error, so use that one. `color` is '
       + '#rrggbb; a neutral grey is used when it is omitted.',
     inputSchema: {
+      boardId: z.string().uuid().optional(),
       color: LabelColorInputSchema.optional(),
       name: LabelNameSchema,
       projectId: z.string().uuid(),
@@ -91,7 +116,9 @@ export const labelTools = (): McpToolDefinition[] => [
       requireScope(context.scopes, 'boards_write')
       const project = await projectAccess(context, input.projectId as string)
       if (!project) return { error: PROJECT_NOT_REACHABLE }
-      const result = await createProjectLabel(context.prisma, project, {
+      const board = await projectBoard(context, project.id, input.boardId as string | undefined)
+      if (!board) return { error: BOARD_NOT_FOUND }
+      const result = await createBoardLabel(context.prisma, board, {
         name: input.name as string,
         ...(input.color ? { color: input.color as string } : {}),
         createdByUserId: context.actorContext.actor.actorId,
@@ -124,7 +151,11 @@ export const labelTools = (): McpToolDefinition[] => [
       if (input.name === undefined && input.color === undefined) {
         return { error: 'Provide a new name, a new color, or both.' }
       }
-      const result = await updateProjectLabel(context.prisma, project.id, input.labelId as string, {
+      const board = await findProjectLabelBoard(
+        context.prisma, project.id, input.labelId as string, input.boardId as string | undefined,
+      )
+      if (!board) return describeWriteFailure({ error: 'LABEL_NOT_FOUND' })
+      const result = await updateBoardLabel(context.prisma, board, input.labelId as string, {
         ...(input.name !== undefined ? { name: input.name as string } : {}),
         ...(input.color !== undefined ? { color: input.color as string } : {}),
       })
@@ -146,9 +177,11 @@ export const labelTools = (): McpToolDefinition[] => [
   },
   {
     description:
-      'Delete a label from a project. It is removed from every task that '
-      + 'carries it; the tasks themselves are untouched.',
+      "Delete a board's label. It is removed from every task that carries it; "
+      + 'the tasks themselves are untouched. The label is found by id in the '
+      + 'project; boardId, when given, must be its board.',
     inputSchema: {
+      boardId: z.string().uuid().optional(),
       labelId: z.string().uuid(),
       projectId: z.string().uuid(),
     },
@@ -158,12 +191,16 @@ export const labelTools = (): McpToolDefinition[] => [
       const project = await projectAccess(context, input.projectId as string)
       if (!project) return { error: PROJECT_NOT_REACHABLE }
       const labelId = input.labelId as string
+      const board = await findProjectLabelBoard(
+        context.prisma, project.id, labelId, input.boardId as string | undefined,
+      )
+      if (!board) return describeWriteFailure({ error: 'LABEL_NOT_FOUND' })
       // Counted before the delete cascades the links away; the delete itself
-      // is the shared function's, and it re-checks the label is this project's.
+      // is the shared function's, and it re-checks the label is this board's.
       const removedFromTasks = await context.prisma.taskLabelLink.count({
-        where: { labelId, label: { projectId: project.id } },
+        where: { labelId, label: { boardId: board.id } },
       })
-      const result = await deleteProjectLabel(context.prisma, project.id, labelId)
+      const result = await deleteBoardLabel(context.prisma, board, labelId)
       if ('error' in result) return describeWriteFailure(result)
       await repaint(context, project)
       return { deleted: true, removedFromTasks }

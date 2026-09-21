@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 
-import { attributionFromActorContext } from '@nessie/runtime'
 import {
   LinkTaskAttachmentsBodySchema,
+  RemoveTaskAttachmentBodySchema,
   TaskAttachmentListSchema,
+  TaskAttachmentRecordSchema,
 } from '@nessie/schemas'
 import { publishTaskActivity } from '@nessie/team-admin'
 
@@ -18,8 +19,9 @@ import type { RouteDeps } from './types.js'
 
 /**
  * A ticket's files. Bytes only ever arrive through `POST /api/uploads`; these
- * routes list, link and remove. Removing is the uploader's, or any project
- * member's — decided by the shared function.
+ * routes list, link and remove. Anyone who can see the ticket may remove a
+ * file; removal is a mark (who, when, why) and the bytes stay downloadable,
+ * so the answer is the updated record rather than a bare 204.
  */
 export const registerTaskAttachmentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, realtimeHub } = deps
@@ -60,11 +62,15 @@ export const registerTaskAttachmentRoutes = (app: FastifyInstance, deps: RouteDe
 
   app.delete('/api/tasks/:taskId/attachments/:attachmentId', async (request, reply) => {
     const { taskId, attachmentId } = request.params as { taskId: string; attachmentId: string }
+    // The body is optional: a bare DELETE (no content type) is a removal without a reason.
+    const body = parseInput(RemoveTaskAttachmentBodySchema, request.body ?? {}, reply)
+    if (!body) return reply
     const access = await gate(request, reply, taskId)
     if (!access) return reply
-    const result = await removeTaskAttachment(prisma, access.actor, { taskId, attachmentId }, {
-      fileService: deps.fileService,
-      attribution: attributionFromActorContext(access.actorContext),
+    const result = await removeTaskAttachment(prisma, access.actor, {
+      taskId,
+      attachmentId,
+      reason: body.reason ?? null,
     })
     if ('error' in result) {
       sendTaskActivityError(reply, result)
@@ -75,6 +81,6 @@ export const registerTaskAttachmentRoutes = (app: FastifyInstance, deps: RouteDe
       taskId,
       projectId: result.projectId,
     })
-    return reply.code(204).send()
+    return createApiResponse(TaskAttachmentRecordSchema.parse(result.attachment))
   })
 }

@@ -10,6 +10,7 @@ import {
 import {
   detectSecrets,
   inlineAttachmentPath,
+  TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS,
   TASK_COMMENT_MAX_CHARS,
   type TaskAttachmentRecord,
 } from '@nessie/schemas'
@@ -55,6 +56,20 @@ export const MCP_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 export const MCP_ATTACHMENT_INLINE_MAX_BYTES = 4 * 1024 * 1024
 
 const FILE_STORAGE_UNAVAILABLE = 'File storage is not available on this Nessie instance.'
+
+/**
+ * The sentence a removed file carries on `nessie_task_attachment_get`: when,
+ * by whom (an id — people are never named from storage), and why.
+ */
+export const removalNote = (removed: NonNullable<TaskAttachmentRecord['removed']>): string => {
+  const who = removed.byUserId
+    ? `user ${removed.byUserId}${removed.byAgentId ? ` (through agent ${removed.byAgentId})` : ''}`
+    : removed.byAgentId
+      ? `agent ${removed.byAgentId}`
+      : 'someone'
+  const reason = removed.reason ? `: ${removed.reason}` : '.'
+  return `This file was removed from the task on ${removed.at.slice(0, 10)} by ${who}${reason}`
+}
 
 const reachableTask = async (
   context: McpToolContext,
@@ -188,8 +203,8 @@ export const taskActivityTools = (): McpToolDefinition[] => [
   },
   {
     description:
-      'Delete a comment, and the files attached to it. Only its author can '
-      + 'delete a comment.',
+      'Delete a comment. Only its author can delete a comment; its files are '
+      + 'marked removed and stay downloadable.',
     inputSchema: {
       commentId: z.string().uuid(),
       taskId: TaskIdSchema,
@@ -199,16 +214,11 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       requireScope(context.scopes, 'boards_write')
       const task = await reachableTask(context, input.taskId as string)
       if (!task) return { error: TASK_NOT_REACHABLE }
-      if (!context.fileService) return { error: FILE_STORAGE_UNAVAILABLE }
       const result = await deleteTaskComment(
         context.prisma,
         taskActorFromContext(context.actorContext),
         { taskId: task.id, commentId: input.commentId as string },
-        {
-          fileService: context.fileService,
-          attribution: attributionFromActorContext(context.actorContext),
-          writeBack: createTaskCommentWriteBack(context.prisma, context.encryptionKeyRing),
-        },
+        { writeBack: createTaskCommentWriteBack(context.prisma, context.encryptionKeyRing) },
       )
       if ('error' in result) return describeWriteFailure(result)
       await announce(context, task.id, result.projectId)
@@ -218,9 +228,10 @@ export const taskActivityTools = (): McpToolDefinition[] => [
   {
     description:
       "List a task's files, newest first: files stored in Nessie (with "
-      + '`inline: true` when the description or a comment shows it) and links '
-      + 'to files an external system keeps. Read one with '
-      + 'nessie_task_attachment_get.',
+      + '`inline: true` when the description or a comment shows it, and '
+      + '`removed` — when, by whom, why — once someone removed it; a removed '
+      + 'file stays readable) and links to files an external system keeps. '
+      + 'Read one with nessie_task_attachment_get.',
     inputSchema: { taskId: TaskIdSchema },
     name: 'nessie_task_attachment_list',
     run: async (context, input) => {
@@ -318,7 +329,8 @@ export const taskActivityTools = (): McpToolDefinition[] => [
     description:
       "Read one of a task's files. Images and text files up to 4 MiB come back "
       + 'as `contentBase64`; anything else returns its details only, and a '
-      + 'person can download it from the task in Nessie.',
+      + 'person can download it from the task in Nessie. A removed file is '
+      + 'still readable, with a `note` saying who removed it and why.',
     inputSchema: {
       attachmentId: z.string().uuid(),
       taskId: TaskIdSchema,
@@ -342,8 +354,11 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!inlinable(attachment)) {
         return {
           attachment,
-          note: 'Only images and text files up to 4 MiB are returned through MCP. '
-            + 'A person can download this one from the task in Nessie.',
+          note: [
+            ...(attachment.removed ? [removalNote(attachment.removed)] : []),
+            'Only images and text files up to 4 MiB are returned through MCP. '
+              + 'A person can download this one from the task in Nessie.',
+          ].join(' '),
         }
       }
       if (!context.fileService) return { attachment, error: FILE_STORAGE_UNAVAILABLE }
@@ -353,15 +368,20 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       )
       if (!opened) return { attachment, error: 'The stored bytes of this file are missing.' }
       const bytes = await collectStream(opened.stream)
-      return { attachment, contentBase64: bytes.toString('base64') }
+      return {
+        attachment,
+        contentBase64: bytes.toString('base64'),
+        ...(attachment.removed ? { note: removalNote(attachment.removed) } : {}),
+      }
     },
   },
   {
     description:
-      'Remove a file from a task and delete it. The person who uploaded it, '
-      + 'or any member of the project, can remove it.',
+      'Mark a file on a task as removed. It stays downloadable and the list '
+      + 'shows who removed it and why; give a reason when you have one.',
     inputSchema: {
       attachmentId: z.string().uuid(),
+      reason: z.string().trim().max(TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS).optional(),
       taskId: TaskIdSchema,
     },
     name: 'nessie_task_attachment_remove',
@@ -369,19 +389,18 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       requireScope(context.scopes, 'boards_write')
       const task = await reachableTask(context, input.taskId as string)
       if (!task) return { error: TASK_NOT_REACHABLE }
-      if (!context.fileService) return { error: FILE_STORAGE_UNAVAILABLE }
       const result = await removeTaskAttachment(
         context.prisma,
         taskActorFromContext(context.actorContext),
-        { taskId: task.id, attachmentId: input.attachmentId as string },
         {
-          fileService: context.fileService,
-          attribution: attributionFromActorContext(context.actorContext),
+          taskId: task.id,
+          attachmentId: input.attachmentId as string,
+          reason: (input.reason as string | undefined) ?? null,
         },
       )
       if ('error' in result) return describeWriteFailure(result)
       await announce(context, task.id, result.projectId)
-      return { removed: true }
+      return { removed: true, attachment: result.attachment }
     },
   },
 ]
