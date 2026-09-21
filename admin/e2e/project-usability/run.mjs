@@ -20,6 +20,7 @@ import {
 import { exerciseProjectAdministrationPermissions } from './project-administration-permissions.mjs'
 import { exerciseProjectDirectory } from './project-directory.mjs'
 import { exerciseProjectLoadFailures } from './project-load-failures.mjs'
+import { exerciseTicketActivity, exerciseTicketActivityPhone } from './ticket-activity.mjs'
 
 const ADMIN_URL = `http://localhost:${ADMIN_PORT}`
 const SCREENSHOTS = fileURLToPath(new URL('../../../e2e/screenshots/project-usability/', import.meta.url))
@@ -419,6 +420,16 @@ const main = async () => {
     const redirectedDialog = await waitForTaskDetail(desktopPage.page, redirectedTask)
     await redirectedDialog.getByRole('button', { name: 'Close', exact: true }).first().click()
     await redirectedDialog.waitFor({ state: 'hidden' })
+    // Ticket activity on the real stack: Markdown description, a label made
+    // through the Create row, a comment, an attachment and a Labels rename —
+    // then the same ticket's details on a phone.
+    const activityTask = await exerciseTicketActivity({
+      adminUrl: ADMIN_URL, api, board: boardA, onTaskCreated: (id) => createdTaskIds.add(id),
+      page: desktopPage.page, projectId: project.id, runId, shot, token: seed.token, viewer,
+    })
+    await exerciseTicketActivityPhone({
+      adminUrl: ADMIN_URL, board: boardA, page: phonePage.page, projectId: project.id, runId, shot, task: activityTask,
+    })
     await goto(phonePage.page, `/projects/${project.id}/board?board=${boardA.id}`)
     const touchTitles = [touchTitle, ...Array.from({ length: 7 }, (_, index) => `${touchTitle}-${index + 2}`)]
     for (const title of touchTitles) {
@@ -485,7 +496,7 @@ const main = async () => {
     if (project) await api(`/api/projects/${project.id}`, { method: 'DELETE', token: seed.token }).catch((error) => cleanupFailures.push(`delete disposable project: ${error.message}`))
   }
   if (cleanupFailures.length > 0) throw new Error(`project-usability cleanup failed:\n  ${cleanupFailures.join('\n  ')}`)
-  console.log('project-usability e2e: passed (project load recovery, administration permissions, lifecycle, isolation, phone touch scroll)')
+  console.log('project-usability e2e: passed (project load recovery, administration permissions, lifecycle, isolation, ticket activity, phone touch scroll)')
 }
 
 await main()

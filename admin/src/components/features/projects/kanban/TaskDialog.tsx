@@ -16,8 +16,10 @@ import { useAgents } from '../../../../facades/agents/queries'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { useProjects } from '../../../../facades/projects/hooks'
 import {
+  type CreateTaskInput,
   type TaskPriority,
   type TaskRecord,
+  type UpdateTaskInput,
   useAssignTask,
   useCreateTask,
   useMoveTask,
@@ -55,16 +57,6 @@ type TaskDraft = {
   priority: TaskPriority
   purpose: string
   title: string
-}
-
-// The two write doors take `labelIds` / `attachmentIds` (api/src/contracts/
-// tasks-board.ts); the facade's input types predate them.
-type UpdateTaskInput = Parameters<ReturnType<typeof useUpdateTask>['mutateAsync']>[0] & {
-  labelIds?: string[]
-}
-type CreateTaskInput = Parameters<ReturnType<typeof useCreateTask>['mutateAsync']>[0] & {
-  attachmentIds?: string[]
-  labelIds?: string[]
 }
 
 type TaskDialogTab = 'details' | 'checklist'
