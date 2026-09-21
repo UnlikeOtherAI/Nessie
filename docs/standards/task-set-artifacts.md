@@ -61,6 +61,8 @@ async iterator and creates a new file in the chosen Documents folder: plain
 text, JSONL, or XLSX. XLSX includes sequence, item ID, the complete selected
 source input as JSON, raw result text and explicitly mapped result fields.
 Mapped results must be valid JSON; large cells fail with a JSONL remedy.
+`validateTaskSetArtifactRow` applies those same rules before an item is marked
+complete, and the writer repeats the check when rendering durable results.
 Text resembling an Excel formula is written as text, never an executable
 formula object. The original source workbook is untouched.
 

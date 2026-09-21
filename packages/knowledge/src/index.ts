@@ -276,3 +276,4 @@ export { TaskSetSourceError, TASK_SET_SOURCE_LIMITS, taskSetCanonicalJson, taskS
 export { finalizeTaskSetArtifact, taskSetArtifactPageId } from './task-set-artifacts.js'
 export type { TaskSetArtifactDeps, TaskSetArtifactReceipt } from './task-set-artifacts.js'
 export type { TaskSetArtifactRow, TaskSetArtifactFormat } from './task-set-output-render.js'
+export { validateTaskSetArtifactRow } from './task-set-output-render.js'

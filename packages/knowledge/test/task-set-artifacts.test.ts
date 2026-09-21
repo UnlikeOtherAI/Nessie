@@ -8,7 +8,9 @@ import ExcelJS from 'exceljs'
 import type { PrismaClient } from '@prisma/client'
 import type { LedgerAttribution } from '@nessie/runtime'
 import type { TaskSetDisclosure } from '@nessie/schemas'
-import { renderTaskSetArtifact, type TaskSetArtifactRow } from '../src/task-set-output-render.js'
+import {
+  renderTaskSetArtifact, validateTaskSetArtifactRow, type TaskSetArtifactRow,
+} from '../src/task-set-output-render.js'
 import {
   finalizeTaskSetArtifact, type TaskSetArtifactDeps, type TaskSetArtifactReceipt,
 } from '../src/task-set-artifacts.js'
@@ -22,6 +24,19 @@ async function* rows(): AsyncGenerator<TaskSetArtifactRow> {
   yield { id: UUID, sequence: 1, input: { company: '=2+2', nested: { id: 9 } },
     result: '{"summary":"=4+4","found":true}', disclosure: BASIS }
 }
+
+test('item validation rejects malformed mapped JSON and oversize input or result cells before finalization', () => {
+  const output = { kind: 'spreadsheet', spaceId: UUID, fields: { Summary: 'summary' } } as const
+  const row = { id: UUID, sequence: 1, input: {}, result: 'not JSON', disclosure: BASIS }
+  assert.throws(() => validateTaskSetArtifactRow(output, row), /requires a JSON result/)
+  assert.throws(() => validateTaskSetArtifactRow(output, { ...row,
+    result: JSON.stringify({ summary: 'x'.repeat(32_768) }) }), /Excel cell capacity/)
+  assert.throws(() => validateTaskSetArtifactRow(output, { ...row,
+    input: { source: 'x'.repeat(32_768) }, result: '{}' }), /Excel cell capacity/)
+  validateTaskSetArtifactRow({ ...output, fields: {} }, { ...row, result: 'x'.repeat(32_767) })
+  validateTaskSetArtifactRow({ kind: 'documents', spaceId: UUID, format: 'jsonl' },
+    { ...row, result: 'x'.repeat(32_768) })
+})
 
 test('spreadsheet output preserves source input and writes mapped results as literal values, with source disclosure', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-task-output-test-'))

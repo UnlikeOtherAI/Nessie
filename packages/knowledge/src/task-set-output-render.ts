@@ -38,6 +38,11 @@ const spreadsheetValues = (row: TaskSetArtifactRow, output: TaskSetArtifactForma
     ...fields.map((field) => taskSetField(result, field))]
 }
 
+/** Validate before committing an item, using the exact rules the final artifact writer applies. */
+export const validateTaskSetArtifactRow = (output: TaskSetOutput, row: TaskSetArtifactRow): void => {
+  if (output.kind === 'spreadsheet') spreadsheetValues(row, output).forEach(excelText)
+}
+
 /** A streaming writer consumes persisted rows; it never calls a model or mutates the input workbook. */
 export const renderTaskSetArtifact = async (
   path: string, output: TaskSetArtifactFormat, rows: AsyncIterable<TaskSetArtifactRow>,
@@ -65,6 +70,7 @@ export const renderTaskSetArtifact = async (
   try {
     for await (const row of rows) {
       if (count % 200 === 0) await revalidate()
+      validateTaskSetArtifactRow(output, row)
       const basis = TaskSetDisclosureSchema.parse(row.disclosure)
       for (const scope of basis.basisScopes) scopes.set(taskSetCanonicalJson(scope), scope)
       for (const author of basis.disclosureSources) authors.set(taskSetCanonicalJson(author), author)
