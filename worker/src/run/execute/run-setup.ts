@@ -72,6 +72,23 @@ export const PEER_PROJECT_TOOL_IDS: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Whether a run may be lent project tools at all, before the binding is
+ * checked: a shared agent, in a project's channel, on a turn a real person
+ * started (or a bounded durable peer request carried).
+ */
+export const isProjectDelegatedRun = (run: {
+  agentKind: string
+  channelProjectId: string | null
+  actorType: string
+  interactive: boolean
+  purpose?: string | null
+}): boolean =>
+  run.agentKind === 'shared'
+  && run.channelProjectId !== null
+  && run.actorType === 'user'
+  && (run.interactive || run.purpose === 'agent.peer_delegation')
+
+/**
  * The project tools admitted for this run: none unless the run is a real
  * project delegation, and then only the peer set's tools the agent's policy
  * explicitly grants. Pure, so the admission can be pinned without a run.
@@ -200,13 +217,13 @@ export const prepareRunExecution = async (
   // Ordinary shared agents may receive project tools only when a real person
   // initiated this project-channel run (or a bounded durable peer request did),
   // the agent remains bound there, and its policy explicitly grants each tool.
-  const projectDelegation = context.agent.agentKind === 'shared'
-    && context.channel.projectId !== null
-    && payload.actorContext.actor.actorType === 'user'
-    && (
-      payload.interactive === true
-      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation'
-    )
+  const projectDelegation = isProjectDelegatedRun({
+    agentKind: context.agent.agentKind,
+    channelProjectId: context.channel.projectId,
+    actorType: payload.actorContext.actor.actorType,
+    interactive: payload.interactive === true,
+    purpose: payload.actorContext.actionContext.purpose,
+  })
     && (await deps.prisma.agentBinding.count({
       where: { agentId: context.agent.id, channelId: context.channel.id },
     })) > 0
