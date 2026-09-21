@@ -47,7 +47,11 @@ runDatabaseTest('comment routes: any reader comments, only the author edits or d
   assert.equal(edited.statusCode, 200, edited.body)
   assert.ok(JSON.parse(edited.body).data.editedAt)
   assert.equal((await h.app.inject({ method: 'DELETE', url: `${base}/${comment.id}` })).statusCode, 204)
-  assert.deepEqual(h.deletedFiles, [file], 'the comment\'s file went through the file service')
+  assert.deepEqual(h.deletedFiles, [], 'deleting a comment deletes no bytes')
+  const kept = await prisma.attachment.findUniqueOrThrow({ where: { id: file } })
+  assert.ok(kept.removedAt, 'its file is marked removed instead')
+  assert.equal(kept.removedByUserId, h.ids.memberId)
+  assert.equal(kept.removedReason, 'Removed with the comment.')
   assert.equal((await h.app.inject({ method: 'DELETE', url: `${base}/${comment.id}` })).statusCode, 404)
   assert.equal(h.published.filter((event) => event.event === 'task.activity').length, 3)
 
