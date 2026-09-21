@@ -51,6 +51,10 @@ const ADOPTERS: Adopter[] = [
   // Was an `overlay` carve-out for a 680px panel the shell did not ship; it
   // now wears `size="lg"` (640px) rather than keep a geometry of its own.
   { mode: 'dialog', path: 'components/features/triggers/TriggerEditorDialog.tsx' },
+  // The confirm before a ticket file is marked removed: it needs a Reason
+  // field `ConfirmDialog` has no room for, so it sits on the shell itself as
+  // the sanctioned blocking nesting over the task dialog.
+  { mode: 'dialog', path: 'components/features/projects/kanban/RemoveAttachmentDialog.tsx' },
   // A Flow, not a modal on `single` (docs/navigation/overview.md §7): still pinned here
   // because it is one of the fourteen files and still must own no z-index.
   { mode: 'overlay', path: 'pages/ChannelConversationComposePage.tsx' },
